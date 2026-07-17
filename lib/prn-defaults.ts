@@ -2,8 +2,9 @@
 // of the food-drug matcher (lib/food-drug-interactions.ts): given ONE intake item
 // (its name + cached RxCUI(s)), return the committed OTC label defaults for that
 // ingredient — the adult redose interval/max to PRE-FILL, and (for ibuprofen /
-// acetaminophen) the label's pediatric weight-band chart. No DB, no network — the
-// facts live in the committed, hand-maintained, CITED lib/prn-defaults.json.
+// acetaminophen) the label's pediatric weight-band chart. No DB, no network — the facts
+// live in the curated-dataset framework (lib/datasets/prn-defaults.ts over the committed,
+// hand-maintained, CITED lib/datasets/data/prn-defaults.json).
 //
 // LIABILITY POSTURE (kept apart, like the food-drug data): everything here is
 // INFORMATIONAL. The dataset only PRE-FILLS a suggestion onto the med form that the
@@ -18,67 +19,23 @@
 // ingredient CUIs, #279 — against an entry's ingredient CUIs); a normalized name/
 // synonym match is the fallback (#279's name path). One ingredient per item.
 
-import data from "./prn-defaults.json";
+import {
+  PRN_DEFAULT_ENTRIES,
+  type PrnDefaultEntry,
+} from "./datasets/prn-defaults";
 import { itemRxcuis } from "./drug-interactions";
 
-// One weight band from an OTC pediatric Drug Facts chart: an inclusive LOWER weight
-// bound (pounds) and the label's mg for that band. Bands are ordered ascending; the
-// lookup picks the highest band whose minLbs <= the child's weight (see prn-dosing).
-export interface PediatricBand {
-  minLbs: number;
-  mg: number;
-}
+// Re-export the entry + sub-types from their framework home (lib/datasets/prn-defaults
+// .ts) so the existing consumer import paths (`@/lib/prn-defaults`) are unchanged.
+export type {
+  PrnDefaultEntry,
+  PediatricBand,
+  PrnFormulation,
+  PrnAdultDefaults,
+  PrnPediatricDefaults,
+} from "./datasets/prn-defaults";
 
-// A common product formulation carrying its concentration (mg per mL), so a mL
-// suggestion can be derived from a band's mg — but ONLY after the user picks THEIR
-// product's concentration (issue #798). mg is canonical; mL is opt-in. `slug` is the
-// formulation's stable machine identifier (the form's picker value).
-export interface PrnFormulation {
-  slug: string;
-  label: string;
-  mgPerMl: number;
-}
-
-export interface PrnAdultDefaults {
-  minIntervalHours: number;
-  maxDailyCount: number;
-  maxDailyMg: number;
-  doseMgLow: number;
-  doseMgHigh: number;
-}
-
-export interface PrnPediatricDefaults {
-  // Hard age gate (label's own): below this age the lookup refuses with ageGateText
-  // instead of any dose ("ask a doctor"). Rendered as a refusal, never a computed
-  // exception (issue #798 non-goals).
-  minAgeMonths: number;
-  ageGateText: string;
-  bands: PediatricBand[];
-  formulations: PrnFormulation[];
-  // The CHILD label's redose interval / daily-max, when the pediatric label DIFFERS
-  // from the adult figure (issue #851 item 12) — e.g. children's acetaminophen is max
-  // 5 doses/24h vs the adult 6. CITED via the entry's `source` (label-sourced only,
-  // never a guess). Absent ⇒ no pediatric redose prefill: for a child profile the form
-  // then REFUSES to prefill the adult numbers (never guess below the label's floor,
-  // the #798 posture), rather than silently applying adult interval/max.
-  minIntervalHours?: number;
-  maxDailyCount?: number;
-}
-
-export interface PrnDefaultEntry {
-  // Stable machine identifier for the ingredient ("ibuprofen", "acetaminophen", …).
-  slug: string;
-  label: string;
-  rxcuis: string[];
-  synonyms: string[];
-  adult: PrnAdultDefaults;
-  // ABSENT for ingredients with no OTC pediatric weight-band table (aspirin — Reye's;
-  // naproxen — not for under-12; diphenhydramine — age-dosed, not weight-banded).
-  pediatric?: PrnPediatricDefaults;
-  source: string;
-}
-
-const ENTRIES = (data as { ingredients: PrnDefaultEntry[] }).ingredients;
+const ENTRIES = PRN_DEFAULT_ENTRIES;
 
 // The full curated dataset (for the dataset test + any catalogue surface).
 export function prnDefaultEntries(): readonly PrnDefaultEntry[] {

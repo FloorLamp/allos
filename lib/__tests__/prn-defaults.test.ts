@@ -1,13 +1,25 @@
 import { describe, it, expect } from "vitest";
 import { prnDefaultEntries, prnDefaultsFor } from "@/lib/prn-defaults";
+import {
+  prnDefaultsDataset,
+  prnDefaultSlugStrategy,
+} from "@/lib/datasets/prn-defaults";
+import { runHarness } from "@/lib/datasets";
 
-// Dataset test for the curated OTC PRN defaults (#798) — the medication-info /
-// food-drug-interactions treatment: every entry is cited, the matcher works by
-// RxNorm ingredient CUI AND name fallback, and — the load-bearing safety invariant —
-// ASPIRIN structurally has NO pediatric entry (Reye's syndrome).
+// Dataset + framework-contract test for the curated OTC PRN defaults (#798, migrated
+// onto the curated-dataset framework in #860 wave 2) — the medication-info /
+// food-drug-interactions treatment: every entry is cited, the matcher works by RxNorm
+// ingredient CUI AND name fallback, and — the load-bearing safety invariant — ASPIRIN
+// structurally has NO pediatric entry (Reye's syndrome). Plus the framework harness
+// (citation / slug identity / refusal / no-collisions).
 
 describe("prn-defaults dataset", () => {
   const entries = prnDefaultEntries();
+
+  it("passes the framework harness (citation / slug identity / refusal / no collisions)", () => {
+    const r = runHarness(prnDefaultsDataset, prnDefaultSlugStrategy);
+    expect(r.ok, r.problems.join("; ")).toBe(true);
+  });
 
   it("every entry carries a citation and valid adult label numbers", () => {
     expect(entries.length).toBeGreaterThan(0);

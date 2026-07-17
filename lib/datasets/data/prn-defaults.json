@@ -1,11 +1,32 @@
 {
-  "_comment": "Curated OTC PRN (as-needed) dosing DEFAULTS (issue #798). The medication-info / food-drug-interactions pattern: a committed, human-reviewable, CITED dataset keyed by RxNorm INGREDIENT CUI with a name/synonym fallback (#279). Every value is a public OTC Drug Facts label figure — NOT medical advice. The app only PRE-FILLS these onto the med form as a suggestion the user explicitly confirms/edits; nothing here is applied silently. `adult.minIntervalHours`/`adult.maxDailyCount` pre-fill the redose-notice fields; `pediatric.bands` reproduce the label's weight-band chart (mg per weight band) for informational lookup — NEVER a mg/kg computation. `pediatric.minAgeMonths` is a hard age GATE rendered as the label's own 'ask a doctor' refusal, not a dose. ASPIRIN has NO pediatric entry (Reye's syndrome) — the dataset structurally omits it, pinned by a dataset test. Bands carry an inclusive lower bound (minLbs) only; the lookup picks the highest band whose minLbs <= the child's weight, so a weight between two label bands lands conservatively on the LOWER (lower-dose) band, and a weight below the smallest band is a refusal.",
-  "ingredients": [
+  "$schema": "allos-dataset/v1",
+  "id": "prn-defaults",
+  "title": "OTC PRN (as-needed) dosing defaults",
+  "description": "Curated OTC PRN (as-needed) dosing DEFAULTS (issue #798). The medication-info / food-drug-interactions pattern: a committed, human-reviewable, CITED dataset keyed by RxNorm INGREDIENT CUI with a name/synonym fallback (#279). Every value is a public OTC Drug Facts label figure — NOT medical advice. The app only PRE-FILLS these onto the med form as a suggestion the user explicitly confirms/edits; nothing here is applied silently. `adult.minIntervalHours`/`adult.maxDailyCount` pre-fill the redose-notice fields; `pediatric.bands` reproduce the label's weight-band chart (mg per weight band) for informational lookup — NEVER a mg/kg computation. `pediatric.minAgeMonths` is a hard age GATE rendered as the label's own 'ask a doctor' refusal, not a dose. ASPIRIN has NO pediatric entry (Reye's syndrome) — the dataset structurally omits it, pinned by a dataset test. Bands carry an inclusive lower bound (minLbs) only; the lookup picks the highest band whose minLbs <= the child's weight, so a weight between two label bands lands conservatively on the LOWER (lower-dose) band, and a weight below the smallest band is a refusal.",
+  "citation": [
+    {
+      "source": "U.S. FDA OTC Drug Facts labels (public).",
+      "url": "https://dailymed.nlm.nih.gov",
+      "note": "Every value is a public OTC Drug Facts label figure; each entry additionally carries its own per-entry `source`. Pre-fill suggestions only, never applied silently."
+    }
+  ],
+  "identity": {
+    "keys": [
+      "slug"
+    ]
+  },
+  "entries": [
     {
       "slug": "ibuprofen",
       "label": "Ibuprofen",
-      "rxcuis": ["5640"],
-      "synonyms": ["ibuprofen", "advil", "motrin"],
+      "rxcuis": [
+        "5640"
+      ],
+      "synonyms": [
+        "ibuprofen",
+        "advil",
+        "motrin"
+      ],
       "adult": {
         "minIntervalHours": 6,
         "maxDailyCount": 4,
@@ -58,8 +79,14 @@
     {
       "slug": "acetaminophen",
       "label": "Acetaminophen",
-      "rxcuis": ["161"],
-      "synonyms": ["acetaminophen", "tylenol", "paracetamol"],
+      "rxcuis": [
+        "161"
+      ],
+      "synonyms": [
+        "acetaminophen",
+        "tylenol",
+        "paracetamol"
+      ],
       "adult": {
         "minIntervalHours": 4,
         "maxDailyCount": 6,
@@ -112,8 +139,15 @@
     {
       "slug": "aspirin",
       "label": "Aspirin",
-      "rxcuis": ["1191"],
-      "synonyms": ["aspirin", "acetylsalicylic acid", "asa", "bayer"],
+      "rxcuis": [
+        "1191"
+      ],
+      "synonyms": [
+        "aspirin",
+        "acetylsalicylic acid",
+        "asa",
+        "bayer"
+      ],
       "adult": {
         "minIntervalHours": 4,
         "maxDailyCount": 6,
@@ -126,8 +160,14 @@
     {
       "slug": "naproxen",
       "label": "Naproxen sodium",
-      "rxcuis": ["7258"],
-      "synonyms": ["naproxen", "naproxen sodium", "aleve"],
+      "rxcuis": [
+        "7258"
+      ],
+      "synonyms": [
+        "naproxen",
+        "naproxen sodium",
+        "aleve"
+      ],
       "adult": {
         "minIntervalHours": 8,
         "maxDailyCount": 3,
@@ -140,8 +180,14 @@
     {
       "slug": "diphenhydramine",
       "label": "Diphenhydramine",
-      "rxcuis": ["3498"],
-      "synonyms": ["diphenhydramine", "benadryl", "diphenhydramine hcl"],
+      "rxcuis": [
+        "3498"
+      ],
+      "synonyms": [
+        "diphenhydramine",
+        "benadryl",
+        "diphenhydramine hcl"
+      ],
       "adult": {
         "minIntervalHours": 4,
         "maxDailyCount": 6,

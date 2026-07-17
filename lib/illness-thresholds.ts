@@ -1,7 +1,8 @@
-// Typed accessors over the curated, CITED illness-care threshold dataset
-// (lib/illness-thresholds.json, issue #805). Pure — no DB/network — so it is
-// importable from the pure test tier, the engine, and the query layer alike. The
-// committed JSON is hand-authored + human-reviewable (validated structurally by
+// Typed accessors over the curated, CITED illness-care threshold dataset — the DOMAIN
+// accessor over the curated-dataset framework's illness-thresholds dataset (issue #860
+// Track B, wave 2; data + loader in lib/datasets/illness-thresholds.ts). Pure — no
+// DB/network — so it is importable from the pure test tier, the engine, and the query
+// layer alike. The committed envelope is hand-authored + human-reviewable (validated by
 // lib/__tests__/illness-thresholds.test.ts).
 //
 // The #798 prn-defaults treatment applied to symptom DURATION: every entry is keyed
@@ -10,50 +11,25 @@
 // NO entry for a symptom the source has no citable duration line for — and no entry
 // ⇒ no finding for that symptom, ever (the load-bearing "cite, never generate" rule).
 
-import data from "./illness-thresholds.json";
+import {
+  ILLNESS_THRESHOLD_ENTRIES,
+  type IllnessThresholdEntry,
+} from "./datasets/illness-thresholds";
 import { isCuratedSymptom } from "./symptoms";
 
-// A duration line: the SOURCE's stated day count. The engine fires the duration
-// finding when the symptom has been logged MORE THAN `days` consecutive days
-// (run > days), so `line` can quote the source number verbatim ("beyond N days").
-export interface IllnessDurationRule {
-  days: number;
-  line: string;
-}
+// Re-export the entry + rule types from their framework home so the existing consumer
+// import paths (`@/lib/illness-thresholds`) are unchanged.
+export type {
+  IllnessThresholdEntry,
+  IllnessDurationRule,
+  IllnessTrajectoryRule,
+  IllnessInfantRule,
+} from "./datasets/illness-thresholds";
 
-// A trajectory line: fires the worsening variant when worst-severity has risen for
-// `days` consecutive days (>= days). Labels say "if symptoms get worse" without a
-// day count, so `days` is a fixed SUSTAINED-rise floor (2 = not a one-day blip) —
-// a blip filter, not an invented clinical number (documented in the JSON _comment).
-export interface IllnessTrajectoryRule {
-  days: number;
-  line: string;
-}
+const ENTRIES = ILLNESS_THRESHOLD_ENTRIES;
 
-// A source-published stricter age band (the #798 "below the floor renders 'ask a
-// doctor', not a number" pattern): when the profile's age is at or below
-// `maxAgeMonths`, ANY logged day of this symptom (run >= 1) renders the refusal
-// `line` (with its OWN `source`) instead of the adult duration count.
-export interface IllnessInfantRule {
-  maxAgeMonths: number;
-  line: string;
-  source: string;
-}
-
-export interface IllnessThresholdEntry {
-  // Stable #799 symptom slug — the KEY (must be a curated slug; a custom free-text
-  // symptom never has an entry).
-  slug: string;
-  label: string;
-  duration?: IllnessDurationRule;
-  trajectory?: IllnessTrajectoryRule;
-  infantRule?: IllnessInfantRule;
-  // The cited source for this entry's adult duration/trajectory lines.
-  source: string;
-}
-
-const ENTRIES = (data as { symptoms: IllnessThresholdEntry[] }).symptoms;
-
+// EXACT-slug map (behavior-preserving — stored keys are canonical #799 slugs; the
+// lookup stays case-sensitive as before, NOT the framework matcher's case-fold).
 const BY_SLUG = new Map(ENTRIES.map((e) => [e.slug, e]));
 
 // The full curated dataset (for the dataset test + any catalogue surface).
