@@ -14,7 +14,7 @@ test.describe("preventive-care reminders toggle (issue #87)", () => {
     // Local `next dev` compiles the route on first hit.
     test.slow();
 
-    await page.goto("/settings/profile");
+    await page.goto("/settings/notifications");
 
     // The schedule (and the preventive toggle) is revealed only when Telegram is
     // enabled for this profile — turn it on first.
