@@ -6,7 +6,11 @@ import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import type { Protocol, FormResult, Equipment } from "@/lib/types";
-import type { OutcomeOption, ProtocolPractice } from "@/lib/queries/protocols";
+import type {
+  OutcomeOption,
+  ProtocolPractice,
+  IntakeItemOption,
+} from "@/lib/queries/protocols";
 import { PRACTICE_TYPES, practiceSelectValue } from "@/lib/protocol-practice";
 import { FOOD_GROUPS } from "@/lib/food-groups";
 import type { ProtocolTemplate } from "@/lib/protocol-templates";
@@ -26,6 +30,7 @@ export default function ProtocolForm({
   action,
   options,
   equipment,
+  intakeItems,
   protocol,
   practice = null,
   template = null,
@@ -34,6 +39,9 @@ export default function ProtocolForm({
   action: (formData: FormData) => Promise<FormResult>;
   options: OutcomeOption[];
   equipment: Equipment[];
+  // The profile's supplements + medications, for the direct intervention link
+  // (issue #660 — the creatine case).
+  intakeItems: IntakeItemOption[];
   protocol?: Protocol;
   practice?: ProtocolPractice | null;
   // A starter template (issue #571) whose defaults seed the ADD form (name, notes,
@@ -204,6 +212,33 @@ export default function ProtocolForm({
           </select>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             Link the device this experiment is about — e.g. which sauna.
+          </p>
+        </div>
+      )}
+      {intakeItems.length > 0 && (
+        <div>
+          <label className="label" htmlFor={`pr-intake-${uid}`}>
+            Intervention supplement / medication{" "}
+            <span className="text-slate-400">(optional)</span>
+          </label>
+          <select
+            id={`pr-intake-${uid}`}
+            name="intake_item_id"
+            className="input"
+            defaultValue={protocol?.intake_item_id ?? ""}
+            data-testid="protocol-intake-item"
+          >
+            <option value="">None</option>
+            {intakeItems.map((it) => (
+              <option key={it.id} value={it.id}>
+                {it.name}
+                {it.kind === "medication" ? " (medication)" : ""}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Link the supplement or medication this experiment is testing — e.g.
+            creatine — so the intervention is first-class.
           </p>
         </div>
       )}

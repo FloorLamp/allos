@@ -4,6 +4,7 @@ import {
   listCompareOptions,
   resolveSeriesByKey,
   buildTrendAnnotations,
+  buildProtocolTrendWindows,
   deCollideColor,
   type TrendSeries,
 } from "@/lib/trends-series";
@@ -55,6 +56,8 @@ export default async function CompareSection({
   // Event annotations for the overlay, windowed to the shared range (profile-scoped
   // reads only). The client CompareOverlay owns the per-type toggle.
   const annotations = buildTrendAnnotations(profile.id, range);
+  // Protocol intervention windows (issue #660), shaded across the overlay.
+  const protocolWindows = buildProtocolTrendWindows(profile.id, range);
   // Two biomarkers can hash to the same palette color; nudge B off A so the
   // overlay's two lines (and legend dots) stay distinguishable (issue #400).
   const colorB =
@@ -132,6 +135,7 @@ export default async function CompareSection({
             unitB={seriesB.unit}
             normalized={normalized}
             annotations={annotations}
+            windows={protocolWindows}
           />
 
           <p className="text-xs text-slate-500 dark:text-slate-400">

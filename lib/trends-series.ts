@@ -15,6 +15,7 @@ import {
   getMedicationCourses,
   getSupplements,
   getAppointments,
+  getProtocolWindows,
 } from "./queries";
 import {
   getUnitPrefs,
@@ -25,7 +26,12 @@ import {
   getSituationEvents,
 } from "./settings";
 import { showBodyFat } from "./growth-metrics";
-import { buildAnnotations, type TrendAnnotation } from "./trend-annotations";
+import {
+  buildAnnotations,
+  buildProtocolWindows,
+  type TrendAnnotation,
+  type TrendWindow,
+} from "./trend-annotations";
 import { dispWeight, round } from "./units";
 import {
   referenceRange,
@@ -353,6 +359,18 @@ export function buildTrendAnnotations(
     }));
   const situations = getSituationEvents(profileId);
   return buildAnnotations({ medications, appointments, situations }, range);
+}
+
+// The protocol intervention WINDOWS for the Trends charts (issue #660), windowed to
+// `range`. Every protocol the profile runs is shaded on the Body/Compare charts —
+// matching how the point annotations (medications/appointments) show regardless of
+// which metric is charted; the per-analyte biomarker chart narrows to the targeting
+// protocol instead. Reads only the profile-scoped getProtocolWindows.
+export function buildProtocolTrendWindows(
+  profileId: number,
+  range: DateRange
+): TrendWindow[] {
+  return buildProtocolWindows(getProtocolWindows(profileId), range);
 }
 
 // Assemble every candidate series for the "what's trending" digest: the standard

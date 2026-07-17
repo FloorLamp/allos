@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   buildAnnotations,
+  buildProtocolWindows,
+  snapWindowsToDates,
   annotationKindsPresent,
   filterAnnotationsByKind,
   snapAnnotationsToDates,
@@ -12,7 +14,10 @@ import {
   SITUATION_LOG_CAP,
   type SituationEvent,
   type TrendAnnotation,
+  type TrendWindow,
 } from "../trend-annotations";
+import { protocolWindowEpochs } from "../chart-windows";
+import { dateToEpoch } from "../chart-time-axis";
 
 describe("buildAnnotations", () => {
   it("expands a medication course into start + stop markers", () => {
@@ -345,5 +350,138 @@ describe("situationsActiveOn — adherence history reconstruction (#654)", () =>
     // Days 26–28: active.
     expect(on("2026-07-26").has("Travel")).toBe(true);
     expect(on("2026-07-28").has("Travel")).toBe(true);
+  });
+});
+
+describe("buildProtocolWindows (issue #660)", () => {
+  const protocols = [
+    { name: "Creatine", startDate: "2026-03-01", endDate: "2026-04-15" },
+    { name: "Sauna block", startDate: "2026-05-01", endDate: null }, // ongoing
+    { name: " ", startDate: "2026-06-01", endDate: null }, // blank name → "Protocol"
+    { name: "Bad start", startDate: "not-a-date", endDate: null }, // dropped
+  ];
+
+  it("maps rows to windows, defaulting a blank name and dropping bad dates", () => {
+    const out = buildProtocolWindows(protocols, {});
+    expect(out).toEqual([
+      {
+        start: "2026-03-01",
+        end: "2026-04-15",
+        label: "Creatine",
+        kind: "protocol",
+      },
+      {
+        start: "2026-05-01",
+        end: null,
+        label: "Sauna block",
+        kind: "protocol",
+      },
+      { start: "2026-06-01", end: null, label: "Protocol", kind: "protocol" },
+    ]);
+  });
+
+  it("keeps only windows overlapping the [from,to] range", () => {
+    // A window ending before `from` is dropped; one starting after `to` is dropped.
+    const out = buildProtocolWindows(protocols, {
+      from: "2026-04-20",
+      to: "2026-05-15",
+    });
+    expect(out.map((w) => w.label)).toEqual(["Sauna block"]);
+  });
+
+  it("sorts by start then label", () => {
+    const out = buildProtocolWindows(
+      [
+        { name: "Zeta", startDate: "2026-05-01", endDate: null },
+        { name: "Alpha", startDate: "2026-05-01", endDate: null },
+        { name: "Early", startDate: "2026-01-01", endDate: "2026-02-01" },
+      ],
+      {}
+    );
+    expect(out.map((w) => w.label)).toEqual(["Early", "Alpha", "Zeta"]);
+  });
+});
+
+describe("snapWindowsToDates (category axis)", () => {
+  const dates = ["2026-03-01", "2026-03-08", "2026-03-15", "2026-03-22"];
+
+  it("clamps an ongoing window to the last charted date and snaps the start up", () => {
+    const win: TrendWindow = {
+      start: "2026-03-05",
+      end: null,
+      label: "P",
+      kind: "protocol",
+    };
+    expect(snapWindowsToDates([win], dates)).toEqual([
+      { start: "2026-03-08", end: "2026-03-22", label: "P", kind: "protocol" },
+    ]);
+  });
+
+  it("clamps a window predating the chart to the first charted date", () => {
+    const win: TrendWindow = {
+      start: "2026-01-01",
+      end: "2026-03-10",
+      label: "P",
+      kind: "protocol",
+    };
+    expect(snapWindowsToDates([win], dates)).toEqual([
+      { start: "2026-03-01", end: "2026-03-08", label: "P", kind: "protocol" },
+    ]);
+  });
+
+  it("drops a window with no overlap and returns [] for no charted dates", () => {
+    const after: TrendWindow = {
+      start: "2027-01-01",
+      end: null,
+      label: "P",
+      kind: "protocol",
+    };
+    expect(snapWindowsToDates([after], dates)).toEqual([]);
+    expect(snapWindowsToDates([after], [])).toEqual([]);
+  });
+});
+
+describe("protocolWindowEpochs (time axis)", () => {
+  const dates = ["2026-03-01", "2026-03-15", "2026-04-01"];
+
+  it("clamps to the charted epoch extent, extending an ongoing window to the last date", () => {
+    const win: TrendWindow = {
+      start: "2026-02-01", // before first
+      end: null, // ongoing → last date
+      label: "P",
+      kind: "protocol",
+    };
+    const [area] = protocolWindowEpochs([win], dates);
+    expect(area.x1).toBe(dateToEpoch("2026-03-01"));
+    expect(area.x2).toBe(dateToEpoch("2026-04-01"));
+    expect(area.label).toBe("P");
+  });
+
+  it("drops a non-overlapping window and returns [] for no dates", () => {
+    const before: TrendWindow = {
+      start: "2020-01-01",
+      end: "2020-02-01",
+      label: "P",
+      kind: "protocol",
+    };
+    expect(protocolWindowEpochs([before], dates)).toEqual([]);
+    expect(protocolWindowEpochs([before], [])).toEqual([]);
+  });
+});
+
+describe("annotationKindsPresent — window awareness (#660)", () => {
+  it("includes 'protocol' when a window is present, in kind order", () => {
+    const anns: TrendAnnotation[] = [
+      { date: "2026-03-01", label: "Med", kind: "medication" },
+    ];
+    const windows: TrendWindow[] = [
+      { start: "2026-03-01", end: null, label: "P", kind: "protocol" },
+    ];
+    expect(annotationKindsPresent(anns, windows)).toEqual([
+      "medication",
+      "protocol",
+    ]);
+    // No windows → no protocol kind.
+    expect(annotationKindsPresent(anns)).toEqual(["medication"]);
   });
 });

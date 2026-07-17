@@ -336,7 +336,9 @@ describe("onboarding dashboard layout", () => {
     expect(combined.hidden).toContain("coaching");
 
     const explore = onboardingDashboardLayout(["explore"]);
-    expect(explore.hidden).toEqual(["weekly-recap"]);
+    // The off-by-default widgets (weekly-recap + the #660 active-protocols widget),
+    // in registry order, are the only ones the broad "explore" layout hides.
+    expect(explore.hidden).toEqual(["active-protocols", "weekly-recap"]);
     expect(explore.order).toEqual(
       expect.arrayContaining(["quick-log-prn", "symptom-log"])
     );

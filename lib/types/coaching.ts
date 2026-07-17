@@ -50,5 +50,10 @@ export interface Protocol {
   // target up, unless a sibling protocol now references it); 0 when it merely
   // points at a pre-existing routine target it must not destroy.
   owns_frequency_target: number;
+  // Optional direct intake-item link (issue #660): the supplement/medication row
+  // this protocol studies as its intervention ("creatine 5 g/day"), intake_items.id
+  // or NULL. First-class instead of routed through a situation. deleteIntakeItem/
+  // deleteMedication null it in code (no ON DELETE action).
+  intake_item_id: number | null;
   created_at: string;
 }

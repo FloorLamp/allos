@@ -6,7 +6,11 @@ import SubmitButton from "@/components/SubmitButton";
 import NotesText from "@/components/NotesText";
 import { formatLongDate } from "@/lib/format-date";
 import type { Protocol, FormResult, Equipment } from "@/lib/types";
-import type { OutcomeOption, ProtocolPractice } from "@/lib/queries/protocols";
+import type {
+  OutcomeOption,
+  ProtocolPractice,
+  IntakeItemOption,
+} from "@/lib/queries/protocols";
 import ProtocolForm from "./ProtocolForm";
 
 // Detail-page header + lifecycle controls for one protocol: an inline edit toggle
@@ -17,6 +21,7 @@ export default function ProtocolControls({
   protocol,
   options,
   equipment,
+  intakeItems,
   practice,
   updateAction,
   endAction,
@@ -25,6 +30,7 @@ export default function ProtocolControls({
   protocol: Protocol;
   options: OutcomeOption[];
   equipment: Equipment[];
+  intakeItems: IntakeItemOption[];
   practice: ProtocolPractice | null;
   updateAction: (formData: FormData) => Promise<FormResult>;
   endAction: (formData: FormData) => Promise<FormResult>;
@@ -39,6 +45,7 @@ export default function ProtocolControls({
         action={updateAction}
         options={options}
         equipment={equipment}
+        intakeItems={intakeItems}
         protocol={protocol}
         practice={practice}
         onDone={() => setEditing(false)}

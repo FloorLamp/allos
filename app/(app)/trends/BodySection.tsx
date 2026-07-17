@@ -36,7 +36,10 @@ import {
   displayWeightGrowth,
 } from "@/lib/growth-series";
 import { ALL_ROWS, filterSeriesByRange } from "@/lib/trends";
-import { buildTrendAnnotations } from "@/lib/trends-series";
+import {
+  buildTrendAnnotations,
+  buildProtocolTrendWindows,
+} from "@/lib/trends-series";
 import { projectGoal, describeEta } from "@/lib/trend-projection";
 import { formatLongDate } from "@/lib/format-date";
 import { isGoalLive } from "@/lib/goals";
@@ -150,6 +153,9 @@ export default async function BodySection({ range }: { range: DateRange }) {
   // windowed to the shared range — the same set drives all three charts via the
   // one toggle bar. Reads only through profile-scoped queries (buildTrendAnnotations).
   const annotations = buildTrendAnnotations(profile.id, range);
+  // Protocol intervention windows (issue #660), shaded across the body charts via
+  // the same toggle bar as the point annotations.
+  const protocolWindows = buildProtocolTrendWindows(profile.id, range);
 
   // Goal projection: for a body-metric goal with a target value +
   // target_date, draw the target line and extrapolate the windowed trend to it.
@@ -453,7 +459,11 @@ export default async function BodySection({ range }: { range: DateRange }) {
           it below, unchanged. */}
       {plan.growthCardFirst && growthCard}
 
-      <BodyTrendCharts charts={charts} annotations={annotations} />
+      <BodyTrendCharts
+        charts={charts}
+        annotations={annotations}
+        windows={protocolWindows}
+      />
 
       {!plan.growthCardFirst && growthCard}
 

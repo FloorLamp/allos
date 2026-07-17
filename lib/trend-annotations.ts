@@ -17,7 +17,8 @@
 import { daysBetweenDateStr } from "./date";
 import type { DateRange } from "./timeline-format";
 
-export type AnnotationKind = "medication" | "appointment" | "situation";
+export type AnnotationKind =
+  "medication" | "appointment" | "situation" | "protocol";
 
 // A positioned marker: an ISO date, a short human label, and the source kind that
 // drives its color + the per-type toggle.
@@ -25,6 +26,25 @@ export interface TrendAnnotation {
   date: string; // YYYY-MM-DD
   label: string;
   kind: AnnotationKind;
+}
+
+// A protocol's intervention WINDOW (issue #660): a shaded [start, end] span rather
+// than a point marker, so "did the intervention move the marker" reads as a region
+// on the chart. `end` null = still ongoing (the renderer shades to the chart's last
+// charted date / today). Its `kind` is always "protocol" so it shares the same
+// per-type toggle + color as the point-annotation machinery.
+export interface TrendWindow {
+  start: string; // YYYY-MM-DD
+  end: string | null; // null = ongoing
+  label: string;
+  kind: "protocol";
+}
+
+// Raw protocol input for the window builder (already profile-scoped by the caller).
+export interface ProtocolWindowInput {
+  name: string;
+  startDate: string;
+  endDate: string | null;
 }
 
 // ---- Raw source inputs (already resolved by the server helper) ----
@@ -61,6 +81,7 @@ export const ANNOTATION_KIND_META: Record<
   medication: { label: "Medications", color: "#3b82f6" }, // blue-500
   appointment: { label: "Appointments", color: "#f59e0b" }, // amber-500
   situation: { label: "Situations", color: "#8b5cf6" }, // violet-500
+  protocol: { label: "Protocols", color: "#14b8a6" }, // teal-500
 };
 
 // Deterministic ordering so same-day markers of different kinds sort stably.
@@ -68,6 +89,7 @@ const KIND_ORDER: Record<AnnotationKind, number> = {
   medication: 0,
   appointment: 1,
   situation: 2,
+  protocol: 3,
 };
 
 const isDate = (v: unknown): v is string =>
@@ -141,12 +163,16 @@ export function buildAnnotations(
 }
 
 // The set of kinds present in a marker list — drives which toggles the UI shows
-// (a toggle for a kind with no markers would be dead weight).
+// (a toggle for a kind with no markers would be dead weight). Protocol windows
+// (issue #660) are a separate shape but share the "protocol" toggle, so any present
+// window contributes its kind here too.
 export function annotationKindsPresent(
-  annotations: readonly TrendAnnotation[]
+  annotations: readonly TrendAnnotation[],
+  windows: readonly TrendWindow[] = []
 ): AnnotationKind[] {
   const seen = new Set<AnnotationKind>();
   for (const a of annotations) seen.add(a.kind);
+  for (const w of windows) seen.add(w.kind);
   return (Object.keys(KIND_ORDER) as AnnotationKind[]).filter((k) =>
     seen.has(k)
   );
@@ -184,6 +210,69 @@ export function snapAnnotationsToDates(
       }
     }
     if (best != null) out.push({ ...a, date: best });
+  }
+  return out;
+}
+
+// ---- Protocol windows (issue #660) ----
+
+// Expand protocol rows into chart windows, keeping only those that OVERLAP the
+// [from, to] range (an open bound matches everything on that side — same rule as
+// buildAnnotations), and sort by start then label so the order is stable. An
+// ongoing protocol (endDate null) carries end=null; the renderer shades it to the
+// chart's last date. Raw dates are kept — snapping to charted points is a per-chart
+// concern (category axes need it; time axes don't).
+export function buildProtocolWindows(
+  protocols: readonly ProtocolWindowInput[],
+  range: DateRange
+): TrendWindow[] {
+  const { from, to } = range;
+  const out: TrendWindow[] = [];
+  for (const p of protocols) {
+    if (!isDate(p.startDate)) continue;
+    const end = isDate(p.endDate) ? p.endDate : null;
+    // No overlap: starts after the window's end, or ended before its start.
+    if (to && p.startDate > to) continue;
+    if (from && end && end < from) continue;
+    out.push({
+      start: p.startDate,
+      end,
+      label: p.name.trim() || "Protocol",
+      kind: "protocol",
+    });
+  }
+  return out.sort(
+    (a, b) => a.start.localeCompare(b.start) || a.label.localeCompare(b.label)
+  );
+}
+
+// Snap each window's [start, end] onto actual charted dates, because a recharts
+// ReferenceArea on a CATEGORY x-axis only renders when x1/x2 match real data points
+// (same constraint snapAnnotationsToDates handles for point markers). An ongoing
+// window (end null) shades to the last charted date. The start snaps UP to the first
+// charted date ≥ start (clamped to the first point when the protocol predates the
+// chart); the end snaps DOWN to the last charted date ≤ end (clamped to the last
+// point). Windows with no charted-date coverage are dropped. Time-axis charts skip
+// this — they position the area directly by epoch.
+export function snapWindowsToDates(
+  windows: readonly TrendWindow[],
+  dates: readonly string[]
+): { start: string; end: string; label: string; kind: "protocol" }[] {
+  if (dates.length === 0) return [];
+  const first = dates[0];
+  const last = dates[dates.length - 1];
+  const out: { start: string; end: string; label: string; kind: "protocol" }[] =
+    [];
+  for (const w of windows) {
+    const wEnd = w.end ?? last;
+    if (w.start > last || wEnd < first) continue; // no overlap with charted range
+    const startClamped = w.start < first ? first : w.start;
+    const endClamped = wEnd > last ? last : wEnd;
+    const s = dates.find((d) => d >= startClamped) ?? first;
+    let e = first;
+    for (const d of dates) if (d <= endClamped) e = d;
+    if (s > e) continue; // collapsed between two adjacent charted points
+    out.push({ start: s, end: e, label: w.label, kind: "protocol" });
   }
   return out;
 }

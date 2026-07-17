@@ -102,6 +102,21 @@ export function captureDelete(
       )
       .run(profileId, kind, KIND_LABELS[kind] ?? kind, payload);
 
+    // Detach INBOUND references before the root delete (row-ops null-out rule): a
+    // protocol can link an intake item as its intervention (protocols.intake_item_id,
+    // issue #660) — a real FK with no ON DELETE action — so the DELETE below would
+    // throw while a protocol still points at this supplement/medication. Null it in
+    // the same transaction; the protocol survives, its intervention link is honestly
+    // gone (not restored on undo, like the sibling equipment_id/supply-decrement
+    // side effects). Centralized here so both delete paths — deleteSupplement and the
+    // Data → Manage bulk delete — inherit it.
+    if (spec.ownedTable === "intake_items") {
+      db.prepare(
+        `UPDATE protocols SET intake_item_id = NULL
+          WHERE intake_item_id = ? AND profile_id = ?`
+      ).run(rootId, profileId);
+    }
+
     // Delete the root; children cascade. Profile-scoped for defense in depth.
     db.prepare(`DELETE FROM ${root.table} WHERE id = ? AND profile_id = ?`).run(
       rootId,

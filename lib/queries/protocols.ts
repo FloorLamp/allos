@@ -31,6 +31,11 @@ import {
   type OutcomeSeries,
   type ProtocolComparison,
 } from "../protocol-compare";
+import type { ProtocolWindowInput } from "../trend-annotations";
+import type { Betterness } from "../protocol-compare";
+import { daysBetweenDateStr } from "../date";
+import { protocolPracticeLabel } from "../protocol-practice";
+import { protocolHref, type AppRoute } from "../hrefs";
 import { getUsedCanonicalNames } from "./medical";
 
 interface ProtocolRow {
@@ -44,6 +49,7 @@ interface ProtocolRow {
   equipment_id: number | null;
   frequency_target_id: number | null;
   owns_frequency_target: number;
+  intake_item_id: number | null;
   created_at: string;
 }
 
@@ -73,8 +79,45 @@ function toProtocol(r: ProtocolRow): Protocol {
     equipment_id: r.equipment_id,
     frequency_target_id: r.frequency_target_id,
     owns_frequency_target: r.owns_frequency_target,
+    intake_item_id: r.intake_item_id,
     created_at: r.created_at,
   };
+}
+
+// An option in the intervention intake-item picker (issue #660): the profile's
+// supplements + medications, active first (so a paused item sinks). `kind` drives
+// the surface a link points at (intakeHref). Profile-scoped.
+export interface IntakeItemOption {
+  id: number;
+  name: string;
+  kind: "supplement" | "medication";
+}
+
+export function getProtocolIntakeOptions(
+  profileId: number
+): IntakeItemOption[] {
+  return db
+    .prepare(
+      `SELECT id, name, kind FROM intake_items
+        WHERE profile_id = ?
+        ORDER BY active DESC, name COLLATE NOCASE`
+    )
+    .all(profileId) as IntakeItemOption[];
+}
+
+// Resolve a protocol's linked intake item to its display ref (name + kind), or null
+// when unlinked / the row was deleted. Profile-scoped so a leaked id yields null.
+export function getProtocolIntakeItem(
+  profileId: number,
+  intakeItemId: number | null
+): IntakeItemOption | null {
+  if (intakeItemId == null) return null;
+  const row = db
+    .prepare(
+      `SELECT id, name, kind FROM intake_items WHERE id = ? AND profile_id = ?`
+    )
+    .get(intakeItemId, profileId) as IntakeItemOption | undefined;
+  return row ?? null;
 }
 
 // All protocols for a profile: ongoing (no end date) first, then most-recently
@@ -109,6 +152,34 @@ export function getFrequencyTargetProtocolNames(
     if (!out.has(r.frequency_target_id)) out.set(r.frequency_target_id, r.name);
   }
   return out;
+}
+
+// Every protocol as a chart-window input (name + start/end) for the trend
+// annotations (issue #660). Ongoing protocols carry endDate null. Profile-scoped;
+// no unit boundary (windows are date-only).
+export function getProtocolWindows(profileId: number): ProtocolWindowInput[] {
+  return getProtocols(profileId).map((p) => ({
+    name: p.name,
+    startDate: p.start_date,
+    endDate: p.end_date,
+  }));
+}
+
+// The windows of protocols that DECLARE a given outcome key as something they
+// measure (issue #660): an outcome biomarker's own detail chart shades only the
+// protocols targeting it, not every protocol the profile runs. `outcomeKey` is a
+// namespaced metric key (e.g. "biomarker:LDL Cholesterol"). Profile-scoped.
+export function getProtocolWindowsForOutcome(
+  profileId: number,
+  outcomeKey: string
+): ProtocolWindowInput[] {
+  return getProtocols(profileId)
+    .filter((p) => p.outcomeKeys.includes(outcomeKey))
+    .map((p) => ({
+      name: p.name,
+      startDate: p.start_date,
+      endDate: p.end_date,
+    }));
 }
 
 // A single protocol by id, scoped to the profile so a guessed id from another
@@ -377,4 +448,81 @@ export function getProtocolComparison(
     endDate: protocol.end_date,
     today,
   });
+}
+
+// A compact summary of one ONGOING protocol for the dashboard widget (issue #660):
+// days elapsed, this-week practice adherence, and the primary outcome's during-
+// window trend. Every field is a FORMATTER over the SAME computations the detail
+// page uses (getProtocolComparison / getProtocolAdherence / getProtocolPractice) —
+// no parallel engine (one question, one computation).
+export interface ActiveProtocolSummary {
+  id: number;
+  name: string;
+  href: AppRoute;
+  daysElapsed: number;
+  adherence: {
+    count: number;
+    perWeek: number;
+    met: boolean;
+    label: string;
+  } | null;
+  primaryOutcome: {
+    label: string;
+    betterness: Betterness;
+    framing: string;
+    insufficient: boolean;
+  } | null;
+}
+
+// Build the active-protocol summaries: every ongoing (end_date NULL) protocol,
+// most-recently-started first (getProtocols order). `today` is the profile-local
+// date; `weightUnit` threads the display unit into the outcome comparison (the units
+// boundary lives in getProtocolComparison). Profile-scoped throughout.
+export function getActiveProtocolSummaries(
+  profileId: number,
+  today: string,
+  weightUnit: WeightUnit
+): ActiveProtocolSummary[] {
+  return getProtocols(profileId)
+    .filter((p) => p.end_date == null)
+    .map((protocol) => {
+      const adherenceProgress = getProtocolAdherence(profileId, protocol);
+      const practice = getProtocolPractice(profileId, protocol);
+      const comparison = getProtocolComparison(
+        profileId,
+        protocol,
+        today,
+        weightUnit
+      );
+      const primary = comparison.outcomes[0] ?? null;
+      // Inclusive elapsed days: a protocol started today reads "1 day in".
+      const daysElapsed =
+        (daysBetweenDateStr(protocol.start_date, today) ?? 0) + 1;
+      return {
+        id: protocol.id,
+        name: protocol.name,
+        href: protocolHref(protocol.id),
+        daysElapsed,
+        adherence:
+          practice && adherenceProgress
+            ? {
+                count: adherenceProgress.count,
+                perWeek: practice.perWeek,
+                met: adherenceProgress.met,
+                label: protocolPracticeLabel(
+                  practice.scopeKind,
+                  practice.value
+                ),
+              }
+            : null,
+        primaryOutcome: primary
+          ? {
+              label: primary.label,
+              betterness: primary.betterness,
+              framing: primary.framing,
+              insufficient: primary.insufficient,
+            }
+          : null,
+      };
+    });
 }

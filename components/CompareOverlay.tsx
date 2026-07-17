@@ -8,6 +8,7 @@ import {
   filterAnnotationsByKind,
   type AnnotationKind,
   type TrendAnnotation,
+  type TrendWindow,
 } from "@/lib/trend-annotations";
 
 // The Compare tab's overlay chart plus its event-annotation toggle.
@@ -24,6 +25,7 @@ export default function CompareOverlay({
   unitB,
   normalized,
   annotations,
+  windows,
 }: {
   data: { date: string; a: number | null; b: number | null }[];
   labelA: string;
@@ -34,14 +36,19 @@ export default function CompareOverlay({
   unitB: string;
   normalized: boolean;
   annotations: TrendAnnotation[];
+  // Protocol intervention windows (issue #660), shaded on the overlay via the same
+  // toggle bar as the point annotations.
+  windows?: TrendWindow[];
 }) {
-  const presentKinds = annotationKindsPresent(annotations);
+  const presentKinds = annotationKindsPresent(annotations, windows ?? []);
   const [enabled, setEnabled] = useState<Record<AnnotationKind, boolean>>({
     medication: true,
     appointment: true,
     situation: true,
+    protocol: true,
   });
   const shown = filterAnnotationsByKind(annotations, enabled);
+  const shownWindows = enabled.protocol ? (windows ?? []) : [];
 
   return (
     <div className="space-y-3">
@@ -62,6 +69,7 @@ export default function CompareOverlay({
         unitB={unitB}
         normalized={normalized}
         annotations={shown}
+        windows={shownWindows}
       />
     </div>
   );

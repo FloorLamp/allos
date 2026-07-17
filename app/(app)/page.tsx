@@ -15,6 +15,7 @@ import {
   attentionCountForProfile,
   getHealthspanPillars,
   getPrnMedicationsForQuickLog,
+  getActiveProtocolSummaries,
 } from "@/lib/queries";
 import { recommendCoaching } from "@/lib/coaching";
 import { collectCoachingFindings } from "@/lib/rule-findings";
@@ -86,6 +87,7 @@ import NextAppointmentWidget, {
 } from "@/components/dashboard/NextAppointmentWidget";
 import HealthspanPillarsWidget from "@/components/dashboard/HealthspanPillarsWidget";
 import QuickLogPrnWidget from "@/components/dashboard/QuickLogPrnWidget";
+import ActiveProtocolWidget from "@/components/dashboard/ActiveProtocolWidget";
 import FeelingSickCard from "@/components/dashboard/FeelingSickCard";
 import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
 import OnboardingResumeCard from "@/components/dashboard/OnboardingResumeCard";
@@ -381,6 +383,13 @@ export default async function Dashboard() {
     ? getPrnMedicationsForQuickLog(profile.id)
     : [];
 
+  // active-protocols (issue #660): the ongoing N-of-1 experiments, each a formatter
+  // over the SAME detail-page computations (comparison + adherence). Opt-in widget;
+  // self-hides (available=false below) when nothing is ongoing.
+  const activeProtocols = has("active-protocols")
+    ? getActiveProtocolSummaries(profile.id, on, units.weightUnit)
+    : [];
+
   // symptom-log (#799/#843/#858): the Symptoms widget slot is now the INACTIVE-state home
   // ONLY. When the acting profile's illness is active its FULL cockpit has jumped to the
   // illness hero above the grid (activeSick), so the widget slot renders NOTHING here — no
@@ -487,6 +496,10 @@ export default async function Dashboard() {
         return (
           <QuickLogPrnWidget meds={prnMeds} tz={getTimezone(profile.id)} />
         );
+      case "active-protocols":
+        return activeProtocols.length ? (
+          <ActiveProtocolWidget protocols={activeProtocols} />
+        ) : null;
       case "symptom-log":
         // Front door only (#858): the active cockpit lives in the illness hero, so this
         // renders nothing while the hero is up (available=false below), else the door.
@@ -507,6 +520,7 @@ export default async function Dashboard() {
       (def.id !== "next-appointment" || hasScheduledAppt) &&
       (def.id !== "coaching-observations" || coachingObservations.length > 0) &&
       (def.id !== "weekly-recap" || weeklyRecap !== null) &&
+      (def.id !== "active-protocols" || activeProtocols.length > 0) &&
       // symptom-log is the inactive-state front door only: while the acting profile's
       // cockpit is in the illness hero (activeSick) the slot renders nothing (#858).
       (def.id !== "symptom-log" || showFeelingSick),
