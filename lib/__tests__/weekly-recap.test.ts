@@ -155,6 +155,40 @@ describe("buildWeeklyRecap", () => {
     expect(line.delta).toBeUndefined();
   });
 
+  // Issue #837: a sick week reads as a sick week, not a failed one.
+  it("names the illness episode with a recovery line when illnessDays > 0", () => {
+    const recap = buildWeeklyRecap(baseInput({ illnessDays: 4 }));
+    const line = recap.lines.find((l) => l.key === "recovery")!;
+    expect(line.value).toBe("sick 4 days this week");
+    // A week with only illness is NOT empty — it has honest context to report.
+    expect(recap.isEmpty).toBe(false);
+    // ...and the headline names recovery instead of reading as an empty week.
+    expect(recap.headline).toBe("recovering — sick 4 days");
+  });
+
+  it("adds no recovery line when illnessDays is 0/absent", () => {
+    expect(
+      buildWeeklyRecap(baseInput()).lines.some((l) => l.key === "recovery")
+    ).toBe(false);
+    expect(
+      buildWeeklyRecap(baseInput({ illnessDays: 0 })).lines.some(
+        (l) => l.key === "recovery"
+      )
+    ).toBe(false);
+  });
+
+  it("keeps real achievements in the headline, illness only as context line", () => {
+    const recap = buildWeeklyRecap(
+      baseInput({
+        illnessDays: 2,
+        workouts: [{ date: TODAY, type: "strength" }],
+      })
+    );
+    // A logged workout still leads the headline; recovery is the context line.
+    expect(recap.headline).toBe("1 workout");
+    expect(recap.lines.some((l) => l.key === "recovery")).toBe(true);
+  });
+
   it("lists PRs, truncating past three with a +N more", () => {
     const recap = buildWeeklyRecap(
       baseInput({

@@ -39,6 +39,10 @@ import { refillMarkerKey } from "@/lib/refill-nudge";
 import { getNotifySchedule } from "@/lib/settings";
 import { recordPreventiveDone } from "@/lib/queries";
 import { buildWorkoutTargetReminder } from "@/lib/notifications/workouts";
+import { runEaseBack, easeBackMarkerKey } from "@/lib/notifications/ease-back";
+import { gatherCoachingInput } from "@/lib/queries";
+import { createEpisodeRow } from "@/lib/illness-episode-store";
+import { shiftDateStr } from "@/lib/date";
 import { seedProfile } from "./fixtures";
 
 // ---- fixtures ----
@@ -556,5 +560,51 @@ describe("buildWorkoutTargetReminder", () => {
     expect(msg!.kind).toBe("workout");
     expect(typeof msg!.title).toBe("string");
     expect(msg!.title.length).toBeGreaterThan(0);
+  });
+});
+
+// =====================================================================
+// runEaseBack — the one-shot post-illness ease-back nudge (issue #837). Fires ONCE
+// per episode (marker per episode id) the first tick after a flagged-illness episode
+// closes, and never re-fires for the same episode.
+// =====================================================================
+describe("runEaseBack (#837)", () => {
+  it("sends once on close and never re-fires for the same episode", async () => {
+    const p = newProfile("EaseBack");
+    const td = today(p);
+    configureTelegram(p, "555001");
+    // A closed flagged-illness episode whose exclusive end (first well day) is today.
+    const episodeId = createEpisodeRow(p, "Illness", shiftDateStr(td, -4), td);
+
+    const input1 = gatherCoachingInput(p, "kg", "km");
+    const fetchMock = stubFetch();
+    const res1 = await runEaseBack(p, "EaseBack", input1, td);
+    expect(res1.failed).toBe(false);
+    // Delivered → the per-episode one-shot marker is set to the send date.
+    expect(getProfileSetting(p, easeBackMarkerKey(episodeId))).toBe(td);
+    const firstSendCalls = fetchMock.mock.calls.length;
+    expect(firstSendCalls).toBeGreaterThan(0);
+    // The message carries the ease-back classification.
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(String(body.text)).toContain("Back from being sick");
+
+    // Second tick, same open ease-back window → one-shot: no new send.
+    const input2 = gatherCoachingInput(p, "kg", "km");
+    const res2 = await runEaseBack(p, "EaseBack", input2, td);
+    expect(res2.failed).toBe(false);
+    expect(fetchMock.mock.calls.length).toBe(firstSendCalls);
+  });
+
+  it("does nothing during an open episode (ease-back is post-close only)", async () => {
+    const p = newProfile("EaseBackOpen");
+    const td = today(p);
+    configureTelegram(p, "555001");
+    createEpisodeRow(p, "Illness", shiftDateStr(td, -2), null); // still open
+
+    const input = gatherCoachingInput(p, "kg", "km");
+    const fetchMock = stubFetch();
+    const res = await runEaseBack(p, "EaseBackOpen", input, td);
+    expect(res.failed).toBe(false);
+    expect(fetchMock.mock.calls.length).toBe(0);
   });
 });
