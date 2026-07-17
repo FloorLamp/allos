@@ -6,7 +6,27 @@
 // unit-tested in lib/__tests__/protocol-practice.test.ts.
 
 import { TYPE_SCOPES } from "./lifts";
-import { isValidFoodGroup } from "./food-groups";
+import { isValidFoodGroup, foodGroupName } from "./food-groups";
+
+// The activity-type display labels for a practice's scope value.
+const PRACTICE_TYPE_LABELS: Record<string, string> = {
+  strength: "Strength",
+  cardio: "Cardio",
+  sport: "Sport",
+};
+
+// The human "<label>" noun for a practice's scope — activity-type SESSIONS or
+// food-group SERVINGS (e.g. "Strength sessions", "Fatty fish servings"). Shared by
+// the protocol detail card and the active-protocol dashboard widget (issue #660) so
+// the two adherence surfaces read the same phrase (one question, one computation).
+export function protocolPracticeLabel(
+  scopeKind: "type" | "food_group",
+  value: string
+): string {
+  return scopeKind === "food_group"
+    ? `${foodGroupName(value)} servings`
+    : `${PRACTICE_TYPE_LABELS[value] ?? value} sessions`;
+}
 
 // The activity types a practice can target — the same coarse type set
 // frequency_targets already supports for scope_kind='type' (strength/cardio/sport).

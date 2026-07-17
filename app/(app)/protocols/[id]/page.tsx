@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { IconChevronLeft, IconBarbell } from "@tabler/icons-react";
+import { IconChevronLeft, IconBarbell, IconPill } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import {
@@ -10,23 +10,20 @@ import {
   getProtocolPractice,
   getProtocolUsage,
   getProtocolAdherence,
+  getProtocolIntakeOptions,
+  getProtocolIntakeItem,
 } from "@/lib/queries";
 import { getEquipment, getEquipmentById } from "@/lib/equipment";
 import { recoveryGearOptions } from "@/lib/protocol-gear";
 import { getUnitPrefs } from "@/lib/settings";
+import { intakeHref } from "@/lib/hrefs";
 import { formatUsageSummary } from "@/lib/usage-format";
-import { foodGroupName } from "@/lib/food-groups";
+import { protocolPracticeLabel } from "@/lib/protocol-practice";
 import ProtocolControls from "../ProtocolControls";
 import ProtocolCompare from "../ProtocolCompare";
 import { updateProtocol, endProtocol, deleteProtocol } from "../actions";
 
 export const dynamic = "force-dynamic";
-
-const PRACTICE_TYPE_LABELS: Record<string, string> = {
-  strength: "Strength",
-  cardio: "Cardio",
-  sport: "Sport",
-};
 
 // A single protocol's before/during detail. Scoped by (profile, id) so a guessed
 // id from another profile 404s. The comparison is the pure engine's output
@@ -62,9 +59,14 @@ export default async function ProtocolDetailPage(props: {
   // getEquipmentById which ignores the retired flag), never as a fresh choice, so an
   // edit keeps the existing link without resurfacing sold/broken gear for new picks.
   const equipment = recoveryGearOptions(getEquipment(profile.id), gear);
+  const intakeItems = getProtocolIntakeOptions(profile.id);
+  // The linked intervention supplement/medication (issue #660), resolved to its
+  // name + kind (kind drives the surface its link points at). Null when unlinked or
+  // the item was deleted.
+  const intakeItem = getProtocolIntakeItem(profile.id, protocol.intake_item_id);
   const adherence = getProtocolAdherence(profile.id, protocol);
   const usage = getProtocolUsage(profile.id, protocol, todayStr);
-  const hasPracticeCard = !!gear || !!practice;
+  const hasPracticeCard = !!gear || !!practice || !!intakeItem;
 
   return (
     <div>
@@ -82,6 +84,7 @@ export default async function ProtocolDetailPage(props: {
             protocol={protocol}
             options={options}
             equipment={equipment}
+            intakeItems={intakeItems}
             practice={practice}
             updateAction={updateProtocol}
             endAction={endProtocol}
@@ -120,6 +123,25 @@ export default async function ProtocolDetailPage(props: {
                 </div>
               )}
 
+              {intakeItem && (
+                <div>
+                  <div className="section-label">Intervention</div>
+                  <Link
+                    href={intakeHref(intakeItem.kind)}
+                    className="mt-0.5 inline-flex items-center gap-1.5 font-medium text-brand-700 hover:underline dark:text-brand-300"
+                    data-testid="protocol-intake-link"
+                  >
+                    <IconPill className="h-4 w-4" stroke={1.75} aria-hidden />
+                    {intakeItem.name}
+                    <span className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300">
+                      {intakeItem.kind === "medication"
+                        ? "Medication"
+                        : "Supplement"}
+                    </span>
+                  </Link>
+                </div>
+              )}
+
               {practice && (
                 <div>
                   <div className="section-label">Adherence this week</div>
@@ -130,9 +152,7 @@ export default async function ProtocolDetailPage(props: {
                     <span className="font-semibold tabular-nums">
                       {adherence?.count ?? 0} / {practice.perWeek}
                     </span>{" "}
-                    {practice.scopeKind === "food_group"
-                      ? `${foodGroupName(practice.value)} servings`
-                      : `${PRACTICE_TYPE_LABELS[practice.value] ?? practice.value} sessions`}
+                    {protocolPracticeLabel(practice.scopeKind, practice.value)}
                     {adherence?.met ? (
                       <span className="badge ml-1.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
                         On track

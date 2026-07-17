@@ -1033,7 +1033,7 @@ addSupp(
 addSupp({ name: "Vitamin K2", priority: "high", stack: "D3 + K2" }, [
   { amount: "100 mcg", time: "Morning", food: "with_fat" },
 ]);
-addSupp(
+const creatineId = addSupp(
   { name: "Creatine Monohydrate", condition: "post_workout", priority: "low" },
   [{ amount: "5 g", time: "Anytime", food: "any" }]
 );
@@ -1744,16 +1744,21 @@ careGoalIns.run(
 // resting-HR before vs. during. Both metrics are seeded weekly across the whole
 // window, so the detail page shows a real baseline-vs-intervention shift. Synthetic
 // — an obviously-fictional self-experiment, no PHI.
+// Linked directly to the seeded Creatine supplement as its intervention (issue
+// #660) — the app's own example — so the intervention is first-class on the detail
+// page instead of routed through the situation alone.
 db.prepare(
   `INSERT INTO protocols
-     (profile_id, name, start_date, end_date, notes, outcome_keys, situation)
-   VALUES (1, ?, ?, NULL, ?, ?, ?)`
+     (profile_id, name, start_date, end_date, notes, outcome_keys, situation,
+      intake_item_id)
+   VALUES (1, ?, ?, NULL, ?, ?, ?, ?)`
 ).run(
   "Creatine 5 g/day",
   daysAgo(56),
   "Daily creatine monohydrate; tracking weight and resting HR.",
   JSON.stringify(["metric:weight", "metric:resting_hr"]),
-  "Creatine loading"
+  "Creatine loading",
+  creatineId
 );
 
 // ── Food-group serving log (issue #579) ──────────────────────────────────────

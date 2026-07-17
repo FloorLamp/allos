@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/auth";
-import { getProtocols, getProtocolOutcomeOptions } from "@/lib/queries";
+import {
+  getProtocols,
+  getProtocolOutcomeOptions,
+  getProtocolIntakeOptions,
+} from "@/lib/queries";
 import { getEquipment } from "@/lib/equipment";
 import { recoveryGearOptions } from "@/lib/protocol-gear";
 import { PageHeader } from "@/components/ui";
@@ -30,6 +34,8 @@ export default async function ProtocolsPage({
   // the inventory to recovery + uncategorized gear (kindOf) instead of offering
   // every barbell/bike. Add mode has no linked row, so no selectedMissing fallback.
   const equipment = recoveryGearOptions(getEquipment(profile.id));
+  // The profile's supplements + medications for the direct intervention link (#660).
+  const intakeItems = getProtocolIntakeOptions(profile.id);
   // A starter template (issue #571) selected from the templates strip, seeding the
   // add form. Null when no/unknown template is requested.
   const template = protocolTemplateById((await searchParams).template);
@@ -89,6 +95,7 @@ export default async function ProtocolsPage({
             action={createProtocol}
             options={options}
             equipment={equipment}
+            intakeItems={intakeItems}
             template={template}
           />
           <p className="px-1 text-xs text-slate-500 dark:text-slate-400">

@@ -58,6 +58,21 @@ function resolveEquipmentId(
   return getEquipmentById(profileId, raw) ? raw : null;
 }
 
+// Resolve the optional intervention intake-item link (issue #660): the submitted
+// intake_items id, but only if it's a real row for THIS profile (a leaked/foreign
+// id becomes NULL rather than a dangling FK write) — the resolveEquipmentId shape.
+function resolveIntakeItemId(
+  profileId: number,
+  formData: FormData
+): number | null {
+  const raw = Number(formData.get("intake_item_id"));
+  if (!raw || !Number.isFinite(raw)) return null;
+  const row = db
+    .prepare("SELECT 1 FROM intake_items WHERE id = ? AND profile_id = ?")
+    .get(raw, profileId);
+  return row ? raw : null;
+}
+
 // The protocol's practice link BEFORE this save (nulls for a create).
 interface PracticeLink {
   frequency_target_id: number | null;
@@ -187,6 +202,7 @@ export async function createProtocol(formData: FormData): Promise<FormResult> {
     formData.getAll("outcome_keys").map((v) => String(v))
   );
   const equipmentId = resolveEquipmentId(profile.id, formData);
+  const intakeItemId = resolveIntakeItemId(profile.id, formData);
   // On create there is no prior practice link, so no stale-target cleanup applies.
   const practice = syncPracticeTarget(profile.id, formData, {
     frequency_target_id: null,
@@ -197,8 +213,8 @@ export async function createProtocol(formData: FormData): Promise<FormResult> {
     .prepare(
       `INSERT INTO protocols
         (profile_id, name, start_date, end_date, notes, outcome_keys, situation,
-         equipment_id, frequency_target_id, owns_frequency_target)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         equipment_id, frequency_target_id, owns_frequency_target, intake_item_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       profile.id,
@@ -210,7 +226,8 @@ export async function createProtocol(formData: FormData): Promise<FormResult> {
       situation,
       equipmentId,
       practice.frequency_target_id,
-      practice.owns_frequency_target
+      practice.owns_frequency_target,
+      intakeItemId
     );
 
   // Starting an ongoing protocol activates its situation (if any).
@@ -240,6 +257,7 @@ export async function updateProtocol(formData: FormData): Promise<FormResult> {
     formData.getAll("outcome_keys").map((v) => String(v))
   );
   const equipmentId = resolveEquipmentId(profile.id, formData);
+  const intakeItemId = resolveIntakeItemId(profile.id, formData);
   const practice = syncPracticeTarget(profile.id, formData, {
     frequency_target_id: existing.frequency_target_id,
     owns_frequency_target: existing.owns_frequency_target,
@@ -249,7 +267,8 @@ export async function updateProtocol(formData: FormData): Promise<FormResult> {
     `UPDATE protocols
        SET name = ?, start_date = ?, end_date = ?, notes = ?,
            outcome_keys = ?, situation = ?, equipment_id = ?,
-           frequency_target_id = ?, owns_frequency_target = ?
+           frequency_target_id = ?, owns_frequency_target = ?,
+           intake_item_id = ?
      WHERE id = ? AND profile_id = ?`
   ).run(
     name,
@@ -261,6 +280,7 @@ export async function updateProtocol(formData: FormData): Promise<FormResult> {
     equipmentId,
     practice.frequency_target_id,
     practice.owns_frequency_target,
+    intakeItemId,
     id,
     profile.id
   );

@@ -215,6 +215,19 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     span: "half",
   },
   {
+    id: "active-protocols",
+    label: "Active protocols",
+    description:
+      "Your ongoing N-of-1 experiments — days elapsed, this week's practice adherence, and whether the primary outcome has moved since you started. Off by default; opt in from Customize.",
+    // Off by default (issue #660): protocols are a power-user surface, opt in from
+    // Customize. Not fitness-gated — an intervention can target any metric. Self-
+    // hides (page gates `available`) when no protocol is ongoing, so an enabled-but-
+    // empty widget leaves no blank card rather than showing an onboarding CTA.
+    defaultOn: false,
+    fitness: false,
+    span: "half",
+  },
+  {
     id: "weekly-recap",
     label: "Weekly recap",
     description:
