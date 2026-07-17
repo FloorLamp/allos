@@ -49,6 +49,10 @@ import {
 } from "../lib/notifications/telegram-callbacks";
 import { runEscalations } from "../lib/notifications/escalate";
 import { runRedoseNotices } from "../lib/notifications/redose";
+import {
+  runPostWorkoutFinish,
+  runStaleWorkoutSuggest,
+} from "../lib/notifications/workout-presence";
 import { runRefills } from "../lib/notifications/refill";
 import { runPreventive } from "../lib/notifications/preventive";
 import { runIllnessCare } from "../lib/notifications/illness-care";
@@ -362,6 +366,25 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
     anyFailed = true;
   }
 
+  // Finish-triggered post-workout dose reminder (#921): the moment a session
+  // transitions to `finished` (derived workout presence), deliver its due,
+  // unresolved post_workout doses immediately instead of waiting for the next
+  // scheduled supplement slot. Safety tier like the dose reminders above —
+  // ungated by the waking window (timed to a real event) and never bus-gated. The
+  // 60-min finished window guarantees an hourly tick observes every finish; the
+  // per-activity one-shot marker keeps it from repeating, and the scheduled slot
+  // remains the fallback when a finish was never observed.
+  try {
+    const pw = await runPostWorkoutFinish(profile.id, now);
+    if (pw.failed) anyFailed = true;
+  } catch (e) {
+    log.error("post-workout finish nudge failed", {
+      profile: profile.id,
+      err: e instanceof Error ? e : String(e),
+    });
+    anyFailed = true;
+  }
+
   // The non-time-critical episode nudges (refill, preventive, milestone) have no
   // slot of their own and would otherwise fire the instant an episode becomes due
   // — commonly the local-midnight date rollover, or 1-3am after a late sync / a
@@ -498,6 +521,23 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
       if (eb.failed) anyFailed = true;
     } catch (e) {
       log.error("ease-back nudge failed", {
+        profile: profile.id,
+        err: e instanceof Error ? e : String(e),
+      });
+      anyFailed = true;
+    }
+  }
+
+  // Stale-session suggest (#921/#560): an `active` workout draft that's gone quiet
+  // past STALE_MIN gets ONE gentle "Still working out? Finish or discard" nudge —
+  // suggest-only, deep-links back to the session, NEVER auto-ends. One-shot per
+  // activity id; waking-gated (a soft coaching suggest, not a safety signal).
+  if (waking) {
+    try {
+      const sw = await runStaleWorkoutSuggest(profile.id, profile.name, now);
+      if (sw.failed) anyFailed = true;
+    } catch (e) {
+      log.error("stale-workout suggest failed", {
         profile: profile.id,
         err: e instanceof Error ? e : String(e),
       });
