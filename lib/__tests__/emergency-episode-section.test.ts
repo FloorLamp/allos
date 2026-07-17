@@ -20,7 +20,12 @@ function ep(over: Partial<AssembledEpisode> = {}): AssembledEpisode {
     distinctSymptomCount: 0,
     temperatures: [],
     maxTempF: null,
-    latestTemp: { date: "2026-06-04", time: "14:00", degF: 101.3, flag: "high" },
+    latestTemp: {
+      date: "2026-06-04",
+      time: "14:00",
+      degF: 101.3,
+      flag: "high",
+    },
     medications: [
       {
         itemId: 1,

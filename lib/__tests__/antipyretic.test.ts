@@ -11,7 +11,12 @@ import {
 
 describe("antipyretic classification", () => {
   it("classifies the fever reducers as antipyretic", () => {
-    for (const name of ["Ibuprofen", "Children's Tylenol", "Advil", "Aspirin"]) {
+    for (const name of [
+      "Ibuprofen",
+      "Children's Tylenol",
+      "Advil",
+      "Aspirin",
+    ]) {
       expect(
         isAntipyreticIntakeItem({ name, rxcui: null }),
         `${name} should be antipyretic`

@@ -104,14 +104,21 @@ describe("computeStaleEpisode", () => {
 
   it("is never stale for a CLOSED episode", () => {
     const s = computeStaleEpisode(
-      ep({ ongoing: false, end: "2026-06-06", symptoms: [symptom("2026-06-01")] }),
+      ep({
+        ongoing: false,
+        end: "2026-06-06",
+        symptoms: [symptom("2026-06-01")],
+      }),
       3
     );
     expect(s.isStale).toBe(false);
   });
 
   it("respects a custom threshold", () => {
-    const base = ep({ symptoms: [symptom("2026-06-08")], distinctSymptomCount: 1 });
+    const base = ep({
+      symptoms: [symptom("2026-06-08")],
+      distinctSymptomCount: 1,
+    });
     // 2 quiet days: stale at threshold 2, not at 3.
     expect(computeStaleEpisode(base, 2).isStale).toBe(true);
     expect(computeStaleEpisode(base, 3).isStale).toBe(false);
