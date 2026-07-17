@@ -14,6 +14,9 @@ export {
   normalizeAge,
   normalizePrescription,
   normalizeClinicalDomains,
+  normalizeResults,
+  unwrapExtractionInput,
+  looksLikeExtractionInput,
 } from "./medical-extract/normalize";
 export { isSupportedFile, spreadsheetToText } from "./medical-extract/files";
 export type {

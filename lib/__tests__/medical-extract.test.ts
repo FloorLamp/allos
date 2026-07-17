@@ -5,7 +5,82 @@ import {
   normalizeAge,
   normalizeClinicalDomains,
   normalizePrescription,
+  normalizeResults,
+  unwrapExtractionInput,
+  looksLikeExtractionInput,
 } from "@/lib/medical-extract";
+
+// A minimal, SYNTHETIC payload in the tool schema's flat shape.
+const FLAT_PAYLOAD = {
+  document_type: "lab report",
+  document_date: "2024-01-01",
+  results: [
+    {
+      category: "lab",
+      name: "Sodium",
+      canonical_name: "Sodium",
+      value: "140",
+      value_num: 140,
+      unit: "mmol/L",
+    },
+  ],
+};
+
+describe("extraction shape recognition + unwrap", () => {
+  it("recognizes a flat payload, including a genuinely EMPTY document", () => {
+    expect(looksLikeExtractionInput(FLAT_PAYLOAD)).toBe(true);
+    // A document with nothing to extract still answers with the schema's keys and
+    // empty arrays — that is legitimately empty, NOT misshapen.
+    expect(
+      looksLikeExtractionInput({ document_type: "letter", results: [] })
+    ).toBe(true);
+  });
+
+  it("does not recognize a wrapper, a non-object, or an unrelated object", () => {
+    expect(looksLikeExtractionInput({ document_data: FLAT_PAYLOAD })).toBe(
+      false
+    );
+    expect(looksLikeExtractionInput({ nope: 1 })).toBe(false);
+    expect(looksLikeExtractionInput([FLAT_PAYLOAD])).toBe(false);
+    expect(looksLikeExtractionInput(null)).toBe(false);
+  });
+
+  it("lifts a payload the model nested under one envelope key", () => {
+    // The observed failure: the whole payload wrapped in {document_data: {...}},
+    // which every normalizer read straight past → zero records, no error.
+    expect(unwrapExtractionInput({ document_data: FLAT_PAYLOAD })).toEqual(
+      FLAT_PAYLOAD
+    );
+    // The envelope name doesn't matter — recognition is by the schema's keys.
+    expect(unwrapExtractionInput({ extraction: FLAT_PAYLOAD })).toEqual(
+      FLAT_PAYLOAD
+    );
+  });
+
+  it("returns an already-correct payload untouched", () => {
+    expect(unwrapExtractionInput(FLAT_PAYLOAD)).toBe(FLAT_PAYLOAD);
+  });
+
+  it("leaves an ambiguous or unrecognizable object alone (no guessing)", () => {
+    // Two payload-shaped values: which one is the document? Don't guess — the
+    // caller's shape guard rejects it instead.
+    const ambiguous = { a: FLAT_PAYLOAD, b: FLAT_PAYLOAD };
+    expect(unwrapExtractionInput(ambiguous)).toBe(ambiguous);
+    const junk = { foo: 1 };
+    expect(unwrapExtractionInput(junk)).toBe(junk);
+  });
+
+  it("regression: a wrapped payload normalizes to 0 records raw, all records unwrapped", () => {
+    const wrapped = { document_data: FLAT_PAYLOAD };
+    // The bug: reading the wrapper directly silently yields nothing.
+    expect(normalizeResults(wrapped)).toHaveLength(0);
+    // Unwrapped, the records come through.
+    const recovered = normalizeResults(unwrapExtractionInput(wrapped));
+    expect(recovered).toHaveLength(1);
+    expect(recovered[0].name).toBe("Sodium");
+    expect(recovered[0].value_num).toBe(140);
+  });
+});
 
 describe("normalizeSex", () => {
   it("maps male spellings to 'male'", () => {

@@ -18,6 +18,8 @@ import {
   normalizeSex,
   normalizeBirthdate,
   normalizeAge,
+  unwrapExtractionInput,
+  looksLikeExtractionInput,
 } from "./normalize";
 import type { ExtractionResult, ExtractionMeta } from "./types";
 
@@ -134,7 +136,39 @@ export async function extractMedicalDocument(
       return { status: "failed", error: "Model returned no structured data." };
     }
 
-    const input = toolUse.input as any;
+    // The tool schema is flat, but a model sometimes nests the whole payload under
+    // one envelope key ({document_data: {…}}). Lift it — every normalizer below
+    // reads `input.results` / `input.conditions` / … directly, so a wrapper used to
+    // yield ZERO records with no error.
+    const input = unwrapExtractionInput(toolUse.input) as any;
+    // A response that names none of the schema's keys is MISSHAPEN, not empty: the
+    // normalizers would return [] for it, which is indistinguishable from a document
+    // that genuinely had nothing to extract (that still answers with the schema's
+    // keys and empty arrays). Fail loudly instead of finalizing 'done' with 0 rows —
+    // a silent zero-import is the worst outcome here, since nothing signals that the
+    // document needs another look.
+    if (!looksLikeExtractionInput(input)) {
+      const keys = Object.keys((toolUse.input as object) ?? {})
+        .slice(0, 5)
+        .join(", ");
+      log.error("failed: unrecognized extraction shape", {
+        filename,
+        secs,
+        keys,
+      });
+      recordAiEvent({
+        feature: "extraction",
+        status: "failed",
+        model: MODEL,
+        durationMs: Date.now() - startedAt,
+        detail: `${filename} — unrecognized shape (top-level keys: ${keys || "none"})`,
+        error: "Model returned an unrecognized response shape.",
+      });
+      return {
+        status: "failed",
+        error: `The model returned data in an unrecognized shape (top-level keys: ${keys || "none"}), so nothing could be imported. Reprocess the document to try again.`,
+      };
+    }
     const results = normalizeResults(input, knownCanonical);
     const immunizations = normalizeImmunizations(input);
     const clinical = normalizeClinicalDomains(input);

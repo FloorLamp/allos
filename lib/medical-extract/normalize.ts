@@ -25,6 +25,60 @@ import type {
   ExtractedImagingStudy,
 } from "./types";
 
+// The tool schema's TOP-LEVEL property names (the `save_medical_data` input_schema
+// in ./prompt). Every normalizer below reads the payload off these keys, so their
+// presence is what identifies "this object IS the extraction payload". Keep in sync
+// with TOOL.input_schema.properties.
+const EXTRACTION_TOP_LEVEL_KEYS = new Set([
+  "document_type",
+  "source",
+  "patient_name",
+  "patient_sex",
+  "patient_birthdate",
+  "patient_age",
+  "document_date",
+  "results",
+  "immunizations",
+  "conditions",
+  "allergies",
+  "procedures",
+  "encounters",
+  "family_history",
+  "care_plan",
+  "care_goals",
+  "genomic_variants",
+  "imaging_studies",
+]);
+
+// Whether an object carries the extraction payload — i.e. names at least one of the
+// tool schema's top-level keys. Used both to recognize a nested payload and to tell
+// a MISSHAPEN response apart from a genuinely empty one (a document with nothing to
+// extract still answers with the schema's keys and empty arrays).
+export function looksLikeExtractionInput(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return Object.keys(value).some((k) => EXTRACTION_TOP_LEVEL_KEYS.has(k));
+}
+
+// Lift the payload out of a wrapper object the model nested it under.
+//
+// The tool schema is FLAT ({document_type, results, …}), but a model sometimes
+// answers with the whole payload wrapped in one envelope key
+// ({document_data: {document_type, results, …}}). Nothing downstream reads that
+// shape — every normalizer does `raw?.results` etc. — so the wrapper silently
+// yielded ZERO records with no error: indistinguishable from an empty document.
+//
+// Deliberately CONSERVATIVE: only unwraps when the outer object names none of the
+// schema's keys AND exactly one of its values is itself a recognizable payload. An
+// already-correct input is returned untouched, and an ambiguous object (several
+// payload-shaped values) is left alone for the caller's shape guard to reject
+// rather than guessing which one to take.
+export function unwrapExtractionInput(input: unknown): unknown {
+  if (looksLikeExtractionInput(input)) return input;
+  if (!input || typeof input !== "object" || Array.isArray(input)) return input;
+  const nested = Object.values(input).filter(looksLikeExtractionInput);
+  return nested.length === 1 ? nested[0] : input;
+}
+
 // Normalize a document's stated sex/gender ("M", "Female", "MALE", …) to our
 // canonical Sex, or null when absent/unrecognized (e.g. "unknown", "other").
 export function normalizeSex(raw: unknown): Sex | null {
