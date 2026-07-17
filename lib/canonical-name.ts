@@ -80,6 +80,10 @@ const CANONICAL_ALIASES: [string, string][] = [
   ["Glomerular Filtration Rate, Estimated", "eGFR"],
   // Thyroid
   ["Thyroid Stimulating Hormone", "TSH"],
+  // The model sometimes mirrors the "Full Name (ABBREV)" print form even though the
+  // canonical entry is the bare abbreviation, adding a `tsh` token the bare-name
+  // alias above doesn't carry (seen in AI extractions, #918).
+  ["Thyroid Stimulating Hormone (TSH)", "TSH"],
   ["Thyrotropin", "TSH"],
   // Inflammation (high-sensitivity ONLY — plain CRP is a distinct assay)
   ["hsCRP", "hs-CRP"],
@@ -92,21 +96,46 @@ const CANONICAL_ALIASES: [string, string][] = [
   ["Prostate-Specific Antigen", "PSA"],
   ["Prostate Specific Antigen, Total", "PSA"],
   ["PSA, Total", "PSA"],
+  // The free-fraction PERCENT (distinct from total PSA and from a free-absolute
+  // assay). "PSA, Free %", "Free PSA %", "% Free PSA" all fold to the same key.
+  ["PSA, Free %", "Prostate Specific Antigen (PSA), Free %"],
   // Lipids / apolipoprotein
   ["Apolipoprotein B", "ApoB"],
   ["Apo B", "ApoB"],
   ["Apolipoprotein B-100", "ApoB"],
   // Iron
   ["Total Iron Binding Capacity", "TIBC"],
+  // CBC differential — ABSOLUTE counts (cells/uL). The model prefixes "Absolute"
+  // where the vocabulary either suffixes ", Absolute" (neutrophils) or uses the bare
+  // name (the others — whose "%" form is the ", Relative" entry). Routing the wrong
+  // way would drop a cells/uL value onto a "%" series (#549/#482), so each targets
+  // the cells/uL entry, checked against its unit (#918). Strongest signal was
+  // "Absolute Neutrophil Count", which missed in three separate extractions.
+  ["Absolute Neutrophil Count", "Neutrophils, Absolute"],
+  ["Absolute Neutrophils", "Neutrophils, Absolute"],
+  ["Absolute Monocyte Count", "Monocytes"],
+  ["Absolute Monocytes", "Monocytes"],
+  ["Absolute Eosinophil Count", "Eosinophils"],
+  ["Absolute Eosinophils", "Eosinophils"],
+  ["Absolute Basophil Count", "Basophils"],
+  ["Absolute Basophils", "Basophils"],
   // Vitamins / cofactors
   ["B12", "Vitamin B12"],
   ["Vitamin B-12", "Vitamin B12"],
   ["Cobalamin", "Vitamin B12"],
   ["Cyanocobalamin", "Vitamin B12"],
+  ["Micronutrient, Vitamin B12", "Vitamin B12"],
   ["Folic Acid", "Folate"],
   ["Vitamin B9", "Folate"],
   ["Retinol", "Vitamin A (Retinol)"],
   ["Vitamin A", "Vitamin A (Retinol)"],
+  // 25-OH vitamin D. normalizeCanonicalKey already folds "25-OH Vitamin D" onto the
+  // entry via the 25-OH->25-hydroxy synonym; only the "D3" suffix breaks it. The app
+  // models a single 25-hydroxy storage marker (no D2/D3 fractionation), so the D3
+  // print form routes there too. NOT bare "Vitamin D3" — that is the parent vitamin
+  // (cholecalciferol), a distinct thing from its 25-hydroxy metabolite.
+  ["25-OH Vitamin D3", "Vitamin D, 25-Hydroxy"],
+  ["25-Hydroxyvitamin D3", "Vitamin D, 25-Hydroxy"],
   // Electrolytes (the BMP CO2/bicarbonate line)
   ["CO2", "Carbon Dioxide"],
   ["Total CO2", "Carbon Dioxide"],

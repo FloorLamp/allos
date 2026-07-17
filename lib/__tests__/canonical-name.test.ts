@@ -299,10 +299,45 @@ describe("canonical aliases (synonym/abbreviation drift)", () => {
       ["Creatine Kinase", "Creatine Kinase (CK)"],
       ["SHBG", "Sex Hormone Binding Globulin (SHBG)"],
       ["Anti-TPO", "Thyroid Peroxidase Antibodies (TPOAb)"],
+      // AI-extraction spellings audited in #918.
+      ["Absolute Neutrophil Count", "Neutrophils, Absolute"],
+      ["Thyroid Stimulating Hormone (TSH)", "TSH"],
+      ["Micronutrient, Vitamin B12", "Vitamin B12"],
+      ["25-OH Vitamin D3", "Vitamin D, 25-Hydroxy"],
+      ["PSA, Free %", "Prostate Specific Antigen (PSA), Free %"],
     ];
     for (const [spelling, canonical] of expectations) {
       expect(snapCanonicalName(spelling, index)).toBe(canonical);
     }
+  });
+
+  it("routes the differential ABSOLUTE-count spellings to cells/uL entries, not the % ones", () => {
+    // The bare Monocytes/Eosinophils/Basophils entries ARE the cells/uL counts; their
+    // "%" form is the ", Relative" entry (neutrophils invert it: ", Absolute" is the
+    // count, bare is the %). A wrong route mis-groups a cells/uL value onto a % series
+    // (#549/#482), so pin the direction.
+    expect(snapCanonicalName("Absolute Neutrophil Count", index)).toBe(
+      "Neutrophils, Absolute"
+    );
+    for (const [abs, bare] of [
+      ["Absolute Monocytes", "Monocytes"],
+      ["Absolute Eosinophils", "Eosinophils"],
+      ["Absolute Basophils", "Basophils"],
+    ] as const) {
+      expect(snapCanonicalName(abs, index)).toBe(bare);
+      expect(snapCanonicalName(abs, index)).not.toBe(`${bare}, Relative`);
+    }
+  });
+
+  it("routes 25-OH vitamin D3 to the metabolite but leaves the parent vitamin alone", () => {
+    expect(snapCanonicalName("25-OH Vitamin D3", index)).toBe(
+      "Vitamin D, 25-Hydroxy"
+    );
+    // Bare "Vitamin D3" is cholecalciferol (the parent) — a distinct analyte that
+    // must NOT be merged into its 25-hydroxy metabolite.
+    expect(snapCanonicalName("Vitamin D3", index)).not.toBe(
+      "Vitamin D, 25-Hydroxy"
+    );
   });
 
   it("keeps genuinely distinct assays apart (no over-merging)", () => {
