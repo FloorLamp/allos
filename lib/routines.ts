@@ -15,7 +15,11 @@
 // declared targets and a custom routine's day-derived targets can't fork.
 
 import { db, writeTx, today } from "./db";
-import { regionForExercise, type MuscleRegion } from "./lifts";
+import {
+  regionForExercise,
+  exerciseHistoryKey,
+  type MuscleRegion,
+} from "./lifts";
 import { getProfileSetting, setProfileSetting } from "./settings";
 import {
   resolveTodayRoutineDayIndex,
@@ -578,6 +582,34 @@ export function getRoutineCycleStatus(
     isDeloadWeek: isDeloadWeekOf(week, cycleWeeks),
     weeksUntilDeload: weeksUntilDeloadOf(week, cycleWeeks),
   };
+}
+
+// The deload context the activity form reads (#923): whether the active routine places
+// today in its deload week, and the set of canonical (variant-collapsed via
+// exerciseHistoryKey) exercise keys that appear as a candidate in any of the routine's
+// slots. The form shaves ONLY a lift that resolves to a routine slot — the cycle is the
+// routine's property, so a non-routine accessory keeps its normal progression. Reads the
+// SAME getRoutineCycleStatus gather every deload surface uses (#221/#741). `routineKeys`
+// is empty off a deload week (the form never shaves then), so a non-cycled / routine-less
+// profile is byte-for-byte the prior behavior.
+export interface FormDeloadContext {
+  isDeloadWeek: boolean;
+  routineKeys: string[];
+}
+
+export function getFormDeloadContext(
+  profileId: number,
+  todayStr: string
+): FormDeloadContext {
+  const cycle = getRoutineCycleStatus(profileId, todayStr);
+  if (!cycle?.isDeloadWeek) return { isDeloadWeek: false, routineKeys: [] };
+  const routine = getActiveRoutine(profileId);
+  const keys = new Set<string>();
+  if (routine)
+    for (const d of routine.days)
+      for (const s of d.slots)
+        for (const c of s.candidates) keys.add(exerciseHistoryKey(c));
+  return { isDeloadWeek: true, routineKeys: [...keys] };
 }
 
 // Deactivate a routine. KEEPS the derived frequency targets (they're now ordinary

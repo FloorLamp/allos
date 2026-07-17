@@ -12,6 +12,8 @@ import { createPortal } from "react-dom";
 import { useHistoryBackClose } from "./useHistoryBackClose";
 import type { UnitPrefs } from "@/lib/settings";
 import type { ActivitySuggestions, ExerciseHistoryMap } from "@/lib/queries";
+import type { FormDeloadContext } from "@/lib/routines";
+import type { PlateauFormHint } from "@/lib/rule-findings";
 import type { Equipment } from "@/lib/types";
 import ActivityOverlay from "./ActivityOverlay";
 import ActivityForm, { type ActivityEditData } from "./ActivityForm";
@@ -71,6 +73,8 @@ export default function ActivityEditorProvider({
   bodyweightKg,
   lastActivity = null,
   restricted = false,
+  deloadContext,
+  plateauHints = [],
   children,
 }: {
   units: UnitPrefs;
@@ -87,6 +91,10 @@ export default function ActivityEditorProvider({
   // True for an age-restricted profile (#489): strength is gated, so live
   // workout mode (issue #340) is unavailable. Hides the Start-workout affordances.
   restricted?: boolean;
+  // Deload/plateau inputs for the strength editor (#923): whether the active routine
+  // is in its deload week (+ which lifts to shave), and the active plateau hints.
+  deloadContext: FormDeloadContext;
+  plateauHints?: PlateauFormHint[];
   children: React.ReactNode;
 }) {
   const tz = useTimezone();
@@ -233,6 +241,8 @@ export default function ActivityEditorProvider({
               editData={editData}
               prefill={prefill}
               live={live}
+              deloadContext={deloadContext}
+              plateauHints={plateauHints}
               onClose={() => setOpen(false)}
             />,
             dockEl
@@ -249,6 +259,8 @@ export default function ActivityEditorProvider({
             editData={editData}
             prefill={prefill}
             live={live}
+            deloadContext={deloadContext}
+            plateauHints={plateauHints}
             onClose={() => setOpen(false)}
           />
         ))}

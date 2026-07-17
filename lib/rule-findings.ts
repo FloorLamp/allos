@@ -32,7 +32,10 @@ import {
   getCanonicalBiomarker,
   getDaylightOutdoorMinutesTotal,
   getProteinAdequacy,
+  getFindingSuppressions,
 } from "./queries";
+import { activeFindings } from "./findings";
+import { exerciseHistoryKey } from "./lifts";
 import {
   getActiveSituations,
   getSituationEvents,
@@ -361,6 +364,54 @@ export function buildTrainingObservationFindings(
   observations.push(...detectPlateaus(e1rmSeries, today, upcomingDeload));
 
   return observations.map(trainingObservationToFinding);
+}
+
+// ---- #923: inline plateau hint for the activity form -----------------------
+
+// One active (undismissed) plateau finding, reduced to what the activity-form's inline
+// hint needs (#923): the plateaued lift's canonical exerciseHistoryKey (so the form
+// matches it to the part being entered) plus the SAME dedupeKey/legacy key the
+// Training-watch card uses — so a dismissal on the form and on the Training tab silence
+// each other through the one suppression bus (#435/#436). No second engine and no second
+// key namespace: this reuses detectPlateaus and its `training-obs:plateau:…` key exactly.
+export interface PlateauFormHint {
+  exerciseKey: string;
+  dedupeKey: string;
+  supersedes: string;
+}
+
+// The active plateau hints for a profile (#923). Runs the SAME plateau detection +
+// deload cross-reference as buildTrainingObservationFindings, filters through the shared
+// findings-bus suppression store (so a dismissed plateau doesn't hint here either), and
+// keys each surviving plateau by exerciseHistoryKey. No owned SQL is added (reads through
+// the profile-scoped e1RM/cycle gathers), so the profile-scoping guard is unaffected.
+export function buildActivePlateauHints(
+  profileId: number,
+  today: string
+): PlateauFormHint[] {
+  const e1rmSeries = getExerciseE1rmSeries(
+    profileId,
+    shiftDateStr(today, -PLATEAU_WINDOW_DAYS)
+  );
+  const cycle = getRoutineCycleStatus(profileId, today);
+  const upcomingDeload =
+    cycle && cycle.weeksUntilDeload <= 2
+      ? { weeksUntilDeload: cycle.weeksUntilDeload }
+      : null;
+  const observations = detectPlateaus(e1rmSeries, today, upcomingDeload);
+  const active = activeFindings(
+    observations.map(trainingObservationToFinding),
+    getFindingSuppressions(profileId),
+    today
+  );
+  const activeKeys = new Set(active.map((f) => f.dedupeKey));
+  return observations
+    .filter((o) => o.exercise && activeKeys.has(o.key))
+    .map((o) => ({
+      exerciseKey: exerciseHistoryKey(o.exercise!),
+      dedupeKey: o.key,
+      supersedes: o.legacyKey,
+    }));
 }
 
 // ---- Domain 4b: per-muscle weekly volume bands (Training → Overview, #742) --

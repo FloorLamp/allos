@@ -33,6 +33,8 @@ import {
   E2E_LOGIN_ROUTINE,
   E2E_LOGIN_ROUTINE_BUILDER,
   E2E_LOGIN_ROUTINE_DELOAD,
+  E2E_LOGIN_FORM_DELOAD,
+  E2E_LOGIN_FORM_PLATEAU,
   E2E_LOGIN_ONBOARDING,
   E2E_LOGIN_ONBOARDING_CAREGIVER,
   E2E_LOGIN_ORIENTATION,
@@ -44,6 +46,8 @@ import {
   NO_GEAR_PROFILE,
   ROUTINE_BUILDER_PROFILE,
   ROUTINE_DELOAD_PROFILE,
+  FORM_DELOAD_PROFILE,
+  FORM_PLATEAU_PROFILE,
   ROUTINE_PROFILE,
   ONBOARDING_CAREGIVER_PROFILE,
   ONBOARDING_PROFILE,
@@ -1918,6 +1922,88 @@ db.prepare(
 seedMemberLogin(E2E_LOGIN_ROUTINE_DELOAD, deloadProfileId);
 console.log(
   `e2e: seeded an active PPL routine in its deload week on profile ${deloadProfileId} (#741)`
+);
+
+// ── #923: activity-form fill-paths fixtures ─────────────────────────────────────
+// FORM_DELOAD: an ADULT profile with an ACTIVE PPL routine in its deload week PLUS
+// logged Barbell Bench Press history, so the strength editor's next-set suggestion for
+// a routine lift is deload-shaved (100 kg progression → ~90 kg + the shared rationale).
+// Dedicated on purpose so a create-and-clean save in the form spec never touches the
+// #741 deload fixture (which asserts an exact slate). Idempotent: reset + re-adopt.
+const formDeloadProfileId = fixtureProfileId(FORM_DELOAD_PROFILE);
+db.prepare(
+  `DELETE FROM routine_slots WHERE routine_day_id IN (
+     SELECT rd.id FROM routine_days rd
+       JOIN routines r ON r.id = rd.routine_id WHERE r.profile_id = ?)`
+).run(formDeloadProfileId);
+db.prepare(
+  `DELETE FROM routine_days WHERE routine_id IN (
+     SELECT id FROM routines WHERE profile_id = ?)`
+).run(formDeloadProfileId);
+db.prepare(`DELETE FROM routines WHERE profile_id = ?`).run(
+  formDeloadProfileId
+);
+const formDeloadRoutineId = adoptTemplate(
+  formDeloadProfileId,
+  "push-pull-legs-6x"
+);
+activateRoutine(formDeloadProfileId, formDeloadRoutineId);
+db.prepare(
+  `UPDATE routines SET cycle_weeks = 2, started_date = ? WHERE id = ?`
+).run(shiftDateStr(today(formDeloadProfileId), -7), formDeloadRoutineId);
+// One prior Barbell Bench Press session (3 × 100 kg × 6) three days ago: the coached
+// suggestion holds 100 kg and builds a rep, which the deload week shaves to 90 kg.
+db.prepare(
+  `DELETE FROM activities WHERE profile_id = ? AND external_id = 'e2e:form-deload-bench'`
+).run(formDeloadProfileId);
+const formBenchActId = Number(
+  db
+    .prepare(
+      `INSERT INTO activities
+         (profile_id, date, type, title, duration_min, source, external_id, edited)
+       VALUES (?, ?, 'strength', 'Push', 40, 'manual', 'e2e:form-deload-bench', 0)`
+    )
+    .run(formDeloadProfileId, shiftDateStr(today(formDeloadProfileId), -3))
+    .lastInsertRowid
+);
+const insFormBench = db.prepare(
+  `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps, warmup)
+     VALUES (?, 'Barbell Bench Press', ?, 100, 6, 0)`
+);
+for (let s = 1; s <= 3; s++) insFormBench.run(formBenchActId, s);
+seedMemberLogin(E2E_LOGIN_FORM_DELOAD, formDeloadProfileId);
+
+// FORM_PLATEAU: an ADULT profile with NO routine and a flat-for-6-weeks Skullcrusher
+// (5 sessions of 30 kg × 8), so the strength editor shows the inline plateau hint for a
+// plateaued lift — never shaved, since the profile has no cycle. Dedicated so the
+// dismiss test's suppression write stays isolated from profile 1's Skullcrusher plateau
+// (which rule-findings.spec relies on).
+const formPlateauProfileId = fixtureProfileId(FORM_PLATEAU_PROFILE);
+db.prepare(
+  `DELETE FROM activities WHERE profile_id = ? AND external_id LIKE 'e2e:form-plateau-%'`
+).run(formPlateauProfileId);
+const insFormPlAct = db.prepare(
+  `INSERT INTO activities
+     (profile_id, date, type, title, duration_min, source, external_id, edited)
+   VALUES (?, ?, 'strength', 'Arms', 25, 'manual', ?, 0)`
+);
+const insFormPlSet = db.prepare(
+  `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps, warmup)
+     VALUES (?, 'Skullcrusher', ?, 30, 8, 0)`
+);
+[-40, -33, -26, -14, -2].forEach((day, i) => {
+  const actId = Number(
+    insFormPlAct.run(
+      formPlateauProfileId,
+      shiftDateStr(today(formPlateauProfileId), day),
+      `e2e:form-plateau-${i}`
+    ).lastInsertRowid
+  );
+  for (let s = 1; s <= 3; s++) insFormPlSet.run(actId, s);
+});
+seedMemberLogin(E2E_LOGIN_FORM_PLATEAU, formPlateauProfileId);
+console.log(
+  `e2e: seeded activity-form fill-path fixtures — deload profile ${formDeloadProfileId}, plateau profile ${formPlateauProfileId} (#923)`
 );
 
 // A profile-1 equipment row REFERENCED by a logged strength set, so the equipment

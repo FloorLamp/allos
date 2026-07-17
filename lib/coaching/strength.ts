@@ -486,6 +486,23 @@ export function deloadAdjust(slot: {
   return { sets, nextSet: deloadNextSet(slot.exercise, slot.nextSet) };
 }
 
+// The activity form's next-set suggestion, deload-aware (#923). The free-form logger
+// has no routine/slot context and no slot set-count, so on a deload week — for a lift
+// that resolves (variant-collapsed) to a slot in the active routine — it consumes ONLY
+// the LOAD half of the shared deloadAdjust by passing `sets: 0`, exactly as the engine's
+// compact card does (lib/coaching/engine.ts). Every surface that renders a deload week
+// (the Training-overview session card, the recommendation copy, and now the form) reads
+// the ONE deloadAdjust, so the shaved load can never drift (#221/#741). Off a deload
+// week, or for a non-routine accessory, the plain progression is returned unchanged.
+export function deloadFormSuggestion(
+  base: NextSet | null,
+  exercise: string,
+  deload: boolean
+): NextSet | null {
+  if (!base || !deload) return base;
+  return deloadAdjust({ exercise, sets: 0, nextSet: base }).nextSet;
+}
+
 function deloadNextSet(exercise: string, ns: NextSet | null): NextSet | null {
   if (!ns || ns.bodyweight || ns.weightKg <= 0) return ns;
   const inc = weightIncrementKg(exercise);

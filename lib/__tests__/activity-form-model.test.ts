@@ -6,9 +6,11 @@ import {
   partTotal,
   groupEditSets,
   recentSessionsForForm,
+  repeatSessionFill,
   setComplete,
   type ActivityEditData,
   type PartEntry,
+  type RepeatSourceSet,
 } from "@/components/activity-form/model";
 
 // A stored set with sensible defaults; override only the fields a case cares
@@ -315,5 +317,99 @@ describe("recentSessionsForForm", () => {
   it("honours the limit and preserves newest-first order", () => {
     const r = recentSessionsForForm(sessions, null, null, 2);
     expect(r.map((s) => s.activityId)).toEqual([40, 30]);
+  });
+});
+
+// #923 — the "repeat last session" fill: a prior session's stored sets → editable set
+// rows. A literal repeat (weights/reps/holds), warmup flags (#338) and per-side values
+// (#335) preserved; RPE/intent NOT carried; perSide follows the source session.
+describe("repeatSessionFill", () => {
+  const src = (
+    o: Partial<RepeatSourceSet> & { set_number: number }
+  ): RepeatSourceSet => ({
+    weight_kg: null,
+    reps: null,
+    weight_kg_right: null,
+    reps_right: null,
+    duration_sec: null,
+    duration_sec_right: null,
+    warmup: null,
+    ...o,
+  });
+
+  it("maps a bilateral session to weight/reps rows in the login's unit", () => {
+    const { sets, perSide } = repeatSessionFill(
+      [
+        src({ set_number: 1, weight_kg: 60, reps: 8 }),
+        src({ set_number: 2, weight_kg: 62.5, reps: 6 }),
+      ],
+      "kg"
+    );
+    expect(perSide).toBe(false);
+    expect(sets).toHaveLength(2);
+    expect(sets[0]).toMatchObject({ weight: "60", reps: "8", warmup: false });
+    expect(sets[1]).toMatchObject({ weight: "62.5", reps: "6" });
+  });
+
+  it("converts stored kg to the login's display unit (lb)", () => {
+    const { sets } = repeatSessionFill(
+      [src({ set_number: 1, weight_kg: 100, reps: 5 })],
+      "lb"
+    );
+    // 100 kg ≈ 220.5 lb (round to 1 dp).
+    expect(sets[0].weight).toBe("220.5");
+    expect(sets[0].reps).toBe("5");
+  });
+
+  it("preserves warmup flags and orders by set_number", () => {
+    const { sets } = repeatSessionFill(
+      [
+        src({ set_number: 2, weight_kg: 60, reps: 8, warmup: 0 }),
+        src({ set_number: 1, weight_kg: 20, reps: 10, warmup: 1 }),
+      ],
+      "kg"
+    );
+    expect(sets.map((s) => s.warmup)).toEqual([true, false]);
+    expect(sets.map((s) => s.weight)).toEqual(["20", "60"]);
+  });
+
+  it("carries per-side values and sets perSide when a right side is present", () => {
+    const { sets, perSide } = repeatSessionFill(
+      [
+        src({
+          set_number: 1,
+          weight_kg: 20,
+          reps: 12,
+          weight_kg_right: 22.5,
+          reps_right: 10,
+        }),
+      ],
+      "kg"
+    );
+    expect(perSide).toBe(true);
+    expect(sets[0]).toMatchObject({
+      weight: "20",
+      reps: "12",
+      weightRight: "22.5",
+      repsRight: "10",
+    });
+  });
+
+  it("maps a timed hold to an m:ss duration", () => {
+    const { sets } = repeatSessionFill(
+      [src({ set_number: 1, duration_sec: 90 })],
+      "kg"
+    );
+    expect(sets[0].duration).toBe("1:30");
+    expect(sets[0].weight).toBe("");
+    expect(sets[0].reps).toBe("");
+  });
+
+  it("never carries an RPE onto the repeated set (#743)", () => {
+    const { sets } = repeatSessionFill(
+      [src({ set_number: 1, weight_kg: 60, reps: 8 })],
+      "kg"
+    );
+    expect(sets[0].rpe).toBeNull();
   });
 });
