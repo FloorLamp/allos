@@ -117,7 +117,6 @@ export default function ActivityForm({
   live = false,
   deloadContext,
   plateauHints = [],
-  onLiveEnd,
   onClose,
   stickyFooter = false,
 }: {
@@ -146,9 +145,6 @@ export default function ActivityForm({
   // deloadAdjust); `plateauHints` renders the calm inline plateau hint.
   deloadContext: FormDeloadContext;
   plateauHints?: PlateauFormHint[];
-  // Called when the session leaves live mode via Finish (#921) so the host can drop
-  // its `live` flag — the next close is then a real close, not a minimize-to-dock.
-  onLiveEnd?: () => void;
   onClose: () => void;
   // In the overlay the (often taller-than-viewport) form scrolls, so the action
   // row pins to the bottom of the screen and gains a Done button — otherwise
@@ -357,9 +353,6 @@ export default function ActivityForm({
   function finishWorkout() {
     if (!endTime) setEndTime(nowHHMM(tz));
     setLiveMode(false);
-    // Tell the host the session left live mode (#921): the app-wide dock should
-    // stop treating a close as a minimize, and the finished session drops off the bar.
-    onLiveEnd?.();
   }
   // All validation/auto-save gating (namedParts, canSave, the per-part fault,
   // the save-blocker message, canAddPart) is pure — computed from the parts +

@@ -339,11 +339,10 @@ export default function ActivityEditorProvider({
             // While minimized the overlay stays MOUNTED but hidden — the running
             // rest timer + elapsed clock keep ticking; the bar restores it.
             hidden={minimized}
-            // A live session collapses to the bar instead of unmounting; a
-            // non-live edit just closes. onLiveEnd (finish) drops live so the next
-            // close is a real close and the bar goes away.
+            // A live session gets the explicit minimize chevron (collapse without
+            // unmounting). The backdrop/Done still fully close; a still-active
+            // session then re-hydrates the bar from presence, so it's never lost.
             onMinimize={live ? minimizeLive : undefined}
-            onLiveEnd={() => setLive(false)}
             onClose={() => {
               setMinimized(false);
               setOpen(false);

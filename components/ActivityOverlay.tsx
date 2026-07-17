@@ -27,7 +27,6 @@ export default function ActivityOverlay({
   plateauHints = [],
   hidden = false,
   onMinimize,
-  onLiveEnd,
   onClose,
 }: {
   units: UnitPrefs;
@@ -48,22 +47,18 @@ export default function ActivityOverlay({
   // When set (a live session), the backdrop tap + the header chevron MINIMIZE to the
   // dock instead of unmounting. Absent ⇒ the overlay closes normally.
   onMinimize?: () => void;
-  // Called when the session's live mode ends (Finish) so the provider drops `live`.
-  onLiveEnd?: () => void;
   onClose: () => void;
 }) {
   // Lock the page behind only while the overlay is actually visible; a minimized
   // (hidden) overlay must not trap scroll on the page the user is now browsing.
   useLockBodyScroll(!hidden);
-  // A live session collapses to the dock rather than closing; everything else closes.
-  const dismiss = onMinimize ?? onClose;
 
   return createPortal(
     <div
       className={`fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overscroll-contain bg-white sm:bg-slate-900/40 sm:p-8 dark:bg-ink-900 sm:dark:bg-black/70 ${
         hidden ? "hidden" : ""
       }`}
-      onClick={dismiss}
+      onClick={onClose}
     >
       {/* Bottom padding is plain p-4: the form's sticky footer re-spans it and
           carries the safe-area inset itself. */}
@@ -100,7 +95,6 @@ export default function ActivityOverlay({
           live={live}
           deloadContext={deloadContext}
           plateauHints={plateauHints}
-          onLiveEnd={onLiveEnd}
           onClose={onClose}
           stickyFooter
         />
