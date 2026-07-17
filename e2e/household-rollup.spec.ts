@@ -1,4 +1,6 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
+import Database from "better-sqlite3";
+import path from "node:path";
 
 // Household view for members + actionable rollup (issue #31). The Household screen
 // used to be admin-only; it's now open to ANY login that can reach 2+ profiles (a
@@ -18,6 +20,32 @@ const HOUSEHOLD_DUE_DOSE = "Household Vitamin D";
 // Dedicated to the read-only spec: the write-member spec confirms (consumes) the
 // Vitamin D dose, so the read-only assertions use their own never-consumed item.
 const HOUSEHOLD_RO_DUE_DOSE = "Household Magnesium";
+
+// Un-confirm profile 2's "Household Vitamin D" dose so it is DUE again at the start
+// of the confirm test — the #868 fixture-ownership fix that retires the old
+// skip-on-repeat guard. The write-member test taps "confirm dose", which writes an
+// intake_item_logs row that persists (no per-run reset), so a second --repeat-each
+// run (or a retry) previously saw the dose already-taken and the "due dose visible"
+// assertion failed. Deleting the log rows for this dedicated household item (only this
+// spec touches it) restores the seeded DUE state. Short-lived connection + busy timeout
+// so it never contends with the running server on the WAL DB.
+function resetHouseholdDose(): void {
+  const dbPath =
+    process.env.ALLOS_DB_PATH ??
+    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const db = new Database(dbPath);
+  try {
+    db.pragma("busy_timeout = 5000");
+    db.prepare(
+      `DELETE FROM intake_item_logs
+        WHERE item_id IN (
+          SELECT id FROM intake_items WHERE name = ? AND profile_id = ?
+        )`
+    ).run(HOUSEHOLD_DUE_DOSE, Number(SEEDED_PROFILE_2));
+  } finally {
+    db.close();
+  }
+}
 
 // Create a member login and grant it the given profiles at the given access
 // levels, driving Settings → Family exactly as an admin would. Returns creds.
@@ -74,15 +102,11 @@ test.describe("Household view for members (issue #31)", () => {
   test("a member with two grants sees both cards and confirms a dose for the non-active profile", async ({
     page,
     browser,
-  }, testInfo) => {
-    // Confirms a SHARED-seed due dose on profile 2, which then stays taken — so a second
-    // run against the same seeded DB no longer sees it "due". Deterministic on a fresh
-    // seed but not repeat-safe (the dose has no per-run reset), so under --repeat-each we
-    // run it once and skip the extra repeats; the single full-suite run is the coverage.
-    test.skip(
-      testInfo.repeatEachIndex > 0,
-      "confirms a shared-seed dose that stays taken; not repeat-safe without a per-run reset"
-    );
+  }) => {
+    // Un-confirm the shared-seed due dose so this test owns its fixture state and is
+    // repeat-safe (#868): the confirm below writes a persistent log, so without this
+    // reset a second --repeat-each run would find the dose already taken.
+    resetHouseholdDose();
     // Local `next dev` compiles the family/household routes on first hit.
     test.slow();
 

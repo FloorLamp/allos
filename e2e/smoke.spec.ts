@@ -1,5 +1,29 @@
 import { test, expect } from "@playwright/test";
+import Database from "better-sqlite3";
+import path from "node:path";
 import { followLink, openCommandPalette } from "./nav";
+
+// Clear the coaching "Not today" snooze so the #39 test starts UNSNOOZED on every
+// repeat (#868 fixture ownership). `snoozeCoaching` writes a persistent
+// upcoming_dismissals row keyed by the coaching finding's dedupeKey; without this
+// reset a second --repeat-each run finds the top recommendation already snoozed and
+// the coaching card gone, failing the "card visible" assertion. Scoped to the
+// admin's active profile 1 and the coaching namespace. Short-lived connection +
+// busy timeout so it never contends with the running server on the WAL DB.
+function resetCoachingSnooze(): void {
+  const dbPath =
+    process.env.ALLOS_DB_PATH ??
+    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const db = new Database(dbPath);
+  try {
+    db.pragma("busy_timeout = 5000");
+    db.prepare(
+      "DELETE FROM upcoming_dismissals WHERE profile_id = 1 AND signal_key LIKE 'coaching:%'"
+    ).run();
+  } finally {
+    db.close();
+  }
+}
 
 // Broad smoke coverage: each primary authenticated surface renders (real HTTP
 // 200 + the app shell, not a Next error page) against the seeded DB. Catches
@@ -52,6 +76,8 @@ for (const route of ROUTES) {
 test("dashboard coaching 'Not today' snoozes the top recommendation (#39)", async ({
   page,
 }) => {
+  // Own the fixture (#868): start unsnoozed so the card is present on every repeat.
+  resetCoachingSnooze();
   await page.goto("/");
   const card = page.locator(".card", {
     has: page.getByTestId("coaching-not-today"),
@@ -225,11 +251,10 @@ test("percent-strength medication resolves its 'What is this?' explainer (#272)"
     .getByTestId("medication-row-link");
   await expect(link).toBeVisible();
   const detail = page.getByTestId("medication-detail");
-  // Ride out the hydration window (#730): retry the navigation until detail shows.
-  await expect(async () => {
-    await link.click();
-    await expect(detail).toBeVisible({ timeout: 2000 });
-  }).toPass();
+  // Navigate past the pre-hydration swallow (#730/#500) with the blessed followLink
+  // (#868) instead of a hand-rolled click-until-detail-shows toPass loop.
+  await followLink(page, link, /\/medications\/\d+/);
+  await expect(detail).toBeVisible();
   // The explainer disclosure is a client toggle — retry the expand to ride out the
   // hydration window (#730), then assert the description landed.
   await expect(async () => {
