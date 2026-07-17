@@ -138,8 +138,11 @@ export function computeWorkoutPresence(
   const nowMs = now.getTime();
 
   // --- active: today's started-but-unended session, draft touched recently. ---
-  let active: { row: PresenceActivityRow; touch: number; quietMin: number } | null =
-    null;
+  let active: {
+    row: PresenceActivityRow;
+    touch: number;
+    quietMin: number;
+  } | null = null;
   for (const row of rows) {
     if (row.date !== today) continue;
     // Only a manually-logged in-app session can be LIVE. An imported row is a

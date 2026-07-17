@@ -80,7 +80,11 @@ export default function ActivityOverlay({
               aria-label="Minimize workout"
               className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-800"
             >
-              <IconChevronDown className="h-5 w-5" stroke={1.75} aria-hidden="true" />
+              <IconChevronDown
+                className="h-5 w-5"
+                stroke={1.75}
+                aria-hidden="true"
+              />
             </button>
           </div>
         )}

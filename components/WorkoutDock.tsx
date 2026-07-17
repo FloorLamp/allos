@@ -40,7 +40,9 @@ export default function WorkoutDock({
   );
   useEffect(() => {
     const tick = () =>
-      setElapsedMin(Math.max(0, Math.floor((Date.now() - startEpochMs) / 60_000)));
+      setElapsedMin(
+        Math.max(0, Math.floor((Date.now() - startEpochMs) / 60_000))
+      );
     tick();
     const h = setInterval(tick, 20_000);
     return () => clearInterval(h);
@@ -53,12 +55,8 @@ export default function WorkoutDock({
       : "bg-slate-700 text-white dark:bg-slate-600";
 
   const who = ownerName ? `${ownerName} · ` : "";
-  const primary = stale
-    ? `${who}Still working out?`
-    : `${who}${label}`;
-  const secondary = stale
-    ? "Finish or discard"
-    : `${elapsedMin} min`;
+  const primary = stale ? `${who}Still working out?` : `${who}${label}`;
+  const secondary = stale ? "Finish or discard" : `${elapsedMin} min`;
 
   return (
     <div
@@ -71,7 +69,11 @@ export default function WorkoutDock({
         data-testid="workout-dock-open"
         className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left shadow-lg transition-opacity hover:opacity-95 ${tone}`}
       >
-        <IconBarbell className="h-5 w-5 shrink-0" stroke={1.75} aria-hidden="true" />
+        <IconBarbell
+          className="h-5 w-5 shrink-0"
+          stroke={1.75}
+          aria-hidden="true"
+        />
         <span className="min-w-0 flex-1 truncate text-sm font-semibold">
           {primary}
         </span>

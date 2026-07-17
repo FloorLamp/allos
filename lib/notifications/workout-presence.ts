@@ -55,10 +55,13 @@ export function postWorkoutFinishMarkerKey(activityId: number): string {
 // tagged with taken/skipped state. Reuses collectWindowDoses so the dueness +
 // adherence computation is the SAME one the scheduled slot uses (each dose maps to
 // exactly one window bucket, so the flat-map can't double-count).
-function collectPostWorkoutDoses(profileId: number, date: string): WindowDose[] {
-  return ALL_WINDOWS.flatMap((w) => collectWindowDoses(profileId, w, date)).filter(
-    (e) => e.supp.condition === "post_workout"
-  );
+function collectPostWorkoutDoses(
+  profileId: number,
+  date: string
+): WindowDose[] {
+  return ALL_WINDOWS.flatMap((w) =>
+    collectWindowDoses(profileId, w, date)
+  ).filter((e) => e.supp.condition === "post_workout");
 }
 
 // The finish message: the pending post_workout doses with per-dose take/skip
@@ -186,7 +189,11 @@ export async function runStaleWorkoutSuggest(
   now: Date = new Date()
 ): Promise<{ failed: boolean }> {
   const presence = getWorkoutPresence(profileId, now);
-  if (presence.state !== "active" || !presence.stale || presence.activityId == null)
+  if (
+    presence.state !== "active" ||
+    !presence.stale ||
+    presence.activityId == null
+  )
     return { failed: false };
 
   const markerKey = staleWorkoutMarkerKey(presence.activityId);

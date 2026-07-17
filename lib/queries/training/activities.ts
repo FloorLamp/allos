@@ -532,10 +532,7 @@ export function getActiveCaloriesForActivities(
 // Map an activity row (+ its scoped sets) to the ActivityEditData the editor
 // consumes. Shared by getMostRecentActivityEditData and getActivityEditData so a
 // repeated/resumed draft is identical whichever surface launched it.
-function activityToEditData(
-  profileId: number,
-  a: Activity
-): ActivityEditData {
+function activityToEditData(profileId: number, a: Activity): ActivityEditData {
   const sets = getSetsForActivities(profileId, [a.id]);
   return {
     id: a.id,
