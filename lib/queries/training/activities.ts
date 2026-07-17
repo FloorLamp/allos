@@ -529,16 +529,13 @@ export function getActiveCaloriesForActivities(
 // logged. Profile-scoped; its sets come through getSetsForActivities (also
 // scoped). Mirrors buildJournalCards' editData mapping so the repeated draft is
 // identical whichever surface launched it.
-export function getMostRecentActivityEditData(
-  profileId: number
-): ActivityEditData | null {
-  const a = db
-    .prepare(
-      `SELECT * FROM activities WHERE profile_id = ?
-        ORDER BY date DESC, id DESC LIMIT 1`
-    )
-    .get(profileId) as Activity | undefined;
-  if (!a) return null;
+// Map an activity row (+ its scoped sets) to the ActivityEditData the editor
+// consumes. Shared by getMostRecentActivityEditData and getActivityEditData so a
+// repeated/resumed draft is identical whichever surface launched it.
+function activityToEditData(
+  profileId: number,
+  a: Activity
+): ActivityEditData {
   const sets = getSetsForActivities(profileId, [a.id]);
   return {
     id: a.id,
@@ -575,6 +572,31 @@ export function getMostRecentActivityEditData(
       rpe: s.rpe,
     })),
   };
+}
+
+export function getMostRecentActivityEditData(
+  profileId: number
+): ActivityEditData | null {
+  const a = db
+    .prepare(
+      `SELECT * FROM activities WHERE profile_id = ?
+        ORDER BY date DESC, id DESC LIMIT 1`
+    )
+    .get(profileId) as Activity | undefined;
+  return a ? activityToEditData(profileId, a) : null;
+}
+
+// The ActivityEditData for a specific activity (#921) — the workout dock reopens a
+// live session by id, hydrated from the persisted #451 draft. Profile-scoped;
+// null when the id isn't this profile's.
+export function getActivityEditData(
+  profileId: number,
+  activityId: number
+): ActivityEditData | null {
+  const a = db
+    .prepare(`SELECT * FROM activities WHERE id = ? AND profile_id = ?`)
+    .get(activityId, profileId) as Activity | undefined;
+  return a ? activityToEditData(profileId, a) : null;
 }
 
 export function getDashboardStats(profileId: number) {
