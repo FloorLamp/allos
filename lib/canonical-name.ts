@@ -154,6 +154,28 @@ const CANONICAL_ALIASES: [string, string][] = [
   ["Thyroid Peroxidase Antibody", "Thyroid Peroxidase Antibodies (TPOAb)"],
   ["Thyroid Peroxidase Ab", "Thyroid Peroxidase Antibodies (TPOAb)"],
   ["Anti-Thyroid Peroxidase", "Thyroid Peroxidase Antibodies (TPOAb)"],
+  // Immunoglobulins (#918): the abbreviation the model/labs usually print snaps onto
+  // the full canonical name. Subclasses alias the "IgGn" short form onto the spelled-
+  // out entry (the tokens "igg1" and "immunoglobulin g subclass 1" share none).
+  ["IgG", "Immunoglobulin G"],
+  ["IgA", "Immunoglobulin A"],
+  ["IgM", "Immunoglobulin M"],
+  ["IgG1", "Immunoglobulin G Subclass 1"],
+  ["IgG Subclass 1", "Immunoglobulin G Subclass 1"],
+  ["IgG2", "Immunoglobulin G Subclass 2"],
+  ["IgG Subclass 2", "Immunoglobulin G Subclass 2"],
+  ["IgG3", "Immunoglobulin G Subclass 3"],
+  ["IgG Subclass 3", "Immunoglobulin G Subclass 3"],
+  ["IgG4", "Immunoglobulin G Subclass 4"],
+  ["IgG Subclass 4", "Immunoglobulin G Subclass 4"],
+  // Urinalysis dipstick (#918): the canonical entries are specimen-qualified
+  // ("…, Urine"), matching how the extractor names them. A bare spelling of an
+  // always-urine pad (Nitrite, Leukocyte Esterase, Urobilinogen) is unambiguous, so
+  // it routes to the urine entry; "Occult Blood" is the same pad as urine "Blood".
+  ["Nitrite", "Nitrite, Urine"],
+  ["Leukocyte Esterase", "Leukocyte Esterase, Urine"],
+  ["Urobilinogen", "Urobilinogen, Urine"],
+  ["Occult Blood, Urine", "Blood, Urine"],
 ];
 
 // Build a normalized-key -> canonical-spelling lookup from a vocabulary list.
