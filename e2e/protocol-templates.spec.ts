@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { followLink } from "./helpers";
 
 // Sun-exposure protocol template (issue #571). The Protocols page shows a
 // "Start from a template" strip; picking one prefills the add form (name, notes,
@@ -26,9 +27,12 @@ test("the Sun exposure template prefills the add-protocol form", async ({
     /observational/i
   );
 
-  // "Clear" returns to a blank form.
-  await page.getByRole("link", { name: "Clear" }).click();
-  await expect(page).toHaveURL(/\/protocols$/);
+  // "Clear" returns to a blank form (nav anchor → followLink, #889 sweep).
+  await followLink(
+    page,
+    page.getByRole("link", { name: "Clear" }),
+    /\/protocols$/
+  );
   await expect(
     page.getByTestId("protocol-form").locator('input[name="name"]')
   ).toHaveValue("");

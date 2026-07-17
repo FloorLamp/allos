@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import path from "node:path";
+import { followLink } from "./helpers";
 
 // IA split (#746): supplements folded into the Nutrition → Supplements tab,
 // medications became a standalone Medical-group page, and /medicine permanently
@@ -36,15 +37,19 @@ test("Nutrition is a Food | Supplements tab umbrella (#746)", async ({
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
   // Switch to Supplements — the situations bar + supplement status render, and the
-  // URL is deep-linkable.
-  await page.getByRole("tab", { name: "Supplements" }).click();
-  await expect(page).toHaveURL(/tab=supplements/);
+  // URL is deep-linkable. The tab is a NavTabs Next <Link>, so followLink rides
+  // out the pre-hydration swallow (#889 sweep).
+  await followLink(
+    page,
+    page.getByRole("tab", { name: "Supplements" }),
+    /tab=supplements/
+  );
   await expect(page.getByTestId("situations-bar")).toBeVisible();
   await expect(page.getByTestId("supplements-status")).toBeVisible();
   await expect(page.getByTestId("food-log-bar")).toHaveCount(0);
 
-  // Back to Food.
-  await page.getByRole("tab", { name: "Food" }).click();
+  // Back to Food (NavTabs Next <Link> → followLink, #889 sweep).
+  await followLink(page, page.getByRole("tab", { name: "Food" }), /tab=food/);
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 });
 

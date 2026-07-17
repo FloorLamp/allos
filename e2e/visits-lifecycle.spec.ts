@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import Database from "better-sqlite3";
+import { followLink } from "./helpers";
 
 // The appointment → encounter lifecycle on the merged Visits page (issue #288):
 // book → complete → "Log this visit" → the linked visit lands in Past → click
@@ -64,8 +65,8 @@ test.describe("Visits lifecycle — book → complete → log visit → detail (
       /\/encounters\/\d+$/
     );
 
-    await visitLink.first().click();
-    await expect(page).toHaveURL(/\/encounters\/\d+$/);
+    // Nav anchor → followLink rides out the pre-hydration swallow (#889 sweep).
+    await followLink(page, visitLink.first(), /\/encounters\/\d+$/);
     const detail = page.getByTestId("encounter-detail");
     await expect(detail).toBeVisible();
     // The visit is prefilled from the appointment: the title became the reason.

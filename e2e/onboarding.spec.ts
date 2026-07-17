@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { loginAs } from "./nav";
+import { loginAs, followLink } from "./nav";
 import {
   E2E_LOGIN_ONBOARDING,
   E2E_LOGIN_ONBOARDING_CAREGIVER,
@@ -259,7 +259,13 @@ test("a new profile reaches a useful dashboard through the metrics path", async 
     await page.getByRole("button", { name: "Save entry" }).click();
     await expect(page.getByText("Entry saved")).toBeVisible();
 
-    await returnBanner.getByRole("link", { name: "Continue setup" }).click();
+    // Continue setup is a Next <Link> back into /onboarding → followLink rides
+    // out the pre-hydration swallow (#889 sweep).
+    await followLink(
+      page,
+      returnBanner.getByRole("link", { name: "Continue setup" }),
+      /\/onboarding/
+    );
     await page.setViewportSize({ width: 390, height: 844 });
     const dashboard = page.getByTestId("onboarding-dashboard");
     await expect(dashboard).toBeVisible();

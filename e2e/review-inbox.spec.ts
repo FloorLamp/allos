@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { followLink } from "./helpers";
 
 // Dogfoods the Data → Review import inbox (the feature that motivated this tier).
 // After issue #208 the surface is split into two sections with a shared strip on
@@ -149,17 +150,10 @@ test.describe("Data → Review import inbox", () => {
     // "Connected sources" section above.
     await expect(feed.getByText("No new data")).toHaveCount(0);
 
-    // Following the document link lands on its import-detail page. The click can
-    // land in the hydration window (React swallows discrete events on a
-    // not-yet-hydrated tree — the URL then never changes), and under `next dev`
-    // the destination compiles on demand, so retry the click and give the
-    // navigation room.
-    await expect(async () => {
-      if (!/\/import\/\d+/.test(page.url())) {
-        await docLink.click({ timeout: 2000 });
-      }
-      await expect(page).toHaveURL(/\/import\/\d+/, { timeout: 4000 });
-    }).toPass({ timeout: 20_000 });
+    // Following the document link lands on its import-detail page. A click can
+    // land in the pre-hydration swallow window (the URL then never changes) —
+    // followLink retries past it (#889 sweep; replaces the hand-rolled toPass).
+    await followLink(page, docLink, /\/import\/\d+/);
     await expect(
       page.getByRole("link", { name: "Back to Review" })
     ).toBeVisible({ timeout: 15_000 });
@@ -218,8 +212,9 @@ test.describe("Data → Review import inbox", () => {
     const trigger = page.getByTestId("user-menu-trigger");
     const reviewLink = page.getByRole("link", { name: "Import review" });
     await trigger.click();
-    await reviewLink.click();
-    await expect(page).toHaveURL(/\/data\?section=review/);
+    // Nav anchor → followLink (#889 sweep); the menu is open post-hydration so
+    // the link is present, and followLink retries the nav until the URL commits.
+    await followLink(page, reviewLink, /\/data\?section=review/);
     await expect(
       page.getByTestId("review-inbox").getByRole("heading", {
         name: "Imports",

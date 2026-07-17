@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { test, expect } from "@playwright/test";
 import { readZip } from "../lib/zip";
+import { followLink } from "./helpers";
 
 // Full-account export (issue #18): clicking "Export all my data" on the Data →
 // Manage & Export surface downloads ONE non-empty zip that contains the manifest,
@@ -101,9 +102,17 @@ test.describe("Data manage pagination (#113)", () => {
     await expect(card.locator("tbody tr")).toHaveCount(25);
 
     // Next advances to page 2 and updates this dataset's URL param; the server
-    // re-reads the next page (rows 26–50).
-    await card.getByRole("button", { name: "Next" }).click();
-    await expect(page).toHaveURL(/p_medical_records=2/);
+    // re-reads the next page (rows 26–50). "Next" is a router.replace button, so a
+    // click landing in the pre-hydration window (this is the first interaction
+    // after the openManageTab goto) is swallowed and the URL never advances —
+    // followLink retries the click until this dataset's page param commits
+    // (#830/#889). The click is guarded by the destination match, so it stops the
+    // instant the URL shows page 2 and never double-advances to page 3.
+    await followLink(
+      page,
+      card.getByRole("button", { name: "Next" }),
+      /[?&]p_medical_records=2(?:&|$)/
+    );
     await expect(card.getByText(/^Showing 26–50 of \d+$/)).toBeVisible();
     await expect(card.getByText(/^Page 2 of \d+$/)).toBeVisible();
     await expect(card.locator("tbody tr")).toHaveCount(25);
