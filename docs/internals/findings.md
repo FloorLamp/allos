@@ -39,7 +39,11 @@ Status: **shipped** (findings/upcoming/notification spine; import-review `Activi
 Many engines decide _due / overdue / prioritized_, and the deciding engine often produces a good, cited reason — but before #656 those reasons were flattened by string concatenation into `UpcomingItem.detail` at generation, so a compact surface (the Telegram digest) could only re-derive per-domain counts and the "why sooner" never reached the push, and flagged biomarkers carried no reason at all. `Reason` (`lib/reasons.ts`) is the **first-class, structured** form carried ALONGSIDE — never replacing — the display `detail`:
 
 ```ts
-interface Reason { code: ReasonCode; text: string; source?: string | null }
+interface Reason {
+  code: ReasonCode;
+  text: string;
+  source?: string | null;
+}
 type ReasonCode = "risk-elevated" | "biomarker-flagged" | "situation-active";
 ```
 
