@@ -76,6 +76,8 @@ import {
   NOTIF_PROFILE,
   E2E_LOGIN_PROTEIN,
   PROTEIN_QUICKADD_PROFILE,
+  E2E_LOGIN_RECAP,
+  RECAP_PROFILE,
 } from "./fixture-logins";
 import { adoptTemplate, activateRoutine } from "../lib/routines";
 
@@ -1784,6 +1786,57 @@ db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(presenceId);
   );
 }
 seedMemberLogin(E2E_LOGIN_PRESENCE, presenceId);
+
+// A dedicated profile with a JUST-FINISHED strength session (#924): a manual
+// activity today with a start_time AND a recent end_time (~8 min ago) + two working
+// sets that hit their rep target, plus a prior session of the same lift a week
+// earlier so the recap flags a PR. So getWorkoutPresence reads `finished` and the
+// dashboard renders the finished-window recap card. Idempotent: clear activities first.
+const recapId = fixtureProfileId(RECAP_PROFILE);
+db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(recapId);
+{
+  const now = new Date();
+  const startIso = new Date(now.getTime() - 55 * 60_000);
+  const endIso = new Date(now.getTime() - 8 * 60_000);
+  // Prior session a week earlier — the baseline the finished session beats.
+  const priorId = Number(
+    db
+      .prepare(
+        `INSERT INTO activities
+           (profile_id, date, type, title, duration_min, source)
+         VALUES (?, ?, 'strength', 'Bench day', 45, NULL)`
+      )
+      .run(recapId, shiftDateStr(today(recapId), -7)).lastInsertRowid
+  );
+  db.prepare(
+    `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps, target_reps)
+       VALUES (?, 'Bench Press', 1, 60, 5, 5)`
+  ).run(priorId);
+  // Today's just-finished session: a warmup + two working sets at 65 kg × 5 (PR).
+  const finishedId = Number(
+    db
+      .prepare(
+        `INSERT INTO activities
+           (profile_id, date, type, title, duration_min, start_time, end_time, created_at, updated_at, source)
+         VALUES (?, ?, 'strength', 'Push day', 47, ?, ?, ?, ?, NULL)`
+      )
+      .run(
+        recapId,
+        today(recapId),
+        startIso.toISOString().slice(11, 16),
+        endIso.toISOString().slice(11, 16),
+        utcSqlString(startIso),
+        utcSqlString(endIso)
+      ).lastInsertRowid
+  );
+  db.prepare(
+    `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps, target_reps, warmup)
+       VALUES (?, 'Bench Press', 1, 40, 8, NULL, 1),
+              (?, 'Bench Press', 2, 65, 5, 5, 0),
+              (?, 'Bench Press', 3, 65, 5, 5, 0)`
+  ).run(finishedId, finishedId, finishedId);
+}
+seedMemberLogin(E2E_LOGIN_RECAP, recapId);
 
 function resetOnboardingProfile(profileId: number) {
   db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(profileId);

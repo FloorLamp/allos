@@ -613,12 +613,12 @@ export default function ActivityForm({
     createdId,
   ]);
 
-  // Save from the recap step: stamp the end time, leave live mode, and close (a
-  // finished session lands the user back on the journal card). Auto-save persists
-  // the fields; this is the explicit finalize the step promises.
+  // Save from the recap step: stamp the end time and leave live mode, collapsing to
+  // the plain editor for the now-finished session (the #340 finishWorkout landing).
+  // Auto-save persists the fields (end time + effort + notes); this is the explicit
+  // finalize the step promises — viewing the recap alone writes nothing.
   function saveRecapStep() {
     finishWorkout();
-    onClose?.();
   }
 
   const moreDetailsSummary = activityDisclosureSummary({
