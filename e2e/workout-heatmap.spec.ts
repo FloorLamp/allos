@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { followLink } from "./helpers";
 
 // Issue #186: the workout-density heatmap on Trends → Fitness. The seed lays down
 // 16 weeks of PPL strength sessions (3/week) for the login's profile, all with
@@ -43,9 +44,10 @@ test("a heatmap day deep-links to its Timeline view (#186)", async ({
     `/timeline?from=${date}&to=${date}#timeline-day-${date}`
   );
 
-  // Following it lands on the Timeline with that day's section present.
-  await first.click();
-  await expect(page).toHaveURL(new RegExp(`from=${date}`));
+  // Following it lands on the Timeline with that day's section present. Use
+  // followLink — a raw click intermittently lands in the pre-hydration swallow
+  // window and never advances the URL, this spec's retries=0 flake (#889/#868).
+  await followLink(page, first, new RegExp(`from=${date}`));
   await expect(
     page.getByRole("main").locator(`#timeline-day-${date}`)
   ).toBeVisible();

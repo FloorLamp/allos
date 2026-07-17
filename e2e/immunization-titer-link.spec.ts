@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { followLink } from "./helpers";
 
 // #382 — an immunity-titer row on /immunizations must link to the biomarker
 // detail page WITH its ?name= param. Without it the detail page rendered its
@@ -20,8 +21,10 @@ test("titer link lands on the populated biomarker detail page, not the empty sta
     "/biomarkers/view?name=Hepatitis%20B%20Surface%20Antibody"
   );
 
-  await titerLink.click();
-  await expect(page).toHaveURL(/\/biomarkers\/view\?name=/);
+  // Navigate past the pre-hydration swallow (#500/#830) with followLink — a raw
+  // click here intermittently lands in the hydration window and never advances
+  // the URL, which is the source of this spec's retries=0 flake (#889/#868).
+  await followLink(page, titerLink, /\/biomarkers\/view\?name=/);
   // Populated detail page — its heading names the marker; NOT the empty state.
   await expect(
     page.getByRole("heading", { name: "Hepatitis B Surface Antibody" })
