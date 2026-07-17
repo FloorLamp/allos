@@ -188,3 +188,12 @@ export const CONDITION_REVIEW_PROFILE = "Condition Review (e2e)";
 // SHARED profile would change its hero/Upcoming flag set and race neighbor specs.
 export const E2E_LOGIN_REASON = "e2e_reason";
 export const REASON_MODEL_PROFILE = "Reason Model (e2e)";
+
+// A dedicated ADULT profile carrying a LIVE, in-progress strength session (issue
+// #921): an activity logged today with a start_time, NO end_time, and a fresh
+// auto-save timestamp — so derived workout presence reads `active`. Drives the
+// app-wide workout dock (hydration + reopen) and the household presence chip.
+// Isolated on purpose — an always-"active" session on a SHARED profile would plant
+// a surprise dock/chip that races neighbor specs.
+export const E2E_LOGIN_PRESENCE = "e2e_presence";
+export const PRESENCE_PROFILE = "Workout Presence (e2e)";

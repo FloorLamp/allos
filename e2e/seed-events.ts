@@ -70,6 +70,8 @@ import {
   CONDITION_REVIEW_PROFILE,
   E2E_LOGIN_REASON,
   REASON_MODEL_PROFILE,
+  E2E_LOGIN_PRESENCE,
+  PRESENCE_PROFILE,
 } from "./fixture-logins";
 import { adoptTemplate, activateRoutine } from "../lib/routines";
 
@@ -1722,6 +1724,31 @@ seedMemberLogin(E2E_LOGIN_DUP, dupReviewId);
 const noGearId = fixtureProfileId(NO_GEAR_PROFILE);
 db.prepare(`DELETE FROM equipment WHERE profile_id = ?`).run(noGearId);
 seedMemberLogin(E2E_LOGIN_NOGEAR, noGearId);
+
+// A dedicated profile with a LIVE, in-progress strength session (issue #921): an
+// activity today with a start_time (~40 min ago), NO end_time, and a fresh
+// updated_at (auto-save timestamp) — so getWorkoutPresence reads `active`. Drives
+// the workout dock hydration/reopen and the household presence chip. Idempotent:
+// clear the profile's activities first so a reused server re-plants exactly one.
+const presenceId = fixtureProfileId(PRESENCE_PROFILE);
+db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(presenceId);
+{
+  const now = new Date();
+  const startIso = new Date(now.getTime() - 40 * 60_000);
+  const startHHMM = startIso.toISOString().slice(11, 16);
+  db.prepare(
+    `INSERT INTO activities
+       (profile_id, date, type, title, start_time, end_time, created_at, updated_at, source)
+     VALUES (?, ?, 'strength', 'Push day', ?, NULL, ?, ?, NULL)`
+  ).run(
+    presenceId,
+    today(presenceId),
+    startHHMM,
+    utcSqlString(startIso),
+    utcSqlString(now)
+  );
+}
+seedMemberLogin(E2E_LOGIN_PRESENCE, presenceId);
 
 function resetOnboardingProfile(profileId: number) {
   db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(profileId);
