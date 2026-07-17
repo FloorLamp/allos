@@ -13,6 +13,10 @@
 
 import { biomarkerDescriptionsDataset } from "./biomarker-descriptions";
 import { driDataset, driNutrientStrategy } from "./dri";
+import {
+  drugInteractionsDataset,
+  drugInteractionPairStrategy,
+} from "./drug-interactions";
 import { foodGroupsDataset } from "./food-groups";
 import { icd10Dataset, icd10CodeStrategy } from "./icd10-common";
 import {
@@ -24,6 +28,7 @@ import {
   nutrientFoodMapDataset,
   nutrientKeyStrategy,
 } from "./nutrient-food-map";
+import { pgxDataset, pgxGuidanceStrategy } from "./pgx";
 import { screeningsDataset, screeningKeyStrategy } from "./screenings";
 import {
   tempRedFlagsDataset,
@@ -56,6 +61,13 @@ export const DATASETS: RegisteredDataset[] = [
       unknown
     >,
     strategy: driNutrientStrategy,
+  },
+  {
+    dataset: drugInteractionsDataset as unknown as LoadedDataset<
+      Record<string, unknown>,
+      unknown
+    >,
+    strategy: drugInteractionPairStrategy,
   },
   {
     dataset: foodGroupsDataset as unknown as LoadedDataset<
@@ -91,6 +103,13 @@ export const DATASETS: RegisteredDataset[] = [
       unknown
     >,
     strategy: nutrientKeyStrategy,
+  },
+  {
+    dataset: pgxDataset as unknown as LoadedDataset<
+      Record<string, unknown>,
+      unknown
+    >,
+    strategy: pgxGuidanceStrategy,
   },
   {
     dataset: screeningsDataset as unknown as LoadedDataset<

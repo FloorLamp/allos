@@ -106,7 +106,7 @@ summary and uploads are stored but not extracted.
 ### Privacy — the RxNorm lookup is the only interaction-checker egress
 
 Drug-interaction checking runs entirely **on-box** against the bundled
-`lib/drug-interactions.json` dataset — no interaction API is called at request
+`lib/datasets/data/drug-interactions.json` dataset — no interaction API is called at request
 time, and detection works with **no network at all**. The single, optional
 exception is the **name → RxNorm** normalization: when you press **Find RxNorm
 code** on an item's edit form, the app sends **just that drug/supplement name**

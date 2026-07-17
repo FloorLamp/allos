@@ -1,9 +1,11 @@
-// Pre-generate the baked pharmacogenomics (PGx) cross-check dataset (lib/pgx.json),
-// used to flag when a stored PGx result (a genomic_variants row with
-// result_type='pharmacogenomic', issue #709) affects a medication in a profile's
-// ACTIVE stack — the "PGx result × active meds" safety cross-check (issue #710). It
-// is the genomics twin of the drug–drug interaction dataset (gen-drug-interactions
-// .ts → lib/drug-interactions.json): a stored variant is matched against the med
+// Pre-generate the baked pharmacogenomics (PGx) cross-check dataset
+// (lib/datasets/data/pgx.json), used to flag when a stored PGx result (a
+// genomic_variants row with result_type='pharmacogenomic', issue #709) affects a
+// medication in a profile's ACTIVE stack — the "PGx result × active meds" safety
+// cross-check (issue #710). As of #860 Track B (wave 2) it is a curated-dataset
+// FRAMEWORK envelope consumed via lib/datasets/pgx.ts. It is the genomics twin of the
+// drug–drug interaction dataset (gen-drug-interactions.ts): a stored variant is
+// matched against the med
 // stack exactly like a drug–drug interaction, and the affected medication carries a
 // note stating the phenotype on file + CPIC's guidance direction as INFORMATION.
 //
@@ -54,15 +56,18 @@
 //
 //   npm run gen:pgx
 //
-// The committed lib/pgx.json is a FIXED POINT of buildPgxDataset() (guarded by
-// lib/__tests__/pgx-dataset.test.ts) so the generator and the file can't silently
-// diverge. lib/pgx.json is in .prettierignore — prettier reformatting would break
-// the fixed-point string compare.
+// The committed lib/datasets/data/pgx.json is a FIXED POINT of buildPgxDataset()
+// (guarded by lib/__tests__/pgx-dataset.test.ts) so the generator and the file can't
+// silently diverge. The framework envelope is emitted with
+// `JSON.stringify(dataset, null, 2)`, which matches Prettier's JSON formatting, so no
+// .prettierignore entry is needed.
 
 import fs from "node:fs";
 import path from "node:path";
+import { DATASET_SCHEMA, type DatasetEnvelope } from "../lib/datasets/types";
+import { compositeKey } from "../lib/datasets/matcher";
 
-const OUT = path.join(process.cwd(), "lib", "pgx.json");
+const OUT = path.join(process.cwd(), "lib", "datasets", "data", "pgx.json");
 
 // Metabolizer / transporter phenotype CPIC keys on. SLCO1B1's "decreased/poor
 // function" transporter status is folded onto intermediate/poor so the whole
@@ -699,15 +704,26 @@ export function collapseMarker(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
-export interface PgxDataset {
-  $comment: string;
+// One framework entry: a CPIC gene–drug guidance row, plus its `combo` — the ordered
+// [gene, drug, status] COMPOSITE identity (status = the phenotype, or a "marker:"
+// token for HLA/VKORC1 rows), built with the framework's composite-key machinery. The
+// cross-check still reads gene/drug/phenotype/marker; `combo` is the dataset identity.
+export interface GuidanceEntry extends RawGuidance {
+  combo: [string, string, string];
+}
+
+// Dataset-level metadata that ISN'T a per-guidance row: schema version, the severity +
+// phenotype vocabularies, the drug concept vocabulary, and the star-allele → function
+// table (the diplotype→phenotype fallback).
+export interface PgxMeta {
   version: number;
   severities: PgxSeverity[];
   phenotypes: Phenotype[];
   drugs: RawDrug[];
   alleles: RawAllele[];
-  guidance: RawGuidance[];
 }
+
+export type PgxDataset = DatasetEnvelope<GuidanceEntry, PgxMeta>;
 
 const PHENOTYPES: Phenotype[] = [
   "poor",
@@ -778,15 +794,20 @@ export function buildPgxDataset(): PgxDataset {
       const marker = hasMarker
         ? [...new Set(g.marker!.map(collapseMarker).filter(Boolean))].sort()
         : undefined;
-      const id = `${g.gene}|${g.drug}|${g.phenotype ?? (marker ?? []).join(",")}`;
+      // The ordered [gene, drug, status] composite identity — `compositeKey` is the
+      // framework's ordered-composite key builder (the gene|drug|status machinery).
+      const status = g.phenotype ?? `marker:${(marker ?? []).join("+")}`;
+      const combo: [string, string, string] = [g.gene, g.drug, status];
+      const id = compositeKey(combo);
       if (gSeen.has(id)) throw new Error(`gen-pgx: duplicate guidance ${id}`);
       gSeen.add(id);
-      const row: RawGuidance = {
+      const row: GuidanceEntry = {
         gene: g.gene,
         drug: g.drug,
         severity: g.severity,
         guidance: g.guidance.trim(),
         source: g.source.trim(),
+        combo,
       };
       if (hasPheno) row.phenotype = g.phenotype;
       if (marker) row.marker = marker;
@@ -801,7 +822,10 @@ export function buildPgxDataset(): PgxDataset {
     );
 
   return {
-    $comment:
+    $schema: DATASET_SCHEMA,
+    id: "pgx",
+    title: "Pharmacogenomic (PGx) gene–drug guidance",
+    description:
       "Baked pharmacogenomics (PGx) cross-check dataset (issue #710) — flags when a " +
       "stored PGx result (a genomic_variants row, result_type='pharmacogenomic', " +
       "#709) affects a medication in the profile's ACTIVE stack. CURATED HIGH-VALUE " +
@@ -812,20 +836,34 @@ export function buildPgxDataset(): PgxDataset {
       "is NOT clearance, and the app never auto-changes a medication. Fully OFFLINE: " +
       "no gene/variant name ever leaves the box. Committed + HUMAN-REVIEWABLE; " +
       "regenerate with `npm run gen:pgx`.",
-    version: 1,
-    severities: SEVERITIES,
-    phenotypes: PHENOTYPES,
-    drugs,
-    alleles,
-    guidance,
+    citation: [
+      {
+        source:
+          "CPIC (Clinical Pharmacogenetics Implementation Consortium) gene–drug " +
+          "guidelines; FDA drug labeling + Table of Pharmacogenetic Associations; " +
+          "RxNorm (NLM); PharmVar/CPIC allele-function tables.",
+        url: "https://cpicpgx.org/guidelines/",
+        note: "Recommendation DIRECTION paraphrased (uncopyrightable clinical fact) and cited per-row; allele functions are public reference data. Curated high-value subset, not exhaustive.",
+      },
+    ],
+    identity: { keys: ["combo"] },
+    meta: {
+      version: 1,
+      severities: SEVERITIES,
+      phenotypes: PHENOTYPES,
+      drugs,
+      alleles,
+    },
+    entries: guidance,
   };
 }
 
 function writeDataset(): void {
   const dataset = buildPgxDataset();
+  fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, JSON.stringify(dataset, null, 2) + "\n");
   console.log(
-    `Wrote ${dataset.drugs.length} drug concepts, ${dataset.alleles.length} alleles, ${dataset.guidance.length} guidance rows to ${OUT}`
+    `Wrote ${dataset.meta!.drugs.length} drug concepts, ${dataset.meta!.alleles.length} alleles, ${dataset.entries.length} guidance rows to ${OUT}`
   );
   console.log("Review the pairs for plausibility before committing.");
 }
