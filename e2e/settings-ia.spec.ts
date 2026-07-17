@@ -63,7 +63,9 @@ test.describe("Settings IA (#928) — admin", () => {
       )
       .toBeLessThan(200);
     await expect(
-      page.locator("#training").getByRole("heading", { name: "Training" })
+      page
+        .locator("#training")
+        .getByRole("heading", { name: "Training", exact: true })
     ).toBeVisible();
   });
 
