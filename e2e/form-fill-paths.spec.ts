@@ -65,6 +65,24 @@ async function openNewActivity(page: Page) {
     .click();
 }
 
+// Delete the auto-saved draft so the shared fixture is left untouched across repeats.
+// CRITICAL for repeat-safety: filling a set makes the part savable, and the debounced
+// auto-save creates a NEW row. We must WAIT for the Delete button to appear (which only
+// happens once that row has persisted) BEFORE deleting — otherwise remove() takes its
+// no-row branch (just closes) and the pending unmount-flush save leaks an ORPHAN today
+// session, which shifts the next repeat's suggestion seed. Then assert the form closed,
+// so the flush can't re-create the row mid-teardown (remove() guards its signature).
+async function cleanUpDraft(page: Page) {
+  const del = page.getByRole("button", { name: "Delete", exact: true });
+  await expect(del).toBeVisible();
+  await del.click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Delete", exact: true })
+    .click();
+  await expect(page.getByTestId("activity-form")).toBeHidden();
+}
+
 test("deload week shaves the routine lift's next-set suggestion (#923)", async ({
   browser,
 }) => {
@@ -93,15 +111,7 @@ test("deload week shaves the routine lift's next-set suggestion (#923)", async (
     await card.getByRole("button", { name: "Use" }).click();
     await expect(weight).toHaveValue(/^90/);
 
-    // Clean up the auto-saved draft so the fixture is left untouched.
-    await settledClick(
-      page,
-      page.getByRole("button", { name: "Delete", exact: true })
-    );
-    await page
-      .getByRole("dialog")
-      .getByRole("button", { name: "Delete", exact: true })
-      .click();
+    await cleanUpDraft(page);
   } finally {
     await page.close();
   }
@@ -132,15 +142,7 @@ test("each Recent row repeats that session into the set editor (#923)", async ({
       page.getByTestId("set1-reps-stepper").getByRole("spinbutton")
     ).toHaveValue("8");
 
-    // Clean up the auto-saved draft.
-    await settledClick(
-      page,
-      page.getByRole("button", { name: "Delete", exact: true })
-    );
-    await page
-      .getByRole("dialog")
-      .getByRole("button", { name: "Delete", exact: true })
-      .click();
+    await cleanUpDraft(page);
   } finally {
     await page.close();
   }
