@@ -105,6 +105,18 @@ describe("adoptBloodTypeFromRecords", () => {
     ).toBeNull();
     expect(getBloodType(p)).toBeNull();
   });
+
+  // A group written as the DIGIT zero — the European notation, and the obvious
+  // AI/OCR misread of an O — adopts as group O rather than being dropped.
+  it("adopts a group written as a digit zero", () => {
+    const p = newProfile("bt-zero-group");
+    expect(
+      adoptBloodTypeFromRecords(p, [
+        reading("ABORh Interpretation", "0 Positive"),
+      ])
+    ).toBe("O+");
+    expect(getBloodTypeParts(p)).toEqual({ abo: "O", rh: "+" });
+  });
 });
 
 // The halves are stored apart precisely so PARTIAL results accumulate. Held as one

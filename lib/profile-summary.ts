@@ -215,9 +215,20 @@ const MAX_VITALS = 16;
 // Normalize the ABO group from a stored value string to one of A/B/AB/O, or null.
 // Tolerant of surrounding text ("Blood Group A", "Type O") and case; checks AB
 // before A/B so "AB" isn't read as "A".
+//
+// A standalone DIGIT ZERO is read as the letter O. That is not a guess: "0" is the
+// standard notation for group O across much of Europe (a German report prints "0 Rh
+// positiv"), and it is also the obvious failure mode of an AI/OCR pass over an
+// O — the two glyphs are near-identical. Either way, in a value that has already
+// been identified as a blood group, a lone "0" can only mean O; there is no ABO
+// group named zero. Bounded to a STANDALONE zero so a number is never mangled: the
+// guards exclude an adjacent digit, letter, or decimal separator, so "10", "1:100",
+// and "0.5" all keep their zero and resolve to no group.
 export function normalizeAbo(value: string | null | undefined): string | null {
   if (!value) return null;
-  const v = value.toUpperCase();
+  const v = value
+    .toUpperCase()
+    .replace(/(^|[^0-9A-Z.,])0(?=[^0-9A-Z.,]|$)/g, "$1O");
   if (/\bAB\b/.test(v) || /(^|[^A-Z])AB([^A-Z]|$)/.test(v)) return "AB";
   const hasA = /\bA\b/.test(v) || /(^|[^A-Z])A([^A-Z]|$)/.test(v);
   const hasB = /\bB\b/.test(v) || /(^|[^A-Z])B([^A-Z]|$)/.test(v);

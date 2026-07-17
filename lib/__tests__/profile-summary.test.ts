@@ -76,6 +76,25 @@ describe("normalizeAbo", () => {
     expect(normalizeAbo("")).toBeNull();
     expect(normalizeAbo("unknown")).toBeNull();
   });
+
+  // A lone digit ZERO means group O: it's the standard European notation ("0 Rh
+  // positiv") and the obvious AI/OCR misread of an O. There is no ABO group named
+  // zero, so in a value already identified as a blood group it can't mean anything
+  // else.
+  it("reads a standalone zero as the letter O", () => {
+    expect(normalizeAbo("0")).toBe("O");
+    expect(normalizeAbo("0 POSITIVE")).toBe("O");
+    expect(normalizeAbo("0 Rh positiv")).toBe("O"); // German report notation
+    expect(normalizeAbo("Group 0")).toBe("O");
+    expect(normalizeAbo("0+")).toBe("O");
+  });
+
+  // The coercion must never mangle a number: a zero touching a digit or a decimal
+  // separator is part of a value, not a blood group.
+  it("does not read a zero inside a number as a group", () => {
+    for (const v of ["10", "100", "40", "1:160", "0.5", "0,5"])
+      expect(normalizeAbo(v), v).toBeNull();
+  });
 });
 
 describe("normalizeRh", () => {
