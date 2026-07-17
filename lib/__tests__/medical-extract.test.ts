@@ -62,12 +62,43 @@ describe("extraction shape recognition + unwrap", () => {
   });
 
   it("leaves an ambiguous or unrecognizable object alone (no guessing)", () => {
-    // Two payload-shaped values: which one is the document? Don't guess — the
-    // caller's shape guard rejects it instead.
+    // Two equally payload-shaped values: which one is the document? Don't guess —
+    // the caller's shape guard rejects it instead.
     const ambiguous = { a: FLAT_PAYLOAD, b: FLAT_PAYLOAD };
     expect(unwrapExtractionInput(ambiguous)).toBe(ambiguous);
     const junk = { foo: 1 };
     expect(unwrapExtractionInput(junk)).toBe(junk);
+    expect(unwrapExtractionInput({})).toEqual({});
+  });
+
+  // The nastiest variant: an envelope PLUS a stray top-level schema key. A
+  // "names any key?" test judges this already-flat, skips the unwrap, and
+  // reproduces the exact zero-record bug. The payload must win on score.
+  it("lifts the payload out of a HYBRID envelope (wrapper + a stray top-level key)", () => {
+    const hybrid = { document_type: "lab report", document_data: FLAT_PAYLOAD };
+    expect(unwrapExtractionInput(hybrid)).toEqual(FLAT_PAYLOAD);
+    // …and the records actually come through, which is the point.
+    expect(normalizeResults(unwrapExtractionInput(hybrid))).toHaveLength(1);
+  });
+
+  it("picks the payload over a weaker sibling metadata object", () => {
+    // {payload, metadata:{source}} — `source` alone is a schema key, so a
+    // presence test would call this ambiguous and reject a recoverable response.
+    const withSibling = {
+      document_data: FLAT_PAYLOAD,
+      metadata: { source: "Some Lab" },
+    };
+    expect(unwrapExtractionInput(withSibling)).toEqual(FLAT_PAYLOAD);
+  });
+
+  it("does not dig into a payload's own values (input wins ties)", () => {
+    // A correct payload is returned as-is even though it contains objects.
+    const nestedish = {
+      ...FLAT_PAYLOAD,
+      source: "Lab",
+      extra: { results: [] },
+    };
+    expect(unwrapExtractionInput(nestedish)).toBe(nestedish);
   });
 
   it("regression: a wrapped payload normalizes to 0 records raw, all records unwrapped", () => {

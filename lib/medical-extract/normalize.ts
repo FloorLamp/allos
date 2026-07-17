@@ -50,33 +50,57 @@ const EXTRACTION_TOP_LEVEL_KEYS = new Set([
   "imaging_studies",
 ]);
 
-// Whether an object carries the extraction payload — i.e. names at least one of the
-// tool schema's top-level keys. Used both to recognize a nested payload and to tell
-// a MISSHAPEN response apart from a genuinely empty one (a document with nothing to
-// extract still answers with the schema's keys and empty arrays).
+// How many of the tool schema's top-level keys an object names — how payload-like
+// it is. 0 means "not the payload"; a conformant response scores at least 2, since
+// the schema marks document_type + results required.
+function extractionKeyCount(value: unknown): number {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return 0;
+  return Object.keys(value).filter((k) => EXTRACTION_TOP_LEVEL_KEYS.has(k))
+    .length;
+}
+
+// Whether an object carries the extraction payload — i.e. names any of the tool
+// schema's top-level keys. Used to tell a MISSHAPEN response apart from a genuinely
+// empty one: a document with nothing to extract still answers with the schema's keys
+// and empty arrays, so it is recognized and stays a legitimate 0-row import.
 export function looksLikeExtractionInput(value: unknown): boolean {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  return Object.keys(value).some((k) => EXTRACTION_TOP_LEVEL_KEYS.has(k));
+  return extractionKeyCount(value) > 0;
 }
 
 // Lift the payload out of a wrapper object the model nested it under.
 //
 // The tool schema is FLAT ({document_type, results, …}), but a model sometimes
-// answers with the whole payload wrapped in one envelope key
+// answers with the whole payload wrapped in an envelope key
 // ({document_data: {document_type, results, …}}). Nothing downstream reads that
 // shape — every normalizer does `raw?.results` etc. — so the wrapper silently
 // yielded ZERO records with no error: indistinguishable from an empty document.
 //
-// Deliberately CONSERVATIVE: only unwraps when the outer object names none of the
-// schema's keys AND exactly one of its values is itself a recognizable payload. An
-// already-correct input is returned untouched, and an ambiguous object (several
-// payload-shaped values) is left alone for the caller's shape guard to reject
-// rather than guessing which one to take.
+// Resolved by SCORE, not by presence: the payload is whichever candidate — the input
+// itself, or one of its values — names the most schema keys. Scoring matters because
+// a "does it name any key?" test is too weak a signal in two real ways:
+//   • a HYBRID envelope ({document_type: "lab", document_data: {…the real payload}})
+//     would look already-flat on that test, skip the unwrap, and reproduce the exact
+//     zero-record bug this exists to prevent;
+//   • a sibling metadata object ({document_data: {…}, metadata: {source: "…"}}) would
+//     look like a second payload and make a recoverable response ambiguous.
+// Both resolve correctly once the strongest candidate wins.
+//
+// Still conservative where it counts: the input wins ties (an already-correct payload
+// is returned untouched), the scan is one level deep, and a genuine tie between nested
+// candidates is left alone for the caller's shape guard to reject rather than guessing
+// which one is the document.
 export function unwrapExtractionInput(input: unknown): unknown {
-  if (looksLikeExtractionInput(input)) return input;
   if (!input || typeof input !== "object" || Array.isArray(input)) return input;
-  const nested = Object.values(input).filter(looksLikeExtractionInput);
-  return nested.length === 1 ? nested[0] : input;
+  const own = extractionKeyCount(input);
+  const nested = Object.values(input)
+    .map((value) => ({ value, score: extractionKeyCount(value) }))
+    .filter((c) => c.score > 0);
+  if (!nested.length) return input;
+  const best = Math.max(...nested.map((c) => c.score));
+  // The input is at least as payload-like as anything inside it — take it as-is.
+  if (best <= own) return input;
+  const winners = nested.filter((c) => c.score === best);
+  return winners.length === 1 ? winners[0].value : input;
 }
 
 // Normalize a document's stated sex/gender ("M", "Female", "MALE", …) to our
