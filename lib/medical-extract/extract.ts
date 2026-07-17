@@ -18,6 +18,8 @@ import {
   normalizeSex,
   normalizeBirthdate,
   normalizeAge,
+  unwrapExtractionInput,
+  looksLikeExtractionInput,
 } from "./normalize";
 import type { ExtractionResult, ExtractionMeta } from "./types";
 
@@ -134,19 +136,30 @@ export async function extractMedicalDocument(
       return { status: "failed", error: "Model returned no structured data." };
     }
 
-    const input = toolUse.input as any;
-    const results = normalizeResults(input, knownCanonical);
-    const immunizations = normalizeImmunizations(input);
-    const clinical = normalizeClinicalDomains(input);
+    // The tool schema is flat, but a model sometimes nests the whole payload under
+    // one envelope key ({document_data: {…}}). Lift it — every normalizer below
+    // reads `input.results` / `input.conditions` / … directly, so a wrapper used to
+    // yield ZERO records with no error.
+    const input = unwrapExtractionInput(toolUse.input) as any;
 
     // If the model ran out of output budget, the results array is likely
     // truncated (or empty). Surface that instead of silently importing a
     // partial set as "done".
+    //
+    // Checked BEFORE the shape guard below: a truncated response can also be
+    // unparseable (cut off before the schema's keys accumulated), and "raise the
+    // limit or split the document" is the actionable advice — a shape complaint
+    // would send the user to re-extract, which fails identically every time.
     if (msg.stop_reason === "max_tokens") {
+      // Count only what's countable: a truncation cut short enough to leave an
+      // unrecognizable payload parses to nothing.
+      const parsed = looksLikeExtractionInput(input)
+        ? normalizeResults(input, knownCanonical).length
+        : 0;
       log.error("failed: truncated at output limit", {
         filename,
         secs,
-        parsed: results.length,
+        parsed,
         max_tokens: MAX_TOKENS,
       });
       recordAiEvent({
@@ -154,14 +167,53 @@ export async function extractMedicalDocument(
         status: "failed",
         model: MODEL,
         durationMs: Date.now() - startedAt,
-        detail: `${filename} — ${results.length} parsed before truncation`,
+        detail: `${filename} — ${parsed} parsed before truncation`,
         error: `Truncated at the output limit (${MAX_TOKENS} tokens).`,
       });
       return {
         status: "failed",
-        error: `Extraction was truncated at the output limit (${MAX_TOKENS} tokens) with ${results.length} result(s) parsed. Raise HEALTH_AI_MAX_TOKENS or split the document, then re-upload.`,
+        error: `Extraction was truncated at the output limit (${MAX_TOKENS} tokens) with ${parsed} result(s) parsed. Raise HEALTH_AI_MAX_TOKENS or split the document, then re-upload.`,
       };
     }
+
+    // A response that names none of the schema's keys is MISSHAPEN, not empty: the
+    // normalizers would return [] for it, which is indistinguishable from a document
+    // that genuinely had nothing to extract (that still answers with the schema's
+    // keys and empty arrays). Fail loudly instead of finalizing 'done' with 0 rows —
+    // a silent zero-import is the worst outcome here, since nothing signals that the
+    // document needs another look.
+    if (!looksLikeExtractionInput(input)) {
+      const keys = Object.keys((toolUse.input as object) ?? {})
+        .slice(0, 5)
+        .join(", ");
+      log.error("failed: unrecognized extraction shape", {
+        filename,
+        secs,
+        keys,
+      });
+      recordAiEvent({
+        feature: "extraction",
+        status: "failed",
+        model: MODEL,
+        durationMs: Date.now() - startedAt,
+        // The payload is NOT persisted on a failure (raw_extraction is only written
+        // on the success path), so when prompt logging is on, carry it here — it is
+        // the only evidence of what the next envelope variant looked like.
+        detail: capDetail(
+          `${filename} — unrecognized shape (top-level keys: ${keys || "none"})` +
+            (LOG_PROMPTS ? `\nresponse: ${JSON.stringify(toolUse.input)}` : "")
+        ),
+        error: "Model returned an unrecognized response shape.",
+      });
+      return {
+        status: "failed",
+        error: `The model returned data in an unrecognized shape (top-level keys: ${keys || "none"}), so nothing could be imported. Reprocess the document to try again.`,
+      };
+    }
+
+    const results = normalizeResults(input, knownCanonical);
+    const immunizations = normalizeImmunizations(input);
+    const clinical = normalizeClinicalDomains(input);
     const meta: ExtractionMeta = {
       document_type:
         typeof input?.document_type === "string" ? input.document_type : null,

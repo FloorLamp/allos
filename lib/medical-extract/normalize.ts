@@ -25,6 +25,84 @@ import type {
   ExtractedImagingStudy,
 } from "./types";
 
+// The tool schema's TOP-LEVEL property names (the `save_medical_data` input_schema
+// in ./prompt). Every normalizer below reads the payload off these keys, so their
+// presence is what identifies "this object IS the extraction payload". Keep in sync
+// with TOOL.input_schema.properties.
+const EXTRACTION_TOP_LEVEL_KEYS = new Set([
+  "document_type",
+  "source",
+  "patient_name",
+  "patient_sex",
+  "patient_birthdate",
+  "patient_age",
+  "document_date",
+  "results",
+  "immunizations",
+  "conditions",
+  "allergies",
+  "procedures",
+  "encounters",
+  "family_history",
+  "care_plan",
+  "care_goals",
+  "genomic_variants",
+  "imaging_studies",
+]);
+
+// How many of the tool schema's top-level keys an object names — how payload-like
+// it is. 0 means "not the payload"; a conformant response scores at least 2, since
+// the schema marks document_type + results required.
+function extractionKeyCount(value: unknown): number {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return 0;
+  return Object.keys(value).filter((k) => EXTRACTION_TOP_LEVEL_KEYS.has(k))
+    .length;
+}
+
+// Whether an object carries the extraction payload — i.e. names any of the tool
+// schema's top-level keys. Used to tell a MISSHAPEN response apart from a genuinely
+// empty one: a document with nothing to extract still answers with the schema's keys
+// and empty arrays, so it is recognized and stays a legitimate 0-row import.
+export function looksLikeExtractionInput(value: unknown): boolean {
+  return extractionKeyCount(value) > 0;
+}
+
+// Lift the payload out of a wrapper object the model nested it under.
+//
+// The tool schema is FLAT ({document_type, results, …}), but a model sometimes
+// answers with the whole payload wrapped in an envelope key
+// ({document_data: {document_type, results, …}}). Nothing downstream reads that
+// shape — every normalizer does `raw?.results` etc. — so the wrapper silently
+// yielded ZERO records with no error: indistinguishable from an empty document.
+//
+// Resolved by SCORE, not by presence: the payload is whichever candidate — the input
+// itself, or one of its values — names the most schema keys. Scoring matters because
+// a "does it name any key?" test is too weak a signal in two real ways:
+//   • a HYBRID envelope ({document_type: "lab", document_data: {…the real payload}})
+//     would look already-flat on that test, skip the unwrap, and reproduce the exact
+//     zero-record bug this exists to prevent;
+//   • a sibling metadata object ({document_data: {…}, metadata: {source: "…"}}) would
+//     look like a second payload and make a recoverable response ambiguous.
+// Both resolve correctly once the strongest candidate wins.
+//
+// Still conservative where it counts: the input wins ties (an already-correct payload
+// is returned untouched), the scan is one level deep, and a genuine tie between nested
+// candidates is left alone for the caller's shape guard to reject rather than guessing
+// which one is the document.
+export function unwrapExtractionInput(input: unknown): unknown {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return input;
+  const own = extractionKeyCount(input);
+  const nested = Object.values(input)
+    .map((value) => ({ value, score: extractionKeyCount(value) }))
+    .filter((c) => c.score > 0);
+  if (!nested.length) return input;
+  const best = Math.max(...nested.map((c) => c.score));
+  // The input is at least as payload-like as anything inside it — take it as-is.
+  if (best <= own) return input;
+  const winners = nested.filter((c) => c.score === best);
+  return winners.length === 1 ? winners[0].value : input;
+}
+
 // Normalize a document's stated sex/gender ("M", "Female", "MALE", …) to our
 // canonical Sex, or null when absent/unrecognized (e.g. "unknown", "other").
 export function normalizeSex(raw: unknown): Sex | null {
