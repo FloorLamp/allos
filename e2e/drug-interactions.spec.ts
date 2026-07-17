@@ -26,10 +26,14 @@ test("shows the seeded warfarin + ibuprofen interaction warning on /medications"
 });
 
 // Clears interaction dismissals so the warfarin finding is guaranteed visible at
-// the start of the dismiss test, regardless of retries or prior runs against the
-// shared seeded DB (a dismissal persists in upcoming_dismissals — the
-// resetPreventiveFixture pattern from #206). Short-lived connection, busy timeout
-// so it never contends with the running server (WAL).
+// the start of EVERY test, regardless of retries, --repeat-each, or a prior run
+// against the shared seeded DB (a dismissal persists in upcoming_dismissals — the
+// resetPreventiveFixture pattern from #206). This is the #868 fixture-ownership fix:
+// the dismiss test below silences the warfarin+ibuprofen finding on the SHARED seed,
+// and — because the finding is bus-gated (dismiss once, silence both surfaces) — that
+// dismissal used to leak into the FIRST test's "warning is visible" assertion on the
+// next repeat. Resetting before each test makes the file own its dismissal state.
+// Short-lived connection, busy timeout so it never contends with the running server (WAL).
 function resetInteractionDismissals(): void {
   const dbPath =
     process.env.ALLOS_DB_PATH ??
@@ -45,10 +49,13 @@ function resetInteractionDismissals(): void {
   }
 }
 
+test.beforeEach(() => {
+  resetInteractionDismissals();
+});
+
 test("the interaction surfaces on Upcoming and stays hidden once dismissed", async ({
   page,
 }) => {
-  resetInteractionDismissals();
   await page.goto("/upcoming");
   const main = page.getByRole("main");
 
