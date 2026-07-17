@@ -856,6 +856,37 @@ for (let w = 0; w < 6; w++) {
   for (let s = 1; s <= 3; s++) insDismissSet.run(actId, s);
 }
 
+// #789 — a CUSTOM-ONLY strength session for the per-session muscle-figure spec's
+// negative case: one strength activity whose only lift is a made-up, non-catalog
+// name, so `musclesWorked` resolves to the empty set and the Journal card's
+// per-session anatomy figure degrades to nothing. Unique title so the spec targets
+// it exactly; a recent date so it lands in the Journal's first (newest) page. The
+// custom lift has no catalog muscle tags, so it adds nothing to weekly coverage and
+// leaves the coverage/volume-band specs undisturbed. Idempotent.
+const MUSCLE_FIG_CUSTOM = "Custom-only lift day (e2e)";
+db.prepare(`DELETE FROM activities WHERE profile_id = ? AND title = ?`).run(
+  PROFILE_ID,
+  MUSCLE_FIG_CUSTOM
+);
+const muscleFigActId = Number(
+  db
+    .prepare(
+      `INSERT INTO activities (profile_id, date, type, title, duration_min, intensity, source, external_id)
+       VALUES (?, ?, 'strength', ?, 40, 'hard', 'manual', 'e2e:muscle-fig-custom')`
+    )
+    .run(PROFILE_ID, shiftDateStr(today(PROFILE_ID), -1), MUSCLE_FIG_CUSTOM)
+    .lastInsertRowid
+);
+const insMuscleFigSet = db.prepare(
+  `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps)
+   VALUES (?, 'E2E Bespoke Machine Press', ?, 40, 10)`
+);
+for (let s = 1; s <= 3; s++) insMuscleFigSet.run(muscleFigActId, s);
+
+console.log(
+  `e2e: seeded a custom-only strength session "${MUSCLE_FIG_CUSTOM}" for the per-session muscle-figure spec (#789)`
+);
+
 // Domain 5 — a probable-error weight JUMP: one outlier reading (92 kg) three days
 // after the prior weekly weigh-in (~80.5 kg), ~14% above it — a scale-glitch
 // signature the body-hygiene rule flags on Trends → Body.
