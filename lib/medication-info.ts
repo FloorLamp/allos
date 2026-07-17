@@ -1,39 +1,29 @@
-// Educational medication descriptions lookup. Reads the committed
-// lib/medication-descriptions.json — a neutral "what it is / drug class / what
-// it's commonly used for" entry for a broad set of common medications — and
-// exposes a pure accessor. No DB or network: it's a map over a bundled asset,
-// so the /medicine cards can surface an explainer without any schema change.
+// Educational medication descriptions lookup — the DOMAIN accessor over the
+// curated-dataset framework's medication-descriptions dataset (issue #860 Track B,
+// wave 2). The data + matcher now live in lib/datasets/medication-descriptions.ts (a
+// neutral "what it is / drug class / commonly used for" entry per medication, generated
+// by scripts/gen-medication-descriptions.ts and validated by loadDataset); this module
+// keeps the accessor surface every consumer already imports. No DB or network.
 //
-// Keys are the NORMALIZED generic name (lowercase). Input is normalized the SAME
-// way stored medication names are grouped elsewhere — lib/prescription-parse's
-// cleanMedicationName (strips a trailing strength/form) plus lowercasing — so a
-// stored intake_items/medication_courses name resolves to the right entry.
-// Brand names double as aliases (auto-indexed), and an explicit alias map covers
-// alternate spellings, abbreviations, and common salt forms.
-// INFORMATIONAL, NOT MEDICAL ADVICE.
+// Names are normalized the SAME way stored medication names are grouped elsewhere —
+// cleanMedicationName (strips a trailing strength/form) plus lowercasing (normalizeMedName,
+// re-exported from the dataset module) — so a stored intake_items/medication_courses name
+// resolves to the right entry. Brand names + an explicit alias map fold into each entry's
+// match_keys, so the framework's multi-value matcher finds one entry under any of its
+// names. INFORMATIONAL, NOT MEDICAL ADVICE.
 
-import { cleanMedicationName } from "./prescription-parse";
-import medsJson from "./medication-descriptions.json";
-import type { FoodTiming } from "./types";
-import type { TimeBucket } from "./supplement-schedule";
+import {
+  MED_DESCRIPTION_ENTRIES,
+  medEntryForName,
+  normalizeMedName,
+  type MedDescriptionEntry,
+  type MedicationTypical,
+} from "./datasets/medication-descriptions";
 
-// Curated, CITED "typical use" conventions for a medication (issue #846) — the
-// label-standard defaults the selection-prefill resolver suggests when this med is
-// picked on the form (asNeeded/foodTiming/timeOfDay). ONLY encode label-standard,
-// citable conventions here (NSAIDs → with food; statins → evening; levothyroxine →
-// empty stomach, morning); absent fields mean NO suggestion, never a guess. Every
-// entry carries a `source` (the cited-dataset discipline, mirroring prn-defaults).
-// INFORMATIONAL — a suggestion the user confirms/edits, never applied silently.
-export interface MedicationTypical {
-  // Commonly taken "as needed" (PRN) rather than on a fixed schedule.
-  asNeeded?: boolean;
-  // The label's standard food relationship (e.g. NSAIDs with food).
-  foodTiming?: FoodTiming;
-  // The label's standard time of day (e.g. statins in the evening).
-  timeOfDay?: TimeBucket;
-  // Citation for the convention (a public label / prescribing-information figure).
-  source: string;
-}
+// Re-export the normalization + typical-block type from their framework home so the
+// existing consumer import paths (`@/lib/medication-info`) are unchanged.
+export { normalizeMedName };
+export type { MedicationTypical } from "./datasets/medication-descriptions";
 
 export interface MedicationInfo {
   // Canonical generic display name (e.g. "Ibuprofen").
@@ -49,52 +39,30 @@ export interface MedicationInfo {
   typical?: MedicationTypical;
 }
 
-const MEDICATIONS: Record<string, MedicationInfo> =
-  (medsJson as { medications?: Record<string, MedicationInfo> }).medications ??
-  {};
-
-const ALIASES: Record<string, string> =
-  (medsJson as { aliases?: Record<string, string> }).aliases ?? {};
-
-// Normalize a raw medication name to the lookup key form: strip a trailing
-// strength/form via cleanMedicationName (the same grouping used for stored meds),
-// then lowercase and collapse whitespace.
-export function normalizeMedName(raw: string | null | undefined): string {
-  if (!raw) return "";
-  return cleanMedicationName(raw).toLowerCase().replace(/\s+/g, " ").trim();
+// Project a framework entry down to the historical MedicationInfo shape (the public
+// contract): generic / brand_names / drug_class / description / typical, WITHOUT the
+// entry's internal key / synonyms / match_keys. Omits absent optionals so the returned
+// object matches the pre-migration shape.
+function toInfo(entry: MedDescriptionEntry): MedicationInfo {
+  const info: MedicationInfo = {
+    generic: entry.generic,
+    description: entry.description,
+  };
+  if (entry.brand_names) info.brand_names = entry.brand_names;
+  if (entry.drug_class) info.drug_class = entry.drug_class;
+  if (entry.typical) info.typical = entry.typical;
+  return info;
 }
 
-// Alias index built from each entry's brand_names (normalized → generic key),
-// merged with the explicit alias map. Entry keys always win over brand aliases.
-const ALIAS_INDEX: Map<string, string> = (() => {
-  const map = new Map<string, string>();
-  for (const [genericKey, info] of Object.entries(MEDICATIONS)) {
-    for (const brand of info.brand_names ?? []) {
-      const b = normalizeMedName(brand);
-      if (b && !map.has(b)) map.set(b, genericKey);
-    }
-  }
-  // Explicit aliases (alternate spellings / salt forms) take precedence.
-  for (const [alias, target] of Object.entries(ALIASES)) {
-    const a = normalizeMedName(alias);
-    if (a) map.set(a, target);
-  }
-  return map;
-})();
-
-// The educational description for a medication name, or null when the drug is not
-// in the curated set. Resolves by: normalized generic key, then the alias index
-// (brand names + explicit aliases). Case-insensitive; unmatched names return null.
+// The educational description for a medication name, or null when the drug is not in
+// the curated set. Resolves by generic / brand / alias via the framework's multi-value
+// matcher (behavior-identical to the former direct-key + alias-index lookup — the
+// dataset's match keys are collision-free). Case-insensitive; unmatched names → null.
 export function getMedicationInfo(
   name: string | null | undefined
 ): MedicationInfo | null {
-  const key = normalizeMedName(name);
-  if (!key) return null;
-  const direct = MEDICATIONS[key];
-  if (direct) return direct;
-  const aliasTarget = ALIAS_INDEX.get(key);
-  if (aliasTarget && MEDICATIONS[aliasTarget]) return MEDICATIONS[aliasTarget];
-  return null;
+  const entry = medEntryForName(name);
+  return entry ? toInfo(entry) : null;
 }
 
 // ---- Medication name combobox source (issue #817) ----
@@ -107,7 +75,7 @@ export function getMedicationInfo(
 // lib/__tests__/medication-descriptions.test.ts.
 export function medicationCatalogNames(): string[] {
   const names = new Set<string>();
-  for (const info of Object.values(MEDICATIONS)) {
+  for (const info of MED_DESCRIPTION_ENTRIES) {
     if (info.generic) names.add(info.generic);
     for (const brand of info.brand_names ?? []) {
       if (brand) names.add(brand);
@@ -145,7 +113,7 @@ export function medicationCatalogLabel(
 // Sorted by label. Pure over the bundled asset; pinned by the descriptions test.
 export function medicationCatalogOptions(): string[] {
   const opts: string[] = [];
-  for (const info of Object.values(MEDICATIONS)) {
+  for (const info of MED_DESCRIPTION_ENTRIES) {
     if (!info.generic) continue;
     opts.push(medicationCatalogLabel(info.generic, info.brand_names ?? []));
   }
@@ -194,7 +162,7 @@ export function resolveMedicationPick(
 // bundled asset.
 export function medicationBrandNames(): string[] {
   const brands = new Set<string>();
-  for (const info of Object.values(MEDICATIONS)) {
+  for (const info of MED_DESCRIPTION_ENTRIES) {
     for (const brand of info.brand_names ?? []) {
       if (brand) brands.add(brand);
     }
@@ -233,19 +201,15 @@ export function splitMedicationName(picked: string | null | undefined): {
   const raw = (picked ?? "").trim();
   if (!raw) return { name: "", brand: null };
   const key = normalizeMedName(raw);
-  // A generic key hit → it's already the generic; no brand.
-  const direct = MEDICATIONS[key];
-  if (direct) return { name: direct.generic, brand: null };
-  // A brand/alias hit → the generic display name, keeping the brand ONLY when the
-  // picked token is truly one of that entry's brand names (an alias/salt-form
+  const entry = medEntryForName(raw);
+  if (!entry) return { name: raw, brand: null };
+  // A direct generic hit (the picked token IS this entry's generic key) → no brand.
+  if (key === entry.key) return { name: entry.generic, brand: null };
+  // Otherwise a brand/alias hit → the generic display name, keeping the brand ONLY
+  // when the picked token is truly one of that entry's brand names (an alias/salt-form
   // synonym is not a brand — it becomes the generic name with no brand).
-  const target = ALIAS_INDEX.get(key);
-  const info = target ? MEDICATIONS[target] : undefined;
-  if (info) {
-    const isBrand = (info.brand_names ?? []).some(
-      (b) => normalizeMedName(b) === key
-    );
-    return { name: info.generic, brand: isBrand ? raw : null };
-  }
-  return { name: raw, brand: null };
+  const isBrand = (entry.brand_names ?? []).some(
+    (b) => normalizeMedName(b) === key
+  );
+  return { name: entry.generic, brand: isBrand ? raw : null };
 }

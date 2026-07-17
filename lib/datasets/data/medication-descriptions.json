@@ -1,0 +1,2962 @@
+{
+  "$schema": "allos-dataset/v1",
+  "id": "medication-descriptions",
+  "title": "Educational medication descriptions",
+  "description": "Baked, human-reviewable educational descriptions for common medications — a neutral 'what it is / drug class / commonly used for' entry keyed by generic name, with brand names and alternate spellings as lookup aliases (the framework's multi-value matcher). Some entries carry a CITED `typical` block (label-standard asNeeded/foodTiming/timeOfDay conventions, #846) the med form's selection-prefill suggests. INFORMATIONAL, NOT MEDICAL ADVICE — no dosing guidance, no diagnosis, no personal recommendations; unmatched medications simply show no description. Regenerate with `npm run gen:medication-descriptions`.",
+  "citation": [
+    {
+      "source": "U.S. National Library of Medicine — MedlinePlus Drug Information and DailyMed FDA drug labels (public).",
+      "url": "https://medlineplus.gov/druginformation.html",
+      "note": "Neutral educational drug summaries and class/use information, curated and simplified for personal tracking; per-entry `typical` blocks cite their own OTC/prescribing-label source."
+    }
+  ],
+  "identity": {
+    "keys": [
+      "match_keys"
+    ]
+  },
+  "entries": [
+    {
+      "key": "acetaminophen",
+      "generic": "Acetaminophen",
+      "brand_names": [
+        "Tylenol"
+      ],
+      "synonyms": [
+        "paracetamol",
+        "tylenol"
+      ],
+      "drug_class": "Analgesic / antipyretic",
+      "description": "Acetaminophen is a widely used pain reliever and fever reducer. It is commonly used for mild to moderate pain and to lower fever, and unlike NSAIDs it has little anti-inflammatory effect.",
+      "typical": {
+        "asNeeded": true,
+        "source": "OTC Drug Facts label — acetaminophen; for temporary relief of minor aches, pains, and fever, taken as needed, U.S. FDA."
+      },
+      "match_keys": [
+        "Acetaminophen",
+        "Tylenol",
+        "paracetamol"
+      ]
+    },
+    {
+      "key": "ibuprofen",
+      "generic": "Ibuprofen",
+      "brand_names": [
+        "Advil",
+        "Motrin"
+      ],
+      "drug_class": "NSAID (nonsteroidal anti-inflammatory drug)",
+      "description": "Ibuprofen is a nonsteroidal anti-inflammatory drug (NSAID) used to relieve pain, reduce fever, and calm inflammation. It is commonly taken for headaches, muscle aches, menstrual cramps, and arthritis.",
+      "typical": {
+        "asNeeded": true,
+        "foodTiming": "with_food",
+        "source": "OTC Drug Facts label — ibuprofen (NSAID); take with food or milk if stomach upset; for temporary relief of minor aches, pains, and fever, taken as needed, U.S. FDA."
+      },
+      "match_keys": [
+        "Ibuprofen",
+        "Advil",
+        "Motrin"
+      ]
+    },
+    {
+      "key": "naproxen",
+      "generic": "Naproxen",
+      "brand_names": [
+        "Aleve",
+        "Naprosyn"
+      ],
+      "drug_class": "NSAID",
+      "description": "Naproxen is a nonsteroidal anti-inflammatory drug (NSAID) that reduces pain, inflammation, and fever. It is often used for arthritis, muscle and joint pain, and menstrual cramps, and tends to be longer-acting than some other NSAIDs.",
+      "typical": {
+        "asNeeded": true,
+        "foodTiming": "with_food",
+        "source": "OTC Drug Facts label — naproxen sodium (Aleve, NSAID); take with food or milk if stomach upset, U.S. FDA."
+      },
+      "match_keys": [
+        "Naproxen",
+        "Aleve",
+        "Naprosyn"
+      ]
+    },
+    {
+      "key": "aspirin",
+      "generic": "Aspirin",
+      "brand_names": [
+        "Bayer",
+        "Ecotrin"
+      ],
+      "synonyms": [
+        "asa",
+        "acetylsalicylic acid"
+      ],
+      "drug_class": "NSAID / antiplatelet",
+      "description": "Aspirin is a nonsteroidal anti-inflammatory drug that relieves pain and fever and, at low doses, reduces the tendency of blood to clot. Low-dose aspirin is commonly used to lower the risk of heart attack and stroke in certain people.",
+      "typical": {
+        "foodTiming": "with_food",
+        "source": "OTC Drug Facts label — aspirin; take with a full glass of water, with food if stomach upset, U.S. FDA."
+      },
+      "match_keys": [
+        "Aspirin",
+        "Bayer",
+        "Ecotrin",
+        "asa",
+        "acetylsalicylic acid"
+      ]
+    },
+    {
+      "key": "diclofenac",
+      "generic": "Diclofenac",
+      "brand_names": [
+        "Voltaren",
+        "Cataflam"
+      ],
+      "drug_class": "NSAID",
+      "description": "Diclofenac is a nonsteroidal anti-inflammatory drug used to relieve pain and inflammation. It is available as tablets and as a topical gel and is commonly used for arthritis and localized joint or muscle pain.",
+      "match_keys": [
+        "Diclofenac",
+        "Voltaren",
+        "Cataflam"
+      ]
+    },
+    {
+      "key": "celecoxib",
+      "generic": "Celecoxib",
+      "brand_names": [
+        "Celebrex"
+      ],
+      "drug_class": "NSAID (COX-2 inhibitor)",
+      "description": "Celecoxib is a COX-2 selective nonsteroidal anti-inflammatory drug used to treat pain and inflammation, particularly in arthritis. It is designed to reduce inflammation with somewhat less risk of stomach irritation than older NSAIDs.",
+      "match_keys": [
+        "Celecoxib",
+        "Celebrex"
+      ]
+    },
+    {
+      "key": "meloxicam",
+      "generic": "Meloxicam",
+      "brand_names": [
+        "Mobic"
+      ],
+      "drug_class": "NSAID",
+      "description": "Meloxicam is a nonsteroidal anti-inflammatory drug commonly used to treat the pain and inflammation of arthritis. It is usually taken once daily.",
+      "match_keys": [
+        "Meloxicam",
+        "Mobic"
+      ]
+    },
+    {
+      "key": "indomethacin",
+      "generic": "Indomethacin",
+      "brand_names": [
+        "Indocin"
+      ],
+      "drug_class": "NSAID",
+      "description": "Indomethacin is a potent nonsteroidal anti-inflammatory drug used for inflammatory conditions such as arthritis and gout flares. It relieves pain and reduces inflammation.",
+      "match_keys": [
+        "Indomethacin",
+        "Indocin"
+      ]
+    },
+    {
+      "key": "ketorolac",
+      "generic": "Ketorolac",
+      "brand_names": [
+        "Toradol"
+      ],
+      "drug_class": "NSAID",
+      "description": "Ketorolac is a strong nonsteroidal anti-inflammatory drug used for short-term treatment of moderate to severe pain. It is often given after surgery or injury.",
+      "match_keys": [
+        "Ketorolac",
+        "Toradol"
+      ]
+    },
+    {
+      "key": "tramadol",
+      "generic": "Tramadol",
+      "brand_names": [
+        "Ultram"
+      ],
+      "drug_class": "Opioid-like analgesic",
+      "description": "Tramadol is a prescription pain reliever that acts on opioid receptors and also affects brain chemicals involved in pain. It is used for moderate to moderately severe pain.",
+      "match_keys": [
+        "Tramadol",
+        "Ultram"
+      ]
+    },
+    {
+      "key": "codeine",
+      "generic": "Codeine",
+      "drug_class": "Opioid analgesic",
+      "description": "Codeine is a mild opioid used to relieve pain and, in some formulations, to suppress cough. Like other opioids it can cause drowsiness and has potential for dependence.",
+      "match_keys": [
+        "Codeine"
+      ]
+    },
+    {
+      "key": "hydrocodone",
+      "generic": "Hydrocodone",
+      "brand_names": [
+        "Vicodin",
+        "Norco"
+      ],
+      "drug_class": "Opioid analgesic",
+      "description": "Hydrocodone is an opioid pain reliever used for moderate to severe pain, often combined with acetaminophen. Opioids carry a risk of dependence and are used under close supervision.",
+      "match_keys": [
+        "Hydrocodone",
+        "Vicodin",
+        "Norco"
+      ]
+    },
+    {
+      "key": "oxycodone",
+      "generic": "Oxycodone",
+      "brand_names": [
+        "OxyContin",
+        "Percocet"
+      ],
+      "drug_class": "Opioid analgesic",
+      "description": "Oxycodone is an opioid used to treat moderate to severe pain. It is available alone or combined with acetaminophen and carries a risk of dependence.",
+      "match_keys": [
+        "Oxycodone",
+        "OxyContin",
+        "Percocet"
+      ]
+    },
+    {
+      "key": "morphine",
+      "generic": "Morphine",
+      "brand_names": [
+        "MS Contin"
+      ],
+      "drug_class": "Opioid analgesic",
+      "description": "Morphine is a strong opioid used to relieve severe pain, including pain from surgery, injury, or serious illness. It carries a significant risk of dependence and is closely monitored.",
+      "match_keys": [
+        "Morphine",
+        "MS Contin"
+      ]
+    },
+    {
+      "key": "gabapentin",
+      "generic": "Gabapentin",
+      "brand_names": [
+        "Neurontin"
+      ],
+      "synonyms": [
+        "gabapentin"
+      ],
+      "drug_class": "Anticonvulsant / nerve-pain agent",
+      "description": "Gabapentin is used to treat nerve pain and to help control certain seizures. It calms overactive nerve signaling and is commonly prescribed for conditions such as shingles-related nerve pain and neuropathy.",
+      "match_keys": [
+        "Gabapentin",
+        "Neurontin"
+      ]
+    },
+    {
+      "key": "pregabalin",
+      "generic": "Pregabalin",
+      "brand_names": [
+        "Lyrica"
+      ],
+      "drug_class": "Anticonvulsant / nerve-pain agent",
+      "description": "Pregabalin is used to treat nerve pain, fibromyalgia, and some seizure disorders. It works by calming overactive nerve signaling.",
+      "match_keys": [
+        "Pregabalin",
+        "Lyrica"
+      ]
+    },
+    {
+      "key": "cyclobenzaprine",
+      "generic": "Cyclobenzaprine",
+      "brand_names": [
+        "Flexeril"
+      ],
+      "drug_class": "Muscle relaxant",
+      "description": "Cyclobenzaprine is a muscle relaxant used for short-term relief of muscle spasm and associated pain. It is typically used along with rest and physical therapy.",
+      "match_keys": [
+        "Cyclobenzaprine",
+        "Flexeril"
+      ]
+    },
+    {
+      "key": "methocarbamol",
+      "generic": "Methocarbamol",
+      "brand_names": [
+        "Robaxin"
+      ],
+      "drug_class": "Muscle relaxant",
+      "description": "Methocarbamol is a muscle relaxant used to ease muscle spasms and the discomfort of strains and sprains. It is usually used together with rest and physical therapy.",
+      "match_keys": [
+        "Methocarbamol",
+        "Robaxin"
+      ]
+    },
+    {
+      "key": "baclofen",
+      "generic": "Baclofen",
+      "brand_names": [
+        "Lioresal"
+      ],
+      "drug_class": "Muscle relaxant",
+      "description": "Baclofen is a muscle relaxant used to reduce spasticity and muscle spasms, often in conditions affecting the nervous system. It works on the spinal cord to relax muscles.",
+      "match_keys": [
+        "Baclofen",
+        "Lioresal"
+      ]
+    },
+    {
+      "key": "tizanidine",
+      "generic": "Tizanidine",
+      "brand_names": [
+        "Zanaflex"
+      ],
+      "drug_class": "Muscle relaxant",
+      "description": "Tizanidine is a short-acting muscle relaxant used to reduce spasticity and muscle spasm. It works by calming nerve signals that cause muscles to tighten.",
+      "match_keys": [
+        "Tizanidine",
+        "Zanaflex"
+      ]
+    },
+    {
+      "key": "sumatriptan",
+      "generic": "Sumatriptan",
+      "brand_names": [
+        "Imitrex"
+      ],
+      "drug_class": "Triptan (migraine)",
+      "description": "Sumatriptan is used to treat migraine attacks once they have started. It narrows blood vessels in the brain and blocks pain pathways involved in migraine.",
+      "match_keys": [
+        "Sumatriptan",
+        "Imitrex"
+      ]
+    },
+    {
+      "key": "rizatriptan",
+      "generic": "Rizatriptan",
+      "brand_names": [
+        "Maxalt"
+      ],
+      "drug_class": "Triptan (migraine)",
+      "description": "Rizatriptan is used to relieve migraine attacks. Like other triptans, it acts on brain pathways involved in migraine to reduce headache and associated symptoms.",
+      "match_keys": [
+        "Rizatriptan",
+        "Maxalt"
+      ]
+    },
+    {
+      "key": "colchicine",
+      "generic": "Colchicine",
+      "brand_names": [
+        "Colcrys"
+      ],
+      "drug_class": "Anti-gout agent",
+      "description": "Colchicine is used to treat and prevent gout flares by reducing the inflammation caused by uric acid crystals. It is also used in some other inflammatory conditions.",
+      "match_keys": [
+        "Colchicine",
+        "Colcrys"
+      ]
+    },
+    {
+      "key": "allopurinol",
+      "generic": "Allopurinol",
+      "brand_names": [
+        "Zyloprim"
+      ],
+      "drug_class": "Xanthine oxidase inhibitor (gout)",
+      "description": "Allopurinol lowers the amount of uric acid the body makes and is used to prevent gout attacks and certain kidney stones. It is taken regularly rather than during an acute flare.",
+      "match_keys": [
+        "Allopurinol",
+        "Zyloprim"
+      ]
+    },
+    {
+      "key": "amoxicillin",
+      "generic": "Amoxicillin",
+      "brand_names": [
+        "Amoxil"
+      ],
+      "drug_class": "Penicillin antibiotic",
+      "description": "Amoxicillin is a penicillin-type antibiotic used to treat a range of bacterial infections, such as ear, throat, sinus, and urinary infections. It works only against bacteria, not viruses.",
+      "match_keys": [
+        "Amoxicillin",
+        "Amoxil"
+      ]
+    },
+    {
+      "key": "amoxicillin-clavulanate",
+      "generic": "Amoxicillin-Clavulanate",
+      "brand_names": [
+        "Augmentin"
+      ],
+      "synonyms": [
+        "augmentin",
+        "amoxicillin/clavulanate",
+        "amoxicillin-clavulanic acid"
+      ],
+      "drug_class": "Penicillin combination antibiotic",
+      "description": "Amoxicillin-clavulanate combines a penicillin antibiotic with clavulanate, which helps overcome some bacterial resistance. It is used for bacterial infections such as sinus, ear, and respiratory infections.",
+      "match_keys": [
+        "Amoxicillin-Clavulanate",
+        "Augmentin",
+        "amoxicillin/clavulanate",
+        "amoxicillin-clavulanic acid"
+      ]
+    },
+    {
+      "key": "penicillin",
+      "generic": "Penicillin",
+      "drug_class": "Penicillin antibiotic",
+      "description": "Penicillin is one of the original antibiotics, used to treat certain bacterial infections such as strep throat. It works only against susceptible bacteria.",
+      "match_keys": [
+        "Penicillin"
+      ]
+    },
+    {
+      "key": "ampicillin",
+      "generic": "Ampicillin",
+      "drug_class": "Penicillin antibiotic",
+      "description": "Ampicillin is a penicillin-type antibiotic used to treat various bacterial infections. It is effective only against bacteria, not viral illnesses.",
+      "match_keys": [
+        "Ampicillin"
+      ]
+    },
+    {
+      "key": "cephalexin",
+      "generic": "Cephalexin",
+      "brand_names": [
+        "Keflex"
+      ],
+      "drug_class": "Cephalosporin antibiotic",
+      "description": "Cephalexin is a cephalosporin antibiotic used to treat bacterial infections of the skin, respiratory tract, and urinary tract. It works by stopping bacteria from building their cell walls.",
+      "match_keys": [
+        "Cephalexin",
+        "Keflex"
+      ]
+    },
+    {
+      "key": "cefdinir",
+      "generic": "Cefdinir",
+      "brand_names": [
+        "Omnicef"
+      ],
+      "drug_class": "Cephalosporin antibiotic",
+      "description": "Cefdinir is a cephalosporin antibiotic used to treat bacterial infections such as sinusitis, bronchitis, and ear infections. It is effective only against bacteria.",
+      "match_keys": [
+        "Cefdinir",
+        "Omnicef"
+      ]
+    },
+    {
+      "key": "cefuroxime",
+      "generic": "Cefuroxime",
+      "brand_names": [
+        "Ceftin"
+      ],
+      "drug_class": "Cephalosporin antibiotic",
+      "description": "Cefuroxime is a cephalosporin antibiotic used for a variety of bacterial infections, including respiratory and urinary infections. It works by disrupting bacterial cell walls.",
+      "match_keys": [
+        "Cefuroxime",
+        "Ceftin"
+      ]
+    },
+    {
+      "key": "ceftriaxone",
+      "generic": "Ceftriaxone",
+      "brand_names": [
+        "Rocephin"
+      ],
+      "drug_class": "Cephalosporin antibiotic",
+      "description": "Ceftriaxone is an injectable cephalosporin antibiotic used for more serious bacterial infections. It is commonly given in hospitals or clinics.",
+      "match_keys": [
+        "Ceftriaxone",
+        "Rocephin"
+      ]
+    },
+    {
+      "key": "azithromycin",
+      "generic": "Azithromycin",
+      "brand_names": [
+        "Zithromax",
+        "Z-Pak"
+      ],
+      "synonyms": [
+        "z-pak",
+        "zpak"
+      ],
+      "drug_class": "Macrolide antibiotic",
+      "description": "Azithromycin is a macrolide antibiotic used for respiratory, skin, and some sexually transmitted infections. It is often taken as a short course because it stays active in the body for several days.",
+      "match_keys": [
+        "Azithromycin",
+        "Zithromax",
+        "Z-Pak",
+        "zpak"
+      ]
+    },
+    {
+      "key": "clarithromycin",
+      "generic": "Clarithromycin",
+      "brand_names": [
+        "Biaxin"
+      ],
+      "drug_class": "Macrolide antibiotic",
+      "description": "Clarithromycin is a macrolide antibiotic used for respiratory and skin infections and as part of treatment for certain stomach ulcers. It works only against bacteria.",
+      "match_keys": [
+        "Clarithromycin",
+        "Biaxin"
+      ]
+    },
+    {
+      "key": "erythromycin",
+      "generic": "Erythromycin",
+      "drug_class": "Macrolide antibiotic",
+      "description": "Erythromycin is a macrolide antibiotic used to treat various bacterial infections, and is an option for people allergic to penicillin. It stops bacteria from making the proteins they need to grow.",
+      "match_keys": [
+        "Erythromycin"
+      ]
+    },
+    {
+      "key": "doxycycline",
+      "generic": "Doxycycline",
+      "brand_names": [
+        "Vibramycin"
+      ],
+      "drug_class": "Tetracycline antibiotic",
+      "description": "Doxycycline is a tetracycline antibiotic used for a wide range of infections, including respiratory infections, acne, and some tick-borne illnesses. It works only against bacteria.",
+      "match_keys": [
+        "Doxycycline",
+        "Vibramycin"
+      ]
+    },
+    {
+      "key": "minocycline",
+      "generic": "Minocycline",
+      "brand_names": [
+        "Minocin"
+      ],
+      "drug_class": "Tetracycline antibiotic",
+      "description": "Minocycline is a tetracycline antibiotic used for infections and, commonly, for moderate to severe acne. It works by blocking bacterial protein production.",
+      "match_keys": [
+        "Minocycline",
+        "Minocin"
+      ]
+    },
+    {
+      "key": "ciprofloxacin",
+      "generic": "Ciprofloxacin",
+      "brand_names": [
+        "Cipro"
+      ],
+      "drug_class": "Fluoroquinolone antibiotic",
+      "description": "Ciprofloxacin is a fluoroquinolone antibiotic used for urinary, gastrointestinal, and certain other bacterial infections. It works by interfering with bacterial DNA.",
+      "match_keys": [
+        "Ciprofloxacin",
+        "Cipro"
+      ]
+    },
+    {
+      "key": "levofloxacin",
+      "generic": "Levofloxacin",
+      "brand_names": [
+        "Levaquin"
+      ],
+      "drug_class": "Fluoroquinolone antibiotic",
+      "description": "Levofloxacin is a fluoroquinolone antibiotic used for respiratory, urinary, and skin infections. It works by blocking the enzymes bacteria need to copy their DNA.",
+      "match_keys": [
+        "Levofloxacin",
+        "Levaquin"
+      ]
+    },
+    {
+      "key": "trimethoprim-sulfamethoxazole",
+      "generic": "Trimethoprim-Sulfamethoxazole",
+      "brand_names": [
+        "Bactrim",
+        "Septra"
+      ],
+      "synonyms": [
+        "bactrim ds",
+        "sulfamethoxazole-trimethoprim",
+        "co-trimoxazole"
+      ],
+      "drug_class": "Sulfonamide combination antibiotic",
+      "description": "Trimethoprim-sulfamethoxazole is a combination antibiotic used for urinary tract infections, certain skin infections, and some other conditions. It blocks two steps bacteria use to make folate.",
+      "match_keys": [
+        "Trimethoprim-Sulfamethoxazole",
+        "Bactrim",
+        "Septra",
+        "bactrim ds",
+        "sulfamethoxazole-trimethoprim",
+        "co-trimoxazole"
+      ]
+    },
+    {
+      "key": "metronidazole",
+      "generic": "Metronidazole",
+      "brand_names": [
+        "Flagyl"
+      ],
+      "drug_class": "Antibiotic / antiprotozoal",
+      "description": "Metronidazole treats infections caused by certain bacteria and parasites, including some digestive and gynecologic infections. It is often used when anaerobic bacteria are involved.",
+      "match_keys": [
+        "Metronidazole",
+        "Flagyl"
+      ]
+    },
+    {
+      "key": "clindamycin",
+      "generic": "Clindamycin",
+      "brand_names": [
+        "Cleocin"
+      ],
+      "drug_class": "Lincosamide antibiotic",
+      "description": "Clindamycin is an antibiotic used for certain skin, dental, and other bacterial infections, and is an option for some people allergic to penicillin. It stops bacteria from producing proteins.",
+      "match_keys": [
+        "Clindamycin",
+        "Cleocin"
+      ]
+    },
+    {
+      "key": "nitrofurantoin",
+      "generic": "Nitrofurantoin",
+      "brand_names": [
+        "Macrobid",
+        "Macrodantin"
+      ],
+      "drug_class": "Urinary antibiotic",
+      "description": "Nitrofurantoin is an antibiotic used mainly to treat and prevent urinary tract infections. It concentrates in the urine, where it acts against the bacteria that cause these infections.",
+      "match_keys": [
+        "Nitrofurantoin",
+        "Macrobid",
+        "Macrodantin"
+      ]
+    },
+    {
+      "key": "vancomycin",
+      "generic": "Vancomycin",
+      "drug_class": "Glycopeptide antibiotic",
+      "description": "Vancomycin is a potent antibiotic used for serious infections caused by resistant bacteria, and by mouth for a specific intestinal infection. It is often used in hospital settings.",
+      "match_keys": [
+        "Vancomycin"
+      ]
+    },
+    {
+      "key": "acyclovir",
+      "generic": "Acyclovir",
+      "brand_names": [
+        "Zovirax"
+      ],
+      "drug_class": "Antiviral",
+      "description": "Acyclovir is an antiviral used to treat infections caused by herpes viruses, such as cold sores, genital herpes, and shingles. It reduces the severity and length of outbreaks.",
+      "match_keys": [
+        "Acyclovir",
+        "Zovirax"
+      ]
+    },
+    {
+      "key": "valacyclovir",
+      "generic": "Valacyclovir",
+      "brand_names": [
+        "Valtrex"
+      ],
+      "drug_class": "Antiviral",
+      "description": "Valacyclovir is an antiviral used for herpes infections, including cold sores, genital herpes, and shingles. The body converts it to acyclovir, allowing less frequent dosing.",
+      "match_keys": [
+        "Valacyclovir",
+        "Valtrex"
+      ]
+    },
+    {
+      "key": "oseltamivir",
+      "generic": "Oseltamivir",
+      "brand_names": [
+        "Tamiflu"
+      ],
+      "drug_class": "Antiviral (influenza)",
+      "description": "Oseltamivir is an antiviral used to treat and help prevent influenza. It works best when started soon after symptoms begin and can shorten the illness.",
+      "match_keys": [
+        "Oseltamivir",
+        "Tamiflu"
+      ]
+    },
+    {
+      "key": "fluconazole",
+      "generic": "Fluconazole",
+      "brand_names": [
+        "Diflucan"
+      ],
+      "drug_class": "Antifungal",
+      "description": "Fluconazole is an antifungal used to treat yeast and other fungal infections, including vaginal and oral thrush. It stops fungi from growing.",
+      "match_keys": [
+        "Fluconazole",
+        "Diflucan"
+      ]
+    },
+    {
+      "key": "nystatin",
+      "generic": "Nystatin",
+      "drug_class": "Antifungal",
+      "description": "Nystatin is an antifungal used for yeast infections of the mouth, skin, and digestive tract. It is applied or taken so it acts directly where the infection is.",
+      "match_keys": [
+        "Nystatin"
+      ]
+    },
+    {
+      "key": "terbinafine",
+      "generic": "Terbinafine",
+      "brand_names": [
+        "Lamisil"
+      ],
+      "drug_class": "Antifungal",
+      "description": "Terbinafine is an antifungal commonly used to treat fungal infections of the skin and nails. It is available as a cream and as tablets for more stubborn infections.",
+      "match_keys": [
+        "Terbinafine",
+        "Lamisil"
+      ]
+    },
+    {
+      "key": "lisinopril",
+      "generic": "Lisinopril",
+      "brand_names": [
+        "Zestril",
+        "Prinivil"
+      ],
+      "drug_class": "ACE inhibitor (antihypertensive)",
+      "description": "Lisinopril is an ACE inhibitor used to lower blood pressure and to protect the heart and kidneys in certain conditions. It relaxes blood vessels by blocking a hormone that narrows them.",
+      "match_keys": [
+        "Lisinopril",
+        "Zestril",
+        "Prinivil"
+      ]
+    },
+    {
+      "key": "enalapril",
+      "generic": "Enalapril",
+      "brand_names": [
+        "Vasotec"
+      ],
+      "drug_class": "ACE inhibitor (antihypertensive)",
+      "description": "Enalapril is an ACE inhibitor used to treat high blood pressure and heart failure. It works by relaxing blood vessels.",
+      "match_keys": [
+        "Enalapril",
+        "Vasotec"
+      ]
+    },
+    {
+      "key": "ramipril",
+      "generic": "Ramipril",
+      "brand_names": [
+        "Altace"
+      ],
+      "drug_class": "ACE inhibitor (antihypertensive)",
+      "description": "Ramipril is an ACE inhibitor used for high blood pressure and to reduce cardiovascular risk in some people. It relaxes blood vessels to lower blood pressure.",
+      "match_keys": [
+        "Ramipril",
+        "Altace"
+      ]
+    },
+    {
+      "key": "benazepril",
+      "generic": "Benazepril",
+      "brand_names": [
+        "Lotensin"
+      ],
+      "drug_class": "ACE inhibitor (antihypertensive)",
+      "description": "Benazepril is an ACE inhibitor used to treat high blood pressure. It works by relaxing and widening blood vessels.",
+      "match_keys": [
+        "Benazepril",
+        "Lotensin"
+      ]
+    },
+    {
+      "key": "losartan",
+      "generic": "Losartan",
+      "brand_names": [
+        "Cozaar"
+      ],
+      "drug_class": "ARB (antihypertensive)",
+      "description": "Losartan is an angiotensin receptor blocker (ARB) used to lower blood pressure and protect the kidneys in some people with diabetes. It relaxes blood vessels by blocking a hormone that tightens them.",
+      "match_keys": [
+        "Losartan",
+        "Cozaar"
+      ]
+    },
+    {
+      "key": "valsartan",
+      "generic": "Valsartan",
+      "brand_names": [
+        "Diovan"
+      ],
+      "drug_class": "ARB (antihypertensive)",
+      "description": "Valsartan is an angiotensin receptor blocker used for high blood pressure and heart failure. It relaxes blood vessels to ease the heart's workload.",
+      "match_keys": [
+        "Valsartan",
+        "Diovan"
+      ]
+    },
+    {
+      "key": "olmesartan",
+      "generic": "Olmesartan",
+      "brand_names": [
+        "Benicar"
+      ],
+      "drug_class": "ARB (antihypertensive)",
+      "description": "Olmesartan is an angiotensin receptor blocker used to treat high blood pressure. It works by relaxing blood vessels.",
+      "match_keys": [
+        "Olmesartan",
+        "Benicar"
+      ]
+    },
+    {
+      "key": "irbesartan",
+      "generic": "Irbesartan",
+      "brand_names": [
+        "Avapro"
+      ],
+      "drug_class": "ARB (antihypertensive)",
+      "description": "Irbesartan is an angiotensin receptor blocker used for high blood pressure and to protect the kidneys in some people with diabetes. It relaxes blood vessels.",
+      "match_keys": [
+        "Irbesartan",
+        "Avapro"
+      ]
+    },
+    {
+      "key": "candesartan",
+      "generic": "Candesartan",
+      "brand_names": [
+        "Atacand"
+      ],
+      "drug_class": "ARB (antihypertensive)",
+      "description": "Candesartan is an angiotensin receptor blocker used for high blood pressure and heart failure. It works by widening blood vessels.",
+      "match_keys": [
+        "Candesartan",
+        "Atacand"
+      ]
+    },
+    {
+      "key": "telmisartan",
+      "generic": "Telmisartan",
+      "brand_names": [
+        "Micardis"
+      ],
+      "drug_class": "ARB (antihypertensive)",
+      "description": "Telmisartan is an angiotensin receptor blocker used to lower blood pressure and reduce cardiovascular risk in some people. It relaxes blood vessels.",
+      "match_keys": [
+        "Telmisartan",
+        "Micardis"
+      ]
+    },
+    {
+      "key": "metoprolol",
+      "generic": "Metoprolol",
+      "brand_names": [
+        "Lopressor",
+        "Toprol XL"
+      ],
+      "synonyms": [
+        "metoprolol succinate",
+        "metoprolol tartrate"
+      ],
+      "drug_class": "Beta blocker (antihypertensive)",
+      "description": "Metoprolol is a beta blocker that slows the heart rate and lowers blood pressure. It is used for high blood pressure, chest pain, heart rhythm problems, and heart failure.",
+      "match_keys": [
+        "Metoprolol",
+        "Lopressor",
+        "Toprol XL",
+        "metoprolol succinate",
+        "metoprolol tartrate"
+      ]
+    },
+    {
+      "key": "atenolol",
+      "generic": "Atenolol",
+      "brand_names": [
+        "Tenormin"
+      ],
+      "drug_class": "Beta blocker (antihypertensive)",
+      "description": "Atenolol is a beta blocker used to lower blood pressure and treat chest pain and certain heart rhythm problems. It works by slowing the heart and easing its workload.",
+      "match_keys": [
+        "Atenolol",
+        "Tenormin"
+      ]
+    },
+    {
+      "key": "carvedilol",
+      "generic": "Carvedilol",
+      "brand_names": [
+        "Coreg"
+      ],
+      "drug_class": "Beta blocker (antihypertensive)",
+      "description": "Carvedilol is a beta blocker used for high blood pressure and heart failure. It slows the heart rate and relaxes blood vessels.",
+      "match_keys": [
+        "Carvedilol",
+        "Coreg"
+      ]
+    },
+    {
+      "key": "propranolol",
+      "generic": "Propranolol",
+      "brand_names": [
+        "Inderal"
+      ],
+      "drug_class": "Beta blocker",
+      "description": "Propranolol is a beta blocker used for high blood pressure, heart rhythm problems, migraine prevention, and physical symptoms of anxiety such as tremor. It slows the heart and calms overactive signaling.",
+      "match_keys": [
+        "Propranolol",
+        "Inderal"
+      ]
+    },
+    {
+      "key": "bisoprolol",
+      "generic": "Bisoprolol",
+      "brand_names": [
+        "Zebeta"
+      ],
+      "drug_class": "Beta blocker (antihypertensive)",
+      "description": "Bisoprolol is a beta blocker used for high blood pressure and heart failure. It slows the heart rate to reduce its workload.",
+      "match_keys": [
+        "Bisoprolol",
+        "Zebeta"
+      ]
+    },
+    {
+      "key": "nebivolol",
+      "generic": "Nebivolol",
+      "brand_names": [
+        "Bystolic"
+      ],
+      "drug_class": "Beta blocker (antihypertensive)",
+      "description": "Nebivolol is a beta blocker used to treat high blood pressure. It slows the heart and helps relax blood vessels.",
+      "match_keys": [
+        "Nebivolol",
+        "Bystolic"
+      ]
+    },
+    {
+      "key": "amlodipine",
+      "generic": "Amlodipine",
+      "brand_names": [
+        "Norvasc"
+      ],
+      "synonyms": [
+        "amlodipine besylate"
+      ],
+      "drug_class": "Calcium channel blocker (antihypertensive)",
+      "description": "Amlodipine is a calcium channel blocker used to lower blood pressure and relieve chest pain (angina). It relaxes and widens blood vessels so blood flows more easily.",
+      "match_keys": [
+        "Amlodipine",
+        "Norvasc",
+        "amlodipine besylate"
+      ]
+    },
+    {
+      "key": "diltiazem",
+      "generic": "Diltiazem",
+      "brand_names": [
+        "Cardizem"
+      ],
+      "synonyms": [
+        "diltiazem er"
+      ],
+      "drug_class": "Calcium channel blocker",
+      "description": "Diltiazem is a calcium channel blocker used for high blood pressure, chest pain, and certain heart rhythm problems. It relaxes blood vessels and can slow the heart rate.",
+      "match_keys": [
+        "Diltiazem",
+        "Cardizem",
+        "diltiazem er"
+      ]
+    },
+    {
+      "key": "verapamil",
+      "generic": "Verapamil",
+      "brand_names": [
+        "Calan"
+      ],
+      "drug_class": "Calcium channel blocker",
+      "description": "Verapamil is a calcium channel blocker used for high blood pressure, chest pain, and some heart rhythm disorders. It relaxes blood vessels and slows the heart's electrical conduction.",
+      "match_keys": [
+        "Verapamil",
+        "Calan"
+      ]
+    },
+    {
+      "key": "nifedipine",
+      "generic": "Nifedipine",
+      "brand_names": [
+        "Procardia",
+        "Adalat"
+      ],
+      "drug_class": "Calcium channel blocker (antihypertensive)",
+      "description": "Nifedipine is a calcium channel blocker used to lower blood pressure and relieve chest pain. It relaxes and widens blood vessels.",
+      "match_keys": [
+        "Nifedipine",
+        "Procardia",
+        "Adalat"
+      ]
+    },
+    {
+      "key": "hydrochlorothiazide",
+      "generic": "Hydrochlorothiazide",
+      "brand_names": [
+        "Microzide"
+      ],
+      "synonyms": [
+        "hctz"
+      ],
+      "drug_class": "Thiazide diuretic (antihypertensive)",
+      "description": "Hydrochlorothiazide is a thiazide diuretic (\"water pill\") used to treat high blood pressure and fluid retention. It helps the kidneys remove excess salt and water.",
+      "match_keys": [
+        "Hydrochlorothiazide",
+        "Microzide",
+        "hctz"
+      ]
+    },
+    {
+      "key": "chlorthalidone",
+      "generic": "Chlorthalidone",
+      "drug_class": "Thiazide-like diuretic (antihypertensive)",
+      "description": "Chlorthalidone is a diuretic used to lower blood pressure and reduce fluid buildup. It helps the body eliminate excess salt and water through the urine.",
+      "match_keys": [
+        "Chlorthalidone"
+      ]
+    },
+    {
+      "key": "furosemide",
+      "generic": "Furosemide",
+      "brand_names": [
+        "Lasix"
+      ],
+      "drug_class": "Loop diuretic",
+      "description": "Furosemide is a loop diuretic used to remove excess fluid in conditions such as heart failure, kidney disease, and swelling. It prompts the kidneys to release more salt and water.",
+      "match_keys": [
+        "Furosemide",
+        "Lasix"
+      ]
+    },
+    {
+      "key": "spironolactone",
+      "generic": "Spironolactone",
+      "brand_names": [
+        "Aldactone"
+      ],
+      "drug_class": "Potassium-sparing diuretic",
+      "description": "Spironolactone is a diuretic that removes excess fluid while helping the body retain potassium. It is used for heart failure, high blood pressure, fluid retention, and certain hormone-related conditions.",
+      "match_keys": [
+        "Spironolactone",
+        "Aldactone"
+      ]
+    },
+    {
+      "key": "torsemide",
+      "generic": "Torsemide",
+      "brand_names": [
+        "Demadex"
+      ],
+      "drug_class": "Loop diuretic",
+      "description": "Torsemide is a loop diuretic used to reduce fluid buildup in heart failure, kidney, or liver conditions and to treat high blood pressure. It increases the removal of salt and water by the kidneys.",
+      "match_keys": [
+        "Torsemide",
+        "Demadex"
+      ]
+    },
+    {
+      "key": "clonidine",
+      "generic": "Clonidine",
+      "brand_names": [
+        "Catapres"
+      ],
+      "drug_class": "Central alpha-2 agonist (antihypertensive)",
+      "description": "Clonidine lowers blood pressure by acting on the brain to reduce nerve signals that tighten blood vessels. It is also used for certain other conditions, including some attention and anxiety symptoms.",
+      "match_keys": [
+        "Clonidine",
+        "Catapres"
+      ]
+    },
+    {
+      "key": "hydralazine",
+      "generic": "Hydralazine",
+      "drug_class": "Vasodilator (antihypertensive)",
+      "description": "Hydralazine lowers blood pressure by relaxing the muscles in blood vessel walls so vessels widen. It is sometimes used together with other blood-pressure medicines.",
+      "match_keys": [
+        "Hydralazine"
+      ]
+    },
+    {
+      "key": "tamsulosin",
+      "generic": "Tamsulosin",
+      "brand_names": [
+        "Flomax"
+      ],
+      "drug_class": "Alpha blocker (BPH)",
+      "description": "Tamsulosin relaxes muscles in the prostate and bladder neck to improve urine flow in men with an enlarged prostate. It is used to ease urinary symptoms rather than to shrink the prostate.",
+      "match_keys": [
+        "Tamsulosin",
+        "Flomax"
+      ]
+    },
+    {
+      "key": "doxazosin",
+      "generic": "Doxazosin",
+      "brand_names": [
+        "Cardura"
+      ],
+      "drug_class": "Alpha blocker",
+      "description": "Doxazosin relaxes blood vessels and muscles around the bladder, and is used for high blood pressure and for urinary symptoms of an enlarged prostate.",
+      "match_keys": [
+        "Doxazosin",
+        "Cardura"
+      ]
+    },
+    {
+      "key": "digoxin",
+      "generic": "Digoxin",
+      "brand_names": [
+        "Lanoxin"
+      ],
+      "drug_class": "Cardiac glycoside",
+      "description": "Digoxin strengthens the heart's contractions and helps control certain fast heart rhythms. It is used in some cases of heart failure and atrial fibrillation.",
+      "match_keys": [
+        "Digoxin",
+        "Lanoxin"
+      ]
+    },
+    {
+      "key": "isosorbide",
+      "generic": "Isosorbide",
+      "brand_names": [
+        "Imdur",
+        "Isordil"
+      ],
+      "drug_class": "Nitrate (antianginal)",
+      "description": "Isosorbide is a nitrate that widens blood vessels to reduce the heart's workload and prevent chest pain (angina). It is used to manage angina in people with coronary artery disease.",
+      "match_keys": [
+        "Isosorbide",
+        "Imdur",
+        "Isordil"
+      ]
+    },
+    {
+      "key": "nitroglycerin",
+      "generic": "Nitroglycerin",
+      "brand_names": [
+        "Nitrostat"
+      ],
+      "drug_class": "Nitrate (antianginal)",
+      "description": "Nitroglycerin is a fast-acting nitrate that widens blood vessels to relieve chest pain (angina). It is often used as a tablet or spray under the tongue at the onset of chest pain.",
+      "match_keys": [
+        "Nitroglycerin",
+        "Nitrostat"
+      ]
+    },
+    {
+      "key": "atorvastatin",
+      "generic": "Atorvastatin",
+      "brand_names": [
+        "Lipitor"
+      ],
+      "drug_class": "Statin (cholesterol-lowering)",
+      "description": "Atorvastatin is a statin that lowers LDL (\"bad\") cholesterol and reduces the risk of heart attack and stroke. It works by slowing the liver's production of cholesterol.",
+      "match_keys": [
+        "Atorvastatin",
+        "Lipitor"
+      ]
+    },
+    {
+      "key": "rosuvastatin",
+      "generic": "Rosuvastatin",
+      "brand_names": [
+        "Crestor"
+      ],
+      "drug_class": "Statin (cholesterol-lowering)",
+      "description": "Rosuvastatin is a statin used to lower LDL cholesterol and reduce cardiovascular risk. It reduces how much cholesterol the liver makes.",
+      "match_keys": [
+        "Rosuvastatin",
+        "Crestor"
+      ]
+    },
+    {
+      "key": "simvastatin",
+      "generic": "Simvastatin",
+      "brand_names": [
+        "Zocor"
+      ],
+      "drug_class": "Statin (cholesterol-lowering)",
+      "description": "Simvastatin is a statin used to lower cholesterol and reduce the risk of heart attack and stroke. It works by decreasing cholesterol production in the liver.",
+      "typical": {
+        "timeOfDay": "Evening",
+        "source": "FDA prescribing information — simvastatin; administer in the evening."
+      },
+      "match_keys": [
+        "Simvastatin",
+        "Zocor"
+      ]
+    },
+    {
+      "key": "pravastatin",
+      "generic": "Pravastatin",
+      "brand_names": [
+        "Pravachol"
+      ],
+      "drug_class": "Statin (cholesterol-lowering)",
+      "description": "Pravastatin is a statin used to lower LDL cholesterol and reduce cardiovascular risk. It reduces the liver's cholesterol output.",
+      "typical": {
+        "timeOfDay": "Evening",
+        "source": "FDA prescribing information — pravastatin; administered once daily in the evening."
+      },
+      "match_keys": [
+        "Pravastatin",
+        "Pravachol"
+      ]
+    },
+    {
+      "key": "lovastatin",
+      "generic": "Lovastatin",
+      "brand_names": [
+        "Mevacor"
+      ],
+      "drug_class": "Statin (cholesterol-lowering)",
+      "description": "Lovastatin is a statin used to lower cholesterol levels. It works by reducing how much cholesterol the liver produces.",
+      "typical": {
+        "timeOfDay": "Evening",
+        "foodTiming": "with_food",
+        "source": "FDA prescribing information — lovastatin; take with the evening meal."
+      },
+      "match_keys": [
+        "Lovastatin",
+        "Mevacor"
+      ]
+    },
+    {
+      "key": "pitavastatin",
+      "generic": "Pitavastatin",
+      "brand_names": [
+        "Livalo"
+      ],
+      "drug_class": "Statin (cholesterol-lowering)",
+      "description": "Pitavastatin is a statin used to lower LDL cholesterol and improve the lipid profile. It slows cholesterol production in the liver.",
+      "match_keys": [
+        "Pitavastatin",
+        "Livalo"
+      ]
+    },
+    {
+      "key": "ezetimibe",
+      "generic": "Ezetimibe",
+      "brand_names": [
+        "Zetia"
+      ],
+      "drug_class": "Cholesterol absorption inhibitor",
+      "description": "Ezetimibe lowers cholesterol by reducing how much the intestine absorbs from food. It is often used together with a statin.",
+      "match_keys": [
+        "Ezetimibe",
+        "Zetia"
+      ]
+    },
+    {
+      "key": "fenofibrate",
+      "generic": "Fenofibrate",
+      "brand_names": [
+        "Tricor"
+      ],
+      "drug_class": "Fibrate (lipid-lowering)",
+      "description": "Fenofibrate is used mainly to lower high triglyceride levels and can also modestly improve other lipids. It belongs to the fibrate class of lipid-lowering drugs.",
+      "match_keys": [
+        "Fenofibrate",
+        "Tricor"
+      ]
+    },
+    {
+      "key": "gemfibrozil",
+      "generic": "Gemfibrozil",
+      "brand_names": [
+        "Lopid"
+      ],
+      "drug_class": "Fibrate (lipid-lowering)",
+      "description": "Gemfibrozil is a fibrate used to lower high triglycerides and raise HDL cholesterol. It helps manage certain lipid disorders.",
+      "match_keys": [
+        "Gemfibrozil",
+        "Lopid"
+      ]
+    },
+    {
+      "key": "niacin",
+      "generic": "Niacin",
+      "brand_names": [
+        "Niaspan"
+      ],
+      "drug_class": "Vitamin B3 / lipid-modifying agent",
+      "description": "Niacin is a B vitamin that at higher doses can affect blood lipids, raising HDL and lowering triglycerides. It is used both as a nutritional supplement and, in specific cases, to modify cholesterol.",
+      "match_keys": [
+        "Niacin",
+        "Niaspan"
+      ]
+    },
+    {
+      "key": "metformin",
+      "generic": "Metformin",
+      "brand_names": [
+        "Glucophage"
+      ],
+      "synonyms": [
+        "metformin er",
+        "metformin hcl"
+      ],
+      "drug_class": "Biguanide (antidiabetic)",
+      "description": "Metformin is a first-line medication for type 2 diabetes that lowers blood sugar mainly by reducing the amount of glucose the liver releases and improving the body's response to insulin. It does not usually cause low blood sugar on its own.",
+      "typical": {
+        "foodTiming": "with_food",
+        "source": "FDA prescribing information — metformin; take with meals to reduce gastrointestinal side effects."
+      },
+      "match_keys": [
+        "Metformin",
+        "Glucophage",
+        "metformin er",
+        "metformin hcl"
+      ]
+    },
+    {
+      "key": "glipizide",
+      "generic": "Glipizide",
+      "brand_names": [
+        "Glucotrol"
+      ],
+      "drug_class": "Sulfonylurea (antidiabetic)",
+      "description": "Glipizide is a sulfonylurea that lowers blood sugar by prompting the pancreas to release more insulin. It is used for type 2 diabetes.",
+      "match_keys": [
+        "Glipizide",
+        "Glucotrol"
+      ]
+    },
+    {
+      "key": "glimepiride",
+      "generic": "Glimepiride",
+      "brand_names": [
+        "Amaryl"
+      ],
+      "drug_class": "Sulfonylurea (antidiabetic)",
+      "description": "Glimepiride is a sulfonylurea used for type 2 diabetes. It lowers blood sugar by stimulating the pancreas to produce more insulin.",
+      "match_keys": [
+        "Glimepiride",
+        "Amaryl"
+      ]
+    },
+    {
+      "key": "glyburide",
+      "generic": "Glyburide",
+      "brand_names": [
+        "Diabeta",
+        "Micronase"
+      ],
+      "drug_class": "Sulfonylurea (antidiabetic)",
+      "description": "Glyburide is a sulfonylurea that helps lower blood sugar in type 2 diabetes by increasing insulin release from the pancreas.",
+      "match_keys": [
+        "Glyburide",
+        "Diabeta",
+        "Micronase"
+      ]
+    },
+    {
+      "key": "sitagliptin",
+      "generic": "Sitagliptin",
+      "brand_names": [
+        "Januvia"
+      ],
+      "drug_class": "DPP-4 inhibitor (antidiabetic)",
+      "description": "Sitagliptin is a DPP-4 inhibitor for type 2 diabetes that helps the body release more insulin after meals and lower blood sugar. It has a low risk of causing low blood sugar by itself.",
+      "match_keys": [
+        "Sitagliptin",
+        "Januvia"
+      ]
+    },
+    {
+      "key": "linagliptin",
+      "generic": "Linagliptin",
+      "brand_names": [
+        "Tradjenta"
+      ],
+      "drug_class": "DPP-4 inhibitor (antidiabetic)",
+      "description": "Linagliptin is a DPP-4 inhibitor used to improve blood sugar control in type 2 diabetes. It enhances the body's own after-meal insulin response.",
+      "match_keys": [
+        "Linagliptin",
+        "Tradjenta"
+      ]
+    },
+    {
+      "key": "empagliflozin",
+      "generic": "Empagliflozin",
+      "brand_names": [
+        "Jardiance"
+      ],
+      "drug_class": "SGLT2 inhibitor (antidiabetic)",
+      "description": "Empagliflozin is an SGLT2 inhibitor that lowers blood sugar by causing the kidneys to remove excess glucose in the urine. It is also used to reduce cardiovascular and kidney risk in certain people.",
+      "match_keys": [
+        "Empagliflozin",
+        "Jardiance"
+      ]
+    },
+    {
+      "key": "dapagliflozin",
+      "generic": "Dapagliflozin",
+      "brand_names": [
+        "Farxiga"
+      ],
+      "drug_class": "SGLT2 inhibitor (antidiabetic)",
+      "description": "Dapagliflozin is an SGLT2 inhibitor that lowers blood sugar by increasing glucose loss through the urine. It is also used in some cases of heart failure and kidney disease.",
+      "match_keys": [
+        "Dapagliflozin",
+        "Farxiga"
+      ]
+    },
+    {
+      "key": "canagliflozin",
+      "generic": "Canagliflozin",
+      "brand_names": [
+        "Invokana"
+      ],
+      "drug_class": "SGLT2 inhibitor (antidiabetic)",
+      "description": "Canagliflozin is an SGLT2 inhibitor used for type 2 diabetes that lowers blood sugar by helping the kidneys excrete glucose. It can also reduce certain cardiovascular and kidney risks.",
+      "match_keys": [
+        "Canagliflozin",
+        "Invokana"
+      ]
+    },
+    {
+      "key": "semaglutide",
+      "generic": "Semaglutide",
+      "brand_names": [
+        "Ozempic",
+        "Wegovy",
+        "Rybelsus"
+      ],
+      "drug_class": "GLP-1 receptor agonist",
+      "description": "Semaglutide is a GLP-1 receptor agonist used for type 2 diabetes and, at certain doses, for weight management. It helps control blood sugar and appetite by mimicking a natural gut hormone.",
+      "match_keys": [
+        "Semaglutide",
+        "Ozempic",
+        "Wegovy",
+        "Rybelsus"
+      ]
+    },
+    {
+      "key": "liraglutide",
+      "generic": "Liraglutide",
+      "brand_names": [
+        "Victoza",
+        "Saxenda"
+      ],
+      "drug_class": "GLP-1 receptor agonist",
+      "description": "Liraglutide is a GLP-1 receptor agonist used for type 2 diabetes and, at a higher dose, for weight management. It improves blood sugar control and reduces appetite.",
+      "match_keys": [
+        "Liraglutide",
+        "Victoza",
+        "Saxenda"
+      ]
+    },
+    {
+      "key": "dulaglutide",
+      "generic": "Dulaglutide",
+      "brand_names": [
+        "Trulicity"
+      ],
+      "drug_class": "GLP-1 receptor agonist (antidiabetic)",
+      "description": "Dulaglutide is a once-weekly GLP-1 receptor agonist for type 2 diabetes. It helps lower blood sugar and can support weight loss by acting like a natural gut hormone.",
+      "match_keys": [
+        "Dulaglutide",
+        "Trulicity"
+      ]
+    },
+    {
+      "key": "pioglitazone",
+      "generic": "Pioglitazone",
+      "brand_names": [
+        "Actos"
+      ],
+      "drug_class": "Thiazolidinedione (antidiabetic)",
+      "description": "Pioglitazone improves the body's sensitivity to insulin and is used to help control blood sugar in type 2 diabetes. It works over several weeks.",
+      "match_keys": [
+        "Pioglitazone",
+        "Actos"
+      ]
+    },
+    {
+      "key": "insulin",
+      "generic": "Insulin",
+      "drug_class": "Hormone (antidiabetic)",
+      "description": "Insulin is a hormone given as an injection to control blood sugar when the body does not make or use enough of its own. It is essential in type 1 diabetes and used in some cases of type 2 diabetes.",
+      "match_keys": [
+        "Insulin"
+      ]
+    },
+    {
+      "key": "insulin glargine",
+      "generic": "Insulin Glargine",
+      "brand_names": [
+        "Lantus",
+        "Basaglar",
+        "Toujeo"
+      ],
+      "synonyms": [
+        "insulin glargine u-100"
+      ],
+      "drug_class": "Long-acting insulin",
+      "description": "Insulin glargine is a long-acting insulin that provides a steady background level of insulin over about a day. It is used to help control blood sugar in diabetes.",
+      "match_keys": [
+        "Insulin Glargine",
+        "Lantus",
+        "Basaglar",
+        "Toujeo",
+        "insulin glargine u-100"
+      ]
+    },
+    {
+      "key": "levothyroxine",
+      "generic": "Levothyroxine",
+      "brand_names": [
+        "Synthroid",
+        "Levoxyl",
+        "Unithroid"
+      ],
+      "synonyms": [
+        "levothyroxine sodium"
+      ],
+      "drug_class": "Thyroid hormone",
+      "description": "Levothyroxine is a synthetic thyroid hormone used to replace or supplement low thyroid hormone in hypothyroidism. It restores normal levels of the hormone the thyroid would otherwise produce.",
+      "typical": {
+        "timeOfDay": "Morning",
+        "foodTiming": "empty_stomach",
+        "source": "FDA prescribing information — levothyroxine; take on an empty stomach 30–60 minutes before breakfast."
+      },
+      "match_keys": [
+        "Levothyroxine",
+        "Synthroid",
+        "Levoxyl",
+        "Unithroid",
+        "levothyroxine sodium"
+      ]
+    },
+    {
+      "key": "liothyronine",
+      "generic": "Liothyronine",
+      "brand_names": [
+        "Cytomel"
+      ],
+      "drug_class": "Thyroid hormone (T3)",
+      "description": "Liothyronine is a form of thyroid hormone (T3) used to treat hypothyroidism, sometimes alongside levothyroxine. It supplements the body's active thyroid hormone.",
+      "match_keys": [
+        "Liothyronine",
+        "Cytomel"
+      ]
+    },
+    {
+      "key": "methimazole",
+      "generic": "Methimazole",
+      "brand_names": [
+        "Tapazole"
+      ],
+      "drug_class": "Antithyroid agent",
+      "description": "Methimazole reduces the thyroid's production of hormone and is used to treat an overactive thyroid (hyperthyroidism). It helps bring elevated thyroid hormone levels down.",
+      "match_keys": [
+        "Methimazole",
+        "Tapazole"
+      ]
+    },
+    {
+      "key": "sertraline",
+      "generic": "Sertraline",
+      "brand_names": [
+        "Zoloft"
+      ],
+      "synonyms": [
+        "sertraline hcl"
+      ],
+      "drug_class": "SSRI (antidepressant)",
+      "description": "Sertraline is an SSRI antidepressant used for depression, anxiety disorders, OCD, and related conditions. It works by increasing the availability of serotonin in the brain.",
+      "match_keys": [
+        "Sertraline",
+        "Zoloft",
+        "sertraline hcl"
+      ]
+    },
+    {
+      "key": "fluoxetine",
+      "generic": "Fluoxetine",
+      "brand_names": [
+        "Prozac"
+      ],
+      "drug_class": "SSRI (antidepressant)",
+      "description": "Fluoxetine is an SSRI used to treat depression, anxiety, OCD, and other conditions. It increases serotonin activity in the brain and is one of the longer-acting SSRIs.",
+      "match_keys": [
+        "Fluoxetine",
+        "Prozac"
+      ]
+    },
+    {
+      "key": "escitalopram",
+      "generic": "Escitalopram",
+      "brand_names": [
+        "Lexapro"
+      ],
+      "drug_class": "SSRI (antidepressant)",
+      "description": "Escitalopram is an SSRI used for depression and generalized anxiety. It works by boosting serotonin signaling in the brain.",
+      "match_keys": [
+        "Escitalopram",
+        "Lexapro"
+      ]
+    },
+    {
+      "key": "citalopram",
+      "generic": "Citalopram",
+      "brand_names": [
+        "Celexa"
+      ],
+      "drug_class": "SSRI (antidepressant)",
+      "description": "Citalopram is an SSRI used mainly to treat depression. It increases the amount of serotonin available in the brain.",
+      "match_keys": [
+        "Citalopram",
+        "Celexa"
+      ]
+    },
+    {
+      "key": "paroxetine",
+      "generic": "Paroxetine",
+      "brand_names": [
+        "Paxil"
+      ],
+      "drug_class": "SSRI (antidepressant)",
+      "description": "Paroxetine is an SSRI used for depression, several anxiety disorders, and related conditions. It works by increasing serotonin activity in the brain.",
+      "match_keys": [
+        "Paroxetine",
+        "Paxil"
+      ]
+    },
+    {
+      "key": "venlafaxine",
+      "generic": "Venlafaxine",
+      "brand_names": [
+        "Effexor"
+      ],
+      "synonyms": [
+        "venlafaxine er"
+      ],
+      "drug_class": "SNRI (antidepressant)",
+      "description": "Venlafaxine is an SNRI used for depression and anxiety disorders. It raises the brain's levels of both serotonin and norepinephrine.",
+      "match_keys": [
+        "Venlafaxine",
+        "Effexor",
+        "venlafaxine er"
+      ]
+    },
+    {
+      "key": "desvenlafaxine",
+      "generic": "Desvenlafaxine",
+      "brand_names": [
+        "Pristiq"
+      ],
+      "drug_class": "SNRI (antidepressant)",
+      "description": "Desvenlafaxine is an SNRI used to treat depression. It increases serotonin and norepinephrine signaling in the brain.",
+      "match_keys": [
+        "Desvenlafaxine",
+        "Pristiq"
+      ]
+    },
+    {
+      "key": "duloxetine",
+      "generic": "Duloxetine",
+      "brand_names": [
+        "Cymbalta"
+      ],
+      "synonyms": [
+        "duloxetine hcl"
+      ],
+      "drug_class": "SNRI (antidepressant / nerve-pain agent)",
+      "description": "Duloxetine is an SNRI used for depression and anxiety and also for certain types of chronic pain, such as nerve pain and fibromyalgia. It affects serotonin and norepinephrine, which influence both mood and pain.",
+      "match_keys": [
+        "Duloxetine",
+        "Cymbalta",
+        "duloxetine hcl"
+      ]
+    },
+    {
+      "key": "bupropion",
+      "generic": "Bupropion",
+      "brand_names": [
+        "Wellbutrin",
+        "Zyban"
+      ],
+      "synonyms": [
+        "bupropion hcl",
+        "bupropion xl"
+      ],
+      "drug_class": "Atypical antidepressant",
+      "description": "Bupropion is an antidepressant that acts differently from SSRIs and is also used to help people stop smoking. It affects dopamine and norepinephrine and is less likely to cause certain sexual side effects.",
+      "match_keys": [
+        "Bupropion",
+        "Wellbutrin",
+        "Zyban",
+        "bupropion hcl",
+        "bupropion xl"
+      ]
+    },
+    {
+      "key": "mirtazapine",
+      "generic": "Mirtazapine",
+      "brand_names": [
+        "Remeron"
+      ],
+      "drug_class": "Atypical antidepressant",
+      "description": "Mirtazapine is an antidepressant that can also improve sleep and appetite. It works on serotonin and norepinephrine pathways in a distinct way.",
+      "match_keys": [
+        "Mirtazapine",
+        "Remeron"
+      ]
+    },
+    {
+      "key": "trazodone",
+      "generic": "Trazodone",
+      "brand_names": [
+        "Desyrel"
+      ],
+      "drug_class": "Antidepressant / sleep aid",
+      "description": "Trazodone is an antidepressant that, at lower doses, is very commonly used to help with sleep. It affects serotonin signaling in the brain.",
+      "match_keys": [
+        "Trazodone",
+        "Desyrel"
+      ]
+    },
+    {
+      "key": "amitriptyline",
+      "generic": "Amitriptyline",
+      "brand_names": [
+        "Elavil"
+      ],
+      "drug_class": "Tricyclic antidepressant",
+      "description": "Amitriptyline is a tricyclic antidepressant used for depression and, often at lower doses, for chronic pain, nerve pain, and migraine prevention. It affects several brain chemicals involved in mood and pain.",
+      "match_keys": [
+        "Amitriptyline",
+        "Elavil"
+      ]
+    },
+    {
+      "key": "nortriptyline",
+      "generic": "Nortriptyline",
+      "brand_names": [
+        "Pamelor"
+      ],
+      "drug_class": "Tricyclic antidepressant",
+      "description": "Nortriptyline is a tricyclic antidepressant used for depression and certain types of chronic or nerve pain. It works on brain chemicals that influence mood and pain signaling.",
+      "match_keys": [
+        "Nortriptyline",
+        "Pamelor"
+      ]
+    },
+    {
+      "key": "alprazolam",
+      "generic": "Alprazolam",
+      "brand_names": [
+        "Xanax"
+      ],
+      "drug_class": "Benzodiazepine",
+      "description": "Alprazolam is a benzodiazepine used for short-term relief of anxiety and panic. It calms the nervous system and carries a risk of dependence with prolonged use.",
+      "match_keys": [
+        "Alprazolam",
+        "Xanax"
+      ]
+    },
+    {
+      "key": "lorazepam",
+      "generic": "Lorazepam",
+      "brand_names": [
+        "Ativan"
+      ],
+      "drug_class": "Benzodiazepine",
+      "description": "Lorazepam is a benzodiazepine used for anxiety and, in some settings, for seizures or agitation. It calms overactive nerve signaling and can be habit-forming.",
+      "match_keys": [
+        "Lorazepam",
+        "Ativan"
+      ]
+    },
+    {
+      "key": "clonazepam",
+      "generic": "Clonazepam",
+      "brand_names": [
+        "Klonopin"
+      ],
+      "drug_class": "Benzodiazepine",
+      "description": "Clonazepam is a longer-acting benzodiazepine used for certain seizure disorders and panic disorder. It calms the nervous system and can cause dependence with extended use.",
+      "match_keys": [
+        "Clonazepam",
+        "Klonopin"
+      ]
+    },
+    {
+      "key": "diazepam",
+      "generic": "Diazepam",
+      "brand_names": [
+        "Valium"
+      ],
+      "drug_class": "Benzodiazepine",
+      "description": "Diazepam is a benzodiazepine used for anxiety, muscle spasm, seizures, and alcohol withdrawal. It has a calming effect and carries a risk of dependence.",
+      "match_keys": [
+        "Diazepam",
+        "Valium"
+      ]
+    },
+    {
+      "key": "temazepam",
+      "generic": "Temazepam",
+      "brand_names": [
+        "Restoril"
+      ],
+      "drug_class": "Benzodiazepine (sleep)",
+      "description": "Temazepam is a benzodiazepine used for short-term treatment of insomnia. It helps with falling and staying asleep and can be habit-forming.",
+      "match_keys": [
+        "Temazepam",
+        "Restoril"
+      ]
+    },
+    {
+      "key": "zolpidem",
+      "generic": "Zolpidem",
+      "brand_names": [
+        "Ambien"
+      ],
+      "drug_class": "Sedative-hypnotic (sleep aid)",
+      "description": "Zolpidem is a sedative used for short-term treatment of insomnia, helping people fall asleep. It acts on the brain in a way similar to benzodiazepines.",
+      "match_keys": [
+        "Zolpidem",
+        "Ambien"
+      ]
+    },
+    {
+      "key": "eszopiclone",
+      "generic": "Eszopiclone",
+      "brand_names": [
+        "Lunesta"
+      ],
+      "drug_class": "Sedative-hypnotic (sleep aid)",
+      "description": "Eszopiclone is a sedative used to treat insomnia, helping with falling and staying asleep. It acts on calming pathways in the brain.",
+      "match_keys": [
+        "Eszopiclone",
+        "Lunesta"
+      ]
+    },
+    {
+      "key": "buspirone",
+      "generic": "Buspirone",
+      "brand_names": [
+        "Buspar"
+      ],
+      "drug_class": "Anxiolytic",
+      "description": "Buspirone is used to treat chronic anxiety and works differently from benzodiazepines, without the same sedation or dependence risk. It affects serotonin signaling and is taken regularly.",
+      "match_keys": [
+        "Buspirone",
+        "Buspar"
+      ]
+    },
+    {
+      "key": "hydroxyzine",
+      "generic": "Hydroxyzine",
+      "brand_names": [
+        "Vistaril",
+        "Atarax"
+      ],
+      "drug_class": "Antihistamine (anxiolytic / antipruritic)",
+      "description": "Hydroxyzine is an antihistamine used for anxiety, itching, and as a sedative. It can cause drowsiness and does not carry the dependence risk of benzodiazepines.",
+      "match_keys": [
+        "Hydroxyzine",
+        "Vistaril",
+        "Atarax"
+      ]
+    },
+    {
+      "key": "quetiapine",
+      "generic": "Quetiapine",
+      "brand_names": [
+        "Seroquel"
+      ],
+      "drug_class": "Atypical antipsychotic",
+      "description": "Quetiapine is an atypical antipsychotic used for schizophrenia, bipolar disorder, and as an add-on for depression. It affects several brain chemical systems that influence mood and thinking.",
+      "match_keys": [
+        "Quetiapine",
+        "Seroquel"
+      ]
+    },
+    {
+      "key": "aripiprazole",
+      "generic": "Aripiprazole",
+      "brand_names": [
+        "Abilify"
+      ],
+      "drug_class": "Atypical antipsychotic",
+      "description": "Aripiprazole is an atypical antipsychotic used for schizophrenia, bipolar disorder, and as an add-on treatment for depression. It helps balance dopamine and serotonin activity.",
+      "match_keys": [
+        "Aripiprazole",
+        "Abilify"
+      ]
+    },
+    {
+      "key": "risperidone",
+      "generic": "Risperidone",
+      "brand_names": [
+        "Risperdal"
+      ],
+      "drug_class": "Atypical antipsychotic",
+      "description": "Risperidone is an atypical antipsychotic used for schizophrenia, bipolar disorder, and irritability associated with autism. It acts on dopamine and serotonin signaling.",
+      "match_keys": [
+        "Risperidone",
+        "Risperdal"
+      ]
+    },
+    {
+      "key": "olanzapine",
+      "generic": "Olanzapine",
+      "brand_names": [
+        "Zyprexa"
+      ],
+      "drug_class": "Atypical antipsychotic",
+      "description": "Olanzapine is an atypical antipsychotic used for schizophrenia and bipolar disorder. It works on several brain chemical systems that affect mood and thought.",
+      "match_keys": [
+        "Olanzapine",
+        "Zyprexa"
+      ]
+    },
+    {
+      "key": "lithium",
+      "generic": "Lithium",
+      "brand_names": [
+        "Lithobid"
+      ],
+      "drug_class": "Mood stabilizer",
+      "description": "Lithium is a mood stabilizer used mainly for bipolar disorder to reduce mood swings and prevent manic and depressive episodes. Blood levels are monitored because the effective and excessive amounts are close together.",
+      "match_keys": [
+        "Lithium",
+        "Lithobid"
+      ]
+    },
+    {
+      "key": "lamotrigine",
+      "generic": "Lamotrigine",
+      "brand_names": [
+        "Lamictal"
+      ],
+      "drug_class": "Anticonvulsant / mood stabilizer",
+      "description": "Lamotrigine is used to control certain seizures and to stabilize mood in bipolar disorder. It calms overactive electrical activity in the brain.",
+      "match_keys": [
+        "Lamotrigine",
+        "Lamictal"
+      ]
+    },
+    {
+      "key": "divalproex",
+      "generic": "Divalproex",
+      "brand_names": [
+        "Depakote"
+      ],
+      "synonyms": [
+        "valproic acid",
+        "valproate"
+      ],
+      "drug_class": "Anticonvulsant / mood stabilizer",
+      "description": "Divalproex (valproate) is used for seizures, bipolar disorder, and migraine prevention. It works by calming abnormal electrical activity in the brain.",
+      "match_keys": [
+        "Divalproex",
+        "Depakote",
+        "valproic acid",
+        "valproate"
+      ]
+    },
+    {
+      "key": "levetiracetam",
+      "generic": "Levetiracetam",
+      "brand_names": [
+        "Keppra"
+      ],
+      "drug_class": "Anticonvulsant",
+      "description": "Levetiracetam is used to prevent and control seizures in several types of epilepsy. It reduces abnormal electrical activity in the brain.",
+      "match_keys": [
+        "Levetiracetam",
+        "Keppra"
+      ]
+    },
+    {
+      "key": "topiramate",
+      "generic": "Topiramate",
+      "brand_names": [
+        "Topamax"
+      ],
+      "drug_class": "Anticonvulsant",
+      "description": "Topiramate is used for certain seizures and for migraine prevention. It calms overactive nerve signaling in the brain.",
+      "match_keys": [
+        "Topiramate",
+        "Topamax"
+      ]
+    },
+    {
+      "key": "methylphenidate",
+      "generic": "Methylphenidate",
+      "brand_names": [
+        "Ritalin",
+        "Concerta"
+      ],
+      "drug_class": "Stimulant (ADHD)",
+      "description": "Methylphenidate is a stimulant used to treat attention-deficit/hyperactivity disorder (ADHD) and narcolepsy. It increases dopamine and norepinephrine activity to improve focus and attention.",
+      "match_keys": [
+        "Methylphenidate",
+        "Ritalin",
+        "Concerta"
+      ]
+    },
+    {
+      "key": "amphetamine-dextroamphetamine",
+      "generic": "Amphetamine-Dextroamphetamine",
+      "brand_names": [
+        "Adderall"
+      ],
+      "synonyms": [
+        "adderall xr",
+        "amphetamine salts",
+        "dextroamphetamine-amphetamine"
+      ],
+      "drug_class": "Stimulant (ADHD)",
+      "description": "This combination stimulant is used to treat ADHD and narcolepsy. It increases certain brain chemicals to improve focus and reduce impulsivity.",
+      "match_keys": [
+        "Amphetamine-Dextroamphetamine",
+        "Adderall",
+        "adderall xr",
+        "amphetamine salts",
+        "dextroamphetamine-amphetamine"
+      ]
+    },
+    {
+      "key": "lisdexamfetamine",
+      "generic": "Lisdexamfetamine",
+      "brand_names": [
+        "Vyvanse"
+      ],
+      "drug_class": "Stimulant (ADHD)",
+      "description": "Lisdexamfetamine is a stimulant used for ADHD and binge-eating disorder. It is converted in the body to an active form that increases focus-related brain chemicals.",
+      "match_keys": [
+        "Lisdexamfetamine",
+        "Vyvanse"
+      ]
+    },
+    {
+      "key": "atomoxetine",
+      "generic": "Atomoxetine",
+      "brand_names": [
+        "Strattera"
+      ],
+      "drug_class": "Non-stimulant (ADHD)",
+      "description": "Atomoxetine is a non-stimulant medication for ADHD that increases norepinephrine in the brain. It is taken daily and is an alternative to stimulant treatments.",
+      "match_keys": [
+        "Atomoxetine",
+        "Strattera"
+      ]
+    },
+    {
+      "key": "omeprazole",
+      "generic": "Omeprazole",
+      "brand_names": [
+        "Prilosec"
+      ],
+      "drug_class": "Proton pump inhibitor (PPI)",
+      "description": "Omeprazole is a proton pump inhibitor that reduces stomach acid. It is used for heartburn, acid reflux (GERD), and ulcers.",
+      "typical": {
+        "timeOfDay": "Morning",
+        "foodTiming": "before_meal",
+        "source": "FDA/OTC label — omeprazole (proton pump inhibitor); take before a meal in the morning, U.S. FDA."
+      },
+      "match_keys": [
+        "Omeprazole",
+        "Prilosec"
+      ]
+    },
+    {
+      "key": "esomeprazole",
+      "generic": "Esomeprazole",
+      "brand_names": [
+        "Nexium"
+      ],
+      "drug_class": "Proton pump inhibitor (PPI)",
+      "description": "Esomeprazole is a proton pump inhibitor that lowers stomach acid production. It is used for acid reflux, ulcers, and related conditions.",
+      "typical": {
+        "timeOfDay": "Morning",
+        "foodTiming": "before_meal",
+        "source": "FDA label — esomeprazole (Nexium); take at least 1 hour before a meal."
+      },
+      "match_keys": [
+        "Esomeprazole",
+        "Nexium"
+      ]
+    },
+    {
+      "key": "pantoprazole",
+      "generic": "Pantoprazole",
+      "brand_names": [
+        "Protonix"
+      ],
+      "drug_class": "Proton pump inhibitor (PPI)",
+      "description": "Pantoprazole is a proton pump inhibitor used to reduce stomach acid in reflux disease and other acid-related conditions. It works by blocking the stomach's acid-producing pumps.",
+      "typical": {
+        "timeOfDay": "Morning",
+        "source": "FDA prescribing information — pantoprazole (Protonix); once daily, may be taken with or without food."
+      },
+      "match_keys": [
+        "Pantoprazole",
+        "Protonix"
+      ]
+    },
+    {
+      "key": "lansoprazole",
+      "generic": "Lansoprazole",
+      "brand_names": [
+        "Prevacid"
+      ],
+      "drug_class": "Proton pump inhibitor (PPI)",
+      "description": "Lansoprazole is a proton pump inhibitor that decreases stomach acid. It is used for heartburn, reflux, and ulcers.",
+      "typical": {
+        "timeOfDay": "Morning",
+        "foodTiming": "before_meal",
+        "source": "FDA/OTC label — lansoprazole (Prevacid); take before eating in the morning."
+      },
+      "match_keys": [
+        "Lansoprazole",
+        "Prevacid"
+      ]
+    },
+    {
+      "key": "famotidine",
+      "generic": "Famotidine",
+      "brand_names": [
+        "Pepcid"
+      ],
+      "drug_class": "H2 blocker (acid reducer)",
+      "description": "Famotidine is an H2 blocker that reduces stomach acid. It is used for heartburn, acid reflux, and ulcers, and acts faster but often less strongly than a proton pump inhibitor.",
+      "typical": {
+        "asNeeded": true,
+        "source": "OTC Drug Facts label — famotidine (H2 blocker, e.g. Pepcid AC); relief and prevention of heartburn, taken as needed, U.S. FDA."
+      },
+      "match_keys": [
+        "Famotidine",
+        "Pepcid"
+      ]
+    },
+    {
+      "key": "ondansetron",
+      "generic": "Ondansetron",
+      "brand_names": [
+        "Zofran"
+      ],
+      "drug_class": "Antiemetic",
+      "description": "Ondansetron is used to prevent and treat nausea and vomiting, including from chemotherapy, surgery, or illness. It blocks a signal in the body that triggers vomiting.",
+      "match_keys": [
+        "Ondansetron",
+        "Zofran"
+      ]
+    },
+    {
+      "key": "metoclopramide",
+      "generic": "Metoclopramide",
+      "brand_names": [
+        "Reglan"
+      ],
+      "drug_class": "Antiemetic / prokinetic",
+      "description": "Metoclopramide relieves nausea and helps the stomach empty more quickly. It is used for conditions such as reflux and delayed stomach emptying.",
+      "match_keys": [
+        "Metoclopramide",
+        "Reglan"
+      ]
+    },
+    {
+      "key": "dicyclomine",
+      "generic": "Dicyclomine",
+      "brand_names": [
+        "Bentyl"
+      ],
+      "drug_class": "Antispasmodic",
+      "description": "Dicyclomine relaxes the muscles of the gut and is used to relieve cramping in conditions such as irritable bowel syndrome. It reduces intestinal spasms.",
+      "match_keys": [
+        "Dicyclomine",
+        "Bentyl"
+      ]
+    },
+    {
+      "key": "loperamide",
+      "generic": "Loperamide",
+      "brand_names": [
+        "Imodium"
+      ],
+      "drug_class": "Antidiarrheal",
+      "description": "Loperamide slows the movement of the intestines to reduce diarrhea. It is commonly used for short-term relief of diarrhea.",
+      "match_keys": [
+        "Loperamide",
+        "Imodium"
+      ]
+    },
+    {
+      "key": "polyethylene glycol",
+      "generic": "Polyethylene Glycol",
+      "brand_names": [
+        "Miralax"
+      ],
+      "synonyms": [
+        "peg 3350",
+        "peg-3350",
+        "miralax"
+      ],
+      "drug_class": "Osmotic laxative",
+      "description": "Polyethylene glycol is an osmotic laxative that draws water into the stool to relieve constipation. It is generally gentle and works over a day or two.",
+      "match_keys": [
+        "Polyethylene Glycol",
+        "Miralax",
+        "peg 3350",
+        "peg-3350"
+      ]
+    },
+    {
+      "key": "docusate",
+      "generic": "Docusate",
+      "brand_names": [
+        "Colace"
+      ],
+      "drug_class": "Stool softener",
+      "description": "Docusate is a stool softener used to prevent and ease constipation, especially when straining should be avoided. It helps water mix into the stool.",
+      "match_keys": [
+        "Docusate",
+        "Colace"
+      ]
+    },
+    {
+      "key": "mesalamine",
+      "generic": "Mesalamine",
+      "brand_names": [
+        "Asacol",
+        "Lialda",
+        "Pentasa"
+      ],
+      "drug_class": "Aminosalicylate (IBD)",
+      "description": "Mesalamine reduces inflammation in the lining of the intestine and is used to treat and maintain remission in inflammatory bowel disease such as ulcerative colitis.",
+      "match_keys": [
+        "Mesalamine",
+        "Asacol",
+        "Lialda",
+        "Pentasa"
+      ]
+    },
+    {
+      "key": "prednisone",
+      "generic": "Prednisone",
+      "drug_class": "Corticosteroid",
+      "description": "Prednisone is a corticosteroid that reduces inflammation and calms an overactive immune system. It is used for a wide range of conditions, including asthma flares, autoimmune diseases, and severe allergic reactions.",
+      "match_keys": [
+        "Prednisone"
+      ]
+    },
+    {
+      "key": "prednisolone",
+      "generic": "Prednisolone",
+      "brand_names": [
+        "Orapred",
+        "Prelone"
+      ],
+      "drug_class": "Corticosteroid",
+      "description": "Prednisolone is a corticosteroid used to reduce inflammation and suppress overactive immune responses. It treats conditions such as asthma, allergies, and autoimmune disorders.",
+      "match_keys": [
+        "Prednisolone",
+        "Orapred",
+        "Prelone"
+      ]
+    },
+    {
+      "key": "methylprednisolone",
+      "generic": "Methylprednisolone",
+      "brand_names": [
+        "Medrol"
+      ],
+      "drug_class": "Corticosteroid",
+      "description": "Methylprednisolone is a corticosteroid that reduces inflammation and immune activity. It is used for flares of autoimmune, allergic, and inflammatory conditions, sometimes as a short tapering course.",
+      "match_keys": [
+        "Methylprednisolone",
+        "Medrol"
+      ]
+    },
+    {
+      "key": "dexamethasone",
+      "generic": "Dexamethasone",
+      "brand_names": [
+        "Decadron"
+      ],
+      "drug_class": "Corticosteroid",
+      "description": "Dexamethasone is a potent, long-acting corticosteroid used to reduce inflammation and immune activity in many conditions. It is used for severe inflammation, certain cancers' supportive care, and other uses.",
+      "match_keys": [
+        "Dexamethasone",
+        "Decadron"
+      ]
+    },
+    {
+      "key": "hydrocortisone",
+      "generic": "Hydrocortisone",
+      "brand_names": [
+        "Cortef"
+      ],
+      "drug_class": "Corticosteroid",
+      "description": "Hydrocortisone is a corticosteroid used to reduce inflammation, and it is also given to replace the body's natural cortisol when the adrenal glands are underactive. Topical forms treat skin inflammation and itching.",
+      "match_keys": [
+        "Hydrocortisone",
+        "Cortef"
+      ]
+    },
+    {
+      "key": "budesonide",
+      "generic": "Budesonide",
+      "brand_names": [
+        "Entocort",
+        "Pulmicort",
+        "Uceris"
+      ],
+      "drug_class": "Corticosteroid",
+      "description": "Budesonide is a corticosteroid that reduces inflammation and is designed to act mostly at the site it is delivered, such as the lungs (for asthma), the nose, or the intestine. This targeted action limits how much reaches the rest of the body.",
+      "match_keys": [
+        "Budesonide",
+        "Entocort",
+        "Pulmicort",
+        "Uceris"
+      ]
+    },
+    {
+      "key": "fluticasone",
+      "generic": "Fluticasone",
+      "brand_names": [
+        "Flonase",
+        "Flovent"
+      ],
+      "drug_class": "Inhaled/nasal corticosteroid",
+      "description": "Fluticasone is a corticosteroid used as a nasal spray for allergies or an inhaler for asthma. It reduces inflammation directly in the airways or nasal passages.",
+      "match_keys": [
+        "Fluticasone",
+        "Flonase",
+        "Flovent"
+      ]
+    },
+    {
+      "key": "mometasone",
+      "generic": "Mometasone",
+      "brand_names": [
+        "Nasonex",
+        "Asmanex"
+      ],
+      "drug_class": "Inhaled/nasal corticosteroid",
+      "description": "Mometasone is a corticosteroid used as a nasal spray for allergies or an inhaler for asthma. It calms inflammation where it is applied.",
+      "match_keys": [
+        "Mometasone",
+        "Nasonex",
+        "Asmanex"
+      ]
+    },
+    {
+      "key": "triamcinolone",
+      "generic": "Triamcinolone",
+      "brand_names": [
+        "Kenalog",
+        "Nasacort"
+      ],
+      "drug_class": "Corticosteroid",
+      "description": "Triamcinolone is a corticosteroid available as a cream, nasal spray, or injection to reduce inflammation. It is used for skin conditions, allergies, and joint inflammation.",
+      "match_keys": [
+        "Triamcinolone",
+        "Kenalog",
+        "Nasacort"
+      ]
+    },
+    {
+      "key": "beclomethasone",
+      "generic": "Beclomethasone",
+      "brand_names": [
+        "Qvar"
+      ],
+      "drug_class": "Inhaled/nasal corticosteroid",
+      "description": "Beclomethasone is a corticosteroid used in an inhaler for asthma or as a nasal spray for allergies. It reduces inflammation in the airways or nose.",
+      "match_keys": [
+        "Beclomethasone",
+        "Qvar"
+      ]
+    },
+    {
+      "key": "loratadine",
+      "generic": "Loratadine",
+      "brand_names": [
+        "Claritin"
+      ],
+      "drug_class": "Antihistamine (non-drowsy)",
+      "description": "Loratadine is a non-drowsy antihistamine used to relieve allergy symptoms such as sneezing, runny nose, and itching. It blocks histamine, a chemical involved in allergic reactions.",
+      "match_keys": [
+        "Loratadine",
+        "Claritin"
+      ]
+    },
+    {
+      "key": "cetirizine",
+      "generic": "Cetirizine",
+      "brand_names": [
+        "Zyrtec"
+      ],
+      "drug_class": "Antihistamine",
+      "description": "Cetirizine is an antihistamine used for allergy symptoms and hives. It blocks histamine and is generally low in drowsiness, though it can be mildly sedating for some people.",
+      "match_keys": [
+        "Cetirizine",
+        "Zyrtec"
+      ]
+    },
+    {
+      "key": "fexofenadine",
+      "generic": "Fexofenadine",
+      "brand_names": [
+        "Allegra"
+      ],
+      "drug_class": "Antihistamine (non-drowsy)",
+      "description": "Fexofenadine is a non-drowsy antihistamine used to relieve seasonal allergy symptoms and hives. It blocks histamine without typically causing sleepiness.",
+      "match_keys": [
+        "Fexofenadine",
+        "Allegra"
+      ]
+    },
+    {
+      "key": "levocetirizine",
+      "generic": "Levocetirizine",
+      "brand_names": [
+        "Xyzal"
+      ],
+      "drug_class": "Antihistamine",
+      "description": "Levocetirizine is an antihistamine used for allergy symptoms and hives. It blocks histamine and is often taken in the evening.",
+      "match_keys": [
+        "Levocetirizine",
+        "Xyzal"
+      ]
+    },
+    {
+      "key": "diphenhydramine",
+      "generic": "Diphenhydramine",
+      "brand_names": [
+        "Benadryl"
+      ],
+      "drug_class": "Antihistamine (sedating)",
+      "description": "Diphenhydramine is a sedating antihistamine used for allergies, allergic reactions, and as a sleep aid. It commonly causes drowsiness.",
+      "typical": {
+        "asNeeded": true,
+        "timeOfDay": "Before sleep",
+        "source": "OTC Drug Facts label — diphenhydramine HCl (antihistamine / nighttime sleep-aid); marked drowsiness, U.S. FDA."
+      },
+      "match_keys": [
+        "Diphenhydramine",
+        "Benadryl"
+      ]
+    },
+    {
+      "key": "montelukast",
+      "generic": "Montelukast",
+      "brand_names": [
+        "Singulair"
+      ],
+      "drug_class": "Leukotriene receptor antagonist",
+      "description": "Montelukast is used to help control asthma and relieve allergy symptoms. It blocks leukotrienes, substances that contribute to airway inflammation and allergic responses.",
+      "match_keys": [
+        "Montelukast",
+        "Singulair"
+      ]
+    },
+    {
+      "key": "albuterol",
+      "generic": "Albuterol",
+      "brand_names": [
+        "Ventolin",
+        "ProAir",
+        "Proventil"
+      ],
+      "drug_class": "Short-acting bronchodilator",
+      "description": "Albuterol is a quick-acting inhaler that relaxes and opens the airways during asthma or breathing flare-ups. It is often called a rescue inhaler because it relieves symptoms fast.",
+      "match_keys": [
+        "Albuterol",
+        "Ventolin",
+        "ProAir",
+        "Proventil"
+      ]
+    },
+    {
+      "key": "ipratropium",
+      "generic": "Ipratropium",
+      "brand_names": [
+        "Atrovent"
+      ],
+      "drug_class": "Anticholinergic bronchodilator",
+      "description": "Ipratropium is an inhaled medication that helps open the airways and is used for COPD and sometimes asthma. It works differently from albuterol and is often used together with it.",
+      "match_keys": [
+        "Ipratropium",
+        "Atrovent"
+      ]
+    },
+    {
+      "key": "tiotropium",
+      "generic": "Tiotropium",
+      "brand_names": [
+        "Spiriva"
+      ],
+      "drug_class": "Long-acting bronchodilator",
+      "description": "Tiotropium is a long-acting inhaler used mainly for COPD to keep the airways open throughout the day. It is used for maintenance, not for sudden symptoms.",
+      "match_keys": [
+        "Tiotropium",
+        "Spiriva"
+      ]
+    },
+    {
+      "key": "fluticasone-salmeterol",
+      "generic": "Fluticasone-Salmeterol",
+      "brand_names": [
+        "Advair"
+      ],
+      "synonyms": [
+        "advair diskus",
+        "advair hfa"
+      ],
+      "drug_class": "Inhaled corticosteroid + long-acting bronchodilator",
+      "description": "This inhaler combines an inhaled corticosteroid with a long-acting bronchodilator to control asthma or COPD. It reduces airway inflammation and keeps the airways open, and is used regularly for maintenance.",
+      "match_keys": [
+        "Fluticasone-Salmeterol",
+        "Advair",
+        "advair diskus",
+        "advair hfa"
+      ]
+    },
+    {
+      "key": "budesonide-formoterol",
+      "generic": "Budesonide-Formoterol",
+      "brand_names": [
+        "Symbicort"
+      ],
+      "drug_class": "Inhaled corticosteroid + long-acting bronchodilator",
+      "description": "This inhaler combines the corticosteroid budesonide with a long-acting bronchodilator to control asthma or COPD. It both calms airway inflammation and keeps the airways open.",
+      "match_keys": [
+        "Budesonide-Formoterol",
+        "Symbicort"
+      ]
+    },
+    {
+      "key": "guaifenesin",
+      "generic": "Guaifenesin",
+      "brand_names": [
+        "Mucinex"
+      ],
+      "drug_class": "Expectorant",
+      "description": "Guaifenesin is an expectorant used to thin and loosen mucus so that coughs are more productive. It is commonly used for chest congestion.",
+      "match_keys": [
+        "Guaifenesin",
+        "Mucinex"
+      ]
+    },
+    {
+      "key": "pseudoephedrine",
+      "generic": "Pseudoephedrine",
+      "brand_names": [
+        "Sudafed"
+      ],
+      "drug_class": "Decongestant",
+      "description": "Pseudoephedrine is a decongestant that relieves a stuffy nose and sinus congestion by narrowing blood vessels in the nasal passages. It is often used for colds and allergies.",
+      "match_keys": [
+        "Pseudoephedrine",
+        "Sudafed"
+      ]
+    },
+    {
+      "key": "warfarin",
+      "generic": "Warfarin",
+      "brand_names": [
+        "Coumadin",
+        "Jantoven"
+      ],
+      "drug_class": "Anticoagulant (blood thinner)",
+      "description": "Warfarin is a blood thinner used to prevent and treat harmful blood clots, such as in atrial fibrillation or after a clot. It requires regular blood testing to keep its effect in a safe range.",
+      "match_keys": [
+        "Warfarin",
+        "Coumadin",
+        "Jantoven"
+      ]
+    },
+    {
+      "key": "apixaban",
+      "generic": "Apixaban",
+      "brand_names": [
+        "Eliquis"
+      ],
+      "drug_class": "Anticoagulant (blood thinner)",
+      "description": "Apixaban is a blood thinner used to prevent strokes in atrial fibrillation and to treat and prevent blood clots. Unlike warfarin, it usually does not require routine blood monitoring.",
+      "match_keys": [
+        "Apixaban",
+        "Eliquis"
+      ]
+    },
+    {
+      "key": "rivaroxaban",
+      "generic": "Rivaroxaban",
+      "brand_names": [
+        "Xarelto"
+      ],
+      "drug_class": "Anticoagulant (blood thinner)",
+      "description": "Rivaroxaban is a blood thinner used to prevent and treat blood clots and to lower stroke risk in atrial fibrillation. It generally does not need routine blood testing.",
+      "match_keys": [
+        "Rivaroxaban",
+        "Xarelto"
+      ]
+    },
+    {
+      "key": "dabigatran",
+      "generic": "Dabigatran",
+      "brand_names": [
+        "Pradaxa"
+      ],
+      "drug_class": "Anticoagulant (blood thinner)",
+      "description": "Dabigatran is a blood thinner used to reduce stroke risk in atrial fibrillation and to treat and prevent clots. It works by directly blocking a key clotting factor.",
+      "match_keys": [
+        "Dabigatran",
+        "Pradaxa"
+      ]
+    },
+    {
+      "key": "clopidogrel",
+      "generic": "Clopidogrel",
+      "brand_names": [
+        "Plavix"
+      ],
+      "drug_class": "Antiplatelet",
+      "description": "Clopidogrel is an antiplatelet medication that helps prevent blood clots by keeping platelets from sticking together. It is used after certain heart procedures and to lower the risk of heart attack and stroke.",
+      "match_keys": [
+        "Clopidogrel",
+        "Plavix"
+      ]
+    },
+    {
+      "key": "enoxaparin",
+      "generic": "Enoxaparin",
+      "brand_names": [
+        "Lovenox"
+      ],
+      "drug_class": "Anticoagulant (low-molecular-weight heparin)",
+      "description": "Enoxaparin is an injectable blood thinner used to prevent and treat blood clots. It is often used in the hospital or as a short course at home.",
+      "match_keys": [
+        "Enoxaparin",
+        "Lovenox"
+      ]
+    },
+    {
+      "key": "estradiol",
+      "generic": "Estradiol",
+      "brand_names": [
+        "Estrace",
+        "Climara"
+      ],
+      "drug_class": "Estrogen (hormone)",
+      "description": "Estradiol is a form of estrogen used in hormone therapy, such as for menopausal symptoms. It replaces estrogen the body no longer makes in sufficient amounts.",
+      "match_keys": [
+        "Estradiol",
+        "Estrace",
+        "Climara"
+      ]
+    },
+    {
+      "key": "progesterone",
+      "generic": "Progesterone",
+      "brand_names": [
+        "Prometrium"
+      ],
+      "drug_class": "Progestogen (hormone)",
+      "description": "Progesterone is a hormone used in menopausal hormone therapy and to support certain reproductive conditions. It is often given together with estrogen.",
+      "match_keys": [
+        "Progesterone",
+        "Prometrium"
+      ]
+    },
+    {
+      "key": "testosterone",
+      "generic": "Testosterone",
+      "brand_names": [
+        "AndroGel",
+        "Depo-Testosterone"
+      ],
+      "drug_class": "Androgen (hormone)",
+      "description": "Testosterone is used to replace the hormone in men whose bodies do not make enough (low testosterone). It comes in gels, patches, and injections.",
+      "match_keys": [
+        "Testosterone",
+        "AndroGel",
+        "Depo-Testosterone"
+      ]
+    },
+    {
+      "key": "finasteride",
+      "generic": "Finasteride",
+      "brand_names": [
+        "Proscar",
+        "Propecia"
+      ],
+      "drug_class": "5-alpha-reductase inhibitor",
+      "description": "Finasteride blocks a hormone that contributes to prostate enlargement and to hair loss. It is used for an enlarged prostate and for male-pattern hair loss.",
+      "match_keys": [
+        "Finasteride",
+        "Proscar",
+        "Propecia"
+      ]
+    },
+    {
+      "key": "sildenafil",
+      "generic": "Sildenafil",
+      "brand_names": [
+        "Viagra",
+        "Revatio"
+      ],
+      "drug_class": "PDE5 inhibitor",
+      "description": "Sildenafil improves blood flow and is used for erectile dysfunction and, in a separate form, for a type of high blood pressure in the lungs. It relaxes blood vessels.",
+      "match_keys": [
+        "Sildenafil",
+        "Viagra",
+        "Revatio"
+      ]
+    },
+    {
+      "key": "tadalafil",
+      "generic": "Tadalafil",
+      "brand_names": [
+        "Cialis"
+      ],
+      "drug_class": "PDE5 inhibitor",
+      "description": "Tadalafil is used for erectile dysfunction, symptoms of an enlarged prostate, and a type of pulmonary high blood pressure. It works by relaxing blood vessels and lasts longer than some similar medicines.",
+      "match_keys": [
+        "Tadalafil",
+        "Cialis"
+      ]
+    },
+    {
+      "key": "oxybutynin",
+      "generic": "Oxybutynin",
+      "brand_names": [
+        "Ditropan"
+      ],
+      "drug_class": "Anticholinergic (overactive bladder)",
+      "description": "Oxybutynin relaxes the bladder muscle to reduce urgency, frequency, and leakage in overactive bladder. It calms bladder spasms.",
+      "match_keys": [
+        "Oxybutynin",
+        "Ditropan"
+      ]
+    },
+    {
+      "key": "methotrexate",
+      "generic": "Methotrexate",
+      "brand_names": [
+        "Trexall",
+        "Rheumatrex"
+      ],
+      "drug_class": "DMARD / immunosuppressant",
+      "description": "Methotrexate is used at low weekly doses to calm the immune system in rheumatoid arthritis, psoriasis, and other autoimmune conditions (and at higher doses in some cancers). It reduces inflammation and immune overactivity.",
+      "match_keys": [
+        "Methotrexate",
+        "Trexall",
+        "Rheumatrex"
+      ]
+    },
+    {
+      "key": "hydroxychloroquine",
+      "generic": "Hydroxychloroquine",
+      "brand_names": [
+        "Plaquenil"
+      ],
+      "drug_class": "DMARD (antimalarial)",
+      "description": "Hydroxychloroquine is used to treat autoimmune conditions such as lupus and rheumatoid arthritis, and also to prevent and treat malaria. It modulates the immune system to reduce inflammation.",
+      "match_keys": [
+        "Hydroxychloroquine",
+        "Plaquenil"
+      ]
+    },
+    {
+      "key": "sulfasalazine",
+      "generic": "Sulfasalazine",
+      "brand_names": [
+        "Azulfidine"
+      ],
+      "drug_class": "DMARD / aminosalicylate",
+      "description": "Sulfasalazine is used for rheumatoid arthritis and inflammatory bowel disease. It reduces inflammation in the joints or intestine.",
+      "match_keys": [
+        "Sulfasalazine",
+        "Azulfidine"
+      ]
+    },
+    {
+      "key": "azathioprine",
+      "generic": "Azathioprine",
+      "brand_names": [
+        "Imuran"
+      ],
+      "drug_class": "Immunosuppressant",
+      "description": "Azathioprine suppresses an overactive immune system and is used in autoimmune conditions and to help prevent rejection after organ transplant. It lowers immune activity that would otherwise cause damage.",
+      "match_keys": [
+        "Azathioprine",
+        "Imuran"
+      ]
+    },
+    {
+      "key": "adalimumab",
+      "generic": "Adalimumab",
+      "brand_names": [
+        "Humira"
+      ],
+      "drug_class": "Biologic (TNF inhibitor)",
+      "description": "Adalimumab is an injectable biologic that blocks TNF, a driver of inflammation, and is used for autoimmune conditions such as rheumatoid arthritis, Crohn's disease, and psoriasis. It calms the immune-driven inflammation behind these conditions.",
+      "match_keys": [
+        "Adalimumab",
+        "Humira"
+      ]
+    },
+    {
+      "key": "etanercept",
+      "generic": "Etanercept",
+      "brand_names": [
+        "Enbrel"
+      ],
+      "drug_class": "Biologic (TNF inhibitor)",
+      "description": "Etanercept is an injectable biologic that blocks TNF to reduce inflammation in autoimmune conditions such as rheumatoid arthritis and psoriasis.",
+      "match_keys": [
+        "Etanercept",
+        "Enbrel"
+      ]
+    },
+    {
+      "key": "cholecalciferol",
+      "generic": "Cholecalciferol (Vitamin D3)",
+      "brand_names": [
+        "Vitamin D",
+        "Vitamin D3"
+      ],
+      "synonyms": [
+        "vitamin d3",
+        "vitamin d"
+      ],
+      "drug_class": "Vitamin / supplement",
+      "description": "Cholecalciferol is vitamin D3, used to prevent or treat low vitamin D. Adequate vitamin D supports bone health and calcium balance.",
+      "match_keys": [
+        "Cholecalciferol (Vitamin D3)",
+        "cholecalciferol",
+        "Vitamin D",
+        "Vitamin D3"
+      ]
+    },
+    {
+      "key": "cyanocobalamin",
+      "generic": "Cyanocobalamin (Vitamin B12)",
+      "brand_names": [
+        "Vitamin B12"
+      ],
+      "synonyms": [
+        "vitamin b12",
+        "cobalamin"
+      ],
+      "drug_class": "Vitamin / supplement",
+      "description": "Cyanocobalamin is a form of vitamin B12 used to prevent or treat B12 deficiency. Vitamin B12 supports red blood cell formation and nerve function.",
+      "match_keys": [
+        "Cyanocobalamin (Vitamin B12)",
+        "cyanocobalamin",
+        "Vitamin B12",
+        "cobalamin"
+      ]
+    },
+    {
+      "key": "folic acid",
+      "generic": "Folic Acid",
+      "brand_names": [
+        "Vitamin B9"
+      ],
+      "synonyms": [
+        "vitamin b9",
+        "folate"
+      ],
+      "drug_class": "Vitamin / supplement",
+      "description": "Folic acid is a B vitamin used to prevent or treat folate deficiency and is important before and during pregnancy to support healthy development. It is needed to make DNA and red blood cells.",
+      "match_keys": [
+        "Folic Acid",
+        "Vitamin B9",
+        "folate"
+      ]
+    },
+    {
+      "key": "ferrous sulfate",
+      "generic": "Ferrous Sulfate",
+      "brand_names": [
+        "Feosol"
+      ],
+      "drug_class": "Iron supplement",
+      "description": "Ferrous sulfate is an iron supplement used to prevent or treat iron-deficiency anemia. It replenishes the body's iron, which is needed to make hemoglobin.",
+      "match_keys": [
+        "Ferrous Sulfate",
+        "Feosol"
+      ]
+    },
+    {
+      "key": "cholestyramine",
+      "generic": "Cholestyramine",
+      "brand_names": [
+        "Questran"
+      ],
+      "drug_class": "Bile acid sequestrant",
+      "description": "Cholestyramine binds bile acids in the gut and is used to lower cholesterol and to relieve certain types of diarrhea and itching. It removes bile acids from the body.",
+      "match_keys": [
+        "Cholestyramine",
+        "Questran"
+      ]
+    },
+    {
+      "key": "melatonin",
+      "generic": "Melatonin",
+      "drug_class": "Sleep supplement",
+      "description": "Melatonin is a hormone available as a supplement that helps signal the body it is time to sleep. It is commonly used for occasional sleep difficulty and jet lag.",
+      "match_keys": [
+        "Melatonin"
+      ]
+    },
+    {
+      "key": "magnesium oxide",
+      "generic": "Magnesium Oxide",
+      "drug_class": "Mineral supplement",
+      "description": "Magnesium oxide is a magnesium supplement used to prevent or treat low magnesium and, at some doses, to relieve constipation or heartburn. Magnesium supports muscle, nerve, and enzyme function.",
+      "match_keys": [
+        "Magnesium Oxide"
+      ]
+    },
+    {
+      "key": "potassium chloride",
+      "generic": "Potassium Chloride",
+      "brand_names": [
+        "Klor-Con"
+      ],
+      "drug_class": "Electrolyte supplement",
+      "description": "Potassium chloride is a supplement used to prevent or treat low potassium, which can occur with certain diuretics or conditions. Potassium is essential for nerve, muscle, and heart function.",
+      "match_keys": [
+        "Potassium Chloride",
+        "Klor-Con"
+      ]
+    },
+    {
+      "key": "omega-3",
+      "generic": "Omega-3 Fatty Acids",
+      "brand_names": [
+        "Fish Oil",
+        "Lovaza"
+      ],
+      "synonyms": [
+        "fish oil",
+        "omega 3",
+        "omega-3 fatty acids"
+      ],
+      "drug_class": "Fatty-acid supplement",
+      "description": "Omega-3 fatty acids (often from fish oil) are used as a supplement and, in prescription form, to lower high triglycerides. Omega-3s are associated with cardiovascular and general health.",
+      "match_keys": [
+        "Omega-3 Fatty Acids",
+        "omega-3",
+        "Fish Oil",
+        "Lovaza",
+        "omega 3"
+      ]
+    }
+  ]
+}
