@@ -93,7 +93,7 @@ export const VITAL_CANONICAL = {
   // Functional fitness markers (#158) — manual-entry physical measurements stored
   // in their canonical unit directly (no conversion). Each is a canonical biomarker
   // (see scripts/gen-canonical-biomarkers.ts CURATED_LABS) whose age/sex percentile
-  // context comes from lib/fitness-norms.json; the names/units MUST match both.
+  // context comes from lib/datasets/data/fitness-norms.json; the names/units MUST match both.
   gripStrength: {
     canonical: "Grip Strength",
     category: "vitals" as const,

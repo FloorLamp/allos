@@ -1,7 +1,22 @@
 {
-  "$comment": "Baked age/sex fitness-norm dataset (issue #158) for PERCENTILE context and FITNESS AGE on VO2 Max, grip strength, 30-second chair stand, and single-leg balance. Published aggregate norms (FRIEND registry; Dodds 2014; Rikli & Jones; Springer 2007) — see scripts/gen-fitness-norms.ts for citations. Committed + HUMAN-REVIEWABLE; regenerate with `npm run gen:fitness-norms`. INFORMATIONAL population reference standards, NOT measurements or medical advice.",
-  "markers": {
-    "VO2 Max": {
+  "$schema": "allos-dataset/v1",
+  "id": "fitness-norms",
+  "title": "Age/sex fitness reference norms",
+  "description": "Baked age/sex fitness-norm dataset (issue #158) for PERCENTILE context and FITNESS AGE on VO2 Max, grip strength, 30-second chair stand, and single-leg balance. Published aggregate norms (FRIEND registry; Dodds 2014; Rikli & Jones; Springer 2007) — see the per-marker `source` and scripts/gen-fitness-norms.ts for citations. Committed + HUMAN-REVIEWABLE; regenerate with `npm run gen:fitness-norms`. INFORMATIONAL population reference standards, NOT measurements or medical advice.",
+  "citation": [
+    {
+      "source": "VO2 Max — FRIEND registry (Kaminsky et al., Mayo Clin Proc 2015); Grip Strength — Dodds et al., PLoS ONE 2014; 30-Second Chair Stand — Rikli & Jones Senior Fitness Test norms; Single-Leg Balance — Springer et al., J Geriatr Phys Ther 2007.",
+      "note": "Published aggregate reference standards, rounded from the cited tables; each marker additionally carries its own per-marker `source`. INFORMATIONAL, not measurements or medical advice."
+    }
+  ],
+  "identity": {
+    "keys": [
+      "name"
+    ]
+  },
+  "entries": [
+    {
+      "name": "VO2 Max",
       "unit": "mL/kg/min",
       "direction": "higher_better",
       "source": "FRIEND registry (Kaminsky et al., Mayo Clin Proc 2015), treadmill VO2max percentiles.",
@@ -206,7 +221,8 @@
         }
       }
     },
-    "Grip Strength": {
+    {
+      "name": "Grip Strength",
       "unit": "kg",
       "direction": "higher_better",
       "source": "Dodds et al., PLoS ONE 2014 (twelve British studies) — maximum grip centiles.",
@@ -375,7 +391,8 @@
         }
       }
     },
-    "30-Second Chair Stand": {
+    {
+      "name": "30-Second Chair Stand",
       "unit": "reps",
       "direction": "higher_better",
       "source": "Rikli & Jones Senior Fitness Test norms (older adults 60-94; normal-range = 25th-75th centile).",
@@ -512,7 +529,8 @@
         }
       }
     },
-    "Single-Leg Balance": {
+    {
+      "name": "Single-Leg Balance",
       "unit": "seconds",
       "direction": "higher_better",
       "source": "Springer et al., J Geriatr Phys Ther 2007 — unipedal stance, eyes open (45 s ceiling; sex-neutral).",
@@ -649,5 +667,5 @@
         }
       }
     }
-  }
+  ]
 }

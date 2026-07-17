@@ -931,10 +931,10 @@ export const CURATED_LABS: Biomarker[] = [
   // MANUAL-ENTRY physical measurements (no lab draws) that are each independent,
   // well-published mortality/frailty predictors. They carry NO fixed reference or
   // optimal band — their context comes from the age/sex PERCENTILE + fitness-age
-  // lookup over lib/fitness-norms.json (see lib/fitness-norms.ts), not a single
+  // lookup over lib/datasets/data/fitness-norms.json (see lib/fitness-norms.ts), not a single
   // cutoff — so ref/optimal are intentionally null (no misleading high/low flag).
   // direction is higher_better for the trajectory machinery. Canonical names/units
-  // MUST match lib/vitals-input.ts and the lib/fitness-norms.json keys byte-for-byte.
+  // MUST match lib/vitals-input.ts and the lib/datasets/data/fitness-norms.json keys byte-for-byte.
   // INFORMATIONAL, not medical advice.
   {
     name: "Grip Strength",
