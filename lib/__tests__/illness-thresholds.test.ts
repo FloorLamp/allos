@@ -4,17 +4,32 @@ import {
   illnessThresholdFor,
   allThresholdSlugsAreCurated,
 } from "@/lib/illness-thresholds";
+import {
+  illnessThresholdsDataset,
+  illnessThresholdSlugStrategy,
+} from "@/lib/datasets/illness-thresholds";
+import { runHarness } from "@/lib/datasets";
 import { isCuratedSymptom, symptomSlugs } from "@/lib/symptoms";
 
-// Dataset test for the curated, CITED illness-care thresholds (#805) — the #798
-// prn-defaults treatment: every entry cites a source, is keyed by a real #799
-// curated symptom slug, and carries at least one firing rule. The load-bearing
-// safety invariants: no entry outside the vocabulary (a threshold that can never
-// match a logged row), and the age band is present ONLY where the source publishes
-// one (fever's infant rule) with its OWN source.
+// Dataset + framework-contract test for the curated, CITED illness-care thresholds
+// (#805, migrated onto the curated-dataset framework in #860 wave 2) — the #798
+// prn-defaults treatment: every entry cites a source, is keyed by a real #799 curated
+// symptom slug, and carries at least one firing rule. The load-bearing safety
+// invariants: no entry outside the vocabulary (a threshold that can never match a
+// logged row), and the age band is present ONLY where the source publishes one (fever's
+// infant rule) with its OWN source. Plus the framework harness (citation / slug identity
+// / refusal / no-collisions).
 
 describe("illness-thresholds dataset", () => {
   const entries = illnessThresholdEntries();
+
+  it("passes the framework harness (citation / slug identity / refusal / no collisions)", () => {
+    const r = runHarness(
+      illnessThresholdsDataset,
+      illnessThresholdSlugStrategy
+    );
+    expect(r.ok, r.problems.join("; ")).toBe(true);
+  });
 
   it("has entries and every one cites a source + a real curated slug + a label", () => {
     expect(entries.length).toBeGreaterThan(0);

@@ -21,6 +21,10 @@ import {
 import { foodGroupsDataset } from "./food-groups";
 import { icd10Dataset, icd10CodeStrategy } from "./icd10-common";
 import {
+  illnessThresholdsDataset,
+  illnessThresholdSlugStrategy,
+} from "./illness-thresholds";
+import {
   medicationDescriptionsDataset,
   medDescriptionsStrategy,
 } from "./medication-descriptions";
@@ -30,6 +34,7 @@ import {
   nutrientKeyStrategy,
 } from "./nutrient-food-map";
 import { pgxDataset, pgxGuidanceStrategy } from "./pgx";
+import { prnDefaultsDataset, prnDefaultSlugStrategy } from "./prn-defaults";
 import { screeningsDataset, screeningKeyStrategy } from "./screenings";
 import {
   tempRedFlagsDataset,
@@ -92,6 +97,13 @@ export const DATASETS: RegisteredDataset[] = [
     strategy: icd10CodeStrategy,
   },
   {
+    dataset: illnessThresholdsDataset as unknown as LoadedDataset<
+      Record<string, unknown>,
+      unknown
+    >,
+    strategy: illnessThresholdSlugStrategy,
+  },
+  {
     dataset: medicationDescriptionsDataset as unknown as LoadedDataset<
       Record<string, unknown>,
       unknown
@@ -118,6 +130,13 @@ export const DATASETS: RegisteredDataset[] = [
       unknown
     >,
     strategy: pgxGuidanceStrategy,
+  },
+  {
+    dataset: prnDefaultsDataset as unknown as LoadedDataset<
+      Record<string, unknown>,
+      unknown
+    >,
+    strategy: prnDefaultSlugStrategy,
   },
   {
     dataset: screeningsDataset as unknown as LoadedDataset<
