@@ -573,7 +573,17 @@ export function detectUnitMislabel(
   if (referenceStatus(vStated, rr.low, rr.high) === "in") return null;
   const vCanon = convertToCanonical(valueNum, canonUnit, cb);
   if (vCanon == null) return null;
-  if (referenceStatus(vCanon, rr.low, rr.high) !== "in") return null;
+  // Corroborate against the canonical range OR the report's OWN stated range (its
+  // numbers ARE in the corrected/canonical unit once we believe the label is wrong
+  // by `factor`). The report's range is the actual evidence here, and a lab's cited
+  // range is often wider than our tight canonical band — so a value normal-per-report
+  // but a hair outside the canonical range (e.g. MCHC 35.8 vs canonical 35.4, stated
+  // 31–37) must still corroborate, or the detector misses its own motivating case
+  // (#761 / found in a real export). Both gates already sit behind the clean ×10
+  // range mismatch above, so this only widens a signal that's already evidence-gated.
+  const inCanonical = referenceStatus(vCanon, rr.low, rr.high) === "in";
+  const inStated = referenceStatus(vCanon, parsed.low, parsed.high) === "in";
+  if (!inCanonical && !inStated) return null;
 
   // The value's own scale jump must be the SAME clean power of ten as the range's.
   if (vStated === 0) return null;
