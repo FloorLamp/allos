@@ -122,23 +122,64 @@ export async function followLink(
   destination: RegExp
 ): Promise<void> {
   await expect(link).toBeVisible();
-  await expect(async () => {
-    if (!destination.test(page.url())) {
-      // Ignore a detached-element error: a click that DID navigate on a prior
-      // iteration leaves the old link detached, and the next tick's URL check
-      // will observe the change and pass.
-      await link.click({ timeout: 2000 }).catch(() => {});
+  // Remember the most recent click failure so a navigation that never commits
+  // reports the REAL underlying error (a broken selector, an overlay
+  // intercepting the click) instead of a bare, causeless URL-match timeout
+  // (#890). The blanket `.catch(() => {})` this replaced masked every click
+  // failure as if it were the one benign race, so a genuinely-broken click
+  // spent 25s retrying and then failed with no trace of why.
+  let lastClickError: Error | undefined;
+  try {
+    await expect(async () => {
+      if (!destination.test(page.url())) {
+        try {
+          await link.click({ timeout: 2000 });
+        } catch (err) {
+          lastClickError = err instanceof Error ? err : new Error(String(err));
+          // The ONE benign, expected race is a click on a link a PRIOR iteration
+          // already navigated away from: the old element is detached, and this
+          // same iteration's URL check below will observe the destination and
+          // pass — so swallow it and fall through. EVERY other click failure (a
+          // wrong/ambiguous selector, an overlay intercepting the click, a
+          // disabled or pointer-events:none target, a stubborn click timeout)
+          // is rethrown into toPass. toPass still retries — tolerating a genuine
+          // transient — but its final timeout now carries this error, and the
+          // catch below names it explicitly, so a broken click fails with a
+          // useful message rather than masquerading as a URL-match timeout.
+          if (!isDetachedElementError(lastClickError)) throw lastClickError;
+        }
+      }
+      // The navigation must have STUCK, not merely flipped. The same hydration
+      // race can commit the client transition optimistically — the URL advances
+      // to the destination — and then unwind back to the source route as
+      // hydration finishes, so a single url() check can pass on a navigation
+      // that reverts and leave the caller asserting against the source page.
+      // Require the destination URL to hold across a short settle; a revert
+      // fails the recheck and toPass re-clicks. (The waitForTimeout here is
+      // INSIDE the helper — the one blessed home for it — never in a spec.)
+      expect(page.url()).toMatch(destination);
+      await page.waitForTimeout(500);
+      expect(page.url()).toMatch(destination);
+    }).toPass({ timeout: 25000, intervals: [300, 700, 1500, 3000] });
+  } catch (err) {
+    // The navigation never committed within the budget. If a click failed along
+    // the way, surface it — otherwise the caller sees only "url never matched",
+    // which is exactly the causeless timeout #890 is about.
+    if (lastClickError) {
+      const wrapped = err instanceof Error ? err : new Error(String(err));
+      wrapped.message =
+        `${wrapped.message}\n\n[followLink] navigation to ${destination} never ` +
+        `committed; the last click on the link failed with:\n${lastClickError.message}`;
+      throw wrapped;
     }
-    // The navigation must have STUCK, not merely flipped. The same hydration race
-    // can commit the client transition optimistically — the URL advances to the
-    // destination — and then unwind back to the source route as hydration
-    // finishes, so a single url() check can pass on a navigation that reverts and
-    // leave the caller asserting against the source page. Require the destination
-    // URL to hold across a short settle; a revert fails the recheck and toPass
-    // re-clicks. (The waitForTimeout here is INSIDE the helper — the one blessed
-    // home for it — never in a spec.)
-    expect(page.url()).toMatch(destination);
-    await page.waitForTimeout(500);
-    expect(page.url()).toMatch(destination);
-  }).toPass({ timeout: 25000, intervals: [300, 700, 1500, 3000] });
+    throw err;
+  }
+}
+
+// Playwright surfaces a click on a link that a prior iteration already navigated
+// away from as an "element is not attached to the DOM" / "detached" error. That
+// is the ONE race followLink is allowed to swallow (the next URL check passes);
+// every other click failure must reach the caller.
+function isDetachedElementError(err: Error): boolean {
+  return /not attached|is detached|element was detached/i.test(err.message);
 }

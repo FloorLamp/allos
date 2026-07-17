@@ -1,6 +1,7 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import path from "node:path";
+import { settledClick } from "./helpers";
 
 // Household view for members + actionable rollup (issue #31). The Household screen
 // used to be admin-only; it's now open to ANY login that can reach 2+ profiles (a
@@ -61,7 +62,12 @@ async function createMemberWithGrants(
   await adminPage.goto("/settings/family");
   await adminPage.getByPlaceholder("Username").fill(username);
   await adminPage.getByPlaceholder("Password").fill(password);
-  await adminPage.getByRole("button", { name: "Create login" }).click();
+  // Create login posts the createLogin Server Action — settle on its POST so the
+  // grant row below can't be asserted against a pre-revalidation render (#868).
+  await settledClick(
+    adminPage,
+    adminPage.getByRole("button", { name: "Create login" })
+  );
 
   const grantRow = adminPage.getByTestId(`grant-row-${username}`);
   await expect(grantRow).toBeVisible();
@@ -72,7 +78,12 @@ async function createMemberWithGrants(
       .getByTestId(`grant-access-${username}-${g.profileId}`)
       .selectOption(g.access);
   }
-  await grantRow.getByRole("button", { name: "Save access" }).click();
+  // Save access posts the setGrants Server Action — settle on its POST before
+  // asserting the "Access updated." confirmation (#868).
+  await settledClick(
+    adminPage,
+    grantRow.getByRole("button", { name: "Save access" })
+  );
   await expect(grantRow.getByText("Access updated.")).toBeVisible();
 
   return { username, password };
@@ -140,7 +151,13 @@ test.describe("Household view for members (issue #31)", () => {
       .filter({ hasText: HOUSEHOLD_DUE_DOSE });
     await expect(doseRow).toBeVisible();
 
-    await doseRow.getByTestId("household-confirm-dose").click();
+    // Confirm posts the dose-confirm Server Action — settle on its POST so the
+    // "dose drops off the card" assertion below can't race a half-applied
+    // revalidate (#868/#891).
+    await settledClick(
+      memberPage,
+      doseRow.getByTestId("household-confirm-dose")
+    );
 
     // The confirmed dose drops off the card (revalidate) and we STAY on /household
     // — confirming a non-active profile's dose never switches the active profile

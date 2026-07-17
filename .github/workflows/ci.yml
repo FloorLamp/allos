@@ -179,7 +179,7 @@ jobs:
         if: steps.changes.outputs.code == 'true'
         run: npm run build
 
-      # Changed-spec lane (#868, fix c): run ONLY the specs this PR changed at
+      # Changed-spec lane (#868, fix c; #889): run the specs this PR changed at
       # --repeat-each=3 --retries=0, BEFORE the full (retry-tolerant) suite. The
       # full suite's `retries: 1` proves "passes within N attempts", not "works" —
       # a ≤50%-flaky spec can ship green. Zero retries × three repeats fails a spec
@@ -188,24 +188,50 @@ jobs:
       #     is the PR base parent (fetch-depth:2 above guarantees it's present). We
       #     prefer the event's base.sha when it happens to be in history, else fall
       #     back to HEAD^1 — robust for both PR and push (HEAD^1 is the prior commit).
-      #   • no changed specs → cheap no-op (the full suite still covers everything).
       #   • auth.setup.ts is passed alongside so the login dependency runs even
       #     though the file filter wouldn't otherwise match it.
-      - name: E2E changed specs (repeat-each=3, retries=0)
+      #
+      # SHARED INFRA (#889): a PR that edits ONLY a shared e2e module — helpers.ts,
+      # seed-events.ts, fixture-logins.ts, nav.ts, symptom-helpers.ts, auth.setup.ts
+      # — changed no `*.spec.ts`, so the spec filter above matched nothing and this
+      # lane used to skip entirely. That's backwards: shared infra is the HIGHEST
+      # blast radius (seed-events.ts + fixture-logins.ts build the seed EVERY spec
+      # runs against; nav.ts re-exports helpers.ts). A grep import-map would be
+      # structurally dishonest for exactly those files — it maps seed-events.ts to
+      # zero importing specs and would run nothing. So when any shared (non-spec)
+      # e2e/*.ts changed we fall back to the WHOLE suite at --retries=0 (no
+      # repeat-each): one bounded (~9 min) extra pass, total coverage for the infra
+      # blast radius. repeat-each is deliberately NOT applied suite-wide (that ~27
+      # min run is the cost the fallback avoids). A mixed diff (spec + infra) does
+      # BOTH — the changed specs at --repeat-each=3 AND the full suite at
+      # --retries=0 — so neither set is dropped.
+      - name: E2E changed specs + shared-infra scrutiny (retries=0)
         if: steps.changes.outputs.code == 'true'
         run: |
           BASE="${{ github.event.pull_request.base.sha }}"
           if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             BASE="HEAD^1"
           fi
-          CHANGED=$(git diff --name-only "$BASE" HEAD | grep -E '^e2e/.*\.spec\.ts$' || true)
-          if [ -z "$CHANGED" ]; then
-            echo "No changed e2e specs - skipping the retries=0 lane."
+          DIFF=$(git diff --name-only "$BASE" HEAD)
+          CHANGED_SPECS=$(echo "$DIFF" | grep -E '^e2e/.*\.spec\.ts$' || true)
+          CHANGED_INFRA=$(echo "$DIFF" | grep -E '^e2e/.*\.ts$' | grep -vE '\.spec\.ts$' || true)
+
+          if [ -z "$CHANGED_SPECS" ] && [ -z "$CHANGED_INFRA" ]; then
+            echo "No changed e2e specs or shared infra - skipping the retries=0 lane."
             exit 0
           fi
-          echo "Changed e2e specs (running at --repeat-each=3 --retries=0):"
-          echo "$CHANGED"
-          npx playwright test e2e/auth.setup.ts $CHANGED --repeat-each=3 --retries=0
+
+          if [ -n "$CHANGED_SPECS" ]; then
+            echo "Changed e2e specs (running at --repeat-each=3 --retries=0):"
+            echo "$CHANGED_SPECS"
+            npx playwright test e2e/auth.setup.ts $CHANGED_SPECS --repeat-each=3 --retries=0
+          fi
+
+          if [ -n "$CHANGED_INFRA" ]; then
+            echo "Changed shared e2e infra (whole suite at --retries=0 - highest blast radius):"
+            echo "$CHANGED_INFRA"
+            npx playwright test --retries=0
+          fi
 
       - name: E2E (Playwright)
         if: steps.changes.outputs.code == 'true'
