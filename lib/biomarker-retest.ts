@@ -7,19 +7,15 @@
 // analytes and uncurated rows carry no retest_days and fall back to the flat
 // DEFAULT_RETEST_DAYS in lib/reference-range.retestIntervalDays.
 
-import canonicalSeed from "./canonical-biomarkers.json";
+import { CANONICAL_BIOMARKERS } from "./datasets/canonical-biomarkers";
 import { RETEST_WORTHY } from "./curated-biomarkers";
 import { biomarkerFamily } from "./canonical-name";
 
-interface RetestRow {
-  name?: string;
-  retest_days?: number | null;
-}
-
-// Lowercased canonical name → curated retest_days. Built once at module load.
+// Lowercased canonical name → curated retest_days. Built once at module load over the
+// framework read layer (the same committed rows the boot task seeds).
 const RETEST_BY_NAME: Map<string, number> = (() => {
   const map = new Map<string, number>();
-  const rows = (canonicalSeed as { biomarkers?: RetestRow[] }).biomarkers ?? [];
+  const rows = CANONICAL_BIOMARKERS;
   for (const r of rows) {
     if (r?.name && typeof r.retest_days === "number" && r.retest_days > 0) {
       map.set(r.name.toLowerCase(), r.retest_days);

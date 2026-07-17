@@ -1,4 +1,4 @@
-import canonicalSeed from "./canonical-biomarkers.json";
+import { CANONICAL_BIOMARKERS } from "./datasets/canonical-biomarkers";
 
 // Unit handling for biomarker values, in two layers:
 //
@@ -225,7 +225,7 @@ function unitKey(unit: string): string {
 // Curated cross-dimension factors, keyed by canonical name then alternate unit
 // (lowercased). value_in_alt * factor = value in the canonical unit.
 const CONVERSIONS = new Map<string, Record<string, number>>();
-for (const b of (canonicalSeed as { biomarkers?: any[] }).biomarkers ?? []) {
+for (const b of CANONICAL_BIOMARKERS) {
   if (b?.name && b?.conversions && typeof b.conversions === "object") {
     const m: Record<string, number> = {};
     for (const [unit, factor] of Object.entries(b.conversions)) {

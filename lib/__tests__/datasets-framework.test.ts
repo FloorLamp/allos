@@ -14,20 +14,33 @@ import {
 // a dataset that adopts the framework but omits its contract fails CI.
 //
 // HONEST SCOPE (read before extending): this guard enforces the framework contract
-// ONLY for (a) the JSON files under lib/datasets/data/ and (b) the datasets listed in
-// lib/datasets/registry.ts — today the 14 datasets migrated in #860 Track B waves 1–2
-// (mets, food-groups, dri, drug-interactions, pgx, contrast-safety, illness-thresholds,
-// prn-defaults, medication-descriptions, biomarker-descriptions, icd10-common,
-// nutrient-food-map, screenings, temperature-red-flags). It DELIBERATELY does NOT scan
-// the remaining not-yet-migrated curated datasets still under lib/*.json (canonical-
-// biomarkers is deferred; symptoms is a documented non-candidate): those keep their
-// bespoke shape until each is migrated in its own small PR, at which point it moves
-// under lib/datasets/data/ and joins the registry, and this guard starts covering it.
-// So: dropping a NEW dataset JSON under lib/datasets/data/ without a citation/identity
-// fails here; the legacy files elsewhere are out of scope by design.
+// for the datasets listed in lib/datasets/registry.ts, whose committed JSON is EITHER
+// (a) a file under lib/datasets/data/ (the common case — the 20 migrated in #860 Track
+// B waves 1–3) OR (b) an EXTERNAL source file registered in EXTERNAL_SOURCE_DATASETS
+// below (canonical-biomarkers, whose generator-owned + boot-seeded JSON stays at its
+// historical path; see lib/datasets/canonical-biomarkers.ts for why). It DELIBERATELY
+// does NOT scan the remaining not-yet-migrated curated datasets still under lib/*.json
+// (symptoms/exercise-guides are documented non-candidates): those keep their bespoke
+// shape until each is migrated in its own small PR. So: dropping a NEW dataset JSON
+// under lib/datasets/data/ without a citation/identity fails here; a registered dataset
+// with no data-dir file AND no external-source entry fails the lockstep; the legacy
+// files elsewhere are out of scope by design.
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const DATA_DIR = path.join(REPO, "lib/datasets/data");
+
+// Registered datasets whose committed JSON does NOT live under lib/datasets/data/ but
+// at an external, generator-owned path. Each is wrapped into the framework envelope by
+// its read-layer module (which runs loadDataset at import, so the registry harness
+// below fully covers it) — the file itself is not an on-disk envelope, so it is scoped
+// OUT of the "every JSON under data/ is a valid envelope" check and INTO the lockstep
+// via this map. Keep it tiny and justified: the framework's default is a data-dir file.
+//   canonical-biomarkers — seeded into the canonical_biomarkers table on boot and read
+//   by eight other modules directly; its human-curated order isn't a generator fixed
+//   point, so it stays at lib/canonical-biomarkers.json. (#860 Track B)
+const EXTERNAL_SOURCE_DATASETS: Record<string, string> = {
+  "canonical-biomarkers": "lib/canonical-biomarkers.json",
+};
 
 function dataFiles(): string[] {
   if (!fs.existsSync(DATA_DIR)) return [];
@@ -79,9 +92,31 @@ describe("curated-dataset framework contract", () => {
     }
   });
 
-  it("data-dir files and the registry are in lockstep (no orphan on either side)", () => {
-    // Bind the two source-of-truth lists so a dataset can't be dropped in data/ but
-    // forgotten in the registry (or vice versa) — the #201/#212 footprint discipline.
+  it("every external-source dataset file exists and is registered", () => {
+    // The escape hatch has teeth: a mistyped external path (or an entry left in the map
+    // after the dataset moved under data/) fails here, and every external id must be in
+    // the registry (its harness coverage above is what actually validates the envelope).
+    const registryIds = new Set(DATASETS.map((d) => d.dataset.id));
+    for (const [id, rel] of Object.entries(EXTERNAL_SOURCE_DATASETS)) {
+      expect(
+        fs.existsSync(path.join(REPO, rel)),
+        `${id}: external source ${rel} does not exist`
+      ).toBe(true);
+      // It must NOT also live under data/ (that would be two sources of truth).
+      expect(
+        fs.existsSync(path.join(DATA_DIR, `${id}.json`)),
+        `${id}: registered as external but also present under lib/datasets/data/`
+      ).toBe(false);
+      expect(registryIds.has(id), `${id}: external but not registered`).toBe(
+        true
+      );
+    }
+  });
+
+  it("data-dir files + external sources and the registry are in lockstep (no orphan on either side)", () => {
+    // Bind the source-of-truth lists so a dataset can't be dropped in data/ (or the
+    // external map) but forgotten in the registry, or vice versa — the #201/#212
+    // footprint discipline, widened to cover the external-source escape hatch.
     const fileIds = dataFiles()
       .map((f) => {
         const raw = JSON.parse(
@@ -89,9 +124,12 @@ describe("curated-dataset framework contract", () => {
         ) as { id?: string };
         return raw.id;
       })
-      .filter((id): id is string => typeof id === "string")
-      .sort();
+      .filter((id): id is string => typeof id === "string");
+    const expectedIds = [
+      ...fileIds,
+      ...Object.keys(EXTERNAL_SOURCE_DATASETS),
+    ].sort();
     const registryIds = DATASETS.map((d) => d.dataset.id).sort();
-    expect(registryIds).toEqual(fileIds);
+    expect(registryIds).toEqual(expectedIds);
   });
 });
