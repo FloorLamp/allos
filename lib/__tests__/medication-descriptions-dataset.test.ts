@@ -78,6 +78,127 @@ describe("medication-descriptions.json dataset", () => {
     expect(r.ok, r.problems.join("; ")).toBe(true);
   });
 
+  it("resolves every audited name from issue #881 (the systematic top-300 fill)", () => {
+    // The two audits in issue #881 (19 spot-check misses + the whole-category sweep) —
+    // every generic must now resolve via the accessor, by generic OR by a brand/alias.
+    const audited: string[] = [
+      // Cold/cough OTC (the #843 aisle)
+      "dextromethorphan",
+      "Delsym",
+      "phenylephrine",
+      "Sudafed PE",
+      "chlorpheniramine",
+      "doxylamine",
+      "Unisom",
+      "benzonatate",
+      "oxymetazoline",
+      "Afrin",
+      // Modern metabolic
+      "tirzepatide",
+      "Mounjaro",
+      "Zepbound",
+      // GI OTC
+      "bismuth subsalicylate",
+      "Pepto-Bismol",
+      "Pepto",
+      "simethicone",
+      "Gas-X",
+      "polyethylene glycol 3350",
+      "MiraLAX",
+      "meclizine",
+      // Eye/nasal allergy
+      "azelastine",
+      "olopatadine",
+      "Pataday",
+      "ketotifen",
+      // Family staples
+      "permethrin",
+      "ofloxacin",
+      // Carry/emergency
+      "epinephrine",
+      "EpiPen",
+      "naloxone",
+      "Narcan",
+      "glucagon",
+      // ADHD completeness
+      "amphetamine salts",
+      "Adderall",
+      // Contraceptives/hormonal
+      "ethinyl estradiol",
+      "norethindrone",
+      "levonorgestrel",
+      "Plan B",
+      "medroxyprogesterone",
+      "Depo-Provera",
+      // Insulins (rapid + ultra-long)
+      "insulin lispro",
+      "Humalog",
+      "insulin aspart",
+      "Novolog",
+      "insulin degludec",
+      "Tresiba",
+      // Ophthalmic
+      "latanoprost",
+      "Xalatan",
+      "timolol",
+      // Smoking cessation
+      "varenicline",
+      "Chantix",
+      "nicotine",
+      "Nicorette",
+      // Singles (incl. combos)
+      "hydrocodone-acetaminophen",
+      "Vicodin",
+      "Norco",
+      "nirmatrelvir-ritonavir",
+      "Paxlovid",
+      "phenazopyridine",
+      "AZO",
+      "alendronate",
+      "oxcarbazepine",
+    ];
+    for (const name of audited) {
+      expect(getMedicationInfo(name), name).not.toBeNull();
+    }
+  });
+
+  it("models combination products so their brands resolve to the combo, not a component (#881)", () => {
+    // Vicodin/Norco are hydrocodone-acetaminophen combos — they must resolve to the
+    // COMBO entry, and pure hydrocodone must NOT claim them (the collision resolution).
+    expect(getMedicationInfo("Vicodin")?.generic).toBe(
+      "Hydrocodone-Acetaminophen"
+    );
+    expect(getMedicationInfo("Norco")?.generic).toBe(
+      "Hydrocodone-Acetaminophen"
+    );
+    expect(getMedicationInfo("Paxlovid")?.generic).toBe(
+      "Nirmatrelvir-Ritonavir"
+    );
+    expect(getMedicationInfo("hydrocodone")?.generic).toBe("Hydrocodone");
+  });
+
+  it("every combo entry's ingredients resolve to catalog generic keys (#881 reflection)", () => {
+    // The combination-product tier (#881): an entry carrying `ingredients` lists the
+    // catalog generic KEYS of its active components, and each MUST resolve to a real
+    // catalog entry (the #279/#798 ingredient path relies on this). At least one combo
+    // must actually carry ingredients (guards against the field silently going unused).
+    let withIngredients = 0;
+    for (const e of meds.entries) {
+      if (!e.ingredients) continue;
+      withIngredients++;
+      expect(Array.isArray(e.ingredients), e.key).toBe(true);
+      expect(e.ingredients.length, e.key).toBeGreaterThan(0);
+      for (const ingKey of e.ingredients) {
+        // The listed key is itself a catalog entry (resolves to a MedicationInfo).
+        expect(
+          getMedicationInfo(ingKey),
+          `${e.key} → ${ingKey}`
+        ).not.toBeNull();
+      }
+    }
+    expect(withIngredients).toBeGreaterThan(0);
+  });
+
   it("carries a broad curated set and gives every entry a key + generic + description", () => {
     expect(meds.entries.length).toBeGreaterThan(150);
     const keys = new Set<string>();

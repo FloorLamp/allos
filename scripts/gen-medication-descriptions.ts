@@ -23,7 +23,10 @@
 // stable `key`, the `synonyms` that resolve to it (from the alias map), and a computed
 // `match_keys` array (generic + brands + synonyms) that the framework's MULTI-VALUE
 // matcher (multiValueStrategy) indexes on, so one entry is found under any of its
-// names. Content is INFORMATIONAL, NOT MEDICAL ADVICE (no dosing, no diagnosis).
+// names. Combination products (issue #881) additionally carry `ingredients` — the
+// catalog generic keys of their active components — so a combo's brands (Vicodin/Norco)
+// resolve to the combo AND the acetaminophen it hides is knowable (#798/#279). Content
+// is INFORMATIONAL, NOT MEDICAL ADVICE (no dosing, no diagnosis).
 
 import fs from "node:fs";
 import path from "node:path";
@@ -58,6 +61,14 @@ interface SourceMedication {
   drug_class?: string;
   description: string;
   typical?: MedicationTypical;
+  // Combination-product tier (issue #881): the catalog generic KEYS of this product's
+  // active ingredients that are themselves catalog entries (e.g. hydrocodone-
+  // acetaminophen → ["hydrocodone", "acetaminophen"]). Present ONLY on combo entries
+  // whose components each resolve to a catalog entry; a partial/uncataloged component
+  // list is omitted (the #846 absent-means-no-claim discipline). Feeds the acetaminophen-
+  // daily-max stretch (#798) and the ingredient-level interaction path (#279); every
+  // listed key is pinned to resolve by the dataset test.
+  ingredients?: string[];
 }
 
 interface Source {
@@ -78,6 +89,9 @@ export interface MedDescriptionEntry {
   drug_class?: string;
   description: string;
   typical?: MedicationTypical;
+  // Combination-product ingredient generic keys (#881), passed through from the source.
+  // Present only on combo entries whose components are themselves catalog entries.
+  ingredients?: string[];
   match_keys: string[];
 }
 
@@ -130,6 +144,9 @@ export function buildMedicationDescriptionsDataset(): MedDescriptionsDataset {
       ...(info.drug_class ? { drug_class: info.drug_class } : {}),
       description: info.description,
       ...(info.typical ? { typical: info.typical } : {}),
+      ...(info.ingredients && info.ingredients.length
+        ? { ingredients: info.ingredients }
+        : {}),
       match_keys,
     };
     entries.push(entry);

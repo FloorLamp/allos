@@ -196,15 +196,15 @@
       "key": "hydrocodone",
       "generic": "Hydrocodone",
       "brand_names": [
-        "Vicodin",
-        "Norco"
+        "Hysingla ER",
+        "Zohydro ER"
       ],
       "drug_class": "Opioid analgesic",
-      "description": "Hydrocodone is an opioid pain reliever used for moderate to severe pain, often combined with acetaminophen. Opioids carry a risk of dependence and are used under close supervision.",
+      "description": "Hydrocodone is an opioid pain reliever used for moderate to severe pain. Single-ingredient extended-release products treat around-the-clock pain; hydrocodone is also widely combined with acetaminophen in shorter-acting pain products.",
       "match_keys": [
         "Hydrocodone",
-        "Vicodin",
-        "Norco"
+        "Hysingla ER",
+        "Zohydro ER"
       ]
     },
     {
@@ -2200,6 +2200,7 @@
       "synonyms": [
         "peg 3350",
         "peg-3350",
+        "polyethylene glycol 3350",
         "miralax"
       ],
       "drug_class": "Osmotic laxative",
@@ -2208,7 +2209,8 @@
         "Polyethylene Glycol",
         "Miralax",
         "peg 3350",
-        "peg-3350"
+        "peg-3350",
+        "polyethylene glycol 3350"
       ]
     },
     {
@@ -2956,6 +2958,659 @@
         "Fish Oil",
         "Lovaza",
         "omega 3"
+      ]
+    },
+    {
+      "key": "dextromethorphan",
+      "generic": "Dextromethorphan",
+      "brand_names": [
+        "Delsym"
+      ],
+      "synonyms": [
+        "dxm",
+        "robitussin dm"
+      ],
+      "drug_class": "Cough suppressant (antitussive)",
+      "description": "Dextromethorphan is a cough suppressant used to quiet a dry, hacking cough from a cold or the flu. It acts on the part of the brain that triggers the cough reflex and is a common ingredient in over-the-counter cough and cold products.",
+      "typical": {
+        "asNeeded": true,
+        "source": "OTC Drug Facts label — dextromethorphan (antitussive); temporarily relieves cough, taken as needed, U.S. FDA."
+      },
+      "match_keys": [
+        "Dextromethorphan",
+        "Delsym",
+        "dxm",
+        "robitussin dm"
+      ]
+    },
+    {
+      "key": "phenylephrine",
+      "generic": "Phenylephrine",
+      "brand_names": [
+        "Sudafed PE"
+      ],
+      "synonyms": [
+        "neo-synephrine"
+      ],
+      "drug_class": "Decongestant",
+      "description": "Phenylephrine is a decongestant used to relieve a stuffy nose and sinus pressure from colds and allergies. It is found in many oral cold and sinus products and in some nasal sprays.",
+      "typical": {
+        "asNeeded": true,
+        "source": "OTC Drug Facts label — phenylephrine (nasal decongestant); temporarily relieves nasal congestion, taken as needed, U.S. FDA."
+      },
+      "match_keys": [
+        "Phenylephrine",
+        "Sudafed PE",
+        "neo-synephrine"
+      ]
+    },
+    {
+      "key": "chlorpheniramine",
+      "generic": "Chlorpheniramine",
+      "brand_names": [
+        "Chlor-Trimeton"
+      ],
+      "drug_class": "Antihistamine (sedating)",
+      "description": "Chlorpheniramine is a first-generation antihistamine used to relieve sneezing, runny nose, and itchy, watery eyes from allergies or a cold. It can cause drowsiness and is a common ingredient in combination cold products.",
+      "typical": {
+        "asNeeded": true,
+        "source": "OTC Drug Facts label — chlorpheniramine maleate (antihistamine); relieves allergy symptoms, taken as needed, U.S. FDA."
+      },
+      "match_keys": [
+        "Chlorpheniramine",
+        "Chlor-Trimeton"
+      ]
+    },
+    {
+      "key": "doxylamine",
+      "generic": "Doxylamine",
+      "brand_names": [
+        "Unisom"
+      ],
+      "synonyms": [
+        "unisom sleeptabs"
+      ],
+      "drug_class": "Antihistamine (sedating) / sleep aid",
+      "description": "Doxylamine is a sedating antihistamine used as a nighttime sleep aid and to relieve cold and allergy symptoms. It is the antihistamine in several nighttime combination cold products.",
+      "typical": {
+        "asNeeded": true,
+        "timeOfDay": "Before sleep",
+        "source": "OTC Drug Facts label — doxylamine succinate (nighttime sleep-aid); to reduce difficulty falling asleep, U.S. FDA."
+      },
+      "match_keys": [
+        "Doxylamine",
+        "Unisom",
+        "unisom sleeptabs"
+      ]
+    },
+    {
+      "key": "benzonatate",
+      "generic": "Benzonatate",
+      "brand_names": [
+        "Tessalon",
+        "Tessalon Perles"
+      ],
+      "drug_class": "Antitussive (cough suppressant)",
+      "description": "Benzonatate is a prescription non-opioid cough suppressant. It numbs the stretch receptors in the airways and lungs that trigger coughing and is used for cough from colds or other causes.",
+      "match_keys": [
+        "Benzonatate",
+        "Tessalon",
+        "Tessalon Perles"
+      ]
+    },
+    {
+      "key": "oxymetazoline",
+      "generic": "Oxymetazoline",
+      "brand_names": [
+        "Afrin"
+      ],
+      "drug_class": "Nasal decongestant",
+      "description": "Oxymetazoline is a fast-acting nasal decongestant spray that narrows blood vessels in the nose to relieve congestion. Prolonged use can cause rebound congestion, so over-the-counter labels limit it to a few days at a time.",
+      "typical": {
+        "asNeeded": true,
+        "source": "OTC Drug Facts label — oxymetazoline (nasal decongestant); relieves nasal congestion, do not use for more than 3 days, U.S. FDA."
+      },
+      "match_keys": [
+        "Oxymetazoline",
+        "Afrin"
+      ]
+    },
+    {
+      "key": "tirzepatide",
+      "generic": "Tirzepatide",
+      "brand_names": [
+        "Mounjaro",
+        "Zepbound"
+      ],
+      "drug_class": "GIP/GLP-1 receptor agonist (antidiabetic / weight)",
+      "description": "Tirzepatide is an injectable medication that activates the GIP and GLP-1 gut-hormone receptors to lower blood sugar and reduce appetite. It is used to treat type 2 diabetes (as Mounjaro) and for chronic weight management (as Zepbound), usually as a once-weekly injection.",
+      "match_keys": [
+        "Tirzepatide",
+        "Mounjaro",
+        "Zepbound"
+      ]
+    },
+    {
+      "key": "bismuth subsalicylate",
+      "generic": "Bismuth Subsalicylate",
+      "brand_names": [
+        "Pepto-Bismol",
+        "Kaopectate"
+      ],
+      "synonyms": [
+        "pepto"
+      ],
+      "drug_class": "Antidiarrheal / antacid",
+      "description": "Bismuth subsalicylate is an over-the-counter medicine for upset stomach, heartburn, nausea, and diarrhea. It coats the stomach lining and has mild antibacterial effects, and it can temporarily darken the tongue and stool.",
+      "typical": {
+        "asNeeded": true,
+        "source": "OTC Drug Facts label — bismuth subsalicylate (Pepto-Bismol); for upset stomach and diarrhea, taken as needed, U.S. FDA."
+      },
+      "match_keys": [
+        "Bismuth Subsalicylate",
+        "Pepto-Bismol",
+        "Kaopectate",
+        "pepto"
+      ]
+    },
+    {
+      "key": "simethicone",
+      "generic": "Simethicone",
+      "brand_names": [
+        "Gas-X",
+        "Mylicon"
+      ],
+      "drug_class": "Antiflatulent (anti-gas)",
+      "description": "Simethicone is an over-the-counter anti-gas medicine that breaks up gas bubbles in the stomach and intestines to relieve bloating and pressure. It is not absorbed by the body and is also used in infant gas drops.",
+      "typical": {
+        "asNeeded": true,
+        "source": "OTC Drug Facts label — simethicone (anti-gas); relieves bloating, pressure, and gas, taken as needed, U.S. FDA."
+      },
+      "match_keys": [
+        "Simethicone",
+        "Gas-X",
+        "Mylicon"
+      ]
+    },
+    {
+      "key": "meclizine",
+      "generic": "Meclizine",
+      "brand_names": [
+        "Antivert",
+        "Bonine",
+        "Dramamine"
+      ],
+      "drug_class": "Antihistamine (antiemetic)",
+      "description": "Meclizine is an antihistamine used to prevent and treat nausea, vomiting, and dizziness from motion sickness, and to manage vertigo. It is available over the counter and by prescription.",
+      "typical": {
+        "asNeeded": true,
+        "source": "OTC Drug Facts label — meclizine (Bonine / Dramamine Less Drowsy); prevents motion sickness, taken as needed before travel, U.S. FDA."
+      },
+      "match_keys": [
+        "Meclizine",
+        "Antivert",
+        "Bonine",
+        "Dramamine"
+      ]
+    },
+    {
+      "key": "azelastine",
+      "generic": "Azelastine",
+      "brand_names": [
+        "Astelin",
+        "Astepro",
+        "Optivar"
+      ],
+      "drug_class": "Antihistamine (nasal / ophthalmic)",
+      "description": "Azelastine is an antihistamine available as a nasal spray and eye drops to relieve allergy symptoms such as sneezing, runny nose, and itchy eyes. It acts locally where it is applied.",
+      "match_keys": [
+        "Azelastine",
+        "Astelin",
+        "Astepro",
+        "Optivar"
+      ]
+    },
+    {
+      "key": "olopatadine",
+      "generic": "Olopatadine",
+      "brand_names": [
+        "Pataday",
+        "Patanol",
+        "Pazeo",
+        "Patanase"
+      ],
+      "drug_class": "Antihistamine (ophthalmic / nasal)",
+      "description": "Olopatadine is an antihistamine used as eye drops or a nasal spray to relieve itching and other allergy symptoms. The eye drops are commonly used for itchy, allergic eyes.",
+      "match_keys": [
+        "Olopatadine",
+        "Pataday",
+        "Patanol",
+        "Pazeo",
+        "Patanase"
+      ]
+    },
+    {
+      "key": "ketotifen",
+      "generic": "Ketotifen",
+      "brand_names": [
+        "Zaditor",
+        "Alaway"
+      ],
+      "drug_class": "Antihistamine / mast-cell stabilizer (ophthalmic)",
+      "description": "Ketotifen is an over-the-counter antihistamine eye drop that relieves and helps prevent itchy eyes due to allergies. It both blocks histamine and helps stabilize the cells that release it.",
+      "match_keys": [
+        "Ketotifen",
+        "Zaditor",
+        "Alaway"
+      ]
+    },
+    {
+      "key": "permethrin",
+      "generic": "Permethrin",
+      "brand_names": [
+        "Nix",
+        "Elimite"
+      ],
+      "drug_class": "Topical antiparasitic (scabicide / pediculicide)",
+      "description": "Permethrin is a topical treatment that kills lice and scabies mites and their eggs. The over-the-counter cream rinse (Nix) treats head lice, and a stronger prescription cream (Elimite) treats scabies.",
+      "match_keys": [
+        "Permethrin",
+        "Nix",
+        "Elimite"
+      ]
+    },
+    {
+      "key": "ofloxacin",
+      "generic": "Ofloxacin",
+      "brand_names": [
+        "Floxin",
+        "Ocuflox"
+      ],
+      "drug_class": "Fluoroquinolone antibiotic",
+      "description": "Ofloxacin is a fluoroquinolone antibiotic. As ear drops it treats certain ear infections, as eye drops it treats eye infections, and it is also used systemically for some bacterial infections.",
+      "match_keys": [
+        "Ofloxacin",
+        "Floxin",
+        "Ocuflox"
+      ]
+    },
+    {
+      "key": "epinephrine",
+      "generic": "Epinephrine",
+      "brand_names": [
+        "EpiPen",
+        "Auvi-Q",
+        "Adrenaclick"
+      ],
+      "synonyms": [
+        "epinephrine auto-injector",
+        "adrenaline"
+      ],
+      "drug_class": "Adrenergic agonist (emergency)",
+      "description": "Epinephrine (adrenaline) is the first-line emergency treatment for a severe allergic reaction (anaphylaxis). Auto-injectors deliver a single dose into the outer thigh to open the airways and support blood pressure while emergency help is sought.",
+      "match_keys": [
+        "Epinephrine",
+        "EpiPen",
+        "Auvi-Q",
+        "Adrenaclick",
+        "epinephrine auto-injector",
+        "adrenaline"
+      ]
+    },
+    {
+      "key": "naloxone",
+      "generic": "Naloxone",
+      "brand_names": [
+        "Narcan",
+        "Kloxxado",
+        "Zimhi"
+      ],
+      "drug_class": "Opioid antagonist (emergency)",
+      "description": "Naloxone is an emergency medicine that rapidly reverses an opioid overdose by blocking opioids at their receptors. It is given as a nasal spray or an injection and is available over the counter in many places for overdose rescue.",
+      "match_keys": [
+        "Naloxone",
+        "Narcan",
+        "Kloxxado",
+        "Zimhi"
+      ]
+    },
+    {
+      "key": "glucagon",
+      "generic": "Glucagon",
+      "brand_names": [
+        "GlucaGen",
+        "Baqsimi",
+        "Gvoke"
+      ],
+      "drug_class": "Hormone (emergency, hypoglycemia)",
+      "description": "Glucagon is a hormone used as an emergency treatment for severe low blood sugar in people with diabetes when they cannot safely eat or drink. It raises blood sugar quickly and is given by injection or as a nasal powder.",
+      "match_keys": [
+        "Glucagon",
+        "GlucaGen",
+        "Baqsimi",
+        "Gvoke"
+      ]
+    },
+    {
+      "key": "ethinyl estradiol",
+      "generic": "Ethinyl Estradiol",
+      "drug_class": "Estrogen (contraceptive component)",
+      "description": "Ethinyl estradiol is a synthetic estrogen and the estrogen component of most combined hormonal contraceptives, paired with a progestin in the pill, patch, or vaginal ring. It is also used in some hormone therapies.",
+      "match_keys": [
+        "Ethinyl Estradiol"
+      ]
+    },
+    {
+      "key": "norethindrone",
+      "generic": "Norethindrone",
+      "brand_names": [
+        "Aygestin",
+        "Camila",
+        "Errin",
+        "Ortho Micronor"
+      ],
+      "drug_class": "Progestin",
+      "description": "Norethindrone is a progestin, a synthetic form of progesterone, used in progestin-only 'mini-pills' for contraception, in combined birth control, and to treat conditions such as abnormal uterine bleeding and endometriosis.",
+      "match_keys": [
+        "Norethindrone",
+        "Aygestin",
+        "Camila",
+        "Errin",
+        "Ortho Micronor"
+      ]
+    },
+    {
+      "key": "levonorgestrel",
+      "generic": "Levonorgestrel",
+      "brand_names": [
+        "Plan B",
+        "Mirena",
+        "Kyleena",
+        "Skyla",
+        "Liletta"
+      ],
+      "synonyms": [
+        "plan b one-step",
+        "morning after pill"
+      ],
+      "drug_class": "Progestin (contraceptive)",
+      "description": "Levonorgestrel is a progestin used in several contraceptives: hormonal IUDs for long-term birth control and an over-the-counter single-dose 'morning-after' pill (Plan B) for emergency contraception after unprotected sex.",
+      "match_keys": [
+        "Levonorgestrel",
+        "Plan B",
+        "Mirena",
+        "Kyleena",
+        "Skyla",
+        "Liletta",
+        "plan b one-step",
+        "morning after pill"
+      ]
+    },
+    {
+      "key": "medroxyprogesterone",
+      "generic": "Medroxyprogesterone",
+      "brand_names": [
+        "Depo-Provera",
+        "Provera"
+      ],
+      "synonyms": [
+        "depo shot"
+      ],
+      "drug_class": "Progestin",
+      "description": "Medroxyprogesterone is a progestin used as a long-acting injectable contraceptive (Depo-Provera, given every three months) and in oral form to treat irregular periods and other hormonal conditions.",
+      "match_keys": [
+        "Medroxyprogesterone",
+        "Depo-Provera",
+        "Provera",
+        "depo shot"
+      ]
+    },
+    {
+      "key": "insulin lispro",
+      "generic": "Insulin Lispro",
+      "brand_names": [
+        "Humalog",
+        "Admelog",
+        "Lyumjev"
+      ],
+      "synonyms": [
+        "lispro"
+      ],
+      "drug_class": "Rapid-acting insulin",
+      "description": "Insulin lispro is a rapid-acting insulin taken at mealtimes to control the blood-sugar rise from food. It begins working within about 15 minutes, so it is usually injected just before eating.",
+      "typical": {
+        "foodTiming": "before_meal",
+        "source": "FDA prescribing information — insulin lispro (Humalog); administer within 15 minutes before a meal or immediately after a meal."
+      },
+      "match_keys": [
+        "Insulin Lispro",
+        "Humalog",
+        "Admelog",
+        "Lyumjev",
+        "lispro"
+      ]
+    },
+    {
+      "key": "insulin aspart",
+      "generic": "Insulin Aspart",
+      "brand_names": [
+        "Novolog",
+        "Fiasp"
+      ],
+      "synonyms": [
+        "aspart"
+      ],
+      "drug_class": "Rapid-acting insulin",
+      "description": "Insulin aspart is a rapid-acting mealtime insulin that controls the blood-sugar rise after eating. It starts working quickly and is typically injected right around the start of a meal.",
+      "typical": {
+        "foodTiming": "before_meal",
+        "source": "FDA prescribing information — insulin aspart (NovoLog); administer within 5–10 minutes before the start of a meal."
+      },
+      "match_keys": [
+        "Insulin Aspart",
+        "Novolog",
+        "Fiasp",
+        "aspart"
+      ]
+    },
+    {
+      "key": "insulin degludec",
+      "generic": "Insulin Degludec",
+      "brand_names": [
+        "Tresiba"
+      ],
+      "synonyms": [
+        "degludec"
+      ],
+      "drug_class": "Ultra-long-acting insulin",
+      "description": "Insulin degludec is an ultra-long-acting basal insulin that provides a steady background insulin level for more than a day. It is injected once daily to help control blood sugar between meals and overnight.",
+      "match_keys": [
+        "Insulin Degludec",
+        "Tresiba",
+        "degludec"
+      ]
+    },
+    {
+      "key": "latanoprost",
+      "generic": "Latanoprost",
+      "brand_names": [
+        "Xalatan"
+      ],
+      "drug_class": "Prostaglandin analog (ophthalmic)",
+      "description": "Latanoprost is an eye drop used to lower elevated pressure inside the eye in glaucoma and ocular hypertension. It increases the drainage of fluid from the eye and is usually used once daily.",
+      "typical": {
+        "timeOfDay": "Evening",
+        "source": "FDA prescribing information — latanoprost (Xalatan); one drop in the affected eye(s) once daily in the evening."
+      },
+      "match_keys": [
+        "Latanoprost",
+        "Xalatan"
+      ]
+    },
+    {
+      "key": "timolol",
+      "generic": "Timolol",
+      "brand_names": [
+        "Timoptic",
+        "Betimol",
+        "Istalol"
+      ],
+      "drug_class": "Beta-blocker (ophthalmic)",
+      "description": "Timolol is a beta-blocker most often used as eye drops to lower elevated eye pressure in glaucoma by reducing the amount of fluid the eye makes. It is also available in oral form for blood pressure and other conditions.",
+      "match_keys": [
+        "Timolol",
+        "Timoptic",
+        "Betimol",
+        "Istalol"
+      ]
+    },
+    {
+      "key": "varenicline",
+      "generic": "Varenicline",
+      "brand_names": [
+        "Chantix"
+      ],
+      "drug_class": "Smoking cessation aid",
+      "description": "Varenicline is a prescription medication that helps adults stop smoking. It acts on nicotine receptors in the brain to ease withdrawal cravings and reduce the satisfaction of smoking.",
+      "typical": {
+        "foodTiming": "with_food",
+        "source": "FDA prescribing information — varenicline (Chantix); take after eating with a full glass of water."
+      },
+      "match_keys": [
+        "Varenicline",
+        "Chantix"
+      ]
+    },
+    {
+      "key": "nicotine",
+      "generic": "Nicotine",
+      "brand_names": [
+        "Nicorette",
+        "Nicoderm CQ",
+        "Nicotrol"
+      ],
+      "synonyms": [
+        "nicotine replacement",
+        "nrt",
+        "nicotine patch",
+        "nicotine gum"
+      ],
+      "drug_class": "Smoking cessation aid (nicotine replacement)",
+      "description": "Nicotine replacement therapy supplies a controlled amount of nicotine — through patches, gum, lozenges, or a spray — to ease cravings and withdrawal while quitting smoking, without the tar and other harmful chemicals in cigarette smoke.",
+      "match_keys": [
+        "Nicotine",
+        "Nicorette",
+        "Nicoderm CQ",
+        "Nicotrol",
+        "nicotine replacement",
+        "nrt",
+        "nicotine patch",
+        "nicotine gum"
+      ]
+    },
+    {
+      "key": "hydrocodone-acetaminophen",
+      "generic": "Hydrocodone-Acetaminophen",
+      "brand_names": [
+        "Vicodin",
+        "Norco",
+        "Lortab"
+      ],
+      "synonyms": [
+        "hydrocodone/acetaminophen",
+        "hydrocodone-apap",
+        "vicodin es"
+      ],
+      "drug_class": "Opioid combination analgesic",
+      "description": "Hydrocodone-acetaminophen combines an opioid pain reliever (hydrocodone) with acetaminophen for short-term relief of moderate to moderately severe pain. Because it contains acetaminophen, care is needed not to combine it with other acetaminophen-containing products.",
+      "ingredients": [
+        "hydrocodone",
+        "acetaminophen"
+      ],
+      "match_keys": [
+        "Hydrocodone-Acetaminophen",
+        "Vicodin",
+        "Norco",
+        "Lortab",
+        "hydrocodone/acetaminophen",
+        "hydrocodone-apap",
+        "vicodin es"
+      ]
+    },
+    {
+      "key": "nirmatrelvir-ritonavir",
+      "generic": "Nirmatrelvir-Ritonavir",
+      "brand_names": [
+        "Paxlovid"
+      ],
+      "synonyms": [
+        "nirmatrelvir/ritonavir"
+      ],
+      "drug_class": "Antiviral combination (COVID-19)",
+      "description": "Nirmatrelvir-ritonavir is an oral antiviral taken early in COVID-19 by people at higher risk of severe illness. Nirmatrelvir blocks an enzyme the virus needs to multiply, and low-dose ritonavir helps keep it at effective levels; it is taken as a short course.",
+      "match_keys": [
+        "Nirmatrelvir-Ritonavir",
+        "Paxlovid",
+        "nirmatrelvir/ritonavir"
+      ]
+    },
+    {
+      "key": "phenazopyridine",
+      "generic": "Phenazopyridine",
+      "brand_names": [
+        "AZO",
+        "Pyridium"
+      ],
+      "synonyms": [
+        "azo urinary pain relief"
+      ],
+      "drug_class": "Urinary analgesic",
+      "description": "Phenazopyridine is a urinary pain reliever that eases the burning, urgency, and discomfort of a urinary tract infection. It does not treat the infection itself and turns the urine a bright orange-red; over-the-counter use is limited to a couple of days.",
+      "typical": {
+        "asNeeded": true,
+        "foodTiming": "with_food",
+        "source": "OTC Drug Facts label — phenazopyridine (AZO Urinary Pain Relief); relieves urinary pain, take with or after food, do not use for more than 2 days, U.S. FDA."
+      },
+      "match_keys": [
+        "Phenazopyridine",
+        "AZO",
+        "Pyridium",
+        "azo urinary pain relief"
+      ]
+    },
+    {
+      "key": "alendronate",
+      "generic": "Alendronate",
+      "brand_names": [
+        "Fosamax",
+        "Binosto"
+      ],
+      "drug_class": "Bisphosphonate",
+      "description": "Alendronate is a bisphosphonate used to treat and prevent osteoporosis by slowing the breakdown of bone and increasing bone density. It is usually taken once weekly, first thing in the morning.",
+      "typical": {
+        "timeOfDay": "Morning",
+        "foodTiming": "empty_stomach",
+        "source": "FDA prescribing information — alendronate (Fosamax); take in the morning on an empty stomach with plain water at least 30 minutes before any food, drink, or other medication, and remain upright."
+      },
+      "match_keys": [
+        "Alendronate",
+        "Fosamax",
+        "Binosto"
+      ]
+    },
+    {
+      "key": "oxcarbazepine",
+      "generic": "Oxcarbazepine",
+      "brand_names": [
+        "Trileptal",
+        "Oxtellar XR"
+      ],
+      "drug_class": "Anticonvulsant",
+      "description": "Oxcarbazepine is an anticonvulsant used to control certain types of seizures, and sometimes for nerve-related pain. It is related to carbamazepine and is usually taken once or twice daily.",
+      "match_keys": [
+        "Oxcarbazepine",
+        "Trileptal",
+        "Oxtellar XR"
       ]
     }
   ]

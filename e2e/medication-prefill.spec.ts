@@ -55,6 +55,42 @@ test("med form is medication-shaped and selection-prefills on pick (#846)", asyn
   await expect(row.getByTestId("medication-row-link")).toBeVisible();
 });
 
+test("a newly catalogued med (#881) is pickable and prefills with zero code change", async ({
+  page,
+}) => {
+  // Dextromethorphan is one of the systematic top-300 fills (issue #881, the #843
+  // cough/cold aisle). It reaches the combobox + selection-prefill purely through the
+  // data — no UI change — proving the #817/#846 data-driven design absorbs catalog
+  // additions. Its `typical` block is PRN, so the pick flips As-needed on.
+  await page.goto("/medications");
+  const addCard = page
+    .locator("div.card")
+    .filter({ hasText: "Add medication" });
+  await expect(addCard).toBeVisible();
+
+  await addCard.getByLabel("Name").fill("Dextromethorphan");
+  await addCard
+    .getByRole("listbox")
+    .getByRole("button")
+    .filter({ hasText: "Dextromethorphan" })
+    .first()
+    .click();
+
+  // The curated `typical` PRN convention prefills the As-needed toggle (marked).
+  await expect(
+    addCard.getByRole("checkbox", { name: /As needed/ })
+  ).toBeChecked();
+  await expect(addCard.getByTestId("prefill-badge").first()).toBeVisible();
+
+  await addCard.getByRole("button", { name: "Add", exact: true }).click();
+
+  const row = page
+    .getByTestId("medication-row")
+    .filter({ hasText: "Dextromethorphan" })
+    .first();
+  await expect(row).toBeVisible();
+});
+
 test("a user edit is never clobbered by a later pick (#846)", async ({
   page,
 }) => {
