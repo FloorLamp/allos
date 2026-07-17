@@ -1,6 +1,5 @@
 import { test, expect } from "@playwright/test";
 import { loginAs } from "./nav";
-import { followLink } from "./helpers";
 import { E2E_MEMBER_PASSWORD, E2E_LOGIN_SITCOACH } from "./fixture-logins";
 
 // Situation-aware coaching (#837) + situation-activation visibility (#662 item 1).
@@ -24,11 +23,7 @@ test("dashboard coaching widget HOLDS the nags during an open illness episode (#
 
   // The training overview's next-workout card renders the SAME top recommendation
   // (one computation, #221), so it shows the held note too — never a go-train title.
-  await followLink(
-    page,
-    page.getByRole("link", { name: "Training" }).first(),
-    /\/training/
-  );
+  await page.goto("/training?tab=overview");
   await expect(page.getByTestId("next-workout-title")).toHaveText(
     "Recovery mode — coaching paused"
   );
