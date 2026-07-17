@@ -10,7 +10,7 @@
 // Runs against a throwaway DB redirected by lib/__db_tests__/setup.ts.
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { getBioAgeReadings } from "@/lib/queries";
+import { getBioAgeReadings, getDerivedBiomarkerReadings } from "@/lib/queries";
 import { setUserBirthdate } from "@/lib/settings";
 import { db } from "@/lib/db";
 
@@ -84,6 +84,20 @@ describe("bio-age: below-detection hs-CRP still completes the PhenoAge draw", ()
     const exact = getBioAgeReadings(other).draws[0].bioAge;
 
     expect(bounded).toBe(exact);
+  });
+
+  it("emits the same PhenoAge row through the derived-table gather (hero ↔ table parity)", () => {
+    insertLab(profileId, "hs-CRP", "mg/L", "<0.2", null);
+
+    // The derived-biomarker gather (the biomarkers-table path) recovers the same
+    // censored input, so the PhenoAge row it emits matches the hero's draw — the
+    // two surfaces don't disagree about whether the draw is complete.
+    const heroBioAge = getBioAgeReadings(profileId).draws[0].bioAge;
+    const phenoRows = getDerivedBiomarkerReadings(profileId).filter(
+      (r) => r.name === "PhenoAge"
+    );
+    expect(phenoRows).toHaveLength(1);
+    expect(phenoRows[0].value_num).toBe(heroBioAge);
   });
 
   it("still drops a purely qualitative hs-CRP (nothing numeric to use)", () => {
