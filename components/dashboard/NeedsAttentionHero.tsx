@@ -14,6 +14,7 @@ import {
   IconInbox,
   IconAlertTriangle,
   IconTemperature,
+  IconClipboardPlus,
   IconCircleCheck,
   type TablerIcon,
 } from "@tabler/icons-react";
@@ -59,6 +60,7 @@ const DOMAIN_ICON: Record<string, TablerIcon> = {
   refill: IconRefresh,
   "dietary-limit": IconAlertTriangle,
   "illness-care": IconTemperature,
+  "condition-review": IconClipboardPlus,
   interaction: IconAlertTriangle,
   appointment: IconStethoscope,
   visit: IconStethoscope,

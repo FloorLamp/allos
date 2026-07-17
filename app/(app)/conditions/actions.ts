@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import type { ConditionStatus } from "@/lib/types";
+import { addSuggestedConditionCore } from "@/lib/condition-suggestion-write";
 
 // Condition / problem-list writes. Session-scoped; every mutation is
 // `WHERE id = ? AND profile_id = ?`. Manual rows carry a NULL source/document_id.
@@ -65,6 +66,26 @@ export async function updateCondition(formData: FormData): Promise<FormResult> {
      WHERE id = ? AND profile_id = ?`
   ).run(name, code, codeSystem, status, onset, resolved, notes, id, profile.id);
   revalidateConditions();
+  return formOk();
+}
+
+// Confirm a condition SUGGESTION (issue #685) into a problem-list Condition. The
+// suggest-only bridge (#560): the Upcoming/hero review item posts the suggested
+// name/code here on an explicit user confirm — the app never silently inserts. The
+// write core is idempotent (external_id keyed), so a double-tap is a no-op. Once
+// added, the concept collapses onto the new condition and the suggestion self-clears.
+export async function confirmConditionSuggestion(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) return formError("Couldn't read that suggestion.");
+  const code = String(formData.get("code") ?? "").trim() || null;
+  const outcome = addSuggestedConditionCore(profile.id, { name, code });
+  if (outcome.kind === "invalid")
+    return formError("Could not add the condition.");
+  revalidateConditions();
+  revalidatePath("/upcoming");
   return formOk();
 }
 

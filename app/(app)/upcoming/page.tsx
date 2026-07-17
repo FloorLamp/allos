@@ -18,6 +18,7 @@ import {
   IconInfoCircle,
   IconCalendarPlus,
   IconCalendarCheck,
+  IconClipboardPlus,
   type TablerIcon,
 } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
@@ -46,6 +47,7 @@ import {
   markPreventiveDone,
   markCarePlanDone,
 } from "./actions";
+import { confirmConditionSuggestion } from "@/app/(app)/conditions/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +59,7 @@ const DOMAIN_ICON: Record<UpcomingDomain, TablerIcon> = {
   refill: IconRefresh,
   "dietary-limit": IconAlertTriangle,
   "illness-care": IconTemperature,
+  "condition-review": IconClipboardPlus,
   interaction: IconAlertTriangle,
   pgx: IconAlertTriangle,
   contrast: IconAlertTriangle,
@@ -372,6 +375,38 @@ function Row({
             className="rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
           >
             Mark done
+          </SubmitButton>
+        </form>
+      )}
+      {/* Condition suggestion (issue #685): an inline confirm that adds the suggested
+      problem-list condition — suggest-only, so it acts ONLY on this explicit click,
+      never on ingest. Dismiss lives in the shared snooze/dismiss menu below. */}
+      {item.conditionSuggestion != null && (
+        <form
+          action={async (fd) => {
+            "use server";
+            await confirmConditionSuggestion(fd);
+          }}
+          className="shrink-0"
+        >
+          <input
+            type="hidden"
+            name="name"
+            value={item.conditionSuggestion.name}
+          />
+          {item.conditionSuggestion.code != null && (
+            <input
+              type="hidden"
+              name="code"
+              value={item.conditionSuggestion.code}
+            />
+          )}
+          <SubmitButton
+            pendingLabel="…"
+            className="flex items-center gap-1 rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
+          >
+            <IconClipboardPlus className="h-3.5 w-3.5" stroke={1.75} />
+            Add to conditions
           </SubmitButton>
         </form>
       )}

@@ -56,6 +56,7 @@ export type UpcomingDomain =
   | "refill"
   | "dietary-limit"
   | "illness-care"
+  | "condition-review"
   | "interaction"
   | "pgx"
   | "contrast"
@@ -82,6 +83,9 @@ const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
   // A logged symptom crossing a cited duration/trajectory care line (#805) — a
   // care-tier informational finding, grouped with the other "review" safety notes.
   "illness-care": 2.5,
+  // A positive infection / high-risk screen suggesting a problem-list condition to
+  // review (#685) — a care-tier suggest-only finding, alongside the illness-care note.
+  "condition-review": 2.6,
   interaction: 3,
   pgx: 4,
   contrast: 5,
@@ -171,6 +175,10 @@ export interface UpcomingItem {
   // care_plan_items row completed (issue #84) — the same inline fast-path shape as
   // doseId/preventiveRuleKey. Only careplan items carry one.
   carePlanItemId?: number;
+  // When set, the row renders an inline "Add to conditions" confirm for a suggested
+  // problem-list condition (issue #685 — suggest-only, the user confirms). Only
+  // condition-review items carry one; the confirm creates the Condition idempotently.
+  conditionSuggestion?: { name: string; code: string | null };
   // Whether this item supports snooze/dismiss through the shared findings store
   // (issue #524). Date-scheduled due-signals and biomarker flags do (undefined is
   // treated as suppressible); the structural signals (review / failing integration)

@@ -19,6 +19,10 @@ const DOMAIN_NOUN: Record<UpcomingDomain, string> = {
   refill: "refill",
   "dietary-limit": "intake limit",
   "illness-care": "illness check",
+  // A condition-review suggestion (#685). Care-tier on the hero/Upcoming, but
+  // deliberately NOT pushed — omitted from DOMAIN_SEQ (like the "something's off"
+  // signals), so it's never counted in this digest even though the noun exists.
+  "condition-review": "condition to review",
   interaction: "interaction",
   pgx: "pharmacogenomic note",
   contrast: "contrast-safety note",
