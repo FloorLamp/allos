@@ -993,6 +993,46 @@ const NEUTRAL_ATTRIBUTE =
 const CULTURE_NEGATIVE = /\bno growth\b|\bnone\b/i;
 const CULTURE_POSITIVE = /\bgrowth\b/i;
 
+// Prenatal / genetic risk SCREENS — NIPT trisomy 13/18/21 and the like (#687). A
+// screen result is a low/high-RISK call, a genuinely new axis the presence model
+// (positive/negative) doesn't express; recognized by NAME when no LOINC hint is
+// present. Fetal fraction is DELIBERATELY excluded here (it's a QC metric, matched
+// separately by QC_METRIC and checked first) so it never resolves to a risk verdict.
+const SCREENING_RISK =
+  /\btrisomy\b|\bnipt\b|non[-\s]?invasive prenatal|cell[-\s]?free (?:fetal )?dna|\baneuploid(?:y|ies)?\b|\bt(?:13|18|21)\b|\bpatau\b|\bedwards?\b|down syndrome/i;
+
+// QC metrics that are not a health signal — fetal fraction (the proportion of cell-
+// free DNA that is fetal, a run-quality gate on a NIPT draw). Never flags, never
+// ranges, never nudges (#687). Checked BEFORE the screen regex so a fetal-fraction
+// row (which also mentions cell-free DNA) is exempted rather than risk-classified.
+const QC_METRIC = /fetal\s*fraction/i;
+
+// The risk axis a prenatal/genetic screen asserts, from the reading's value + notes.
+// Ordered most-specific/neutral first: indeterminate (no-call/inconclusive), then the
+// reassuring LOW-risk vocab (which contains "not detected"/"no aneuploidy" that would
+// otherwise trip the high-risk words), then HIGH-risk last — the same
+// negative-before-positive discipline qualitativePresence uses. Null when nothing
+// recognized is said (→ no fabricated verdict, like the presence path).
+const SCREEN_INDETERMINATE =
+  /\b(indeterminate|inconclusive|no[-\s]?call|no result|not reportable|equivocal|borderline)\b/i;
+const SCREEN_LOW_RISK =
+  /\b(low[-\s]?risk|screen(?:ing)?[-\s]?negative|not detected|no aneuploid\w*|euploid|reassuring|normal|negative)\b/i;
+const SCREEN_HIGH_RISK =
+  /\b(high[-\s]?risk|increased risk|at[-\s]?risk|screen(?:ing)?[-\s]?positive|aneuploid|abnormal|detected|positive)\b/i;
+
+export type ScreeningRisk = "low_risk" | "high_risk" | "indeterminate";
+
+export function screeningRisk(
+  ...texts: Array<string | null | undefined>
+): ScreeningRisk | null {
+  const s = texts.filter(Boolean).join(" ").trim();
+  if (!s) return null;
+  if (SCREEN_INDETERMINATE.test(s)) return "indeterminate";
+  if (SCREEN_LOW_RISK.test(s)) return "low_risk";
+  if (SCREEN_HIGH_RISK.test(s)) return "high_risk";
+  return null;
+}
+
 // The presence a qualitative value asserts, from the reading's value + notes, using
 // the SAME #516 vocabulary (NEGATIVE checked first — "non-reactive"/"non-immune"
 // contain the positive words). Neutral when nothing recognized is said.
@@ -1015,6 +1055,30 @@ export interface QualitativeClassification {
   // The value never meaningfully changes (blood type, genotype) → exempt from retest,
   // like genomics + durable immunity already are (#548 §2).
   immutable: boolean;
+  // The screening/RISK axis for a prenatal/genetic screen (NIPT trisomy) — a
+  // low/high-risk call that presence positive/negative can't express (#687). Present
+  // ONLY on a screen-class result; absent (undefined) for every other class, so the
+  // non-screen classifications stay byte-identical. High-risk carries polarity "bad"
+  // (flags like an infection-positive), low-risk polarity "good" (reassuring, never
+  // flags), indeterminate polarity "neutral" (neutral-but-visible).
+  risk?: ScreeningRisk;
+  // A quality-control metric, not a health signal — fetal fraction (#687). Never
+  // flags, never ranges, and (via isBiomarkerStale) never nudges. Absent on every
+  // other class.
+  qc?: boolean;
+}
+
+// A screen-class classification from its resolved risk axis (#687), or null when the
+// value asserts no recognizable risk (defer, like the other classes on an ambiguous
+// reading — never fabricate a verdict). Shared by the LOINC-hinted and name-based
+// screen branches so both yield the identical verdict.
+function screenClassification(
+  risk: ScreeningRisk | null
+): QualitativeClassification | null {
+  if (!risk) return null;
+  const polarity =
+    risk === "high_risk" ? "bad" : risk === "low_risk" ? "good" : "neutral";
+  return { presence: "neutral", polarity, immutable: false, risk };
 }
 
 export function classifyQualitativeResult(
@@ -1045,9 +1109,20 @@ export function classifyQualitativeResult(
         return { presence: "positive", polarity: "good", immutable: false };
       return null;
     case "screen":
-      // Prenatal/genetic risk screen — the low/high-risk axis is #687; no
-      // positive/negative verdict yet, so defer to the existing flag.
-      return null;
+      // Prenatal/genetic risk screen (NIPT trisomy) — resolve the low/high-risk
+      // axis (#687) from the value/notes. High-risk flags like an infection-
+      // positive, low-risk is reassuring, indeterminate is neutral-but-visible;
+      // an unrecognized value defers (null), like the other classes.
+      return screenClassification(screeningRisk(value, notes));
+    case "qc":
+      // A QC metric (fetal fraction) — not a health signal (#687). Never flags
+      // (neutral polarity), never nudges (qc → isBiomarkerStale exemption).
+      return {
+        presence: "neutral",
+        polarity: "neutral",
+        immutable: false,
+        qc: true,
+      };
     default:
       break; // unknown LOINC → name-based resolution below
   }
@@ -1055,6 +1130,24 @@ export function classifyQualitativeResult(
   // 1. Immutable identity attributes (blood type, genotype) — never abnormal, never stale.
   if (IMMUTABLE_ATTRIBUTE.test(n))
     return { presence, polarity: "neutral", immutable: true };
+
+  // 1a. QC metric (fetal fraction) — a run-quality percentage, not a health signal
+  //     (#687). Checked before the screen regex (fetal fraction also mentions cell-
+  //     free DNA). Never flags (neutral), never nudges (qc → staleness exemption).
+  if (QC_METRIC.test(n))
+    return {
+      presence: "neutral",
+      polarity: "neutral",
+      immutable: false,
+      qc: true,
+    };
+
+  // 1b. Prenatal/genetic risk SCREEN (NIPT trisomy) — a low/high-risk call, a new
+  //     axis distinct from presence (#687). High-risk flags like an infection-
+  //     positive, low-risk is reassuring (never flags), indeterminate is neutral-
+  //     but-visible; an unrecognized value defers (null).
+  if (SCREENING_RISK.test(n))
+    return screenClassification(screeningRisk(value, notes));
 
   // 2. Infection / active-disease markers — positive is BAD (keep flagging), negative
   //    is reassuring. An ambiguous reading yields null (don't fabricate a verdict).
@@ -1133,8 +1226,9 @@ export function qualitativeFlagResolution(
 // 365. Genomics never go stale (genetics don't change). An immune-POSITIVE durable-
 // immunity titer never goes stale either (issue #516), and — via the shared
 // qualitative classifier (#549) — neither does an IMMUTABLE-attribute result (blood
-// type, genotype), the same "the value can't change" exemption (#548 §2). Both use
-// the optional `immunity` context (the reading's name/flag/value/notes/reference).
+// type, genotype), the same "the value can't change" exemption (#548 §2), nor a QC
+// metric like fetal fraction (#687, `qc`). All use the optional `immunity` context
+// (the reading's name/flag/value/notes/reference).
 // Boundary: stale strictly AFTER the window (age > interval), matching the original.
 export function isBiomarkerStale(
   latestDate: string | null | undefined,
@@ -1154,6 +1248,7 @@ export function isBiomarkerStale(
       immunity.reference
     );
     if (c?.immutable) return false; // immutable attribute — never stale (#548 §2)
+    if (c?.qc) return false; // QC metric (fetal fraction) — never nudged (#687)
   }
   return daysBetween(latestDate, today) > retestIntervalDays(retestDays);
 }
