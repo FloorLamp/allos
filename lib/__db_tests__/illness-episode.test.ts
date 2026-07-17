@@ -32,6 +32,7 @@ import {
 } from "@/lib/trend-annotations";
 import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
+import { resolveEpisodeAcrossProfiles } from "@/lib/illness-episode-store";
 import type { IllnessEpisode } from "@/lib/symptom-episode";
 
 function newProfile(name: string): number {
@@ -399,5 +400,50 @@ describe("openEpisodeForProfile", () => {
        VALUES (?, 'Illness', '2026-05-01', '2026-05-06')`
     ).run(closed);
     expect(openEpisodeForProfile(closed)).toBeNull();
+  });
+});
+
+// ── resolveEpisodeAcrossProfiles: the #879 cross-profile read boundary ──
+// The episode [id] page resolves an episode by id across the viewer's ACCESSIBLE set,
+// allowing a caregiver to read a household member's episode WITHOUT switching, while an
+// UNGRANTED profile's episode stays a 404. Both directions are pinned here (the page's
+// grants boundary is auth; this is the store mechanism that keeps every query scoped).
+describe("resolveEpisodeAcrossProfiles (#879)", () => {
+  function openEpisode(p: number): number {
+    return Number(
+      db
+        .prepare(
+          `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+           VALUES (?, 'Illness', ?, NULL)`
+        )
+        .run(p, shiftDateStr(today(p), -1)).lastInsertRowid
+    );
+  }
+
+  it("resolves a non-active but ACCESSIBLE profile's episode to its owner", () => {
+    const active = newProfile("resolver-active");
+    const member = newProfile("resolver-member");
+    const id = openEpisode(member);
+
+    // The viewer's accessible set contains BOTH profiles (a two-grant caregiver acting
+    // as `active`); the member's episode resolves to the member, not the active profile.
+    const resolved = resolveEpisodeAcrossProfiles([active, member], id);
+    expect(resolved).not.toBeNull();
+    expect(resolved!.profileId).toBe(member);
+    expect(resolved!.row.id).toBe(id);
+  });
+
+  it("404s (null) for an episode owned by no accessible profile — the grants boundary holds", () => {
+    const ungranted = newProfile("resolver-ungranted");
+    const active = newProfile("resolver-active-2");
+    const id = openEpisode(ungranted);
+
+    // `ungranted` is NOT in the accessible set, so guessing its episode id resolves to
+    // nothing — the same 404 the encounters precedent gives for another profile's id.
+    expect(resolveEpisodeAcrossProfiles([active], id)).toBeNull();
+    // But an accessible viewer of `ungranted` (e.g. an admin who reaches all) resolves it.
+    expect(
+      resolveEpisodeAcrossProfiles([active, ungranted], id)?.profileId
+    ).toBe(ungranted);
   });
 });

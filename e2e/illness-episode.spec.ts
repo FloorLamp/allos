@@ -129,6 +129,72 @@ test.describe("Illness-episode view (#801)", () => {
 
     await member.context().close();
   });
+
+  test("a READ-granted caregiver opens a household member's full episode from the hero — banner, no write controls (#879)", async ({
+    page,
+    browser,
+  }) => {
+    test.slow();
+
+    // Grant a fresh member READ on profile 1 (sick) and WRITE on profile 2 (well), then
+    // act as profile 2 — so profile 1's episode is a NON-active, view-only cross-profile
+    // read reached via the hero link.
+    const creds = await createMemberWithGrants(page, [
+      { profileId: 1, access: "read" },
+      { profileId: 2, access: "write" },
+    ]);
+    const member = await loginAs(browser, creds);
+
+    // Switch the acting profile to Riley (profile 2) via the header switcher (retry
+    // through the pre-hydration window — see the sibling test).
+    const rileyButton = member
+      .getByTestId("user-menu-popover")
+      .getByRole("button", { name: "Riley (child)" });
+    await expect(async () => {
+      await member.getByTestId("user-menu-trigger").click();
+      await expect(rileyButton).toBeVisible({ timeout: 2_000 });
+    }).toPass();
+    await rileyButton.click();
+    await expect(member.getByTestId("user-menu-trigger")).toContainText(
+      "Riley (child)"
+    );
+
+    await member.goto("/");
+    const cockpit = member.getByTestId("illness-cockpit-1");
+    await expect(cockpit).toBeVisible();
+
+    // Expand the accordion to reveal the cockpit body + its "Full episode" link, then
+    // follow it into the cross-profile episode page (retry through hydration).
+    const toggle = member.getByTestId("illness-cockpit-toggle-1");
+    const fullLink = cockpit.getByRole("link", { name: "Full episode" });
+    await expect(async () => {
+      await toggle.click();
+      await expect(fullLink).toBeVisible({ timeout: 2_000 });
+    }).toPass();
+    await followLink(member, fullLink, /\/medical\/episodes\/\d+/);
+
+    // The page renders (no 404) with the subject-identity banner ON the page (#531/#534):
+    // Avatar + the sick profile's name (profile 1 = "admin", the bootstrap profile).
+    const banner = member.getByTestId("episode-identity-banner");
+    await expect(banner).toBeVisible();
+    await expect(member.getByTestId("episode-subject-name")).toHaveText(
+      "admin"
+    );
+    // The explicit (never automatic) "switch to them" affordance is present.
+    await expect(member.getByTestId("episode-switch-profile")).toBeVisible();
+
+    // The episode story still renders read-tier.
+    await expect(member.getByTestId("episode-symptoms")).toBeVisible();
+    await expect(member.getByRole("button", { name: "Print" })).toBeVisible();
+
+    // But EVERY write affordance is absent on a view-only grant (#879): no symptom log
+    // panel, no Share (link minting is write-gated), no edit control.
+    await expect(member.getByTestId("episode-log-panel")).toHaveCount(0);
+    await expect(member.getByRole("button", { name: "Share" })).toHaveCount(0);
+    await expect(member.getByTestId("episode-edit-open")).toHaveCount(0);
+
+    await member.context().close();
+  });
 });
 
 // Create a member login granted the given profiles, driving Settings → Family exactly

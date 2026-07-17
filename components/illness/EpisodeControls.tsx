@@ -29,11 +29,17 @@ export default function EpisodeControls({
   ongoing,
   promoted,
   canWrite,
+  profileId,
 }: {
   episodeId: number;
   ongoing: boolean;
   promoted: boolean;
   canWrite: boolean;
+  // The cross-profile write target (issue #879). Set when the page shows a household
+  // member's episode (not the acting profile), so every mutation posts it and the action
+  // gates on THAT profile (requireProfileWriteAccess). Absent on the acting profile's own
+  // page — the action then uses the active profile (requireWriteAccess).
+  profileId?: number;
 }) {
   const [open, setOpen] = useState(false);
   const [createdUrl, setCreatedUrl] = useState<string | null>(null);
@@ -99,6 +105,9 @@ export default function EpisodeControls({
       {canWrite && ongoing && (
         <form action={onEnd} data-testid="episode-end-form">
           <input type="hidden" name="episodeId" value={episodeId} />
+          {profileId != null && (
+            <input type="hidden" name="profileId" value={profileId} />
+          )}
           <SubmitButton className="btn-ghost" pendingLabel="Ending…">
             <IconMoodCheck className="h-4 w-4" stroke={1.75} />
             Feeling better
@@ -110,6 +119,9 @@ export default function EpisodeControls({
         (promoted ? (
           <form action={onUnpromote}>
             <input type="hidden" name="episodeId" value={episodeId} />
+            {profileId != null && (
+              <input type="hidden" name="profileId" value={profileId} />
+            )}
             <SubmitButton className="btn-ghost" pendingLabel="Removing…">
               Remove condition
             </SubmitButton>
@@ -117,6 +129,9 @@ export default function EpisodeControls({
         ) : (
           <form action={onPromote}>
             <input type="hidden" name="episodeId" value={episodeId} />
+            {profileId != null && (
+              <input type="hidden" name="profileId" value={profileId} />
+            )}
             <SubmitButton className="btn-ghost" pendingLabel="Adding…">
               <IconStethoscope className="h-4 w-4" stroke={1.75} />
               Promote to condition
@@ -137,6 +152,9 @@ export default function EpisodeControls({
 
           <form onSubmit={onCreate} className="mt-4 flex flex-col gap-4">
             <input type="hidden" name="episodeId" value={episodeId} />
+            {profileId != null && (
+              <input type="hidden" name="profileId" value={profileId} />
+            )}
             <div>
               <label className="label" htmlFor="ttl">
                 Valid for
