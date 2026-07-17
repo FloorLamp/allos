@@ -103,7 +103,9 @@ export default async function AppLayout({
   const deloadContext = restricted
     ? { isDeloadWeek: false, routineKeys: [] }
     : getFormDeloadContext(profile.id, now);
-  const plateauHints = restricted ? [] : buildActivePlateauHints(profile.id, now);
+  const plateauHints = restricted
+    ? []
+    : buildActivePlateauHints(profile.id, now);
   const version = getAppVersion();
   // Gates any admin-only nav entries in both surfaces.
   const isAdmin = login.role === "admin";

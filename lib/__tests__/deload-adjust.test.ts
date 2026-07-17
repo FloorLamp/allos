@@ -116,7 +116,12 @@ describe("deloadFormSuggestion — no drift vs the session card (#923)", () => {
   const seed = {
     exercise: "Bench Press",
     bodyweight: false,
-    lastSessionBest: { weightKg: 100, reps: 6, targetReps: null, toFailure: false },
+    lastSessionBest: {
+      weightKg: 100,
+      reps: 6,
+      targetReps: null,
+      toFailure: false,
+    },
     lastSessionSets: [
       { weightKg: 100, reps: 6, targetReps: null, toFailure: false },
       { weightKg: 100, reps: 6, targetReps: null, toFailure: false },

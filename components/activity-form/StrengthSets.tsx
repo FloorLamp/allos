@@ -732,7 +732,7 @@ export default function StrengthSets({
                       {dateEl}
                       <span className="flex items-center gap-2">
                         {metrics}
-                        <span className="shrink-0 rounded border border-brand-300 px-1.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-brand-600 dark:border-brand-800 dark:text-brand-400">
+                        <span className="shrink-0 rounded border border-brand-300 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-brand-600 dark:border-brand-800 dark:text-brand-400">
                           Fill
                         </span>
                       </span>
@@ -841,7 +841,7 @@ export default function StrengthSets({
       {showPlateauHint && plateauHint && (
         <div
           data-testid="plateau-hint"
-          className="mt-2 flex items-start justify-between gap-2 rounded-md border border-slate-200 bg-slate-50/70 px-2.5 py-1.5 text-xs dark:border-ink-750 dark:bg-ink-850/40"
+          className="mt-2 flex items-start justify-between gap-2 rounded-md border border-black/10 bg-slate-50/70 px-2.5 py-1.5 text-xs dark:border-white/10 dark:bg-ink-850/40"
         >
           <span className="flex items-start gap-1.5 text-slate-600 dark:text-slate-300">
             <IconTrendingDown className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />

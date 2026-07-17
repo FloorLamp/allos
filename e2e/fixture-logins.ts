@@ -90,6 +90,17 @@ export const ROUTINE_BUILDER_PROFILE = "Routine Builder (e2e)";
 export const E2E_LOGIN_ROUTINE_DELOAD = "e2e_routine_deload";
 export const ROUTINE_DELOAD_PROFILE = "Routine Deload (e2e)";
 
+// Dedicated ADULT profiles for the activity-form fill-paths spec (#923), each owning
+// its own fixture so a save/dismiss can't disturb a neighbor (the #868 hygiene rule).
+//   • FORM_DELOAD: an ACTIVE PPL routine in its deload week + logged Barbell Bench
+//     Press history, so the strength editor's next-set suggestion is deload-shaved.
+//   • FORM_PLATEAU: NO routine + a flat-for-6-weeks Skullcrusher, so a plateaued lift
+//     shows the inline plateau hint (never shaved — the profile has no cycle).
+export const E2E_LOGIN_FORM_DELOAD = "e2e_form_deload";
+export const FORM_DELOAD_PROFILE = "Form Deload (e2e)";
+export const E2E_LOGIN_FORM_PLATEAU = "e2e_form_plateau";
+export const FORM_PLATEAU_PROFILE = "Form Plateau (e2e)";
+
 // A dedicated ADULT profile with NOTHING logged — no activities at all (#809), the
 // brand-new/post-onboarding state. Dedicated on purpose: the shared seeded profiles
 // (and every other fixture profile above, incl. No Gear which seeds one activity
