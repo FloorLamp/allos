@@ -23,7 +23,7 @@ import {
   getUserAgeOn,
   getUserReproductiveStatus,
 } from "../settings";
-import { reconciledFlag } from "../reference-range";
+import { reconciledFlag, plottableReadingValue } from "../reference-range";
 import {
   computeDerivedReadings,
   derivedInputCanonicalNames,
@@ -34,6 +34,21 @@ import {
 } from "../derived-biomarkers";
 import { PHENOAGE_INPUT_NAMES } from "../bio-age";
 import type { MedicalRecord } from "../types";
+
+// The exact numeric an arithmetic index can consume from a stored reading: the
+// exact value_num when present, else the DETECTION LIMIT of a bounded below/above-
+// detection reading ("<0.2" → 0.2, ">10" → 10) — the standard left-censored-lab
+// substitution. Without it an undetectable hs-CRP (the good, low-inflammation case)
+// carries no value_num and silently drops the WHOLE PhenoAge draw, even though every
+// other input is present; the same fate awaits any censored derived-index component.
+// Null for a purely qualitative reading (nothing usable). Mirrors the chart's
+// plottable value so a component contributes the same number it plots.
+function componentNumeric(r: {
+  value_num: number | null;
+  value: string | null;
+}): number | null {
+  return plottableReadingValue(r.value_num, r.value)?.value ?? null;
+}
 
 // A virtual (unstored) record synthesized from a computed derived reading. Same
 // shape as a stored MedicalRecord (so every consumer treats it uniformly) but with
@@ -88,12 +103,9 @@ export function getDerivedBiomarkerReadings(
   const seriesByCanonical = new Map<string, ComponentReading[]>();
   for (const canonical of derivedInputCanonicalNames()) {
     const rows = (grouped.get(canonicalGroupKey(canonical)) ?? [])
-      .filter((r) => r.value_num != null)
-      .map((r) => ({
-        date: r.date,
-        value: r.value_num as number,
-        unit: r.unit,
-      }));
+      .map((r) => ({ r, v: componentNumeric(r) }))
+      .filter((x): x is { r: MedicalRecord; v: number } => x.v != null)
+      .map(({ r, v }) => ({ date: r.date, value: v, unit: r.unit }));
     seriesByCanonical.set(canonical, rows);
   }
 
@@ -219,12 +231,9 @@ export const getBioAgeReadings = cache(function getBioAgeReadings(
   const present = new Set<string>();
   for (const canonical of PHENOAGE_INPUT_NAMES) {
     const rows = getBiomarkerSeries(profileId, canonical)
-      .filter((r) => r.value_num != null)
-      .map((r) => ({
-        date: r.date,
-        value: r.value_num as number,
-        unit: r.unit,
-      }));
+      .map((r) => ({ r, v: componentNumeric(r) }))
+      .filter((x): x is { r: MedicalRecord; v: number } => x.v != null)
+      .map(({ r, v }) => ({ date: r.date, value: v, unit: r.unit }));
     seriesByCanonical.set(canonical, rows);
     if (rows.length > 0) present.add(canonical);
   }
