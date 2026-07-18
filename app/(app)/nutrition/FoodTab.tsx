@@ -6,6 +6,7 @@ import {
   getWeeklyFoodRollup,
   getFoodSuggestions,
   getFoodGroupLogOrder,
+  currentFoodSlot,
   getProteinAdequacy,
   getProteinLoggedGrams,
   getProteinQuickAddPreset,
@@ -68,8 +69,13 @@ export default async function FoodTab() {
   // (the repeated scoop size) to pre-fill the box. Protein powder's only home.
   const proteinLoggedGrams = getProteinLoggedGrams(profile.id, date);
   const proteinPreset = getProteinQuickAddPreset(profile.id);
-  // Catalog pre-ordered so the profile's staples lead within each tier (#591).
-  const groups = getFoodGroupLogOrder(profile.id);
+  // Current food slot (#950): the profile's wall-clock window (Morning/Midday/Evening)
+  // in its timezone. Drives the slot-aware ranking AND the bar's slot chip — the SAME
+  // derivation, so the label and the order can never disagree.
+  const slot = currentFoodSlot(profile.id);
+  // Catalog pre-ordered so the profile's staples lead within each tier (#591), now
+  // slot-aware so the current window's staples lead (fish at lunch, #950).
+  const groups = getFoodGroupLogOrder(profile.id, slot);
 
   return (
     <div>
@@ -122,6 +128,7 @@ export default async function FoodTab() {
             initial={initial}
             initialYesterday={initialYesterday}
             groups={groups}
+            slot={slot}
           />
         </div>
 

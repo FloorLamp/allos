@@ -33,7 +33,14 @@ export type FoodUndoOutcome =
 export function logFoodServingCore(
   profileId: number,
   group: string,
-  date: string
+  date: string,
+  // The tap instant (an ISO-8601 UTC string), appended to the food_log_events ledger
+  // (#950). Defaults to NOW — the load-bearing "logged_at is TAP time, never
+  // backfilled" decision: even when `date` is yesterday (the backfill toggle), the
+  // event records WHEN the user reached for the button, because ranking predicts the
+  // next tap. Injectable so tests can seed a specific slot; production always passes
+  // the default.
+  loggedAt: string = new Date().toISOString()
 ): FoodLogOutcome {
   // Persist the canonical slug, not the raw input (#883): the matcher accepts
   // case/punctuation variants, but downstream readers compare group_key exactly.
@@ -46,6 +53,14 @@ export function logFoodServingCore(
        ON CONFLICT (profile_id, date, group_key)
        DO UPDATE SET servings = servings + 1`
     ).run(profileId, date, slug);
+    // Append the per-tap event in the SAME transaction (#950): the counter and its
+    // ledger see one consistent state, so a reader can never observe a bumped count
+    // with no matching event (or vice versa). Additive — the counter row above is
+    // byte-identical to the pre-ledger write.
+    db.prepare(
+      `INSERT INTO food_log_events (profile_id, group_key, date, logged_at)
+       VALUES (?, ?, ?, ?)`
+    ).run(profileId, slug, date, loggedAt);
     const row = db
       .prepare(
         `SELECT servings FROM food_log
@@ -78,6 +93,19 @@ export function undoFoodServingCore(
     db.prepare(
       `DELETE FROM food_log
         WHERE profile_id = ? AND date = ? AND group_key = ? AND servings <= 0`
+    ).run(profileId, date, slug);
+    // Pop the NEWEST ledger event for (profile, date, group) alongside the counter
+    // decrement (#950), one tx. Undo removes the last thing you logged, so it removes
+    // the last event. A pre-ledger counter row (counter > events — logged before this
+    // migration) has no event to pop: the subquery finds nothing and the DELETE is a
+    // tolerated no-op (a "popless decrement"), so the counter still decrements.
+    db.prepare(
+      `DELETE FROM food_log_events
+        WHERE id = (
+          SELECT id FROM food_log_events
+           WHERE profile_id = ? AND date = ? AND group_key = ?
+           ORDER BY logged_at DESC, id DESC LIMIT 1
+        )`
     ).run(profileId, date, slug);
     const row = db
       .prepare(

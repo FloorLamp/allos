@@ -887,6 +887,21 @@ export const DATASETS: ExportDataset[] = [
     countSql: `SELECT COUNT(*) AS n FROM food_log WHERE profile_id = ?`,
   }),
   tableDataset({
+    // Food-log EVENT ledger (#950): one append-only row per serving TAP, carrying the
+    // tap `logged_at` (a UTC instant) beside the food day. It's the timing layer behind
+    // slot-aware button ranking; the food_log counter stays the day's data of record.
+    // User-entered health data, so it's in the portable export; id-keyed + owned, so
+    // deletable like the other logged datasets (a wipe just degrades ranking to overall
+    // frecency — the food_log counter is untouched).
+    key: "food_log_events",
+    label: "Food log events",
+    table: "food_log_events",
+    columns: ["date", "group_key", "logged_at"],
+    select: `SELECT id, date, group_key, logged_at
+       FROM food_log_events WHERE profile_id = ? ORDER BY logged_at DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM food_log_events WHERE profile_id = ?`,
+  }),
+  tableDataset({
     // Protein-grams quick-add log (#824): one row per date with a running gram total
     // (protein powder / shakes have no food-group home). User-entered health data, so
     // it's in the portable export; id-keyed + owned, deletable like the other logged
@@ -1036,6 +1051,7 @@ export const DELETE_POLICY: Record<string, DatasetDeletePolicy> = {
   equipment: { revalidate: ["/settings/equipment", "/training"] },
   frequency_targets: { revalidate: ["/training", "/"] },
   food_log: { revalidate: ["/nutrition", "/trends", "/"] },
+  food_log_events: { revalidate: ["/nutrition", "/"] },
   protein_log: { revalidate: ["/nutrition", "/"] },
   symptom_logs: { revalidate: ["/", "/timeline"] },
 };

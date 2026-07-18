@@ -1763,36 +1763,58 @@ db.prepare(
 );
 
 // ── Food-group serving log (issue #579) ──────────────────────────────────────
-// ~2 weeks of realistic food-group servings so the /nutrition log, the weekly rollup,
-// and the Trends → Nutrition tab have data, and so a food-habit target (#580) has
-// progress. group_key values are the stable slugs from lib/food-groups.json. Synthetic.
+// ~8 weeks of realistic food-group servings so the /nutrition log, the weekly rollup,
+// the Trends → Nutrition tab, and the food-habit N-week consistency trend (#954) have
+// data, and so a food-habit target (#580) has progress. group_key values are the
+// stable slugs from lib/food-groups.json. Synthetic.
 const foodLog = db.prepare(
   `INSERT INTO food_log (profile_id, date, group_key, servings)
    VALUES (1, ?, ?, ?)
    ON CONFLICT (profile_id, date, group_key) DO UPDATE SET servings = servings + excluded.servings`
 );
+// The per-TAP event ledger (#950): each serving also records a tap `logged_at` (a UTC
+// instant) at a slot-appropriate hour, so slot-aware ranking has a realistic skew in
+// dev — greens/grains at breakfast, fatty fish reliably at lunch, alcohol/dessert in
+// the evening. Default boundaries are 11:00/15:00, so these land in Morning/Midday/
+// Evening respectively.
+const foodEvent = db.prepare(
+  `INSERT INTO food_log_events (profile_id, group_key, date, logged_at)
+   VALUES (1, ?, ?, ?)`
+);
+const logFood = (
+  date: string,
+  group: string,
+  servings: number,
+  hourZ: string
+) => {
+  foodLog.run(date, group, servings);
+  for (let i = 0; i < servings; i++)
+    foodEvent.run(group, date, `${date}T${hourZ}Z`);
+};
 // A weekly rhythm: greens/legumes/fruit most days, fatty fish twice a week, the
 // occasional red meat / alcohol / dessert.
-for (let d = 13; d >= 0; d--) {
+for (let d = 55; d >= 0; d--) {
   const date = daysAgo(d);
-  foodLog.run(date, "leafy_greens", 1 + (d % 2));
-  foodLog.run(date, "fruit", 1);
-  if (d % 3 === 0) foodLog.run(date, "legumes", 1);
-  if (d % 2 === 0) foodLog.run(date, "whole_grains", 1);
-  if (d % 7 === 1 || d % 7 === 4) foodLog.run(date, "fatty_fish", 1);
-  if (d % 5 === 0) foodLog.run(date, "red_meat", 1);
-  if (d % 4 === 0) foodLog.run(date, "nuts_seeds", 1);
-  if (d === 5 || d === 12) foodLog.run(date, "alcohol", 2);
-  if (d === 2 || d === 9) foodLog.run(date, "added_sugar", 1);
+  logFood(date, "leafy_greens", 1 + (d % 2), "08:15:00"); // morning
+  logFood(date, "fruit", 1, "08:20:00"); // morning
+  if (d % 3 === 0) logFood(date, "legumes", 1, "12:30:00"); // midday
+  if (d % 2 === 0) logFood(date, "whole_grains", 1, "07:50:00"); // morning
+  if (d % 7 === 1 || d % 7 === 4) logFood(date, "fatty_fish", 1, "12:45:00"); // midday
+  if (d % 5 === 0) logFood(date, "red_meat", 1, "19:00:00"); // evening
+  if (d % 4 === 0) logFood(date, "nuts_seeds", 1, "15:30:00"); // midday/afternoon
+  if (d % 6 === 2) logFood(date, "alcohol", 2, "20:30:00"); // evening
+  if (d % 6 === 4) logFood(date, "added_sugar", 1, "21:00:00"); // evening
 }
 
 // A food-habit target (#580): "fatty fish ≥2×/week" — a food_group frequency target on
 // the shared table, so it shows on /nutrition Weekly habits with the #579 rollup as its
-// progress and can be adopted by a protocol as an intervention.
+// progress and can be adopted by a protocol as an intervention. Backdated ~9 weeks
+// (before the 8-week trend window) so the #954 consistency trend renders a full
+// multi-week history — every cell applicable, not a cold start.
 db.prepare(
-  `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week)
-   VALUES (1, 'food_group', 'fatty_fish', 2)`
-).run();
+  `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week, created_at)
+   VALUES (1, 'food_group', 'fatty_fish', 2, ?)`
+).run(`${daysAgo(63)} 09:00:00`);
 
 // ── Active situations + change log (Trends Ph3 annotations) ──────────────────
 // profile_settings stores only the CURRENT set; the dated start/stop log

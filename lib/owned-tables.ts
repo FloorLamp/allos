@@ -92,6 +92,11 @@ export const OWNED_TABLES = [
   "coverage_gaps",
   "situations",
   "food_log",
+  // Food-log EVENT ledger (#950): per-tap append-only rows beside the food_log
+  // daily counter, carrying the tap `logged_at` so button ranking can be slot-aware.
+  // Directly owned; deleteProfile clears it by profile_id (the row-ops side-state
+  // rule — the ledger is popped/cleared alongside its counter).
+  "food_log_events",
   // Protein-grams quick-add log (#824): the direct-grams `logged` protein basis — a
   // single running gram total per day (UNIQUE(profile_id, date)), SUMMED with the
   // food-group estimated floor. Directly owned; deleteProfile clears it by profile_id.

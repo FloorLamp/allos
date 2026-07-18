@@ -4,6 +4,7 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { IconPlus, IconMinus, IconChevronDown } from "@tabler/icons-react";
 import type { FoodGroup, FoodGroupTier } from "@/lib/food-groups";
+import type { FoodSlot } from "@/lib/food-slot";
 import FoodGroupIcon from "@/components/FoodGroupIcon";
 import { useToast } from "@/components/Toast";
 import { logFoodServing, undoFoodServing } from "./actions";
@@ -35,6 +36,7 @@ export default function FoodLogBar({
   initial,
   initialYesterday,
   groups,
+  slot,
 }: {
   // The acting profile's today and yesterday (YYYY-MM-DD). The bar logs to whichever
   // the day toggle selects (#748 item 1) — narrow by design: today/yesterday only.
@@ -44,9 +46,13 @@ export default function FoodLogBar({
   initial: Record<string, number>;
   initialYesterday: Record<string, number>;
   // The full food-group catalog, pre-ordered by the server so a profile's staples
-  // lead within each tier (frequency/recency, #591). Sectioned by tier here, which
-  // preserves the incoming order within each tier.
+  // lead within each tier (frequency/recency, #591), now slot-aware (#950). Sectioned
+  // by tier here, which preserves the incoming order within each tier.
   groups: FoodGroup[];
+  // The profile's current food window (#950), derived server-side from the same
+  // computation that ranked `groups`, so the chip and the order agree. Shown as a
+  // small label so the slot-aware ordering is legible ("why is fish first right now").
+  slot: FoodSlot;
 }) {
   const [mode, setMode] = useState<DayMode>("today");
   // Optimistic counts kept per day so the toggle flips between two independent
@@ -147,6 +153,19 @@ export default function FoodLogBar({
           <h2 className="font-semibold text-slate-800 dark:text-slate-100">
             {mode === "today" ? "Log today" : "Log yesterday"}
           </h2>
+          {/* Current food slot (#950): the derived window that ordered the list, shown
+              so the slot-aware ranking is legible. Only meaningful for today's log —
+              yesterday's ranking still uses the current window (tap-time rules), but
+              the chip would mislead, so it's today-only. */}
+          {mode === "today" && (
+            <span
+              data-testid="food-slot-chip"
+              data-slot={slot}
+              className="badge bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
+            >
+              {slot}
+            </span>
+          )}
           {/* today/yesterday backfill toggle (#748 item 1) */}
           <div
             data-testid="food-day-toggle"
