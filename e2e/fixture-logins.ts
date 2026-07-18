@@ -226,3 +226,12 @@ export const PROTEIN_QUICKADD_PROFILE = "Protein Quickadd (e2e)";
 // card that races neighbor specs.
 export const E2E_LOGIN_RECAP = "e2e_recap";
 export const RECAP_PROFILE = "Session Recap (e2e)";
+
+// ── Endurance event plans (#839) ──────────────────────────────────────────────
+// A dedicated ADULT profile with a few weeks of logged runs (so a created plan's
+// trajectory has a real base + this-week actuals), and NO endurance_plans row — the
+// spec OWNS the create/complete/delete lifecycle on it (create-and-clean, #868), so
+// its writes never race the shared seed's seeded plan. No birthdate → adult → never
+// training-restricted, so /training renders the full hub with the Event-plans bar.
+export const E2E_LOGIN_ENDURANCE = "e2e_endurance";
+export const ENDURANCE_PROFILE = "Endurance Plan (e2e)";

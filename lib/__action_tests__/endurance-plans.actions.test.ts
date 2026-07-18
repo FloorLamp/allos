@@ -61,7 +61,11 @@ describe("createEndurancePlan (#839)", () => {
       fd({ discipline: "run", event_date: "2026-10-05", target_distance: "10" })
     );
     const dup = await createEndurancePlan(
-      fd({ discipline: "run", event_date: "2026-11-05", target_distance: "21.1" })
+      fd({
+        discipline: "run",
+        event_date: "2026-11-05",
+        target_distance: "21.1",
+      })
     );
     expect(dup.ok).toBe(false);
     expect(getEndurancePlans(profile.id)).toHaveLength(1);
@@ -117,13 +121,19 @@ describe("updateEndurancePlan / status / delete (#839)", () => {
     expect(getEndurancePlans(profile.id)[0].status).toBe("completed");
 
     const ms = db
-      .prepare("SELECT COUNT(*) AS n FROM milestones WHERE profile_id = ? AND key = ?")
+      .prepare(
+        "SELECT COUNT(*) AS n FROM milestones WHERE profile_id = ? AND key = ?"
+      )
       .get(profile.id, `endurance-plan:${id}`) as { n: number };
     expect(ms.n).toBe(1);
 
     // Discipline freed → a new active run plan is allowed.
     const again = await createEndurancePlan(
-      fd({ discipline: "run", event_date: "2027-04-05", target_distance: "21.1" })
+      fd({
+        discipline: "run",
+        event_date: "2027-04-05",
+        target_distance: "21.1",
+      })
     );
     expect(again.ok).toBe(true);
   });
@@ -131,10 +141,20 @@ describe("updateEndurancePlan / status / delete (#839)", () => {
   it("abandons and deletes a plan", async () => {
     const { profile } = seedActor();
     await createEndurancePlan(
-      fd({ discipline: "ride", event_date: "2026-10-05", target_distance: "100" })
+      fd({
+        discipline: "ride",
+        event_date: "2026-10-05",
+        target_distance: "100",
+      })
     );
     const id = getEndurancePlans(profile.id)[0].id;
-    expect((await setEndurancePlanStatus(fd({ id: String(id), status: "abandoned" }))).ok).toBe(true);
+    expect(
+      (
+        await setEndurancePlanStatus(
+          fd({ id: String(id), status: "abandoned" })
+        )
+      ).ok
+    ).toBe(true);
     expect(getEndurancePlans(profile.id)[0].status).toBe("abandoned");
     expect((await deleteEndurancePlan(fd({ id: String(id) }))).ok).toBe(true);
     expect(getEndurancePlans(profile.id)).toHaveLength(0);

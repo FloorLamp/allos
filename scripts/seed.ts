@@ -471,6 +471,16 @@ db.prepare(
      WHERE id = ? AND profile_id = ?`
 ).run(daysAgo(6), seededRoutineId, SEED_PROFILE_ID);
 
+// An active endurance event plan (#839): a half marathon ~14 weeks out. With the seeded
+// running history this renders a feasible weekly-volume trajectory (target vs actual, long
+// run, taper) on the Training overview, a plan-aware note on the next-workout card, and the
+// event day on the Timeline + calendar feed.
+db.prepare(
+  `INSERT INTO endurance_plans
+     (profile_id, event_name, discipline, event_date, target_distance_km, target_time_sec, status)
+   VALUES (?, ?, 'run', ?, 21.1, 6300, 'active')`
+).run(SEED_PROFILE_ID, "City Half Marathon", daysAgo(-98));
+
 // Profile demographics: a ~40-year-old male. Sex is set
 // BEFORE the medical records below so reconcileFlags picks the sex-specific
 // reference/optimal bands (hormones, ferritin, …); birthdate (also set with the

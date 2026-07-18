@@ -140,7 +140,9 @@ describe("computeEnduranceTrajectory — recompute-from-actuals (#839)", () => {
       currentWeeklyVolumeKm: 20,
     });
     // Same plan, lower current volume → this-week target is lower (no debt make-up).
-    expect(low.weeks[0].targetVolumeKm).toBeLessThan(high.weeks[0].targetVolumeKm);
+    expect(low.weeks[0].targetVolumeKm).toBeLessThan(
+      high.weeks[0].targetVolumeKm
+    );
   });
 
   it("the long session stays a bounded fraction of the week's volume", () => {

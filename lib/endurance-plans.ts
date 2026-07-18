@@ -102,9 +102,7 @@ export interface EndurancePlanInput {
 // A typed outcome so an action answers from what happened (never unconditionally confirm).
 // `duplicate` ⇒ an active plan already exists for the discipline (one-active-per-discipline).
 export type EndurancePlanWriteOutcome =
-  | { kind: "ok"; id: number }
-  | { kind: "invalid" }
-  | { kind: "duplicate" };
+  { kind: "ok"; id: number } | { kind: "invalid" } | { kind: "duplicate" };
 
 function sanitize(input: EndurancePlanInput): {
   eventName: string | null;
@@ -194,11 +192,16 @@ export function updateEndurancePlanCore(
   if (!s) return { kind: "invalid" };
   return writeTx(() => {
     const existing = db
-      .prepare("SELECT status FROM endurance_plans WHERE id = ? AND profile_id = ?")
+      .prepare(
+        "SELECT status FROM endurance_plans WHERE id = ? AND profile_id = ?"
+      )
       .get(id, profileId) as { status: EndurancePlanStatus } | undefined;
     if (!existing) return { kind: "invalid" as const };
     // Only an active plan can collide on the one-active-per-discipline rule.
-    if (existing.status === "active" && hasActiveForDiscipline(profileId, s.discipline, id))
+    if (
+      existing.status === "active" &&
+      hasActiveForDiscipline(profileId, s.discipline, id)
+    )
       return { kind: "duplicate" as const };
     db.prepare(
       `UPDATE endurance_plans
@@ -235,9 +238,13 @@ export function setEndurancePlanStatusCore(
       .prepare(
         "SELECT discipline FROM endurance_plans WHERE id = ? AND profile_id = ?"
       )
-      .get(id, profileId) as { discipline: EndurancePlanDiscipline } | undefined;
+      .get(id, profileId) as
+      { discipline: EndurancePlanDiscipline } | undefined;
     if (!existing) return { kind: "invalid" as const };
-    if (status === "active" && hasActiveForDiscipline(profileId, existing.discipline, id))
+    if (
+      status === "active" &&
+      hasActiveForDiscipline(profileId, existing.discipline, id)
+    )
       return { kind: "duplicate" as const };
     db.prepare(
       `UPDATE endurance_plans
@@ -284,13 +291,17 @@ export function setEndurancePlanStatusCore(
 // Delete a plan. Nothing is keyed to a plan id (the trajectory is derived, the timeline
 // event/completion milestone are date-derived), so this is a plain profile-scoped delete.
 // IMMEDIATE.
-export function deleteEndurancePlanCore(profileId: number, id: number): boolean {
+export function deleteEndurancePlanCore(
+  profileId: number,
+  id: number
+): boolean {
   return writeTx(() => {
     // Row-ops side-state (#row-ops): clear the completion milestone keyed to this plan so a
     // deleted plan leaves no orphaned timeline milestone.
-    db.prepare(
-      "DELETE FROM milestones WHERE profile_id = ? AND key = ?"
-    ).run(profileId, planMilestoneKey(id));
+    db.prepare("DELETE FROM milestones WHERE profile_id = ? AND key = ?").run(
+      profileId,
+      planMilestoneKey(id)
+    );
     const res = db
       .prepare("DELETE FROM endurance_plans WHERE id = ? AND profile_id = ?")
       .run(id, profileId);

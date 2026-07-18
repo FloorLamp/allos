@@ -194,7 +194,9 @@ export default async function OverviewSection() {
     const t = c.trajectory;
     return {
       id: c.plan.id,
-      title: c.plan.eventName?.trim() || `${fmtDistance(c.plan.targetDistanceKm, du)} ${c.plan.discipline}`,
+      title:
+        c.plan.eventName?.trim() ||
+        `${fmtDistance(c.plan.targetDistanceKm, du)} ${c.plan.discipline}`,
       disciplineLabel:
         c.plan.discipline === "run"
           ? "Run"

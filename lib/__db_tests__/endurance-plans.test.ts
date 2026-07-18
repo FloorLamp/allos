@@ -30,7 +30,8 @@ import { enduranceLongSessionKey } from "@/lib/endurance-plan";
 
 function makeProfile(name: string): number {
   return Number(
-    db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name).lastInsertRowid
+    db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
+      .lastInsertRowid
   );
 }
 
@@ -212,15 +213,16 @@ describe("endurance plan lifecycle cores (#839)", () => {
         "SELECT title, kind FROM milestones WHERE profile_id = ? AND key = ?"
       )
       .get(profileId, `endurance-plan:${id}`) as
-      | { title: string; kind: string }
-      | undefined;
+      { title: string; kind: string } | undefined;
     expect(ms?.kind).toBe("endurance");
     expect(ms?.title).toMatch(/Marathon Day/);
 
     // Deleting the plan clears its milestone (row-ops side-state).
     deleteEndurancePlanCore(profileId, id);
     const after = db
-      .prepare("SELECT COUNT(*) AS n FROM milestones WHERE profile_id = ? AND key = ?")
+      .prepare(
+        "SELECT COUNT(*) AS n FROM milestones WHERE profile_id = ? AND key = ?"
+      )
       .get(profileId, `endurance-plan:${id}`) as { n: number };
     expect(after.n).toBe(0);
   });

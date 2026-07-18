@@ -39,7 +39,8 @@ function parseTargetTimeSec(raw: string): number | null {
   let sec = 0;
   if (parts.length === 3) sec = parts[0] * 3600 + parts[1] * 60 + parts[2];
   else if (parts.length === 2) sec = parts[0] * 60 + parts[1];
-  else if (parts.length === 1) sec = parts[0] * 60; // bare minutes
+  else if (parts.length === 1)
+    sec = parts[0] * 60; // bare minutes
   else return null;
   return sec > 0 ? Math.round(sec) : null;
 }
@@ -68,7 +69,9 @@ export async function createEndurancePlan(
       String(formData.get("target_distance") ?? ""),
       unit
     ),
-    targetTimeSec: parseTargetTimeSec(String(formData.get("target_time") ?? "")),
+    targetTimeSec: parseTargetTimeSec(
+      String(formData.get("target_time") ?? "")
+    ),
     notes: String(formData.get("notes") ?? ""),
   });
   if (out.kind === "duplicate")
@@ -100,7 +103,9 @@ export async function updateEndurancePlan(
       String(formData.get("target_distance") ?? ""),
       unit
     ),
-    targetTimeSec: parseTargetTimeSec(String(formData.get("target_time") ?? "")),
+    targetTimeSec: parseTargetTimeSec(
+      String(formData.get("target_time") ?? "")
+    ),
     notes: String(formData.get("notes") ?? ""),
   });
   if (out.kind === "duplicate")

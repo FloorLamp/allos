@@ -695,7 +695,11 @@ function enduranceEventItems(profileId: number, today: string): UpcomingItem[] {
     .filter((p) => p.eventDate >= today)
     .map((p) => {
       const disc =
-        p.discipline === "run" ? "Run" : p.discipline === "ride" ? "Ride" : "Swim";
+        p.discipline === "run"
+          ? "Run"
+          : p.discipline === "ride"
+            ? "Ride"
+            : "Swim";
       const name =
         p.eventName?.trim() ||
         `${Math.round(p.targetDistanceKm * 10) / 10} km ${disc}`;

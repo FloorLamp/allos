@@ -67,8 +67,25 @@ export function disciplineLabel(d: EndurancePlanDiscipline): string {
 // name doesn't belong to a distance discipline a plan tracks (HIIT, elliptical,
 // rowing-erg, etc.). Keyword-based, mirroring the app's activity classifier — a
 // plan's weekly-volume gather sums only the sessions of its discipline.
-const RUN_KEYWORDS = ["run", "jog", "sprint", "trail", "treadmill", "5k", "10k", "marathon"];
-const RIDE_KEYWORDS = ["cycl", "bike", "biking", "spin", "ride", "gravel", "gran fondo"];
+const RUN_KEYWORDS = [
+  "run",
+  "jog",
+  "sprint",
+  "trail",
+  "treadmill",
+  "5k",
+  "10k",
+  "marathon",
+];
+const RIDE_KEYWORDS = [
+  "cycl",
+  "bike",
+  "biking",
+  "spin",
+  "ride",
+  "gravel",
+  "gran fondo",
+];
 const SWIM_KEYWORDS = ["swim"];
 
 export function disciplineForActivityName(
@@ -78,7 +95,11 @@ export function disciplineForActivityName(
   if (!t) return null;
   // Ride first: "ride" is a whole word so "stride"/"override" don't match; swim and
   // run keywords are distinctive enough to test by substring.
-  if (RIDE_KEYWORDS.some((k) => (k === "ride" ? /\bride\b/.test(t) : t.includes(k))))
+  if (
+    RIDE_KEYWORDS.some((k) =>
+      k === "ride" ? /\bride\b/.test(t) : t.includes(k)
+    )
+  )
     return "ride";
   if (SWIM_KEYWORDS.some((k) => t.includes(k))) return "swim";
   if (RUN_KEYWORDS.some((k) => t.includes(k))) return "run";
@@ -245,7 +266,9 @@ export function computeEnduranceTrajectory(
       // A recovery week every RECOVERY_CADENCE_WEEKS build weeks (weeks 4, 8, …),
       // but never week 0 and never when the build is too short to have cycled.
       isRecovery =
-        i > 0 && (i + 1) % RECOVERY_CADENCE_WEEKS === 0 && i >= RECOVERY_CADENCE_WEEKS - 1;
+        i > 0 &&
+        (i + 1) % RECOVERY_CADENCE_WEEKS === 0 &&
+        i >= RECOVERY_CADENCE_WEEKS - 1;
       if (isRecovery) {
         phase = "recovery";
         target = level * RECOVERY_CUTBACK; // level unchanged — resumes next week
@@ -420,11 +443,12 @@ export function enduranceArmFor(card: EndurancePlanCard): EnduranceArm {
   const when =
     wk <= 0 ? "event week" : `${wk} week${wk === 1 ? "" : "s"} to go`;
   const longSessionDue = thisWeek.longSessionKm > 0 && !card.longSessionDone;
-  const longPart = thisWeek.longSessionKm > 0
-    ? card.longSessionDone
-      ? `long ${label.toLowerCase()} done`
-      : `long ${label.toLowerCase()} ~${thisWeek.longSessionKm} km due`
-    : "";
+  const longPart =
+    thisWeek.longSessionKm > 0
+      ? card.longSessionDone
+        ? `long ${label.toLowerCase()} done`
+        : `long ${label.toLowerCase()} ~${thisWeek.longSessionKm} km due`
+      : "";
   const progress = `${card.sessionsThisWeek} logged, ${card.remainingKm} km to go`;
   const parts = [
     `${planTitle(plan)} · ${when}: ~${thisWeek.targetVolumeKm} km this week`,
@@ -462,7 +486,9 @@ export interface LoggedSession {
 // The week's LONG session distance (km). Reuses Strava's long-run/race labeling
 // where present (the labeled session's distance), else falls back to the
 // longest-distance session of the week. Returns 0 when nothing is logged.
-export function detectLongSessionKm(sessions: readonly LoggedSession[]): number {
+export function detectLongSessionKm(
+  sessions: readonly LoggedSession[]
+): number {
   if (sessions.length === 0) return 0;
   const labeled = sessions.filter((s) => {
     const t = (s.workoutType ?? "").toLowerCase();
