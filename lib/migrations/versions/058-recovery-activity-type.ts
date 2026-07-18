@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 056 (issue #840, folding in #344): grow the activities.type CHECK to admit
+// Migration 058 (issue #840, folding in #344): grow the activities.type CHECK to admit
 // a 'recovery' type — the HABIT-tier mobility/flexibility session (one activity row
 // whose `components` are the tapped moves). A mobility session rides the existing
 // timeline/journal/streaks/heatmap for free by being an ordinary activities row of a new
@@ -96,7 +96,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 56,
-  name: "056-recovery-activity-type",
+  id: 58,
+  name: "058-recovery-activity-type",
   up,
 };

@@ -54,8 +54,10 @@ import { migration as m052 } from "./052-blood-type-parts";
 import { migration as m053 } from "./053-protein-log";
 import { migration as m054 } from "./054-injuries";
 import { migration as m055 } from "./055-fitness-assessments";
-import { migration as m056 } from "./056-recovery-activity-type";
-import { migration as m057 } from "./057-frequency-target-mobility-region";
+import { migration as m056 } from "./056-food-log-events";
+import { migration as m057 } from "./057-endurance-plans";
+import { migration as m058 } from "./058-recovery-activity-type";
+import { migration as m059 } from "./059-frequency-target-mobility-region";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -121,4 +123,6 @@ export const MIGRATIONS: Migration[] = [
   m055,
   m056,
   m057,
+  m058,
+  m059,
 ];

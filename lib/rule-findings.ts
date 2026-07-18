@@ -96,6 +96,12 @@ import {
 import { getInjuryConstraints } from "./injuries";
 import { excludedRegions } from "./injury-model";
 import {
+  enduranceLongSessionKey,
+  enduranceLongSessionTitle,
+  enduranceLongSessionDetail,
+} from "./endurance-plan";
+import { getEndurancePlanCards, getIllnessCoachingContext } from "./queries";
+import {
   detectWeightAnomalies,
   weightAnomalySignalKey,
   type WeightAnomaly,
@@ -206,11 +212,46 @@ export function collectCoachingFindings(
     ...buildFoodSuggestionFindings(profileId),
     ...buildFoodHabitFindings(profileId),
     ...buildProteinAdequacyFindings(profileId),
+    ...buildEndurancePlanFindings(profileId, today),
     ...buildSunExposureFindings(profileId, today),
     ...buildOralHealthFindings(profileId),
     ...buildFitnessCheckFindings(profileId, today),
     ...buildMobilitySuggestionFindings(profileId, today),
   ];
+}
+
+// ---- Endurance plans (#839): the calm weekly long-session nudge -------------
+
+// A coaching-tier finding per active endurance plan whose scheduled LONG session for this
+// week isn't logged yet. Reads through getEndurancePlanCards — the SAME plan/trajectory
+// model the Training overview card and the recommendation arm format (one computation,
+// #221) — so the finding and the card can never disagree. Coaching tier ONLY (#449): it
+// joins collectCoachingFindings, its dedupeKey (ENDURANCE_PLAN_PREFIX, registered in
+// RULE_FINDING_PREFIXES) rides the shared suppression bus keyed on the discipline, and it
+// NEVER notifies / never reaches the hero. Held during an open illness episode (#837) —
+// plan nagging pauses while the profile is sick.
+export function buildEndurancePlanFindings(
+  profileId: number,
+  today: string
+): Finding[] {
+  if (getIllnessCoachingContext(profileId, today).openEpisode) return [];
+  const out: Finding[] = [];
+  for (const card of getEndurancePlanCards(profileId, today)) {
+    // Only surface a long session that's scheduled AND not yet done this week.
+    if (card.thisWeek.longSessionKm <= 0 || card.longSessionDone) continue;
+    out.push({
+      domain: "endurance",
+      dedupeKey: enduranceLongSessionKey(card.plan.discipline),
+      title: enduranceLongSessionTitle(card),
+      detail: enduranceLongSessionDetail(card),
+      // Calm forward-looking nudge — never an alarm, never a push.
+      tone: "info",
+      dueDate: card.plan.eventDate,
+      actionHref: "/training",
+      actionLabel: "View plan",
+    });
+  }
+  return out;
 }
 
 // ---- Nutrition (#767): goal-scaled protein-adequacy observation ------------

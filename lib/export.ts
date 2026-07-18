@@ -527,6 +527,29 @@ export const DATASETS: ExportDataset[] = [
        FROM injuries WHERE profile_id = ? ORDER BY COALESCE(since, substr(created_at, 1, 10)) DESC, id DESC`,
     countSql: `SELECT COUNT(*) AS n FROM injuries WHERE profile_id = ?`,
   }),
+  tableDataset({
+    // Endurance event plans (#839) — user-entered training goals a migrating family keeps
+    // (event, discipline, target distance/time, status). The weekly trajectory is derived,
+    // never stored, so nothing but the goal is exported here.
+    key: "endurance_plans",
+    label: "Event plans",
+    table: "endurance_plans",
+    columns: [
+      "event_name",
+      "discipline",
+      "event_date",
+      "target_distance_km",
+      "target_time_sec",
+      "status",
+      "notes",
+      "completed_on",
+      "created_at",
+    ],
+    select: `SELECT id, event_name, discipline, event_date, target_distance_km, target_time_sec,
+              status, notes, completed_on, created_at
+       FROM endurance_plans WHERE profile_id = ? ORDER BY event_date DESC, id DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM endurance_plans WHERE profile_id = ?`,
+  }),
   {
     // Supplements + medications (the parent intake_items rows), one per row, with
     // each item's dose SCHEDULE folded into a readable `schedule` summary (built
@@ -887,6 +910,21 @@ export const DATASETS: ExportDataset[] = [
     countSql: `SELECT COUNT(*) AS n FROM food_log WHERE profile_id = ?`,
   }),
   tableDataset({
+    // Food-log EVENT ledger (#950): one append-only row per serving TAP, carrying the
+    // tap `logged_at` (a UTC instant) beside the food day. It's the timing layer behind
+    // slot-aware button ranking; the food_log counter stays the day's data of record.
+    // User-entered health data, so it's in the portable export; id-keyed + owned, so
+    // deletable like the other logged datasets (a wipe just degrades ranking to overall
+    // frecency — the food_log counter is untouched).
+    key: "food_log_events",
+    label: "Food log events",
+    table: "food_log_events",
+    columns: ["date", "group_key", "logged_at"],
+    select: `SELECT id, date, group_key, logged_at
+       FROM food_log_events WHERE profile_id = ? ORDER BY logged_at DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM food_log_events WHERE profile_id = ?`,
+  }),
+  tableDataset({
     // Protein-grams quick-add log (#824): one row per date with a running gram total
     // (protein powder / shakes have no food-group home). User-entered health data, so
     // it's in the portable export; id-keyed + owned, deletable like the other logged
@@ -1015,6 +1053,7 @@ export const DELETE_POLICY: Record<string, DatasetDeletePolicy> = {
   },
   goals: { revalidate: ["/training", "/"] },
   injuries: { revalidate: ["/training", "/timeline", "/"] },
+  endurance_plans: { revalidate: ["/training", "/timeline", "/upcoming", "/"] },
   supplements: { revalidate: ["/nutrition", "/medications", "/"] },
   allergies: { revalidate: ["/allergies", "/"] },
   conditions: { revalidate: ["/conditions", "/"] },
@@ -1036,6 +1075,7 @@ export const DELETE_POLICY: Record<string, DatasetDeletePolicy> = {
   equipment: { revalidate: ["/settings/equipment", "/training"] },
   frequency_targets: { revalidate: ["/training", "/"] },
   food_log: { revalidate: ["/nutrition", "/trends", "/"] },
+  food_log_events: { revalidate: ["/nutrition", "/"] },
   protein_log: { revalidate: ["/nutrition", "/"] },
   symptom_logs: { revalidate: ["/", "/timeline"] },
 };

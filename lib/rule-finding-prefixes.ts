@@ -32,6 +32,7 @@ import { FOOD_HABIT_PREFIX } from "./food-habit";
 import { SUN_EXPOSURE_PREFIX } from "./sun-exposure";
 import { ORAL_HEALTH_PREFIX } from "./oral-health-observation";
 import { PROTEIN_ADEQUACY_PREFIX } from "./protein";
+import { ENDURANCE_PLAN_PREFIX } from "./endurance-plan";
 import { ILLNESS_CARE_PREFIX } from "./illness-care";
 import { TEMP_RED_FLAG_PREFIX } from "./temp-red-flag";
 import { CONDITION_REVIEW_PREFIX } from "./condition-suggestions";
@@ -116,6 +117,15 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: PROTEIN_ADEQUACY_PREFIX,
     tier: "coaching",
     builder: "buildProteinAdequacyFindings",
+    reasons: [],
+  },
+  {
+    // Endurance event plans (#839): the calm weekly long-session nudge. COACHING tier
+    // (#449) — never a push, never the hero; it joins collectCoachingFindings and rides
+    // the shared suppression bus keyed on the discipline.
+    prefix: ENDURANCE_PLAN_PREFIX,
+    tier: "coaching",
+    builder: "buildEndurancePlanFindings",
     reasons: [],
   },
   {

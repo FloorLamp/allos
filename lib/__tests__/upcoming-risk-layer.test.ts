@@ -54,6 +54,9 @@ const ALLOWLIST: Record<string, string> = {
   goalItems: "carries its own target date",
   trainingItems: "weekly frequency count — not risk-ranked",
   carePlanItems: "provider-ordered item with its own planned date",
+  enduranceEventItems:
+    "endurance event day (#839) — carries its own real event_date; a user-set race " +
+    "goal, not a risk-ranked clinical due signal",
 };
 
 // Aggregators/collectors that COMPOSE the builders rather than emit their own

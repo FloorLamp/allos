@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 057 (issue #840): grow frequency_targets.scope_kind to admit a
+// Migration 059 (issue #840): grow frequency_targets.scope_kind to admit a
 // 'mobility_region' scope, so "hips 3×/week" is a first-class weekly HABIT target on the
 // SAME table the training/food targets use (pace tones, the dashboard Goals-and-habits
 // card, and weekly-recap accounting come free). Its scope_value is a MuscleRegion, but
@@ -67,7 +67,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 57,
-  name: "057-frequency-target-mobility-region",
+  id: 59,
+  name: "059-frequency-target-mobility-region",
   up,
 };

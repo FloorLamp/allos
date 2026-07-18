@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { shiftDateStr } from "@/lib/date";
-import { weekWindow } from "@/lib/week-window";
+import { weekWindow, trailingWeeks } from "@/lib/week-window";
 import { recapWindow, resolveRecapWindow } from "@/lib/weekly-recap";
 
 // TODAY is a Wednesday, so a calendar week starting Monday is a partial,
@@ -71,5 +71,40 @@ describe("recap and routine counters share one 'this week' (issue #223)", () => 
     expect(resolveRecapWindow(TODAY, 30, "calendar", MONDAY)).toEqual(
       recapWindow(TODAY, 30)
     );
+  });
+});
+
+describe("trailingWeeks (issue #954)", () => {
+  it("returns N weeks oldest-first, current week last and in-progress", () => {
+    // Calendar week starting Sunday; TODAY (Wed 2026-07-08) is in the week of 07-05.
+    const weeks = trailingWeeks(TODAY, "calendar", 0, 4);
+    expect(weeks).toHaveLength(4);
+    // Oldest first.
+    expect(weeks[0].start < weeks[3].start).toBe(true);
+    // Current week is last: [Sunday 07-05, today], in-progress.
+    const last = weeks[3];
+    expect(last.start).toBe("2026-07-05");
+    expect(last.end).toBe(TODAY);
+    expect(last.isCurrent).toBe(true);
+    // Past weeks are full 7-day blocks, not in-progress.
+    expect(weeks[2]).toMatchObject({
+      start: "2026-06-28",
+      end: "2026-07-04",
+      isCurrent: false,
+    });
+    expect(weeks[0].start).toBe("2026-06-14");
+  });
+
+  it("rolling mode anchors each week to a trailing 7-day block", () => {
+    const weeks = trailingWeeks(TODAY, "rolling", 0, 3);
+    // Current rolling week = [today-6, today].
+    expect(weeks[2]).toMatchObject({
+      start: "2026-07-02",
+      end: TODAY,
+      isCurrent: true,
+    });
+    // Each earlier block is 7 days before.
+    expect(weeks[1].start).toBe("2026-06-25");
+    expect(weeks[0].start).toBe("2026-06-18");
   });
 });

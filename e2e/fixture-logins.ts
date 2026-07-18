@@ -248,3 +248,23 @@ export const FITNESS_SENIOR_PROFILE = "Fitness Senior (e2e)";
 // would create a persistent target and hide the suggestion on the next repeat).
 export const E2E_LOGIN_MOBILITY = "e2e_mobility";
 export const MOBILITY_PROFILE = "Mobility (e2e)";
+
+// A dedicated ADULT profile for the food-log slot-aware ranking + N-week habit trend
+// specs (#950 / #954). Its per-tap food_log_events ledger is slot-SKEWED — exactly one
+// dominant encourage group per window (whole_grains at breakfast, fatty_fish at lunch,
+// berries in the evening) — so whatever slot the e2e wall clock lands in, the one-tap
+// bar's lead must match the slot chip. It also carries a backdated "fatty fish 2×/week"
+// habit (a real multi-week trend) and a freshly-created "leafy greens" habit (an honest
+// cold-start trend). Dedicated + read-only on purpose: a slot-skewed ledger or backdated
+// target on a SHARED profile would change its ranking/rollup and race neighbor specs.
+export const E2E_LOGIN_FOODSLOT = "e2e_foodslot";
+export const FOOD_SLOT_PROFILE = "Food Slot (e2e)";
+
+// ── Endurance event plans (#839) ──────────────────────────────────────────────
+// A dedicated ADULT profile with a few weeks of logged runs (so a created plan's
+// trajectory has a real base + this-week actuals), and NO endurance_plans row — the
+// spec OWNS the create/complete/delete lifecycle on it (create-and-clean, #868), so
+// its writes never race the shared seed's seeded plan. No birthdate → adult → never
+// training-restricted, so /training renders the full hub with the Event-plans bar.
+export const E2E_LOGIN_ENDURANCE = "e2e_endurance";
+export const ENDURANCE_PROFILE = "Endurance Plan (e2e)";
