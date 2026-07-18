@@ -92,6 +92,10 @@ export const OWNED_TABLES = [
   "coverage_gaps",
   "situations",
   "food_log",
+  // Protein-grams quick-add log (#824): the direct-grams `logged` protein basis — a
+  // single running gram total per day (UNIQUE(profile_id, date)), SUMMED with the
+  // food-group estimated floor. Directly owned; deleteProfile clears it by profile_id.
+  "protein_log",
   // Day-by-day symptom log (#799). Directly owned; UNIQUE(profile_id, date, symptom)
   // keeps one row per symptom-day (worst-severity semantics).
   "symptom_logs",

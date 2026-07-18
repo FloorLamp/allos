@@ -7,11 +7,14 @@ import {
   getFoodSuggestions,
   getFoodGroupLogOrder,
   getProteinAdequacy,
+  getProteinLoggedGrams,
+  getProteinQuickAddPreset,
 } from "@/lib/queries";
 import { getUserAge } from "@/lib/settings/profile-attrs";
 import { isFoodLoggingRelevant } from "@/lib/life-stage";
 import { EmptyState } from "@/components/ui";
 import FoodLogBar from "./FoodLogBar";
+import ProteinQuickAdd from "./ProteinQuickAdd";
 import WeeklyHabits from "./WeeklyHabits";
 import { trackFoodHabit } from "./actions";
 import FoodWeeklyRollup from "@/components/FoodWeeklyRollup";
@@ -61,6 +64,10 @@ export default async function FoodTab() {
   // Goal-scaled protein adequacy (#767): the ONE gather the coaching finding also reads.
   // Null when there's no intake signal or no bodyweight to scale a target by.
   const proteinAdequacy = getProteinAdequacy(profile.id);
+  // Direct protein-grams quick-add (#824): today's manual total + the last-used amount
+  // (the repeated scoop size) to pre-fill the box. Protein powder's only home.
+  const proteinLoggedGrams = getProteinLoggedGrams(profile.id, date);
+  const proteinPreset = getProteinQuickAddPreset(profile.id);
   // Catalog pre-ordered so the profile's staples lead within each tier (#591).
   const groups = getFoodGroupLogOrder(profile.id);
 
@@ -122,6 +129,11 @@ export default async function FoodTab() {
           {proteinAdequacy && (
             <ProteinAdequacyCard adequacy={proteinAdequacy} />
           )}
+          <ProteinQuickAdd
+            today={date}
+            initialGrams={proteinLoggedGrams}
+            lastPreset={proteinPreset}
+          />
           <WeeklyHabits profileId={profile.id} />
           <div className="card">
             <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
