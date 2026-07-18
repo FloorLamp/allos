@@ -47,6 +47,7 @@ import {
   getSituationEvents,
   getSituations,
   getTimezone,
+  getExcludedFoodGroups,
 } from "@/lib/settings";
 import { situationHistoryResolver } from "@/lib/trend-annotations";
 import {
@@ -107,6 +108,9 @@ interface Item {
 // AdherenceFindings does) rendered by the tabbed nutrition page.
 export default async function SupplementsTab() {
   const { profile } = await requireSession();
+  // Dietary preferences (#975): the RDA-adequacy food-source lines filter/substitute
+  // excluded groups the same way the #577 suggestions do.
+  const excludedGroups = getExcludedFoodGroups(profile.id);
   const supplements = getSupplements(profile.id);
   const suppById = new Map(supplements.map((s) => [s.id, s]));
   const doses = getSupplementDoses(profile.id);
@@ -534,7 +538,7 @@ export default async function SupplementsTab() {
       {rdaAdequacy.length > 0 && (
         <div className="mb-4 space-y-2" data-testid="rda-adequacy">
           {rdaAdequacy.map((a) => {
-            const foods = foodSourcesForDriNutrient(a.key);
+            const foods = foodSourcesForDriNutrient(a.key, excludedGroups);
             return (
               <FindingCard
                 key={a.key}

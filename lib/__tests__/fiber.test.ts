@@ -217,6 +217,8 @@ describe("fiber copy discipline", () => {
   });
 
   it("signal key is namespaced under the registered prefix", () => {
-    expect(fiberAdequacySignalKey().startsWith(FIBER_ADEQUACY_PREFIX)).toBe(true);
+    expect(fiberAdequacySignalKey().startsWith(FIBER_ADEQUACY_PREFIX)).toBe(
+      true
+    );
   });
 });

@@ -30,7 +30,8 @@ export default function ProteinGauge({ today }: { today: ProteinToday }) {
   const bandLeft = pct(target.gramsLow);
   const bandWidth = Math.max(0, pct(target.gramsHigh) - bandLeft);
   const todayWidth = pct(todayGrams);
-  const weeklyLeft = weeklyAverageGrams != null ? pct(weeklyAverageGrams) : null;
+  const weeklyLeft =
+    weeklyAverageGrams != null ? pct(weeklyAverageGrams) : null;
 
   // Floor copy: today's bar reads "at least N g" unless it's a measured tracked reading.
   const isFloor = today.todayIntake
@@ -103,8 +104,9 @@ export default function ProteinGauge({ today }: { today: ProteinToday }) {
         </div>
       </dl>
       {today.todayIntake && today.todayIntake.basis !== "tracked" && (
-        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-          Today so far is a floor from your {proteinBasisPhrase(today.todayIntake.basis)}.
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          Today so far is a floor from your{" "}
+          {proteinBasisPhrase(today.todayIntake.basis)}.
         </p>
       )}
     </div>

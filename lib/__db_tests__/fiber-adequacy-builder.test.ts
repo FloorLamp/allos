@@ -16,10 +16,7 @@ import {
   dedupeKeyHasKnownPrefix,
   tierForDedupeKey,
 } from "@/lib/rule-finding-prefixes";
-import {
-  FIBER_ADEQUACY_PREFIX,
-  fiberAdequacySignalKey,
-} from "@/lib/fiber";
+import { FIBER_ADEQUACY_PREFIX, fiberAdequacySignalKey } from "@/lib/fiber";
 
 function newProfile(name: string): number {
   return Number(

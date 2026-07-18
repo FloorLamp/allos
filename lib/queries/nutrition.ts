@@ -54,7 +54,12 @@ import {
   fiberDoseGrams,
   type FiberAdequacy,
 } from "../fiber";
-import { getUserSex, getUserAge } from "../settings/profile-attrs";
+import {
+  getUserSex,
+  getUserAge,
+  getExcludedFoodGroups,
+} from "../settings/profile-attrs";
+import { demoteExcludedGroups } from "../dietary-preferences";
 import {
   rollupServings,
   type FoodLogEntry,
@@ -90,6 +95,9 @@ export function getFoodSuggestions(profileId: number): FoodSuggestion[] {
     medications,
     conditions,
     situations,
+    // Dietary preferences (#975): the engine filters/substitutes excluded groups. A
+    // preference, never a safety gate — a shortfall never disappears, logging never blocks.
+    excludedGroups: getExcludedFoodGroups(profileId),
   });
 }
 
@@ -288,7 +296,13 @@ export function getFoodGroupLogOrder(
     }
   }
 
-  const ranked = blendFoodOrder(foodGroupSlugs(), overall, slot, t);
+  // Dietary preferences (#975): demote excluded groups to the TAIL after the frecency
+  // blend (composes with slot ranking, #950) but keep them reachable — you can always log
+  // what you actually ate. Presentation-only; never gates what can be logged (#559).
+  const ranked = demoteExcludedGroups(
+    blendFoodOrder(foodGroupSlugs(), overall, slot, t),
+    new Set(getExcludedFoodGroups(profileId))
+  );
   const out: FoodGroup[] = [];
   for (const slug of ranked) {
     const g = foodGroupBySlug(slug);
@@ -522,7 +536,8 @@ export function getProteinToday(profileId: number): ProteinToday | null {
 
   // Weekly marker — EXACTLY the adequacy computation's daily-average figure (#221), read
   // from the SAME gather so the two can never disagree.
-  const weeklyAverageGrams = getProteinAdequacy(profileId)?.intake.grams ?? null;
+  const weeklyAverageGrams =
+    getProteinAdequacy(profileId)?.intake.grams ?? null;
 
   // Suppress when there's no protein data at all (a bodyweight-only profile that has never
   // logged) — never a bare "0 g" nudge or an empty gauge.

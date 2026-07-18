@@ -143,7 +143,10 @@ export default async function FoodTab() {
 
         <div className="min-w-0 space-y-6 self-start">
           {(proteinToday || proteinAdequacy) && (
-            <ProteinAdequacyCard today={proteinToday} adequacy={proteinAdequacy} />
+            <ProteinAdequacyCard
+              today={proteinToday}
+              adequacy={proteinAdequacy}
+            />
           )}
           {fiberAdequacy && <FiberAdequacyCard adequacy={fiberAdequacy} />}
           <ProteinQuickAdd

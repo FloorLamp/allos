@@ -67,7 +67,15 @@ describe("renderFoodNudge", () => {
       weeklyAverageGrams: 95,
     };
     const line = proteinTodayNudgeLine(t);
-    const msg = renderFoodNudge(1, "Morning", DATE, RANKED, new Map(), "", line);
+    const msg = renderFoodNudge(
+      1,
+      "Morning",
+      DATE,
+      RANKED,
+      new Map(),
+      "",
+      line
+    );
     // The nudge carries the SAME today figure the gauge renders (#221) — floor phrasing.
     expect(msg.body).toContain(line);
     expect(msg.body).toContain("at least 55 g");

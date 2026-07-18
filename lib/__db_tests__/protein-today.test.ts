@@ -85,7 +85,9 @@ describe("getProteinToday (#974)", () => {
       getProteinLoggedGrams(p, anchor)
     );
     // With no food logged, the gauge today figure IS the quick-add total.
-    expect(Math.round(gauge!.todayGrams)).toBe(getProteinLoggedGrams(p, anchor));
+    expect(Math.round(gauge!.todayGrams)).toBe(
+      getProteinLoggedGrams(p, anchor)
+    );
   });
 
   it("a tracked reading today overrides and labels the basis tracked", () => {

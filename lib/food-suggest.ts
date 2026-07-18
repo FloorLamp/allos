@@ -44,6 +44,7 @@ import {
 } from "./datasets/nutrient-food-map";
 import { allergenConflict, type SafetyMedication } from "./supplement-safety";
 import { matchFoodInteractions } from "./food-drug-interactions";
+import { applyPreferenceFilter } from "./dietary-preferences";
 
 const ENTRIES: NutrientFoodEntry[] = NUTRIENT_FOOD_ENTRIES;
 const REDUCE_ENTRIES: ReduceFoodEntry[] = REDUCE_FOOD_ENTRIES;
@@ -101,6 +102,12 @@ export interface FoodSuggestInput {
   conditions: string[];
   // Active situation names (getActiveSituations(...)).
   situations: string[];
+  // Excluded food-group slugs (issue #975 — dietary preferences). A SOFTER layer than the
+  // safety screens above: it FILTERS + SUBSTITUTES the surfaced foods (a vegetarian's zinc
+  // suggestion leads with legumes, not oysters) but NEVER withholds a whole suggestion — a
+  // shortfall must never disappear because its top source was excluded. Omitted/[] = no
+  // preferences.
+  excludedGroups?: string[];
 }
 
 export type FoodSafetyNoteKind =
@@ -109,7 +116,10 @@ export type FoodSafetyNoteKind =
   | "condition"
   // A biomarker-driven excess caution (issue #775) — e.g. an elevated mercury
   // tempering the fatty-fish suggestion. Rendered like a condition caution.
-  | "biomarker";
+  | "biomarker"
+  // A dietary-preference substitution (issue #975) — the excluded top sources were
+  // left out and preference-friendly ones lead. Informational, never a safety note.
+  | "preference";
 
 export interface FoodSafetyNote {
   kind: FoodSafetyNoteKind;
@@ -200,7 +210,8 @@ function buildSuggestion(
   triggeredBy: string[],
   input: FoodSuggestInput,
   drugHits: Map<string, { advice: string; food: string }>,
-  flaggedHigh: Set<string>
+  flaggedHigh: Set<string>,
+  excluded: Set<string>
 ): FoodSuggestion | null {
   const notes: FoodSafetyNote[] = [];
 
@@ -280,6 +291,22 @@ function buildSuggestion(
     if (hit) notes.push({ kind: "biomarker", text: entry.excessCaution.note });
   }
 
+  // 5. Dietary-preference filter (issue #975). FILTER + SUBSTITUTE: drop the excluded
+  //    groups and lead with the preference-compatible sources; if EVERY source is
+  //    excluded, keep them (a shortfall must never vanish because its only sources are
+  //    excluded — never an empty suggestion). A softer layer than the safety screens
+  //    above — it never withholds the whole suggestion.
+  if (excluded.size > 0) {
+    const compatible = applyPreferenceFilter(foods, excluded);
+    if (compatible.length < foods.length && compatible.length > 0) {
+      foods = compatible;
+      notes.push({
+        kind: "preference",
+        text: "Sources you don't eat were left out — these fit your dietary preferences.",
+      });
+    }
+  }
+
   return {
     key: entry.key,
     label: entry.label,
@@ -338,6 +365,10 @@ export function suggestFoods(input: FoodSuggestInput): FoodSuggestion[] {
 
   const flaggedHigh = new Set(flaggedHighNames.keys());
   const drugHits = stackFoodDrugHits(input.medications);
+  // Dietary preferences (#975) — the excluded food-group set the ADD suggestions filter
+  // and substitute against. REDUCE suggestions (limit-tier foods to eat LESS of) are left
+  // untouched: excluding a food you're already told to cut back on is moot.
+  const excluded = new Set(input.excludedGroups ?? []);
   const out: FoodSuggestion[] = [];
 
   // Low side (ADD): a flagged-low nutrient → the curated food sources, safety-screened.
@@ -353,7 +384,8 @@ export function suggestFoods(input: FoodSuggestInput): FoodSuggestion[] {
       triggeredBy,
       input,
       drugHits,
-      flaggedHigh
+      flaggedHigh,
+      excluded
     );
     if (suggestion) out.push(suggestion);
   }
@@ -437,12 +469,20 @@ export function flaggableDriNutrients(): string[] {
 
 // The curated food source display names for a dri.json nutrient key, from the #577
 // map, or [] when the map has no entry for it. Pure — the RDA adequacy surface formats
-// "Food sources: …" over this.
-export function foodSourcesForDriNutrient(driKey: string): string[] {
+// "Food sources: …" over this. When `excludedGroups` is passed (issue #975 — dietary
+// preferences), the excluded groups are filtered/substituted the same way as the #577
+// suggestions: preference-compatible sources lead, and if EVERY source is excluded they're
+// kept (a food answer never disappears entirely).
+export function foodSourcesForDriNutrient(
+  driKey: string,
+  excludedGroups?: readonly string[]
+): string[] {
   const mapKey = DRI_KEY_TO_MAP_KEY[driKey];
   if (!mapKey) return [];
   const entry = ENTRIES.find((e) => e.key === mapKey);
-  return entry ? entry.foods.map((f) => f.food) : [];
+  if (!entry) return [];
+  const excluded = new Set(excludedGroups ?? []);
+  return applyPreferenceFilter(entry.foods, excluded).map((f) => f.food);
 }
 
 // All biomarker names the map references — across the low `entries` (their triggering

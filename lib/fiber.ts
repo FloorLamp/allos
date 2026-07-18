@@ -116,7 +116,8 @@ export interface FiberDoseGrams {
 // known: false }.
 export function fiberDoseGrams(amount: string | null): FiberDoseGrams {
   const q = parseQuantity(amount);
-  if (q && q.unit === "g" && q.value > 0) return { grams: q.value, known: true };
+  if (q && q.unit === "g" && q.value > 0)
+    return { grams: q.value, known: true };
   return { grams: 0, known: false };
 }
 
@@ -302,7 +303,9 @@ export const UNKNOWN_SUPPLEMENT_NOTE =
 // carries the floor caveat, and `combined` names the composition. The unknown-supplement
 // note is appended whenever a confirmed fiber dose couldn't be quantified.
 export function fiberIntakeSummary(intake: FiberIntake): string {
-  const unknown = intake.unknownSupplement ? ` — ${UNKNOWN_SUPPLEMENT_NOTE}` : "";
+  const unknown = intake.unknownSupplement
+    ? ` — ${UNKNOWN_SUPPLEMENT_NOTE}`
+    : "";
   switch (intake.basis) {
     case "tracked":
       return `~${g(intake.grams)} g/day from your tracked intake`;

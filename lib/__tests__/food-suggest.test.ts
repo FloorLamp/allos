@@ -178,6 +178,53 @@ describe("suggestFoods — condition/situation screen", () => {
   });
 });
 
+describe("suggestFoods — dietary preferences (#975): filter + substitute", () => {
+  it("a vegetarian's low iron leads with legumes (non-heme), not red meat", () => {
+    const out = suggestFoods(
+      baseInput({
+        flagged: [{ name: "Ferritin", flag: "low" }],
+        // Vegetarian preset excludes the animal groups.
+        excludedGroups: [
+          "fatty_fish",
+          "lean_fish",
+          "shellfish",
+          "poultry",
+          "red_meat",
+          "processed_meat",
+        ],
+      })
+    );
+    const iron = out.find((s) => s.key === "iron");
+    expect(iron).toBeTruthy();
+    // The red-meat source is dropped; the legume source leads. Never empty.
+    expect(iron!.foods.map((f) => f.foodGroup)).toContain("legumes");
+    expect(iron!.foods.map((f) => f.foodGroup)).not.toContain("red_meat");
+    // A preference note explains the substitution (never a safety note).
+    expect(iron!.safetyNotes.some((n) => n.kind === "preference")).toBe(true);
+  });
+
+  it("keeps the suggestion (never empty) when every source is excluded", () => {
+    // Exclude BOTH iron sources — the shortfall must still surface.
+    const out = suggestFoods(
+      baseInput({
+        flagged: [{ name: "Ferritin", flag: "low" }],
+        excludedGroups: ["red_meat", "processed_meat", "legumes"],
+      })
+    );
+    const iron = out.find((s) => s.key === "iron");
+    expect(iron).toBeTruthy();
+    expect(iron!.foods.length).toBeGreaterThan(0);
+  });
+
+  it("no preferences leaves suggestions unchanged", () => {
+    const withNone = suggestFoods(
+      baseInput({ flagged: [{ name: "Ferritin", flag: "low" }] })
+    );
+    const iron = withNone.find((s) => s.key === "iron");
+    expect(iron!.safetyNotes.some((n) => n.kind === "preference")).toBe(false);
+  });
+});
+
 describe("suggestFoods — determinism + ordering", () => {
   it("emits in curated map order and is stable across calls", () => {
     const input = baseInput({
