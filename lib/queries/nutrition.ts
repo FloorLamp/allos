@@ -206,10 +206,7 @@ function profileFoodSlotBoundaries(profileId: number): FoodSlotBoundaries {
 // The food slot a UTC instant falls into for a profile (its timezone + configured
 // boundaries). The ONE derivation both surfaces use, so the web bar's slot chip and
 // the ranking can never disagree. Profile-scoped reads only the settings tier.
-export function foodSlotForInstant(
-  profileId: number,
-  instant: Date
-): FoodSlot {
+export function foodSlotForInstant(profileId: number, instant: Date): FoodSlot {
   const { hhmm } = zonedDateParts(getTimezone(profileId), instant);
   return foodSlotForHhmm(hhmm, profileFoodSlotBoundaries(profileId));
 }

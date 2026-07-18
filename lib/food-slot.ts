@@ -80,10 +80,7 @@ export function deriveFoodSlot(
 
 // Convenience: derive a food slot straight from an "HH:MM" wall-clock string and the
 // boundaries. Malformed input folds to minute 0 (Morning) rather than throwing.
-export function foodSlotForHhmm(
-  hhmm: string,
-  b: FoodSlotBoundaries
-): FoodSlot {
+export function foodSlotForHhmm(hhmm: string, b: FoodSlotBoundaries): FoodSlot {
   const [h, m] = hhmm.split(":");
   const mins = (Number(h) || 0) * 60 + (Number(m) || 0);
   return deriveFoodSlot(mins, b);

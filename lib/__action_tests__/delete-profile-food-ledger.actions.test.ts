@@ -14,9 +14,7 @@ import { createLogin, createProfile, actAs, fd } from "./harness";
 function ledgerCount(profileId: number): number {
   return (
     db
-      .prepare(
-        `SELECT COUNT(*) AS n FROM food_log_events WHERE profile_id = ?`
-      )
+      .prepare(`SELECT COUNT(*) AS n FROM food_log_events WHERE profile_id = ?`)
       .get(profileId) as { n: number }
   ).n;
 }

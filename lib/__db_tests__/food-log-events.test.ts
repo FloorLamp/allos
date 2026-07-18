@@ -74,7 +74,9 @@ describe("food_log_events ledger atomicity (#950)", () => {
       `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, 'legumes', 2)`
     ).run(profileId, anchor);
 
-    expect(() => undoFoodServingCore(profileId, "legumes", anchor)).not.toThrow();
+    expect(() =>
+      undoFoodServingCore(profileId, "legumes", anchor)
+    ).not.toThrow();
     expect(counter(profileId, "legumes", anchor)).toBe(1); // decremented anyway
     expect(events(profileId)).toHaveLength(0); // nothing to pop
   });
@@ -106,7 +108,9 @@ describe("getFoodGroupLogOrder slot-aware blend (#950)", () => {
 
   it("leads with the MORNING staple at morning", () => {
     const profileId = seedSlotSkewed("food-order-morning");
-    const morning = getFoodGroupLogOrder(profileId, "Morning").map((g) => g.slug);
+    const morning = getFoodGroupLogOrder(profileId, "Morning").map(
+      (g) => g.slug
+    );
     expect(morning[0]).toBe("whole_grains");
   });
 
@@ -123,7 +127,9 @@ describe("getFoodGroupLogOrder slot-aware blend (#950)", () => {
     const profileId = seedSlotSkewed("food-order-cold");
     // Evening: nothing was ever tapped in the evening, so the evening ranking must
     // equal the no-window (overall) ranking exactly.
-    const evening = getFoodGroupLogOrder(profileId, "Evening").map((g) => g.slug);
+    const evening = getFoodGroupLogOrder(profileId, "Evening").map(
+      (g) => g.slug
+    );
     const overall = getFoodGroupLogOrder(profileId).map((g) => g.slug);
     expect(evening).toEqual(overall);
   });

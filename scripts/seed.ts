@@ -1780,9 +1780,15 @@ const foodEvent = db.prepare(
   `INSERT INTO food_log_events (profile_id, group_key, date, logged_at)
    VALUES (1, ?, ?, ?)`
 );
-const logFood = (date: string, group: string, servings: number, hourZ: string) => {
+const logFood = (
+  date: string,
+  group: string,
+  servings: number,
+  hourZ: string
+) => {
   foodLog.run(date, group, servings);
-  for (let i = 0; i < servings; i++) foodEvent.run(group, date, `${date}T${hourZ}Z`);
+  for (let i = 0; i < servings; i++)
+    foodEvent.run(group, date, `${date}T${hourZ}Z`);
 };
 // A weekly rhythm: greens/legumes/fruit most days, fatty fish twice a week, the
 // occasional red meat / alcohol / dessert.

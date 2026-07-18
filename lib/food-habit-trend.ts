@@ -67,6 +67,13 @@ export function foodHabitTrendCells(
       verdict === "na"
         ? `${range} · not tracked yet`
         : `${range} · ${count} of ${perWeek}`;
-    return { start: week.start, end: week.end, count, target: perWeek, verdict, label };
+    return {
+      start: week.start,
+      end: week.end,
+      count,
+      target: perWeek,
+      verdict,
+      label,
+    };
   });
 }
