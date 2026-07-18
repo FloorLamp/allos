@@ -14,12 +14,24 @@ import { totp } from "../lib/totp";
 // greater than enrollment's) and always in-window. Deterministic: no sleeping
 // through step boundaries (a 31s wait blew the 30s test timeout in CI).
 async function completeTotpLogin(page: Page, secret: string): Promise<void> {
-  const nextStepCode = totp(secret, { timeMs: Date.now() + 30_000 })!;
-  await page.getByTestId("totp-code").fill(nextStepCode);
-  await page.getByRole("button", { name: "Verify" }).click();
-  await page.waitForURL((u) => !u.pathname.startsWith("/login"), {
-    timeout: 10_000,
-  });
+  // Under heavy full-suite load, more than a step can elapse between computing
+  // the code and the server verifying it, sliding even the next-step code out of
+  // the ±1-step window (#961 — failed exactly so twice, only in loaded runs).
+  // toPass is justified: "a code computed now is verified in time" is non-atomic
+  // under load and no single expect can express it. Each retry computes a FRESH
+  // next-step code (strictly newer, so the replay guard never blocks a retry),
+  // and the loop cannot false-pass — only a real verify navigates off /login.
+  // The url guard keeps a slow-but-successful verify from being re-driven.
+  await expect(async () => {
+    if (new URL(page.url()).pathname.startsWith("/login")) {
+      const nextStepCode = totp(secret, { timeMs: Date.now() + 30_000 })!;
+      await page.getByTestId("totp-code").fill(nextStepCode);
+      await page.getByRole("button", { name: "Verify" }).click();
+    }
+    await page.waitForURL((u) => !u.pathname.startsWith("/login"), {
+      timeout: 10_000,
+    });
+  }).toPass({ timeout: 45_000 });
 }
 
 test("2FA: enroll, then second-factor login with code and recovery code (#23)", async ({
@@ -58,10 +70,21 @@ test("2FA: enroll, then second-factor login with code and recovery code (#23)", 
   await m.goto("/settings");
   await m.getByTestId("twofa-enable").click();
   const secret = (await m.getByTestId("twofa-secret").innerText()).trim();
-  await m.getByTestId("twofa-code").fill(totp(secret)!);
-  await m.getByTestId("twofa-activate").click();
-  // Recovery codes are shown once on activation; grab one for the recovery path.
-  await expect(m.getByTestId("twofa-recovery-codes")).toBeVisible();
+  // Activation is the same stall hazard as the login verify (#961): a current-step
+  // code computed here can expire before the server checks it under full-suite
+  // load, and the recovery codes then never render (the observed failure).
+  // toPass justified as in completeTotpLogin — recompute a fresh code per retry;
+  // only a real activation renders the one-time recovery codes, so no false pass.
+  await expect(async () => {
+    if (!(await m.getByTestId("twofa-recovery-codes").isVisible())) {
+      await m.getByTestId("twofa-code").fill(totp(secret)!);
+      await m.getByTestId("twofa-activate").click();
+    }
+    // Recovery codes are shown once on activation; the recovery path needs one.
+    await expect(m.getByTestId("twofa-recovery-codes")).toBeVisible({
+      timeout: 5000,
+    });
+  }).toPass({ timeout: 45_000 });
   const recoveryCode = (
     await m
       .getByTestId("twofa-recovery-codes")
