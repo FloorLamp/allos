@@ -132,11 +132,16 @@ export function saveFitnessEntry(
       reconcileFlags(profileId, [Number(info.lastInsertRowid)]);
     } else if (store.kind === "body") {
       // A body_metrics row carrying only this metric (weight_kg NULL — the column is
-      // nullable; readers reconcile per-metric newest). Keeps the check from forcing a
-      // weigh-in it didn't measure.
+      // nullable; readers reconcile per-metric newest). body_metrics is UNIQUE on
+      // (profile_id, date, source), so a second body test on the SAME date (body fat +
+      // resting HR in one session) must UPSERT into the same manual row — COALESCE keeps
+      // the other metric already written, and never clobbers a same-date weight.
       db.prepare(
         `INSERT INTO body_metrics (date, weight_kg, body_fat_pct, resting_hr, source, profile_id)
-         VALUES (?, NULL, ?, ?, 'manual', ?)`
+         VALUES (?, NULL, ?, ?, 'manual', ?)
+         ON CONFLICT(profile_id, date, source) DO UPDATE SET
+           body_fat_pct = COALESCE(excluded.body_fat_pct, body_metrics.body_fat_pct),
+           resting_hr = COALESCE(excluded.resting_hr, body_metrics.resting_hr)`
       ).run(
         input.date,
         store.column === "body_fat_pct" ? input.value : null,

@@ -117,6 +117,21 @@ describe("saveFitnessTest — natural-store routing", () => {
     expect(bm[0].weight_kg).toBeNull();
   });
 
+  it("merges two body tests on one date into a single body_metrics row (UNIQUE date+source)", async () => {
+    const { profile } = seedActor();
+    setDemographics(profile.id, "male", "1985-06-01");
+    await saveFitnessTest(fd({ testKey: "bodyfat", value: 18, date: DATE }));
+    await saveFitnessTest(fd({ testKey: "restinghr", value: 55, date: DATE }));
+    const bm = db
+      .prepare(
+        "SELECT body_fat_pct, resting_hr FROM body_metrics WHERE profile_id = ? AND date = ?"
+      )
+      .all(profile.id, DATE) as any[];
+    expect(bm).toHaveLength(1);
+    expect(bm[0].body_fat_pct).toBe(18);
+    expect(bm[0].resting_hr).toBe(55);
+  });
+
   it("derives VO2 from a Cooper field test and stores it as the VO2 Max biomarker", async () => {
     const { profile } = seedActor();
     setDemographics(profile.id, "male", "1985-06-01");
