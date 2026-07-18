@@ -16,8 +16,11 @@ import type {
 import {
   serializeImportReport,
   isRowDrop,
+  tallyUnresolvedNames,
   type ImportReport,
 } from "./import-report";
+import canonicalSeed from "./canonical-biomarkers.json";
+import { normalizeCanonicalKey } from "./canonical-name";
 import { toAllergyStatus, toConditionStatus } from "./clinical-parse";
 import {
   normalizeResultType,
@@ -56,6 +59,18 @@ import {
   type DocHeadCirc,
 } from "./head-circ-extract";
 import { immunizationsFromExtraction } from "./immunization-extract";
+
+// The curated canonical vocabulary, by normalized key — so the AI path can tell a
+// lab reading that landed on a real dataset entry (has a reference band) from one
+// that matched nothing and imported under its raw name (#918 §4).
+const SEEDED_CANONICAL_KEYS = new Set(
+  (canonicalSeed as { biomarkers?: { name: string }[] }).biomarkers?.map((b) =>
+    normalizeCanonicalKey(b.name)
+  ) ?? []
+);
+function isSeededCanonical(name: string): boolean {
+  return SEEDED_CANONICAL_KEYS.has(normalizeCanonicalKey(name));
+}
 
 // The one canonical shape a parsed document is reduced to before it is written.
 // Both extraction paths — the AI document extractor (rich: panel/flag/reference
@@ -630,12 +645,22 @@ export function extractionToPersistInput(
     bodyMetrics.length +
     heights.length +
     headCircs.length;
+  // Lab readings whose canonical NAME matched no curated entry import under that raw
+  // name with no reference band and never flag — the AI path's silent analogue of an
+  // unmapped LOINC (#918 §4). Surface them so the miss is self-reporting. Labs only:
+  // vitals / scans / anthropometrics are intentionally not curated as biomarkers (§5).
+  const unresolvedNames = tallyUnresolvedNames(
+    records
+      .filter((r) => r.category === "lab" && !isSeededCanonical(r.canonical))
+      .map((r) => ({ name: r.canonical, unit: r.unit }))
+  );
   const report: ImportReport = {
     drops: result.drops,
     coverage: [],
     imported,
     considered: imported + result.drops.filter(isRowDrop).length,
     unmappedLoincs: [],
+    unresolvedNames,
   };
 
   return {

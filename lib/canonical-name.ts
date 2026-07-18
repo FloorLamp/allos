@@ -80,6 +80,10 @@ const CANONICAL_ALIASES: [string, string][] = [
   ["Glomerular Filtration Rate, Estimated", "eGFR"],
   // Thyroid
   ["Thyroid Stimulating Hormone", "TSH"],
+  // The model sometimes mirrors the "Full Name (ABBREV)" print form even though the
+  // canonical entry is the bare abbreviation, adding a `tsh` token the bare-name
+  // alias above doesn't carry (seen in AI extractions, #918).
+  ["Thyroid Stimulating Hormone (TSH)", "TSH"],
   ["Thyrotropin", "TSH"],
   // Inflammation (high-sensitivity ONLY — plain CRP is a distinct assay)
   ["hsCRP", "hs-CRP"],
@@ -90,23 +94,54 @@ const CANONICAL_ALIASES: [string, string][] = [
   // Prostate (unqualified PSA = total; the Free % entry stays distinct)
   ["Prostate Specific Antigen", "PSA"],
   ["Prostate-Specific Antigen", "PSA"],
+  ["Prostate Specific Antigen (PSA)", "PSA"],
   ["Prostate Specific Antigen, Total", "PSA"],
   ["PSA, Total", "PSA"],
+  // NOTE: no alias for the free-fraction PERCENT. normalizeCanonicalKey strips "%",
+  // so "PSA, Free %" (the % ratio) and "PSA, Free" (the distinct free-ABSOLUTE assay,
+  // ng/mL) collapse to the SAME key {free, psa} — an alias would capture both and
+  // mis-group the absolute onto the % entry (the unit guard can't rescue it: the two
+  // share no stem sibling). Since the free-absolute assay isn't curated yet (a #918
+  // §3b gap), leaving both unresolved and surfaced is safer than a confident
+  // mis-grouping; resolving them properly needs the curated absolute entry + the unit
+  // guard, tracked separately.
   // Lipids / apolipoprotein
   ["Apolipoprotein B", "ApoB"],
   ["Apo B", "ApoB"],
   ["Apolipoprotein B-100", "ApoB"],
   // Iron
   ["Total Iron Binding Capacity", "TIBC"],
+  // CBC differential — ABSOLUTE counts (cells/uL). The model prefixes "Absolute"
+  // where the vocabulary either suffixes ", Absolute" (neutrophils) or uses the bare
+  // name (the others — whose "%" form is the ", Relative" entry). Routing the wrong
+  // way would drop a cells/uL value onto a "%" series (#549/#482), so each targets
+  // the cells/uL entry, checked against its unit (#918). Strongest signal was
+  // "Absolute Neutrophil Count", which missed in three separate extractions.
+  ["Absolute Neutrophil Count", "Neutrophils, Absolute"],
+  ["Absolute Neutrophils", "Neutrophils, Absolute"],
+  ["Absolute Monocyte Count", "Monocytes"],
+  ["Absolute Monocytes", "Monocytes"],
+  ["Absolute Eosinophil Count", "Eosinophils"],
+  ["Absolute Eosinophils", "Eosinophils"],
+  ["Absolute Basophil Count", "Basophils"],
+  ["Absolute Basophils", "Basophils"],
   // Vitamins / cofactors
   ["B12", "Vitamin B12"],
   ["Vitamin B-12", "Vitamin B12"],
   ["Cobalamin", "Vitamin B12"],
   ["Cyanocobalamin", "Vitamin B12"],
+  ["Micronutrient, Vitamin B12", "Vitamin B12"],
   ["Folic Acid", "Folate"],
   ["Vitamin B9", "Folate"],
   ["Retinol", "Vitamin A (Retinol)"],
   ["Vitamin A", "Vitamin A (Retinol)"],
+  // 25-OH vitamin D. normalizeCanonicalKey already folds "25-OH Vitamin D" onto the
+  // entry via the 25-OH->25-hydroxy synonym; only the "D3" suffix breaks it. The app
+  // models a single 25-hydroxy storage marker (no D2/D3 fractionation), so the D3
+  // print form routes there too. NOT bare "Vitamin D3" — that is the parent vitamin
+  // (cholecalciferol), a distinct thing from its 25-hydroxy metabolite.
+  ["25-OH Vitamin D3", "Vitamin D, 25-Hydroxy"],
+  ["25-Hydroxyvitamin D3", "Vitamin D, 25-Hydroxy"],
   // Electrolytes (the BMP CO2/bicarbonate line)
   ["CO2", "Carbon Dioxide"],
   ["Total CO2", "Carbon Dioxide"],
@@ -154,6 +189,57 @@ const CANONICAL_ALIASES: [string, string][] = [
   ["Thyroid Peroxidase Antibody", "Thyroid Peroxidase Antibodies (TPOAb)"],
   ["Thyroid Peroxidase Ab", "Thyroid Peroxidase Antibodies (TPOAb)"],
   ["Anti-Thyroid Peroxidase", "Thyroid Peroxidase Antibodies (TPOAb)"],
+  // Immunoglobulins (#918): the abbreviation the model/labs usually print snaps onto
+  // the full canonical name. Subclasses alias the "IgGn" short form onto the spelled-
+  // out entry (the tokens "igg1" and "immunoglobulin g subclass 1" share none).
+  ["IgG", "Immunoglobulin G"],
+  ["IgA", "Immunoglobulin A"],
+  ["IgM", "Immunoglobulin M"],
+  ["IgG1", "Immunoglobulin G Subclass 1"],
+  ["IgG Subclass 1", "Immunoglobulin G Subclass 1"],
+  ["IgG2", "Immunoglobulin G Subclass 2"],
+  ["IgG Subclass 2", "Immunoglobulin G Subclass 2"],
+  ["IgG3", "Immunoglobulin G Subclass 3"],
+  ["IgG Subclass 3", "Immunoglobulin G Subclass 3"],
+  ["IgG4", "Immunoglobulin G Subclass 4"],
+  ["IgG Subclass 4", "Immunoglobulin G Subclass 4"],
+  // Urinalysis dipstick (#918): the canonical entries are specimen-qualified
+  // ("…, Urine"), matching how the extractor names them. A bare spelling of an
+  // always-urine pad (Nitrite, Leukocyte Esterase, Urobilinogen) is unambiguous, so
+  // it routes to the urine entry; "Occult Blood" is the same pad as urine "Blood".
+  ["Nitrite", "Nitrite, Urine"],
+  ["Leukocyte Esterase", "Leukocyte Esterase, Urine"],
+  ["Urobilinogen", "Urobilinogen, Urine"],
+  ["Occult Blood, Urine", "Blood, Urine"],
+  // Drift a FRESH re-extraction surfaced (#918): the model, given the same
+  // vocabulary, still coined off-list names. The neutrophil %-form is bare
+  // "Neutrophils" (no "Relative" suffix, unlike mono/eos/baso); the CBC counts often
+  // print as bare abbreviations; specific gravity is always a urine test.
+  ["Neutrophils, Relative", "Neutrophils"],
+  ["Neutrophils Relative", "Neutrophils"],
+  ["WBC", "White Blood Cell Count"],
+  ["RBC", "Red Blood Cell Count"],
+  ["Specific Gravity", "Urine Specific Gravity"],
+  // Newly curated gaps (#918): the abbreviation/short forms onto the "Full (ABBREV)"
+  // canonical entries the model already emits in long form.
+  ["AFP", "Alpha-Fetoprotein (AFP)"],
+  ["Alpha-Fetoprotein", "Alpha-Fetoprotein (AFP)"],
+  ["CEA", "Carcinoembryonic Antigen (CEA)"],
+  ["Carcinoembryonic Antigen", "Carcinoembryonic Antigen (CEA)"],
+  ["HBsAg", "Hepatitis B Surface Antigen (HBsAg)"],
+  ["Hepatitis B Surface Antigen", "Hepatitis B Surface Antigen (HBsAg)"],
+  ["HBsAb", "Hepatitis B Surface Antibody (HBsAb)"],
+  ["Anti-HBs", "Hepatitis B Surface Antibody (HBsAb)"],
+  ["Hepatitis B Surface Antibody", "Hepatitis B Surface Antibody (HBsAb)"],
+  ["Anti-HCV", "Hepatitis C Antibody (Anti-HCV)"],
+  ["HCV Antibody", "Hepatitis C Antibody (Anti-HCV)"],
+  ["Hepatitis C Antibody", "Hepatitis C Antibody (Anti-HCV)"],
+  // NOT aliased, on purpose:
+  //  • bare "pH" — specimen-ambiguous (an arterial-blood-gas pH is not urine pH); the
+  //    §2 trap. Needs a specimen qualifier to resolve.
+  //  • "eGFR, African American" / "eGFR, Thai" — race/ethnicity-specific eGFR
+  //    equations give DIFFERENT numbers; a report listing two would collapse two
+  //    distinct values onto one date. Left surfaced rather than mis-grouped.
 ];
 
 // Build a normalized-key -> canonical-spelling lookup from a vocabulary list.
@@ -195,6 +281,17 @@ export function snapCanonicalName(
     ? buildCanonicalIndex(vocabulary)
     : vocabulary;
   return index.get(normalizeCanonicalKey(name)) ?? name;
+}
+
+// Garbage / placeholder canonical_names the AI extractor sometimes emits instead of
+// a real analyte identity — "Comment(s)" is a recurring dumping-ground (a urine pH
+// and a WBC row both came back as "Comment(S)" in real extractions, #918). Using it
+// as a name would pollute the vocabulary AND mis-group unrelated rows onto one
+// pseudo-analyte, so the caller ignores it and falls back to the printed name.
+const GARBAGE_CANONICAL =
+  /^(comment\(s\)|comments?|see\s*note|note\s*\d*|results?|interpretation|not\s*applicable|n\/?a)$/i;
+export function isGarbageCanonical(name: string | null | undefined): boolean {
+  return !!name && GARBAGE_CANONICAL.test(name.trim());
 }
 
 // --- Vitamin D isoform disambiguation --------------------------------------

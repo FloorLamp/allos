@@ -8,7 +8,9 @@ import {
   buildCanonicalIndex,
   snapCanonicalName,
   distinguishVitaminDIsoform,
+  isGarbageCanonical,
 } from "../canonical-name";
+import { unitAwareCanonical } from "../canonical-unit-guard";
 import { CATEGORIES, FLAGS } from "./constants";
 import type {
   ExtractedPrescription,
@@ -186,12 +188,27 @@ export function normalizeResults(
         ? r.value_num
         : null;
     const str = strOrNull;
-    // Fall back to the raw name when the model omits or blanks the canonical.
+    // Fall back to the raw name when the model omits, blanks, or dumps the canonical
+    // into a garbage placeholder ("Comment(s)" — a real recurring case, #918).
     // Recover the D2/D3 vitamin-D isoform from the verbatim lab name first (the
     // model tends to drop it and collapse both metabolites onto one series),
     // then snap onto a matching vocabulary entry when one exists.
-    const canonicalName = snapCanonicalName(
-      distinguishVitaminDIsoform(str(r?.canonical_name) ?? name, name),
+    const modelCanon = str(r?.canonical_name);
+    const canonSource = isGarbageCanonical(modelCanon)
+      ? name
+      : (modelCanon ?? name);
+    const snapped = snapCanonicalName(
+      distinguishVitaminDIsoform(canonSource, name),
+      canonicalIndex
+    );
+    // The unit is the arbiter: if the snapped entry's unit contradicts the reading's
+    // unit, the name resolved onto the wrong quantity (a "%" onto a "cells/uL" entry,
+    // or the reverse). Re-resolve to the same-analyte sibling whose unit fits, rather
+    // than mis-grouping the reading and silently denying it a range (#918 §1).
+    const canonicalName = unitAwareCanonical(
+      snapped,
+      name,
+      str(r?.unit),
       canonicalIndex
     );
     out.push({

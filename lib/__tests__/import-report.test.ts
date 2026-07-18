@@ -13,7 +13,9 @@ import {
   parseImportReport,
   serializeImportReport,
   tallyUnmappedLoincs,
+  tallyUnresolvedNames,
   unmappedCodeIssueUrl,
+  unresolvedNameIssueUrl,
   type ImportDrop,
   type CoverageEntry,
   type ImportReport,
@@ -147,6 +149,86 @@ describe("unmappedCodeIssueUrl", () => {
   });
 });
 
+// #918 §4: the AI path's parallel — unresolved canonical names. Same PHI guard as
+// the unmapped-code prefill: name + unit catalog identity, and nothing else.
+describe("unresolvedNameIssueUrl", () => {
+  it("builds a prefilled new-issue URL containing exactly name and unit", () => {
+    const url = unresolvedNameIssueUrl({ name: "Urobilinogen", unit: "mg/dL" });
+    const parsed = new URL(url);
+    expect(parsed.origin + parsed.pathname).toBe(
+      "https://github.com/FloorLamp/allos/issues/new"
+    );
+    expect([...parsed.searchParams.keys()].sort()).toEqual(["body", "title"]);
+    expect(parsed.searchParams.get("title")).toBe(
+      "Unresolved analyte: Urobilinogen"
+    );
+    // Pin the FULL body: only the name and unit — never values/dates/ranges/patient.
+    expect(parsed.searchParams.get("body")).toBe(
+      [
+        "An AI-extracted health record surfaced a lab analyte whose name matched no canonical biomarker, so its readings don't group with a canonical biomarker or pick up its reference band. (The AI path has no LOINC to fall back on — identity is the name alone.)",
+        "",
+        "- Analyte name: Urobilinogen",
+        "- Unit: `mg/dL`",
+        "",
+        "Please consider adding an alias (`lib/canonical-name.ts` `CANONICAL_ALIASES`) if this is a known analyte named differently, or curating a new entry (`lib/curated-biomarkers.ts`) if it isn't modeled yet.",
+      ].join("\n")
+    );
+  });
+
+  it("tolerates a missing unit without leaking anything", () => {
+    const body = new URL(
+      unresolvedNameIssueUrl({ name: "Some Analyte" })
+    ).searchParams.get("body")!;
+    expect(body).toContain("- Analyte name: Some Analyte");
+    expect(body).toContain("- Unit: (none carried)");
+  });
+});
+
+describe("tallyUnresolvedNames", () => {
+  it("folds case-insensitively, sums counts, and sorts most-frequent first", () => {
+    const tallied = tallyUnresolvedNames([
+      { name: "Protein", unit: null },
+      { name: "PROTEIN", unit: "mg/dL" },
+      { name: "Ketones", unit: "mg/dL" },
+      { name: "Protein" },
+    ]);
+    // Protein folds to one entry (first-seen spelling), count 3, first non-null unit.
+    expect(tallied).toEqual([
+      { name: "Protein", count: 3, unit: "mg/dL" },
+      { name: "Ketones", count: 1, unit: "mg/dL" },
+    ]);
+  });
+
+  it("survives a serialize → parse round trip and merges across documents", () => {
+    const a: ImportReport = {
+      ...emptyReport(),
+      unresolvedNames: [{ name: "Protein", count: 2, unit: "mg/dL" }],
+    };
+    const b: ImportReport = {
+      ...emptyReport(),
+      unresolvedNames: [{ name: "protein", count: 1, unit: null }],
+    };
+    const round = parseImportReport(serializeImportReport(a));
+    expect(round?.unresolvedNames).toEqual([
+      { name: "Protein", count: 2, unit: "mg/dL" },
+    ]);
+    // Merge sums the two documents' Protein into one row.
+    expect(mergeReports([a, b]).unresolvedNames).toEqual([
+      { name: "Protein", count: 3, unit: "mg/dL" },
+    ]);
+  });
+
+  it("defaults unresolvedNames to [] for a report stored before the field existed", () => {
+    const legacy = JSON.stringify({
+      drops: [],
+      coverage: [],
+      imported: 1,
+      considered: 1,
+    });
+    expect(parseImportReport(legacy)?.unresolvedNames).toEqual([]);
+  });
+});
+
 // #270: the unit rides the unmapped-code tally (catalog identity for the report
 // prefill), keeping the first non-null unit per code.
 describe("tallyUnmappedLoincs units", () => {
@@ -266,6 +348,7 @@ describe("serialize / parseImportReport", () => {
       imported: 1,
       considered: 2,
       unmappedLoincs: [{ loinc: "12345-6", name: "Some Assay", count: 2 }],
+      unresolvedNames: [{ name: "Urobilinogen", count: 1, unit: "mg/dL" }],
     };
     const json = serializeImportReport(report)!;
     expect(parseImportReport(json)).toEqual(report);
@@ -280,6 +363,7 @@ describe("serialize / parseImportReport", () => {
       imported: 0,
       considered: 0,
       unmappedLoincs: [],
+      unresolvedNames: [],
     });
   });
 });

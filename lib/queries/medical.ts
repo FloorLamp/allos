@@ -492,11 +492,17 @@ export function getRecordsForDocument(
 // The trusted controlled vocabulary: canonical names from the reference table
 // (both 'seed' and AI-discovered 'ai' rows). This is the only set fed back to
 // the AI as context, so user free-text canonical names never circulate.
+// Curated (source='seed') names FIRST, then ai-coined ('ai'), each alphabetical.
+// Two consumers depend on this order (#918): the extraction prompt injects only the
+// first VOCAB_CAP names, so curated-first guarantees the authoritative vocabulary
+// reaches the model instead of being crowded out by accumulated ai-coined names; and
+// buildCanonicalIndex resolves a key collision to the FIRST spelling, so a curated
+// name always wins over an ai-coined one describing the same analyte.
 export function getCanonicalVocabulary(): string[] {
   return (
     db
       .prepare(
-        "SELECT name FROM canonical_biomarkers ORDER BY name COLLATE NOCASE"
+        "SELECT name FROM canonical_biomarkers ORDER BY (source = 'ai'), name COLLATE NOCASE"
       )
       .all() as { name: string }[]
   ).map((r) => r.name);

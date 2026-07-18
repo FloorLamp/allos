@@ -1059,6 +1059,144 @@
       "name": "Blood Type",
       "full_name": "Blood Type (ABO + Rh)",
       "description": "The full blood type combines the ABO group (A, B, AB, or O) with the Rh factor (positive or negative) — for example O positive. It is fixed for life and determines which blood can be safely transfused."
+    },
+    {
+      "name": "Protein, Urine",
+      "full_name": "Protein, Urine (dipstick)",
+      "description": "Urine dipstick protein screens for protein leaking into the urine, an early sign of kidney involvement. It is reported qualitatively (Negative, Trace, 1+, and so on), where Negative is normal, and is separate from serum total protein."
+    },
+    {
+      "name": "Glucose, Urine",
+      "full_name": "Glucose, Urine (dipstick)",
+      "description": "Urine dipstick glucose is normally absent; it appears when blood sugar rises above the level the kidneys can reabsorb. It is reported qualitatively (Negative is normal) and is distinct from a blood glucose measurement."
+    },
+    {
+      "name": "Ketones, Urine",
+      "full_name": "Ketones, Urine (dipstick)",
+      "description": "Urine ketones are byproducts of fat breakdown, raised during fasting, low-carbohydrate diets, or poorly controlled diabetes. The dipstick result is qualitative, with Negative being normal."
+    },
+    {
+      "name": "Bilirubin, Urine",
+      "full_name": "Bilirubin, Urine (dipstick)",
+      "description": "Bilirubin is normally absent from urine; its presence can point to liver or bile-duct disease. The dipstick result is qualitative (Negative is normal) and is separate from serum bilirubin."
+    },
+    {
+      "name": "Blood, Urine",
+      "abbreviation": "Occult Blood",
+      "full_name": "Blood, Urine (dipstick)",
+      "description": "The urine dipstick blood pad detects hemoglobin or myoglobin. A positive result prompts a look for red blood cells and possible causes of bleeding; it is qualitative (Negative is normal) and differs from a microscopic red-cell count."
+    },
+    {
+      "name": "Nitrite, Urine",
+      "full_name": "Nitrite, Urine (dipstick)",
+      "description": "A positive urine nitrite suggests bacteria that convert dietary nitrate to nitrite — a clue to a urinary-tract infection. The result is qualitative, with Negative being normal."
+    },
+    {
+      "name": "Leukocyte Esterase, Urine",
+      "full_name": "Leukocyte Esterase, Urine (dipstick)",
+      "description": "Leukocyte esterase is an enzyme released by white blood cells; a positive urine result signals inflammation or infection in the urinary tract. It is reported qualitatively, with Negative being normal."
+    },
+    {
+      "name": "Urobilinogen, Urine",
+      "full_name": "Urobilinogen, Urine",
+      "description": "Urobilinogen forms from bilirubin in the gut and a small amount normally appears in urine. Higher levels can reflect liver disease or red-cell breakdown, while its absence can indicate blocked bile flow."
+    },
+    {
+      "name": "Immunoglobulin G",
+      "abbreviation": "IgG",
+      "full_name": "Immunoglobulin G",
+      "description": "IgG is the most abundant antibody class and carries long-term (adaptive) immunity. Low levels can indicate an immunodeficiency; high levels chronic infection or inflammation."
+    },
+    {
+      "name": "Immunoglobulin A",
+      "abbreviation": "IgA",
+      "full_name": "Immunoglobulin A",
+      "description": "IgA is the antibody class that protects mucosal surfaces such as the gut and airways. Selective IgA deficiency is the most common inherited immunodeficiency and is often harmless."
+    },
+    {
+      "name": "Immunoglobulin M",
+      "abbreviation": "IgM",
+      "full_name": "Immunoglobulin M",
+      "description": "IgM is the first antibody produced when the body meets a new infection, so a rise can point to a recent or active exposure."
+    },
+    {
+      "name": "Immunoglobulin G Subclass 1",
+      "abbreviation": "IgG1",
+      "full_name": "Immunoglobulin G Subclass 1",
+      "description": "IgG1 is the largest of the four IgG subclasses and responds mainly to protein antigens. Subclass levels are measured when investigating a suspected antibody deficiency."
+    },
+    {
+      "name": "Immunoglobulin G Subclass 2",
+      "abbreviation": "IgG2",
+      "full_name": "Immunoglobulin G Subclass 2",
+      "description": "IgG2 responds mainly to the polysaccharide coats of encapsulated bacteria. A selective deficiency can raise susceptibility to those infections."
+    },
+    {
+      "name": "Immunoglobulin G Subclass 3",
+      "abbreviation": "IgG3",
+      "full_name": "Immunoglobulin G Subclass 3",
+      "description": "IgG3 is active against protein and viral antigens and has the shortest half-life of the four IgG subclasses."
+    },
+    {
+      "name": "Immunoglobulin G Subclass 4",
+      "abbreviation": "IgG4",
+      "full_name": "Immunoglobulin G Subclass 4",
+      "description": "IgG4 is the least abundant IgG subclass. Markedly elevated levels are associated with IgG4-related disease, a condition that can affect several organs."
+    },
+    {
+      "name": "Leptin",
+      "full_name": "Leptin",
+      "description": "Leptin is a hormone released by fat tissue that signals the brain about the body's energy stores and helps regulate appetite. Levels rise with body-fat mass and vary by sex."
+    },
+    {
+      "name": "Albumin, Urine",
+      "full_name": "Albumin, Urine (microalbumin)",
+      "description": "Urine albumin (microalbumin) detects small amounts of the protein albumin leaking into the urine, an early sign of kidney damage. It is usually interpreted as a ratio to urine creatinine."
+    },
+    {
+      "name": "Creatinine, Urine",
+      "full_name": "Creatinine, Urine",
+      "description": "Urine creatinine reflects how concentrated the urine is and is mainly used to standardize other urine measurements, such as the albumin-to-creatinine ratio."
+    },
+    {
+      "name": "Alpha-Fetoprotein (AFP)",
+      "abbreviation": "AFP",
+      "full_name": "Alpha-Fetoprotein",
+      "description": "Alpha-fetoprotein is a protein used as a tumor marker for liver and germ-cell cancers, and as a screening marker in pregnancy. In non-pregnant adults it is normally low."
+    },
+    {
+      "name": "Carcinoembryonic Antigen (CEA)",
+      "abbreviation": "CEA",
+      "full_name": "Carcinoembryonic Antigen",
+      "description": "CEA is a tumor marker used mainly to monitor colorectal and some other cancers over time. Mild elevations can also occur with smoking and some non-cancerous conditions."
+    },
+    {
+      "name": "Hepatitis B Surface Antigen (HBsAg)",
+      "abbreviation": "HBsAg",
+      "full_name": "Hepatitis B Surface Antigen",
+      "description": "HBsAg is a marker of active hepatitis B infection. A negative result is normal; a positive result indicates current infection and warrants follow-up."
+    },
+    {
+      "name": "Hepatitis B Surface Antibody (HBsAb)",
+      "abbreviation": "HBsAb",
+      "full_name": "Hepatitis B Surface Antibody (anti-HBs)",
+      "description": "HBsAb (anti-HBs) reflects immunity to hepatitis B from vaccination or recovery from past infection. A level of 10 mIU/mL or higher is generally considered protective."
+    },
+    {
+      "name": "Hepatitis C Antibody (Anti-HCV)",
+      "abbreviation": "Anti-HCV",
+      "full_name": "Hepatitis C Antibody",
+      "description": "The hepatitis C antibody test screens for exposure to the hepatitis C virus. A non-reactive result is normal; a reactive result is followed by confirmatory HCV RNA testing."
+    },
+    {
+      "name": "BUN/Creatinine Ratio",
+      "full_name": "BUN/Creatinine Ratio",
+      "description": "The ratio of blood urea nitrogen to creatinine helps distinguish causes of kidney impairment and gives a clue to hydration status. It is a calculated value with no units."
+    },
+    {
+      "name": "LDL/HDL Ratio",
+      "full_name": "LDL/HDL Cholesterol Ratio",
+      "description": "The ratio of LDL to HDL cholesterol is a summary measure of cardiovascular risk, where a lower ratio is more favorable. It is a calculated value with no units."
     }
   ]
 }

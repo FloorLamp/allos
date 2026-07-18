@@ -11,6 +11,7 @@ import {
   BIOMARKER_FAMILIES,
   biomarkerFamily,
   canonicalAliases,
+  isGarbageCanonical,
 } from "../canonical-name";
 import canonicalSeed from "../canonical-biomarkers.json";
 
@@ -299,10 +300,59 @@ describe("canonical aliases (synonym/abbreviation drift)", () => {
       ["Creatine Kinase", "Creatine Kinase (CK)"],
       ["SHBG", "Sex Hormone Binding Globulin (SHBG)"],
       ["Anti-TPO", "Thyroid Peroxidase Antibodies (TPOAb)"],
+      // AI-extraction spellings audited in #918.
+      ["Absolute Neutrophil Count", "Neutrophils, Absolute"],
+      ["Thyroid Stimulating Hormone (TSH)", "TSH"],
+      ["Prostate Specific Antigen (PSA)", "PSA"],
+      ["Micronutrient, Vitamin B12", "Vitamin B12"],
+      ["25-OH Vitamin D3", "Vitamin D, 25-Hydroxy"],
     ];
     for (const [spelling, canonical] of expectations) {
       expect(snapCanonicalName(spelling, index)).toBe(canonical);
     }
+  });
+
+  it("does NOT alias the free-PSA percent (it would swallow the free-absolute assay)", () => {
+    // normalizeCanonicalKey strips "%", so "PSA, Free %" and "PSA, Free" share the
+    // key {free, psa}. An alias for the percent would also capture the distinct
+    // free-ABSOLUTE assay (ng/mL) and mis-group it. Both stay unresolved (surfaced by
+    // the debugger) rather than one confidently mis-routed — the audit found the
+    // absolute present alongside the percent (#918).
+    expect(snapCanonicalName("PSA, Free", index)).not.toBe(
+      "Prostate Specific Antigen (PSA), Free %"
+    );
+    expect(snapCanonicalName("PSA, Free %", index)).not.toBe(
+      "Prostate Specific Antigen (PSA), Free %"
+    );
+  });
+
+  it("routes the differential ABSOLUTE-count spellings to cells/uL entries, not the % ones", () => {
+    // The bare Monocytes/Eosinophils/Basophils entries ARE the cells/uL counts; their
+    // "%" form is the ", Relative" entry (neutrophils invert it: ", Absolute" is the
+    // count, bare is the %). A wrong route mis-groups a cells/uL value onto a % series
+    // (#549/#482), so pin the direction.
+    expect(snapCanonicalName("Absolute Neutrophil Count", index)).toBe(
+      "Neutrophils, Absolute"
+    );
+    for (const [abs, bare] of [
+      ["Absolute Monocytes", "Monocytes"],
+      ["Absolute Eosinophils", "Eosinophils"],
+      ["Absolute Basophils", "Basophils"],
+    ] as const) {
+      expect(snapCanonicalName(abs, index)).toBe(bare);
+      expect(snapCanonicalName(abs, index)).not.toBe(`${bare}, Relative`);
+    }
+  });
+
+  it("routes 25-OH vitamin D3 to the metabolite but leaves the parent vitamin alone", () => {
+    expect(snapCanonicalName("25-OH Vitamin D3", index)).toBe(
+      "Vitamin D, 25-Hydroxy"
+    );
+    // Bare "Vitamin D3" is cholecalciferol (the parent) — a distinct analyte that
+    // must NOT be merged into its 25-hydroxy metabolite.
+    expect(snapCanonicalName("Vitamin D3", index)).not.toBe(
+      "Vitamin D, 25-Hydroxy"
+    );
   });
 
   it("keeps genuinely distinct assays apart (no over-merging)", () => {
@@ -317,6 +367,82 @@ describe("canonical aliases (synonym/abbreviation drift)", () => {
     expect(snapCanonicalName("Testosterone, Free", index)).not.toBe(
       "Testosterone, Total"
     );
+  });
+
+  it("routes the curated urinalysis + immunoglobulin gaps (#918), keeping urine apart from serum", () => {
+    // Immunoglobulin abbreviations snap onto the full canonical entries.
+    expect(snapCanonicalName("IgG", index)).toBe("Immunoglobulin G");
+    expect(snapCanonicalName("IgA", index)).toBe("Immunoglobulin A");
+    expect(snapCanonicalName("IgM", index)).toBe("Immunoglobulin M");
+    expect(snapCanonicalName("IgG4", index)).toBe(
+      "Immunoglobulin G Subclass 4"
+    );
+    // Urine dipstick entries resolve from "Urine X" / "X, Urine" by word order…
+    expect(snapCanonicalName("Urine Glucose", index)).toBe("Glucose, Urine");
+    expect(snapCanonicalName("Urine Protein", index)).toBe("Protein, Urine");
+    // …and STAY APART from their serum namesakes — the §2 trap. A bare "Glucose"
+    // is serum, never the urine entry, and vice versa.
+    expect(snapCanonicalName("Glucose", index)).toBe("Glucose");
+    expect(snapCanonicalName("Glucose, Urine", index)).not.toBe("Glucose");
+    // The always-urine pads are specimen-qualified to match the extractor's spelling
+    // ("Nitrite, Urine", not bare "Nitrite"); a bare or "Occult Blood" form still
+    // routes there.
+    expect(snapCanonicalName("Nitrite, Urine", index)).toBe("Nitrite, Urine");
+    expect(snapCanonicalName("Leukocyte Esterase, Urine", index)).toBe(
+      "Leukocyte Esterase, Urine"
+    );
+    expect(snapCanonicalName("Urobilinogen, Urine", index)).toBe(
+      "Urobilinogen, Urine"
+    );
+    expect(snapCanonicalName("Nitrite", index)).toBe("Nitrite, Urine");
+    expect(snapCanonicalName("Occult Blood, Urine", index)).toBe(
+      "Blood, Urine"
+    );
+  });
+
+  it("routes the off-list names a FRESH re-extraction coined, and leaves the ambiguous ones alone", () => {
+    // A fresh model run, given the same vocabulary, still drifted (#918): the
+    // neutrophil %-form is bare "Neutrophils"; CBC counts print as bare abbrevs;
+    // specific gravity is always urine.
+    expect(snapCanonicalName("Neutrophils Relative", index)).toBe(
+      "Neutrophils"
+    );
+    expect(snapCanonicalName("WBC", index)).toBe("White Blood Cell Count");
+    expect(snapCanonicalName("RBC", index)).toBe("Red Blood Cell Count");
+    expect(snapCanonicalName("Specific Gravity", index)).toBe(
+      "Urine Specific Gravity"
+    );
+    // Deliberately NOT aliased — resolving these would mis-route:
+    // bare "pH" is specimen-ambiguous (blood-gas vs urine), and the race-specific
+    // eGFR equations are DIFFERENT values that must not collapse onto one series.
+    expect(snapCanonicalName("pH", index)).toBe("pH");
+    expect(snapCanonicalName("eGFR, African American", index)).toBe(
+      "eGFR, African American"
+    );
+  });
+
+  it("resolves the audit-confirmed gap analytes and their abbreviations (#918)", () => {
+    for (const [spelling, canonical] of [
+      ["AFP", "Alpha-Fetoprotein (AFP)"],
+      ["CEA", "Carcinoembryonic Antigen (CEA)"],
+      ["HBsAg", "Hepatitis B Surface Antigen (HBsAg)"],
+      ["Anti-HCV", "Hepatitis C Antibody (Anti-HCV)"],
+      ["Urine Albumin", "Albumin, Urine"],
+    ] as const) {
+      expect(snapCanonicalName(spelling, index)).toBe(canonical);
+    }
+    // Urine albumin/creatinine stay APART from their serum namesakes.
+    expect(snapCanonicalName("Albumin, Urine", index)).not.toBe("Albumin");
+    expect(snapCanonicalName("Creatinine, Urine", index)).not.toBe(
+      "Creatinine"
+    );
+  });
+
+  it("flags the garbage canonical labels the model dumps rows into (#918)", () => {
+    for (const g of ["Comment(S)", "comments", "See Note", "Note 1", "Results"])
+      expect(isGarbageCanonical(g)).toBe(true);
+    for (const real of ["Sodium", "Glucose", "Leptin", "Blood Type"])
+      expect(isGarbageCanonical(real)).toBe(false);
   });
 
   it("every alias targets a REAL dataset entry and shadows no distinct analyte", () => {
