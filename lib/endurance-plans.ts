@@ -6,11 +6,19 @@
 
 import { db, writeTx } from "./db";
 import {
+  disciplineLabel,
   isEnduranceDiscipline,
   type EndurancePlan,
   type EndurancePlanDiscipline,
   type EndurancePlanStatus,
 } from "./endurance-plan";
+
+// The milestones key for a completed plan (#839): completing a plan records a quiet
+// timeline milestone (the milestones table is the timeline source), so the achievement
+// shows on the Timeline. Cleaned up if the plan is later deleted (row-ops side-state).
+function planMilestoneKey(id: number): string {
+  return `endurance-plan:${id}`;
+}
 
 interface PlanRow {
   id: number;
@@ -236,6 +244,39 @@ export function setEndurancePlanStatusCore(
           SET status = ?, completed_on = ?
         WHERE id = ? AND profile_id = ?`
     ).run(status, status === "completed" ? date : null, id, profileId);
+    // Completing records a quiet timeline milestone (#839). Re-completing is idempotent
+    // (INSERT OR IGNORE on the unique (profile_id, key) index).
+    if (status === "completed") {
+      const plan = db
+        .prepare(
+          `SELECT event_name, discipline, target_distance_km
+             FROM endurance_plans WHERE id = ? AND profile_id = ?`
+        )
+        .get(id, profileId) as
+        | {
+            event_name: string | null;
+            discipline: EndurancePlanDiscipline;
+            target_distance_km: number;
+          }
+        | undefined;
+      if (plan) {
+        const name =
+          plan.event_name?.trim() ||
+          `${Math.round(plan.target_distance_km * 10) / 10} km ${disciplineLabel(plan.discipline)}`;
+        db.prepare(
+          `INSERT OR IGNORE INTO milestones
+             (profile_id, key, kind, threshold, title, detail, achieved_on)
+           VALUES (?, ?, 'endurance', ?, ?, ?, ?)`
+        ).run(
+          profileId,
+          planMilestoneKey(id),
+          id,
+          `Event completed: ${name}`,
+          `You completed your ${name} event plan.`,
+          date
+        );
+      }
+    }
     return { kind: "ok" as const, id };
   });
 }
@@ -245,6 +286,11 @@ export function setEndurancePlanStatusCore(
 // IMMEDIATE.
 export function deleteEndurancePlanCore(profileId: number, id: number): boolean {
   return writeTx(() => {
+    // Row-ops side-state (#row-ops): clear the completion milestone keyed to this plan so a
+    // deleted plan leaves no orphaned timeline milestone.
+    db.prepare(
+      "DELETE FROM milestones WHERE profile_id = ? AND key = ?"
+    ).run(profileId, planMilestoneKey(id));
     const res = db
       .prepare("DELETE FROM endurance_plans WHERE id = ? AND profile_id = ?")
       .run(id, profileId);
