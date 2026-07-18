@@ -159,9 +159,7 @@ describe("activityTimeText", () => {
 
   it("reshapes to a 12-hour clock for a 12h login (#964); 24h is verbatim", () => {
     expect(activityTimeText("07:15", "08:17", "24h")).toBe("07:15–08:17");
-    expect(activityTimeText("07:15", "08:17", "12h")).toBe(
-      "7:15 AM–8:17 AM"
-    );
+    expect(activityTimeText("07:15", "08:17", "12h")).toBe("7:15 AM–8:17 AM");
     expect(activityTimeText("18:30", null, "12h")).toBe("6:30 PM");
   });
 });

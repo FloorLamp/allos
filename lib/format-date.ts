@@ -28,8 +28,8 @@ export const DEFAULT_FORMAT_PREFS: DisplayFormatPrefs = {
 
 // Fixed English calendar names — the app is single-language by design (non-goal:
 // no full i18n), and hardcoding these is precisely what removes the server-locale
-// dependence that `toLocaleString(undefined, …)` leaked (the record-format.ts bug,
-// #964). On an en-US host these are byte-identical to the old toLocale output.
+// dependence that an implicit-locale toLocale call leaked (the record-format.ts
+// bug, #964). On an en-US host these are byte-identical to the old toLocale output.
 const MONTHS_LONG = [
   "January",
   "February",

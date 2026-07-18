@@ -32,10 +32,16 @@ describe("formatRecordDate", () => {
 
   it("reorders the date to the login's chosen shape", () => {
     expect(
-      formatRecordDate("2024-01-05", "—", { timeFormat: "24h", dateFormat: "dmy" })
+      formatRecordDate("2024-01-05", "—", {
+        timeFormat: "24h",
+        dateFormat: "dmy",
+      })
     ).toBe("5 Jan 2024");
     expect(
-      formatRecordDate("2024-01-05", "—", { timeFormat: "24h", dateFormat: "iso" })
+      formatRecordDate("2024-01-05", "—", {
+        timeFormat: "24h",
+        dateFormat: "iso",
+      })
     ).toBe("2024-01-05");
   });
 
@@ -55,7 +61,9 @@ describe("formatRecordDateTime", () => {
   it("formats a stored 'YYYY-MM-DD HH:MM' as a date + time, UTC-safe, default 24h", () => {
     // Default prefs are the dominant clock (24h) — the stored wall-clock digits
     // survive exactly, never the raw ISO string.
-    expect(formatRecordDateTime("2026-07-13 14:30")).toBe("Jul 13, 2026, 14:30");
+    expect(formatRecordDateTime("2026-07-13 14:30")).toBe(
+      "Jul 13, 2026, 14:30"
+    );
     // Accepts the "T" separator too.
     expect(formatRecordDateTime("2026-07-13T14:30")).toBe(
       formatRecordDateTime("2026-07-13 14:30")

@@ -112,8 +112,8 @@ export default function FormatPrefsForm({
           ))}
         </select>
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          How written dates are ordered. Data entry stays ISO (YYYY-MM-DD);
-          this changes display only.
+          How written dates are ordered. Data entry stays ISO (YYYY-MM-DD); this
+          changes display only.
         </p>
       </div>
     </div>

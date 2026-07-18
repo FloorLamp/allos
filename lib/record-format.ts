@@ -27,7 +27,7 @@ export function sourceLabel(source: string | null): string {
 // to the raw string if it isn't a plain ISO date. Pref-aware (#964): `prefs`
 // reorders the date to the login's chosen shape; the DEFAULT reproduces the old
 // "Jan 5, 2026" output byte-for-byte AND is deterministic — this is where the old
-// `toLocaleDateString(undefined, …)` server-locale leak lived.
+// implicit-locale toLocaleDateString call (the #964 server-locale leak) lived.
 export function formatRecordDate(
   date: string | null,
   fallback = "—",
@@ -48,8 +48,8 @@ export function formatRecordDate(
 // date, and to `fallback` for null/empty. Pref-aware (#964): the date follows the
 // login's shape and the time the login's 12h/24h clock; the DEFAULT (24h, the
 // dominant clock) renders "Jan 5, 2026, 16:02". This replaces the old
-// `toLocaleString(undefined, …)` that leaked the server locale for BOTH the date
-// shape and the (formerly always-12h) clock.
+// implicit-locale toLocaleString call that leaked the server locale for BOTH the
+// date shape and the (formerly always-12h) clock.
 export function formatRecordDateTime(
   value: string | null,
   fallback = "—",

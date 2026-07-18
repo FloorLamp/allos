@@ -11,7 +11,11 @@ import {
   getActiveDaysStrip,
 } from "@/lib/queries";
 import { frequencyScopeLabel } from "@/lib/goals";
-import { getUnitPrefs, getUserSex, getDisplayFormatPrefs } from "@/lib/settings";
+import {
+  getUnitPrefs,
+  getUserSex,
+  getDisplayFormatPrefs,
+} from "@/lib/settings";
 import { requireSession } from "@/lib/auth";
 import { buildJournalFeedPage } from "@/lib/journal-feed";
 import JournalView from "../journal/JournalView";

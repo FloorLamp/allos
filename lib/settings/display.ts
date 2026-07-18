@@ -31,10 +31,7 @@ export type {
   DateFormat,
   DisplayFormatPrefs,
 } from "../format-date";
-import {
-  DEFAULT_FORMAT_PREFS,
-  type DisplayFormatPrefs,
-} from "../format-date";
+import { DEFAULT_FORMAT_PREFS, type DisplayFormatPrefs } from "../format-date";
 
 export type WeightUnit = "kg" | "lb";
 export type DistanceUnit = "km" | "mi";
@@ -95,9 +92,7 @@ export const getDisplayFormatPrefs = cache(function getDisplayFormatPrefs(
   return {
     timeFormat: time === "12h" ? "12h" : DEFAULT_FORMAT_PREFS.timeFormat,
     dateFormat:
-      date === "dmy" || date === "iso"
-        ? date
-        : DEFAULT_FORMAT_PREFS.dateFormat,
+      date === "dmy" || date === "iso" ? date : DEFAULT_FORMAT_PREFS.dateFormat,
   };
 });
 
