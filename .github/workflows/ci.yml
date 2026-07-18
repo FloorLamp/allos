@@ -22,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -129,7 +129,7 @@ jobs:
             echo "Docs-only diff - skipping the browser suite."
           fi
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         if: steps.changes.outputs.code == 'true'
         with:
           node-version-file: .nvmrc
