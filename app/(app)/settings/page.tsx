@@ -1,4 +1,4 @@
-import { getUnitPrefs } from "@/lib/settings";
+import { getUnitPrefs, getDisplayFormatPrefs } from "@/lib/settings";
 import { requireSession, listLoginSessions } from "@/lib/auth";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
 import { getLoginTotpState, countUnusedRecoveryCodes } from "@/lib/two-factor";
@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/ui";
 import AppVersion from "@/components/AppVersion";
 import SettingsTabs from "./SettingsTabs";
 import UnitPrefsForm from "./UnitPrefsForm";
+import FormatPrefsForm from "./FormatPrefsForm";
 import ChangePasswordSettings from "./ChangePasswordSettings";
 import TwoFactorSettings from "./TwoFactorSettings";
 import ActiveSessions from "./ActiveSessions";
@@ -22,6 +23,7 @@ export default async function SettingsPage() {
   // Admins keep everything.
   const demoRestricted = isDemoRestricted(isDemoMode(), login.role);
   const prefs = getUnitPrefs(login.id);
+  const formatPrefs = getDisplayFormatPrefs(login.id);
   const sessions = await listLoginSessions(login.id);
   const twofaEnabled = getLoginTotpState(login.id).enabled;
   const recoveryRemaining = twofaEnabled
@@ -36,6 +38,7 @@ export default async function SettingsPage() {
       />
       <SettingsTabs isAdmin={isAdmin} />
       <UnitPrefsForm prefs={prefs} />
+      <FormatPrefsForm prefs={formatPrefs} />
       {!demoRestricted && <ChangePasswordSettings username={login.username} />}
       {!demoRestricted && (
         <TwoFactorSettings

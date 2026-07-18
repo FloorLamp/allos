@@ -12,9 +12,11 @@ import OnboardingReturnBanner from "@/components/OnboardingReturnBanner";
 import { getAppVersion } from "@/lib/version";
 import { TimezoneProvider } from "@/components/TimezoneProvider";
 import { WeekStartProvider } from "@/components/WeekStartProvider";
+import { FormatPrefsProvider } from "@/components/FormatPrefsProvider";
 import {
   getOnboardingState,
   getUnitPrefs,
+  getDisplayFormatPrefs,
   getTimezone,
   getWeekStart,
 } from "@/lib/settings";
@@ -75,6 +77,7 @@ export default async function AppLayout({
   const profiles = await getAccessibleProfiles();
 
   const units = getUnitPrefs(login.id);
+  const formatPrefs = getDisplayFormatPrefs(login.id);
   const timezone = getTimezone(profile.id);
   const weekStart = getWeekStart(profile.id);
   const restricted = isTrainingRestricted(profile.id);
@@ -153,80 +156,82 @@ export default async function AppLayout({
   return (
     <TimezoneProvider tz={timezone}>
       <WeekStartProvider weekStart={weekStart}>
-        <ConfirmProvider>
-          <OfflineQueueProvider activeProfileId={profile.id}>
-            <ProfileSwitchWatcher activeProfileId={profile.id} />
-            <ActivityEditorProvider
-              units={units}
-              suggestions={suggestions}
-              history={exerciseHistory}
-              equipment={equipment}
-              recentActivityEquipment={recentActivityEquipment}
-              bodyweightKg={bodyweightKg}
-              lastActivity={lastActivity}
-              restricted={restricted}
-              deloadContext={deloadContext}
-              plateauHints={plateauHints}
-              presence={presence}
-              liveEditData={liveEditData}
-              liveStartEpochMs={liveStartEpochMs}
-            >
-              <div className="flex min-h-screen">
-                <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-4 overflow-y-auto border-r border-black/10 bg-white/70 p-4 backdrop-blur-xl md:flex print:hidden dark:border-white/5 dark:bg-ink-950/70">
-                  <SidebarContent
-                    activityDates={timelineDates}
-                    version={version}
-                    active={session.profile}
-                    profiles={profiles}
-                    restricted={restricted}
-                    isAdmin={isAdmin}
-                    multiProfile={multiProfile}
-                    foodLoggingRelevant={foodLoggingRelevant}
-                    hasIntakeItems={hasIntakeItems}
-                    reviewCount={reviewCount}
-                    readOnly={readOnly}
-                  />
-                </aside>
-                {/* clip (not hidden) so it doesn't force overflow-y to auto, which
+        <FormatPrefsProvider prefs={formatPrefs}>
+          <ConfirmProvider>
+            <OfflineQueueProvider activeProfileId={profile.id}>
+              <ProfileSwitchWatcher activeProfileId={profile.id} />
+              <ActivityEditorProvider
+                units={units}
+                suggestions={suggestions}
+                history={exerciseHistory}
+                equipment={equipment}
+                recentActivityEquipment={recentActivityEquipment}
+                bodyweightKg={bodyweightKg}
+                lastActivity={lastActivity}
+                restricted={restricted}
+                deloadContext={deloadContext}
+                plateauHints={plateauHints}
+                presence={presence}
+                liveEditData={liveEditData}
+                liveStartEpochMs={liveStartEpochMs}
+              >
+                <div className="flex min-h-screen">
+                  <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-4 overflow-y-auto border-r border-black/10 bg-white/70 p-4 backdrop-blur-xl md:flex print:hidden dark:border-white/5 dark:bg-ink-950/70">
+                    <SidebarContent
+                      activityDates={timelineDates}
+                      version={version}
+                      active={session.profile}
+                      profiles={profiles}
+                      restricted={restricted}
+                      isAdmin={isAdmin}
+                      multiProfile={multiProfile}
+                      foodLoggingRelevant={foodLoggingRelevant}
+                      hasIntakeItems={hasIntakeItems}
+                      reviewCount={reviewCount}
+                      readOnly={readOnly}
+                    />
+                  </aside>
+                  {/* clip (not hidden) so it doesn't force overflow-y to auto, which
             turns <main> into a scroll container and breaks position:sticky inside it.
             min-w-0 lets this flex item shrink below its content's intrinsic width —
             without it, wide tables/rows blow the whole page out horizontally. */}
-                <main className="min-w-0 flex-1 overflow-x-clip">
-                  <MobileNav
-                    activityDates={timelineDates}
-                    version={version}
-                    active={session.profile}
-                    profiles={profiles}
-                    restricted={restricted}
-                    isAdmin={isAdmin}
-                    multiProfile={multiProfile}
-                    foodLoggingRelevant={foodLoggingRelevant}
-                    hasIntakeItems={hasIntakeItems}
-                    reviewCount={reviewCount}
-                    readOnly={readOnly}
-                  />
-                  {/* max(padding, safe-area inset) keeps content clear of the
+                  <main className="min-w-0 flex-1 overflow-x-clip">
+                    <MobileNav
+                      activityDates={timelineDates}
+                      version={version}
+                      active={session.profile}
+                      profiles={profiles}
+                      restricted={restricted}
+                      isAdmin={isAdmin}
+                      multiProfile={multiProfile}
+                      foodLoggingRelevant={foodLoggingRelevant}
+                      hasIntakeItems={hasIntakeItems}
+                      reviewCount={reviewCount}
+                      readOnly={readOnly}
+                    />
+                    {/* max(padding, safe-area inset) keeps content clear of the
               notch in landscape and the home indicator at the bottom now
               that the viewport paints edge-to-edge (viewportFit cover). */}
-                  <div
-                    data-testid="app-content-container"
-                    className="mx-auto pt-8 pb-[max(2rem,env(safe-area-inset-bottom))] pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))] 3xl:max-w-[110rem]"
-                  >
-                    <OnboardingReturnBanner show={showOnboardingReturn} />
-                    {children}
-                  </div>
-                </main>
-              </div>
-              <CommandPalette
-                profileName={session.profile.name}
-                weightUnit={units.weightUnit}
-              />
-              <ExtractionToaster profileId={profile.id} />
-              <ImportJobsToaster profileId={profile.id} />
-              <VersionWatcher current={version.sha} />
-            </ActivityEditorProvider>
-          </OfflineQueueProvider>
-        </ConfirmProvider>
+                    <div
+                      data-testid="app-content-container"
+                      className="mx-auto pt-8 pb-[max(2rem,env(safe-area-inset-bottom))] pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))] 3xl:max-w-[110rem]"
+                    >
+                      <OnboardingReturnBanner show={showOnboardingReturn} />
+                      {children}
+                    </div>
+                  </main>
+                </div>
+                <CommandPalette
+                  profileName={session.profile.name}
+                  weightUnit={units.weightUnit}
+                />
+                <ExtractionToaster profileId={profile.id} />
+                <ImportJobsToaster profileId={profile.id} />
+                <VersionWatcher current={version.sha} />
+              </ActivityEditorProvider>
+            </OfflineQueueProvider>
+          </ConfirmProvider>
+        </FormatPrefsProvider>
       </WeekStartProvider>
     </TimezoneProvider>
   );

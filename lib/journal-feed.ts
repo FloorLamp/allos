@@ -18,6 +18,7 @@ import { getEquipment } from "./equipment";
 import { buildJournalCards, type DayGroup } from "./journal-card";
 import type { DatedWeight } from "./calorie-estimate";
 import type { UnitPrefs } from "./settings";
+import { DEFAULT_FORMAT_PREFS, type DisplayFormatPrefs } from "./format-date";
 import { today as todayFn, yesterday as yesterdayFn } from "./db";
 import { getProfileZoneModel } from "./queries/zones";
 
@@ -39,6 +40,7 @@ export function buildJournalFeedPage(
   profileId: number,
   before: string | null,
   units: UnitPrefs,
+  formatPrefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS,
   dayLimit: number = JOURNAL_PAGE_DAYS
 ): JournalFeedPage {
   const page = getJournalPage(profileId, before, dayLimit);
@@ -77,6 +79,7 @@ export function buildJournalFeedPage(
     equipmentNames,
     weights,
     units,
+    formatPrefs,
     // "Today"/"Yesterday" labels relative to the calendar/db notion of today.
     today: todayFn(profileId),
     yesterday: yesterdayFn(profileId),

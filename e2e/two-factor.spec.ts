@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { totp } from "../lib/totp";
+import { settledClick } from "./helpers";
 
 // Optional TOTP 2FA (issue #23): enroll a login, then prove the login flow stops
 // at a second-factor step and completes with both a computed authenticator code
@@ -48,9 +49,12 @@ test("2FA: enroll, then second-factor login with code and recovery code (#23)", 
   await page.goto("/settings/family");
   await page.getByPlaceholder("Username").fill(user);
   await page.getByPlaceholder("Password").fill(pass);
-  await page.getByRole("button", { name: "Create login" }).click();
+  // settledClick, not a raw click: a click in the hydration window is silently
+  // swallowed (#830), and this exact step failed that way in a full-suite run —
+  // the same hardening view-only-access.spec.ts carries for its create-login.
+  await settledClick(page, page.getByRole("button", { name: "Create login" }));
   const grantRow = page.getByTestId(`grant-row-${user}`);
-  await expect(grantRow).toBeVisible();
+  await expect(grantRow).toBeVisible({ timeout: 15_000 });
   await grantRow.locator('input[type="checkbox"]').first().check();
   await grantRow.getByRole("button", { name: "Save access" }).click();
   await expect(grantRow.getByText("Access updated.")).toBeVisible();

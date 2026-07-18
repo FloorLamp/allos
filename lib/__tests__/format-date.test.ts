@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   formatLongDate,
+  formatMonthDay,
+  formatClock,
+  formatDateShape,
   formatRelativeDate,
   formatRelativeTime,
   daysUntil,
   daysRemainingLabel,
+  DEFAULT_FORMAT_PREFS,
 } from "@/lib/format-date";
 
 // formatLongDate reads the current year from the clock, so pin it. The relative
@@ -35,6 +39,85 @@ describe("formatLongDate", () => {
 
   it("returns the input unchanged when unparseable", () => {
     expect(formatLongDate("not-a-date")).toBe("not-a-date");
+  });
+
+  it("default prefs are byte-identical to the long-date shape", () => {
+    // "mdy" long with weekday, year appended for a non-current year.
+    expect(formatLongDate("2024-12-25")).toBe("Wednesday, December 25, 2024");
+    expect(formatLongDate("2024-12-25", DEFAULT_FORMAT_PREFS)).toBe(
+      "Wednesday, December 25, 2024"
+    );
+  });
+
+  it("reorders the month/day for a dmy or iso login", () => {
+    expect(
+      formatLongDate("2024-12-25", { timeFormat: "24h", dateFormat: "dmy" })
+    ).toBe("Wednesday, 25 December 2024");
+    expect(
+      formatLongDate("2024-12-25", { timeFormat: "24h", dateFormat: "iso" })
+    ).toBe("Wednesday, 2024-12-25");
+  });
+});
+
+describe("formatMonthDay", () => {
+  it("default prefs render the compact 'Mon D' shape", () => {
+    // Fake time is 2026, so a 2026 date omits the year.
+    expect(formatMonthDay("2026-08-03")).toBe("Aug 3");
+    expect(formatMonthDay("2024-08-03")).toBe("Aug 3, 2024");
+  });
+
+  it("reorders for a dmy / iso login", () => {
+    expect(
+      formatMonthDay("2024-08-03", { timeFormat: "24h", dateFormat: "dmy" })
+    ).toBe("3 Aug 2024");
+    expect(
+      formatMonthDay("2024-08-03", { timeFormat: "24h", dateFormat: "iso" })
+    ).toBe("2024-08-03");
+  });
+});
+
+describe("formatClock", () => {
+  it("renders a 24-hour clock zero-padded", () => {
+    expect(formatClock("24h", 16, 2)).toBe("16:02");
+    expect(formatClock("24h", 0, 0)).toBe("00:00");
+    expect(formatClock("24h", 9, 5)).toBe("09:05");
+  });
+
+  it("renders a 12-hour clock with the midnight/noon edges", () => {
+    expect(formatClock("12h", 0, 2)).toBe("12:02 AM");
+    expect(formatClock("12h", 12, 0)).toBe("12:00 PM");
+    expect(formatClock("12h", 13, 2)).toBe("1:02 PM");
+    expect(formatClock("12h", 23, 59)).toBe("11:59 PM");
+  });
+
+  it("supports the compact lower-case meridiem style", () => {
+    expect(formatClock("12h", 16, 2, "lower-nospace")).toBe("4:02pm");
+    expect(formatClock("12h", 0, 0, "lower-nospace")).toBe("12:00am");
+  });
+});
+
+describe("formatDateShape", () => {
+  it("shapes mdy/dmy/iso with short and long months", () => {
+    expect(
+      formatDateShape("mdy", 2026, 1, 5, { monthStyle: "short", year: true })
+    ).toBe("Jan 5, 2026");
+    expect(
+      formatDateShape("mdy", 2026, 1, 5, { monthStyle: "long", year: true })
+    ).toBe("January 5, 2026");
+    expect(
+      formatDateShape("dmy", 2026, 1, 5, { monthStyle: "short", year: true })
+    ).toBe("5 Jan 2026");
+    expect(formatDateShape("iso", 2026, 1, 5)).toBe("2026-01-05");
+  });
+
+  it("prefixes a weekday and omits the year on request", () => {
+    expect(
+      formatDateShape("mdy", 2026, 1, 5, {
+        monthStyle: "long",
+        weekday: "Monday",
+        year: false,
+      })
+    ).toBe("Monday, January 5");
   });
 });
 

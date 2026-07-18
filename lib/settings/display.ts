@@ -23,6 +23,16 @@ import {
   setLoginSetting,
 } from "./kv";
 
+// Date/time display preferences (#964) are the login-tier siblings of the unit
+// prefs. The enum types + pure formatters live in lib/format-date (client-safe, no
+// DB); this module only resolves the stored login_settings values into that shape.
+export type {
+  TimeFormat,
+  DateFormat,
+  DisplayFormatPrefs,
+} from "../format-date";
+import { DEFAULT_FORMAT_PREFS, type DisplayFormatPrefs } from "../format-date";
+
 export type WeightUnit = "kg" | "lb";
 export type DistanceUnit = "km" | "mi";
 // Body temperature is stored canonically in °F (see lib/vitals-input.ts). The unit
@@ -65,6 +75,34 @@ export function setUnitPrefs(loginId: number, prefs: UnitPrefs) {
     setLoginSetting(loginId, "weight_unit", prefs.weightUnit);
     setLoginSetting(loginId, "distance_unit", prefs.distanceUnit);
     setLoginSetting(loginId, "temperature_unit", prefs.temperatureUnit);
+  });
+}
+
+// ---- Date/time display preferences (per login, #964) ----
+// A login's chosen clock (12h/24h) and date shape (mdy/dmy/iso), the display-tier
+// sibling of the unit prefs. Stored per login in login_settings; read defensively so
+// any unknown/legacy value falls back to DEFAULT_FORMAT_PREFS — which reproduces
+// today's dominant rendering (24h; "Mon D, YYYY"). cache()-wrapped like getUnitPrefs
+// (a single render resolves it once per formatting boundary).
+export const getDisplayFormatPrefs = cache(function getDisplayFormatPrefs(
+  loginId: number
+): DisplayFormatPrefs {
+  const time = getLoginSetting(loginId, "time_format");
+  const date = getLoginSetting(loginId, "date_format");
+  return {
+    timeFormat: time === "12h" ? "12h" : DEFAULT_FORMAT_PREFS.timeFormat,
+    dateFormat:
+      date === "dmy" || date === "iso" ? date : DEFAULT_FORMAT_PREFS.dateFormat,
+  };
+});
+
+export function setDisplayFormatPrefs(
+  loginId: number,
+  prefs: DisplayFormatPrefs
+): void {
+  writeTx(() => {
+    setLoginSetting(loginId, "time_format", prefs.timeFormat);
+    setLoginSetting(loginId, "date_format", prefs.dateFormat);
   });
 }
 

@@ -30,10 +30,13 @@ import { db } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import {
   setUnitPrefs,
+  setDisplayFormatPrefs,
   setLoginPushDisabledKinds,
   type DistanceUnit,
   type WeightUnit,
   type TemperatureUnit,
+  type TimeFormat,
+  type DateFormat,
 } from "@/lib/settings";
 import {
   ensureVapidKeys,
@@ -66,6 +69,24 @@ export async function saveUnitPrefs(formData: FormData) {
   ) as TemperatureUnit;
   setUnitPrefs(login.id, { weightUnit, distanceUnit, temperatureUnit });
   // Units affect display across the whole app.
+  revalidatePath("/", "layout");
+}
+
+// Date/time display preferences (#964) — like unit prefs, keyed by the signed-in
+// login and applied at every date/time render boundary. Unknown values fall back to
+// the status-quo default (24h; "Mon D, YYYY") server-side, so a hand-crafted post
+// can't store a nonsense format.
+export async function saveDisplayFormatPrefs(formData: FormData) {
+  const { login } = await requireSession();
+  const timeFormat = (
+    formData.get("time_format") === "12h" ? "12h" : "24h"
+  ) as TimeFormat;
+  const rawDate = formData.get("date_format");
+  const dateFormat = (
+    rawDate === "dmy" || rawDate === "iso" ? rawDate : "mdy"
+  ) as DateFormat;
+  setDisplayFormatPrefs(login.id, { timeFormat, dateFormat });
+  // Date/time formatting is applied across the whole app.
   revalidatePath("/", "layout");
 }
 

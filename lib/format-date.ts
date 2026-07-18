@@ -1,5 +1,122 @@
 import { daysBetweenDateStr } from "./date";
 
+// ---- Display-format preferences (login tier, issue #964) ----
+// Two closed-enum display preferences that let a login choose how times and dates
+// render, without any i18n/CLDR machinery: `timeFormat` (12h vs 24h clock) and
+// `dateFormat` (the order/shape of a written date). They're stored per login in
+// login_settings and resolved to this shape by
+// lib/settings/display.getDisplayFormatPrefs; the pure formatters below take the
+// resolved prefs as an argument (they never read the DB), so they stay client-safe
+// and unit-testable. DEFAULT_FORMAT_PREFS reproduces today's dominant rendering
+// byte-for-byte (24h clock; the "Mon D, YYYY" / long-date shape) so an instance
+// that never opts in sees no change. Login-less surfaces (Telegram/push/HA sends,
+// the token-authed .ics feed) have a profile but no login in context, so they pass
+// a FIXED format (their documented status quo per channel) rather than resolving a
+// pref — see each such call site.
+export type TimeFormat = "12h" | "24h";
+export type DateFormat = "mdy" | "dmy" | "iso";
+
+export interface DisplayFormatPrefs {
+  timeFormat: TimeFormat;
+  dateFormat: DateFormat;
+}
+
+export const DEFAULT_FORMAT_PREFS: DisplayFormatPrefs = {
+  timeFormat: "24h",
+  dateFormat: "mdy",
+};
+
+// Fixed English calendar names — the app is single-language by design (non-goal:
+// no full i18n), and hardcoding these is precisely what removes the server-locale
+// dependence that an implicit-locale toLocale call leaked (the record-format.ts
+// bug, #964). On an en-US host these are byte-identical to the old toLocale output.
+const MONTHS_LONG = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+const MONTHS_SHORT = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+const WEEKDAYS_LONG = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+// Render a wall-clock time (h 0–23, m 0–59) in the chosen format. 24h → "16:02"
+// (zero-padded hour). 12h → "4:02 PM" with `meridiem: "upper-space"` (the record /
+// .ics style) or "4:02pm" with "lower-nospace" (the administration / medications
+// style). Midnight folds to 12 AM and noon to 12 PM. Pure — the seam every clock
+// render routes through so one login sees one clock convention everywhere (#964).
+export function formatClock(
+  timeFormat: TimeFormat,
+  h: number,
+  m: number,
+  meridiem: "upper-space" | "lower-nospace" = "upper-space"
+): string {
+  if (timeFormat === "24h") return `${pad2(h)}:${pad2(m)}`;
+  const lower = meridiem === "lower-nospace";
+  const ap = h >= 12 ? (lower ? "pm" : "PM") : lower ? "am" : "AM";
+  let h12 = h % 12;
+  if (h12 === 0) h12 = 12;
+  const sep = lower ? "" : " ";
+  return `${h12}:${pad2(m)}${sep}${ap}`;
+}
+
+// Shape a calendar date (y full year, m 1-based 1–12, d day-of-month) into the
+// chosen order and style. `monthStyle` picks "Jan"/"January" (ignored for "iso",
+// which is always numeric YYYY-MM-DD). `weekday` (a full weekday name) prefixes
+// "Weekday, " when given. `year` appends the year (always present for "iso"). Pure,
+// fixed-English (no server-locale dependence). The DEFAULT "mdy" reproduces the
+// en-US toLocale output byte-for-byte: mdy → "Jan 5, 2026" / "Monday, January 5,
+// 2026"; dmy → "5 Jan 2026"; iso → "2026-01-05".
+export function formatDateShape(
+  dateFormat: DateFormat,
+  y: number,
+  m: number,
+  d: number,
+  opts: { monthStyle?: "short" | "long"; weekday?: string; year?: boolean } = {}
+): string {
+  const { monthStyle = "short", weekday, year = false } = opts;
+  const prefix = weekday ? `${weekday}, ` : "";
+  if (dateFormat === "iso") {
+    return `${prefix}${y}-${pad2(m)}-${pad2(d)}`;
+  }
+  const month = (monthStyle === "long" ? MONTHS_LONG : MONTHS_SHORT)[m - 1];
+  if (dateFormat === "dmy") {
+    return `${prefix}${d} ${month}${year ? ` ${y}` : ""}`;
+  }
+  // "mdy" (default)
+  return `${prefix}${month} ${d}${year ? `, ${y}` : ""}`;
+}
+
 // Process-local calendar date (YYYY-MM-DD), used only as a backward-compatible
 // default for callers that can't easily pass the app's configured "today". Prefer
 // passing an explicit todayStr (server: today() from lib/db; client:
@@ -12,28 +129,48 @@ function localTodayStr(): string {
 
 // Consistent journal date formatting: "Weekday, Month Day", with the year
 // appended only when it isn't the current calendar year. Input is an ISO
-// YYYY-MM-DD string (parsed as local midnight so the day doesn't shift).
-export function formatLongDate(iso: string): string {
+// YYYY-MM-DD string (parsed as local midnight so the day doesn't shift). Pref-aware
+// (#964): the `dateFormat` reorders the month/day; the DEFAULT "mdy" is
+// byte-identical to the old en-US toLocale output ("Monday, January 5[, 2026]").
+export function formatLongDate(
+  iso: string,
+  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
+): string {
   const d = new Date(iso + "T00:00:00");
   if (Number.isNaN(d.getTime())) return iso;
-  const opts: Intl.DateTimeFormatOptions = {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  };
-  if (d.getFullYear() !== new Date().getFullYear()) opts.year = "numeric";
-  return d.toLocaleDateString(undefined, opts);
+  return formatDateShape(
+    prefs.dateFormat,
+    d.getFullYear(),
+    d.getMonth() + 1,
+    d.getDate(),
+    {
+      monthStyle: "long",
+      weekday: WEEKDAYS_LONG[d.getDay()],
+      year: d.getFullYear() !== new Date().getFullYear(),
+    }
+  );
 }
 
 // Short "Month Day" label (e.g. "Aug 3") for compact contexts like the refill
 // run-out chip (#852 item 3). ISO YYYY-MM-DD in, parsed as local midnight so the day
 // doesn't shift; the year is appended only when it isn't the current calendar year.
-export function formatMonthDay(iso: string): string {
+// Pref-aware (#964): the DEFAULT "mdy" is byte-identical to the old output ("Aug 3").
+export function formatMonthDay(
+  iso: string,
+  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
+): string {
   const d = new Date(iso + "T00:00:00");
   if (Number.isNaN(d.getTime())) return iso;
-  const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
-  if (d.getFullYear() !== new Date().getFullYear()) opts.year = "numeric";
-  return d.toLocaleDateString(undefined, opts);
+  return formatDateShape(
+    prefs.dateFormat,
+    d.getFullYear(),
+    d.getMonth() + 1,
+    d.getDate(),
+    {
+      monthStyle: "short",
+      year: d.getFullYear() !== new Date().getFullYear(),
+    }
+  );
 }
 
 // A human "time since" label: Today / Yesterday / N days|weeks|months|years ago.
