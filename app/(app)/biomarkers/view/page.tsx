@@ -454,24 +454,35 @@ export default async function BiomarkerDetailPage(props: {
   );
   const ageDays = daysBetween(latest.date, today(profile.id));
 
-  // Flagged-lab follow-up chain (issue #700 labs adapter). If there's an OPEN
-  // "Recheck …" follow-up for THIS biomarker's #482 FAMILY, show its state (an A1c
-  // follow-up shows on the eAG page too, and vice-versa). Otherwise, when the latest
-  // reading is OUT OF RANGE — and is a real stored reading, not a computed/derived
-  // index — offer to track a recheck follow-up from where the biomarker lives.
+  // Flagged-lab follow-up chain (issue #700 labs adapter), all keyed on THIS
+  // biomarker's #482 FAMILY (an A1c follow-up shows on the eAG page too, and
+  // vice-versa). Priority:
+  //   - an OPEN "Recheck …" follow-up → show its state (recheck due);
+  //   - else, when the latest reading is OUT OF RANGE (a real stored reading, not a
+  //     computed/derived index) → offer to track one — so a NEW flag can start a NEW
+  //     follow-up even after an earlier one resolved;
+  //   - else, a recently RESOLVED follow-up → show its recorded outcome.
   const famKey = biomarkerFamily(canonical).toLowerCase();
-  const openLabFollowUp = getLabFollowUps(profile.id).find(
-    (f) =>
-      f.resolution == null &&
-      f.status !== "completed" &&
-      biomarkerFamily(f.sourceName).toLowerCase() === famKey
+  const familyFollowUps = getLabFollowUps(profile.id).filter(
+    (f) => biomarkerFamily(f.sourceName).toLowerCase() === famKey
+  );
+  const openLabFollowUp = familyFollowUps.find(
+    (f) => f.resolution == null && f.status !== "completed"
+  );
+  const resolvedLabFollowUp = familyFollowUps.find(
+    (f) => f.resolution != null || f.status === "completed"
   );
   const canTrackFollowUp =
     !latest.derived &&
     typeof latest.id === "number" &&
     latest.id > 0 &&
     isOutOfRange(latest.flag);
-  const showFollowUpControl = openLabFollowUp != null || canTrackFollowUp;
+  // The summary to render: the open one wins; else the track form (when flagged); else
+  // the resolved outcome. undefined ⇒ the control renders its "Track follow-up" form.
+  const existingFollowUp =
+    openLabFollowUp ?? (canTrackFollowUp ? undefined : resolvedLabFollowUp);
+  const showFollowUpControl =
+    openLabFollowUp != null || canTrackFollowUp || resolvedLabFollowUp != null;
 
   return (
     <div>
@@ -587,7 +598,7 @@ export default async function BiomarkerDetailPage(props: {
             <div className="label">Recheck</div>
             <TrackLabFollowUpControl
               recordId={typeof latest.id === "number" ? latest.id : 0}
-              existing={openLabFollowUp}
+              existing={existingFollowUp}
             />
           </div>
         )}

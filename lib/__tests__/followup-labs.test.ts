@@ -17,7 +17,9 @@ import type { FollowUpItemLike } from "@/lib/followup";
 // stays apart), the "for the flagged 8.2% (2026-05)" legibility label, the "Recheck …"
 // title, and the "most-recent later reading of the same family" resolution rule.
 
-function rec(over: Partial<LabFollowUpRecord> & { id: number }): LabFollowUpRecord {
+function rec(
+  over: Partial<LabFollowUpRecord> & { id: number }
+): LabFollowUpRecord {
   return {
     id: over.id,
     date: over.date ?? "2026-05-12",
@@ -42,9 +44,9 @@ const followUp: FollowUpItemLike = {
 
 describe("labs adapter — identity + labels", () => {
   it("labBiomarkerName prefers the canonical name, falls back to the raw name", () => {
-    expect(labBiomarkerName(rec({ id: 1, canonical_name: "Hemoglobin A1c" }))).toBe(
-      "Hemoglobin A1c"
-    );
+    expect(
+      labBiomarkerName(rec({ id: 1, canonical_name: "Hemoglobin A1c" }))
+    ).toBe("Hemoglobin A1c");
     expect(
       labBiomarkerName(rec({ id: 1, canonical_name: "  ", name: "HbA1c" }))
     ).toBe("HbA1c");
@@ -52,9 +54,9 @@ describe("labs adapter — identity + labels", () => {
 
   it("labValueLabel composes value + unit compactly ('%' glued, others spaced)", () => {
     expect(labValueLabel(rec({ id: 1, value: "8.2", unit: "%" }))).toBe("8.2%");
-    expect(
-      labValueLabel(rec({ id: 1, value: "142", unit: "mg/dL" }))
-    ).toBe("142 mg/dL");
+    expect(labValueLabel(rec({ id: 1, value: "142", unit: "mg/dL" }))).toBe(
+      "142 mg/dL"
+    );
     // Numeric-only reading (value string null) falls back to value_num.
     expect(
       labValueLabel(rec({ id: 1, value: null, value_num: 5.4, unit: "%" }))
@@ -131,9 +133,7 @@ describe("labs adapter — resolution matching", () => {
     });
     const earlierA1c = rec({ id: 4, date: "2026-01-01" });
     const candidates = [source, laterEag, laterLdl, earlierA1c];
-    expect(
-      findResolvingLabResult(source, followUp, candidates)?.id
-    ).toBe(2); // the later eAG (same family), not the LDL, not the earlier A1c
+    expect(findResolvingLabResult(source, followUp, candidates)?.id).toBe(2); // the later eAG (same family), not the LDL, not the earlier A1c
   });
 
   it("returns null when only earlier or the source itself is present", () => {
@@ -149,8 +149,8 @@ describe("labs adapter — resolution matching", () => {
     const source = rec({ id: 1, date: "2026-01-01" });
     const a = rec({ id: 2, date: "2026-06-01" });
     const b = rec({ id: 3, date: "2027-06-01" });
-    expect(
-      findResolvingLabResult(source, followUp, [source, a, b])?.id
-    ).toBe(3);
+    expect(findResolvingLabResult(source, followUp, [source, a, b])?.id).toBe(
+      3
+    );
   });
 });

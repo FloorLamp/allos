@@ -151,8 +151,7 @@ export function resolveFollowUpCore(
             AND source_kind IS NOT NULL AND resolution IS NULL`
       )
       .get(carePlanItemId, profileId) as
-      | { id: number; source_kind: string }
-      | undefined;
+      { id: number; source_kind: string } | undefined;
     if (!followUp) return { kind: "not-found" as const };
 
     const target = RESOLVE_TARGET_BY_KIND[followUp.source_kind];
@@ -206,7 +205,9 @@ export function trackLabFollowUpCore(
     // load the profile's open labs follow-ups + their source readings and match on
     // family in JS (few follow-ups), so a re-offer or a sibling-analyte reading
     // returns the existing follow-up instead of a duplicate.
-    const targetFamily = biomarkerFamily(labBiomarkerName(record)).toLowerCase();
+    const targetFamily = biomarkerFamily(
+      labBiomarkerName(record)
+    ).toLowerCase();
     const openFollowUps = db
       .prepare(
         `SELECT cp.id AS cpId,
@@ -224,7 +225,8 @@ export function trackLabFollowUpCore(
     const existing = openFollowUps.find(
       (r) => biomarkerFamily(r.sourceName).toLowerCase() === targetFamily
     );
-    if (existing) return { kind: "exists" as const, carePlanItemId: existing.cpId };
+    if (existing)
+      return { kind: "exists" as const, carePlanItemId: existing.cpId };
 
     const interval =
       Number.isFinite(intervalDays) && intervalDays > 0
