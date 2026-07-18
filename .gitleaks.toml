@@ -1,0 +1,17 @@
+# Gitleaks configuration for the repo's secret scan
+# (.github/workflows/gitleaks.yml — full history of all refs, every PR/push).
+# Extends the default ruleset.
+
+[extend]
+useDefault = true
+
+# lib/migrations/manifest.json is the checked-in integrity manifest of the
+# versioned migration runner: a map of migration filename -> SHA-256 of that
+# file's own committed contents (see AGENTS.md "hash manifest"). It can never
+# contain a secret, but a migration FILENAME containing a keyword like "token"
+# or "auth" sitting next to a 64-hex digest matches gitleaks' generic-api-key
+# rule (this bit a login-email migration whose manifest line read
+# `"...-auth-tokens.ts": "<sha256>"`).
+[allowlist]
+description = "migration hash manifest — filename->SHA-256 of checked-in files, no secrets"
+paths = ['''lib/migrations/manifest\.json$''']
