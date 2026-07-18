@@ -32,6 +32,7 @@ import { redoseWindowStatus } from "@/lib/prn-redose";
 import { redoseCardLabel } from "@/lib/redose-format";
 import {
   administrationDayLabel,
+  administrationLastDoseLabel,
   formatGivenAtClock,
 } from "@/lib/administration-format";
 import { activeByKey } from "@/lib/findings";
@@ -146,6 +147,7 @@ export interface MedicationsData {
   prnToday: {
     id: number;
     name: string;
+    amount: string | null;
     dayLabel: string;
     redoseLine: string | null;
   }[];
@@ -268,11 +270,11 @@ export function loadMedicationsData(profileId: number): MedicationsData {
         })
       );
     }
+    const lastClock = formatGivenAtClock(tz, last);
     return {
-      label: administrationDayLabel(
-        admins.length,
-        formatGivenAtClock(tz, last)
-      ),
+      label: redoseLine
+        ? administrationLastDoseLabel(admins.length, lastClock)
+        : administrationDayLabel(admins.length, lastClock),
       administrations,
       redoseLine,
     };
@@ -367,14 +369,9 @@ export function loadMedicationsData(profileId: number): MedicationsData {
 
   // Today panel PRN rows — the recently-used ordering the dashboard quick-log uses,
   // with the same pre-formatted labels (one computation).
-  const prnToday = getPrnMedicationsForQuickLog(profileId).map((m) => ({
-    id: m.id,
-    name: m.name,
-    dayLabel: administrationDayLabel(
-      m.count,
-      formatGivenAtClock(tz, m.lastGivenAt)
-    ),
-    redoseLine:
+  const prnToday = getPrnMedicationsForQuickLog(profileId).map((m) => {
+    const lastClock = formatGivenAtClock(tz, m.lastGivenAt);
+    const redoseLine =
       m.minIntervalHours != null && m.maxDailyCount != null && m.lastGivenAt
         ? redoseCardLabel(
             redoseWindowStatus({
@@ -385,8 +382,17 @@ export function loadMedicationsData(profileId: number): MedicationsData {
               now: nowInstant,
             })
           )
-        : null,
-  }));
+        : null;
+    return {
+      id: m.id,
+      name: m.name,
+      amount: m.amount,
+      dayLabel: redoseLine
+        ? administrationLastDoseLabel(m.count, lastClock)
+        : administrationDayLabel(m.count, lastClock),
+      redoseLine,
+    };
+  });
 
   // "From your records" bridge (#817): imported prescription records with no matched
   // tracked med, minus any the user dismissed (name-keyed #203 via the bus).

@@ -84,10 +84,13 @@ describe("validateVitalsInput", () => {
     expect(
       validateVitalsInput({ temperature: "98.6", tempUnit: "F" })
     ).toBeNull();
-    // 37 interpreted as °F is far too low → out of range.
-    expect(validateVitalsInput({ temperature: "37", tempUnit: "F" })).toMatch(
-      /temperature/i
-    );
+    // The reading wins when the selected unit is stale or still at its default.
+    expect(
+      validateVitalsInput({ temperature: "37", tempUnit: "F" })
+    ).toBeNull();
+    expect(
+      validateVitalsInput({ temperature: "98.6", tempUnit: "C" })
+    ).toBeNull();
     // 50 °C → 122 °F is out of range.
     expect(validateVitalsInput({ temperature: "50", tempUnit: "C" })).toMatch(
       /temperature/i
@@ -167,6 +170,21 @@ describe("normalizeVitalsInput", () => {
     expect(
       out.medical.find((m) => m.canonical === "Body Temperature")?.value_num
     ).toBe(98.6);
+  });
+
+  it("auto-detects temperature units during canonical normalization", () => {
+    const celsius = normalizeVitalsInput({
+      temperature: "37",
+      tempUnit: "F",
+    });
+    const fahrenheit = normalizeVitalsInput({
+      temperature: "98.6",
+      tempUnit: "C",
+    });
+    if ("error" in celsius) throw new Error(celsius.error);
+    if ("error" in fahrenheit) throw new Error(fahrenheit.error);
+    expect(celsius.medical[0].value_num).toBe(98.6);
+    expect(fahrenheit.medical[0].value_num).toBe(98.6);
   });
 
   it("routes sleep (hours→minutes) and HRV to metric samples", () => {

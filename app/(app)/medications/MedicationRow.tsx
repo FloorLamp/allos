@@ -144,7 +144,7 @@ export default function MedicationRow({
           {prnRedoseLine && (
             <div
               data-testid="prn-redose-line"
-              className="mt-0.5 text-xs font-medium text-brand-700 dark:text-brand-400"
+              className="mt-0.5 text-xs font-medium text-slate-600 dark:text-slate-300"
             >
               {prnRedoseLine}
             </div>

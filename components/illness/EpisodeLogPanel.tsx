@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import SymptomLogBar from "@/app/(app)/symptoms/SymptomLogBar";
 import type { Symptom } from "@/lib/symptoms";
 import type { TemperatureUnit } from "@/lib/settings";
+import DateField from "@/components/DateField";
+import type { ReactNode } from "react";
 
 // In-place symptom + temperature logging on the episode page (issue #856 item 11). This
 // mounts the SAME SymptomLogBar the dashboard card uses — ZERO forked logging logic (the
@@ -30,9 +32,11 @@ export default function EpisodeLogPanel({
   customNames,
   rankedKeys,
   temperatureUnit,
+  timeZone,
   rangeStart,
   rangeEnd,
   profileId,
+  photoControl,
 }: {
   episodeId: number;
   ongoing: boolean;
@@ -47,8 +51,10 @@ export default function EpisodeLogPanel({
   customNames: string[];
   rankedKeys?: string[];
   temperatureUnit?: TemperatureUnit;
+  timeZone: string;
   rangeStart: string | null;
   rangeEnd: string | null;
+  photoControl?: ReactNode;
   // The cross-profile write target (issue #879) — passed straight to SymptomLogBar so a
   // caregiver logs a household member's symptoms/temperature from THEIR episode page
   // without switching. Absent on the acting profile's own page.
@@ -57,26 +63,46 @@ export default function EpisodeLogPanel({
   const router = useRouter();
 
   return (
-    <div className="card mt-5" data-testid="episode-log-panel">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="section-label">Log how things are going</h2>
-        {!ongoing && (
-          <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-            Day
-            <input
-              type="date"
-              className="input h-8 w-auto py-1 text-xs"
-              defaultValue={date}
-              min={rangeStart ?? undefined}
-              max={rangeEnd ?? undefined}
-              data-testid="episode-log-day"
-              onChange={(e) => {
-                const v = e.currentTarget.value;
-                if (v)
-                  router.push(`/medical/episodes/${episodeId}?logDay=${v}`);
-              }}
-            />
-          </label>
+    <div data-testid="episode-log-panel">
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+            Symptoms &amp; Temperature
+          </h3>
+          {!ongoing && (
+            <p
+              className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+              data-testid="resolved-episode-backfill-note"
+            >
+              Add a past update to this episode. This won’t reopen it.
+            </p>
+          )}
+        </div>
+        {(!ongoing || photoControl) && (
+          <div
+            className="flex w-full flex-wrap items-center justify-between gap-2 sm:w-auto sm:justify-end"
+            data-testid="episode-log-header-actions"
+          >
+            {!ongoing && (
+              <>
+                <label className="label mb-0" htmlFor="episode-log-date">
+                  Entry date
+                </label>
+                <DateField
+                  id="episode-log-date"
+                  value={date}
+                  min={rangeStart ?? undefined}
+                  max={rangeEnd ?? undefined}
+                  inputClassName="h-8 w-40 py-1 text-xs normal-case tracking-normal"
+                  onChange={(v) => {
+                    if (v)
+                      router.push(`/medical/episodes/${episodeId}?logDay=${v}`);
+                  }}
+                />
+              </>
+            )}
+            {photoControl}
+          </div>
         )}
       </div>
       <SymptomLogBar
@@ -93,7 +119,9 @@ export default function EpisodeLogPanel({
         suggestActivateIllness={false}
         showTemperature
         temperatureUnit={temperatureUnit}
+        timeZone={timeZone}
         profileId={profileId}
+        showTitle={false}
       />
     </div>
   );

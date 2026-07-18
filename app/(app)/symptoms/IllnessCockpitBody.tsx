@@ -1,5 +1,4 @@
 import { today } from "@/lib/db";
-import { shiftDateStr, parseUtcSql } from "@/lib/date";
 import { getTimezone, getUnitPrefs } from "@/lib/settings";
 import { SYMPTOMS } from "@/lib/symptoms";
 import {
@@ -10,25 +9,19 @@ import {
   getPrnMedicationsForQuickLog,
   getPediatricFormContext,
   getEpisodeMedReconciliation,
-  type PrnMedForQuickLog,
 } from "@/lib/queries";
-import { redoseWindowStatus } from "@/lib/prn-redose";
-import { redoseCardLabel } from "@/lib/redose-format";
 import {
-  administrationDayLabel,
-  formatGivenAtClock,
-} from "@/lib/administration-format";
-import type { AssembledEpisode } from "@/lib/illness-episode-format";
-import { episodeHref } from "@/lib/hrefs";
-import Link from "next/link";
+  episodeAlternateLogDate,
+  type AssembledEpisode,
+} from "@/lib/illness-episode-format";
 import SymptomLogBar from "./SymptomLogBar";
-import SymptomMedQuickAdd from "./SymptomMedQuickAdd";
-import QuickLogPrnControl from "@/components/dashboard/QuickLogPrnControl";
 import CockpitEndEpisode from "@/components/dashboard/CockpitEndEpisode";
+import IllnessMedicationLogger from "@/components/illness/IllnessMedicationLogger";
 import StaleEpisodeNudge from "@/components/illness/StaleEpisodeNudge";
 import { staleEpisodeNudgeFor } from "@/lib/stale-episode-data";
 import { schoolReturnStatusFor } from "@/lib/school-return-data";
-import { formatSchoolReturnLine } from "@/lib/school-return";
+import { schoolReturnCompactClause } from "@/lib/school-return";
+import EpisodeLatestReadings from "@/components/illness/EpisodeLatestReadings";
 
 // The full illness-cockpit BODY for one patient (issue #858) — the expanded content the
 // hero shell (IllnessHero) reveals under the named header. It is the SAME machinery the
@@ -54,7 +47,12 @@ export default function IllnessCockpitBody({
   crossProfile: boolean;
 }) {
   const date = today(profileId);
-  const yesterday = shiftDateStr(date, -1);
+  // Match the episode page's backfill boundary: yesterday is only a valid choice when
+  // it belongs to this episode. A same-day episode must not offer a dashboard write that
+  // the episode page then correctly omits from its own timeline.
+  const altDate =
+    episodeAlternateLogDate(episode.ongoing, episode.firstDay, date) ??
+    undefined;
   const temperatureUnit = getUnitPrefs(loginId).temperatureUnit;
   const tz = getTimezone(profileId);
   // The write target the bar/control/end button post — only for a household member's
@@ -80,113 +78,91 @@ export default function IllnessCockpitBody({
       : [];
 
   const prnMeds = getPrnMedicationsForQuickLog(profileId);
-  const now = new Date();
-  // The redose status line (#798) via the SHARED pure window math + formatter — the
-  // exact computation QuickLogPrnWidget uses, so the hero and the med card never disagree.
-  const redoseLineFor = (m: PrnMedForQuickLog): string | null => {
-    if (
-      m.minIntervalHours == null ||
-      m.maxDailyCount == null ||
-      !m.lastGivenAt
-    ) {
-      return null;
-    }
-    return redoseCardLabel(
-      redoseWindowStatus({
-        minIntervalHours: m.minIntervalHours,
-        maxDailyCount: m.maxDailyCount,
-        latestGivenAt: parseUtcSql(m.lastGivenAt),
-        countToday: m.count,
-        now,
-      })
-    );
-  };
 
   return (
-    <div
-      className="mt-3 flex flex-col gap-4"
-      data-testid="illness-cockpit-body"
-    >
-      <SymptomLogBar
-        date={date}
-        altDate={yesterday}
-        initial={getSymptomSeveritiesOnDate(profileId, date)}
-        initialAlt={getSymptomSeveritiesOnDate(profileId, yesterday)}
-        initialNotes={getSymptomNotesOnDate(profileId, date)}
-        initialAltNotes={getSymptomNotesOnDate(profileId, yesterday)}
-        symptoms={SYMPTOMS}
-        customNames={getCustomSymptomNames(profileId)}
-        rankedKeys={getSymptomLogOrder(profileId)}
-        suggestActivateIllness={false}
-        showTemperature
+    <div className="mt-3 flex flex-col" data-testid="illness-cockpit-body">
+      <EpisodeLatestReadings
+        episode={episode}
         temperatureUnit={temperatureUnit}
-        profileId={target}
+        timeZone={tz}
+        linkMedication
+        feverFree={
+          schoolReturn
+            ? {
+                label: schoolReturnCompactClause(schoolReturn).replace(
+                  /^fever-free/,
+                  "Fever-free"
+                ),
+                met: schoolReturn.met,
+              }
+            : null
+        }
+        className="mb-4 border-b border-black/5 pb-4 dark:border-white/5"
       />
 
-      {schoolReturn && (
-        <p
-          data-testid="school-return-line"
-          className="rounded-lg border border-black/10 bg-white/60 p-2.5 text-xs text-slate-600 dark:border-white/10 dark:bg-ink-900/40 dark:text-slate-300"
-        >
-          {formatSchoolReturnLine(schoolReturn, temperatureUnit)}
-        </p>
-      )}
+      <section>
+        <h3 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
+          Symptoms &amp; Temperature
+        </h3>
+        <SymptomLogBar
+          date={date}
+          altDate={altDate}
+          initial={getSymptomSeveritiesOnDate(profileId, date)}
+          initialAlt={
+            altDate ? getSymptomSeveritiesOnDate(profileId, altDate) : undefined
+          }
+          initialNotes={getSymptomNotesOnDate(profileId, date)}
+          initialAltNotes={
+            altDate ? getSymptomNotesOnDate(profileId, altDate) : undefined
+          }
+          symptoms={SYMPTOMS}
+          customNames={getCustomSymptomNames(profileId)}
+          rankedKeys={getSymptomLogOrder(profileId)}
+          suggestActivateIllness={false}
+          showTemperature
+          temperatureUnit={temperatureUnit}
+          timeZone={tz}
+          profileId={target}
+          showTitle={false}
+        />
+      </section>
 
       {showStaleNudge && (
-        <StaleEpisodeNudge
-          episodeId={showStaleNudge.episodeId}
-          profileId={target}
-          lastActivityDate={showStaleNudge.lastActivityDate}
-          quietDays={showStaleNudge.quietDays}
-          medReconciliation={medReconciliation}
-        />
-      )}
-
-      {prnMeds.length > 0 && (
-        <div data-testid="cockpit-prn">
-          <div className="mb-2 section-label">PRN doses</div>
-          <div className="flex flex-col gap-2">
-            {prnMeds.map((m) => (
-              <QuickLogPrnControl
-                key={m.id}
-                itemId={m.id}
-                name={m.name}
-                dayLabel={administrationDayLabel(
-                  m.count,
-                  formatGivenAtClock(tz, m.lastGivenAt)
-                )}
-                redoseLine={redoseLineFor(m)}
-                profileId={target}
-              />
-            ))}
-          </div>
+        <div className="mt-4 border-t border-black/5 pt-4 dark:border-white/5">
+          <StaleEpisodeNudge
+            episodeId={showStaleNudge.episodeId}
+            profileId={target}
+            lastActivityDate={showStaleNudge.lastActivityDate}
+            quietDays={showStaleNudge.quietDays}
+            medReconciliation={medReconciliation}
+          />
         </div>
       )}
 
-      {/* Door C (#843): reach for an OTC med right where you're logging symptoms — kept
-          on the acting profile's own cockpit (the med quick-add writes the active
-          profile; it's omitted from a household member's cross-profile cockpit). */}
-      {!crossProfile && (
-        <SymptomMedQuickAdd pediatric={getPediatricFormContext(profileId)} />
+      {(prnMeds.length > 0 || !crossProfile) && (
+        <div
+          className="mt-4 border-t border-black/5 pt-4 dark:border-white/5"
+          data-testid="cockpit-prn"
+        >
+          <IllnessMedicationLogger
+            meds={prnMeds}
+            tz={tz}
+            profileId={target}
+            pediatric={getPediatricFormContext(profileId)}
+            canAdd={!crossProfile}
+          />
+        </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-2">
-        {episode.id != null && (
+      {episode.id != null && (
+        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-black/5 pt-4 dark:border-white/5">
           <CockpitEndEpisode
             episodeId={episode.id}
             profileId={target}
             meds={medReconciliation}
           />
-        )}
-        {episode.id != null && (
-          <Link
-            href={episodeHref(episode.id)}
-            className="badge border border-black/10 text-slate-600 hover:bg-slate-50 dark:border-white/15 dark:text-slate-300 dark:hover:bg-ink-850"
-          >
-            Full episode
-          </Link>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

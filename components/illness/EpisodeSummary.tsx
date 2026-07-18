@@ -1,15 +1,22 @@
 import {
   episodeDayNumber,
-  episodeHeadline,
   feverTrend,
   feverTrendLabel,
   type AssembledEpisode,
 } from "@/lib/illness-episode-format";
 import { severityLabel } from "@/lib/symptoms";
 import NotesText from "@/components/NotesText";
-import FeverChart from "@/components/illness/FeverChart";
+import EpisodeTimeline from "@/components/illness/EpisodeTimeline";
 import type { TemperatureUnit } from "@/lib/settings";
 import { fmtTemp } from "@/lib/units";
+import type { ReactNode } from "react";
+import type { EpisodeInRangeEvents } from "@/lib/illness-episode-events";
+import EpisodeLatestReadings from "@/components/illness/EpisodeLatestReadings";
+import {
+  DEFAULT_FORMAT_PREFS,
+  formatDateShape,
+  type DisplayFormatPrefs,
+} from "@/lib/format-date";
 
 // The printable / shareable illness-episode summary (issue #801). A pure
 // presentational server component over the ONE assembled model — reused by the
@@ -18,32 +25,31 @@ import { fmtTemp } from "@/lib/units";
 // `@media not print`, so every `dark:` utility here stops matching under print and
 // the light styles render on the forced-white page.
 
-function fmtDate(d: string | null): string {
+function fmtDate(
+  d: string | null,
+  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
+): string {
   if (!d) return "—";
-  const dt = new Date(`${d}T00:00:00Z`);
-  return Number.isNaN(dt.getTime())
-    ? d
-    : dt.toLocaleDateString(undefined, {
-        timeZone: "UTC",
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
+  const parsed = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
+  if (!parsed) return d;
+  return formatDateShape(prefs.dateFormat, +parsed[1], +parsed[2], +parsed[3], {
+    monthStyle: "short",
+    year: true,
+  });
 }
 
-// The 1–4 severity as filled/empty dots — a compact, print-safe severity glyph.
 function SeverityDots({ severity }: { severity: number }) {
   return (
     <span
-      className="inline-flex gap-0.5 align-middle"
-      title={severityLabel(severity)}
-      aria-label={severityLabel(severity)}
+      className="inline-flex gap-0.5"
+      aria-hidden="true"
+      data-testid="episode-severity-dots"
     >
-      {[1, 2, 3, 4].map((n) => (
+      {[1, 2, 3, 4].map((level) => (
         <span
-          key={n}
+          key={level}
           className={
-            n <= severity
+            level <= severity
               ? "h-2 w-2 rounded-full bg-rose-500 dark:bg-rose-400"
               : "h-2 w-2 rounded-full bg-slate-200 dark:bg-ink-700"
           }
@@ -53,12 +59,42 @@ function SeverityDots({ severity }: { severity: number }) {
   );
 }
 
+function SymptomPill({
+  symptom,
+}: {
+  symptom: AssembledEpisode["symptoms"][number];
+}) {
+  return (
+    <li className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-sm dark:bg-ink-800">
+      <span className="font-medium text-slate-700 dark:text-slate-200">
+        {symptom.label}
+      </span>
+      <SeverityDots severity={symptom.maxSeverity} />
+      <span className="text-xs text-slate-500 dark:text-slate-400">
+        {severityLabel(symptom.maxSeverity)}
+      </span>
+    </li>
+  );
+}
+
 export default function EpisodeSummary({
   episode,
   note,
   outcome,
   generatedAt,
   temperatureUnit = "F",
+  timeZone,
+  canEdit = false,
+  eventProfileId,
+  identity,
+  feverFree,
+  careEvents,
+  timelineActions,
+  timelineTools,
+  timelineAfterHistory,
+  linkLatestMedication = false,
+  collapsePeakSymptoms = false,
+  formatPrefs = DEFAULT_FORMAT_PREFS,
 }: {
   episode: AssembledEpisode;
   // The episode-level free-text note + outcome annotation (#856 item 8/9). Optional so
@@ -70,39 +106,77 @@ export default function EpisodeSummary({
   // this only changes display. Defaults to °F so the public /share render and any
   // caller without a login pref stay in Fahrenheit.
   temperatureUnit?: TemperatureUnit;
+  timeZone?: string;
+  canEdit?: boolean;
+  eventProfileId?: number;
+  identity?: ReactNode;
+  feverFree?: { label: string; met: boolean } | null;
+  careEvents?: EpisodeInRangeEvents;
+  timelineActions?: ReactNode;
+  timelineTools?: ReactNode;
+  timelineAfterHistory?: ReactNode;
+  linkLatestMedication?: boolean;
+  collapsePeakSymptoms?: boolean;
+  formatPrefs?: DisplayFormatPrefs;
 }) {
   const day = episodeDayNumber(
     episode.start,
     episode.lastActiveDay ?? episode.asOf
   );
-  const fever = feverTrendLabel(feverTrend(episode.temperatures));
+  const trend = feverTrendLabel(feverTrend(episode.temperatures));
+  const peakSymptomLimit = 5;
+  const collapseSymptoms =
+    collapsePeakSymptoms && episode.symptoms.length > peakSymptomLimit;
+  const leadingSymptoms = collapseSymptoms
+    ? episode.symptoms.slice(0, peakSymptomLimit)
+    : episode.symptoms;
+  const remainingSymptoms = collapseSymptoms
+    ? episode.symptoms.slice(peakSymptomLimit)
+    : [];
 
   return (
     <section className="flex flex-col gap-5">
       {/* Header */}
-      <header className="card break-inside-avoid print:border print:border-slate-300 print:shadow-none">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100">
-            {episode.situation} episode
-          </h1>
-          <span
-            className={
-              episode.ongoing
-                ? "badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-                : "badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300"
-            }
-          >
-            {episode.ongoing ? "Ongoing" : "Resolved"}
-          </span>
+      <header
+        className="card break-inside-avoid print:border print:border-slate-300 print:shadow-none"
+        data-testid="episode-summary-header"
+      >
+        {identity ? (
+          <div className="mb-4 border-b border-black/5 pb-4 dark:border-white/5">
+            {identity}
+          </div>
+        ) : null}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100">
+                {episode.situation} episode
+              </h1>
+              <span
+                className={
+                  episode.ongoing
+                    ? "badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                    : "badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300"
+                }
+              >
+                {episode.ongoing ? "Ongoing" : "Resolved"}
+              </span>
+            </div>
+            {trend ? (
+              <p
+                className="mt-1 text-sm text-slate-600 dark:text-slate-300"
+                data-testid="episode-trend-summary"
+              >
+                {trend.charAt(0).toUpperCase() + trend.slice(1)}
+              </p>
+            ) : null}
+          </div>
         </div>
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-          {episodeHeadline(episode)}
-        </p>
         <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-4">
           <div>
             <dt className="section-label">Started</dt>
             <dd className="text-slate-700 dark:text-slate-200">
-              {fmtDate(episode.start ?? episode.firstDay)}
+              {fmtDate(episode.start ?? episode.firstDay, formatPrefs)}
             </dd>
           </div>
           <div>
@@ -110,7 +184,7 @@ export default function EpisodeSummary({
               {episode.ongoing ? "As of" : "Ended"}
             </dt>
             <dd className="text-slate-700 dark:text-slate-200">
-              {fmtDate(episode.lastActiveDay)}
+              {fmtDate(episode.lastActiveDay, formatPrefs)}
             </dd>
           </div>
           <div>
@@ -128,6 +202,14 @@ export default function EpisodeSummary({
             </dd>
           </div>
         </dl>
+        <EpisodeLatestReadings
+          episode={episode}
+          temperatureUnit={temperatureUnit}
+          timeZone={timeZone}
+          linkMedication={linkLatestMedication}
+          feverFree={feverFree}
+          className="mt-4 border-t border-black/5 pt-4 dark:border-white/5"
+        />
         {outcome ? (
           <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
             <span className="section-label mr-2">Outcome</span>
@@ -144,163 +226,88 @@ export default function EpisodeSummary({
             />
           </div>
         ) : null}
+        {episode.symptoms.length > 0 && (
+          <div
+            className="mt-4 border-t border-black/5 pt-4 dark:border-white/5"
+            data-testid="episode-symptoms"
+          >
+            <h2 className="section-label mb-2">Peak symptoms</h2>
+            <ul
+              className={`flex flex-wrap gap-2 ${collapseSymptoms ? "print:hidden" : ""}`}
+            >
+              {leadingSymptoms.map((symptom) => (
+                <SymptomPill key={symptom.symptom} symptom={symptom} />
+              ))}
+            </ul>
+            {collapseSymptoms ? (
+              <>
+                <details className="mt-2 print:hidden">
+                  <summary className="cursor-pointer text-xs font-medium text-brand-600 hover:underline dark:text-brand-400">
+                    Show {remainingSymptoms.length} more
+                  </summary>
+                  <ul className="mt-2 flex flex-wrap gap-2">
+                    {remainingSymptoms.map((symptom) => (
+                      <SymptomPill key={symptom.symptom} symptom={symptom} />
+                    ))}
+                  </ul>
+                </details>
+                <ul
+                  className="hidden flex-wrap gap-2 print:flex"
+                  data-testid="episode-print-symptoms"
+                >
+                  {episode.symptoms.map((symptom) => (
+                    <SymptomPill key={symptom.symptom} symptom={symptom} />
+                  ))}
+                </ul>
+              </>
+            ) : null}
+          </div>
+        )}
+
+        {episode.conditions.length > 0 && (
+          <div className="mt-4 border-t border-black/5 pt-4 dark:border-white/5">
+            <h2 className="section-label mb-2">Linked conditions</h2>
+            <div className="flex flex-wrap gap-2">
+              {episode.conditions.map((c) => (
+                <span
+                  key={c.id}
+                  className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300"
+                >
+                  {c.name} · {c.status}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
       </header>
 
-      {/* Symptoms */}
-      {episode.symptoms.length > 0 && (
-        <div
-          className="card break-inside-avoid print:border print:border-slate-300 print:shadow-none"
-          data-testid="episode-symptoms"
-        >
-          <h2 className="section-label mb-2">Symptoms</h2>
-          <ul className="flex flex-col gap-2">
-            {episode.symptoms.map((s) => (
-              <li
-                key={s.symptom}
-                className="flex flex-wrap items-center gap-x-3 gap-y-1"
-              >
-                <span className="min-w-[9rem] text-sm font-medium text-slate-700 dark:text-slate-200">
-                  {s.label}
-                </span>
-                <span className="flex flex-wrap items-center gap-2">
-                  {s.points.map((p) => (
-                    <span
-                      key={p.date}
-                      className="inline-flex items-center gap-1"
-                      title={`${fmtDate(p.date)} · ${severityLabel(p.severity)}`}
-                    >
-                      <SeverityDots severity={p.severity} />
-                    </span>
-                  ))}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <EpisodeTimeline
+        episode={episode}
+        canEdit={canEdit}
+        temperatureUnit={temperatureUnit}
+        profileId={eventProfileId}
+        careEvents={careEvents}
+        actions={timelineActions}
+        tools={timelineTools}
+        afterHistory={timelineAfterHistory}
+      />
 
-      {/* Fever curve */}
-      {episode.temperatures.length > 0 && (
-        <div
-          className="card break-inside-avoid print:border print:border-slate-300 print:shadow-none"
-          data-testid="episode-fever"
-        >
-          <h2 className="section-label mb-2">
-            Temperature{fever ? ` — ${fever}` : ""}
-          </h2>
-          {/* Item 4: the fever curve as a small line chart with a normal-range band;
-              the timed readings stay listed below as the exact detail. */}
-          <FeverChart
-            temperatures={episode.temperatures}
-            temperatureUnit={temperatureUnit}
-          />
-          <ul className="mt-2 flex flex-col gap-1 text-sm">
-            {episode.temperatures.map((t, i) => (
-              <li
-                key={`${t.date}-${t.time ?? i}`}
-                className="flex items-center justify-between gap-3"
-              >
-                <span className="text-slate-500 dark:text-slate-400">
-                  {fmtDate(t.date)}
-                  {t.time ? ` · ${t.time}` : ""}
-                </span>
-                <span
-                  className={
-                    t.flag === "high"
-                      ? "font-semibold text-rose-600 dark:text-rose-400"
-                      : "text-slate-700 dark:text-slate-200"
-                  }
-                >
-                  {fmtTemp(t.degF, temperatureUnit)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Medications */}
-      {episode.medications.length > 0 && (
-        <div
-          className="card break-inside-avoid print:border print:border-slate-300 print:shadow-none"
-          data-testid="episode-meds"
-        >
-          <h2 className="section-label mb-2">Medications given</h2>
-          <ul className="flex flex-col gap-2 text-sm">
-            {episode.medications.map((m) => (
-              <li key={m.itemId}>
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="font-medium text-slate-700 dark:text-slate-200">
-                    {m.name}
-                  </span>
-                  <span className="text-slate-500 dark:text-slate-400">
-                    {m.count}×
-                  </span>
-                </div>
-                <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                  {m.administrations
-                    .map(
-                      (a) =>
-                        `${fmtDate(a.date)}${a.time ? ` ${a.time}` : ""}${
-                          a.amount ? ` · ${a.amount}` : ""
-                        }`
-                    )
-                    .join("  ·  ")}
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Bridged conditions */}
-      {episode.conditions.length > 0 && (
-        <div className="card break-inside-avoid print:border print:border-slate-300 print:shadow-none">
-          <h2 className="section-label mb-2">Conditions</h2>
-          <ul className="flex flex-col gap-1 text-sm">
-            {episode.conditions.map((c) => (
-              <li
-                key={c.id}
-                className="flex items-center justify-between gap-2"
-              >
-                <span className="text-slate-700 dark:text-slate-200">
-                  {c.name}
-                  {c.fromEpisode ? (
-                    <span className="ml-2 text-xs text-slate-400">
-                      (from this episode)
-                    </span>
-                  ) : null}
-                </span>
-                <span className="text-xs capitalize text-slate-500 dark:text-slate-400">
-                  {c.status}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Notes */}
-      {episode.notes.length > 0 && (
-        <div className="card break-inside-avoid print:border print:border-slate-300 print:shadow-none">
-          <h2 className="section-label mb-2">Notes</h2>
-          <ul className="flex flex-col gap-1 text-sm text-slate-600 dark:text-slate-300">
-            {episode.notes.map((n, i) => (
-              <li key={`${n.date}-${i}`}>
-                <span className="text-slate-400">{fmtDate(n.date)}</span> —{" "}
-                {n.text}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {generatedAt && (
-        <p className="text-xs text-slate-400">
-          Generated {fmtDate(generatedAt.slice(0, 10))}. Illness summary — not a
-          medical record.
-        </p>
-      )}
+      {generatedAt && <EpisodeSummaryFooter generatedAt={generatedAt} />}
     </section>
+  );
+}
+
+export function EpisodeSummaryFooter({
+  generatedAt,
+  formatPrefs = DEFAULT_FORMAT_PREFS,
+}: {
+  generatedAt: string;
+  formatPrefs?: DisplayFormatPrefs;
+}) {
+  return (
+    <p className="text-xs text-slate-400" data-testid="episode-summary-footer">
+      Prepared {fmtDate(generatedAt.slice(0, 10), formatPrefs)}. For reference
+      only — not a medical record.
+    </p>
   );
 }

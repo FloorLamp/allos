@@ -12,7 +12,7 @@ export default function EpisodeComparison({
 }) {
   return (
     <p
-      className="mt-3 text-sm text-slate-500 dark:text-slate-400"
+      className="text-sm text-slate-500 dark:text-slate-400"
       data-testid="episode-comparison"
     >
       {episodeComparisonLine(comparison)}

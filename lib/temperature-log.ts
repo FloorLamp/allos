@@ -25,6 +25,7 @@ import { isRealIsoDate } from "./date";
 import { addCanonicalNames, reconcileFlags } from "./queries";
 import {
   VITAL_CANONICAL,
+  resolveTemperatureUnit,
   toCanonicalTempF,
   temperatureRangeError,
   normalizeClockTime,
@@ -40,6 +41,11 @@ import type { MedicalFlag } from "./types";
 //             nothing written. `error` is user-facing.
 export type TemperatureLogOutcome =
   | { kind: "logged"; id: number; degF: number; flag: MedicalFlag | null }
+  | { kind: "invalid"; error: string };
+
+export type TemperatureUpdateOutcome =
+  | { kind: "updated"; degF: number; flag: MedicalFlag | null }
+  | { kind: "missing" }
   | { kind: "invalid"; error: string };
 
 const TEMP = VITAL_CANONICAL.temperature;
@@ -61,7 +67,8 @@ export function logTemperatureCore(
   if (rawValue == null || !Number.isFinite(rawValue)) {
     return { kind: "invalid", error: "Enter a valid temperature." };
   }
-  const degF = round(toCanonicalTempF(rawValue, unit), 1);
+  const resolvedUnit = resolveTemperatureUnit(rawValue, unit);
+  const degF = round(toCanonicalTempF(rawValue, resolvedUnit), 1);
   const rangeErr = temperatureRangeError(degF);
   if (rangeErr) return { kind: "invalid", error: rangeErr };
   const note = normalizeClockTime(time);
@@ -94,5 +101,59 @@ export function logTemperatureCore(
       )
       .get(id, profileId) as { flag: MedicalFlag | null } | undefined;
     return { kind: "logged" as const, id, degF, flag: row?.flag ?? null };
+  });
+}
+
+// Correct one existing temperature reading without turning the episode UI into a
+// general medical-record editor. The canonical identity and profile ownership are
+// both checked before the scoped update; imported readings retain their edit lock.
+export function updateTemperatureCore(
+  profileId: number,
+  id: number,
+  rawValue: number | null | undefined,
+  date: string,
+  time?: string | null
+): TemperatureUpdateOutcome {
+  if (!isRealIsoDate(date))
+    return { kind: "invalid", error: "Enter a valid date." };
+  if (rawValue == null || !Number.isFinite(rawValue))
+    return { kind: "invalid", error: "Enter a valid temperature." };
+  const degF = round(rawValue, 1);
+  const rangeErr = temperatureRangeError(degF);
+  if (rangeErr) return { kind: "invalid", error: rangeErr };
+  const note = normalizeClockTime(time);
+
+  return writeTx((): TemperatureUpdateOutcome => {
+    const owned = db
+      .prepare(
+        `SELECT id FROM medical_records
+          WHERE id = ? AND profile_id = ? AND canonical_name = ?`
+      )
+      .get(id, profileId, TEMP.canonical);
+    if (!owned) return { kind: "missing" };
+    db.prepare(
+      `UPDATE medical_records
+          SET date = ?, value = ?, value_num = ?, unit = ?, notes = ?,
+              edited = CASE WHEN external_id IS NOT NULL THEN 1 ELSE edited END
+        WHERE id = ? AND profile_id = ? AND canonical_name = ?`
+    ).run(
+      date,
+      String(degF),
+      degF,
+      TEMP.unit,
+      note,
+      id,
+      profileId,
+      TEMP.canonical
+    );
+    reconcileFlags(profileId, [id]);
+    const row = db
+      .prepare(
+        `SELECT flag FROM medical_records
+          WHERE id = ? AND profile_id = ? AND canonical_name = ?`
+      )
+      .get(id, profileId, TEMP.canonical) as
+      { flag: MedicalFlag | null } | undefined;
+    return { kind: "updated", degF, flag: row?.flag ?? null };
   });
 }

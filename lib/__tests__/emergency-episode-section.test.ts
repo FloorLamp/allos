@@ -46,7 +46,7 @@ function ep(over: Partial<AssembledEpisode> = {}): AssembledEpisode {
 
 describe("emergencyEpisodeSection", () => {
   it("summarizes an open episode with day, today's meds, and latest temp", () => {
-    const sec = emergencyEpisodeSection(ep(), "F");
+    const sec = emergencyEpisodeSection(ep(), "F", "12h");
     expect(sec).not.toBeNull();
     expect(sec!.headline).toBe("Illness · day 4");
     expect(sec!.dayNumber).toBe(4);
@@ -55,7 +55,7 @@ describe("emergencyEpisodeSection", () => {
     expect(sec!.todaysAdministrations).toHaveLength(1);
     expect(sec!.todaysAdministrations[0]).toMatchObject({
       name: "Ibuprofen",
-      time: "8:00am",
+      time: "8:00 AM",
       amount: "200 mg",
     });
   });

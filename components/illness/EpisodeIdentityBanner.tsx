@@ -15,17 +15,15 @@ import { switchProfileAction } from "@/app/(app)/user-actions";
 // page stays a cross-profile READ until the caregiver chooses to switch.
 export default function EpisodeIdentityBanner({
   profile,
-  subtitle,
   crossProfile,
 }: {
   profile: AvatarProfile;
-  subtitle: string;
   crossProfile: boolean;
 }) {
   return (
     <div
       data-testid="episode-identity-banner"
-      className="mb-4 flex items-center gap-3 print:hidden"
+      className="flex items-center gap-3 print:hidden"
     >
       <Avatar profile={profile} size="md" />
       <div className="min-w-0 flex-1">
@@ -34,9 +32,6 @@ export default function EpisodeIdentityBanner({
           className="truncate text-lg font-semibold text-slate-800 dark:text-slate-100"
         >
           {profile.name}
-        </div>
-        <div className="truncate text-sm text-slate-500 dark:text-slate-400">
-          {subtitle}
         </div>
       </div>
       {crossProfile && (

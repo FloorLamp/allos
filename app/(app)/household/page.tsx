@@ -19,7 +19,11 @@ import {
   getWorkoutPresence,
   collectHouseholdRollup,
 } from "@/lib/queries";
-import { getActiveSituations, getUnitPrefs } from "@/lib/settings";
+import {
+  getActiveSituations,
+  getDisplayFormatPrefs,
+  getUnitPrefs,
+} from "@/lib/settings";
 import { currentEpisodeForProfile } from "@/lib/illness-episode";
 import { householdSickLine } from "@/lib/illness-episode-format";
 import { schoolReturnStatusFor } from "@/lib/school-return-data";
@@ -50,6 +54,7 @@ export default async function HouseholdPage() {
   if (profiles.length < 2) redirect("/");
   const weightUnit = getUnitPrefs(login.id).weightUnit;
   const temperatureUnit = getUnitPrefs(login.id).temperatureUnit;
+  const formatPrefs = getDisplayFormatPrefs(login.id);
 
   // One loop over the accessible profiles, each built from the EXISTING per-profile
   // query functions — no new cross-profile SQL, so the profile-scoping test and the
@@ -141,7 +146,8 @@ export default async function HouseholdPage() {
           profile.name,
           ep,
           temperatureUnit,
-          sr ? schoolReturnCompactClause(sr) : null
+          sr ? schoolReturnCompactClause(sr) : null,
+          formatPrefs.timeFormat
         );
       })(),
       // Derived workout presence (#921), grants-scoped like the sick chip: a compact

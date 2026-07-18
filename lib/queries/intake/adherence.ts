@@ -519,6 +519,37 @@ export function deleteAdministrationLog(
   });
 }
 
+// Correct the wall time or snapshotted amount of a historical PRN administration.
+// This remains one consumed administration, so supply is deliberately unchanged.
+export function updateAdministrationLog(
+  profileId: number,
+  logId: number,
+  date: string,
+  givenAt: Date,
+  amount: string | null
+): boolean {
+  return writeTx(() => {
+    const owned = db
+      .prepare(
+        `SELECT l.id FROM intake_item_logs l
+           JOIN intake_items s ON s.id = l.item_id
+          WHERE l.id = ? AND s.profile_id = ? AND s.as_needed = 1
+            AND l.status = 'taken'`
+      )
+      .get(logId, profileId);
+    if (!owned) return false;
+    const info = db
+      .prepare(
+        `UPDATE intake_item_logs
+            SET date = ?, given_at = ?, amount = ?
+          WHERE id = ? AND item_id IN
+            (SELECT id FROM intake_items WHERE profile_id = ?)`
+      )
+      .run(date, utcSqlString(givenAt), amount, logId, profileId);
+    return info.changes === 1;
+  });
+}
+
 // Restore a captured PRN administration from its undo token (routed here by
 // restoreDeletedRow's kind branch). Re-inserts the ledger row (NEW id) and RE-applies
 // the supply decrement (the inverse of the delete's re-credit), then drops the holding
@@ -699,6 +730,7 @@ export function getPrnOverMaxItems(
 export interface PrnMedForQuickLog {
   id: number;
   name: string;
+  amount: string | null;
   count: number;
   lastGivenAt: string | null;
   minIntervalHours: number | null;
@@ -716,6 +748,9 @@ export function getPrnMedicationsForQuickLog(
   return db
     .prepare(
       `SELECT s.id AS id, s.name AS name,
+              (SELECT d.amount FROM intake_item_doses d
+                WHERE d.item_id = s.id AND d.retired = 0
+                ORDER BY d.sort, d.id LIMIT 1) AS amount,
               (SELECT COUNT(*) FROM intake_item_logs l
                 WHERE l.item_id = s.id AND l.date = ? AND l.status = 'taken')
                 AS count,

@@ -132,6 +132,28 @@ export function mmolToMgdl(v: number): number {
 export const TEMP_MIN_F = 86;
 export const TEMP_MAX_F = 113;
 
+// Body-temperature entry ranges do not overlap across the two scales: a plausible
+// Celsius reading converts into the canonical 86–113 °F window, while a plausible
+// Fahrenheit reading already sits in that window. Detect only when exactly one
+// interpretation is plausible; incomplete/out-of-range typing returns null so the UI
+// keeps the selected preference and validation still owns the final decision.
+export function detectTemperatureUnit(
+  value: number | null | undefined
+): TempUnit | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  const plausibleF = temperatureRangeError(value) == null;
+  const plausibleC = temperatureRangeError(celsiusToF(value)) == null;
+  if (plausibleF === plausibleC) return null;
+  return plausibleC ? "C" : "F";
+}
+
+export function resolveTemperatureUnit(
+  value: number,
+  selected: TempUnit | string | null | undefined
+): TempUnit {
+  return detectTemperatureUnit(value) ?? (selected === "C" ? "C" : "F");
+}
+
 // Convert an entered temperature to the canonical °F scale (issue #800). °C goes
 // through celsiusToF (the exact Health Connect factor, 0.1 rounding) so a manual °C
 // reading and a synced one land on the same scale; °F is already canonical. Anything
@@ -236,7 +258,8 @@ export function validateVitalsInput(input: VitalsRawInput): string | null {
   if (!blank(input.temperature)) {
     const raw = numOrNull(input.temperature);
     if (raw == null) return "Enter a valid temperature.";
-    const err = temperatureRangeError(toCanonicalTempF(raw, input.tempUnit));
+    const unit = resolveTemperatureUnit(raw, input.tempUnit);
+    const err = temperatureRangeError(toCanonicalTempF(raw, unit));
     if (err) return err;
   }
 
@@ -323,7 +346,10 @@ export function normalizeVitalsInput(
     const note = normalizeClockTime(input.temperatureTime);
     medical.push({
       ...VITAL_CANONICAL.temperature,
-      value_num: toCanonicalTempF(tempRaw, input.tempUnit),
+      value_num: toCanonicalTempF(
+        tempRaw,
+        resolveTemperatureUnit(tempRaw, input.tempUnit)
+      ),
       ...(note ? { note } : {}),
     });
   }

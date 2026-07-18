@@ -55,7 +55,12 @@ test("Today panel PRN row surfaces the redose window status line (#798/#817)", a
   await expect(prnRow).toBeVisible();
   // The window is open (last dose ~7h ago > 6h interval), 1 of 4 today.
   const line = prnRow.getByTestId("prn-redose-line");
+  const dayLabel = prnRow.getByTestId("prn-day-label");
   await expect(line).toBeVisible();
+  await expect(dayLabel).toContainText("Last dose");
+  await expect(dayLabel).not.toContainText(/\d+ today/);
+  await expect(line).toHaveClass(/text-slate-600/);
+  await expect(line).not.toHaveClass(/text-brand/);
   // Window open (last dose > 6h ago). Assert the count PATTERN + the max, never a
   // pinned "1 of 4" — the seeded count is 0 or 1 depending on the day boundary (#868).
   await expect(line).toContainText("Redose OK");
@@ -71,7 +76,14 @@ test("dashboard PRN widget mirrors the redose status line (#798)", async ({
   const item = widget
     .getByTestId("quick-log-prn-item")
     .filter({ hasText: REDOSE_MED });
+  if (!(await item.isVisible())) {
+    await widget.getByTestId("quick-log-prn-more").locator("summary").click();
+  }
   await expect(item).toBeVisible();
+  await expect(item.getByTestId("prn-day-label")).toContainText("Last dose");
+  await expect(item.getByTestId("prn-day-label")).not.toContainText(
+    /\d+ today/
+  );
   await expect(item.getByTestId("prn-redose-line")).toContainText("Redose OK");
 });
 

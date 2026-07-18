@@ -30,6 +30,7 @@ export default function MedicationsTodayPanel({
   prnToday: {
     id: number;
     name: string;
+    amount: string | null;
     dayLabel: string;
     redoseLine: string | null;
   }[];
@@ -114,6 +115,7 @@ export default function MedicationsTodayPanel({
             key={m.id}
             itemId={m.id}
             name={m.name}
+            doseAmount={m.amount}
             dayLabel={m.dayLabel}
             redoseLine={m.redoseLine}
             linkToDetail

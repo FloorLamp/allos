@@ -90,6 +90,39 @@ export function formatClock(
   return `${h12}:${pad2(m)}${sep}${ap}`;
 }
 
+// Format stored/read-only clock text through the same login preference seam as
+// `formatClock`. Accepts canonical HH:MM[:SS] and legacy 12-hour display strings;
+// unknown imported text is preserved rather than silently disappearing.
+export function formatClockValue(
+  value: string | null | undefined,
+  timeFormat: TimeFormat = DEFAULT_FORMAT_PREFS.timeFormat,
+  fallback = "",
+  meridiem: "upper-space" | "lower-nospace" = "upper-space"
+): string {
+  if (!value) return fallback;
+  const clock = value.trim();
+  if (!clock) return fallback;
+  const twentyFour = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(clock);
+  if (twentyFour) {
+    const hour = Number(twentyFour[1]);
+    const minute = Number(twentyFour[2]);
+    if (hour <= 23 && minute <= 59) {
+      return formatClock(timeFormat, hour, minute, meridiem);
+    }
+  }
+  const twelveHour = /^(\d{1,2}):(\d{2})\s*([ap])\.?m\.?$/i.exec(clock);
+  if (twelveHour) {
+    const hour = Number(twelveHour[1]);
+    const minute = Number(twelveHour[2]);
+    if (hour >= 1 && hour <= 12 && minute <= 59) {
+      const hour24 =
+        (hour % 12) + (twelveHour[3].toLowerCase() === "p" ? 12 : 0);
+      return formatClock(timeFormat, hour24, minute, meridiem);
+    }
+  }
+  return clock;
+}
+
 // Shape a calendar date (y full year, m 1-based 1–12, d day-of-month) into the
 // chosen order and style. `monthStyle` picks "Jan"/"January" (ignored for "iso",
 // which is always numeric YYYY-MM-DD). `weekday` (a full weekday name) prefixes
@@ -223,6 +256,20 @@ export function formatRelativeTime(
   if (days < 30) return plural(Math.round(days / 7), "week");
   if (days < 365) return plural(Math.round(days / 30), "month");
   return plural(Math.round(days / 365), "year");
+}
+
+// Compact variant for dense status lines. It preserves the app-wide relative-time
+// thresholds while shortening only minute/hour units ("2 hrs ago"); day-and-longer
+// labels stay unabbreviated because they are already concise and easier to scan.
+export function formatCompactRelativeTime(
+  input: string,
+  now: Date = new Date()
+): string {
+  return formatRelativeTime(input, now)
+    .replace(/^(\d+) minute ago$/, "$1 min ago")
+    .replace(/^(\d+) minutes ago$/, "$1 mins ago")
+    .replace(/^(\d+) hour ago$/, "$1 hr ago")
+    .replace(/^(\d+) hours ago$/, "$1 hrs ago");
 }
 
 // Whole days from `todayStr` to an ISO date: positive = future, negative = past,

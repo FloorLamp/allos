@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { IconSettings } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
-import { getEmergencyCardEnabled, getUnitPrefs } from "@/lib/settings";
+import {
+  getDisplayFormatPrefs,
+  getEmergencyCardEnabled,
+  getUnitPrefs,
+} from "@/lib/settings";
 import { getEmergencyCard } from "@/lib/emergency-card-load";
 import { PageHeader } from "@/components/ui";
 import EmergencyCardView from "@/components/EmergencyCardView";
@@ -24,7 +28,8 @@ export default async function EmergencyCardPage() {
         profile.id,
         profile.name,
         new Date().toISOString(),
-        getUnitPrefs(login.id).temperatureUnit
+        getUnitPrefs(login.id).temperatureUnit,
+        getDisplayFormatPrefs(login.id).timeFormat
       )
     : null;
 

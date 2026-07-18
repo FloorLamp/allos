@@ -95,13 +95,13 @@ test.describe("Episode-end medication reconciliation (#880)", () => {
     await page.getByTestId("feeling-sick-activate").click();
     await expect(page.getByTestId("symptom-log-bar")).toBeVisible();
 
-    // 2) Quick-add ibuprofen right from the symptom card (created DURING the episode).
-    await page.getByTestId("symptom-med-quickadd-open").click();
-    const inline = page.getByTestId("symptom-med-quickadd");
+    // 2) Quick-add ibuprofen from the cockpit's Meds section (created DURING the episode).
+    await page.getByTestId("illness-add-medication").click();
+    const inline = page.getByTestId("illness-medication-quick-add");
     await expect(inline).toBeVisible();
     await pickMedication(inline, "Ibuprofen");
     await inline.getByRole("button", { name: "Quick add" }).click();
-    await expect(page.getByTestId("symptom-med-quickadd-open")).toBeVisible();
+    await expect(page.getByTestId("illness-add-medication")).toBeVisible();
 
     // 3) Log a dose from the dashboard PRN quick-log widget.
     await page.goto("/");
@@ -113,10 +113,10 @@ test.describe("Episode-end medication reconciliation (#880)", () => {
     await prnItem.getByTestId("prn-log-now").click();
     await expect(page.getByText(/Logged Ibuprofen/i)).toBeVisible();
 
-    // 4) Open the full episode page from the hero cockpit's "Full episode" link (the
+    // 4) Open the full episode page from the hero cockpit's "More details" link (the
     // active profile's cockpit is at hero position, expanded by default).
     const episodeLink = page
-      .getByRole("link", { name: "Full episode", exact: true })
+      .getByRole("link", { name: /^More details about / })
       .first();
     await followLink(page, episodeLink, /\/medical\/episodes\/\d+/);
 
