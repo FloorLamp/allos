@@ -1028,6 +1028,17 @@ const dropReport = {
   unmappedLoincs: [
     { loinc: "11111-1", name: "E2E Novel Marker", unit: "ng/mL", count: 3 },
   ],
+  // Source-text reconciliation flags (AI PDF path): one of each verdict, so the
+  // "Source reconciliation" card renders with both badge variants. Synthetic
+  // analyte names; the value is a bare number with no unit/date context.
+  reconciliation: {
+    confirmed: 10,
+    total: 12,
+    flags: [
+      { name: "E2E Mismatch Marker", value: "999", verdict: "value_mismatch" },
+      { name: "E2E Phantom Marker", value: "1", verdict: "name_not_found" },
+    ],
+  },
 };
 db.prepare(
   `INSERT INTO medical_documents

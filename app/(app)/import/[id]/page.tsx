@@ -554,7 +554,7 @@ export default async function ImportDetailPage(props: {
             <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
               Each extracted value was checked against the report’s own text
               (its PDF text layer, or OCR for a scanned report). The rows below{" "}
-              <strong>could not be corroborated</strong> — the value the model
+              <strong>couldn’t be corroborated</strong> — the value the model
               read isn’t next to that name in the source, or the name never
               appears. Treat these as a <strong>review signal</strong>, not a
               proven error: a report’s text can be imperfect.
