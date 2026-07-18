@@ -9,8 +9,21 @@
 // and enough time (escalateAfterMin) has elapsed since the window's slot hour.
 
 import type { NotificationMessage } from "./types";
+import type { LifecycleSuppressionPolicy } from "../lifecycle";
 
 export type EscalationWindow = "Morning" | "Midday" | "Evening" | "Bedtime";
+
+// Missed-dose escalation is the FIRST lifecycle tenant (issue #942, #860 Track A): its
+// suppression stage is declared here as the shared "safety-ungated" policy rather than
+// left as the scattered "escalate.ts just never imports the bus" convention. This is
+// the #449 carve-out expressed as DATA — a page dismissal must NEVER silence a
+// possibly-critical medication escalation, so `isHiddenUnderPolicy(this, …)` is always
+// false (pinned in lib/__tests__/lifecycle.test.ts). The escalation send path
+// DELIBERATELY still never consults the bus at all — structural non-consultation is the
+// stronger guarantee — so this constant is the lifecycle DECLARATION of that fact, and
+// the notify-orchestrators harness proves a page-dismissed dose still escalates.
+export const ESCALATION_SUPPRESSION_POLICY: LifecycleSuppressionPolicy =
+  "safety-ungated";
 
 // A single unconfirmed critical dose that COULD escalate; escalationsDue applies
 // the timing/dedup rules to decide whether it actually does this tick.

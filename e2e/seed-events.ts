@@ -8,7 +8,7 @@ import "../scripts/load-env";
 import fs from "node:fs";
 import path from "node:path";
 
-import { db, today } from "../lib/db";
+import { db, today, writeTx } from "../lib/db";
 import { shiftDateStr, utcSqlString } from "../lib/date";
 import { writeRawPayload } from "../lib/integrations/raw-log";
 import { upsertConnection } from "../lib/integrations/connections";
@@ -16,9 +16,9 @@ import {
   setOnboardingState,
   setDashboardLayout,
   setProfileSetting,
-  setSetting,
   setWeekMode,
 } from "../lib/settings";
+import { setDeliveryFailure } from "../lib/notifications/delivery-marker";
 import { setMinTrainingAge } from "../lib/age-gate";
 import { saveFitnessEntry } from "../lib/fitness-assessment";
 import { reconcileFlags } from "../lib/queries";
@@ -94,15 +94,18 @@ import {
 } from "./fixture-logins";
 import { adoptTemplate, activateRoutine } from "../lib/routines";
 
-// A persisted notification-delivery failure (#131) so Settings → Server surfaces
-// the "Last notification delivery failed" marker for the e2e to assert. Synthetic
-// error text — no PHI. Mirrors what dispatch() writes on a failed Telegram send.
-setSetting(
-  "notify_last_error",
-  "Telegram API 401: Unauthorized (bot token revoked)"
+// A persisted notification-delivery failure (#131) so Settings → Notifications
+// surfaces the "Last notification delivery failed" marker for the e2e to assert.
+// Synthetic error text — no PHI. Written through the real marker write path (the
+// notify_lifecycle delivery-health row, #942) so the fixture can't drift from
+// what dispatch() records on a failed Telegram send.
+writeTx(() =>
+  setDeliveryFailure(
+    "telegram",
+    "Telegram API 401: Unauthorized (bot token revoked)",
+    "2026-07-09T08:00:00.000Z"
+  )
 );
-setSetting("notify_last_error_at", "2026-07-09T08:00:00.000Z");
-setSetting("notify_last_error_channel", "telegram");
 
 // A persisted unexpected server error (#596) so Settings → Errors has a row to
 // render for the admin-access e2e. Synthetic message — no PHI. Written straight

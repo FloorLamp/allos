@@ -58,5 +58,6 @@
   "057-endurance-plans.ts": "7a15323d25f6da5264c0a8f3c30b99d0b60466c842af7c58aa0d35a23a763e2d",
   "058-recovery-activity-type.ts": "816fb30b6d2b7f9fcdd9c79f460738c0713c04baea096621489d1f96a71dd00d",
   "059-frequency-target-mobility-region.ts": "2ddc781a254ab7d877052167748820e08981686dd9f1cb60c194aac1a53e9177",
-  "060-followup-labs.ts": "bbaebe159a04cb032ee925a8add50cbffe9a1ef747e33335573b8fc51d28defb"
+  "060-followup-labs.ts": "bbaebe159a04cb032ee925a8add50cbffe9a1ef747e33335573b8fc51d28defb",
+  "061-notify-lifecycle.ts": "99502813b5651a1775f056849bd51e9abd5c2320029d4bcab7d0d7c989df0f82"
 }

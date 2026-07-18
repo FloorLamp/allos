@@ -34,6 +34,8 @@ import {
 import { runRefills } from "@/lib/notifications/refill";
 import { runPreventive } from "@/lib/notifications/preventive";
 import { runEscalations } from "@/lib/notifications/escalate";
+import { ESCALATION_SUPPRESSION_POLICY } from "@/lib/notifications/escalation";
+import { isHiddenUnderPolicy } from "@/lib/lifecycle";
 import { escalationMarkerKey } from "@/lib/notifications/escalation-keys";
 import { refillMarkerKey } from "@/lib/refill-nudge";
 import { getNotifySchedule } from "@/lib/settings";
@@ -165,6 +167,9 @@ function dismiss(profileId: number, signalKey: string): void {
 beforeEach(() => {
   // Reset the GLOBAL delivery-health marker between cases (it's set/cleared by the
   // real dispatch fold, shared across profiles).
+  // The delivery-health marker is now the notify_lifecycle row (issue #942), not the
+  // legacy notify_last_error* settings keys — reset both so a prior case cannot leak.
+  db.prepare("DELETE FROM notify_lifecycle").run();
   db.prepare("DELETE FROM settings WHERE key LIKE 'notify_last_error%'").run();
 });
 
@@ -487,12 +492,13 @@ describe("runEscalations orchestrator", () => {
     expect(getProfileSetting(p, escalationMarkerKey(doseId))).toBeUndefined();
   });
 
-  it("safety tier: bus suppression is IGNORED — a page-dismissed dose still escalates", async () => {
+  it("safety tier: bus suppression is IGNORED — a page-dismissed dose still escalates (#942)", async () => {
     const p = newProfile("EscSuppressed");
     const { doseId, date } = escalationFixture(p);
-    // Dismiss the dose's Upcoming signal on the shared bus. Safety-tier senders
-    // (dose reminders + escalation) DELIBERATELY do not consult it — a page
-    // dismissal must never silence a possibly-critical medication signal.
+    // Dismiss the dose's Upcoming signal on the shared bus. Escalation is the first
+    // lifecycle tenant (#942) and declares the "safety-ungated" policy, so it
+    // DELIBERATELY does not consult the bus — a page dismissal must never silence a
+    // possibly-critical medication signal.
     dismiss(p, `dose:${doseId}`);
     configureTelegram(p);
     const fetchMock = stubFetch();
@@ -508,6 +514,17 @@ describe("runEscalations orchestrator", () => {
     // Unaffected by the dismissal: it still escalates and marks the episode.
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(getProfileSetting(p, escalationMarkerKey(doseId))).toBe(date);
+    // The end-to-end behavior above and the shared lifecycle gate AGREE: escalation's
+    // declared policy, run against that very dismissal, is never hidden. If tenancy
+    // ever weakened the carve-out (policy flipped off "safety-ungated"), this fails.
+    expect(ESCALATION_SUPPRESSION_POLICY).toBe("safety-ungated");
+    expect(
+      isHiddenUnderPolicy(
+        ESCALATION_SUPPRESSION_POLICY,
+        { snooze_until: null, dismissed_at: `${date}T00:00:00Z` },
+        date
+      )
+    ).toBe(false);
   });
 
   it("escalation routes to the supplement's escalate_chat_id when set", async () => {

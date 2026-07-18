@@ -93,6 +93,9 @@ function logAdmin(
 }
 
 beforeEach(() => {
+  // The delivery-health marker is now the notify_lifecycle row (issue #942), not the
+  // legacy notify_last_error* settings keys — reset both so a prior case cannot leak.
+  db.prepare("DELETE FROM notify_lifecycle").run();
   db.prepare("DELETE FROM settings WHERE key LIKE 'notify_last_error%'").run();
 });
 afterEach(() => {

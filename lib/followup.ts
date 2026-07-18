@@ -15,6 +15,7 @@
 // convenience path the way a medication-dose escalation does (#449/#171/#227).
 
 import type { SuppressionRecord } from "./upcoming-suppress";
+import { isHiddenUnderPolicy } from "./lifecycle";
 
 // The dedupeKey namespace for a follow-up chain node. Registered in
 // RULE_FINDING_PREFIXES (#448) so the page's prefix-guarded dismiss action can match
@@ -131,17 +132,10 @@ export function isFollowUpHidden(
   record: SuppressionRecord | undefined,
   today: string
 ): boolean {
-  if (!record) return false;
-  if (policy === "snooze-only") {
-    // Resist an indefinite dismiss; honor only a live snooze.
-    if (record.snooze_until && !record.dismissed_at)
-      return today < record.snooze_until;
-    return false;
-  }
-  // "normal": dismiss hides indefinitely, snooze while today < snooze_until.
-  if (record.dismissed_at) return true;
-  if (record.snooze_until) return today < record.snooze_until;
-  return false;
+  // ONE lifecycle decision (issue #942): FollowUpSuppressionPolicy is a subset of the
+  // shared LifecycleSuppressionPolicy, so the follow-up care-tier persistence contract
+  // is now the same computation the Upcoming filter and the bus-gated nudges use.
+  return isHiddenUnderPolicy(policy, record, today);
 }
 
 // ---- The domain ADAPTER interface -------------------------------------------

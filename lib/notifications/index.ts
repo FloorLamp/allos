@@ -3,12 +3,17 @@
 
 import { writeTx } from "../db";
 import { createLogger } from "../log";
-import { getSetting, setSetting } from "../settings";
 import { type ChannelId, type NotificationMessage } from "./types";
 import { telegramChannel } from "./telegram";
 import { pushChannel } from "./push";
 import { homeAssistantChannel } from "./home-assistant";
 import { decideMarker, type NotifyErrorMarker } from "./delivery-status";
+import {
+  readDeliveryMarker,
+  readFailedChannel,
+  setDeliveryFailure,
+  clearDeliveryMarker,
+} from "./delivery-marker";
 
 const log = createLogger("notifications");
 
@@ -20,24 +25,13 @@ const log = createLogger("notifications");
 // "[Name] " label it was sent with (#377/#429).
 export { prefixForProfile } from "./attribution";
 
-// Global marker keys mirroring backup_last_* (#131): the last delivery failure,
-// its ISO timestamp, and which channel failed. Cleared on the next all-OK send.
-const NOTIFY_ERR_KEY = "notify_last_error";
-const NOTIFY_ERR_AT_KEY = "notify_last_error_at";
-const NOTIFY_ERR_CHANNEL_KEY = "notify_last_error_channel";
-
 // The last persisted delivery failure for the Settings surface, or null when the
 // most recent attempted send succeeded (marker cleared). Global, like the backup
 // error — one shared bot serves every profile, so a revoked token / broken send
-// is an instance-level signal.
+// is an instance-level signal. Now backed by the `notify_lifecycle` row (issue #942,
+// migration 061) instead of three ad-hoc settings keys — same returned shape.
 export function getNotifyError(): NotifyErrorMarker | null {
-  const error = getSetting(NOTIFY_ERR_KEY);
-  if (!error) return null;
-  return {
-    error,
-    at: getSetting(NOTIFY_ERR_AT_KEY) ?? "",
-    channel: getSetting(NOTIFY_ERR_CHANNEL_KEY) ?? "",
-  };
+  return readDeliveryMarker();
 }
 
 // Fold a dispatch fan-out into the global delivery-health marker. Set it when any
@@ -49,30 +43,28 @@ export function getNotifyError(): NotifyErrorMarker | null {
 // must never turn a delivery into a throw, so failures are logged and swallowed.
 function recordDeliveryOutcome(results: DispatchResult[]): void {
   try {
-    // Read-decide-write in ONE immediate transaction (issue #468): the marker is
-    // three separate settings, written by BOTH the web app and the notify tick.
-    // Without the write lock taken at BEGIN, a set from one process could interleave
-    // with a clear from the other and tear error/at/channel apart — and, worse,
-    // feed the #192 channel-aware clear a stale prevFailedChannel read a moment
-    // before another process rewrote it. writeTx makes the read (the prior failed
-    // channel) and the three writes atomic against the other writer.
+    // Read-decide-write in ONE immediate transaction (issue #468): the marker is a
+    // single lifecycle row, written by BOTH the web app and the notify tick. Without
+    // the write lock taken at BEGIN, a set from one process could interleave with a
+    // clear from the other and — worse — feed the #192 channel-aware clear a stale
+    // prevFailedChannel read a moment before another process rewrote it. writeTx makes
+    // the read (the prior failed channel) and the row write atomic against the other
+    // writer.
     writeTx(() => {
       // The channel of the currently-recorded failure, if any (empty when the
-      // marker is clear or is a legacy value predating channel tracking).
-      const prevFailedChannel = getSetting(NOTIFY_ERR_KEY)
-        ? (getSetting(NOTIFY_ERR_CHANNEL_KEY) ?? "")
-        : "";
+      // marker is clear).
+      const prevFailedChannel = readFailedChannel();
       const decision = decideMarker(results, prevFailedChannel);
       if (decision.action === "set") {
-        setSetting(NOTIFY_ERR_KEY, decision.failure.error);
-        setSetting(NOTIFY_ERR_AT_KEY, new Date().toISOString());
-        setSetting(NOTIFY_ERR_CHANNEL_KEY, decision.failure.channel);
+        setDeliveryFailure(
+          decision.failure.channel,
+          decision.failure.error,
+          new Date().toISOString()
+        );
       } else if (decision.action === "clear") {
-        setSetting(NOTIFY_ERR_KEY, "");
-        setSetting(NOTIFY_ERR_AT_KEY, "");
-        setSetting(NOTIFY_ERR_CHANNEL_KEY, "");
+        clearDeliveryMarker();
       }
-      // "keep" → leave the marker untouched.
+      // "freeze" → leave the row untouched.
     });
   } catch (e) {
     log.error("recording delivery outcome failed", {

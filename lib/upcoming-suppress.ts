@@ -7,6 +7,7 @@
 
 import type { UpcomingItem } from "./upcoming";
 import type { Finding } from "./findings";
+import { isHiddenUnderPolicy } from "./lifecycle";
 
 // A suppression row as stored (the two nullable state columns). A row is either a
 // SNOOZE (snooze_until set, dismissed_at null) or a DISMISS (dismissed_at set,
@@ -49,14 +50,13 @@ export function isItemHiddenBySuppression(
   record: SuppressionRecord | undefined,
   today: string
 ): boolean {
-  if (!record) return false;
-  if (item.carePersistent) {
-    // Resist the indefinite dismiss; honor only a live snooze.
-    if (record.snooze_until && !record.dismissed_at)
-      return today < record.snooze_until;
-    return false;
-  }
-  return isSuppressed(record, today);
+  // ONE lifecycle decision (issue #942): a care-persistent item is "snooze-only"
+  // (resists a dismiss, honors a live snooze), everything else is "normal".
+  return isHiddenUnderPolicy(
+    item.carePersistent ? "snooze-only" : "normal",
+    record,
+    today
+  );
 }
 
 // Whether a suppression record hides its item right now (`today` = the profile-
@@ -72,7 +72,7 @@ export function isSuppressed(
   record: SuppressionRecord,
   today: string
 ): boolean {
-  if (record.dismissed_at) return true;
-  if (record.snooze_until) return today < record.snooze_until;
-  return false;
+  // The "normal" lifecycle policy (issue #942) — the base rule every non-carve-out
+  // signal shares.
+  return isHiddenUnderPolicy("normal", record, today);
 }

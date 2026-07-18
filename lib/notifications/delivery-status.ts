@@ -8,6 +8,8 @@
 // read/write lives in index.ts. No DB here — unit-tested in
 // lib/__tests__/delivery-status.test.ts.
 
+import type { MarkerLifecycleAction } from "../lifecycle";
+
 // The subset of a DispatchResult this decision needs (kept structural so the
 // pure helper has no dependency on the channel/dispatch modules).
 export interface DispatchOutcome {
@@ -49,11 +51,16 @@ export function isDeliveryHealthy(results: DispatchOutcome[]): boolean {
   return results.length > 0 && results.every((r) => r.ok);
 }
 
-// How a single dispatch should mutate the GLOBAL delivery-health marker.
+// How a single dispatch should mutate the GLOBAL delivery-health marker — the
+// set/clear/freeze lifecycle state machine (issue #942, shared MarkerLifecycleAction).
+// "freeze" (formerly "keep") is the third state: the marker is left EXACTLY as it
+// stood (a healthy dispatch that never exercised the previously-failing channel #192,
+// or a dispatch with nothing attempted). The `action` values are the shared
+// MarkerLifecycleAction literals; only "set" carries the failure payload.
 export type MarkerAction =
-  | { action: "set"; failure: DeliveryFailure }
-  | { action: "clear" }
-  | { action: "keep" };
+  | { action: Extract<MarkerLifecycleAction, "set">; failure: DeliveryFailure }
+  | { action: Extract<MarkerLifecycleAction, "clear"> }
+  | { action: Extract<MarkerLifecycleAction, "freeze"> };
 
 // Decide how one dispatch fan-out should update the global marker, given the
 // channel of any PREVIOUSLY-recorded failure (`prevFailedChannel`; empty for a
@@ -75,8 +82,8 @@ export function decideMarker(
 ): MarkerAction {
   const failure = pickDispatchError(results);
   if (failure) return { action: "set", failure };
-  if (!isDeliveryHealthy(results)) return { action: "keep" };
+  if (!isDeliveryHealthy(results)) return { action: "freeze" };
   if (!prevFailedChannel) return { action: "clear" };
   const attemptedPrev = results.some((r) => r.id === prevFailedChannel);
-  return attemptedPrev ? { action: "clear" } : { action: "keep" };
+  return attemptedPrev ? { action: "clear" } : { action: "freeze" };
 }

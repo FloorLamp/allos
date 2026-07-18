@@ -40,6 +40,8 @@ beforeEach(() => {
   fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
   vi.stubGlobal("fetch", fetchMock);
   // Reset the global delivery-health marker between cases.
+  // Delivery-health marker is now the notify_lifecycle row (issue #942).
+  db.prepare("DELETE FROM notify_lifecycle").run();
   db.prepare("DELETE FROM settings WHERE key LIKE 'notify_last_error%'").run();
 });
 
