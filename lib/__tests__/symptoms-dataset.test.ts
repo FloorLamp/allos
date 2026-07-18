@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   SYMPTOMS,
   symptomSlugs,
+  symptomSlugsInDomain,
   symptomLabel,
   isCuratedSymptom,
   isCustomSymptomKey,
@@ -10,6 +11,7 @@ import {
   severityLabel,
   isValidSeverity,
   SYMPTOM_SEVERITY_LEVELS,
+  SYMPTOM_DOMAINS,
 } from "@/lib/symptoms";
 
 // Dataset test (the #799 "dataset-test treatment"): the curated symptom vocabulary is a
@@ -30,6 +32,33 @@ describe("symptoms.json dataset", () => {
         expect(s.icon.trim().length, s.slug).toBeGreaterThan(0);
       }
     }
+  });
+
+  it("tags every curated symptom with a valid domain (issue #714)", () => {
+    for (const s of SYMPTOMS) {
+      expect(SYMPTOM_DOMAINS, s.slug).toContain(s.domain);
+    }
+  });
+
+  it("covers each context, and symptomSlugsInDomain partitions the catalog", () => {
+    // Every domain leads with at least one slug (the per-mount "lead with these" list).
+    for (const d of SYMPTOM_DOMAINS) {
+      expect(symptomSlugsInDomain(d).length, d).toBeGreaterThan(0);
+    }
+    // The cycle context carries the everyday menstrual symptoms.
+    expect(symptomSlugsInDomain("cycle")).toEqual(
+      expect.arrayContaining([
+        "cramps",
+        "bloating",
+        "breast_tenderness",
+        "mood_swings",
+        "low_back_pain",
+      ])
+    );
+    // The domains partition the whole catalog with no overlap.
+    const union = SYMPTOM_DOMAINS.flatMap((d) => symptomSlugsInDomain(d));
+    expect(union.slice().sort()).toEqual(symptomSlugs().slice().sort());
+    expect(new Set(union).size).toBe(union.length);
   });
 
   it("is a sensible size for a one-tap shortcut list", () => {
