@@ -29,6 +29,7 @@ import {
   documentImmunizationVaccines,
 } from "@/lib/import-persist";
 import { canReassignDocument } from "@/lib/import-reassign";
+import { evictPreviewsForDocument } from "@/lib/reprocess-preview-cache";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { createLogger } from "@/lib/log";
@@ -43,6 +44,7 @@ import {
   type ReprocessResult,
   type ReprocessFromRawResult,
   type PreviewReprocessResult,
+  type ReprocessApplyOutcome,
 } from "@/lib/medical-pipeline";
 import type { ReprocessCost } from "@/lib/reprocess-cost";
 
@@ -103,7 +105,9 @@ export async function reprocessDocumentFromRaw(
 
 // Preview what a reprocess would change: re-extract to an in-memory shape, diff it
 // against the currently-persisted rows, and return the diff WITHOUT touching the
-// DB. The client shows the diff, then calls reprocessDocument to apply it.
+// DB. The client shows the diff, then calls applyReprocessPreview to apply it. The
+// result carries a single-use `previewToken` (#946) that lets the apply commit THIS
+// exact input.
 export async function previewReprocess(
   formData: FormData
 ): Promise<PreviewReprocessResult> {
@@ -111,6 +115,27 @@ export async function previewReprocess(
   const id = Number(formData.get("id"));
   if (!id) return { status: "skipped", message: "Unknown document." };
   return previewReprocessById(login.id, profile.id, id);
+}
+
+// Apply a previewed reprocess (#946): commit exactly the input the user reviewed
+// (identified by the preview token) with NO second extraction. If the token is
+// missing/expired/stale — another tab reprocessed, the file changed, or the 15-min
+// TTL lapsed — this falls back to a fresh background re-extraction and the returned
+// outcome (`re-extracted`) lets the UI note that the result may differ from the
+// preview. Distinct from the direct reprocessDocument path, which never previews.
+export async function applyReprocessPreview(
+  formData: FormData
+): Promise<ReprocessApplyOutcome> {
+  const { login, profile } = await requireWriteAccess();
+  const id = Number(formData.get("id"));
+  if (!id) return { mode: "re-extracted" };
+  const token = formData.get("previewToken");
+  return reprocessDocumentById(
+    login.id,
+    profile.id,
+    id,
+    typeof token === "string" && token ? token : undefined
+  );
 }
 
 export interface ReassignResult {
@@ -230,6 +255,11 @@ export async function reassignDocument(
         "This document is still processing — wait for it to finish, then move it.",
     };
   }
+
+  // The document changed owner — a preview token minted for the source profile is
+  // now useless; drop it (#946). A token is profile-scoped anyway, so it could
+  // never apply under the destination, but evicting keeps the cache tidy.
+  evictPreviewsForDocument(src, id);
 
   // Re-derive out-of-range flags on the destination: reconciledFlag depends on the
   // profile's sex/birthdate/age/reproductive-status, so the moved medical_records
@@ -368,6 +398,9 @@ export async function deleteMedicalDocument(formData: FormData) {
     // document delete path (#602). No-op when the deleted doses still have siblings.
     sweepImmunizationDismissals(profile.id, removedVaccines);
   });
+
+  // The document is gone — drop any cached reprocess-preview input for it (#946).
+  evictPreviewsForDocument(profile.id, id);
 
   if (doc?.stored_path) {
     try {

@@ -57,6 +57,8 @@ import {
   foodLogAnswerText,
   foodOptInAnswerText,
   foodOptInCloseText,
+  foodStaleDateAnswerText,
+  foodTapDateGuard,
   parseAllCallback,
   parseEscalationCallback,
   parseFoodLogCallback,
@@ -873,6 +875,16 @@ async function handleFoodLog(
       : null;
   if (profileId == null) {
     await answerCallbackQuery(cq.id);
+    return;
+  }
+  // Belt-and-suspenders cross-date guard (#947): a stale keyboard from a previous day
+  // can survive (the close-previous strip failed, or the bot restarted between
+  // sends). The token carries its SEND date and handleFoodLog would otherwise write to
+  // it — logging TODAY's tap to yesterday. When the token's date isn't today in the
+  // profile's timezone, log NOTHING and answer honestly (never unconditionally
+  // confirm, #232); a same-day tap from an older window still logs (the date is right).
+  if (foodTapDateGuard(food.date, today(profileId)).kind === "stale-date") {
+    await answerCallbackQuery(cq.id, foodStaleDateAnswerText(food.date));
     return;
   }
   const outcome = logFoodServingCore(profileId, food.group, food.date);

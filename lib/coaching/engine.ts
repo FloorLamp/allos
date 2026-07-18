@@ -12,14 +12,22 @@ import {
   type NextWorkout,
   type NextWorkoutItem,
 } from "../workout-recommendation";
+import {
+  excludedRegionLabel,
+  RECOVERING_LOAD_FACTOR,
+  type InjuryConstraint,
+} from "../injury-model";
+import type { ConditionConsideration } from "../condition-training-considerations";
 import type { EquipmentAvailability } from "../equipment-availability";
 import type { WeightUnit } from "../settings";
 import type { AppRoute } from "../hrefs";
-import type { MuscleRegion } from "../lifts";
+import { regionForExercise, type MuscleRegion } from "../lifts";
 import {
   deloadAdjust,
   suggestNextSet,
   nextSetText,
+  temperRecoveringNextSet,
+  type NextSet,
   type NextSetSeed,
 } from "./strength";
 import { coachingHeldReason, type Reason } from "../reasons";
@@ -73,6 +81,13 @@ export interface Recommendation {
   // carried across the findings bus by recommendationToFinding. Absent for the
   // ordinary training/rest recs whose `detail` already stands alone.
   reasons?: Reason[];
+  // Calm context lines riding ALONGSIDE the recommendation (issues #666/#838), carried on
+  // the ONE model so every surface (Training-overview card, dashboard widget, Telegram)
+  // renders the same text (#221): active-injury exclusion disclosures ("Avoiding Chest
+  // (right shoulder injury)") and curated condition consideration notes. Informational —
+  // the recommendation itself is unchanged. Absent when there's no injury/condition
+  // context.
+  notes?: string[];
 }
 
 // The weekly frequency-target progress slice the engine reads.
@@ -217,6 +232,15 @@ export interface CoachingInput {
   // ease-back rec replaces them for a short ramp. Absent/null ⇒ normal coaching (the
   // prior behavior). It alters what FIRES, never the recovery/safety advice itself.
   illness?: IllnessCoachingContext | null;
+  // User-declared injury constraints (#838), NON-resolved only — threaded through this
+  // ONE gather so the dashboard/overview cards and the Telegram nudge all exclude active
+  // regions + temper recovering ones by construction (#221). Absent / empty ⇒ no injury
+  // context (the prior behavior).
+  injuries?: InjuryConstraint[];
+  // Curated condition→training CONSIDERATION notes (#666) for the profile's ACTIVE mapped
+  // conditions — informational, never gating/re-ranking. Threaded through so the note
+  // rides the same recommendation everywhere. Absent / empty ⇒ nothing.
+  considerations?: ConditionConsideration[];
   // Whether the profile is CURRENTLY mid-workout per derived presence (#921). Used
   // ONLY to pick the rest recommendation's TENSE — while a session is live the card
   // softens to next-session framing instead of contradicting reality by saying
@@ -568,9 +592,16 @@ function strengthExerciseRec(
   wu: WeightUnit,
   reason: string,
   focus: MuscleRegion[] = [],
-  exercises: string[] = []
+  exercises: string[] = [],
+  // Recovering-injury tempering (#838): when the lead exercise's region is returning from
+  // a recovering injury, back the next-set target off to RECOVERING_LOAD_FACTOR (a
+  // suggestion, never a lockout) so the compact card agrees with the model everywhere.
+  tempered = false
 ): Recommendation {
-  const nextSet = suggestNextSet(exercise, wu);
+  const base = suggestNextSet(exercise, wu);
+  const nextSet = tempered
+    ? temperRecoveringNextSet(base, exercise.exercise, RECOVERING_LOAD_FACTOR)
+    : base;
   return {
     id: `strength-${exercise.exercise}`,
     kind: "strength",
@@ -716,7 +747,33 @@ function trainingRecommendations(
   wu: WeightUnit
 ): Recommendation[] {
   const nw = recommendNextWorkout(input);
-  return nw.items.map((item) => formatWorkoutItem(item, nw, input.today, wu));
+  const recs = nw.items.map((item) =>
+    formatWorkoutItem(item, nw, input.today, wu)
+  );
+  // Calm context notes (#666/#838) ride on the TOP training rec so the dashboard widget
+  // and Telegram render the same disclosure/consideration text the Training overview does
+  // (one computation, #221). Attached only to the lead card to avoid duplication.
+  const notes = contextNotes(nw);
+  if (notes.length && recs[0]) recs[0] = { ...recs[0], notes };
+  return recs;
+}
+
+// The calm context lines for a next-workout result: the active-injury exclusion
+// disclosures (#838, "Avoiding Chest (right shoulder injury)") followed by the curated
+// condition consideration notes (#666). Pure formatter over the model's data.
+export function contextNotes(nw: NextWorkout): string[] {
+  const notes: string[] = [];
+  for (const d of nw.excludedRegions)
+    notes.push(`Avoiding ${excludedRegionLabel(d)}`);
+  for (const c of nw.considerations) notes.push(c.note);
+  return notes;
+}
+
+// Whether an exercise's region is returning from a RECOVERING injury (#838), so its target
+// is tempered. Pure over the model's temperedRegions.
+function regionTempered(exerciseName: string, nw: NextWorkout): boolean {
+  const r = regionForExercise(exerciseName);
+  return r != null && nw.temperedRegions.includes(r);
 }
 
 // Map one core NextWorkoutItem to its Recommendation card, preserving the exact
@@ -799,7 +856,18 @@ function formatWorkoutItem(
       // this card is the compact dashboard/rollup form of the same result.
       const label = nw.session?.label ?? "Today's session";
       const deload = nw.session?.deloadWeek ?? false;
-      const baseNext = item.exercise ? suggestNextSet(item.exercise, wu) : null;
+      const rawNext = item.exercise ? suggestNextSet(item.exercise, wu) : null;
+      // Recovering-injury tempering (#838) composes BEFORE deload: an injury week is not a
+      // deload week (distinct states), and if both apply the lighter of the two wins by
+      // sequencing. Applied when the lead lift's region is recovering.
+      const baseNext: NextSet | null =
+        item.exercise && regionTempered(item.exercise.exercise, nw)
+          ? temperRecoveringNextSet(
+              rawNext,
+              item.exercise.exercise,
+              RECOVERING_LOAD_FACTOR
+            )
+          : rawNext;
       // Deload week (#741): shave the lead lift's load through the ONE shared
       // deloadAdjust and phrase it, so this compact card agrees with the
       // Training-overview session card and the Telegram nudge.
@@ -836,7 +904,14 @@ function formatWorkoutItem(
         t.perWeek
       )} this week — ${remaining} to go.`;
       return item.exercise
-        ? strengthExerciseRec(item.exercise, wu, reason, nw.focus, nw.exercises)
+        ? strengthExerciseRec(
+            item.exercise,
+            wu,
+            reason,
+            nw.focus,
+            nw.exercises,
+            regionTempered(item.exercise.exercise, nw)
+          )
         : {
             id: `strength-${label}`,
             kind: "strength",
@@ -853,7 +928,8 @@ function formatWorkoutItem(
       wu,
       `Last trained ${formatRelativeDate(item.exercise!.lastDate, today)}.`,
       nw.focus,
-      nw.exercises
+      nw.exercises,
+      regionTempered(item.exercise!.exercise, nw)
     );
   }
 

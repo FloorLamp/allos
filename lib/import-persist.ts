@@ -26,6 +26,7 @@ import type {
   ImportedMedicationCourse,
 } from "./health-import";
 import type { PersistInput, PersistRecord } from "./import-shape";
+import { evictPreviewsForDocument } from "./reprocess-preview-cache";
 
 // The single persist core shared by every document import path — the AI
 // extractor (runExtraction in lib/medical-pipeline.ts) and the deterministic
@@ -409,6 +410,12 @@ export function persistDocumentImport(
     );
     return { counts, extractedCount };
   });
+
+  // This document's rows just changed — drop any cached reprocess-preview input for
+  // it (#946) so a stale preview can't be applied over the fresh import. The token's
+  // staleness key is the correctness guard; this is the eviction the issue asks for
+  // at the persist chokepoint every import/reprocess path funnels through.
+  evictPreviewsForDocument(profileId, docId);
 
   return {
     immCount: result.counts.immCount,

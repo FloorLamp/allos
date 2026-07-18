@@ -1,0 +1,70 @@
+{
+  "$comment": "SOURCE OF TRUTH for the baked CONDITION → TRAINING-CONSIDERATION dataset (issue #666). The clinical member of the training-context taxonomy: a small curated map from an active medical condition to a CONSIDERATION NOTE for training — never a prohibition, never a gate, never a re-rank (the recommendation itself is unchanged; the note rides alongside). HAND-MAINTAINED here; the committed framework envelope lib/datasets/data/condition-training-considerations.json is GENERATED from this file by scripts/gen-condition-training-considerations.ts (`npm run gen:condition-training-considerations`) and is never hand-edited. A few canonical, high-value conditions cover the ground — keep it human-reviewable and cited. Facts from PUBLIC-DOMAIN references: ACOG/CDC physical-activity guidance, the U.S. HHS Physical Activity Guidelines for Americans, NIH/NIAMS (osteoporosis), and NHLBI/CDC (hypertension). No copyrighted source is vendored. Each entry is keyed on a normalized condition NAME/synonym (with optional ICD-10 code-prefix hints) — mirroring the food-drug matcher's name fallback. INFORMATIONAL, never prescriptive — 'discuss with your clinician'; absence of an entry does NOT mean training is unrestricted, and exercise is almost always beneficial for chronic conditions (the failure mode this avoids is over-gating as much as under-gating).",
+  "considerations": [
+    {
+      "key": "pregnancy",
+      "conditionLabel": "Pregnancy",
+      "synonyms": ["pregnancy", "pregnant", "gravid", "gestation", "prenatal"],
+      "codePrefixes": ["Z33", "Z34", "O09"],
+      "note": "You have pregnancy on file — continued exercise is beneficial, but favor stable positions and avoid supine work after the first trimester, contact/fall risk, and breath-holding under load. Discuss your training plan with your clinician.",
+      "source": "ACOG Committee Opinion 804: Physical Activity and Exercise During Pregnancy and the Postpartum Period; U.S. HHS Physical Activity Guidelines for Americans, 2nd ed."
+    },
+    {
+      "key": "osteoporosis",
+      "conditionLabel": "Osteoporosis",
+      "synonyms": [
+        "osteoporosis",
+        "osteopenia",
+        "low bone density",
+        "low bone mass"
+      ],
+      "codePrefixes": ["M80", "M81", "M85.8"],
+      "note": "You have osteoporosis on file — progressive resistance and weight-bearing loading is beneficial for bone. Favor controlled progressive loading and discuss high-impact work and heavy loaded spinal flexion with your clinician.",
+      "source": "NIH NIAMS: Exercise for Your Bone Health; U.S. HHS Physical Activity Guidelines for Americans, 2nd ed."
+    },
+    {
+      "key": "uncontrolled-hypertension",
+      "conditionLabel": "Uncontrolled hypertension",
+      "synonyms": [
+        "uncontrolled hypertension",
+        "uncontrolled high blood pressure",
+        "hypertensive crisis",
+        "malignant hypertension",
+        "resistant hypertension"
+      ],
+      "codePrefixes": ["I16"],
+      "note": "You have uncontrolled hypertension on file — regular aerobic and moderate resistance training helps lower blood pressure, but avoid maximal breath-holding (Valsalva) efforts, which spike blood pressure. Keep intensity moderate until it is controlled and discuss with your clinician.",
+      "source": "NHLBI / CDC blood-pressure management guidance; U.S. HHS Physical Activity Guidelines for Americans, 2nd ed."
+    },
+    {
+      "key": "recent-surgery",
+      "conditionLabel": "Recent surgery",
+      "synonyms": [
+        "recent surgery",
+        "post-surgical",
+        "post-operative",
+        "postoperative",
+        "post-op",
+        "recovering from surgery",
+        "surgical recovery"
+      ],
+      "codePrefixes": ["Z48", "Z98.89"],
+      "note": "You have a recent surgery on file — clearance to resume loaded training comes from your surgical team. Confirm you have been cleared, and ease back gradually rather than returning to prior loads at once.",
+      "source": "NIH MedlinePlus: Surgery recovery / activity after surgery."
+    },
+    {
+      "key": "aortic-aneurysm",
+      "conditionLabel": "Aortic aneurysm",
+      "synonyms": [
+        "aortic aneurysm",
+        "abdominal aortic aneurysm",
+        "thoracic aortic aneurysm",
+        "aortic dilation",
+        "aortic dilatation"
+      ],
+      "codePrefixes": ["I71", "I77.81"],
+      "note": "You have an aortic aneurysm on file — moderate aerobic activity is generally encouraged, but heavy maximal lifting and breath-holding (Valsalva) sharply raise blood pressure. Keep resistance work moderate and rep-based, and discuss safe limits with your clinician.",
+      "source": "NHLBI: Aortic aneurysm — living with; U.S. HHS Physical Activity Guidelines for Americans, 2nd ed."
+    }
+  ]
+}

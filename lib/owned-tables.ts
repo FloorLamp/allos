@@ -114,6 +114,10 @@ export const OWNED_TABLES = [
   // (no FK to illness_episodes). deleteProfile clears the rows; its on-disk files are
   // unlinked separately (path-contained under data/uploads/symptom-photos/<profileId>/).
   "symptom_photos",
+  // Injury layer (#838): user-declared region constraints on training. Directly owned;
+  // nothing FKs into it (the situation bridge is suggest-only, no persistent link), so a
+  // delete is a plain row delete and deleteProfile clears it by profile_id.
+  "injuries",
   // Fitness-check session rows (#834): one per (profile, date), grouping the battery's
   // measured tests. Directly owned. Its child fitness_assessment_entries carries no
   // profile_id and is cleared THROUGH this parent via its ON DELETE CASCADE FK (like

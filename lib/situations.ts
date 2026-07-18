@@ -84,6 +84,26 @@ export function isBuiltInIllnessSituation(name: string): boolean {
   return sameSituation(name, BUILTIN_ILLNESS_SITUATION);
 }
 
+// The built-in "Injury" situation name — the situation the injury bridge (#838) suggests
+// when a profile logs an injury but no "Injury" situation is active. Suggest-only, like
+// the condition/symptom bridges: the user confirms, never auto-activated.
+export const BUILTIN_INJURY_SITUATION = "Injury";
+
+// Whether a situation name IS the built-in Injury (case/whitespace-folded). Pure.
+export function isBuiltInInjurySituation(name: string): boolean {
+  return sameSituation(name, BUILTIN_INJURY_SITUATION);
+}
+
+// Injury→situation bridge (issue #838) — the #560 "suggest, never auto" discipline applied
+// to the injury layer: logging an injury SUGGESTS activating the "Injury" situation so a
+// user's situational supplements (a joint-support stack) can key on it. Returns the
+// situation name to offer, or null when an Injury situation is already active. Pure.
+export function suggestInjuryActivation(
+  hasActiveInjurySituation: boolean
+): string | null {
+  return hasActiveInjurySituation ? null : BUILTIN_INJURY_SITUATION;
+}
+
 // Symptom→situation bridge (issue #799) — the REVERSE of the condition bridge above and
 // the FoodLogBar/#560 "suggest, never auto" discipline: when a profile logs symptoms but
 // no illness-type situation is active, SUGGEST activating the built-in "Illness" so the

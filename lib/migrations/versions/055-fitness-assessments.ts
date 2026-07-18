@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 054 (issue #834): the guided "Fitness check" test-battery session model.
+// Migration 055 (issue #834): the guided "Fitness check" test-battery session model.
 //
 // A fitness check is a curated battery of tests the user performs and inputs in one
 // dated SESSION. The measured VALUES land in their natural stores — timed/rep tests as
@@ -67,7 +67,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 54,
-  name: "054-fitness-assessments",
+  id: 55,
+  name: "055-fitness-assessments",
   up,
 };

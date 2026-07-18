@@ -25,6 +25,7 @@ export default function IntensityPicker({
               key={opt.value}
               type="button"
               title={opt.hint}
+              aria-pressed={active}
               onClick={() => onChange(active ? "" : opt.value)}
               className={`rounded-lg border px-2 py-2 text-sm font-medium transition ${
                 active

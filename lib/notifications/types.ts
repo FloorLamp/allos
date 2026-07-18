@@ -18,6 +18,7 @@ export type NotificationKind =
   | "preventive" // preventive-care nudge
   | "illness-care" // logged-symptom duration/trajectory care finding (#805)
   | "workout" // training/workout reminder
+  | "workout-recap" // post-workout session recap line (#924)
   | "ease-back" // one-shot post-illness ease-back re-entry note (#837)
   | "food" // food-log nudge / first-connection opt-in prompt (#682)
   | "digest" // morning digest

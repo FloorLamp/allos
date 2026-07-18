@@ -78,7 +78,13 @@ import CustomTypeChips from "./activity-form/CustomTypeChips";
 import CardioFields from "./activity-form/CardioFields";
 import StrengthSets from "./activity-form/StrengthSets";
 import LiveWorkoutPanel from "./activity-form/LiveWorkoutPanel";
+import SessionCompleteStep from "./activity-form/SessionCompleteStep";
 import { leadExerciseName } from "@/lib/live-workout";
+import {
+  recapSessionFromPayload,
+  sessionRecap,
+  type Recap,
+} from "@/lib/session-recap";
 import ActivityEquipmentPicker from "./activity-form/ActivityEquipmentPicker";
 import ActivityFormHeader from "./activity-form/ActivityFormHeader";
 import DateTimeFields from "./activity-form/DateTimeFields";
@@ -349,10 +355,16 @@ export default function ActivityForm({
   // on every set check-off to auto-start the rest timer.
   const [liveMode, setLiveMode] = useState(live && !isEdit);
   const [restStartKey, setRestStartKey] = useState(0);
+  // The live-mode "Session complete" step (#924): Finish opens the recap step
+  // instead of collapsing straight to the plain form. It's the ONLY live-gated
+  // renderer — reachable only from the live panel's Finish, so retro/plain-form
+  // logging and edits never see it.
+  const [showRecap, setShowRecap] = useState(false);
   const liveLeadExercise = leadExerciseName(parts.map((p) => p.name));
   function finishWorkout() {
     if (!endTime) setEndTime(nowHHMM(tz));
     setLiveMode(false);
+    setShowRecap(false);
   }
   // All validation/auto-save gating (namedParts, canSave, the per-part fault,
   // the save-blocker message, canAddPart) is pure — computed from the parts +
@@ -555,6 +567,82 @@ export default function ActivityForm({
       ? String(autoEstimateKcal)
       : estCalories;
   const displayedCalories = Number(displayedEstCalories);
+
+  // The live-mode recap (#924): computed from the SAME form parts the user just
+  // logged, through the ONE pure sessionRecap (over the shipped ExerciseHistoryMap),
+  // so the finish step, the finished-window dashboard card, and the Telegram recap
+  // line can't disagree (#221). Duration previews start→now when the session hasn't
+  // been stamped ended yet — viewing the recap doesn't itself write an end time.
+  const stepRecap = useMemo<Recap>(() => {
+    // buildActivityPayload requires a savable form (non-empty named parts with
+    // resolved types) — it dereferences comps[0] — so gate on canSave. The recap
+    // step is only ever shown once a set is logged (canSave true); an empty draft
+    // yields an empty recap rather than throwing on every render.
+    if (!canSave) {
+      return {
+        title: effectiveTitle,
+        durationMin: null,
+        intensity: intensity || null,
+        exercises: [],
+        totalWorkingSets: 0,
+        totalVolumeKg: 0,
+        targetRollup: "none-targeted",
+        prExercises: [],
+        avgRpe: null,
+      };
+    }
+    const { flat } = buildActivityPayload(
+      classifier,
+      namedParts,
+      overallDuration
+    );
+    const previewEnd = endTime || (startTime ? nowHHMM(tz) : "");
+    const previewDur =
+      startTime && previewEnd ? minutesBetween(startTime, previewEnd) : null;
+    const durationMin =
+      overallDuration != null
+        ? Math.round(overallDuration)
+        : previewDur != null && previewDur > 0
+          ? Math.round(previewDur)
+          : null;
+    const session = recapSessionFromPayload(
+      flat,
+      {
+        title: effectiveTitle,
+        durationMin,
+        intensity: intensity || null,
+        bodyweightKg: bodyweightKg ?? 0,
+      },
+      units.weightUnit
+    );
+    return sessionRecap(session, history, {
+      currentActivityId: editData?.id ?? createdId,
+    });
+  }, [
+    classifier,
+    namedParts,
+    overallDuration,
+    startTime,
+    endTime,
+    tz,
+    effectiveTitle,
+    intensity,
+    bodyweightKg,
+    units.weightUnit,
+    history,
+    editData?.id,
+    createdId,
+    canSave,
+  ]);
+
+  // Save from the recap step: stamp the end time and leave live mode, collapsing to
+  // the plain editor for the now-finished session (the #340 finishWorkout landing).
+  // Auto-save persists the fields (end time + effort + notes); this is the explicit
+  // finalize the step promises — viewing the recap alone writes nothing.
+  function saveRecapStep() {
+    finishWorkout();
+  }
+
   const moreDetailsSummary = activityDisclosureSummary({
     metrics: editData?.imported_metrics,
     distanceUnit: units.distanceUnit,
@@ -1128,429 +1216,452 @@ export default function ActivityForm({
       onSubmit={(e) => e.preventDefault()}
       className="space-y-5"
     >
-      <ActivityFormHeader
-        headingType={headingType}
-        headingTitle={firstValid?.name}
-        effectiveTitle={effectiveTitle}
-        title={title}
-        date={date}
-        editData={editData}
-        pending={status === "saving"}
-        savedAt={savedAt}
-        saveError={status === "error"}
-        blocker={blocker}
-        overlay={stickyFooter}
-        onTitleChange={(value) => {
-          setTitle(value);
-          setTitleEdited(true);
-        }}
-        onClose={requestClose}
-      />
+      {showRecap ? (
+        <SessionCompleteStep
+          recap={stepRecap}
+          unit={units.weightUnit}
+          intensity={intensity}
+          onIntensity={setIntensity}
+          notes={notes}
+          onNotes={setNotes}
+          onBack={() => setShowRecap(false)}
+          onSave={saveRecapStep}
+        />
+      ) : (
+        <>
+          <ActivityFormHeader
+            headingType={headingType}
+            headingTitle={firstValid?.name}
+            effectiveTitle={effectiveTitle}
+            title={title}
+            date={date}
+            editData={editData}
+            pending={status === "saving"}
+            savedAt={savedAt}
+            saveError={status === "error"}
+            blocker={blocker}
+            overlay={stickyFooter}
+            onTitleChange={(value) => {
+              setTitle(value);
+              setTitleEdited(true);
+            }}
+            onClose={requestClose}
+          />
 
-      {/* Live workout mode (issue #340): the in-gym control strip pinned above
+          {/* Live workout mode (issue #340): the in-gym control strip pinned above
           the normal form — rest timer + Finish. The form below is unchanged, so
           Finish just collapses this back to the plain editor. */}
-      {liveMode && (
-        <LiveWorkoutPanel
-          leadExercise={liveLeadExercise}
-          restStartKey={restStartKey}
-          onFinish={finishWorkout}
-        />
-      )}
+          {liveMode && (
+            <LiveWorkoutPanel
+              leadExercise={liveLeadExercise}
+              restStartKey={restStartKey}
+              onFinish={() => setShowRecap(true)}
+            />
+          )}
 
-      {/* Activities — one or more parts, each chosen from the dropdown */}
-      <section aria-labelledby="workout-content-title">
-        <h3 id="workout-content-title" className="sr-only">
-          Workout
-        </h3>
-        <div>
-          {parts.map((p, pi) => {
-            const t = partType(p);
-            const valid = t !== null;
-            const muscle = t === "strength" ? muscleFor(p.name) : null;
-            // Hoist companions of the OTHER entered lifts to the top of this
-            // part's picker (issue #195); excludes this part's own name so it
-            // can't bias its own list. No-op until a lift is entered.
-            const selfBase = p.name.trim()
-              ? baseLiftName(p.name).trim().toLowerCase()
-              : "";
-            const biasedOptions = biasByCompanions(
-              equipmentRankedOptions,
-              enteredLiftBases.filter((n) => n !== selfBase),
-              suggestions.liftCompanions
-            );
-            // While a change is stuck on this part, the specific fields at fault
-            // are highlighted (in StrengthSets/CardioFields); the equipment fault
-            // also gets its inline hint below.
-            const issue = blocker ? partIssue(p) : null;
-            return (
-              <div
-                key={pi}
-                data-testid="activity-part"
-                className={`border-b border-black/5 py-3 first:pt-0 last:border-b-0 dark:border-white/5 ${
-                  stickyFooter ? "-mx-4 px-4 sm:-mx-6 sm:px-6" : "-mx-5 px-5"
-                }`}
-              >
-                <div className="sticky top-0 z-10 -mx-1 flex items-center gap-2 bg-white/95 px-1 py-1 backdrop-blur md:static md:mx-0 md:bg-transparent md:px-0 md:py-0 md:backdrop-blur-none dark:bg-ink-900/95 dark:md:bg-transparent">
-                  <div className="min-w-0 flex-1">
-                    <ActivityCombobox
-                      value={p.name}
-                      onChange={(v) => typePartName(pi, v)}
-                      onPick={(v) => pickPartName(pi, v)}
-                      allowFreeText
-                      // Composed variant names ("Dumbbell Curl") aren't in the
-                      // options list but pick as the known lift — don't promise
-                      // a new activity the pick won't create.
-                      freeTextLabel={(q) =>
-                        isKnown(q) ? (
-                          <>Use “{q}”</>
-                        ) : (
-                          <>Add “{q}” as new activity</>
-                        )
-                      }
-                      options={biasedOptions}
-                      placeholder={
-                        pi === 0
-                          ? "What did you do? e.g. Bench Press, Running, Tennis"
-                          : "Add another activity…"
-                      }
-                      autoFocus={pi === 0 && !isEdit}
-                      inputClassName="bg-white dark:bg-ink-900"
-                      // A committed custom part isn't "unrecognized" — its
-                      // pending type shows as amber chips, not a red border.
-                      invalid={p.name.trim() !== "" && !valid && !p.custom}
-                      badge={
-                        muscle ? (
-                          <span className="badge bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300">
-                            {muscle}
-                          </span>
-                        ) : undefined
-                      }
-                      badgeFor={(opt) => {
-                        const m = muscleFor(opt);
-                        return m ? (
-                          <span className="badge shrink-0 bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300">
-                            {m}
-                          </span>
-                        ) : null;
-                      }}
-                    />
-                  </div>
-                  {parts.length > 1 && (
-                    <>
-                      {/* Reorder legs (issue #337) — swim → bike → run without
+          {/* Activities — one or more parts, each chosen from the dropdown */}
+          <section aria-labelledby="workout-content-title">
+            <h3 id="workout-content-title" className="sr-only">
+              Workout
+            </h3>
+            <div>
+              {parts.map((p, pi) => {
+                const t = partType(p);
+                const valid = t !== null;
+                const muscle = t === "strength" ? muscleFor(p.name) : null;
+                // Hoist companions of the OTHER entered lifts to the top of this
+                // part's picker (issue #195); excludes this part's own name so it
+                // can't bias its own list. No-op until a lift is entered.
+                const selfBase = p.name.trim()
+                  ? baseLiftName(p.name).trim().toLowerCase()
+                  : "";
+                const biasedOptions = biasByCompanions(
+                  equipmentRankedOptions,
+                  enteredLiftBases.filter((n) => n !== selfBase),
+                  suggestions.liftCompanions
+                );
+                // While a change is stuck on this part, the specific fields at fault
+                // are highlighted (in StrengthSets/CardioFields); the equipment fault
+                // also gets its inline hint below.
+                const issue = blocker ? partIssue(p) : null;
+                return (
+                  <div
+                    key={pi}
+                    data-testid="activity-part"
+                    className={`border-b border-black/5 py-3 first:pt-0 last:border-b-0 dark:border-white/5 ${
+                      stickyFooter
+                        ? "-mx-4 px-4 sm:-mx-6 sm:px-6"
+                        : "-mx-5 px-5"
+                    }`}
+                  >
+                    <div className="sticky top-0 z-10 -mx-1 flex items-center gap-2 bg-white/95 px-1 py-1 backdrop-blur md:static md:mx-0 md:bg-transparent md:px-0 md:py-0 md:backdrop-blur-none dark:bg-ink-900/95 dark:md:bg-transparent">
+                      <div className="min-w-0 flex-1">
+                        <ActivityCombobox
+                          value={p.name}
+                          onChange={(v) => typePartName(pi, v)}
+                          onPick={(v) => pickPartName(pi, v)}
+                          allowFreeText
+                          // Composed variant names ("Dumbbell Curl") aren't in the
+                          // options list but pick as the known lift — don't promise
+                          // a new activity the pick won't create.
+                          freeTextLabel={(q) =>
+                            isKnown(q) ? (
+                              <>Use “{q}”</>
+                            ) : (
+                              <>Add “{q}” as new activity</>
+                            )
+                          }
+                          options={biasedOptions}
+                          placeholder={
+                            pi === 0
+                              ? "What did you do? e.g. Bench Press, Running, Tennis"
+                              : "Add another activity…"
+                          }
+                          autoFocus={pi === 0 && !isEdit}
+                          inputClassName="bg-white dark:bg-ink-900"
+                          // A committed custom part isn't "unrecognized" — its
+                          // pending type shows as amber chips, not a red border.
+                          invalid={p.name.trim() !== "" && !valid && !p.custom}
+                          badge={
+                            muscle ? (
+                              <span className="badge bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300">
+                                {muscle}
+                              </span>
+                            ) : undefined
+                          }
+                          badgeFor={(opt) => {
+                            const m = muscleFor(opt);
+                            return m ? (
+                              <span className="badge shrink-0 bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300">
+                                {m}
+                              </span>
+                            ) : null;
+                          }}
+                        />
+                      </div>
+                      {parts.length > 1 && (
+                        <>
+                          {/* Reorder legs (issue #337) — swim → bike → run without
                         deleting and re-adding. */}
-                      <button
-                        type="button"
-                        onClick={() => movePart(pi, -1)}
-                        disabled={pi === 0}
-                        className="flex h-8 w-7 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-brand-600 disabled:opacity-30 disabled:hover:bg-transparent dark:text-slate-400 dark:hover:bg-ink-800"
-                        aria-label="Move activity up"
-                      >
-                        <IconChevronUp className="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => movePart(pi, 1)}
-                        disabled={pi === parts.length - 1}
-                        className="flex h-8 w-7 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-brand-600 disabled:opacity-30 disabled:hover:bg-transparent dark:text-slate-400 dark:hover:bg-ink-800"
-                        aria-label="Move activity down"
-                      >
-                        <IconChevronDown className="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setParts((prev) => prev.filter((_, i) => i !== pi))
+                          <button
+                            type="button"
+                            onClick={() => movePart(pi, -1)}
+                            disabled={pi === 0}
+                            className="flex h-8 w-7 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-brand-600 disabled:opacity-30 disabled:hover:bg-transparent dark:text-slate-400 dark:hover:bg-ink-800"
+                            aria-label="Move activity up"
+                          >
+                            <IconChevronUp className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => movePart(pi, 1)}
+                            disabled={pi === parts.length - 1}
+                            className="flex h-8 w-7 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-brand-600 disabled:opacity-30 disabled:hover:bg-transparent dark:text-slate-400 dark:hover:bg-ink-800"
+                            aria-label="Move activity down"
+                          >
+                            <IconChevronDown className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setParts((prev) =>
+                                prev.filter((_, i) => i !== pi)
+                              )
+                            }
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-rose-400 hover:bg-rose-50 hover:text-rose-600 dark:text-rose-500/80 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                            aria-label="Remove activity"
+                          >
+                            <IconX className="h-4 w-4" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Chips sit outside the `valid` gates: a typeless custom part
+                  renders neither block, and the chips are what unblock it. */}
+                    {p.custom && p.name.trim() !== "" && (
+                      <CustomTypeChips
+                        activeType={t}
+                        fault={issue}
+                        onPick={(ct) =>
+                          updatePart(pi, { custom: true, customType: ct })
                         }
-                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-rose-400 hover:bg-rose-50 hover:text-rose-600 dark:text-rose-500/80 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
-                        aria-label="Remove activity"
-                      >
-                        <IconX className="h-4 w-4" />
-                      </button>
+                      />
+                    )}
+                    {valid && t === "strength" && (
+                      <StrengthSets
+                        part={p}
+                        fault={issue}
+                        units={units}
+                        isEdit={isEdit}
+                        history={history}
+                        deloadContext={deloadContext}
+                        plateauHints={plateauHints}
+                        currentActivityId={editData?.id ?? createdId}
+                        editedDate={editData?.date ?? null}
+                        equipmentList={equipmentList}
+                        showBodyweightPrompt={!bwKnown && pi === firstBwPart}
+                        bwInput={bwInput}
+                        bwSaving={bwSaving}
+                        onBwInput={setBwInput}
+                        onSaveBodyweight={saveBodyweight}
+                        onUpdatePart={(patch) => updatePart(pi, patch)}
+                        onUpdateSet={(si, patch) => updateSet(pi, si, patch)}
+                        onAddSet={() => addSet(pi)}
+                        onRemoveSet={(si) => removeSet(pi, si)}
+                        onUpdatePartName={(name, extra) =>
+                          updatePartName(pi, name, extra)
+                        }
+                        onApplySuggestion={(ns) => applySuggestion(pi, ns)}
+                        onApplyPerSideSuggestion={(left, right) =>
+                          applyPerSideSuggestion(pi, left, right)
+                        }
+                        onFillFromSession={(sessionSets) =>
+                          fillFromSession(pi, sessionSets)
+                        }
+                        onPlateFromSuggestion={(weightKg) =>
+                          plateFromSuggestion(pi, weightKg)
+                        }
+                        onPlateTarget={(si, field) =>
+                          setPlateTarget({ pi, si, field })
+                        }
+                      />
+                    )}
+                    {valid && t !== "strength" && (
+                      <CardioFields
+                        part={p}
+                        showDist={partNeedsDistance(p)}
+                        distanceUnit={units.distanceUnit}
+                        overallDuration={overallDuration}
+                        fault={issue}
+                        onDistance={(v) => updatePart(pi, { distance: v })}
+                        onDurationMin={(v) =>
+                          updatePart(pi, { durationMin: v })
+                        }
+                      />
+                    )}
+                    {issue === "type" && (
+                      <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-400">
+                        Choose cardio or sport to save. Strength exercises must
+                        be picked from the list.
+                      </p>
+                    )}
+                    {issue === "equipment" && (
+                      <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-400">
+                        Choose equipment to save this activity.
+                      </p>
+                    )}
+                    {issue === "name" && (
+                      <p className="mt-2 text-xs font-medium text-rose-600 dark:text-rose-400">
+                        Pick a matching activity, or add this name as a new
+                        activity.
+                      </p>
+                    )}
+                    {issue === "set" && (
+                      <p className="mt-2 text-xs font-medium text-rose-600 dark:text-rose-400">
+                        Finish or clear the highlighted set.
+                      </p>
+                    )}
+                    {issue === "content" && (
+                      <p className="mt-2 text-xs font-medium text-rose-600 dark:text-rose-400">
+                        {t === "strength"
+                          ? "Enter a complete set to save this exercise."
+                          : "Enter a distance, duration, or session time range."}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setParts((prev) => [...prev, blankPart()])}
+                disabled={!canAddPart}
+                title={
+                  canAddPart
+                    ? "Add another activity"
+                    : "Complete the current activity first"
+                }
+                className="btn-ghost disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                + Add activity
+              </button>
+              {/* Live multisport roll-up (issue #337): Σ distance / Σ duration across
+            the legs while editing, matching the save-time fold. */}
+              {showRollup && (
+                <span
+                  data-testid="multisport-rollup"
+                  className="text-xs font-medium text-slate-500 dark:text-slate-400"
+                >
+                  Total:
+                  {rollup.distanceKm != null && (
+                    <>
+                      {" "}
+                      {round(rollup.distanceKm, 2)} {units.distanceUnit}
                     </>
                   )}
-                </div>
+                  {rollup.distanceKm != null &&
+                    rollup.durationMin != null &&
+                    " ·"}
+                  {rollup.durationMin != null && <> {rollup.durationMin} min</>}
+                </span>
+              )}
+            </div>
+          </section>
 
-                {/* Chips sit outside the `valid` gates: a typeless custom part
-                  renders neither block, and the chips are what unblock it. */}
-                {p.custom && p.name.trim() !== "" && (
-                  <CustomTypeChips
-                    activeType={t}
-                    fault={issue}
-                    onPick={(ct) =>
-                      updatePart(pi, { custom: true, customType: ct })
-                    }
+          <section
+            data-testid="session-details"
+            aria-labelledby="session-details-title"
+            className="py-1"
+          >
+            <h3 id="session-details-title" className="sr-only">
+              Session details
+            </h3>
+            <DateTimeFields
+              date={date}
+              startTime={startTime}
+              endTime={endTime}
+              tz={tz}
+              timeError={timeError}
+              dateError={dateError}
+              showSessionDuration={hasStrengthPart}
+              sessionDuration={
+                overallDuration != null
+                  ? String(Math.round(overallDuration))
+                  : sessionDuration
+              }
+              durationDerived={overallDuration != null}
+              durationError={durationError}
+              derivableDurationMin={derivableDurationMin}
+              onDate={setDate}
+              onStartTime={setStartTime}
+              onEndTime={setEndTime}
+              onSessionDuration={setSessionDuration}
+            />
+            <div
+              className={`mt-3 grid gap-x-4 gap-y-2 ${sessionEquipmentType != null ? "sm:grid-cols-2" : ""}`}
+            >
+              <IntensityPicker
+                intensity={intensity}
+                compact
+                onChange={setIntensity}
+              />
+
+              {/* Session-level equipment (issue #342): the gear the whole non-strength
+              activity used — a ride's bike, a run's shoes. */}
+              {sessionEquipmentType != null && (
+                <ActivityEquipmentPicker
+                  activityType={sessionEquipmentType}
+                  activityName={sessionEquipmentName}
+                  equipment={equipmentList}
+                  value={activityEquipmentId}
+                  compact
+                  onChange={(id) => {
+                    equipmentTouchedRef.current = true;
+                    setActivityEquipmentId(id);
+                  }}
+                />
+              )}
+            </div>
+          </section>
+
+          <section data-testid="activity-more-details">
+            <button
+              type="button"
+              aria-expanded={moreDetailsOpen}
+              onClick={() => setMoreDetailsOpen((open) => !open)}
+              className="group flex w-full items-center justify-between gap-3 rounded-lg py-1.5 text-left text-slate-500 transition hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+            >
+              <span className="min-w-0">
+                <span className="label mb-0">More details</span>
+                <span
+                  data-testid="more-details-summary"
+                  className="block truncate text-xs text-slate-500 dark:text-slate-400"
+                >
+                  {moreDetailsSummary.length > 0
+                    ? moreDetailsSummary.join(" · ")
+                    : "Notes and optional supporting data"}
+                </span>
+              </span>
+              <IconChevronRight
+                data-testid="more-details-chevron"
+                className={`h-4 w-4 shrink-0 text-slate-400 transition-[color,filter,transform] group-hover:text-brand-500 group-hover:[filter:drop-shadow(0_0_3px_currentColor)] ${moreDetailsOpen ? "rotate-90" : ""}`}
+              />
+            </button>
+            {moreDetailsOpen && (
+              <div className="mt-3 space-y-5">
+                <NotesField notes={notes} onNotesChange={setNotes} />
+
+                {/* Estimated calories are manual-only. Imported active energy is
+                read-only inside ImportedActivityDetails below. */}
+                {showEstimate && (
+                  <EstimatedCalories
+                    value={displayedEstCalories}
+                    edited={estEdited}
+                    autoEstimateKcal={autoEstimateKcal}
+                    onChange={(v) => {
+                      setEstCalories(v);
+                      setEstEdited(true);
+                    }}
+                    onReset={() => {
+                      setEstEdited(false);
+                      setEstCalories(String(autoEstimateKcal));
+                    }}
                   />
                 )}
-                {valid && t === "strength" && (
-                  <StrengthSets
-                    part={p}
-                    fault={issue}
-                    units={units}
-                    isEdit={isEdit}
-                    history={history}
-                    deloadContext={deloadContext}
-                    plateauHints={plateauHints}
-                    currentActivityId={editData?.id ?? createdId}
-                    editedDate={editData?.date ?? null}
-                    equipmentList={equipmentList}
-                    showBodyweightPrompt={!bwKnown && pi === firstBwPart}
-                    bwInput={bwInput}
-                    bwSaving={bwSaving}
-                    onBwInput={setBwInput}
-                    onSaveBodyweight={saveBodyweight}
-                    onUpdatePart={(patch) => updatePart(pi, patch)}
-                    onUpdateSet={(si, patch) => updateSet(pi, si, patch)}
-                    onAddSet={() => addSet(pi)}
-                    onRemoveSet={(si) => removeSet(pi, si)}
-                    onUpdatePartName={(name, extra) =>
-                      updatePartName(pi, name, extra)
-                    }
-                    onApplySuggestion={(ns) => applySuggestion(pi, ns)}
-                    onApplyPerSideSuggestion={(left, right) =>
-                      applyPerSideSuggestion(pi, left, right)
-                    }
-                    onFillFromSession={(sessionSets) =>
-                      fillFromSession(pi, sessionSets)
-                    }
-                    onPlateFromSuggestion={(weightKg) =>
-                      plateFromSuggestion(pi, weightKg)
-                    }
-                    onPlateTarget={(si, field) =>
-                      setPlateTarget({ pi, si, field })
-                    }
-                  />
-                )}
-                {valid && t !== "strength" && (
-                  <CardioFields
-                    part={p}
-                    showDist={partNeedsDistance(p)}
-                    distanceUnit={units.distanceUnit}
-                    overallDuration={overallDuration}
-                    fault={issue}
-                    onDistance={(v) => updatePart(pi, { distance: v })}
-                    onDurationMin={(v) => updatePart(pi, { durationMin: v })}
-                  />
-                )}
-                {issue === "type" && (
-                  <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-400">
-                    Choose cardio or sport to save. Strength exercises must be
-                    picked from the list.
-                  </p>
-                )}
-                {issue === "equipment" && (
-                  <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-400">
-                    Choose equipment to save this activity.
-                  </p>
-                )}
-                {issue === "name" && (
-                  <p className="mt-2 text-xs font-medium text-rose-600 dark:text-rose-400">
-                    Pick a matching activity, or add this name as a new
-                    activity.
-                  </p>
-                )}
-                {issue === "set" && (
-                  <p className="mt-2 text-xs font-medium text-rose-600 dark:text-rose-400">
-                    Finish or clear the highlighted set.
-                  </p>
-                )}
-                {issue === "content" && (
-                  <p className="mt-2 text-xs font-medium text-rose-600 dark:text-rose-400">
-                    {t === "strength"
-                      ? "Enter a complete set to save this exercise."
-                      : "Enter a distance, duration, or session time range."}
-                  </p>
+
+                <ImportedActivityDetails
+                  activity={editData}
+                  distanceUnit={units.distanceUnit}
+                />
+
+                {editData?.route_polyline && (
+                  <section
+                    data-testid="activity-form-route"
+                    aria-labelledby="activity-form-route-title"
+                  >
+                    <h3 id="activity-form-route-title" className="label mb-2">
+                      Route
+                    </h3>
+                    <RouteMap
+                      polyline={editData.route_polyline}
+                      width={480}
+                      height={96}
+                      className="h-auto w-full rounded-lg border border-black/10 bg-slate-50 text-brand-600 dark:border-white/10 dark:bg-ink-900 dark:text-brand-400"
+                    />
+                  </section>
                 )}
               </div>
-            );
-          })}
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={() => setParts((prev) => [...prev, blankPart()])}
-            disabled={!canAddPart}
-            title={
-              canAddPart
-                ? "Add another activity"
-                : "Complete the current activity first"
-            }
-            className="btn-ghost disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            + Add activity
-          </button>
-          {/* Live multisport roll-up (issue #337): Σ distance / Σ duration across
-            the legs while editing, matching the save-time fold. */}
-          {showRollup && (
-            <span
-              data-testid="multisport-rollup"
-              className="text-xs font-medium text-slate-500 dark:text-slate-400"
-            >
-              Total:
-              {rollup.distanceKm != null && (
-                <>
-                  {" "}
-                  {round(rollup.distanceKm, 2)} {units.distanceUnit}
-                </>
-              )}
-              {rollup.distanceKm != null && rollup.durationMin != null && " ·"}
-              {rollup.durationMin != null && <> {rollup.durationMin} min</>}
-            </span>
-          )}
-        </div>
-      </section>
-
-      <section
-        data-testid="session-details"
-        aria-labelledby="session-details-title"
-        className="py-1"
-      >
-        <h3 id="session-details-title" className="sr-only">
-          Session details
-        </h3>
-        <DateTimeFields
-          date={date}
-          startTime={startTime}
-          endTime={endTime}
-          tz={tz}
-          timeError={timeError}
-          dateError={dateError}
-          showSessionDuration={hasStrengthPart}
-          sessionDuration={
-            overallDuration != null
-              ? String(Math.round(overallDuration))
-              : sessionDuration
-          }
-          durationDerived={overallDuration != null}
-          durationError={durationError}
-          derivableDurationMin={derivableDurationMin}
-          onDate={setDate}
-          onStartTime={setStartTime}
-          onEndTime={setEndTime}
-          onSessionDuration={setSessionDuration}
-        />
-        <div
-          className={`mt-3 grid gap-x-4 gap-y-2 ${sessionEquipmentType != null ? "sm:grid-cols-2" : ""}`}
-        >
-          <IntensityPicker
-            intensity={intensity}
-            compact
-            onChange={setIntensity}
-          />
-
-          {/* Session-level equipment (issue #342): the gear the whole non-strength
-              activity used — a ride's bike, a run's shoes. */}
-          {sessionEquipmentType != null && (
-            <ActivityEquipmentPicker
-              activityType={sessionEquipmentType}
-              activityName={sessionEquipmentName}
-              equipment={equipmentList}
-              value={activityEquipmentId}
-              compact
-              onChange={(id) => {
-                equipmentTouchedRef.current = true;
-                setActivityEquipmentId(id);
-              }}
-            />
-          )}
-        </div>
-      </section>
-
-      <section data-testid="activity-more-details">
-        <button
-          type="button"
-          aria-expanded={moreDetailsOpen}
-          onClick={() => setMoreDetailsOpen((open) => !open)}
-          className="group flex w-full items-center justify-between gap-3 rounded-lg py-1.5 text-left text-slate-500 transition hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-        >
-          <span className="min-w-0">
-            <span className="label mb-0">More details</span>
-            <span
-              data-testid="more-details-summary"
-              className="block truncate text-xs text-slate-500 dark:text-slate-400"
-            >
-              {moreDetailsSummary.length > 0
-                ? moreDetailsSummary.join(" · ")
-                : "Notes and optional supporting data"}
-            </span>
-          </span>
-          <IconChevronRight
-            data-testid="more-details-chevron"
-            className={`h-4 w-4 shrink-0 text-slate-400 transition-[color,filter,transform] group-hover:text-brand-500 group-hover:[filter:drop-shadow(0_0_3px_currentColor)] ${moreDetailsOpen ? "rotate-90" : ""}`}
-          />
-        </button>
-        {moreDetailsOpen && (
-          <div className="mt-3 space-y-5">
-            <NotesField notes={notes} onNotesChange={setNotes} />
-
-            {/* Estimated calories are manual-only. Imported active energy is
-                read-only inside ImportedActivityDetails below. */}
-            {showEstimate && (
-              <EstimatedCalories
-                value={displayedEstCalories}
-                edited={estEdited}
-                autoEstimateKcal={autoEstimateKcal}
-                onChange={(v) => {
-                  setEstCalories(v);
-                  setEstEdited(true);
-                }}
-                onReset={() => {
-                  setEstEdited(false);
-                  setEstCalories(String(autoEstimateKcal));
-                }}
-              />
             )}
+          </section>
 
-            <ImportedActivityDetails
-              activity={editData}
-              distanceUnit={units.distanceUnit}
-            />
-
-            {editData?.route_polyline && (
-              <section
-                data-testid="activity-form-route"
-                aria-labelledby="activity-form-route-title"
-              >
-                <h3 id="activity-form-route-title" className="label mb-2">
-                  Route
-                </h3>
-                <RouteMap
-                  polyline={editData.route_polyline}
-                  width={480}
-                  height={96}
-                  className="h-auto w-full rounded-lg border border-black/10 bg-slate-50 text-brand-600 dark:border-white/10 dark:bg-ink-900 dark:text-brand-400"
-                />
-              </section>
-            )}
-          </div>
-        )}
-      </section>
-
-      {/* Auto-save is paused: spell out what to fix (the offending fields are
+          {/* Auto-save is paused: spell out what to fix (the offending fields are
           also highlighted above). There's no Save button to lean on — the form
           always auto-saves. */}
-      {blocker && (
-        <p
-          className="-mt-2 flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400"
-          role="status"
-        >
-          <IconAlertTriangle className="h-4 w-4 shrink-0" />
-          <span>Not saved — {blocker}</span>
-        </p>
-      )}
+          {blocker && (
+            <p
+              className="-mt-2 flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400"
+              role="status"
+            >
+              <IconAlertTriangle className="h-4 w-4 shrink-0" />
+              <span>Not saved — {blocker}</span>
+            </p>
+          )}
 
-      <ActivityFormFooter
-        stickyFooter={stickyFooter}
-        hasRow={hasRow}
-        saving={saving}
-        pending={status === "saving"}
-        error={status === "error"}
-        savedAt={savedAt}
-        onDelete={remove}
-        onDone={requestClose}
-      />
+          <ActivityFormFooter
+            stickyFooter={stickyFooter}
+            hasRow={hasRow}
+            saving={saving}
+            pending={status === "saving"}
+            error={status === "error"}
+            savedAt={savedAt}
+            onDelete={remove}
+            onDone={requestClose}
+          />
+        </>
+      )}
 
       {plateTarget && (
         <PlateBuilderModal

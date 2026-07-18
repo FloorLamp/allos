@@ -9,6 +9,8 @@ import {
   foodLogAnswerText,
   foodOptInAnswerText,
   foodOptInCloseText,
+  foodStaleDateAnswerText,
+  foodTapDateGuard,
 } from "@/lib/notifications/callback-data";
 
 describe("parseFoodLogCallback", () => {
@@ -63,6 +65,45 @@ describe("foodLogAnswerText", () => {
     const t = foodLogAnswerText({ kind: "unknown-group" }, "gone");
     expect(t).not.toContain("Logged ✅");
     expect(t).toContain("out of date");
+  });
+});
+
+describe("foodTapDateGuard (cross-date guard, #947)", () => {
+  it("current-day when the token date equals today", () => {
+    expect(foodTapDateGuard("2026-07-18", "2026-07-18")).toEqual({
+      kind: "current-day",
+    });
+  });
+
+  it("stale-date when the token date is yesterday", () => {
+    expect(foodTapDateGuard("2026-07-17", "2026-07-18")).toEqual({
+      kind: "stale-date",
+    });
+  });
+
+  it("stale-date when the token date is a future day (clock skew / forged)", () => {
+    expect(foodTapDateGuard("2026-07-19", "2026-07-18").kind).toBe(
+      "stale-date"
+    );
+  });
+
+  it("pins the tz-midnight boundary: 23:59 vs 00:01 around the profile's midnight", () => {
+    // A 23:59 tap on the previous day's nudge resolves 'today' still = the old day,
+    // so a same-day tap keeps logging; one minute later 'today' has rolled over and
+    // the same stale nudge is refused. The pure guard sees only the two date strings
+    // the handler already resolved from the profile's tz — that's the whole seam.
+    expect(foodTapDateGuard("2026-07-17", "2026-07-17").kind).toBe(
+      "current-day"
+    );
+    expect(foodTapDateGuard("2026-07-17", "2026-07-18").kind).toBe(
+      "stale-date"
+    );
+  });
+
+  it("stale answer names the date and never falsely confirms", () => {
+    const t = foodStaleDateAnswerText("2026-07-17");
+    expect(t).toContain("2026-07-17");
+    expect(t).not.toContain("Logged ✅");
   });
 });
 

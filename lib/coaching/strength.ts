@@ -503,6 +503,29 @@ export function deloadFormSuggestion(
   return deloadAdjust({ exercise, sets: 0, nextSet: base }).nextSet;
 }
 
+// The recovering-injury tempered next-set (#838): a region returning from a RECOVERING
+// injury backs its load off to RECOVERING_LOAD_FACTOR of the ordinary next-set target — a
+// documented, conservative heuristic, a SUGGESTION never a lockout (the user can always
+// log anything). Mirrors deloadNextSet: bodyweight/loadless/cold-start next-sets keep their
+// reps (no load to shave); load is rounded to the exercise's own increment so it stays
+// plate-loadable. ONE pure function so every surface (Training-overview card, dashboard,
+// Telegram nudge) shares the same math and can't drift (#221).
+export function temperRecoveringNextSet(
+  ns: NextSet | null,
+  exercise: string,
+  factor: number
+): NextSet | null {
+  if (!ns || ns.bodyweight || ns.weightKg <= 0) return ns;
+  const inc = weightIncrementKg(exercise);
+  const raw = ns.weightKg * factor;
+  const weightKg = Math.max(inc, Math.round(raw / inc) * inc);
+  return {
+    ...ns,
+    weightKg,
+    rationale: "Easing back from injury — lighter while the region recovers",
+  };
+}
+
 function deloadNextSet(exercise: string, ns: NextSet | null): NextSet | null {
   if (!ns || ns.bodyweight || ns.weightKg <= 0) return ns;
   const inc = weightIncrementKg(exercise);

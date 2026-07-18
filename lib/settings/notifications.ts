@@ -6,6 +6,11 @@ import {
   serializeDisabledKinds,
 } from "../notifications/home-assistant-core";
 import {
+  parseFoodNudgePointer,
+  serializeFoodNudgePointer,
+  type FoodNudgePointer,
+} from "../notifications/food-nudge-pointer";
+import {
   getSetting,
   setSetting,
   getProfileSetting,
@@ -82,6 +87,30 @@ export function getFoodTelegramPrompted(profileId: number): boolean {
 
 export function setFoodTelegramPrompted(profileId: number): void {
   setProfileSetting(profileId, "food_telegram_prompted", "1");
+}
+
+// The pointer to the LAST food nudge this profile was sent over Telegram (#947), so
+// the NEXT send can close that message's stale keyboard. One pointer per profile,
+// overwritten on every send — id-keyed, no cleanup class (#203): profile deletion
+// wipes the profile_settings row and ids never recycle. A malformed/absent value
+// parses to null (the send just skips the previous-strip that tick).
+export function getFoodNudgePointer(
+  profileId: number
+): FoodNudgePointer | null {
+  return parseFoodNudgePointer(
+    getProfileSetting(profileId, "food_nudge_last_message")
+  );
+}
+
+export function setFoodNudgePointer(
+  profileId: number,
+  pointer: FoodNudgePointer
+): void {
+  setProfileSetting(
+    profileId,
+    "food_nudge_last_message",
+    serializeFoodNudgePointer(pointer)
+  );
 }
 
 // Resolve every profile a Telegram chat id belongs to. A single chat (e.g. a

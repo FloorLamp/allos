@@ -47,7 +47,13 @@
 // and never reorder the recommendation core's exercise ranking.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { muscleLabel, MUSCLE_IDS, type MuscleId } from "./lifts";
+import {
+  muscleLabel,
+  muscleRegion,
+  MUSCLE_IDS,
+  type MuscleId,
+  type MuscleRegion,
+} from "./lifts";
 import { startOfWeekStr } from "./date";
 import { SECONDARY_CREDIT } from "./muscle-coverage";
 
@@ -272,15 +278,26 @@ export interface VolumeBandObservation {
  */
 export function detectVolumeShortfalls(
   inputs: readonly MuscleVolumeInput[],
-  opts: { historyWeeks: number; deloadActive: boolean; monthAnchor: string }
+  opts: {
+    historyWeeks: number;
+    deloadActive: boolean;
+    monthAnchor: string;
+    // Coarse regions EXCLUDED by an ACTIVE injury (#838): a "behind on chest" volume
+    // shortfall is noise while the region is out, so a muscle rolling up to an excluded
+    // region emits NO finding. Absent / empty ⇒ no exclusion (the prior behavior).
+    excludedRegions?: ReadonlySet<MuscleRegion>;
+  }
 ): VolumeBandObservation[] {
   // Cold start: an unanswered question is not a negative answer.
   if (opts.historyWeeks < MIN_BAND_HISTORY_WEEKS) return [];
   // Deload week (guarded): the shortfall is expected, hold the finding.
   if (opts.deloadActive) return [];
 
+  const excluded = opts.excludedRegions;
   const out: { obs: VolumeBandObservation; gap: number }[] = [];
   for (const { muscle, sets } of inputs) {
+    // Active-injury exclusion (#838): hold the shortfall finding for an off-limits region.
+    if (excluded && excluded.has(muscleRegion(muscle))) continue;
     if (bandVerdict(muscle, sets) !== "below") continue;
     const { low } = VOLUME_BANDS[muscle];
     const label = muscleLabel(muscle);

@@ -29,6 +29,14 @@ import {
   deRankUnavailableLifts,
   type EquipmentAvailability,
 } from "./equipment-availability";
+import {
+  excludedRegions as computeExcludedRegions,
+  temperedRegions as computeTemperedRegions,
+  excludedRegionDisclosures,
+  type InjuryConstraint,
+  type ExcludedRegionDisclosure,
+} from "./injury-model";
+import type { ConditionConsideration } from "./condition-training-considerations";
 import type {
   StrengthRecent,
   CardioRecent,
@@ -119,6 +127,19 @@ export interface NextWorkoutInput {
   // RoutineSession so the recommendation formatters phrase the deload and apply
   // deloadAdjust. Absent / false ⇒ byte-for-byte the non-deload behavior.
   deloadWeek?: boolean;
+  // User-declared injury constraints (#838), NON-resolved only. ACTIVE injury regions
+  // are EXCLUDED from the focus/exercise suggestion and the behind-target (routine-gap)
+  // set — always DISCLOSED via `excludedRegions` below, never silent. RECOVERING regions
+  // return but are TEMPERED (surfaces back off the target via RECOVERING_LOAD_FACTOR).
+  // The exclusion is the user's own constraint (equipment-availability class of #666's
+  // taxonomy), so re-ranking IS permitted here. Absent / empty ⇒ no exclusion.
+  injuries?: InjuryConstraint[];
+  // Curated condition→training CONSIDERATION notes (#666) for the profile's ACTIVE mapped
+  // conditions. These ride ALONGSIDE the unchanged recommendation — they NEVER gate or
+  // re-rank (medical judgment stays with the clinician). Passed straight through to
+  // `considerations` on the result so every surface renders the same calm note. Absent /
+  // empty ⇒ nothing.
+  considerations?: ConditionConsideration[];
 }
 
 // The slice of the active routine the core reads to resolve today's session — a
@@ -222,6 +243,22 @@ export interface NextWorkout {
   // otherwise. When set, `focus`/`exercises`/`primary` above are DERIVED from this
   // session, so every surface renders the routine day by construction.
   session: RoutineSession | null;
+  // Regions EXCLUDED from this recommendation by an ACTIVE injury (#838), each with the
+  // responsible injury labels — so the exclusion is NEVER silent ("avoiding Chest (right
+  // shoulder injury)"). Empty when no active injury. Every surface renders this
+  // disclosure alongside the (unchanged in shape) suggestion.
+  excludedRegions: ExcludedRegionDisclosure[];
+  // Regions returning at TEMPERED targets because a RECOVERING injury covers them (#838).
+  // A surface backs off the next-set target (RECOVERING_LOAD_FACTOR) and phrases "easing
+  // back". Empty when no recovering injury.
+  temperedRegions: MuscleRegion[];
+  // Whether today's routine day's focus is ENTIRELY within excluded regions (#838): the
+  // day can't be trained around the injury, so a surface offers a SUBSTITUTION day rather
+  // than marking it missed. Always false when there's no routine session.
+  substitutionSuggested: boolean;
+  // Curated condition CONSIDERATION notes (#666) riding alongside — informational, never
+  // gating. Pass-through of the input; empty when no mapped active condition.
+  considerations: ConditionConsideration[];
 }
 
 // ---- Target helpers ----
@@ -260,6 +297,18 @@ function regionsForTarget(t: RoutineTargetProgress): MuscleRegion[] {
   if (t.target.scope_kind === "group")
     return regionsForGroup(t.target.scope_value as BodyGroup);
   return [];
+}
+
+// Whether a behind weekly target is ENTIRELY within active-injury-excluded regions (#838)
+// — a region/group target whose every region is off the table. Such a "behind on chest"
+// nag is noise while the region is out, so it's dropped from the behind set. A TYPE target
+// (cardio/strength) maps to no region and is never excluded here.
+function targetFullyExcluded(
+  t: RoutineTargetProgress,
+  excluded: Set<MuscleRegion>
+): boolean {
+  const regions = regionsForTarget(t);
+  return regions.length > 0 && regions.every((r) => excluded.has(r));
 }
 
 // The candidate regions a strength suggestion may draw from, given the behind
@@ -316,7 +365,8 @@ function latestTrainingDate(
 //     per-exercise stats still get a stable pick.
 function computeStrengthWorkout(
   input: NextWorkoutInput,
-  scopeTarget: RoutineTargetProgress | null
+  scopeTarget: RoutineTargetProgress | null,
+  excluded: Set<MuscleRegion>
 ): {
   focus: MuscleRegion[];
   exercises: string[];
@@ -325,17 +375,24 @@ function computeStrengthWorkout(
   const { today, strength, routine } = input;
   const candidate = candidateRegions(scopeTarget);
 
-  // Regions the routine is behind on, for focus ordering (behind ∩ usual first).
+  // Regions the routine is behind on, for focus ordering (behind ∩ usual first) — an
+  // ACTIVE-injury-excluded region is dropped so a "behind on chest" nag can't pull the
+  // focus onto an off-limits region (#838).
   const behindRegions: MuscleRegion[] = [];
   for (const t of routine)
-    if (!t.met) for (const r of regionsForTarget(t)) behindRegions.push(r);
+    if (!t.met)
+      for (const r of regionsForTarget(t))
+        if (!excluded.has(r)) behindRegions.push(r);
 
   const dated = (input.datedExercises ?? []).filter((r) =>
     within(r.date, today, WORKOUT_LOOKBACK_DAYS)
   );
 
   if (dated.length > 0) {
-    const inScope = (r: MuscleRegion) => candidate == null || candidate.has(r);
+    // In scope AND not excluded by an active injury (#838) — the exclusion is the user's
+    // own constraint, so it re-ranks the focus (unlike a condition, which never gates).
+    const inScope = (r: MuscleRegion) =>
+      (candidate == null || candidate.has(r)) && !excluded.has(r);
     const focusRegions = focusFromHistory(dated, today, behindRegions, inScope);
     const exercises = rankExercises(dated, focusRegions);
     return withEquipmentPreference(focusRegions, exercises, input);
@@ -347,6 +404,7 @@ function computeStrengthWorkout(
     .filter((s) => within(s.lastDate, today, VARIETY_LOOKBACK_DAYS))
     .filter((s) => {
       const r = regionForExercise(s.exercise);
+      if (r != null && excluded.has(r)) return false; // injury-excluded region (#838)
       return candidate == null ? true : r != null && candidate.has(r);
     })
     .sort((a, b) =>
@@ -615,7 +673,23 @@ export function sessionCreditsDay(
 export function recommendNextWorkout(input: NextWorkoutInput): NextWorkout {
   const { routine, strength, cardio, today } = input;
 
-  const behind = routine.filter((t) => !t.met);
+  // Injury context (#838): the user's declared constraints shape the suggestion — active
+  // regions excluded (disclosed), recovering regions tempered — while condition notes
+  // (#666) ride ALONGSIDE unchanged. Computed once so every branch's result agrees.
+  const constraints = input.injuries ?? [];
+  const excluded = computeExcludedRegions(constraints);
+  const trainingContext = {
+    excludedRegions: excludedRegionDisclosures(constraints),
+    temperedRegions: [...computeTemperedRegions(constraints)],
+    considerations: input.considerations ?? [],
+  };
+
+  // A behind region/group target fully within an excluded region is dropped from the
+  // nag/behind set (the routine-gap exclusion); type targets and partially-trainable
+  // targets stay.
+  const behind = routine
+    .filter((t) => !t.met)
+    .filter((t) => !targetFullyExcluded(t, excluded));
   const behindTargets = behind.map(toBehindTarget);
 
   // Scope the shared strength suggestion to the most-overdue behind strength
@@ -651,6 +725,13 @@ export function recommendNextWorkout(input: NextWorkoutInput): NextWorkout {
               activity: null,
               target: null,
             };
+      // A strength day whose focus is ENTIRELY excluded by an active injury can't be
+      // trained around it — a surface offers a SUBSTITUTION day instead of marking it
+      // missed (#838). Disclosed via excludedRegions; the authored slate itself is kept.
+      const substitutionSuggested =
+        session.kind === "strength" &&
+        session.focus.length > 0 &&
+        session.focus.every((r) => excluded.has(r));
       return {
         items: [item],
         focus: session.focus,
@@ -658,6 +739,8 @@ export function recommendNextWorkout(input: NextWorkoutInput): NextWorkout {
         primary: lead,
         behind: behindTargets,
         session,
+        substitutionSuggested,
+        ...trainingContext,
       };
     }
     // An active routine with no days can't resolve a session — fall through to the
@@ -666,7 +749,8 @@ export function recommendNextWorkout(input: NextWorkoutInput): NextWorkout {
 
   const { focus, exercises, primary } = computeStrengthWorkout(
     input,
-    behindStrength ?? null
+    behindStrength ?? null,
+    excluded
   );
 
   const base = {
@@ -675,6 +759,8 @@ export function recommendNextWorkout(input: NextWorkoutInput): NextWorkout {
     primary,
     behind: behindTargets,
     session: null,
+    substitutionSuggested: false,
+    ...trainingContext,
   };
   const items: NextWorkoutItem[] = [];
 

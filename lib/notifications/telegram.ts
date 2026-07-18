@@ -20,14 +20,18 @@
 // CI if any module other than this one imports the guarded primitives.
 
 import {
+  getFoodNudgePointer,
   getProfileTelegram,
   getProfileTelegramDisabledKinds,
   getTelegramBotConfig,
+  setFoodNudgePointer,
 } from "../settings";
+import { createLogger } from "../log";
 import type { NotificationChannel, NotificationMessage } from "./types";
 import { prefixMessage } from "./types";
 import { prefixForProfile } from "./attribution";
 import { isKindEnabled } from "./home-assistant-core";
+import { foodNudgePointerFromMessage } from "./food-nudge-pointer";
 import {
   editMessageReplyMarkupRaw,
   editMessageTextRaw,
@@ -36,6 +40,8 @@ import {
   sendMessageRaw,
   type InlineKeyboard,
 } from "./telegram-api";
+
+const log = createLogger("telegram");
 
 // Re-export the unguarded transport + inbound helpers + render/types so existing
 // import paths (`from "./telegram"`) keep working; only the guarded send/edit
@@ -70,9 +76,61 @@ export const telegramChannel: NotificationChannel = {
     if (!isKindEnabled(msg.kind, getProfileTelegramDisabledKinds(profileId)))
       return;
     const { telegramChatId } = getProfileTelegram(profileId);
-    await sendMessageRaw(telegramChatId, msg);
+    const messageId = await sendMessageRaw(telegramChatId, msg);
+    // A food nudge closes the PREVIOUS food nudge's still-live keyboard (#947): each
+    // slot sends a fresh message with live serving buttons, and a stale keyboard from
+    // a previous day would silently log to the WRONG date on tap. Done HERE, in the
+    // chokepoint, because this is the only place with both the just-sent message id
+    // and the guarded keyboard-edit primitive. STRICTLY best-effort — the send
+    // already succeeded, so a failed strip must never surface as a channel failure
+    // (it would falsely set notify_last_error); rotateFoodNudgePointer swallows.
+    if (msg.kind === "food" && messageId != null)
+      await rotateFoodNudgePointer(profileId, telegramChatId, messageId, msg);
   },
 };
+
+// After a food nudge sends, strip the PREVIOUS nudge's keyboard and record the new
+// message as the pointer (#947). Best-effort throughout: Telegram refuses edits on
+// messages older than ~48 h and the message may be gone, so a strip failure is
+// swallowed at log level and NEVER re-thrown — delivery already succeeded, and the
+// notify_last_error marker means delivery is broken, which it isn't. The pointer is
+// overwritten every send (id-keyed, no cleanup class, #203).
+async function rotateFoodNudgePointer(
+  profileId: number,
+  chatId: string | number,
+  messageId: number,
+  msg: NotificationMessage
+): Promise<void> {
+  try {
+    const prev = getFoodNudgePointer(profileId);
+    if (
+      prev &&
+      !(String(prev.chatId) === String(chatId) && prev.messageId === messageId)
+    ) {
+      // Strip the old keyboard in place (text untouched) through the guarded
+      // primitive. A "message is not modified" is already swallowed inside it; a
+      // "message to edit not found" / "message can't be edited" (too old) throws and
+      // is caught here — the point is that a fresh keyboard now exists.
+      await editMessageReplyMarkupRaw(prev.chatId, prev.messageId, []).catch(
+        (e) => {
+          log.info("food nudge: previous keyboard strip failed (ignored)", {
+            profile: profileId,
+            err: e instanceof Error ? e.message : String(e),
+          });
+        }
+      );
+    }
+    const pointer = foodNudgePointerFromMessage(msg, chatId, messageId);
+    if (pointer) setFoodNudgePointer(profileId, pointer);
+  } catch (e) {
+    // Any unexpected error (a settings write throw, etc.) stays swallowed — the send
+    // succeeded and this bookkeeping must never turn a delivery into a failure.
+    log.info("food nudge: pointer rotation failed (ignored)", {
+      profile: profileId,
+      err: e instanceof Error ? e.message : String(e),
+    });
+  }
+}
 
 // Send a message to an EXPLICIT chat id, bypassing the profile's configured
 // delivery target. Used by missed-dose escalation, which may route to a

@@ -34,10 +34,14 @@ vi.mock("@/lib/medical-extract", async (importActual) => {
   return { ...actual, extractMedicalDocument: vi.fn() };
 });
 
-import { previewReprocessById } from "@/lib/medical-pipeline";
+import {
+  previewReprocessById,
+  reprocessDocumentById,
+} from "@/lib/medical-pipeline";
 import { extractMedicalDocument } from "@/lib/medical-extract";
 import { extractionSemaphore, QueueFullError } from "@/lib/ai-concurrency";
 import { getAiUsageCount } from "@/lib/ai-usage";
+import { _resetPreviewCache } from "@/lib/reprocess-preview-cache";
 
 const extractMock = vi.mocked(extractMedicalDocument);
 
@@ -123,6 +127,135 @@ afterAll(() => {
 
 beforeEach(() => {
   extractMock.mockReset();
+  _resetPreviewCache();
+});
+
+function importedRecordNames(profileId: number, docId: number): string[] {
+  return (
+    db
+      .prepare(
+        "SELECT name FROM medical_records WHERE profile_id = ? AND document_id = ? ORDER BY name"
+      )
+      .all(profileId, docId) as { name: string }[]
+  ).map((r) => r.name);
+}
+
+// The apply-commits-the-previewed-extraction contract (#946): the confirmed apply
+// must persist EXACTLY what the preview extracted, extracting zero additional times,
+// and the token is single-use, stale-guarded, and profile-scoped.
+describe("apply commits the previewed extraction (#946)", () => {
+  it("commits the previewed input with NO second extraction, and refuses the token twice", async () => {
+    const { login, profile } = seedActor();
+    const docId = insertDoc(profile.id);
+    extractMock.mockResolvedValue(doneResult());
+
+    const preview = await previewReprocessById(login.id, profile.id, docId);
+    expect(preview.status).toBe("ok");
+    if (preview.status !== "ok") return; // narrow for TS
+    expect(preview.previewToken).toBeTruthy();
+    // The preview ran the extractor exactly once.
+    expect(extractMock).toHaveBeenCalledTimes(1);
+
+    // Apply with the token: commits the cached input, no re-extraction.
+    const outcome = reprocessDocumentById(
+      login.id,
+      profile.id,
+      docId,
+      preview.previewToken
+    );
+    expect(outcome).toEqual({ mode: "committed-preview" });
+    // EXACTLY once total across preview + apply — the apply added no extractor call.
+    // (One extraction ⇒ one ai-log event, satisfying the "one event per flow" bar.)
+    expect(extractMock).toHaveBeenCalledTimes(1);
+    // The persisted rows are the previewed extraction's rows.
+    expect(importedRecordNames(profile.id, docId)).toEqual(["Glucose"]);
+
+    // A second apply with the SAME token is refused (single-use) and falls back.
+    const second = reprocessDocumentById(
+      login.id,
+      profile.id,
+      docId,
+      preview.previewToken
+    );
+    expect(second).toEqual({ mode: "re-extracted" });
+  });
+
+  it("falls back to a re-extract when the document changed since the preview (staleness)", async () => {
+    const { login, profile } = seedActor();
+    const docId = insertDoc(profile.id);
+    extractMock.mockResolvedValue(doneResult());
+
+    const preview = await previewReprocessById(login.id, profile.id, docId);
+    expect(preview.status).toBe("ok");
+    if (preview.status !== "ok") return;
+
+    // Simulate a concurrent reprocess / replaced file: the row's content_hash moves.
+    db.prepare(
+      "UPDATE medical_documents SET content_hash = 'changed-since-preview' WHERE id = ? AND profile_id = ?"
+    ).run(docId, profile.id);
+
+    const outcome = reprocessDocumentById(
+      login.id,
+      profile.id,
+      docId,
+      preview.previewToken
+    );
+    expect(outcome).toEqual({ mode: "re-extracted" });
+  });
+
+  it("falls back once the preview token's TTL has expired", async () => {
+    const { login, profile } = seedActor();
+    const docId = insertDoc(profile.id);
+    extractMock.mockResolvedValue(doneResult());
+
+    const base = 1_000_000_000;
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(base);
+    const preview = await previewReprocessById(login.id, profile.id, docId);
+    expect(preview.status).toBe("ok");
+    if (preview.status !== "ok") {
+      nowSpy.mockRestore();
+      return;
+    }
+    // Jump past the ~15-minute TTL before applying.
+    nowSpy.mockReturnValue(base + 16 * 60 * 1000);
+    const outcome = reprocessDocumentById(
+      login.id,
+      profile.id,
+      docId,
+      preview.previewToken
+    );
+    nowSpy.mockRestore();
+    expect(outcome).toEqual({ mode: "re-extracted" });
+  });
+
+  it("a token minted for profile A is useless for profile B (cross-profile)", async () => {
+    const a = seedActor();
+    const b = seedActor();
+    const docId = insertDoc(a.profile.id);
+    extractMock.mockResolvedValue(doneResult());
+
+    const preview = await previewReprocessById(a.login.id, a.profile.id, docId);
+    expect(preview.status).toBe("ok");
+    if (preview.status !== "ok") return;
+
+    // B applies A's token against A's document id — refused (the entry is A's).
+    const asB = reprocessDocumentById(
+      b.login.id,
+      b.profile.id,
+      docId,
+      preview.previewToken
+    );
+    expect(asB).toEqual({ mode: "re-extracted" });
+    // B's attempt did NOT consume A's entry — A can still commit its own preview.
+    const asA = reprocessDocumentById(
+      a.login.id,
+      a.profile.id,
+      docId,
+      preview.previewToken
+    );
+    expect(asA).toEqual({ mode: "committed-preview" });
+    expect(importedRecordNames(a.profile.id, docId)).toEqual(["Glucose"]);
+  });
 });
 
 describe("previewReprocessById routes through the extraction semaphore (#611)", () => {
