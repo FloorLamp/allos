@@ -517,11 +517,13 @@ export interface CarePlanItem {
   // Finding → follow-up → resolution chain (issue #700, migration 050). All null for
   // a generic care-plan item; a TRACKED follow-up sets source_kind + one concrete
   // source FK and (once closed) the resolution + a resolving FK.
-  source_kind: string | null; // adapter discriminator ('imaging'); null ⇒ not a follow-up
+  source_kind: string | null; // adapter discriminator ('imaging' | 'labs'); null ⇒ not a follow-up
   source_imaging_study_id: number | null; // the imaging source finding
+  source_medical_record_id: number | null; // the flagged-lab source finding (#700 labs adapter, migration 057)
   recommended_interval_days: number | null; // the recommended follow-up interval
   resolution: string | null; // 'resolved' | 'stable' | 'changed' once closed
   resolved_by_imaging_study_id: number | null; // the later study it was resolved against
+  resolved_by_medical_record_id: number | null; // the later lab reading it was resolved against (labs adapter)
   resolved_at: string | null;
 }
 

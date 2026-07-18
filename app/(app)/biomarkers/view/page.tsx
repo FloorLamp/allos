@@ -4,10 +4,13 @@ import {
   documentLabel,
   getBiomarkerSeriesWithDerived,
   getCanonicalBiomarker,
+  getLabFollowUps,
   getMedicalDocumentsByIds,
   getFoodSuggestions,
   isBiomarkerStarred,
 } from "@/lib/queries";
+import { biomarkerFamily } from "@/lib/canonical-name";
+import TrackLabFollowUpControl from "../TrackLabFollowUpControl";
 import FoodSuggestions from "@/components/FoodSuggestions";
 import type { CanonicalBiomarker, Sex } from "@/lib/types";
 import {
@@ -22,6 +25,7 @@ import {
   selectStatusRange,
   ageBandLabel,
   isBiomarkerStale,
+  isOutOfRange,
   daysBetween,
   humanizeAge,
 } from "@/lib/reference-range";
@@ -450,6 +454,25 @@ export default async function BiomarkerDetailPage(props: {
   );
   const ageDays = daysBetween(latest.date, today(profile.id));
 
+  // Flagged-lab follow-up chain (issue #700 labs adapter). If there's an OPEN
+  // "Recheck …" follow-up for THIS biomarker's #482 FAMILY, show its state (an A1c
+  // follow-up shows on the eAG page too, and vice-versa). Otherwise, when the latest
+  // reading is OUT OF RANGE — and is a real stored reading, not a computed/derived
+  // index — offer to track a recheck follow-up from where the biomarker lives.
+  const famKey = biomarkerFamily(canonical).toLowerCase();
+  const openLabFollowUp = getLabFollowUps(profile.id).find(
+    (f) =>
+      f.resolution == null &&
+      f.status !== "completed" &&
+      biomarkerFamily(f.sourceName).toLowerCase() === famKey
+  );
+  const canTrackFollowUp =
+    !latest.derived &&
+    typeof latest.id === "number" &&
+    latest.id > 0 &&
+    isOutOfRange(latest.flag);
+  const showFollowUpControl = openLabFollowUp != null || canTrackFollowUp;
+
   return (
     <div>
       <Link
@@ -555,6 +578,17 @@ export default async function BiomarkerDetailPage(props: {
             <span className="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
               Immune
             </span>
+          </div>
+        )}
+        {/* Finding follow-up (#700 labs adapter): a flagged result can be tracked to a
+            "Recheck …" follow-up on Upcoming (or shows an open one's state). */}
+        {showFollowUpControl && (
+          <div data-testid="lab-followup">
+            <div className="label">Recheck</div>
+            <TrackLabFollowUpControl
+              recordId={typeof latest.id === "number" ? latest.id : 0}
+              existing={openLabFollowUp}
+            />
           </div>
         )}
       </div>

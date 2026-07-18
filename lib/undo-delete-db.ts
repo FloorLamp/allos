@@ -20,6 +20,7 @@ import {
 } from "./undo-delete";
 import { revertActivityMerge } from "./merge-activity";
 import { restoreAdministrationLog } from "./queries/intake/adherence";
+import { unlinkFollowUpsForMedicalRecord } from "./followup-write";
 import {
   writeImportTombstoneForRow,
   removeImportTombstoneForRow,
@@ -115,6 +116,17 @@ export function captureDelete(
         `UPDATE protocols SET intake_item_id = NULL
           WHERE intake_item_id = ? AND profile_id = ?`
       ).run(rootId, profileId);
+    }
+
+    // A flagged-lab follow-up (#700) may link this reading as its SOURCE finding, or a
+    // resolution may cite it as the resolving record — both carry a REFERENCES FK
+    // (migration 057) with no ON DELETE. NULL those links first (degrading the
+    // follow-up to a generic care-plan item, keeping any resolution's outcome text) so
+    // the medical_records DELETE below can't trip the care_plan_items FK. Not restored
+    // on undo (like the equipment_id / supply-decrement side effects) — the reading
+    // returns, its follow-up linkage stays honestly gone.
+    if (spec.ownedTable === "medical_records") {
+      unlinkFollowUpsForMedicalRecord(profileId, rootId);
     }
 
     // Delete the root; children cascade. Profile-scoped for defense in depth.

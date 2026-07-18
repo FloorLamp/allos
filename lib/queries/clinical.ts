@@ -301,6 +301,56 @@ export function getImagingStudyFollowUps(
     .all(profileId) as ImagingFollowUpSummary[];
 }
 
+// ---- Flagged-labs follow-up chain (issue #700 labs adapter) -----------------
+
+// Every lab reading a labs follow-up could link — its narrow identity/value shape
+// (LabFollowUpRecord), the pool the builder loads to resolve both a follow-up's
+// SOURCE (by id) and its RESOLVING candidates (a later reading of the same #482
+// family). All medical_records rows are returned (family matching in the adapter
+// naturally restricts resolution to same-analyte readings, and a prescription/vital
+// row simply never matches a lab family); profile-scoped.
+export function getLabFollowUpRecords(
+  profileId: number
+): import("../followup-labs").LabFollowUpRecord[] {
+  return db
+    .prepare(
+      `SELECT id, date, canonical_name, name, value, unit, value_num, flag
+         FROM medical_records WHERE profile_id = ?`
+    )
+    .all(profileId) as import("../followup-labs").LabFollowUpRecord[];
+}
+
+// The tracked labs follow-ups (issue #700), each joined to its SOURCE reading so the
+// biomarker detail page can show a family's follow-up state (or offer to track one).
+// One row per care_plan_items follow-up linked to a medical_records source, newest
+// first, carrying the source reading's display name so the caller can group by #482
+// family in JS. Profile-scoped (the JOIN carries medical_records' profile_id too).
+export interface LabFollowUpSummary {
+  carePlanItemId: number;
+  sourceRecordId: number;
+  sourceName: string;
+  plannedDate: string | null;
+  status: string | null;
+  resolution: string | null;
+}
+
+export function getLabFollowUps(profileId: number): LabFollowUpSummary[] {
+  return db
+    .prepare(
+      `SELECT cp.id AS carePlanItemId,
+              cp.source_medical_record_id AS sourceRecordId,
+              COALESCE(NULLIF(TRIM(mr.canonical_name), ''), mr.name) AS sourceName,
+              cp.planned_date AS plannedDate, cp.status, cp.resolution
+         FROM care_plan_items cp
+         JOIN medical_records mr
+           ON mr.id = cp.source_medical_record_id AND mr.profile_id = cp.profile_id
+        WHERE cp.profile_id = ? AND cp.source_kind = 'labs'
+          AND cp.source_medical_record_id IS NOT NULL
+        ORDER BY cp.id DESC`
+    )
+    .all(profileId) as LabFollowUpSummary[];
+}
+
 // Family history, grouped by relative (relation) then condition. Rows with an
 // unknown relation sort last. De-duplicated across documents via
 // FAMILY_HISTORY_REPRESENTATIVE_IDS (the subquery's profile_id bind comes after the
@@ -326,8 +376,10 @@ export function getCarePlanItems(profileId: number): CarePlanItem[] {
               cp.planned_date, cp.status, cp.provider_id, p.name AS provider_name,
               cp.notes, cp.source, cp.document_id, cp.external_id, cp.created_at,
               cp.source_kind, cp.source_imaging_study_id,
+              cp.source_medical_record_id,
               cp.recommended_interval_days, cp.resolution,
-              cp.resolved_by_imaging_study_id, cp.resolved_at
+              cp.resolved_by_imaging_study_id,
+              cp.resolved_by_medical_record_id, cp.resolved_at
          FROM care_plan_items cp
          LEFT JOIN providers p ON p.id = cp.provider_id
         WHERE cp.profile_id = ?
