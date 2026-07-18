@@ -399,6 +399,27 @@ describe("canonical aliases (synonym/abbreviation drift)", () => {
     );
   });
 
+  it("routes the off-list names a FRESH re-extraction coined, and leaves the ambiguous ones alone", () => {
+    // A fresh model run, given the same vocabulary, still drifted (#918): the
+    // neutrophil %-form is bare "Neutrophils"; CBC counts print as bare abbrevs;
+    // specific gravity is always urine.
+    expect(snapCanonicalName("Neutrophils Relative", index)).toBe(
+      "Neutrophils"
+    );
+    expect(snapCanonicalName("WBC", index)).toBe("White Blood Cell Count");
+    expect(snapCanonicalName("RBC", index)).toBe("Red Blood Cell Count");
+    expect(snapCanonicalName("Specific Gravity", index)).toBe(
+      "Urine Specific Gravity"
+    );
+    // Deliberately NOT aliased — resolving these would mis-route:
+    // bare "pH" is specimen-ambiguous (blood-gas vs urine), and the race-specific
+    // eGFR equations are DIFFERENT values that must not collapse onto one series.
+    expect(snapCanonicalName("pH", index)).toBe("pH");
+    expect(snapCanonicalName("eGFR, African American", index)).toBe(
+      "eGFR, African American"
+    );
+  });
+
   it("every alias targets a REAL dataset entry and shadows no distinct analyte", () => {
     for (const [alias, canonical] of canonicalAliases()) {
       // Target is a real seeded canonical name.

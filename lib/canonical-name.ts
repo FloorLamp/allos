@@ -211,6 +211,21 @@ const CANONICAL_ALIASES: [string, string][] = [
   ["Leukocyte Esterase", "Leukocyte Esterase, Urine"],
   ["Urobilinogen", "Urobilinogen, Urine"],
   ["Occult Blood, Urine", "Blood, Urine"],
+  // Drift a FRESH re-extraction surfaced (#918): the model, given the same
+  // vocabulary, still coined off-list names. The neutrophil %-form is bare
+  // "Neutrophils" (no "Relative" suffix, unlike mono/eos/baso); the CBC counts often
+  // print as bare abbreviations; specific gravity is always a urine test.
+  ["Neutrophils, Relative", "Neutrophils"],
+  ["Neutrophils Relative", "Neutrophils"],
+  ["WBC", "White Blood Cell Count"],
+  ["RBC", "Red Blood Cell Count"],
+  ["Specific Gravity", "Urine Specific Gravity"],
+  // NOT aliased, on purpose:
+  //  • bare "pH" — specimen-ambiguous (an arterial-blood-gas pH is not urine pH); the
+  //    §2 trap. Needs a specimen qualifier to resolve.
+  //  • "eGFR, African American" / "eGFR, Thai" — race/ethnicity-specific eGFR
+  //    equations give DIFFERENT numbers; a report listing two would collapse two
+  //    distinct values onto one date. Left surfaced rather than mis-grouped.
 ];
 
 // Build a normalized-key -> canonical-spelling lookup from a vocabulary list.
