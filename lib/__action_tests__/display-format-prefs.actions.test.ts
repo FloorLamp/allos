@@ -22,7 +22,9 @@ describe("saveDisplayFormatPrefs persists the login's date/time prefs (#964)", (
     const profile = createProfile("fmt-1", login.id);
     actAs(login, profile);
 
-    await saveDisplayFormatPrefs(fd({ time_format: "12h", date_format: "iso" }));
+    await saveDisplayFormatPrefs(
+      fd({ time_format: "12h", date_format: "iso" })
+    );
 
     expect(getDisplayFormatPrefs(login.id)).toEqual({
       timeFormat: "12h",
@@ -38,9 +40,13 @@ describe("saveDisplayFormatPrefs persists the login's date/time prefs (#964)", (
     const pb = createProfile("fmt-b", b.id);
 
     actAs(a, pa);
-    await saveDisplayFormatPrefs(fd({ time_format: "12h", date_format: "dmy" }));
+    await saveDisplayFormatPrefs(
+      fd({ time_format: "12h", date_format: "dmy" })
+    );
     actAs(b, pb);
-    await saveDisplayFormatPrefs(fd({ time_format: "24h", date_format: "mdy" }));
+    await saveDisplayFormatPrefs(
+      fd({ time_format: "24h", date_format: "mdy" })
+    );
 
     expect(getDisplayFormatPrefs(a.id)).toEqual({
       timeFormat: "12h",
