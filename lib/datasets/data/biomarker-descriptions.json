@@ -1197,6 +1197,39 @@
       "name": "LDL/HDL Ratio",
       "full_name": "LDL/HDL Cholesterol Ratio",
       "description": "The ratio of LDL to HDL cholesterol is a summary measure of cardiovascular risk, where a lower ratio is more favorable. It is a calculated value with no units."
+    },
+    {
+      "name": "Intraocular Pressure",
+      "abbreviation": "IOP",
+      "full_name": "Intraocular Pressure",
+      "description": "The fluid pressure inside the eye, measured by tonometry in millimeters of mercury (mmHg). A normal reading is roughly 10-21 mmHg; a pressure above 21 is called ocular hypertension and is a risk factor for glaucoma, though it is not a diagnosis on its own. This entry is used when the report does not say which eye."
+    },
+    {
+      "name": "Intraocular Pressure, Right Eye",
+      "abbreviation": "IOP OD",
+      "full_name": "Intraocular Pressure, Right Eye",
+      "description": "The fluid pressure inside the right eye (OD), measured by tonometry in mmHg. A normal reading is roughly 10-21 mmHg; higher pressures are a glaucoma risk factor. It is tracked separately from the left eye."
+    },
+    {
+      "name": "Intraocular Pressure, Left Eye",
+      "abbreviation": "IOP OS",
+      "full_name": "Intraocular Pressure, Left Eye",
+      "description": "The fluid pressure inside the left eye (OS), measured by tonometry in mmHg. A normal reading is roughly 10-21 mmHg; higher pressures are a glaucoma risk factor. It is tracked separately from the right eye."
+    },
+    {
+      "name": "Visual Acuity",
+      "full_name": "Visual Acuity",
+      "description": "A measure of how clearly you can see, written as a Snellen fraction such as 20/20 (or 6/6 in metric). It is a qualitative value with no numeric reference range, so it is shown as a dated timeline rather than a chart. This entry is used when the report does not say which eye."
+    },
+    {
+      "name": "Visual Acuity, Right Eye",
+      "full_name": "Visual Acuity, Right Eye",
+      "description": "How clearly the right eye (OD) sees, written as a Snellen fraction such as 20/20. A qualitative value with no numeric reference range; it is shown as a dated timeline and tracked separately from the left eye."
+    },
+    {
+      "name": "Visual Acuity, Left Eye",
+      "full_name": "Visual Acuity, Left Eye",
+      "description": "How clearly the left eye (OS) sees, written as a Snellen fraction such as 20/20. A qualitative value with no numeric reference range; it is shown as a dated timeline and tracked separately from the right eye."
     }
   ]
 }

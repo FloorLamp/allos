@@ -356,6 +356,14 @@ export function parseLeadingNumeric(
     const n = Number(titer[1]);
     return Number.isFinite(n) ? { value: n, titer: true } : null;
   }
+  // A bare Snellen-style fraction "20/20" / "6/6" (visual acuity, #698) has NO single
+  // plottable magnitude — its numerator is a fixed test distance (20 or 6), so
+  // recovering the leading "20" would chart every acuity at the same value. Treat it
+  // as qualitative (null) so acuity renders as a dated timeline, not a flat, misleading
+  // numeric axis. Checked before the leading-number rule, which would otherwise read
+  // the numerator. (A genuine ratio analyte is stored pre-divided as one number, never
+  // as an "N/M" string, so nothing legitimate parses through here.)
+  if (/^\d+(?:\.\d+)?\s*\/\s*\d+(?:\.\d+)?$/.test(str)) return null;
   // A leading number FOLLOWED BY a unit/text token. The lookahead keeps the number
   // from being split by backtracking (so a bare "58" — where the only trailing char
   // is another digit — does NOT match and is left to parseLooseValue's strict path).
