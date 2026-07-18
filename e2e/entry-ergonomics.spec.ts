@@ -439,7 +439,29 @@ test("the activity form keeps workout entry primary and context visible across b
     .locator('[id^="activity-"]')
     .filter({ hasText: "Push day" })
     .first();
-  await pushCard.getByRole("button", { name: "Push day" }).click();
+
+  // This test targets the DOCKED editor variant, and docked-vs-overlay is
+  // CAPTURED at open time and held for the session (the anti-yank design in
+  // ActivityEditorProvider). The journal dock REGISTERS one effect pass after
+  // its div attaches (JournalView's isDesktop starts false and settles first),
+  // so a click landing in that window opens the OVERLAY variant (sm:pt-6 =
+  // 24px header padding) and stays there — the recurring padding flake (#979).
+  // No DOM state distinguishes "attached" from "registered", so re-drive:
+  // close the overlay and re-open until the docked header (pt-5 → 20px)
+  // renders. toPass is justified (a commented last resort): only the settled
+  // docked state can satisfy the inner expect, so the loop cannot false-pass.
+  const header = page.getByTestId("activity-form-header");
+  await expect(async () => {
+    await pushCard.getByRole("button", { name: "Push day" }).click();
+    try {
+      await expect(header).toHaveCSS("padding-top", "20px", { timeout: 2000 });
+    } catch (err) {
+      // Opened as the held overlay — close it and try again (registration has
+      // an effect pass to complete between attempts).
+      await page.getByRole("button", { name: "Close", exact: true }).click();
+      throw err;
+    }
+  }).toPass({ timeout: 30_000 });
 
   // The single visible title is editable in place; there is no duplicate Name
   // field beneath it. Its desktop header stays with a long docked form.
@@ -465,12 +487,11 @@ test("the activity form keeps workout entry primary and context visible across b
     )
   ).toBe(true);
   await expect(page.getByText("Name", { exact: true })).toHaveCount(0);
-  const header = page.getByTestId("activity-form-header");
   await expect(header).toBeVisible();
   expect(await header.evaluate((node) => getComputedStyle(node).position)).toBe(
     "sticky"
   );
-  await expect(header).toHaveCSS("padding-top", "20px");
+  // padding-top 20px is already pinned by the docked-open loop above.
   await expect(header).toHaveCSS("padding-bottom", "20px");
 
   // Workout rows use separators instead of nested cards, session metadata is
