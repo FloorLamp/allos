@@ -2,20 +2,31 @@
 
 import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { IconX, IconPlus, IconNote } from "@tabler/icons-react";
+import {
+  IconX,
+  IconPlus,
+  IconNote,
+  IconChevronDown,
+} from "@tabler/icons-react";
 import {
   type Symptom,
   resolveSymptomKey,
   symptomLabel,
   symptomBySlug,
-  severityLabel,
   SYMPTOM_SEVERITY_LEVELS,
   MAX_SYMPTOM_SEVERITY,
 } from "@/lib/symptoms";
 import type { TemperatureUnit } from "@/lib/settings";
 import { useToast } from "@/components/Toast";
+import NotesText from "@/components/NotesText";
 import { round, fmtTemp } from "@/lib/units";
-import { toCanonicalTempF, temperatureRangeError } from "@/lib/vitals-input";
+import { zonedDateParts } from "@/lib/date";
+import {
+  resolveTemperatureUnit,
+  toCanonicalTempF,
+  temperatureRangeError,
+} from "@/lib/vitals-input";
+import { useTemperatureUnitDetection } from "@/components/useTemperatureUnitDetection";
 import {
   logSymptom,
   lowerSymptom,
@@ -28,8 +39,8 @@ import {
 // One-tap symptom logger (issue #799/#857), modeled on the FoodLogBar one-tap pattern:
 // optimistic local severities, a Server Action per tap, and reconciliation to the
 // server's authoritative value (#748 item 2). A symptom-day keeps its WORST severity — a
-// tap only RAISES it (server-enforced); lowering is an explicit inline confirm (#857); the
-// × clears the day's row.
+// normal tap raises it (server-enforced); selecting a lower labeled chip uses the narrow
+// lower action directly; the × clears the day's row.
 //
 // Active-first layout (#857): the LOGGED symptoms render expanded (label + labeled
 // severity chips + note + ×) — the working set. Everything else (the ~20-symptom catalog +
@@ -56,7 +67,9 @@ export default function SymptomLogBar({
   suggestActivateIllness,
   showTemperature = false,
   temperatureUnit = "F",
+  timeZone,
   profileId,
+  showTitle = true,
 }: {
   // Primary date (YYYY-MM-DD). On the dashboard this is today; on the Timeline it's the
   // selected day.
@@ -86,11 +99,17 @@ export default function SymptomLogBar({
   // The viewer's login temperature-unit preference (#857) — seeds the entry unit and the
   // fever toast. Canonical storage stays °F; this only changes display. Default "F".
   temperatureUnit?: TemperatureUnit;
+  // Profile-local zone used to seed the reading-time field when temperature entry opens.
+  // Important for household logging, where the target's zone may differ from the browser.
+  timeZone?: string;
   // The profile this bar writes to (issue #858). Set ONLY on the illness-hero cockpit,
   // where a caregiver logs for a household member without switching — every action posts
   // this so the server gates on the TARGET (requireProfileWriteAccess). Absent on the
   // default dashboard/Timeline mounts, which write the session's active profile.
   profileId?: number;
+  // Composed surfaces may already provide a section heading; keep the count/toggle row
+  // without repeating "Daily symptoms" in that case.
+  showTitle?: boolean;
 }) {
   const hasToggle = !!altDate;
   const [mode, setMode] = useState<"primary" | "alt">("primary");
@@ -111,11 +130,6 @@ export default function SymptomLogBar({
   }));
   const [customDraft, setCustomDraft] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
-  // The logged row whose lower-severity confirm is open ({ key, level }), or null.
-  const [lowerConfirm, setLowerConfirm] = useState<{
-    key: string;
-    level: number;
-  } | null>(null);
   // The logged row whose note input is open, or null.
   const [noteEditing, setNoteEditing] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
@@ -126,11 +140,32 @@ export default function SymptomLogBar({
   // Body-temperature quick entry (issue #800) — collapsed by default (#857) to one line.
   const [tempOpen, setTempOpen] = useState(false);
   const [tempValue, setTempValue] = useState("");
-  const [tempUnit, setTempUnit] = useState<TemperatureUnit>(temperatureUnit);
-  // Optional reading time (#800/#843): defaults to "now" (blank).
+  const tempUnitDetection = useTemperatureUnitDetection(temperatureUnit);
+  const tempUnit = tempUnitDetection.unit;
+  // Reading time (#800/#843): seeded to the target profile's current local minute when
+  // the disclosure opens; the user can still adjust it for an earlier reading.
   const [tempTime, setTempTime] = useState("");
   const [tempError, setTempError] = useState<string | null>(null);
   const [tempPending, setTempPending] = useState(false);
+
+  function toggleSymptomPicker() {
+    const opening = !pickerOpen;
+    setPickerOpen(opening);
+    if (opening) setTempOpen(false);
+  }
+
+  function toggleTemperatureEntry() {
+    const opening = !tempOpen;
+    setTempOpen(opening);
+    if (opening) {
+      setPickerOpen(false);
+      if (tempTime === "") {
+        const zone =
+          timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+        setTempTime(zonedDateParts(zone, new Date()).hhmm);
+      }
+    }
+  }
 
   async function logTemp() {
     const raw = Number(tempValue);
@@ -138,8 +173,9 @@ export default function SymptomLogBar({
       setTempError("Enter a temperature.");
       return;
     }
+    const resolvedUnit = resolveTemperatureUnit(raw, tempUnit);
     const rangeErr = temperatureRangeError(
-      round(toCanonicalTempF(raw, tempUnit), 1)
+      round(toCanonicalTempF(raw, resolvedUnit), 1)
     );
     if (rangeErr) {
       setTempError(rangeErr);
@@ -157,7 +193,9 @@ export default function SymptomLogBar({
     setTempPending(false);
     if (res.ok) {
       setTempValue("");
+      tempUnitDetection.reset();
       setTempTime("");
+      setTempOpen(false);
       toast(
         `Temperature logged: ${fmtTemp(res.degF, temperatureUnit)}${
           res.flag === "high" ? " — fever" : ""
@@ -273,11 +311,10 @@ export default function SymptomLogBar({
     startTransition(() => router.refresh());
   }
 
-  // Explicit LOWER — the inline confirm's action (#857). Optimistically lowers, calls the
-  // narrow lower action, reconciles. Preserves the day's note (the note isn't sent).
+  // Explicit LOWER — selecting a labeled lower chip is sufficient intent. Optimistically
+  // lowers, calls the narrow lower action, and reconciles. Preserves the day's note.
   async function lower(key: string, severity: number) {
     const prev = severities[key] ?? 0;
-    setLowerConfirm(null);
     if (severity >= prev) return;
     setSeverity(key, severity);
     const fd = new FormData();
@@ -339,51 +376,131 @@ export default function SymptomLogBar({
 
   return (
     <div data-testid="symptom-log-bar">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-          Symptoms
-          <span
-            data-testid="symptom-logged-count"
-            className="ml-2 text-xs font-normal text-slate-500 dark:text-slate-400"
-          >
-            {loggedCount} logged
-          </span>
-        </h2>
-        {hasToggle && (
-          <div
-            data-testid="symptom-day-toggle"
-            className="inline-flex overflow-hidden rounded-md border border-black/10 text-xs dark:border-white/15"
-          >
-            <button
-              type="button"
-              data-testid="symptom-day-primary"
-              aria-pressed={mode === "primary"}
-              onClick={() => setMode("primary")}
-              className={`px-2 py-1 ${mode === "primary" ? "bg-brand-600 text-white" : "text-slate-600 dark:text-slate-300"}`}
+      {(showTitle || hasToggle) && (
+        <div className="mb-2 flex items-center justify-between gap-2">
+          {showTitle && (
+            <p className="section-label">
+              Daily symptoms
+              <span
+                data-testid="symptom-logged-count"
+                className="ml-2 font-normal normal-case tracking-normal"
+              >
+                {loggedCount} logged
+              </span>
+            </p>
+          )}
+          {hasToggle && (
+            <div
+              data-testid="symptom-day-toggle"
+              className="ml-auto inline-flex overflow-hidden rounded-md border border-black/10 text-xs dark:border-white/15"
             >
-              {dateLabel}
-            </button>
-            <button
-              type="button"
-              data-testid="symptom-day-alt"
-              aria-pressed={mode === "alt"}
-              onClick={() => setMode("alt")}
-              className={`px-2 py-1 ${mode === "alt" ? "bg-brand-600 text-white" : "text-slate-600 dark:text-slate-300"}`}
-            >
-              {altDateLabel}
-            </button>
-          </div>
+              <button
+                type="button"
+                data-testid="symptom-day-primary"
+                aria-pressed={mode === "primary"}
+                onClick={() => setMode("primary")}
+                className={`px-2 py-1 ${mode === "primary" ? "bg-slate-100 font-medium text-slate-700 dark:bg-ink-800 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}
+              >
+                {dateLabel}
+              </button>
+              <button
+                type="button"
+                data-testid="symptom-day-alt"
+                aria-pressed={mode === "alt"}
+                onClick={() => setMode("alt")}
+                className={`px-2 py-1 ${mode === "alt" ? "bg-slate-100 font-medium text-slate-700 dark:bg-ink-800 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}
+              >
+                {altDateLabel}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div
+        data-testid="symptom-log-actions"
+        className="mb-3 flex flex-wrap items-center gap-2"
+      >
+        <button
+          type="button"
+          data-testid="symptom-add-picker-toggle"
+          aria-expanded={pickerOpen}
+          aria-controls="symptom-add-picker"
+          onClick={toggleSymptomPicker}
+          className="btn-ghost btn-sm"
+        >
+          <IconChevronDown
+            className={`h-3.5 w-3.5 transition-transform ${pickerOpen ? "rotate-180" : ""}`}
+          />
+          Add symptom
+        </button>
+        {showTemperature && (
+          <button
+            type="button"
+            data-testid="temp-quick-toggle"
+            aria-expanded={tempOpen}
+            aria-controls="temp-quick-entry"
+            onClick={toggleTemperatureEntry}
+            className="btn-ghost btn-sm"
+          >
+            <IconChevronDown
+              className={`h-3.5 w-3.5 transition-transform ${tempOpen ? "rotate-180" : ""}`}
+            />
+            <span>Log temperature</span>
+          </button>
         )}
       </div>
 
-      {/* First-use legend (#857): what the levels mean + the worst-only rule made visible. */}
-      <p
-        data-testid="symptom-severity-legend"
-        className="mb-3 text-xs text-slate-500 dark:text-slate-400"
-      >
-        Severity 1 (mild) → {MAX_SYMPTOM_SEVERITY} (very severe). Tapping raises
-        the day&apos;s worst; tap a lower level to lower it.
-      </p>
+      {pickerOpen && (
+        <div
+          id="symptom-add-picker"
+          data-testid="symptom-add-picker"
+          className="mb-3 rounded-lg border border-black/5 p-3 dark:border-white/5"
+        >
+          <div className="flex flex-wrap gap-1.5">
+            {pickerKeys.map((key) => {
+              const r = rowMap.get(key);
+              if (!r) return null;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  data-testid={`symptom-pick-${key}`}
+                  onClick={() => void tap(key, 1)}
+                  className="badge cursor-pointer bg-slate-100 text-slate-600 hover:bg-brand-50 hover:text-brand-700 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-brand-950 dark:hover:text-brand-300"
+                >
+                  {r.icon && <span aria-hidden>{r.icon} </span>}
+                  {r.label}
+                </button>
+              );
+            })}
+          </div>
+          <form
+            className="mt-2 flex items-center gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              addCustom();
+            }}
+          >
+            <input
+              data-testid="symptom-custom-input"
+              value={customDraft}
+              onChange={(e) => setCustomDraft(e.target.value)}
+              placeholder="Add another symptom…"
+              maxLength={80}
+              className="input h-8 flex-1 text-sm"
+            />
+            <button
+              type="submit"
+              data-testid="symptom-custom-add"
+              aria-label="Add symptom"
+              className="btn-ghost h-8 w-8 p-0"
+            >
+              <IconPlus className="h-3.5 w-3.5" />
+            </button>
+          </form>
+        </div>
+      )}
 
       {suggestActivateIllness && (
         <div
@@ -400,23 +517,24 @@ export default function SymptomLogBar({
                 router.refresh();
               })
             }
-            className="badge cursor-pointer border border-dashed border-brand-400 bg-transparent text-brand-700 hover:bg-brand-50 dark:border-brand-700 dark:text-brand-300 dark:hover:bg-brand-950"
+            className="btn-ghost btn-sm border-dashed"
           >
             + Mark as illness
           </button>
         </div>
       )}
 
-      {showTemperature &&
-        (tempOpen ? (
-          <div
-            data-testid="temp-quick-entry"
-            className="mb-3 rounded-md border border-black/10 p-2.5 dark:border-white/15"
-          >
-            <label className="label mb-1 block" htmlFor="temp-quick-input">
-              Temperature
-            </label>
-            <div className="flex items-center gap-2">
+      {showTemperature && tempOpen && (
+        <div
+          id="temp-quick-entry"
+          data-testid="temp-quick-entry"
+          className="mb-3 rounded-lg border border-black/5 p-3 dark:border-white/5"
+        >
+          <label className="label mb-1 block" htmlFor="temp-quick-input">
+            Temperature
+          </label>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+            <div className="col-span-2 flex min-w-0 gap-2 sm:col-span-1">
               <input
                 id="temp-quick-input"
                 data-testid="temp-quick-input"
@@ -426,7 +544,9 @@ export default function SymptomLogBar({
                 autoFocus
                 value={tempValue}
                 onChange={(e) => {
-                  setTempValue(e.target.value);
+                  const value = e.target.value;
+                  setTempValue(value);
+                  tempUnitDetection.readValue(value);
                   if (tempError) setTempError(null);
                 }}
                 onKeyDown={(e) => {
@@ -436,83 +556,96 @@ export default function SymptomLogBar({
                   }
                 }}
                 placeholder="Thermometer reading"
-                className="input flex-1"
+                className="input min-w-0 flex-1"
               />
               <select
                 data-testid="temp-quick-unit"
                 aria-label="Temperature unit"
                 value={tempUnit}
                 onChange={(e) =>
-                  setTempUnit(e.target.value === "C" ? "C" : "F")
+                  tempUnitDetection.chooseUnit(
+                    e.target.value === "C" ? "C" : "F"
+                  )
                 }
                 className="input w-auto"
               >
                 <option value="F">°F</option>
                 <option value="C">°C</option>
               </select>
-              <input
-                data-testid="temp-quick-time"
-                type="time"
-                aria-label="Reading time (optional)"
-                value={tempTime}
-                onChange={(e) => setTempTime(e.target.value)}
-                className="input w-auto"
-              />
-              <button
-                type="button"
-                data-testid="temp-quick-save"
-                disabled={tempPending}
-                onClick={() => void logTemp()}
-                className="badge cursor-pointer bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50"
-              >
-                {tempPending ? "Logging…" : "Log temp"}
-              </button>
             </div>
-            {tempError && (
-              <p
-                role="alert"
-                data-testid="temp-quick-error"
-                className="mt-1 text-xs text-rose-600 dark:text-rose-400"
-              >
-                {tempError}
-              </p>
-            )}
+            <input
+              data-testid="temp-quick-time"
+              type="time"
+              aria-label="Reading time"
+              value={tempTime}
+              onChange={(e) => setTempTime(e.target.value)}
+              className="input min-w-0 w-full"
+            />
+            <button
+              type="button"
+              data-testid="temp-quick-save"
+              disabled={tempPending}
+              onClick={() => void logTemp()}
+              className="btn btn-sm"
+            >
+              {tempPending ? "Logging…" : "Log temp"}
+            </button>
           </div>
-        ) : (
-          <button
-            type="button"
-            data-testid="temp-quick-toggle"
-            onClick={() => setTempOpen(true)}
-            className="badge mb-3 cursor-pointer bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300"
-          >
-            🌡 Log temp
-          </button>
-        ))}
+          {tempUnitDetection.detectedUnit && (
+            <p
+              data-testid="temp-unit-detected"
+              className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+            >
+              Detected °{tempUnitDetection.detectedUnit} from the reading.
+            </p>
+          )}
+          {tempError && (
+            <p
+              role="alert"
+              data-testid="temp-quick-error"
+              className="mt-1 text-xs text-rose-600 dark:text-rose-400"
+            >
+              {tempError}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Picker guidance stays with the expanded picker instead of occupying the
+          collapsed logger (#857). */}
+      {pickerOpen && (
+        <p
+          data-testid="symptom-severity-legend"
+          className="mb-3 text-xs text-slate-500 dark:text-slate-400"
+        >
+          Choose 1 (mild) to {MAX_SYMPTOM_SEVERITY} (very severe). The highest
+          level logged for the day is kept.
+        </p>
+      )}
 
       {loggedCount === 0 ? (
         <p
           data-testid="symptom-none-logged"
           className="mb-3 text-xs text-slate-500 dark:text-slate-400"
         >
-          No symptoms logged{hasToggle ? " for this day" : ""}. Add one below.
+          No symptoms logged{hasToggle ? " for this day" : ""}.
         </p>
       ) : (
-        <ul className="space-y-1.5" data-testid="symptom-logged-list">
+        <ul className="space-y-2" data-testid="symptom-logged-list">
           {loggedKeys.map((key) => {
             const r = rowMap.get(key);
             if (!r) return null;
             const sev = severities[key] ?? 0;
             const note = notes[key] ?? "";
-            const confirming = lowerConfirm?.key === key;
             const editingNote = noteEditing === key;
             return (
               <li
                 key={key}
                 data-testid={`symptom-${key}`}
-                className="rounded-md"
+                className="rounded-lg border border-black/5 p-3 dark:border-white/5"
               >
-                <div className="flex items-center gap-2">
-                  <span className="flex min-w-0 flex-1 items-center gap-1.5 text-sm text-slate-700 dark:text-slate-200">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="flex min-w-0 flex-1 items-center gap-1.5 text-sm font-medium text-slate-800 dark:text-slate-100">
                     {r.icon && <span aria-hidden>{r.icon}</span>}
                     <span className="truncate">{r.label}</span>
                   </span>
@@ -526,12 +659,8 @@ export default function SymptomLogBar({
                         aria-label={`${r.label} — severity ${lvl.value} of ${MAX_SYMPTOM_SEVERITY} (${lvl.label})`}
                         title={lvl.label}
                         onClick={() => {
-                          if (lvl.value < sev)
-                            setLowerConfirm({ key, level: lvl.value });
-                          else {
-                            setLowerConfirm(null);
-                            void tap(key, lvl.value);
-                          }
+                          if (lvl.value < sev) void lower(key, lvl.value);
+                          else void tap(key, lvl.value);
                         }}
                         className={`h-6 w-6 rounded text-xs font-semibold ${
                           sev >= lvl.value
@@ -575,35 +704,6 @@ export default function SymptomLogBar({
                   </div>
                 </div>
 
-                {confirming && (
-                  <div
-                    data-testid={`symptom-${key}-lower-confirm`}
-                    className="mt-1 flex items-center justify-end gap-2 text-xs text-slate-600 dark:text-slate-300"
-                  >
-                    <span>
-                      Lower to{" "}
-                      {severityLabel(lowerConfirm!.level).toLowerCase()}? —
-                      replaces today&apos;s worst
-                    </span>
-                    <button
-                      type="button"
-                      data-testid={`symptom-${key}-lower-confirm-yes`}
-                      onClick={() => lower(key, lowerConfirm!.level)}
-                      className="badge cursor-pointer bg-brand-600 text-white hover:bg-brand-700"
-                    >
-                      Lower
-                    </button>
-                    <button
-                      type="button"
-                      data-testid={`symptom-${key}-lower-confirm-no`}
-                      onClick={() => setLowerConfirm(null)}
-                      className="badge cursor-pointer bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                )}
-
                 {editingNote && (
                   <form
                     className="mt-1 flex items-center gap-2"
@@ -624,12 +724,12 @@ export default function SymptomLogBar({
                       }}
                       placeholder="Note (e.g. worse at night)…"
                       maxLength={500}
-                      className="flex-1 rounded-md border border-black/10 bg-white px-2 py-1 text-xs dark:border-white/15 dark:bg-ink-900"
+                      className="input h-8 flex-1 text-sm"
                     />
                     <button
                       type="submit"
                       data-testid={`symptom-${key}-note-save`}
-                      className="badge cursor-pointer bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300"
+                      className="btn-ghost btn-sm"
                     >
                       Save
                     </button>
@@ -637,81 +737,18 @@ export default function SymptomLogBar({
                 )}
 
                 {!editingNote && note && (
-                  <p
+                  <NotesText
                     data-testid={`symptom-${key}-note`}
-                    className="mt-0.5 whitespace-pre-wrap break-words text-xs italic text-slate-500 dark:text-slate-400"
-                  >
-                    {note}
-                  </p>
+                    as="p"
+                    notes={note}
+                    className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+                  />
                 )}
               </li>
             );
           })}
         </ul>
       )}
-
-      {/* Add picker (#857): the catalog + customs + free-text add, one collapsed path. */}
-      <div className="mt-3">
-        <button
-          type="button"
-          data-testid="symptom-add-picker-toggle"
-          aria-expanded={pickerOpen}
-          onClick={() => setPickerOpen((o) => !o)}
-          className="badge cursor-pointer bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300"
-        >
-          <IconPlus className="mr-1 inline h-3.5 w-3.5" />
-          Add symptom
-        </button>
-        {pickerOpen && (
-          <div
-            data-testid="symptom-add-picker"
-            className="mt-2 rounded-md border border-black/10 p-2.5 dark:border-white/15"
-          >
-            <div className="flex flex-wrap gap-1.5">
-              {pickerKeys.map((key) => {
-                const r = rowMap.get(key);
-                if (!r) return null;
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    data-testid={`symptom-pick-${key}`}
-                    onClick={() => void tap(key, 1)}
-                    className="badge cursor-pointer bg-slate-100 text-slate-600 hover:bg-brand-50 hover:text-brand-700 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-brand-950 dark:hover:text-brand-300"
-                  >
-                    {r.icon && <span aria-hidden>{r.icon} </span>}
-                    {r.label}
-                  </button>
-                );
-              })}
-            </div>
-            <form
-              className="mt-2 flex items-center gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                addCustom();
-              }}
-            >
-              <input
-                data-testid="symptom-custom-input"
-                value={customDraft}
-                onChange={(e) => setCustomDraft(e.target.value)}
-                placeholder="Add another symptom…"
-                maxLength={80}
-                className="flex-1 rounded-md border border-black/10 bg-white px-2 py-1 text-sm dark:border-white/15 dark:bg-ink-900"
-              />
-              <button
-                type="submit"
-                data-testid="symptom-custom-add"
-                aria-label="Add symptom"
-                className="badge cursor-pointer bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300"
-              >
-                <IconPlus className="h-3.5 w-3.5" />
-              </button>
-            </form>
-          </div>
-        )}
-      </div>
     </div>
   );
 }

@@ -208,16 +208,34 @@ describe("assembleIllnessEpisode — 5-day fixture (#448)", () => {
     expect(a.medications.map((m) => m.name)).toEqual(["Ibuprofen"]);
   });
 
+  it("uses the linked dose amount when a legacy administration has no snapshot", () => {
+    const p = newProfile("legacy-dose-amount");
+    const { itemId, doseId } = newPrnMed(p, "Ibuprofen");
+    db.prepare(
+      `INSERT INTO intake_item_logs
+         (dose_id, item_id, date, given_at, amount, status)
+       VALUES (?, ?, '2026-06-02', '2026-06-02 15:30:00', NULL, 'taken')`
+    ).run(doseId, itemId);
+
+    const a = assembleIllnessEpisode(p, CLOSED);
+
+    expect(a.medications[0].administrations[0].amount).toBe("200 mg");
+  });
+
   it("promote-to-condition bridges the range; undo removes only the episode-sourced row", () => {
     const p = newProfile("promote");
     seedFiveDayEpisode(p);
-
-    const out = promoteEpisodeToConditionCore(
-      p,
-      "Illness",
-      "2026-06-01",
-      "2026-06-06"
+    const episodeId = Number(
+      db
+        .prepare(
+          `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+           VALUES (?, 'Illness', '2026-06-01', '2026-06-06')`
+        )
+        .run(p).lastInsertRowid
     );
+    const storedEpisode: IllnessEpisode = { id: episodeId, ...CLOSED };
+
+    const out = promoteEpisodeToConditionCore(p, episodeId);
     expect(out.kind).toBe("promoted");
     const row = db
       .prepare(
@@ -237,21 +255,16 @@ describe("assembleIllnessEpisode — 5-day fixture (#448)", () => {
     expect(row.onset_date).toBe("2026-06-01");
     expect(row.resolved_date).toBe("2026-06-05"); // end-1 (last active day)
     expect(row.source).toBe("episode");
-    expect(row.external_id).toBe("episode:illness:2026-06-01");
+    expect(row.external_id).toBe(`illness-episode:${episodeId}`);
 
     // The bridged condition surfaces in the assembly, flagged fromEpisode.
-    const a = assembleIllnessEpisode(p, CLOSED);
+    const a = assembleIllnessEpisode(p, storedEpisode);
     expect(a.conditions).toContainEqual(
       expect.objectContaining({ name: "Illness", fromEpisode: true })
     );
 
     // Re-promote is an idempotent no-op (still one row).
-    const again = promoteEpisodeToConditionCore(
-      p,
-      "Illness",
-      "2026-06-01",
-      "2026-06-06"
-    );
+    const again = promoteEpisodeToConditionCore(p, episodeId);
     expect(again.kind).toBe("already");
     expect(
       (
@@ -262,9 +275,7 @@ describe("assembleIllnessEpisode — 5-day fixture (#448)", () => {
     ).toBe(1);
 
     // Undo deletes the episode-sourced row.
-    expect(unpromoteEpisodeConditionCore(p, "Illness", "2026-06-01")).toBe(
-      true
-    );
+    expect(unpromoteEpisodeConditionCore(p, episodeId)).toBe(true);
     expect(
       (
         db
@@ -276,7 +287,15 @@ describe("assembleIllnessEpisode — 5-day fixture (#448)", () => {
 
   it("an ongoing episode stays active with a null resolved date when promoted", () => {
     const p = newProfile("ongoing-promote");
-    const out = promoteEpisodeToConditionCore(p, "Illness", "2026-06-01", null);
+    const episodeId = Number(
+      db
+        .prepare(
+          `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+           VALUES (?, 'Illness', '2026-06-01', NULL)`
+        )
+        .run(p).lastInsertRowid
+    );
+    const out = promoteEpisodeToConditionCore(p, episodeId);
     expect(out.kind).toBe("promoted");
     const row = db
       .prepare(

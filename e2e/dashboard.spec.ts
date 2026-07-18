@@ -48,6 +48,23 @@ test("the Needs attention hero renders with the seeded profile's items", async (
   await expect(
     hero.locator('[data-testid^="attention-item-"]').first()
   ).toBeVisible();
+  await expect(
+    hero.getByRole("link", { name: "View all needs attention" })
+  ).toContainText("View all");
+});
+
+test("dashboard card-header navigation uses one visible convention", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const links = page.getByRole("main").getByTestId("widget-header-nav");
+  const count = await links.count();
+  expect(count).toBeGreaterThan(2);
+  for (let i = 0; i < count; i += 1) {
+    const link = links.nth(i);
+    await expect(link).toContainText("View all");
+    await expect(link).toHaveAttribute("aria-label", /^View all .+/);
+  }
 });
 
 test("the streamlined grid combines goals and habits and caps observations", async ({
@@ -64,7 +81,7 @@ test("the streamlined grid combines goals and habits and caps observations", asy
     goalsHabits.getByTestId("goals-habits-sections")
   ).toHaveAttribute("data-layout", "split");
   await expect(
-    goalsHabits.getByRole("link", { name: /Training goals/ })
+    goalsHabits.getByRole("link", { name: "View all goals and habits" })
   ).toHaveAttribute("href", "/training?tab=goals");
   await expect(
     goalsHabits.getByRole("link", { name: "Manage food habits →" })

@@ -4,11 +4,17 @@ import {
   feverTrend,
   feverTrendLabel,
   episodeHeadline,
+  readingClockWithRelativeAge,
+  episodeCollapsedStatus,
   householdSickLine,
+  episodeLatestDose,
   episodeLastDoseClause,
   orderIllnessCockpits,
   isOpenEpisode,
   episodeConditionExternalId,
+  episodeAlternateLogDate,
+  illnessTimelineEvents,
+  relativeEpisodeDateLabel,
   type AssembledEpisode,
   type EpisodeMedication,
   type TemperaturePoint,
@@ -40,7 +46,13 @@ function ep(over: Partial<AssembledEpisode> = {}): AssembledEpisode {
 }
 
 function temp(degF: number, flag: string | null = null): TemperaturePoint {
-  return { date: "2026-06-02", time: null, degF, flag };
+  return {
+    id: Math.round(degF * 10),
+    date: "2026-06-02",
+    time: null,
+    degF,
+    flag,
+  };
 }
 
 describe("episodeDayNumber", () => {
@@ -137,16 +149,99 @@ describe("episodeHeadline", () => {
   });
 });
 
+describe("episodeCollapsedStatus", () => {
+  it("prioritizes latest temperature and medication timing", () => {
+    const latestTemp: TemperaturePoint = {
+      id: 1,
+      date: "2026-06-04",
+      time: "00:05",
+      degF: 101.3,
+      flag: "high",
+    };
+    const e = ep({
+      latestTemp,
+      temperatures: [latestTemp],
+      medications: [
+        med("Ibuprofen", [
+          { date: "2026-06-04", time: "16:02", amount: "200 mg" },
+        ]),
+      ],
+    });
+    expect(
+      episodeCollapsedStatus(e, "F", {
+        timeZone: "America/New_York",
+        timeFormat: "12h",
+        now: new Date("2026-06-04T22:02:00Z"),
+      })
+    ).toEqual({
+      dayLabel: "Illness · Day 4",
+      temperature: {
+        value: "101.3 °F",
+        when: "at 12:05 AM (18 hrs ago)",
+        high: true,
+      },
+      lastMeds: { name: "Ibuprofen", when: "4:02 PM (2 hrs ago)" },
+      worsening: false,
+    });
+  });
+
+  it("keeps older readings relative and degrades to the situation", () => {
+    const e = ep({
+      start: null,
+      latestTemp: {
+        date: "2026-06-03",
+        time: "08:15",
+        degF: 98.6,
+        flag: null,
+      },
+    });
+    expect(
+      episodeCollapsedStatus(e, "C", {
+        timeZone: "UTC",
+        timeFormat: "12h",
+      })
+    ).toMatchObject({
+      dayLabel: "Illness",
+      temperature: {
+        value: "37 °C",
+        when: "Yesterday, 8:15 AM",
+        high: false,
+      },
+      lastMeds: null,
+    });
+  });
+});
+
+describe("readingClockWithRelativeAge", () => {
+  it("normalizes an already-formatted medication clock", () => {
+    expect(
+      readingClockWithRelativeAge("2026-06-04", "5:00 pm", {
+        timeZone: "America/New_York",
+        timeFormat: "12h",
+        now: new Date("2026-06-04T23:00:00Z"),
+      })
+    ).toBe("5:00 PM (2 hrs ago)");
+  });
+});
+
 // A PRN med with administration points (date/time/amount), for the last-dose clause.
 function med(
   name: string,
-  admins: { date: string; time: string | null }[]
+  admins: {
+    date: string;
+    time: string | null;
+    time24?: string | null;
+    amount?: string | null;
+  }[]
 ): EpisodeMedication {
   return {
     itemId: 1,
     name,
     count: admins.length,
-    administrations: admins.map((a) => ({ ...a, amount: null })),
+    administrations: admins.map((a) => ({
+      ...a,
+      amount: a.amount ?? null,
+    })),
   };
 }
 
@@ -163,7 +258,7 @@ describe("episodeLastDoseClause", () => {
         ]),
       ],
     });
-    expect(episodeLastDoseClause(e)).toBe("last ibuprofen 4:02pm");
+    expect(episodeLastDoseClause(e, "12h")).toBe("last ibuprofen 4:02 PM");
   });
   it("picks the globally latest administration across meds", () => {
     const e = ep({
@@ -172,13 +267,40 @@ describe("episodeLastDoseClause", () => {
         med("Tylenol", [{ date: "2026-06-03", time: "6:30pm" }]),
       ],
     });
-    expect(episodeLastDoseClause(e)).toBe("last tylenol 6:30pm");
+    expect(episodeLastDoseClause(e, "12h")).toBe("last tylenol 6:30 PM");
   });
   it("degrades to just the name when the clock is unknown", () => {
     const e = ep({
       medications: [med("Ibuprofen", [{ date: "2026-06-03", time: null }])],
     });
     expect(episodeLastDoseClause(e)).toBe("last ibuprofen");
+  });
+  it("returns the full latest dose and sorts display clocks by their 24-hour value", () => {
+    const e = ep({
+      medications: [
+        med("Ibuprofen", [
+          {
+            date: "2026-06-03",
+            time: "10:00am",
+            time24: "10:00",
+            amount: "200 mg",
+          },
+          {
+            date: "2026-06-03",
+            time: "9:00pm",
+            time24: "21:00",
+            amount: "400 mg",
+          },
+        ]),
+      ],
+    });
+
+    expect(episodeLatestDose(e)).toMatchObject({
+      name: "Ibuprofen",
+      date: "2026-06-03",
+      time: "9:00pm",
+      amount: "400 mg",
+    });
   });
 });
 
@@ -196,8 +318,8 @@ describe("householdSickLine", () => {
       latestTemp: temp(101.3, "high"),
       medications: [med("Ibuprofen", [{ date: "2026-06-03", time: "4:02pm" }])],
     });
-    expect(householdSickLine("Mia", e)).toBe(
-      "Mia · sick day 4 · 101.3 °F · last ibuprofen 4:02pm"
+    expect(householdSickLine("Mia", e, "F", null, "12h")).toBe(
+      "Mia · sick day 4 · 101.3 °F · last ibuprofen 4:02 PM"
     );
   });
 });
@@ -240,17 +362,118 @@ describe("isOpenEpisode", () => {
 });
 
 describe("episodeConditionExternalId", () => {
-  it("is deterministic and case/whitespace-insensitive on the situation", () => {
-    expect(episodeConditionExternalId("Illness", "2026-06-01")).toBe(
-      "episode:illness:2026-06-01"
-    );
-    expect(episodeConditionExternalId("  ILLNESS ", "2026-06-01")).toBe(
-      "episode:illness:2026-06-01"
-    );
+  it("keys the generated condition to the stable episode row id", () => {
+    expect(episodeConditionExternalId(42)).toBe("illness-episode:42");
   });
-  it("uses an 'open' sentinel for a null start", () => {
-    expect(episodeConditionExternalId("Illness", null)).toBe(
-      "episode:illness:open"
+});
+
+describe("episodeAlternateLogDate", () => {
+  it("does not offer yesterday when the episode starts today", () => {
+    expect(
+      episodeAlternateLogDate(true, "2026-06-04", "2026-06-04")
+    ).toBeNull();
+  });
+
+  it("offers yesterday only for an open episode whose range contains it", () => {
+    expect(episodeAlternateLogDate(true, "2026-06-01", "2026-06-04")).toBe(
+      "2026-06-03"
+    );
+    expect(episodeAlternateLogDate(true, null, "2026-06-04")).toBe(
+      "2026-06-03"
+    );
+    expect(
+      episodeAlternateLogDate(false, "2026-06-01", "2026-06-04")
+    ).toBeNull();
+  });
+});
+
+describe("illnessTimelineEvents", () => {
+  it("combines temperatures, dose amounts/times, and symptoms chronologically", () => {
+    const events = illnessTimelineEvents(
+      ep({
+        temperatures: [
+          {
+            id: 4,
+            date: "2026-06-02",
+            time: "08:30",
+            degF: 101.2,
+            flag: "high",
+          },
+        ],
+        medications: [
+          {
+            itemId: 7,
+            name: "Ibuprofen",
+            count: 1,
+            administrations: [
+              {
+                id: 9,
+                date: "2026-06-02",
+                time: "9:15 AM",
+                time24: "09:15",
+                amount: "200 mg",
+              },
+            ],
+          },
+        ],
+        symptoms: [
+          {
+            symptom: "cough",
+            label: "Cough",
+            maxSeverity: 2,
+            points: [
+              {
+                date: "2026-06-02",
+                severity: 2,
+                note: "Worse after lying down",
+              },
+            ],
+          },
+        ],
+      })
+    );
+    expect(events.map((event) => [event.label, event.detail])).toEqual([
+      ["Temperature", "101.2"],
+      ["Ibuprofen", "200 mg"],
+      ["Cough", "Moderate"],
+    ]);
+    expect(events.find((event) => event.kind === "symptom")).toMatchObject({
+      note: "Worse after lying down",
+    });
+  });
+
+  it("makes a missing historical dose amount explicit", () => {
+    const events = illnessTimelineEvents(
+      ep({
+        medications: [
+          {
+            itemId: 7,
+            name: "Ibuprofen",
+            count: 1,
+            administrations: [
+              {
+                id: 9,
+                date: "2026-06-02",
+                time: "9:15 AM",
+                time24: "09:15",
+                amount: null,
+              },
+            ],
+          },
+        ],
+      })
+    );
+
+    expect(events[0]?.detail).toBe("Amount not recorded");
+  });
+
+  it("uses relative calendar labels for an ongoing episode", () => {
+    expect(relativeEpisodeDateLabel("2026-06-04", "2026-06-04")).toBe("Today");
+    expect(relativeEpisodeDateLabel("2026-06-03", "2026-06-04")).toBe(
+      "Yesterday"
+    );
+    expect(relativeEpisodeDateLabel("2026-05-31", "2026-06-04")).toBe(
+      "4 days ago"
     );
   });
 });

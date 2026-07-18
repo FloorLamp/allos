@@ -17,8 +17,10 @@ import {
 } from "@/lib/illness-episode";
 import EpisodeSummary from "@/components/illness/EpisodeSummary";
 import PrintButton from "@/components/illness/PrintButton";
+import { ConfirmProvider } from "@/components/ConfirmDialog";
 import MedicationListView from "@/components/medications/MedicationListView";
 import { getCurrentMedicationList } from "@/app/(app)/medications/med-data";
+import { getTimezone } from "@/lib/settings";
 
 // A human opening a shared passport hits this a handful of times; 30 requests/min
 // per token is far above that while capping a client scraping this PHI-bearing,
@@ -89,15 +91,18 @@ export default async function SharePage(props: {
     if (!episode) notFound();
     const assembled = assembleIllnessEpisode(link.profile_id, episode);
     return (
-      <div className="mx-auto min-h-screen max-w-3xl px-4 py-6 sm:py-10">
-        <div className="mb-4 flex items-center justify-end">
-          <PrintButton />
+      <ConfirmProvider>
+        <div className="mx-auto min-h-screen max-w-3xl px-4 py-6 sm:py-10">
+          <div className="mb-4 flex items-center justify-end">
+            <PrintButton />
+          </div>
+          <EpisodeSummary
+            episode={assembled}
+            generatedAt={new Date().toISOString()}
+            timeZone={getTimezone(link.profile_id)}
+          />
         </div>
-        <EpisodeSummary
-          episode={assembled}
-          generatedAt={new Date().toISOString()}
-        />
-      </div>
+      </ConfirmProvider>
     );
   }
 

@@ -8,6 +8,7 @@
 import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
 import { backfillIllnessEpisodes } from "@/lib/migrations/versions/046-illness-episodes";
+import { stabilizeEpisodeConditions } from "@/lib/migrations/versions/062-stable-episode-conditions";
 import {
   episodeForProfileDate,
   assembleIllnessEpisode,
@@ -49,6 +50,44 @@ function seedLog(p: number, active: boolean, events: SituationEvent[]) {
     serializeSituationEvents([], events)
   );
 }
+
+describe("stable episode-condition migration (#856 corrective)", () => {
+  it("re-anchors a legacy promotion and repairs its resolved range", () => {
+    const p = newProfile("legacy episode condition");
+    const episodeId = Number(
+      db
+        .prepare(
+          `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+           VALUES (?, 'Illness', '2026-04-01', '2026-04-05')`
+        )
+        .run(p).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO conditions
+         (profile_id, name, status, onset_date, resolved_date, source, external_id)
+       VALUES (?, 'Illness', 'active', '2026-04-01', NULL, 'episode',
+               'episode:illness:2026-04-01')`
+    ).run(p);
+
+    stabilizeEpisodeConditions(db);
+
+    const condition = db
+      .prepare(
+        `SELECT status, onset_date, resolved_date, external_id
+           FROM conditions WHERE profile_id = ? AND source = 'episode'`
+      )
+      .get(p) as {
+      status: string;
+      onset_date: string;
+      resolved_date: string;
+      external_id: string;
+    };
+    expect(condition.external_id).toBe(`illness-episode:${episodeId}`);
+    expect(condition.status).toBe("resolved");
+    expect(condition.onset_date).toBe("2026-04-01");
+    expect(condition.resolved_date).toBe("2026-04-04");
+  });
+});
 
 describe("illness_episodes backfill (#856 item 0)", () => {
   it("reconstructs one row per historical flagged on→off range", () => {

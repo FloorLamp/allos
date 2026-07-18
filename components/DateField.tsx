@@ -50,6 +50,7 @@ export default function DateField({
   min,
   max,
   inputClassName = "",
+  "data-testid": testId,
 }: {
   name?: string;
   value?: string;
@@ -67,6 +68,7 @@ export default function DateField({
   min?: string;
   max?: string;
   inputClassName?: string;
+  "data-testid"?: string;
 }) {
   const controlled = value !== undefined;
   const [inner, setInner] = useState(defaultValue);
@@ -209,6 +211,7 @@ export default function DateField({
     >
       <input
         ref={inputRef}
+        data-testid={testId}
         id={id}
         type="text"
         value={validISO(val) ? formatLongDate(val) : val}
@@ -254,13 +257,14 @@ export default function DateField({
         createPortal(
           <div
             ref={popRef}
+            data-testid="date-field-calendar"
             style={{
               position: "fixed",
               top: pos?.top ?? 0,
               left: pos?.left ?? 0,
               visibility: pos ? "visible" : "hidden",
             }}
-            className="z-50 w-72 rounded-lg border border-black/10 bg-white p-3 shadow-lg dark:border-white/10 dark:bg-ink-900"
+            className="z-[70] w-72 rounded-lg border border-black/10 bg-white p-3 shadow-lg dark:border-white/10 dark:bg-ink-900"
           >
             <div className="mb-2 flex items-center justify-between gap-1">
               <div className="flex items-center gap-1">

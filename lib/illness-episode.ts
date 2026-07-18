@@ -17,14 +17,18 @@
 
 import { db } from "./db";
 import { today } from "./db";
-import { shiftDateStr, daysBetweenDateStr } from "./date";
+import {
+  shiftDateStr,
+  daysBetweenDateStr,
+  parseUtcSql,
+  zonedDateParts,
+} from "./date";
 import { getTimezone } from "./settings";
 import { getSymptomDaysInRange } from "./queries/symptoms";
 import { getConditions } from "./queries/clinical";
 import type { Condition } from "./types";
 import { symptomLabel } from "./symptoms";
 import { VITAL_CANONICAL } from "./vitals-input";
-import { formatGivenAtClock } from "./administration-format";
 import {
   getIllnessSituations,
   getSituationEvents,
@@ -105,18 +109,20 @@ export function assembleIllnessEpisode(
   // ── Temperature / fever curve (#800) ────────────────────────────────────────
   const tempRows = db
     .prepare(
-      `SELECT date, notes, value_num, flag FROM medical_records
+      `SELECT id, date, notes, value_num, flag FROM medical_records
         WHERE profile_id = ? AND canonical_name = ?
           AND date >= ? AND date <= ? AND value_num IS NOT NULL
         ORDER BY date ASC, COALESCE(notes, '') ASC`
     )
     .all(profileId, TEMP_CANONICAL, from, to) as {
+    id: number;
     date: string;
     notes: string | null;
     value_num: number;
     flag: string | null;
   }[];
   const temperatures: TemperaturePoint[] = tempRows.map((r) => ({
+    id: r.id,
     date: r.date,
     time: /^\d{2}:\d{2}$/.test(r.notes ?? "") ? r.notes : null,
     degF: r.value_num,
@@ -133,17 +139,23 @@ export function assembleIllnessEpisode(
   // Only AS-NEEDED (PRN) meds: the illness story is what was taken FOR the illness
   // (ibuprofen, a decongestant), not the profile's standing daily regimen — a
   // scheduled supplement confirmed every day would drown out the signal.
+  // A log's snapshot stays authoritative; legacy rows without one fall back to their
+  // linked dose so history still shows the same amount as the Meds logger.
   const admRows = db
     .prepare(
-      `SELECT l.item_id AS item_id, ii.name AS name, l.date AS date,
-              l.given_at AS given_at, l.taken_at AS taken_at, l.amount AS amount
+      `SELECT l.id AS id, l.item_id AS item_id, ii.name AS name, l.date AS date,
+              l.given_at AS given_at, l.taken_at AS taken_at,
+              COALESCE(l.amount, d.amount) AS amount
          FROM intake_item_logs l
          JOIN intake_items ii ON ii.id = l.item_id
+         LEFT JOIN intake_item_doses d
+           ON d.id = l.dose_id AND d.item_id = l.item_id
         WHERE ii.profile_id = ? AND l.status = 'taken' AND ii.as_needed = 1
           AND l.date >= ? AND l.date <= ?
         ORDER BY l.date ASC, COALESCE(l.given_at, l.taken_at) ASC, l.id ASC`
     )
     .all(profileId, from, to) as {
+    id: number;
     item_id: number;
     name: string;
     date: string;
@@ -158,9 +170,13 @@ export function assembleIllnessEpisode(
       med = { itemId: r.item_id, name: r.name, count: 0, administrations: [] };
       byMed.set(r.item_id, med);
     }
+    const parsed = parseUtcSql(r.given_at ?? r.taken_at);
+    const localClock = parsed ? zonedDateParts(tz, parsed).hhmm : null;
     const point: AdministrationPoint = {
+      id: r.id,
       date: r.date,
-      time: formatGivenAtClock(tz, r.given_at ?? r.taken_at) || null,
+      time: localClock,
+      time24: localClock,
       amount: r.amount,
     };
     med.administrations.push(point);
@@ -172,15 +188,14 @@ export function assembleIllnessEpisode(
   const totalAdministrations = admRows.length;
 
   // ── Conditions bridged from / overlapping the window ────────────────────────
-  const promotedExternal = episodeConditionExternalId(
-    episode.situation,
-    episode.start
-  );
+  const promotedExternal =
+    episode.id != null ? episodeConditionExternalId(episode.id) : null;
   const conditions: EpisodeCondition[] = (
     presetConditions ?? getConditions(profileId)
   )
     .filter((c) => {
-      const fromEp = c.external_id === promotedExternal;
+      const fromEp =
+        promotedExternal != null && c.external_id === promotedExternal;
       const onsetInRange =
         c.onset_date != null && c.onset_date >= from && c.onset_date <= to;
       return fromEp || onsetInRange;
@@ -191,7 +206,8 @@ export function assembleIllnessEpisode(
       status: c.status,
       onset_date: c.onset_date,
       resolved_date: c.resolved_date,
-      fromEpisode: c.external_id === promotedExternal,
+      fromEpisode:
+        promotedExternal != null && c.external_id === promotedExternal,
     }));
 
   // ── Notes (symptom notes + timed temperature notes), oldest first ───────────

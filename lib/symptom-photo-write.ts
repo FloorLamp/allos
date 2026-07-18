@@ -186,6 +186,25 @@ export function getSymptomPhotosInRange(
     .all(profileId, from, to) as SymptomPhotoRow[];
 }
 
+// Update only the user-authored caption. Empty text clears it; the same 500-character
+// ceiling used at upload keeps both write paths consistent. Profile-scoped by id.
+export function updateSymptomPhotoCaptionCore(
+  profileId: number,
+  id: number,
+  caption: string | null
+): boolean {
+  const cap = caption?.trim() ? caption.trim().slice(0, 500) : null;
+  return (
+    db
+      .prepare(
+        `UPDATE symptom_photos
+            SET caption = ?
+          WHERE id = ? AND profile_id = ?`
+      )
+      .run(cap, id, profileId).changes > 0
+  );
+}
+
 // Delete one symptom photo — the row AND its on-disk file (row-op side-state #199).
 // Path-contained: only a file under SYMPTOM_PHOTO_DIR is unlinked. Idempotent.
 export function deleteSymptomPhotoCore(profileId: number, id: number): boolean {

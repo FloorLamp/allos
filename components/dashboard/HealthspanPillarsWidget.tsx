@@ -44,11 +44,7 @@ export default function HealthspanPillarsWidget({
 }) {
   return (
     <div className="card" data-testid="healthspan-pillars-widget">
-      <WidgetHeader
-        title="Healthspan pillars"
-        href="/trends"
-        linkLabel="Trends"
-      />
+      <WidgetHeader title="Healthspan pillars" href="/trends" />
       <div className="grid gap-2 sm:grid-cols-2">
         {pillars.map((p) => (
           <Link

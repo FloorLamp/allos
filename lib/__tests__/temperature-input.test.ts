@@ -5,6 +5,8 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  detectTemperatureUnit,
+  resolveTemperatureUnit,
   toCanonicalTempF,
   temperatureRangeError,
   celsiusToF,
@@ -33,6 +35,27 @@ describe("toCanonicalTempF — °C/°F boundary conversion", () => {
     // A missing/garbage unit defaults to °F (the canonical unit).
     expect(toCanonicalTempF(100.4, null)).toBe(100.4);
     expect(toCanonicalTempF(100.4, "")).toBe(100.4);
+  });
+});
+
+describe("temperature unit detection", () => {
+  it("detects plausible body-temperature scales from the reading", () => {
+    expect(detectTemperatureUnit(37)).toBe("C");
+    expect(detectTemperatureUnit(39.5)).toBe("C");
+    expect(detectTemperatureUnit(98.6)).toBe("F");
+    expect(detectTemperatureUnit(104)).toBe("F");
+  });
+
+  it("keeps the selected unit while typing or outside both plausible ranges", () => {
+    expect(detectTemperatureUnit(3)).toBeNull();
+    expect(detectTemperatureUnit(60)).toBeNull();
+    expect(resolveTemperatureUnit(60, "C")).toBe("C");
+    expect(resolveTemperatureUnit(60, "F")).toBe("F");
+  });
+
+  it("uses detection when the selected unit does not match the reading", () => {
+    expect(resolveTemperatureUnit(37, "F")).toBe("C");
+    expect(resolveTemperatureUnit(98.6, "C")).toBe("F");
   });
 });
 

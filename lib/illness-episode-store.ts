@@ -18,6 +18,7 @@
 
 import { db, writeTx } from "./db";
 import { shiftDateStr } from "./date";
+import { episodeConditionExternalId } from "./illness-episode-format";
 import { normalizeSituationName } from "./situations";
 import type { IllnessEpisode } from "./symptom-episode";
 
@@ -239,8 +240,8 @@ export function createEpisodeRow(
   );
 }
 
-// Edit an episode's boundaries in place (item 1). A plain row UPDATE — derived
-// membership follows the new [start, end) automatically. Opens its own writeTx.
+// Correct an episode's boundaries in place. Used by the stale-episode backdated close;
+// the richer form edit lives in editEpisodeCore so it can synchronize its Condition.
 export function updateEpisodeBoundaries(
   profileId: number,
   id: number,
@@ -258,40 +259,6 @@ export function updateEpisodeBoundaries(
   );
 }
 
-// Set the episode-level free-text note (item 8). Empty → NULL.
-export function setEpisodeNote(
-  profileId: number,
-  id: number,
-  note: string | null
-): boolean {
-  const v = note?.trim() ? note.trim() : null;
-  return writeTx(
-    () =>
-      db
-        .prepare(
-          `UPDATE illness_episodes SET note = ? WHERE id = ? AND profile_id = ?`
-        )
-        .run(v, id, profileId).changes > 0
-  );
-}
-
-// Set the episode outcome annotation (item 9 index column). Empty → NULL.
-export function setEpisodeOutcome(
-  profileId: number,
-  id: number,
-  outcome: string | null
-): boolean {
-  const v = outcome?.trim() ? outcome.trim() : null;
-  return writeTx(
-    () =>
-      db
-        .prepare(
-          `UPDATE illness_episodes SET outcome = ? WHERE id = ? AND profile_id = ?`
-        )
-        .run(v, id, profileId).changes > 0
-  );
-}
-
 // Delete an episode row (the "loser" of a flap-merge, item 1). Row-op side-state
 // (#199/#202): any share link that re-anchored to this id has its episode_id NULLED
 // first (the anchor-date fallback then resolves it), so the FK never throws. Opens its
@@ -302,6 +269,10 @@ export function deleteEpisodeRow(profileId: number, id: number): boolean {
       `UPDATE profile_share_links SET episode_id = NULL
         WHERE episode_id = ? AND profile_id = ?`
     ).run(id, profileId);
+    db.prepare(
+      `DELETE FROM conditions
+        WHERE profile_id = ? AND external_id = ? AND source = 'episode'`
+    ).run(profileId, episodeConditionExternalId(id));
     return (
       db
         .prepare(`DELETE FROM illness_episodes WHERE id = ? AND profile_id = ?`)
@@ -338,10 +309,52 @@ export function mergeEpisodeRows(
         : keep.ended_at > drop.ended_at
           ? keep.ended_at
           : drop.ended_at;
+
+    // Stable row-op side-state: preserve one promotion across the merge. Prefer the
+    // keeper's condition; otherwise re-anchor the loser's condition to the keeper id.
+    // If both were promoted, the loser's generated condition is redundant and removed.
+    const keepExternal = episodeConditionExternalId(keepId);
+    const dropExternal = episodeConditionExternalId(dropId);
+    const keepCondition = db
+      .prepare(
+        `SELECT id FROM conditions
+          WHERE profile_id = ? AND external_id = ? AND source = 'episode'`
+      )
+      .get(profileId, keepExternal) as { id: number } | undefined;
+    const dropCondition = db
+      .prepare(
+        `SELECT id FROM conditions
+          WHERE profile_id = ? AND external_id = ? AND source = 'episode'`
+      )
+      .get(profileId, dropExternal) as { id: number } | undefined;
+    if (dropCondition && keepCondition) {
+      db.prepare(
+        `DELETE FROM conditions
+          WHERE id = ? AND profile_id = ? AND source = 'episode'`
+      ).run(dropCondition.id, profileId);
+    } else if (dropCondition) {
+      db.prepare(
+        `UPDATE conditions SET external_id = ?
+          WHERE id = ? AND profile_id = ? AND source = 'episode'`
+      ).run(keepExternal, dropCondition.id, profileId);
+    }
+
     db.prepare(
       `UPDATE illness_episodes SET started_at = ?, ended_at = ?
         WHERE id = ? AND profile_id = ?`
     ).run(start, end, keepId, profileId);
+    db.prepare(
+      `UPDATE conditions
+          SET name = ?, status = ?, onset_date = ?, resolved_date = ?
+        WHERE profile_id = ? AND external_id = ? AND source = 'episode'`
+    ).run(
+      keep.situation,
+      end ? "resolved" : "active",
+      start,
+      end ? shiftDateStr(end, -1) : null,
+      profileId,
+      keepExternal
+    );
     db.prepare(
       `UPDATE profile_share_links SET episode_id = ?
         WHERE episode_id = ? AND profile_id = ?`
