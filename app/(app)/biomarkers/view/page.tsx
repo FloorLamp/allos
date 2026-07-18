@@ -5,11 +5,13 @@ import {
   getBiomarkerSeriesWithDerived,
   getCanonicalBiomarker,
   getLabFollowUps,
+  getIopFollowUps,
   getMedicalDocumentsByIds,
   getFoodSuggestions,
   isBiomarkerStarred,
 } from "@/lib/queries";
 import { biomarkerFamily } from "@/lib/canonical-name";
+import { isIopBiomarker } from "@/lib/followup-iop";
 import TrackLabFollowUpControl from "../TrackLabFollowUpControl";
 import FoodSuggestions from "@/components/FoodSuggestions";
 import type { CanonicalBiomarker, Sex } from "@/lib/types";
@@ -462,10 +464,24 @@ export default async function BiomarkerDetailPage(props: {
   //     computed/derived index) → offer to track one — so a NEW flag can start a NEW
   //     follow-up even after an earlier one resolved;
   //   - else, a recently RESOLVED follow-up → show its recorded outcome.
+  // An intraocular-pressure biomarker routes to the IOP glaucoma-workup adapter (#698
+  // §6): its own source_kind='iop', its own "Recheck IOP / glaucoma workup" copy, and
+  // ONE bilateral question (any eye maps to the same follow-up) — so it does NOT filter
+  // by biomarker family (IOP is deliberately not a global family; see lib/followup-iop).
+  // Every other biomarker uses the generic labs adapter, keyed on this biomarker's #482
+  // family (an A1c follow-up shows on the eAG page too, and vice-versa). Priority:
+  //   - an OPEN "Recheck …" follow-up → show its state (recheck due);
+  //   - else, when the latest reading is OUT OF RANGE (a real stored reading, not a
+  //     computed/derived index) → offer to track one — so a NEW flag can start a NEW
+  //     follow-up even after an earlier one resolved;
+  //   - else, a recently RESOLVED follow-up → show its recorded outcome.
+  const isIop = isIopBiomarker(canonical);
   const famKey = biomarkerFamily(canonical).toLowerCase();
-  const familyFollowUps = getLabFollowUps(profile.id).filter(
-    (f) => biomarkerFamily(f.sourceName).toLowerCase() === famKey
-  );
+  const familyFollowUps = isIop
+    ? getIopFollowUps(profile.id)
+    : getLabFollowUps(profile.id).filter(
+        (f) => biomarkerFamily(f.sourceName).toLowerCase() === famKey
+      );
   const openLabFollowUp = familyFollowUps.find(
     (f) => f.resolution == null && f.status !== "completed"
   );
@@ -599,6 +615,7 @@ export default async function BiomarkerDetailPage(props: {
             <TrackLabFollowUpControl
               recordId={typeof latest.id === "number" ? latest.id : 0}
               existing={existingFollowUp}
+              kind={isIop ? "iop" : "lab"}
             />
           </div>
         )}

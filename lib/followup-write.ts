@@ -17,6 +17,11 @@ import {
   LABS_FOLLOWUP_KIND,
   type LabFollowUpRecord,
 } from "./followup-labs";
+import {
+  IOP_FOLLOWUP_KIND,
+  IOP_FOLLOWUP_TITLE,
+  type IopFollowUpRecord,
+} from "./followup-iop";
 import { biomarkerFamily } from "./canonical-name";
 import { normalizeResolution } from "./followup";
 import type { ImagingStudy } from "./types";
@@ -122,6 +127,13 @@ const RESOLVE_TARGET_BY_KIND: Record<
     resolvedCol: "resolved_by_imaging_study_id",
   },
   [LABS_FOLLOWUP_KIND]: {
+    table: "medical_records",
+    resolvedCol: "resolved_by_medical_record_id",
+  },
+  // IOP readings are medical_records too (#698), so the IOP follow-up reuses the same
+  // resolving-link column migration 060 already added — no new column/migration. A
+  // repeat pressure (a later medical_records reading) resolves the glaucoma follow-up.
+  [IOP_FOLLOWUP_KIND]: {
     table: "medical_records",
     resolvedCol: "resolved_by_medical_record_id",
   },
@@ -247,6 +259,73 @@ export function trackLabFollowUpCore(
         title,
         plannedDate,
         LABS_FOLLOWUP_KIND,
+        medicalRecordId,
+        interval > 0 ? interval : null,
+        profileId
+      );
+    return {
+      kind: "created" as const,
+      carePlanItemId: Number(info.lastInsertRowid),
+    };
+  });
+}
+
+// ---- Create: track a glaucoma follow-up for a flagged IOP reading (#698 §6) --------
+
+// Track a follow-up for one flagged intraocular-pressure reading: create a linked, OPEN
+// care_plan_item titled "Recheck IOP / glaucoma workup", planned_date = reading date +
+// interval, carrying source_kind='iop' + the source medical_records FK + the interval,
+// so an elevated pressure ("28 mmHg OD") becomes a legible, resolvable glaucoma-workup
+// follow-up instead of a bare red dot. Idempotent per PROFILE (not per eye): IOP is ONE
+// bilateral question — a single glaucoma workup covers both eyes — so while an open IOP
+// follow-up exists, tracking from either eye (or a re-offer) returns the existing one
+// rather than spawning a duplicate. `today` seeds the planned_date fallback (unused in
+// practice — a reading always has a date).
+export function trackIopFollowUpCore(
+  profileId: number,
+  medicalRecordId: number,
+  intervalDays: number,
+  today: string
+): TrackFollowUpOutcome {
+  return writeTx(() => {
+    const record = db
+      .prepare(
+        `SELECT id, date, canonical_name, name, value, unit, value_num, flag
+           FROM medical_records WHERE id = ? AND profile_id = ?`
+      )
+      .get(medicalRecordId, profileId) as IopFollowUpRecord | undefined;
+    if (!record) return { kind: "invalid" as const };
+
+    // One open IOP follow-up per profile (the bilateral glaucoma question) — return
+    // the existing one instead of a dup, whichever eye it was seeded from.
+    const existing = db
+      .prepare(
+        `SELECT id FROM care_plan_items
+          WHERE profile_id = ? AND source_kind = ?
+            AND source_medical_record_id IS NOT NULL AND resolution IS NULL`
+      )
+      .get(profileId, IOP_FOLLOWUP_KIND) as { id: number } | undefined;
+    if (existing)
+      return { kind: "exists" as const, carePlanItemId: existing.id };
+
+    const interval =
+      Number.isFinite(intervalDays) && intervalDays > 0
+        ? Math.floor(intervalDays)
+        : 0;
+    const base = record.date ?? today;
+    const plannedDate = interval > 0 ? shiftDateStr(base, interval) : base;
+
+    const info = db
+      .prepare(
+        `INSERT INTO care_plan_items
+           (description, category, planned_date, status, source, source_kind,
+            source_medical_record_id, recommended_interval_days, profile_id)
+         VALUES (?, 'follow-up', ?, NULL, NULL, ?, ?, ?, ?)`
+      )
+      .run(
+        IOP_FOLLOWUP_TITLE,
+        plannedDate,
+        IOP_FOLLOWUP_KIND,
         medicalRecordId,
         interval > 0 ? interval : null,
         profileId
