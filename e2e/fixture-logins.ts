@@ -226,3 +226,14 @@ export const PROTEIN_QUICKADD_PROFILE = "Protein Quickadd (e2e)";
 // card that races neighbor specs.
 export const E2E_LOGIN_RECAP = "e2e_recap";
 export const RECAP_PROFILE = "Session Recap (e2e)";
+
+// A dedicated ADULT profile for the food-log slot-aware ranking + N-week habit trend
+// specs (#950 / #954). Its per-tap food_log_events ledger is slot-SKEWED — exactly one
+// dominant encourage group per window (whole_grains at breakfast, fatty_fish at lunch,
+// berries in the evening) — so whatever slot the e2e wall clock lands in, the one-tap
+// bar's lead must match the slot chip. It also carries a backdated "fatty fish 2×/week"
+// habit (a real multi-week trend) and a freshly-created "leafy greens" habit (an honest
+// cold-start trend). Dedicated + read-only on purpose: a slot-skewed ledger or backdated
+// target on a SHARED profile would change its ranking/rollup and race neighbor specs.
+export const E2E_LOGIN_FOODSLOT = "e2e_foodslot";
+export const FOOD_SLOT_PROFILE = "Food Slot (e2e)";
