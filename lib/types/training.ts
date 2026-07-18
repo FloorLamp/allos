@@ -269,8 +269,15 @@ export interface Goal {
 
 // region/group/type are training scopes (muscle region, body group, activity type);
 // food_group (#580) is a food-habit scope (a lib/food-groups.json slug) whose progress
-// is the #579 weekly serving rollup — the same target table, a different data source.
-export type FrequencyScopeKind = "region" | "group" | "type" | "food_group";
+// is the #579 weekly serving rollup; mobility_region (#840) is a mobility-habit scope
+// (a MuscleRegion) whose progress counts recovery-session mobilized days — SEPARATE from
+// `region` (#482: trained ≠ mobilized). Same target table, different data sources.
+export type FrequencyScopeKind =
+  | "region"
+  | "group"
+  | "type"
+  | "food_group"
+  | "mobility_region";
 
 // A user-defined "hit X at least N times/week" target.
 export interface FrequencyTarget {
