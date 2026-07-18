@@ -76,6 +76,24 @@ describe("food-groups.json dataset", () => {
     }
   });
 
+  // ── #824 one-mechanism rule: NO protein-shake/powder catalog entry ──
+  it("has no food-group entry representing protein powder / shakes (the one-mechanism rule)", () => {
+    // Protein powder is deliberately NOT a food group (#824): a `protein_shake` catalog
+    // entry would double-count once someone also logs the milk/eggs in the shake. Its
+    // ONLY home is the protein-grams quick-add (protein_log), which SUMS with the
+    // food-group estimate. The whole-foods catalog must stay whole-foods — guard that no
+    // slug or name ever grows into a supplement/shake bucket.
+    const BANNED =
+      /shake|protein[\s_-]*powder|whey|casein|protein[\s_-]*supplement/i;
+    const offenders = FOOD_GROUPS.filter(
+      (g) => BANNED.test(g.slug) || BANNED.test(g.name)
+    ).map((g) => g.slug);
+    expect(
+      offenders,
+      `food groups representing protein powder/shakes (rejected by #824 — use the protein-grams quick-add): ${offenders}`
+    ).toEqual([]);
+  });
+
   // ── #591 icon coverage (reflection guard) ──
   it("every catalog slug resolves to a real (non-generic) food-group icon key", () => {
     // The generic fallback is only for retired/unknown slugs — every CURRENT

@@ -867,6 +867,19 @@ export const DATASETS: ExportDataset[] = [
     countSql: `SELECT COUNT(*) AS n FROM food_log WHERE profile_id = ?`,
   }),
   tableDataset({
+    // Protein-grams quick-add log (#824): one row per date with a running gram total
+    // (protein powder / shakes have no food-group home). User-entered health data, so
+    // it's in the portable export; id-keyed + owned, deletable like the other logged
+    // datasets.
+    key: "protein_log",
+    label: "Protein log",
+    table: "protein_log",
+    columns: ["date", "grams"],
+    select: `SELECT id, date, grams
+       FROM protein_log WHERE profile_id = ? ORDER BY date DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM protein_log WHERE profile_id = ?`,
+  }),
+  tableDataset({
     // Day-by-day symptom log (#799): one row per (date, symptom) with a 1–4 severity.
     // User-entered health data, so it's in the portable export; id-keyed + owned, so
     // deletable like the other logged datasets.
@@ -1002,6 +1015,7 @@ export const DELETE_POLICY: Record<string, DatasetDeletePolicy> = {
   equipment: { revalidate: ["/settings/equipment", "/training"] },
   frequency_targets: { revalidate: ["/training", "/"] },
   food_log: { revalidate: ["/nutrition", "/trends", "/"] },
+  protein_log: { revalidate: ["/nutrition", "/"] },
   symptom_logs: { revalidate: ["/", "/timeline"] },
 };
 

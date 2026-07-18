@@ -36,29 +36,64 @@ describe("estimatedProteinGrams", () => {
   });
 });
 
-describe("proteinIntake — source priority tracked > logged (reserved) > estimated", () => {
-  it("prefers tracked when present", () => {
+describe("proteinIntake — tracked OVERRIDES, else estimated + logged SUM (#824)", () => {
+  it("tracked (a measured full-day total) overrides the sum", () => {
     expect(
       proteinIntake({ dailyTracked: 120, dailyLogged: 90, dailyEstimated: 60 })
-    ).toEqual({ grams: 120, basis: "tracked" });
+    ).toEqual({
+      grams: 120,
+      basis: "tracked",
+      estimatedGrams: 0,
+      loggedGrams: 0,
+    });
   });
 
-  it("falls to logged when tracked is absent (reserved basis)", () => {
+  it("SUMS the estimated floor + logged grams — a manual entry is a partial addition, never an eraser", () => {
+    // The load-bearing #824 semantic: 90 g estimated + 30 g logged = 120 g, not 30.
     expect(
-      proteinIntake({ dailyTracked: null, dailyLogged: 90, dailyEstimated: 60 })
-    ).toEqual({ grams: 90, basis: "logged" });
+      proteinIntake({ dailyTracked: null, dailyLogged: 30, dailyEstimated: 90 })
+    ).toEqual({
+      grams: 120,
+      basis: "combined",
+      estimatedGrams: 90,
+      loggedGrams: 30,
+    });
   });
 
-  it("falls to the estimated floor when tracked + logged are absent", () => {
+  it("is `logged` when only manual grams are present (no protein-bearing foods)", () => {
+    expect(
+      proteinIntake({ dailyTracked: null, dailyLogged: 40, dailyEstimated: 0 })
+    ).toEqual({
+      grams: 40,
+      basis: "logged",
+      estimatedGrams: 0,
+      loggedGrams: 40,
+    });
+  });
+
+  it("is `estimated` when only the food-group floor is present (no manual grams)", () => {
     expect(proteinIntake({ dailyTracked: null, dailyEstimated: 60 })).toEqual({
       grams: 60,
       basis: "estimated",
+      estimatedGrams: 60,
+      loggedGrams: 0,
     });
+    // A null/absent dailyLogged is treated as zero, not an error.
+    expect(
+      proteinIntake({
+        dailyTracked: null,
+        dailyLogged: null,
+        dailyEstimated: 60,
+      })
+    ).toMatchObject({ grams: 60, basis: "estimated" });
   });
 
   it("returns null when no basis has any signal", () => {
     expect(proteinIntake({ dailyTracked: null, dailyEstimated: 0 })).toBeNull();
     expect(proteinIntake({ dailyTracked: 0, dailyEstimated: 0 })).toBeNull();
+    expect(
+      proteinIntake({ dailyTracked: null, dailyLogged: 0, dailyEstimated: 0 })
+    ).toBeNull();
   });
 });
 
@@ -126,30 +161,49 @@ describe("resolveProteinGoalLevel", () => {
   });
 });
 
+// Intake literal builders so the assessment tests read cleanly (the interface carries the
+// estimated/logged composition parts now, #824).
+const estimated = (grams: number) => ({
+  grams,
+  basis: "estimated" as const,
+  estimatedGrams: grams,
+  loggedGrams: 0,
+});
+const tracked = (grams: number) => ({
+  grams,
+  basis: "tracked" as const,
+  estimatedGrams: 0,
+  loggedGrams: 0,
+});
+const combined = (est: number, logged: number) => ({
+  grams: est + logged,
+  basis: "combined" as const,
+  estimatedGrams: est,
+  loggedGrams: logged,
+});
+const loggedOnly = (grams: number) => ({
+  grams,
+  basis: "logged" as const,
+  estimatedGrams: 0,
+  loggedGrams: grams,
+});
+
 describe("assessProteinAdequacy + wording", () => {
   const target = proteinTarget({ goal: "active", bodyweightKg: 80 })!; // 95–130
 
   it("classifies below / within / above against the band", () => {
-    expect(
-      assessProteinAdequacy({ grams: 60, basis: "estimated" }, target)?.status
-    ).toBe("below");
-    expect(
-      assessProteinAdequacy({ grams: 110, basis: "tracked" }, target)?.status
-    ).toBe("within");
-    expect(
-      assessProteinAdequacy({ grams: 200, basis: "tracked" }, target)?.status
-    ).toBe("above");
+    expect(assessProteinAdequacy(estimated(60), target)?.status).toBe("below");
+    expect(assessProteinAdequacy(tracked(110), target)?.status).toBe("within");
+    expect(assessProteinAdequacy(tracked(200), target)?.status).toBe("above");
   });
 
   it("returns null when intake or target is missing", () => {
     expect(assessProteinAdequacy(null, target)).toBeNull();
-    expect(
-      assessProteinAdequacy({ grams: 60, basis: "estimated" }, null)
-    ).toBeNull();
+    expect(assessProteinAdequacy(estimated(60), null)).toBeNull();
   });
 
   it("an estimated shortfall is framed as a FLOOR, never a definite deficiency", () => {
-    const a = assessProteinAdequacy({ grams: 60, basis: "estimated" }, target)!;
+    const a = assessProteinAdequacy(estimated(60), target)!;
     const detail = proteinAdequacyDetail(a);
     expect(detail).toMatch(/floor/i);
     expect(detail).not.toMatch(/deficien/i);
@@ -158,9 +212,16 @@ describe("assessProteinAdequacy + wording", () => {
   });
 
   it("a tracked shortfall states the gap directly (no floor caveat)", () => {
-    const a = assessProteinAdequacy({ grams: 60, basis: "tracked" }, target)!;
+    const a = assessProteinAdequacy(tracked(60), target)!;
     expect(proteinIntakeSummary(a.intake)).not.toMatch(/floor/i);
     expect(proteinAdequacyDetail(a)).toMatch(/informational/i);
+  });
+
+  it("a combined shortfall is ALSO framed as a floor (the sum stays a floor)", () => {
+    const a = assessProteinAdequacy(combined(50, 20), target)!; // 70 < 95
+    expect(proteinIntakeSummary(a.intake)).toMatch(/floor/i);
+    expect(proteinAdequacyDetail(a)).toMatch(/floor/i);
+    expect(proteinAdequacyDetail(a)).not.toMatch(/deficien/i);
   });
 
   it("the target summary notes when the band is scaled to lean mass", () => {
@@ -170,6 +231,36 @@ describe("assessProteinAdequacy + wording", () => {
       leanMassKg: 60,
     })!;
     expect(proteinTargetSummary(leanTarget)).toMatch(/lean mass/i);
+  });
+});
+
+describe("proteinIntakeSummary — the honest per-basis display labels (#824)", () => {
+  it("names the combined composition honestly (estimated + logged, floor-caveated)", () => {
+    const s = proteinIntakeSummary(combined(90, 30));
+    expect(s).toContain("120 g");
+    expect(s).toMatch(/90 g estimated from foods/);
+    expect(s).toMatch(/30 g logged/);
+    expect(s).toMatch(/floor/i);
+  });
+
+  it("labels a logged-only intake as logged, still a floor", () => {
+    const s = proteinIntakeSummary(loggedOnly(40));
+    expect(s).toContain("40 g");
+    expect(s).toMatch(/logged/i);
+    expect(s).toMatch(/floor/i);
+  });
+
+  it("labels an estimated-only intake from logged foods, a floor", () => {
+    const s = proteinIntakeSummary(estimated(80));
+    expect(s).toMatch(/logged foods/i);
+    expect(s).toMatch(/floor/i);
+  });
+
+  it("a tracked intake reads as a measured total (no floor caveat)", () => {
+    const s = proteinIntakeSummary(tracked(140));
+    expect(s).toContain("140 g");
+    expect(s).toMatch(/tracked/i);
+    expect(s).not.toMatch(/floor/i);
   });
 });
 
