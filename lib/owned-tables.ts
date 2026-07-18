@@ -114,6 +114,13 @@ export const OWNED_TABLES = [
   // (no FK to illness_episodes). deleteProfile clears the rows; its on-disk files are
   // unlinked separately (path-contained under data/uploads/symptom-photos/<profileId>/).
   "symptom_photos",
+  // Fitness-check session rows (#834): one per (profile, date), grouping the battery's
+  // measured tests. Directly owned. Its child fitness_assessment_entries carries no
+  // profile_id and is cleared THROUGH this parent via its ON DELETE CASCADE FK (like
+  // exercise_sets → activities). The tests' VALUES live in the natural stores
+  // (activities/exercise_sets, body_metrics, medical_records), each already cleared by
+  // deleteProfile; deleting this session row is all this table needs.
+  "fitness_assessments",
 ] as const;
 
 export type OwnedTable = (typeof OWNED_TABLES)[number];
