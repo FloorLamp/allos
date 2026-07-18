@@ -47,6 +47,16 @@ export default function CoachingWidget({ recs }: { recs: Recommendation[] }) {
                   Suggested set: {top.target}
                 </p>
               )}
+              {/* Calm injury/condition context (#666/#838) riding alongside — the SAME
+                  notes the Training overview renders (one computation, #221). */}
+              {top.notes?.map((note, i) => (
+                <p
+                  key={i}
+                  className="mt-1 text-xs text-amber-700 dark:text-amber-300"
+                >
+                  {note}
+                </p>
+              ))}
             </div>
           </div>
           <div className="mt-3 flex items-center gap-2 pl-[18px]">

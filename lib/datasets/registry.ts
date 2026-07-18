@@ -21,6 +21,10 @@ import {
   bpPercentilesDataset,
   bpPercentileKeyStrategy,
 } from "./bp-percentiles";
+import {
+  conditionTrainingConsiderationsDataset,
+  conditionConsiderationKeyStrategy,
+} from "./condition-training-considerations";
 import { contrastDataset, contrastClassStrategy } from "./contrast-safety";
 import { driDataset, driNutrientStrategy } from "./dri";
 import {
@@ -100,6 +104,13 @@ export const DATASETS: RegisteredDataset[] = [
       unknown
     >,
     strategy: bpPercentileKeyStrategy,
+  },
+  {
+    dataset: conditionTrainingConsiderationsDataset as unknown as LoadedDataset<
+      Record<string, unknown>,
+      unknown
+    >,
+    strategy: conditionConsiderationKeyStrategy,
   },
   {
     dataset: contrastDataset as unknown as LoadedDataset<

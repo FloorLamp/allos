@@ -507,6 +507,26 @@ export const DATASETS: ExportDataset[] = [
        FROM goals WHERE profile_id = ? ORDER BY created_at DESC`,
     countSql: `SELECT COUNT(*) AS n FROM goals WHERE profile_id = ?`,
   }),
+  tableDataset({
+    // User-declared injuries (#838) — user-entered training-context data a migrating
+    // family keeps (affected regions, status, dates, notes).
+    key: "injuries",
+    label: "Injuries",
+    table: "injuries",
+    columns: [
+      "label",
+      "regions",
+      "muscles",
+      "status",
+      "since",
+      "resolved_date",
+      "notes",
+      "created_at",
+    ],
+    select: `SELECT id, label, regions, muscles, status, since, resolved_date, notes, created_at
+       FROM injuries WHERE profile_id = ? ORDER BY COALESCE(since, substr(created_at, 1, 10)) DESC, id DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM injuries WHERE profile_id = ?`,
+  }),
   {
     // Supplements + medications (the parent intake_items rows), one per row, with
     // each item's dose SCHEDULE folded into a readable `schedule` summary (built
@@ -994,6 +1014,7 @@ export const DELETE_POLICY: Record<string, DatasetDeletePolicy> = {
     cleanupImmunizations: true,
   },
   goals: { revalidate: ["/training", "/"] },
+  injuries: { revalidate: ["/training", "/timeline", "/"] },
   supplements: { revalidate: ["/nutrition", "/medications", "/"] },
   allergies: { revalidate: ["/allergies", "/"] },
   conditions: { revalidate: ["/conditions", "/"] },

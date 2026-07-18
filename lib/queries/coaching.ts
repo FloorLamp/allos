@@ -33,6 +33,12 @@ import {
 } from "../settings";
 import { availableEquipmentKinds } from "../equipment";
 import { getActiveRoutine, getRoutineCycleStatus } from "../routines";
+import { getInjuryConstraints } from "../injuries";
+import { getConditions } from "./clinical";
+import {
+  matchConditionConsiderations,
+  type ConditionConsideration,
+} from "../condition-training-considerations";
 
 // How many recent nights / days to average for a recovery baseline. Long enough
 // to be a stable personal norm, short enough to reflect the current block.
@@ -125,6 +131,19 @@ export function getIllnessCoachingContext(
   };
 }
 
+// The curated condition→training CONSIDERATION notes (#666) for the profile's ACTIVE
+// mapped conditions — the REAL gather every surface's coaching input threads through. Reads
+// the active problem list (profile-scoped via getConditions) and resolves each against the
+// curated dataset (matchConditionConsiderations). Note-only: it never gates or re-ranks.
+export function getConditionConsiderations(
+  profileId: number
+): ConditionConsideration[] {
+  const conditions = getConditions(profileId, { status: "active" });
+  return matchConditionConsiderations(
+    conditions.map((c) => ({ name: c.name, code: c.code }))
+  );
+}
+
 export function gatherCoachingInput(
   profileId: number,
   weightUnit: WeightUnit,
@@ -134,6 +153,10 @@ export function gatherCoachingInput(
   return {
     today: todayStr,
     illness: getIllnessCoachingContext(profileId, todayStr),
+    // User-declared injury constraints (#838) + curated condition considerations (#666) —
+    // threaded through the ONE gather so every surface excludes/tempers/notes identically.
+    injuries: getInjuryConstraints(profileId),
+    considerations: getConditionConsiderations(profileId),
     routine: getFrequencyTargetProgress(profileId),
     strength: getStrengthByExercise(profileId),
     cardio: getCardioByActivity(profileId, distanceUnit),

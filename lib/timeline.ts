@@ -860,6 +860,76 @@ function collectEvents(
     );
   }
 
+  // Injuries (#838): a "logged" event on the since date and, when resolved, a "resolved"
+  // event on resolved_date — two-sided like conditions, so the log/resolve both surface on
+  // the Timeline (NO notifications — coaching-tier, #449). Gated with the training domain
+  // (an injury is a training-context concept). The affected regions ride the subtitle.
+  if (includeTrainingEvents) {
+    const injuries = db
+      .prepare(
+        `SELECT id, label, regions, status, since, resolved_date, notes, created_at
+           FROM injuries
+          WHERE profile_id = ?
+          ORDER BY COALESCE(resolved_date, since, substr(created_at, 1, 10)) DESC, id DESC
+          LIMIT ?`
+      )
+      .all(profileId, perTableLimit) as {
+      id: number;
+      label: string;
+      regions: string;
+      status: string;
+      since: string | null;
+      resolved_date: string | null;
+      notes: string | null;
+      created_at: string;
+    }[];
+    for (const inj of injuries) {
+      let regionList = "";
+      try {
+        const parsed = JSON.parse(inj.regions);
+        if (Array.isArray(parsed))
+          regionList = compactList(parsed.map(String), 4);
+      } catch {
+        // ignore malformed region blob — the label still tells the story
+      }
+      const loggedDate =
+        inj.since ?? dateFromCreatedAt(inj.created_at, tz) ?? "";
+      pushLimited(
+        events,
+        {
+          id: `injury:${inj.id}:logged`,
+          date: loggedDate,
+          category: "injury",
+          title: `Injury logged: ${inj.label}`,
+          subtitle: compactList(
+            [inj.status, regionList].filter((x): x is string => !!x),
+            2
+          ),
+          detail: inj.notes,
+          href: "/training",
+          sortTime: timeFromCreatedAt(inj.created_at, tz),
+          tone: inj.status === "resolved" ? "default" : "warn",
+        },
+        options
+      );
+      if (inj.resolved_date) {
+        pushLimited(
+          events,
+          {
+            id: `injury:${inj.id}:resolved`,
+            date: inj.resolved_date,
+            category: "injury",
+            title: `Injury resolved: ${inj.label}`,
+            subtitle: regionList || null,
+            href: "/training",
+            tone: "good",
+          },
+          options
+        );
+      }
+    }
+  }
+
   // Symptom log (#799): one event per symptom-DAY (the day's row set), so a run of
   // sick days reads as a compact per-day entry rather than N rows. Worst severity drives
   // the tone; each logged symptom is a detail item (label + severity word). Deep-links
@@ -1015,7 +1085,10 @@ export function getTimelineDates(
   if (includeTrainingEvents) {
     explicitSelects.push(
       `SELECT date FROM activities
-        WHERE profile_id = @profileId${restrictedActivityTypeClause(restricted)}`
+        WHERE profile_id = @profileId${restrictedActivityTypeClause(restricted)}`,
+      "SELECT since AS date FROM injuries WHERE profile_id = @profileId AND since IS NOT NULL",
+      `SELECT resolved_date AS date FROM injuries
+        WHERE profile_id = @profileId AND resolved_date IS NOT NULL`
     );
   }
   for (const r of db
