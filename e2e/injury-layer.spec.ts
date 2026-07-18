@@ -33,7 +33,8 @@ test.afterAll(() => wipeInjuries());
 test("log an injury → recommendation avoids the region and names why → resolve → normal (#838)", async ({
   page,
 }) => {
-  await page.goto("/training");
+  // The injury bar lives on the Training → Overview tab (the Log tab is the default).
+  await page.goto("/training?tab=overview");
 
   const bar = page.getByRole("main").getByTestId("injury-bar");
   await expect(bar).toBeVisible();
