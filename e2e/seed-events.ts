@@ -74,6 +74,8 @@ import {
   PRESENCE_PROFILE,
   E2E_LOGIN_NOTIF,
   NOTIF_PROFILE,
+  E2E_LOGIN_PROTEIN,
+  PROTEIN_QUICKADD_PROFILE,
 } from "./fixture-logins";
 import { adoptTemplate, activateRoutine } from "../lib/routines";
 
@@ -2665,4 +2667,33 @@ const notifProfileId = fixtureProfileId(NOTIF_PROFILE);
 seedMemberLogin(E2E_LOGIN_NOTIF, notifProfileId, "write");
 console.log(
   `e2e: seeded reason-model fixture — profile ${reasonModelId} (#656)`
+);
+
+// PROTEIN_QUICKADD_PROFILE (#824): a dedicated adult profile for the protein-grams
+// quick-add spec. Seeds a bodyweight (so the adequacy target scales) + a couple of
+// protein-bearing food-group servings today (so the card renders over the ESTIMATED
+// basis), with NO tracked protein_g and NO protein_log rows — the spec OWNS the grams
+// writes. Idempotent: hard-clear any protein_log rows so a reused server always starts
+// the day from the estimated-only basis the spec's transition asserts.
+const proteinProfileId = fixtureProfileId(PROTEIN_QUICKADD_PROFILE);
+const proteinAnchor = today(proteinProfileId);
+db.prepare(`DELETE FROM protein_log WHERE profile_id = ?`).run(proteinProfileId);
+db.prepare(
+  `DELETE FROM profile_settings WHERE profile_id = ? AND key = 'protein_quickadd_last'`
+).run(proteinProfileId);
+db.prepare(
+  `INSERT OR IGNORE INTO body_metrics (profile_id, date, weight_kg) VALUES (?, ?, 80)`
+).run(proteinProfileId, proteinAnchor);
+for (const [slug, servings] of [
+  ["poultry", 1],
+  ["eggs", 1],
+] as const) {
+  db.prepare(
+    `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
+       ON CONFLICT(profile_id, date, group_key) DO UPDATE SET servings = excluded.servings`
+  ).run(proteinProfileId, proteinAnchor, slug, servings);
+}
+seedMemberLogin(E2E_LOGIN_PROTEIN, proteinProfileId, "write");
+console.log(
+  `e2e: seeded protein quick-add fixture — profile ${proteinProfileId} (${PROTEIN_QUICKADD_PROFILE}) (#824)`
 );

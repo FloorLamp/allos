@@ -110,7 +110,7 @@ export default function ProteinQuickAdd({
             aria-label="Protein grams to add"
             className="w-full rounded-lg border border-black/10 bg-white px-3 py-2 pr-8 text-sm tabular-nums text-slate-800 dark:border-white/10 dark:bg-ink-900 dark:text-slate-100"
           />
-          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 dark:text-slate-500">
+          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500 dark:text-slate-400">
             g
           </span>
         </div>
@@ -120,7 +120,7 @@ export default function ProteinQuickAdd({
           aria-label="Add protein grams"
           disabled={!canSubmit}
           onClick={() => apply(1)}
-          className="tap-target flex h-9 items-center gap-1 rounded-full bg-brand-600 px-3 text-sm font-medium text-white transition hover:bg-brand-700 disabled:opacity-40"
+          className="btn btn-sm shrink-0"
         >
           <IconPlus className="h-4 w-4" stroke={2} />
           Add
@@ -128,7 +128,7 @@ export default function ProteinQuickAdd({
       </div>
       {lastPreset != null && (
         <div className="mt-3 flex items-center gap-2">
-          <span className="text-xs text-slate-400 dark:text-slate-500">
+          <span className="text-xs text-slate-500 dark:text-slate-400">
             Last used
           </span>
           <button
