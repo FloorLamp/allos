@@ -23,7 +23,9 @@ import {
   removeSymptom,
   logTemperature,
   activateIllnessForSymptoms,
+  suggestSymptomsFromText,
 } from "./actions";
+import type { SymptomTextMapping } from "@/lib/symptom-text-map";
 
 // One-tap symptom logger (issue #799/#857), modeled on the FoodLogBar one-tap pattern:
 // optimistic local severities, a Server Action per tap, and reconciliation to the
@@ -56,6 +58,7 @@ export default function SymptomLogBar({
   suggestActivateIllness,
   showTemperature = false,
   temperatureUnit = "F",
+  textIntakeEnabled = false,
   profileId,
 }: {
   // Primary date (YYYY-MM-DD). On the dashboard this is today; on the Timeline it's the
@@ -83,6 +86,10 @@ export default function SymptomLogBar({
   suggestActivateIllness: boolean;
   // Whether to render the body-temperature quick entry (issue #800).
   showTemperature?: boolean;
+  // Whether to render the free-text intake field (issue #877) — true only when a
+  // Light AI tier is configured. Absent/false hides it entirely (taps stay the whole
+  // story; offline-first, unchanged).
+  textIntakeEnabled?: boolean;
   // The viewer's login temperature-unit preference (#857) — seeds the entry unit and the
   // fever toast. Canonical storage stays °F; this only changes display. Default "F".
   temperatureUnit?: TemperatureUnit;
@@ -131,6 +138,95 @@ export default function SymptomLogBar({
   const [tempTime, setTempTime] = useState("");
   const [tempError, setTempError] = useState<string | null>(null);
   const [tempPending, setTempPending] = useState(false);
+
+  // Free-text intake (issue #877): a typed sentence → staged, editable suggestions the
+  // user confirms with one tap. Suggest-only — nothing writes until confirm, which
+  // goes through the same logSymptom / logTemperature actions a tap uses.
+  const [intakeText, setIntakeText] = useState("");
+  const [intakeStaged, setIntakeStaged] = useState<SymptomTextMapping | null>(
+    null
+  );
+  const [intakePending, setIntakePending] = useState(false);
+  const [intakeError, setIntakeError] = useState<string | null>(null);
+
+  async function suggestFromText() {
+    if (intakeText.trim() === "") return;
+    setIntakePending(true);
+    setIntakeError(null);
+    const fd = new FormData();
+    fd.set("text", intakeText);
+    const res = await suggestSymptomsFromText(withTarget(fd));
+    setIntakePending(false);
+    if (res.ok) {
+      setIntakeStaged(res.mapping);
+    } else if (res.reason === "empty") {
+      setIntakeError("Couldn't find any symptoms in that. Add them below.");
+    } else if (res.reason === "not-configured") {
+      setIntakeError("AI intake isn't configured.");
+    } else {
+      setIntakeError(res.error || "Couldn't read that. Try again.");
+    }
+  }
+
+  function setStagedSeverity(idx: number, sev: number) {
+    setIntakeStaged((m) => {
+      if (!m) return m;
+      const symptoms = m.symptoms.map((s, i) =>
+        i === idx ? { ...s, severity: sev } : s
+      );
+      return { ...m, symptoms };
+    });
+  }
+
+  function dropStaged(idx: number) {
+    setIntakeStaged((m) => {
+      if (!m) return m;
+      return { ...m, symptoms: m.symptoms.filter((_, i) => i !== idx) };
+    });
+  }
+
+  function dropUnmapped(idx: number) {
+    setIntakeStaged((m) => {
+      if (!m) return m;
+      return { ...m, unmapped: m.unmapped.filter((_, i) => i !== idx) };
+    });
+  }
+
+  // Confirm (#877): commit every staged suggestion through the EXISTING actions — one
+  // logSymptom per row (+ its note), then a logTemperature for a staged reading — so a
+  // confirmed sentence lands rows identical to tapping them.
+  async function confirmIntake() {
+    if (!intakeStaged) return;
+    setIntakePending(true);
+    // A "since yesterday" hint targets the alt day when the toggle offers one.
+    const targetDate =
+      intakeStaged.dayOffset === -1 && altDate ? altDate : date;
+    for (const s of intakeStaged.symptoms) {
+      const fd = new FormData();
+      fd.set("symptom", s.slug);
+      fd.set("severity", String(s.severity));
+      fd.set("date", targetDate);
+      if (s.note) fd.set("note", s.note);
+      await logSymptom(withTarget(fd));
+    }
+    if (intakeStaged.temperature) {
+      const fd = new FormData();
+      fd.set("temperature", String(intakeStaged.temperature.value));
+      fd.set("temp_unit", intakeStaged.temperature.unit);
+      fd.set("date", date);
+      await logTemperature(withTarget(fd));
+    }
+    const count = intakeStaged.symptoms.length;
+    setIntakeStaged(null);
+    setIntakeText("");
+    setIntakePending(false);
+    toast(
+      count > 0
+        ? `Logged ${count} symptom${count === 1 ? "" : "s"}.`
+        : "Logged."
+    );
+    startTransition(() => router.refresh());
+  }
 
   async function logTemp() {
     const raw = Number(tempValue);
@@ -667,6 +763,158 @@ export default function SymptomLogBar({
             data-testid="symptom-add-picker"
             className="mt-2 rounded-md border border-black/10 p-2.5 dark:border-white/15"
           >
+            {textIntakeEnabled && (
+              <div
+                data-testid="symptom-text-intake"
+                className="mb-3 border-b border-black/5 pb-3 dark:border-white/10"
+              >
+                <form
+                  className="flex items-center gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void suggestFromText();
+                  }}
+                >
+                  <input
+                    data-testid="symptom-text-input"
+                    value={intakeText}
+                    onChange={(e) => {
+                      setIntakeText(e.target.value);
+                      if (intakeError) setIntakeError(null);
+                    }}
+                    placeholder="Describe it: “fever since lunch, croupy cough”…"
+                    maxLength={500}
+                    className="flex-1 rounded-md border border-black/10 bg-white px-2 py-1 text-sm dark:border-white/15 dark:bg-ink-900"
+                  />
+                  <button
+                    type="submit"
+                    data-testid="symptom-text-suggest"
+                    disabled={intakePending || intakeText.trim() === ""}
+                    className="badge cursor-pointer bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50"
+                  >
+                    {intakePending ? "Reading…" : "Suggest"}
+                  </button>
+                </form>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Review the suggestions and confirm — nothing is logged until
+                  you do.
+                </p>
+
+                {intakeError && (
+                  <p
+                    role="alert"
+                    data-testid="symptom-text-error"
+                    className="mt-1 text-xs text-rose-600 dark:text-rose-400"
+                  >
+                    {intakeError}
+                  </p>
+                )}
+
+                {intakeStaged && (
+                  <div
+                    data-testid="symptom-text-staged"
+                    className="mt-2 space-y-1.5"
+                  >
+                    {intakeStaged.symptoms.map((s, idx) => (
+                      <div
+                        key={`${s.slug}-${idx}`}
+                        data-testid={`symptom-text-staged-${idx}`}
+                        className="flex items-center gap-2"
+                      >
+                        <span className="min-w-0 flex-1 truncate text-sm text-slate-700 dark:text-slate-200">
+                          {s.label}
+                          {s.isCustom && (
+                            <span className="ml-1 text-xs text-slate-400">
+                              (new)
+                            </span>
+                          )}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          {SYMPTOM_SEVERITY_LEVELS.map((lvl) => (
+                            <button
+                              key={lvl.value}
+                              type="button"
+                              aria-pressed={s.severity === lvl.value}
+                              aria-label={`${s.label} — severity ${lvl.value} (${lvl.label})`}
+                              title={lvl.label}
+                              onClick={() => setStagedSeverity(idx, lvl.value)}
+                              className={`h-5 w-5 rounded text-xs font-semibold ${
+                                s.severity >= lvl.value
+                                  ? "bg-brand-600 text-white"
+                                  : "bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-400"
+                              }`}
+                            >
+                              {lvl.value}
+                            </button>
+                          ))}
+                          <button
+                            type="button"
+                            aria-label={`Remove ${s.label} suggestion`}
+                            onClick={() => dropStaged(idx)}
+                            className="rounded p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                          >
+                            <IconX className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+
+                    {intakeStaged.temperature && (
+                      <div className="text-xs text-slate-600 dark:text-slate-300">
+                        🌡 Temperature {intakeStaged.temperature.value}°
+                        {intakeStaged.temperature.unit} — will be logged
+                      </div>
+                    )}
+
+                    {intakeStaged.unmapped.map((u, idx) => (
+                      <div
+                        key={`unmapped-${idx}`}
+                        className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
+                      >
+                        <span className="min-w-0 flex-1 truncate">
+                          Couldn&apos;t map: “{u}”
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void tap(u, 1);
+                            dropUnmapped(idx);
+                          }}
+                          className="badge cursor-pointer border border-dashed border-brand-400 bg-transparent text-brand-700 hover:bg-brand-50 dark:border-brand-700 dark:text-brand-300"
+                        >
+                          + Add as custom
+                        </button>
+                      </div>
+                    ))}
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        data-testid="symptom-text-confirm"
+                        disabled={
+                          intakePending ||
+                          (intakeStaged.symptoms.length === 0 &&
+                            !intakeStaged.temperature)
+                        }
+                        onClick={() => void confirmIntake()}
+                        className="badge cursor-pointer bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50"
+                      >
+                        {intakePending ? "Logging…" : "Confirm & log"}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="symptom-text-cancel"
+                        onClick={() => setIntakeStaged(null)}
+                        className="badge cursor-pointer bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="flex flex-wrap gap-1.5">
               {pickerKeys.map((key) => {
                 const r = rowMap.get(key);

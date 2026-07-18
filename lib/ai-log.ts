@@ -48,7 +48,13 @@ export type AiFeature =
   // A coverage-gap DESCRIPTIVE enrichment (issue #550): the local/private-AI fill
   // path generating a plain-language "what is this" blurb for an uncatalogued
   // biomarker/med/condition. Descriptive only — never a range/threshold/severity.
-  | "coverage";
+  | "coverage"
+  // Free-text symptom mapping (issue #877): a typed/Telegram sentence mapped onto the
+  // EXISTING symptom vocabulary. Extraction only — suggest-only, never a write.
+  | "symptom-map"
+  // A "why is this flagged?" explainer (issue #878): light-tier narration over a
+  // finding's OWN typed reason payload. Narrates, never computes a fact or judges.
+  | "explain";
 export type AiStatus = "ok" | "skipped" | "failed";
 
 export interface AiEvent {

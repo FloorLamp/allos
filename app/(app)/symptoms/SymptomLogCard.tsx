@@ -11,6 +11,7 @@ import {
   getPediatricFormContext,
 } from "@/lib/queries";
 import { currentEpisodeForProfile } from "@/lib/illness-episode";
+import { isTaskConfigured } from "@/lib/ai-resolve";
 import { episodeHeadline } from "@/lib/illness-episode-format";
 import { episodeHref } from "@/lib/hrefs";
 import SymptomLogBar from "./SymptomLogBar";
@@ -69,6 +70,7 @@ export default function SymptomLogCard({
         suggestActivateIllness={false}
         showTemperature
         temperatureUnit={temperatureUnit}
+        textIntakeEnabled={isTaskConfigured("symptom-map")}
       />
       {/* Door C (#843): reach for an OTC med right where you're logging symptoms. */}
       <SymptomMedQuickAdd pediatric={getPediatricFormContext(profileId)} />
