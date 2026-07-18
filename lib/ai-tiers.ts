@@ -89,7 +89,9 @@ export const TASK_TIER: Record<AiTaskClass, TierName> = {
 // Tasks that require an image-capable (vision) model. Extraction reads PDFs/images;
 // a tier pinned to a blind model must not silently serve it (the settings probe
 // surfaces the warning, and the extractor refuses rather than emitting garbage).
-const VISION_TASKS: ReadonlySet<AiTaskClass> = new Set<AiTaskClass>(["extraction"]);
+const VISION_TASKS: ReadonlySet<AiTaskClass> = new Set<AiTaskClass>([
+  "extraction",
+]);
 
 export function taskNeedsVision(task: AiTaskClass): boolean {
   return VISION_TASKS.has(task);

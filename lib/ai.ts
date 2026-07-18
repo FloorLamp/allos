@@ -11,7 +11,7 @@ import {
   collectUpcoming,
 } from "./queries";
 
-import { AI_MODEL as MODEL, aiConfigured, createAiClient } from "./ai-client";
+import { resolveTaskClient, isTaskConfigured } from "./ai-resolve";
 import { recordAiEvent, capDetail, LOG_PROMPTS, usageFrom } from "./ai-log";
 import { checkAndIncrementAiUsage, insightDailyLimit } from "./ai-usage";
 import { recentPRs, recentCardioPRs } from "./coaching";
@@ -153,7 +153,7 @@ export async function generateInsight(
 ): Promise<InsightResult> {
   const context = gatherInsightContext(profileId, date, loginId);
 
-  if (!aiConfigured()) {
+  if (!isTaskConfigured("insight")) {
     recordAiEvent({
       feature: "insight",
       status: "skipped",
@@ -185,9 +185,24 @@ export async function generateInsight(
     };
   }
 
+  // Build the client only after the cap passed (the resolver is the sole
+  // client-build seam, so a capped call never constructs the model client).
+  const resolved = resolveTaskClient("insight");
+  if (!resolved) {
+    recordAiEvent({
+      feature: "insight",
+      status: "skipped",
+      detail: `${date} — AI not configured`,
+    });
+    return {
+      summary: fallbackInsight(context, "no-key"),
+      model: offlineModelTag("no-key"),
+    };
+  }
+  const { client, model: MODEL, tier, host } = resolved;
+
   const startedAt = Date.now();
   try {
-    const client = createAiClient();
     const msg = await client.messages.create({
       model: MODEL,
       max_tokens: 600,
@@ -211,6 +226,8 @@ export async function generateInsight(
         feature: "insight",
         status: "failed",
         model: MODEL,
+        tier,
+        baseUrl: host,
         durationMs: Date.now() - startedAt,
         detail: date,
         error: "Truncated at the output limit (600 tokens).",
@@ -226,6 +243,8 @@ export async function generateInsight(
       feature: "insight",
       status: "ok",
       model: MODEL,
+      tier,
+      baseUrl: host,
       durationMs: Date.now() - startedAt,
       usage: usageFrom(msg),
       detail: capDetail(`${date}` + (LOG_PROMPTS ? `\n${text}` : "")),
@@ -239,6 +258,8 @@ export async function generateInsight(
       feature: "insight",
       status: "failed",
       model: MODEL,
+      tier,
+      baseUrl: host,
       durationMs: Date.now() - startedAt,
       detail: date,
       error: err instanceof Error ? err.message : "unknown error",

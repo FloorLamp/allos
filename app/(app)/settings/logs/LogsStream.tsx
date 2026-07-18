@@ -68,6 +68,7 @@ export default function LogsStream({ initial }: { initial: AiEvent[] }) {
                   <th className="th">Time</th>
                   <th className="th">Feature</th>
                   <th className="th">Status</th>
+                  <th className="th">Tier</th>
                   <th className="th">Model</th>
                   <th className="th">Duration</th>
                   <th className="th">Tokens</th>
@@ -94,6 +95,9 @@ export default function LogsStream({ initial }: { initial: AiEvent[] }) {
                       <span className={`badge ${STATUS_BADGE[e.status]}`}>
                         {e.status}
                       </span>
+                    </td>
+                    <td className="td text-slate-500 dark:text-slate-400">
+                      {e.tier ?? "—"}
                     </td>
                     <td className="td text-slate-500 dark:text-slate-400">
                       {e.model ?? "—"}

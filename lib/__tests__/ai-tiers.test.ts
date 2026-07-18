@@ -22,7 +22,10 @@ import {
 function cfg(over: Partial<TierConfig> = {}): TierConfig {
   return { ...emptyTierConfig(), ...over };
 }
-function configs(heavy: Partial<TierConfig>, light: Partial<TierConfig>): TierConfigs {
+function configs(
+  heavy: Partial<TierConfig>,
+  light: Partial<TierConfig>
+): TierConfigs {
   return { heavy: cfg(heavy), light: cfg(light) };
 }
 
@@ -60,7 +63,9 @@ describe("tierConfigured", () => {
     expect(tierConfigured(cfg({ apiKey: "sk-x" }))).toBe(true);
   });
   it("is true with only a base URL (local server ignores the key)", () => {
-    expect(tierConfigured(cfg({ baseUrl: "http://localhost:11434" }))).toBe(true);
+    expect(tierConfigured(cfg({ baseUrl: "http://localhost:11434" }))).toBe(
+      true
+    );
   });
 });
 

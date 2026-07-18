@@ -30,13 +30,11 @@ import {
   type SafetyContext,
 } from "./supplement-safety";
 import { getAiPrefs, getUserSex, getUserAge } from "./settings";
-import { AI_MODEL, aiConfigured, createAiClient } from "./ai-client";
+import { resolveTaskClient, isTaskConfigured } from "./ai-resolve";
 import { createLogger } from "./log";
 import { recordAiEvent, capDetail, LOG_PROMPTS, usageFrom } from "./ai-log";
 import { checkAndIncrementAiUsage, insightDailyLimit } from "./ai-usage";
 import { strOrNull } from "./parse";
-
-const MODEL = AI_MODEL;
 
 const log = createLogger("supplement-suggest");
 
@@ -333,7 +331,7 @@ async function runModel(
   context: { text: string; lowLabNames: string[]; safety: SafetyContext },
   feature: "suggestions" | "auto-suggest" = "suggestions"
 ): Promise<SuggestResult> {
-  if (!aiConfigured()) {
+  if (!isTaskConfigured("suggestions")) {
     recordAiEvent({
       feature,
       status: "skipped",
@@ -342,7 +340,7 @@ async function runModel(
     return {
       suggestions: [],
       model: "offline",
-      note: "AI not configured — set ANTHROPIC_API_KEY (or AI_BASE_URL) to get AI supplement suggestions.",
+      note: "AI not configured — configure a Light (or Heavy) AI tier under Settings → Server to get AI supplement suggestions.",
     };
   }
   // Per-profile daily AI cap (rate-limiting Fix 1). A key is present, so a real
@@ -363,9 +361,20 @@ async function runModel(
       note: "Daily AI limit reached — try again tomorrow.",
     };
   }
+  // Build the client only now — after the cap passed — so a capped call never
+  // constructs the model client (the resolver is the sole client-build seam).
+  const resolved = resolveTaskClient("suggestions");
+  if (!resolved) {
+    recordAiEvent({ feature, status: "skipped", detail: "AI not configured" });
+    return {
+      suggestions: [],
+      model: "offline",
+      note: "AI not configured — configure a Light (or Heavy) AI tier under Settings → Server to get AI supplement suggestions.",
+    };
+  }
+  const { client, model: MODEL, tier, host } = resolved;
   const startedAt = Date.now();
   try {
-    const client = createAiClient();
     const msg = await client.messages
       .stream({
         model: MODEL,
@@ -391,6 +400,8 @@ async function runModel(
         feature,
         status: "failed",
         model: MODEL,
+        tier,
+        baseUrl: host,
         durationMs: Date.now() - startedAt,
         error: note,
       });
@@ -411,6 +422,8 @@ async function runModel(
       feature,
       status: "ok",
       model: MODEL,
+      tier,
+      baseUrl: host,
       durationMs: Date.now() - startedAt,
       usage: usageFrom(msg),
       detail: capDetail(
@@ -429,6 +442,8 @@ async function runModel(
       feature,
       status: "failed",
       model: MODEL,
+      tier,
+      baseUrl: host,
       durationMs: Date.now() - startedAt,
       error: note,
     });
@@ -524,7 +539,7 @@ export async function autoSuggestFromBiomarkers(
   profileId: number,
   recordIds: number[]
 ): Promise<number> {
-  if (!aiConfigured() || recordIds.length === 0) return 0;
+  if (!isTaskConfigured("suggestions") || recordIds.length === 0) return 0;
   if (!getAiPrefs().autoSupplementSuggestions) {
     // Leave a trace in the AI log so "why no suggestions after import?" is
     // answerable from Settings → AI logs.

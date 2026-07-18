@@ -1,20 +1,56 @@
 import { test, expect } from "@playwright/test";
+import { settledClick } from "./helpers";
 
-// The admin Server settings page surfaces the active AI backend read-only
-// (issue #43): endpoint label, model, and configured state. The e2e DB boots
-// without ANTHROPIC_API_KEY/AI_BASE_URL, so it shows the default endpoint and
-// the offline/not-configured status.
-test.describe("Settings → Server: AI endpoint info", () => {
-  test("shows the read-only AI endpoint and model", async ({ page }) => {
+// The admin Server settings page surfaces the two AI provider tiers (issue #875):
+// Heavy (extraction) and Light (narratives/suggestions), each an editable provider
+// config. The e2e DB boots without ANTHROPIC_API_KEY/AI_BASE_URL, so testing a tier
+// reports the honest keyless degradation ("not configured") rather than a live ping.
+test.describe("Settings → Server: AI provider tiers", () => {
+  test("shows the Heavy and Light tier blocks and degrades a keyless test", async ({
+    page,
+  }) => {
     await page.goto("/settings/server");
-    const info = page.getByTestId("ai-endpoint-info");
-    await expect(info).toBeVisible();
-    // Default endpoint label (no AI_BASE_URL configured in the e2e env).
-    await expect(info.getByText("Anthropic API")).toBeVisible();
-    // The model row is present (env-driven; default model in the e2e env).
-    await expect(info.getByText("Model", { exact: true })).toBeVisible();
-    // Env-driven, not editable: the explanatory note names the env vars.
-    await expect(info.getByText(/AI_BASE_URL/).first()).toBeVisible();
+    await expect(page.getByTestId("ai-tier-settings")).toBeVisible();
+    await expect(page.getByTestId("ai-tier-heavy")).toBeVisible();
+    await expect(page.getByTestId("ai-tier-light")).toBeVisible();
+
+    // Testing an unconfigured tier reports the graceful degradation, never a crash.
+    await settledClick(page, page.getByTestId("ai-tier-heavy-test"));
+    await expect(page.getByTestId("ai-tier-heavy-result")).toContainText(
+      /not configured/i
+    );
+  });
+
+  test("admin can save a Light tier config that persists", async ({ page }) => {
+    await page.goto("/settings/server");
+    await page
+      .getByTestId("ai-tier-light-shape")
+      .selectOption("openai-compatible");
+    await page
+      .getByTestId("ai-tier-light-baseurl")
+      .fill("http://e2e-local:8000/v1");
+    await page.getByTestId("ai-tier-light-model").fill("e2e-model");
+    await settledClick(page, page.getByTestId("ai-tier-light-save"));
+    await expect(page.getByTestId("ai-tier-light-result")).toContainText(
+      /saved/i
+    );
+
+    await page.reload();
+    await expect(page.getByTestId("ai-tier-light-baseurl")).toHaveValue(
+      "http://e2e-local:8000/v1"
+    );
+    await expect(page.getByTestId("ai-tier-light-model")).toHaveValue(
+      "e2e-model"
+    );
+
+    // Restore the unset state so other admin-scoped specs see a clean tier.
+    await page.getByTestId("ai-tier-light-shape").selectOption("anthropic");
+    await page.getByTestId("ai-tier-light-baseurl").fill("");
+    await page.getByTestId("ai-tier-light-model").fill("");
+    await settledClick(page, page.getByTestId("ai-tier-light-save"));
+    await expect(page.getByTestId("ai-tier-light-result")).toContainText(
+      /saved/i
+    );
   });
 
   // The global per-profile daily recommendation-run clamp (issue #424) lives on

@@ -46,7 +46,9 @@ describe("toOpenAiRequest", () => {
         },
       ],
     };
-    const body = toOpenAiRequest(req) as { messages: Array<{ content: unknown }> };
+    const body = toOpenAiRequest(req) as {
+      messages: Array<{ content: unknown }>;
+    };
     expect(body.messages[0].content).toEqual([
       { type: "text", text: "look" },
       { type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } },
@@ -102,7 +104,10 @@ describe("fromOpenAiResponse", () => {
           finish_reason: "tool_calls",
           message: {
             tool_calls: [
-              { id: "call_1", function: { name: "save_data", arguments: '{"a":1}' } },
+              {
+                id: "call_1",
+                function: { name: "save_data", arguments: '{"a":1}' },
+              },
             ],
           },
         },
@@ -127,7 +132,9 @@ describe("fromOpenAiResponse", () => {
         {
           finish_reason: "tool_calls",
           message: {
-            tool_calls: [{ function: { name: "save_data", arguments: "{not json" } }],
+            tool_calls: [
+              { function: { name: "save_data", arguments: "{not json" } },
+            ],
           },
         },
       ],
@@ -153,7 +160,10 @@ describe("chatCompletionsUrl", () => {
 describe("createOpenAiCompatClient (fetch-injected round trip)", () => {
   it("presents messages.stream().finalMessage() over a fake fetch", async () => {
     const calls: Array<{ url: string; body: unknown; auth?: string }> = [];
-    const fakeFetch: typeof fetch = (async (url: string, init?: RequestInit) => {
+    const fakeFetch: typeof fetch = (async (
+      url: string,
+      init?: RequestInit
+    ) => {
       calls.push({
         url: String(url),
         body: JSON.parse(String(init?.body)),
@@ -167,7 +177,10 @@ describe("createOpenAiCompatClient (fetch-injected round trip)", () => {
               finish_reason: "tool_calls",
               message: {
                 tool_calls: [
-                  { id: "c1", function: { name: "save_data", arguments: '{"ok":true}' } },
+                  {
+                    id: "c1",
+                    function: { name: "save_data", arguments: '{"ok":true}' },
+                  },
                 ],
               },
             },
@@ -184,10 +197,18 @@ describe("createOpenAiCompatClient (fetch-injected round trip)", () => {
     });
     const msg = await (
       client as unknown as {
-        messages: { stream: (r: AnthropicRequest) => { finalMessage: () => Promise<unknown> } };
+        messages: {
+          stream: (r: AnthropicRequest) => {
+            finalMessage: () => Promise<unknown>;
+          };
+        };
       }
     ).messages
-      .stream({ model: "m", max_tokens: 5, messages: [{ role: "user", content: "hi" }] })
+      .stream({
+        model: "m",
+        max_tokens: 5,
+        messages: [{ role: "user", content: "hi" }],
+      })
       .finalMessage();
 
     expect(calls[0].url).toBe("http://local/v1/chat/completions");

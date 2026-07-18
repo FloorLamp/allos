@@ -14,7 +14,7 @@ import {
 } from "../onboarding";
 import { runBootTx } from "./schema-utils";
 import { setTierConfigProvider } from "../ai-client";
-import { getTierConfigs, seedAiTiersFromEnv } from "../settings/ai-tiers";
+import { getTierConfigs, heavyTierKeys } from "../settings/ai-tiers";
 
 // PER-BOOT TASKS (issue #119). These run on EVERY process start, AFTER the
 // versioned migration runner (lib/migrations/runner.ts) has brought the schema to
@@ -90,7 +90,7 @@ export function bootTasks(db: Database.Database): void {
   // on first boot (idempotent — the env is DEMOTED to a seed; the DB then owns it),
   // and register the DB-backed tier-config reader as the runtime provider so
   // lib/ai-resolve can resolve task → tier → client without importing the DB layer.
-  seedAiTiersFromEnv();
+  seedAiTiersFromEnv(db);
   setTierConfigProvider(() => getTierConfigs());
 
   // Record an install/first-boot timestamp once, so the health endpoint can tell a
@@ -289,6 +289,38 @@ export function seedTimezoneFromEnv(db: Database.Database) {
         `INSERT INTO settings (key, value) VALUES ('timezone', ?)
          ON CONFLICT(key) DO NOTHING`
       ).run(tz);
+    })
+  );
+}
+
+// Seed the Heavy AI tier from the legacy env vars on first boot (issue #875). The AI
+// config moved from env-only (ANTHROPIC_API_KEY / AI_BASE_URL / HEALTH_AI_MODEL) into
+// the settings table; on the first boot that has no Heavy tier stored yet, persist the
+// env values so an upgrading deploy keeps its key/endpoint/model instead of snapping
+// to offline. Idempotent — never overwrites a value the admin has since set (the
+// seedTimezoneFromEnv pattern) — and a fresh instance with no AI env seeds nothing
+// (both tiers stay unset → offline degradation, unchanged). Uses the passed db handle
+// (the singleton isn't assigned yet inside createDb).
+export function seedAiTiersFromEnv(db: Database.Database) {
+  const k = heavyTierKeys();
+  const stored = db
+    .prepare("SELECT key FROM settings WHERE key IN (?, ?, ?, ?) LIMIT 1")
+    .get(k.shape, k.baseUrl, k.apiKey, k.model) as { key?: string } | undefined;
+  if (stored) return; // Heavy tier already has stored config — never re-seed
+  const apiKey = process.env.ANTHROPIC_API_KEY || "";
+  const baseUrl = (process.env.AI_BASE_URL || "").trim();
+  const model = (process.env.HEALTH_AI_MODEL || "").trim();
+  if (!apiKey && !baseUrl && !model) return; // nothing to seed
+  runBootTx(
+    db.transaction(() => {
+      const put = db.prepare(
+        `INSERT INTO settings (key, value) VALUES (?, ?)
+         ON CONFLICT(key) DO NOTHING`
+      );
+      put.run(k.shape, "anthropic");
+      put.run(k.baseUrl, baseUrl);
+      put.run(k.apiKey, apiKey);
+      put.run(k.model, model);
     })
   );
 }

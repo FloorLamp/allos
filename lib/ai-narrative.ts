@@ -13,7 +13,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { today } from "./db";
-import { AI_MODEL as MODEL, aiConfigured, createAiClient } from "./ai-client";
+import { resolveTaskClient, isTaskConfigured } from "./ai-resolve";
 import { recordAiEvent, capDetail, LOG_PROMPTS, usageFrom } from "./ai-log";
 import { checkAndIncrementAiUsage, narrativeDailyLimit } from "./ai-usage";
 import { getUnitPrefs, type WeightUnit } from "./settings";
@@ -66,7 +66,7 @@ async function narrate(opts: {
   const { profileId, system, userContent, detailKey, offline } = opts;
   const maxTokens = opts.maxTokens ?? 700;
 
-  if (!aiConfigured()) {
+  if (!isTaskConfigured("narrative")) {
     recordAiEvent({
       feature: "narrative",
       status: "skipped",
@@ -87,9 +87,21 @@ async function narrate(opts: {
     return { summary: offline(), model: "offline-fallback" };
   }
 
+  // Build the client only after the cap passed (the resolver is the sole
+  // client-build seam, so a capped call never constructs the model client).
+  const resolved = resolveTaskClient("narrative");
+  if (!resolved) {
+    recordAiEvent({
+      feature: "narrative",
+      status: "skipped",
+      detail: `${detailKey} — AI not configured`,
+    });
+    return { summary: offline(), model: "offline-fallback" };
+  }
+  const { client, model: MODEL, tier, host } = resolved;
+
   const startedAt = Date.now();
   try {
-    const client = createAiClient();
     const msg = await client.messages.create({
       model: MODEL,
       max_tokens: maxTokens,
@@ -108,6 +120,8 @@ async function narrate(opts: {
         feature: "narrative",
         status: "failed",
         model: MODEL,
+        tier,
+        baseUrl: host,
         durationMs: Date.now() - startedAt,
         detail: detailKey,
         error: `Truncated at the output limit (${maxTokens} tokens).`,
@@ -118,6 +132,8 @@ async function narrate(opts: {
       feature: "narrative",
       status: "ok",
       model: MODEL,
+      tier,
+      baseUrl: host,
       durationMs: Date.now() - startedAt,
       usage: usageFrom(msg),
       detail: capDetail(detailKey + (LOG_PROMPTS ? `\n${text}` : "")),
@@ -128,6 +144,8 @@ async function narrate(opts: {
       feature: "narrative",
       status: "failed",
       model: MODEL,
+      tier,
+      baseUrl: host,
       durationMs: Date.now() - startedAt,
       detail: detailKey,
       error: err instanceof Error ? err.message : "unknown error",

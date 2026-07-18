@@ -9,14 +9,33 @@
 // wrapper. The boot task registers getTierConfigs as the runtime provider (see
 // lib/ai-client.ts setTierConfigProvider) so lib/ai-resolve stays DB-free.
 
-import { writeTx } from "../db";
-import { getSetting, setSetting } from "./kv";
+// NOTE: this module is on the boot path (boot-tasks registers getTierConfigs as the
+// runtime tier provider), so it must NOT import lib/settings/kv — kv hoists a prepared
+// statement at module scope that needs the `db` singleton fully assigned, and pulling
+// it into the createDb() import chain evaluates it too early (the same reason the boot
+// tasks read settings inline). We reference `db` only INSIDE functions (call time,
+// when it's ready) and prepare statements lazily.
+import { db, writeTx } from "../db";
 import {
   parseApiShape,
   type TierConfig,
   type TierConfigs,
   type TierName,
 } from "../ai-tiers";
+
+function getSetting(key: string): string | undefined {
+  const row = db
+    .prepare("SELECT value FROM settings WHERE key = ?")
+    .get(key) as { value?: string } | undefined;
+  return row?.value;
+}
+
+function setSetting(key: string, value: string): void {
+  db.prepare(
+    `INSERT INTO settings (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+  ).run(key, value);
+}
 
 // Setting keys per tier. Kept mechanical (`ai_<tier>_<field>`) so the read/write/seed
 // paths never drift.
@@ -31,7 +50,9 @@ function keys(tier: TierName) {
 
 // The Heavy tier's per-field env fallback (the demoted legacy vars). Light has none —
 // an unconfigured Light tier falls back to Heavy at resolution time.
-function heavyEnvDefault(field: "shape" | "baseUrl" | "apiKey" | "model"): string {
+function heavyEnvDefault(
+  field: "shape" | "baseUrl" | "apiKey" | "model"
+): string {
   switch (field) {
     case "baseUrl":
       return process.env.AI_BASE_URL || "";
@@ -71,7 +92,12 @@ export function getTierConfig(tier: TierName): TierConfig {
 // never wipes a saved secret; pass a sentinel clear separately when needed.
 export function setTierConfig(
   tier: TierName,
-  cfg: { apiShape: TierConfig["apiShape"]; baseUrl: string; model: string; apiKey?: string }
+  cfg: {
+    apiShape: TierConfig["apiShape"];
+    baseUrl: string;
+    model: string;
+    apiKey?: string;
+  }
 ): void {
   const k = keys(tier);
   writeTx(() => {
@@ -89,35 +115,16 @@ export function clearTierApiKey(tier: TierName): void {
   setSetting(keys(tier).apiKey, "");
 }
 
-// Whether the Heavy tier has ANY stored setting yet (used by the seed to decide
-// first-boot). Reads the raw settings, not the env-merged view.
-function heavyHasStoredConfig(): boolean {
-  const k = keys("heavy");
-  return (
-    getSetting(k.shape) !== undefined ||
-    getSetting(k.baseUrl) !== undefined ||
-    getSetting(k.apiKey) !== undefined ||
-    getSetting(k.model) !== undefined
-  );
-}
-
-// First-boot seed: persist the legacy env vars onto the Heavy tier ONCE, when nothing
-// is stored yet AND the env actually carries AI config. Idempotent — never overwrites
-// a value the admin has since set (the seedTimezoneFromEnv pattern). A fresh instance
-// with no AI env leaves both tiers unset (offline degradation, unchanged).
-export function seedAiTiersFromEnv(): void {
-  if (heavyHasStoredConfig()) return;
-  const apiKey = process.env.ANTHROPIC_API_KEY || "";
-  const baseUrl = process.env.AI_BASE_URL || "";
-  const model = process.env.HEALTH_AI_MODEL || "";
-  if (!apiKey && !baseUrl && !model) return; // nothing to seed
-  const k = keys("heavy");
-  writeTx(() => {
-    setSetting(k.shape, "anthropic");
-    setSetting(k.baseUrl, baseUrl.trim());
-    setSetting(k.apiKey, apiKey);
-    setSetting(k.model, model.trim());
-  });
+// The Heavy tier's settings keys, exported so the boot-path seed (which must use the
+// freshly-created db handle, not the yet-unassigned singleton) writes the same keys
+// this module reads. The seed itself lives in lib/migrations/boot-tasks.ts.
+export function heavyTierKeys(): {
+  shape: string;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+} {
+  return keys("heavy");
 }
 
 // A key/endpoint-free view of a tier for the admin UI: never returns the stored API

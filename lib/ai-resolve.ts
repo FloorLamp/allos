@@ -9,14 +9,12 @@
 // straight through the resolver into the real extraction/suggestion orchestration.
 
 import type Anthropic from "@anthropic-ai/sdk";
+import { createAiClient, currentTierConfigs, endpointHost } from "./ai-client";
 import {
-  createAiClient,
-  currentTierConfigs,
-  endpointHost,
-} from "./ai-client";
-import {
+  DEFAULT_AI_MODEL,
   effectiveModel,
   resolveTaskTier,
+  tierConfigured,
   type AiTaskClass,
   type ApiShape,
   type TierName,
@@ -35,7 +33,9 @@ export interface ResolvedTaskClient {
 // Resolve the client that will serve a task, or null when no tier is configured (the
 // caller then takes its offline-degradation path). Applies the fallback chain
 // (light→heavy→null; heavy→null) over the current tier configs.
-export function resolveTaskClient(task: AiTaskClass): ResolvedTaskClient | null {
+export function resolveTaskClient(
+  task: AiTaskClass
+): ResolvedTaskClient | null {
   const resolved = resolveTaskTier(task, currentTierConfigs());
   if (!resolved) return null;
   const { config, tier } = resolved;
@@ -49,7 +49,31 @@ export function resolveTaskClient(task: AiTaskClass): ResolvedTaskClient | null 
     model: effectiveModel(config),
     tier,
     apiShape: config.apiShape,
-    host: config.baseUrl ? endpointHost({ AI_BASE_URL: config.baseUrl }) : undefined,
+    host: config.baseUrl
+      ? endpointHost({ AI_BASE_URL: config.baseUrl })
+      : undefined,
+  };
+}
+
+// Resolve the client for a SPECIFIC named tier (not via a task's fallback chain) —
+// used by the Settings "Test connection" probe, which must test exactly the tier the
+// admin configured, never a fallback. Null when that tier isn't configured.
+export function resolveTierClient(tier: TierName): ResolvedTaskClient | null {
+  const config = currentTierConfigs()[tier];
+  if (!tierConfigured(config)) return null;
+  const client = createAiClient({
+    apiShape: config.apiShape,
+    apiKey: config.apiKey,
+    baseURL: config.baseUrl || undefined,
+  });
+  return {
+    client,
+    model: effectiveModel(config),
+    tier,
+    apiShape: config.apiShape,
+    host: config.baseUrl
+      ? endpointHost({ AI_BASE_URL: config.baseUrl })
+      : undefined,
   };
 }
 
@@ -58,4 +82,36 @@ export function resolveTaskClient(task: AiTaskClass): ResolvedTaskClient | null 
 // when only one tier is configured (extraction down while narratives run local).
 export function isTaskConfigured(task: AiTaskClass): boolean {
   return resolveTaskTier(task, currentTierConfigs()) != null;
+}
+
+export interface TaskEndpointInfo {
+  configured: boolean;
+  tier: TierName | null;
+  label: string;
+  host?: string;
+  model: string;
+}
+
+// A read-only snapshot of the backend that would serve a task, for display (the
+// coverage page, degradation copy). Host-only label, never a raw URL/secret.
+export function taskEndpointInfo(task: AiTaskClass): TaskEndpointInfo {
+  const resolved = resolveTaskTier(task, currentTierConfigs());
+  if (!resolved) {
+    return {
+      configured: false,
+      tier: null,
+      label: "Anthropic API",
+      model: DEFAULT_AI_MODEL,
+    };
+  }
+  const host = resolved.config.baseUrl
+    ? endpointHost({ AI_BASE_URL: resolved.config.baseUrl })
+    : undefined;
+  return {
+    configured: true,
+    tier: resolved.tier,
+    label: host ?? "Anthropic API",
+    host,
+    model: effectiveModel(resolved.config),
+  };
 }

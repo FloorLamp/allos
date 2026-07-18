@@ -41,7 +41,10 @@ export interface AnthropicRequest {
   model: string;
   max_tokens: number;
   system?: string;
-  messages: Array<{ role: "user" | "assistant"; content: string | AnthropicContentBlock[] }>;
+  messages: Array<{
+    role: "user" | "assistant";
+    content: string | AnthropicContentBlock[];
+  }>;
   tools?: Array<{ name: string; description?: string; input_schema: unknown }>;
   tool_choice?: { type: string; name?: string };
 }
@@ -69,7 +72,9 @@ function contentPart(block: AnthropicContentBlock): OpenAiContentPart | null {
 }
 
 // Build the OpenAI /chat/completions request body from the Anthropic-shaped args.
-export function toOpenAiRequest(req: AnthropicRequest): Record<string, unknown> {
+export function toOpenAiRequest(
+  req: AnthropicRequest
+): Record<string, unknown> {
   const messages: Array<Record<string, unknown>> = [];
   if (req.system) messages.push({ role: "system", content: req.system });
   for (const m of req.messages) {
@@ -139,7 +144,10 @@ export interface ShapedMessage {
 
 // Map an OpenAI finish_reason to the Anthropic stop_reason the extractors check
 // (`max_tokens` drives their truncation handling).
-function mapStopReason(finish: string | null | undefined, hasTool: boolean): string {
+function mapStopReason(
+  finish: string | null | undefined,
+  hasTool: boolean
+): string {
   if (finish === "length") return "max_tokens";
   if (hasTool || finish === "tool_calls") return "tool_use";
   return "end_turn";

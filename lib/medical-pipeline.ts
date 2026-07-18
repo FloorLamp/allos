@@ -30,7 +30,7 @@ import {
   preBufferSizeCap,
 } from "@/lib/upload-gate";
 import { sniffUploadType } from "@/lib/file-sniff";
-import { aiConfigured } from "@/lib/ai-client";
+import { isTaskConfigured } from "@/lib/ai-resolve";
 import { claimDocumentForExtraction } from "@/lib/extraction-claim";
 import { withAiLogContext } from "@/lib/ai-log";
 import {
@@ -133,7 +133,7 @@ const AI_DAILY_LIMIT_DOC_MESSAGE =
 // extractMedicalDocument records its own no-key skip, so we don't burn quota when
 // AI is disabled/degraded anyway (only count when a Claude call really dispatches).
 function allowExtractionDispatch(profileId: number, docId: number): boolean {
-  if (!aiConfigured()) return true;
+  if (!isTaskConfigured("extraction")) return true;
   const { allowed } = checkAndIncrementAiUsage(
     profileId,
     "extraction",
@@ -178,7 +178,7 @@ function dispatchExtraction(
   // A quota unit was consumed above ONLY when an API key is configured; a no-key
   // dispatch runs but records its own skip, so it was never charged and must never
   // be refunded (that would drive the counter below its true value).
-  const charged = aiConfigured();
+  const charged = isTaskConfigured("extraction");
   void withAiLogContext({ loginId, profileId }, () =>
     extractionSemaphore.run(async () => {
       let buffer: Buffer;
@@ -392,7 +392,7 @@ export async function ingestMedicalUpload(
     if (
       existing.status === "failed" &&
       existing.stored_path &&
-      (healthKind || aiConfigured())
+      (healthKind || isTaskConfigured("extraction"))
     ) {
       // Claim the failed row atomically BEFORE dispatching a fresh extraction
       // (issue #324): flip to 'processing' only if it isn't already, exactly the
@@ -874,7 +874,7 @@ export async function reprocessOne(
   // A health record (CCD/XDM/SHC) re-imports deterministically — no AI, no key.
   if (detectHealthRecord(prep.buffer))
     return persistHealthRecordDoc(profileId, docId, prep.buffer).status;
-  if (!aiConfigured()) {
+  if (!isTaskConfigured("extraction")) {
     db.prepare(
       "UPDATE medical_documents SET extraction_status = 'skipped', extraction_error = ? WHERE id = ? AND profile_id = ?"
     ).run(
@@ -1134,7 +1134,7 @@ export function reprocessDocumentById(
     });
     return { mode: "re-extracted" };
   }
-  if (!aiConfigured()) {
+  if (!isTaskConfigured("extraction")) {
     db.prepare(
       "UPDATE medical_documents SET extraction_status = 'skipped', extraction_error = ? WHERE id = ? AND profile_id = ?"
     ).run(
@@ -1368,7 +1368,7 @@ async function extractPersistInputForPreview(
 
   // AI path: needs a key. Run the model to an in-memory result and reduce it to a
   // PersistInput (never persisted). A skip/fail has nothing to diff.
-  if (!aiConfigured()) {
+  if (!isTaskConfigured("extraction")) {
     return {
       skip: "AI not configured — set ANTHROPIC_API_KEY or AI_BASE_URL to preview a re-extraction.",
     };

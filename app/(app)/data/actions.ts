@@ -25,7 +25,7 @@ import {
   type ExtractionMeta,
 } from "@/lib/medical-extract";
 import { getCanonicalVocabulary } from "@/lib/queries";
-import { aiConfigured } from "@/lib/ai-client";
+import { isTaskConfigured } from "@/lib/ai-resolve";
 import { withAiLogContext } from "@/lib/ai-log";
 import { checkAndIncrementAiUsage, extractionDailyLimit } from "@/lib/ai-usage";
 import { extractionSemaphore } from "@/lib/ai-concurrency";
@@ -92,7 +92,7 @@ async function extractImport(
   // graceful terminal 'skipped' (runImportJob maps `skipped: true` → status
   // 'skipped') — the raw source_text stays on the job row, never a hard error.
   if (
-    aiConfigured() &&
+    isTaskConfigured("extraction") &&
     !checkAndIncrementAiUsage(
       profileId,
       "extraction",
