@@ -76,6 +76,37 @@ describe("food-groups.json dataset", () => {
     }
   });
 
+  // ── #976 fiber grams: every fiber-bearing slug resolves a positive number ──
+  it("every fiber-bearing group carries a positive fiber_g, and non-bearing groups omit it", () => {
+    // The catalog's fiber-source groups — the estimate (#976) sums these as a floor.
+    // Deliberately DIFFERENT from the protein-bearing set: plant groups carry fiber,
+    // animal groups (fish/poultry/eggs/dairy/meats) don't, and fruit/berries carry
+    // fiber while omitting protein_g.
+    const BEARING = new Set([
+      "leafy_greens",
+      "cruciferous",
+      "other_vegetables",
+      "legumes",
+      "nuts_seeds",
+      "whole_grains",
+      "fruit",
+      "berries",
+      "fermented",
+      "tubers",
+      "refined_grains",
+    ]);
+    for (const g of FOOD_GROUPS) {
+      if (BEARING.has(g.slug)) {
+        expect(typeof g.fiber_g, g.slug).toBe("number");
+        expect(g.fiber_g, g.slug).toBeGreaterThan(0);
+      } else {
+        // Animal + no-fiber groups (fish, poultry, eggs, dairy, meats, water, fried
+        // food, sweets, sugary drinks, alcohol) deliberately omit it.
+        expect(g.fiber_g, g.slug).toBeUndefined();
+      }
+    }
+  });
+
   // ── #824 one-mechanism rule: NO protein-shake/powder catalog entry ──
   it("has no food-group entry representing protein powder / shakes (the one-mechanism rule)", () => {
     // Protein powder is deliberately NOT a food group (#824): a `protein_shake` catalog
