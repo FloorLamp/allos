@@ -109,10 +109,15 @@ async function call(
 // preserved (on the final chunk), so the send succeeds and the slot marker can be
 // set instead of the reminder refailing every hour. Counting is on the escaped
 // HTML actually sent. GUARDED — import only from the chokepoint (telegram.ts).
+//
+// Returns the message_id of the FINAL chunk — the one carrying the keyboard — so a
+// caller that needs to close that keyboard later (the food-nudge close-previous, #947)
+// has a handle to it. Undefined if Telegram didn't report an id (best-effort callers
+// tolerate it).
 export async function sendMessageRaw(
   chatId: string | number,
   msg: NotificationMessage
-): Promise<void> {
+): Promise<number | undefined> {
   const rawKeyboard = msg.actions?.length ? messageKeyboard(msg) : [];
   const { keyboard, dropped } = capTelegramKeyboard(rawKeyboard);
 
@@ -126,6 +131,7 @@ export async function sendMessageRaw(
   }
 
   const chunks = splitTelegramHtml(html);
+  let lastMessageId: number | undefined;
   for (let i = 0; i < chunks.length; i++) {
     const isLast = i === chunks.length - 1;
     const body: Record<string, unknown> = {
@@ -138,8 +144,12 @@ export async function sendMessageRaw(
     if (isLast && keyboard.length > 0) {
       body.reply_markup = { inline_keyboard: keyboard };
     }
-    await call("sendMessage", body);
+    const json = await call("sendMessage", body);
+    const result = json.result as { message_id?: number } | undefined;
+    if (typeof result?.message_id === "number")
+      lastMessageId = result.message_id;
   }
+  return lastMessageId;
 }
 
 // A no-op edit — identical text/markup, as when a duplicate or redelivered

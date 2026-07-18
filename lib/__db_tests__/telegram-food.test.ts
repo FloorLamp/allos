@@ -19,7 +19,7 @@ vi.mock("@/lib/notifications/telegram-api", async (importActual) => {
   };
 });
 
-import { db, today } from "@/lib/db";
+import { db, today, yesterday } from "@/lib/db";
 import {
   setProfileSetting,
   getProfileFoodTelegram,
@@ -88,6 +88,31 @@ describe("food quick-log tap", () => {
     expect(
       getFoodServingsOnDate(p.profileId, t).get("berries")
     ).toBeUndefined();
+  });
+});
+
+describe("food quick-log cross-date guard (#947)", () => {
+  it("refuses a tap on YESTERDAY's stale nudge — writes nothing, answers honestly", async () => {
+    const y = yesterday(p.profileId);
+    await handleCallbackQuery(
+      cq(`food:${p.profileId}:Evening:${y}:berries`, OWN_CHAT)
+    );
+    // Nothing logged on yesterday OR today from the stale tap.
+    expect(getFoodServingsOnDate(p.profileId, y).get("berries")).toBeUndefined();
+    expect(getFoodServingsOnDate(p.profileId, t).get("berries")).toBeUndefined();
+    // Honest answer, never a false confirm.
+    expect(lastAnswer()).toContain(y);
+    expect(lastAnswer()).not.toContain("Logged ✅");
+  });
+
+  it("still logs a same-day tap from an OLDER window (the date is right)", async () => {
+    // A Morning-window token whose date is TODAY logs normally even if tapped later
+    // in the day — only cross-DATE taps are refused, not cross-window.
+    await handleCallbackQuery(
+      cq(`food:${p.profileId}:Morning:${t}:whole_grains`, OWN_CHAT)
+    );
+    expect(getFoodServingsOnDate(p.profileId, t).get("whole_grains")).toBe(1);
+    expect(lastAnswer()).toContain("Logged ✅");
   });
 });
 

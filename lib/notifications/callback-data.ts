@@ -506,6 +506,36 @@ export function parseFoodOptInCallback(
   return { profileId, enable: m[2] === "yes" };
 }
 
+// A food quick-log tap is date-guarded (#947): the token carries its SEND date, and
+// tapping a stale keyboard from a previous day would silently log a serving to that
+// old date. For a dose reminder the date-carrying token is deliberately right — a
+// late tap marks that dose on that day — but for a counter nudge it's WRONG: a tap
+// means "I'm eating NOW". So a cross-date tap writes NOTHING and answers honestly
+// (the #232 never-unconditionally-confirm discipline); only a current-day tap logs.
+// A same-day tap from an older window keeps working (the date is right; only the
+// button counts on the old message are stale, which the rebuild refreshes).
+export type FoodTapDateGuard =
+  | { kind: "current-day" }
+  | { kind: "stale-date" };
+
+// Decide whether a food tap's token date is today in the profile's timezone. Pure so
+// the tz-midnight boundary (a 23:59 tap on yesterday's nudge vs a 00:01 tap on
+// today's) is unit-pinnable; the handler passes today(profileId).
+export function foodTapDateGuard(
+  tokenDate: string,
+  todayDate: string
+): FoodTapDateGuard {
+  return tokenDate === todayDate
+    ? { kind: "current-day" }
+    : { kind: "stale-date" };
+}
+
+// The honest Telegram toast for a refused cross-date tap: name the stale date so the
+// user understands why nothing was logged and where the live buttons are.
+export function foodStaleDateAnswerText(tokenDate: string): string {
+  return `That nudge was from ${tokenDate} — today's buttons are below.`;
+}
+
 // The Telegram toast for a food quick-log tap, from the typed write outcome. A
 // logged serving names the group and its running daily total; an unknown group (a
 // stale/forged token, a retired slug) is answered honestly, never falsely confirmed.
