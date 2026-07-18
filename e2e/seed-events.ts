@@ -89,6 +89,8 @@ import {
   FOOD_SLOT_PROFILE,
   E2E_LOGIN_ENDURANCE,
   ENDURANCE_PROFILE,
+  E2E_LOGIN_FLABS,
+  FLAGGED_LAB_PROFILE,
 } from "./fixture-logins";
 import { adoptTemplate, activateRoutine } from "../lib/routines";
 
@@ -2927,4 +2929,27 @@ for (const [ago, km, wt] of [
 seedMemberLogin(E2E_LOGIN_ENDURANCE, enduranceProfileId, "write");
 console.log(
   `e2e: seeded endurance-plan fixture — profile ${enduranceProfileId} (${ENDURANCE_PROFILE}) (#839)`
+);
+
+// ── Flagged-labs follow-up fixture (#700 flagged-labs adapter) ────────────────
+// A dedicated adult profile (no birthdate) carrying ONE flagged biomarker: an
+// out-of-range Hemoglobin A1c dated ~120 days ago. The followup-labs spec tracks a
+// 3-month "Recheck A1c" follow-up from the biomarker detail page (so its planned date
+// lands in the past → OVERDUE → surfaces on Upcoming immediately), asserts the legible
+// item, then adds a later same-family (eAG) reading and resolves the loop. Idempotent:
+// delete-then-insert the A1c source on (profile, canonical); the spec owns + cleans the
+// follow-up care_plan_items + the later eAG reading in beforeAll/afterAll.
+const flaggedLabId = fixtureProfileId(FLAGGED_LAB_PROFILE);
+const flaggedLabAnchor = today(flaggedLabId);
+db.prepare(
+  `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = 'Hemoglobin A1c'`
+).run(flaggedLabId);
+db.prepare(
+  `INSERT INTO medical_records
+     (profile_id, date, category, name, value, value_num, unit, canonical_name, flag, source)
+   VALUES (?, ?, 'lab', 'Hemoglobin A1c', '8.2', 8.2, '%', 'Hemoglobin A1c', 'high', 'manual')`
+).run(flaggedLabId, shiftDateStr(flaggedLabAnchor, -120));
+seedMemberLogin(E2E_LOGIN_FLABS, flaggedLabId, "write");
+console.log(
+  `e2e: seeded flagged-lab follow-up fixture — profile ${flaggedLabId} (${FLAGGED_LAB_PROFILE}) (#700)`
 );

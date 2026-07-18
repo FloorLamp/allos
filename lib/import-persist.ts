@@ -133,6 +133,26 @@ export function clearImportedDocumentRows(
            SELECT id FROM imaging_studies WHERE profile_id = ? AND document_id = ?
          )`
   ).run(profileId, profileId, docId);
+  // Row-ops side-state (#700 labs adapter): a flagged-lab follow-up may link a
+  // medical_records reading THIS document imported as its SOURCE finding, or a
+  // resolution may cite one. medical_records carries no ON DELETE for these FKs, so
+  // NULL those follow-up links FIRST — otherwise deleting the readings (in the
+  // footprint loop, where medical_records is cleared) would trip the care_plan_items
+  // source/resolved FKs. A manual follow-up is preserved, just de-linked.
+  db.prepare(
+    `UPDATE care_plan_items SET source_kind = NULL, source_medical_record_id = NULL
+       WHERE profile_id = ?
+         AND source_medical_record_id IN (
+           SELECT id FROM medical_records WHERE profile_id = ? AND document_id = ?
+         )`
+  ).run(profileId, profileId, docId);
+  db.prepare(
+    `UPDATE care_plan_items SET resolved_by_medical_record_id = NULL
+       WHERE profile_id = ?
+         AND resolved_by_medical_record_id IN (
+           SELECT id FROM medical_records WHERE profile_id = ? AND document_id = ?
+         )`
+  ).run(profileId, profileId, docId);
   for (const t of IMPORT_FOOTPRINT_TABLES) {
     db.prepare(
       `DELETE FROM ${t.table} WHERE ${t.key} = ? AND ${footprintScope(t)}`
@@ -211,6 +231,25 @@ export function moveImportedDocumentRows(
          WHERE profile_id = ? AND resolved_by_imaging_study_id IS NOT NULL
            AND resolved_by_imaging_study_id NOT IN (
              SELECT id FROM imaging_studies WHERE profile_id = ?
+           )`
+    ).run(pid, pid);
+    // Row-ops side-state (#700 labs adapter): the same same-profile re-enforce for the
+    // flagged-lab follow-up links — a reassign can move an imported reading but not a
+    // MANUAL follow-up that links it (or vice-versa). NULL any care_plan_items link
+    // whose medical_records source/resolving reading no longer lives in that follow-up's
+    // profile.
+    db.prepare(
+      `UPDATE care_plan_items SET source_kind = NULL, source_medical_record_id = NULL
+         WHERE profile_id = ? AND source_medical_record_id IS NOT NULL
+           AND source_medical_record_id NOT IN (
+             SELECT id FROM medical_records WHERE profile_id = ?
+           )`
+    ).run(pid, pid);
+    db.prepare(
+      `UPDATE care_plan_items SET resolved_by_medical_record_id = NULL
+         WHERE profile_id = ? AND resolved_by_medical_record_id IS NOT NULL
+           AND resolved_by_medical_record_id NOT IN (
+             SELECT id FROM medical_records WHERE profile_id = ?
            )`
     ).run(pid, pid);
   }

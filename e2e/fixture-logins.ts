@@ -268,3 +268,14 @@ export const FOOD_SLOT_PROFILE = "Food Slot (e2e)";
 // training-restricted, so /training renders the full hub with the Event-plans bar.
 export const E2E_LOGIN_ENDURANCE = "e2e_endurance";
 export const ENDURANCE_PROFILE = "Endurance Plan (e2e)";
+
+// A dedicated ADULT profile carrying ONE flagged biomarker reading — an out-of-range
+// Hemoglobin A1c (#700 flagged-labs follow-up adapter). The followup-labs spec tracks a
+// "Recheck A1c" follow-up from the biomarker detail page, watches it surface legibly on
+// Upcoming, then lands a later same-family (eAG) reading and resolves the loop.
+// Isolated + spec-owned on purpose: tracking a follow-up + adding/resolving a reading
+// MUTATES care_plan_items + medical_records, which on a shared profile would race the
+// biomarker/upcoming specs. The spec cleans its follow-up + the later reading in
+// beforeAll AND afterAll so it's repeat-safe; the seeded source A1c is re-seeded each boot.
+export const E2E_LOGIN_FLABS = "e2e_flabs";
+export const FLAGGED_LAB_PROFILE = "Flagged Lab (e2e)";

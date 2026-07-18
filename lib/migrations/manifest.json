@@ -57,5 +57,6 @@
   "056-food-log-events.ts": "07d79358c1e536e47d84d7976cc4b53d8160067e8465b78421d91c75606d0c39",
   "057-endurance-plans.ts": "7a15323d25f6da5264c0a8f3c30b99d0b60466c842af7c58aa0d35a23a763e2d",
   "058-recovery-activity-type.ts": "816fb30b6d2b7f9fcdd9c79f460738c0713c04baea096621489d1f96a71dd00d",
-  "059-frequency-target-mobility-region.ts": "2ddc781a254ab7d877052167748820e08981686dd9f1cb60c194aac1a53e9177"
+  "059-frequency-target-mobility-region.ts": "2ddc781a254ab7d877052167748820e08981686dd9f1cb60c194aac1a53e9177",
+  "060-followup-labs.ts": "bbaebe159a04cb032ee925a8add50cbffe9a1ef747e33335573b8fc51d28defb"
 }
