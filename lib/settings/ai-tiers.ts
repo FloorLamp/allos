@@ -115,18 +115,6 @@ export function clearTierApiKey(tier: TierName): void {
   setSetting(keys(tier).apiKey, "");
 }
 
-// The Heavy tier's settings keys, exported so the boot-path seed (which must use the
-// freshly-created db handle, not the yet-unassigned singleton) writes the same keys
-// this module reads. The seed itself lives in lib/migrations/boot-tasks.ts.
-export function heavyTierKeys(): {
-  shape: string;
-  baseUrl: string;
-  apiKey: string;
-  model: string;
-} {
-  return keys("heavy");
-}
-
 // A key/endpoint-free view of a tier for the admin UI: never returns the stored API
 // key (write-only display), only whether one is set. Mirrors the bot-token posture.
 export interface TierConfigView {
