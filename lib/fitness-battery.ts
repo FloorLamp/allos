@@ -79,6 +79,9 @@ export interface FitnessTestDef {
   citation?: string;
   // A short "how to interpret" note for evidence-tier tests (SRT/HRR/4-stage).
   interpretation?: string;
+  // Whether a LOWER measured value is fitter (timed up-and-go, resting HR, body fat), so
+  // the surface colors a check-over-check delta correctly. Default false (higher better).
+  lowerIsBetter?: boolean;
   // Equipment the test wants; when the profile's registry lacks it the UI offers the
   // documented substitute (equipment-aware, #834).
   equipment?: { needs: string; substitute: string };
@@ -352,6 +355,7 @@ export const FITNESS_BATTERY: FitnessTestDef[] = [
     inputKind: "seconds",
     normsMarker: "Timed Up-and-Go",
     store: { kind: "vital", canonical: "Timed Up-and-Go", category: "vitals" },
+    lowerIsBetter: true,
     citation: "Rikli & Jones Senior Fitness Test (8-foot up-and-go).",
     instructions: [
       "Sit in a chair. On 'go', stand, walk 8 feet (2.4 m) around a cone, and sit back down.",
@@ -462,6 +466,7 @@ export const FITNESS_BATTERY: FitnessTestDef[] = [
     unit: "%",
     inputKind: "number",
     store: { kind: "body", column: "body_fat_pct" },
+    lowerIsBetter: true,
     instructions: [
       "Enter your body fat percentage from a scale, caliper, or DEXA if you have one.",
     ],
@@ -477,6 +482,7 @@ export const FITNESS_BATTERY: FitnessTestDef[] = [
     unit: "bpm",
     inputKind: "number",
     store: { kind: "body", column: "resting_hr" },
+    lowerIsBetter: true,
     instructions: [
       "Measure your heart rate at rest (ideally on waking, before getting up). Enter beats per minute.",
     ],
