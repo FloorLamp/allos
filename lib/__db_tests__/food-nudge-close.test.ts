@@ -70,6 +70,8 @@ beforeEach(() => {
   stripMock.mockClear();
   stripMock.mockImplementation(async () => {});
   // Clear any prior delivery marker + pointer between cases.
+  // Delivery-health marker is now the notify_lifecycle row (issue #942).
+  db.prepare("DELETE FROM notify_lifecycle").run();
   setSetting("notify_last_error", "");
   setSetting("notify_last_error_at", "");
   setSetting("notify_last_error_channel", "");

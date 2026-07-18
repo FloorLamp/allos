@@ -82,7 +82,7 @@ describe("decideMarker (channel-aware clearing, #192)", () => {
   });
 
   it("keeps the marker untouched when nothing was attempted", () => {
-    expect(decideMarker([], "push")).toEqual({ action: "keep" });
+    expect(decideMarker([], "push")).toEqual({ action: "freeze" });
   });
 
   // --- Cross-profile tick: push broken globally, Telegram works. ---
@@ -107,7 +107,7 @@ describe("decideMarker (channel-aware clearing, #192)", () => {
     // Profile B (Telegram only) succeeds later in the same tick — push is still
     // broken and was not attempted, so the marker must survive.
     expect(decideMarker([{ id: "telegram", ok: true }], "push")).toEqual({
-      action: "keep",
+      action: "freeze",
     });
   });
 
@@ -135,7 +135,7 @@ describe("decideMarker (channel-aware clearing, #192)", () => {
     // Symmetric to the push case: a push-only success must not mask a broken
     // Telegram.
     expect(decideMarker([{ id: "push", ok: true }], "telegram")).toEqual({
-      action: "keep",
+      action: "freeze",
     });
   });
 
@@ -168,7 +168,7 @@ describe("decideMarker (channel-aware clearing, #192)", () => {
   it("HA: a Telegram-only profile does NOT clear a home-assistant failure it never attempted", () => {
     expect(
       decideMarker([{ id: "telegram", ok: true }], "home-assistant")
-    ).toEqual({ action: "keep" });
+    ).toEqual({ action: "freeze" });
   });
 
   it("HA: a later successful home-assistant send clears the home-assistant failure", () => {
