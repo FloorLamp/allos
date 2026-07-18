@@ -88,10 +88,16 @@ test("the recap-step effort rating round-trips into activities.intensity (#924)"
     "true"
   );
 
-  // Save collapses to the plain editor; the effort persists (auto-save).
+  // Save collapses to the plain editor and stamps the end time — that final
+  // auto-save POST persists title + effort + end. Await it before navigating so
+  // the round-trip read below can't race an in-flight save.
+  const saved = page.waitForResponse(
+    (r) => r.request().method() === "POST" && r.ok(),
+    { timeout: 15000 }
+  );
   await page.getByTestId("recap-save").click();
   await expect(page.getByTestId("session-complete-step")).toHaveCount(0);
-  await expect(page.getByLabel("Saved").first()).toBeVisible();
+  await saved;
 
   // On EDIT (reopen the saved card), the main Intensity picker shows Hard — proof
   // the recap-step rating round-tripped through activities.intensity to the DB.
