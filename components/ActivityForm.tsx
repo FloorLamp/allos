@@ -80,7 +80,11 @@ import StrengthSets from "./activity-form/StrengthSets";
 import LiveWorkoutPanel from "./activity-form/LiveWorkoutPanel";
 import SessionCompleteStep from "./activity-form/SessionCompleteStep";
 import { leadExerciseName } from "@/lib/live-workout";
-import { recapSessionFromPayload, sessionRecap } from "@/lib/session-recap";
+import {
+  recapSessionFromPayload,
+  sessionRecap,
+  type Recap,
+} from "@/lib/session-recap";
 import ActivityEquipmentPicker from "./activity-form/ActivityEquipmentPicker";
 import ActivityFormHeader from "./activity-form/ActivityFormHeader";
 import DateTimeFields from "./activity-form/DateTimeFields";
@@ -569,7 +573,24 @@ export default function ActivityForm({
   // so the finish step, the finished-window dashboard card, and the Telegram recap
   // line can't disagree (#221). Duration previews start→now when the session hasn't
   // been stamped ended yet — viewing the recap doesn't itself write an end time.
-  const stepRecap = useMemo(() => {
+  const stepRecap = useMemo<Recap>(() => {
+    // buildActivityPayload requires a savable form (non-empty named parts with
+    // resolved types) — it dereferences comps[0] — so gate on canSave. The recap
+    // step is only ever shown once a set is logged (canSave true); an empty draft
+    // yields an empty recap rather than throwing on every render.
+    if (!canSave) {
+      return {
+        title: effectiveTitle,
+        durationMin: null,
+        intensity: intensity || null,
+        exercises: [],
+        totalWorkingSets: 0,
+        totalVolumeKg: 0,
+        targetRollup: "none-targeted",
+        prExercises: [],
+        avgRpe: null,
+      };
+    }
     const { flat } = buildActivityPayload(
       classifier,
       namedParts,
@@ -611,6 +632,7 @@ export default function ActivityForm({
     history,
     editData?.id,
     createdId,
+    canSave,
   ]);
 
   // Save from the recap step: stamp the end time and leave live mode, collapsing to
