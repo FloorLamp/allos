@@ -5,23 +5,24 @@
 
 import type { AdministrationOutcome } from "./types";
 import { parseUtcSql, zonedDateParts } from "./date";
+import { formatClock, type TimeFormat } from "./format-date";
 
 // Render a stored UTC administration time ("YYYY-MM-DD HH:MM:SS") as a profile-local
-// 12-hour clock ("4:02pm") for the "last …" line. Empty string on a missing/garbage
-// value so a caller can COALESCE it away.
+// clock ("4:02pm") for the "last …" line. Empty string on a missing/garbage value so
+// a caller can COALESCE it away. Pref-aware (#964): `timeFormat` picks the login's
+// 12h/24h clock. It DEFAULTS to "12h" — the status quo — because a login-less caller
+// (the Telegram /dose tap toast) has a profile but no login pref in context and keeps
+// the fixed 12h format; page/widget callers pass the login's resolved timeFormat.
 export function formatGivenAtClock(
   tz: string,
-  stored: string | null | undefined
+  stored: string | null | undefined,
+  timeFormat: TimeFormat = "12h"
 ): string {
   const d = parseUtcSql(stored);
   if (!d) return "";
   const { hhmm } = zonedDateParts(tz, d);
   const [hStr, m] = hhmm.split(":");
-  let h = Number(hStr);
-  const ap = h >= 12 ? "pm" : "am";
-  h = h % 12;
-  if (h === 0) h = 12;
-  return `${h}:${m}${ap}`;
+  return formatClock(timeFormat, Number(hStr), Number(m), "lower-nospace");
 }
 
 // The med card / widget subtitle for a PRN med's day: "2 today · last 4:02pm", or

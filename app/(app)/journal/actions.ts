@@ -19,7 +19,11 @@ import {
 } from "@/lib/import-review/detect";
 import { parseOverrideFields } from "@/lib/import-review/conflicts";
 import type { ActivityType, SaveActivityOutcome } from "@/lib/types";
-import { getUnitPrefs, type WeightUnit } from "@/lib/settings";
+import {
+  getUnitPrefs,
+  getDisplayFormatPrefs,
+  type WeightUnit,
+} from "@/lib/settings";
 import {
   toKg,
   toKm,
@@ -532,7 +536,8 @@ export async function loadJournalPage(
   const cursor =
     typeof before === "string" && isRealIsoDate(before) ? before : null;
   const units = getUnitPrefs(login.id);
-  return buildJournalFeedPage(profile.id, cursor, units);
+  const formatPrefs = getDisplayFormatPrefs(login.id);
+  return buildJournalFeedPage(profile.id, cursor, units, formatPrefs);
 }
 
 export async function deleteActivity(

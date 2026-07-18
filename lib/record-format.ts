@@ -1,4 +1,10 @@
 import { DOCUMENT_SOURCE_PREFIX } from "@/lib/body-metric-extract";
+import {
+  DEFAULT_FORMAT_PREFS,
+  formatClock,
+  formatDateShape,
+  type DisplayFormatPrefs,
+} from "@/lib/format-date";
 
 // Shared presentation helpers for the clinical/medical list pages (conditions,
 // procedures, allergies, family-history, care-plan, care-goals, encounters,
@@ -16,42 +22,48 @@ export function sourceLabel(source: string | null): string {
   return source;
 }
 
-// Format a plain YYYY-MM-DD date as "Mon D, YYYY" (UTC-safe, so no off-by-one
-// from the viewer's timezone). Returns `fallback` for a null/empty date, and
-// falls back to the raw string if it isn't a plain ISO date.
-export function formatRecordDate(date: string | null, fallback = "—"): string {
+// Format a plain YYYY-MM-DD date as "Mon D, YYYY" (UTC-safe, so no off-by-one from
+// the viewer's timezone). Returns `fallback` for a null/empty date, and falls back
+// to the raw string if it isn't a plain ISO date. Pref-aware (#964): `prefs`
+// reorders the date to the login's chosen shape; the DEFAULT reproduces the old
+// "Jan 5, 2026" output byte-for-byte AND is deterministic — this is where the old
+// `toLocaleDateString(undefined, …)` server-locale leak lived.
+export function formatRecordDate(
+  date: string | null,
+  fallback = "—",
+  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
+): string {
   if (!date) return fallback;
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
   if (!m) return date;
-  const dt = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
-  return dt.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
+  return formatDateShape(prefs.dateFormat, +m[1], +m[2], +m[3], {
+    monthStyle: "short",
+    year: true,
   });
 }
 
 // Format a stored datetime ("YYYY-MM-DD HH:MM", the shape appointments store in
-// `scheduled_at`) as "Mon D, YYYY, H:MM AM/PM". UTC-safe like formatRecordDate so
-// the wall-clock digits render exactly as stored (no viewer-timezone shift). Falls
-// back to formatRecordDate for a plain date, and to `fallback` for null/empty.
+// `scheduled_at`) as "Mon D, YYYY, <clock>". The wall-clock digits render exactly
+// as stored (no viewer-timezone shift). Falls back to formatRecordDate for a plain
+// date, and to `fallback` for null/empty. Pref-aware (#964): the date follows the
+// login's shape and the time the login's 12h/24h clock; the DEFAULT (24h, the
+// dominant clock) renders "Jan 5, 2026, 16:02". This replaces the old
+// `toLocaleString(undefined, …)` that leaked the server locale for BOTH the date
+// shape and the (formerly always-12h) clock.
 export function formatRecordDateTime(
   value: string | null,
-  fallback = "—"
+  fallback = "—",
+  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
 ): string {
   if (!value) return fallback;
   const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(value);
-  if (!m) return formatRecordDate(value, fallback);
-  const dt = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]));
-  return dt.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "UTC",
+  if (!m) return formatRecordDate(value, fallback, prefs);
+  const datePart = formatDateShape(prefs.dateFormat, +m[1], +m[2], +m[3], {
+    monthStyle: "short",
+    year: true,
   });
+  const timePart = formatClock(prefs.timeFormat, +m[4], +m[5], "upper-space");
+  return `${datePart}, ${timePart}`;
 }
 
 // Capitalize the first character of a lowercase enum value (e.g. a status or

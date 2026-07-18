@@ -22,6 +22,17 @@ describe("formatGivenAtClock", () => {
     // Noon UTC → 12:00pm.
     expect(formatGivenAtClock("UTC", "2026-07-15 12:00:00")).toBe("12:00pm");
   });
+  it("renders a 24-hour clock when the login prefers it (#964)", () => {
+    expect(
+      formatGivenAtClock("America/New_York", "2026-07-15 20:02:00", "24h")
+    ).toBe("16:02");
+    expect(formatGivenAtClock("UTC", "2026-07-15 00:00:00", "24h")).toBe(
+      "00:00"
+    );
+    expect(formatGivenAtClock("UTC", "2026-07-15 12:00:00", "24h")).toBe(
+      "12:00"
+    );
+  });
   it("returns empty string for a missing/garbage value", () => {
     expect(formatGivenAtClock("UTC", null)).toBe("");
     expect(formatGivenAtClock("UTC", "not-a-date")).toBe("");

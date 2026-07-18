@@ -15,6 +15,12 @@ import type { Activity, ExerciseSet, ActivityComponent } from "./types";
 import { parseComponents } from "./types";
 import type { ActivityEditData } from "./activity-form-model";
 import type { DistanceUnit, UnitPrefs } from "./settings";
+import {
+  DEFAULT_FORMAT_PREFS,
+  formatClock,
+  type DisplayFormatPrefs,
+  type TimeFormat,
+} from "./format-date";
 import type { SetStatus } from "./journal-format";
 import { summarizeExercise, activityProvenanceLabel } from "./journal-format";
 import { DOCUMENT_SOURCE_PREFIX } from "./body-metric-extract";
@@ -163,6 +169,10 @@ export interface BuildJournalCardsInput {
   // manual activity is scored against the weigh-in nearest its own date.
   weights: DatedWeight[];
   units: UnitPrefs;
+  // The login's date/time display prefs (#964). Optional — pure-test call sites and
+  // any caller that doesn't resolve prefs get the status-quo default (24h clock),
+  // so the per-activity time label stays byte-identical unless a login opts into 12h.
+  formatPrefs?: DisplayFormatPrefs;
   // The app's TZ-local "today"/"yesterday" (lib/db) for the day-group labels.
   today: string;
   yesterday: string;
@@ -224,7 +234,8 @@ export function activityHeartRateText(
 // the clock portion in either case and never invent a start from an end alone.
 export function activityTimeText(
   startTime: string | null,
-  endTime: string | null
+  endTime: string | null,
+  timeFormat: TimeFormat = "24h"
 ): string | null {
   const clock = (value: string | null): string | null => {
     if (!value) return null;
@@ -234,10 +245,18 @@ export function activityTimeText(
       null
     );
   };
+  // The stored wall-clock is 24-hour "HH:MM". The DEFAULT (24h) returns it verbatim
+  // — byte-identical to today, with zero padding risk; only a 12h login reshapes it
+  // via the shared clock seam (#964).
+  const render = (hhmm: string): string => {
+    if (timeFormat === "24h") return hhmm;
+    const [h, m] = hhmm.split(":").map(Number);
+    return formatClock("12h", h, m, "upper-space");
+  };
   const start = clock(startTime);
   if (!start) return null;
   const end = clock(endTime);
-  return end ? `${start}–${end}` : start;
+  return end ? `${render(start)}–${render(end)}` : render(start);
 }
 
 // Bucket activities (already date-desc) into ordered day groups, building each
@@ -250,6 +269,7 @@ export function buildJournalCards({
   equipmentNames,
   weights,
   units,
+  formatPrefs = DEFAULT_FORMAT_PREFS,
   today,
   yesterday,
   routes,
@@ -257,6 +277,7 @@ export function buildJournalCards({
   zoneModel,
 }: BuildJournalCardsInput): DayGroup[] {
   const wu = units.weightUnit;
+  const timeFormat: TimeFormat = formatPrefs.timeFormat;
 
   const setsByActivity = new Map<number, ExerciseSet[]>();
   for (const s of sets) {
@@ -412,7 +433,7 @@ export function buildJournalCards({
 
     const card: JournalCardData = {
       activity: editData,
-      timeText: activityTimeText(a.start_time, a.end_time),
+      timeText: activityTimeText(a.start_time, a.end_time, timeFormat),
       durationText: a.duration_min == null ? null : `${a.duration_min} min`,
       distanceText:
         a.distance_km == null

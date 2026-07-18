@@ -30,6 +30,15 @@ describe("formatRecordDate", () => {
     expect(formatRecordDate("2024-12-31")).toBe("Dec 31, 2024");
   });
 
+  it("reorders the date to the login's chosen shape", () => {
+    expect(
+      formatRecordDate("2024-01-05", "—", { timeFormat: "24h", dateFormat: "dmy" })
+    ).toBe("5 Jan 2024");
+    expect(
+      formatRecordDate("2024-01-05", "—", { timeFormat: "24h", dateFormat: "iso" })
+    ).toBe("2024-01-05");
+  });
+
   it("returns the fallback for a null/empty date", () => {
     expect(formatRecordDate(null)).toBe("—");
     expect(formatRecordDate("")).toBe("—");
@@ -43,29 +52,29 @@ describe("formatRecordDate", () => {
 });
 
 describe("formatRecordDateTime", () => {
-  it("formats a stored 'YYYY-MM-DD HH:MM' as a date + time, UTC-safe", () => {
-    // Rendered in en-US so the assertion is deterministic under CI's locale.
-    const out = new Date(Date.UTC(2026, 6, 13, 14, 30)).toLocaleString(
-      "en-US",
-      {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        timeZone: "UTC",
-      }
-    );
-    // The stored wall-clock digits survive (2:30 PM), never the raw ISO string.
-    expect(out).toContain("Jul 13, 2026");
-    expect(out).toContain("2:30");
-    expect(formatRecordDateTime("2026-07-13 14:30")).not.toBe(
-      "2026-07-13 14:30"
-    );
+  it("formats a stored 'YYYY-MM-DD HH:MM' as a date + time, UTC-safe, default 24h", () => {
+    // Default prefs are the dominant clock (24h) — the stored wall-clock digits
+    // survive exactly, never the raw ISO string.
+    expect(formatRecordDateTime("2026-07-13 14:30")).toBe("Jul 13, 2026, 14:30");
     // Accepts the "T" separator too.
     expect(formatRecordDateTime("2026-07-13T14:30")).toBe(
       formatRecordDateTime("2026-07-13 14:30")
     );
+  });
+
+  it("renders the time in the login's chosen clock", () => {
+    expect(
+      formatRecordDateTime("2026-07-13 14:30", "—", {
+        timeFormat: "12h",
+        dateFormat: "mdy",
+      })
+    ).toBe("Jul 13, 2026, 2:30 PM");
+    expect(
+      formatRecordDateTime("2026-07-13 14:30", "—", {
+        timeFormat: "24h",
+        dateFormat: "iso",
+      })
+    ).toBe("2026-07-13, 14:30");
   });
 
   it("falls back to a plain-date format when there is no time component", () => {

@@ -12,9 +12,11 @@ import OnboardingReturnBanner from "@/components/OnboardingReturnBanner";
 import { getAppVersion } from "@/lib/version";
 import { TimezoneProvider } from "@/components/TimezoneProvider";
 import { WeekStartProvider } from "@/components/WeekStartProvider";
+import { FormatPrefsProvider } from "@/components/FormatPrefsProvider";
 import {
   getOnboardingState,
   getUnitPrefs,
+  getDisplayFormatPrefs,
   getTimezone,
   getWeekStart,
 } from "@/lib/settings";
@@ -75,6 +77,7 @@ export default async function AppLayout({
   const profiles = await getAccessibleProfiles();
 
   const units = getUnitPrefs(login.id);
+  const formatPrefs = getDisplayFormatPrefs(login.id);
   const timezone = getTimezone(profile.id);
   const weekStart = getWeekStart(profile.id);
   const restricted = isTrainingRestricted(profile.id);
@@ -153,6 +156,7 @@ export default async function AppLayout({
   return (
     <TimezoneProvider tz={timezone}>
       <WeekStartProvider weekStart={weekStart}>
+        <FormatPrefsProvider prefs={formatPrefs}>
         <ConfirmProvider>
           <OfflineQueueProvider activeProfileId={profile.id}>
             <ProfileSwitchWatcher activeProfileId={profile.id} />
@@ -227,6 +231,7 @@ export default async function AppLayout({
             </ActivityEditorProvider>
           </OfflineQueueProvider>
         </ConfirmProvider>
+        </FormatPrefsProvider>
       </WeekStartProvider>
     </TimezoneProvider>
   );

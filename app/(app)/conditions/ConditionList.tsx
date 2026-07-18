@@ -7,9 +7,12 @@ import RecordProvenance from "@/components/RecordProvenance";
 import StatusBadge from "@/components/StatusBadge";
 import NotesText from "@/components/NotesText";
 import { formatRecordDate } from "@/lib/record-format";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import type { DisplayFormatPrefs } from "@/lib/format-date";
 import type { Condition } from "@/lib/types";
 
-const COLUMNS: RecordColumn<Condition>[] = [
+function buildColumns(fmt: DisplayFormatPrefs): RecordColumn<Condition>[] {
+  return [
   {
     header: "Condition",
     cellClassName: "font-medium text-slate-800 dark:text-slate-100",
@@ -49,7 +52,7 @@ const COLUMNS: RecordColumn<Condition>[] = [
     headerClassName: "hidden md:table-cell",
     cellClassName:
       "hidden whitespace-nowrap text-slate-600 md:table-cell dark:text-slate-300",
-    cell: (c) => formatRecordDate(c.onset_date),
+    cell: (c) => formatRecordDate(c.onset_date, "—", fmt),
   },
   {
     header: "Source",
@@ -57,14 +60,16 @@ const COLUMNS: RecordColumn<Condition>[] = [
     cellClassName: "hidden whitespace-nowrap sm:table-cell",
     cell: (c) => <RecordProvenance source={c.source} />,
   },
-];
+  ];
+}
 
 // Manage stored condition rows: edit in place or delete, on the shared RecordTable.
 export default function ConditionList({ items }: { items: Condition[] }) {
+  const columns = buildColumns(useFormatPrefs());
   return (
     <RecordTable
       items={items}
-      columns={COLUMNS}
+      columns={columns}
       emptyMessage="No conditions match this filter."
       renderEditForm={(c, done) => (
         <ConditionForm action={updateCondition} condition={c} onDone={done} />

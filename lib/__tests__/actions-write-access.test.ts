@@ -66,6 +66,11 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   },
   {
     file: "app/(app)/settings/actions.ts",
+    fn: "saveDisplayFormatPrefs",
+    why: "login-scoped: date/time display prefs keyed by login.id, not profile data (#964)",
+  },
+  {
+    file: "app/(app)/settings/actions.ts",
     fn: "changeOwnPassword",
     why: "login-scoped: changes the caller's own password (demo-gated, #278)",
     gate: "requireLoginWriteAccess",

@@ -11,7 +11,7 @@ import {
   getActiveDaysStrip,
 } from "@/lib/queries";
 import { frequencyScopeLabel } from "@/lib/goals";
-import { getUnitPrefs, getUserSex } from "@/lib/settings";
+import { getUnitPrefs, getUserSex, getDisplayFormatPrefs } from "@/lib/settings";
 import { requireSession } from "@/lib/auth";
 import { buildJournalFeedPage } from "@/lib/journal-feed";
 import JournalView from "../journal/JournalView";
@@ -31,7 +31,12 @@ export default async function HistorySection() {
   // with no way to log their first activity. JournalView now renders a dedicated
   // first-run empty variant (action row prominent, filters/search hidden); the
   // stats/goals queries below are cheap and empty for a fresh profile.
-  const { groups, nextBefore } = buildJournalFeedPage(profile.id, null, units);
+  const { groups, nextBefore } = buildJournalFeedPage(
+    profile.id,
+    null,
+    units,
+    getDisplayFormatPrefs(login.id)
+  );
 
   // Per-exercise recent sessions (last 10) for the exercise detail pane.
   const recentByExercise = getRecentByExercise(profile.id, wu);
