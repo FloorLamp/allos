@@ -207,3 +207,13 @@ export const PRESENCE_PROFILE = "Workout Presence (e2e)";
 // birthdate → adult → the full Notifications tab + matrix render.
 export const E2E_LOGIN_NOTIF = "e2e_notif";
 export const NOTIF_PROFILE = "Notif Matrix (e2e)";
+
+// A dedicated ADULT profile for the protein-grams quick-add spec (#824): a bodyweight
+// (so the adequacy target scales) plus a couple of protein-bearing food-group servings
+// today (so the adequacy card renders over the ESTIMATED basis), and NO integration
+// protein_g and NO protein_log rows. Isolated on purpose — the spec OWNS the protein_log
+// writes on it, and logging grams flips the adequacy card to the COMBINED basis, which
+// would race protein-adequacy.spec's shared-profile estimated-basis assertions if it ran
+// on profile 1. No birthdate → adult → the food logger + adequacy card render.
+export const E2E_LOGIN_PROTEIN = "e2e_protein";
+export const PROTEIN_QUICKADD_PROFILE = "Protein Quickadd (e2e)";

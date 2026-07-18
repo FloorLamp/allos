@@ -4,16 +4,23 @@
 // hands them here, so the card and the finding are formatters over the SAME result and
 // can never disagree ("one question, one computation").
 //
-// Three bases, source-priority (proteinIntake):
+// Intake composition (proteinIntake), superseding #767's tracked > logged > estimated
+// source-priority chain (issue #824):
 //   - `tracked`   — an integration's protein_g (Health Connect protein_grams → protein_g;
-//                   surfaced on Trends → Body → Macros). Authoritative — a measured total.
-//   - `logged`    — RESERVED in the basis union but NO writer ships in v1 (a deferred
-//                   fast-follow, #767 item 4: direct protein-grams entry). Reserving it now
-//                   keeps adding it non-breaking.
+//                   surfaced on Trends → Body → Macros). A measured FULL-DAY total, so it
+//                   OVERRIDES the sum below.
 //   - `estimated` — servings × per-serving grams from the food-group catalog (#579 rollup,
-//                   reused, never a second engine). This is a FLOOR by construction —
-//                   incidental protein from untracked foods is invisible — so every surface's
-//                   copy says so ("a floor — actual likely higher").
+//                   reused, never a second engine). A FLOOR by construction — incidental
+//                   protein from untracked foods is invisible.
+//   - `logged`    — direct protein grams from the Food-tab quick-add (#824,
+//                   lib/protein-log-write.ts) — protein powder's only home, since the
+//                   whole-foods catalog has no shake group.
+// When there's no tracked reading, `estimated` and `logged` SUM — a manual grams entry is
+// a PARTIAL ADDITION, never an eraser of the food-group estimate (a common shape: log a
+// shake's 30 g AND tap the eggs/dairy you also ate). The sum is still a FLOOR (untracked
+// foods remain invisible), so every surface's copy says so ("a floor — actual likely
+// higher"). The `basis` names the composition: `combined` (both parts), `logged` (grams
+// only), or `estimated` (food groups only).
 //
 // Goal-scaled target (proteinTarget): a bodyweight-scaled g/kg band by training goal.
 // Lean body mass is PREFERRED when available (lean_mass_kg) because g/kg-total overshoots
@@ -24,14 +31,24 @@
 
 import { foodGroupBySlug } from "./food-groups";
 
-// ---- Intake: tracked > logged (reserved) > estimated -----------------------
+// ---- Intake: tracked OVERRIDES (estimated + logged) ------------------------
 
-export type ProteinBasis = "tracked" | "logged" | "estimated";
+// The composition of the per-day intake figure:
+//   tracked   — a measured full-day total (overrides the sum).
+//   combined  — the estimated food-group floor PLUS manually-logged grams.
+//   logged    — manually-logged grams only (no protein-bearing food groups logged).
+//   estimated — the food-group floor only (no manual grams).
+export type ProteinBasis = "tracked" | "combined" | "logged" | "estimated";
 
 export interface ProteinIntake {
-  // Per-day grams. For `estimated` this is a FLOOR (see module header).
+  // Per-day grams. For every non-`tracked` basis this is a FLOOR (see module header).
   grams: number;
   basis: ProteinBasis;
+  // The two floor components that add to `grams` for a non-`tracked` basis, so a
+  // surface can name the composition honestly ("90 g estimated + 30 g logged"). Both
+  // are 0 for a `tracked` basis (the measured total overrides the sum).
+  estimatedGrams: number;
+  loggedGrams: number;
 }
 
 // A group's summed servings, as the #579 rollup produces (GroupServingTotal is a superset).
@@ -54,23 +71,37 @@ export function estimatedProteinGrams(servings: ProteinServing[]): number {
   return grams;
 }
 
-// Pick the intake per source-priority: tracked (measured) wins, then logged (reserved —
-// v1 always null), then the estimated floor. Each input is an already-per-day figure the
-// gather computed (an average over the days that carry that basis). Returns null when no
-// basis has any signal (no tracked reading and nothing protein-bearing logged).
+// Compose the intake (issue #824): a measured `tracked` reading OVERRIDES; otherwise the
+// estimated food-group floor and the manually-logged grams SUM (a manual entry is a
+// partial addition, never an eraser of the estimate). Each input is an already-per-day
+// figure the gather computed (an average over the days that carry it). Returns null when
+// no basis has any signal (no tracked reading and neither floor component present).
 export function proteinIntake(args: {
   dailyTracked: number | null;
-  // Reserved (#767 item 4): no writer in v1, so the gather always passes null/omits it.
+  // Direct protein grams from the Food-tab quick-add (#824); null/omitted when the
+  // profile has never logged any.
   dailyLogged?: number | null;
   dailyEstimated: number;
 }): ProteinIntake | null {
   if (args.dailyTracked != null && args.dailyTracked > 0)
-    return { grams: args.dailyTracked, basis: "tracked" };
-  if (args.dailyLogged != null && args.dailyLogged > 0)
-    return { grams: args.dailyLogged, basis: "logged" };
-  if (args.dailyEstimated > 0)
-    return { grams: args.dailyEstimated, basis: "estimated" };
-  return null;
+    return {
+      grams: args.dailyTracked,
+      basis: "tracked",
+      estimatedGrams: 0,
+      loggedGrams: 0,
+    };
+  const estimated = args.dailyEstimated > 0 ? args.dailyEstimated : 0;
+  const logged =
+    args.dailyLogged != null && args.dailyLogged > 0 ? args.dailyLogged : 0;
+  const grams = estimated + logged;
+  if (grams <= 0) return null;
+  const basis: ProteinBasis =
+    estimated > 0 && logged > 0
+      ? "combined"
+      : logged > 0
+        ? "logged"
+        : "estimated";
+  return { grams, basis, estimatedGrams: estimated, loggedGrams: logged };
 }
 
 // ---- Target: goal + bodyweight (LBM-preferred) → g/kg band -----------------
@@ -216,19 +247,33 @@ export function proteinBasisPhrase(basis: ProteinBasis): string {
   switch (basis) {
     case "tracked":
       return "tracked intake";
+    case "combined":
+      return "logged foods + protein logged";
     case "logged":
-      return "logged intake";
+      return "logged protein";
     case "estimated":
       return "logged foods";
   }
 }
 
-// The intake summary line. Estimated ALWAYS carries the floor caveat; tracked/logged read
-// as measured totals. e.g. "≈95 g/day from logged foods (a floor — actual likely higher)".
+// The "a floor — actual likely higher" caveat that every non-tracked basis carries (the
+// sum of the estimate + manual grams is still a floor; untracked foods stay invisible).
+const FLOOR_CAVEAT = "a floor — actual likely higher";
+
+// The intake summary line. Only `tracked` reads as a measured total; every other basis
+// carries the floor caveat, and `combined` names the composition honestly. e.g.
+// "≈120 g/day — 90 g estimated from foods + 30 g logged (a floor — actual likely higher)".
 export function proteinIntakeSummary(intake: ProteinIntake): string {
-  if (intake.basis === "estimated")
-    return `≈${g(intake.grams)} g/day from logged foods (a floor — actual likely higher)`;
-  return `~${g(intake.grams)} g/day from your ${proteinBasisPhrase(intake.basis)}`;
+  switch (intake.basis) {
+    case "tracked":
+      return `~${g(intake.grams)} g/day from your tracked intake`;
+    case "combined":
+      return `≈${g(intake.grams)} g/day — ${g(intake.estimatedGrams)} g estimated from foods + ${g(intake.loggedGrams)} g logged (${FLOOR_CAVEAT})`;
+    case "logged":
+      return `≈${g(intake.grams)} g/day logged (${FLOOR_CAVEAT})`;
+    case "estimated":
+      return `≈${g(intake.grams)} g/day from logged foods (${FLOOR_CAVEAT})`;
+  }
 }
 
 // The target band line. e.g. "~130–180 g/day (1.6–2.2 g/kg lean mass, muscle gain)".
@@ -248,20 +293,21 @@ export function proteinAdequacyTitle(a: ProteinAdequacy): string {
   }
 }
 
-// The informational, never-prescriptive detail. An `estimated` basis is stated as a floor
-// (the shortfall is not asserted); a `tracked` basis states the gap directly. Always
+// The informational, never-prescriptive detail. Every non-`tracked` basis (estimated,
+// logged, combined) is stated as a floor — the shortfall is NOT asserted, since untracked
+// foods stay invisible; only a `tracked` measured total states the gap directly. Always
 // closes with the framing that this is informational, not prescriptive.
 export function proteinAdequacyDetail(a: ProteinAdequacy): string {
   const intake = proteinIntakeSummary(a.intake);
   const target = proteinTargetSummary(a.target);
   const massNote =
     a.target.massBasis === "lean" ? " (scaled to your lean body mass)" : "";
+  const isFloor = a.intake.basis !== "tracked";
   let lead: string;
   if (a.status === "below") {
-    lead =
-      a.intake.basis === "estimated"
-        ? `Your logged foods add up to ${intake} — below the ${target}${massNote}. Because that's a floor, your real intake may already be there; if it isn't, a little more protein helps.`
-        : `Your protein is ${intake} — below the ${target}${massNote}. Nudging it up supports your goal.`;
+    lead = isFloor
+      ? `Your intake is ${intake} — below the ${target}${massNote}. Because that's a floor, your real intake may already be there; if it isn't, a little more protein helps.`
+      : `Your protein is ${intake} — below the ${target}${massNote}. Nudging it up supports your goal.`;
   } else if (a.status === "above") {
     lead = `Your protein is ${intake} — above the ${target}${massNote}. That's fine for most people; no action needed.`;
   } else {

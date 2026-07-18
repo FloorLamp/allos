@@ -15,6 +15,7 @@ import {
   getLatestMetricValue,
 } from "./metrics";
 import { getProfileSetting } from "../settings";
+import { PROTEIN_QUICKADD_LAST_KEY } from "../protein-log-write";
 import { bodyweightAsOf } from "../bodyweight";
 import {
   proteinIntake,
@@ -204,15 +205,51 @@ export function getFoodGroupLogOrder(profileId: number): FoodGroup[] {
   return out;
 }
 
-// ---- Protein adequacy (issue #767) ----
+// ---- Protein-grams quick-add (issue #824) ----
+
+// A day's manually-logged protein grams (the Food-tab quick-add running total), or 0
+// when the profile logged none that day. Profile-scoped.
+export function getProteinLoggedGrams(profileId: number, date: string): number {
+  const row = db
+    .prepare(`SELECT grams FROM protein_log WHERE profile_id = ? AND date = ?`)
+    .get(profileId, date) as { grams: number } | undefined;
+  return row?.grams ?? 0;
+}
+
+// The profile's protein_log rows on/after `since` (inclusive) — for the per-day logged
+// average the adequacy gather sums into the floor. Profile-scoped.
+export function getProteinLogEntries(
+  profileId: number,
+  since: string
+): { date: string; grams: number }[] {
+  return db
+    .prepare(
+      `SELECT date, grams FROM protein_log
+        WHERE profile_id = ? AND date >= ? AND grams > 0
+        ORDER BY date DESC`
+    )
+    .all(profileId, since) as { date: string; grams: number }[];
+}
+
+// The profile's last-used quick-add amount (the repeated scoop size), or null when they
+// have never logged grams. Reads the per-profile settings tier (not owned data), so the
+// profile-scoping guard is unaffected. The Food tab pre-fills the input with it.
+export function getProteinQuickAddPreset(profileId: number): number | null {
+  const raw = getProfileSetting(profileId, PROTEIN_QUICKADD_LAST_KEY);
+  if (raw == null) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+// ---- Protein adequacy (issue #767, #824) ----
 
 // The ONE gather behind the /nutrition protein-adequacy card AND the coaching-tier
 // adequacy finding (buildProteinAdequacyFindings). It assembles the pure engine's typed
 // inputs from PROFILE-SCOPED reads and returns the pure verdict, so the card and the
-// finding are formatters over the same result ("one question, one computation"). Adds no
-// owned SQL (reads through getFoodLogEntries / getMetricDailyTotals / getWeights /
-// getLatestMetricValue, all already profile-scoped), so the profile-scoping guard is
-// unaffected. Returns null when there's no intake signal or no bodyweight to scale by.
+// finding are formatters over the same result ("one question, one computation"). Reads
+// through getFoodLogEntries / getProteinLogEntries / getMetricDailyTotals / getWeights /
+// getLatestMetricValue, all profile-scoped, so the profile-scoping guard is satisfied.
+// Returns null when there's no intake signal or no bodyweight to scale by.
 //
 // Windowing: intake is a PER-DAY average over this week — the estimated floor averages the
 // week's summed food-group protein over the distinct days actually logged (so a partial
@@ -228,6 +265,15 @@ export function getProteinAdequacy(profileId: number): ProteinAdequacy | null {
   const loggedDays = new Set(entries.map((e) => e.date)).size;
   const estWeekGrams = estimatedProteinGrams(rollup);
   const dailyEstimated = loggedDays > 0 ? estWeekGrams / loggedDays : 0;
+
+  // Logged floor (#824): this week's quick-add protein grams / distinct days with grams.
+  // Averaged over the days that carry it (same per-basis-average design as estimated), so
+  // a partial week isn't diluted by days with no manual entry. Summed with the estimate
+  // in proteinIntake (a manual entry is a partial addition, never an eraser).
+  const proteinRows = getProteinLogEntries(profileId, weekStart);
+  const proteinDays = new Set(proteinRows.map((r) => r.date)).size;
+  const loggedWeekGrams = proteinRows.reduce((s, r) => s + r.grams, 0);
+  const dailyLogged = proteinDays > 0 ? loggedWeekGrams / proteinDays : null;
 
   // Tracked: integration protein_g daily totals this week, averaged over days with data.
   const trackedRows = getMetricDailyTotals(profileId, "protein_g").filter(
@@ -252,7 +298,7 @@ export function getProteinAdequacy(profileId: number): ProteinAdequacy | null {
     getProfileSetting(profileId, "training_goal")
   );
 
-  const intake = proteinIntake({ dailyTracked, dailyEstimated });
+  const intake = proteinIntake({ dailyTracked, dailyLogged, dailyEstimated });
   const target = proteinTarget({ goal, bodyweightKg, leanMassKg });
   return assessProteinAdequacy(intake, target);
 }
