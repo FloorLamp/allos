@@ -6,7 +6,12 @@
 // — no runtime cycle. Routine day `focus` is a MuscleRegion[].
 import type { MuscleRegion } from "../lifts";
 
-export type ActivityType = "strength" | "cardio" | "sport";
+// `recovery` (issue #840, folding in #344) is the HABIT-tier mobility/flexibility
+// session — one activity row whose `components` are the tapped moves, no per-move
+// sets/weights. Distinct from the performance-tier strength/cardio/sport types: it
+// never carries volume/1RM semantics and mobility coverage is kept a separate view
+// from strength coverage (#482: trained ≠ mobilized).
+export type ActivityType = "strength" | "cardio" | "sport" | "recovery";
 
 export interface Activity {
   id: number;

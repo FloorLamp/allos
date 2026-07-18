@@ -15,7 +15,8 @@ import { kindOf } from "./types";
 // or run (both `cardio`) offers cardio gear (Bike, Shoes); a sport also allows
 // generic `other` gear (rackets, etc.); strength keeps its set-level implement
 // picker, so the activity-level picker is not shown for it, but the mapping is
-// defined for completeness. #344 will add a recovery activity type → ["recovery"].
+// defined for completeness. A recovery (mobility) session offers recovery gear —
+// sauna, cold plunge, red light, massage device (issue #840, folding in #344).
 export function equipmentKindsForActivityType(
   type: ActivityType
 ): EquipmentKind[] {
@@ -26,6 +27,8 @@ export function equipmentKindsForActivityType(
       return ["cardio"];
     case "sport":
       return ["cardio", "other"];
+    case "recovery":
+      return ["recovery"];
   }
 }
 

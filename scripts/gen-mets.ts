@@ -37,7 +37,9 @@ const OUT = path.join(process.cwd(), "lib", "datasets", "data", "mets.json");
 // intensity is scored at the MODERATE tier (see lib/calorie-estimate.ts).
 export type MetTier = "easy" | "moderate" | "hard";
 export type MetTiers = Record<MetTier, number>;
-export type ActivityType = "strength" | "cardio" | "sport";
+// Kept in sync with lib/types ActivityType (the generator is standalone by design and
+// does not import from lib/types); `recovery` is the mobility session type (issue #840).
+export type ActivityType = "strength" | "cardio" | "sport" | "recovery";
 
 // Per-activity MET values by intensity tier, keyed by the EXACT catalog display
 // name (lib/activities-catalog.ts). PUBLIC Compendium of Physical Activities values
@@ -133,6 +135,10 @@ const TYPE_DEFAULTS: Record<ActivityType, MetTiers> = {
   strength: { easy: 3.5, moderate: 5.0, hard: 6.0 },
   cardio: { easy: 4.0, moderate: 6.0, hard: 8.0 },
   sport: { easy: 4.5, moderate: 6.5, hard: 8.0 },
+  // Recovery / mobility (issue #840): compendium ~2.3 (stretching) → 3.0. Low by
+  // design — a mobility session is light, and a coined recovery name with no per-name
+  // entry falls back here rather than being over-counted as sport.
+  recovery: { easy: 2.3, moderate: 2.8, hard: 3.5 },
 };
 
 // One framework entry: an activity display name (the identity key) plus its three
