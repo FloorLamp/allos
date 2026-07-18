@@ -116,7 +116,12 @@ describe("workoutPresenceGate — gate 1 (mid-workout HOLD)", () => {
     expect(p.state).toBe("finished");
     const gate = workoutPresenceGate(
       p,
-      { type: "strength", componentTypes: [], regions: [], mobilityRegions: [] },
+      {
+        type: "strength",
+        componentTypes: [],
+        regions: [],
+        mobilityRegions: [],
+      },
       [WALK_TARGET] // no matching scope
     );
     expect(gate).not.toBe("hold");
@@ -154,7 +159,9 @@ describe("workoutPresenceGate — gate 2 (credit-bearing finish SKIP, window-sco
   it("finished window boundary — at the constant is IN (skip), one minute past is OUT (fire)", () => {
     const inside = presence([finishedRow(FINISHED_WINDOW_MIN)]);
     expect(inside.state).toBe("finished");
-    expect(workoutPresenceGate(inside, WALK_CREDIT, [WALK_TARGET])).toBe("skip");
+    expect(workoutPresenceGate(inside, WALK_CREDIT, [WALK_TARGET])).toBe(
+      "skip"
+    );
 
     const outside = presence([finishedRow(FINISHED_WINDOW_MIN + 1)]);
     expect(outside.state).toBe("idle");

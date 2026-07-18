@@ -52,8 +52,7 @@ export function getFinishedActivityCredit(
       `SELECT type, components FROM activities WHERE id = ? AND profile_id = ?`
     )
     .get(activityId, profileId) as
-    | { type: ActivityType; components: string | null }
-    | undefined;
+    { type: ActivityType; components: string | null } | undefined;
   if (!act)
     return {
       type: "strength",
@@ -64,7 +63,9 @@ export function getFinishedActivityCredit(
 
   const components = parseComponents(act.components);
   const componentTypes = Array.from(
-    new Set(components.map((c) => c?.type).filter((t): t is ActivityType => !!t))
+    new Set(
+      components.map((c) => c?.type).filter((t): t is ActivityType => !!t)
+    )
   );
 
   const exRows = db

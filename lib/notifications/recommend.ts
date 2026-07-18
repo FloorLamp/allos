@@ -13,7 +13,10 @@ import { recommendNextWorkout } from "../workout-recommendation";
 import { isWorkoutNudgeSuppressed } from "../workout-nudge";
 import { workoutPresenceGate } from "../workout-presence-gate";
 import { gatherCoachingInput } from "../queries";
-import { getWorkoutPresence, getFinishedActivityCredit } from "../queries/presence";
+import {
+  getWorkoutPresence,
+  getFinishedActivityCredit,
+} from "../queries/presence";
 import { getFindingSuppressions } from "../queries/upcoming";
 import type { CoachingInput } from "../coaching";
 import type { WorkoutRecommendation } from "./workout-format";
