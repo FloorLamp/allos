@@ -18,6 +18,7 @@ import {
 import { getTimezone } from "../lib/settings";
 import { adoptTemplate } from "../lib/routines";
 import { saveFitnessEntry } from "../lib/fitness-assessment";
+import { mobilityMoveName } from "../lib/mobility-moves";
 import {
   completeOnboardingState,
   initialOnboardingState,
@@ -195,8 +196,8 @@ const insertMobility = db.prepare(
 );
 function logMobility(ago: number, durationMin: number | null, moves: string[]) {
   const components = JSON.stringify(
-    moves.map((name) => ({
-      name,
+    moves.map((slug) => ({
+      name: mobilityMoveName(slug), // DISPLAY name so the journal renders sanely
       type: "recovery",
       distance_km: null,
       duration_min: null,

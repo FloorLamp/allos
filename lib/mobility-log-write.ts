@@ -54,24 +54,31 @@ function dayRow(profileId: number, date: string): DayRow | undefined {
     .get(profileId, date) as DayRow | undefined;
 }
 
-// The move slugs stored on a recovery row's components (recovery-typed components only),
-// deduped and order-preserving.
+// The canonical move SLUGS logged on a recovery row (recovery-typed components only),
+// deduped and order-preserving. Components store the DISPLAY name (so the journal/timeline
+// render "Pigeon pose", not a raw slug), so each is canonicalized back to its slug here —
+// every downstream reader (the tap bar's selection, coverage, target counting) keys on the
+// stable slug (#203/#883). An unknown/retired name falls back to itself.
 function movesOf(row: DayRow | undefined): string[] {
   if (!row) return [];
   const seen = new Set<string>();
   const out: string[] = [];
   for (const c of parseComponents(row.components)) {
     if (c.type !== "recovery" || typeof c.name !== "string") continue;
-    if (seen.has(c.name)) continue;
-    seen.add(c.name);
-    out.push(c.name);
+    const slug = canonicalMobilityMove(c.name) ?? c.name;
+    if (seen.has(slug)) continue;
+    seen.add(slug);
+    out.push(slug);
   }
   return out;
 }
 
+// Build the stored components for a set of slugs. The component `name` is the DISPLAY name
+// so the shared journal/timeline machinery renders it sanely for free; the slug identity
+// is recovered via movesOf's canonicalization.
 function componentsFor(moves: string[]): ActivityComponent[] {
   return moves.map((slug) => ({
-    name: slug,
+    name: mobilityMoveName(slug),
     type: "recovery" as const,
     distance_km: null,
     duration_min: null,
