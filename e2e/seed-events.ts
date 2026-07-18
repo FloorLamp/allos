@@ -2677,7 +2677,9 @@ console.log(
 // the day from the estimated-only basis the spec's transition asserts.
 const proteinProfileId = fixtureProfileId(PROTEIN_QUICKADD_PROFILE);
 const proteinAnchor = today(proteinProfileId);
-db.prepare(`DELETE FROM protein_log WHERE profile_id = ?`).run(proteinProfileId);
+db.prepare(`DELETE FROM protein_log WHERE profile_id = ?`).run(
+  proteinProfileId
+);
 db.prepare(
   `DELETE FROM profile_settings WHERE profile_id = ? AND key = 'protein_quickadd_last'`
 ).run(proteinProfileId);

@@ -83,7 +83,8 @@ describe("food-groups.json dataset", () => {
     // ONLY home is the protein-grams quick-add (protein_log), which SUMS with the
     // food-group estimate. The whole-foods catalog must stay whole-foods — guard that no
     // slug or name ever grows into a supplement/shake bucket.
-    const BANNED = /shake|protein[\s_-]*powder|whey|casein|protein[\s_-]*supplement/i;
+    const BANNED =
+      /shake|protein[\s_-]*powder|whey|casein|protein[\s_-]*supplement/i;
     const offenders = FOOD_GROUPS.filter(
       (g) => BANNED.test(g.slug) || BANNED.test(g.name)
     ).map((g) => g.slug);

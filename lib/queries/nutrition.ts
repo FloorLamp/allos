@@ -211,9 +211,7 @@ export function getFoodGroupLogOrder(profileId: number): FoodGroup[] {
 // when the profile logged none that day. Profile-scoped.
 export function getProteinLoggedGrams(profileId: number, date: string): number {
   const row = db
-    .prepare(
-      `SELECT grams FROM protein_log WHERE profile_id = ? AND date = ?`
-    )
+    .prepare(`SELECT grams FROM protein_log WHERE profile_id = ? AND date = ?`)
     .get(profileId, date) as { grams: number } | undefined;
   return row?.grams ?? 0;
 }

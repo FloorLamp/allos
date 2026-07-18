@@ -80,7 +80,11 @@ describe("proteinIntake — tracked OVERRIDES, else estimated + logged SUM (#824
     });
     // A null/absent dailyLogged is treated as zero, not an error.
     expect(
-      proteinIntake({ dailyTracked: null, dailyLogged: null, dailyEstimated: 60 })
+      proteinIntake({
+        dailyTracked: null,
+        dailyLogged: null,
+        dailyEstimated: 60,
+      })
     ).toMatchObject({ grams: 60, basis: "estimated" });
   });
 

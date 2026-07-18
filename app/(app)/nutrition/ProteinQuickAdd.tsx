@@ -82,8 +82,8 @@ export default function ProteinQuickAdd({
         </span>
       </div>
       <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
-        A shake or protein powder has no food group — log its grams here and they
-        add to your estimate above.
+        A shake or protein powder has no food group — log its grams here and
+        they add to your estimate above.
       </p>
       <div className="flex items-center gap-2">
         <button

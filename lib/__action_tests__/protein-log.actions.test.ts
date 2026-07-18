@@ -12,10 +12,7 @@ import {
   addProteinGrams,
   undoProteinGrams,
 } from "@/app/(app)/nutrition/actions";
-import {
-  getProteinLoggedGrams,
-  getProteinQuickAddPreset,
-} from "@/lib/queries";
+import { getProteinLoggedGrams, getProteinQuickAddPreset } from "@/lib/queries";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);

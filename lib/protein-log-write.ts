@@ -32,15 +32,13 @@ const MAX_GRAMS_PER_ADD = 300;
 //   logged   — grams were added; `grams` is the day's new manual-protein total.
 //   invalid  — the amount was non-positive or over the per-add cap; nothing written.
 export type ProteinAddOutcome =
-  | { kind: "logged"; grams: number }
-  | { kind: "invalid" };
+  { kind: "logged"; grams: number } | { kind: "invalid" };
 
 // The typed result of an undo: grams were removed and `grams` is the day's REMAINING
 // manual-protein total (0 once the row is dropped), or the amount was invalid. Undo is
 // idempotent — undoing a day with nothing logged is a no-op that reports 0.
 export type ProteinUndoOutcome =
-  | { kind: "undone"; grams: number }
-  | { kind: "invalid" };
+  { kind: "undone"; grams: number } | { kind: "invalid" };
 
 // True for a finite, positive amount within the per-add cap.
 function validGrams(grams: number): boolean {
