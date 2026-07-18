@@ -93,10 +93,12 @@ export async function overridePreventive(
 
 // Resolve a finding follow-up (#700), confirm-first (#560): record the outcome
 // (resolved / stable / changed) against the matched later record and close the
-// follow-up. The write core validates the outcome and re-checks both the follow-up
-// and the resolving study under profile_id, so a tampered id can't resolve another
-// profile's row. A resolving_study_id of 0/empty records the outcome without pinning
-// a study.
+// follow-up. Domain-agnostic — the write core dispatches on the follow-up's
+// source_kind (imaging → a later study, labs → a later reading), so this ONE action +
+// control serves every adapter. It validates the outcome and re-checks both the
+// follow-up and the resolving record under profile_id, so a tampered id can't resolve
+// another profile's row. A resolving_study_id of 0/empty records the outcome without
+// pinning a record (the field name is legacy — it carries any domain's resolving id).
 export async function resolveFollowUp(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const carePlanItemId = Number(formData.get("care_plan_item_id"));
