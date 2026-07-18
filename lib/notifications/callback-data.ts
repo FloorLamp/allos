@@ -514,9 +514,7 @@ export function parseFoodOptInCallback(
 // (the #232 never-unconditionally-confirm discipline); only a current-day tap logs.
 // A same-day tap from an older window keeps working (the date is right; only the
 // button counts on the old message are stale, which the rebuild refreshes).
-export type FoodTapDateGuard =
-  | { kind: "current-day" }
-  | { kind: "stale-date" };
+export type FoodTapDateGuard = { kind: "current-day" } | { kind: "stale-date" };
 
 // Decide whether a food tap's token date is today in the profile's timezone. Pure so
 // the tz-midnight boundary (a 23:59 tap on yesterday's nudge vs a 00:01 tap on

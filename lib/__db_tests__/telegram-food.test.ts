@@ -98,8 +98,12 @@ describe("food quick-log cross-date guard (#947)", () => {
       cq(`food:${p.profileId}:Evening:${y}:berries`, OWN_CHAT)
     );
     // Nothing logged on yesterday OR today from the stale tap.
-    expect(getFoodServingsOnDate(p.profileId, y).get("berries")).toBeUndefined();
-    expect(getFoodServingsOnDate(p.profileId, t).get("berries")).toBeUndefined();
+    expect(
+      getFoodServingsOnDate(p.profileId, y).get("berries")
+    ).toBeUndefined();
+    expect(
+      getFoodServingsOnDate(p.profileId, t).get("berries")
+    ).toBeUndefined();
     // Honest answer, never a false confirm.
     expect(lastAnswer()).toContain(y);
     expect(lastAnswer()).not.toContain("Logged ✅");

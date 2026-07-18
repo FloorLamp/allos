@@ -16,10 +16,7 @@
 // never recycles, so a stale pointer is at worst a dead best-effort strip that fails
 // harmlessly.
 
-import {
-  FOOD_NUDGE_WINDOWS,
-  type FoodNudgeWindow,
-} from "./food-format";
+import { FOOD_NUDGE_WINDOWS, type FoodNudgeWindow } from "./food-format";
 import type { NotificationMessage } from "./types";
 
 export interface FoodNudgePointer {
@@ -65,7 +62,8 @@ export function parseFoodNudgePointer(
   const window = o.window;
   if (typeof chatId !== "string" && typeof chatId !== "number") return null;
   if (typeof messageId !== "number" || !Number.isFinite(messageId)) return null;
-  if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date))
+    return null;
   if (
     typeof window !== "string" ||
     !FOOD_NUDGE_WINDOWS.includes(window as FoodNudgeWindow)

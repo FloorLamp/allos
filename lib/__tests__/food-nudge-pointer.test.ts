@@ -46,17 +46,32 @@ describe("food nudge pointer round-trip", () => {
     expect(parseFoodNudgePointer(JSON.stringify({ messageId: 1 }))).toBeNull();
     expect(
       parseFoodNudgePointer(
-        JSON.stringify({ chatId: 1, messageId: "x", date: "2026-07-18", window: "Morning" })
+        JSON.stringify({
+          chatId: 1,
+          messageId: "x",
+          date: "2026-07-18",
+          window: "Morning",
+        })
       )
     ).toBeNull();
     expect(
       parseFoodNudgePointer(
-        JSON.stringify({ chatId: 1, messageId: 1, date: "bad", window: "Morning" })
+        JSON.stringify({
+          chatId: 1,
+          messageId: 1,
+          date: "bad",
+          window: "Morning",
+        })
       )
     ).toBeNull();
     expect(
       parseFoodNudgePointer(
-        JSON.stringify({ chatId: 1, messageId: 1, date: "2026-07-18", window: "Bedtime" })
+        JSON.stringify({
+          chatId: 1,
+          messageId: 1,
+          date: "2026-07-18",
+          window: "Bedtime",
+        })
       )
     ).toBeNull();
   });
@@ -68,8 +83,16 @@ describe("foodNudgePointerFromMessage", () => {
     body: "…",
     kind: "food",
     actions: [
-      { label: "Leafy greens", data: "food:5:Morning:2026-07-18:leafy_greens", row: "food0" },
-      { label: "Berries", data: "food:5:Morning:2026-07-18:berries", row: "food0" },
+      {
+        label: "Leafy greens",
+        data: "food:5:Morning:2026-07-18:leafy_greens",
+        row: "food0",
+      },
+      {
+        label: "Berries",
+        data: "food:5:Morning:2026-07-18:berries",
+        row: "food0",
+      },
       { label: "More…", url: "https://example.test/nutrition" },
     ],
   };
