@@ -140,10 +140,17 @@ test.describe("Nutrition trio", () => {
         await presetSelect.selectOption("vegetarian");
         await expect(presetSelect).toHaveValue("vegetarian", { timeout: WAIT });
 
-        // On the Food tab, the flagged low-omega-3 suggestion now leads with a plant
-        // source (nuts/seeds), not fish — substitution, never blocked. The suggestions
-        // block is a native <details> (a pure client toggle — no Server Action).
+        // On the Food tab, the suggestions summary now carries the muted preference note
+        // (#980 item 4) — the demote/substitute is explicable on-surface, like the #950
+        // slot chip is for ordering.
         await page.goto("/nutrition?tab=food");
+        const prefNote = page.getByTestId("suggestions-preference-note");
+        await expect(prefNote).toBeVisible({ timeout: WAIT });
+        await expect(prefNote).toContainText(/vegetarian-friendly/i);
+
+        // The flagged low-omega-3 suggestion now leads with a plant source (nuts/seeds),
+        // not fish — substitution, never blocked. The suggestions block is a native
+        // <details> (a pure client toggle — no Server Action).
         await page.getByTestId("nutrition-suggestions-summary").click();
         const suggestions = page.getByTestId("nutrition-suggestions");
         await expect(suggestions).toContainText(/walnut|flax|chia|algae/i, {

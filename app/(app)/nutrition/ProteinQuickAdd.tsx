@@ -69,11 +69,11 @@ export default function ProteinQuickAdd({
   }
 
   return (
-    <div data-testid="protein-quickadd" className="card">
+    <div data-testid="protein-quickadd">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
+        <h4 className="text-sm font-medium text-slate-700 dark:text-slate-200">
           Log protein
-        </h2>
+        </h4>
         <span
           data-testid="protein-quickadd-total"
           className="shrink-0 text-sm font-medium tabular-nums text-slate-500 dark:text-slate-400"
@@ -83,7 +83,7 @@ export default function ProteinQuickAdd({
       </div>
       <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
         A shake or protein powder has no food group — log its grams here and
-        they add to your estimate above.
+        they add to the estimate above.
       </p>
       <div className="flex items-center gap-2">
         <button

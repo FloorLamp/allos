@@ -177,3 +177,33 @@ export function demoteExcludedGroups(
 export function allFoodGroupSlugs(): string[] {
   return foodGroupSlugs();
 }
+
+// ---- Legibility: the "why did this suggestion change?" note (#980 item 4) ----------
+
+// The muted note the Food-tab suggestions summary shows when a preference is filtering the
+// food sources — the verbal twin of the #950 slot chip: "showing vegetarian-friendly
+// sources" makes the demote/substitute explicable on-surface. Per-preset copy so each
+// reads naturally (#945); a "No red meat" / "Dairy-free" preset states the exclusion
+// rather than forcing an awkward "-friendly". Pure — the DERIVED preset drives it.
+const PREFERENCE_SUGGESTION_NOTE: Record<DietaryPreset, string | null> = {
+  omnivore: null,
+  vegetarian: "showing vegetarian-friendly sources",
+  vegan: "showing vegan-friendly sources",
+  pescatarian: "showing pescatarian-friendly sources",
+  no_red_meat: "showing sources without red meat",
+  dairy_free: "showing dairy-free sources",
+  keto: "showing keto-friendly sources",
+};
+
+// The note text for a profile's excluded set, or null when NO preference is set (an empty
+// set is Omnivore — no filtering happens, so no note renders, per #980's "no empty chrome"
+// on an unset preference). A custom set (matching no named preset) gets a neutral note.
+export function preferenceSuggestionNote(
+  excluded: readonly string[]
+): string | null {
+  const norm = normalizeExcludedGroups(excluded);
+  if (norm.length === 0) return null;
+  const preset = presetForExcluded(norm);
+  if (preset === "custom") return "showing sources that fit your preferences";
+  return PREFERENCE_SUGGESTION_NOTE[preset];
+}
