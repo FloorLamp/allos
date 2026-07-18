@@ -342,7 +342,9 @@ export async function extractMedicalDocument(
           (LOG_PROMPTS ? `\nresponse: ${JSON.stringify(input)}` : "")
       ),
     });
-    return result;
+    // Carry the source reconciliation on the result so import-shape can fold its
+    // summary into the persisted ImportReport (surfaced in the import debugger).
+    return { ...result, reconciliation };
   } catch (err) {
     const secs = ((Date.now() - startedAt) / 1000).toFixed(1);
     const message = describeError(err);
