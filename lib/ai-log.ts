@@ -57,6 +57,9 @@ export interface AiEvent {
   feature: AiFeature;
   status: AiStatus;
   model?: string;
+  // Which provider tier served the call (issue #875): "heavy" (extraction) or
+  // "light" (narratives/suggestions/…). Absent on skipped-before-resolution events.
+  tier?: "heavy" | "light";
   // The backend that produced the event: host only (issue #43). Undefined for
   // the default Anthropic endpoint. Never a full URL/path/query — no secrets.
   baseUrl?: string;
@@ -159,6 +162,7 @@ export function recordAiEvent(e: Omit<AiEvent, "id" | "time">): AiEvent {
     feature: event.feature,
     status: event.status,
     model: event.model,
+    tier: event.tier,
     baseUrl: event.baseUrl,
     durationMs: event.durationMs,
     detail: event.detail,

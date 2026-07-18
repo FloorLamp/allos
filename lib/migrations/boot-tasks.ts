@@ -13,6 +13,8 @@ import {
   serializeOnboardingState,
 } from "../onboarding";
 import { runBootTx } from "./schema-utils";
+import { setTierConfigProvider } from "../ai-client";
+import { getTierConfigs, seedAiTiersFromEnv } from "../settings/ai-tiers";
 
 // PER-BOOT TASKS (issue #119). These run on EVERY process start, AFTER the
 // versioned migration runner (lib/migrations/runner.ts) has brought the schema to
@@ -83,6 +85,13 @@ export function bootTasks(db: Database.Database): void {
   // it so upgrading deploys keep their zone instead of snapping to UTC. This reads
   // the env once on first boot only — it is NOT an ongoing fallback.
   seedTimezoneFromEnv(db);
+
+  // AI provider tiers (issue #875): seed the Heavy tier from the legacy AI env vars
+  // on first boot (idempotent — the env is DEMOTED to a seed; the DB then owns it),
+  // and register the DB-backed tier-config reader as the runtime provider so
+  // lib/ai-resolve can resolve task → tier → client without importing the DB layer.
+  seedAiTiersFromEnv();
+  setTierConfigProvider(() => getTierConfigs());
 
   // Record an install/first-boot timestamp once, so the health endpoint can tell a
   // genuinely fresh install (exempt from the never-backed-up alarm) from a
