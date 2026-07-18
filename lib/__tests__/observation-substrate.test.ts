@@ -130,7 +130,11 @@ describe("observation-substrate helpers boundary (issue #944)", () => {
     const offenders: string[] = [];
     for (const { rel, text } of sourceFiles()) {
       if (rel === ACCOUNTING) continue; // tallyUpsert lives here, may increment
-      if (/\.(?:inserted|updated|unchanged)\+\+/.test(stripCommentsAndStrings(text))) {
+      if (
+        /\.(?:inserted|updated|unchanged)\+\+/.test(
+          stripCommentsAndStrings(text)
+        )
+      ) {
         offenders.push(rel);
       }
     }
