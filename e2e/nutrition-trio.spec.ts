@@ -123,6 +123,14 @@ test.describe("Nutrition trio", () => {
       });
       try {
         // Pick the Vegetarian preset on Settings → Profile (autosaves on change).
+        // AUTOSAVE DISCIPLINE for this whole block: every mutation is gated on the
+        // card's "Saved" indicator BEFORE the next step, and a reload separates
+        // consecutive mutations. Two rapid saves are concurrent Server-Action POSTs
+        // and last-write-wins by ARRIVAL (CI caught the uncheck's write clobbering
+        // the re-selected preset), while a reload with a save still in flight ABORTS
+        // that save (a local run caught the set coming back empty). Gate, then
+        // reload — the same pattern the format-prefs spec documents; the reload
+        // also clears the indicator's linger so each gate refers to its own save.
         await page.goto("/settings/profile");
         const presetSelect = page.getByTestId("dietary-preset");
         await expect(presetSelect).toBeVisible({ timeout: WAIT });
@@ -131,14 +139,22 @@ test.describe("Nutrition trio", () => {
         await expect(
           page.getByTestId("dietary-exclude-fatty_fish")
         ).toBeChecked({ timeout: WAIT });
+        await expect(page.getByLabel("Saved")).toBeVisible({ timeout: WAIT });
+        await page.reload();
+        await expect(presetSelect).toHaveValue("vegetarian", { timeout: WAIT });
 
         // Editing one group diverges the preset to "custom".
         await page.getByTestId("dietary-exclude-fatty_fish").uncheck();
         await expect(presetSelect).toHaveValue("custom", { timeout: WAIT });
+        await expect(page.getByLabel("Saved")).toBeVisible({ timeout: WAIT });
+        await page.reload();
+        await expect(presetSelect).toHaveValue("custom", { timeout: WAIT });
 
-        // Back to the clean vegetarian set for the substitution + loggability checks.
+        // Back to the clean vegetarian set for the substitution + loggability checks;
+        // gate on the committed save before navigating away.
         await presetSelect.selectOption("vegetarian");
         await expect(presetSelect).toHaveValue("vegetarian", { timeout: WAIT });
+        await expect(page.getByLabel("Saved")).toBeVisible({ timeout: WAIT });
 
         // On the Food tab, the suggestions summary now carries the muted preference note
         // (#980 item 4) — the demote/substitute is explicable on-surface, like the #950
