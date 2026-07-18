@@ -72,7 +72,7 @@ export default function ImportDetailActions({
         // boundary (issue #477).
         setRawResult({
           status: "failed",
-          message: "Re-import failed. Please try again.",
+          message: "Couldn't re-import. Try again.",
         });
       }
     });

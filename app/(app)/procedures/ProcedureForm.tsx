@@ -35,7 +35,7 @@ export default function ProcedureForm({
     try {
       result = await action(formData);
     } catch {
-      setError("Couldn't save this procedure. Please try again.");
+      setError("Couldn't save this procedure. Try again.");
       return;
     }
     if (!result.ok) {

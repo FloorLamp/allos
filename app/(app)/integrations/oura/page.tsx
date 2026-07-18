@@ -21,7 +21,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   validation_failed:
     "Couldn't reach Oura to validate the token. Check your connection and try again in a moment.",
   sync_failed:
-    "Sync failed. Check your connection to Oura and try again in a moment.",
+    "Couldn't sync. Check your connection to Oura and try again in a moment.",
 };
 
 export default async function OuraPage(props: {
@@ -37,7 +37,7 @@ export default async function OuraPage(props: {
   const needsReauth = conn?.status === "needs_reauth";
   const linkedEmail = cfg.personalInfo?.email ?? null;
   const error = searchParams.error
-    ? (ERROR_MESSAGES[searchParams.error] ?? "Connection failed. Try again.")
+    ? (ERROR_MESSAGES[searchParams.error] ?? "Couldn't connect. Try again.")
     : null;
 
   let lastSummary: Record<string, number> | null = null;

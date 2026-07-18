@@ -33,7 +33,7 @@ export default function SavedViewsBar({ views }: { views: TrendView[] }) {
     try {
       result = await saveTrendView(formData);
     } catch {
-      setError("Couldn't save this view. Please try again.");
+      setError("Couldn't save this view. Try again.");
       return;
     }
     if (!result.ok) {

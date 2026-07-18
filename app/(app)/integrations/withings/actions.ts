@@ -134,7 +134,7 @@ export async function syncWithingsNow(): Promise<SyncNowResult> {
     return { status: "done", message: `Synced ${body_}.${suffix}` };
   } catch (err) {
     log.error("withings sync-now threw", { err: String(err) });
-    return { status: "error", message: "Sync failed — please try again." };
+    return { status: "error", message: "Couldn't sync. Try again." };
   }
 }
 

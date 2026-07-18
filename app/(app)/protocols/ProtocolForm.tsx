@@ -82,7 +82,7 @@ export default function ProtocolForm({
       ) {
         throw e;
       }
-      setError("Couldn't save this protocol. Please try again.");
+      setError("Couldn't save this protocol. Try again.");
       return;
     }
     if (!result.ok) {

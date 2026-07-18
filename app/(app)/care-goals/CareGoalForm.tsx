@@ -34,7 +34,7 @@ export default function CareGoalForm({
     try {
       result = await action(formData);
     } catch {
-      setError("Couldn't save this goal. Please try again.");
+      setError("Couldn't save this goal. Try again.");
       return;
     }
     if (!result.ok) {

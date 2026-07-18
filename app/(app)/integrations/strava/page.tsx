@@ -31,7 +31,7 @@ const ERROR_MESSAGES: Record<string, string> = {
     "Couldn't exchange the code for tokens. Check your Client ID/Secret.",
   access_denied: "You declined access on Strava.",
   sync_failed:
-    "Sync failed. Check your connection to Strava and try again in a moment.",
+    "Couldn't sync. Check your connection to Strava and try again in a moment.",
   set_public_url:
     "This app's callback URL resolves to localhost, so Strava can't redirect back. Set the Public app URL in Settings → Server to the address this app is reachable at, then reconnect.",
 };
@@ -52,7 +52,7 @@ export default async function StravaPage(props: {
   const callbackUrl = await stravaCallbackUrl();
   const callbackDomain = new URL(await baseUrl()).host;
   const error = searchParams.error
-    ? (ERROR_MESSAGES[searchParams.error] ?? "Connection failed. Try again.")
+    ? (ERROR_MESSAGES[searchParams.error] ?? "Couldn't connect. Try again.")
     : null;
 
   let lastSummary: Record<string, number> | null = null;

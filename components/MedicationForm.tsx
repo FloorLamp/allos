@@ -316,7 +316,7 @@ export default function MedicationForm({
     try {
       result = await action(formData);
     } catch {
-      setError("Couldn't save this medication. Please try again.");
+      setError("Couldn't save this medication. Try again.");
       return;
     }
     if (!result.ok) {

@@ -138,7 +138,7 @@ export function renderEscalationMessage(
   const suppId = due.supplementId;
   return {
     title: `⚠️ Missed dose: ${who}${due.supplementName}`,
-    body: `The ${due.window.toLowerCase()} dose of ${due.supplementName}${amt} hasn't been confirmed yet. Please check in.`,
+    body: `The ${due.window.toLowerCase()} dose of ${due.supplementName}${amt} hasn't been confirmed yet. Check in.`,
     kind: "escalation",
     actions: [
       {

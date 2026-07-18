@@ -87,7 +87,7 @@ export default function AppointmentForm({
     try {
       result = await action(formData);
     } catch {
-      setError("Couldn't save this appointment. Please try again.");
+      setError("Couldn't save this appointment. Try again.");
       return;
     }
     // A validation guard now answers with a typed error instead of a silent

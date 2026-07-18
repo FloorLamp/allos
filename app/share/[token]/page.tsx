@@ -53,8 +53,7 @@ export default async function SharePage(props: {
     return (
       <div className="mx-auto min-h-screen max-w-3xl px-4 py-10">
         <p className="text-sm text-neutral-600 dark:text-neutral-300">
-          Too many requests. Please try again in about {rl.retryAfterSec}{" "}
-          seconds.
+          Too many requests. Try again in about {rl.retryAfterSec} seconds.
         </p>
       </div>
     );

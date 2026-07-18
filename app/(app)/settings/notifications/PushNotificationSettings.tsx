@@ -81,7 +81,7 @@ export default function PushNotificationSettings() {
       }
       const key = await getPushPublicKey();
       if (!key.ok || !key.publicKey) {
-        setResult({ ok: false, message: "Could not initialize push keys." });
+        setResult({ ok: false, message: "Couldn't initialize push keys." });
         return;
       }
       const reg = await navigator.serviceWorker.ready;
@@ -97,7 +97,7 @@ export default function PushNotificationSettings() {
       if (!res.ok) {
         setResult({
           ok: false,
-          message: res.error ?? "Could not save subscription.",
+          message: res.error ?? "Couldn't save subscription.",
         });
         return;
       }

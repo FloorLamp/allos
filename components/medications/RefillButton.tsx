@@ -46,7 +46,7 @@ export default function RefillButton({
         toast(res.error, { tone: "error" });
       }
     } catch {
-      toast("Couldn't record that refill. Please try again.", {
+      toast("Couldn't record that refill. Try again.", {
         tone: "error",
       });
     } finally {

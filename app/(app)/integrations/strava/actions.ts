@@ -127,7 +127,7 @@ export async function syncStravaNow(): Promise<SyncNowResult> {
     return { status: "done", message: `Synced ${parts.join(", ")}.${suffix}` };
   } catch (err) {
     log.error("strava sync-now threw", { err: String(err) });
-    return { status: "error", message: "Sync failed — please try again." };
+    return { status: "error", message: "Couldn't sync. Try again." };
   }
 }
 

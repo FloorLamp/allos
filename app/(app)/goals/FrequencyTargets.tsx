@@ -90,7 +90,7 @@ export default function FrequencyTargets({
       await createFrequencyTarget(fd);
     } catch {
       // Keep the form and its selections intact; surface the failure inline.
-      setError("Couldn't save this routine. Please try again.");
+      setError("Couldn't save this routine. Try again.");
       return;
     }
     toast(updating ? "Routine updated" : "Routine added");
@@ -112,7 +112,7 @@ export default function FrequencyTargets({
     try {
       await deleteFrequencyTarget(fd);
     } catch {
-      setError("Couldn't delete this routine. Please try again.");
+      setError("Couldn't delete this routine. Try again.");
       return;
     }
     toast("Routine deleted");

@@ -62,7 +62,7 @@ export default function QuickLogPrnControl({
         toast(res.error, { tone: "error" });
       }
     } catch {
-      toast("Couldn't log that dose. Please try again.", { tone: "error" });
+      toast("Couldn't log that dose. Try again.", { tone: "error" });
     } finally {
       setBusy(false);
     }

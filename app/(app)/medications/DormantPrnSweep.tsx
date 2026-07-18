@@ -47,7 +47,7 @@ export default function DormantPrnSweep({
         toast(res.error, { tone: "error" });
       }
     } catch {
-      toast("Couldn't move that medication. Please try again.", {
+      toast("Couldn't move that medication. Try again.", {
         tone: "error",
       });
     } finally {
@@ -64,7 +64,7 @@ export default function DormantPrnSweep({
       await dismissDormantPrn(fd);
       router.refresh();
     } catch {
-      toast("Couldn't dismiss that suggestion. Please try again.", {
+      toast("Couldn't dismiss that suggestion. Try again.", {
         tone: "error",
       });
     } finally {
@@ -82,7 +82,7 @@ export default function DormantPrnSweep({
       if (res.ok) router.refresh();
       else toast(res.error, { tone: "error" });
     } catch {
-      toast("Couldn't restore that suggestion. Please try again.", {
+      toast("Couldn't restore that suggestion. Try again.", {
         tone: "error",
       });
     } finally {

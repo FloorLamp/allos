@@ -37,7 +37,7 @@ export default function UploadForm({ demo = false }: { demo?: boolean }) {
       // Size/type failures are handled gracefully server-side as failed-document
       // rows, but a disk-write throw would replace the whole page via the error
       // boundary (issue #477) — keep the form mounted and surface it inline.
-      setError("Upload failed. Please try again.");
+      setError("Couldn't upload the file. Try again.");
       return;
     }
     // Clear the input (and re-disable the button) so the same file can be picked

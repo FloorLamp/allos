@@ -468,7 +468,7 @@ export default async function Dashboard() {
       case "quick-log-prn":
         return (
           <WidgetEmpty
-            title="Log a PRN dose"
+            title="Log a dose"
             icon={IconPill}
             message="No as-needed medications yet. Add a PRN medication to log doses like ibuprofen or an inhaler right from here."
             ctaLabel="Add a medication"

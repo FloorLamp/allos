@@ -66,7 +66,7 @@ export default function ActivityLogPanel({
       setError(
         outcome.reason === "invalid"
           ? "Check the date and name and try again."
-          : "Couldn't save this session. Please try again."
+          : "Couldn't save this session. Try again."
       );
       return;
     }
