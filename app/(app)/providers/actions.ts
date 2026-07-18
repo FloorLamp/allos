@@ -51,12 +51,10 @@ export async function updateProviderAction(
       address: str(formData.get("address")) || null,
     });
   } catch (err) {
-    // Keep the client message generic (#478); the cause lands in the server log.
-    log.error("provider identity update failed", {
-      id,
-      err: err instanceof Error ? err : String(err),
-    });
-    return { error: "Couldn't save the provider." };
+    // updateProviderIdentity throws a FRIENDLY domain error the user needs to see
+    // (an identity clash → "…merge the duplicates instead."), so surface it; the
+    // fallback string just drops the banned "Could not" verb (#945).
+    return { error: err instanceof Error ? err.message : "Couldn't save." };
   }
   // Audit the GLOBAL identity edit (issue #655): who edited which shared provider.
   recordAudit({

@@ -101,7 +101,8 @@ export default function ImportClient({
       toast("Extraction started — you’ll be notified when it’s ready.");
       router.refresh();
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Couldn't start the extraction.";
+      const message =
+        e instanceof Error ? e.message : "Couldn't start the extraction.";
       setError(message);
       toast(message, { tone: "error", duration: null });
     } finally {
