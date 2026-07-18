@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { loginAs, followLink } from "./nav";
+import { settledClick } from "./helpers";
 
 // Illness-episode view (issue #801). The seed makes profile 1 currently sick — an
 // ongoing "Illness" situation with day-by-day symptoms, a fever curve (#800), and PRN
@@ -226,10 +227,16 @@ async function createMemberWithGrants(
   await adminPage.goto("/settings/family");
   await adminPage.getByPlaceholder("Username").fill(username);
   await adminPage.getByPlaceholder("Password").fill(password);
-  await adminPage.getByRole("button", { name: "Create login" }).click();
+  // settledClick, not a raw click: a click in the hydration window is silently
+  // swallowed (#830) and this exact step has flaked that way in full-suite runs —
+  // the same hardening the view-only-access and two-factor specs carry.
+  await settledClick(
+    adminPage,
+    adminPage.getByRole("button", { name: "Create login" })
+  );
 
   const grantRow = adminPage.getByTestId(`grant-row-${username}`);
-  await expect(grantRow).toBeVisible();
+  await expect(grantRow).toBeVisible({ timeout: 15_000 });
   for (const g of grants) {
     const cell = adminPage.getByTestId(`grant-cell-${username}-${g.profileId}`);
     await cell.locator('input[type="checkbox"]').check();
