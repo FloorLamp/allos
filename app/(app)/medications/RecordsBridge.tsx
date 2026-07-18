@@ -47,7 +47,7 @@ export default function RecordsBridge({
         toast(res.error, { tone: "error" });
       }
     } catch {
-      toast("Couldn't track that medication. Please try again.", {
+      toast("Couldn't track that medication. Try again.", {
         tone: "error",
       });
     } finally {
@@ -64,7 +64,7 @@ export default function RecordsBridge({
       await dismissMedicationRecord(fd);
       router.refresh();
     } catch {
-      toast("Couldn't dismiss that suggestion. Please try again.", {
+      toast("Couldn't dismiss that suggestion. Try again.", {
         tone: "error",
       });
     } finally {
@@ -86,7 +86,7 @@ export default function RecordsBridge({
         toast(res.error, { tone: "error" });
       }
     } catch {
-      toast("Couldn't restore that suggestion. Please try again.", {
+      toast("Couldn't restore that suggestion. Try again.", {
         tone: "error",
       });
     } finally {

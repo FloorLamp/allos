@@ -90,7 +90,7 @@ export default function BodyQuickAdd({
         await queueOffline();
         return;
       }
-      setError("Couldn't save this entry. Please try again.");
+      setError("Couldn't save this entry. Try again.");
       return;
     }
     toast("Entry saved");

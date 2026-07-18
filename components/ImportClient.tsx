@@ -101,7 +101,7 @@ export default function ImportClient({
       toast("Extraction started — you’ll be notified when it’s ready.");
       router.refresh();
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Could not start.";
+      const message = e instanceof Error ? e.message : "Couldn't start the extraction.";
       setError(message);
       toast(message, { tone: "error", duration: null });
     } finally {
@@ -224,7 +224,7 @@ function ImportJobCard({ job, unit }: { job: ImportJob; unit: WeightUnit }) {
       // (good server design) — without this catch the spinner just cleared and
       // the user retried blind (issue #477). Toast the failure; the job row still
       // carries its honest 'ready' state.
-      toast("Couldn't save this import. Please try again.", {
+      toast("Couldn't save this import. Try again.", {
         tone: "error",
         duration: null,
       });
@@ -240,7 +240,7 @@ function ImportJobCard({ job, unit }: { job: ImportJob; unit: WeightUnit }) {
       await discardImportJob(job.id);
       router.refresh();
     } catch {
-      toast("Couldn't discard this import. Please try again.", {
+      toast("Couldn't discard this import. Try again.", {
         tone: "error",
         duration: null,
       });

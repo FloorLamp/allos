@@ -83,7 +83,7 @@ export async function confirmConditionSuggestion(
   const code = String(formData.get("code") ?? "").trim() || null;
   const outcome = addSuggestedConditionCore(profile.id, { name, code });
   if (outcome.kind === "invalid")
-    return formError("Could not add the condition.");
+    return formError("Couldn't add the condition.");
   revalidateConditions();
   revalidatePath("/upcoming");
   return formOk();

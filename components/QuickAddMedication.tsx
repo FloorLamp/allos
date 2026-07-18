@@ -126,7 +126,7 @@ export default function QuickAddMedication({
     try {
       result = await action(fd);
     } catch {
-      setError("Couldn't add that medication. Please try again.");
+      setError("Couldn't add that medication. Try again.");
       return;
     }
     if (!result.ok) {

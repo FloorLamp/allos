@@ -123,7 +123,7 @@ export async function promoteEpisodeToConditionAction(
     row.ended_at
   );
   if (outcome.kind === "invalid")
-    return { ok: false, error: "Could not create the condition." };
+    return { ok: false, error: "Couldn't create the condition." };
   revalidatePath("/medical/episodes/[id]", "page");
   revalidatePath("/conditions");
   return { ok: true };

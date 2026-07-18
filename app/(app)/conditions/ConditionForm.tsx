@@ -56,7 +56,7 @@ export default function ConditionForm({
     try {
       result = await action(formData);
     } catch {
-      setError("Couldn't save this condition. Please try again.");
+      setError("Couldn't save this condition. Try again.");
       return;
     }
     if (!result.ok) {

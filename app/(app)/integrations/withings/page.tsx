@@ -34,7 +34,7 @@ const ERROR_MESSAGES: Record<string, string> = {
     "Couldn't exchange the code for tokens. Check your Client ID/Secret.",
   access_denied: "You declined access on Withings.",
   sync_failed:
-    "Sync failed. Check your connection to Withings and try again in a moment.",
+    "Couldn't sync. Check your connection to Withings and try again in a moment.",
   set_public_url:
     "This app's callback URL resolves to localhost, so Withings can't redirect back. Set the Public app URL in Settings → Server to the address this app is reachable at, then reconnect.",
 };
@@ -53,7 +53,7 @@ export default async function WithingsPage(props: {
   const needsReauth = conn?.status === "needs_reauth";
   const callbackUrl = await withingsCallbackUrl();
   const error = searchParams.error
-    ? (ERROR_MESSAGES[searchParams.error] ?? "Connection failed. Try again.")
+    ? (ERROR_MESSAGES[searchParams.error] ?? "Couldn't connect. Try again.")
     : null;
 
   let lastSummary: Record<string, number> | null = null;

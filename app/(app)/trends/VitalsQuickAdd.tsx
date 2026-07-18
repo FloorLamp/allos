@@ -81,7 +81,7 @@ export default function VitalsQuickAdd({
         await queueOffline();
         return;
       }
-      setError("Couldn't save these vitals. Please try again.");
+      setError("Couldn't save these vitals. Try again.");
       return;
     }
     toast("Vitals saved");

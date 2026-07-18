@@ -342,7 +342,7 @@ export default function RoutinesManager({
                         toast(`Adopted ${t.name}`);
                         setShowPicker(false);
                       } else {
-                        toast(res.error ?? "Couldn't adopt this template");
+                        toast(res.error ?? "Couldn't adopt this template.");
                       }
                     }}
                     className="btn shrink-0 py-1"

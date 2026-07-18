@@ -82,7 +82,7 @@ export default function BackupSettings({
       } catch {
         setResult({
           ok: false,
-          message: "Couldn’t run the backup. Please try again.",
+          message: "Couldn’t run the backup. Try again.",
         });
       }
       router.refresh();
@@ -103,7 +103,7 @@ export default function BackupSettings({
       } catch {
         setResult({
           ok: false,
-          message: "Couldn’t re-check integrity. Please try again.",
+          message: "Couldn’t re-check integrity. Try again.",
         });
       }
       router.refresh();

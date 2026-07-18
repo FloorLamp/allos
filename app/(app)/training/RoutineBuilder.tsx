@@ -190,7 +190,7 @@ export default function RoutineBuilder({
         result = await createRoutineAction(fd);
       }
     } catch {
-      setError("Couldn't save this routine. Please try again.");
+      setError("Couldn't save this routine. Try again.");
       return;
     }
     if (!result.ok) {

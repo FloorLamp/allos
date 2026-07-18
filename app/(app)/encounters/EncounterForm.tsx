@@ -49,7 +49,7 @@ export default function EncounterForm({
     try {
       result = await action(formData);
     } catch {
-      setError("Couldn't save this visit. Please try again.");
+      setError("Couldn't save this visit. Try again.");
       return;
     }
     if (!result.ok) {

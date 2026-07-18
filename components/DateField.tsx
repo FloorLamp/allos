@@ -93,7 +93,7 @@ export default function DateField({
   useEffect(() => {
     inputRef.current?.setCustomValidity(
       val && !validISO(val)
-        ? "Please enter a valid date (YYYY-MM-DD)."
+        ? "Enter a valid date (YYYY-MM-DD)."
         : val && ((!!min && val < min) || (!!max && val > max))
           ? "Date is outside the allowed range."
           : ""

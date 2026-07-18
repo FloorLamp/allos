@@ -68,7 +68,7 @@ export default function OverflowMenu({
       // An uncaught menu-action throw used to escalate to the route error
       // boundary (issue #477) — close the menu and toast the failure instead.
       close();
-      toast("Couldn't complete that action. Please try again.", {
+      toast("Couldn't complete that action. Try again.", {
         tone: "error",
       });
       return;

@@ -43,7 +43,7 @@ export default function ImmunizationForm({
       result = await action(formData);
     } catch {
       // Keep the form and its input mounted, and surface the failure inline.
-      setError("Couldn't save this immunization. Please try again.");
+      setError("Couldn't save this immunization. Try again.");
       return;
     }
     // A validation guard now answers with a typed error instead of a silent

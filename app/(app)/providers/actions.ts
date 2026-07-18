@@ -12,7 +12,10 @@ import {
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { formatProviderMergeAudit } from "@/lib/provider-merge";
+import { createLogger } from "@/lib/log";
 import type { ProviderType } from "@/lib/types";
+
+const log = createLogger("providers");
 
 // Server actions for the provider registry (issue #275). BOTH mutations are on the
 // GLOBAL providers row (shared across every profile), so both gate on
@@ -48,7 +51,12 @@ export async function updateProviderAction(
       address: str(formData.get("address")) || null,
     });
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not save." };
+    // Keep the client message generic (#478); the cause lands in the server log.
+    log.error("provider identity update failed", {
+      id,
+      err: err instanceof Error ? err : String(err),
+    });
+    return { error: "Couldn't save the provider." };
   }
   // Audit the GLOBAL identity edit (issue #655): who edited which shared provider.
   recordAudit({
@@ -83,7 +91,13 @@ export async function mergeProviderAction(
   try {
     mergeProviders(survivorId, duplicateId);
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Could not merge." };
+    // Keep the client message generic (#478); the cause lands in the server log.
+    log.error("provider merge failed", {
+      survivorId,
+      duplicateId,
+      err: err instanceof Error ? err : String(err),
+    });
+    return { error: "Couldn't merge those providers." };
   }
   // Audit the absorb (issue #655): the absorbed row is now deleted and ids never
   // recycle, so this event carries its id + name + the surviving id + counts.

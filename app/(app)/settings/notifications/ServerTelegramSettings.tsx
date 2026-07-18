@@ -67,7 +67,7 @@ export default function ServerTelegramSettings({
       } catch {
         setResult({
           ok: false,
-          message: "Couldn’t register the webhook. Please try again.",
+          message: "Couldn’t register the webhook. Try again.",
         });
       }
       router.refresh();

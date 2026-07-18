@@ -39,7 +39,7 @@ export default function ImagingStudyForm({
     try {
       result = await action(formData);
     } catch {
-      setError("Couldn't save this study. Please try again.");
+      setError("Couldn't save this study. Try again.");
       return;
     }
     if (!result.ok) {

@@ -34,7 +34,7 @@ export default function AllergyForm({
     try {
       result = await action(formData);
     } catch {
-      setError("Couldn't save this allergy. Please try again.");
+      setError("Couldn't save this allergy. Try again.");
       return;
     }
     if (!result.ok) {

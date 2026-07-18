@@ -35,7 +35,7 @@ export default function CarePlanForm({
     try {
       result = await action(formData);
     } catch {
-      setError("Couldn't save this care-plan item. Please try again.");
+      setError("Couldn't save this care-plan item. Try again.");
       return;
     }
     if (!result.ok) {

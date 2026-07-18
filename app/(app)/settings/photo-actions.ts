@@ -104,7 +104,7 @@ export async function uploadProfilePhoto(
     }
     fs.writeFileSync(path.join(PHOTO_ROOT, filename), buffer);
   } catch {
-    return { ok: false, error: "Could not save the image. Try again." };
+    return { ok: false, error: "Couldn't save the image. Try again." };
   }
 
   // Bump the version so the ?v= cache-buster changes and the new photo shows

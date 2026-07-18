@@ -138,7 +138,7 @@ export default function SupplementForm({
     try {
       result = await action(formData);
     } catch {
-      setError("Couldn't save this supplement. Please try again.");
+      setError("Couldn't save this supplement. Try again.");
       return;
     }
     if (!result.ok) {

@@ -53,7 +53,7 @@ export default function QuickLogPrnWidget({
   return (
     <div className="card" data-testid="quick-log-prn">
       <WidgetHeader
-        title="Log a PRN dose"
+        title="Log a dose"
         href="/medications"
         linkLabel="Medications"
       />

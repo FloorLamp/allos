@@ -262,12 +262,12 @@ export async function verifyLoginTotp(
   const rawChallenge = (await cookies()).get(TWO_FACTOR_COOKIE)?.value;
   if (!rawChallenge) {
     // No challenge in flight — bounce back to the password form.
-    return { error: "Your sign-in session expired. Please start again." };
+    return { error: "Your sign-in session expired. Start again." };
   }
   const challenge = getTotpChallenge(rawChallenge);
   if (!challenge) {
     (await cookies()).delete(TWO_FACTOR_COOKIE);
-    return { error: "Your sign-in session expired. Please start again." };
+    return { error: "Your sign-in session expired. Start again." };
   }
 
   const usernameKey = clampAttemptField(challenge.username.toLowerCase());
