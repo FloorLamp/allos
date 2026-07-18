@@ -68,6 +68,17 @@ learned by losing work to it:
   cwd-inherited relative path 127s).
 - Agents resumed from transcript with a good state summary recover cleanly
   every time — killing/redispatching is almost never necessary.
+- **A restore can time-warp your LOCAL view — GitHub's REST API is the only
+  authoritative one.** After a restart, the local checkout, the local
+  `origin/main` ref (the container's git proxy serves a stale mirror until
+  re-fetched), and even the task list can all revert to an earlier snapshot —
+  which reads exactly like "main was force-pushed back N merges" and once
+  triggered a data-loss scare mid-wind-down. Before concluding ANY rollback:
+  `GET /repos/OWNER/REPO/branches/main` (and a `GET /commits/<sha>` for a
+  supposedly-vanished merge) via api.github.com. If GitHub disagrees with the
+  local refs, the container is the stale party — recover with `git fetch` +
+  `git checkout -B <branch> <api-verified-sha>`, and re-verify any "completed"
+  work the reverted task list claims is still pending before redoing it.
 
 ## The pipeline (per unit of work)
 
@@ -100,6 +111,17 @@ learned by losing work to it:
    only self-inflicted breakages (leftover markers, fused declarations). Keep
    README edits to one self-contained clause and seed blocks uniquely anchored
    so splices stay one-line operations.
+   **Owner commits land on main mid-session** — including direct non-PR pushes
+   from the owner's other tools — so a PR built before one can grow a SEMANTIC
+   conflict (a redesigned component vs. an agent's additions to it), not a text
+   splice. Resolve those by RESUMING the authoring agent via `SendMessage` with
+   precise instructions: merge origin/main, take MAIN's structure as the base,
+   re-integrate its own self-contained additions into the new layout (restyled
+   to the new conventions), and re-verify its specs at CI parity — the agent
+   knows its code; a hand re-integration by the orchestrator is the union-splice
+   mistake at component scale. A code re-integration (unlike a text-only rebase
+   delta) re-triggers the FULL local suite before merge — the rebase waiver does
+   not apply.
 6. **After merge:** remove worktree, delete local branch, confirm the linked
    issues actually closed (close manually with a comment if not), update the
    task list.
@@ -120,6 +142,11 @@ Every agent prompt must contain, verbatim where marked:
   conflict. Trust symbol names over line numbers.
 - Checks: npm run format && npm run lint && npm run typecheck && npm test && npm run test:db
   — run format LAST before committing (a late edit after formatting is a known CI breaker)
+- npm run phi-scan before the final push — the pre-commit staged-files hook does
+  NOT fire in agent worktrees, and CI's whole-tree scan will red a PR for a
+  pattern-shaped literal (a SHA-256 golden's digit substring once formed a
+  Luhn-valid NPI; the fix is the scanner's own same-line `phi-scan-ok` marker
+  with a justification)
 - Run YOUR changed e2e specs locally at CI parity on your assigned port pair:
   --repeat-each=3 --retries=0 (retry-masking must not land a flaky spec).
   Do NOT run the full suite — the orchestrator owns full-suite runs.
