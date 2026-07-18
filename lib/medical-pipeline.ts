@@ -72,6 +72,11 @@ import {
   computeImportDiff,
   type ImportDiff,
 } from "@/lib/import-diff";
+import {
+  stashPreviewInput,
+  takePreviewInput,
+  evictPreviewsForDocument,
+} from "@/lib/reprocess-preview-cache";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { createLogger } from "@/lib/log";
@@ -700,84 +705,102 @@ async function persistExtractionResult(
       (isIsoDate(result.meta.document_date) && result.meta.document_date) ||
       today(profileId);
     const input = extractionToPersistInput(result, fallbackDate);
-    const { insertedRecordIds: insertedIds } = persistDocumentImport(
-      profileId,
-      docId,
-      input
-    );
-
-    // The import transaction has committed and the document is durably marked
-    // 'done'. The post-commit steps below (profile backfill, canonical names,
-    // flag reconciliation, revalidation, auto-suggest) are best-effort follow-ups
-    // — a throw here must NOT flip the document back to 'failed' after its data is
-    // already imported. Log and swallow instead.
-    try {
-      // Backfill the profile (sex/birthdate/age) when unset, register canonical
-      // names, and reconcile flags — the shared follow-ups both import paths run.
-      const adopted = applyImportFollowups(profileId, {
-        demographics: input.demographics,
-        canonicalNames: input.canonicalNamesToRegister,
-        insertedRecordIds: insertedIds,
-        records: input.records,
-      });
-      if (adopted.bloodType) {
-        log.info("adopted blood type from document", {
-          docId,
-          bloodType: adopted.bloodType,
-        });
-      }
-      if (adopted.sexAdopted) {
-        log.info("adopted user sex from document", {
-          docId,
-          sex: result.meta.patient_sex,
-        });
-      }
-      if (adopted.birthdate) {
-        log.info("adopted user birthdate from document", {
-          docId,
-          birthdate: adopted.birthdate,
-        });
-      }
-      if (adopted.age !== null) {
-        log.info("adopted user age from document", { docId, age: adopted.age });
-      }
-      if (adopted.fullName) {
-        log.info("adopted user full name from document", { docId });
-      }
-      if (adopted.changed) revalidatePath("/settings");
-      revalidatePath("/biomarkers");
-      // Imported body metrics surface on Body Metrics and the dashboard.
-      revalidatePath("/trends");
-      revalidatePath("/");
-      // Fire-and-forget AI recommendation run from the new/changed biomarkers
-      // (issue #424 — the generalized auto-suggest hook), so extraction latency is
-      // unchanged (the doc is already marked 'done'). Cadence-gated: no-ops when
-      // the profile's cadence is off, AI is unconfigured, or the input signature is
-      // unchanged. Inherits the ambient AI-log context set by the caller.
-      void runRecommendation(profileId, {
-        trigger: "document-imported",
-        recordIds: insertedIds,
-        // Thread the reader's login (issue #632) so the regenerated insight's PRs
-        // and weight-trend deltas render in their lb/mi preference, matching the
-        // scheduled first-page-view trigger; absent → the kg/km fallback.
-        loginId,
-      })
-        .then(() => {
-          revalidatePath("/nutrition");
-          revalidatePath("/medications");
-        })
-        .catch((err) => log.error("recommendation run failed", { docId, err }));
-    } catch (err) {
-      log.error("post-import steps failed (document already imported)", {
-        docId,
-        filename,
-        err,
-      });
-    }
+    commitPersistInput(profileId, docId, input, filename, loginId);
     return "done";
   } catch (err) {
     // A crash mid-run marks the row and refunds a charged unit (#135 item 3).
     return failCrashed(profileId, docId, filename, charged, err);
+  }
+}
+
+// Write a fully-reduced PersistInput to its document through the one persist core
+// (lib/import-persist — the delete-set + insert + doc finalize) and run the
+// best-effort post-commit follow-ups (profile backfill, canonical names, flag
+// reconciliation, revalidation, auto-suggest). Shared by the fresh-extraction
+// commit (persistExtractionResult) AND the apply-the-previewed-input path
+// (issue #946), so a committed preview and a fresh extraction traverse the SAME
+// import-footprint chokepoints and follow-ups — they can't drift. Throws only from
+// persistDocumentImport (the atomic write); the follow-ups are swallowed, so a
+// follow-up failure never un-finalizes a document whose data is already committed.
+function commitPersistInput(
+  profileId: number,
+  docId: number,
+  input: PersistInput,
+  filename: string,
+  loginId?: number
+): void {
+  const { insertedRecordIds: insertedIds } = persistDocumentImport(
+    profileId,
+    docId,
+    input
+  );
+
+  // The import transaction has committed and the document is durably marked
+  // 'done'. The post-commit steps below are best-effort follow-ups — a throw here
+  // must NOT flip the document back to 'failed' after its data is already
+  // imported. Log and swallow instead.
+  try {
+    // Backfill the profile (sex/birthdate/age) when unset, register canonical
+    // names, and reconcile flags — the shared follow-ups both import paths run.
+    const adopted = applyImportFollowups(profileId, {
+      demographics: input.demographics,
+      canonicalNames: input.canonicalNamesToRegister,
+      insertedRecordIds: insertedIds,
+      records: input.records,
+    });
+    if (adopted.bloodType) {
+      log.info("adopted blood type from document", {
+        docId,
+        bloodType: adopted.bloodType,
+      });
+    }
+    if (adopted.sexAdopted) {
+      log.info("adopted user sex from document", {
+        docId,
+        sex: input.demographics?.patient_sex ?? null,
+      });
+    }
+    if (adopted.birthdate) {
+      log.info("adopted user birthdate from document", {
+        docId,
+        birthdate: adopted.birthdate,
+      });
+    }
+    if (adopted.age !== null) {
+      log.info("adopted user age from document", { docId, age: adopted.age });
+    }
+    if (adopted.fullName) {
+      log.info("adopted user full name from document", { docId });
+    }
+    if (adopted.changed) revalidatePath("/settings");
+    revalidatePath("/biomarkers");
+    // Imported body metrics surface on Body Metrics and the dashboard.
+    revalidatePath("/trends");
+    revalidatePath("/");
+    // Fire-and-forget AI recommendation run from the new/changed biomarkers
+    // (issue #424 — the generalized auto-suggest hook), so extraction latency is
+    // unchanged (the doc is already marked 'done'). Cadence-gated: no-ops when
+    // the profile's cadence is off, AI is unconfigured, or the input signature is
+    // unchanged. Inherits the ambient AI-log context set by the caller.
+    void runRecommendation(profileId, {
+      trigger: "document-imported",
+      recordIds: insertedIds,
+      // Thread the reader's login (issue #632) so the regenerated insight's PRs
+      // and weight-trend deltas render in their lb/mi preference, matching the
+      // scheduled first-page-view trigger; absent → the kg/km fallback.
+      loginId,
+    })
+      .then(() => {
+        revalidatePath("/nutrition");
+        revalidatePath("/medications");
+      })
+      .catch((err) => log.error("recommendation run failed", { docId, err }));
+  } catch (err) {
+    log.error("post-import steps failed (document already imported)", {
+      docId,
+      filename,
+      err,
+    });
   }
 }
 
@@ -970,6 +993,102 @@ export async function reprocessAllForProfile(
   return { status: "done", message: parts.join(", ") + "." };
 }
 
+// The apply outcome (issue #946), so the UI can tell the user whether it committed
+// exactly what they previewed or fell back to a fresh (possibly different)
+// re-extraction. `committed-preview` means the cached previewed input was persisted
+// verbatim with NO model call; `re-extracted` means the direct path, or a fallback
+// because the preview token was missing/expired/stale/superseded — the fresh
+// extraction runs in the background and its result may differ from the preview.
+export type ReprocessApplyOutcome =
+  { mode: "committed-preview" } | { mode: "re-extracted" };
+
+// A signature of the document row captured to detect that it changed between a
+// preview and its apply (#946 / the #467 stale-form discipline). content_hash
+// catches a replaced file; the raw_extraction + extracted_count + finalize columns
+// are the "extraction generation" — they change when a concurrent reprocess
+// re-imports the document. Hashed so a large raw_extraction stays a compact key.
+// Null when the row is gone (deleted/reassigned under us).
+function documentStalenessKey(profileId: number, docId: number): string | null {
+  const d = db
+    .prepare(
+      `SELECT content_hash, stored_path, raw_extraction, extracted_count,
+              document_date, source, model
+         FROM medical_documents WHERE id = ? AND profile_id = ?`
+    )
+    .get(docId, profileId) as
+    | {
+        content_hash: string | null;
+        stored_path: string | null;
+        raw_extraction: string | null;
+        extracted_count: number | null;
+        document_date: string | null;
+        source: string | null;
+        model: string | null;
+      }
+    | undefined;
+  if (!d) return null;
+  return crypto
+    .createHash("sha256")
+    .update(
+      JSON.stringify([
+        d.content_hash,
+        d.stored_path,
+        d.raw_extraction,
+        d.extracted_count,
+        d.document_date,
+        d.source,
+        d.model,
+      ])
+    )
+    .digest("hex");
+}
+
+// Try to commit a previously-previewed extraction (#946) instead of re-extracting.
+// Returns "committed" (the cached input was persisted verbatim), "fallback" (token
+// missing/expired/stale, or a concurrent reprocess owns the row — the caller should
+// re-extract), or "failed-terminal" (the persist crashed AFTER claiming; the row is
+// marked 'failed', so the caller must NOT re-dispatch). The token is single-use and
+// profile-scoped: takePreviewInput consumes it only for the rightful owner.
+function commitCachedPreview(
+  loginId: number,
+  profileId: number,
+  id: number,
+  previewToken: string
+): "committed" | "fallback" | "failed-terminal" {
+  const currentKey = documentStalenessKey(profileId, id);
+  if (currentKey === null) return "fallback"; // row vanished — let the re-extract path record the miss
+  const taken = takePreviewInput(profileId, id, previewToken, currentKey);
+  if (!("input" in taken)) return "fallback"; // missing / expired / stale
+  // Claim the row atomically so a concurrent reprocess can't also write it (#324).
+  // A lost claim means an extraction is already in flight — fall back (which will
+  // see 'processing' and no-op) rather than committing over it.
+  if (!claimDocumentForExtraction(profileId, id)) return "fallback";
+  const filename =
+    (
+      db
+        .prepare(
+          "SELECT filename FROM medical_documents WHERE id = ? AND profile_id = ?"
+        )
+        .get(id, profileId) as { filename: string } | undefined
+    )?.filename ?? "document";
+  try {
+    // Commit the PREVIEWED input through the SAME persist core + follow-ups a fresh
+    // extraction uses — the import-footprint chokepoints are unchanged. No model
+    // call, so nothing is charged and nothing lands in the AI log for this apply.
+    commitPersistInput(profileId, id, taken.input, filename, loginId);
+    cleanupOrphanBiomarkerKeyedState(profileId);
+    revalidateAfterReprocess();
+    return "committed";
+  } catch (err) {
+    // The persist crashed after the claim — the row is 'processing'; mark it
+    // terminally 'failed' so it isn't wedged, and report failed-terminal so the
+    // caller doesn't then pay for a re-extraction on top.
+    failCrashed(profileId, id, filename, false, err);
+    revalidateAfterReprocess();
+    return "failed-terminal";
+  }
+}
+
 // Reprocess a single document. Overwrites that document's records. Mirrors the
 // upload path: flip the document to 'processing' and run extraction in the
 // BACKGROUND (do NOT await) so the caller returns immediately. Awaiting the AI
@@ -977,17 +1096,34 @@ export async function reprocessAllForProfile(
 // freezing the page. The app-wide ExtractionToaster poller refreshes the page and
 // toasts once the background job finishes; the row shows a spinner (status
 // 'processing') in the meantime.
+//
+// When `previewToken` is supplied (the reprocess-with-preview apply, #946), the
+// cached previewed input is committed VERBATIM — zero extra extractions, no consent
+// drift. A missing/expired/stale token degrades to the re-extract below and the
+// returned outcome says `re-extracted` so the UI can note the divergence. The
+// direct no-preview path (no token) is untouched: always a fresh re-extraction.
 export function reprocessDocumentById(
   loginId: number,
   profileId: number,
-  id: number
-): void {
+  id: number,
+  previewToken?: string
+): ReprocessApplyOutcome {
+  if (previewToken) {
+    const committed = commitCachedPreview(loginId, profileId, id, previewToken);
+    if (committed === "committed") return { mode: "committed-preview" };
+    if (committed === "failed-terminal") return { mode: "re-extracted" };
+    // "fallback" — the token didn't apply; drop through to a fresh re-extraction.
+  }
+  // We're about to re-extract and replace this document's rows, so any lingering
+  // previewed input for it is now moot — evict it (delete/reassign evict at their
+  // own actions; every persist path evicts via persistDocumentImport).
+  evictPreviewsForDocument(profileId, id);
   const prep = beginReprocess(profileId, id);
   if ("status" in prep) {
     // Nothing to run — missing file (status already recorded) or already claimed
     // by a concurrent reprocess. Just refresh to show the current status.
     revalidateAfterReprocess();
-    return;
+    return { mode: "re-extracted" };
   }
   // A health record (CCD/XDM/SHC) re-imports deterministically — no AI, no key.
   // Small files run inline; large ones defer so the action returns immediately.
@@ -996,7 +1132,7 @@ export function reprocessDocumentById(
       cleanupOrphanBiomarkerKeyedState(profileId);
       revalidateAfterReprocess();
     });
-    return;
+    return { mode: "re-extracted" };
   }
   if (!aiConfigured()) {
     db.prepare(
@@ -1007,14 +1143,14 @@ export function reprocessDocumentById(
       profileId
     );
     revalidateAfterReprocess();
-    return;
+    return { mode: "re-extracted" };
   }
   // Daily AI cap: consume an extraction unit (key is present here). On exhaustion
   // the doc is marked 'skipped' with the limit message — refresh and return, don't
   // dispatch.
   if (!allowExtractionDispatch(profileId, id)) {
     revalidateAfterReprocess();
-    return;
+    return { mode: "re-extracted" };
   }
   // Fire-and-forget. runExtraction catches its own errors and marks the row, so
   // this never rejects; clean up orphaned stars and revalidate once it settles.
@@ -1057,6 +1193,7 @@ export function reprocessDocumentById(
   // Return now with the document marked 'processing' so the page swaps the
   // reprocess button for a spinner instead of blocking on the AI call.
   revalidateAfterReprocess();
+  return { mode: "re-extracted" };
 }
 
 export interface ReprocessFromRawResult {
@@ -1288,14 +1425,17 @@ async function extractPersistInputForPreview(
 }
 
 export type PreviewReprocessResult =
-  { status: "ok"; diff: ImportDiff } | { status: "skipped"; message: string };
+  // `previewToken` (issue #946) rides back so the apply can commit THIS previewed
+  // input verbatim instead of re-extracting a second, possibly-different result.
+  | { status: "ok"; diff: ImportDiff; previewToken: string }
+  | { status: "skipped"; message: string };
 
 // Preview what a reprocess would change: re-extract to an in-memory PersistInput,
 // diff it against the currently-persisted rows, and return the diff WITHOUT
 // touching the DB. The client shows the diff, then calls reprocessDocumentById
-// (the unchanged commit path) to actually apply it. AI re-extraction is
-// nondeterministic, so the preview is indicative — the confirmed reprocess
-// re-extracts and may differ slightly; deterministic health records are exact.
+// with the returned `previewToken` (issue #946) to commit THIS exact input — no
+// second extraction. The apply falls back to a fresh re-extract (and says so) if
+// the token has expired or the document changed underneath the preview.
 export async function previewReprocessById(
   loginId: number,
   profileId: number,
@@ -1312,7 +1452,20 @@ export async function previewReprocessById(
     return { status: "skipped", message: extracted.skip };
   const current = getReprocessSnapshot(profileId, id);
   const next = snapshotFromPersistInput(extracted.input);
-  return { status: "ok", diff: computeImportDiff(current, next) };
+  // Stash the reduced input under a single-use token so the confirmed apply commits
+  // exactly what the user is reviewing. The staleness key pins the document row's
+  // current state; the apply refuses the cached input if it has since changed.
+  const previewToken = stashPreviewInput({
+    profileId,
+    docId: id,
+    input: extracted.input,
+    stalenessKey: documentStalenessKey(profileId, id) ?? "",
+  });
+  return {
+    status: "ok",
+    diff: computeImportDiff(current, next),
+    previewToken,
+  };
 }
 
 // Record a rejected duplicate upload as a 'skipped' row (no file stored) so the

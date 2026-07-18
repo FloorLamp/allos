@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { IconRefresh } from "@tabler/icons-react";
 import {
   previewReprocess,
-  reprocessDocument,
+  applyReprocessPreview,
 } from "@/app/(app)/medical/document-actions";
 import type { PreviewReprocessResult } from "@/lib/medical-pipeline";
 import type { EntityDiff } from "@/lib/import-diff";
@@ -14,7 +14,10 @@ import type { EntityDiff } from "@/lib/import-diff";
 // replacing a document's rows, this previews the diff between what's currently
 // persisted and what a fresh re-extraction would produce, then commits on a
 // separate confirm. "Reprocess…" calls the read-only preview action (no DB
-// writes); "Confirm reprocess" calls the existing reprocessDocument commit path.
+// writes); "Confirm reprocess" calls applyReprocessPreview, which commits EXACTLY
+// the previewed extraction (#946) — no second model call — unless the token has
+// expired or the document changed, in which case it falls back to a fresh
+// re-extraction and we surface that the result may differ from the preview.
 export default function ReprocessDiffPanel({
   id,
   filename,
@@ -28,9 +31,13 @@ export default function ReprocessDiffPanel({
   const [previewing, startPreview] = useTransition();
   const [committing, startCommit] = useTransition();
   const [result, setResult] = useState<PreviewReprocessResult | null>(null);
+  // Set when the apply fell back to a fresh re-extraction instead of committing
+  // the previewed input, so the user knows the result may differ from the diff.
+  const [fallbackNote, setFallbackNote] = useState(false);
 
   function preview() {
     setResult(null);
+    setFallbackNote(false);
     startPreview(async () => {
       const fd = new FormData();
       fd.set("id", String(id));
@@ -39,17 +46,25 @@ export default function ReprocessDiffPanel({
   }
 
   function commit() {
+    // Carry the preview token (when we have one) so the apply commits exactly the
+    // previewed input; without it the apply always re-extracts.
+    const token = result?.status === "ok" ? result.previewToken : undefined;
     startCommit(async () => {
       const fd = new FormData();
       fd.set("id", String(id));
-      await reprocessDocument(fd);
+      if (token) fd.set("previewToken", token);
+      const outcome = await applyReprocessPreview(fd);
       setResult(null);
+      // Only note the divergence when we actually HAD a preview to commit but the
+      // apply had to re-extract anyway (expired/stale/superseded token).
+      setFallbackNote(!!token && outcome.mode === "re-extracted");
       router.refresh();
     });
   }
 
   function cancel() {
     setResult(null);
+    setFallbackNote(false);
   }
 
   const busy = previewing || committing || !!disabled;
@@ -57,15 +72,26 @@ export default function ReprocessDiffPanel({
   return (
     <div>
       {result == null && (
-        <button
-          type="button"
-          onClick={preview}
-          disabled={busy}
-          className="btn-ghost inline-flex items-center gap-1.5 text-sm disabled:opacity-50"
-        >
-          <IconRefresh className="h-4 w-4" />
-          {previewing ? "Preparing preview…" : "Reprocess…"}
-        </button>
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={preview}
+            disabled={busy}
+            className="btn-ghost inline-flex items-center gap-1.5 text-sm disabled:opacity-50"
+          >
+            <IconRefresh className="h-4 w-4" />
+            {previewing ? "Preparing preview…" : "Reprocess…"}
+          </button>
+          {fallbackNote && (
+            <p
+              data-testid="reprocess-fallback-note"
+              className="text-sm text-amber-700 dark:text-amber-400"
+            >
+              Re-extracted — the preview had expired or the document changed, so
+              the results may differ from the preview you saw.
+            </p>
+          )}
+        </div>
       )}
 
       {result?.status === "skipped" && (
