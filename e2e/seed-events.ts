@@ -2871,9 +2871,9 @@ const enduranceProfileId = fixtureProfileId(ENDURANCE_PROFILE);
 db.prepare(`DELETE FROM endurance_plans WHERE profile_id = ?`).run(
   enduranceProfileId
 );
-db.prepare(`DELETE FROM activities WHERE profile_id = ? AND type = 'cardio'`).run(
-  enduranceProfileId
-);
+db.prepare(
+  `DELETE FROM activities WHERE profile_id = ? AND type = 'cardio'`
+).run(enduranceProfileId);
 for (const [ago, km, wt] of [
   [20, 8, null],
   [18, 6, null],
