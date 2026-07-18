@@ -16,6 +16,8 @@ import {
   getHealthspanPillars,
   getPrnMedicationsForQuickLog,
   getActiveProtocolSummaries,
+  getWorkoutPresence,
+  getSessionRecap,
 } from "@/lib/queries";
 import { recommendCoaching } from "@/lib/coaching";
 import { collectCoachingFindings } from "@/lib/rule-findings";
@@ -74,6 +76,7 @@ import { schoolReturnStatusFor } from "@/lib/school-return-data";
 import { schoolReturnCompactClause } from "@/lib/school-return";
 import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
 import WidgetEmpty from "@/components/dashboard/WidgetEmpty";
+import SessionRecapCard from "@/components/dashboard/SessionRecapCard";
 import WeightTrendWidget from "@/components/dashboard/WeightTrendWidget";
 import GoalsHabitsWidget from "@/components/dashboard/GoalsHabitsWidget";
 import CoachingWidget from "@/components/dashboard/CoachingWidget";
@@ -114,6 +117,22 @@ export default async function Dashboard() {
   const restricted = isTrainingRestricted(profile.id);
   const on = today(profile.id);
   const units = getUnitPrefs(login.id);
+
+  // Finished-window session recap card (#924): while derived workout presence reads
+  // `finished`, surface the just-ended session's recap (self-view only). NEVER gated
+  // on live mode — a manual fresh-end-time log or a freshness-capped import also
+  // enters `finished`. The card feeds off the ONE server-side sessionRecap gather;
+  // it disappears when the 60-min window closes on the next render. Skipped for a
+  // restricted profile (no training surface). Shown only when there's strength work
+  // to recap (a pure-cardio finish has no working sets).
+  const finishedPresence = restricted ? null : getWorkoutPresence(profile.id);
+  const finishedRecap =
+    finishedPresence?.state === "finished" &&
+    finishedPresence.activityId != null
+      ? getSessionRecap(profile.id, finishedPresence.activityId)
+      : null;
+  const showRecapCard =
+    finishedRecap != null && finishedRecap.totalWorkingSets > 0;
 
   // Lazy scheduled AI recommendation run (issue #424). The dashboard is the
   // natural landing surface, so it's where a due scheduled run kicks off —
@@ -549,6 +568,9 @@ export default async function Dashboard() {
       <div className="mb-6">
         <NeedsAttentionHero items={attention} today={on} />
       </div>
+      {showRecapCard && finishedRecap && (
+        <SessionRecapCard recap={finishedRecap} unit={units.weightUnit} />
+      )}
       {onboardingState && onboardingPresence && (
         <OnboardingResumeCard
           state={onboardingState}

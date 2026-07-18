@@ -217,3 +217,12 @@ export const NOTIF_PROFILE = "Notif Matrix (e2e)";
 // on profile 1. No birthdate → adult → the food logger + adequacy card render.
 export const E2E_LOGIN_PROTEIN = "e2e_protein";
 export const PROTEIN_QUICKADD_PROFILE = "Protein Quickadd (e2e)";
+// A dedicated ADULT profile carrying a JUST-FINISHED strength session (issue #924):
+// a manual activity today with a start_time AND a recent end_time (~8 min ago), two
+// working sets that hit their rep target, plus a prior session of the same lift a
+// week earlier — so derived workout presence reads `finished` and the finished-
+// window dashboard recap card renders with a PR. Read-only; isolated on purpose —
+// an always-"finished" session on a SHARED profile would plant a surprise recap
+// card that races neighbor specs.
+export const E2E_LOGIN_RECAP = "e2e_recap";
+export const RECAP_PROFILE = "Session Recap (e2e)";

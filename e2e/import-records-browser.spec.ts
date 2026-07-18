@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { followLink } from "./helpers";
+import { followLink, settledClick } from "./helpers";
 
 // Import detail — tabbed per-category records browser (issue #271). The e2e seed
 // (e2e/seed-events.ts) plants document 908 with produced rows across several
@@ -118,5 +118,24 @@ test.describe("Import detail: tabbed records browser", () => {
       "aria-current",
       "page"
     );
+  });
+
+  // The reprocess-with-preview panel (ReprocessDiffPanel) that the apply-commits-the-
+  // preview change (#946) reworks. The e2e env has NO extractor configured, so a
+  // preview reports it can't re-extract and the panel offers "Reprocess anyway"
+  // rather than a diff/commit — which is exactly the reachable state here. It proves
+  // the refactored panel still renders and drives its preview Server Action end-to-
+  // end; the committed-preview vs re-extracted-fallback outcome + its fallback note
+  // need a live extractor and are covered at the action tier.
+  test("reprocess-with-preview panel renders and previews (#946)", async ({
+    page,
+  }) => {
+    await page.goto("/import/908");
+    const reprocess = page.getByRole("button", { name: /Reprocess…/ });
+    await expect(reprocess).toBeVisible();
+    await settledClick(page, reprocess);
+    await expect(
+      page.getByRole("button", { name: /Reprocess anyway/ })
+    ).toBeVisible();
   });
 });

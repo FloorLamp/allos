@@ -10,6 +10,7 @@ export * from "./queries/metrics";
 export * from "./queries/sleep";
 export * from "./queries/training";
 export * from "./queries/presence";
+export * from "./queries/session-recap";
 export * from "./queries/zones";
 export * from "./queries/coaching";
 export * from "./queries/nutrition";
