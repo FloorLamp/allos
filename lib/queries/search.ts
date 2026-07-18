@@ -27,6 +27,11 @@ import {
   MEDICATIONS_HREF,
   type AppRoute,
 } from "../hrefs";
+import {
+  medicationHitActions,
+  appointmentHitActions,
+  biomarkerHitActions,
+} from "../hit-actions";
 
 // Global (Cmd-K) search fan-out. One entry point, searchAll(),
 // runs a small capped LIKE query per domain — each PROFILE-SCOPED (every
@@ -90,6 +95,8 @@ function biomarkerHits(profileId: number, like: string): SearchHit[] {
       [r.value, r.unit].filter(Boolean).join(" ").trim() || isoDate(r.date),
     href: biomarkerViewHref(r.title),
     date: isoDate(r.date),
+    // "Add result" — navigate to the add form prefilled with this analyte (#662).
+    actions: biomarkerHitActions(r.title),
   }));
 }
 
@@ -164,7 +171,7 @@ function activityHits(
 function supplementHits(profileId: number, like: string): SearchHit[] {
   const rows = db
     .prepare(
-      `SELECT id, name, active, kind
+      `SELECT id, name, active, kind, quantity_on_hand
          FROM intake_items
         WHERE profile_id = ?
           AND (name LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\')
@@ -176,6 +183,7 @@ function supplementHits(profileId: number, like: string): SearchHit[] {
     name: string;
     active: number;
     kind: SupplementKind;
+    quantity_on_hand: number | null;
   }[];
   return rows.map((r) => ({
     domain: "supplement",
@@ -184,6 +192,13 @@ function supplementHits(profileId: number, like: string): SearchHit[] {
     subtitle: r.active ? "Active" : "Inactive",
     href: intakeHref(r.kind),
     date: null,
+    // Contextual actions on a FOUND medication (#662): log a dose, and refill when
+    // it tracks supply. Supplements get none (issue-scoped to meds/appt/biomarker).
+    ...(r.kind === "medication"
+      ? {
+          actions: medicationHitActions(r.id, r.quantity_on_hand != null),
+        }
+      : {}),
   }));
 }
 
@@ -452,6 +467,8 @@ function appointmentHits(profileId: number, like: string): SearchHit[] {
       subtitle,
       href: "/encounters",
       date: isoDate(r.scheduled_at),
+      // "Mark complete" on a still-scheduled appointment (#662).
+      actions: appointmentHitActions(r.id, r.status),
     };
   });
 }

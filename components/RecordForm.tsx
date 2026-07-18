@@ -32,6 +32,7 @@ export default function RecordForm({
   categories = MEDICAL_CATEGORIES,
   defaultDate,
   defaultCategory,
+  defaultName,
 }: {
   action: (formData: FormData) => Promise<FormResult>;
   mode: "add" | "edit";
@@ -45,6 +46,10 @@ export default function RecordForm({
   // Add mode: the initial date (today in the profile's tz) and category.
   defaultDate?: string;
   defaultCategory?: string;
+  // Add mode: prefill the name field — the command palette's "Add result" hit
+  // action lands here name-carrying (#662). Also seeds the canonical name, which
+  // defaults to the name.
+  defaultName?: string;
 }) {
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
@@ -152,7 +157,7 @@ export default function RecordForm({
         <input
           id={`rec-${uid}-name`}
           name="name"
-          defaultValue={record?.name ?? ""}
+          defaultValue={record?.name ?? defaultName ?? ""}
           className="input"
           placeholder="e.g. LDL cholesterol"
           required

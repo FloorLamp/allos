@@ -22,7 +22,9 @@ import {
   protocolTimelineEvents,
   sortTimelineEvents,
   timeFromCreatedAt,
+  visitLinkedRefs,
   type TimelineEvent,
+  type VisitLinkedRow,
 } from "./timeline-format";
 import { fmtDistance, fmtTemp, fmtWeight } from "./units";
 import {
@@ -162,6 +164,54 @@ function activitySetSummaries(
     );
   }
   return out;
+}
+
+// Sibling records a single import document produced alongside a visit (#662): the
+// care-plan items, procedures, and medications sharing the visit's document_id.
+// Each SELECT is a LITERAL, profile-scoped string (never runtime-built), so the
+// source-scanning scoping guard can verify profile_id is present; the medication
+// gather also pins source='extracted' (a MANUAL med with a NULL document_id can't
+// leak in, and only imported meds carry a document_id anyway). Capped small — a
+// visit's linked-context list is a reference, not an exhaustive dump.
+const LINEAGE_CAP = 8;
+function visitLineageRows(
+  profileId: number,
+  documentId: number
+): VisitLinkedRow[] {
+  const procedures = db
+    .prepare(
+      `SELECT name FROM procedures
+        WHERE profile_id = ? AND document_id = ? AND TRIM(COALESCE(name,'')) != ''
+        ORDER BY date DESC, id DESC LIMIT ?`
+    )
+    .all(profileId, documentId, LINEAGE_CAP) as { name: string }[];
+  const carePlan = db
+    .prepare(
+      `SELECT description FROM care_plan_items
+        WHERE profile_id = ? AND document_id = ?
+          AND TRIM(COALESCE(description,'')) != ''
+        ORDER BY COALESCE(planned_date, created_at) DESC, id DESC LIMIT ?`
+    )
+    .all(profileId, documentId, LINEAGE_CAP) as { description: string }[];
+  const medications = db
+    .prepare(
+      `SELECT name FROM intake_items
+        WHERE profile_id = ? AND document_id = ? AND source = 'extracted'
+          AND TRIM(COALESCE(name,'')) != ''
+        ORDER BY id DESC LIMIT ?`
+    )
+    .all(profileId, documentId, LINEAGE_CAP) as { name: string }[];
+  return [
+    ...procedures.map((r) => ({ kind: "procedure" as const, label: r.name })),
+    ...carePlan.map((r) => ({
+      kind: "care-plan" as const,
+      label: r.description,
+    })),
+    ...medications.map((r) => ({
+      kind: "medication" as const,
+      label: r.name,
+    })),
+  ];
 }
 
 // Collect + merge + sort every category's events for the profile. Each per-table
@@ -661,7 +711,7 @@ function collectEvents(
   // the shared representative-id subquery (the profile_id bind for it comes first).
   const encounters = db
     .prepare(
-      `SELECT e.id, e.date, e.type, e.reason, e.diagnoses, e.notes,
+      `SELECT e.id, e.date, e.type, e.reason, e.diagnoses, e.notes, e.document_id,
               p.name AS provider_name, loc.name AS location_name
          FROM encounters e
          LEFT JOIN providers p ON p.id = e.provider_id
@@ -678,10 +728,20 @@ function collectEvents(
     reason: string | null;
     diagnoses: string | null;
     notes: string | null;
+    document_id: number | null;
     provider_name: string | null;
     location_name: string | null;
   }[];
   for (const e of encounters) {
+    // Linked context (#662): an imported visit deep-links the OTHER records its
+    // source document produced — the care-plan items / procedures / medications
+    // sharing this visit's document_id (import lineage the writer already stamped).
+    // Informational reference, never a causal claim; manual visits (no document)
+    // carry none. Cheap: only imported visits run the gather, all profile-scoped.
+    const linkedRefs =
+      e.document_id != null
+        ? visitLinkedRefs(visitLineageRows(profileId, e.document_id))
+        : [];
     pushLimited(
       events,
       {
@@ -697,6 +757,7 @@ function collectEvents(
         ),
         detail: e.diagnoses ?? e.notes,
         href: encounterHref(e.id),
+        ...(linkedRefs.length > 0 ? { linkedRefs } : {}),
       },
       options
     );

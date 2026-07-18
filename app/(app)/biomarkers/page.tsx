@@ -34,6 +34,9 @@ export default async function BiomarkersPage(props: {
     dir?: string;
     current?: string;
     p?: string;
+    // Prefill the add form's name from the command palette's "Add result" hit
+    // action (#662). Reached as /biomarkers?new=1&name=<canonical>.
+    name?: string;
   }>;
 }) {
   const searchParams = await props.searchParams;
@@ -153,6 +156,7 @@ export default async function BiomarkersPage(props: {
           categories={BIOMARKER_CATEGORIES}
           defaultDate={now}
           defaultCategory={active ?? "lab"}
+          defaultName={searchParams.name?.trim() || undefined}
         />
       </div>
     </div>

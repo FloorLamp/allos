@@ -220,6 +220,27 @@ function EventCard({
               ))}
             </div>
           )}
+          {/* Linked context (#662): non-causal deep-links to the OTHER records this
+              event's import document produced. Informational reference — labeled
+              "From this visit's document" so it never reads as a causal claim. */}
+          {event.linkedRefs && event.linkedRefs.length > 0 && (
+            <div className="mt-2" data-testid="timeline-linked-refs">
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                From this visit’s document
+              </p>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {event.linkedRefs.map((ref, index) => (
+                  <Link
+                    key={`${event.id}:ref:${index}:${ref.label}`}
+                    href={ref.href}
+                    className="rounded bg-white/60 px-1.5 py-0.5 text-xs text-brand-700 transition hover:underline dark:bg-black/10 dark:text-brand-300"
+                  >
+                    {ref.label}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </>

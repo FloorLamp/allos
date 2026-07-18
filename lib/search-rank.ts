@@ -24,6 +24,27 @@ export type SearchDomain =
   | "goal"
   | "page";
 
+// A per-hit contextual action (#662): act on a FOUND entity without first
+// navigating to its page — log a dose of this medication, refill it, complete
+// this appointment, add a result for this biomarker. A WRITE action (`log-dose`
+// /`refill`/`complete`) carries `entityId`, the row id the palette submits as
+// FormData `id` to the EXISTING gated Server Action (never a search-side bypass —
+// the auth gate stays in the action). A NAVIGATE action (`add-result`) carries an
+// `href` instead (the biomarker add form, name-prefilled). The applicable actions
+// per kind are built by the pure `lib/hit-actions.ts` matchers so the labels/gates
+// stay unit-tested and out of the DB fan-out.
+export type HitActionKind = "log-dose" | "refill" | "complete" | "add-result";
+
+export interface HitAction {
+  kind: HitActionKind;
+  label: string;
+  // The row id a write action targets (submitted as FormData `id`). 0 for a
+  // navigate-only action (add-result), which uses `href`.
+  entityId: number;
+  // Present only for navigate-style actions (add-result); the write kinds omit it.
+  href?: AppRoute;
+}
+
 export interface SearchHit {
   domain: SearchDomain;
   // Stable, domain-unique key — React key and dedup identity.
@@ -37,6 +58,9 @@ export interface SearchHit {
   // ISO date (YYYY-MM-DD) for the recency tiebreak; null for undated hits
   // (supplements, goals, pages), which sort after dated ones at the same tier.
   date: string | null;
+  // Per-hit contextual actions (#662), when the hit's kind offers any. Absent for
+  // navigation-only hits.
+  actions?: HitAction[];
 }
 
 export interface SearchGroup {
