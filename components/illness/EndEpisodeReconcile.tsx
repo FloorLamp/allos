@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
+import { useConfirm } from "@/components/ConfirmDialog";
 import ModalShell from "@/components/ModalShell";
 import type { EpisodeMedSuggestion } from "@/lib/episode-med-reconcile";
 import { endEpisodeWithMedsAction } from "@/app/(app)/medical/episodes/actions";
@@ -13,8 +14,8 @@ import { endEpisodeWithMedsAction } from "@/app/(app)/medical/episodes/actions";
 // episode has associated meds, ending opens a checklist: OTC/PRN meds used during the
 // illness are pre-checked ("Also stop?"), an Rx course started mid-illness is listed
 // UNCHECKED ("Course finished?"). Confirm ends the episode AND closes the selected
-// courses in one writeTx. When there are NO associated meds, the trigger ends directly
-// (no empty step). SUGGEST-ONLY (#560): skipping nags nothing; the app never silently
+// courses in one writeTx. When there are NO associated meds, the trigger uses the app's
+// standard resolve confirmation instead of an empty checklist. SUGGEST-ONLY (#560): skipping nags nothing; the app never silently
 // stops therapy — the server also intersects the selection with the derived set.
 //
 // `lastActiveDay` routes the backdated stale-nudge end (#859); absent → the feeling-better
@@ -30,7 +31,7 @@ export default function EndEpisodeReconcile({
   triggerClassName,
   triggerTestId,
   icon,
-  successMessage = "Marked feeling better.",
+  successMessage = "Episode ended.",
 }: {
   episodeId: number;
   profileId?: number;
@@ -50,6 +51,7 @@ export default function EndEpisodeReconcile({
   );
   const router = useRouter();
   const toast = useToast();
+  const confirm = useConfirm();
 
   function submit(medItemIds: number[]) {
     start(async () => {
@@ -74,9 +76,18 @@ export default function EndEpisodeReconcile({
     });
   }
 
-  function onTrigger() {
-    // Nothing to reconcile — end directly (no empty checklist step).
+  async function onTrigger() {
+    // Nothing to reconcile — use the app's standard confirmation instead of showing an
+    // empty checklist. Resolving an episode is still never an accidental one-click write.
     if (meds.length === 0) {
+      const ok = await confirm({
+        title: "End this episode?",
+        message: lastActiveDay
+          ? "This ends the episode after its last logged day. Any later entries will no longer be part of it."
+          : "This keeps today’s symptoms, temperatures, and doses in the episode, then ends it after today. You can reopen it for 7 days if symptoms return.",
+        confirmLabel: "End episode",
+      });
+      if (!ok) return;
       submit([]);
       return;
     }
@@ -102,7 +113,7 @@ export default function EndEpisodeReconcile({
         type="button"
         data-testid={triggerTestId}
         disabled={pending}
-        onClick={onTrigger}
+        onClick={() => void onTrigger()}
         className={triggerClassName}
       >
         {icon}
@@ -111,16 +122,16 @@ export default function EndEpisodeReconcile({
 
       {open && (
         <ModalShell
-          title="Ending this illness — also close these meds?"
+          title="End this episode?"
           onClose={() => {
             if (!pending) setOpen(false);
           }}
           className="w-full max-w-lg rounded-xl bg-white p-4 shadow-xl outline-none sm:p-5 dark:bg-ink-900"
         >
           <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-            Meds you started or used during this illness. Closing one moves it
-            to Past — you can restart it any time. Nothing is closed unless you
-            confirm.
+            {lastActiveDay
+              ? "This ends the episode after its last logged day. Select any meds you also finished."
+              : "Today’s symptoms, temperatures, and doses will stay in the episode. Select any meds you also finished."}
           </p>
           <ul
             className="mt-4 flex flex-col gap-2"
@@ -150,6 +161,9 @@ export default function EndEpisodeReconcile({
               </li>
             ))}
           </ul>
+          <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+            Selected meds move to Past. You can restart them later.
+          </p>
           <div className="mt-5 flex flex-wrap gap-2">
             <button
               type="button"
@@ -158,7 +172,7 @@ export default function EndEpisodeReconcile({
               onClick={() => submit([...selected])}
               className="btn disabled:opacity-50"
             >
-              {pending ? "Ending…" : "End illness"}
+              {pending ? "Ending…" : "End episode"}
             </button>
             <button
               type="button"

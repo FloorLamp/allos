@@ -36,11 +36,7 @@ export default function RecentLabsWidget({
 }) {
   return (
     <div className="card">
-      <WidgetHeader
-        title="Recent labs"
-        href="/biomarkers"
-        linkLabel="All labs"
-      />
+      <WidgetHeader title="Recent labs" href="/biomarkers" />
       {rows.length === 0 ? (
         <p className="text-sm text-slate-500 dark:text-slate-400">
           No recent lab results.

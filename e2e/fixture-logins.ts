@@ -280,6 +280,17 @@ export const ENDURANCE_PROFILE = "Endurance Plan (e2e)";
 export const E2E_LOGIN_FLABS = "e2e_flabs";
 export const FLAGGED_LAB_PROFILE = "Flagged Lab (e2e)";
 
+// A dedicated ADULT profile carrying ONE flagged intraocular-pressure reading — an
+// out-of-range right-eye IOP (#698 §6 IOP glaucoma follow-up adapter). The followup-iop
+// spec tracks a "Recheck IOP / glaucoma workup" follow-up from the biomarker detail
+// page, watches it surface legibly on Upcoming, then lands a later left-eye pressure and
+// resolves the loop (bilateral — one workup covers both eyes). Isolated + spec-owned for
+// the same reason as the flagged-lab profile: tracking/resolving MUTATES care_plan_items
+// + medical_records. The spec cleans its follow-up + later reading in beforeAll/afterAll;
+// the seeded source IOP is re-seeded each boot.
+export const E2E_LOGIN_IOP = "e2e_iop";
+export const FLAGGED_IOP_PROFILE = "Flagged IOP (e2e)";
+
 // A dedicated ADULT profile for the nutrition trio (#974/#975/#976). Carries a recent
 // weigh-in (a protein/fiber target to scale), this-week food-group servings across both
 // protein- and fiber-bearing groups (so the protein gauge's weekly marker + the fiber

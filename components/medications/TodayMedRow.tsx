@@ -6,35 +6,44 @@ import type { AppRoute } from "@/lib/hrefs";
 
 // The ONE Today-panel row primitive shared by scheduled check-off rows AND PRN
 // administration rows (issue #851 item 10). Both used to evolve different containers
-// (some bare, some inset with borders); now the kind is expressed by the CONTROL
-// (a checkbox pill vs a Log button + window chip), never by container styling. Every
-// row is an inset bordered box: icon + name on the left, the kind's control on the
-// right, with optional sublines (the PRN "N today · last …" / redose chip) and a
-// full-width footer (the retro-offset options). Carries `data-today-row` so a browser
-// test can pin that both kinds share the shape.
+// (some bare, some inset with borders); now rows in the same host share a variant and
+// the medication kind is expressed by the CONTROL (a checkbox pill vs a Log button +
+// window chip). Each row uses the inset variant by default: icon + name on the left, the kind's control
+// on the right, with optional sublines (the PRN "N today · last …" / redose chip) and
+// a full-width footer (the retro-offset options). The embedded variant is for rows
+// already inside a grouped card, where another rounded box would create a card within
+// a card. Carries `data-today-row` so browser tests can pin the shared structure.
 export default function TodayMedRow({
   name,
+  detail,
   href,
   control,
   sublines,
   footer,
   testId = "today-med-row",
   itemId,
+  variant = "inset",
 }: {
   name: string;
+  detail?: string | null;
   href?: AppRoute;
   control: React.ReactNode;
   sublines?: React.ReactNode;
   footer?: React.ReactNode;
   testId?: string;
   itemId?: number;
+  variant?: "inset" | "embedded";
 }) {
   return (
     <div
       data-testid={testId}
       data-today-row="1"
       data-item-id={itemId}
-      className="flex flex-col gap-2 rounded-lg border border-black/5 p-3 dark:border-white/5"
+      className={
+        variant === "embedded"
+          ? "flex flex-col gap-2 border-b border-black/5 py-3 last:border-b-0 dark:border-white/5"
+          : "flex flex-col gap-2 rounded-lg border border-black/5 p-3 dark:border-white/5"
+      }
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
@@ -42,13 +51,23 @@ export default function TodayMedRow({
           {href ? (
             <Link
               href={href}
-              className="min-w-0 truncate font-medium text-slate-800 hover:underline dark:text-slate-100"
+              className="flex min-w-0 items-baseline gap-1 text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
             >
-              {name}
+              <span className="truncate">{name}</span>
+              {detail ? (
+                <span className="shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400">
+                  · {detail}
+                </span>
+              ) : null}
             </Link>
           ) : (
-            <span className="min-w-0 truncate font-medium text-slate-800 dark:text-slate-100">
-              {name}
+            <span className="flex min-w-0 items-baseline gap-1 text-sm font-medium text-slate-800 dark:text-slate-100">
+              <span className="truncate">{name}</span>
+              {detail ? (
+                <span className="shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400">
+                  · {detail}
+                </span>
+              ) : null}
             </span>
           )}
         </div>

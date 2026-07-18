@@ -33,6 +33,7 @@ import {
   isProfileOrientationDismissed,
   getOnboardingState,
   getUnitPrefs,
+  getDisplayFormatPrefs,
   getTimezone,
   getEmergencyCardEnabled,
   getProfileHomeAssistant,
@@ -67,8 +68,7 @@ import {
   openEpisodeForProfile,
 } from "@/lib/illness-episode";
 import {
-  householdSickLine,
-  episodeHeadline,
+  episodeCollapsedStatus,
   orderIllnessCockpits,
   type AssembledEpisode,
 } from "@/lib/illness-episode-format";
@@ -97,6 +97,7 @@ import OnboardingResumeCard from "@/components/dashboard/OnboardingResumeCard";
 import OnboardingChecklist from "@/components/dashboard/OnboardingChecklist";
 import ProfileOrientationCard from "@/components/dashboard/ProfileOrientationCard";
 import { saveDashboardLayout, saveIllnessHeroState } from "./actions";
+import { episodeHref } from "@/lib/hrefs";
 
 export const dynamic = "force-dynamic";
 
@@ -117,6 +118,7 @@ export default async function Dashboard() {
   const restricted = isTrainingRestricted(profile.id);
   const on = today(profile.id);
   const units = getUnitPrefs(login.id);
+  const formatPrefs = getDisplayFormatPrefs(login.id);
 
   // Finished-window session recap card (#924): while derived workout presence reads
   // `finished`, surface the just-ended session's recap (self-view only). NEVER gated
@@ -262,30 +264,37 @@ export default async function Dashboard() {
     })),
   ]);
 
-  const heroCockpits: HeroCockpit[] = orderedCockpits.map((c) => ({
-    profileId: c.profileId,
-    profile: c.avatar,
-    displayName: nameFor(c.avatar),
-    isActive: c.isActive,
-    headline: episodeHeadline(c.episode),
-    compactLine: householdSickLine(
-      nameFor(c.avatar),
-      c.episode,
-      units.temperatureUnit,
-      (() => {
-        const sr = schoolReturnStatusFor(c.profileId, c.episode);
-        return sr ? schoolReturnCompactClause(sr) : null;
-      })()
-    ),
-    body: (
-      <IllnessCockpitBody
-        profileId={c.profileId}
-        loginId={login.id}
-        episode={c.episode}
-        crossProfile={!c.isActive}
-      />
-    ),
-  }));
+  const heroCockpits: HeroCockpit[] = orderedCockpits.map((c) => {
+    const schoolReturn = schoolReturnStatusFor(c.profileId, c.episode);
+    return {
+      profileId: c.profileId,
+      profile: c.avatar,
+      displayName: nameFor(c.avatar),
+      isActive: c.isActive,
+      status: episodeCollapsedStatus(c.episode, units.temperatureUnit, {
+        timeZone: getTimezone(c.profileId),
+        timeFormat: formatPrefs.timeFormat,
+      }),
+      feverFree: schoolReturn
+        ? {
+            label: schoolReturnCompactClause(schoolReturn).replace(
+              /^fever-free/,
+              "Fever-free"
+            ),
+            met: schoolReturn.met,
+          }
+        : null,
+      episodeHref: c.episode.id != null ? episodeHref(c.episode.id) : null,
+      body: (
+        <IllnessCockpitBody
+          profileId={c.profileId}
+          loginId={login.id}
+          episode={c.episode}
+          crossProfile={!c.isActive}
+        />
+      ),
+    };
+  });
   const heroUi = getIllnessHeroUi(profile.id);
 
   // weight-trend: the deduped one-source-per-day series (getBodyMetricDailySeries,
@@ -342,7 +351,7 @@ export default async function Dashboard() {
       );
       nextAppt = {
         title: soonest.title?.trim() || soonest.provider_name || "Appointment",
-        whenLabel: formatLongDate(d),
+        whenLabel: formatLongDate(d, formatPrefs),
         dueText: daysRemainingLabel(d, on) ?? d,
         detail: detailParts.length ? detailParts.join(" · ") : null,
       };
@@ -513,7 +522,11 @@ export default async function Dashboard() {
         return weeklyRecap ? <WeeklyRecapWidget recap={weeklyRecap} /> : null;
       case "quick-log-prn":
         return (
-          <QuickLogPrnWidget meds={prnMeds} tz={getTimezone(profile.id)} />
+          <QuickLogPrnWidget
+            meds={prnMeds}
+            tz={getTimezone(profile.id)}
+            timeFormat={formatPrefs.timeFormat}
+          />
         );
       case "active-protocols":
         return activeProtocols.length ? (
@@ -542,7 +555,11 @@ export default async function Dashboard() {
       (def.id !== "active-protocols" || activeProtocols.length > 0) &&
       // symptom-log is the inactive-state front door only: while the acting profile's
       // cockpit is in the illness hero (activeSick) the slot renders nothing (#858).
-      (def.id !== "symptom-log" || showFeelingSick),
+      (def.id !== "symptom-log" || showFeelingSick) &&
+      // The active illness cockpit now composes the SAME compact medication logger.
+      // Keep the standalone PRN widget for well days, but never duplicate it below the
+      // acting profile's open cockpit.
+      (def.id !== "quick-log-prn" || !activeSick),
     node:
       def.dataAware && emptyIds.has(def.id)
         ? emptyNode(def.id)
@@ -553,20 +570,25 @@ export default async function Dashboard() {
     <div>
       <PageHeader
         title="Dashboard"
-        subtitle={`Today is ${formatLongDate(on)} — here's your health at a glance.`}
+        subtitle={`Today is ${formatLongDate(on, formatPrefs)} — here's your health at a glance.`}
       />
-      {/* Illness hero (#858): pinned above the customizable grid AND above Needs
-          attention, so an open episode's cockpit is the FIRST content block (the 7am
-          feverish-kid case; the mobile acceptance requires it lead). Composes with the
-          Needs-attention hero below — both render; no other widget is reordered/dimmed. */}
-      <IllnessHero
-        cockpits={heroCockpits}
-        initialCollapsedActive={heroUi.collapsedActive}
-        initialOpenOtherId={heroUi.openOtherId}
-        saveState={saveIllnessHeroState}
-      />
-      <div className="mb-6">
-        <NeedsAttentionHero items={attention} today={on} />
+      {/* Illness hero (#858): pinned before the customizable grid. It leads above
+          Needs attention on smaller screens (the mobile 7am case); at XL the two
+          equally weighted cards share the row so neither stretches across the wide
+          dashboard canvas. With no open episode, Needs attention remains full-width. */}
+      <div
+        data-testid="dashboard-priority-row"
+        className={`mb-6 grid min-w-0 items-start gap-6 ${heroCockpits.length > 0 ? "xl:grid-cols-2" : ""}`}
+      >
+        <IllnessHero
+          cockpits={heroCockpits}
+          initialCollapsedActive={heroUi.collapsedActive}
+          initialOpenOtherId={heroUi.openOtherId}
+          saveState={saveIllnessHeroState}
+        />
+        <div className="min-w-0">
+          <NeedsAttentionHero items={attention} today={on} />
+        </div>
       </div>
       {showRecapCard && finishedRecap && (
         <SessionRecapCard recap={finishedRecap} unit={units.weightUnit} />

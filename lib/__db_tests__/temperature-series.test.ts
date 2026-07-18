@@ -146,4 +146,16 @@ describe("manual + Health Connect body temperature → one series", () => {
       .get(synced.id) as { value_num: number };
     expect(after.value_num).toBe(100.9); // hand-corrected value survives
   });
+
+  it("auto-detects a Celsius reading even when the posted selector is stale", () => {
+    const outcome = logTemperatureCore(profile, 37, "F", D, "22:00");
+    expect(outcome).toMatchObject({ kind: "logged", degF: 98.6 });
+    if (outcome.kind !== "logged") return;
+    const stored = db
+      .prepare(
+        "SELECT value_num, unit FROM medical_records WHERE id = ? AND profile_id = ?"
+      )
+      .get(outcome.id, profile) as { value_num: number; unit: string };
+    expect(stored).toEqual({ value_num: 98.6, unit: "degF" });
+  });
 });

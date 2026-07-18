@@ -6,6 +6,7 @@ import {
   applyPreferenceFilter,
   demoteExcludedGroups,
   isExcludedGroup,
+  preferenceSuggestionNote,
   DIETARY_PRESETS,
 } from "@/lib/dietary-preferences";
 import { foodGroupSlugs } from "@/lib/food-groups";
@@ -166,5 +167,48 @@ describe("demoteExcludedGroups (composes with slot frecency; keeps reachable)", 
   it("no exclusions is a passthrough", () => {
     const ranked = ["a", "b", "c"];
     expect(demoteExcludedGroups(ranked, new Set())).toEqual(ranked);
+  });
+});
+
+describe("preferenceSuggestionNote (#980 legibility)", () => {
+  it("an unset preference renders no note (no empty chrome)", () => {
+    expect(preferenceSuggestionNote([])).toBeNull();
+  });
+
+  it("a named preset names the pattern in the note", () => {
+    expect(preferenceSuggestionNote(expandPreset("vegetarian"))).toBe(
+      "showing vegetarian-friendly sources"
+    );
+    expect(preferenceSuggestionNote(expandPreset("vegan"))).toBe(
+      "showing vegan-friendly sources"
+    );
+    expect(preferenceSuggestionNote(expandPreset("pescatarian"))).toBe(
+      "showing pescatarian-friendly sources"
+    );
+    expect(preferenceSuggestionNote(expandPreset("keto"))).toBe(
+      "showing keto-friendly sources"
+    );
+    // The two presets that read awkwardly with "-friendly" state the exclusion instead.
+    expect(preferenceSuggestionNote(expandPreset("dairy_free"))).toBe(
+      "showing dairy-free sources"
+    );
+    expect(preferenceSuggestionNote(expandPreset("no_red_meat"))).toBe(
+      "showing sources without red meat"
+    );
+  });
+
+  it("a custom set (matching no named preset) gets the neutral note", () => {
+    // dairy + fruit matches no preset → custom.
+    expect(preferenceSuggestionNote(["dairy", "fruit"])).toBe(
+      "showing sources that fit your preferences"
+    );
+  });
+
+  it("normalizes the input (unknown slugs dropped, order-independent)", () => {
+    expect(preferenceSuggestionNote([...expandPreset("vegan")].reverse())).toBe(
+      "showing vegan-friendly sources"
+    );
+    // Only junk → nothing real excluded → no note.
+    expect(preferenceSuggestionNote(["not_a_group"])).toBeNull();
   });
 });

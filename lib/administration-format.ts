@@ -37,6 +37,17 @@ export function administrationDayLabel(
   return lastClock ? `${n} · last ${lastClock}` : n;
 }
 
+// When a neighboring redose line already owns the daily count ("1 of 4 today"),
+// keep this line focused on the other useful fact instead of repeating "1 today".
+// A missing clock is unusual, but the fallback remains honest and useful.
+export function administrationLastDoseLabel(
+  count: number,
+  lastClock: string
+): string {
+  if (count <= 0) return "None today";
+  return lastClock ? `Last dose ${lastClock}` : `${count} today`;
+}
+
 // Human summary of a PRN administration attempt, shared by the dashboard quick-log
 // action and the Telegram /dose tap so both answer identically. `name` names the med.
 export function administrationOutcomeText(

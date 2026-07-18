@@ -24,7 +24,7 @@ export default function CoachingWidget({ recs }: { recs: Recommendation[] }) {
 
   return (
     <div className="card">
-      <WidgetHeader title="Coaching" href="/training" linkLabel="Training" />
+      <WidgetHeader title="Coaching" href="/training" />
       <p className="-mt-2 mb-3 text-xs text-slate-500 dark:text-slate-400">
         Based on your routine &amp; recovery
       </p>

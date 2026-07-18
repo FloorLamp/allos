@@ -25,6 +25,8 @@ test("active profile's open episode renders a full cockpit at hero position, no 
   browser,
 }) => {
   const page = await loginAs(browser, creds(E2E_LOGIN_SICK_SELF));
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await page.reload();
 
   const hero = page.getByTestId("illness-hero");
   await expect(hero).toBeVisible();
@@ -35,6 +37,80 @@ test("active profile's open episode renders a full cockpit at hero position, no 
   await expect(own).toHaveCount(1);
   await expect(own).toHaveAttribute("data-expanded", "true");
   await expect(own.getByTestId("symptom-log-bar")).toBeVisible();
+  await expect(own.getByTestId("illness-cockpit-temperature")).toBeHidden();
+  await expect(own.getByTestId("illness-cockpit-fever-status")).toBeHidden();
+  await expect(
+    own.getByRole("heading", { name: "Symptoms & Temperature", level: 3 })
+  ).toBeVisible();
+  await expect(own.getByText("Daily symptoms", { exact: true })).toHaveCount(0);
+  await expect(
+    own.getByRole("heading", { name: "Meds", level: 3 })
+  ).toBeVisible();
+  await expect(
+    own.getByRole("link", { name: "View all meds" })
+  ).toHaveAttribute("href", "/medications");
+  await expect(own.getByTestId("illness-add-medication")).toBeVisible();
+  await expect(page.getByTestId("quick-log-prn")).toHaveCount(1);
+  const latest = own.getByTestId("episode-latest-readings");
+  await expect(latest.getByTestId("school-return-status")).toContainText(
+    /Fever-free \d+h\/\d+h/i
+  );
+  await expect(latest.getByText("Fever status", { exact: true })).toBeVisible();
+  await expect(latest.getByTestId("episode-last-temperature")).toContainText(
+    "101.3 °F"
+  );
+  await expect(
+    latest.getByTestId("episode-last-temperature-value")
+  ).toHaveClass(/text-rose-600/);
+  await expect(latest.getByTestId("episode-last-temperature")).toContainText(
+    /00:05 \((?:just now|\d+ (?:min|mins|hr|hrs) ago)\)/
+  );
+  await expect(latest.getByTestId("episode-last-dose")).toHaveText(
+    "Not logged"
+  );
+  await expect(latest.getByText("Last Meds", { exact: true })).toBeVisible();
+  const fullEpisode = own.getByTestId("illness-cockpit-full-episode");
+  await expect(fullEpisode).toHaveAccessibleName(
+    /^More details about .+'s illness episode$/
+  );
+  await expect(fullEpisode).toContainText("More details");
+  await expect(fullEpisode).toHaveClass(/min-h-10/);
+  await expect(fullEpisode).toHaveClass(/focus-visible:ring-2/);
+  await expect(fullEpisode).toHaveClass(/text-brand-600/);
+  await expect(fullEpisode).not.toHaveClass(/\bbadge\b/);
+  await expect(fullEpisode.locator("svg")).toHaveCount(0);
+  await expect(own.getByText("More details", { exact: true })).toHaveCount(1);
+  const headerToggle = own.locator('[data-testid^="illness-cockpit-toggle-"]');
+  const controlledBodyId = await headerToggle.getAttribute("aria-controls");
+  expect(controlledBodyId).toBeTruthy();
+  await expect(own.locator(`#${controlledBodyId}`)).toBeVisible();
+  await expect(headerToggle).toHaveClass(/min-h-10/);
+  await expect(headerToggle).toHaveClass(/flex-1/);
+  await expect(
+    headerToggle.locator('[data-testid^="illness-cockpit-name-"]')
+  ).toBeVisible();
+  await expect(headerToggle.getByRole("link")).toHaveCount(0);
+  const statusRow = headerToggle.getByTestId("illness-cockpit-status-row");
+  await expect(statusRow).toBeVisible();
+  const headerRow = own.getByTestId("illness-cockpit-header-row");
+  await expect(
+    headerRow.getByTestId("illness-cockpit-full-episode")
+  ).toBeVisible();
+  await expect(
+    headerRow.locator('[data-testid^="illness-cockpit-toggle-"]')
+  ).toHaveCount(1);
+  const chevron = headerToggle.getByTestId("illness-cockpit-chevron");
+  await headerToggle.hover();
+  await expect(chevron).not.toHaveCSS("filter", "none");
+
+  // The dashboard uses the same confirmation as the episode page before resolving.
+  await own.getByTestId("cockpit-end-episode").click();
+  const resolveDialog = page.getByRole("dialog", {
+    name: "End this episode?",
+  });
+  await expect(resolveDialog).toBeVisible();
+  await resolveDialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(own).toHaveAttribute("data-expanded", "true");
 
   // The symptom bar appears EXACTLY once (the widget slot renders nothing while the hero
   // is up) and the inactive-state "Feeling sick?" card is gone (#858 no-duplicate).
@@ -66,10 +142,62 @@ test("mobile: the illness hero is the first content block (the 7am case)", async
   await page.context().close();
 });
 
-test("the acting profile's cockpit collapses to its headline and the collapse persists", async ({
+test("below xl: the priority cards do not create horizontal page overflow", async ({
+  browser,
+}) => {
+  const page = await loginAs(browser, creds(E2E_LOGIN_SICK_SELF));
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await page.reload();
+
+  await expect(page.getByTestId("illness-hero")).toBeVisible();
+  await expect(page.getByTestId("needs-attention")).toBeVisible();
+  const dimensions = await page.evaluate(() => ({
+    clientWidth: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+  }));
+  expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
+
+  await page.context().close();
+});
+
+test("xl: illness and Needs attention share an equal-width priority row", async ({
+  browser,
+}) => {
+  const page = await loginAs(browser, creds(E2E_LOGIN_SICK_SELF));
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.reload();
+
+  const hero = page.getByTestId("illness-hero");
+  const needs = page.getByTestId("needs-attention");
+  await expect(hero).toBeVisible();
+  await expect(needs).toBeVisible();
+  const heroBox = await hero.boundingBox();
+  const needsBox = await needs.boundingBox();
+  expect(heroBox).not.toBeNull();
+  expect(needsBox).not.toBeNull();
+  expect(Math.abs(heroBox!.width - needsBox!.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(heroBox!.y - needsBox!.y)).toBeLessThanOrEqual(1);
+
+  const own = hero.locator('[data-active="true"]');
+  const toggle = own.locator('[data-testid^="illness-cockpit-toggle-"]');
+  await expect(own).toHaveAttribute("data-expanded", "true");
+  await expect(own.getByTestId("illness-cockpit-body")).toBeVisible();
+  await expect(toggle).toBeDisabled();
+  await expect(own.getByTestId("illness-cockpit-chevron")).toHaveCount(0);
+  await expect(own.getByTestId("illness-cockpit-temperature")).toBeHidden();
+  await expect(own.getByTestId("illness-cockpit-fever-status")).toBeHidden();
+  await expect(own.getByTestId("episode-last-temperature")).toBeVisible();
+  await expect(own.getByTestId("school-return-status")).toBeVisible();
+
+  await page.context().close();
+});
+
+test("the acting profile's cockpit collapses to its status and the collapse persists", async ({
   browser,
 }) => {
   const page = await loginAs(browser, creds(E2E_LOGIN_SICK_COLLAPSE));
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await page.reload();
   const ownFor = () =>
     page.getByTestId("illness-hero").locator('[data-active="true"]');
   const toggleFor = () =>
@@ -96,11 +224,35 @@ test("the acting profile's cockpit collapses to its headline and the collapse pe
 
   // Start from a known EXPANDED, persisted baseline (repeat-safe).
   await persistExpanded("true");
+  await expect(
+    ownFor().getByTestId("illness-cockpit-temperature")
+  ).toBeHidden();
+  await expect(
+    ownFor().getByTestId("illness-cockpit-fever-status")
+  ).toBeHidden();
 
-  // Collapse to the one-line headline — the body (symptom bar) disappears immediately...
-  await settledClick(page, toggleFor());
+  // Collapse to the compact status — the body (symptom bar) disappears immediately...
+  await settledClick(
+    page,
+    ownFor().locator('[data-testid^="illness-cockpit-name-"]')
+  );
   await expect(ownFor()).toHaveAttribute("data-expanded", "false");
   await expect(ownFor().getByTestId("symptom-log-bar")).toHaveCount(0);
+  await expect(ownFor().getByTestId("illness-cockpit-day")).toContainText(
+    /Day \d+/
+  );
+  const collapsedTemp = ownFor().getByTestId("illness-cockpit-temperature");
+  await expect(collapsedTemp).toContainText("101.3 °F at 00:05");
+  await expect(collapsedTemp).toContainText(
+    /\((?:just now|\d+ (?:min|mins|hr|hrs) ago)\)/
+  );
+  await expect(collapsedTemp.locator("span")).toHaveClass(/text-rose-600/);
+  await expect(
+    ownFor().getByTestId("illness-cockpit-fever-status")
+  ).toContainText(/Fever-free \d+h\/\d+h/i);
+  await expect(
+    ownFor().getByTestId("illness-cockpit-full-episode")
+  ).toBeVisible();
 
   // ...and the collapse PERSISTS across a reload (stored per profile).
   await persistExpanded("false");
@@ -165,7 +317,7 @@ test("multi-sick: a caregiver logs a temperature for one child cross-profile wit
   await bar.getByTestId("temp-quick-time").fill("12:00");
   await settledClick(page, bar.getByTestId("temp-quick-save"));
 
-  // The reading landed on Kid A (her headline reflects the new latest temp) and the
+  // The reading landed on Kid A (her compact status reflects the new latest temp) and the
   // acting profile never switched.
   await expect(
     kidA.locator('[data-testid^="illness-cockpit-line-"]')

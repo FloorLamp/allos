@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
@@ -13,7 +14,11 @@ import {
   getProteinLoggedGrams,
   getProteinQuickAddPreset,
 } from "@/lib/queries";
-import { getUserAge } from "@/lib/settings/profile-attrs";
+import {
+  getUserAge,
+  getExcludedFoodGroups,
+} from "@/lib/settings/profile-attrs";
+import { preferenceSuggestionNote } from "@/lib/dietary-preferences";
 import { isFoodLoggingRelevant } from "@/lib/life-stage";
 import { EmptyState } from "@/components/ui";
 import FoodLogBar from "./FoodLogBar";
@@ -22,6 +27,7 @@ import WeeklyHabits from "./WeeklyHabits";
 import { trackFoodHabit } from "./actions";
 import FoodWeeklyRollup from "@/components/FoodWeeklyRollup";
 import FoodSuggestions from "@/components/FoodSuggestions";
+import NutrientsCard from "@/components/NutrientsCard";
 import ProteinAdequacyCard from "@/components/ProteinAdequacyCard";
 import FiberAdequacyCard from "@/components/FiberAdequacyCard";
 
@@ -85,6 +91,13 @@ export default async function FoodTab() {
   // Catalog pre-ordered so the profile's staples lead within each tier (#591), now
   // slot-aware so the current window's staples lead (fish at lunch, #950).
   const groups = getFoodGroupLogOrder(profile.id, slot);
+  // Preference legibility (#980 item 4): a muted "showing <pattern>-friendly sources" note
+  // for the suggestions summary, so #975's demote/substitute is explicable on-surface.
+  // Null (no chrome) when no preference is set. The link at the log bar's foot below points
+  // at where you set them.
+  const preferenceNote = preferenceSuggestionNote(
+    getExcludedFoodGroups(profile.id)
+  );
 
   return (
     <div>
@@ -106,6 +119,14 @@ export default async function FoodTab() {
               <span className="ml-1.5 font-normal text-slate-500 dark:text-slate-400">
                 · {suggestions.length}
               </span>
+              {preferenceNote && (
+                <span
+                  data-testid="suggestions-preference-note"
+                  className="ml-1.5 font-normal italic text-slate-500 dark:text-slate-400"
+                >
+                  · {preferenceNote}
+                </span>
+              )}
             </span>
             <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
               Show
@@ -130,6 +151,8 @@ export default async function FoodTab() {
           lets the column shrink to the viewport so each card's own
           truncate/flex handling takes over. */}
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+        {/* Act: the one-tap log bar. On mobile this grid cell leads (bar → Today → This
+            week); on desktop it's the left column beside the sidebar. */}
         <div className="card min-w-0">
           <FoodLogBar
             today={date}
@@ -139,28 +162,62 @@ export default async function FoodTab() {
             groups={groups}
             slot={slot}
           />
+          {/* A quiet link to where dietary preferences are set (#980 item 4), so the
+              demote/substitute the suggestions summary notes is one tap from editable. */}
+          <div className="mt-4 border-t border-black/5 pt-3 dark:border-white/5">
+            <Link
+              href="/settings/profile#nutrition"
+              data-testid="food-preferences-link"
+              className="text-xs text-slate-500 transition hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+            >
+              Dietary preferences
+            </Link>
+          </div>
         </div>
 
+        {/* Sidebar regrouped by time horizon (#980 item 3): Today above This week. */}
         <div className="min-w-0 space-y-6 self-start">
-          {(proteinToday || proteinAdequacy) && (
-            <ProteinAdequacyCard
-              today={proteinToday}
-              adequacy={proteinAdequacy}
-            />
+          {/* Today: today's feedback — the nutrients card, pairing with the log bar's
+              #950 slot chip. */}
+          {(proteinToday || proteinAdequacy || fiberAdequacy) && (
+            <section
+              data-testid="nutrition-today-section"
+              className="space-y-3"
+            >
+              <h2 className="section-label">Today</h2>
+              <NutrientsCard>
+                {(proteinToday || proteinAdequacy) && (
+                  <ProteinAdequacyCard
+                    today={proteinToday}
+                    adequacy={proteinAdequacy}
+                    quickAdd={
+                      <ProteinQuickAdd
+                        today={date}
+                        initialGrams={proteinLoggedGrams}
+                        lastPreset={proteinPreset}
+                      />
+                    }
+                  />
+                )}
+                {fiberAdequacy && (
+                  <FiberAdequacyCard adequacy={fiberAdequacy} />
+                )}
+              </NutrientsCard>
+            </section>
           )}
-          {fiberAdequacy && <FiberAdequacyCard adequacy={fiberAdequacy} />}
-          <ProteinQuickAdd
-            today={date}
-            initialGrams={proteinLoggedGrams}
-            lastPreset={proteinPreset}
-          />
-          <WeeklyHabits profileId={profile.id} />
-          <div className="card">
-            <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-              This week
-            </h2>
-            <FoodWeeklyRollup rollup={rollup} />
-          </div>
+
+          {/* This week: weekly reflection — the rollup and the (trend-deepened, #954)
+              habits card. */}
+          <section data-testid="nutrition-week-section" className="space-y-3">
+            <h2 className="section-label">This week</h2>
+            <div className="card">
+              <h3 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+                Servings
+              </h3>
+              <FoodWeeklyRollup rollup={rollup} />
+            </div>
+            <WeeklyHabits profileId={profile.id} />
+          </section>
         </div>
       </div>
     </div>

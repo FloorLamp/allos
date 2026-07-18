@@ -62,16 +62,9 @@ export default function GoalsHabitsWidget({
     hasFoodContent && !hasTrainingContent
       ? ("/nutrition" as const)
       : ("/training?tab=goals" as const);
-  const headerLabel =
-    hasFoodContent && !hasTrainingContent ? "Nutrition" : "Training goals";
-
   return (
     <div className="card" data-testid="goals-habits">
-      <WidgetHeader
-        title="Goals and habits"
-        href={headerHref}
-        linkLabel={headerLabel}
-      />
+      <WidgetHeader title="Goals and habits" href={headerHref} />
 
       {goals.length === 0 && freqTargets.length === 0 ? (
         <p className="text-sm text-slate-500 dark:text-slate-400">

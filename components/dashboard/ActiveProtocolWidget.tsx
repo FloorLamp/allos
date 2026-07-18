@@ -29,11 +29,7 @@ export default function ActiveProtocolWidget({
 }) {
   return (
     <div className="card" data-testid="active-protocols">
-      <WidgetHeader
-        title="Active protocols"
-        href="/protocols"
-        linkLabel="Protocols"
-      />
+      <WidgetHeader title="Active protocols" href="/protocols" />
       <ul className="space-y-3">
         {protocols.map((p) => (
           <li

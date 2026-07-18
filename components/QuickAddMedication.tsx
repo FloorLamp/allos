@@ -29,7 +29,7 @@ import type { FormResult } from "@/lib/types";
 // the full MedicationForm posts and calls the SAME `addSupplement` action, so the row is
 // identical (proven in the action tier) — no new model, no migration. The full form
 // stays the long-tail path (Rx meds, schedules, prescriber). Renders on both the
-// Medications page and inline on the dashboard symptom card.
+// Medications page and inline in the shared illness medication workspace.
 const MED_CATALOG_NAMES = medicationCatalogNames();
 const MED_BRAND_NAMES = medicationBrandNames();
 const CHILD_MAX_AGE_MONTHS = 216; // 18 years — above this, no pediatric chart applies

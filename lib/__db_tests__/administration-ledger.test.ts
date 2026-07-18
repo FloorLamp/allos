@@ -340,6 +340,7 @@ describe("logAdministration — PRN multiples, per-dose supply, dedup, window gu
     const meds = getPrnMedicationsForQuickLog(profileId);
     const mine = meds.find((m) => m.id === itemId);
     expect(mine).toBeTruthy();
+    expect(mine!.amount).toBe("400 mg");
     expect(mine!.count).toBe(1);
     expect(mine!.lastGivenAt).toBeTruthy();
     const admins = getAdministrationsForItemOnDate(profileId, itemId, date);

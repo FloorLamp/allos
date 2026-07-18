@@ -9,7 +9,6 @@ import {
   episodeRowToDerived,
   resolveEpisodeAcrossProfiles,
 } from "@/lib/illness-episode-store";
-import { episodeDayNumber } from "@/lib/illness-episode-format";
 import EpisodeIdentityBanner from "@/components/illness/EpisodeIdentityBanner";
 import {
   getSymptomSeveritiesOnDate,
@@ -18,33 +17,43 @@ import {
   getCustomSymptomNames,
   getPrnMedicationsForQuickLog,
   getEpisodeMedReconciliation,
+  getPediatricFormContext,
 } from "@/lib/queries";
-import { getTimezone, getUnitPrefs } from "@/lib/settings";
-import QuickLogPrnWidget from "@/components/dashboard/QuickLogPrnWidget";
+import {
+  getDisplayFormatPrefs,
+  getTimezone,
+  getUnitPrefs,
+} from "@/lib/settings";
+import IllnessMedicationLogger from "@/components/illness/IllnessMedicationLogger";
 import { SYMPTOMS } from "@/lib/symptoms";
-import { shiftDateStr } from "@/lib/date";
 import { isRealIsoDate } from "@/lib/date";
+import { episodeAlternateLogDate } from "@/lib/illness-episode-format";
 import { getEpisodeInRangeEvents } from "@/lib/illness-episode-events";
 import { episodeComparisonFor } from "@/lib/illness-episode-compare";
 import EpisodeComparison from "@/components/illness/EpisodeComparison";
-import EpisodeSummary from "@/components/illness/EpisodeSummary";
+import EpisodeSummary, {
+  EpisodeSummaryFooter,
+} from "@/components/illness/EpisodeSummary";
 import EpisodeControls from "@/components/illness/EpisodeControls";
+import EpisodeLifecycleControl from "@/components/illness/EpisodeLifecycleControl";
 import EpisodeLogPanel from "@/components/illness/EpisodeLogPanel";
-import EpisodeEditor from "@/components/illness/EpisodeEditor";
-import EpisodeInRangeEvents from "@/components/illness/EpisodeInRangeEvents";
 import StaleEpisodeNudge from "@/components/illness/StaleEpisodeNudge";
 import SymptomPhotoStrip from "@/components/illness/SymptomPhotoStrip";
 import { getSymptomPhotosInRange } from "@/lib/symptom-photo-write";
 import { staleEpisodeNudgeFor } from "@/lib/stale-episode-data";
 import { schoolReturnStatusFor } from "@/lib/school-return-data";
-import { formatSchoolReturnLine } from "@/lib/school-return";
+import { schoolReturnCompactClause } from "@/lib/school-return";
+import CardGroup, { CardGroupSection } from "@/components/CardGroup";
+import PageContainer from "@/components/PageContainer";
+import { episodeReopenEligibility } from "@/lib/illness-episode-reopen";
+import { IconCamera } from "@tabler/icons-react";
 
 export const dynamic = "force-dynamic";
 
 // The illness-episode detail page (issues #801/#856/#879). Authed. UNLIKE the encounters
 // `[id]` precedent (which hard-scopes to the active profile, so guessing another id 404s),
 // this page resolves the episode across the viewer's ACCESSIBLE profiles (issue #879): a
-// caregiver following the household hero's "Full episode" link into another accessible
+// caregiver following the household hero's "More details" link into another accessible
 // member's illness reads it WITHOUT switching the acting profile. The grants boundary is
 // untouched — only accessible profiles are tried, so an ungranted member's guess still
 // 404s (resolveEpisodeAcrossProfiles keeps every query profile-scoped).
@@ -69,6 +78,7 @@ export default async function EpisodePage(props: {
     access: activeAccess,
   } = await requireSession();
   const temperatureUnit = getUnitPrefs(login.id).temperatureUnit;
+  const formatPrefs = getDisplayFormatPrefs(login.id);
 
   // Resolve across the viewer's accessible set — never trust a client-provided profile
   // id; the id in the URL is the EPISODE id, and the owning profile is derived from the
@@ -81,6 +91,7 @@ export default async function EpisodePage(props: {
   if (!resolved) notFound();
   const subject = accessible.find((p) => p.id === resolved.profileId)!;
   const profileId = resolved.profileId;
+  const timeZone = getTimezone(profileId);
   const row = resolved.row;
   const episode = episodeRowToDerived(row);
 
@@ -98,14 +109,8 @@ export default async function EpisodePage(props: {
 
   const assembled = assembleIllnessEpisode(profileId, episode);
   const promoted = assembled.conditions.some((c) => c.fromEpisode);
-  const bannerDay = episodeDayNumber(
-    assembled.start,
-    assembled.lastActiveDay ?? assembled.asOf
-  );
-  const bannerSubtitle = `${assembled.situation} · ${
-    assembled.ongoing ? "ongoing" : "resolved"
-  }${bannerDay != null ? ` · day ${bannerDay}` : ""}`;
-
+  const canReopen =
+    episodeReopenEligibility(row.ended_at, assembled.asOf).kind === "eligible";
   // Item 1: the SUGGEST-ONLY stale nudge, shown only when THIS episode is the current
   // open one AND it has gone quiet. Item 2: the school-return countdown, when a fever
   // has been logged in this (open) episode. Both format over the ONE gathers (#221).
@@ -138,10 +143,21 @@ export default async function EpisodePage(props: {
   // Item 6: the redose window + Log button — most useful for an OPEN episode (the 9pm
   // caregiver). Reuses the dashboard PRN widget over the SAME redoseWindowStatus (one
   // computation), never a second redose engine.
+  const episodeMedicationIds = new Set(
+    assembled.medications.map((medication) => medication.itemId)
+  );
   const prnMeds =
     assembled.ongoing && canWrite
-      ? getPrnMedicationsForQuickLog(profileId)
+      ? getPrnMedicationsForQuickLog(profileId).sort((a, b) => {
+          return (
+            Number(episodeMedicationIds.has(b.id)) -
+              Number(episodeMedicationIds.has(a.id)) ||
+            b.count - a.count ||
+            a.name.localeCompare(b.name)
+          );
+        })
       : [];
+  const canAddMedication = assembled.ongoing && canWrite && !crossProfile;
 
   // Episode-end medication reconciliation (issue #880): the episode-associated meds the
   // "Feeling better" / stale-end checklist offers to close. Only for an open episode a
@@ -165,103 +181,181 @@ export default async function EpisodePage(props: {
     : inRange
       ? logDay!
       : (assembled.lastActiveDay ?? assembled.asOf);
-  const yesterday = shiftDateStr(logDate, -1);
+  // Never offer a backfill day outside this episode's own window. In particular, an
+  // episode opened today must not save a "yesterday" symptom that then disappears from
+  // its summary because membership begins today. Unknown-start episodes remain open-
+  // ended toward the past, so yesterday is valid for them.
+  const altLogDate =
+    episodeAlternateLogDate(assembled.ongoing, rangeStart, logDate) ??
+    undefined;
+  const hasCareContext = showStaleNudge != null || comparison != null;
+  const hasUpdateWorkspace = canWrite;
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <EpisodeIdentityBanner
-        profile={subject}
-        subtitle={bannerSubtitle}
-        crossProfile={crossProfile}
-      />
-      <div className="mb-4 flex items-center justify-end">
-        <EpisodeControls
-          episodeId={episodeId}
-          ongoing={assembled.ongoing}
-          promoted={promoted}
-          canWrite={canWrite}
-          profileId={target}
-          medReconciliation={medReconciliation}
-        />
-      </div>
+    <PageContainer width="reading" className="mx-auto space-y-5">
       <EpisodeSummary
         episode={assembled}
         note={row.note}
         outcome={row.outcome}
-        generatedAt={new Date().toISOString()}
         temperatureUnit={temperatureUnit}
-      />
-      {schoolReturn && (
-        <p
-          data-testid="school-return-line"
-          className="mt-3 rounded-xl border border-black/10 bg-white/70 p-3 text-sm text-slate-600 dark:border-white/10 dark:bg-ink-900/50 dark:text-slate-300"
-        >
-          {formatSchoolReturnLine(schoolReturn, temperatureUnit)}
-        </p>
-      )}
-      {showStaleNudge && (
-        <StaleEpisodeNudge
-          episodeId={showStaleNudge.episodeId}
-          profileId={target}
-          lastActivityDate={showStaleNudge.lastActivityDate}
-          quietDays={showStaleNudge.quietDays}
-          medReconciliation={medReconciliation}
-        />
-      )}
-      {comparison && <EpisodeComparison comparison={comparison} />}
-      <EpisodeInRangeEvents events={inRangeEvents} />
-      {canWrite && (
-        <EpisodeLogPanel
-          episodeId={episodeId}
-          ongoing={assembled.ongoing}
-          date={logDate}
-          altDate={yesterday}
-          initial={getSymptomSeveritiesOnDate(profileId, logDate)}
-          initialAlt={getSymptomSeveritiesOnDate(profileId, yesterday)}
-          initialNotes={getSymptomNotesOnDate(profileId, logDate)}
-          initialAltNotes={getSymptomNotesOnDate(profileId, yesterday)}
-          symptoms={SYMPTOMS}
-          customNames={getCustomSymptomNames(profileId)}
-          rankedKeys={getSymptomLogOrder(profileId)}
-          temperatureUnit={temperatureUnit}
-          rangeStart={rangeStart}
-          rangeEnd={rangeEnd}
-          profileId={target}
-        />
-      )}
-      {prnMeds.length > 0 && (
-        <div className="mt-5">
-          <QuickLogPrnWidget
-            meds={prnMeds}
-            tz={getTimezone(profileId)}
-            profileId={target}
+        timeZone={timeZone}
+        formatPrefs={formatPrefs}
+        canEdit={canWrite}
+        linkLatestMedication
+        collapsePeakSymptoms
+        eventProfileId={target}
+        identity={
+          <EpisodeIdentityBanner
+            profile={subject}
+            crossProfile={crossProfile}
           />
-        </div>
+        }
+        careEvents={inRangeEvents}
+        feverFree={
+          schoolReturn
+            ? {
+                label: schoolReturnCompactClause(schoolReturn).replace(
+                  /^fever-free/,
+                  "Fever-free"
+                ),
+                met: schoolReturn.met,
+              }
+            : null
+        }
+        timelineActions={
+          <EpisodeControls
+            episodeId={episodeId}
+            ongoing={assembled.ongoing}
+            promoted={promoted}
+            canWrite={canWrite}
+            profileId={target}
+            editor={{
+              startedAt: row.started_at,
+              endedAt: row.ended_at,
+              note: row.note,
+              outcome: row.outcome,
+            }}
+          />
+        }
+        timelineTools={
+          hasUpdateWorkspace ? (
+            <>
+              {canWrite && (
+                <EpisodeLogPanel
+                  episodeId={episodeId}
+                  ongoing={assembled.ongoing}
+                  date={logDate}
+                  altDate={altLogDate}
+                  initial={getSymptomSeveritiesOnDate(profileId, logDate)}
+                  initialAlt={
+                    altLogDate
+                      ? getSymptomSeveritiesOnDate(profileId, altLogDate)
+                      : undefined
+                  }
+                  initialNotes={getSymptomNotesOnDate(profileId, logDate)}
+                  initialAltNotes={
+                    altLogDate
+                      ? getSymptomNotesOnDate(profileId, altLogDate)
+                      : undefined
+                  }
+                  symptoms={SYMPTOMS}
+                  customNames={getCustomSymptomNames(profileId)}
+                  rankedKeys={getSymptomLogOrder(profileId)}
+                  temperatureUnit={temperatureUnit}
+                  timeZone={timeZone}
+                  rangeStart={rangeStart}
+                  rangeEnd={rangeEnd}
+                  profileId={target}
+                  photoControl={
+                    <label
+                      htmlFor="episode-symptom-photo-input"
+                      className="btn-ghost btn-sm cursor-pointer"
+                      data-testid="episode-add-photo-shortcut"
+                    >
+                      <IconCamera className="h-3.5 w-3.5" stroke={1.75} />
+                      Add photo
+                    </label>
+                  }
+                />
+              )}
+
+              {(prnMeds.length > 0 || canAddMedication) && (
+                <div
+                  className={
+                    canWrite
+                      ? "mt-5 border-t border-black/5 pt-5 dark:border-white/5"
+                      : undefined
+                  }
+                >
+                  <IllnessMedicationLogger
+                    meds={prnMeds}
+                    tz={getTimezone(profileId)}
+                    profileId={target}
+                    pediatric={getPediatricFormContext(profileId)}
+                    canAdd={canAddMedication}
+                  />
+                </div>
+              )}
+            </>
+          ) : undefined
+        }
+        timelineAfterHistory={
+          photos.length > 0 || canWrite ? (
+            <>
+              <SymptomPhotoStrip
+                photos={photos.map((p) => ({
+                  id: p.id,
+                  date: p.date,
+                  symptom: p.symptom,
+                  caption: p.caption,
+                }))}
+                uploadDate={logDate}
+                canWrite={canWrite}
+                profileId={target}
+              />
+              {canWrite && (
+                <EpisodeLifecycleControl
+                  episodeId={episodeId}
+                  ongoing={assembled.ongoing}
+                  canReopen={canReopen}
+                  profileId={target}
+                  medReconciliation={medReconciliation}
+                />
+              )}
+            </>
+          ) : undefined
+        }
+      />
+
+      {hasCareContext && (
+        <CardGroup
+          title="Episode context"
+          description="Status reminders and comparison with past episodes."
+          data-testid="episode-care-context"
+        >
+          {showStaleNudge && (
+            <CardGroupSection>
+              <StaleEpisodeNudge
+                episodeId={showStaleNudge.episodeId}
+                profileId={target}
+                lastActivityDate={showStaleNudge.lastActivityDate}
+                quietDays={showStaleNudge.quietDays}
+                medReconciliation={medReconciliation}
+              />
+            </CardGroupSection>
+          )}
+          {comparison && (
+            <CardGroupSection>
+              <EpisodeComparison comparison={comparison} />
+            </CardGroupSection>
+          )}
+        </CardGroup>
       )}
-      {(photos.length > 0 || canWrite) && (
-        <SymptomPhotoStrip
-          photos={photos.map((p) => ({
-            id: p.id,
-            date: p.date,
-            symptom: p.symptom,
-            caption: p.caption,
-          }))}
-          uploadDate={logDate}
-          canWrite={canWrite}
-          profileId={target}
-        />
-      )}
-      {canWrite && (
-        <EpisodeEditor
-          episodeId={episodeId}
-          ongoing={assembled.ongoing}
-          startedAt={row.started_at}
-          endedAt={row.ended_at}
-          note={row.note}
-          outcome={row.outcome}
-          profileId={target}
-        />
-      )}
-    </div>
+
+      <EpisodeSummaryFooter
+        generatedAt={new Date().toISOString()}
+        formatPrefs={formatPrefs}
+      />
+    </PageContainer>
   );
 }

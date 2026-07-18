@@ -285,6 +285,13 @@ export function fiberAdequacySignalKey(): string {
   return `${FIBER_ADEQUACY_PREFIX}shortfall`;
 }
 
+// Whether a basis is a FLOOR (everything but a measured `tracked` total). The gauge and
+// the copy read "at least N g" for a floor and state the figure directly for a tracked
+// reading — the #767 floor discipline, one predicate so the surfaces can't disagree.
+export function fiberBasisIsFloor(basis: FiberBasis): boolean {
+  return basis !== "tracked";
+}
+
 // Round a fiber figure for display (whole grams).
 function g(n: number): string {
   return String(Math.round(n));

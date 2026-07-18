@@ -97,6 +97,17 @@ describe("parseLeadingNumeric (#542 chart recovery)", () => {
     expect(parseLeadingNumeric("")).toBeNull();
     expect(parseLeadingNumeric(null)).toBeNull();
   });
+
+  it("returns null for a bare Snellen visual-acuity fraction (#698 — no single magnitude)", () => {
+    // "20/20" would otherwise recover the numerator (20) and chart every acuity flat.
+    expect(parseLeadingNumeric("20/20")).toBeNull();
+    expect(parseLeadingNumeric("20/40")).toBeNull();
+    expect(parseLeadingNumeric("6/6")).toBeNull();
+    expect(parseLeadingNumeric("20 / 200")).toBeNull();
+    // A titer (":" not "/") still parses, and a unit-suffixed value is unaffected.
+    expect(parseLeadingNumeric("1:160")).toEqual({ value: 160, titer: true });
+    expect(parseLeadingNumeric("58 mIU/mL")).toEqual({ value: 58 });
+  });
 });
 
 describe("plottableReadingValue (#542 shared chart/badge value)", () => {

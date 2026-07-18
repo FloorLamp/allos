@@ -1314,6 +1314,100 @@ export const CURATED_LABS: Biomarker[] = [
     direction: "lower_better",
     note: "The ratio of LDL to HDL cholesterol is a summary marker of cardiovascular risk; lower is better. It is a calculated value with no units.",
   },
+
+  // ── Vision analytes (issue #698) ───────────────────────────────────────────
+  // Intraocular pressure (IOP) and visual acuity — the two most familiar eye
+  // numbers, previously absent from the catalog (an imported/extracted IOP landed
+  // uncataloged: no range, no flag, no trend). Both are PER-EYE (OD/OS), so each
+  // gets its own canonical entry (right/left) plus an "eye unspecified" generic —
+  // three per measure. The two eyes are the SAME assay but DIFFERENT subjects, so
+  // they are kept as SEPARATE identities (not collapsed into one family): a chart
+  // must show a left and a right pressure as two series and must never merge two
+  // equal same-day readings. The "one glaucoma workup covers both eyes" collapse
+  // lives only in the #700 follow-up adapter (lib/followup-iop), not in the global
+  // biomarker identity. INFORMATIONAL, NOT MEDICAL ADVICE.
+  //
+  // IOP reference band 10–21 mmHg: the long-standing population range; >21 mmHg (>2
+  // SD above the ~15.5 mmHg population mean) is the conventional ocular-hypertension
+  // threshold and a glaucoma risk factor — NOT a diagnosis (many with high IOP never
+  // develop glaucoma, and some develop it at normal pressure). direction "in_range"
+  // (both a high and, rarely, a very low pressure matter). retest is the low/
+  // dismissible tier (deliberately absent from RETEST_WORTHY) — not a lipid-panel
+  // monitor. Sources: American Academy of Ophthalmology, "Eye Pressure"
+  // (https://www.aao.org/eye-health/anatomy/eye-pressure); Glaucoma Research
+  // Foundation, "What Is Considered Normal Eye Pressure Range?"
+  // (https://glaucoma.org/articles/what-is-considered-normal-eye-pressure).
+  {
+    name: "Intraocular Pressure",
+    category: "vitals",
+    unit: "mmHg",
+    ref_low: 10,
+    ref_high: 21,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Fluid pressure inside the eye (tonometry), eye unspecified. Normal ~10–21 mmHg; above 21 is ocular hypertension, a glaucoma risk factor (not a diagnosis). AAO / Glaucoma Research Foundation.",
+  },
+  {
+    name: "Intraocular Pressure, Right Eye",
+    category: "vitals",
+    unit: "mmHg",
+    ref_low: 10,
+    ref_high: 21,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Intraocular pressure of the right eye (OD), by tonometry. Normal ~10–21 mmHg; above 21 is ocular hypertension. Kept as a separate series from the left eye. AAO / Glaucoma Research Foundation.",
+  },
+  {
+    name: "Intraocular Pressure, Left Eye",
+    category: "vitals",
+    unit: "mmHg",
+    ref_low: 10,
+    ref_high: 21,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Intraocular pressure of the left eye (OS), by tonometry. Normal ~10–21 mmHg; above 21 is ocular hypertension. Kept as a separate series from the right eye. AAO / Glaucoma Research Foundation.",
+  },
+  // Visual acuity — a QUALITATIVE Snellen-fraction reading ("20/20", "20/40", "6/6"),
+  // where the numerator is a constant (the test distance) so there is no single
+  // plottable magnitude. No numeric reference band, so nothing flags it and it
+  // renders as a dated timeline instead of a misleading flat chart. Per-eye + a
+  // generic entry. INFORMATIONAL, NOT MEDICAL ADVICE.
+  {
+    name: "Visual Acuity",
+    category: "vitals",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Clearness of vision, eye unspecified, as a Snellen fraction (e.g. 20/20; 6/6 metric). Qualitative — no numeric reference band, so it is trended as a dated timeline, never flagged.",
+  },
+  {
+    name: "Visual Acuity, Right Eye",
+    category: "vitals",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Visual acuity of the right eye (OD) as a Snellen fraction (e.g. 20/20). Qualitative — no numeric reference band; trended as a dated timeline, never flagged. Kept as a separate series from the left eye.",
+  },
+  {
+    name: "Visual Acuity, Left Eye",
+    category: "vitals",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Visual acuity of the left eye (OS) as a Snellen fraction (e.g. 20/20). Qualitative — no numeric reference band; trended as a dated timeline, never flagged. Kept as a separate series from the right eye.",
+  },
 ];
 
 // Curated per-analyte retest cadences, in DAYS, keyed by exact canonical name

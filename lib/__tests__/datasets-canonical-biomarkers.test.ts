@@ -33,8 +33,14 @@ import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 // gap entries (tumor markers, serology, urine chemistry, ratios) add flag-relevant
 // ranges, so the signature legitimately changes (the boot reconcile re-flags stored
 // records against the new bands).
+// Updated for #698: the vision analytes (intraocular pressure — the 10–21 mmHg band —
+// and visual acuity, qualitative/null bands) add new dataset rows, so the signature
+// legitimately changes and the boot reconcile re-flags stored IOP records against the
+// new band (an already-stored >21 mmHg reading picks up its "high" flag on next boot).
 const FLAG_SIGNATURE_GOLDEN =
-  "4e1bf71f4106a8533218b8e5cd29887915eb5cfb51bd8ab926737c99f4248cee";
+  // A SHA-256 content hash of the canonical dataset; a digit substring
+  // coincidentally forms a Luhn-valid NPI shape — provably synthetic.
+  "845b88844009788acecb671242ba574c5817a7b5f91e77de0e65ec4432963153"; // phi-scan-ok
 
 describe("canonical-biomarkers dataset on the curated-dataset framework", () => {
   it("passes the whole framework harness (citation + identity + refusal + no collisions)", () => {

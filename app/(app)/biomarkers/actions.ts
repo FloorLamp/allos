@@ -4,7 +4,10 @@ import { requireWriteAccess } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { db, writeTx, today } from "@/lib/db";
 import { isBiomarkerStarred, unstarBiomarkerFamily } from "@/lib/queries";
-import { trackLabFollowUpCore } from "@/lib/followup-write";
+import {
+  trackLabFollowUpCore,
+  trackIopFollowUpCore,
+} from "@/lib/followup-write";
 import { formError, formOk, type FormResult } from "@/lib/types";
 
 // Star / unstar a biomarker (toggles a starred_biomarkers row). Revalidates the
@@ -49,6 +52,37 @@ export async function trackLabFollowUp(
   if (!Number.isFinite(intervalDays) || intervalDays <= 0)
     return formError("Choose a follow-up interval.");
   const res = trackLabFollowUpCore(
+    profile.id,
+    recordId,
+    intervalDays,
+    today(profile.id)
+  );
+  if (res.kind === "invalid") return formError("Couldn't find that reading.");
+  revalidatePath("/biomarkers");
+  revalidatePath("/biomarkers/view", "page");
+  revalidatePath("/upcoming");
+  revalidatePath("/care-plan");
+  revalidatePath("/");
+  return formOk();
+}
+
+// Track a GLAUCOMA follow-up for a flagged intraocular-pressure reading (#698 §6 /
+// Part of #700). The IOP sibling of trackLabFollowUp: an elevated pressure becomes a
+// tracked, resolvable "Recheck IOP / glaucoma workup" on Upcoming instead of a bare red
+// dot. The write core is idempotent per profile (IOP is one bilateral question — a
+// single workup covers both eyes), so a second click, or the other eye, returns the
+// existing follow-up. Same shared resolve control + resolveFollowUp action as every
+// other adapter (dispatches on source_kind='iop').
+export async function trackIopFollowUp(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const recordId = Number(formData.get("record_id"));
+  const intervalDays = Number(formData.get("interval_days"));
+  if (!recordId) return formError("Couldn't find that reading.");
+  if (!Number.isFinite(intervalDays) || intervalDays <= 0)
+    return formError("Choose a follow-up interval.");
+  const res = trackIopFollowUpCore(
     profile.id,
     recordId,
     intervalDays,

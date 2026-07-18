@@ -9,6 +9,7 @@ import {
   fiberIntakeSummary,
   fiberAdequacyDetail,
   fiberAdequacySignalKey,
+  fiberBasisIsFloor,
   FIBER_ADEQUACY_PREFIX,
 } from "@/lib/fiber";
 
@@ -203,6 +204,15 @@ describe("assessFiberAdequacy", () => {
     expect(assessFiberAdequacy(null, target)).toBeNull();
     const i = fiberIntake({ dailyTracked: 20, dailyEstimated: 0 })!;
     expect(assessFiberAdequacy(i, null)).toBeNull();
+  });
+});
+
+describe("fiberBasisIsFloor (#980 gauge/copy predicate)", () => {
+  it("only a tracked measured total is not a floor", () => {
+    expect(fiberBasisIsFloor("tracked")).toBe(false);
+    expect(fiberBasisIsFloor("estimated")).toBe(true);
+    expect(fiberBasisIsFloor("combined")).toBe(true);
+    expect(fiberBasisIsFloor("supplemented")).toBe(true);
   });
 });
 

@@ -3,9 +3,11 @@ import {
   formatLongDate,
   formatMonthDay,
   formatClock,
+  formatClockValue,
   formatDateShape,
   formatRelativeDate,
   formatRelativeTime,
+  formatCompactRelativeTime,
   daysUntil,
   daysRemainingLabel,
   DEFAULT_FORMAT_PREFS,
@@ -93,6 +95,19 @@ describe("formatClock", () => {
   it("supports the compact lower-case meridiem style", () => {
     expect(formatClock("12h", 16, 2, "lower-nospace")).toBe("4:02pm");
     expect(formatClock("12h", 0, 0, "lower-nospace")).toBe("12:00am");
+  });
+});
+
+describe("formatClockValue", () => {
+  it("routes stored clock text through the selected display format", () => {
+    expect(formatClockValue("21:30", "24h")).toBe("21:30");
+    expect(formatClockValue("21:30:00", "12h")).toBe("9:30 PM");
+    expect(formatClockValue("4:02pm", "24h")).toBe("16:02");
+  });
+
+  it("preserves unknown text and honors the fallback", () => {
+    expect(formatClockValue("unknown", "12h")).toBe("unknown");
+    expect(formatClockValue(null, "24h", "—")).toBe("—");
   });
 });
 
@@ -185,6 +200,22 @@ describe("formatRelativeTime", () => {
 
   it("returns the input unchanged when unparseable", () => {
     expect(formatRelativeTime("nonsense", now)).toBe("nonsense");
+  });
+});
+
+describe("formatCompactRelativeTime", () => {
+  const now = new Date("2026-06-30T12:00:00Z");
+
+  it("shortens minute and hour units without abbreviating longer dates", () => {
+    expect(formatCompactRelativeTime("2026-06-30T11:58:00Z", now)).toBe(
+      "2 mins ago"
+    );
+    expect(formatCompactRelativeTime("2026-06-30T10:00:00Z", now)).toBe(
+      "2 hrs ago"
+    );
+    expect(formatCompactRelativeTime("2026-06-29T12:00:00Z", now)).toBe(
+      "Yesterday"
+    );
   });
 });
 

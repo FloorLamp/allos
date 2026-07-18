@@ -30,6 +30,7 @@ import {
   getCarePlanItems,
   getImagingStudies,
   getLabFollowUpRecords,
+  getIopFollowUpRecords,
 } from "./queries/clinical";
 import { isCarePlanItemOpen } from "./care-plan-upcoming";
 import {
@@ -47,6 +48,11 @@ import {
   LABS_FOLLOWUP_KIND,
   type LabFollowUpRecord,
 } from "./followup-labs";
+import {
+  iopFollowUpAdapter,
+  IOP_FOLLOWUP_KIND,
+  type IopFollowUpRecord,
+} from "./followup-iop";
 import { followUpSourceReason } from "./reasons";
 import { biomarkerViewHref } from "./hrefs";
 import type { UpcomingItem } from "./upcoming";
@@ -84,6 +90,20 @@ const LABS_DOMAIN: FollowUpDomain<LabFollowUpRecord> = {
   kind: LABS_FOLLOWUP_KIND,
   adapter: labsFollowUpAdapter,
   loadRecords: getLabFollowUpRecords,
+  recordId: (r) => r.id,
+  sourceIdOf: (c) => c.source_medical_record_id,
+  hrefFor: (r) => biomarkerViewHref(r.canonical_name, r.name),
+};
+
+// IOP glaucoma follow-up (#698 §6): an elevated intraocular pressure awaiting a
+// glaucoma workup. Same medical_records FK column as labs (an IOP reading IS a
+// biomarker), but its OWN adapter (glaucoma-workup copy, bilateral "one question")
+// and source_kind='iop'. The follow-up + its serial pressures live on the biomarker
+// detail page; the loadRecords pool is IOP-only, so any later reading is a repeat.
+const IOP_DOMAIN: FollowUpDomain<IopFollowUpRecord> = {
+  kind: IOP_FOLLOWUP_KIND,
+  adapter: iopFollowUpAdapter,
+  loadRecords: getIopFollowUpRecords,
   recordId: (r) => r.id,
   sourceIdOf: (c) => c.source_medical_record_id,
   hrefFor: (r) => biomarkerViewHref(r.canonical_name, r.name),
@@ -190,5 +210,6 @@ export function followUpItems(
   return [
     ...domainFollowUpItems(profileId, today, carePlan, IMAGING_DOMAIN),
     ...domainFollowUpItems(profileId, today, carePlan, LABS_DOMAIN),
+    ...domainFollowUpItems(profileId, today, carePlan, IOP_DOMAIN),
   ];
 }

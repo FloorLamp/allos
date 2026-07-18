@@ -1,19 +1,20 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   IconPrinter,
   IconShare,
   IconCopy,
   IconCheck,
-  IconStethoscope,
-  IconMoodCheck,
 } from "@tabler/icons-react";
 import ModalShell from "@/components/ModalShell";
+import { useConfirm } from "@/components/ConfirmDialog";
+import OverflowMenu, { MENU_ITEM } from "@/components/OverflowMenu";
+import EpisodeEditor from "@/components/illness/EpisodeEditor";
 import { NOTICE_TONE } from "@/components/Notice";
 import SubmitButton from "@/components/SubmitButton";
-import EndEpisodeReconcile from "@/components/illness/EndEpisodeReconcile";
-import type { EpisodeMedSuggestion } from "@/lib/episode-med-reconcile";
+import { useToast } from "@/components/Toast";
 import { SHARE_TTL_OPTIONS } from "@/lib/share-links";
 import {
   createEpisodeShareLinkAction,
@@ -21,7 +22,8 @@ import {
   unpromoteEpisodeConditionAction,
 } from "@/app/(app)/medical/episodes/actions";
 
-// Print + Share + End + Promote-to-condition controls for the episode detail page.
+// Print, share, and overflow controls for the episode detail page. Lifecycle actions
+// live after the logging workspace in EpisodeLifecycleControl.
 // Client-only so it can drive window.print() and the share modal; the mutations are
 // Server Actions gated by requireWriteAccess(). `print:hidden` keeps the whole bar off
 // the printed page. Everything keys on the STABLE episode id (#856), not a date anchor.
@@ -31,7 +33,7 @@ export default function EpisodeControls({
   promoted,
   canWrite,
   profileId,
-  medReconciliation,
+  editor,
 }: {
   episodeId: number;
   ongoing: boolean;
@@ -42,15 +44,24 @@ export default function EpisodeControls({
   // gates on THAT profile (requireProfileWriteAccess). Absent on the acting profile's own
   // page — the action then uses the active profile (requireWriteAccess).
   profileId?: number;
-  // The episode-associated meds for the end-episode reconciliation checklist (issue #880).
-  // Empty → "Feeling better" ends directly; non-empty → the checklist opens on end.
-  medReconciliation: EpisodeMedSuggestion[];
+  editor?: {
+    startedAt: string | null;
+    endedAt: string | null;
+    note: string | null;
+    outcome: string | null;
+  };
 }) {
-  const [open, setOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
   const [createdUrl, setCreatedUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [conditionBusy, setConditionBusy] = useState(false);
+  const confirm = useConfirm();
+  const router = useRouter();
+  const toast = useToast();
 
   async function onCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -66,11 +77,31 @@ export default function EpisodeControls({
     else setError(res.error);
   }
 
-  async function onPromote(fd: FormData) {
-    await promoteEpisodeToConditionAction(fd);
+  async function onPromote() {
+    const ok = await confirm({
+      title: "Add to medical conditions?",
+      message:
+        "This saves the illness in Conditions so it remains part of the medical history. Its dates and status will stay in sync with this episode.",
+      confirmLabel: "Add condition",
+    });
+    if (!ok) return;
+    setConditionBusy(true);
+    try {
+      const result = await promoteEpisodeToConditionAction(stateFormData());
+      if (!result.ok) toast(result.error);
+      else router.refresh();
+    } finally {
+      setConditionBusy(false);
+    }
   }
   async function onUnpromote(fd: FormData) {
     await unpromoteEpisodeConditionAction(fd);
+  }
+  function stateFormData() {
+    const fd = new FormData();
+    fd.set("episodeId", String(episodeId));
+    if (profileId != null) fd.set("profileId", String(profileId));
+    return fd;
   }
 
   async function copy() {
@@ -85,66 +116,90 @@ export default function EpisodeControls({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2 print:hidden">
+    <div
+      className="flex flex-wrap items-center gap-2 print:hidden"
+      data-testid="episode-controls"
+    >
       <button
         type="button"
-        className="btn-ghost"
+        className="btn-ghost h-9 w-9 p-0"
         onClick={() => window.print()}
+        aria-label="Print episode"
+        title="Print"
       >
         <IconPrinter className="h-4 w-4" stroke={1.75} />
-        Print
       </button>
 
       {canWrite && (
-        <button type="button" className="btn" onClick={() => setOpen(true)}>
+        <button
+          type="button"
+          className="btn-ghost h-9 w-9 p-0"
+          onClick={() => setShareOpen(true)}
+          aria-label="Share episode"
+          title="Share"
+        >
           <IconShare className="h-4 w-4" stroke={1.75} />
-          Share
         </button>
       )}
 
-      {/* Item 2: end the episode from the page ("Feeling better"). Routes through the
-          shared reconciliation (issue #880): when episode-associated meds exist, ending
-          opens the suggest-only checklist; otherwise it ends directly. */}
-      {canWrite && ongoing && (
-        <EndEpisodeReconcile
-          episodeId={episodeId}
-          profileId={profileId}
-          meds={medReconciliation}
-          triggerLabel="Feeling better"
-          triggerTestId="episode-end"
-          triggerClassName="btn-ghost"
-          icon={<IconMoodCheck className="h-4 w-4" stroke={1.75} />}
-        />
+      {canWrite && (
+        <OverflowMenu
+          label="More episode actions"
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
+        >
+          {({ close }) => (
+            <>
+              {editor && (
+                <button
+                  type="button"
+                  className={MENU_ITEM}
+                  data-testid="episode-edit-open"
+                  onClick={() => {
+                    close();
+                    setEditorOpen(true);
+                  }}
+                >
+                  Edit episode
+                </button>
+              )}
+              {promoted ? (
+                <form
+                  action={async (fd) => {
+                    await onUnpromote(fd);
+                    close();
+                  }}
+                >
+                  <input type="hidden" name="episodeId" value={episodeId} />
+                  {profileId != null && (
+                    <input type="hidden" name="profileId" value={profileId} />
+                  )}
+                  <SubmitButton className={MENU_ITEM} pendingLabel="Removing…">
+                    Remove condition
+                  </SubmitButton>
+                </form>
+              ) : (
+                <button
+                  type="button"
+                  className={MENU_ITEM}
+                  disabled={conditionBusy}
+                  onClick={() => {
+                    close();
+                    void onPromote();
+                  }}
+                >
+                  {conditionBusy ? "Adding…" : "Promote to condition"}
+                </button>
+              )}
+            </>
+          )}
+        </OverflowMenu>
       )}
 
-      {canWrite &&
-        (promoted ? (
-          <form action={onUnpromote}>
-            <input type="hidden" name="episodeId" value={episodeId} />
-            {profileId != null && (
-              <input type="hidden" name="profileId" value={profileId} />
-            )}
-            <SubmitButton className="btn-ghost" pendingLabel="Removing…">
-              Remove condition
-            </SubmitButton>
-          </form>
-        ) : (
-          <form action={onPromote}>
-            <input type="hidden" name="episodeId" value={episodeId} />
-            {profileId != null && (
-              <input type="hidden" name="profileId" value={profileId} />
-            )}
-            <SubmitButton className="btn-ghost" pendingLabel="Adding…">
-              <IconStethoscope className="h-4 w-4" stroke={1.75} />
-              Promote to condition
-            </SubmitButton>
-          </form>
-        ))}
-
-      {open && (
+      {shareOpen && (
         <ModalShell
           title="Share this illness summary"
-          onClose={() => setOpen(false)}
+          onClose={() => setShareOpen(false)}
         >
           <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
             Create a read-only link anyone can open without logging in — hand it
@@ -214,6 +269,19 @@ export default function EpisodeControls({
             </div>
           )}
         </ModalShell>
+      )}
+      {editor && (
+        <EpisodeEditor
+          episodeId={episodeId}
+          ongoing={ongoing}
+          startedAt={editor.startedAt}
+          endedAt={editor.endedAt}
+          note={editor.note}
+          outcome={editor.outcome}
+          profileId={profileId}
+          open={editorOpen}
+          onClose={() => setEditorOpen(false)}
+        />
       )}
     </div>
   );

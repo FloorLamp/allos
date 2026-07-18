@@ -93,6 +93,8 @@ import {
   ENDURANCE_PROFILE,
   E2E_LOGIN_FLABS,
   FLAGGED_LAB_PROFILE,
+  E2E_LOGIN_IOP,
+  FLAGGED_IOP_PROFILE,
 } from "./fixture-logins";
 import { adoptTemplate, activateRoutine } from "../lib/routines";
 
@@ -1627,6 +1629,19 @@ qualInsert.run(
   QUALITATIVE_MARKER
 );
 
+// #698 §4 — visual acuity is a Snellen fraction ("20/20"): qualitative-shaped, so it
+// must render as a dated timeline (not a flat numeric chart), and it must NOT flag as
+// abnormal (no numeric reference band). Two dated readings, value_num NULL, canonical
+// "Visual Acuity, Right Eye". parseLeadingNumeric now rejects the bare fraction, so
+// plottableReadingValue is null → the dated-timeline branch; reconcileFlags leaves it
+// unflagged (an unrecognized qualitative analyte defers).
+const ACUITY_MARKER = "Visual Acuity, Right Eye";
+db.prepare(
+  `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = ?`
+).run(PROFILE_ID, ACUITY_MARKER);
+qualInsert.run(PROFILE_ID, "2024-04-01", ACUITY_MARKER, "20/40", ACUITY_MARKER);
+qualInsert.run(PROFILE_ID, "2025-04-01", ACUITY_MARKER, "20/20", ACUITY_MARKER);
+
 // Reconcile so the extractor's blunt "abnormal" flags are corrected before the
 // specs read the page (the app's own boot reconcile is signature-gated and the seed
 // already stamped the current signature, so it would skip these post-seed inserts).
@@ -3065,4 +3080,27 @@ db.prepare(
 seedMemberLogin(E2E_LOGIN_FLABS, flaggedLabId, "write");
 console.log(
   `e2e: seeded flagged-lab follow-up fixture — profile ${flaggedLabId} (${FLAGGED_LAB_PROFILE}) (#700)`
+);
+
+// ── Flagged-IOP glaucoma follow-up fixture (#698 §6 IOP adapter) ──────────────
+// A dedicated adult profile carrying ONE flagged intraocular-pressure reading: an
+// out-of-range right-eye IOP (28 mmHg, ref 10–21) dated ~120 days ago. The followup-iop
+// spec tracks a 3-month "Recheck IOP / glaucoma workup" from the biomarker detail page
+// (planned date lands in the past → OVERDUE → surfaces on Upcoming immediately), asserts
+// the legible item, then adds a later LEFT-eye pressure and resolves the loop (bilateral).
+// Idempotent: delete-then-insert the source IOP on (profile, canonical); the spec owns +
+// cleans the follow-up care_plan_items + the later reading in beforeAll/afterAll.
+const flaggedIopId = fixtureProfileId(FLAGGED_IOP_PROFILE);
+const flaggedIopAnchor = today(flaggedIopId);
+db.prepare(
+  `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = 'Intraocular Pressure, Right Eye'`
+).run(flaggedIopId);
+db.prepare(
+  `INSERT INTO medical_records
+     (profile_id, date, category, name, value, value_num, unit, canonical_name, flag, source)
+   VALUES (?, ?, 'vitals', 'Intraocular Pressure, Right Eye', '28', 28, 'mmHg', 'Intraocular Pressure, Right Eye', 'high', 'manual')`
+).run(flaggedIopId, shiftDateStr(flaggedIopAnchor, -120));
+seedMemberLogin(E2E_LOGIN_IOP, flaggedIopId, "write");
+console.log(
+  `e2e: seeded flagged-IOP follow-up fixture — profile ${flaggedIopId} (${FLAGGED_IOP_PROFILE}) (#698)`
 );

@@ -4,7 +4,7 @@ import {
   ensureUnlogged,
   addFromPicker,
   raiseSeverity,
-  openLowerConfirm,
+  lowerSeverity,
   openNoteInput,
 } from "./symptom-helpers";
 
@@ -75,7 +75,7 @@ test("active-first: catalog collapses into the picker; logging via the picker ra
   await logAndConfirm(page, "nausea", 2);
 });
 
-test("explicit-lower: tapping a lower chip prompts an inline confirm; confirming lowers, cancel keeps the worst", async ({
+test("explicit-lower: tapping a labeled lower chip saves directly", async ({
   page,
 }) => {
   await page.goto("/");
@@ -88,16 +88,9 @@ test("explicit-lower: tapping a lower chip prompts an inline confirm; confirming
   await raiseSeverity(bar, "chills", 3, settle);
   const chills3 = bar.getByTestId("symptom-chills-sev-3");
 
-  // Tapping a LOWER chip prompts the confirm (never silently eats the tap). Cancel keeps
-  // the worst (still 3).
-  await openLowerConfirm(bar, "chills", 1);
-  await bar.getByTestId("symptom-chills-lower-confirm-no").click();
+  // A labeled lower chip is already an explicit, reversible edit; no second prompt.
+  await lowerSeverity(bar, "chills", 1, settle);
   await expect(bar.getByTestId("symptom-chills-lower-confirm")).toHaveCount(0);
-  await expect(chills3).toHaveAttribute("aria-pressed", "true");
-
-  // Confirming an explicit lower actually lowers it to 1.
-  await openLowerConfirm(bar, "chills", 1);
-  await bar.getByTestId("symptom-chills-lower-confirm-yes").click();
   await expect(bar.getByTestId("symptom-chills-sev-1")).toHaveAttribute(
     "aria-pressed",
     "true"
