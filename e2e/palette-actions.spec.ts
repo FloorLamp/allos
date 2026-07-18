@@ -71,9 +71,7 @@ test.describe("command palette — per-hit actions (#662)", () => {
       .filter({ hasText: "Sertraline" })
       .first();
     await expect(row).toBeVisible();
-    await expect(
-      row.getByTestId("palette-hit-action-log-dose")
-    ).toBeVisible();
+    await expect(row.getByTestId("palette-hit-action-log-dose")).toBeVisible();
     await expect(row.getByTestId("palette-hit-action-refill")).toBeVisible();
   });
 
