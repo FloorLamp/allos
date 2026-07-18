@@ -13,6 +13,26 @@
 import type { NotificationMessage } from "./types";
 import { formatRecapLine, type Recap } from "../session-recap";
 
+// The weekly-remaining line the recap message gains (issue #981 §3): the forward-looking
+// "N of M this week — one more to go" status, riding INSIDE the congratulatory finish
+// message where its tone is natural (which is what makes #981's silent reminder-skip —
+// rather than a softened second ping — correct: one moment, one message). Read from the
+// SAME weekly target rollup the reminder reads (#221) — `getFrequencyTargetProgress`,
+// which the reminder's behind-set (`routine.filter(t => !t.met)`) also derives — so the
+// two can't disagree about "how many left this week". Null when there are NO targets;
+// a calm all-met line when every target is met (celebratory-neutral, no cheer).
+export function weeklyRemainingLine(
+  routine: readonly { met: boolean }[]
+): string | null {
+  if (routine.length === 0) return null;
+  const remaining = routine.filter((t) => !t.met).length; // the reminder's behind-set
+  const total = routine.length;
+  const met = total - remaining;
+  if (remaining === 0) return "All weekly targets met — nice work.";
+  const tail = remaining === 1 ? "one more to go" : `${remaining} more to go`;
+  return `${met} of ${total} this week — ${tail}.`;
+}
+
 // The recap line for the nudge, or null when the toggle is off or there's nothing
 // worth recapping. A finish with no strength working sets (a pure-cardio/import
 // row) yields no recap line — the nudge then behaves exactly as it did pre-#924

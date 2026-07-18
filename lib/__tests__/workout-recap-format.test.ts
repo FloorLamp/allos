@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   composeFinishNudge,
   recapNudgeLine,
+  weeklyRemainingLine,
 } from "../notifications/workout-recap-format";
 import type { NotificationMessage } from "../notifications/types";
 import type { Recap } from "../session-recap";
@@ -83,5 +84,62 @@ describe("composeFinishNudge", () => {
 
   it("both absent ⇒ no send", () => {
     expect(composeFinishNudge(null, null)).toBeNull();
+  });
+});
+
+// A minimal RoutineTargetProgress-shaped fixture (only `met` matters to the line);
+// the reminder derives its behind-set the same way — routine.filter(t => !t.met).
+function target(met: boolean) {
+  return { met };
+}
+
+describe("weeklyRemainingLine (#981 §3)", () => {
+  it("behind ⇒ 'N of M this week — one more to go' (met of total)", () => {
+    // 3 targets, 2 met → 1 remaining.
+    expect(
+      weeklyRemainingLine([target(true), target(true), target(false)])
+    ).toBe("2 of 3 this week — one more to go.");
+  });
+
+  it("more than one remaining ⇒ pluralized tail", () => {
+    expect(
+      weeklyRemainingLine([target(true), target(false), target(false)])
+    ).toBe("1 of 3 this week — 2 more to go.");
+  });
+
+  it("all met ⇒ a calm celebratory-neutral line", () => {
+    expect(weeklyRemainingLine([target(true), target(true)])).toBe(
+      "All weekly targets met — nice work."
+    );
+  });
+
+  it("no targets ⇒ omitted (null)", () => {
+    expect(weeklyRemainingLine([])).toBeNull();
+  });
+
+  // #221 pin: the line's "remaining" count is EXACTLY the reminder's behind-set for
+  // the same rollup — the two read one computation and can't drift.
+  it("remaining equals the reminder's behind-set for the same fixture", () => {
+    for (const routine of [
+      [target(true), target(false), target(false)],
+      [target(true), target(true), target(true)],
+      [target(false)],
+      [] as { met: boolean }[],
+    ]) {
+      const behindCount = routine.filter((t) => !t.met).length; // the reminder's behind
+      const line = weeklyRemainingLine(routine);
+      if (routine.length === 0) {
+        expect(line).toBeNull();
+        continue;
+      }
+      if (behindCount === 0) {
+        expect(line).toBe("All weekly targets met — nice work.");
+        continue;
+      }
+      const met = routine.length - behindCount;
+      const tail =
+        behindCount === 1 ? "one more to go" : `${behindCount} more to go`;
+      expect(line).toBe(`${met} of ${routine.length} this week — ${tail}.`);
+    }
   });
 });

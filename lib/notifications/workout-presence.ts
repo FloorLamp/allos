@@ -32,7 +32,12 @@ import {
   getProfileHomeAssistant,
 } from "../settings";
 import { isKindEnabled } from "./home-assistant-core";
-import { composeFinishNudge, recapNudgeLine } from "./workout-recap-format";
+import {
+  composeFinishNudge,
+  recapNudgeLine,
+  weeklyRemainingLine,
+} from "./workout-recap-format";
+import { getFrequencyTargetProgress } from "../queries";
 import { collectWindowDoses } from "./supplements";
 import type { ReminderWindow, WindowDose } from "./supplement-format";
 import { PRIORITY_ORDER } from "../supplement-schedule";
@@ -166,7 +171,16 @@ export async function runPostWorkoutFinish(
       getProfileHomeAssistant(profileId).disabledKinds
     );
   const recapLine = recapNudgeLine(recap, recapEnabled);
-  const msg = composeFinishNudge(recapLine, doseMsg);
+  // §3 (#981): the recap line gains a forward-looking weekly-remaining status, from the
+  // SAME weekly rollup the reminder reads (#221). It rides WITH the recap line (the
+  // congratulatory moment) — omitted when there's no recap line to lead it, no targets,
+  // or the message is dose-only.
+  const weeklyLine = recapLine
+    ? weeklyRemainingLine(getFrequencyTargetProgress(profileId))
+    : null;
+  const leadLine =
+    recapLine && weeklyLine ? `${recapLine}\n${weeklyLine}` : recapLine;
+  const msg = composeFinishNudge(leadLine, doseMsg);
   if (!msg) return { failed: false }; // nothing to send — don't burn the one-shot
 
   const results = await dispatch(profileId, msg);

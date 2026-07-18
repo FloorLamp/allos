@@ -305,7 +305,7 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
     if (inf.weekdays.includes(weekday) && slotDue(inf.hour, hour))
       dueSlots.push({
         slot: "workout",
-        build: () => buildWorkoutTargetReminder(profile.id, coachingInput()),
+        build: () => buildWorkoutTargetReminder(profile.id, coachingInput(), now),
       });
   }
 
