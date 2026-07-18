@@ -106,6 +106,48 @@ describe("undoFoodServing", () => {
   });
 });
 
+describe("food_log_events ledger through the actions (#950)", () => {
+  function ledger(profileId: number) {
+    return db
+      .prepare(
+        `SELECT group_key, date, logged_at FROM food_log_events
+          WHERE profile_id = ? ORDER BY id`
+      )
+      .all(profileId) as {
+      group_key: string;
+      date: string;
+      logged_at: string;
+    }[];
+  }
+
+  it("logFoodServing appends a per-tap event alongside the counter", async () => {
+    const login = createLogin();
+    const profile = createProfile("event-logger", login.id);
+    actAs(login, profile);
+
+    await logFoodServing(fd({ group_key: "fatty_fish", date: DATE }));
+    await logFoodServing(fd({ group_key: "fatty_fish", date: DATE }));
+
+    const evs = ledger(profile.id);
+    expect(evs).toHaveLength(2);
+    expect(evs[0]).toMatchObject({ group_key: "fatty_fish", date: DATE });
+    // logged_at is a real ISO instant (tap time), not the food date.
+    expect(evs[0].logged_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("undoFoodServing pops the newest event", async () => {
+    const login = createLogin();
+    const profile = createProfile("event-undoer", login.id);
+    actAs(login, profile);
+
+    await logFoodServing(fd({ group_key: "berries", date: DATE }));
+    await logFoodServing(fd({ group_key: "berries", date: DATE }));
+    await undoFoodServing(fd({ group_key: "berries", date: DATE }));
+
+    expect(ledger(profile.id)).toHaveLength(1);
+  });
+});
+
 describe("trackFoodHabit / untrackFoodHabit (#580)", () => {
   it("tracks a food group as a food_group frequency target, updating cadence on re-track", async () => {
     const login = createLogin();

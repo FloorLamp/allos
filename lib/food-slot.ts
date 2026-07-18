@@ -46,12 +46,19 @@ export function foodSlotBoundaries(hours: {
   evening: number | null;
 }): FoodSlotBoundaries {
   const { morning, midday, evening } = hours;
-  if (morning != null && midday != null && evening != null) {
+  if (
+    morning != null &&
+    midday != null &&
+    evening != null &&
+    // Guard: the midpoint math only makes sense for an ORDERED schedule
+    // (morning ≤ midday ≤ evening). A degenerate configuration (midday earlier than
+    // morning) falls back to the fixed defaults rather than inverting the buckets.
+    morning <= midday &&
+    midday <= evening
+  ) {
     const b1 = Math.round((morning + midday) * 30);
     const b2 = Math.round((midday + evening) * 30);
-    // Guard monotonicity: a degenerate schedule (e.g. midday earlier than morning)
-    // must not produce inverted or coincident boundaries. Fall back to the defaults.
-    if (b1 > 0 && b1 < b2 && b2 < 24 * 60) return { midday: b1, evening: b2 };
+    if (b1 < b2 && b2 <= 24 * 60) return { midday: b1, evening: b2 };
   }
   return {
     midday: DEFAULT_MIDDAY_BOUNDARY_MIN,
