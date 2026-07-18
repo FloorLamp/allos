@@ -2380,20 +2380,34 @@ console.log(
 // A hand-edited imported body-metric row (the user-edit lock, #133) on the default
 // profile so the Trends → Body edit-lock badge + "Resume sync updates" affordance
 // (#659) has a row to render. Synthetic value; source is an integration so the row
-// is genuinely sync-owned (only those carry the lock). Idempotent by (date, source).
-// Date 2026-06-05 is deliberately a GAP in the weekly manual-weight cadence (rows
-// land on 06-02 and 06-09): a Withings weight sharing a day with a manual weight
-// would register as a same-day body-metric conflict (getBodyMetricConflicts) and
-// silently inflate the Data → Review badge, which import-dedup.spec asserts exactly.
+// is genuinely sync-owned (only those carry the lock).
+// The date MUST be a day with no other body-metric row: a Withings weight sharing a
+// day with a manual weight registers as a same-day body-metric conflict
+// (getBodyMetricConflicts) and silently inflates the Data → Review badge, which
+// import-dedup.spec asserts exactly. The old fixed date ('2026-06-05', chosen as a
+// gap when the cadence landed on 06-02/06-09) was a TIME BOMB: scripts/seed.ts's
+// weekly manual weigh-ins are TODAY-relative, so the cadence drifts one day per day
+// and periodically lands ON any fixed date (it hit 06-05 on 2026-07-18 and broke CI
+// suite-wide). Compute a guaranteed-free day instead, anchored ~6 weeks back like
+// the original. Idempotent: the fixture row is re-keyed by its synthetic signature
+// (source + exact weight), so prior seeds' copies are removed wherever they landed.
 db.prepare(
-  `DELETE FROM body_metrics WHERE profile_id = ? AND date = '2026-06-05' AND source = 'withings'`
+  `DELETE FROM body_metrics WHERE profile_id = ? AND source = 'withings' AND weight_kg = 77.7`
 ).run(PROFILE_ID);
+let editLockDate = shiftDateStr(today(PROFILE_ID), -43);
+while (
+  db
+    .prepare(`SELECT 1 FROM body_metrics WHERE profile_id = ? AND date = ?`)
+    .get(PROFILE_ID, editLockDate)
+) {
+  editLockDate = shiftDateStr(editLockDate, 1);
+}
 db.prepare(
   `INSERT INTO body_metrics (profile_id, date, weight_kg, source, edited)
-   VALUES (?, '2026-06-05', 77.7, 'withings', 1)`
-).run(PROFILE_ID);
+   VALUES (?, ?, 77.7, 'withings', 1)`
+).run(PROFILE_ID, editLockDate);
 console.log(
-  `e2e: seeded an edit-locked (hand-edited) Withings body-metric row on profile ${PROFILE_ID} for the edit-lock badge (#659)`
+  `e2e: seeded an edit-locked (hand-edited) Withings body-metric row on ${editLockDate} (computed cadence-free day) for the edit-lock badge (#659)`
 );
 
 // A permanently-OPEN weekly frequency target for the pace-tone spec (#780/#782): a
