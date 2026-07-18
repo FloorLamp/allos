@@ -217,3 +217,16 @@ export const NOTIF_PROFILE = "Notif Matrix (e2e)";
 // on profile 1. No birthdate → adult → the food logger + adequacy card render.
 export const E2E_LOGIN_PROTEIN = "e2e_protein";
 export const PROTEIN_QUICKADD_PROFILE = "Protein Quickadd (e2e)";
+
+// Dedicated ADULT + SENIOR profiles for the guided Fitness check spec (#834). Isolated
+// on purpose: the spec RECORDS tests (writing fitness_assessments, a VO2 medical_records
+// vital, and set rows on an assessment activity), which would perturb profile 1's seeded
+// fitness sessions / pillar coverage under --repeat-each. Both carry sex + birthdate so
+// the norms percentiles resolve; FITNESS also carries a PRIOR check so a re-record shows a
+// check-over-check delta. FITNESS_SENIOR is age 72 so /training?tab=fitness renders the
+// older-adult battery variant (arm curl, timed up-and-go, 4-stage balance — never a
+// Cooper run or dead hang).
+export const E2E_LOGIN_FITNESS = "e2e_fitness";
+export const FITNESS_PROFILE = "Fitness Check (e2e)";
+export const E2E_LOGIN_FITNESS_SENIOR = "e2e_fitness_senior";
+export const FITNESS_SENIOR_PROFILE = "Fitness Senior (e2e)";
