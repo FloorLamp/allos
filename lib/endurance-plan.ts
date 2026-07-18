@@ -58,6 +58,33 @@ export function isEnduranceDiscipline(s: string): s is EndurancePlanDiscipline {
   return (ENDURANCE_DISCIPLINES as readonly string[]).includes(s);
 }
 
+// Human label for a discipline (UI + notes).
+export function disciplineLabel(d: EndurancePlanDiscipline): string {
+  return d === "run" ? "Run" : d === "ride" ? "Ride" : "Swim";
+}
+
+// Map a logged cardio activity NAME onto an endurance discipline, or null when the
+// name doesn't belong to a distance discipline a plan tracks (HIIT, elliptical,
+// rowing-erg, etc.). Keyword-based, mirroring the app's activity classifier — a
+// plan's weekly-volume gather sums only the sessions of its discipline.
+const RUN_KEYWORDS = ["run", "jog", "sprint", "trail", "treadmill", "5k", "10k", "marathon"];
+const RIDE_KEYWORDS = ["cycl", "bike", "biking", "spin", "ride", "gravel", "gran fondo"];
+const SWIM_KEYWORDS = ["swim"];
+
+export function disciplineForActivityName(
+  name: string
+): EndurancePlanDiscipline | null {
+  const t = name.trim().toLowerCase();
+  if (!t) return null;
+  // Ride first: "ride" is a whole word so "stride"/"override" don't match; swim and
+  // run keywords are distinctive enough to test by substring.
+  if (RIDE_KEYWORDS.some((k) => (k === "ride" ? /\bride\b/.test(t) : t.includes(k))))
+    return "ride";
+  if (SWIM_KEYWORDS.some((k) => t.includes(k))) return "swim";
+  if (RUN_KEYWORDS.some((k) => t.includes(k))) return "run";
+  return null;
+}
+
 // ---- Cited constants ----
 
 // The ten-percent rule: max safe week-over-week volume increase.
@@ -312,6 +339,114 @@ function buildMessage(a: {
     return `${wks} to the event — the safe trajectory peaks around ${a.neededPeakVolumeKm} km/week (long session ~${a.projectedPeakLongKm} km) before a taper.`;
   }
   return `${wks} is short for a ${round1(a.targetDistanceKm)} km ${a.discipline} from ${a.currentWeeklyVolumeKm} km/week. Here's the SAFE trajectory anyway — it peaks around ${a.projectedPeakVolumeKm} km/week (long session ~${a.projectedPeakLongKm} km), short of the ~${a.neededPeakVolumeKm} km/week the goal implies. Consider a later date or a shorter distance.`;
+}
+
+// ---- Surfacing formatters (pure) ----
+
+// The dedupeKey namespace for the coaching-tier long-session finding (#448/#449). One
+// finding per active plan (one active plan per discipline), so the discipline is the key.
+export const ENDURANCE_PLAN_PREFIX = "endurance:";
+
+export function enduranceLongSessionKey(
+  discipline: EndurancePlanDiscipline
+): string {
+  return `${ENDURANCE_PLAN_PREFIX}long-session:${discipline}`;
+}
+
+// The recommendation model's plan-aware cardio ARM (#221): the calm one-line note that
+// rides the shared next-workout result alongside the injury/condition context. Pre-
+// computed by the gather so the engine passes it straight through (never a second engine).
+export interface EnduranceArm {
+  discipline: EndurancePlanDiscipline;
+  note: string;
+  longSessionDue: boolean;
+}
+
+// The Training-overview plan card model: the plan + its recomputed trajectory + this
+// week's ACTUAL logged progress. A pure formatter combines the (stored) plan, the
+// (derived) trajectory, and the (gathered) actuals — one computation every surface reads.
+export interface EndurancePlanCard {
+  plan: EndurancePlan;
+  trajectory: EnduranceTrajectory;
+  // trajectory.weeks[0] — THIS week's prescription (target volume + long session).
+  thisWeek: EnduranceWeek;
+  actualVolumeKm: number;
+  actualLongSessionKm: number;
+  sessionsThisWeek: number;
+  longSessionDone: boolean;
+  remainingKm: number;
+}
+
+function planTitle(plan: EndurancePlan): string {
+  return plan.eventName?.trim()
+    ? plan.eventName.trim()
+    : `${round1(plan.targetDistanceKm)} km ${disciplineLabel(plan.discipline)}`;
+}
+
+// Assemble the plan card from a plan, its trajectory, and this week's actuals.
+export function buildEndurancePlanCard(a: {
+  plan: EndurancePlan;
+  trajectory: EnduranceTrajectory;
+  actualVolumeKm: number;
+  actualLongSessionKm: number;
+  sessionsThisWeek: number;
+}): EndurancePlanCard {
+  const thisWeek = a.trajectory.weeks[0];
+  const longSessionDone =
+    thisWeek.longSessionKm > 0 &&
+    a.actualLongSessionKm + 0.05 >= thisWeek.longSessionKm;
+  const remainingKm = Math.max(
+    0,
+    round1(thisWeek.targetVolumeKm - a.actualVolumeKm)
+  );
+  return {
+    plan: a.plan,
+    trajectory: a.trajectory,
+    thisWeek,
+    actualVolumeKm: round1(a.actualVolumeKm),
+    actualLongSessionKm: round1(a.actualLongSessionKm),
+    sessionsThisWeek: a.sessionsThisWeek,
+    longSessionDone,
+    remainingKm,
+  };
+}
+
+// The plan-aware cardio arm note for the recommendation model (#221 example:
+// "plan week 6: ~28 km, long run ~12 km due — 2 sessions logged, 16 km to go").
+export function enduranceArmFor(card: EndurancePlanCard): EnduranceArm {
+  const { plan, thisWeek, trajectory } = card;
+  const label = disciplineLabel(plan.discipline);
+  const wk = trajectory.weeksToEvent;
+  const when =
+    wk <= 0 ? "event week" : `${wk} week${wk === 1 ? "" : "s"} to go`;
+  const longSessionDue = thisWeek.longSessionKm > 0 && !card.longSessionDone;
+  const longPart = thisWeek.longSessionKm > 0
+    ? card.longSessionDone
+      ? `long ${label.toLowerCase()} done`
+      : `long ${label.toLowerCase()} ~${thisWeek.longSessionKm} km due`
+    : "";
+  const progress = `${card.sessionsThisWeek} logged, ${card.remainingKm} km to go`;
+  const parts = [
+    `${planTitle(plan)} · ${when}: ~${thisWeek.targetVolumeKm} km this week`,
+    longPart,
+    progress,
+  ].filter(Boolean);
+  return {
+    discipline: plan.discipline,
+    note: parts.join(" — "),
+    longSessionDue,
+  };
+}
+
+// The coaching-tier long-session finding text (title/detail) for the plan card. Calm,
+// never a push (#449).
+export function enduranceLongSessionTitle(card: EndurancePlanCard): string {
+  return `Long ${disciplineLabel(card.plan.discipline).toLowerCase()} this week: ~${card.thisWeek.longSessionKm} km`;
+}
+
+export function enduranceLongSessionDetail(card: EndurancePlanCard): string {
+  const label = disciplineLabel(card.plan.discipline).toLowerCase();
+  return `Your ${planTitle(card.plan)} plan has a ~${card.thisWeek.longSessionKm} km long ${label} scheduled this week (${card.trajectory.weeksToEvent} weeks to go). ${card.trajectory.message}`;
 }
 
 // ---- Long-session detection (pure) ----
