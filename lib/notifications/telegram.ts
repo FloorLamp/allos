@@ -19,10 +19,15 @@
 // The boundary is enforced by lib/__tests__/telegram-chokepoint.test.ts, which fails
 // CI if any module other than this one imports the guarded primitives.
 
-import { getProfileTelegram, getTelegramBotConfig } from "../settings";
+import {
+  getProfileTelegram,
+  getProfileTelegramDisabledKinds,
+  getTelegramBotConfig,
+} from "../settings";
 import type { NotificationChannel, NotificationMessage } from "./types";
 import { prefixMessage } from "./types";
 import { prefixForProfile } from "./attribution";
+import { isKindEnabled } from "./home-assistant-core";
 import {
   editMessageReplyMarkupRaw,
   editMessageTextRaw,
@@ -57,6 +62,13 @@ export const telegramChannel: NotificationChannel = {
     return telegramEnabled && !!telegramBotToken && !!telegramChatId;
   },
   async send(profileId: number, msg: NotificationMessage) {
+    // Per-kind matrix gate (#928): a kind the profile turned off for the Telegram
+    // column is a deliberate non-send, not a failure — no throw, so dispatch()
+    // counts the channel healthy and never sets notify_last_error (mirrors the HA /
+    // push channels' disabled-kind no-op). `test` is always allowed. Enforced HERE,
+    // inside the chokepoint, so the gate can't be bypassed by a raw-primitive send.
+    if (!isKindEnabled(msg.kind, getProfileTelegramDisabledKinds(profileId)))
+      return;
     const { telegramChatId } = getProfileTelegram(profileId);
     await sendMessageRaw(telegramChatId, msg);
   },

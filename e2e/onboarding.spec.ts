@@ -358,7 +358,7 @@ test("a new profile reaches a useful dashboard through the metrics path", async 
     await expect(checklist).toContainText("Add emergency details");
     await expect(
       checklist.getByRole("link", { name: /Add emergency details/ })
-    ).toHaveAttribute("href", "/settings/profile#emergency-card");
+    ).toHaveAttribute("href", "/medical/background#emergency-card");
     await page.setViewportSize({ width: 1280, height: 720 });
     await expect(checklist).toBeHidden();
     await page.setViewportSize({ width: 390, height: 844 });

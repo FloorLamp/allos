@@ -72,6 +72,8 @@ import {
   REASON_MODEL_PROFILE,
   E2E_LOGIN_PRESENCE,
   PRESENCE_PROFILE,
+  E2E_LOGIN_NOTIF,
+  NOTIF_PROFILE,
 } from "./fixture-logins";
 import { adoptTemplate, activateRoutine } from "../lib/routines";
 
@@ -2653,6 +2655,14 @@ db.prepare(
    VALUES (?, date('now'), 'lab', 'LDL Cholesterol', 'LDL Cholesterol', '190', 'mg/dL', '<100', 'high')`
 ).run(reasonModelId);
 seedMemberLogin(E2E_LOGIN_REASON, reasonModelId, "read");
+
+// NOTIF_PROFILE (#928): a dedicated adult profile whose member OWNS every
+// notification mutation the Settings IA / matrix spec makes (enable Home Assistant,
+// toggle per-kind matrix cells, assert the safety all-channels-off warning). Kept
+// off every shared profile so it's repeat-safe under --repeat-each=3. No health
+// data needed — the matrix reads only notification settings.
+const notifProfileId = fixtureProfileId(NOTIF_PROFILE);
+seedMemberLogin(E2E_LOGIN_NOTIF, notifProfileId, "write");
 console.log(
   `e2e: seeded reason-model fixture — profile ${reasonModelId} (#656)`
 );

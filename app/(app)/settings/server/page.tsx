@@ -1,6 +1,5 @@
 import {
   getPublicUrl,
-  getTelegramBotConfig,
   getInstanceTimezone,
   getAiPrefs,
   getBackupSettings,
@@ -16,7 +15,6 @@ import {
   getOffsiteReadiness,
   readVerification,
 } from "@/lib/backup";
-import { getNotifyError } from "@/lib/notifications";
 import { aiEndpointInfo } from "@/lib/ai-client";
 import { formatBytes } from "@/lib/format-bytes";
 import { requireAdmin } from "@/lib/auth";
@@ -26,7 +24,6 @@ import AppVersion from "@/components/AppVersion";
 import SettingsTabs from "../SettingsTabs";
 import PublicUrlSettings from "../PublicUrlSettings";
 import AiSettings from "../AiSettings";
-import ServerTelegramSettings from "./ServerTelegramSettings";
 import InstanceTimezoneSettings from "./InstanceTimezoneSettings";
 import AgeGateSettings from "./AgeGateSettings";
 import BackupSettings from "./BackupSettings";
@@ -63,11 +60,6 @@ export default async function ServerSettingsPage() {
       />
       <SettingsTabs isAdmin />
       <PublicUrlSettings publicUrl={publicUrl} />
-      <ServerTelegramSettings
-        config={getTelegramBotConfig()}
-        publicUrl={publicUrl}
-        lastError={getNotifyError()}
-      />
       <AiSettings prefs={getAiPrefs()} endpoint={aiEndpointInfo()} />
       <InstanceTimezoneSettings timezone={getInstanceTimezone()} />
       <BackupSettings

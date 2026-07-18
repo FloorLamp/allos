@@ -171,7 +171,11 @@ export function isKindEnabled(
 
 // The kinds a household can toggle in the settings UI (excludes "test" and the
 // internal "other" catch-all). Paired with human labels for the checkbox grid.
-export const TOGGLEABLE_HA_KINDS: readonly {
+// Channel-neutral since #928: the SAME registry drives all three columns of the
+// notification matrix (Telegram, Web Push, Home Assistant), so a new kind (e.g.
+// #924's workout-recap) becomes one new row across every channel for free. The
+// historical `TOGGLEABLE_HA_KINDS` name is kept as an alias below for back-compat.
+export const TOGGLEABLE_NOTIFICATION_KINDS: readonly {
   kind: NotificationKind;
   label: string;
 }[] = [
@@ -186,6 +190,21 @@ export const TOGGLEABLE_HA_KINDS: readonly {
   { kind: "weekly-recap", label: "Weekly recap" },
   { kind: "milestone", label: "Milestones" },
 ];
+
+// Back-compat alias (the registry predates the matrix as an HA-only list).
+export const TOGGLEABLE_HA_KINDS = TOGGLEABLE_NOTIFICATION_KINDS;
+
+// The SAFETY-tier kinds (#928): scheduled-dose reminders, missed-dose escalation,
+// and the PRN redose notice. The matrix may disable them per channel, but WARNS —
+// never blocks — when one ends up off on EVERY configured channel, consistent with
+// the findings-bus principle that a safety signal is never silently suppressed.
+export const SAFETY_NOTIFICATION_KINDS: ReadonlySet<NotificationKind> = new Set(
+  ["dose", "escalation", "redose"]
+);
+
+export function isSafetyKind(kind: NotificationKind): boolean {
+  return SAFETY_NOTIFICATION_KINDS.has(kind);
+}
 
 // Validate a configured HA webhook URL: a well-formed absolute http(s) URL whose
 // path is exactly HA's built-in webhook trigger shape,

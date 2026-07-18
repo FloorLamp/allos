@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-// Food logging over Telegram — the per-profile opt-in toggle on Settings → Profile
+// Food logging over Telegram — the per-profile opt-in toggle on Settings → Notifications
 // (issue #682). Runs authenticated as admin acting as the seeded profile 1 (shared
 // storageState). BLAST RADIUS: it enables Telegram + the food toggle to exercise the
 // control, then RESETS the profile's telegram_enabled / telegram_chat_id /
@@ -13,7 +13,7 @@ test.describe("food logging over Telegram (issue #682)", () => {
   }) => {
     test.slow(); // local `next dev` compiles the route on first hit
 
-    await page.goto("/settings/profile");
+    await page.goto("/settings/notifications");
 
     const card = page.locator(".card", {
       has: page.getByRole("heading", { name: "Notifications (Telegram)" }),

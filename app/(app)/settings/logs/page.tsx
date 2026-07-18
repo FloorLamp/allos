@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import SettingsTabs from "../SettingsTabs";
+import AdminSubNav from "../AdminSubNav";
 import LogsStream from "./LogsStream";
 import UsageRollup from "./UsageRollup";
 
@@ -33,6 +34,7 @@ export default async function AiLogsPage() {
         subtitle="AI activity log — every extraction, suggestion, and insight call, with token usage. Streams live; also written to data/logs/ai.jsonl."
       />
       <SettingsTabs isAdmin />
+      <AdminSubNav />
       <UsageRollup rows={rollup} profileNames={profileNames} />
       <LogsStream initial={initial} />
     </div>

@@ -28,6 +28,7 @@ import {
   IconSettings,
   IconId,
   IconReportMedical,
+  IconClipboardHeart,
   IconEmergencyBed,
   IconChevronRight,
   IconPuzzle,
@@ -101,6 +102,13 @@ const RECORDS: Group = {
     { href: "/providers", label: "Providers", icon: IconStethoscope },
     { href: "/coverage", label: "Coverage gaps", icon: IconPuzzle },
     { href: "/profile", label: "Passport", icon: IconId },
+    // Person-level context (smoking history, risk factors, emergency card) that
+    // moved off Settings → Profile (#928 — data about the person, not config).
+    {
+      href: "/medical/background",
+      label: "Background",
+      icon: IconClipboardHeart,
+    },
     { href: "/emergency", label: "Emergency Card", icon: IconEmergencyBed },
   ],
 };

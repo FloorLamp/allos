@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-// Health risk factors on Settings → Profile (issue #517). Runs authenticated as
+// Health risk factors on Medical → Background (issue #517). Runs authenticated as
 // admin acting as the seeded profile 1 (shared storageState). Toggling a factor
 // changes only the retest/screening cadence + ranking on Upcoming; it creates no
 // new preventive items on its own, so this spec can't pollute the shared specs. It
@@ -12,7 +12,7 @@ test.describe("health risk factors (issue #517)", () => {
     // Local `next dev` compiles the route on first hit.
     test.slow();
 
-    await page.goto("/settings/profile");
+    await page.goto("/medical/background");
 
     const card = page.getByTestId("risk-factors");
     await expect(card).toBeVisible();
@@ -41,7 +41,7 @@ test.describe("health risk factors (issue #517)", () => {
     await expect(flu).toContainText("Healthcare worker");
 
     // Reset to off, leaving the shared fixture as we found it.
-    await page.goto("/settings/profile");
+    await page.goto("/medical/background");
     await page.getByTestId("risk-healthcare_worker").uncheck();
     await expect(page.getByLabel("Saved").first()).toBeVisible();
     await page.reload();

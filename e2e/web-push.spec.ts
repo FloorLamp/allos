@@ -66,7 +66,7 @@ test.describe("Web Push subscribe UI", () => {
       { endpoint: FAKE_ENDPOINT }
     );
 
-    await page.goto("/settings");
+    await page.goto("/settings/notifications");
 
     const card = page.getByTestId("push-settings");
     await expect(card).toBeVisible();

@@ -4,26 +4,44 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { AppRoute } from "@/lib/hrefs";
 
-// The tabs follow the three settings tiers: Preferences (login), Profile
-// (active profile), and Server (global) — plus Family, AI logs, Errors, and
-// Audit. Server, Family, AI logs, Errors, and Audit are admin-only (global
-// config, login/profile management, extraction content mixed across profiles,
-// unexpected server errors whose detail is PHI-adjacent, and the cross-profile
-// access trail), so they're appended only when isAdmin. The order interleaves
-// them where they belong: Server sits after the per-person tabs, before Family.
+// The settings tab strip (#928). Every top-level entry is CONFIGURATION except the
+// admin-only "Admin" drawer, which is explicitly the observability surface:
 //
-// Equipment used to be a tab here; it moved to its own top-level registry
-// (/equipment — issue #343), so it's no longer a settings surface.
-const BASE_TABS: { href: AppRoute; label: string }[] = [
+//   Preferences | Profile | Notifications          (everyone)
+//   + Family | Server | Admin                       (admins only)
+//
+// - Preferences (login tier): units, password, 2FA, sessions.
+// - Profile (profile tier): identity/localization, training zones, cadence.
+// - Notifications (composes all three tiers): the one place to manage where
+//   reminders arrive, plus the kind × channel matrix.
+// - Family / Server: admin config (login/profile management; instance-wide config).
+// - Admin: one strip entry, a second-level nav for AI logs | Errors | Audit. It's
+//   active for ANY of those routes; each page still calls requireAdmin().
+//
+// Server, Family, and Admin are admin-only (global config, login/profile management,
+// and the diagnostic viewers whose content is PHI-adjacent), so they're appended only
+// when isAdmin. Members never see them, and each admin page re-gates server-side.
+type Tab = {
+  href: AppRoute;
+  label: string;
+  // Extra pathnames that should light this tab (beyond an exact href match) — used
+  // by the Admin entry, which fronts three sub-pages.
+  alsoActiveOn?: readonly AppRoute[];
+};
+
+const BASE_TABS: Tab[] = [
   { href: "/settings", label: "Preferences" },
   { href: "/settings/profile", label: "Profile" },
+  { href: "/settings/notifications", label: "Notifications" },
 ];
-const ADMIN_TABS: { href: AppRoute; label: string }[] = [
+const ADMIN_TABS: Tab[] = [
   { href: "/settings/family", label: "Family" },
   { href: "/settings/server", label: "Server" },
-  { href: "/settings/logs", label: "AI logs" },
-  { href: "/settings/errors", label: "Errors" },
-  { href: "/settings/audit", label: "Audit" },
+  {
+    href: "/settings/logs",
+    label: "Admin",
+    alsoActiveOn: ["/settings/errors", "/settings/audit"],
+  },
 ];
 
 export default function SettingsTabs({
@@ -36,7 +54,9 @@ export default function SettingsTabs({
   return (
     <div className="mb-6 flex gap-1 overflow-x-auto border-b border-black/10 dark:border-white/10">
       {tabs.map((t) => {
-        const active = pathname === t.href;
+        const active =
+          pathname === t.href ||
+          (t.alsoActiveOn?.some((p) => pathname === p) ?? false);
         return (
           <Link
             key={t.href}

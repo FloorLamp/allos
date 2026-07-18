@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-// Quiet hours on Settings → Profile (issue #450). #440 hardcoded the waking window
+// Quiet hours on Settings → Notifications (issue #450). #440 hardcoded the waking window
 // (8→21) that gates non-urgent EPISODE nudges (refill, preventive, milestone); this
 // makes it a per-profile setting. Runs authenticated as admin acting as the seeded
 // profile 1 (shared storageState). BLAST RADIUS: it edits only the profile's own
@@ -14,7 +14,7 @@ test.describe("quiet hours (issue #450)", () => {
     // Local `next dev` compiles the route on first hit.
     test.slow();
 
-    await page.goto("/settings/profile");
+    await page.goto("/settings/notifications");
 
     const quiet = page.getByTestId("quiet-hours");
     await expect(quiet).toBeVisible();

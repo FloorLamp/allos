@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-// Structured smoking history on Settings → Profile (issue #83). Runs authenticated
+// Structured smoking history on Medical → Background (issue #83). Runs authenticated
 // as admin acting as the seeded profile 1 (shared storageState). Profile 1 is a
 // ~40-year-old, so setting a smoking status does NOT trip the age-gated lung / AAA
 // screening rules (50–80 / 65–75) — no Upcoming items are created, so this spec
@@ -13,7 +13,7 @@ test.describe("smoking history (issue #83)", () => {
     // Local `next dev` compiles the route on first hit.
     test.slow();
 
-    await page.goto("/settings/profile");
+    await page.goto("/medical/background");
 
     const card = page.getByTestId("smoking-history");
     await expect(card).toBeVisible();

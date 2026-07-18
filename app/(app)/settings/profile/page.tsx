@@ -4,59 +4,37 @@ import {
   getUserBirthdate,
   getUserAge,
   getUserFullName,
-  getProfileTelegram,
-  getProfileFoodTelegram,
-  getProfileHomeAssistant,
-  getTelegramBotConfig,
-  getNotifySchedule,
   getTimezone,
   getHomeLocation,
   getWeekStart,
   getWeekMode,
-  getEmergencyCardEnabled,
-  getBloodType,
-  getEmergencyContact,
-  getSmokingHistory,
-  getRiskAttributes,
   getMaxHrOverride,
   getZone2WeeklyTargetMin,
   getRecommendationCadence,
 } from "@/lib/settings";
-import { inferWorkoutSchedule } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
 import { isTrainingRestricted } from "@/lib/age-gate";
-import { isFoodLoggingRelevant } from "@/lib/life-stage";
 import { estimateMaxHr } from "@/lib/training-zones";
 import { PageHeader } from "@/components/ui";
 import SettingsTabs from "../SettingsTabs";
+import ProfileAnchorNav, { type AnchorSection } from "./ProfileAnchorNav";
 import ProfileForm from "./ProfileForm";
 import ProfilePhotoCard from "./ProfilePhotoCard";
-import ProfileNotificationSettings from "./ProfileNotificationSettings";
-import HomeAssistantNotificationSettings from "./HomeAssistantNotificationSettings";
-import EmergencyCardSettings from "./EmergencyCardSettings";
-import SmokingHistoryForm from "./SmokingHistoryForm";
-import RiskFactorsForm from "./RiskFactorsForm";
 import TrainingZonesForm from "./TrainingZonesForm";
 import RecommendationCadenceForm from "./RecommendationCadenceForm";
 
 export const dynamic = "force-dynamic";
 
-const WD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-function workoutScheduleSummary(profileId: number): string {
-  const { weekdays, hour } = inferWorkoutSchedule(profileId);
-  const at = `${String(hour).padStart(2, "0")}:00`;
-  if (weekdays.length === 7) return `daily ~${at}`;
-  if (weekdays.length === 0) return `~${at}`;
-  return `${weekdays.map((d) => WD[d]).join(", ")} ~${at}`;
-}
-
+// The Profile tab (#928): the tracked person's identity/localization, training
+// zones, and coaching cadence — grouped into titled <section> blocks with a sticky
+// anchor jump-nav (decided over sub-tabs). The health-data cards (smoking / risk /
+// emergency) moved to /medical/background, and both notification cards moved to the
+// Notifications tab, so this page is a handful of cards in 2–3 sections.
 export default async function ProfileSettingsPage() {
   const { login, profile } = await requireSession();
   const isAdmin = login.role === "admin";
-  // Demo mode (#181): the read-only demo member can't configure Telegram/send-test
-  // (no bot is configured anyway) or change the profile photo — trim those.
+  // Demo mode (#181): the read-only demo member can't change the profile photo.
   const demoRestricted = isDemoRestricted(isDemoMode(), login.role);
   const fullName = getUserFullName(profile.id);
   const sex = getUserSex(profile.id);
@@ -67,8 +45,17 @@ export default async function ProfileSettingsPage() {
   const weekStart = getWeekStart(profile.id);
   const weekMode = getWeekMode(profile.id);
   const home = getHomeLocation(profile.id);
-  const telegram = getProfileTelegram(profile.id);
-  const botConfigured = getTelegramBotConfig().telegramBotToken !== "";
+  const trainingShown = !isTrainingRestricted(profile.id);
+
+  // The anchor nav must list only the sections actually rendered — Training is
+  // dropped for an age-restricted profile, so its anchor is dropped too.
+  const sections: AnchorSection[] = [
+    { id: "identity", label: "Identity & localization" },
+    ...(trainingShown
+      ? [{ id: "training", label: "Training" } as AnchorSection]
+      : []),
+    { id: "coaching", label: "Coaching" },
+  ];
 
   return (
     <div>
@@ -77,52 +64,46 @@ export default async function ProfileSettingsPage() {
         subtitle={`${profile.name}’s profile — these settings apply to the person you’re currently viewing. Switch profiles in the header to edit someone else.`}
       />
       <SettingsTabs isAdmin={isAdmin} />
-      <ProfilePhotoCard profile={profile} disabled={demoRestricted} />
-      <ProfileForm
-        fullName={fullName}
-        sex={sex}
-        reproductiveStatus={reproductiveStatus}
-        birthdate={birthdate}
-        age={age}
-        timezone={timezone}
-        weekStart={weekStart}
-        weekMode={weekMode}
-        homeLat={home?.lat ?? null}
-        homeLng={home?.lng ?? null}
-      />
-      {!isTrainingRestricted(profile.id) && (
-        <TrainingZonesForm
-          maxHrOverride={getMaxHrOverride(profile.id)}
-          zone2Target={getZone2WeeklyTargetMin(profile.id)}
-          estimatedMaxHr={age != null ? estimateMaxHr(age) : null}
-        />
-      )}
-      <SmokingHistoryForm history={getSmokingHistory(profile.id)} />
-      <RiskFactorsForm attributes={getRiskAttributes(profile.id)} />
-      <RecommendationCadenceForm
-        cadence={getRecommendationCadence(profile.id)}
-        isAdmin={isAdmin}
-      />
-      {!demoRestricted && (
-        <>
-          <ProfileNotificationSettings
-            telegram={telegram}
-            botConfigured={botConfigured}
-            schedule={getNotifySchedule(profile.id)}
-            workoutSummary={workoutScheduleSummary(profile.id)}
-            foodTelegramEnabled={getProfileFoodTelegram(profile.id)}
-            foodLoggingRelevant={isFoodLoggingRelevant(getUserAge(profile.id))}
-          />
-          <HomeAssistantNotificationSettings
-            config={getProfileHomeAssistant(profile.id)}
-          />
-        </>
-      )}
-      <EmergencyCardSettings
-        enabled={getEmergencyCardEnabled(profile.id)}
-        bloodType={getBloodType(profile.id)}
-        contact={getEmergencyContact(profile.id)}
-      />
+      <div className="gap-8 sm:grid sm:grid-cols-[12rem_1fr]">
+        <div className="sm:sticky sm:top-4 sm:self-start">
+          <ProfileAnchorNav sections={sections} />
+        </div>
+        <div className="space-y-6">
+          <section id="identity" className="scroll-mt-4 space-y-6">
+            <h2 className="section-label">Identity &amp; localization</h2>
+            <ProfilePhotoCard profile={profile} disabled={demoRestricted} />
+            <ProfileForm
+              fullName={fullName}
+              sex={sex}
+              reproductiveStatus={reproductiveStatus}
+              birthdate={birthdate}
+              age={age}
+              timezone={timezone}
+              weekStart={weekStart}
+              weekMode={weekMode}
+              homeLat={home?.lat ?? null}
+              homeLng={home?.lng ?? null}
+            />
+          </section>
+          {trainingShown && (
+            <section id="training" className="scroll-mt-4 space-y-6">
+              <h2 className="section-label">Training</h2>
+              <TrainingZonesForm
+                maxHrOverride={getMaxHrOverride(profile.id)}
+                zone2Target={getZone2WeeklyTargetMin(profile.id)}
+                estimatedMaxHr={age != null ? estimateMaxHr(age) : null}
+              />
+            </section>
+          )}
+          <section id="coaching" className="scroll-mt-4 space-y-6">
+            <h2 className="section-label">Coaching</h2>
+            <RecommendationCadenceForm
+              cadence={getRecommendationCadence(profile.id)}
+              isAdmin={isAdmin}
+            />
+          </section>
+        </div>
+      </div>
     </div>
   );
 }

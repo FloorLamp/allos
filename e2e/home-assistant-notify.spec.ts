@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 // Home Assistant notification channel config UI (#248). A real webhook POST can't
 // run in CI (there's no HA instance), so this drives the genuine server actions +
-// SQLite round trip on Settings → Profile: enabling reveals the URL + per-kind
+// SQLite round trip on Settings → Notifications: enabling reveals the URL + per-kind
 // controls, saving persists, and the send-test reports "not configured" until a
 // valid webhook URL is stored. The pure payload/toggle/URL logic is covered by the
 // unit tests (lib/__tests__/home-assistant.test.ts) and the send path by the DB
@@ -12,7 +12,7 @@ test.describe("Home Assistant notification settings", () => {
   test("enable, save, and send-test surface the right states", async ({
     page,
   }) => {
-    await page.goto("/settings/profile");
+    await page.goto("/settings/notifications");
 
     const card = page.getByTestId("ha-settings");
     await expect(card).toBeVisible();

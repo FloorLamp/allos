@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
 import SettingsTabs from "../SettingsTabs";
+import AdminSubNav from "../AdminSubNav";
 import ErrorLogTable from "./ErrorLogTable";
 import { clearErrors } from "./actions";
 
@@ -30,6 +31,7 @@ export default async function ErrorsPage() {
         subtitle="Server error log — unexpected exceptions and route/500 failures, newest first. Clients still see a generic error; the cause lands here only. Written to data/logs/errors.jsonl."
       />
       <SettingsTabs isAdmin />
+      <AdminSubNav />
       <ErrorLogTable
         events={events}
         profileNames={profileNames}

@@ -27,10 +27,18 @@ test("emergency card: opt-in, render, offline copy, and logout clears it (#42)",
   test.slow();
   await login(page);
 
-  // 1. Opt in on Settings → Profile (off by default). Wait for the autosave
+  // 1. Opt in on Medical → Background (off by default). Wait for the autosave
   //    "Saved" indicator so the write has landed before we read the card.
-  await page.goto("/settings/profile");
+  await page.goto("/medical/background");
   const toggle = page.getByTestId("emergency-toggle");
+  // Repeat-each safe: a prior iteration may have left profile 1 opted in (the
+  // server flag persists across the shared fixture DB), so reset to the default-off
+  // precondition before exercising the opt-in flow.
+  if (await toggle.isChecked()) {
+    await toggle.uncheck();
+    await expect(page.getByLabel("Saved").first()).toBeVisible();
+    await page.reload();
+  }
   await expect(toggle).not.toBeChecked();
   await toggle.check();
   await expect(page.getByLabel("Saved").first()).toBeVisible();
@@ -112,7 +120,7 @@ test("switching profiles via the household strip wipes the previous profile's em
   await login(page);
 
   // Opt in + cache profile 1's card (the admin's default active profile).
-  await page.goto("/settings/profile");
+  await page.goto("/medical/background");
   const toggle = page.getByTestId("emergency-toggle");
   if (!(await toggle.isChecked())) {
     await toggle.check();

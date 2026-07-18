@@ -30,6 +30,7 @@ import { db } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import {
   setUnitPrefs,
+  setLoginPushDisabledKinds,
   type DistanceUnit,
   type WeightUnit,
   type TemperatureUnit,
@@ -41,6 +42,7 @@ import {
   sendTestPushToLogin,
 } from "@/lib/notifications/push";
 import { parsePushSubscription } from "@/lib/notifications/push-core";
+import { parseDisabledKinds } from "@/lib/notifications/home-assistant-core";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { createLogger } from "@/lib/log";
@@ -185,6 +187,25 @@ export async function deletePushSubscriptionAction(
   const endpoint = String(formData.get("endpoint") ?? "");
   if (endpoint) deletePushSubscription(login.id, endpoint);
   revalidatePath("/settings");
+  return { ok: true };
+}
+
+// The push column of the notification matrix (#928) — LOGIN-scoped, like the push
+// subscription itself. Persists the caller's disabled-kinds set (JSON `disabled_kinds`
+// field, validated by the shared pure core). Login-scoped, so it gates on
+// requireSession() like the other push actions and is allowlisted in the write-access
+// enforcement test on that basis — it touches login-owned settings, never
+// profile-owned data. A message whose kind a login turned off skips that login's
+// browsers at the push send seam.
+export async function savePushNotifyKinds(
+  formData: FormData
+): Promise<{ ok: boolean }> {
+  const { login } = await requireSession();
+  const disabled = parseDisabledKinds(
+    String(formData.get("disabled_kinds") ?? "")
+  );
+  setLoginPushDisabledKinds(login.id, disabled);
+  revalidatePath("/settings/notifications");
   return { ok: true };
 }
 

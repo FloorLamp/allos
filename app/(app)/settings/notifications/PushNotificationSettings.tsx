@@ -7,7 +7,7 @@ import {
   savePushSubscriptionAction,
   deletePushSubscriptionAction,
   sendTestPush,
-} from "./actions";
+} from "../actions";
 
 // Web Push opt-in (issue #17), LOGIN-scoped: a subscription belongs to THIS
 // browser + login, so it lives on Preferences (which is login-scoped), not the

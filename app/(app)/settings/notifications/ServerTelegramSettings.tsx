@@ -4,7 +4,10 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { TelegramBotConfig, TelegramMode } from "@/lib/settings";
 import type { NotifyErrorMarker } from "@/lib/notifications/delivery-status";
-import { saveTelegramBotConfig, registerTelegramWebhook } from "./actions";
+import {
+  saveTelegramBotConfig,
+  registerTelegramWebhook,
+} from "../server/actions";
 import SaveStatus from "@/components/SaveStatus";
 import { NOTICE_TONE } from "@/components/Notice";
 import { useSaveStatus } from "@/components/useSaveStatus";
@@ -159,8 +162,15 @@ export default function ServerTelegramSettings({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
+        {/* NOT labeled "Save" (#928): this admin bot card now shares the
+            Notifications tab with the per-profile Telegram card, which owns the
+            bare "Save". Playwright's getByRole name matching is case-insensitive
+            SUBSTRING matching, so any "Save"-containing label here would make the
+            pre-existing bare getByRole("button", { name: "Save" }) clicks on this
+            page strict-mode ambiguous (same reasoning as the HA card's distinct
+            verb). A distinct verb keeps exactly one "Save"-named button per page. */}
         <button type="button" onClick={save} disabled={busy} className="btn">
-          Save
+          Apply bot settings
         </button>
         {mode === "webhook" && (
           <button

@@ -653,7 +653,21 @@ const PAGES: {
   {
     title: "Settings: Profile",
     href: "/settings/profile",
-    keywords: "sex birthdate timezone notifications telegram",
+    keywords: "sex birthdate timezone training zones cadence",
+  },
+  {
+    title: "Settings: Notifications",
+    href: "/settings/notifications",
+    keywords:
+      "notifications telegram web push home assistant reminders schedule matrix channels",
+  },
+  {
+    // Person-level medical context moved off Settings → Profile (#928): smoking
+    // history, health risk factors, and the emergency card.
+    title: "Background",
+    href: "/medical/background",
+    keywords:
+      "background smoking history pack years risk factors emergency card blood type contact",
   },
   {
     // Equipment moved out of Settings to the top-level /equipment registry (#343);

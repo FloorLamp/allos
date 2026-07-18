@@ -17,7 +17,12 @@
 
 import webpush from "web-push";
 import { db, writeTx } from "../db";
-import { getSetting, setSetting, getPublicUrl } from "../settings";
+import {
+  getSetting,
+  setSetting,
+  getPublicUrl,
+  getLoginPushDisabledKinds,
+} from "../settings";
 import { createLogger } from "../log";
 import type { NotificationChannel, NotificationMessage } from "./types";
 import {
@@ -27,6 +32,7 @@ import {
   vapidConfigured,
   type StoredPushSubscription,
 } from "./push-core";
+import { isKindEnabled } from "./home-assistant-core";
 
 const log = createLogger("push");
 
@@ -245,6 +251,15 @@ export const pushChannel: NotificationChannel = {
       });
       return;
     }
-    await sendToSubscriptions(getPushSubscriptionsForProfile(profileId), msg);
+    // Per-kind matrix gate (#928): the push column is LOGIN-scoped, but the audience
+    // spans every login entitled to this profile — so gate each subscription against
+    // ITS owning login's disabled set. A login that turned this kind off keeps its
+    // browsers out of the fan-out; a login that left it on still receives. A fully
+    // filtered set is a deliberate no-op success (sendToSubscriptions treats an empty
+    // list as "nothing live"), never a failure, so it can't set notify_last_error.
+    const subs = getPushSubscriptionsForProfile(profileId).filter((s) =>
+      isKindEnabled(msg.kind, getLoginPushDisabledKinds(s.login_id))
+    );
+    await sendToSubscriptions(subs, msg);
   },
 };
