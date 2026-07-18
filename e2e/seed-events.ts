@@ -1776,7 +1776,9 @@ db.prepare(
 db.prepare(
   `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', '1986-05-01')`
 ).run(fitnessId);
-db.prepare(`DELETE FROM fitness_assessments WHERE profile_id = ?`).run(fitnessId);
+db.prepare(`DELETE FROM fitness_assessments WHERE profile_id = ?`).run(
+  fitnessId
+);
 saveFitnessEntry(fitnessId, {
   date: shiftDateStr(today(fitnessId), -100),
   testKey: "grip",

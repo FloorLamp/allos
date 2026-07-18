@@ -47,7 +47,8 @@ function ensureAssessment(
     .prepare(
       "SELECT id, activity_id FROM fitness_assessments WHERE profile_id = ? AND date = ?"
     )
-    .get(profileId, date) as { id: number; activity_id: number | null } | undefined;
+    .get(profileId, date) as
+    { id: number; activity_id: number | null } | undefined;
   if (existing) {
     if (note != null && note.trim()) {
       db.prepare(
@@ -97,7 +98,8 @@ export function saveFitnessEntry(
   if (!isRealIsoDate(input.date)) return { ok: false, error: "invalid date" };
   const def = fitnessTest(input.testKey);
   if (!def) return { ok: false, error: "unknown test" };
-  if (!Number.isFinite(input.value)) return { ok: false, error: "invalid value" };
+  if (!Number.isFinite(input.value))
+    return { ok: false, error: "invalid value" };
   if (
     def.store.kind === "set" &&
     !def.store.lift &&
@@ -231,7 +233,11 @@ export function getFitnessAssessments(
       `SELECT id, date, notes FROM fitness_assessments
         WHERE profile_id = ? ORDER BY date DESC, id DESC LIMIT ?`
     )
-    .all(profileId, limit) as { id: number; date: string; notes: string | null }[];
+    .all(profileId, limit) as {
+    id: number;
+    date: string;
+    notes: string | null;
+  }[];
   if (sessions.length === 0) return [];
   const entryStmt = db.prepare(
     `SELECT e.test_key, e.tier, e.store, e.value, e.unit, e.raw_input
@@ -265,7 +271,9 @@ export function getFitnessAssessments(
 
 // The date of a profile's most recent fitness check, or null when they've never done one.
 // The retest-cadence finding reads this.
-export function getLatestFitnessAssessmentDate(profileId: number): string | null {
+export function getLatestFitnessAssessmentDate(
+  profileId: number
+): string | null {
   const row = db
     .prepare(
       "SELECT date FROM fitness_assessments WHERE profile_id = ? ORDER BY date DESC, id DESC LIMIT 1"

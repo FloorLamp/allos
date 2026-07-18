@@ -14,7 +14,8 @@ import { getHealthspanPillars } from "@/lib/queries";
 
 function makeAdult(name: string, sex = "male", birthdate = "1985-06-01") {
   const profileId = Number(
-    db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name).lastInsertRowid
+    db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
+      .lastInsertRowid
   );
   const ins = db.prepare(
     "INSERT INTO profile_settings (profile_id, key, value) VALUES (?, ?, ?)"
@@ -51,7 +52,12 @@ describe("fitness-assessment session model", () => {
   it("groups a date's tests into one session with a coverage ledger", () => {
     const { profileId, anchor } = makeAdult("session-model");
     saveFitnessEntry(profileId, { date: anchor, testKey: "grip", value: 48 });
-    saveFitnessEntry(profileId, { date: anchor, testKey: "pushups", value: 30, reps: 30 });
+    saveFitnessEntry(profileId, {
+      date: anchor,
+      testKey: "pushups",
+      value: 30,
+      reps: 30,
+    });
     saveFitnessEntry(profileId, {
       date: anchor,
       testKey: "biglift",
@@ -92,7 +98,11 @@ describe("fitness-assessment session model", () => {
   it("is profile-scoped — one profile's sessions never leak into another's", () => {
     const a = makeAdult("scope-a");
     const b = makeAdult("scope-b");
-    saveFitnessEntry(a.profileId, { date: a.anchor, testKey: "grip", value: 48 });
+    saveFitnessEntry(a.profileId, {
+      date: a.anchor,
+      testKey: "grip",
+      value: 48,
+    });
     expect(getFitnessAssessments(b.profileId)).toHaveLength(0);
     expect(getLatestFitnessAssessmentDate(b.profileId)).toBeNull();
   });

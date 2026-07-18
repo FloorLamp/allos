@@ -12,15 +12,8 @@ import { requireWriteAccess } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import { saveFitnessEntry } from "@/lib/fitness-assessment";
-import {
-  fitnessTest,
-  computeVo2,
-  type Vo2Method,
-} from "@/lib/fitness-battery";
-import {
-  heartRateRecovery,
-  sittingRisingResult,
-} from "@/lib/vo2-field-tests";
+import { fitnessTest, computeVo2, type Vo2Method } from "@/lib/fitness-battery";
+import { heartRateRecovery, sittingRisingResult } from "@/lib/vo2-field-tests";
 import { estimate1RM } from "@/lib/strength";
 import { liftInfo } from "@/lib/lifts";
 import { toKg, kgTo } from "@/lib/units";
@@ -28,9 +21,7 @@ import { getUserSex, getUserAgeOn, getUnitPrefs } from "@/lib/settings";
 import { setFitnessRetestCadenceDays } from "@/lib/settings";
 import { getLatestBodyMetric } from "@/lib/queries";
 
-export type SaveFitnessTestResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type SaveFitnessTestResult = { ok: true } | { ok: false; error: string };
 
 function num(fd: FormData, key: string): number | null {
   const v = fd.get(key);
@@ -120,7 +111,8 @@ export async function saveFitnessTest(
       const raw = num(fd, "value");
       if (raw == null) return { ok: false, error: "enter a value" };
       // The sitting-rising test snaps to its published half-point scale.
-      value = testKey === "srt" ? (sittingRisingResult(raw)?.score ?? null) : raw;
+      value =
+        testKey === "srt" ? (sittingRisingResult(raw)?.score ?? null) : raw;
       if (value == null) return { ok: false, error: "invalid value" };
       if (def.store.kind === "set") {
         if (def.store.timed) durationSec = value;
@@ -152,7 +144,10 @@ export async function saveFitnessTest(
   return { ok: true };
 }
 
-function methodInputs(method: Vo2Method, fd: FormData): Record<string, number | null> {
+function methodInputs(
+  method: Vo2Method,
+  fd: FormData
+): Record<string, number | null> {
   switch (method) {
     case "watch":
       return { watchValue: num(fd, "watchValue") };
@@ -174,7 +169,8 @@ export async function setFitnessCadence(
 ): Promise<SaveFitnessTestResult> {
   const { profile } = await requireWriteAccess();
   const days = num(fd, "days");
-  if (days == null || days <= 0) return { ok: false, error: "enter a cadence in days" };
+  if (days == null || days <= 0)
+    return { ok: false, error: "enter a cadence in days" };
   setFitnessRetestCadenceDays(profile.id, days);
   revalidatePath("/training");
   return { ok: true };

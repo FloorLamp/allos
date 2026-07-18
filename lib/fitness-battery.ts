@@ -30,17 +30,13 @@ import {
 } from "@/lib/vo2-field-tests";
 
 // The five scoring tiers (see the header).
-export type FitnessTier = "norms" | "standard" | "evidence" | "body" | "self-trend";
+export type FitnessTier =
+  "norms" | "standard" | "evidence" | "body" | "self-trend";
 
 // The per-domain profile the check feeds (per-domain FitnessPercentile bars; NO new
 // aggregate — fitness age stays the only headline).
 export type FitnessDomain =
-  | "endurance"
-  | "strength"
-  | "balance"
-  | "flexibility"
-  | "mobility"
-  | "body";
+  "endurance" | "strength" | "balance" | "flexibility" | "mobility" | "body";
 
 // Which battery variant a test belongs to. `both` tests appear in adult AND senior
 // batteries; `adult`/`senior` are swapped by `batteryForAge`.
@@ -51,7 +47,8 @@ export type FitnessAgeBand = "adult" | "senior" | "both";
 //   e1rm → the big-lift test: pick a lift + weight + reps → estimate1RM.
 //   vo2  → VO2 Max via a watch value OR a cited field test (see VO2_METHODS).
 //   hrr  → two heart rates (peak + 1-minute) → recovery delta.
-export type FitnessInputKind = "reps" | "seconds" | "number" | "e1rm" | "vo2" | "hrr";
+export type FitnessInputKind =
+  "reps" | "seconds" | "number" | "e1rm" | "vo2" | "hrr";
 
 // Where a test's value lands. `set` → exercise_sets on the assessment activity (keyed by
 // the lift's exerciseHistoryKey); `vital` → a medical_records canonical row (category
@@ -106,7 +103,9 @@ export const VO2_METHODS: Vo2MethodDef[] = [
     key: "watch",
     label: "Watch / device value",
     seniorSafe: true,
-    instructions: ["Enter the VO2 Max your watch or fitness device reports (mL/kg/min)."],
+    instructions: [
+      "Enter the VO2 Max your watch or fitness device reports (mL/kg/min).",
+    ],
   },
   {
     key: "cooper",
@@ -158,7 +157,11 @@ export function computeVo2(
       return inputs.watchValue != null &&
         Number.isFinite(inputs.watchValue) &&
         inputs.watchValue > 0
-        ? { vo2: Math.round(inputs.watchValue * 10) / 10, method: "Device-reported", citation: "" }
+        ? {
+            vo2: Math.round(inputs.watchValue * 10) / 10,
+            method: "Device-reported",
+            citation: "",
+          }
         : null;
     case "cooper":
       return cooperVo2(inputs.distanceMeters);
@@ -213,7 +216,8 @@ export const FITNESS_BATTERY: FitnessTestDef[] = [
       category: "vitals",
     },
     citation: "Cole et al., N Engl J Med 1999.",
-    interpretation: "A 1-minute recovery of 12 bpm or less predicts higher mortality.",
+    interpretation:
+      "A 1-minute recovery of 12 bpm or less predicts higher mortality.",
     instructions: [
       "Right after a hard effort (e.g. the step test), note your peak heart rate.",
       "Rest for exactly 1 minute, then measure your heart rate again. Enter both.",
@@ -237,7 +241,8 @@ export const FITNESS_BATTERY: FitnessTestDef[] = [
     ],
     equipment: {
       needs: "hand dynamometer",
-      substitute: "Skip if you have no dynamometer — grip has no reliable substitute test.",
+      substitute:
+        "Skip if you have no dynamometer — grip has no reliable substitute test.",
     },
     min: 1,
     max: 150,
@@ -269,7 +274,11 @@ export const FITNESS_BATTERY: FitnessTestDef[] = [
     unit: "reps",
     inputKind: "reps",
     normsMarker: "30-Second Chair Stand",
-    store: { kind: "vital", canonical: "30-Second Chair Stand", category: "vitals" },
+    store: {
+      kind: "vital",
+      canonical: "30-Second Chair Stand",
+      category: "vitals",
+    },
     instructions: [
       "From a standard chair, arms crossed on your chest, stand fully and sit back down as many times as you can in 30 seconds.",
       "Enter the number of full stands.",
@@ -286,7 +295,11 @@ export const FITNESS_BATTERY: FitnessTestDef[] = [
     unit: "reps",
     inputKind: "reps",
     normsMarker: "30-Second Arm Curl",
-    store: { kind: "vital", canonical: "30-Second Arm Curl", category: "vitals" },
+    store: {
+      kind: "vital",
+      canonical: "30-Second Arm Curl",
+      category: "vitals",
+    },
     citation: "Rikli & Jones Senior Fitness Test.",
     instructions: [
       "Seated, curl a light dumbbell (5 lb women / 8 lb men) through full range as many times as you can in 30 seconds.",
@@ -337,7 +350,11 @@ export const FITNESS_BATTERY: FitnessTestDef[] = [
     unit: "seconds",
     inputKind: "seconds",
     normsMarker: "Single-Leg Balance",
-    store: { kind: "vital", canonical: "Single-Leg Balance", category: "vitals" },
+    store: {
+      kind: "vital",
+      canonical: "Single-Leg Balance",
+      category: "vitals",
+    },
     instructions: [
       "Stand on one leg, eyes open, arms free. Time how long you hold it (stop at a stumble or 45 seconds).",
       "Enter your best time in seconds.",
@@ -372,7 +389,11 @@ export const FITNESS_BATTERY: FitnessTestDef[] = [
     ageBand: "senior",
     unit: "stages",
     inputKind: "number",
-    store: { kind: "vital", canonical: "4-Stage Balance Test", category: "vitals" },
+    store: {
+      kind: "vital",
+      canonical: "4-Stage Balance Test",
+      category: "vitals",
+    },
     citation: "CDC STEADI 4-stage balance test.",
     interpretation:
       "Not holding the full tandem stand for 10 seconds indicates increased fall risk.",
@@ -409,9 +430,14 @@ export const FITNESS_BATTERY: FitnessTestDef[] = [
     ageBand: "both",
     unit: "score",
     inputKind: "number",
-    store: { kind: "vital", canonical: "Sitting-Rising Test", category: "vitals" },
+    store: {
+      kind: "vital",
+      canonical: "Sitting-Rising Test",
+      category: "vitals",
+    },
     citation: "Brito/Araújo, Eur J Prev Cardiol 2014.",
-    interpretation: "A composite score below 8 (of 10) is linked to higher mortality.",
+    interpretation:
+      "A composite score below 8 (of 10) is linked to higher mortality.",
     instructions: [
       "From standing, lower to sitting cross-legged on the floor, then rise — using as little support as possible.",
       "Start at 10; subtract 1 for each hand/knee/forearm used, 0.5 for a wobble. Enter the 0-10 score.",
@@ -428,14 +454,16 @@ export const FITNESS_BATTERY: FitnessTestDef[] = [
     unit: "seconds",
     inputKind: "seconds",
     store: { kind: "set", lift: "Dead Hang", timed: true },
-    interpretation: "Tracked against your own prior checks — no published norms.",
+    interpretation:
+      "Tracked against your own prior checks — no published norms.",
     instructions: [
       "Hang from a bar with a full grip, arms straight. Time how long you hold before your grip fails.",
       "Enter your best time in seconds.",
     ],
     equipment: {
       needs: "pull-up bar",
-      substitute: "No bar? Substitute a farmer-carry hold and note it — still tracked vs your own prior.",
+      substitute:
+        "No bar? Substitute a farmer-carry hold and note it — still tracked vs your own prior.",
     },
     min: 0,
     max: 600,
@@ -449,7 +477,8 @@ export const FITNESS_BATTERY: FitnessTestDef[] = [
     unit: "seconds",
     inputKind: "seconds",
     store: { kind: "set", lift: "Plank", timed: true },
-    interpretation: "Tracked against your own prior checks — no published norms.",
+    interpretation:
+      "Tracked against your own prior checks — no published norms.",
     instructions: [
       "Hold a forearm plank with a straight line from head to heels. Time until form breaks.",
       "Enter your best time in seconds.",
@@ -512,7 +541,9 @@ export function usesSeniorBattery(age: number | null | undefined): boolean {
 // The battery variant for a subject's age: `both` tests plus the adult-only OR senior-
 // only swaps. Never hands a senior the Cooper run / dead hang, nor an adult the SFT-only
 // items. Order is preserved from FITNESS_BATTERY.
-export function batteryForAge(age: number | null | undefined): FitnessTestDef[] {
+export function batteryForAge(
+  age: number | null | undefined
+): FitnessTestDef[] {
   const senior = usesSeniorBattery(age);
   const want: FitnessAgeBand = senior ? "senior" : "adult";
   return FITNESS_BATTERY.filter(

@@ -21,7 +21,10 @@ describe("battery ↔ scoring-engine consistency", () => {
   it("every norms-tier test names a marker the fitness-norms engine resolves", () => {
     for (const t of FITNESS_BATTERY) {
       if (t.tier !== "norms") continue;
-      expect(t.normsMarker, `${t.key} is norms tier but has no marker`).toBeTruthy();
+      expect(
+        t.normsMarker,
+        `${t.key} is norms tier but has no marker`
+      ).toBeTruthy();
       expect(
         FITNESS_NORM_MARKERS,
         `${t.key} marker "${t.normsMarker}" not in fitness-norms`
@@ -35,7 +38,12 @@ describe("battery ↔ scoring-engine consistency", () => {
     expect(standard.length).toBeGreaterThan(0);
     // The strength standard is over a user-chosen lift; the core squat/bench/deadlift/
     // press all carry standards. Assert at least the core lifts are covered.
-    for (const lift of ["Back Squat", "Bench Press", "Deadlift", "Overhead Press"]) {
+    for (const lift of [
+      "Back Squat",
+      "Bench Press",
+      "Deadlift",
+      "Overhead Press",
+    ]) {
       expect(STRENGTH_STANDARD_LIFTS).toContain(lift);
     }
   });
@@ -44,14 +52,20 @@ describe("battery ↔ scoring-engine consistency", () => {
     const selfTrend = FITNESS_BATTERY.filter((t) => t.tier === "self-trend");
     expect(selfTrend.length).toBeGreaterThan(0);
     for (const t of selfTrend) {
-      expect(t.normsMarker, `${t.key} self-trend must not carry a norms marker`).toBeUndefined();
+      expect(
+        t.normsMarker,
+        `${t.key} self-trend must not carry a norms marker`
+      ).toBeUndefined();
     }
   });
 
   it("no non-norms tier smuggles a norms marker", () => {
     for (const t of FITNESS_BATTERY) {
       if (t.tier === "norms") continue;
-      expect(t.normsMarker, `${t.key} (${t.tier}) must not carry a norms marker`).toBeUndefined();
+      expect(
+        t.normsMarker,
+        `${t.key} (${t.tier}) must not carry a norms marker`
+      ).toBeUndefined();
     }
   });
 
@@ -59,7 +73,10 @@ describe("battery ↔ scoring-engine consistency", () => {
     for (const t of FITNESS_BATTERY) {
       if (t.store.kind !== "set") continue;
       if (t.store.lift === "") continue; // big-lift: chosen at entry time
-      expect(liftInfo(t.store.lift), `${t.key} lift "${t.store.lift}"`).toBeTruthy();
+      expect(
+        liftInfo(t.store.lift),
+        `${t.key} lift "${t.store.lift}"`
+      ).toBeTruthy();
     }
   });
 
@@ -93,7 +110,14 @@ describe("age-banded battery swap (adult ↔ senior)", () => {
   it("keeps the shared 'both' tests in both variants", () => {
     for (const age of [40, 70]) {
       const keys = batteryForAge(age).map((t) => t.key);
-      for (const shared of ["vo2max", "grip", "chairstand", "balance", "bodyfat", "srt"]) {
+      for (const shared of [
+        "vo2max",
+        "grip",
+        "chairstand",
+        "balance",
+        "bodyfat",
+        "srt",
+      ]) {
         expect(keys, `age ${age} missing ${shared}`).toContain(shared);
       }
     }
@@ -110,20 +134,24 @@ describe("age-banded battery swap (adult ↔ senior)", () => {
     expect(cooper.seniorSafe).toBe(false);
     // The step and walk tests stay available for seniors.
     expect(VO2_METHODS.find((m) => m.key === "step")!.seniorSafe).toBe(true);
-    expect(VO2_METHODS.find((m) => m.key === "rockport")!.seniorSafe).toBe(true);
+    expect(VO2_METHODS.find((m) => m.key === "rockport")!.seniorSafe).toBe(
+      true
+    );
   });
 });
 
 describe("VO2 method dispatch", () => {
   it("passes a watch value through verbatim (rounded)", () => {
-    expect(computeVo2("watch", { watchValue: 44.2 }, "male", 40)!.vo2).toBe(44.2);
+    expect(computeVo2("watch", { watchValue: 44.2 }, "male", 40)!.vo2).toBe(
+      44.2
+    );
     expect(computeVo2("watch", { watchValue: null }, "male", 40)).toBeNull();
   });
 
   it("routes cooper/rockport/step to the cited calculators", () => {
-    expect(computeVo2("cooper", { distanceMeters: 2400 }, "male", 40)!.method).toMatch(
-      /Cooper/
-    );
+    expect(
+      computeVo2("cooper", { distanceMeters: 2400 }, "male", 40)!.method
+    ).toMatch(/Cooper/);
     expect(
       computeVo2(
         "rockport",
@@ -132,9 +160,9 @@ describe("VO2 method dispatch", () => {
         40
       )!.method
     ).toMatch(/Rockport/);
-    expect(computeVo2("step", { stepRecoveryHr: 150 }, "female", 70)!.method).toMatch(
-      /Queens/
-    );
+    expect(
+      computeVo2("step", { stepRecoveryHr: 150 }, "female", 70)!.method
+    ).toMatch(/Queens/);
   });
 
   it("returns null when the chosen method's inputs are missing", () => {

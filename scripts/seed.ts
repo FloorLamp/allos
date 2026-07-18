@@ -2243,18 +2243,73 @@ db.prepare(
 // medical_records vitals, push-ups/plank as sets on the assessment activity, body fat +
 // resting HR as body_metrics); the session groups them.
 for (const [ago, s] of [
-  [100, { vo2: 44, grip: 46, pushups: 30, chairstand: 17, balance: 38, plank: 85, bodyfat: 19, restinghr: 58 }],
-  [3, { vo2: 47, grip: 49, pushups: 35, chairstand: 19, balance: 42, plank: 102, bodyfat: 17, restinghr: 54 }],
+  [
+    100,
+    {
+      vo2: 44,
+      grip: 46,
+      pushups: 30,
+      chairstand: 17,
+      balance: 38,
+      plank: 85,
+      bodyfat: 19,
+      restinghr: 58,
+    },
+  ],
+  [
+    3,
+    {
+      vo2: 47,
+      grip: 49,
+      pushups: 35,
+      chairstand: 19,
+      balance: 42,
+      plank: 102,
+      bodyfat: 17,
+      restinghr: 54,
+    },
+  ],
 ] as const) {
   const date = daysAgo(ago);
-  saveFitnessEntry(SEED_PROFILE_ID, { date, testKey: "vo2max", value: s.vo2, rawInput: { method: "watch", watchValue: s.vo2 } });
+  saveFitnessEntry(SEED_PROFILE_ID, {
+    date,
+    testKey: "vo2max",
+    value: s.vo2,
+    rawInput: { method: "watch", watchValue: s.vo2 },
+  });
   saveFitnessEntry(SEED_PROFILE_ID, { date, testKey: "grip", value: s.grip });
-  saveFitnessEntry(SEED_PROFILE_ID, { date, testKey: "pushups", value: s.pushups, reps: s.pushups });
-  saveFitnessEntry(SEED_PROFILE_ID, { date, testKey: "chairstand", value: s.chairstand });
-  saveFitnessEntry(SEED_PROFILE_ID, { date, testKey: "balance", value: s.balance });
-  saveFitnessEntry(SEED_PROFILE_ID, { date, testKey: "plank", value: s.plank, durationSec: s.plank });
-  saveFitnessEntry(SEED_PROFILE_ID, { date, testKey: "bodyfat", value: s.bodyfat });
-  saveFitnessEntry(SEED_PROFILE_ID, { date, testKey: "restinghr", value: s.restinghr });
+  saveFitnessEntry(SEED_PROFILE_ID, {
+    date,
+    testKey: "pushups",
+    value: s.pushups,
+    reps: s.pushups,
+  });
+  saveFitnessEntry(SEED_PROFILE_ID, {
+    date,
+    testKey: "chairstand",
+    value: s.chairstand,
+  });
+  saveFitnessEntry(SEED_PROFILE_ID, {
+    date,
+    testKey: "balance",
+    value: s.balance,
+  });
+  saveFitnessEntry(SEED_PROFILE_ID, {
+    date,
+    testKey: "plank",
+    value: s.plank,
+    durationSec: s.plank,
+  });
+  saveFitnessEntry(SEED_PROFILE_ID, {
+    date,
+    testKey: "bodyfat",
+    value: s.bodyfat,
+  });
+  saveFitnessEntry(SEED_PROFILE_ID, {
+    date,
+    testKey: "restinghr",
+    value: s.restinghr,
+  });
 }
 
 console.log("✅ Seeded sample health data.");

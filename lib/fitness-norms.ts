@@ -101,7 +101,9 @@ function percentileOnCurve(
     const worse = higher ? value < values[0] : value > values[0];
     return { percentile: percentiles[0], clamped: worse ? "low" : null };
   }
-  const atOrAboveBest = higher ? value >= values[n - 1] : value <= values[n - 1];
+  const atOrAboveBest = higher
+    ? value >= values[n - 1]
+    : value <= values[n - 1];
   if (atOrAboveBest) {
     const better = higher ? value > values[n - 1] : value < values[n - 1];
     return { percentile: percentiles[n - 1], clamped: better ? "high" : null };
@@ -135,9 +137,7 @@ function fitnessAgeFromMedian(
   const last = pts[pts.length - 1];
   // "Fitter than the youngest band" ⇒ younger than it. For higher_better that means a
   // value ABOVE the youngest median; for lower_better, BELOW it.
-  const fitterThanYoungest = higher
-    ? value >= pts[0].med
-    : value <= pts[0].med;
+  const fitterThanYoungest = higher ? value >= pts[0].med : value <= pts[0].med;
   if (fitterThanYoungest) {
     const strictly = higher ? value > pts[0].med : value < pts[0].med;
     return { fitnessAge: pts[0].age, clamped: strictly ? "low" : null };

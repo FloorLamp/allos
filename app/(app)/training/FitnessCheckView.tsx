@@ -77,8 +77,9 @@ export default function FitnessCheckView({
             </span>
           </div>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-            A guided battery you perform and enter in one session. Scores feed your
-            existing fitness age and healthspan pillars — no new overall score.
+            A guided battery you perform and enter in one session. Scores feed
+            your existing fitness age and healthspan pillars — no new overall
+            score.
             {senior ? " Showing the older-adult variant." : ""}
           </p>
           {model.headlineFitnessAge && (
@@ -89,8 +90,8 @@ export default function FitnessCheckView({
           )}
           {!hasSexAndAge && (
             <p className="mt-2 text-sm text-amber-600 dark:text-amber-400">
-              Set your sex and birthdate in Profile settings to see percentiles and
-              fitness age.
+              Set your sex and birthdate in Profile settings to see percentiles
+              and fitness age.
             </p>
           )}
         </header>
@@ -176,7 +177,9 @@ function RetestCadence({ cadenceDays }: { cadenceDays: number }) {
       <button type="submit" className="btn-secondary h-9 px-3">
         Save
       </button>
-      {saved && <span className="text-emerald-600 dark:text-emerald-400">Saved</span>}
+      {saved && (
+        <span className="text-emerald-600 dark:text-emerald-400">Saved</span>
+      )}
     </form>
   );
 }
@@ -280,7 +283,8 @@ function TestCard({
           )}
           {missingEquipment && def.equipment && (
             <p className="text-xs text-amber-600 dark:text-amber-400">
-              No {def.equipment.needs} in your equipment. {def.equipment.substitute}
+              No {def.equipment.needs} in your equipment.{" "}
+              {def.equipment.substitute}
             </p>
           )}
 
@@ -301,27 +305,69 @@ function TestCard({
                   ))}
                 </select>
                 {method === "watch" && (
-                  <NumField label="VO2 Max (mL/kg/min)" k="watchValue" fields={fields} setField={setField} testKey={def.key} />
+                  <NumField
+                    label="VO2 Max (mL/kg/min)"
+                    k="watchValue"
+                    fields={fields}
+                    setField={setField}
+                    testKey={def.key}
+                  />
                 )}
                 {method === "cooper" && (
-                  <NumField label="Distance (meters)" k="distanceMeters" fields={fields} setField={setField} testKey={def.key} />
+                  <NumField
+                    label="Distance (meters)"
+                    k="distanceMeters"
+                    fields={fields}
+                    setField={setField}
+                    testKey={def.key}
+                  />
                 )}
                 {method === "rockport" && (
                   <>
-                    <NumField label="Walk time (minutes)" k="walkTimeMin" fields={fields} setField={setField} testKey={def.key} />
-                    <NumField label="Finish heart rate (bpm)" k="walkHr" fields={fields} setField={setField} testKey={def.key} />
+                    <NumField
+                      label="Walk time (minutes)"
+                      k="walkTimeMin"
+                      fields={fields}
+                      setField={setField}
+                      testKey={def.key}
+                    />
+                    <NumField
+                      label="Finish heart rate (bpm)"
+                      k="walkHr"
+                      fields={fields}
+                      setField={setField}
+                      testKey={def.key}
+                    />
                   </>
                 )}
                 {method === "step" && (
-                  <NumField label="Recovery heart rate (bpm)" k="stepRecoveryHr" fields={fields} setField={setField} testKey={def.key} />
+                  <NumField
+                    label="Recovery heart rate (bpm)"
+                    k="stepRecoveryHr"
+                    fields={fields}
+                    setField={setField}
+                    testKey={def.key}
+                  />
                 )}
               </div>
             )}
 
             {def.inputKind === "hrr" && (
               <>
-                <NumField label="Peak heart rate (bpm)" k="peakHr" fields={fields} setField={setField} testKey={def.key} />
-                <NumField label="Heart rate after 1 minute (bpm)" k="oneMinuteHr" fields={fields} setField={setField} testKey={def.key} />
+                <NumField
+                  label="Peak heart rate (bpm)"
+                  k="peakHr"
+                  fields={fields}
+                  setField={setField}
+                  testKey={def.key}
+                />
+                <NumField
+                  label="Heart rate after 1 minute (bpm)"
+                  k="oneMinuteHr"
+                  fields={fields}
+                  setField={setField}
+                  testKey={def.key}
+                />
               </>
             )}
 
@@ -340,8 +386,20 @@ function TestCard({
                     </option>
                   ))}
                 </select>
-                <NumField label={`Weight (${weightUnit})`} k="weight" fields={fields} setField={setField} testKey={def.key} />
-                <NumField label="Reps" k="reps" fields={fields} setField={setField} testKey={def.key} />
+                <NumField
+                  label={`Weight (${weightUnit})`}
+                  k="weight"
+                  fields={fields}
+                  setField={setField}
+                  testKey={def.key}
+                />
+                <NumField
+                  label="Reps"
+                  k="reps"
+                  fields={fields}
+                  setField={setField}
+                  testKey={def.key}
+                />
               </>
             )}
 
@@ -373,7 +431,9 @@ function TestCard({
             )}
 
             {error && (
-              <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>
+              <p className="text-sm text-rose-600 dark:text-rose-400">
+                {error}
+              </p>
             )}
             <button
               type="submit"
@@ -421,11 +481,16 @@ function NumField({
 function ResultBadge({ result }: { result: FitnessTestResult }) {
   if (!result.measured) {
     return (
-      <span className="text-xs text-slate-500 dark:text-slate-400">not measured</span>
+      <span className="text-xs text-slate-500 dark:text-slate-400">
+        not measured
+      </span>
     );
   }
   return (
-    <div className="text-right text-sm" data-testid={`fitness-result-${result.key}`}>
+    <div
+      className="text-right text-sm"
+      data-testid={`fitness-result-${result.key}`}
+    >
       <span className="font-medium">
         {result.value} {result.unit}
       </span>
@@ -435,7 +500,9 @@ function ResultBadge({ result }: { result: FitnessTestResult }) {
         </span>
       )}
       {result.standing && (
-        <span className={`ml-2 ${result.standing.color}`}>{result.standing.label}</span>
+        <span className={`ml-2 ${result.standing.color}`}>
+          {result.standing.label}
+        </span>
       )}
       {result.delta != null && result.delta !== 0 && (
         <span

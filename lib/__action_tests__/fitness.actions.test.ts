@@ -8,7 +8,10 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { saveFitnessTest, setFitnessCadence } from "@/app/(app)/training/fitness-actions";
+import {
+  saveFitnessTest,
+  setFitnessCadence,
+} from "@/app/(app)/training/fitness-actions";
 import { getFitnessRetestCadenceDays } from "@/lib/settings";
 import { estimate1RM } from "@/lib/strength";
 import { seedActor, fd, type TestProfile } from "./harness";
@@ -34,7 +37,9 @@ function medRows(profileId: number, canonical: string) {
 }
 function sessionRows(profileId: number) {
   return db
-    .prepare("SELECT id, date, activity_id FROM fitness_assessments WHERE profile_id = ?")
+    .prepare(
+      "SELECT id, date, activity_id FROM fitness_assessments WHERE profile_id = ?"
+    )
     .all(profileId) as any[];
 }
 function entryRows(assessmentId: number) {
@@ -58,7 +63,9 @@ describe("saveFitnessTest — natural-store routing", () => {
   it("writes a vital test (grip) to medical_records and records the session entry", async () => {
     const { profile } = seedActor();
     setDemographics(profile.id, "male", "1985-06-01");
-    const r = await saveFitnessTest(fd({ testKey: "grip", value: 48, date: DATE }));
+    const r = await saveFitnessTest(
+      fd({ testKey: "grip", value: 48, date: DATE })
+    );
     expect(r.ok).toBe(true);
     const meds = medRows(profile.id, "Grip Strength");
     expect(meds).toHaveLength(1);
@@ -136,7 +143,12 @@ describe("saveFitnessTest — natural-store routing", () => {
     const { profile } = seedActor();
     setDemographics(profile.id, "male", "1985-06-01");
     const r = await saveFitnessTest(
-      fd({ testKey: "vo2max", method: "cooper", distanceMeters: 2400, date: DATE })
+      fd({
+        testKey: "vo2max",
+        method: "cooper",
+        distanceMeters: 2400,
+        date: DATE,
+      })
     );
     expect(r.ok).toBe(true);
     const meds = medRows(profile.id, "VO2 Max");
@@ -151,7 +163,13 @@ describe("saveFitnessTest — natural-store routing", () => {
     const { profile } = seedActor();
     setDemographics(profile.id, "male", "1985-06-01");
     await saveFitnessTest(
-      fd({ testKey: "biglift", lift: "Back Squat", weight: 120, reps: 3, date: DATE })
+      fd({
+        testKey: "biglift",
+        lift: "Back Squat",
+        weight: 120,
+        reps: 3,
+        date: DATE,
+      })
     );
     const session = sessionRows(profile.id)[0];
     const sets = setRows(session.activity_id);
@@ -191,9 +209,15 @@ describe("saveFitnessTest — validation", () => {
   it("rejects an unknown test and a VO2 with no field inputs", async () => {
     const { profile } = seedActor();
     setDemographics(profile.id, "male", "1985-06-01");
-    expect((await saveFitnessTest(fd({ testKey: "nope", value: 1 }))).ok).toBe(false);
+    expect((await saveFitnessTest(fd({ testKey: "nope", value: 1 }))).ok).toBe(
+      false
+    );
     expect(
-      (await saveFitnessTest(fd({ testKey: "vo2max", method: "cooper", date: DATE }))).ok
+      (
+        await saveFitnessTest(
+          fd({ testKey: "vo2max", method: "cooper", date: DATE })
+        )
+      ).ok
     ).toBe(false);
   });
 });

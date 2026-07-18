@@ -64,11 +64,19 @@ export default function FitnessTestTimer({
         {formatSeconds(seconds)}
       </span>
       {running ? (
-        <button type="button" onClick={pause} className="btn-secondary h-9 px-3">
+        <button
+          type="button"
+          onClick={pause}
+          className="btn-secondary h-9 px-3"
+        >
           Pause
         </button>
       ) : (
-        <button type="button" onClick={start} className="btn-secondary h-9 px-3">
+        <button
+          type="button"
+          onClick={start}
+          className="btn-secondary h-9 px-3"
+        >
           {elapsedMs > 0 ? "Resume" : "Start"}
         </button>
       )}

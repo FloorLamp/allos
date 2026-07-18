@@ -47,10 +47,7 @@ import { situationHistoryResolver } from "./trend-annotations";
 import { optimalStatus } from "./reference-range";
 import { decideSunExposure, SUN_EXPOSURE_WINDOW_WEEKS } from "./sun-exposure";
 import { decidePeriodontalObservation } from "./oral-health-observation";
-import {
-  fitnessRetestDue,
-  fitnessCheckSignalKey,
-} from "./fitness-retest";
+import { fitnessRetestDue, fitnessCheckSignalKey } from "./fitness-retest";
 import { getLatestFitnessAssessmentDate } from "./fitness-assessment";
 import { getFitnessRetestCadenceDays } from "./settings";
 import {
@@ -147,8 +144,7 @@ export function buildFitnessCheckFindings(
   const cadence = getFitnessRetestCadenceDays(profileId);
   const d = fitnessRetestDue(lastDate, cadence, today);
   if (!d.due || !d.lastDate) return [];
-  const ago =
-    d.daysSince != null ? ` (${d.daysSince} days ago)` : "";
+  const ago = d.daysSince != null ? ` (${d.daysSince} days ago)` : "";
   return [
     {
       domain: "fitness-check",
@@ -156,7 +152,8 @@ export function buildFitnessCheckFindings(
       title: "Fitness check due",
       detail: `Your last fitness check was ${formatLongDate(d.lastDate)}${ago}. Re-run the battery to refresh your percentiles and see check-over-check change.`,
       tone: "info",
-      evidence: "Informational — you set the retest cadence in Profile settings.",
+      evidence:
+        "Informational — you set the retest cadence in Profile settings.",
       actionHref: "/training?tab=fitness" as AppRoute,
       actionLabel: "Start a check",
     },

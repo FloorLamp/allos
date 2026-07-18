@@ -44,8 +44,14 @@ export interface Vo2Estimate {
 // VO2max = (distance_m − 504.9) / 44.73. Cooper KH, "A means of assessing maximal
 // oxygen intake," JAMA 1968;203(3):201-204. `distanceMeters` = distance covered in 12
 // minutes.
-export function cooperVo2(distanceMeters: number | null | undefined): Vo2Estimate | null {
-  if (distanceMeters == null || !Number.isFinite(distanceMeters) || distanceMeters <= 0)
+export function cooperVo2(
+  distanceMeters: number | null | undefined
+): Vo2Estimate | null {
+  if (
+    distanceMeters == null ||
+    !Number.isFinite(distanceMeters) ||
+    distanceMeters <= 0
+  )
     return null;
   return {
     vo2: clampVo2((distanceMeters - 504.9) / 44.73),
@@ -68,11 +74,19 @@ export function rockportWalkVo2(input: {
 }): Vo2Estimate | null {
   const { weightLb, age, sex, timeMin, heartRate } = input;
   if (
-    weightLb == null || !Number.isFinite(weightLb) || weightLb <= 0 ||
-    age == null || !Number.isFinite(age) || age <= 0 ||
+    weightLb == null ||
+    !Number.isFinite(weightLb) ||
+    weightLb <= 0 ||
+    age == null ||
+    !Number.isFinite(age) ||
+    age <= 0 ||
     !sex ||
-    timeMin == null || !Number.isFinite(timeMin) || timeMin <= 0 ||
-    heartRate == null || !Number.isFinite(heartRate) || heartRate <= 0
+    timeMin == null ||
+    !Number.isFinite(timeMin) ||
+    timeMin <= 0 ||
+    heartRate == null ||
+    !Number.isFinite(heartRate) ||
+    heartRate <= 0
   )
     return null;
   const sexMale = sex === "male" ? 1 : 0;
@@ -101,7 +115,12 @@ export function queensStepVo2(
   recoveryHr: number | null | undefined,
   sex: Sex | null | undefined
 ): Vo2Estimate | null {
-  if (recoveryHr == null || !Number.isFinite(recoveryHr) || recoveryHr <= 0 || !sex)
+  if (
+    recoveryHr == null ||
+    !Number.isFinite(recoveryHr) ||
+    recoveryHr <= 0 ||
+    !sex
+  )
     return null;
   const vo2 =
     sex === "male" ? 111.33 - 0.42 * recoveryHr : 65.81 - 0.1847 * recoveryHr;
@@ -134,8 +153,12 @@ export function heartRateRecovery(
   oneMinuteHr: number | null | undefined
 ): HrrResult | null {
   if (
-    peakHr == null || !Number.isFinite(peakHr) || peakHr <= 0 ||
-    oneMinuteHr == null || !Number.isFinite(oneMinuteHr) || oneMinuteHr <= 0
+    peakHr == null ||
+    !Number.isFinite(peakHr) ||
+    peakHr <= 0 ||
+    oneMinuteHr == null ||
+    !Number.isFinite(oneMinuteHr) ||
+    oneMinuteHr <= 0
   )
     return null;
   const hrr = Math.round(peakHr - oneMinuteHr);
@@ -168,8 +191,11 @@ export function sittingRisingBand(score: number): SrtBand {
   return "reference";
 }
 
-export function sittingRisingResult(score: number | null | undefined): SrtResult | null {
-  if (score == null || !Number.isFinite(score) || score < 0 || score > 10) return null;
+export function sittingRisingResult(
+  score: number | null | undefined
+): SrtResult | null {
+  if (score == null || !Number.isFinite(score) || score < 0 || score > 10)
+    return null;
   // Snap to the test's half-point resolution.
   const snapped = Math.round(score * 2) / 2;
   return {

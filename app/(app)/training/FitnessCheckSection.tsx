@@ -1,10 +1,6 @@
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
-import {
-  getUserSex,
-  getUserAge,
-  getUnitPrefs,
-} from "@/lib/settings";
+import { getUserSex, getUserAge, getUnitPrefs } from "@/lib/settings";
 import { getLatestBodyMetric } from "@/lib/queries";
 import { getEquipment } from "@/lib/equipment";
 import {
@@ -12,9 +8,7 @@ import {
   usesSeniorBattery,
   VO2_METHODS,
 } from "@/lib/fitness-battery";
-import {
-  getFitnessAssessments,
-} from "@/lib/fitness-assessment";
+import { getFitnessAssessments } from "@/lib/fitness-assessment";
 import { getFitnessRetestCadenceDays } from "@/lib/settings";
 import { buildFitnessCheckModel } from "@/lib/fitness-check-model";
 import FitnessCheckView from "./FitnessCheckView";

@@ -45,7 +45,9 @@ test.describe("Fitness check (#834)", () => {
     await balanceCard.getByTestId("fitness-test-toggle-balance").click();
     await balanceCard.getByTestId("fitness-value-balance").fill("40");
     await settledClick(page, balanceCard.getByTestId("fitness-submit-balance"));
-    await expect(page.getByTestId("fitness-result-balance")).toContainText("40");
+    await expect(page.getByTestId("fitness-result-balance")).toContainText(
+      "40"
+    );
 
     await page.close();
   });
