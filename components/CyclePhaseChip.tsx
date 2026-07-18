@@ -27,7 +27,8 @@ export default function CyclePhaseChip({
       ? "text-violet-600 dark:text-violet-400"
       : "text-emerald-600 dark:text-emerald-400";
   const label = menstrual ? "Period" : CYCLE_PHASE_LABELS[phase];
-  const flow = menstrual && period?.flow ? ` · ${FLOW_LABELS[period.flow]}` : "";
+  const flow =
+    menstrual && period?.flow ? ` · ${FLOW_LABELS[period.flow]}` : "";
   return (
     <div
       data-testid="cycle-phase-chip"

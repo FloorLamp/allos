@@ -40,9 +40,7 @@ export function startPeriodCore(
 }
 
 export type EndPeriodOutcome =
-  | { kind: "ended"; id: number }
-  | { kind: "none-open" }
-  | { kind: "invalid" };
+  { kind: "ended"; id: number } | { kind: "none-open" } | { kind: "invalid" };
 
 // One-tap "period ended" as of `date` — closes the open period (inclusive last bleeding
 // day). Refuses an end before the start, and reports when nothing is open.
@@ -54,7 +52,14 @@ export function endPeriodCore(
     const open = getOpenPeriod(profileId);
     if (!open) return { kind: "none-open" };
     if (date < open.period_start) return { kind: "invalid" };
-    updateCycleRow(profileId, open.id, open.period_start, date, open.flow, open.note);
+    updateCycleRow(
+      profileId,
+      open.id,
+      open.period_start,
+      date,
+      open.flow,
+      open.note
+    );
     return { kind: "ended", id: open.id };
   });
 }

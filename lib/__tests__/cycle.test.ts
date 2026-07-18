@@ -66,7 +66,10 @@ describe("cyclePhaseOnDate", () => {
   });
 
   it("uses LUTEAL_PHASE_DAYS as the follicular/luteal boundary from the next start", () => {
-    const two = [period(1, "2026-05-01", "2026-05-05"), period(2, "2026-06-01", null)];
+    const two = [
+      period(1, "2026-05-01", "2026-05-05"),
+      period(2, "2026-06-01", null),
+    ];
     // next start 06-01; boundary = 06-01 minus 14 = 05-18.
     expect(cyclePhaseOnDate(two, "2026-05-17")).toBe("follicular");
     expect(cyclePhaseOnDate(two, "2026-05-18")).toBe("luteal");

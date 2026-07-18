@@ -21,8 +21,7 @@ import { startPeriodCore, endPeriodCore } from "@/lib/cycle-write";
 
 export type CycleActionResult = { ok: true } | { ok: false; error: string };
 export type CycleCreateResult =
-  | { ok: true; id: number }
-  | { ok: false; error: string };
+  { ok: true; id: number } | { ok: false; error: string };
 
 function revalidateCycle() {
   revalidatePath("/medical/cycles");

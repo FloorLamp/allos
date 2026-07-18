@@ -5,11 +5,7 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import NotesText from "@/components/NotesText";
 import { formatLongDate } from "@/lib/format-date";
-import {
-  FLOW_LABELS,
-  periodLengthDays,
-  type CyclePeriod,
-} from "@/lib/cycle";
+import { FLOW_LABELS, periodLengthDays, type CyclePeriod } from "@/lib/cycle";
 import CycleForm from "./CycleForm";
 import { saveCycleAction, deleteCycleAction } from "./actions";
 
@@ -17,11 +13,7 @@ import { saveCycleAction, deleteCycleAction } from "./actions";
 // with inline edit (reusing CycleForm) and delete. Length between this period's start and
 // the NEXT one (the cycle length) is shown by the parent list; here we show the period's
 // own bleeding length.
-export default function CycleHistoryRow({
-  period,
-}: {
-  period: CyclePeriod;
-}) {
+export default function CycleHistoryRow({ period }: { period: CyclePeriod }) {
   const router = useRouter();
   const toast = useToast();
   const [editing, setEditing] = useState(false);
@@ -82,7 +74,10 @@ export default function CycleHistoryRow({
           className="mt-1 block text-sm text-slate-600 dark:text-slate-300"
         />
         {error && (
-          <p role="alert" className="mt-1 text-xs text-rose-600 dark:text-rose-400">
+          <p
+            role="alert"
+            className="mt-1 text-xs text-rose-600 dark:text-rose-400"
+          >
             {error}
           </p>
         )}

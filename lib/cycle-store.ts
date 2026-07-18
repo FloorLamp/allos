@@ -32,15 +32,10 @@ export function rowToPeriod(row: CycleRow): CyclePeriod {
 }
 
 // One cycle row by id, scoped to the profile.
-export function getCycleRow(
-  profileId: number,
-  id: number
-): CyclePeriod | null {
+export function getCycleRow(profileId: number, id: number): CyclePeriod | null {
   return (
     (db
-      .prepare(
-        `SELECT ${COLS} FROM cycles WHERE id = ? AND profile_id = ?`
-      )
+      .prepare(`SELECT ${COLS} FROM cycles WHERE id = ? AND profile_id = ?`)
       .get(id, profileId) as CyclePeriod | undefined) ?? null
   );
 }

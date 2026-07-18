@@ -1991,7 +1991,13 @@ const seededCycles: [number, number, string, string | null][] = [
   [19, 15, "light", null],
 ];
 for (const [startAgo, endAgo, flow, note] of seededCycles) {
-  seedCycle.run(SEED_PROFILE_ID, daysAgo(startAgo), daysAgo(endAgo), flow, note);
+  seedCycle.run(
+    SEED_PROFILE_ID,
+    daysAgo(startAgo),
+    daysAgo(endAgo),
+    flow,
+    note
+  );
 }
 
 // ── Trends pins + saved views (Trends Ph2/Ph3) ───────────────────────────────

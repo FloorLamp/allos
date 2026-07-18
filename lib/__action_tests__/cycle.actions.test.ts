@@ -56,7 +56,12 @@ describe("cycle actions", () => {
 
   it("saveCycleAction creates then edits a period", async () => {
     const created = await saveCycleAction(
-      fd({ period_start: "2026-03-01", period_end: "2026-03-05", flow: "medium", note: "  day 1 cramps  " })
+      fd({
+        period_start: "2026-03-01",
+        period_end: "2026-03-05",
+        flow: "medium",
+        note: "  day 1 cramps  ",
+      })
     );
     expect(created.ok).toBe(true);
     if (!created.ok) return;
@@ -67,7 +72,13 @@ describe("cycle actions", () => {
     expect(row.note).toBe("day 1 cramps"); // trimmed
 
     const edited = await saveCycleAction(
-      fd({ id: created.id, period_start: "2026-03-01", period_end: "2026-03-06", flow: "heavy", note: "" })
+      fd({
+        id: created.id,
+        period_start: "2026-03-01",
+        period_end: "2026-03-06",
+        flow: "heavy",
+        note: "",
+      })
     );
     expect(edited).toEqual({ ok: true, id: created.id });
     const after = getCycleRow(profileId, created.id)!;
@@ -90,7 +101,9 @@ describe("cycle actions", () => {
   it("deleteCycleAction removes a period; a bad id errors", async () => {
     const created = await saveCycleAction(fd({ period_start: "2026-03-01" }));
     if (!created.ok) throw new Error("setup failed");
-    expect(await deleteCycleAction(fd({ id: created.id }))).toEqual({ ok: true });
+    expect(await deleteCycleAction(fd({ id: created.id }))).toEqual({
+      ok: true,
+    });
     expect(listCyclePeriods(profileId).length).toBe(0);
     const missing = await deleteCycleAction(fd({ id: 99999 }));
     expect(missing.ok).toBe(false);

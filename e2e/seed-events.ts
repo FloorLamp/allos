@@ -31,6 +31,8 @@ import {
   E2E_LOGIN_EMPTY_TRAINING,
   E2E_LOGIN_NUTRITION,
   NUTRITION_PROFILE,
+  E2E_LOGIN_CYCLE,
+  CYCLE_PROFILE,
   E2E_LOGIN_HC,
   E2E_LOGIN_NOGEAR,
   E2E_LOGIN_FITNESS,
@@ -3103,4 +3105,41 @@ db.prepare(
 seedMemberLogin(E2E_LOGIN_IOP, flaggedIopId, "write");
 console.log(
   `e2e: seeded flagged-IOP follow-up fixture — profile ${flaggedIopId} (${FLAGGED_IOP_PROFILE}) (#698)`
+);
+
+// ── Menstrual cycle log fixture (#714) ────────────────────────────────────────
+// A dedicated adult profile with three completed, roughly-regular periods (~28-day
+// cycles, 5-day bleeding) and NO open period, so the Cycle surface renders a derived
+// phase, the cycle-length + variability stats, and the length trend chart. The cycle
+// spec OWNS its mutations (one-tap start/end, add/delete), so hard-clear any leftover
+// cycles on a reused server. Synthetic, no PHI.
+const cycleProfileId = fixtureProfileId(CYCLE_PROFILE);
+db.prepare(`DELETE FROM cycles WHERE profile_id = ?`).run(cycleProfileId);
+const cycleAnchor = today(cycleProfileId);
+for (const [startAgo, endAgo, flow] of [
+  [75, 71, "medium"],
+  [47, 43, "heavy"],
+  [19, 15, "light"],
+] as const) {
+  db.prepare(
+    `INSERT INTO cycles (profile_id, period_start, period_end, flow)
+     VALUES (?, ?, ?, ?)`
+  ).run(
+    cycleProfileId,
+    shiftDateStr(cycleAnchor, -startAgo),
+    shiftDateStr(cycleAnchor, -endAgo),
+    flow
+  );
+}
+// One activity ON the most recent period's start day so the Timeline has a day section
+// there — its header renders the derived phase/period chip ("Period"), the #714 Timeline
+// surface the spec asserts.
+db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(cycleProfileId);
+db.prepare(
+  `INSERT INTO activities (profile_id, date, type, title, distance_km)
+   VALUES (?, ?, 'cardio', 'Walk', 3)`
+).run(cycleProfileId, shiftDateStr(cycleAnchor, -19));
+seedMemberLogin(E2E_LOGIN_CYCLE, cycleProfileId, "write");
+console.log(
+  `e2e: seeded cycle-log fixture — profile ${cycleProfileId} (${CYCLE_PROFILE}) (#714)`
 );

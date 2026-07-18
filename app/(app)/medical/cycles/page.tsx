@@ -62,9 +62,7 @@ export default async function CyclePage() {
       <section className="card space-y-3" data-testid="cycle-status">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <div>
-            <div className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              Current phase
-            </div>
+            <div className="section-label">Current phase</div>
             <div
               className="text-lg font-semibold text-slate-800 dark:text-slate-100"
               data-testid="cycle-current-phase"
@@ -80,8 +78,8 @@ export default async function CyclePage() {
         </div>
         <PeriodQuickActions hasOpenPeriod={!!openPeriod} />
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          The luteal phase resolves once your next period is logged — the phase is
-          derived from history, never forecast.
+          The luteal phase resolves once your next period is logged — the phase
+          is derived from history, never forecast.
         </p>
       </section>
 

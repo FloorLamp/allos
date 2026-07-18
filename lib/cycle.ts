@@ -29,7 +29,9 @@ export interface CyclePeriod {
 export const FLOW_LEVELS: readonly FlowLevel[] = ["light", "medium", "heavy"];
 
 export function isFlowLevel(v: unknown): v is FlowLevel {
-  return typeof v === "string" && (FLOW_LEVELS as readonly string[]).includes(v);
+  return (
+    typeof v === "string" && (FLOW_LEVELS as readonly string[]).includes(v)
+  );
 }
 
 export const FLOW_LABELS: Record<FlowLevel, string> = {
@@ -205,9 +207,7 @@ export function cycleStats(
   const max = sorted[n - 1];
   const mean = sample.reduce((a, b) => a + b, 0) / n;
   const median =
-    n % 2 === 1
-      ? sorted[(n - 1) / 2]
-      : (sorted[n / 2 - 1] + sorted[n / 2]) / 2;
+    n % 2 === 1 ? sorted[(n - 1) / 2] : (sorted[n / 2 - 1] + sorted[n / 2]) / 2;
   const variability = max - min;
   const regularity: CycleRegularity =
     n < 3
