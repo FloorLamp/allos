@@ -3,6 +3,7 @@ import {
   biomarkerViewHref,
   importHref,
   protocolHref,
+  MEDICATIONS_HREF,
   type AppRoute,
 } from "./hrefs";
 
@@ -58,6 +59,13 @@ export interface TimelineEvent {
   // Structured component/sport names (e.g. Strava's canonical "Cycling"),
   // matched before iconTitle so an imported ride icons as a bike.
   iconSportNames?: string[] | null;
+  // Non-causal cross-domain LINKED CONTEXT (#662): informational deep-links to
+  // OTHER records this event relates to by KNOWN lineage — a visit's `linkedRefs`
+  // point at the care-plan items / procedures / medications the SAME import
+  // document produced. This is a reference ("also produced from this visit's
+  // document"), NEVER a causal claim; the primary `href` stays the event's own
+  // source record. AppRoute-typed like every internal link (#285).
+  linkedRefs?: { label: string; href: AppRoute }[];
 }
 
 export interface TimelineDay {
@@ -142,6 +150,40 @@ export function protocolTimelineEvents(
     }
   }
   return events;
+}
+
+// A sibling record produced by the SAME import document as a visit (#662). The DB
+// layer gathers these by shared document_id; this pure shaper turns them into the
+// visit event's `linkedRefs` — one deep-link per record to its domain surface (no
+// per-row detail route exists for procedures/care-plan; the medication list is the
+// meds home). `kind` selects the destination and prefixes the label so a mixed
+// list reads unambiguously. Blank-named rows are dropped; order is preserved.
+export interface VisitLinkedRow {
+  kind: "procedure" | "care-plan" | "medication";
+  label: string;
+}
+
+export function visitLinkedRefs(
+  rows: VisitLinkedRow[]
+): NonNullable<TimelineEvent["linkedRefs"]> {
+  const hrefFor = (kind: VisitLinkedRow["kind"]): AppRoute =>
+    kind === "procedure"
+      ? "/procedures"
+      : kind === "care-plan"
+        ? "/care-plan"
+        : MEDICATIONS_HREF;
+  const kindLabel = (kind: VisitLinkedRow["kind"]): string =>
+    kind === "procedure"
+      ? "Procedure"
+      : kind === "care-plan"
+        ? "Care plan"
+        : "Medication";
+  return rows
+    .filter((r) => r.label.trim())
+    .map((r) => ({
+      label: `${kindLabel(r.kind)}: ${r.label.trim()}`,
+      href: hrefFor(r.kind),
+    }));
 }
 
 function firstTimelineParam(value: TimelineSearchParam): string | undefined {

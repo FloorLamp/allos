@@ -173,6 +173,91 @@ describe("getTimelineEvents", () => {
     expect(otherText).not.toContain("TLINE");
   });
 
+  it("links a visit to the records its import document produced (#662)", () => {
+    const p = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('LINEAGE')").run()
+        .lastInsertRowid
+    );
+    const docId = Number(
+      db
+        .prepare(
+          `INSERT INTO medical_documents
+             (profile_id, filename, stored_path, extraction_status, doc_type)
+           VALUES (?, 'ccd.xml', '', 'done', 'ccd')`
+        )
+        .run(p).lastInsertRowid
+    );
+    const visitId = Number(
+      db
+        .prepare(
+          `INSERT INTO encounters (profile_id, date, type, reason, document_id)
+           VALUES (?, '2026-05-01', 'Office Visit', 'annual', ?)`
+        )
+        .run(p, docId).lastInsertRowid
+    );
+    // Sibling records produced by the SAME document.
+    db.prepare(
+      `INSERT INTO procedures (profile_id, name, date, source, document_id)
+       VALUES (?, 'Colonoscopy', '2026-05-01', 'extracted', ?)`
+    ).run(p, docId);
+    db.prepare(
+      `INSERT INTO care_plan_items (profile_id, description, source, document_id)
+       VALUES (?, 'Follow-up in 6 months', 'extracted', ?)`
+    ).run(p, docId);
+    db.prepare(
+      `INSERT INTO intake_items (profile_id, name, kind, source, document_id)
+       VALUES (?, 'Lisinopril', 'medication', 'extracted', ?)`
+    ).run(p, docId);
+    // A record on a DIFFERENT document must NOT leak into this visit's context.
+    const otherDoc = Number(
+      db
+        .prepare(
+          `INSERT INTO medical_documents
+             (profile_id, filename, stored_path, extraction_status, doc_type)
+           VALUES (?, 'other.pdf', '', 'done', 'lab')`
+        )
+        .run(p).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO procedures (profile_id, name, date, source, document_id)
+       VALUES (?, 'Unrelated biopsy', '2026-05-01', 'extracted', ?)`
+    ).run(p, otherDoc);
+
+    const events = getTimelineEvents(p);
+    const visit = events.find((e) => e.id === `visit:${visitId}`);
+    const labels = (visit?.linkedRefs ?? []).map((r) => r.label);
+    expect(labels).toEqual([
+      "Procedure: Colonoscopy",
+      "Care plan: Follow-up in 6 months",
+      "Medication: Lisinopril",
+    ]);
+    expect(visit?.linkedRefs).toContainEqual({
+      label: "Medication: Lisinopril",
+      href: "/medications",
+    });
+    // The other document's procedure is not part of this visit's lineage.
+    expect(labels).not.toContain("Procedure: Unrelated biopsy");
+  });
+
+  it("a manual visit (no document) carries no linked context (#662)", () => {
+    const p = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('MANUALVISIT')").run()
+        .lastInsertRowid
+    );
+    const visitId = Number(
+      db
+        .prepare(
+          `INSERT INTO encounters (profile_id, date, type, reason)
+           VALUES (?, '2026-05-02', 'Office Visit', 'manual')`
+        )
+        .run(p).lastInsertRowid
+    );
+    const events = getTimelineEvents(p);
+    const visit = events.find((e) => e.id === `visit:${visitId}`);
+    expect(visit).toBeDefined();
+    expect(visit?.linkedRefs).toBeUndefined();
+  });
+
   it("shows future-dated events (e.g. a goal target date) in the default view", () => {
     const futureDate = shiftDateStr(imperial.todayStr, 30);
     const futureGoalId = Number(

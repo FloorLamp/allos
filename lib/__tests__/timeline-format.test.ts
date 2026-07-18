@@ -16,6 +16,7 @@ import {
   timelineCategoryFromParam,
   timelineCategoryLabel,
   timelineDateFromParam,
+  visitLinkedRefs,
   type TimelineEvent,
 } from "../timeline-format";
 
@@ -208,6 +209,28 @@ describe("timeline event helpers", () => {
       title: "Ended Sauna block",
       category: "protocol",
     });
+  });
+
+  it("shapes visit lineage rows into labeled, domain-routed linked refs (#662)", () => {
+    const refs = visitLinkedRefs([
+      { kind: "procedure", label: "Colonoscopy" },
+      { kind: "care-plan", label: "Follow-up in 6 months" },
+      { kind: "medication", label: "Lisinopril" },
+    ]);
+    expect(refs).toEqual([
+      { label: "Procedure: Colonoscopy", href: "/procedures" },
+      { label: "Care plan: Follow-up in 6 months", href: "/care-plan" },
+      { label: "Medication: Lisinopril", href: "/medications" },
+    ]);
+  });
+
+  it("drops blank-named lineage rows and trims labels", () => {
+    const refs = visitLinkedRefs([
+      { kind: "procedure", label: "  X-ray  " },
+      { kind: "care-plan", label: "   " },
+      { kind: "medication", label: "" },
+    ]);
+    expect(refs).toEqual([{ label: "Procedure: X-ray", href: "/procedures" }]);
   });
 
   it("derives created-at date/time in the profile timezone (off-by-one safe)", () => {
