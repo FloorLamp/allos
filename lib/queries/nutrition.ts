@@ -43,7 +43,18 @@ import {
   estimatedProteinGrams,
   resolveProteinGoalLevel,
   type ProteinAdequacy,
+  type ProteinToday,
 } from "../protein";
+import {
+  fiberIntake,
+  fiberTarget,
+  assessFiberAdequacy,
+  estimatedFiberGrams,
+  isFiberSupplement,
+  fiberDoseGrams,
+  type FiberAdequacy,
+} from "../fiber";
+import { getUserSex, getUserAge } from "../settings/profile-attrs";
 import {
   rollupServings,
   type FoodLogEntry,
@@ -464,4 +475,151 @@ export function getProteinAdequacy(profileId: number): ProteinAdequacy | null {
   const intake = proteinIntake({ dailyTracked, dailyLogged, dailyEstimated });
   const target = proteinTarget({ goal, bodyweightKg, leanMassKg });
   return assessProteinAdequacy(intake, target);
+}
+
+// The band-gauge model for the Food tab (issue #974): today so far + this week's daily
+// average + the goal band, in ONE gather so the gauge, the quick-add card, and the
+// Telegram food-nudge status line format the same numbers (#221). Reuses the SAME pieces
+// getProteinAdequacy reads — the target inputs (goal + LBM-preferred bodyweight) and, for
+// the weekly marker, getProteinAdequacy's OWN daily-average figure, so the marker can
+// never drift from the adequacy card. Today's bar is the #824 composition applied to a
+// SINGLE day: today's servings through estimatedProteinGrams + today's quick-add grams, or
+// today's tracked reading when one exists. Returns null when there's no target (no
+// bodyweight) or no protein data at all (never a bare "0 g" nudge).
+export function getProteinToday(profileId: number): ProteinToday | null {
+  const t = today(profileId);
+
+  // Target — the SAME inputs getProteinAdequacy uses (goal + LBM-preferred bodyweight).
+  const weightsAsc = getWeights(profileId)
+    .map((w) => ({ date: w.date, weight_kg: w.weight_kg }))
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
+  const bodyweightKg = bodyweightAsOf(weightsAsc, t);
+  const leanMassKg = getLatestMetricValue(profileId, "lean_mass_kg");
+  const goal = resolveProteinGoalLevel(
+    getProfileSetting(profileId, "training_goal")
+  );
+  const target = proteinTarget({ goal, bodyweightKg, leanMassKg });
+  if (!target) return null;
+
+  // Today's composition (a SINGLE day, not the weekly average): today's food-group
+  // servings → estimated grams + today's quick-add grams, or today's tracked reading.
+  const servings = getFoodServingsOnDate(profileId, t);
+  const todayServings = [...servings.entries()].map(([slug, n]) => ({
+    slug,
+    servings: n,
+  }));
+  const dailyEstimated = estimatedProteinGrams(todayServings);
+  const loggedToday = getProteinLoggedGrams(profileId, t);
+  const trackedToday = getMetricDailyTotals(profileId, "protein_g").find(
+    (r) => r.date === t
+  );
+  const todayIntake = proteinIntake({
+    dailyTracked: trackedToday ? trackedToday.value : null,
+    dailyLogged: loggedToday > 0 ? loggedToday : null,
+    dailyEstimated,
+  });
+  const todayGrams = todayIntake?.grams ?? 0;
+
+  // Weekly marker — EXACTLY the adequacy computation's daily-average figure (#221), read
+  // from the SAME gather so the two can never disagree.
+  const weeklyAverageGrams = getProteinAdequacy(profileId)?.intake.grams ?? null;
+
+  // Suppress when there's no protein data at all (a bodyweight-only profile that has never
+  // logged) — never a bare "0 g" nudge or an empty gauge.
+  if (
+    todayGrams <= 0 &&
+    (weeklyAverageGrams == null || weeklyAverageGrams <= 0)
+  )
+    return null;
+
+  return { todayIntake, todayGrams, target, weeklyAverageGrams };
+}
+
+// ---- Fiber adequacy (issue #976) ----
+
+// The profile's CONFIRMED (taken) intake-item doses on/after `since` (inclusive), with the
+// item name + the amount SNAPSHOTTED onto the log at confirm time. The fiber-supplement
+// basis reads this — a skipped dose is excluded (status = 'taken' only), and the snapshot
+// amount is what was actually taken (survives a later dosage edit). Profile-scoped through
+// the dose's parent item.
+export function getConfirmedIntakeDosesInRange(
+  profileId: number,
+  since: string
+): { date: string; name: string; amount: string | null }[] {
+  return db
+    .prepare(
+      `SELECT l.date AS date, s.name AS name, l.amount AS amount
+         FROM intake_item_logs l
+         JOIN intake_items s ON s.id = l.item_id
+        WHERE s.profile_id = ? AND l.date >= ? AND l.status = 'taken'
+          AND l.item_id IS NOT NULL`
+    )
+    .all(profileId, since) as {
+    date: string;
+    name: string;
+    amount: string | null;
+  }[];
+}
+
+// The ONE gather behind the /nutrition fiber-adequacy card AND the coaching-tier fiber
+// finding (buildFiberAdequacyFindings). The #767 protein gather re-instantiated with a
+// fourth basis (supplemented). It assembles the pure engine's typed inputs from PROFILE-
+// SCOPED reads and returns the pure verdict, so the card and the finding are formatters
+// over the same result ("one question, one computation"). Reads through getFoodLogEntries
+// / getConfirmedIntakeDosesInRange / getMetricDailyTotals, all profile-scoped, so the
+// scoping guard is satisfied. Returns null when there's no intake signal or no DRI target.
+//
+// Windowing mirrors protein: intake is a PER-DAY average over this week (same
+// weekWindowStart), each basis averaged over the distinct days that carry it (so a partial
+// week isn't diluted by unlogged days).
+export function getFiberAdequacy(profileId: number): FiberAdequacy | null {
+  const weekStart = weekWindowStart(profileId);
+
+  // Estimated floor: this week's food-group servings → fiber grams / distinct logged days.
+  const entries = getFoodLogEntries(profileId, weekStart);
+  const rollup = rollupServings(entries);
+  const loggedDays = new Set(entries.map((e) => e.date)).size;
+  const estWeekGrams = estimatedFiberGrams(rollup);
+  const dailyEstimated = loggedDays > 0 ? estWeekGrams / loggedDays : 0;
+
+  // Supplemented floor: this week's CONFIRMED fiber doses → grams / distinct days with a
+  // KNOWN-gram fiber dose (a capsule/unknown-unit dose sets the flag but isn't in the
+  // divisor). Snapshot amounts; a skipped dose is already excluded by the query.
+  const doseRows = getConfirmedIntakeDosesInRange(profileId, weekStart);
+  const fiberGramsByDate = new Map<string, number>();
+  let unknownSupplement = false;
+  for (const r of doseRows) {
+    if (!isFiberSupplement(r.name)) continue;
+    const { grams, known } = fiberDoseGrams(r.amount);
+    if (known && grams > 0)
+      fiberGramsByDate.set(r.date, (fiberGramsByDate.get(r.date) ?? 0) + grams);
+    else unknownSupplement = true;
+  }
+  const suppDays = fiberGramsByDate.size;
+  const suppWeekGrams = [...fiberGramsByDate.values()].reduce(
+    (s, g) => s + g,
+    0
+  );
+  const dailySupplemented = suppDays > 0 ? suppWeekGrams / suppDays : null;
+
+  // Tracked: integration fiber_g daily totals this week, averaged over days with data.
+  const trackedRows = getMetricDailyTotals(profileId, "fiber_g").filter(
+    (r) => r.date >= weekStart
+  );
+  const dailyTracked =
+    trackedRows.length > 0
+      ? trackedRows.reduce((s, r) => s + r.value, 0) / trackedRows.length
+      : null;
+
+  const intake = fiberIntake({
+    dailyTracked,
+    dailyEstimated,
+    dailySupplemented,
+    unknownSupplement,
+  });
+  const target = fiberTarget({
+    ageYears: getUserAge(profileId),
+    sex: getUserSex(profileId),
+  });
+  return assessFiberAdequacy(intake, target);
 }

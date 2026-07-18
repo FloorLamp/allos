@@ -5,9 +5,14 @@
 // opt-in per profile (food_telegram_enabled) — so a household that doesn't want it
 // never sees it.
 
-import { getFoodGroupLogOrder, getFoodServingsOnDate } from "../queries";
+import {
+  getFoodGroupLogOrder,
+  getFoodServingsOnDate,
+  getProteinToday,
+} from "../queries";
 import { getPublicUrl, getUserAge } from "../settings";
 import { isFoodLoggingRelevant } from "../life-stage";
+import { proteinTodayNudgeLine } from "../protein";
 import {
   foodOptInCallbackData,
   renderFoodNudge,
@@ -40,13 +45,18 @@ export function buildFoodNudge(
   // rank identically for a given window (one computation, #221).
   const ranked = getFoodGroupLogOrder(profileId, window);
   const servingsToday = getFoodServingsOnDate(profileId, date);
+  // Today-vs-goal protein status line (#974) from the SAME gather the gauge reads (#221).
+  // Null when there's no target or no protein data — the renderer then omits the line.
+  const pt = getProteinToday(profileId);
+  const proteinLine = pt ? proteinTodayNudgeLine(pt) : null;
   return renderFoodNudge(
     profileId,
     window,
     date,
     ranked,
     servingsToday,
-    getPublicUrl()
+    getPublicUrl(),
+    proteinLine
   );
 }
 
