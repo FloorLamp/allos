@@ -21,37 +21,11 @@ test.describe("Settings → Server: AI provider tiers", () => {
     );
   });
 
-  test("admin can save a Light tier config that persists", async ({ page }) => {
-    await page.goto("/settings/server");
-    await page
-      .getByTestId("ai-tier-light-shape")
-      .selectOption("openai-compatible");
-    await page
-      .getByTestId("ai-tier-light-baseurl")
-      .fill("http://e2e-local:8000/v1");
-    await page.getByTestId("ai-tier-light-model").fill("e2e-model");
-    await settledClick(page, page.getByTestId("ai-tier-light-save"));
-    await expect(page.getByTestId("ai-tier-light-result")).toContainText(
-      /saved/i
-    );
-
-    await page.reload();
-    await expect(page.getByTestId("ai-tier-light-baseurl")).toHaveValue(
-      "http://e2e-local:8000/v1"
-    );
-    await expect(page.getByTestId("ai-tier-light-model")).toHaveValue(
-      "e2e-model"
-    );
-
-    // Restore the unset state so other admin-scoped specs see a clean tier.
-    await page.getByTestId("ai-tier-light-shape").selectOption("anthropic");
-    await page.getByTestId("ai-tier-light-baseurl").fill("");
-    await page.getByTestId("ai-tier-light-model").fill("");
-    await settledClick(page, page.getByTestId("ai-tier-light-save"));
-    await expect(page.getByTestId("ai-tier-light-result")).toContainText(
-      /saved/i
-    );
-  });
+  // NOTE: saving/persisting a tier config is NOT exercised here on purpose — writing a
+  // configured tier is GLOBAL state that would change the symptom bar / explainer for
+  // parallel specs (an e2e-hygiene violation). The save→read→env-fallback round trip is
+  // covered at the DB tier (lib/__db_tests__/ai-tiers-resolve.test.ts); this file only
+  // asserts the UI renders and degrades keyless.
 
   // The global per-profile daily recommendation-run clamp (issue #424) lives on
   // the admin Server tab. Admin-only, so this authenticated-as-admin spec can edit
