@@ -6,7 +6,13 @@ import {
   type BodyMetricValues,
 } from "@/lib/body-metric-extract";
 import { collapseBodyMetricsByDate } from "./body-metric-collapse";
-import { emptyCounts, rowsEqual, isEditLocked } from "./sync-log";
+import {
+  emptyCounts,
+  rowsEqual,
+  isEditLocked,
+  classifyUpsert,
+  tallyUpsert,
+} from "./sync-log";
 import type { UpsertCounts } from "./sync-log";
 import { loadImportTombstones } from "./tombstones";
 import {
@@ -226,17 +232,18 @@ export function upsertBodyMetrics(
     const post = mine
       ? mergeBodyMetricPartialAware(mine, incoming, !!r.partial_day)
       : incoming;
-    if (
-      mine &&
+    const equal =
+      !!mine &&
       rowsEqual(
         BODY_METRIC_COMPARE_COLS,
         mine as unknown as Record<string, unknown>,
         post as unknown as Record<string, unknown>
-      )
-    ) {
+      );
+    const disposition = classifyUpsert(!!mine, equal);
+    if (disposition === "unchanged") {
       // A window that only re-states already-stored values is a no-op → unchanged;
       // skip the redundant write.
-      counts.unchanged++;
+      tallyUpsert(counts, disposition);
       continue;
     }
     upsert.run(
@@ -247,8 +254,7 @@ export function upsertBodyMetrics(
       post.resting_hr,
       source
     );
-    if (mine) counts.updated++;
-    else counts.inserted++;
+    tallyUpsert(counts, disposition);
   }
   return counts;
 }
@@ -342,15 +348,13 @@ export function upsertMetricSamples(
       r.value,
       r.activity_external_id ?? null
     );
-    if (!found) counts.inserted++;
-    else if (
+    const equal =
+      !!found &&
       found.value === r.value &&
       found.date === r.date &&
       (r.activity_external_id == null ||
-        found.activity_external_id === r.activity_external_id)
-    )
-      counts.unchanged++;
-    else counts.updated++;
+        found.activity_external_id === r.activity_external_id);
+    tallyUpsert(counts, classifyUpsert(!!found, equal));
   }
   return counts;
 }
@@ -396,15 +400,13 @@ export function upsertHrMinutes(
         }
       | undefined;
     stmt.run(profileId, r.ts, r.bpm, r.bpm_min, r.bpm_max, r.n, source);
-    if (!found) counts.inserted++;
-    else if (
+    const equal =
+      !!found &&
       found.bpm === r.bpm &&
       found.bpm_min === r.bpm_min &&
       found.bpm_max === r.bpm_max &&
-      found.n === r.n
-    )
-      counts.unchanged++;
-    else counts.updated++;
+      found.n === r.n;
+    tallyUpsert(counts, classifyUpsert(!!found, equal));
   }
   return counts;
 }
@@ -480,9 +482,11 @@ export function upsertVitals(
         unit: r.unit,
         canonical_name: r.canonical,
       };
-      if (rowsEqual(VITAL_COMPARE_COLS, found, post)) {
-        counts.unchanged++;
-      } else {
+      const disposition = classifyUpsert(
+        true,
+        rowsEqual(VITAL_COMPARE_COLS, found, post)
+      );
+      if (disposition === "updated") {
         update.run(
           r.date,
           r.category,
@@ -493,8 +497,8 @@ export function upsertVitals(
           r.canonical,
           found.id
         );
-        counts.updated++;
       }
+      tallyUpsert(counts, disposition);
       ids.push(found.id);
     } else {
       const info = insert.run(
@@ -510,7 +514,7 @@ export function upsertVitals(
         r.external_id
       );
       ids.push(Number(info.lastInsertRowid));
-      counts.inserted++;
+      tallyUpsert(counts, classifyUpsert(false, false));
     }
   }
   return { ids, counts };
@@ -585,8 +589,9 @@ export function upsertActivities(
     // A source-owned row the user has hand-edited is left alone on re-ingest, so
     // the rolling 48h/re-scan window never clobbers those edits. Counts in the
     // `edited` split (#659) — we deliberately persist nothing, but this is a lock
-    // the user should be able to see in Review, not a silent no-op.
-    if (found && found.edited) {
+    // the user should be able to see in Review, not a silent no-op. Routes through
+    // the shared isEditLocked predicate like the body-metric/vital paths (#944).
+    if (found && isEditLocked(found.edited)) {
       counts.edited++;
       continue;
     }
@@ -607,9 +612,11 @@ export function upsertActivities(
       ACTIVITY_METRIC_COLS.forEach((c, i) => {
         post[c] = metrics[i];
       });
-      if (rowsEqual(compareCols, found, post)) {
-        counts.unchanged++;
-      } else {
+      const disposition = classifyUpsert(
+        true,
+        rowsEqual(compareCols, found, post)
+      );
+      if (disposition === "updated") {
         update.run(
           r.date,
           r.type,
@@ -623,8 +630,8 @@ export function upsertActivities(
           source,
           found.id
         );
-        counts.updated++;
       }
+      tallyUpsert(counts, disposition);
     } else if (tombstoned.has(r.external_id)) {
       // No live row AND a tombstone for this external_id: the user merged/deleted it —
       // skip the resurrecting insert and count it suppressed.
@@ -645,7 +652,7 @@ export function upsertActivities(
         source,
         r.external_id
       );
-      counts.inserted++;
+      tallyUpsert(counts, classifyUpsert(false, false));
     }
   }
   return counts;
@@ -696,15 +703,16 @@ export function upsertActivityRoutes(
           end_lng: number | null;
         }
       | undefined;
-    if (
-      found &&
+    const equal =
+      !!found &&
       found.polyline === r.polyline &&
       found.start_lat === r.start_lat &&
       found.start_lng === r.start_lng &&
       found.end_lat === r.end_lat &&
-      found.end_lng === r.end_lng
-    ) {
-      counts.unchanged++;
+      found.end_lng === r.end_lng;
+    const disposition = classifyUpsert(!!found, equal);
+    if (disposition === "unchanged") {
+      tallyUpsert(counts, disposition);
       continue;
     }
     upsert.run(
@@ -716,8 +724,7 @@ export function upsertActivityRoutes(
       r.end_lng,
       source
     );
-    if (found) counts.updated++;
-    else counts.inserted++;
+    tallyUpsert(counts, disposition);
   }
   return counts;
 }
