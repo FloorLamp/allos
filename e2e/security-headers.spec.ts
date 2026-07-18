@@ -146,7 +146,11 @@ test("share route keeps its stricter middleware headers", async ({
   // Stricter than the global default: no-referrer (global is
   // strict-origin-when-cross-origin) and an anti-cache/anti-index posture.
   expect(headers["referrer-policy"]).toBe("no-referrer");
-  expect(headers["cache-control"]).toContain("no-store");
+  // CI runs next start and must retain no-store. Next dev intentionally replaces
+  // document Cache-Control after middleware with no-cache, so accept that only in the
+  // local development harness.
+  if (process.env.CI) expect(headers["cache-control"]).toContain("no-store");
+  else expect(headers["cache-control"]).toMatch(/no-store|no-cache/);
   expect(headers["x-robots-tag"]).toContain("noindex");
   // The global hardening still rides along.
   expect(headers["x-frame-options"]).toBe("DENY");

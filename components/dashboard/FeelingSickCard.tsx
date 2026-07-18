@@ -20,7 +20,7 @@ export default function FeelingSickCard() {
 
   return (
     <div className="card" data-testid="feeling-sick-card">
-      <WidgetHeader title="Symptoms" href="/timeline" linkLabel="Timeline" />
+      <WidgetHeader title="Symptoms" href="/timeline" />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-slate-500 dark:text-slate-400">
           Feeling sick? Start tracking symptoms and temperature.

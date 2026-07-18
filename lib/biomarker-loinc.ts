@@ -231,6 +231,23 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   // by LOINC, grouped under Lead — like the eGFR variants above.
   "77307-7": "Lead", // Lead [Mass/volume] in Venous blood (ug/dL)
   "10368-9": "Lead", // Lead [Mass/volume] in Capillary blood (mcg/dL)
+  // ── Ophthalmology / vision (issue #698) ──────────────────────────────────────
+  // Intraocular pressure (tonometry, mmHg) is per-eye (OD/OS). Each eye routes to
+  // its OWN canonical entry so the two eyes stay separate series (they are the same
+  // assay but distinct subjects — a left/right pressure must never merge on a chart);
+  // the "eye unspecified" combined LOINC routes to the generic entry. All three carry
+  // the same 10–21 mmHg band, so a flagged pressure in either eye becomes a trended,
+  // flaggable reading that the glaucoma follow-up loop (#700) can hook.
+  "79892-6": "Intraocular Pressure, Right Eye", // Right eye Intraocular pressure
+  "79893-4": "Intraocular Pressure, Left Eye", // Left eye Intraocular pressure
+  "56844-4": "Intraocular Pressure", // Intraocular pressure of Eye (unspecified)
+  // Visual acuity is a QUALITATIVE, Snellen-fraction reading ("20/20") — no numeric
+  // band, so nothing flags it (a dated timeline, not a chart). Uncorrected Snellen
+  // per-eye codes route to the per-eye entries; best-corrected / ETDRS variants are
+  // deliberately UNMAPPED (a distinct method — its own identity, not folded here).
+  "79882-7": "Visual Acuity, Right Eye", // Visual acuity uncorrected Right eye by Snellen
+  "79883-5": "Visual Acuity, Left Eye", // Visual acuity uncorrected Left eye by Snellen
+  "98499-7": "Visual Acuity, Right Eye", // Visual acuity uncorrected Right eye (general)
 };
 
 // The canonical biomarker name for a LOINC code, or null when unmapped.

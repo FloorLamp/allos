@@ -15,7 +15,7 @@ import {
   getOffsiteReadiness,
   readVerification,
 } from "@/lib/backup";
-import { aiEndpointInfo } from "@/lib/ai-client";
+import { getTierConfigView } from "@/lib/settings/ai-tiers";
 import { formatBytes } from "@/lib/format-bytes";
 import { requireAdmin } from "@/lib/auth";
 import { minTrainingAge } from "@/lib/age-gate";
@@ -24,6 +24,7 @@ import AppVersion from "@/components/AppVersion";
 import SettingsTabs from "../SettingsTabs";
 import PublicUrlSettings from "../PublicUrlSettings";
 import AiSettings from "../AiSettings";
+import AiTierSettings from "./AiTierSettings";
 import InstanceTimezoneSettings from "./InstanceTimezoneSettings";
 import AgeGateSettings from "./AgeGateSettings";
 import BackupSettings from "./BackupSettings";
@@ -60,7 +61,11 @@ export default async function ServerSettingsPage() {
       />
       <SettingsTabs isAdmin />
       <PublicUrlSettings publicUrl={publicUrl} />
-      <AiSettings prefs={getAiPrefs()} endpoint={aiEndpointInfo()} />
+      <AiTierSettings
+        heavy={getTierConfigView("heavy")}
+        light={getTierConfigView("light")}
+      />
+      <AiSettings prefs={getAiPrefs()} />
       <InstanceTimezoneSettings timezone={getInstanceTimezone()} />
       <BackupSettings
         settings={getBackupSettings()}

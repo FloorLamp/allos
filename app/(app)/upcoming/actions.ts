@@ -16,6 +16,35 @@ import { snoozeUntil } from "@/lib/upcoming";
 import { preventiveRuleByKey } from "@/lib/preventive-catalog";
 import { resolveFollowUpCore } from "@/lib/followup-write";
 import { formError, formOk, type FormResult } from "@/lib/types";
+import { requireSession } from "@/lib/auth";
+import { explainFinding } from "@/lib/explain-finding";
+import type { Reason } from "@/lib/reasons";
+
+// "Why is this flagged?" (issue #878, Phase 1). Narrate a finding's OWN reason payload
+// via the Light tier, or fall back to the deterministic structured rendering. Read-only
+// (requireSession) — it computes no fact and writes nothing; the reasons come from the
+// server-rendered item and are sanitized in explainFinding against the closed union, so
+// an echoed payload can't smuggle an unknown code into the prompt.
+export type ExplainFindingResult =
+  { ok: true; text: string; offline: boolean } | { ok: false; error: string };
+
+export async function explainFindingAction(
+  formData: FormData
+): Promise<ExplainFindingResult> {
+  await requireSession();
+  const title = String(formData.get("title") ?? "").trim();
+  if (!title) return { ok: false, error: "Couldn't read that finding." };
+  const detail = String(formData.get("detail") ?? "") || null;
+  let reasons: Reason[] = [];
+  try {
+    const parsed = JSON.parse(String(formData.get("reasons") ?? "[]"));
+    if (Array.isArray(parsed)) reasons = parsed as Reason[];
+  } catch {
+    reasons = [];
+  }
+  const result = await explainFinding({ title, detail, reasons });
+  return { ok: true, text: result.text, offline: result.offline };
+}
 
 // Inline "mark taken" for a due dose surfaced on the Upcoming page. Reuses the
 // idempotent markDoseTaken helper (verifies the dose belongs to this profile via

@@ -245,8 +245,8 @@ function formatPreviewDate(dateStr: string): string {
   return `${PREVIEW_WEEKDAYS[dow]}, ${PREVIEW_MONTHS[mo - 1]} ${d}, ${y}`;
 }
 
-// "2:30 PM" from 24-hour wall-clock parts (the value the user entered, in the
-// profile timezone — no conversion needed for display).
+// The public calendar preview has no login preference context, so it keeps its fixed
+// documented 12-hour clock while authenticated surfaces use the login formatter.
 function formatPreviewTime(h: number, mi: number): string {
   const period = h < 12 ? "AM" : "PM";
   const h12 = h % 12 === 0 ? 12 : h % 12;

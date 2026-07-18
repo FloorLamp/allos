@@ -14,6 +14,7 @@ import {
   endStaleEpisodeAction,
   dismissStaleNudgeAction,
   uploadSymptomPhotoAction,
+  updateSymptomPhotoCaptionAction,
   deleteSymptomPhotoAction,
 } from "@/app/(app)/medical/episodes/actions";
 import { createLogin, createProfile, actAs, fd } from "./harness";
@@ -107,13 +108,32 @@ describe("symptom photo attach / delete", () => {
 
     const row = db
       .prepare(
-        `SELECT id, stored_path, mime_type FROM symptom_photos WHERE profile_id = ?`
+        `SELECT id, stored_path, mime_type, caption FROM symptom_photos WHERE profile_id = ?`
       )
       .get(profile.id) as
-      { id: number; stored_path: string; mime_type: string } | undefined;
+      | {
+          id: number;
+          stored_path: string;
+          mime_type: string;
+          caption: string | null;
+        }
+      | undefined;
     expect(row).toBeTruthy();
     expect(row!.mime_type).toBe("image/png");
+    expect(row!.caption).toBe("left forearm");
     expect(fs.existsSync(row!.stored_path)).toBe(true);
+
+    const editRes = await updateSymptomPhotoCaptionAction(
+      fd({ photoId: row!.id, caption: "Improving after two days" })
+    );
+    expect(editRes.ok).toBe(true);
+    expect(
+      db
+        .prepare(
+          `SELECT caption FROM symptom_photos WHERE id = ? AND profile_id = ?`
+        )
+        .get(row!.id, profile.id)
+    ).toEqual({ caption: "Improving after two days" });
 
     const delRes = await deleteSymptomPhotoAction(fd({ photoId: row!.id }));
     expect(delRes.ok).toBe(true);
@@ -137,5 +157,32 @@ describe("symptom photo attach / delete", () => {
     form.set("date", today(profile.id));
     const res = await uploadSymptomPhotoAction(form);
     expect(res.ok).toBe(false);
+  });
+
+  it("does not edit a photo owned by another profile", async () => {
+    const login = createLogin({ role: "admin" });
+    const owner = createProfile("Photo Owner", login.id);
+    const actor = createProfile("Photo Editor", login.id);
+    actAs(login, owner);
+    const form = new FormData();
+    form.set("photo", pngFile("owned.png"));
+    form.set("date", today(owner.id));
+    expect((await uploadSymptomPhotoAction(form)).ok).toBe(true);
+    const row = db
+      .prepare(`SELECT id FROM symptom_photos WHERE profile_id = ?`)
+      .get(owner.id) as { id: number };
+
+    actAs(login, actor);
+    const res = await updateSymptomPhotoCaptionAction(
+      fd({ photoId: row.id, caption: "wrong profile" })
+    );
+    expect(res.ok).toBe(false);
+    expect(
+      db
+        .prepare(
+          `SELECT caption FROM symptom_photos WHERE id = ? AND profile_id = ?`
+        )
+        .get(row.id, owner.id)
+    ).toEqual({ caption: null });
   });
 });

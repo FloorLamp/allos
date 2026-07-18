@@ -253,7 +253,7 @@ export default async function AnalyzeSection({
             Sessions
           </h3>
           {view.sessions.length === 0 ? (
-            <EmptyState message="No sessions in this range." />
+            <EmptyState message="No sessions in this range. Widen the range or log one." />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full whitespace-nowrap">

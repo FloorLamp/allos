@@ -15,11 +15,7 @@ export default function WeightTrendWidget({
     const point = data[0];
     return (
       <div className="card" data-testid="weight-starting-point">
-        <WidgetHeader
-          title="Weight starting point"
-          href="/trends?tab=body"
-          linkLabel="View body metrics"
-        />
+        <WidgetHeader title="Weight starting point" href="/trends?tab=body" />
         <p className="mt-5 text-xs font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-400">
           Starting point
         </p>
@@ -36,11 +32,7 @@ export default function WeightTrendWidget({
 
   return (
     <div className="card">
-      <WidgetHeader
-        title="Weight trend"
-        href="/trends?tab=body"
-        linkLabel="View all"
-      />
+      <WidgetHeader title="Weight trend" href="/trends?tab=body" />
       <LineChartCard data={data} label="Weight" unit={` ${weightUnit}`} />
     </div>
   );

@@ -10,6 +10,7 @@
 
 import { isNonOptimal, isOutOfRange } from "./reference-range";
 import { biomarkerFamily } from "./canonical-name";
+import { latestByGroup } from "./latest-per-group";
 import type { MedicalRecord } from "./types";
 import type { MedicalSortColumn, SortDirection } from "./queries/medical";
 import type { RangeFilter } from "./queries/medical";
@@ -113,18 +114,14 @@ function comparator(
   return (a, b) => -nocase(a.date, b.date) || b.id - a.id;
 }
 
-// The id of the current (newest) reading per name group, over the COMBINED set:
-// newest date wins, id descending as tie-break (mirrors the SQL LATEST_IDS_CTE
-// ORDER BY date DESC, id DESC). Derived ids are negative, so among same-date rows a
-// stored (positive id) reading is preferred as "latest" over a derived one.
+// The id of the current (newest) reading per family group, over the COMBINED set.
+// The ordering rule (newest date wins, id descending tie-break, mirroring the SQL
+// LATEST_IDS_CTE `ORDER BY date DESC, id DESC`) lives in the shared latestByGroup
+// helper (#944); this only supplies the biomarker-FAMILY grouping identity (#482).
+// Derived ids are negative, so among same-date rows a stored (positive id) reading
+// is preferred as "latest" over a derived one — a property of the shared id tie-break.
 function latestIdByName(records: MedicalRecord[]): Map<string, number> {
-  const best = new Map<string, MedicalRecord>();
-  for (const r of records) {
-    const key = familyGroupKey(r);
-    const cur = best.get(key);
-    if (!cur || r.date > cur.date || (r.date === cur.date && r.id > cur.id))
-      best.set(key, r);
-  }
+  const best = latestByGroup(records, familyGroupKey);
   return new Map([...best].map(([k, r]) => [k, r.id]));
 }
 

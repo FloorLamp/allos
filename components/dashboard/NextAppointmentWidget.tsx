@@ -18,11 +18,7 @@ export default function NextAppointmentWidget({
 }) {
   return (
     <div className="card">
-      <WidgetHeader
-        title="Next appointment"
-        href="/encounters"
-        linkLabel="All"
-      />
+      <WidgetHeader title="Next appointment" href="/encounters" />
       {!appointment ? (
         <p className="text-sm text-slate-500 dark:text-slate-400">
           No upcoming appointments.

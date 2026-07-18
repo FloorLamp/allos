@@ -11,6 +11,8 @@ import {
   formatSplitLabel,
   rowsEqual,
   isEditLocked,
+  classifyUpsert,
+  tallyUpsert,
   isNoOpSyncEvent,
   shouldShowConnectedSource,
   planSyncEventPrune,
@@ -24,6 +26,44 @@ describe("isEditLocked", () => {
     expect(isEditLocked(0)).toBe(false);
     expect(isEditLocked(null)).toBe(false);
     expect(isEditLocked(undefined)).toBe(false);
+  });
+});
+
+describe("classifyUpsert (source-dedup disposition, #14/#944)", () => {
+  it("no pre-image row → inserted (regardless of the equal flag)", () => {
+    expect(classifyUpsert(false, false)).toBe("inserted");
+    expect(classifyUpsert(false, true)).toBe("inserted");
+  });
+  it("pre-image row with equal post-image → unchanged (idempotent re-send)", () => {
+    expect(classifyUpsert(true, true)).toBe("unchanged");
+  });
+  it("pre-image row with a differing post-image → updated", () => {
+    expect(classifyUpsert(true, false)).toBe("updated");
+  });
+});
+
+describe("tallyUpsert (dedup split accounting, #14/#944)", () => {
+  it("bumps only the segment for the disposition", () => {
+    const c = emptyCounts();
+    tallyUpsert(c, "inserted");
+    tallyUpsert(c, "inserted");
+    tallyUpsert(c, "updated");
+    tallyUpsert(c, "unchanged");
+    expect(c).toEqual({
+      inserted: 2,
+      updated: 1,
+      unchanged: 1,
+      suppressed: 0,
+      edited: 0,
+    });
+  });
+  it("never touches the held-out suppressed/edited counters", () => {
+    const c = emptyCounts();
+    c.suppressed = 3;
+    c.edited = 2;
+    tallyUpsert(c, "updated");
+    expect(c.suppressed).toBe(3);
+    expect(c.edited).toBe(2);
   });
 });
 

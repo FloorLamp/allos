@@ -43,7 +43,7 @@ export default function GenomicVariantForm({
     try {
       result = await action(formData);
     } catch {
-      setError("Couldn't save this variant. Please try again.");
+      setError("Couldn't save this variant. Try again.");
       return;
     }
     if (!result.ok) {

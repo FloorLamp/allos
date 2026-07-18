@@ -61,12 +61,24 @@ test("dashboard quick-log widget logs an administration and updates the count (#
   const item = widget
     .getByTestId("quick-log-prn-item")
     .filter({ hasText: MED });
+  if (!(await item.isVisible())) {
+    const more = widget.getByTestId("quick-log-prn-more");
+    await expect(more).toContainText(/More medications/);
+    await more.locator("summary").click();
+  }
   await expect(item).toBeVisible();
   const label = item.getByTestId("prn-day-label");
   const before = parseCount(await label.textContent());
   expect(before).toBeGreaterThanOrEqual(1);
 
-  // One-tap "Log" records a fresh administration NOW → the count rises by one.
+  await expect(item.getByTestId("prn-log-now")).toHaveAccessibleName(
+    "Taken now"
+  );
+  await expect(item.getByTestId("prn-log-more")).toHaveAccessibleName(
+    "Earlier dose"
+  );
+
+  // One-tap "Taken now" records a fresh administration NOW → the count rises by one.
   // settledClick awaits the log Server-Action POST so the count assertion can't race it.
   await settledClick(page, item.getByTestId("prn-log-now"));
   await expect(label).toContainText(`${before + 1} today`);

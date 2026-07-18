@@ -44,7 +44,7 @@ export default function GrowthQuickAdd({
     try {
       await addGrowth(formData);
     } catch {
-      setError("Couldn't save this measurement. Please try again.");
+      setError("Couldn't save this measurement. Try again.");
       return;
     }
     toast("Growth measurement saved");

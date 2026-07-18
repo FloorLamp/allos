@@ -1,7 +1,7 @@
 import WidgetHeader from "@/components/dashboard/WidgetHeader";
 import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
-import { getUnitPrefs } from "@/lib/settings";
+import { getTimezone, getUnitPrefs } from "@/lib/settings";
 import { SYMPTOMS } from "@/lib/symptoms";
 import {
   getSymptomSeveritiesOnDate,
@@ -11,6 +11,7 @@ import {
   getPediatricFormContext,
 } from "@/lib/queries";
 import { currentEpisodeForProfile } from "@/lib/illness-episode";
+import { isTaskConfigured } from "@/lib/ai-resolve";
 import { episodeHeadline } from "@/lib/illness-episode-format";
 import { episodeHref } from "@/lib/hrefs";
 import SymptomLogBar from "./SymptomLogBar";
@@ -39,11 +40,7 @@ export default function SymptomLogCard({
     episode && episode.id != null ? episodeHref(episode.id) : "/timeline";
   return (
     <div className="card">
-      <WidgetHeader
-        title="Symptoms"
-        href={episodeLink}
-        linkLabel={episode ? "Episode" : "Timeline"}
-      />
+      <WidgetHeader title="Symptoms" href={episodeLink} />
       {episode ? (
         <p
           className="mb-3 text-xs font-medium text-slate-600 dark:text-slate-300"
@@ -69,6 +66,8 @@ export default function SymptomLogCard({
         suggestActivateIllness={false}
         showTemperature
         temperatureUnit={temperatureUnit}
+        timeZone={getTimezone(profileId)}
+        textIntakeEnabled={isTaskConfigured("symptom-map")}
       />
       {/* Door C (#843): reach for an OTC med right where you're logging symptoms. */}
       <SymptomMedQuickAdd pediatric={getPediatricFormContext(profileId)} />

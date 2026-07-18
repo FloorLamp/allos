@@ -52,7 +52,7 @@ export default function FamilyHistoryForm({
     try {
       result = await action(formData);
     } catch {
-      setError("Couldn't save this entry. Please try again.");
+      setError("Couldn't save this entry. Try again.");
       return;
     }
     if (!result.ok) {

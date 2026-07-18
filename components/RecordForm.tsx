@@ -67,7 +67,7 @@ export default function RecordForm({
     try {
       result = await action(formData);
     } catch {
-      setError("Couldn't save this record. Please try again.");
+      setError("Couldn't save this record. Try again.");
       return;
     }
     // A validation guard now answers with a typed error instead of a silent

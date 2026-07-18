@@ -33,10 +33,13 @@ test.describe("Illness round 3 (#859)", () => {
   }) => {
     test.slow();
 
-    // Reach the open episode via the illness hero cockpit's "Full episode" link.
-    await page.goto("/");
+    // Reach the acting profile's open episode through its own index. The dashboard can
+    // contain other household members' episode links after earlier stress-lane specs
+    // create profiles, so a page-global `.first()` would make this test order-dependent.
+    await page.goto("/medical/episodes");
     const episodeLink = page
-      .getByRole("link", { name: "Full episode", exact: true })
+      .getByTestId("episode-index-row")
+      .filter({ hasText: /ongoing/i })
       .first();
     await followLink(page, episodeLink, /\/medical\/episodes\/\d+/);
 
@@ -51,12 +54,23 @@ test.describe("Illness round 3 (#859)", () => {
     await expect(page.getByText(/Temperature logged/i)).toBeVisible();
     await expect(page.getByText(/contact a clinician/i)).toBeVisible();
 
-    // Item 2: once a fever-range reading exists, the school-return countdown line
-    // renders (it reflows after the log's router.refresh()).
-    await expect(page.getByTestId("school-return-line")).toBeVisible();
-    await expect(page.getByTestId("school-return-line")).toContainText(
-      /Fever-free/i
-    );
+    // Item 2: once a fever-range reading exists, a compact school-return status
+    // joins the latest temperature and medication row (after router.refresh()).
+    const feverFreeStatus = page.getByTestId("school-return-status");
+    await expect(feverFreeStatus).toBeVisible();
+    await expect(feverFreeStatus).toContainText(/Fever-free \d+h\/\d+h/i);
+    await expect(feverFreeStatus).toHaveClass(/text-slate-500/);
+    const latestReadings = page.getByTestId("episode-latest-readings");
+    await expect(
+      latestReadings.getByTestId("school-return-status")
+    ).toBeVisible();
+    const temperatureBox = await latestReadings
+      .getByTestId("episode-last-temperature")
+      .boundingBox();
+    const feverFreeBox = await feverFreeStatus.boundingBox();
+    expect(
+      Math.abs((temperatureBox?.y ?? 0) - (feverFreeBox?.y ?? 0))
+    ).toBeLessThan(24);
 
     // Item 4: attach a symptom photo via the camera-first input, then see it in the
     // dated strip.
@@ -67,7 +81,6 @@ test.describe("Illness round 3 (#859)", () => {
     const deleteButtons = strip.locator(
       '[data-testid^="symptom-photo-delete-"]'
     );
-
     // OWN the whole strip state (#907): delete EVERY existing photo so `before` is a
     // deterministic 0 and no leftover from a failed attempt / prior --repeat-each
     // iteration can poison the count. settledClick awaits each delete's Server-Action
@@ -83,17 +96,67 @@ test.describe("Illness round 3 (#859)", () => {
       });
     }
 
-    // Upload a uniquely-salted PNG and await the upload Server-Action POST before
-    // asserting the new thumbnail (settledUpload replaces the bare 15s count poll).
-    await settledUpload(page, strip.getByTestId("symptom-photo-input"), {
-      name: "rash.png",
-      mimeType: "image/png",
-      buffer: uniquePng(),
-    });
-    await expect(deleteButtons).toHaveCount(1, { timeout: 15_000 });
+    // The logging-area shortcut points to the SAME hidden camera input owned by the
+    // gallery. Upload a uniquely-salted PNG through that input and re-drive until a
+    // thumbnail renders.
+    const addPhotoShortcut = page.getByTestId("episode-add-photo-shortcut");
+    await expect(addPhotoShortcut).toHaveAttribute(
+      "for",
+      "episode-symptom-photo-input"
+    );
+    const captionInput = strip.getByLabel("Caption (optional)");
 
-    // Clean up the photo we added so a re-run starts where it began.
-    await settledClick(page, deleteButtons.last());
-    await expect(deleteButtons).toHaveCount(0, { timeout: 15_000 });
+    // settledUpload's POST arm matches ANY same-origin POST, and this page fires
+    // unrelated posts (earlier steps' revalidations, the offline-queue flush), so
+    // a satisfied settle doesn't prove the UPLOAD landed — CI hit exactly that
+    // (settle resolved, 0 thumbnails for 15s). toPass is justified (a commented
+    // last resort): only an actually-applied upload renders a delete button, so
+    // the loop cannot false-pass; a re-driven attempt that double-lands is
+    // absorbed by the delete-ALL cleanup below.
+    await expect(async () => {
+      await captionInput.fill("Rash on left forearm");
+      await settledUpload(page, strip.getByTestId("symptom-photo-input"), {
+        name: `rash-${randomBytes(6).toString("hex")}.png`,
+        mimeType: "image/png",
+        buffer: uniquePng(),
+      });
+      await expect(deleteButtons.first()).toBeVisible({ timeout: 5_000 });
+    }).toPass({ timeout: 45_000 });
+
+    await expect(page.getByText("Photo attached.")).toBeVisible();
+    const captionedPhoto = strip
+      .locator("figure")
+      .filter({ hasText: "Rash on left forearm" })
+      .last();
+    const addedPhotoTestId = await captionedPhoto.getAttribute("data-testid");
+    expect(addedPhotoTestId).toMatch(/^symptom-photo-\d+$/);
+    const addedPhoto = strip.locator(`[data-testid="${addedPhotoTestId}"]`);
+    await expect(addedPhoto).toContainText("Rash on left forearm");
+
+    // Existing captions can be corrected without replacing the image.
+    await addedPhoto
+      .getByRole("button", { name: "Edit photo caption" })
+      .click();
+    const captionEditor = addedPhoto.getByLabel("Photo caption", {
+      exact: true,
+    });
+    await captionEditor.fill("Rash improving");
+    await addedPhoto.getByRole("button", { name: "Save" }).click();
+    await expect(addedPhoto).toContainText("Rash improving", {
+      timeout: 15_000,
+    });
+    // Clean up every photo we added (a re-driven upload may have landed twice) so
+    // a re-run starts where it began.
+    for (
+      let remaining = await deleteButtons.count();
+      remaining > 0;
+      remaining--
+    ) {
+      await settledClick(page, deleteButtons.first());
+      await expect(deleteButtons).toHaveCount(remaining - 1, {
+        timeout: 15_000,
+      });
+    }
+    await expect(deleteButtons).toHaveCount(0);
   });
 });

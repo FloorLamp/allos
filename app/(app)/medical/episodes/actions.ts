@@ -10,12 +10,22 @@ import { expiresAtFor } from "@/lib/share-links";
 import { createEpisodeShareLink } from "@/lib/share-links-db";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
-import { isRealIsoDate } from "@/lib/date";
+import { isRealIsoDate, zonedWallTimeToUtc } from "@/lib/date";
+import { db } from "@/lib/db";
+import { getTimezone } from "@/lib/settings";
+import { updateTemperatureCore } from "@/lib/temperature-log";
+import {
+  deleteAdministrationLog,
+  updateAdministrationLog,
+} from "@/lib/queries";
+import { captureDelete } from "@/lib/undo-delete-db";
+import {
+  resolveTemperatureUnit,
+  VITAL_CANONICAL,
+  toCanonicalTempF,
+} from "@/lib/vitals-input";
 import {
   getEpisodeRow,
-  updateEpisodeBoundaries,
-  setEpisodeNote,
-  setEpisodeOutcome,
   createEpisodeRow,
   mergeEpisodeRows,
 } from "@/lib/illness-episode-store";
@@ -23,15 +33,19 @@ import {
   promoteEpisodeToConditionCore,
   unpromoteEpisodeConditionCore,
   endEpisodeCore,
+  reopenEpisodeCore,
   endEpisodeAsOfCore,
   endEpisodeWithMedReconciliation,
+  editEpisodeCore,
 } from "@/lib/illness-episode-write";
 import { getEpisodeMedReconciliation } from "@/lib/queries";
 import { ackStaleNudge } from "@/lib/stale-episode-data";
 import {
   attachSymptomPhotoCore,
   deleteSymptomPhotoCore,
+  updateSymptomPhotoCaptionCore,
 } from "@/lib/symptom-photo-write";
+import { setSymptomSeverityCore } from "@/lib/symptom-log-write";
 
 // Illness-episode Server Actions (issues #801/#856/#879). An action either operates on the
 // session's ACTIVE profile (requireWriteAccess) or, when the cross-profile episode page /
@@ -51,6 +65,224 @@ export type EpisodeActionResult = { ok: true } | { ok: false; error: string };
 function parseEpisodeId(formData: FormData): number | null {
   const n = Number(formData.get("episodeId"));
   return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+function eventDateInEpisode(
+  date: string,
+  row: { started_at: string | null; ended_at: string | null }
+): boolean {
+  return (
+    isRealIsoDate(date) &&
+    (row.started_at == null || date >= row.started_at) &&
+    (row.ended_at == null || date < row.ended_at)
+  );
+}
+
+function revalidateEpisodeEvents() {
+  revalidatePath("/medical/episodes/[id]", "page");
+  revalidatePath("/medications");
+  revalidatePath("/biomarkers");
+  revalidatePath("/timeline");
+  revalidatePath("/");
+}
+
+export async function updateEpisodeTemperatureAction(
+  formData: FormData
+): Promise<EpisodeActionResult> {
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
+  const episodeId = parseEpisodeId(formData);
+  const row = episodeId ? getEpisodeRow(profileId, episodeId) : null;
+  const id = Number(formData.get("eventId"));
+  const date = String(formData.get("date") ?? "");
+  if (!row || !id)
+    return { ok: false, error: "That reading is no longer available." };
+  if (!eventDateInEpisode(date, row))
+    return { ok: false, error: "Keep the reading within this episode." };
+  const existing = db
+    .prepare(
+      `SELECT date FROM medical_records
+        WHERE id = ? AND profile_id = ? AND canonical_name = ?`
+    )
+    .get(id, profileId, VITAL_CANONICAL.temperature.canonical) as
+    { date: string } | undefined;
+  if (!existing || !eventDateInEpisode(existing.date, row))
+    return { ok: false, error: "That reading is no longer available." };
+  const value = Number(formData.get("value"));
+  const canonicalValue = Number.isFinite(value)
+    ? toCanonicalTempF(
+        value,
+        resolveTemperatureUnit(value, String(formData.get("unit") ?? "F"))
+      )
+    : null;
+  const outcome = updateTemperatureCore(
+    profileId,
+    id,
+    canonicalValue,
+    date,
+    String(formData.get("time") ?? "")
+  );
+  if (outcome.kind === "invalid") return { ok: false, error: outcome.error };
+  if (outcome.kind === "missing")
+    return { ok: false, error: "That reading is no longer available." };
+  revalidateEpisodeEvents();
+  return { ok: true };
+}
+
+export async function updateEpisodeSymptomAction(
+  formData: FormData
+): Promise<EpisodeActionResult> {
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
+  const episodeId = parseEpisodeId(formData);
+  const row = episodeId ? getEpisodeRow(profileId, episodeId) : null;
+  const date = String(formData.get("date") ?? "");
+  const symptom = String(formData.get("symptom") ?? "");
+  if (!row || !eventDateInEpisode(date, row))
+    return { ok: false, error: "That symptom is no longer available." };
+  const existing = db
+    .prepare(
+      `SELECT 1 FROM symptom_logs
+        WHERE profile_id = ? AND date = ? AND symptom = ?`
+    )
+    .get(profileId, date, symptom);
+  if (!existing)
+    return { ok: false, error: "That symptom is no longer available." };
+  const outcome = setSymptomSeverityCore(
+    profileId,
+    symptom,
+    Math.round(Number(formData.get("severity"))),
+    date,
+    String(formData.get("note") ?? "")
+  );
+  if (outcome.kind === "invalid")
+    return { ok: false, error: "Choose a severity from 1 to 4." };
+  revalidateEpisodeEvents();
+  return { ok: true };
+}
+
+export async function updateEpisodeDoseAction(
+  formData: FormData
+): Promise<EpisodeActionResult> {
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
+  const episodeId = parseEpisodeId(formData);
+  const row = episodeId ? getEpisodeRow(profileId, episodeId) : null;
+  const id = Number(formData.get("eventId"));
+  const date = String(formData.get("date") ?? "");
+  const time = String(formData.get("time") ?? "");
+  if (!row || !id)
+    return { ok: false, error: "That dose is no longer available." };
+  if (!eventDateInEpisode(date, row) || !/^\d{2}:\d{2}$/.test(time))
+    return { ok: false, error: "Enter a date and time within this episode." };
+  const existing = db
+    .prepare(
+      `SELECT l.date FROM intake_item_logs l
+         JOIN intake_items i ON i.id = l.item_id
+        WHERE l.id = ? AND i.profile_id = ? AND i.as_needed = 1
+          AND l.status = 'taken'`
+    )
+    .get(id, profileId) as { date: string } | undefined;
+  if (!existing || !eventDateInEpisode(existing.date, row))
+    return { ok: false, error: "That dose is no longer available." };
+  const amount =
+    String(formData.get("amount") ?? "")
+      .trim()
+      .slice(0, 120) || null;
+  const updated = updateAdministrationLog(
+    profileId,
+    id,
+    date,
+    zonedWallTimeToUtc(getTimezone(profileId), date, time),
+    amount
+  );
+  if (!updated)
+    return { ok: false, error: "That dose is no longer available." };
+  revalidateEpisodeEvents();
+  return { ok: true };
+}
+
+export async function deleteEpisodeTemperatureAction(
+  formData: FormData
+): Promise<{ undoId: number | null }> {
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
+  const episodeId = parseEpisodeId(formData);
+  const row = episodeId ? getEpisodeRow(profileId, episodeId) : null;
+  const id = Number(formData.get("eventId"));
+  const owned =
+    id && row
+      ? (db
+          .prepare(
+            `SELECT id, date FROM medical_records
+            WHERE id = ? AND profile_id = ? AND canonical_name = ?`
+          )
+          .get(id, profileId, VITAL_CANONICAL.temperature.canonical) as
+          { id: number; date: string } | undefined)
+      : null;
+  const undoId =
+    owned && eventDateInEpisode(owned.date, row!)
+      ? captureDelete("biomarker-record", profileId, id)
+      : null;
+  revalidateEpisodeEvents();
+  return { undoId };
+}
+
+export async function deleteEpisodeDoseAction(
+  formData: FormData
+): Promise<{ undoId: number | null }> {
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
+  const episodeId = parseEpisodeId(formData);
+  const row = episodeId ? getEpisodeRow(profileId, episodeId) : null;
+  const id = Number(formData.get("eventId"));
+  const owned =
+    id && row
+      ? (db
+          .prepare(
+            `SELECT l.date FROM intake_item_logs l
+             JOIN intake_items i ON i.id = l.item_id
+            WHERE l.id = ? AND i.profile_id = ? AND i.as_needed = 1
+              AND l.status = 'taken'`
+          )
+          .get(id, profileId) as { date: string } | undefined)
+      : null;
+  const undoId =
+    owned && eventDateInEpisode(owned.date, row!)
+      ? deleteAdministrationLog(profileId, id)
+      : null;
+  revalidateEpisodeEvents();
+  return { undoId };
 }
 
 // Mint a revocable share link for the episode, re-anchored to its stable id (#856). The
@@ -116,14 +348,9 @@ export async function promoteEpisodeToConditionAction(
   const row = id ? getEpisodeRow(profileId, id) : null;
   if (!row) return { ok: false, error: "That episode is no longer available." };
 
-  const outcome = promoteEpisodeToConditionCore(
-    profileId,
-    row.situation,
-    row.started_at,
-    row.ended_at
-  );
+  const outcome = promoteEpisodeToConditionCore(profileId, row.id);
   if (outcome.kind === "invalid")
-    return { ok: false, error: "Could not create the condition." };
+    return { ok: false, error: "Couldn't create the condition." };
   revalidatePath("/medical/episodes/[id]", "page");
   revalidatePath("/conditions");
   return { ok: true };
@@ -145,7 +372,7 @@ export async function unpromoteEpisodeConditionAction(
   const row = id ? getEpisodeRow(profileId, id) : null;
   if (!row) return { ok: false, error: "That episode is no longer available." };
 
-  unpromoteEpisodeConditionCore(profileId, row.situation, row.started_at);
+  unpromoteEpisodeConditionCore(profileId, row.id);
   revalidatePath("/medical/episodes/[id]", "page");
   revalidatePath("/conditions");
   return { ok: true };
@@ -184,9 +411,16 @@ export async function editEpisodeAction(
   if (endedAt != null && startedAt != null && endedAt <= startedAt)
     return { ok: false, error: "The end date must be after the start date." };
 
-  updateEpisodeBoundaries(profileId, id!, startedAt, endedAt);
-  setEpisodeNote(profileId, id!, String(formData.get("note") ?? ""));
-  setEpisodeOutcome(profileId, id!, String(formData.get("outcome") ?? ""));
+  const updated = editEpisodeCore(
+    profileId,
+    id!,
+    startedAt,
+    endedAt,
+    String(formData.get("note") ?? ""),
+    String(formData.get("outcome") ?? "")
+  );
+  if (!updated)
+    return { ok: false, error: "That episode is no longer available." };
   revalidatePath("/medical/episodes/[id]", "page");
   revalidatePath("/medical/episodes");
   return { ok: true };
@@ -258,6 +492,43 @@ export async function endEpisodeAction(
   if (outcome.kind === "missing")
     return { ok: false, error: "That episode is no longer available." };
   revalidatePath("/medical/episodes/[id]", "page");
+  revalidatePath("/");
+  revalidatePath("/nutrition");
+  return { ok: true };
+}
+
+// Reopen a recently resolved episode when symptoms return. The core owns the short
+// relapse window and reactivates the matching illness situation atomically, preserving
+// the stable episode row and any promoted Condition.
+export async function reopenEpisodeAction(
+  formData: FormData
+): Promise<EpisodeActionResult> {
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
+  const id = parseEpisodeId(formData);
+  if (!id) return { ok: false, error: "That episode is no longer available." };
+  const outcome = reopenEpisodeCore(profileId, id);
+  if (outcome.kind === "missing") {
+    return { ok: false, error: "That episode is no longer available." };
+  }
+  if (outcome.kind === "expired") {
+    return {
+      ok: false,
+      error:
+        "This illness ended too long ago to reopen. Start a new episode instead.",
+    };
+  }
+  if (outcome.kind === "conflict") {
+    return { ok: false, error: "A current episode is already active." };
+  }
+  revalidatePath("/medical/episodes/[id]", "page");
+  revalidatePath("/medical/episodes");
   revalidatePath("/");
   revalidatePath("/nutrition");
   return { ok: true };
@@ -378,6 +649,29 @@ export async function uploadSymptomPhotoAction(
     caption
   );
   if (outcome.kind === "invalid") return { ok: false, error: outcome.error };
+  revalidatePath("/medical/episodes/[id]", "page");
+  return { ok: true };
+}
+
+// Edit the caption without replacing the image. Cross-profile gated; the core scopes
+// the photo id to the resolved profile so a forged household photo id cannot be edited.
+export async function updateSymptomPhotoCaptionAction(
+  formData: FormData
+): Promise<EpisodeActionResult> {
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
+  const id = Number(formData.get("photoId"));
+  if (!Number.isInteger(id) || id <= 0)
+    return { ok: false, error: "That photo is no longer available." };
+  const caption = String(formData.get("caption") ?? "");
+  if (!updateSymptomPhotoCaptionCore(profileId, id, caption))
+    return { ok: false, error: "That photo is no longer available." };
   revalidatePath("/medical/episodes/[id]", "page");
   return { ok: true };
 }

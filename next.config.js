@@ -44,6 +44,17 @@ const SECURITY_HEADERS = [
   // per-request by middleware.ts (nonce'd script-src). See the comment block above.
 ];
 
+// Next applies its own document-cache header after middleware in development (and may
+// do so in future production render paths), so /share hardening also lives at the final
+// route-header boundary. Keep this in lockstep with middleware.withShareHeaders: these
+// unauthenticated PHI-bearing responses must never be retained after revocation.
+const SHARE_HEADERS = [
+  { key: "Cache-Control", value: "no-store, must-revalidate" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "X-Robots-Tag", value: "noindex, nofollow" },
+  { key: "Referrer-Policy", value: "no-referrer" },
+];
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Next 16's dev server takes a per-project single-instance lock (.next/dev/lock),
@@ -53,7 +64,10 @@ const nextConfig = {
   // CI's two `next start` instances share the one .next build and take no lock).
   distDir: process.env.NEXT_DIST_DIR || ".next",
   async headers() {
-    return [{ source: "/:path*", headers: SECURITY_HEADERS }];
+    return [
+      { source: "/:path*", headers: SECURITY_HEADERS },
+      { source: "/share/:path*", headers: SHARE_HEADERS },
+    ];
   },
   // Native / heavy server-only packages kept OUT of the server bundle. better-sqlite3
   // is a native module; @napi-rs/canvas is a native rasterizer and tesseract.js loads

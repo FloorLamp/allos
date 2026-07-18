@@ -63,6 +63,13 @@ export interface FoodGroup {
   // the per-group figure the protein-adequacy estimate (#767) sums as a FLOOR. Omitted
   // for a group that isn't a meaningful protein source (fruit, water, sweets, alcohol).
   protein_g?: number;
+  // Representative dietary-fiber grams in ONE serving (USDA FoodData Central, whole
+  // grams) — the per-group figure the fiber-adequacy estimate (#976) sums as a FLOOR,
+  // exactly like protein_g. Omitted for a group that carries no meaningful fiber (all
+  // animal foods — fish, poultry, eggs, dairy, meats — plus water, fried food, sweets,
+  // sugary drinks, alcohol). NOTE the bearing set DIFFERS from protein's: fruit/berries
+  // carry fiber but no protein_g, while fish/poultry/meat carry protein but no fiber_g.
+  fiber_g?: number;
 }
 
 // Curated food-group catalog. Ordered encourage-first (the foods to eat more of lead
@@ -101,6 +108,7 @@ const GROUPS: FoodGroup[] = [
     tier: "encourage",
     nutrients: ["folate", "potassium", "iron"],
     protein_g: 2,
+    fiber_g: 2,
   },
   {
     slug: "cruciferous",
@@ -109,6 +117,7 @@ const GROUPS: FoodGroup[] = [
     tier: "encourage",
     nutrients: ["folate"],
     protein_g: 3,
+    fiber_g: 3,
   },
   {
     slug: "other_vegetables",
@@ -117,6 +126,7 @@ const GROUPS: FoodGroup[] = [
     tier: "encourage",
     nutrients: ["potassium"],
     protein_g: 2,
+    fiber_g: 2,
   },
   {
     slug: "legumes",
@@ -125,6 +135,7 @@ const GROUPS: FoodGroup[] = [
     tier: "encourage",
     nutrients: ["iron", "folate", "magnesium", "potassium"],
     protein_g: 9,
+    fiber_g: 8,
   },
   {
     slug: "nuts_seeds",
@@ -133,6 +144,7 @@ const GROUPS: FoodGroup[] = [
     tier: "encourage",
     nutrients: ["magnesium", "omega-3"],
     protein_g: 5,
+    fiber_g: 3,
   },
   {
     slug: "whole_grains",
@@ -141,6 +153,7 @@ const GROUPS: FoodGroup[] = [
     tier: "encourage",
     nutrients: ["magnesium"],
     protein_g: 5,
+    fiber_g: 3,
   },
   {
     slug: "fruit",
@@ -148,6 +161,7 @@ const GROUPS: FoodGroup[] = [
     serving: "One piece or ~½ cup of whole fruit",
     tier: "encourage",
     nutrients: ["potassium"],
+    fiber_g: 3,
   },
   {
     slug: "berries",
@@ -155,6 +169,7 @@ const GROUPS: FoodGroup[] = [
     serving: "½ cup of blueberries, strawberries, raspberries",
     tier: "encourage",
     nutrients: [],
+    fiber_g: 4,
   },
   {
     slug: "fermented",
@@ -163,6 +178,7 @@ const GROUPS: FoodGroup[] = [
     tier: "encourage",
     nutrients: ["vitamin-b12"],
     protein_g: 6,
+    fiber_g: 1,
   },
   // ── Neutral / balance ──────────────────────────────────────────────────────
   {
@@ -204,6 +220,7 @@ const GROUPS: FoodGroup[] = [
     tier: "neutral",
     nutrients: ["potassium"],
     protein_g: 3,
+    fiber_g: 3,
   },
   {
     slug: "water",
@@ -228,6 +245,7 @@ const GROUPS: FoodGroup[] = [
     tier: "limit",
     nutrients: [],
     protein_g: 3,
+    fiber_g: 1,
   },
   {
     slug: "fried_food",
@@ -275,14 +293,15 @@ export function buildFoodGroups(): FoodGroupsDataset {
       "~24 food groups at the HABIT tier (one serving = one tap) for the serving log " +
       "(issue #579), each with a stable slug (food_log.group_key), a serving " +
       "description, a tier (encourage/limit/neutral), the #577 nutrient-food-map keys " +
-      "it's a source of, and an optional protein_g the #767 protein-adequacy estimate " +
-      "sums as a FLOOR. Committed + HUMAN-REVIEWABLE. Regenerate with " +
+      "it's a source of, an optional protein_g the #767 protein-adequacy estimate " +
+      "sums as a FLOOR, and an optional fiber_g the #976 fiber-adequacy estimate sums " +
+      "the same way. Committed + HUMAN-REVIEWABLE. Regenerate with " +
       "`npm run gen:food-groups`. INFORMATIONAL dietary guidance, NOT medical advice.",
     citation: [
       {
         source: "USDA FoodData Central (SR Legacy / Foundation Foods)",
         url: "https://fdc.nal.usda.gov",
-        note: "Representative per-serving protein grams (protein_g), rounded to whole grams for the described serving.",
+        note: "Representative per-serving protein grams (protein_g) and dietary-fiber grams (fiber_g), each rounded to whole grams for the described serving.",
       },
       {
         source: "Dietary Guidelines for Americans, 2020–2025 (USDA / HHS)",

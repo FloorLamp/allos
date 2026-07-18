@@ -51,10 +51,15 @@ test("item 2: a PRN row's name links to the med detail in the dashboard host", a
   await page.goto("/");
   const widget = page.getByTestId("quick-log-prn");
   await expect(widget).toBeVisible();
-  const link = widget
+  const item = widget
     .getByTestId("quick-log-prn-item")
-    .filter({ hasText: MED })
-    .getByRole("link", { name: MED });
+    .filter({ hasText: MED });
+  if (!(await item.isVisible())) {
+    const more = widget.getByTestId("quick-log-prn-more");
+    await expect(more).toContainText(/More medications/);
+    await more.locator("summary").click();
+  }
+  const link = item.getByRole("link", { name: MED });
   await expect(link).toHaveAttribute("href", /\/medications\/\d+/);
 });
 

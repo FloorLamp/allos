@@ -9,11 +9,7 @@ import type { WeeklyRecap } from "@/lib/weekly-recap";
 export default function WeeklyRecapWidget({ recap }: { recap: WeeklyRecap }) {
   return (
     <div className="card" data-testid="weekly-recap">
-      <WidgetHeader
-        title="Weekly recap"
-        href="/timeline"
-        linkLabel="Timeline"
-      />
+      <WidgetHeader title="Weekly recap" href="/timeline" />
       {recap.isEmpty || recap.lines.length === 0 ? (
         <p className="text-sm text-slate-500 dark:text-slate-400">
           Nothing logged in the last seven days — log a workout or a weigh-in to

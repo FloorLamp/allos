@@ -37,7 +37,7 @@ export default function ReprocessButton() {
       // completely silent (issue #477) — surface it inline instead.
       setResult({
         status: "skipped",
-        message: "Couldn't check documents. Please try again.",
+        message: "Couldn't check documents. Try again.",
       });
       return;
     } finally {
@@ -85,7 +85,7 @@ export default function ReprocessButton() {
         // boundary; keep it on this row instead (issue #477).
         setResult({
           status: "skipped",
-          message: "Re-extraction failed. Please try again.",
+          message: "Couldn't re-extract. Try again.",
         });
       }
     });

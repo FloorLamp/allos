@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { loginAs, followLink } from "./nav";
+import { settledClick } from "./helpers";
 
 // Illness-episode view (issue #801). The seed makes profile 1 currently sick — an
 // ongoing "Illness" situation with day-by-day symptoms, a fever curve (#800), and PRN
@@ -29,6 +30,15 @@ test.describe("Illness-episode view (#801)", () => {
     await expect(page.getByTestId("episode-symptoms")).toBeVisible();
     await expect(page.getByTestId("episode-fever")).toBeVisible();
     await expect(page.getByTestId("episode-meds")).toBeVisible();
+    const latest = page
+      .getByTestId("episode-summary-header")
+      .getByTestId("episode-latest-readings");
+    await expect(latest.getByTestId("episode-last-temperature")).toContainText(
+      /\d{2}:\d{2} \((?:just now|\d+ (?:min|mins|hr|hrs) ago)\)/
+    );
+    await expect(latest.getByTestId("episode-last-dose")).toContainText(
+      /\d{2}:\d{2} \((?:just now|\d+ (?:min|mins|hr|hrs) ago)\)/
+    );
   });
 
   test("create a tokenized episode share link and view the summary anonymously", async ({
@@ -37,11 +47,11 @@ test.describe("Illness-episode view (#801)", () => {
   }) => {
     test.slow();
 
-    // Open the episode detail via the illness hero cockpit's "Full episode" link (#858 —
+    // Open the episode detail via the illness hero cockpit's "More details" link (#858 —
     // the active profile's cockpit is at hero position, expanded by default).
     await page.goto("/");
     const episodeLink = page
-      .getByRole("link", { name: "Full episode", exact: true })
+      .getByRole("link", { name: /^More details about / })
       .first();
     await followLink(page, episodeLink, /\/medical\/episodes\/\d+/);
 
@@ -65,11 +75,19 @@ test.describe("Illness-episode view (#801)", () => {
     const headers = resp?.headers() ?? {};
     expect(headers["referrer-policy"]).toBe("no-referrer");
     expect(headers["x-robots-tag"]).toContain("noindex");
-    expect(headers["cache-control"]).toContain("no-store");
+    // Production (the CI webServer) must forbid storage. Next's dev server replaces
+    // custom document Cache-Control with its own no-cache header after middleware;
+    // local e2e accepts that development-only equivalent.
+    if (process.env.CI) expect(headers["cache-control"]).toContain("no-store");
+    else expect(headers["cache-control"]).toMatch(/no-store|no-cache/);
     await expect(
       anon.getByRole("heading", { name: /Illness episode/ })
     ).toBeVisible();
     await expect(anon.getByTestId("episode-fever")).toBeVisible();
+    await expect(anon.getByText(/Show \d+ more/)).toHaveCount(0);
+    expect(
+      await anon.getByTestId("episode-severity-dots").count()
+    ).toBeGreaterThan(5);
     // No app chrome / profile menu on the anonymous surface.
     await expect(anon.getByTestId("user-menu-trigger")).toHaveCount(0);
     await anonCtx.close();
@@ -125,7 +143,7 @@ test.describe("Illness-episode view (#801)", () => {
     await expect(member.getByTestId("illness-hero")).toBeVisible();
     const cockpit = member.getByTestId("illness-cockpit-1");
     await expect(cockpit).toBeVisible();
-    await expect(cockpit).toContainText(/sick/i);
+    await expect(cockpit).toContainText(/Illness/i);
 
     await member.context().close();
   });
@@ -163,14 +181,12 @@ test.describe("Illness-episode view (#801)", () => {
     const cockpit = member.getByTestId("illness-cockpit-1");
     await expect(cockpit).toBeVisible();
 
-    // Expand the accordion to reveal the cockpit body + its "Full episode" link, then
-    // follow it into the cross-profile episode page (retry through hydration).
-    const toggle = member.getByTestId("illness-cockpit-toggle-1");
-    const fullLink = cockpit.getByRole("link", { name: "Full episode" });
-    await expect(async () => {
-      await toggle.click();
-      await expect(fullLink).toBeVisible({ timeout: 2_000 });
-    }).toPass();
+    // The named episode link remains directly reachable from the compact header — no
+    // expansion or scroll through the logger controls is required.
+    const fullLink = cockpit.getByRole("link", {
+      name: "More details about admin's illness episode",
+    });
+    await expect(fullLink).toBeVisible();
     await followLink(member, fullLink, /\/medical\/episodes\/\d+/);
 
     // The page renders (no 404) with the subject-identity banner ON the page (#531/#534):
@@ -191,7 +207,9 @@ test.describe("Illness-episode view (#801)", () => {
     // panel, no Share (link minting is write-gated), no edit control.
     await expect(member.getByTestId("episode-log-panel")).toHaveCount(0);
     await expect(member.getByRole("button", { name: "Share" })).toHaveCount(0);
-    await expect(member.getByTestId("episode-edit-open")).toHaveCount(0);
+    await expect(
+      member.getByRole("button", { name: "More episode actions" })
+    ).toHaveCount(0);
 
     await member.context().close();
   });
@@ -209,10 +227,16 @@ async function createMemberWithGrants(
   await adminPage.goto("/settings/family");
   await adminPage.getByPlaceholder("Username").fill(username);
   await adminPage.getByPlaceholder("Password").fill(password);
-  await adminPage.getByRole("button", { name: "Create login" }).click();
+  // settledClick, not a raw click: a click in the hydration window is silently
+  // swallowed (#830) and this exact step has flaked that way in full-suite runs —
+  // the same hardening the view-only-access and two-factor specs carry.
+  await settledClick(
+    adminPage,
+    adminPage.getByRole("button", { name: "Create login" })
+  );
 
   const grantRow = adminPage.getByTestId(`grant-row-${username}`);
-  await expect(grantRow).toBeVisible();
+  await expect(grantRow).toBeVisible({ timeout: 15_000 });
   for (const g of grants) {
     const cell = adminPage.getByTestId(`grant-cell-${username}-${g.profileId}`);
     await cell.locator('input[type="checkbox"]').check();

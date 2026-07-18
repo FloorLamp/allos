@@ -2,12 +2,12 @@
   "$schema": "allos-dataset/v1",
   "id": "food-groups",
   "title": "Curated food-group catalog for the serving log",
-  "description": "~24 food groups at the HABIT tier (one serving = one tap) for the serving log (issue #579), each with a stable slug (food_log.group_key), a serving description, a tier (encourage/limit/neutral), the #577 nutrient-food-map keys it's a source of, and an optional protein_g the #767 protein-adequacy estimate sums as a FLOOR. Committed + HUMAN-REVIEWABLE. Regenerate with `npm run gen:food-groups`. INFORMATIONAL dietary guidance, NOT medical advice.",
+  "description": "~24 food groups at the HABIT tier (one serving = one tap) for the serving log (issue #579), each with a stable slug (food_log.group_key), a serving description, a tier (encourage/limit/neutral), the #577 nutrient-food-map keys it's a source of, an optional protein_g the #767 protein-adequacy estimate sums as a FLOOR, and an optional fiber_g the #976 fiber-adequacy estimate sums the same way. Committed + HUMAN-REVIEWABLE. Regenerate with `npm run gen:food-groups`. INFORMATIONAL dietary guidance, NOT medical advice.",
   "citation": [
     {
       "source": "USDA FoodData Central (SR Legacy / Foundation Foods)",
       "url": "https://fdc.nal.usda.gov",
-      "note": "Representative per-serving protein grams (protein_g), rounded to whole grams for the described serving."
+      "note": "Representative per-serving protein grams (protein_g) and dietary-fiber grams (fiber_g), each rounded to whole grams for the described serving."
     },
     {
       "source": "Dietary Guidelines for Americans, 2020–2025 (USDA / HHS)",
@@ -65,7 +65,8 @@
         "potassium",
         "iron"
       ],
-      "protein_g": 2
+      "protein_g": 2,
+      "fiber_g": 2
     },
     {
       "slug": "cruciferous",
@@ -75,7 +76,8 @@
       "nutrients": [
         "folate"
       ],
-      "protein_g": 3
+      "protein_g": 3,
+      "fiber_g": 3
     },
     {
       "slug": "other_vegetables",
@@ -85,7 +87,8 @@
       "nutrients": [
         "potassium"
       ],
-      "protein_g": 2
+      "protein_g": 2,
+      "fiber_g": 2
     },
     {
       "slug": "legumes",
@@ -98,7 +101,8 @@
         "magnesium",
         "potassium"
       ],
-      "protein_g": 9
+      "protein_g": 9,
+      "fiber_g": 8
     },
     {
       "slug": "nuts_seeds",
@@ -109,7 +113,8 @@
         "magnesium",
         "omega-3"
       ],
-      "protein_g": 5
+      "protein_g": 5,
+      "fiber_g": 3
     },
     {
       "slug": "whole_grains",
@@ -119,7 +124,8 @@
       "nutrients": [
         "magnesium"
       ],
-      "protein_g": 5
+      "protein_g": 5,
+      "fiber_g": 3
     },
     {
       "slug": "fruit",
@@ -128,14 +134,16 @@
       "tier": "encourage",
       "nutrients": [
         "potassium"
-      ]
+      ],
+      "fiber_g": 3
     },
     {
       "slug": "berries",
       "name": "Berries",
       "serving": "½ cup of blueberries, strawberries, raspberries",
       "tier": "encourage",
-      "nutrients": []
+      "nutrients": [],
+      "fiber_g": 4
     },
     {
       "slug": "fermented",
@@ -145,7 +153,8 @@
       "nutrients": [
         "vitamin-b12"
       ],
-      "protein_g": 6
+      "protein_g": 6,
+      "fiber_g": 1
     },
     {
       "slug": "poultry",
@@ -198,7 +207,8 @@
       "nutrients": [
         "potassium"
       ],
-      "protein_g": 3
+      "protein_g": 3,
+      "fiber_g": 3
     },
     {
       "slug": "water",
@@ -221,7 +231,8 @@
       "serving": "A serving of white bread, white rice, pasta, crackers",
       "tier": "limit",
       "nutrients": [],
-      "protein_g": 3
+      "protein_g": 3,
+      "fiber_g": 1
     },
     {
       "slug": "fried_food",

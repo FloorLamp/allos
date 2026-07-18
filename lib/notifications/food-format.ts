@@ -82,7 +82,12 @@ export function renderFoodNudge(
   date: string,
   rankedGroups: FoodGroup[],
   servingsToday: Map<string, number>,
-  deepLinkBase = ""
+  deepLinkBase = "",
+  // Today-vs-goal protein status line (issue #974), pre-rendered by the gather from the
+  // SAME getProteinToday model the Food-tab gauge uses (#221 — a third formatter, never a
+  // second engine). Null/omitted when there's no target (no bodyweight) or no protein data
+  // at all, so the nudge never carries a bare "0 g" nag.
+  proteinLine: string | null = null
 ): NotificationMessage {
   const buttons = rankedGroups.slice(0, FOOD_NUDGE_BUTTON_COUNT);
   const actions: NotificationAction[] = buttons.map((g, i) => {
@@ -104,9 +109,10 @@ export function renderFoodNudge(
   }
 
   const tally = tallyLine(rankedGroups, servingsToday);
-  const body = tally
-    ? `Tap what you've eaten to log a serving.\n${tally}`
-    : "Tap what you've eaten to log a serving.";
+  const lines = ["Tap what you've eaten to log a serving."];
+  if (tally) lines.push(tally);
+  if (proteinLine) lines.push(proteinLine);
+  const body = lines.join("\n");
 
   return { title: `🍽️ ${window} food log`, body, actions, kind: "food" };
 }

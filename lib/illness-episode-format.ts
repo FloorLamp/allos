@@ -9,7 +9,12 @@
 // (lib/symptom-episode.ts): `end` is EXCLUSIVE (the first inactive day), so the last
 // active day is `end` minus one; an ongoing episode (`end` null) runs through today.
 
-import { daysBetweenDateStr } from "./date";
+import { daysBetweenDateStr, shiftDateStr, zonedWallTimeToUtc } from "./date";
+import {
+  formatClockValue,
+  formatCompactRelativeTime,
+  type TimeFormat,
+} from "./format-date";
 import type { TemperatureUnit } from "./settings";
 import { fmtTemp } from "./units";
 
@@ -31,6 +36,8 @@ export interface SymptomSeries {
 // A temperature reading on the fever curve. `degF` is canonical (#800); `time` is the
 // bare "HH:MM" the reading rides in medical_records.notes (day-granular date + clock).
 export interface TemperaturePoint {
+  // Present for DB-backed episode assemblies; optional for synthetic summaries/tests.
+  id?: number;
   date: string;
   time: string | null;
   degF: number;
@@ -39,9 +46,121 @@ export interface TemperaturePoint {
 
 // One PRN administration (#797) within the episode, with its snapshotted amount.
 export interface AdministrationPoint {
+  // Present for DB-backed episode assemblies; optional for synthetic summaries/tests.
+  id?: number;
   date: string;
   time: string | null; // profile-local clock of given_at, or null
+  time24?: string | null; // profile-local HH:MM for the edit control
   amount: string | null; // snapshot at confirm time ("200 mg")
+}
+
+export type IllnessTimelineEvent =
+  | {
+      kind: "temperature";
+      id: number | string;
+      date: string;
+      time: string | null;
+      time24: string | null;
+      label: "Temperature";
+      detail: string;
+      degF: number;
+      flag: string | null;
+    }
+  | {
+      kind: "medication";
+      id: number | string;
+      date: string;
+      time: string | null;
+      time24: string | null;
+      label: string;
+      detail: string;
+      itemId: number;
+      amount: string | null;
+    }
+  | {
+      kind: "symptom";
+      id: string;
+      date: string;
+      time: null;
+      time24: null;
+      label: string;
+      detail: string;
+      symptom: string;
+      severity: number;
+      note: string | null;
+    };
+
+// One chronological ledger for the episode page and its read-only share. Timed
+// readings sort within their day; day-only symptom observations sit after them.
+export function illnessTimelineEvents(
+  episode: Pick<AssembledEpisode, "temperatures" | "medications" | "symptoms">
+): IllnessTimelineEvent[] {
+  const events: IllnessTimelineEvent[] = [
+    ...episode.temperatures.map((t, index) => ({
+      kind: "temperature" as const,
+      id: t.id ?? `temperature:${t.date}:${t.time ?? "none"}:${index}`,
+      date: t.date,
+      time: t.time,
+      time24: t.time,
+      label: "Temperature" as const,
+      detail: t.degF.toFixed(1),
+      degF: t.degF,
+      flag: t.flag,
+    })),
+    ...episode.medications.flatMap((m) =>
+      m.administrations.map((a, index) => ({
+        kind: "medication" as const,
+        id: a.id ?? `medication:${m.itemId}:${a.date}:${index}`,
+        date: a.date,
+        time: a.time,
+        time24: a.time24 ?? null,
+        label: m.name,
+        detail: a.amount || "Amount not recorded",
+        itemId: m.itemId,
+        amount: a.amount,
+      }))
+    ),
+    ...episode.symptoms.flatMap((s) =>
+      s.points.map((p) => ({
+        kind: "symptom" as const,
+        id: `${s.symptom}:${p.date}`,
+        date: p.date,
+        time: null,
+        time24: null,
+        label: s.label,
+        detail: severityLabelForTimeline(p.severity),
+        symptom: s.symptom,
+        severity: p.severity,
+        note: p.note,
+      }))
+    ),
+  ];
+  return events.sort(
+    (a, b) =>
+      a.date.localeCompare(b.date) ||
+      (a.time24 ?? "99:99").localeCompare(b.time24 ?? "99:99") ||
+      a.label.localeCompare(b.label)
+  );
+}
+
+export function relativeEpisodeDateLabel(
+  date: string,
+  asOf: string
+): string | null {
+  const daysAgo = daysBetweenDateStr(date, asOf);
+  if (daysAgo == null) return null;
+  if (daysAgo === 0) return "Today";
+  if (daysAgo === 1) return "Yesterday";
+  if (daysAgo > 1) return `${daysAgo} days ago`;
+  if (daysAgo === -1) return "Tomorrow";
+  return `In ${Math.abs(daysAgo)} days`;
+}
+
+function severityLabelForTimeline(severity: number): string {
+  return (
+    ["", "Mild", "Moderate", "Severe", "Very severe"][severity] ??
+    `Severity ${severity}`
+  );
 }
 
 // A medication administered during the episode, with its per-administration ledger.
@@ -50,6 +169,11 @@ export interface EpisodeMedication {
   name: string;
   count: number;
   administrations: AdministrationPoint[];
+}
+
+export interface LatestEpisodeDose extends AdministrationPoint {
+  itemId: number;
+  name: string;
 }
 
 // A condition whose onset falls inside the episode window — bridged/promoted context.
@@ -95,15 +219,25 @@ export interface AssembledEpisode {
   notes: { date: string; text: string }[];
 }
 
-// Deterministic external_id stamped on a condition promoted FROM an episode, so a
-// re-promote is an idempotent no-op and the "promoted" state / undo are detectable
-// without a side table (the row-op side-state discipline #202). Pure so both the DB
-// gather and the write core key on the identical string.
-export function episodeConditionExternalId(
-  situation: string,
-  start: string | null
-): string {
-  return `episode:${situation.trim().toLowerCase()}:${start ?? "open"}`;
+// Stable external_id stamped on a condition promoted FROM an episode. The episode row
+// id — unlike its editable situation/start boundary — is the identity, so correcting
+// "first day sick" cannot detach the condition, make undo miss it, or permit a duplicate.
+// Pure so the gather, migration, and write paths share the same representation.
+export function episodeConditionExternalId(episodeId: number): string {
+  return `illness-episode:${episodeId}`;
+}
+
+// Optional previous-day quick-log target for the episode page. A closed episode uses
+// its explicit day picker; an open episode may offer yesterday only when that day is
+// inside its range. A null start means the known episode extends before the log.
+export function episodeAlternateLogDate(
+  ongoing: boolean,
+  rangeStart: string | null,
+  logDate: string
+): string | null {
+  if (!ongoing) return null;
+  const yesterday = shiftDateStr(logDate, -1);
+  return rangeStart == null || yesterday >= rangeStart ? yesterday : null;
 }
 
 // "Day N" of the episode as of a given day (start day = day 1). Null when the start is
@@ -180,6 +314,122 @@ export function episodeHeadline(ep: AssembledEpisode): string {
   return parts.join(" · ");
 }
 
+export interface EpisodeCollapsedStatus {
+  dayLabel: string;
+  temperature: {
+    value: string;
+    when: string | null;
+    high: boolean;
+  } | null;
+  lastMeds: { name: string; when: string | null } | null;
+  worsening: boolean;
+}
+
+function collapsedReadingWhen(
+  date: string,
+  time: string | null,
+  asOf: string,
+  todayPrefix: string,
+  timeContext?: EpisodeReadingTimeContext
+): string | null {
+  const relative = relativeEpisodeDateLabel(date, asOf);
+  const clock = time ? formatClockValue(time, timeContext?.timeFormat) : null;
+  if (relative === "Today") {
+    if (time && clock) {
+      return `${todayPrefix}${readingClockWithRelativeAge(date, time, timeContext)}`;
+    }
+    return "today";
+  }
+  if (relative && clock) return `${relative}, ${clock}`;
+  return relative ?? clock;
+}
+
+export interface EpisodeReadingTimeContext {
+  timeZone?: string;
+  timeFormat?: TimeFormat;
+  now?: Date;
+}
+
+// Pair a profile-local reading clock with its current age for today's illness status
+// ("5:00 PM (2 hrs ago)"). Stored illness readings carry a local date + clock rather
+// than an absolute timestamp, so the profile timezone is required to derive the instant.
+// Invalid/imported clocks keep their exact display and simply omit relative age.
+export function readingClockWithRelativeAge(
+  date: string,
+  time: string,
+  context?: EpisodeReadingTimeContext
+): string {
+  const clock = formatClockValue(time, context?.timeFormat);
+  if (!context?.timeZone) return clock;
+  const storedClock = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(time.trim());
+  const displayClock = /^(\d{1,2}):(\d{2})\s*([ap])\.?m\.?$/i.exec(time.trim());
+  if (!storedClock && !displayClock) return clock;
+  const match = storedClock ?? displayClock!;
+  let hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (displayClock) {
+    if (hour < 1 || hour > 12) return clock;
+    hour = (hour % 12) + (displayClock[3].toLowerCase() === "p" ? 12 : 0);
+  }
+  if (hour > 23 || minute > 59) return clock;
+
+  const instant = zonedWallTimeToUtc(
+    context.timeZone,
+    date,
+    `${String(hour).padStart(2, "0")}:${match[2]}`
+  );
+  if (Number.isNaN(instant.getTime())) return clock;
+  const age = formatCompactRelativeTime(
+    instant.toISOString(),
+    context.now ?? new Date()
+  );
+  return `${clock} (${age})`;
+}
+
+// The dashboard cockpit's compact safety summary. It deliberately favors the latest
+// reading and administration times over aggregate symptom/med counts: those are the
+// facts a collapsed card must answer without making the user reopen it. Color remains
+// a rendering concern, but the high/worsening booleans ensure every host applies the
+// same existing semantic treatment.
+export function episodeCollapsedStatus(
+  ep: AssembledEpisode,
+  tempUnit: TemperatureUnit = "F",
+  timeContext?: EpisodeReadingTimeContext
+): EpisodeCollapsedStatus {
+  const day = episodeDayNumber(ep.start, ep.lastActiveDay ?? ep.asOf);
+  const temperature = ep.latestTemp;
+  const lastDose = episodeLatestDose(ep);
+  return {
+    dayLabel: day != null ? `${ep.situation} · Day ${day}` : ep.situation,
+    temperature: temperature
+      ? {
+          value: fmtTemp(temperature.degF, tempUnit),
+          when: collapsedReadingWhen(
+            temperature.date,
+            temperature.time,
+            ep.asOf,
+            "at ",
+            timeContext
+          ),
+          high: temperature.flag === "high",
+        }
+      : null,
+    lastMeds: lastDose
+      ? {
+          name: lastDose.name,
+          when: collapsedReadingWhen(
+            lastDose.date,
+            lastDose.time,
+            ep.asOf,
+            "",
+            timeContext
+          ),
+        }
+      : null,
+    worsening: episodeIsWorsening(ep),
+  };
+}
+
 // Whether an OPEN episode is trending WORSE right now — a pure VISIBILITY signal over
 // the same #801 assembly (no second engine, no medical claim, issue #805): the fever
 // curve is rising, OR some symptom's most-recent severity rose vs the prior
@@ -202,27 +452,42 @@ export function episodeIsWorsening(ep: AssembledEpisode): boolean {
   return false;
 }
 
-// The most-recent PRN administration across the episode's meds, as a "last ibuprofen
-// 4:02pm" clause — the co-caregiver coordination signal on the household accordion line
-// (issue #858). Derived from the SAME #801 assembly the cockpit's PRN control formats
-// over (one question, one computation, #221) — never a second dose query. The clock
-// comes straight from the administration point; when it's unknown the clause degrades
-// to "last ibuprofen". Null when nothing was administered this episode.
-export function episodeLastDoseClause(ep: AssembledEpisode): string | null {
-  let best: { name: string; date: string; time: string | null } | null = null;
+// The most-recent PRN administration across the episode's meds. Derived from the SAME
+// #801 assembly the cockpit's PRN control formats over (one question, one computation,
+// #221) — never a second dose query. Consumers use the full point for the at-a-glance
+// latest reading and the compact clause below for the household accordion line.
+export function episodeLatestDose(
+  ep: AssembledEpisode
+): LatestEpisodeDose | null {
+  let best: LatestEpisodeDose | null = null;
   for (const med of ep.medications) {
     for (const a of med.administrations) {
-      // Order by (date, time); a timed reading outranks an untimed one on the same day.
+      // `time24` is the canonical sort clock. Synthetic/legacy points may only carry
+      // the display clock, so retain that as a deterministic fallback.
+      const clock = a.time24 ?? a.time ?? "";
+      const bestClock = best?.time24 ?? best?.time ?? "";
       const better =
         best == null ||
         a.date > best.date ||
-        (a.date === best.date && (a.time ?? "") > (best.time ?? ""));
-      if (better) best = { name: med.name, date: a.date, time: a.time };
+        (a.date === best.date && clock > bestClock);
+      if (better) {
+        best = { ...a, itemId: med.itemId, name: med.name };
+      }
     }
   }
+  return best;
+}
+
+export function episodeLastDoseClause(
+  ep: AssembledEpisode,
+  timeFormat?: TimeFormat
+): string | null {
+  const best = episodeLatestDose(ep);
   if (!best) return null;
   const name = best.name.toLowerCase();
-  return best.time ? `last ${name} ${best.time}` : `last ${name}`;
+  return best.time
+    ? `last ${name} ${formatClockValue(best.time, timeFormat)}`
+    : `last ${name}`;
 }
 
 // The cross-profile accordion line: "Mia · sick day 3 · 101.3 °F · worsening ↑ · last
@@ -240,7 +505,8 @@ export function householdSickLine(
   // school-return "fever-free 18h/24h" clause). The caller computes it from the ONE
   // school-return gather (schoolReturnCompactClause) so the household line, hero, and
   // episode page never disagree (#221). Null/omitted keeps the line unchanged.
-  extraClause: string | null = null
+  extraClause: string | null = null,
+  timeFormat?: TimeFormat
 ): string {
   const parts: string[] = [name];
   const day = episodeDayNumber(ep.start, ep.lastActiveDay ?? ep.asOf);
@@ -251,7 +517,7 @@ export function householdSickLine(
   if (episodeIsWorsening(ep)) {
     parts.push("worsening ↑");
   }
-  const lastDose = episodeLastDoseClause(ep);
+  const lastDose = episodeLastDoseClause(ep, timeFormat);
   if (lastDose) parts.push(lastDose);
   if (extraClause) parts.push(extraClause);
   return parts.join(" · ");
@@ -316,7 +582,8 @@ export interface EmergencyEpisodeSection {
 // over the result unchanged.
 export function emergencyEpisodeSection(
   ep: AssembledEpisode,
-  tempUnit: TemperatureUnit = "F"
+  tempUnit: TemperatureUnit = "F",
+  timeFormat?: TimeFormat
 ): EmergencyEpisodeSection | null {
   if (!ep.ongoing) return null;
   const dayNumber = episodeDayNumber(ep.start, ep.lastActiveDay ?? ep.asOf);
@@ -328,7 +595,7 @@ export function emergencyEpisodeSection(
       if (a.date === ep.asOf) {
         todaysAdministrations.push({
           name: med.name,
-          time: a.time,
+          time: a.time ? formatClockValue(a.time, timeFormat) : null,
           amount: a.amount,
         });
       }

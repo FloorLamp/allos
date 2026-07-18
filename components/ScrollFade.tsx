@@ -12,9 +12,13 @@ const FADE = "1.75rem";
 export default function ScrollFade({
   children,
   className,
+  hideScrollbar = false,
+  "data-testid": testId,
 }: {
   children: React.ReactNode;
   className?: string;
+  hideScrollbar?: boolean;
+  "data-testid"?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [edges, setEdges] = useState({ left: false, right: false });
@@ -51,7 +55,8 @@ export default function ScrollFade({
     <div
       ref={ref}
       onScroll={update}
-      className={`overflow-x-auto ${className ?? ""}`}
+      data-testid={testId}
+      className={`overflow-x-auto ${hideScrollbar ? "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : ""} ${className ?? ""}`}
       style={mask ? { WebkitMaskImage: mask, maskImage: mask } : undefined}
     >
       {children}

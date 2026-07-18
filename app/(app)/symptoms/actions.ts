@@ -23,6 +23,13 @@ import {
 } from "@/lib/settings/profile-attrs";
 import { BUILTIN_ILLNESS_SITUATION } from "@/lib/situations";
 import { formError, formOk, type FormResult } from "@/lib/types";
+import { SYMPTOMS, symptomSlugs } from "@/lib/symptoms";
+import { getCustomSymptomNames } from "@/lib/queries";
+import {
+  mapSymptomText,
+  type SymptomTextMapping,
+  type SymptomVocabulary,
+} from "@/lib/symptom-text-map";
 
 // Server write-path for the symptom log (issue #799). The one-tap dashboard card and the
 // Timeline day-view entry post here; each action owns the auth gate + validation +
@@ -263,6 +270,45 @@ export async function logTemperature(
     profileAgeMonths(profileId, date)
   );
   return { ok: true, degF: outcome.degF, flag: outcome.flag, redFlag };
+}
+
+// Free-text symptom intake (issue #877): map a typed sentence onto the vocabulary via
+// the Light tier and return SUGGESTIONS — this never writes. The user reviews the
+// pre-filled rows in the bar and confirms with one tap, which commits through the
+// EXISTING logSymptom / logTemperature actions (no new write path). Gated like the
+// write actions (it reads the target profile's custom names and drives a write next),
+// so the write-access scanner sees a literal requireWriteAccess in the body.
+export type SymptomTextSuggestResult =
+  | { ok: true; mapping: SymptomTextMapping }
+  | {
+      ok: false;
+      reason: "not-configured" | "empty" | "failed";
+      error?: string;
+    };
+
+export async function suggestSymptomsFromText(
+  formData: FormData
+): Promise<SymptomTextSuggestResult> {
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
+  const text = String(formData.get("text") ?? "");
+  const vocab: SymptomVocabulary = {
+    slugs: symptomSlugs(),
+    labels: Object.fromEntries(SYMPTOMS.map((s) => [s.slug, s.label])),
+    customNames: getCustomSymptomNames(profileId),
+  };
+  const outcome = await mapSymptomText(text, vocab);
+  if (outcome.status === "ok") return { ok: true, mapping: outcome.mapping };
+  if (outcome.status === "not-configured")
+    return { ok: false, reason: "not-configured" };
+  if (outcome.status === "empty") return { ok: false, reason: "empty" };
+  return { ok: false, reason: "failed", error: outcome.error };
 }
 
 // Symptom→situation bridge (issue #799, direction A): activate the built-in "Illness"

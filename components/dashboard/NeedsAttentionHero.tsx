@@ -16,6 +16,7 @@ import {
   IconTemperature,
   IconClipboardPlus,
   IconCircleCheck,
+  IconArrowRight,
   type TablerIcon,
 } from "@tabler/icons-react";
 import SubmitButton from "@/components/SubmitButton";
@@ -255,9 +256,10 @@ export default function NeedsAttentionHero({
         </h2>
         <Link
           href="/upcoming"
+          aria-label="View all needs attention"
           className="text-xs text-brand-600 hover:underline dark:text-brand-400"
         >
-          View all
+          View all <IconArrowRight className="inline h-4 w-4" />
         </Link>
       </div>
 

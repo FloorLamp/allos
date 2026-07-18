@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   formatGivenAtClock,
   administrationDayLabel,
+  administrationLastDoseLabel,
   administrationOutcomeText,
   administrationLogged,
 } from "@/lib/administration-format";
@@ -17,9 +18,9 @@ describe("formatGivenAtClock", () => {
     expect(formatGivenAtClock("America/New_York", "2026-07-15 20:02:00")).toBe(
       "4:02pm"
     );
-    // Midnight UTC → 12:00am UTC.
+    // Midnight UTC → 12:00 AM UTC.
     expect(formatGivenAtClock("UTC", "2026-07-15 00:00:00")).toBe("12:00am");
-    // Noon UTC → 12:00pm.
+    // Noon UTC → 12:00 PM.
     expect(formatGivenAtClock("UTC", "2026-07-15 12:00:00")).toBe("12:00pm");
   });
   it("renders a 24-hour clock when the login prefers it (#964)", () => {
@@ -46,6 +47,15 @@ describe("administrationDayLabel", () => {
     expect(administrationDayLabel(2, "4:02pm")).toBe("2 today · last 4:02pm");
     // A count with no last-time (shouldn't normally happen) degrades gracefully.
     expect(administrationDayLabel(3, "")).toBe("3 today");
+  });
+});
+
+describe("administrationLastDoseLabel", () => {
+  it("leaves the daily count to an adjacent redose status", () => {
+    expect(administrationLastDoseLabel(0, "")).toBe("None today");
+    expect(administrationLastDoseLabel(1, "4:02pm")).toBe("Last dose 4:02pm");
+    expect(administrationLastDoseLabel(2, "4:02pm")).toBe("Last dose 4:02pm");
+    expect(administrationLastDoseLabel(3, "")).toBe("3 today");
   });
 });
 

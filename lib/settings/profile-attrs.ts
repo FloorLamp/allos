@@ -1,5 +1,6 @@
 import { db, today, writeTx } from "../db";
 import { ageFromBirthdate, ageMonthsFrom } from "../date";
+import { normalizeExcludedGroups } from "../dietary-preferences";
 import type { Sex, ReproductiveStatus } from "../types";
 import {
   bloodGroupPartsFromReadings,
@@ -419,6 +420,46 @@ export function setMetricSourcePriorityEntry(
     METRIC_SOURCE_PRIORITY_KEY,
     serializeMetricSourcePriority(next)
   );
+}
+
+// ---- Dietary preferences (issue #975) — profile scope, no migration ----
+// A per-profile EXCLUDED food-group set over the 24 catalog slugs (a preference, not a
+// safety gate), stored as ONE JSON array in profile_settings — profile-tier because it's
+// about the data subject, not the login. The chosen preset "name" is DERIVED from the set
+// (presetForExcluded), so nothing else is stored. The suggestion engines FILTER/SUBSTITUTE
+// against it and the one-tap bar demotes it; logging is never blocked, and no computed
+// intake ever changes. The set is normalized (canonical catalog slugs only) on read AND
+// write, so a legacy/forged value can't poison a downstream slug comparison (#883).
+
+const EXCLUDED_FOOD_GROUPS_KEY = "dietary_excluded_groups";
+
+// The profile's excluded food-group slugs (canonical, sorted, de-duplicated), or [] when
+// unset. Reads the settings tier (not owned data), so the scoping guard is unaffected.
+export function getExcludedFoodGroups(profileId: number): string[] {
+  const raw = getProfileSetting(profileId, EXCLUDED_FOOD_GROUPS_KEY);
+  if (!raw) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  return normalizeExcludedGroups(parsed.filter((x) => typeof x === "string"));
+}
+
+// Store the profile's excluded food-group set. Normalized to canonical catalog slugs (any
+// unknown slug is dropped); an empty set clears the row (back to Omnivore).
+export function setExcludedFoodGroups(
+  profileId: number,
+  slugs: readonly string[]
+): void {
+  const norm = normalizeExcludedGroups(slugs);
+  if (norm.length === 0) {
+    deleteProfileSetting(profileId, EXCLUDED_FOOD_GROUPS_KEY);
+    return;
+  }
+  setProfileSetting(profileId, EXCLUDED_FOOD_GROUPS_KEY, JSON.stringify(norm));
 }
 
 export interface ProfileAdoption {

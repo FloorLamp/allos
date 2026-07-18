@@ -110,7 +110,7 @@ export default function GoalForm({
       }
     } catch {
       // Keep the modal open with the user's entries intact on failure.
-      setError("Couldn't save this goal. Please try again.");
+      setError("Couldn't save this goal. Try again.");
       return;
     }
     // A failed validation guard now returns { ok:false } instead of a bare

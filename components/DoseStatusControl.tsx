@@ -96,7 +96,7 @@ export default function DoseStatusControl({
       ) {
         await queue(target === "taken" ? "dose" : "skip-dose", target);
       } else {
-        toast("Couldn't update this dose. Please try again.", {
+        toast("Couldn't update this dose. Try again.", {
           tone: "error",
         });
       }

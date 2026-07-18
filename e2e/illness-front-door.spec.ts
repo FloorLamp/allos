@@ -1,4 +1,5 @@
 import { test, expect, type Page, type Locator } from "@playwright/test";
+import { settledClick } from "./helpers";
 
 // The illness "first hour" front door (issue #843). Three doors, one story:
 //   A. the dashboard Symptoms widget's inactive state IS the front door — a calm
@@ -112,9 +113,54 @@ test.describe("Illness front door (#843)", () => {
     await page.getByTestId("feeling-sick-activate").click();
     await expect(page.getByTestId("symptom-log-bar")).toBeVisible();
     await expect(page.getByTestId("feeling-sick-card")).toHaveCount(0);
+    await expect(page.getByTestId("symptom-logged-count")).toHaveCount(0);
+    const symptomEmpty = page.getByTestId("symptom-none-logged");
+    await expect(symptomEmpty).toHaveText("No symptoms logged.");
+    const medicationEmpty = page.getByTestId("quick-log-prn-empty");
+    await expect(medicationEmpty).toHaveText("No medications added.");
+    expect(await medicationEmpty.getAttribute("class")).toBe(
+      await symptomEmpty.getAttribute("class")
+    );
     // Temperature quick entry is right there (door B reachability) — collapsed by
     // default (#857) to one tap.
-    await expect(page.getByTestId("temp-quick-toggle")).toBeVisible();
+    const actions = page.getByTestId("symptom-log-actions");
+    const addSymptom = actions.getByTestId("symptom-add-picker-toggle");
+    await expect(addSymptom).toBeVisible();
+    await expect(actions.getByTestId("temp-quick-toggle")).toBeVisible();
+    await expect(page.getByTestId("symptom-severity-legend")).toHaveCount(0);
+    await addSymptom.click();
+    await expect(addSymptom).toHaveText("Add symptom");
+    await expect(addSymptom).toHaveAttribute("aria-expanded", "true");
+    await expect(addSymptom).toHaveClass(/\bbtn-ghost\b/);
+    await expect(page.getByTestId("symptom-add-picker")).toBeVisible();
+    const logTemperature = actions.getByTestId("temp-quick-toggle");
+    await expect(logTemperature).toHaveText("Log temperature");
+    const actionsBox = await actions.boundingBox();
+    const helperBox = await page
+      .getByTestId("symptom-severity-legend")
+      .boundingBox();
+    expect(actionsBox).not.toBeNull();
+    expect(helperBox).not.toBeNull();
+    expect(actionsBox!.y + actionsBox!.height).toBeLessThanOrEqual(
+      helperBox!.y
+    );
+
+    // Both neutral disclosure controls follow the same accordion behavior. Opening
+    // temperature closes the symptom picker; its control can close the panel again.
+    await logTemperature.click();
+    await expect(page.getByTestId("symptom-add-picker")).toHaveCount(0);
+    await expect(page.getByTestId("symptom-severity-legend")).toHaveCount(0);
+    await expect(logTemperature).toHaveText("Log temperature");
+    await expect(logTemperature).toHaveAttribute("aria-expanded", "true");
+    await expect(logTemperature).toHaveClass(/\bbtn-ghost\b/);
+    await expect(page.getByTestId("temp-quick-entry")).toBeVisible();
+    await expect(page.getByTestId("temp-quick-time")).toHaveValue(
+      /^\d{2}:\d{2}$/
+    );
+    await logTemperature.click();
+    await expect(logTemperature).toHaveText("Log temperature");
+    await expect(logTemperature).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByTestId("temp-quick-entry")).toHaveCount(0);
   });
 
   test("door B: temperature + reading time logs within two taps of a fresh dashboard", async ({
@@ -134,10 +180,10 @@ test.describe("Illness front door (#843)", () => {
     await page.getByTestId("temp-quick-unit").selectOption("F");
     await page.getByTestId("temp-quick-input").fill("102");
     await page.getByTestId("temp-quick-time").fill("07:00");
-    await page.getByTestId("temp-quick-save").click();
+    await settledClick(page, page.getByTestId("temp-quick-save"));
 
-    // Success clears the field (no inline error) — the timed reading was logged.
-    await expect(page.getByTestId("temp-quick-input")).toHaveValue("");
+    // Success closes the accordion (no inline error) — reopening will seed a fresh now.
+    await expect(page.getByTestId("temp-quick-entry")).toHaveCount(0);
     await expect(page.getByTestId("temp-quick-error")).toHaveCount(0);
   });
 
@@ -163,13 +209,13 @@ test.describe("Illness front door (#843)", () => {
     await page.goto("/");
     await page.getByTestId("feeling-sick-activate").click();
     await expect(page.getByTestId("symptom-log-bar")).toBeVisible();
-    await page.getByTestId("symptom-med-quickadd-open").click();
-    const inline = page.getByTestId("symptom-med-quickadd");
+    await page.getByTestId("illness-add-medication").click();
+    const inline = page.getByTestId("illness-medication-quick-add");
     await expect(inline).toBeVisible();
     await pickMedication(inline, "Acetaminophen");
     await inline.getByRole("button", { name: "Quick add" }).click();
     // The inline panel collapses back to its prompt on success.
-    await expect(page.getByTestId("symptom-med-quickadd-open")).toBeVisible();
+    await expect(page.getByTestId("illness-add-medication")).toBeVisible();
     // And the med really landed on the Medications page.
     await page.goto("/medications");
     await expect(
@@ -210,15 +256,15 @@ test.describe("Illness front door (#843)", () => {
     await page.getByTestId("temp-quick-unit").selectOption("F");
     await page.getByTestId("temp-quick-input").fill("102");
     await page.getByTestId("temp-quick-time").fill("07:00");
-    await page.getByTestId("temp-quick-save").click();
-    await expect(page.getByTestId("temp-quick-input")).toHaveValue("");
+    await settledClick(page, page.getByTestId("temp-quick-save"));
+    await expect(page.getByTestId("temp-quick-entry")).toHaveCount(0);
 
     // 4) Quick-add ibuprofen right from the symptom card.
-    await page.getByTestId("symptom-med-quickadd-open").click();
-    const inline = page.getByTestId("symptom-med-quickadd");
+    await page.getByTestId("illness-add-medication").click();
+    const inline = page.getByTestId("illness-medication-quick-add");
     await pickMedication(inline, "Ibuprofen");
-    await inline.getByRole("button", { name: "Quick add" }).click();
-    await expect(page.getByTestId("symptom-med-quickadd-open")).toBeVisible();
+    await settledClick(page, inline.getByRole("button", { name: "Quick add" }));
+    await expect(page.getByTestId("illness-add-medication")).toBeVisible();
 
     // 5) Log a dose from the dashboard PRN quick-log widget, then the redose chip shows.
     await page.goto("/");
@@ -227,14 +273,55 @@ test.describe("Illness front door (#843)", () => {
       .getByTestId("quick-log-prn-item")
       .filter({ hasText: "Ibuprofen" });
     await expect(prnItem).toBeVisible();
-    await prnItem.getByTestId("prn-log-now").click();
+    await settledClick(page, prnItem.getByTestId("prn-log-now"));
 
     // Wait for the log to land (the toast), then the control's own refresh renders the
     // redose chip in place — interval/max came from the quick-add's label-default
     // prefill, and this dose supplies the "since" time.
     await expect(page.getByText(/Logged Ibuprofen/i)).toBeVisible();
-    await expect(prnItem.getByTestId("prn-redose-line")).toBeVisible({
+    const redoseLine = prnItem.getByTestId("prn-redose-line");
+    await expect(redoseLine).toBeVisible({
       timeout: 15_000,
     });
+    await expect(redoseLine).toContainText("Next dose in");
+    await expect(prnItem.getByTestId("prn-day-label")).toContainText(
+      "Last dose"
+    );
+    await expect(prnItem.getByTestId("prn-day-label")).not.toContainText(
+      /\d+ today/
+    );
+    await expect(redoseLine).toHaveClass(/text-slate-600/);
+    await expect(redoseLine).not.toHaveClass(/text-brand/);
+
+    // The cockpit's flat Latest row answers the two immediate safety questions without
+    // requiring a chart hover or history scan. The dose name remains a detail link.
+    const latest = page
+      .getByTestId("illness-hero")
+      .getByTestId("episode-latest-readings");
+    await expect(latest.getByTestId("episode-last-temperature")).toContainText(
+      "102 °F"
+    );
+    await expect(
+      latest.getByTestId("episode-last-temperature-value")
+    ).toHaveClass(/text-rose-600/);
+    await expect(latest.getByTestId("episode-last-temperature")).toContainText(
+      /07:00 \((?:just now|\d+ (?:min|mins|hr|hrs) ago)\)/
+    );
+    const lastDose = latest.getByTestId("episode-last-dose");
+    await expect(latest.getByText("Last Meds", { exact: true })).toBeVisible();
+    await expect(lastDose).toContainText("Ibuprofen · 200 mg");
+    await expect(lastDose).toContainText(
+      /\d{2}:\d{2} \((?:just now|\d+ (?:min|mins|hr|hrs) ago)\)/
+    );
+    const lastDoseLink = lastDose.getByRole("link", { name: "Ibuprofen" });
+    await expect(lastDoseLink).toHaveAttribute("href", /\/medications\/\d+/);
+    await expect(lastDoseLink).toHaveClass(/text-slate-700/);
+    await expect(lastDoseLink).toHaveClass(/underline/);
+    await expect(
+      page
+        .getByTestId("illness-hero")
+        .locator('[data-active="true"]')
+        .getByTestId("illness-cockpit-last-meds")
+    ).toBeHidden();
   });
 });

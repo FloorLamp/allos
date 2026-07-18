@@ -9,8 +9,8 @@ import { expect, type Locator, type Page } from "@playwright/test";
 // router.refresh(), which re-renders (and on some surfaces remounts) the bar. Two hazards
 // follow, handled by two composable mechanisms:
 //
-//   1. A trailing refresh can reset the bar's TRANSIENT client state (an open picker, an
-//      inline confirm) mid-interaction. Every helper wraps its tap+assert in an
+//   1. A trailing refresh can reset the bar's TRANSIENT client state (such as an open
+//      picker) mid-interaction. Every helper wraps its tap+assert in an
 //      auto-retrying expect(...).toPass(): if a refresh wiped the affordance, the retry
 //      re-does the (idempotent) tap.
 //   2. The tap is OPTIMISTIC, so a later DEPENDENT step (a reload, a note UPDATE that
@@ -95,6 +95,24 @@ export async function raiseSeverity(
   }).toPass({ timeout: OUTER });
 }
 
+// Lowering is also a direct labeled-chip action. It writes through the dedicated lower
+// action, but its optimistic/reconciled browser behavior matches a raise.
+export async function lowerSeverity(
+  bar: Locator,
+  key: string,
+  level: number,
+  settle: Settle = noSettle
+): Promise<void> {
+  const chip = bar.getByTestId(`symptom-${key}-sev-${level}`);
+  await expect(async () => {
+    await chip.click();
+    await settle();
+    await expect(chip).toHaveAttribute("aria-pressed", "true", {
+      timeout: STEP,
+    });
+  }).toPass({ timeout: OUTER });
+}
+
 // Expand the collapsed temperature entry (idempotent — a no-op if already open; re-opens
 // if a refresh collapsed it). Client-only (no write), so no settle.
 export async function openTempEntry(bar: Locator): Promise<void> {
@@ -104,21 +122,6 @@ export async function openTempEntry(bar: Locator): Promise<void> {
       await bar.getByTestId("temp-quick-toggle").click();
     }
     await expect(input).toBeVisible({ timeout: STEP });
-  }).toPass({ timeout: OUTER });
-}
-
-// Open the inline "Lower to …?" confirm on a logged symptom by tapping a chip BELOW its
-// current worst (client-only — no write). Re-taps if a refresh dismissed the confirm.
-export async function openLowerConfirm(
-  bar: Locator,
-  key: string,
-  level: number
-): Promise<void> {
-  await expect(async () => {
-    await bar.getByTestId(`symptom-${key}-sev-${level}`).click();
-    await expect(bar.getByTestId(`symptom-${key}-lower-confirm`)).toBeVisible({
-      timeout: STEP,
-    });
   }).toPass({ timeout: OUTER });
 }
 

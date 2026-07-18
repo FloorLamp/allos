@@ -9,6 +9,7 @@ import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { validateVitalsInput } from "@/lib/vitals-input";
 import type { TemperatureUnit } from "@/lib/settings";
 import { shouldQueueOffline } from "@/lib/offline/queue";
+import { useTemperatureUnitDetection } from "@/components/useTemperatureUnitDetection";
 import { addVitals } from "./vitals-actions";
 
 // Manual "Log vitals" quick-add (issue #16) — a sibling of BodyQuickAdd on the
@@ -34,6 +35,7 @@ export default function VitalsQuickAdd({
   const { enqueue } = useOfflineQueue();
   const formRef = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string | null>(null);
+  const tempUnitDetection = useTemperatureUnitDetection(temperatureUnit);
 
   async function handle(formData: FormData) {
     setError(null);
@@ -68,6 +70,7 @@ export default function VitalsQuickAdd({
       await enqueue("vitals", date, raw);
       toast("Saved offline — will sync when you reconnect.");
       formRef.current?.reset();
+      tempUnitDetection.reset();
     };
 
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
@@ -81,11 +84,12 @@ export default function VitalsQuickAdd({
         await queueOffline();
         return;
       }
-      setError("Couldn't save these vitals. Please try again.");
+      setError("Couldn't save these vitals. Try again.");
       return;
     }
     toast("Vitals saved");
     formRef.current?.reset();
+    tempUnitDetection.reset();
     router.refresh();
   }
 
@@ -197,18 +201,31 @@ export default function VitalsQuickAdd({
               type="number"
               step="0.1"
               name="temperature"
+              onChange={(event) =>
+                tempUnitDetection.readValue(event.target.value)
+              }
               className="input"
             />
             <select
               name="temp_unit"
               aria-label="Temperature unit"
-              defaultValue={temperatureUnit}
+              value={tempUnitDetection.unit}
+              onChange={(event) =>
+                tempUnitDetection.chooseUnit(
+                  event.target.value === "C" ? "C" : "F"
+                )
+              }
               className="input w-auto"
             >
               <option value="F">°F</option>
               <option value="C">°C</option>
             </select>
           </div>
+          {tempUnitDetection.detectedUnit && (
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Detected °{tempUnitDetection.detectedUnit} from the reading.
+            </p>
+          )}
         </div>
 
         <div>

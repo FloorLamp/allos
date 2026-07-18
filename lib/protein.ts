@@ -320,3 +320,41 @@ export function proteinAdequacyDetail(a: ProteinAdequacy): string {
 export function proteinAdequacyEvidence(a: ProteinAdequacy): string {
   return `Target ${a.target.gPerKgLow}–${a.target.gPerKgHigh} g/kg (ISSN position stand). Informational, not prescriptive.`;
 }
+
+// ---- Today gauge (issue #974): today so far · weekly average · goal band ----
+//
+// The band gauge on the Food tab shows THREE protein numbers in one visual: today so far
+// (the primary bar), this week's daily average (a thin marker), and the goal band (a
+// shaded zone). This is the model behind it — one pure assembly the gauge, the quick-add
+// card, and the Telegram food-nudge status line all format ("one question, one
+// computation", #221). The gather (getProteinToday) fills it from the SAME pieces the
+// adequacy card reads: `todayIntake` is today's composition through the SAME proteinIntake
+// engine (estimated food-group grams + quick-add grams, or a tracked reading), `target` is
+// the SAME goal-scaled band, and `weeklyAverageGrams` is the adequacy computation's own
+// daily-average figure — so the marker and the adequacy card can never disagree.
+export interface ProteinToday {
+  // Today's composition (null when nothing's been logged/tracked today yet — the bar
+  // renders at 0, honest "in progress").
+  todayIntake: ProteinIntake | null;
+  // todayIntake?.grams ?? 0 — the primary bar's value. Today is IN PROGRESS, so a surface
+  // never colors this as a shortfall mid-day.
+  todayGrams: number;
+  // The goal-scaled band (always present — the gather returns null without a target).
+  target: ProteinTarget;
+  // This week's daily-average intake — EXACTLY getProteinAdequacy(...).intake.grams for the
+  // same profile (#221). Null when there's no logged intake this week.
+  weeklyAverageGrams: number | null;
+}
+
+// The Telegram food-nudge protein status line (issue #974). Rendered from the SAME
+// ProteinToday the gauge uses (a third formatter, never a second engine, #221). A floor
+// basis (anything but a measured tracked reading) reads "at least N g" per the #767 floor
+// copy discipline; a tracked reading states the figure directly. e.g.
+// "Protein today · at least 55 g of ~130–180 g".
+export function proteinTodayNudgeLine(t: ProteinToday): string {
+  const grams = Math.round(t.todayGrams);
+  const isFloor = t.todayIntake ? t.todayIntake.basis !== "tracked" : true;
+  const amt = isFloor ? `at least ${grams} g` : `${grams} g`;
+  const band = `~${g(t.target.gramsLow)}–${g(t.target.gramsHigh)} g`;
+  return `Protein today · ${amt} of ${band}`;
+}

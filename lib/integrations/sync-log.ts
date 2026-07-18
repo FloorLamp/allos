@@ -39,6 +39,44 @@ export function emptyCounts(): UpsertCounts {
   return { inserted: 0, updated: 0, unchanged: 0, suppressed: 0, edited: 0 };
 }
 
+// The ONE source-dedup disposition (#14/#674): the shared classification every keyed
+// upsert makes after a pre-image lookup on its source-inclusive natural key. A
+// natural key that finds no live row is a brand-new `inserted`; a key that finds a
+// row whose resolved post-image equals the pre-image is a no-op re-send of the
+// rolling window (`unchanged`); anything else is a value-changing `updated`. This is
+// the accounting counterpart of the SELECT-before-compare each upsert does — the
+// `valuesEqual` boolean is the caller's own compare (rowsEqual over its compare-cols
+// for the 3 that overwrite-or-skip, or a bespoke field compare for metric_samples /
+// hr_minutes whose activity_external_id COALESCE / multi-field equality can't be a
+// plain rowsEqual). Extracting the branch — not the compare — keeps every importer's
+// insert/update/unchanged split IDENTICAL by construction (#221: one computation for
+// the dedup question) while leaving each table's own equality and write/skip shape
+// intact. Pure → unit-testable.
+export type UpsertDisposition = "inserted" | "updated" | "unchanged";
+
+export function classifyUpsert(
+  hadRow: boolean,
+  valuesEqual: boolean
+): UpsertDisposition {
+  if (!hadRow) return "inserted";
+  return valuesEqual ? "unchanged" : "updated";
+}
+
+// Bump the matching UpsertCounts segment for a dedup disposition. The SOLE place the
+// three dedup segments (inserted/updated/unchanged) are incremented — every upsert
+// routes here so the split can't drift, enforced by the observation-substrate
+// boundary test (a raw `counts.inserted++` outside this module fails CI). The
+// tombstone `suppressed` and edit-lock `edited` skips stay their own counters at the
+// call site: they are HELD-OUT rows, not a dedup classification of a persisted one.
+export function tallyUpsert(
+  counts: UpsertCounts,
+  disposition: UpsertDisposition
+): void {
+  if (disposition === "inserted") counts.inserted++;
+  else if (disposition === "updated") counts.updated++;
+  else counts.unchanged++;
+}
+
 // The user-edit lock (issue #133): true when an integration-owned row has been
 // hand-edited in the app and MUST NOT be overwritten by a re-ingest of the rolling
 // window. Every keyed upsert consults this on the row it found (activities.edited,

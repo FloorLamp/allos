@@ -84,6 +84,14 @@ export function bootTasks(db: Database.Database): void {
   // the env once on first boot only — it is NOT an ongoing fallback.
   seedTimezoneFromEnv(db);
 
+  // AI provider tiers (issue #875): seed the Heavy tier from the legacy AI env vars
+  // on first boot (idempotent — the env is DEMOTED to a seed; the DB then owns it).
+  // The runtime tier-config PROVIDER is registered in lib/db.ts (NOT here) so this
+  // module stays off the lib/settings import — the db → boot-tasks → settings cycle
+  // otherwise TDZ-faults some import orders (the header's "importing lib/settings
+  // here would be circular" rule).
+  seedAiTiersFromEnv(db);
+
   // Record an install/first-boot timestamp once, so the health endpoint can tell a
   // genuinely fresh install (exempt from the never-backed-up alarm) from a
   // long-running instance that has NEVER taken a backup (#464). Set only when
@@ -280,6 +288,46 @@ export function seedTimezoneFromEnv(db: Database.Database) {
         `INSERT INTO settings (key, value) VALUES ('timezone', ?)
          ON CONFLICT(key) DO NOTHING`
       ).run(tz);
+    })
+  );
+}
+
+// Seed the Heavy AI tier from the legacy env vars on first boot (issue #875). The AI
+// config moved from env-only (ANTHROPIC_API_KEY / AI_BASE_URL / HEALTH_AI_MODEL) into
+// the settings table; on the first boot that has no Heavy tier stored yet, persist the
+// env values so an upgrading deploy keeps its key/endpoint/model instead of snapping
+// to offline. Idempotent — never overwrites a value the admin has since set (the
+// seedTimezoneFromEnv pattern) — and a fresh instance with no AI env seeds nothing
+// (both tiers stay unset → offline degradation, unchanged). Uses the passed db handle
+// (the singleton isn't assigned yet inside createDb).
+export function seedAiTiersFromEnv(db: Database.Database) {
+  // Heavy tier setting keys, inlined here (NOT imported from lib/settings/ai-tiers) to
+  // keep this module off the settings import — see the note in bootTasks. They mirror
+  // the `ai_<tier>_<field>` scheme lib/settings/ai-tiers reads.
+  const k = {
+    shape: "ai_heavy_shape",
+    baseUrl: "ai_heavy_base_url",
+    apiKey: "ai_heavy_api_key",
+    model: "ai_heavy_model",
+  };
+  const stored = db
+    .prepare("SELECT key FROM settings WHERE key IN (?, ?, ?, ?) LIMIT 1")
+    .get(k.shape, k.baseUrl, k.apiKey, k.model) as { key?: string } | undefined;
+  if (stored) return; // Heavy tier already has stored config — never re-seed
+  const apiKey = process.env.ANTHROPIC_API_KEY || "";
+  const baseUrl = (process.env.AI_BASE_URL || "").trim();
+  const model = (process.env.HEALTH_AI_MODEL || "").trim();
+  if (!apiKey && !baseUrl && !model) return; // nothing to seed
+  runBootTx(
+    db.transaction(() => {
+      const put = db.prepare(
+        `INSERT INTO settings (key, value) VALUES (?, ?)
+         ON CONFLICT(key) DO NOTHING`
+      );
+      put.run(k.shape, "anthropic");
+      put.run(k.baseUrl, baseUrl);
+      put.run(k.apiKey, apiKey);
+      put.run(k.model, model);
     })
   );
 }

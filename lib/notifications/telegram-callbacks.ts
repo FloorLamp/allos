@@ -31,8 +31,11 @@ import { administrationOutcomeText } from "../administration-format";
 import { logFoodServingCore } from "../food-log-write";
 import { logSymptomCore } from "../symptom-log-write";
 import { logTemperatureCore } from "../temperature-log";
-import { getSymptomLogOrder } from "../queries";
-import { symptomLabel, SYMPTOMS } from "../symptoms";
+import { getSymptomLogOrder, getCustomSymptomNames } from "../queries";
+import { symptomLabel, symptomSlugs, SYMPTOMS } from "../symptoms";
+import { currentEpisodeForProfile } from "../illness-episode";
+import { isTaskConfigured } from "../ai-resolve";
+import { mapSymptomText } from "../symptom-text-map";
 import { profileAgeMonths } from "../settings";
 import { inlineTempRedFlagNote } from "../temp-red-flag";
 import { fmtTemp } from "../units";
@@ -489,6 +492,73 @@ export async function handleIncomingMessage(
   await handleSymptomCommand(message);
   await handleTempCommand(message);
   await handleDoseCommand(message);
+  // Free-text symptom intake (#877): a plain sentence during an open episode maps onto
+  // the vocabulary and replies with confirm buttons — runs AFTER the command handlers
+  // (which no-op on non-command text) and only when a temp reply didn't claim it.
+  await handleSymptomTextIntake(message);
+}
+
+// Free-text symptom intake (issue #877): map a plain-text message onto the symptom
+// vocabulary via the Light tier and reply with per-symptom confirm buttons that reuse
+// the existing severity handler (suggest-only — nothing logs until a button is tapped).
+// Deliberately conservative so ordinary chat isn't hijacked: only fires for a
+// SINGLE-profile chat with an OPEN illness episode, and only when the Light tier is
+// configured. Returns true when it took over the message.
+export async function handleSymptomTextIntake(
+  message: TelegramMessage
+): Promise<boolean> {
+  const text = (message.text ?? "").trim();
+  if (!text || text.startsWith("/")) return false;
+  const chatId = message.chat?.id;
+  if (chatId == null) return false;
+  if (!isTaskConfigured("symptom-map")) return false;
+
+  // One profile per chat only — a plain sentence carries no profile token, so a
+  // multi-profile chat can't be safely attributed (never guess whose symptom it is).
+  const profileIds = getProfilesByTelegramChatId(String(chatId));
+  if (profileIds.length !== 1) return false;
+  const profileId = profileIds[0];
+
+  // Gate on an open illness episode so chit-chat isn't parsed as symptoms.
+  if (!currentEpisodeForProfile(profileId)) return false;
+
+  const outcome = await mapSymptomText(text, {
+    slugs: symptomSlugs(),
+    labels: Object.fromEntries(SYMPTOMS.map((s) => [s.slug, s.label])),
+    customNames: getCustomSymptomNames(profileId),
+  });
+  if (outcome.status !== "ok") return false;
+
+  // Confirm buttons only for CURATED slugs — their callback data is colon-safe. Custom
+  // proposals + unmapped fragments are named in the body for the user to add in-app.
+  const curated = outcome.mapping.symptoms.filter((s) => !s.isCustom);
+  if (curated.length === 0) return false;
+  const actions: NotificationAction[] = curated.map((s) => ({
+    label: `${symptomLabel(s.slug)} — ${SYMPTOM_SEVERITY_LABELS[s.severity] ?? s.severity}`,
+    data: `symsev:${profileId}:${s.severity}:${s.slug}`,
+  }));
+
+  const extras: string[] = [];
+  if (outcome.mapping.temperature) {
+    const t = outcome.mapping.temperature;
+    extras.push(`🌡 Temperature ${t.value}°${t.unit} — log it with /temp.`);
+  }
+  const notMapped = [
+    ...outcome.mapping.symptoms.filter((s) => s.isCustom).map((s) => s.label),
+    ...outcome.mapping.unmapped,
+  ];
+  if (notMapped.length > 0) {
+    extras.push(`Not mapped: ${notMapped.join(", ")} — add these in the app.`);
+  }
+
+  await sendTelegramMessage(chatId, {
+    title: "Log these symptoms?",
+    body:
+      "Tap each to confirm — nothing is logged until you do." +
+      (extras.length ? `\n${extras.join("\n")}` : ""),
+    actions,
+  });
+  return true;
 }
 
 // Drop the tapped button's WHOLE row and, when it was the last row, replace the

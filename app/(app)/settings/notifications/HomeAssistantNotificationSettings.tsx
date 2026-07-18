@@ -85,7 +85,7 @@ export default function HomeAssistantNotificationSettings({
       } catch {
         setResult({
           ok: false,
-          message: "Couldn’t send the test. Please try again.",
+          message: "Couldn’t send the test. Try again.",
         });
       }
     });
