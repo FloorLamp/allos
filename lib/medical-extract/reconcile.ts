@@ -71,11 +71,12 @@ export interface ReconcileInput {
   value_num: number | null;
 }
 
-// Orchestrator: pull the source PDF's text layer and reconcile the extraction against
-// it. Returns null when there is nothing to check — a non-PDF source, or a scanned
-// PDF whose text layer is empty (reconciliation would need OCR, out of scope here).
-// The import of the PDF reader lives here (not in the pure core above) so
-// reconcileResults stays dependency-free and unit-testable without a PDF.
+// Orchestrator: pull the source PDF's text and reconcile the extraction against it.
+// Prefers the deterministic text LAYER; when that is empty (a scanned image) it falls
+// back to OCR so an image-only report is still verifiable. Returns null when there is
+// nothing to check — a non-PDF source, or a PDF that yields no text either way. The
+// readers are dynamic-imported here (not at module top) so reconcileResults stays
+// dependency-free and unit-testable, and the heavy OCR stack only loads for a scan.
 export async function reconcileAgainstSource(
   buffer: Buffer | Uint8Array,
   mime: string,
@@ -89,7 +90,17 @@ export async function reconcileAgainstSource(
   } catch {
     return null; // unreadable / encrypted PDF → can't reconcile, don't fail the import
   }
-  if (!text.trim()) return null; // scanned image, no text layer
+  if (!text.trim()) {
+    // No text layer (scanned image): OCR the pages. Heavy + best-effort, so it is
+    // loaded lazily and returns "" on failure rather than throwing.
+    try {
+      const { ocrPdfText } = await import("../pdf-ocr");
+      text = await ocrPdfText(buffer);
+    } catch {
+      return null;
+    }
+  }
+  if (!text.trim()) return null; // nothing to reconcile against
   return reconcileResults(text, results);
 }
 

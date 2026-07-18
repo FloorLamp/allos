@@ -55,10 +55,18 @@ const nextConfig = {
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];
   },
-  // better-sqlite3 is a native module; keep it external to the server bundle.
+  // Native / heavy server-only packages kept OUT of the server bundle. better-sqlite3
+  // is a native module; @napi-rs/canvas is a native rasterizer and tesseract.js loads
+  // WASM + worker assets — all used only in the OCR reconciliation fallback
+  // (lib/pdf-ocr), reached via dynamic import so they never touch a normal request.
   // Graduated out of `experimental` in Next 15 (was
   // experimental.serverComponentsExternalPackages).
-  serverExternalPackages: ["better-sqlite3"],
+  serverExternalPackages: [
+    "better-sqlite3",
+    "@napi-rs/canvas",
+    "tesseract.js",
+    "unpdf",
+  ],
   // Statically typed links (issue #285): Next generates a `Route` type from the
   // real `app/` tree, so an invalid pathname in any `<Link href>` — or in any
   // href-carrying field typed `AppRoute` (see lib/hrefs.ts) — fails `tsc`, and
