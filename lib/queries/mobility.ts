@@ -14,6 +14,16 @@ import {
   type MobilityCoverageRow,
   type MobilitySessionInput,
 } from "../mobility-coverage";
+import { fitnessPercentile } from "../fitness-norms";
+import { getUserSex, getUserAge } from "../settings";
+import { getInjuryConstraints } from "../injuries";
+import {
+  mobilitySuggestions,
+  type MobilitySuggestion,
+} from "../mobility-suggest";
+import type { MuscleRegion } from "../lifts";
+import { getLatestMedicalRecordByCanonical } from "./medical";
+import { getFrequencyTargets } from "./training";
 
 // The day's mobility session (its logged move slugs + optional duration), or an empty
 // session when none exists yet.
@@ -57,4 +67,42 @@ export function getMobilityCoverage(
     today,
     windowDays
   );
+}
+
+// The ONE gather for mobility deficit→habit suggestions (#840 phase 2): reads the latest
+// sit-and-reach / single-leg balance percentiles (#834), the profile's RECOVERING injuries
+// (#838), and the mobility_region targets already set, then runs the pure suggestion engine
+// (mobilitySuggestions). BOTH the coaching finding builder and the Training-overview
+// one-tap accept affordance read THIS (one question, one computation) — never a second
+// gather. Returns raw suggestions; the caller applies the dismissal filter.
+export function getMobilitySuggestions(profileId: number): MobilitySuggestion[] {
+  const sex = getUserSex(profileId);
+  const age = getUserAge(profileId);
+  const sitReach = getLatestMedicalRecordByCanonical(profileId, "Sit-and-Reach");
+  const balance = getLatestMedicalRecordByCanonical(
+    profileId,
+    "Single-Leg Balance"
+  );
+  const recoveringRegions = Array.from(
+    new Set(
+      getInjuryConstraints(profileId)
+        .filter((c) => c.status === "recovering")
+        .flatMap((c) => c.regions)
+    )
+  );
+  const existingTargetRegions = new Set(
+    getFrequencyTargets(profileId)
+      .filter((t) => t.scope_kind === "mobility_region")
+      .map((t) => t.scope_value as MuscleRegion)
+  );
+  return mobilitySuggestions({
+    sitReachPercentile:
+      fitnessPercentile("Sit-and-Reach", sitReach?.value_num, sex, age)
+        ?.percentile ?? null,
+    balancePercentile:
+      fitnessPercentile("Single-Leg Balance", balance?.value_num, sex, age)
+        ?.percentile ?? null,
+    recoveringRegions,
+    existingTargetRegions,
+  });
 }

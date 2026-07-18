@@ -36,6 +36,7 @@ import {
 } from "./queries";
 import { activeFindings } from "./findings";
 import { exerciseHistoryKey } from "./lifts";
+import type { MuscleRegion } from "./lifts";
 import {
   getActiveSituations,
   getSituationEvents,
@@ -49,6 +50,7 @@ import { decideSunExposure, SUN_EXPOSURE_WINDOW_WEEKS } from "./sun-exposure";
 import { decidePeriodontalObservation } from "./oral-health-observation";
 import { fitnessRetestDue, fitnessCheckSignalKey } from "./fitness-retest";
 import { getLatestFitnessAssessmentDate } from "./fitness-assessment";
+import { getMobilitySuggestions } from "./queries/mobility";
 import { getFitnessRetestCadenceDays } from "./settings";
 import {
   deriveRiskFactors,
@@ -162,6 +164,34 @@ export function buildFitnessCheckFindings(
   ];
 }
 
+// ---- Mobility deficit → habit suggestions (#840 phase 2) -------------------
+
+// SUGGEST-ONLY mobility-region habit suggestions from measured deficits (#834 sit-and-
+// reach / single-leg balance) or a #838 RECOVERING injury — the #577 "suggestions from
+// your measurements" pattern applied to movement. Coaching tier ONLY (#449): joins
+// collectCoachingFindings, rides the shared bus (MOBILITY_SUGGEST_PREFIX registered), NEVER
+// notifies / never the hero, never a rehab prescription (the injury line is soft). One
+// computation (mobilitySuggestions) shared with the Training-overview accept affordance so
+// the finding and the one-tap button can never disagree. Regions already tracked as a
+// mobility_region habit are skipped (the loop is closed once accepted, #580). No owned SQL.
+export function buildMobilitySuggestionFindings(
+  profileId: number,
+  today: string
+): Finding[] {
+  void today; // no time-relative copy; kept for signature parity with siblings
+  return getMobilitySuggestions(profileId).map((s) => ({
+    domain: "mobility-suggest",
+    dedupeKey: s.dedupeKey,
+    title: s.title,
+    detail: s.detail,
+    tone: "info",
+    evidence:
+      "Suggestion from your fitness check / recovering injuries — track it as a weekly habit, or dismiss.",
+    actionHref: "/training?tab=overview" as AppRoute,
+    actionLabel: "Track it",
+  }));
+}
+
 export function collectCoachingFindings(
   profileId: number,
   today: string,
@@ -179,6 +209,7 @@ export function collectCoachingFindings(
     ...buildSunExposureFindings(profileId, today),
     ...buildOralHealthFindings(profileId),
     ...buildFitnessCheckFindings(profileId, today),
+    ...buildMobilitySuggestionFindings(profileId, today),
   ];
 }
 

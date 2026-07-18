@@ -1,6 +1,15 @@
-import { getMobilitySession, getMobilityCoverage } from "@/lib/queries";
+import {
+  getMobilitySession,
+  getMobilityCoverage,
+  getMobilitySuggestions,
+  getFindingSuppressions,
+} from "@/lib/queries";
 import { MOBILITY_MOVES } from "@/lib/mobility-moves";
+import { isFindingSuppressed } from "@/lib/findings";
 import { formatRelativeDate } from "@/lib/format-date";
+import { createFrequencyTarget } from "../goals/frequency-actions";
+import { dismissCoachingObservation } from "../actions";
+import SubmitButton from "@/components/SubmitButton";
 import MobilityLogBar from "./MobilityLogBar";
 
 // The mobility surface on the Training overview (issue #840) — SELF-CONTAINED so it can be
@@ -24,6 +33,13 @@ export default async function MobilitySection({
   const coverage = getMobilityCoverage(profileId, today, COVERAGE_DAYS);
   const coverageMax = coverage.reduce((m, r) => Math.max(m, r.days), 0);
 
+  // Deficit→habit suggestions (#840 phase 2): the SAME pure computation the coaching
+  // finding builder reads, minus the ones already dismissed through the shared bus.
+  const suppressions = getFindingSuppressions(profileId);
+  const suggestions = getMobilitySuggestions(profileId).filter(
+    (s) => !isFindingSuppressed({ dedupeKey: s.dedupeKey }, suppressions, today)
+  );
+
   return (
     <div className="card" data-testid="mobility-section">
       <h3 className="font-semibold text-slate-800 dark:text-slate-100">
@@ -41,6 +57,68 @@ export default async function MobilitySection({
           moves={MOBILITY_MOVES}
         />
       </div>
+
+      {/* Deficit→habit suggestions (#840 phase 2): SUGGEST-ONLY, one-tap accept into a
+          mobility_region weekly habit (#580), dismissible through the shared bus. Calm —
+          never a rehab prescription. */}
+      {suggestions.length > 0 && (
+        <div
+          className="mt-6 border-t border-black/5 pt-4 dark:border-white/5"
+          data-testid="mobility-suggestions"
+        >
+          <h4 className="font-medium text-slate-700 dark:text-slate-200">
+            Suggested from your measurements
+          </h4>
+          <ul className="mt-3 space-y-2">
+            {suggestions.map((s) => (
+              <li
+                key={s.dedupeKey}
+                data-testid="mobility-suggestion"
+                data-region={s.region}
+                className="rounded-lg border border-black/10 bg-white p-3 dark:border-white/10 dark:bg-ink-900"
+              >
+                <p className="font-medium text-slate-800 dark:text-slate-100">
+                  {s.title}
+                </p>
+                <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                  {s.detail}
+                </p>
+                <div className="mt-2 flex items-center gap-2">
+                  <form action={createFrequencyTarget}>
+                    <input
+                      type="hidden"
+                      name="scope_kind"
+                      value="mobility_region"
+                    />
+                    <input type="hidden" name="scope_value" value={s.region} />
+                    <input type="hidden" name="per_week" value={s.perWeek} />
+                    <SubmitButton
+                      data-testid={`mobility-accept-${s.region}`}
+                      className="btn btn-sm"
+                    >
+                      Track {s.perWeek}×/week
+                    </SubmitButton>
+                  </form>
+                  <form action={dismissCoachingObservation}>
+                    <input
+                      type="hidden"
+                      name="dedupe_key"
+                      value={s.dedupeKey}
+                    />
+                    <SubmitButton
+                      data-testid={`mobility-dismiss-${s.region}`}
+                      className="btn-ghost btn-sm"
+                      pendingLabel="Dismissing…"
+                    >
+                      Dismiss
+                    </SubmitButton>
+                  </form>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Region coverage — its OWN computation, never merged with strength coverage
           (#482). Shows every region so a 0-mobilized region ("Shoulders 0 this week")

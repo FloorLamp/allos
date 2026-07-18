@@ -37,6 +37,7 @@ import { TEMP_RED_FLAG_PREFIX } from "./temp-red-flag";
 import { CONDITION_REVIEW_PREFIX } from "./condition-suggestions";
 import { FOLLOWUP_PREFIX } from "./followup";
 import { FITNESS_CHECK_PREFIX } from "./fitness-retest";
+import { MOBILITY_SUGGEST_PREFIX } from "./mobility-suggest";
 import type { ReasonCode } from "./reasons";
 
 // The two reach tiers (#449). CARE is push: Upcoming + the non-hideable Needs-attention
@@ -136,6 +137,15 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: FITNESS_CHECK_PREFIX,
     tier: "coaching",
     builder: "buildFitnessCheckFindings",
+    reasons: [],
+  },
+  {
+    // Mobility deficit→habit suggestions (#840 phase 2): a low sit-and-reach/balance
+    // percentile or a recovering injury seeds a SUGGEST-ONLY mobility_region habit.
+    // Coaching tier — calm, never a push, never a rehab prescription.
+    prefix: MOBILITY_SUGGEST_PREFIX,
+    tier: "coaching",
+    builder: "buildMobilitySuggestionFindings",
     reasons: [],
   },
   // ---- Care tier (push; NOT in collectCoachingFindings) ----------------------

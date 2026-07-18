@@ -28,9 +28,14 @@ import {
   buildOralHealthFindings,
   buildMuscleVolumeFindings,
   buildFitnessCheckFindings,
+  buildMobilitySuggestionFindings,
   collectCoachingFindings,
 } from "@/lib/rule-findings";
 import { fitnessCheckSignalKey } from "@/lib/fitness-retest";
+import {
+  mobilitySuggestSignalKey,
+  FLEXIBILITY_REGION,
+} from "@/lib/mobility-suggest";
 import { setFitnessRetestCadenceDays } from "@/lib/settings";
 import {
   muscleVolumeSignalKey,
@@ -1046,5 +1051,97 @@ describe("buildFitnessCheckFindings — fitness-check retest cadence", () => {
     expect(buildFitnessCheckFindings(profileId, anchor)).toEqual([]); // 40 < 90 default
     setFitnessRetestCadenceDays(profileId, 30);
     expect(buildFitnessCheckFindings(profileId, anchor)).toHaveLength(1); // 40 > 30
+  });
+});
+
+// ---- #840 phase 2: mobility deficit → habit suggestions ---------------------
+describe("buildMobilitySuggestionFindings — deficit-driven mobility habits (#840)", () => {
+  // A profile with sex/age set so the fitness-norms percentile gate opens.
+  function adultProfile(name: string): { profileId: number; anchor: string } {
+    const p = makeProfile(name);
+    db.prepare(
+      `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'sex', 'male')`
+    ).run(p.profileId);
+    db.prepare(
+      `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', '1985-01-01')`
+    ).run(p.profileId);
+    return p;
+  }
+
+  function seedVital(
+    profileId: number,
+    canonical: string,
+    value: number,
+    unit: string,
+    date: string
+  ) {
+    db.prepare(
+      `INSERT INTO medical_records (profile_id, date, category, name, value_num, unit, canonical_name)
+       VALUES (?, ?, 'vitals', ?, ?, ?, ?)`
+    ).run(profileId, date, canonical, value, unit, canonical);
+  }
+
+  it("suggests a hamstring/Legs mobility habit for a low sit-and-reach, as a coaching finding", () => {
+    const { profileId, anchor } = adultProfile("mobility-flex");
+    // 15 cm sits below the 10th-percentile band for a ~40yo male → low percentile.
+    seedVital(profileId, "Sit-and-Reach", 15, "cm", anchor);
+
+    const findings = buildMobilitySuggestionFindings(profileId, anchor);
+    const f = findings.find(
+      (x) => x.dedupeKey === mobilitySuggestSignalKey(FLEXIBILITY_REGION, "flexibility")
+    );
+    expect(f).toBeTruthy();
+    expect(f!.domain).toBe("mobility-suggest");
+    expect(f!.tone).toBe("info");
+    // Coaching tier + registered prefix (the #448 guard).
+    expect(tierForDedupeKey(f!.dedupeKey)).toBe("coaching");
+    expect(dedupeKeyHasKnownPrefix(f!.dedupeKey)).toBe(true);
+
+    // Flows through the unified coaching rollup (never Upcoming/hero/push).
+    const rolled = collectCoachingFindings(profileId, anchor, "kg").map(
+      (r) => r.dedupeKey
+    );
+    expect(rolled).toContain(f!.dedupeKey);
+  });
+
+  it("suggests gentle mobility for a recovering injury region (soft, note-only)", () => {
+    const { profileId, anchor } = makeProfile("mobility-injury");
+    db.prepare(
+      `INSERT INTO injuries (profile_id, label, regions, status)
+       VALUES (?, 'Tweaked shoulder', '["Shoulders"]', 'recovering')`
+    ).run(profileId);
+
+    const findings = buildMobilitySuggestionFindings(profileId, anchor);
+    const f = findings.find(
+      (x) => x.dedupeKey === mobilitySuggestSignalKey("Shoulders", "injury")
+    );
+    expect(f).toBeTruthy();
+    expect(f!.detail).toMatch(/soft suggestion|not a rehab/i);
+    expect(tierForDedupeKey(f!.dedupeKey)).toBe("coaching");
+  });
+
+  it("stops suggesting a region once it has a mobility_region target (#580 closed loop)", () => {
+    const { profileId, anchor } = adultProfile("mobility-closed");
+    seedVital(profileId, "Sit-and-Reach", 15, "cm", anchor);
+    // Accept the habit: a mobility_region target for the suggested region.
+    db.prepare(
+      `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week)
+       VALUES (?, 'mobility_region', ?, 3)`
+    ).run(profileId, FLEXIBILITY_REGION);
+
+    const findings = buildMobilitySuggestionFindings(profileId, anchor);
+    expect(
+      findings.some(
+        (x) =>
+          x.dedupeKey ===
+          mobilitySuggestSignalKey(FLEXIBILITY_REGION, "flexibility")
+      )
+    ).toBe(false);
+  });
+
+  it("stays quiet with no deficit and no recovering injury", () => {
+    const { profileId, anchor } = adultProfile("mobility-quiet");
+    seedVital(profileId, "Sit-and-Reach", 40, "cm", anchor); // healthy
+    expect(buildMobilitySuggestionFindings(profileId, anchor)).toEqual([]);
   });
 });
