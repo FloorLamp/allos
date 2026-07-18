@@ -154,7 +154,7 @@ export default async function MobilitySection({
                   ? "—"
                   : `${row.days} ${row.days === 1 ? "day" : "days"}`}
               </span>
-              <span className="w-24 shrink-0 text-right text-xs text-slate-400 dark:text-slate-500">
+              <span className="w-24 shrink-0 text-right text-xs text-slate-500 dark:text-slate-400">
                 {row.lastMobilized
                   ? formatRelativeDate(row.lastMobilized, today)
                   : ""}

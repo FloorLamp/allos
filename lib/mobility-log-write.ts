@@ -111,8 +111,9 @@ export function logMobilityMoveCore(
     const json = JSON.stringify(componentsFor(moves));
     if (row) {
       db.prepare(
-        `UPDATE activities SET components = ?, updated_at = datetime('now') WHERE id = ?`
-      ).run(json, row.id);
+        `UPDATE activities SET components = ?, updated_at = datetime('now')
+           WHERE id = ? AND profile_id = ?`
+      ).run(json, row.id, profileId);
       return { kind: "logged", session: sessionOf(dayRow(profileId, date)) };
     }
     db.prepare(
@@ -139,12 +140,15 @@ export function unlogMobilityMoveCore(
     if (!row) return { kind: "logged", session: sessionOf(undefined) };
     const moves = movesOf(row).filter((m) => m !== slug);
     if (moves.length === 0 && (row.duration_min ?? null) === null) {
-      db.prepare(`DELETE FROM activities WHERE id = ?`).run(row.id);
+      db.prepare(
+        `DELETE FROM activities WHERE id = ? AND profile_id = ?`
+      ).run(row.id, profileId);
       return { kind: "logged", session: sessionOf(undefined) };
     }
     db.prepare(
-      `UPDATE activities SET components = ?, updated_at = datetime('now') WHERE id = ?`
-    ).run(JSON.stringify(componentsFor(moves)), row.id);
+      `UPDATE activities SET components = ?, updated_at = datetime('now')
+         WHERE id = ? AND profile_id = ?`
+    ).run(JSON.stringify(componentsFor(moves)), row.id, profileId);
     return { kind: "logged", session: sessionOf(dayRow(profileId, date)) };
   });
 }
@@ -168,12 +172,15 @@ export function setMobilityDurationCore(
       return sessionOf(dayRow(profileId, date));
     }
     if (dur === null && movesOf(row).length === 0) {
-      db.prepare(`DELETE FROM activities WHERE id = ?`).run(row.id);
+      db.prepare(
+        `DELETE FROM activities WHERE id = ? AND profile_id = ?`
+      ).run(row.id, profileId);
       return sessionOf(undefined);
     }
     db.prepare(
-      `UPDATE activities SET duration_min = ?, updated_at = datetime('now') WHERE id = ?`
-    ).run(dur, row.id);
+      `UPDATE activities SET duration_min = ?, updated_at = datetime('now')
+         WHERE id = ? AND profile_id = ?`
+    ).run(dur, row.id, profileId);
     return sessionOf(dayRow(profileId, date));
   });
 }

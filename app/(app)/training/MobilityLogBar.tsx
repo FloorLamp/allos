@@ -182,7 +182,7 @@ export default function MobilityLogBar({
           className="input w-20"
           placeholder="min"
         />
-        <span className="text-sm text-slate-400 dark:text-slate-500">min</span>
+        <span className="text-sm text-slate-500 dark:text-slate-400">min</span>
       </div>
     </div>
   );
