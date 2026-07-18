@@ -220,6 +220,20 @@ const CANONICAL_ALIASES: [string, string][] = [
   ["WBC", "White Blood Cell Count"],
   ["RBC", "Red Blood Cell Count"],
   ["Specific Gravity", "Urine Specific Gravity"],
+  // Newly curated gaps (#918): the abbreviation/short forms onto the "Full (ABBREV)"
+  // canonical entries the model already emits in long form.
+  ["AFP", "Alpha-Fetoprotein (AFP)"],
+  ["Alpha-Fetoprotein", "Alpha-Fetoprotein (AFP)"],
+  ["CEA", "Carcinoembryonic Antigen (CEA)"],
+  ["Carcinoembryonic Antigen", "Carcinoembryonic Antigen (CEA)"],
+  ["HBsAg", "Hepatitis B Surface Antigen (HBsAg)"],
+  ["Hepatitis B Surface Antigen", "Hepatitis B Surface Antigen (HBsAg)"],
+  ["HBsAb", "Hepatitis B Surface Antibody (HBsAb)"],
+  ["Anti-HBs", "Hepatitis B Surface Antibody (HBsAb)"],
+  ["Hepatitis B Surface Antibody", "Hepatitis B Surface Antibody (HBsAb)"],
+  ["Anti-HCV", "Hepatitis C Antibody (Anti-HCV)"],
+  ["HCV Antibody", "Hepatitis C Antibody (Anti-HCV)"],
+  ["Hepatitis C Antibody", "Hepatitis C Antibody (Anti-HCV)"],
   // NOT aliased, on purpose:
   //  • bare "pH" — specimen-ambiguous (an arterial-blood-gas pH is not urine pH); the
   //    §2 trap. Needs a specimen qualifier to resolve.
@@ -267,6 +281,17 @@ export function snapCanonicalName(
     ? buildCanonicalIndex(vocabulary)
     : vocabulary;
   return index.get(normalizeCanonicalKey(name)) ?? name;
+}
+
+// Garbage / placeholder canonical_names the AI extractor sometimes emits instead of
+// a real analyte identity — "Comment(s)" is a recurring dumping-ground (a urine pH
+// and a WBC row both came back as "Comment(S)" in real extractions, #918). Using it
+// as a name would pollute the vocabulary AND mis-group unrelated rows onto one
+// pseudo-analyte, so the caller ignores it and falls back to the printed name.
+const GARBAGE_CANONICAL =
+  /^(comment\(s\)|comments?|see\s*note|note\s*\d*|results?|interpretation|not\s*applicable|n\/?a)$/i;
+export function isGarbageCanonical(name: string | null | undefined): boolean {
+  return !!name && GARBAGE_CANONICAL.test(name.trim());
 }
 
 // --- Vitamin D isoform disambiguation --------------------------------------

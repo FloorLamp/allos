@@ -11,6 +11,7 @@ import {
   BIOMARKER_FAMILIES,
   biomarkerFamily,
   canonicalAliases,
+  isGarbageCanonical,
 } from "../canonical-name";
 import canonicalSeed from "../canonical-biomarkers.json";
 
@@ -418,6 +419,30 @@ describe("canonical aliases (synonym/abbreviation drift)", () => {
     expect(snapCanonicalName("eGFR, African American", index)).toBe(
       "eGFR, African American"
     );
+  });
+
+  it("resolves the audit-confirmed gap analytes and their abbreviations (#918)", () => {
+    for (const [spelling, canonical] of [
+      ["AFP", "Alpha-Fetoprotein (AFP)"],
+      ["CEA", "Carcinoembryonic Antigen (CEA)"],
+      ["HBsAg", "Hepatitis B Surface Antigen (HBsAg)"],
+      ["Anti-HCV", "Hepatitis C Antibody (Anti-HCV)"],
+      ["Urine Albumin", "Albumin, Urine"],
+    ] as const) {
+      expect(snapCanonicalName(spelling, index)).toBe(canonical);
+    }
+    // Urine albumin/creatinine stay APART from their serum namesakes.
+    expect(snapCanonicalName("Albumin, Urine", index)).not.toBe("Albumin");
+    expect(snapCanonicalName("Creatinine, Urine", index)).not.toBe(
+      "Creatinine"
+    );
+  });
+
+  it("flags the garbage canonical labels the model dumps rows into (#918)", () => {
+    for (const g of ["Comment(S)", "comments", "See Note", "Note 1", "Results"])
+      expect(isGarbageCanonical(g)).toBe(true);
+    for (const real of ["Sodium", "Glucose", "Leptin", "Blood Type"])
+      expect(isGarbageCanonical(real)).toBe(false);
   });
 
   it("every alias targets a REAL dataset entry and shadows no distinct analyte", () => {

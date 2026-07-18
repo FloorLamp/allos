@@ -49,6 +49,20 @@ export function seededUnitFor(name: string): string | null {
   return UNIT_BY_KEY.get(normalizeCanonicalKey(name)) ?? null;
 }
 
+// Specimen counterparts that do NOT share a stem: the blood cell counts and their
+// urine-sediment namesakes (#918). "WBC"/"RBC" print in both a CBC (a blood count,
+// 10^3/uL) and a urinalysis (sediment, /HPF); the bare-abbreviation aliases route to
+// the blood count, so when the reading's unit is the microscopy /HPF the guard must
+// send it to the urine entry instead. Keyed by normalized name, both directions.
+const SPECIMEN_COUNTERPART = new Map<string, string>();
+for (const [a, b] of [
+  ["White Blood Cell Count", "White Blood Cells, Urine"],
+  ["Red Blood Cell Count", "Red Blood Cells, Urine"],
+] as const) {
+  SPECIMEN_COUNTERPART.set(normalizeCanonicalKey(a), b);
+  SPECIMEN_COUNTERPART.set(normalizeCanonicalKey(b), a);
+}
+
 // Re-resolve `snapped` (the model's canonical_name AFTER snapping) when its seeded
 // entry's unit provably contradicts the reading's unit. Returns a better canonical
 // name, or `snapped` unchanged when there is no proven contradiction or no
@@ -73,6 +87,17 @@ export function unitAwareCanonical(
       s.name !== snapped && sameUnit(readingUnit, s.unit) && inVocab(s.name)
   );
   if (fits.length === 1) return fits[0].name;
+
+  // 1b) A cross-specimen counterpart (blood count ↔ urine sediment) whose unit fits —
+  //     for pairs that don't share a stem (WBC/RBC).
+  const counterpart = SPECIMEN_COUNTERPART.get(normalizeCanonicalKey(snapped));
+  if (
+    counterpart &&
+    sameUnit(readingUnit, seededUnitFor(counterpart)) &&
+    inVocab(counterpart)
+  ) {
+    return counterpart;
+  }
 
   // 2) The printed name, ONLY if it snaps to a unit-compatible entry — a narrow,
   //    explicit rescue, never a blanket printed-name fallback (#918 §2).

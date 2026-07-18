@@ -8,6 +8,7 @@ import {
   buildCanonicalIndex,
   snapCanonicalName,
   distinguishVitaminDIsoform,
+  isGarbageCanonical,
 } from "../canonical-name";
 import { unitAwareCanonical } from "../canonical-unit-guard";
 import { CATEGORIES, FLAGS } from "./constants";
@@ -187,12 +188,17 @@ export function normalizeResults(
         ? r.value_num
         : null;
     const str = strOrNull;
-    // Fall back to the raw name when the model omits or blanks the canonical.
+    // Fall back to the raw name when the model omits, blanks, or dumps the canonical
+    // into a garbage placeholder ("Comment(s)" — a real recurring case, #918).
     // Recover the D2/D3 vitamin-D isoform from the verbatim lab name first (the
     // model tends to drop it and collapse both metabolites onto one series),
     // then snap onto a matching vocabulary entry when one exists.
+    const modelCanon = str(r?.canonical_name);
+    const canonSource = isGarbageCanonical(modelCanon)
+      ? name
+      : (modelCanon ?? name);
     const snapped = snapCanonicalName(
-      distinguishVitaminDIsoform(str(r?.canonical_name) ?? name, name),
+      distinguishVitaminDIsoform(canonSource, name),
       canonicalIndex
     );
     // The unit is the arbiter: if the snapped entry's unit contradicts the reading's

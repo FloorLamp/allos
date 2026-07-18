@@ -29,11 +29,12 @@ import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 // any range/optimal/unit/direction value. If you INTENTIONALLY edit a curated range,
 // this golden changes on purpose — update it (the boot reconcile will re-flag stored
 // records the same way).
-// Updated for #918: the curated urinalysis + immunoglobulin entries add
-// flag-relevant ranges, so the signature legitimately changes (the boot reconcile
-// re-flags stored records against the new bands).
+// Updated for #918: the curated urinalysis, immunoglobulin, and audit-confirmed
+// gap entries (tumor markers, serology, urine chemistry, ratios) add flag-relevant
+// ranges, so the signature legitimately changes (the boot reconcile re-flags stored
+// records against the new bands).
 const FLAG_SIGNATURE_GOLDEN =
-  "f8c9ed577921358fae214311233223197207abeca4dbe0ace628e103e6153f1d";
+  "4e1bf71f4106a8533218b8e5cd29887915eb5cfb51bd8ab926737c99f4248cee";
 
 describe("canonical-biomarkers dataset on the curated-dataset framework", () => {
   it("passes the whole framework harness (citation + identity + refusal + no collisions)", () => {

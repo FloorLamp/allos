@@ -1142,6 +1142,61 @@
       "abbreviation": "IgG4",
       "full_name": "Immunoglobulin G Subclass 4",
       "description": "IgG4 is the least abundant IgG subclass. Markedly elevated levels are associated with IgG4-related disease, a condition that can affect several organs."
+    },
+    {
+      "name": "Leptin",
+      "full_name": "Leptin",
+      "description": "Leptin is a hormone released by fat tissue that signals the brain about the body's energy stores and helps regulate appetite. Levels rise with body-fat mass and vary by sex."
+    },
+    {
+      "name": "Albumin, Urine",
+      "full_name": "Albumin, Urine (microalbumin)",
+      "description": "Urine albumin (microalbumin) detects small amounts of the protein albumin leaking into the urine, an early sign of kidney damage. It is usually interpreted as a ratio to urine creatinine."
+    },
+    {
+      "name": "Creatinine, Urine",
+      "full_name": "Creatinine, Urine",
+      "description": "Urine creatinine reflects how concentrated the urine is and is mainly used to standardize other urine measurements, such as the albumin-to-creatinine ratio."
+    },
+    {
+      "name": "Alpha-Fetoprotein (AFP)",
+      "abbreviation": "AFP",
+      "full_name": "Alpha-Fetoprotein",
+      "description": "Alpha-fetoprotein is a protein used as a tumor marker for liver and germ-cell cancers, and as a screening marker in pregnancy. In non-pregnant adults it is normally low."
+    },
+    {
+      "name": "Carcinoembryonic Antigen (CEA)",
+      "abbreviation": "CEA",
+      "full_name": "Carcinoembryonic Antigen",
+      "description": "CEA is a tumor marker used mainly to monitor colorectal and some other cancers over time. Mild elevations can also occur with smoking and some non-cancerous conditions."
+    },
+    {
+      "name": "Hepatitis B Surface Antigen (HBsAg)",
+      "abbreviation": "HBsAg",
+      "full_name": "Hepatitis B Surface Antigen",
+      "description": "HBsAg is a marker of active hepatitis B infection. A negative result is normal; a positive result indicates current infection and warrants follow-up."
+    },
+    {
+      "name": "Hepatitis B Surface Antibody (HBsAb)",
+      "abbreviation": "HBsAb",
+      "full_name": "Hepatitis B Surface Antibody (anti-HBs)",
+      "description": "HBsAb (anti-HBs) reflects immunity to hepatitis B from vaccination or recovery from past infection. A level of 10 mIU/mL or higher is generally considered protective."
+    },
+    {
+      "name": "Hepatitis C Antibody (Anti-HCV)",
+      "abbreviation": "Anti-HCV",
+      "full_name": "Hepatitis C Antibody",
+      "description": "The hepatitis C antibody test screens for exposure to the hepatitis C virus. A non-reactive result is normal; a reactive result is followed by confirmatory HCV RNA testing."
+    },
+    {
+      "name": "BUN/Creatinine Ratio",
+      "full_name": "BUN/Creatinine Ratio",
+      "description": "The ratio of blood urea nitrogen to creatinine helps distinguish causes of kidney impairment and gives a clue to hydration status. It is a calculated value with no units."
+    },
+    {
+      "name": "LDL/HDL Ratio",
+      "full_name": "LDL/HDL Cholesterol Ratio",
+      "description": "The ratio of LDL to HDL cholesterol is a summary measure of cardiovascular risk, where a lower ratio is more favorable. It is a calculated value with no units."
     }
   ]
 }

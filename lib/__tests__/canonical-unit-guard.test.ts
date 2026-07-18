@@ -62,6 +62,21 @@ describe("unitAwareCanonical — the unit is the arbiter (#918 §1)", () => {
     // incompatible entry: keep it rather than guess (surfaced separately, §4).
     expect(g("Hemoglobin", "Hemoglobin", "%")).toBe("Hemoglobin");
   });
+
+  it("routes a bare WBC/RBC to the URINE entry when the unit is microscopy /HPF (#918)", () => {
+    // "WBC"/"RBC" alias to the BLOOD count; a /HPF reading is urine sediment. The
+    // blood and urine entries share no stem, so this rides the specimen-counterpart.
+    expect(g("White Blood Cell Count", "WBC", "/HPF")).toBe(
+      "White Blood Cells, Urine"
+    );
+    expect(g("Red Blood Cell Count", "RBC", "cell/HPF")).toBe(
+      "Red Blood Cells, Urine"
+    );
+    // …but a blood-scale unit keeps the blood count.
+    expect(g("White Blood Cell Count", "WBC", "10^3/uL")).toBe(
+      "White Blood Cell Count"
+    );
+  });
 });
 
 describe("normalizeResults wires the unit guard", () => {
