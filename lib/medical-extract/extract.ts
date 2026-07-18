@@ -21,6 +21,7 @@ import {
   unwrapExtractionInput,
   looksLikeExtractionInput,
 } from "./normalize";
+import { reconcileAgainstSource } from "./reconcile";
 import type { ExtractionResult, ExtractionMeta } from "./types";
 
 // Prefix server logs so extraction activity is easy to grep in the dev/prod
@@ -287,6 +288,34 @@ export async function extractMedicalDocument(
     // complete, recognized payload.
     const result = resultFromExtractionInput(input, knownCanonical, MODEL);
     const results = result.results;
+
+    // Cross-check the extraction against the source PDF's own text layer — a value the
+    // model transcribed wrong or invented, or a name that never appears in the report,
+    // is caught deterministically without a second model call (#918 follow-up). Null
+    // for a non-PDF or scanned source (nothing to verify); errors are swallowed so a
+    // reconciliation problem never fails the import.
+    const reconciliation = await reconcileAgainstSource(
+      buffer,
+      mime,
+      results.map((r) => ({
+        name: r.name,
+        value: r.value,
+        value_num: r.value_num,
+      }))
+    );
+    if (reconciliation) {
+      const { confirmed, valueMismatch, nameNotFound, total } = reconciliation;
+      const fields = {
+        filename,
+        confirmed,
+        valueMismatch,
+        nameNotFound,
+        total,
+      };
+      if (valueMismatch || nameNotFound)
+        log.warn("source reconciliation flagged rows", fields);
+      else log.info("source reconciliation clean", fields);
+    }
 
     const clinicalCount = clinicalCountOf(result);
 
