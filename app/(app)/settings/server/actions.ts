@@ -27,8 +27,45 @@ import { setMinTrainingAge } from "@/lib/age-gate";
 import { normalizePublicUrl } from "@/lib/public-url";
 import { setWebhook, deleteWebhook } from "@/lib/notifications/telegram";
 import { createLogger } from "@/lib/log";
+import { setTierConfig, clearTierApiKey } from "@/lib/settings/ai-tiers";
+import { parseApiShape, type TierName } from "@/lib/ai-tiers";
+import { probeTier } from "@/lib/ai-probe";
 
 const log = createLogger("settings");
+
+// ---- AI provider tiers (global, admin-only) — issue #875 ----
+
+function parseTier(v: FormDataEntryValue | null): TierName {
+  return v === "light" ? "light" : "heavy";
+}
+
+// Save one tier's provider config. The API key field is write-only: a blank submit
+// leaves the stored secret intact (setTierConfig ignores an empty key), and the
+// "remove key" checkbox clears it — the Telegram-bot-token posture applied to AI.
+export async function saveAiTierConfig(formData: FormData) {
+  await requireAdmin();
+  const tier = parseTier(formData.get("tier"));
+  const apiKey = String(formData.get("api_key") ?? "");
+  setTierConfig(tier, {
+    apiShape: parseApiShape(String(formData.get("api_shape") ?? "")),
+    baseUrl: String(formData.get("base_url") ?? ""),
+    model: String(formData.get("model") ?? ""),
+    apiKey,
+  });
+  if (formData.get("clear_api_key") === "1") clearTierApiKey(tier);
+  revalidatePath("/settings/server");
+}
+
+// Test-connection affordance (the register-webhook precedent): ping the tier through
+// the resolver and report reachability + whether the Heavy endpoint accepts an image.
+export async function testAiTier(
+  formData: FormData
+): Promise<{ ok: boolean; message: string }> {
+  await requireAdmin();
+  const tier = parseTier(formData.get("tier"));
+  const result = await probeTier(tier);
+  return { ok: result.ok, message: result.message };
+}
 
 // ---- AI (global, admin-only) ----
 

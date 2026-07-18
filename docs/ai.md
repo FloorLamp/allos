@@ -80,28 +80,45 @@ strip — one tab per type (labs, vitals, prescriptions, visits, conditions,
 allergies, immunizations, procedures, family history, care plan/goals,
 medications, body metrics), each row linking to where it now lives.
 
-### Local / self-hosted inference (zero external egress)
+### Provider tiers (Heavy / Light) and local inference
 
-For a fully private setup, point the app at a **local inference server** that
-exposes an Anthropic-compatible API (Ollama and others, or a translating proxy)
-by setting `AI_BASE_URL` (e.g. `http://localhost:11434`). Then **no request ever
-leaves your machine beyond that endpoint** — the SDK talks only to the configured
-base URL. Local servers usually ignore the API key, so `ANTHROPIC_API_KEY` is
-optional when `AI_BASE_URL` is set (a placeholder is sent to satisfy the SDK);
-AI counts as configured when **either** is present.
+AI config lives in the database under **Settings → Server → AI providers**
+(admin-only), as **two independent tiers**:
 
-The endpoint and model are **environment-driven only** — the active endpoint,
-model, and configured/offline status are shown read-only under **Settings →
-Server → AI** (not editable in the UI, so no endpoint or credential is stored in
-the database). Each entry in the AI activity log is tagged with the backend host
-so you can tell which endpoint produced it.
+- **Heavy** — document/workout extraction (vision + long context; it sees your
+  uploaded records).
+- **Light** — narratives, supplement suggestions, coverage blurbs, free-text
+  symptom mapping, and the finding explainer. When Light is unset it **falls back
+  to Heavy**; the resolver maps each task class → tier → client.
 
-Quality trade-off: coaching **insights** and supplement **suggestions** work
-well on capable local models, but **medical-document extraction** is demanding
-(long documents, structured tool output) — a small local model may extract less
-reliably than Claude. Everything still degrades gracefully: with neither
-`ANTHROPIC_API_KEY` nor `AI_BASE_URL` set, insights fall back to the offline
-summary and uploads are stored but not extracted.
+Each tier carries an **API shape** — `anthropic` (the Anthropic SDK) or
+`openai-compatible` (the chat-completions shape for vLLM / Ollama / LM Studio /
+OpenRouter / …) — a base URL, a **write-only API key** (stored like the Telegram
+bot token; the UI shows only whether one is set), and a model. A per-tier **Test
+connection** button pings the endpoint through the resolver; the Heavy test also
+probes whether the endpoint **accepts an image**, warning when a blind model would
+misroute extraction. A tier counts as configured when it has **either** a key or a
+base URL. Each AI activity-log entry is tagged with the serving **tier** + model +
+backend host.
+
+For a fully private setup, point a tier's base URL at a **local inference server**
+(e.g. `http://localhost:11434`) — then **no request leaves your machine beyond
+that endpoint**. You can pin Heavy (which sees documents) to the local endpoint
+specifically while leaving Light on a hosted model, or run everything local.
+
+**Env → first-boot seed.** The legacy `ANTHROPIC_API_KEY` / `AI_BASE_URL` /
+`HEALTH_AI_MODEL` env vars are **demoted to a first-boot seed** for the Heavy tier
+(the `seedTimezoneFromEnv` pattern): on a fresh instance they populate Heavy once,
+then the DB owns the config. Existing deployments are unaffected — no restart or
+shell access is needed to change a key or model afterward.
+
+Quality trade-off: coaching **insights** and supplement **suggestions** work well
+on capable local models, but **medical-document extraction** is demanding (long
+documents, structured tool output) — a small local model may extract less reliably
+than Claude, which is exactly why extraction gets its own Heavy tier. Everything
+still degrades gracefully: with no tier configured, insights fall back to the
+offline summary, uploads are stored but not extracted, and the AI-only affordances
+(symptom intake, the explainer) don't render.
 
 ### Privacy — the RxNorm lookup is the only interaction-checker egress
 

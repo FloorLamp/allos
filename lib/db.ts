@@ -16,6 +16,8 @@ import {
 // into the Edge middleware / client bundles (where fs is unavailable) — keeping
 // log.ts itself Edge-safe.
 import "./error-log";
+import { setTierConfigProvider } from "./ai-client";
+import { getTierConfigs } from "./settings/ai-tiers";
 
 // Single shared connection across hot-reloads in dev.
 const globalForDb = globalThis as unknown as { __healthDb?: Database.Database };
@@ -117,6 +119,14 @@ export function migrate(db: Database.Database): void {
 
 export const db = globalForDb.__healthDb ?? createDb();
 if (process.env.NODE_ENV !== "production") globalForDb.__healthDb = db;
+
+// Register the DB-backed AI tier-config reader as the runtime provider (issue #875) so
+// lib/ai-resolve can resolve task → tier → client without importing the DB layer. Done
+// here rather than in boot-tasks so that module stays off the lib/settings import (the
+// db → boot-tasks → settings cycle otherwise TDZ-faults some import orders). The
+// closure defers getTierConfigs to call time — it reads the assigned singleton, never
+// during module evaluation — so a settings-first import order stays safe.
+setTierConfigProvider(() => getTierConfigs());
 
 // Run a WRITE transaction with the reserved-write lock taken at BEGIN (IMMEDIATE)
 // (issue #468). A plain `db.transaction(fn)` is DEFERRED: it opens a read snapshot

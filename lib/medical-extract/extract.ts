@@ -6,10 +6,10 @@ import Anthropic, {
   APIConnectionError,
   APIConnectionTimeoutError,
 } from "@anthropic-ai/sdk";
-import { aiConfigured, createAiClient } from "../ai-client";
+import { resolveTaskClient } from "../ai-resolve";
 import { createLogger } from "../log";
 import { recordAiEvent, capDetail, LOG_PROMPTS, usageFrom } from "../ai-log";
-import { MODEL, MAX_TOKENS } from "./constants";
+import { MAX_TOKENS } from "./constants";
 import { SYSTEM, TOOL, buildContent } from "./prompt";
 import {
   normalizeResults,
@@ -125,7 +125,8 @@ export async function extractMedicalDocument(
   filename: string,
   knownCanonical: string[] = []
 ): Promise<ExtractionResult> {
-  if (!aiConfigured()) {
+  const resolved = resolveTaskClient("extraction");
+  if (!resolved) {
     log.info("skipped (AI not configured)", { filename });
     recordAiEvent({
       feature: "extraction",
@@ -135,9 +136,10 @@ export async function extractMedicalDocument(
     return {
       status: "skipped",
       message:
-        "AI not configured — file stored but not extracted. Set ANTHROPIC_API_KEY (or AI_BASE_URL for a local inference server) and re-upload to import results.",
+        "AI not configured — file stored but not extracted. Configure the Heavy AI tier under Settings → Server and re-upload to import results.",
     };
   }
+  const { client, model: MODEL, tier, host } = resolved;
 
   let content: Anthropic.ContentBlockParam[];
   try {
@@ -165,7 +167,6 @@ export async function extractMedicalDocument(
   });
 
   try {
-    const client = createAiClient();
     // Stream the request (then await the assembled message). Extraction of a
     // large document can run for minutes; a non-streaming request sends no
     // bytes during generation, so the connection is prone to being dropped
@@ -199,6 +200,8 @@ export async function extractMedicalDocument(
         feature: "extraction",
         status: "failed",
         model: MODEL,
+        tier,
+        baseUrl: host,
         durationMs: Date.now() - startedAt,
         detail: filename,
         error: "Model returned no structured data.",
@@ -236,6 +239,8 @@ export async function extractMedicalDocument(
         feature: "extraction",
         status: "failed",
         model: MODEL,
+        tier,
+        baseUrl: host,
         durationMs: Date.now() - startedAt,
         detail: `${filename} — ${parsed} parsed before truncation`,
         error: `Truncated at the output limit (${MAX_TOKENS} tokens).`,
@@ -265,6 +270,8 @@ export async function extractMedicalDocument(
         feature: "extraction",
         status: "failed",
         model: MODEL,
+        tier,
+        baseUrl: host,
         durationMs: Date.now() - startedAt,
         // The payload is NOT persisted on a failure (raw_extraction is only written
         // on the success path), so when prompt logging is on, carry it here — it is

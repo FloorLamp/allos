@@ -48,7 +48,13 @@ export type AiFeature =
   // A coverage-gap DESCRIPTIVE enrichment (issue #550): the local/private-AI fill
   // path generating a plain-language "what is this" blurb for an uncatalogued
   // biomarker/med/condition. Descriptive only — never a range/threshold/severity.
-  | "coverage";
+  | "coverage"
+  // Free-text symptom mapping (issue #877): a typed/Telegram sentence mapped onto the
+  // EXISTING symptom vocabulary. Extraction only — suggest-only, never a write.
+  | "symptom-map"
+  // A "why is this flagged?" explainer (issue #878): light-tier narration over a
+  // finding's OWN typed reason payload. Narrates, never computes a fact or judges.
+  | "explain";
 export type AiStatus = "ok" | "skipped" | "failed";
 
 export interface AiEvent {
@@ -57,6 +63,9 @@ export interface AiEvent {
   feature: AiFeature;
   status: AiStatus;
   model?: string;
+  // Which provider tier served the call (issue #875): "heavy" (extraction) or
+  // "light" (narratives/suggestions/…). Absent on skipped-before-resolution events.
+  tier?: "heavy" | "light";
   // The backend that produced the event: host only (issue #43). Undefined for
   // the default Anthropic endpoint. Never a full URL/path/query — no secrets.
   baseUrl?: string;
@@ -159,6 +168,7 @@ export function recordAiEvent(e: Omit<AiEvent, "id" | "time">): AiEvent {
     feature: event.feature,
     status: event.status,
     model: event.model,
+    tier: event.tier,
     baseUrl: event.baseUrl,
     durationMs: event.durationMs,
     detail: event.detail,

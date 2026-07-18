@@ -15,7 +15,7 @@
 // exercised indirectly and stays thin.
 
 import { db, today } from "./db";
-import { aiConfigured } from "./ai-client";
+import { isTaskConfigured } from "./ai-resolve";
 import { recordAiEvent } from "./ai-log";
 import { checkAndIncrementAiUsage } from "./ai-usage";
 import { createLogger } from "./log";
@@ -84,7 +84,7 @@ export async function runRecommendation(
   try {
     // No key → the inner features would no-op anyway; skip the whole dance so a
     // lazy page view doesn't churn signatures/markers on an offline instance.
-    if (!aiConfigured()) return "not-configured";
+    if (!isTaskConfigured("insight")) return "not-configured";
 
     const cadence = getRecommendationCadence(profileId);
     const signature = computeRecommendationSignature(profileId);

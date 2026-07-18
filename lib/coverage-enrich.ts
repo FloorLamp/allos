@@ -16,7 +16,7 @@
 // generation, like the recap/lab-trend narratives).
 
 import Anthropic from "@anthropic-ai/sdk";
-import { AI_MODEL as MODEL, aiConfigured, createAiClient } from "./ai-client";
+import { resolveTaskClient, isTaskConfigured } from "./ai-resolve";
 import { endpointHost } from "./ai-client";
 import { recordAiEvent, capDetail, usageFrom, LOG_PROMPTS } from "./ai-log";
 import { checkAndIncrementAiUsage, narrativeDailyLimit } from "./ai-usage";
@@ -47,7 +47,7 @@ export async function enrichCoverageGap(
   const gap = getCoverageGap(profileId, gapId);
   if (!gap) return { status: "not-found" };
 
-  if (!aiConfigured()) {
+  if (!isTaskConfigured("coverage")) {
     recordAiEvent({
       feature: "coverage",
       status: "skipped",
@@ -68,9 +68,21 @@ export async function enrichCoverageGap(
     return { status: "cap-exhausted" };
   }
 
+  // Build the client only after the cap passed (the resolver is the sole
+  // client-build seam, so a capped call never constructs the model client).
+  const resolved = resolveTaskClient("coverage");
+  if (!resolved) {
+    recordAiEvent({
+      feature: "coverage",
+      status: "skipped",
+      detail: `${gap.kind}:${gap.itemKey} — AI not configured`,
+    });
+    return { status: "not-configured" };
+  }
+  const { client, model: MODEL, tier, host } = resolved;
+
   const startedAt = Date.now();
   try {
-    const client = createAiClient();
     const msg = await client.messages.create({
       model: MODEL,
       max_tokens: 400,
@@ -90,18 +102,22 @@ export async function enrichCoverageGap(
         feature: "coverage",
         status: "failed",
         model: MODEL,
+        tier,
+        baseUrl: host,
         durationMs: Date.now() - startedAt,
         detail: `${gap.kind}:${gap.itemKey}`,
         error: "Empty description returned.",
       });
       return { status: "failed" };
     }
-    const source = endpointHost(process.env) ?? "Anthropic API";
+    const source = host ?? endpointHost(process.env) ?? "Anthropic API";
     setCoverageGapAiDescription(profileId, gapId, text, source);
     recordAiEvent({
       feature: "coverage",
       status: "ok",
       model: MODEL,
+      tier,
+      baseUrl: host,
       durationMs: Date.now() - startedAt,
       usage: usageFrom(msg),
       detail: capDetail(
@@ -114,6 +130,8 @@ export async function enrichCoverageGap(
       feature: "coverage",
       status: "failed",
       model: MODEL,
+      tier,
+      baseUrl: host,
       durationMs: Date.now() - startedAt,
       detail: `${gap.kind}:${gap.itemKey}`,
       error: err instanceof Error ? err.message : "unknown error",

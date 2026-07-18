@@ -2,7 +2,7 @@ import { requireSession } from "@/lib/auth";
 import { PageHeader, EmptyState } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
 import { getCoverageGaps, getCoverageGapCandidates } from "@/lib/queries";
-import { aiEndpointInfo } from "@/lib/ai-client";
+import { taskEndpointInfo } from "@/lib/ai-resolve";
 import { buildCatalogRequest } from "@/lib/coverage-gaps";
 import CoverageGaps from "@/components/CoverageGaps";
 
@@ -17,7 +17,9 @@ export default async function CoveragePage() {
   const { profile } = await requireSession();
   const tracked = getCoverageGaps(profile.id);
   const candidates = getCoverageGapCandidates(profile.id);
-  const ai = aiEndpointInfo();
+  // The coverage blurb runs on the Light tier (falling back to Heavy) — show the
+  // backend that would actually serve it.
+  const ai = taskEndpointInfo("coverage");
 
   // Precompute the de-identified request artifacts server-side (pure, no PHI) so
   // the client can copy/open without re-deriving. Keyed by gap id.

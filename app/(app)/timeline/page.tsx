@@ -45,6 +45,7 @@ import {
 import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
 import { SYMPTOMS } from "@/lib/symptoms";
 import SymptomLogBar from "../symptoms/SymptomLogBar";
+import { isTaskConfigured } from "@/lib/ai-resolve";
 import {
   groupTimelineDays,
   normalizeTimelineRange,
@@ -459,6 +460,7 @@ export default async function TimelinePage(props: {
             rankedKeys={getSymptomLogOrder(profile.id)}
             suggestActivateIllness={!hasActiveIllnessSituation(profile.id)}
             temperatureUnit={units.temperatureUnit}
+            textIntakeEnabled={isTaskConfigured("symptom-map")}
           />
         </div>
       )}

@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { AI_MODEL, aiConfigured, createAiClient } from "./ai-client";
+import { AI_MODEL } from "./ai-client";
+import { resolveTaskClient } from "./ai-resolve";
 import { describeError } from "./medical-extract";
 import { createLogger } from "./log";
 import { recordAiEvent, capDetail, LOG_PROMPTS, usageFrom } from "./ai-log";
@@ -7,7 +8,6 @@ import { strOrNull } from "./parse";
 
 const log = createLogger("workout-extract");
 
-const MODEL = AI_MODEL;
 const MAX_TOKENS = Number(process.env.HEALTH_AI_MAX_TOKENS) || 16000;
 
 // One resistance-training set. Weight is reported in its source unit so the
@@ -337,6 +337,9 @@ export async function extractWorkouts(
   const chunks = chunkByDate(text);
   if (chunks.length <= 1) return extractChunk(text, knownLifts, knownEquipment);
 
+  // The model that names the merged result (all chunks resolve the same tier).
+  let mergedModel = AI_MODEL;
+
   // Extract chunks concurrently (much faster than one-at-a-time) but in bounded
   // batches so a very large paste can't fire dozens of simultaneous requests and
   // trip rate limits. Order is preserved; any chunk that skips/fails fails the
@@ -356,13 +359,14 @@ export async function extractWorkouts(
       if (r.status === "done") {
         all.push(...r.workouts);
         cardioSkipped += r.cardioSkipped;
+        mergedModel = r.model;
       }
   }
   return {
     status: "done",
     workouts: all,
     cardioSkipped,
-    model: MODEL,
+    model: mergedModel,
     raw: `(${chunks.length} chunks)`,
   };
 }
@@ -372,7 +376,8 @@ async function extractChunk(
   knownLifts: string[] = [],
   knownEquipment: string[] = []
 ): Promise<WorkoutExtractionResult> {
-  if (!aiConfigured()) {
+  const resolved = resolveTaskClient("extraction");
+  if (!resolved) {
     recordAiEvent({
       feature: "extraction",
       status: "skipped",
@@ -381,9 +386,10 @@ async function extractChunk(
     return {
       status: "skipped",
       message:
-        "AI not configured — set ANTHROPIC_API_KEY (or AI_BASE_URL) to extract workouts.",
+        "AI not configured — configure the Heavy AI tier under Settings → Server to extract workouts.",
     };
   }
+  const { client, model: MODEL, tier, host } = resolved;
   if (!text.trim()) {
     return {
       status: "failed",
@@ -420,7 +426,6 @@ async function extractChunk(
   const startedAt = Date.now();
   log.info("extraction started", { bytes: text.length, model: MODEL });
   try {
-    const client = createAiClient();
     const msg = await client.messages
       .stream({
         model: MODEL,
@@ -440,6 +445,8 @@ async function extractChunk(
         feature: "extraction",
         status: "failed",
         model: MODEL,
+        tier,
+        baseUrl: host,
         durationMs: Date.now() - startedAt,
         detail: "workouts",
         error: "Model returned no structured data.",
@@ -461,6 +468,8 @@ async function extractChunk(
         feature: "extraction",
         status: "failed",
         model: MODEL,
+        tier,
+        baseUrl: host,
         durationMs: Date.now() - startedAt,
         detail: `workouts — ${workouts.length} parsed before truncation`,
         error,

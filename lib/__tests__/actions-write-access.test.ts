@@ -54,6 +54,11 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     why: "read-only: cross-domain search of the active profile",
   },
   {
+    file: "app/(app)/upcoming/actions.ts",
+    fn: "explainFindingAction",
+    why: "read-only (#878): narrates a finding's OWN reason payload via the AI resolver; computes no fact and writes nothing, so login-scoped requireSession() is the right gate",
+  },
+  {
     file: "app/(app)/journal/actions.ts",
     fn: "loadJournalPage",
     why: "read-only: fetches an older window of the active profile's Journal feed for server-side paging (#451); `before` is a date cursor, not a profile selector",
