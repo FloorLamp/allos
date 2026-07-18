@@ -5,6 +5,7 @@ import { requireSession } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import OverviewSection from "./OverviewSection";
 import HistorySection from "./HistorySection";
+import FitnessCheckSection from "./FitnessCheckSection";
 import AnalyzeSection from "./AnalyzeSection";
 import GoalsSection from "./GoalsSection";
 import RoutinesSection from "./RoutinesSection";
@@ -71,6 +72,12 @@ export default async function TrainingPage(props: {
                 range={one(searchParams?.range)}
               />
             ),
+            keepMounted: false,
+          },
+          {
+            id: "fitness",
+            label: "Fitness check",
+            content: <FitnessCheckSection />,
             keepMounted: false,
           },
           {

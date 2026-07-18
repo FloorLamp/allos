@@ -23,6 +23,7 @@ import {
   type MarkerNorms,
   type SexNorms,
   type NormBand,
+  type Direction,
 } from "@/lib/datasets/fitness-norms";
 import { ADULT_MIN_AGE, isAdultForClinical } from "@/lib/life-stage";
 
@@ -79,28 +80,37 @@ function valuesAtAge(bands: NormBand[], age: number): number[] {
   return last.values;
 }
 
-// Place a value on a (percentile → value) curve of a higher-is-better marker. The
-// value vector is ascending; interpolate to a percentile, clamping past either end.
+// Place a value on a (percentile → value) curve. The value vector is stored so that a
+// HIGHER fitness percentile always sits at a HIGHER index — ascending values for a
+// higher-is-better marker, DESCENDING values for a lower-is-better one (e.g. a timed
+// up-and-go, where a shorter time is fitter). `direction` flips only the end/crossing
+// COMPARISONS; the linear interpolation is sign-carrying so it works for both. `clamped`
+// keeps its fitness meaning — "low" = worse than the worst band, "high" = better than
+// the best — regardless of direction.
 function percentileOnCurve(
   percentiles: number[],
   values: number[],
-  value: number
+  value: number,
+  direction: Direction
 ): FitnessPercentile {
   const n = values.length;
-  if (value <= values[0]) {
-    return {
-      percentile: percentiles[0],
-      clamped: value < values[0] ? "low" : null,
-    };
+  const higher = direction !== "lower_better";
+  // values[0] is the WORST end, values[n-1] the BEST end (by construction above).
+  const atOrBelowWorst = higher ? value <= values[0] : value >= values[0];
+  if (atOrBelowWorst) {
+    const worse = higher ? value < values[0] : value > values[0];
+    return { percentile: percentiles[0], clamped: worse ? "low" : null };
   }
-  if (value >= values[n - 1]) {
-    return {
-      percentile: percentiles[n - 1],
-      clamped: value > values[n - 1] ? "high" : null,
-    };
+  const atOrAboveBest = higher
+    ? value >= values[n - 1]
+    : value <= values[n - 1];
+  if (atOrAboveBest) {
+    const better = higher ? value > values[n - 1] : value < values[n - 1];
+    return { percentile: percentiles[n - 1], clamped: better ? "high" : null };
   }
   for (let i = 1; i < n; i++) {
-    if (value <= values[i]) {
+    const crossed = higher ? value <= values[i] : value >= values[i];
+    if (crossed) {
       const span = values[i] - values[i - 1];
       const t = span === 0 ? 0 : (value - values[i - 1]) / span;
       const p = percentiles[i - 1] + t * (percentiles[i] - percentiles[i - 1]);
@@ -110,33 +120,41 @@ function percentileOnCurve(
   return { percentile: percentiles[n - 1], clamped: "high" };
 }
 
-// Invert the 50th-percentile curve across age bands: the age whose median value
-// equals the measurement. For a higher-is-better marker the median DECREASES with
-// age, so a higher value maps to a younger age. Clamps at the youngest/oldest band.
+// Invert the 50th-percentile curve across age bands: the age whose median value equals
+// the measurement. For a higher-is-better marker the median DECREASES with age (a higher
+// value ⇒ younger); for a lower-is-better one it INCREASES with age (a lower value ⇒
+// younger). `direction` flips the comparisons; clamps at the youngest/oldest band, where
+// "low" = fitter than the youngest band, "high" = below the oldest.
 function fitnessAgeFromMedian(
   sn: SexNorms,
-  value: number
+  value: number,
+  direction: Direction
 ): FitnessAgeResult | null {
   const p50 = sn.percentiles.indexOf(50);
   if (p50 < 0) return null;
   const pts = sn.bands.map((b) => ({ age: b.age, med: b.values[p50] }));
-  // Bands are age-ascending → medians are (weakly) descending. Fitter (higher) than
-  // the youngest band's median ⇒ younger than that band; below the oldest ⇒ older.
-  if (value >= pts[0].med) {
-    return {
-      fitnessAge: pts[0].age,
-      clamped: value > pts[0].med ? "low" : null,
-    };
-  }
+  const higher = direction !== "lower_better";
   const last = pts[pts.length - 1];
-  if (value <= last.med) {
-    return { fitnessAge: last.age, clamped: value < last.med ? "high" : null };
+  // "Fitter than the youngest band" ⇒ younger than it. For higher_better that means a
+  // value ABOVE the youngest median; for lower_better, BELOW it.
+  const fitterThanYoungest = higher ? value >= pts[0].med : value <= pts[0].med;
+  if (fitterThanYoungest) {
+    const strictly = higher ? value > pts[0].med : value < pts[0].med;
+    return { fitnessAge: pts[0].age, clamped: strictly ? "low" : null };
+  }
+  const belowOldest = higher ? value <= last.med : value >= last.med;
+  if (belowOldest) {
+    const strictly = higher ? value < last.med : value > last.med;
+    return { fitnessAge: last.age, clamped: strictly ? "high" : null };
   }
   for (let i = 1; i < pts.length; i++) {
     const hi = pts[i];
-    if (value >= hi.med) {
+    // Walking from young to old, medians move monotonically toward `last.med`. Find the
+    // first band whose median the value has reached (or passed) in that direction.
+    const reached = higher ? value >= hi.med : value <= hi.med;
+    if (reached) {
       const lo = pts[i - 1];
-      const span = lo.med - hi.med;
+      const span = lo.med - hi.med; // sign-carrying (positive higher_better, negative lower)
       const t = span === 0 ? 0 : (lo.med - value) / span;
       return {
         fitnessAge: Math.round(lo.age + t * (hi.age - lo.age)),
@@ -163,7 +181,7 @@ export function fitnessPercentile(
   const sn = m.sexes[sex];
   if (!sn) return null;
   const vals = valuesAtAge(sn.bands, age);
-  return percentileOnCurve(sn.percentiles, vals, value);
+  return percentileOnCurve(sn.percentiles, vals, value, m.direction);
 }
 
 // Fitness age for a measured value. Independent of the subject's CURRENT age for the
@@ -181,7 +199,7 @@ export function fitnessAge(
   if (value == null || !Number.isFinite(value)) return null;
   const sn = m.sexes[sex];
   if (!sn) return null;
-  return fitnessAgeFromMedian(sn, value);
+  return fitnessAgeFromMedian(sn, value, m.direction);
 }
 
 // The full context bundle a surface renders (percentile + optional fitness age +

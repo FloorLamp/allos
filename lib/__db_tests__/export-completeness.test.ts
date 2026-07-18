@@ -111,6 +111,10 @@ const EXPORT_ALLOWLIST: { table: string; why: string }[] = [
     table: "symptom_photos",
     why: "symptom-day rash-progression photos (#859 item 4). PHI-cautious by design — photos are EXCLUDED from share-link summaries and the printable by default, so they are intentionally NOT in the full data export either; the images are binary blobs on disk (data/uploads/symptom-photos/<profileId>/) with only a thin date/caption row here, and are unlinked with the profile on delete.",
   },
+  {
+    table: "fitness_assessments",
+    why: "fitness-check SESSION rows (#834) — a date + coverage ledger that GROUPS a battery run. The measured VALUES that carry the signal already round-trip through their natural stores: set-based tests via activities/exercise_sets, VO2/grip/etc. via medical_records, body comp via body_metrics — all exported datasets/FHIR. The session row (and its child fitness_assessment_entries) references those, holding no independent clinical payload to export.",
+  },
 ];
 
 describe("full export covers every owned domain (issue #465)", () => {

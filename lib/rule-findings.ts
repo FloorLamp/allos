@@ -47,6 +47,9 @@ import { situationHistoryResolver } from "./trend-annotations";
 import { optimalStatus } from "./reference-range";
 import { decideSunExposure, SUN_EXPOSURE_WINDOW_WEEKS } from "./sun-exposure";
 import { decidePeriodontalObservation } from "./oral-health-observation";
+import { fitnessRetestDue, fitnessCheckSignalKey } from "./fitness-retest";
+import { getLatestFitnessAssessmentDate } from "./fitness-assessment";
+import { getFitnessRetestCadenceDays } from "./settings";
 import {
   deriveRiskFactors,
   EMPTY_RISK_ATTRIBUTES,
@@ -131,6 +134,34 @@ import { isDueOn, timeBucket } from "./supplement-schedule";
 // findings-bus filter (activeFindings) exactly like each tab does. No owned SQL is
 // added (it reads through the already profile-scoped builders), so the profile-scoping
 // guard is unaffected.
+// The Fitness-check retest nudge (#834): a calm coaching item once a prior check has
+// aged past the per-profile cadence. Never nags a subject who has never done a check
+// (hide, don't shame — #489); never a push (coaching tier). Re-keyed by the last-check
+// date so a new check clears an old dismissal cleanly.
+export function buildFitnessCheckFindings(
+  profileId: number,
+  today: string
+): Finding[] {
+  const lastDate = getLatestFitnessAssessmentDate(profileId);
+  const cadence = getFitnessRetestCadenceDays(profileId);
+  const d = fitnessRetestDue(lastDate, cadence, today);
+  if (!d.due || !d.lastDate) return [];
+  const ago = d.daysSince != null ? ` (${d.daysSince} days ago)` : "";
+  return [
+    {
+      domain: "fitness-check",
+      dedupeKey: fitnessCheckSignalKey(d.lastDate),
+      title: "Fitness check due",
+      detail: `Your last fitness check was ${formatLongDate(d.lastDate)}${ago}. Re-run the battery to refresh your percentiles and see check-over-check change.`,
+      tone: "info",
+      evidence:
+        "Informational — you set the retest cadence in Profile settings.",
+      actionHref: "/training?tab=fitness" as AppRoute,
+      actionLabel: "Start a check",
+    },
+  ];
+}
+
 export function collectCoachingFindings(
   profileId: number,
   today: string,
@@ -147,6 +178,7 @@ export function collectCoachingFindings(
     ...buildProteinAdequacyFindings(profileId),
     ...buildSunExposureFindings(profileId, today),
     ...buildOralHealthFindings(profileId),
+    ...buildFitnessCheckFindings(profileId, today),
   ];
 }
 

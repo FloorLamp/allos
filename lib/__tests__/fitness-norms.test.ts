@@ -162,6 +162,46 @@ describe("every declared marker resolves norms for both sexes (anti-drift)", () 
   });
 });
 
+describe("lower-is-better marker (Timed Up-and-Go)", () => {
+  // Male age 62 band (TUG): values [5.6, 4.7, 3.8] at percentiles [25, 50, 75]; a SHORTER
+  // time is fitter, so a lower value reads as a HIGHER percentile.
+  it("maps the band median to the 50th percentile", () => {
+    const p = fitnessPercentile("Timed Up-and-Go", 4.7, "male", 62)!;
+    expect(p.percentile).toBe(50);
+    expect(p.clamped).toBeNull();
+  });
+
+  it("scores a faster (lower) time as a higher percentile than a slower one", () => {
+    const fast = fitnessPercentile("Timed Up-and-Go", 3.8, "male", 62)!; // best band value
+    const slow = fitnessPercentile("Timed Up-and-Go", 5.6, "male", 62)!; // worst band value
+    expect(fast.percentile).toBe(75);
+    expect(slow.percentile).toBe(25);
+    expect(fast.percentile).toBeGreaterThan(slow.percentile);
+  });
+
+  it("clamps a very fast time to the top and flags it high", () => {
+    const p = fitnessPercentile("Timed Up-and-Go", 2.0, "male", 62)!;
+    expect(p.percentile).toBe(75);
+    expect(p.clamped).toBe("high");
+  });
+
+  it("clamps a very slow time to the bottom and flags it low", () => {
+    const p = fitnessPercentile("Timed Up-and-Go", 20, "male", 62)!;
+    expect(p.percentile).toBe(25);
+    expect(p.clamped).toBe("low");
+  });
+
+  it("gives a younger fitness age for a faster-than-your-age time", () => {
+    // A slow 92-year-old-median time (8.1) at age 62 reads older; a brisk time reads
+    // younger. A faster time than the youngest band's median clamps young.
+    const younger = fitnessAge("Timed Up-and-Go", 3.0, "male", 80)!;
+    expect(younger.fitnessAge).toBe(62); // youngest covered band
+    expect(younger.clamped).toBe("low");
+    const older = fitnessAge("Timed Up-and-Go", 9.0, "male", 65)!;
+    expect(older.fitnessAge).toBeGreaterThan(80);
+  });
+});
+
 describe("formatters", () => {
   it("ordinal suffixes", () => {
     expect(ordinal(1)).toBe("1st");

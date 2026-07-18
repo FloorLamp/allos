@@ -27,8 +27,11 @@ import {
   buildFoodHabitFindings,
   buildOralHealthFindings,
   buildMuscleVolumeFindings,
+  buildFitnessCheckFindings,
   collectCoachingFindings,
 } from "@/lib/rule-findings";
+import { fitnessCheckSignalKey } from "@/lib/fitness-retest";
+import { setFitnessRetestCadenceDays } from "@/lib/settings";
 import {
   muscleVolumeSignalKey,
   MIN_BAND_HISTORY_WEEKS,
@@ -994,5 +997,54 @@ describe("buildOralHealthFindings — diabetes↔periodontitis note (#706)", () 
          VALUES (?, 'Type 2 diabetes mellitus', 'resolved')`
     ).run(profileId);
     expect(buildOralHealthFindings(profileId)).toEqual([]);
+  });
+});
+
+// Fitness-check retest nudge (#834) — coaching tier. Seeds a fitness_assessments session
+// row at a chosen age and asserts the end-to-end due decision + the exact dedupeKey/tier.
+describe("buildFitnessCheckFindings — fitness-check retest cadence", () => {
+  function seedCheck(profileId: number, date: string) {
+    db.prepare(
+      "INSERT INTO fitness_assessments (profile_id, date) VALUES (?, ?)"
+    ).run(profileId, date);
+  }
+
+  it("nudges once a prior check ages past the default cadence", () => {
+    const { profileId, anchor } = makeProfile("fitness-due");
+    const last = shiftDateStr(anchor, -120); // > 90-day default
+    seedCheck(profileId, last);
+    const findings = buildFitnessCheckFindings(profileId, anchor);
+    expect(findings).toHaveLength(1);
+    const f = findings[0];
+    expect(f.domain).toBe("fitness-check");
+    expect(f.dedupeKey).toBe(fitnessCheckSignalKey(last));
+    expect(f.tone).toBe("info");
+    expect(tierForDedupeKey(f.dedupeKey)).toBe("coaching");
+    expect(dedupeKeyHasKnownPrefix(f.dedupeKey)).toBe(true);
+
+    // Coaching tier: it flows through the unified rollup (never Upcoming/hero/push).
+    const rolled = collectCoachingFindings(profileId, anchor, "kg").map(
+      (r) => r.dedupeKey
+    );
+    expect(rolled).toContain(f.dedupeKey);
+  });
+
+  it("stays quiet inside the cadence window", () => {
+    const { profileId, anchor } = makeProfile("fitness-recent");
+    seedCheck(profileId, shiftDateStr(anchor, -30));
+    expect(buildFitnessCheckFindings(profileId, anchor)).toEqual([]);
+  });
+
+  it("never nags a subject who has never done a check", () => {
+    const { profileId, anchor } = makeProfile("fitness-never");
+    expect(buildFitnessCheckFindings(profileId, anchor)).toEqual([]);
+  });
+
+  it("respects a shortened per-profile cadence", () => {
+    const { profileId, anchor } = makeProfile("fitness-cadence");
+    seedCheck(profileId, shiftDateStr(anchor, -40));
+    expect(buildFitnessCheckFindings(profileId, anchor)).toEqual([]); // 40 < 90 default
+    setFitnessRetestCadenceDays(profileId, 30);
+    expect(buildFitnessCheckFindings(profileId, anchor)).toHaveLength(1); // 40 > 30
   });
 });
