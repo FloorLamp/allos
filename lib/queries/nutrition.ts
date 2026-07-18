@@ -14,7 +14,26 @@ import {
   getWeights,
   getLatestMetricValue,
 } from "./metrics";
-import { getProfileSetting } from "../settings";
+import {
+  getProfileSetting,
+  getTimezone,
+  getWeekMode,
+  getWeekStart,
+} from "../settings";
+import { zonedDateParts } from "../date";
+import { trailingWeeks } from "../week-window";
+import {
+  foodHabitTrendCells,
+  HABIT_TREND_WEEKS,
+  type HabitWeekCell,
+} from "../food-habit-trend";
+import {
+  foodSlotBoundaries,
+  foodSlotForHhmm,
+  type FoodSlot,
+  type FoodSlotBoundaries,
+} from "../food-slot";
+import { blendFoodOrder } from "../food-rank";
 import { PROTEIN_QUICKADD_LAST_KEY } from "../protein-log-write";
 import { bodyweightAsOf } from "../bodyweight";
 import {
@@ -36,7 +55,6 @@ import {
   foodGroupSlugs,
   type FoodGroup,
 } from "../food-groups";
-import { rankByRecentFrequency } from "../rank-by-frequency";
 
 // Safety-screened food suggestions for the profile's currently-flagged, diet-responsive
 // biomarker families. Deterministic; the AI narration tier (deferred, #576 Phase 3)
@@ -162,45 +180,193 @@ export function foodLogToday(profileId: number): string {
   return today(profileId);
 }
 
+// The profile's configured food-slot boundaries (issue #950), read from the RAW
+// notify slot-hour settings so "unconfigured" is genuinely detected (getNotifySchedule
+// would already have substituted the DEFAULT hours, which we can't tell from a user's
+// choice). A fully configured schedule re-anchors the buckets to its midpoints; an
+// unset/partial one falls back to the fixed 11:00/15:00 defaults (foodSlotBoundaries).
+// Reads only the per-profile settings tier (not owned data), so the profile-scoping
+// guard is unaffected.
+function profileFoodSlotBoundaries(profileId: number): FoodSlotBoundaries {
+  const raw = (key: string): number | null => {
+    const v = getProfileSetting(profileId, key);
+    if (v == null || v === "") return null;
+    const n = Number(v);
+    return Number.isInteger(n) && n >= 0 && n <= 23 ? n : null;
+  };
+  return foodSlotBoundaries({
+    // Mirrors SUPP_HOUR_KEYS in lib/settings/notifications.ts (the food nudge rides the
+    // same morning/midday/evening supplement slots, #682).
+    morning: raw("notify_supp_morning_hour"),
+    midday: raw("notify_supp_midday_hour"),
+    evening: raw("notify_supp_evening_hour"),
+  });
+}
+
+// The food slot a UTC instant falls into for a profile (its timezone + configured
+// boundaries). The ONE derivation both surfaces use, so the web bar's slot chip and
+// the ranking can never disagree. Profile-scoped reads only the settings tier.
+export function foodSlotForInstant(
+  profileId: number,
+  instant: Date
+): FoodSlot {
+  const { hhmm } = zonedDateParts(getTimezone(profileId), instant);
+  return foodSlotForHhmm(hhmm, profileFoodSlotBoundaries(profileId));
+}
+
+// The profile's CURRENT food slot (wall-clock now, in its timezone). The Food tab
+// renders this as a chip and passes it as the ranking window, so the label and the
+// order lead with the same slot.
+export function currentFoodSlot(profileId: number): FoodSlot {
+  return foodSlotForInstant(profileId, new Date());
+}
+
 // The full food-group catalog ordered so the profile's staples lead WITHIN each
 // tier (issue #591), reusing the activity-picker machinery (#195): each food_log
 // row over the trailing recent window is weighted by `servings × decayedWeight`
-// (60-day half-life, lib/decay.ts) so a recent habit outranks a stale one, and
-// `rankByFrequency` ranks the curated slugs by that weight (the catalog's curated
-// order breaks ties and is the whole order for a fresh profile). The FoodLogBar
-// sections the result by tier, which preserves this order within each tier.
-// Profile-scoped via the food_log filter. Every group is returned exactly once
-// (a retired/unknown logged slug can't resolve to a catalog group, so it's dropped
-// — the bar only logs current groups).
-export function getFoodGroupLogOrder(profileId: number): FoodGroup[] {
+// (60-day half-life, lib/decay.ts) so a recent habit outranks a stale one, and the
+// catalog's curated order breaks ties (and is the whole order for a fresh profile).
+// The FoodLogBar sections the result by tier, which preserves this order within each
+// tier. Profile-scoped via the food_log filter. Every group is returned exactly once
+// (a retired/unknown logged slug can't resolve to a catalog group, so it's dropped).
+//
+// SLOT-AWARE (issue #950): when a `window` is passed, the per-tap food_log_events
+// ledger is consulted and each tap whose DERIVED slot matches the window feeds a
+// second, slot-specific frecency signal that LEADS the blend, overall frecency
+// backfilling (blendFoodOrder — one computation for both the web bar and the Telegram
+// nudge, #221). Omitting `window` (or a cold slot with no matching taps) collapses to
+// the pre-#950 overall order — no cliff. Presentation-only: ranking never gates what
+// can be logged (#559).
+export function getFoodGroupLogOrder(
+  profileId: number,
+  window?: FoodSlot
+): FoodGroup[] {
   const t = today(profileId);
-  const rows = db
-    .prepare(
-      `SELECT group_key AS name, date, servings FROM food_log
-        WHERE profile_id = ? AND date >= ? AND servings > 0`
-    )
-    .all(profileId, recentWindowStart(profileId)) as {
-    name: string;
-    date: string;
-    servings: number;
-  }[];
-  // Rank the catalog by recency-decayed serving weight (each serving decays with
-  // age) — the shared #857 computation, food weighting each occurrence by its servings.
-  const ranked = rankByRecentFrequency(
-    foodGroupSlugs(),
-    rows.map((r) => ({ name: r.name, date: r.date, weight: r.servings })),
-    t
-  );
+  const since = recentWindowStart(profileId);
+  const overall = (
+    db
+      .prepare(
+        `SELECT group_key AS name, date, servings FROM food_log
+          WHERE profile_id = ? AND date >= ? AND servings > 0`
+      )
+      .all(profileId, since) as {
+      name: string;
+      date: string;
+      servings: number;
+    }[]
+  ).map((r) => ({ name: r.name, date: r.date, weight: r.servings }));
+
+  // Slot signal: the per-tap ledger, each event's window DERIVED at read time from its
+  // logged_at (so a schedule edit re-derives all history for free). Only when a window
+  // is requested — otherwise the blend degrades to pure overall frecency.
+  const slot: { name: string; date: string }[] = [];
+  if (window) {
+    const boundaries = profileFoodSlotBoundaries(profileId);
+    const tz = getTimezone(profileId);
+    const events = db
+      .prepare(
+        `SELECT group_key AS name, date, logged_at FROM food_log_events
+          WHERE profile_id = ? AND date >= ?`
+      )
+      .all(profileId, since) as {
+      name: string;
+      date: string;
+      logged_at: string;
+    }[];
+    for (const e of events) {
+      const { hhmm } = zonedDateParts(tz, new Date(e.logged_at));
+      if (foodSlotForHhmm(hhmm, boundaries) === window)
+        slot.push({ name: e.name, date: e.date });
+    }
+  }
+
+  const ranked = blendFoodOrder(foodGroupSlugs(), overall, slot, t);
   const out: FoodGroup[] = [];
   for (const slug of ranked) {
     const g = foodGroupBySlug(slug);
     if (g) out.push(g);
   }
   // Defensive: if ranking somehow dropped a catalog group, append it in catalog
-  // order so the bar always shows all 24.
+  // order so the bar always shows all groups.
   if (out.length !== FOOD_GROUPS.length) {
     const seen = new Set(out.map((g) => g.slug));
     for (const g of FOOD_GROUPS) if (!seen.has(g.slug)) out.push(g);
+  }
+  return out;
+}
+
+// ---- Food-habit N-week consistency trend (issue #954) ----
+
+// The trailing-N-week consistency strip for each tracked food-group habit, keyed by
+// frequency_target id. Extends the SAME weekly rollup the this-week progress uses
+// (getFrequencyTargetProgress's food_group branch — SUM(servings) over the week
+// window) across HABIT_TREND_WEEKS weeks, so the trend's current-week cell equals the
+// this-week progress for the same fixture (#221). Week identity follows the profile's
+// configured week (mode + start), the SAME definition frequencyPace uses — no second
+// "week" (#223). Weeks before a target was created render not-applicable (honest cold
+// start), never as misses. Profile-scoped via the frequency_targets + food_log
+// filters. Empty map when the profile tracks no food habits.
+export function getFoodHabitTrends(
+  profileId: number
+): Map<number, HabitWeekCell[]> {
+  const targets = db
+    .prepare(
+      `SELECT id, scope_value, per_week, created_at FROM frequency_targets
+        WHERE profile_id = ? AND scope_kind = 'food_group'`
+    )
+    .all(profileId) as {
+    id: number;
+    scope_value: string;
+    per_week: number;
+    created_at: string;
+  }[];
+  const out = new Map<number, HabitWeekCell[]>();
+  if (targets.length === 0) return out;
+
+  const weeks = trailingWeeks(
+    today(profileId),
+    getWeekMode(profileId),
+    getWeekStart(profileId),
+    HABIT_TREND_WEEKS
+  );
+  // One scan of the whole trend window; sum per (group, week) in JS. weeks[0] is the
+  // oldest (trailingWeeks returns oldest-first).
+  const oldest = weeks[0].start;
+  const rows = db
+    .prepare(
+      `SELECT group_key, date, servings FROM food_log
+        WHERE profile_id = ? AND date >= ? AND servings > 0`
+    )
+    .all(profileId, oldest) as {
+    group_key: string;
+    date: string;
+    servings: number;
+  }[];
+  const byGroup = new Map<string, { date: string; servings: number }[]>();
+  for (const r of rows) {
+    const arr = byGroup.get(r.group_key);
+    if (arr) arr.push({ date: r.date, servings: r.servings });
+    else byGroup.set(r.group_key, [{ date: r.date, servings: r.servings }]);
+  }
+
+  for (const t of targets) {
+    const entries = byGroup.get(t.scope_value) ?? [];
+    const countForWeek = (w: { start: string; end: string }): number =>
+      entries.reduce(
+        (sum, e) =>
+          e.date >= w.start && e.date <= w.end ? sum + e.servings : sum,
+        0
+      );
+    out.set(
+      t.id,
+      foodHabitTrendCells(
+        weeks,
+        countForWeek,
+        t.per_week,
+        // The target's creation DAY (a week fully before it is not-applicable).
+        t.created_at.slice(0, 10)
+      )
+    );
   }
   return out;
 }

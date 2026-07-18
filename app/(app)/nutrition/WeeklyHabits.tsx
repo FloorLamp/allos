@@ -2,8 +2,10 @@ import { IconAlertTriangle } from "@tabler/icons-react";
 import {
   getFrequencyTargetProgress,
   getFrequencyTargetProtocolNames,
+  getFoodHabitTrends,
   getIntakeSafetyContext,
 } from "@/lib/queries";
+import type { HabitWeekVerdict } from "@/lib/food-habit-trend";
 import {
   frequencyScopeLabel,
   frequencyPaceLabel,
@@ -18,6 +20,19 @@ import FoodGroupIcon from "@/components/FoodGroupIcon";
 import SubmitButton from "@/components/SubmitButton";
 import { trackFoodHabit } from "./actions";
 import UntrackHabitButton from "./UntrackHabitButton";
+
+// Per-verdict cell styling for the N-week consistency strip (#954). `met` reads green,
+// `short`/`empty` amber/slate, the in-progress current week a hollow brand ring, and a
+// not-applicable (pre-target) week a faint dashed placeholder — an honest cold start,
+// never a red miss.
+const TREND_CELL_CLASS: Record<HabitWeekVerdict, string> = {
+  met: "bg-emerald-500 dark:bg-emerald-500",
+  short: "bg-amber-400 dark:bg-amber-500",
+  empty: "bg-slate-200 dark:bg-slate-700",
+  current:
+    "bg-transparent ring-1 ring-inset ring-brand-400 dark:ring-brand-500",
+  na: "bg-transparent ring-1 ring-inset ring-dashed ring-slate-200 dark:ring-slate-700 opacity-50",
+};
 
 // Food-habit targets card (issue #580): the profile's food_group frequency targets with
 // this-week progress (the #579 rollup via getFrequencyTargetProgress — one computation),
@@ -35,6 +50,9 @@ export default function WeeklyHabits({ profileId }: { profileId: number }) {
   // The protocol (if any) that adopted each habit as its intervention — so untracking a
   // measured habit confirms first (#748 item 6).
   const protocolByTarget = getFrequencyTargetProtocolNames(profileId);
+  // N-week consistency trend per habit (#954): the same weekly rollup extended over
+  // ~8 weeks so "is this habit sticking?" gets a surface. Keyed by target id.
+  const trends = getFoodHabitTrends(profileId);
 
   return (
     <div className="card" data-testid="weekly-habits">
@@ -84,6 +102,27 @@ export default function WeeklyHabits({ profileId }: { profileId: number }) {
                     />
                   </span>
                 </div>
+                {(() => {
+                  const cells = trends.get(p.target.id) ?? [];
+                  if (cells.length === 0) return null;
+                  return (
+                    <div
+                      data-testid={`habit-trend-${p.target.scope_value}`}
+                      className="mt-1.5 flex items-center gap-1"
+                      role="img"
+                      aria-label={`Consistency over the last ${cells.length} weeks`}
+                    >
+                      {cells.map((c) => (
+                        <span
+                          key={c.start}
+                          data-verdict={c.verdict}
+                          title={c.label}
+                          className={`h-3 w-3 shrink-0 rounded-sm ${TREND_CELL_CLASS[c.verdict]}`}
+                        />
+                      ))}
+                    </div>
+                  );
+                })()}
                 {interactions.length > 0 && (
                   <ul
                     data-testid={`habit-warning-${p.target.scope_value}`}
