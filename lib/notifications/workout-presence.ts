@@ -28,8 +28,10 @@ import {
   getProfileSetting,
   setProfileSetting,
   getPublicUrl,
-  getNotifySchedule,
+  getProfileTelegramDisabledKinds,
+  getProfileHomeAssistant,
 } from "../settings";
+import { isKindEnabled } from "./home-assistant-core";
 import { composeFinishNudge, recapNudgeLine } from "./workout-recap-format";
 import { collectWindowDoses } from "./supplements";
 import type { ReminderWindow, WindowDose } from "./supplement-format";
@@ -149,10 +151,21 @@ export async function runPostWorkoutFinish(
   // both absent ⇒ no send (and the one-shot is not burned).
   const doseMsg = buildPostWorkoutFinishReminder(profileId, date);
   const recap = getSessionRecap(profileId, presence.activityId);
-  const recapLine = recapNudgeLine(
-    recap,
-    getNotifySchedule(profileId).workoutRecapEnabled
-  );
+  // Recap-line inclusion (#924) is gated by the `workout-recap` row of the #928
+  // kind×channel matrix — included unless the user turned it OFF on EVERY
+  // profile-scoped channel (Telegram + Home Assistant). The login-scoped push
+  // channel gates its own copy at dispatch; a recap-only message additionally
+  // carries kind "workout-recap" so each channel's matrix gate applies at send time.
+  const recapEnabled =
+    isKindEnabled(
+      "workout-recap",
+      getProfileTelegramDisabledKinds(profileId)
+    ) ||
+    isKindEnabled(
+      "workout-recap",
+      getProfileHomeAssistant(profileId).disabledKinds
+    );
+  const recapLine = recapNudgeLine(recap, recapEnabled);
   const msg = composeFinishNudge(recapLine, doseMsg);
   if (!msg) return { failed: false }; // nothing to send — don't burn the one-shot
 

@@ -14,8 +14,7 @@ import { db, today } from "@/lib/db";
 import {
   setProfileHomeAssistant,
   getProfileSetting,
-  getNotifySchedule,
-  setNotifySchedule,
+  setProfileTelegramDisabledKinds,
 } from "@/lib/settings";
 import { utcSqlString } from "@/lib/date";
 import {
@@ -235,17 +234,21 @@ describe("recap-led finish nudge composition (#924)", () => {
     expect(payload.kind).toBe("dose");
   });
 
-  it("strips the recap line when the workout-recap toggle is off — dose section only", async () => {
+  it("strips the recap line when the workout-recap kind is off on every channel — dose section only", async () => {
     const p = newProfile("RecapOff");
     seedPostWorkoutSupp(p);
     const date = today(p);
     const activityId = seedManualFinished(p, date, 20);
     addWorkingSets(activityId, "Bench Press");
-    setNotifySchedule(p, {
-      ...getNotifySchedule(p),
-      workoutRecapEnabled: false,
+    // Disable workout-recap on BOTH profile-scoped channels (Telegram + HA) — the
+    // recap line rides in the finish nudge unless it's off everywhere.
+    setProfileTelegramDisabledKinds(p, ["workout-recap"]);
+    setProfileHomeAssistant(p, {
+      enabled: true,
+      webhookUrl: HA_URL,
+      secret: "",
+      disabledKinds: ["workout-recap"],
     });
-    configureHA(p);
     const fetchMock = stubFetch();
 
     await runPostWorkoutFinish(p, NOW);
