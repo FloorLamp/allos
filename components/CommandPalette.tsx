@@ -29,8 +29,12 @@ import { useToast } from "@/components/Toast";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
 import { runGlobalSearch } from "@/app/(app)/search-actions";
 import { paletteQuickLog } from "@/app/(app)/palette-actions";
+import { logMedicationAdministration } from "@/app/(app)/medications/actions";
+import { refillMedication } from "@/app/(app)/medications/actions";
+import { completeAppointment } from "@/app/(app)/encounters/appointment-actions";
 import {
   flattenHits,
+  type HitAction,
   type SearchDomain,
   type SearchGroup,
   type SearchHit,
@@ -268,6 +272,47 @@ export default function CommandPalette({
     [query, committing, toast, close, router]
   );
 
+  // Run a per-hit contextual action (#662). A navigate action (add-result) just
+  // routes to its prefilled form; a write action (log-dose/refill/complete) submits
+  // the entity id to the EXISTING gated Server Action — the same write path the
+  // med/appointment pages use, so the auth gate is never bypassed. We answer from
+  // the action's typed outcome (completeAppointment returns void → treated as done).
+  const runHitAction = useCallback(
+    async (action: HitAction) => {
+      if (action.kind === "add-result") {
+        if (action.href) go(action.href);
+        return;
+      }
+      if (committing) return;
+      setCommitting(true);
+      try {
+        const fd = new FormData();
+        fd.set("id", String(action.entityId));
+        if (action.kind === "log-dose") {
+          const res = await logMedicationAdministration(fd);
+          toast(res.ok ? "Dose logged" : res.error, {
+            tone: res.ok ? "success" : "error",
+          });
+          if (!res.ok) return;
+        } else if (action.kind === "refill") {
+          const res = await refillMedication(fd);
+          toast(res.ok ? "Refill recorded" : res.error, {
+            tone: res.ok ? "success" : "error",
+          });
+          if (!res.ok) return;
+        } else {
+          await completeAppointment(fd);
+          toast("Appointment completed", { tone: "success" });
+        }
+        close();
+        router.refresh();
+      } finally {
+        setCommitting(false);
+      }
+    },
+    [committing, close, go, router, toast]
+  );
+
   const runItem = useCallback(
     (item: PaletteItem | undefined) => {
       if (!item) return;
@@ -441,6 +486,8 @@ export default function CommandPalette({
                 highlight={highlight}
                 setHighlight={setHighlight}
                 onPick={go}
+                onAction={runHitAction}
+                committing={committing}
                 rowClass={rowClass}
               />
             ))}
@@ -456,6 +503,8 @@ function SearchResults({
   highlight,
   setHighlight,
   onPick,
+  onAction,
+  committing,
   rowClass,
 }: {
   groups: SearchGroup[];
@@ -463,6 +512,8 @@ function SearchResults({
   highlight: number;
   setHighlight: (i: number) => void;
   onPick: (href: AppRoute) => void;
+  onAction: (action: HitAction) => void;
+  committing: boolean;
   rowClass: (active: boolean) => string;
 }) {
   let flatIndex = base - 1;
@@ -477,8 +528,13 @@ function SearchResults({
               const itemIdx = flatIndex;
               const active = itemIdx === highlight;
               const Icon = DOMAIN_ICONS[hit.domain];
+              const actions = hit.actions ?? [];
+              // The whole row navigates (a nested <button> would be invalid HTML),
+              // so the row is a flex container: a navigate button that fills it plus
+              // any per-hit action chips as sibling buttons (#662). Arrow/Enter still
+              // walk one flat list of NAVIGATE targets; the chips are pointer-only.
               return (
-                <li key={hit.key}>
+                <li key={hit.key} className={`flex items-stretch gap-1`}>
                   <button
                     type="button"
                     role="option"
@@ -486,7 +542,7 @@ function SearchResults({
                     data-idx={itemIdx}
                     onMouseEnter={() => setHighlight(itemIdx)}
                     onClick={() => onPick(hit.href)}
-                    className={rowClass(active)}
+                    className={`${rowClass(active)} min-w-0 flex-1`}
                   >
                     <Icon className="h-4 w-4 shrink-0 opacity-70" />
                     <span className="min-w-0 flex-1">
@@ -499,10 +555,22 @@ function SearchResults({
                         </span>
                       )}
                     </span>
-                    {active && (
+                    {active && actions.length === 0 && (
                       <IconCornerDownLeft className="h-4 w-4 shrink-0 opacity-60" />
                     )}
                   </button>
+                  {actions.map((action) => (
+                    <button
+                      key={`${hit.key}:${action.kind}`}
+                      type="button"
+                      data-testid={`palette-hit-action-${action.kind}`}
+                      disabled={committing}
+                      onClick={() => onAction(action)}
+                      className="shrink-0 self-center rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-ink-700 dark:text-slate-300 dark:hover:bg-ink-800 dark:hover:text-slate-100"
+                    >
+                      {action.label}
+                    </button>
+                  ))}
                 </li>
               );
             })}
