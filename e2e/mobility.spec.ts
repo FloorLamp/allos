@@ -57,14 +57,28 @@ test.describe("Mobility (#840)", () => {
       await expect(chip).toHaveAttribute("aria-pressed", "false");
     }
 
-    // Tap ON → the chip presses (optimistic + reconciled to the server session).
-    await settledClick(page, chip);
-    await expect(chip).toHaveAttribute("aria-pressed", "true");
-
-    // Persists across a full reload (one recovery activity row holds the move).
-    await page.reload();
-    const chipAfter = page.getByTestId("mobility-move-pigeon_pose");
-    await expect(chipAfter).toHaveAttribute("aria-pressed", "true");
+    // Tap ON → then prove PERSISTENCE across a reload (one recovery activity row
+    // holds the move). The chip is purely optimistic (no disabled-while-saving
+    // state), so the pressed attribute alone can't prove the server write — and
+    // settledClick's any-POST arm can be satisfied by an unrelated on-load POST
+    // while the action POST is still in flight, which a reload then kills (this
+    // failed exactly so in CI's repeat lane). toPass is justified: "my tap landed
+    // AND persisted" is non-atomic, there's no navigation for followLink, and a
+    // dropped tap must be re-tapped — the loop can't false-pass because only the
+    // POST-RELOAD state satisfies it.
+    await expect(async () => {
+      const c = page.getByTestId("mobility-move-pigeon_pose");
+      if ((await c.getAttribute("aria-pressed")) !== "true") {
+        await c.click();
+        await expect(c).toHaveAttribute("aria-pressed", "true", {
+          timeout: 3000,
+        });
+      }
+      await page.reload();
+      await expect(
+        page.getByTestId("mobility-move-pigeon_pose")
+      ).toHaveAttribute("aria-pressed", "true", { timeout: 3000 });
+    }).toPass({ timeout: 45_000 });
 
     // The recovery session rides the shared journal feed (Training → Log) like any activity.
     await page.goto("/training?tab=log");
