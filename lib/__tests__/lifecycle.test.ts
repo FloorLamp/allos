@@ -39,7 +39,9 @@ describe("isHiddenUnderPolicy — snooze-only (overdue follow-up, #700)", () => 
   it("resists an indefinite dismiss but honors a live snooze", () => {
     expect(isHiddenUnderPolicy("snooze-only", dismissed, TODAY)).toBe(false);
     expect(isHiddenUnderPolicy("snooze-only", liveSnooze, TODAY)).toBe(true);
-    expect(isHiddenUnderPolicy("snooze-only", expiredSnooze, TODAY)).toBe(false);
+    expect(isHiddenUnderPolicy("snooze-only", expiredSnooze, TODAY)).toBe(
+      false
+    );
   });
 });
 

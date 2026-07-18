@@ -16,11 +16,7 @@ import { db } from "@/lib/db";
 import { up as migrate061 } from "@/lib/migrations/versions/061-notify-lifecycle";
 import { getNotifyError } from "@/lib/notifications";
 
-function seedLegacyMarker(
-  error: string,
-  at: string,
-  channel: string
-): void {
+function seedLegacyMarker(error: string, at: string, channel: string): void {
   for (const [k, v] of [
     ["notify_last_error", error],
     ["notify_last_error_at", at],
@@ -45,7 +41,9 @@ function legacyKeyCount(): number {
 describe("migration 061 — delivery-health marker becomes a lifecycle row (#942)", () => {
   beforeEach(() => {
     db.prepare("DELETE FROM notify_lifecycle").run();
-    db.prepare("DELETE FROM settings WHERE key LIKE 'notify_last_error%'").run();
+    db.prepare(
+      "DELETE FROM settings WHERE key LIKE 'notify_last_error%'"
+    ).run();
   });
 
   it("copies a live legacy marker into the notify_lifecycle row and retires the old keys", () => {
@@ -62,9 +60,9 @@ describe("migration 061 — delivery-health marker becomes a lifecycle row (#942
     // The single failing row exists...
     expect(
       (
-        db
-          .prepare("SELECT COUNT(*) AS c FROM notify_lifecycle")
-          .get() as { c: number }
+        db.prepare("SELECT COUNT(*) AS c FROM notify_lifecycle").get() as {
+          c: number;
+        }
       ).c
     ).toBe(1);
     // ...and the three legacy settings keys are gone (single source of truth).
@@ -89,9 +87,9 @@ describe("migration 061 — delivery-health marker becomes a lifecycle row (#942
     expect(getNotifyError()).toBeNull();
     expect(
       (
-        db
-          .prepare("SELECT COUNT(*) AS c FROM notify_lifecycle")
-          .get() as { c: number }
+        db.prepare("SELECT COUNT(*) AS c FROM notify_lifecycle").get() as {
+          c: number;
+        }
       ).c
     ).toBe(0);
   });

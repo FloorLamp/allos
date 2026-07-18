@@ -68,13 +68,16 @@ The highest-harm failure across the medical domains is not a missing record — 
 
 ### Care-tier persistence contract (#700 ask 5)
 
-An OVERDUE safety follow-up must not fall to the "dismiss once, silence everywhere" convenience path the way a medication-dose escalation must not (#171/#227). The contract, decided by state (pure, `lib/followup.ts` `isFollowUpHidden` / the shared `isItemHiddenBySuppression`):
+An OVERDUE safety follow-up must not fall to the "dismiss once, silence everywhere" convenience path the way a medication-dose escalation must not (#171/#227). The contract, decided by state (pure, `lib/followup.ts` `isFollowUpHidden` / the shared `isItemHiddenBySuppression`), routes through the ONE `isHiddenUnderPolicy` decision in `lib/lifecycle.ts` (#942) — the same gate the bus-gated nudges and the dose-escalation carve-out use:
 
-| Follow-up state                   | Suppression policy | Honors SNOOZE (time-boxed) | Honors DISMISS (indefinite) |
-| --------------------------------- | ------------------ | -------------------------- | --------------------------- |
-| upcoming (due today / future)     | `normal`           | yes                        | yes                         |
-| resolvable (later record on file) | `normal`           | yes                        | yes                         |
-| **overdue** (past planned date)   | **`snooze-only`**  | **yes**                    | **NO — resisted**           |
+| Signal / follow-up state          | Suppression policy   | Honors SNOOZE (time-boxed) | Honors DISMISS (indefinite) |
+| --------------------------------- | -------------------- | -------------------------- | --------------------------- |
+| upcoming (due today / future)     | `normal`             | yes                        | yes                         |
+| resolvable (later record on file) | `normal`             | yes                        | yes                         |
+| **overdue** (past planned date)   | **`snooze-only`**    | **yes**                    | **NO — resisted**           |
+| **dose reminder / escalation**    | **`safety-ungated`** | **NO — ignored**           | **NO — ignored**            |
+
+The `safety-ungated` row is the #449 carve-out named as a first-class policy (#942): missed-dose escalation is the first lifecycle tenant, declaring it in `ESCALATION_SUPPRESSION_POLICY`. The bus is ignored ENTIRELY — no dismiss and no snooze can hide it — so a page dismissal can never silence a possibly-critical medication signal.
 
 An overdue follow-up carries `carePersistent: true`: the shared suppression filter IGNORES a `dismissed_at` row for it (a page dismiss can never permanently silence a possibly-missed nodule follow-up), but a live `snooze_until` still defers it (a deliberate "remind me next week"), and it reappears when the snooze expires. The surfaces render a **snooze-only** menu (no Dismiss) for it. This is scoped EXPLICITLY: only the _overdue_ state resists dismiss; an upcoming or resolvable follow-up is fully suppressible like any finding. The pure pin is `lib/__tests__/followup.test.ts` (overdue + a dismiss → NOT hidden; + a live snooze → hidden), and the end-to-end pin is `lib/__db_tests__/followup-findings.test.ts` (a dismiss on `collectUpcoming` leaves the overdue follow-up live).
 

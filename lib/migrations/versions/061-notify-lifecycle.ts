@@ -32,9 +32,7 @@ import type { Migration } from "../runner";
 function tableExists(db: Database.Database, name: string): boolean {
   return (
     db
-      .prepare(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?"
-      )
+      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
       .get(name) != null
   );
 }
@@ -55,9 +53,9 @@ export function up(db: Database.Database): void {
   // non-empty legacy error, so the whole block is a no-op on replay / a clean DB.
   if (!tableExists(db, "settings")) return;
   const getKey = (k: string): string | null => {
-    const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(k) as
-      | { value: string | null }
-      | undefined;
+    const row = db
+      .prepare("SELECT value FROM settings WHERE key = ?")
+      .get(k) as { value: string | null } | undefined;
     return row?.value ?? null;
   };
   const legacyError = getKey("notify_last_error");
