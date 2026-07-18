@@ -43,12 +43,15 @@ import { getActiveRoutine, getRoutineCycleStatus } from "@/lib/routines";
 import { availableEquipmentKinds } from "@/lib/equipment";
 import { buildRoutineSessionPrefill } from "@/lib/activity-form-model";
 import { getInjuries, getInjuryConstraints } from "@/lib/injuries";
+import MobilitySection from "./MobilitySection";
 import { getConditionConsiderations } from "@/lib/queries";
 import { getActiveSituations } from "@/lib/settings/profile-attrs";
 import { isBuiltInInjurySituation } from "@/lib/situations";
 import { excludedRegionLabel } from "@/lib/injury-model";
+import { getEndurancePlanCards, getEnduranceArm } from "@/lib/queries";
 import TodaysSessionCard from "./TodaysSessionCard";
 import InjuryBar from "./InjuryBar";
+import EndurancePlanBar, { type EndurancePlanView } from "./EndurancePlanBar";
 import MuscleAnatomy from "@/components/MuscleAnatomy";
 import { dispWeight, fmtDistance, fmtKmh, fmtWeight } from "@/lib/units";
 import LineChartCard from "@/components/LineChartCard";
@@ -153,6 +156,13 @@ export default async function OverviewSection() {
     // dashboard/Telegram surfaces use, so the exclusion/tempering/notes here agree (#221).
     injuries: getInjuryConstraints(profile.id),
     considerations: getConditionConsiderations(profile.id),
+    // Plan-aware cardio arm (#839): the SAME arm the dashboard/Telegram surfaces read, with
+    // the illness pause applied — so the note here agrees everywhere (#221).
+    endurancePlanArm: getEnduranceArm(
+      profile.id,
+      todayStr,
+      getIllnessCoachingContext(profile.id, todayStr).openEpisode
+    ),
     weightUnit: wu,
   };
   const [nextWorkout] = recommendCoaching(coachingInput);
@@ -175,6 +185,46 @@ export default async function OverviewSection() {
   const hasInjurySituation = getActiveSituations(profile.id).some(
     isBuiltInInjurySituation
   );
+
+  // Endurance event plans (#839): the active plans' recomputed this-week trajectory,
+  // shaped into the display view (distances formatted server-side in the login's unit).
+  const endurancePlans: EndurancePlanView[] = getEndurancePlanCards(
+    profile.id,
+    todayStr
+  ).map((c) => {
+    const t = c.trajectory;
+    return {
+      id: c.plan.id,
+      title:
+        c.plan.eventName?.trim() ||
+        `${fmtDistance(c.plan.targetDistanceKm, du)} ${c.plan.discipline}`,
+      disciplineLabel:
+        c.plan.discipline === "run"
+          ? "Run"
+          : c.plan.discipline === "ride"
+            ? "Ride"
+            : "Swim",
+      eventDate: formatRelativeDate(c.plan.eventDate, todayStr),
+      weeksToEvent: t.weeksToEvent,
+      feasible: t.feasible,
+      message: t.message,
+      targetVolume: fmtDistance(c.thisWeek.targetVolumeKm, du),
+      actualVolume: fmtDistance(c.actualVolumeKm, du),
+      progressPct: Math.max(
+        0,
+        Math.min(
+          100,
+          c.thisWeek.targetVolumeKm > 0
+            ? Math.round((c.actualVolumeKm / c.thisWeek.targetVolumeKm) * 100)
+            : 0
+        )
+      ),
+      longSession: fmtDistance(c.thisWeek.longSessionKm, du),
+      longSessionDone: c.longSessionDone,
+      hasLongSession: c.thisWeek.longSessionKm > 0,
+      notes: c.plan.notes,
+    };
+  });
   const sessionCard = session
     ? {
         label:
@@ -230,6 +280,11 @@ export default async function OverviewSection() {
         injuries={injuries}
         suggestActivateSituation={!hasInjurySituation}
       />
+
+      {/* Endurance event plans (#839): a race goal → a safe weekly volume trajectory
+          (ramp/long-session/recovery/taper). The plan-aware cardio arm rides the
+          recommendation below; the long session surfaces as a calm coaching finding. */}
+      <EndurancePlanBar plans={endurancePlans} distanceUnit={du} />
 
       {showSessionCard && sessionCard && (
         <TodaysSessionCard
@@ -467,6 +522,10 @@ export default async function OverviewSection() {
           </div>
         )}
       </div>
+
+      {/* Mobility (#840): self-contained tap-the-moves log + region-coverage strip,
+          a SEPARATE view next to muscle coverage (never merged — #482). */}
+      <MobilitySection profileId={profile.id} today={todayStr} />
 
       <div className="space-y-6 opacity-85">
         <div>

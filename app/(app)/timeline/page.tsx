@@ -20,6 +20,7 @@ import {
   IconVaccine,
   IconVirus,
   IconBandage,
+  IconRun,
   type TablerIcon,
 } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
@@ -78,6 +79,7 @@ const CATEGORY_ICONS: Record<TimelineCategory, TablerIcon> = {
   symptom: IconTemperature,
   illness: IconVirus,
   injury: IconBandage,
+  endurance: IconRun,
 };
 
 const CARD_CLASS =
@@ -108,6 +110,7 @@ const BADGE_CLASS: Record<TimelineCategory, string> = {
     "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300",
   illness: "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300",
   injury: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
+  endurance: "bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300",
 };
 
 // The default page size and the increment each "Load more" reveals. The feed is

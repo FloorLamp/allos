@@ -12,6 +12,10 @@ import { regionForExercise, regionsForGroup } from "../../lifts";
 import type { BodyMetricKind, FrequencyTarget, Goal } from "../../types";
 import { parseComponents } from "../../types";
 import { getLatestBodyMetric } from "../metrics";
+import {
+  mobilityRegionDays,
+  type MobilitySessionInput,
+} from "../../mobility-coverage";
 import { weekWindowStart } from "./common";
 
 // ---- Goals ----
@@ -192,6 +196,29 @@ export function getFrequencyTargetProgress(
       if (c?.type) addType(c.type, a.date);
   }
 
+  // Mobility-region (#840) targets count DISTINCT DAYS a recovery session mobilized the
+  // region this week — the move→MuscleId→MuscleRegion rollup, deduped once per day (#223).
+  // A SEPARATE view from strength `region` targets (#482: trained ≠ mobilized), gathered
+  // from recovery activities' move components (never exercise_sets). One computation:
+  // the same mobilityRegionDays the coverage strip uses.
+  const mobilityRegionDates = new Map<MuscleRegion, Set<string>>();
+  if (targets.some((t) => t.scope_kind === "mobility_region")) {
+    const sessions: MobilitySessionInput[] = actRows
+      .filter((a) => a.type === "recovery")
+      .map((a) => ({
+        date: a.date,
+        moves: parseComponents(a.components)
+          .filter((c) => c?.type === "recovery" && typeof c.name === "string")
+          .map((c) => c.name),
+      }));
+    for (const [region, dates] of mobilityRegionDays(
+      sessions,
+      today(profileId),
+      0
+    ))
+      mobilityRegionDates.set(region, dates);
+  }
+
   // Food-habit (#580) targets count this week's SERVINGS for the group — the #579
   // weekly rollup's per-group sum, NOT a second count (one question, one computation).
   // Gathered once for all food_group targets. Profile-scoped by the same window.
@@ -217,6 +244,8 @@ export function getFrequencyTargetProgress(
       count = union.size;
     } else if (t.scope_kind === "food_group") {
       count = foodServings.get(t.scope_value) ?? 0;
+    } else if (t.scope_kind === "mobility_region") {
+      count = mobilityRegionDates.get(t.scope_value as MuscleRegion)?.size ?? 0;
     } else {
       count = typeDates.get(t.scope_value)?.size ?? 0;
     }

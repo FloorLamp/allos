@@ -37,8 +37,18 @@ describe("resolveActivityType", () => {
 
   it("classifies sport keywords", () => {
     expect(resolveActivityType("Tennis")).toBe("sport");
-    expect(resolveActivityType("Yoga")).toBe("sport");
     expect(resolveActivityType("Bouldering")).toBe("sport");
+  });
+
+  it("classifies recovery / mobility keywords (issue #840)", () => {
+    // Yoga/stretch/pilates/etc moved out of SPORT into the HABIT-tier recovery domain
+    // so a mobility session never carries sport performance semantics.
+    expect(resolveActivityType("Yoga")).toBe("recovery");
+    expect(resolveActivityType("Pilates")).toBe("recovery");
+    expect(resolveActivityType("Stretching")).toBe("recovery");
+    expect(resolveActivityType("Morning Mobility")).toBe("recovery");
+    expect(resolveActivityType("Foam Rolling")).toBe("recovery");
+    expect(resolveActivityType("Tai Chi")).toBe("recovery");
   });
 
   it("returns null for empty or unrecognized names", () => {

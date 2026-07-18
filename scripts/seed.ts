@@ -18,6 +18,7 @@ import {
 import { getTimezone } from "../lib/settings";
 import { adoptTemplate } from "../lib/routines";
 import { saveFitnessEntry } from "../lib/fitness-assessment";
+import { mobilityMoveName } from "../lib/mobility-moves";
 import {
   completeOnboardingState,
   initialOnboardingState,
@@ -184,6 +185,29 @@ logEffort(
   null,
   "hard"
 );
+
+// A few recovery / mobility sessions (issue #840): one activity row of type `recovery`
+// per day whose components are the tapped moves (no per-move sets/weights — the habit
+// tier). Populates the mobility log, the region-coverage strip, and the mobility_region
+// weekly target below. Move slugs match lib/datasets/data/mobility-moves.json.
+const insertMobility = db.prepare(
+  `INSERT INTO activities (profile_id, date, type, title, duration_min, components)
+   VALUES (1, ?, 'recovery', 'Mobility', ?, ?)`
+);
+function logMobility(ago: number, durationMin: number | null, moves: string[]) {
+  const components = JSON.stringify(
+    moves.map((slug) => ({
+      name: mobilityMoveName(slug), // DISPLAY name so the journal renders sanely
+      type: "recovery",
+      distance_km: null,
+      duration_min: null,
+    }))
+  );
+  insertMobility.run(daysAgo(ago), durationMin, components);
+}
+logMobility(6, 12, ["hip_flexor_stretch", "pigeon_pose", "hamstring_stretch"]);
+logMobility(4, 10, ["shoulder_cars", "thoracic_rotation", "childs_pose"]);
+logMobility(1, 8, ["couch_stretch", "ankle_rocks", "deep_squat_hold"]);
 // A synthetic Health Connect exercise-session import carrying every activity
 // field that provider supplies: local date/type/title, duration, distance,
 // local start/end clocks, provider provenance, and its start-instant natural
@@ -460,6 +484,7 @@ freq.run("group", "Upper", 2); // push + pull days → met
 freq.run("group", "Lower", 1); // leg day → met
 freq.run("region", "Chest", 2); // one push day → partial
 freq.run("type", "cardio", 2); // one recent run → partial
+freq.run("mobility_region", "Legs", 3); // seeded recovery sessions → partial (#840)
 
 // A sample ACTIVE routine (#738) so the routine-aware surfaces (#740/#742) render on
 // a fresh seed. Adopt the PPL template (copies it into the routine tables), then mark
@@ -471,6 +496,16 @@ db.prepare(
   `UPDATE routines SET active = 1, started_date = ?, position = 0
      WHERE id = ? AND profile_id = ?`
 ).run(daysAgo(6), seededRoutineId, SEED_PROFILE_ID);
+
+// An active endurance event plan (#839): a half marathon ~14 weeks out. With the seeded
+// running history this renders a feasible weekly-volume trajectory (target vs actual, long
+// run, taper) on the Training overview, a plan-aware note on the next-workout card, and the
+// event day on the Timeline + calendar feed.
+db.prepare(
+  `INSERT INTO endurance_plans
+     (profile_id, event_name, discipline, event_date, target_distance_km, target_time_sec, status)
+   VALUES (?, ?, 'run', ?, 21.1, 6300, 'active')`
+).run(SEED_PROFILE_ID, "City Half Marathon", daysAgo(-98));
 
 // Profile demographics: a ~40-year-old male. Sex is set
 // BEFORE the medical records below so reconcileFlags picks the sex-specific

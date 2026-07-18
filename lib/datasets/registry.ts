@@ -48,6 +48,7 @@ import {
   medDescriptionsStrategy,
 } from "./medication-descriptions";
 import { metsDataset } from "./mets";
+import { mobilityMovesDataset } from "./mobility-moves";
 import {
   nutrientFoodMapDataset,
   nutrientKeyStrategy,
@@ -188,6 +189,13 @@ export const DATASETS: RegisteredDataset[] = [
       unknown
     >,
     strategy: nameStrategy,
+  },
+  {
+    dataset: mobilityMovesDataset as unknown as LoadedDataset<
+      Record<string, unknown>,
+      unknown
+    >,
+    strategy: slugStrategy,
   },
   {
     dataset: nutrientFoodMapDataset as unknown as LoadedDataset<

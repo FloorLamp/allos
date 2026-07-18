@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 057 (issue #700 — the flagged-LABS follow-up adapter). The finding →
+// Migration 060 (issue #700 — the flagged-LABS follow-up adapter). The finding →
 // follow-up → resolution chain shipped its core + imaging adapter in migration 050;
 // this extends the SAME care_plan_items chain with the FLAGGED-LAB adapter, whose
 // source finding and resolving record are both medical_records rows (a flagged
@@ -63,7 +63,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 57,
-  name: "057-followup-labs",
+  id: 60,
+  name: "060-followup-labs",
   up,
 };

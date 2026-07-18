@@ -527,6 +527,29 @@ export const DATASETS: ExportDataset[] = [
        FROM injuries WHERE profile_id = ? ORDER BY COALESCE(since, substr(created_at, 1, 10)) DESC, id DESC`,
     countSql: `SELECT COUNT(*) AS n FROM injuries WHERE profile_id = ?`,
   }),
+  tableDataset({
+    // Endurance event plans (#839) — user-entered training goals a migrating family keeps
+    // (event, discipline, target distance/time, status). The weekly trajectory is derived,
+    // never stored, so nothing but the goal is exported here.
+    key: "endurance_plans",
+    label: "Event plans",
+    table: "endurance_plans",
+    columns: [
+      "event_name",
+      "discipline",
+      "event_date",
+      "target_distance_km",
+      "target_time_sec",
+      "status",
+      "notes",
+      "completed_on",
+      "created_at",
+    ],
+    select: `SELECT id, event_name, discipline, event_date, target_distance_km, target_time_sec,
+              status, notes, completed_on, created_at
+       FROM endurance_plans WHERE profile_id = ? ORDER BY event_date DESC, id DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM endurance_plans WHERE profile_id = ?`,
+  }),
   {
     // Supplements + medications (the parent intake_items rows), one per row, with
     // each item's dose SCHEDULE folded into a readable `schedule` summary (built
@@ -1030,6 +1053,7 @@ export const DELETE_POLICY: Record<string, DatasetDeletePolicy> = {
   },
   goals: { revalidate: ["/training", "/"] },
   injuries: { revalidate: ["/training", "/timeline", "/"] },
+  endurance_plans: { revalidate: ["/training", "/timeline", "/upcoming", "/"] },
   supplements: { revalidate: ["/nutrition", "/medications", "/"] },
   allergies: { revalidate: ["/allergies", "/"] },
   conditions: { revalidate: ["/conditions", "/"] },

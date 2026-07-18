@@ -32,11 +32,13 @@ import { FOOD_HABIT_PREFIX } from "./food-habit";
 import { SUN_EXPOSURE_PREFIX } from "./sun-exposure";
 import { ORAL_HEALTH_PREFIX } from "./oral-health-observation";
 import { PROTEIN_ADEQUACY_PREFIX } from "./protein";
+import { ENDURANCE_PLAN_PREFIX } from "./endurance-plan";
 import { ILLNESS_CARE_PREFIX } from "./illness-care";
 import { TEMP_RED_FLAG_PREFIX } from "./temp-red-flag";
 import { CONDITION_REVIEW_PREFIX } from "./condition-suggestions";
 import { FOLLOWUP_PREFIX } from "./followup";
 import { FITNESS_CHECK_PREFIX } from "./fitness-retest";
+import { MOBILITY_SUGGEST_PREFIX } from "./mobility-suggest";
 import type { ReasonCode } from "./reasons";
 
 // The two reach tiers (#449). CARE is push: Upcoming + the non-hideable Needs-attention
@@ -118,6 +120,15 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     reasons: [],
   },
   {
+    // Endurance event plans (#839): the calm weekly long-session nudge. COACHING tier
+    // (#449) — never a push, never the hero; it joins collectCoachingFindings and rides
+    // the shared suppression bus keyed on the discipline.
+    prefix: ENDURANCE_PLAN_PREFIX,
+    tier: "coaching",
+    builder: "buildEndurancePlanFindings",
+    reasons: [],
+  },
+  {
     prefix: SUN_EXPOSURE_PREFIX,
     tier: "coaching",
     builder: "buildSunExposureFindings",
@@ -136,6 +147,15 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: FITNESS_CHECK_PREFIX,
     tier: "coaching",
     builder: "buildFitnessCheckFindings",
+    reasons: [],
+  },
+  {
+    // Mobility deficit→habit suggestions (#840 phase 2): a low sit-and-reach/balance
+    // percentile or a recovering injury seeds a SUGGEST-ONLY mobility_region habit.
+    // Coaching tier — calm, never a push, never a rehab prescription.
+    prefix: MOBILITY_SUGGEST_PREFIX,
+    tier: "coaching",
+    builder: "buildMobilitySuggestionFindings",
     reasons: [],
   },
   // ---- Care tier (push; NOT in collectCoachingFindings) ----------------------

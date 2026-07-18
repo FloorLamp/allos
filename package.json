@@ -41,6 +41,7 @@
     "gen:screenings": "tsx scripts/gen-screenings.ts",
     "gen:nutrient-food-map": "tsx scripts/gen-nutrient-food-map.ts",
     "gen:food-groups": "tsx scripts/gen-food-groups.ts",
+    "gen:mobility-moves": "tsx scripts/gen-mobility-moves.ts",
     "gen:medication-descriptions": "tsx scripts/gen-medication-descriptions.ts",
     "gen:zip-centroids": "tsx scripts/gen-zip-centroids.ts",
     "prepare": "husky",

@@ -32,6 +32,11 @@
         "easy": 4.5,
         "moderate": 6.5,
         "hard": 8
+      },
+      "recovery": {
+        "easy": 2.3,
+        "moderate": 2.8,
+        "hard": 3.5
       }
     }
   },
@@ -437,36 +442,6 @@
       "easy": 5,
       "moderate": 8,
       "hard": 9
-    },
-    {
-      "name": "Yoga",
-      "easy": 2.5,
-      "moderate": 3,
-      "hard": 4
-    },
-    {
-      "name": "Pilates",
-      "easy": 2.8,
-      "moderate": 3,
-      "hard": 4
-    },
-    {
-      "name": "Barre",
-      "easy": 2.8,
-      "moderate": 3.5,
-      "hard": 4.5
-    },
-    {
-      "name": "Tai Chi",
-      "easy": 2.5,
-      "moderate": 3,
-      "hard": 4
-    },
-    {
-      "name": "Stretching",
-      "easy": 2.3,
-      "moderate": 2.5,
-      "hard": 2.8
     },
     {
       "name": "Dancing",

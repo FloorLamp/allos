@@ -34,6 +34,7 @@ import {
 import { availableEquipmentKinds } from "../equipment";
 import { getActiveRoutine, getRoutineCycleStatus } from "../routines";
 import { getInjuryConstraints } from "../injuries";
+import { getEnduranceArm } from "./endurance";
 import { getConditions } from "./clinical";
 import {
   matchConditionConsiderations,
@@ -150,13 +151,17 @@ export function gatherCoachingInput(
   distanceUnit: DistanceUnit
 ): CoachingInput {
   const todayStr = today(profileId);
+  const illness = getIllnessCoachingContext(profileId, todayStr);
   return {
     today: todayStr,
-    illness: getIllnessCoachingContext(profileId, todayStr),
+    illness,
     // User-declared injury constraints (#838) + curated condition considerations (#666) —
     // threaded through the ONE gather so every surface excludes/tempers/notes identically.
     injuries: getInjuryConstraints(profileId),
     considerations: getConditionConsiderations(profileId),
+    // Plan-aware cardio arm (#839): the soonest active endurance plan's calm note, with the
+    // illness pause (#837) applied here so an open episode holds the nagging note.
+    endurancePlanArm: getEnduranceArm(profileId, todayStr, illness.openEpisode),
     routine: getFrequencyTargetProgress(profileId),
     strength: getStrengthByExercise(profileId),
     cardio: getCardioByActivity(profileId, distanceUnit),

@@ -30,14 +30,16 @@ export interface FrequencyTargetItem extends WeeklyTarget {
 function optionsFor(
   kind: FrequencyScopeKind
 ): { value: string; label: string }[] {
-  return kind === "region"
-    ? REGION_SCOPES.map((v) => ({ value: v, label: v }))
-    : kind === "group"
-      ? GROUP_SCOPES.map((v) => ({ value: v, label: GROUP_LABELS[v] ?? v }))
-      : TYPE_SCOPES.map((v) => ({
-          value: v,
-          label: v[0].toUpperCase() + v.slice(1),
-        }));
+  // Mobility-region (#840) reuses the MuscleRegion vocabulary — a separate weekly view
+  // counted from recovery sessions, kept apart from strength `region` (#482).
+  if (kind === "region" || kind === "mobility_region")
+    return REGION_SCOPES.map((v) => ({ value: v, label: v }));
+  if (kind === "group")
+    return GROUP_SCOPES.map((v) => ({ value: v, label: GROUP_LABELS[v] ?? v }));
+  return TYPE_SCOPES.map((v) => ({
+    value: v,
+    label: v[0].toUpperCase() + v.slice(1),
+  }));
 }
 
 const DEFAULT_KIND: FrequencyScopeKind = "region";
@@ -145,6 +147,7 @@ export default function FrequencyTargets({
             <option value="region">Muscle region</option>
             <option value="group">Body group</option>
             <option value="type">Activity type</option>
+            <option value="mobility_region">Mobility region</option>
           </select>
         </div>
         <div>

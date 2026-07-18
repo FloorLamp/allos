@@ -36,6 +36,7 @@ import {
 } from "./queries";
 import { activeFindings } from "./findings";
 import { exerciseHistoryKey } from "./lifts";
+import type { MuscleRegion } from "./lifts";
 import {
   getActiveSituations,
   getSituationEvents,
@@ -49,6 +50,7 @@ import { decideSunExposure, SUN_EXPOSURE_WINDOW_WEEKS } from "./sun-exposure";
 import { decidePeriodontalObservation } from "./oral-health-observation";
 import { fitnessRetestDue, fitnessCheckSignalKey } from "./fitness-retest";
 import { getLatestFitnessAssessmentDate } from "./fitness-assessment";
+import { getMobilitySuggestions } from "./queries/mobility";
 import { getFitnessRetestCadenceDays } from "./settings";
 import {
   deriveRiskFactors,
@@ -93,6 +95,12 @@ import {
 } from "./muscle-volume-bands";
 import { getInjuryConstraints } from "./injuries";
 import { excludedRegions } from "./injury-model";
+import {
+  enduranceLongSessionKey,
+  enduranceLongSessionTitle,
+  enduranceLongSessionDetail,
+} from "./endurance-plan";
+import { getEndurancePlanCards, getIllnessCoachingContext } from "./queries";
 import {
   detectWeightAnomalies,
   weightAnomalySignalKey,
@@ -162,6 +170,34 @@ export function buildFitnessCheckFindings(
   ];
 }
 
+// ---- Mobility deficit → habit suggestions (#840 phase 2) -------------------
+
+// SUGGEST-ONLY mobility-region habit suggestions from measured deficits (#834 sit-and-
+// reach / single-leg balance) or a #838 RECOVERING injury — the #577 "suggestions from
+// your measurements" pattern applied to movement. Coaching tier ONLY (#449): joins
+// collectCoachingFindings, rides the shared bus (MOBILITY_SUGGEST_PREFIX registered), NEVER
+// notifies / never the hero, never a rehab prescription (the injury line is soft). One
+// computation (mobilitySuggestions) shared with the Training-overview accept affordance so
+// the finding and the one-tap button can never disagree. Regions already tracked as a
+// mobility_region habit are skipped (the loop is closed once accepted, #580). No owned SQL.
+export function buildMobilitySuggestionFindings(
+  profileId: number,
+  today: string
+): Finding[] {
+  void today; // no time-relative copy; kept for signature parity with siblings
+  return getMobilitySuggestions(profileId).map((s) => ({
+    domain: "mobility-suggest",
+    dedupeKey: s.dedupeKey,
+    title: s.title,
+    detail: s.detail,
+    tone: "info",
+    evidence:
+      "Suggestion from your fitness check / recovering injuries — track it as a weekly habit, or dismiss.",
+    actionHref: "/training?tab=overview" as AppRoute,
+    actionLabel: "Track it",
+  }));
+}
+
 export function collectCoachingFindings(
   profileId: number,
   today: string,
@@ -176,10 +212,46 @@ export function collectCoachingFindings(
     ...buildFoodSuggestionFindings(profileId),
     ...buildFoodHabitFindings(profileId),
     ...buildProteinAdequacyFindings(profileId),
+    ...buildEndurancePlanFindings(profileId, today),
     ...buildSunExposureFindings(profileId, today),
     ...buildOralHealthFindings(profileId),
     ...buildFitnessCheckFindings(profileId, today),
+    ...buildMobilitySuggestionFindings(profileId, today),
   ];
+}
+
+// ---- Endurance plans (#839): the calm weekly long-session nudge -------------
+
+// A coaching-tier finding per active endurance plan whose scheduled LONG session for this
+// week isn't logged yet. Reads through getEndurancePlanCards — the SAME plan/trajectory
+// model the Training overview card and the recommendation arm format (one computation,
+// #221) — so the finding and the card can never disagree. Coaching tier ONLY (#449): it
+// joins collectCoachingFindings, its dedupeKey (ENDURANCE_PLAN_PREFIX, registered in
+// RULE_FINDING_PREFIXES) rides the shared suppression bus keyed on the discipline, and it
+// NEVER notifies / never reaches the hero. Held during an open illness episode (#837) —
+// plan nagging pauses while the profile is sick.
+export function buildEndurancePlanFindings(
+  profileId: number,
+  today: string
+): Finding[] {
+  if (getIllnessCoachingContext(profileId, today).openEpisode) return [];
+  const out: Finding[] = [];
+  for (const card of getEndurancePlanCards(profileId, today)) {
+    // Only surface a long session that's scheduled AND not yet done this week.
+    if (card.thisWeek.longSessionKm <= 0 || card.longSessionDone) continue;
+    out.push({
+      domain: "endurance",
+      dedupeKey: enduranceLongSessionKey(card.plan.discipline),
+      title: enduranceLongSessionTitle(card),
+      detail: enduranceLongSessionDetail(card),
+      // Calm forward-looking nudge — never an alarm, never a push.
+      tone: "info",
+      dueDate: card.plan.eventDate,
+      actionHref: "/training",
+      actionLabel: "View plan",
+    });
+  }
+  return out;
 }
 
 // ---- Nutrition (#767): goal-scaled protein-adequacy observation ------------

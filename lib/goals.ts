@@ -235,6 +235,9 @@ export function frequencyScopeLabel(kind: string, value: string): string {
   if (kind === "group") return GROUP_LABELS[value] ?? value;
   if (kind === "type") return value[0].toUpperCase() + value.slice(1);
   if (kind === "food_group") return foodGroupName(value);
+  // Mobility-region (#840): the region label with a "Mobility:" qualifier so it reads
+  // apart from the strength `region` target of the same region (trained ≠ mobilized, #482).
+  if (kind === "mobility_region") return `Mobility: ${value}`;
   return value;
 }
 

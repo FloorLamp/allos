@@ -33,6 +33,8 @@ import {
   E2E_LOGIN_NOGEAR,
   E2E_LOGIN_FITNESS,
   E2E_LOGIN_FITNESS_SENIOR,
+  E2E_LOGIN_MOBILITY,
+  MOBILITY_PROFILE,
   E2E_LOGIN_ROUTINE,
   E2E_LOGIN_ROUTINE_BUILDER,
   E2E_LOGIN_ROUTINE_DELOAD,
@@ -85,6 +87,8 @@ import {
   RECAP_PROFILE,
   E2E_LOGIN_FOODSLOT,
   FOOD_SLOT_PROFILE,
+  E2E_LOGIN_ENDURANCE,
+  ENDURANCE_PROFILE,
   E2E_LOGIN_FLABS,
   FLAGGED_LAB_PROFILE,
 } from "./fixture-logins";
@@ -1801,6 +1805,35 @@ db.prepare(
 ).run(fitnessSeniorId);
 seedMemberLogin(E2E_LOGIN_FITNESS_SENIOR, fitnessSeniorId);
 
+// A dedicated ADULT profile for the mobility spec (#840): sex + birthdate so the
+// fitness-norms percentile gate opens, plus a LOW sit-and-reach vital so the Training
+// overview's Mobility section renders a deficit→habit SUGGESTION (a Legs mobility habit).
+// NO seeded recovery session / mobility_region target — the log bar starts empty and the
+// suggestion is present; the spec owns its own move toggles. Idempotent: clear the
+// profile's recovery activities + mobility_region targets so a reused server re-plants a
+// clean slate.
+const mobilityId = fixtureProfileId(MOBILITY_PROFILE);
+db.prepare(
+  `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'sex', 'male')`
+).run(mobilityId);
+db.prepare(
+  `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', '1985-01-01')`
+).run(mobilityId);
+db.prepare(
+  `DELETE FROM activities WHERE profile_id = ? AND type = 'recovery'`
+).run(mobilityId);
+db.prepare(
+  `DELETE FROM frequency_targets WHERE profile_id = ? AND scope_kind = 'mobility_region'`
+).run(mobilityId);
+db.prepare(
+  `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = 'Sit-and-Reach'`
+).run(mobilityId);
+db.prepare(
+  `INSERT INTO medical_records (profile_id, date, category, name, value_num, unit, canonical_name)
+   VALUES (?, ?, 'vitals', 'Sit-and-Reach', 15, 'cm', 'Sit-and-Reach')`
+).run(mobilityId, today(mobilityId));
+seedMemberLogin(E2E_LOGIN_MOBILITY, mobilityId);
+
 // A dedicated profile with a LIVE, in-progress strength session (issue #921): an
 // activity today with a start_time (~40 min ago), NO end_time, and a fresh
 // updated_at (auto-save timestamp) — so getWorkoutPresence reads `active`. Drives
@@ -2860,6 +2893,42 @@ db.prepare(
 seedMemberLogin(E2E_LOGIN_FOODSLOT, foodSlotId, "write");
 console.log(
   `e2e: seeded food-slot ranking + habit-trend fixture — profile ${foodSlotId} (${FOOD_SLOT_PROFILE}) (#950/#954)`
+);
+
+// ── Endurance event plans (#839) ──────────────────────────────────────────────
+// ENDURANCE_PROFILE: a dedicated adult profile with a few weeks of logged runs so a
+// plan created in the spec has a real weekly-volume base + this-week actuals. The spec
+// OWNS the endurance_plans lifecycle (create-and-clean), so hard-clear any leftover
+// plans on a reused server. Runs seeded across the last three weeks + this week.
+const enduranceProfileId = fixtureProfileId(ENDURANCE_PROFILE);
+db.prepare(`DELETE FROM endurance_plans WHERE profile_id = ?`).run(
+  enduranceProfileId
+);
+db.prepare(
+  `DELETE FROM activities WHERE profile_id = ? AND type = 'cardio'`
+).run(enduranceProfileId);
+for (const [ago, km, wt] of [
+  [20, 8, null],
+  [18, 6, null],
+  [13, 9, null],
+  [11, 7, null],
+  [6, 10, "long run"],
+  [4, 6, null],
+  [1, 8, null], // this week so far
+] as const) {
+  db.prepare(
+    `INSERT INTO activities (profile_id, date, type, title, distance_km, workout_type)
+     VALUES (?, ?, 'cardio', 'Running', ?, ?)`
+  ).run(
+    enduranceProfileId,
+    shiftDateStr(today(enduranceProfileId), -ago),
+    km,
+    wt
+  );
+}
+seedMemberLogin(E2E_LOGIN_ENDURANCE, enduranceProfileId, "write");
+console.log(
+  `e2e: seeded endurance-plan fixture — profile ${enduranceProfileId} (${ENDURANCE_PROFILE}) (#839)`
 );
 
 // ── Flagged-labs follow-up fixture (#700 flagged-labs adapter) ────────────────

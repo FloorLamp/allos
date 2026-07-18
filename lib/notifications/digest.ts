@@ -7,7 +7,7 @@
 // shared by several profiles (the chat-id ambiguity fix).
 
 import type { NotificationMessage } from "./types";
-import type { SupplementKind } from "../types";
+import type { ActivityType, SupplementKind } from "../types";
 import { fmtWeight } from "../units";
 import { intakeWindowNoun, intakeItemNoun } from "./supplement-format";
 import { situationActivationLine } from "../situations";
@@ -20,7 +20,7 @@ function cap(s: string): string {
 
 export interface DigestActivity {
   title: string;
-  type: "strength" | "cardio" | "sport";
+  type: ActivityType;
   durationMin: number | null;
   distanceKm: number | null;
 }

@@ -74,12 +74,19 @@ export const SPORTS = [
   "Snowboarding",
   "Skateboarding",
   "Ultimate Frisbee",
+  "Dancing",
+];
+
+// Curated recovery (mobility / flexibility) activities — the HABIT-tier movement
+// domain (issue #840). Split OUT of SPORTS so yoga/stretch classify as `recovery`,
+// not `sport` (a mobility session never carries strength/sport performance semantics).
+export const RECOVERY_ACTIVITIES = [
   "Yoga",
   "Pilates",
   "Barre",
   "Tai Chi",
   "Stretching",
-  "Dancing",
+  "Mobility",
 ];
 
 // Curated membership, for provenance checks: a cardio/sport name outside
@@ -88,7 +95,9 @@ export const SPORTS = [
 // sessions. The suggestion vocabulary can't stand in for this — it absorbs
 // coined names after their first save.
 const CURATED = new Set(
-  [...CARDIO_ACTIVITIES, ...SPORTS].map((n) => n.toLowerCase())
+  [...CARDIO_ACTIVITIES, ...SPORTS, ...RECOVERY_ACTIVITIES].map((n) =>
+    n.toLowerCase()
+  )
 );
 export function isCuratedActivity(name: string): boolean {
   return CURATED.has(name.trim().toLowerCase());
