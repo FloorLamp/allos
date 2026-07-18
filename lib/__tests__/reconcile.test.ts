@@ -1,7 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import {
   reconcileResults,
   reconcileAgainstSource,
+  isOcrReconcileEnabled,
 } from "@/lib/medical-extract/reconcile";
 
 // A stand-in for a report's extracted text layer — the "NAME  value  ref  unit"
@@ -115,5 +116,25 @@ describe("reconcileAgainstSource", () => {
         { name: "Sodium", value: "140", value_num: 140 },
       ])
     ).toBeNull();
+  });
+});
+
+describe("isOcrReconcileEnabled — OCR fallback is opt-in, off by default", () => {
+  afterEach(() => {
+    delete process.env.RECONCILE_OCR;
+  });
+  it("is off when the env var is unset or anything but 1/true", () => {
+    delete process.env.RECONCILE_OCR;
+    expect(isOcrReconcileEnabled()).toBe(false);
+    process.env.RECONCILE_OCR = "0";
+    expect(isOcrReconcileEnabled()).toBe(false);
+    process.env.RECONCILE_OCR = "yes";
+    expect(isOcrReconcileEnabled()).toBe(false);
+  });
+  it("is on for 1 or true", () => {
+    process.env.RECONCILE_OCR = "1";
+    expect(isOcrReconcileEnabled()).toBe(true);
+    process.env.RECONCILE_OCR = "true";
+    expect(isOcrReconcileEnabled()).toBe(true);
   });
 });

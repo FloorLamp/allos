@@ -71,12 +71,21 @@ export interface ReconcileInput {
   value_num: number | null;
 }
 
+// The OCR fallback for scanned PDFs is OPT-IN, off by default. It can add tens of
+// seconds to a scanned import, and its value is layout-dependent (a dense DEXA/table
+// scan can defeat plain OCR — #971); text-layer reconciliation, the fast high-value
+// case, always runs. Enable per deploy with RECONCILE_OCR=1 (or "true").
+export function isOcrReconcileEnabled(): boolean {
+  const v = process.env.RECONCILE_OCR;
+  return v === "1" || v === "true";
+}
+
 // Orchestrator: pull the source PDF's text and reconcile the extraction against it.
 // Prefers the deterministic text LAYER; when that is empty (a scanned image) it falls
-// back to OCR so an image-only report is still verifiable. Returns null when there is
-// nothing to check — a non-PDF source, or a PDF that yields no text either way. The
+// back to OCR ONLY if enabled (isOcrReconcileEnabled). Returns null when there is
+// nothing to check — a non-PDF source, or a PDF that yields no usable text. The
 // readers are dynamic-imported here (not at module top) so reconcileResults stays
-// dependency-free and unit-testable, and the heavy OCR stack only loads for a scan.
+// dependency-free and unit-testable, and the heavy OCR stack only loads when used.
 export async function reconcileAgainstSource(
   buffer: Buffer | Uint8Array,
   mime: string,
@@ -91,8 +100,9 @@ export async function reconcileAgainstSource(
     return null; // unreadable / encrypted PDF → can't reconcile, don't fail the import
   }
   if (!text.trim()) {
-    // No text layer (scanned image): OCR the pages. Heavy + best-effort, so it is
-    // loaded lazily and returns "" on failure rather than throwing.
+    // No text layer (scanned image). OCR only when opted in; otherwise there is
+    // nothing to check against. Heavy + best-effort, loaded lazily, "" on failure.
+    if (!isOcrReconcileEnabled()) return null;
     try {
       const { ocrPdfText } = await import("../pdf-ocr");
       text = await ocrPdfText(buffer);
