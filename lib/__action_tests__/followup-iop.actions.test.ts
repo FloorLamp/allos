@@ -99,11 +99,7 @@ describe("trackIopFollowUp action", () => {
   it("rejects a missing reading id and a bad interval", async () => {
     const { profile } = seedActor();
     expect((await trackIopFollowUp(fd({ interval_days: 91 }))).ok).toBe(false);
-    const recId = addIop(
-      profile.id,
-      "Intraocular Pressure",
-      today(profile.id)
-    );
+    const recId = addIop(profile.id, "Intraocular Pressure", today(profile.id));
     expect(
       (await trackIopFollowUp(fd({ record_id: recId, interval_days: 0 }))).ok
     ).toBe(false);

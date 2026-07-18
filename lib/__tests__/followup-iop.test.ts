@@ -21,7 +21,9 @@ import type { FollowUpItemLike } from "@/lib/followup";
 // glaucoma-workup title, and the "most-recent later IOP reading (either eye) resolves"
 // rule.
 
-function rec(over: Partial<IopFollowUpRecord> & { id: number }): IopFollowUpRecord {
+function rec(
+  over: Partial<IopFollowUpRecord> & { id: number }
+): IopFollowUpRecord {
   return {
     id: over.id,
     date: over.date ?? "2026-05-12",
@@ -64,9 +66,7 @@ describe("IOP adapter — identity", () => {
       )
     ).toBe("left eye");
     expect(
-      iopLateralityLabel(
-        rec({ id: 1, canonical_name: "Intraocular Pressure" })
-      )
+      iopLateralityLabel(rec({ id: 1, canonical_name: "Intraocular Pressure" }))
     ).toBe("");
   });
 });
@@ -176,9 +176,9 @@ describe("IOP adapter — resolution matching (bilateral)", () => {
 
 describe("IOP adapter — reading name", () => {
   it("prefers the canonical name, falls back to the raw name", () => {
-    expect(iopReadingName(rec({ id: 1, canonical_name: "Intraocular Pressure" }))).toBe(
-      "Intraocular Pressure"
-    );
+    expect(
+      iopReadingName(rec({ id: 1, canonical_name: "Intraocular Pressure" }))
+    ).toBe("Intraocular Pressure");
     expect(
       iopReadingName(rec({ id: 1, canonical_name: "  ", name: "IOP OD" }))
     ).toBe("IOP OD");
