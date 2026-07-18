@@ -3312,6 +3312,72 @@
       "optimal_high": null,
       "direction": "lower_better",
       "note": "The ratio of LDL to HDL cholesterol is a summary marker of cardiovascular risk; lower is better. It is a calculated value with no units."
+    },
+    {
+      "name": "Intraocular Pressure",
+      "category": "vitals",
+      "unit": "mmHg",
+      "ref_low": 10,
+      "ref_high": 21,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Fluid pressure inside the eye (tonometry), eye unspecified. Normal ~10–21 mmHg; above 21 is ocular hypertension, a glaucoma risk factor (not a diagnosis). AAO / Glaucoma Research Foundation."
+    },
+    {
+      "name": "Intraocular Pressure, Right Eye",
+      "category": "vitals",
+      "unit": "mmHg",
+      "ref_low": 10,
+      "ref_high": 21,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Intraocular pressure of the right eye (OD), by tonometry. Normal ~10–21 mmHg; above 21 is ocular hypertension. Kept as a separate series from the left eye. AAO / Glaucoma Research Foundation."
+    },
+    {
+      "name": "Intraocular Pressure, Left Eye",
+      "category": "vitals",
+      "unit": "mmHg",
+      "ref_low": 10,
+      "ref_high": 21,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Intraocular pressure of the left eye (OS), by tonometry. Normal ~10–21 mmHg; above 21 is ocular hypertension. Kept as a separate series from the right eye. AAO / Glaucoma Research Foundation."
+    },
+    {
+      "name": "Visual Acuity",
+      "category": "vitals",
+      "unit": null,
+      "ref_low": null,
+      "ref_high": null,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Clearness of vision, eye unspecified, as a Snellen fraction (e.g. 20/20; 6/6 metric). Qualitative — no numeric reference band, so it is trended as a dated timeline, never flagged."
+    },
+    {
+      "name": "Visual Acuity, Right Eye",
+      "category": "vitals",
+      "unit": null,
+      "ref_low": null,
+      "ref_high": null,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Visual acuity of the right eye (OD) as a Snellen fraction (e.g. 20/20). Qualitative — no numeric reference band; trended as a dated timeline, never flagged. Kept as a separate series from the left eye."
+    },
+    {
+      "name": "Visual Acuity, Left Eye",
+      "category": "vitals",
+      "unit": null,
+      "ref_low": null,
+      "ref_high": null,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "note": "Visual acuity of the left eye (OS) as a Snellen fraction (e.g. 20/20). Qualitative — no numeric reference band; trended as a dated timeline, never flagged. Kept as a separate series from the right eye."
     }
   ]
 }

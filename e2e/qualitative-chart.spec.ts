@@ -41,3 +41,26 @@ test("a purely qualitative series renders a dated timeline, not a blank chart (#
   await expect(timeline).toContainText("Reactive");
   await expect(timeline).toContainText("Negative");
 });
+
+// #698 §4 — a visual-acuity series ("20/20", "20/40") is Snellen-fraction shaped:
+// qualitative, NOT numeric. parseLeadingNumeric rejects the bare fraction, so it renders
+// as a dated timeline (not a flat numeric axis) and carries NO false "abnormal" flag
+// (it has no numeric reference band). Fixture: "Visual Acuity, Right Eye".
+test("visual acuity renders a dated timeline with no false abnormal flag (#698)", async ({
+  page,
+}) => {
+  await page.goto("/biomarkers/view?name=Visual%20Acuity%2C%20Right%20Eye");
+
+  await expect(
+    page.getByRole("heading", { name: "Visual Acuity, Right Eye" })
+  ).toBeVisible();
+
+  // A dated timeline, not a numeric chart or the empty fallback.
+  await expect(page.getByText("No numeric readings to chart")).toHaveCount(0);
+  const timeline = page.getByTestId("qualitative-timeline");
+  await expect(timeline).toBeVisible();
+  await expect(timeline).toContainText("20/20");
+  await expect(timeline).toContainText("20/40");
+  // No false abnormal flag on a qualitative acuity reading.
+  await expect(page.getByText("Abnormal")).toHaveCount(0);
+});

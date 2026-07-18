@@ -351,6 +351,50 @@ export function getLabFollowUps(profileId: number): LabFollowUpSummary[] {
     .all(profileId) as LabFollowUpSummary[];
 }
 
+// Every intraocular-pressure reading an IOP follow-up could link (#698 §6) — the pool
+// the builder loads to resolve a follow-up's SOURCE (by id) and its RESOLVING
+// candidates (a later repeat pressure, either eye). Filtered to IOP readings by name:
+// the canonical entries all contain "intraocular pressure", plus the bare "IOP"
+// abbreviation (never a loose "iop" substring, which would catch "biopsy"). Profile-
+// scoped. The adapter treats any of these as the same bilateral question.
+export function getIopFollowUpRecords(
+  profileId: number
+): import("../followup-iop").IopFollowUpRecord[] {
+  return db
+    .prepare(
+      `SELECT id, date, canonical_name, name, value, unit, value_num, flag
+         FROM medical_records
+        WHERE profile_id = ?
+          AND (LOWER(COALESCE(canonical_name, name)) LIKE '%intraocular pressure%'
+               OR LOWER(COALESCE(canonical_name, name)) IN
+                    ('iop', 'iop od', 'iop os', 'iop right eye', 'iop left eye',
+                     'iop, right eye', 'iop, left eye'))`
+    )
+    .all(profileId) as import("../followup-iop").IopFollowUpRecord[];
+}
+
+// The tracked IOP follow-ups (#698 §6), the labs mirror for the glaucoma-workup chain.
+// One row per source_kind='iop' care_plan_items follow-up joined to its source reading,
+// newest first, so the biomarker detail page can show the (single, bilateral) IOP
+// follow-up's state or offer to track one. Reuses LabFollowUpSummary (identical shape).
+// Profile-scoped (the JOIN carries medical_records' profile_id too).
+export function getIopFollowUps(profileId: number): LabFollowUpSummary[] {
+  return db
+    .prepare(
+      `SELECT cp.id AS carePlanItemId,
+              cp.source_medical_record_id AS sourceRecordId,
+              COALESCE(NULLIF(TRIM(mr.canonical_name), ''), mr.name) AS sourceName,
+              cp.planned_date AS plannedDate, cp.status, cp.resolution
+         FROM care_plan_items cp
+         JOIN medical_records mr
+           ON mr.id = cp.source_medical_record_id AND mr.profile_id = cp.profile_id
+        WHERE cp.profile_id = ? AND cp.source_kind = 'iop'
+          AND cp.source_medical_record_id IS NOT NULL
+        ORDER BY cp.id DESC`
+    )
+    .all(profileId) as LabFollowUpSummary[];
+}
+
 // Family history, grouped by relative (relation) then condition. Rows with an
 // unknown relation sort last. De-duplicated across documents via
 // FAMILY_HISTORY_REPRESENTATIVE_IDS (the subquery's profile_id bind comes after the
