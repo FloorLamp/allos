@@ -146,9 +146,9 @@ export async function runPostWorkoutFinish(
 
   const date = today(profileId);
   // The recap-led composition (#924): the session recap line LEADS, then the due
-  // post-workout supplement section. The recap line is gated by the per-profile
-  // workout-recap toggle; the dose section by dueness. Either alone still sends;
-  // both absent ⇒ no send (and the one-shot is not burned).
+  // post-workout supplement section. The recap line is gated by the workout-recap
+  // kind (below); the dose section by dueness. Either alone still sends; both
+  // absent ⇒ no send (and the one-shot is not burned).
   const doseMsg = buildPostWorkoutFinishReminder(profileId, date);
   const recap = getSessionRecap(profileId, presence.activityId);
   // Recap-line inclusion (#924) is gated by the `workout-recap` row of the #928
