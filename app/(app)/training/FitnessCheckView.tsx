@@ -65,7 +65,7 @@ export default function FitnessCheckView({
   return (
     <PageContainer width="reading" data-testid="fitness-check">
       <div className="space-y-4">
-        <header className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+        <header className="rounded-xl border border-black/10 p-4 dark:border-white/10">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="text-lg font-semibold">Fitness check</h2>
             <span
@@ -96,7 +96,7 @@ export default function FitnessCheckView({
         </header>
 
         {model.domains.some((d) => d.percentile != null) && (
-          <section className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+          <section className="rounded-xl border border-black/10 p-4 dark:border-white/10">
             <h3 className="mb-2 text-sm font-semibold">By domain</h3>
             <div className="space-y-2">
               {model.domains.map((d) => (
@@ -147,7 +147,7 @@ function RetestCadence({ cadenceDays }: { cadenceDays: number }) {
   const [saved, setSaved] = useState(false);
   return (
     <form
-      className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-700"
+      className="flex flex-wrap items-center gap-2 rounded-xl border border-black/10 p-3 text-sm dark:border-white/10"
       onSubmit={async (e) => {
         e.preventDefault();
         const fd = new FormData();
@@ -244,7 +244,7 @@ function TestCard({
 
   return (
     <div
-      className="rounded-xl border border-slate-200 p-4 dark:border-slate-700"
+      className="rounded-xl border border-black/10 p-4 dark:border-white/10"
       data-testid={`fitness-test-${def.key}`}
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -421,7 +421,7 @@ function NumField({
 function ResultBadge({ result }: { result: FitnessTestResult }) {
   if (!result.measured) {
     return (
-      <span className="text-xs text-slate-400 dark:text-slate-500">not measured</span>
+      <span className="text-xs text-slate-500 dark:text-slate-400">not measured</span>
     );
   }
   return (

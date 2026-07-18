@@ -55,7 +55,7 @@ export default function FitnessTestTimer({
   return (
     <div
       data-testid={testId ?? "fitness-timer"}
-      className="mt-2 flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800/50"
+      className="mt-2 flex items-center gap-3 rounded-lg border border-black/10 bg-slate-100 p-2 dark:border-white/10 dark:bg-slate-800/50"
     >
       <span
         aria-live="polite"
