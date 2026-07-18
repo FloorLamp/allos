@@ -52,6 +52,14 @@ describe("recoveryGearOptions", () => {
     expect(opts).toEqual([sauna, plunge, racket, mystery, bar]);
   });
 
+  it("drops a retired recovery row from the fresh list (issue #662)", () => {
+    // Even if a caller hands in a retired row (e.g. includeRetired:true), the
+    // filter must not offer it as a fresh pick — like every training surface.
+    const opts = recoveryGearOptions([sauna, retiredSauna, plunge]);
+    expect(opts).toEqual([sauna, plunge]);
+    expect(opts.map((e) => e.id)).not.toContain(retiredSauna.id);
+  });
+
   it("appends a linked retired recovery item (excluded from the fresh list)", () => {
     // getEquipment drops retired rows, so a linked-but-retired sauna arrives only
     // via `selected` (resolved by getEquipmentById, which ignores retired).
