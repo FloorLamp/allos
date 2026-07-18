@@ -26,6 +26,7 @@ import {
   isBuiltInIllnessSituation,
 } from "../situations";
 import { syncOpenIllnessEpisode } from "../illness-episode-store";
+import { DEFAULT_FITNESS_RETEST_DAYS } from "../fitness-retest";
 import { zipToHome } from "../home-location";
 import { getHomeLocation, setHomeLocation } from "./location";
 import {
@@ -351,6 +352,30 @@ export function setZone2WeeklyTargetMin(profileId: number, min: number): void {
     profileId,
     "zone2_weekly_target_min",
     String(Math.round(min))
+  );
+}
+
+// ---- Fitness-check retest cadence (issue #834) — profile scope, no migration ----
+// How many days between guided Fitness checks before the coaching-tier "check due" nudge
+// surfaces (~quarterly default). A generic profile_settings KV — no schema change.
+export function getFitnessRetestCadenceDays(profileId: number): number {
+  const raw = getProfileSetting(profileId, "fitness_retest_cadence_days");
+  if (raw == null || raw === "") return DEFAULT_FITNESS_RETEST_DAYS;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0
+    ? Math.round(n)
+    : DEFAULT_FITNESS_RETEST_DAYS;
+}
+
+export function setFitnessRetestCadenceDays(
+  profileId: number,
+  days: number
+): void {
+  if (!Number.isFinite(days) || days <= 0) return;
+  setProfileSetting(
+    profileId,
+    "fitness_retest_cadence_days",
+    String(Math.round(days))
   );
 }
 

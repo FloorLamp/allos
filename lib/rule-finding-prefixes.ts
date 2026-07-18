@@ -36,6 +36,7 @@ import { ILLNESS_CARE_PREFIX } from "./illness-care";
 import { TEMP_RED_FLAG_PREFIX } from "./temp-red-flag";
 import { CONDITION_REVIEW_PREFIX } from "./condition-suggestions";
 import { FOLLOWUP_PREFIX } from "./followup";
+import { FITNESS_CHECK_PREFIX } from "./fitness-retest";
 import type { ReasonCode } from "./reasons";
 
 // The two reach tiers (#449). CARE is push: Upcoming + the non-hideable Needs-attention
@@ -126,6 +127,15 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: ORAL_HEALTH_PREFIX,
     tier: "coaching",
     builder: "buildOralHealthFindings",
+    reasons: [],
+  },
+  {
+    // Fitness-check retest cadence (#834): a calm "check due" nudge once a prior check
+    // has aged past the per-profile cadence. Coaching tier — never a push (the issue's
+    // "Upcoming" wording is superseded by #449's never-push requirement).
+    prefix: FITNESS_CHECK_PREFIX,
+    tier: "coaching",
+    builder: "buildFitnessCheckFindings",
     reasons: [],
   },
   // ---- Care tier (push; NOT in collectCoachingFindings) ----------------------

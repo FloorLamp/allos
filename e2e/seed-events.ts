@@ -20,6 +20,7 @@ import {
   setWeekMode,
 } from "../lib/settings";
 import { setMinTrainingAge } from "../lib/age-gate";
+import { saveFitnessEntry } from "../lib/fitness-assessment";
 import { reconcileFlags } from "../lib/queries";
 import { hashPasswordSync } from "../lib/password";
 import { initialOnboardingState } from "../lib/onboarding";
@@ -30,6 +31,8 @@ import {
   E2E_LOGIN_EMPTY_TRAINING,
   E2E_LOGIN_HC,
   E2E_LOGIN_NOGEAR,
+  E2E_LOGIN_FITNESS,
+  E2E_LOGIN_FITNESS_SENIOR,
   E2E_LOGIN_ROUTINE,
   E2E_LOGIN_ROUTINE_BUILDER,
   E2E_LOGIN_ROUTINE_DELOAD,
@@ -44,6 +47,8 @@ import {
   EMPTY_TRAINING_PROFILE,
   HEALTH_CONNECT_PROFILE,
   NO_GEAR_PROFILE,
+  FITNESS_PROFILE,
+  FITNESS_SENIOR_PROFILE,
   ROUTINE_BUILDER_PROFILE,
   ROUTINE_DELOAD_PROFILE,
   FORM_DELOAD_PROFILE,
@@ -1763,6 +1768,36 @@ seedMemberLogin(E2E_LOGIN_DUP, dupReviewId);
 const noGearId = fixtureProfileId(NO_GEAR_PROFILE);
 db.prepare(`DELETE FROM equipment WHERE profile_id = ?`).run(noGearId);
 seedMemberLogin(E2E_LOGIN_NOGEAR, noGearId);
+
+// Fitness check (#834) — a dedicated ADULT profile carrying sex + birthdate (so norms
+// resolve) and a PRIOR check ~100 days ago, so the spec can record a test today and see a
+// check-over-check delta. A dedicated SENIOR profile (age 72) renders the older-adult
+// battery variant. Idempotent: clear their fitness sessions first.
+const fitnessId = fixtureProfileId(FITNESS_PROFILE);
+db.prepare(
+  `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'sex', 'male')`
+).run(fitnessId);
+db.prepare(
+  `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', '1986-05-01')`
+).run(fitnessId);
+db.prepare(`DELETE FROM fitness_assessments WHERE profile_id = ?`).run(
+  fitnessId
+);
+saveFitnessEntry(fitnessId, {
+  date: shiftDateStr(today(fitnessId), -100),
+  testKey: "grip",
+  value: 44,
+});
+seedMemberLogin(E2E_LOGIN_FITNESS, fitnessId);
+
+const fitnessSeniorId = fixtureProfileId(FITNESS_SENIOR_PROFILE);
+db.prepare(
+  `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'sex', 'female')`
+).run(fitnessSeniorId);
+db.prepare(
+  `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', '1954-03-01')`
+).run(fitnessSeniorId);
+seedMemberLogin(E2E_LOGIN_FITNESS_SENIOR, fitnessSeniorId);
 
 // A dedicated profile with a LIVE, in-progress strength session (issue #921): an
 // activity today with a start_time (~40 min ago), NO end_time, and a fresh

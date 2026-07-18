@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 055 (issue #950): the food-log EVENT ledger — a per-TAP append-only
+// Migration 056 (issue #950): the food-log EVENT ledger — a per-TAP append-only
 // record beside the food_log daily counter, so button ranking can be slot-aware
 // ("what does THIS profile eat at THIS time of day"). The medication evolution
 // replayed (#797: a daily counter → a per-administration ledger once timing
@@ -48,7 +48,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 55,
-  name: "055-food-log-events",
+  id: 56,
+  name: "056-food-log-events",
   up,
 };

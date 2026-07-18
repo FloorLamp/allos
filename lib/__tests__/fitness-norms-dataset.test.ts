@@ -69,12 +69,17 @@ describe("fitness-norms.json dataset", () => {
     ).toEqual([]);
   });
 
-  it("declares the four longevity markers with canonical-name keys", () => {
+  it("declares the battery markers with canonical-name keys", () => {
     expect(fitnessJson.entries.map((e) => e.name).sort()).toEqual(
       [
+        "30-Second Arm Curl",
         "30-Second Chair Stand",
+        "2-Minute Step",
         "Grip Strength",
+        "Max Push-Ups",
         "Single-Leg Balance",
+        "Sit-and-Reach",
+        "Timed Up-and-Go",
         "VO2 Max",
       ].sort()
     );
@@ -86,10 +91,10 @@ describe("fitness-norms.json dataset", () => {
     );
   });
 
-  it("gives every marker/sex an ascending percentile grid and monotone value bands", () => {
+  it("gives every marker/sex an ascending percentile grid and direction-monotone value bands", () => {
     for (const [name, m] of Object.entries(MARKERS)) {
       expect(m.unit, name).toBeTruthy();
-      expect(m.direction).toBe("higher_better");
+      expect(["higher_better", "lower_better"], name).toContain(m.direction);
       for (const sex of ["male", "female"] as const) {
         const sn = m.sexes[sex];
         // percentiles strictly ascending
@@ -100,18 +105,27 @@ describe("fitness-norms.json dataset", () => {
         }
         // p50 present so fitness age can be computed
         expect(sn.percentiles, `${name}/${sex} needs p50`).toContain(50);
-        // bands age-ascending; each value vector matches the percentile length and
-        // is non-decreasing (higher percentile ⇒ higher-or-equal value)
+        // bands age-ascending; each value vector matches the percentile length and is
+        // MONOTONE IN THE MARKER'S DIRECTION: higher_better ⇒ values non-decreasing
+        // with percentile, lower_better ⇒ non-increasing (the fitter high-percentile
+        // end holds the LOWER value, e.g. a shorter timed up-and-go).
         for (let b = 0; b < sn.bands.length; b++) {
           const band = sn.bands[b];
           expect(band.values.length, `${name}/${sex} band ${band.age}`).toBe(
             sn.percentiles.length
           );
           for (let i = 1; i < band.values.length; i++) {
-            expect(
-              band.values[i],
-              `${name}/${sex} band ${band.age} values`
-            ).toBeGreaterThanOrEqual(band.values[i - 1]);
+            if (m.direction === "lower_better") {
+              expect(
+                band.values[i],
+                `${name}/${sex} band ${band.age} values (lower_better ⇒ non-increasing)`
+              ).toBeLessThanOrEqual(band.values[i - 1]);
+            } else {
+              expect(
+                band.values[i],
+                `${name}/${sex} band ${band.age} values`
+              ).toBeGreaterThanOrEqual(band.values[i - 1]);
+            }
           }
           if (b > 0) {
             expect(band.age, `${name}/${sex} band order`).toBeGreaterThan(
