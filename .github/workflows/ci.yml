@@ -35,7 +35,7 @@ jobs:
       # node_modules under a changed lockfile must never be reused.
       - name: Cache node_modules
         id: modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: modules-${{ runner.os }}-${{ hashFiles('.nvmrc') }}-${{ hashFiles('package-lock.json') }}
@@ -139,7 +139,7 @@ jobs:
       - name: Cache node_modules
         id: modules
         if: steps.changes.outputs.code == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: modules-${{ runner.os }}-${{ hashFiles('.nvmrc') }}-${{ hashFiles('package-lock.json') }}
@@ -154,7 +154,7 @@ jobs:
       - name: Cache Playwright Chromium
         id: playwright
         if: steps.changes.outputs.code == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -173,7 +173,7 @@ jobs:
       # Saves ~1-2 min of the Build step on cache hits.
       - name: Restore Next.js build cache
         if: steps.changes.outputs.code == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .next/cache
           key: nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('app/**', 'components/**', 'lib/**', 'public/**', 'next.config.*') }}
