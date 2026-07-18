@@ -5,6 +5,10 @@ import { revalidatePath } from "next/cache";
 import { db, today, writeTx } from "@/lib/db";
 import { canonicalFoodGroup, isValidFoodGroup } from "@/lib/food-groups";
 import { logFoodServingCore, undoFoodServingCore } from "@/lib/food-log-write";
+import {
+  addProteinGramsCore,
+  undoProteinGramsCore,
+} from "@/lib/protein-log-write";
 import { formError, formOk, type FormResult } from "@/lib/types";
 
 // Log/undo answer with the group's AUTHORITATIVE post-write daily total (issue #748
@@ -72,6 +76,63 @@ export async function undoFoodServing(
   revalidatePath("/trends");
   revalidatePath("/");
   return { ok: true, servings: outcome.servings };
+}
+
+// ---- Protein-grams quick-add (issue #824) ----
+
+// Add/undo answer with the day's AUTHORITATIVE post-write manual-protein total so the
+// quick-add reconciles its optimistic figure with the server (the food-log #748 item 2
+// pattern) — a failed write rolls the number back rather than leaving a phantom entry.
+export type ProteinLogResult =
+  { ok: true; grams: number } | { ok: false; error: string };
+
+// Parse the grams + optional date. Returns null on a missing/non-positive amount so the
+// caller can formError. The core enforces the per-add cap; this just gates the shape.
+function parseProteinFields(
+  formData: FormData,
+  profileId: number
+): { grams: number; date: string } | null {
+  const grams = Number(formData.get("grams"));
+  if (!Number.isFinite(grams) || grams <= 0) return null;
+  const rawDate = String(formData.get("date") ?? "").trim();
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : today(profileId);
+  return { grams, date };
+}
+
+// Add N grams of protein on a day (default today). Upserts the day's protein_log row,
+// summing the grams, and records the amount as the last-used preset. The write is the
+// auth-blind lib core (addProteinGramsCore); this action owns the auth gate + validation
+// + revalidation and returns the day's new total for optimistic reconciliation.
+export async function addProteinGrams(
+  formData: FormData
+): Promise<ProteinLogResult> {
+  const { profile } = await requireWriteAccess();
+  const fields = parseProteinFields(formData, profile.id);
+  if (!fields) return formError("Enter a protein amount in grams.");
+  const outcome = addProteinGramsCore(profile.id, fields.date, fields.grams);
+  if (outcome.kind === "invalid")
+    return formError("Enter a protein amount between 1 and 300 grams.");
+  revalidatePath("/nutrition");
+  revalidatePath("/");
+  return { ok: true, grams: outcome.grams };
+}
+
+// Undo N grams on a day: decrement the day's row (clamped at zero, dropped at zero). A
+// no-op if nothing is logged. The UPDATE+DELETE sequence lives in the auth-blind core
+// (undoProteinGramsCore) wrapped in one IMMEDIATE transaction (#468); this action owns
+// the auth gate + validation + revalidation and returns the day's remaining total.
+export async function undoProteinGrams(
+  formData: FormData
+): Promise<ProteinLogResult> {
+  const { profile } = await requireWriteAccess();
+  const fields = parseProteinFields(formData, profile.id);
+  if (!fields) return formError("Enter a protein amount in grams.");
+  const outcome = undoProteinGramsCore(profile.id, fields.date, fields.grams);
+  if (outcome.kind === "invalid")
+    return formError("Enter a protein amount in grams.");
+  revalidatePath("/nutrition");
+  revalidatePath("/");
+  return { ok: true, grams: outcome.grams };
 }
 
 // ---- Food-habit targets (issue #580) ----

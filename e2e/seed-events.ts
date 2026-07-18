@@ -74,6 +74,8 @@ import {
   PRESENCE_PROFILE,
   E2E_LOGIN_NOTIF,
   NOTIF_PROFILE,
+  E2E_LOGIN_PROTEIN,
+  PROTEIN_QUICKADD_PROFILE,
 } from "./fixture-logins";
 import { adoptTemplate, activateRoutine } from "../lib/routines";
 
@@ -2378,20 +2380,34 @@ console.log(
 // A hand-edited imported body-metric row (the user-edit lock, #133) on the default
 // profile so the Trends → Body edit-lock badge + "Resume sync updates" affordance
 // (#659) has a row to render. Synthetic value; source is an integration so the row
-// is genuinely sync-owned (only those carry the lock). Idempotent by (date, source).
-// Date 2026-06-05 is deliberately a GAP in the weekly manual-weight cadence (rows
-// land on 06-02 and 06-09): a Withings weight sharing a day with a manual weight
-// would register as a same-day body-metric conflict (getBodyMetricConflicts) and
-// silently inflate the Data → Review badge, which import-dedup.spec asserts exactly.
+// is genuinely sync-owned (only those carry the lock).
+// The date MUST be a day with no other body-metric row: a Withings weight sharing a
+// day with a manual weight registers as a same-day body-metric conflict
+// (getBodyMetricConflicts) and silently inflates the Data → Review badge, which
+// import-dedup.spec asserts exactly. The old fixed date ('2026-06-05', chosen as a
+// gap when the cadence landed on 06-02/06-09) was a TIME BOMB: scripts/seed.ts's
+// weekly manual weigh-ins are TODAY-relative, so the cadence drifts one day per day
+// and periodically lands ON any fixed date (it hit 06-05 on 2026-07-18 and broke CI
+// suite-wide). Compute a guaranteed-free day instead, anchored ~6 weeks back like
+// the original. Idempotent: the fixture row is re-keyed by its synthetic signature
+// (source + exact weight), so prior seeds' copies are removed wherever they landed.
 db.prepare(
-  `DELETE FROM body_metrics WHERE profile_id = ? AND date = '2026-06-05' AND source = 'withings'`
+  `DELETE FROM body_metrics WHERE profile_id = ? AND source = 'withings' AND weight_kg = 77.7`
 ).run(PROFILE_ID);
+let editLockDate = shiftDateStr(today(PROFILE_ID), -43);
+while (
+  db
+    .prepare(`SELECT 1 FROM body_metrics WHERE profile_id = ? AND date = ?`)
+    .get(PROFILE_ID, editLockDate)
+) {
+  editLockDate = shiftDateStr(editLockDate, 1);
+}
 db.prepare(
   `INSERT INTO body_metrics (profile_id, date, weight_kg, source, edited)
-   VALUES (?, '2026-06-05', 77.7, 'withings', 1)`
-).run(PROFILE_ID);
+   VALUES (?, ?, 77.7, 'withings', 1)`
+).run(PROFILE_ID, editLockDate);
 console.log(
-  `e2e: seeded an edit-locked (hand-edited) Withings body-metric row on profile ${PROFILE_ID} for the edit-lock badge (#659)`
+  `e2e: seeded an edit-locked (hand-edited) Withings body-metric row on ${editLockDate} (computed cadence-free day) for the edit-lock badge (#659)`
 );
 
 // A permanently-OPEN weekly frequency target for the pace-tone spec (#780/#782): a
@@ -2665,4 +2681,35 @@ const notifProfileId = fixtureProfileId(NOTIF_PROFILE);
 seedMemberLogin(E2E_LOGIN_NOTIF, notifProfileId, "write");
 console.log(
   `e2e: seeded reason-model fixture — profile ${reasonModelId} (#656)`
+);
+
+// PROTEIN_QUICKADD_PROFILE (#824): a dedicated adult profile for the protein-grams
+// quick-add spec. Seeds a bodyweight (so the adequacy target scales) + a couple of
+// protein-bearing food-group servings today (so the card renders over the ESTIMATED
+// basis), with NO tracked protein_g and NO protein_log rows — the spec OWNS the grams
+// writes. Idempotent: hard-clear any protein_log rows so a reused server always starts
+// the day from the estimated-only basis the spec's transition asserts.
+const proteinProfileId = fixtureProfileId(PROTEIN_QUICKADD_PROFILE);
+const proteinAnchor = today(proteinProfileId);
+db.prepare(`DELETE FROM protein_log WHERE profile_id = ?`).run(
+  proteinProfileId
+);
+db.prepare(
+  `DELETE FROM profile_settings WHERE profile_id = ? AND key = 'protein_quickadd_last'`
+).run(proteinProfileId);
+db.prepare(
+  `INSERT OR IGNORE INTO body_metrics (profile_id, date, weight_kg) VALUES (?, ?, 80)`
+).run(proteinProfileId, proteinAnchor);
+for (const [slug, servings] of [
+  ["poultry", 1],
+  ["eggs", 1],
+] as const) {
+  db.prepare(
+    `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
+       ON CONFLICT(profile_id, date, group_key) DO UPDATE SET servings = excluded.servings`
+  ).run(proteinProfileId, proteinAnchor, slug, servings);
+}
+seedMemberLogin(E2E_LOGIN_PROTEIN, proteinProfileId, "write");
+console.log(
+  `e2e: seeded protein quick-add fixture — profile ${proteinProfileId} (${PROTEIN_QUICKADD_PROFILE}) (#824)`
 );

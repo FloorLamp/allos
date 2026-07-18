@@ -57,8 +57,8 @@ export default function ProteinAdequacyCard({
         </div>
       </dl>
       <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-        {intake.basis === "estimated"
-          ? "Estimated from your logged food-group servings — a floor, since untracked foods add more. "
+        {intake.basis !== "tracked"
+          ? "A floor from your logged food-group servings plus any protein you logged directly — untracked foods add more. "
           : ""}
         Informational, not medical or dietary advice.
       </p>

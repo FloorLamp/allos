@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 053 (issue #838): the injury layer — user-declared region constraints on
+// Migration 054 (issue #838): the injury layer — user-declared region constraints on
 // training. An `injuries` row is the USER'S explicit "this region is off the table"
 // instruction (the equipment-availability class of #666's context taxonomy, NOT the
 // medical-judgment class), so the recommendation engine may exclude its regions — always
@@ -40,7 +40,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 53,
-  name: "053-injuries",
+  id: 54,
+  name: "054-injuries",
   up,
 };
