@@ -20,6 +20,7 @@ import {
   setWeekMode,
 } from "../lib/settings";
 import { setMinTrainingAge } from "../lib/age-gate";
+import { saveFitnessEntry } from "../lib/fitness-assessment";
 import { reconcileFlags } from "../lib/queries";
 import { hashPasswordSync } from "../lib/password";
 import { initialOnboardingState } from "../lib/onboarding";
@@ -30,6 +31,8 @@ import {
   E2E_LOGIN_EMPTY_TRAINING,
   E2E_LOGIN_HC,
   E2E_LOGIN_NOGEAR,
+  E2E_LOGIN_FITNESS,
+  E2E_LOGIN_FITNESS_SENIOR,
   E2E_LOGIN_ROUTINE,
   E2E_LOGIN_ROUTINE_BUILDER,
   E2E_LOGIN_ROUTINE_DELOAD,
@@ -44,6 +47,8 @@ import {
   EMPTY_TRAINING_PROFILE,
   HEALTH_CONNECT_PROFILE,
   NO_GEAR_PROFILE,
+  FITNESS_PROFILE,
+  FITNESS_SENIOR_PROFILE,
   ROUTINE_BUILDER_PROFILE,
   ROUTINE_DELOAD_PROFILE,
   FORM_DELOAD_PROFILE,
@@ -78,6 +83,8 @@ import {
   PROTEIN_QUICKADD_PROFILE,
   E2E_LOGIN_RECAP,
   RECAP_PROFILE,
+  E2E_LOGIN_FOODSLOT,
+  FOOD_SLOT_PROFILE,
   E2E_LOGIN_ENDURANCE,
   ENDURANCE_PROFILE,
 } from "./fixture-logins";
@@ -1764,6 +1771,36 @@ const noGearId = fixtureProfileId(NO_GEAR_PROFILE);
 db.prepare(`DELETE FROM equipment WHERE profile_id = ?`).run(noGearId);
 seedMemberLogin(E2E_LOGIN_NOGEAR, noGearId);
 
+// Fitness check (#834) — a dedicated ADULT profile carrying sex + birthdate (so norms
+// resolve) and a PRIOR check ~100 days ago, so the spec can record a test today and see a
+// check-over-check delta. A dedicated SENIOR profile (age 72) renders the older-adult
+// battery variant. Idempotent: clear their fitness sessions first.
+const fitnessId = fixtureProfileId(FITNESS_PROFILE);
+db.prepare(
+  `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'sex', 'male')`
+).run(fitnessId);
+db.prepare(
+  `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', '1986-05-01')`
+).run(fitnessId);
+db.prepare(`DELETE FROM fitness_assessments WHERE profile_id = ?`).run(
+  fitnessId
+);
+saveFitnessEntry(fitnessId, {
+  date: shiftDateStr(today(fitnessId), -100),
+  testKey: "grip",
+  value: 44,
+});
+seedMemberLogin(E2E_LOGIN_FITNESS, fitnessId);
+
+const fitnessSeniorId = fixtureProfileId(FITNESS_SENIOR_PROFILE);
+db.prepare(
+  `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'sex', 'female')`
+).run(fitnessSeniorId);
+db.prepare(
+  `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', '1954-03-01')`
+).run(fitnessSeniorId);
+seedMemberLogin(E2E_LOGIN_FITNESS_SENIOR, fitnessSeniorId);
+
 // A dedicated profile with a LIVE, in-progress strength session (issue #921): an
 // activity today with a start_time (~40 min ago), NO end_time, and a fresh
 // updated_at (auto-save timestamp) — so getWorkoutPresence reads `active`. Drives
@@ -2769,6 +2806,62 @@ console.log(
   `e2e: seeded protein quick-add fixture — profile ${proteinProfileId} (${PROTEIN_QUICKADD_PROFILE}) (#824)`
 );
 
+// ── Food-log slot-aware ranking + N-week habit trend fixture (#950 / #954) ────
+// A dedicated adult profile (no birthdate) whose per-tap food_log_events ledger is
+// slot-SKEWED: exactly one dominant encourage group per window (whole_grains at
+// breakfast, fatty_fish at lunch, berries in the evening). Default timezone is UTC and
+// the default slot boundaries are 11:00/15:00, so the 08:00Z / 12:00Z / 18:00Z taps
+// land in Morning / Midday / Evening — whatever slot the e2e wall clock is in, the
+// one-tap bar's lead matches the slot chip. Idempotent: hard-clear the profile's
+// food_log + food_log_events + food_group targets so a reused server always starts from
+// this exact skew.
+const foodSlotId = fixtureProfileId(FOOD_SLOT_PROFILE);
+const foodSlotAnchor = today(foodSlotId);
+db.prepare(`DELETE FROM food_log WHERE profile_id = ?`).run(foodSlotId);
+db.prepare(`DELETE FROM food_log_events WHERE profile_id = ?`).run(foodSlotId);
+db.prepare(
+  `DELETE FROM frequency_targets WHERE profile_id = ? AND scope_kind = 'food_group'`
+).run(foodSlotId);
+{
+  const fLog = db.prepare(
+    `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
+       ON CONFLICT(profile_id, date, group_key) DO UPDATE SET servings = servings + excluded.servings`
+  );
+  const fEvent = db.prepare(
+    `INSERT INTO food_log_events (profile_id, group_key, date, logged_at) VALUES (?, ?, ?, ?)`
+  );
+  const log = (date: string, group: string, n: number, hourZ: string) => {
+    fLog.run(foodSlotId, date, group, n);
+    for (let i = 0; i < n; i++)
+      fEvent.run(foodSlotId, group, date, `${date}T${hourZ}Z`);
+  };
+  // 8 weeks so the habit trend has real history. One dominant group per slot each day,
+  // plus fatty_fish twice a week at lunch (its 2×/week habit target).
+  for (let d = 55; d >= 0; d--) {
+    const date = shiftDateStr(foodSlotAnchor, -d);
+    log(date, "whole_grains", 1, "08:00:00"); // morning dominant
+    log(date, "berries", 1, "18:00:00"); // evening dominant
+    if (d % 7 === 1 || d % 7 === 4) log(date, "fatty_fish", 1, "12:00:00"); // midday dominant (2×/week)
+  }
+  // A backdated "fatty fish 2×/week" habit → a real multi-week consistency trend (#954).
+  // Created 63 days ago (before the whole 8-week / 56-day trend window) so every cell is
+  // applicable — no not-applicable boundary cell to make the strip look like a cold start.
+  db.prepare(
+    `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week, created_at)
+       VALUES (?, 'food_group', 'fatty_fish', 2, ?)`
+  ).run(foodSlotId, `${shiftDateStr(foodSlotAnchor, -63)} 09:00:00`);
+  // A freshly-created "leafy greens 3×/week" habit → an HONEST cold-start trend (weeks
+  // before it existed render not-applicable, not misses). created_at defaults to now.
+  db.prepare(
+    `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week)
+       VALUES (?, 'food_group', 'leafy_greens', 3)`
+  ).run(foodSlotId);
+}
+seedMemberLogin(E2E_LOGIN_FOODSLOT, foodSlotId, "write");
+console.log(
+  `e2e: seeded food-slot ranking + habit-trend fixture — profile ${foodSlotId} (${FOOD_SLOT_PROFILE}) (#950/#954)`
+);
+
 // ── Endurance event plans (#839) ──────────────────────────────────────────────
 // ENDURANCE_PROFILE: a dedicated adult profile with a few weeks of logged runs so a
 // plan created in the spec has a real weekly-volume base + this-week actuals. The spec
@@ -2778,9 +2871,9 @@ const enduranceProfileId = fixtureProfileId(ENDURANCE_PROFILE);
 db.prepare(`DELETE FROM endurance_plans WHERE profile_id = ?`).run(
   enduranceProfileId
 );
-db.prepare(
-  `DELETE FROM activities WHERE profile_id = ? AND type = 'cardio'`
-).run(enduranceProfileId);
+db.prepare(`DELETE FROM activities WHERE profile_id = ? AND type = 'cardio'`).run(
+  enduranceProfileId
+);
 for (const [ago, km, wt] of [
   [20, 8, null],
   [18, 6, null],

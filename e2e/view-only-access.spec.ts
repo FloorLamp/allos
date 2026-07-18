@@ -1,4 +1,5 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
+import { settledClick } from "./helpers";
 
 // View-only access (issue #33). A profile grant now carries an access LEVEL:
 // 'write' (read + edit — the historical behavior) or 'read' (view-only). These
@@ -25,10 +26,16 @@ async function createMember(
   await adminPage.goto("/settings/family");
   await adminPage.getByPlaceholder("Username").fill(username);
   await adminPage.getByPlaceholder("Password").fill(password);
-  await adminPage.getByRole("button", { name: "Create login" }).click();
+  // settledClick, not a raw click: a click in the hydration window is silently
+  // swallowed (#830 class — this create raced exactly so under full-suite load),
+  // and the grant row only exists after the create action + revalidation land.
+  await settledClick(
+    adminPage,
+    adminPage.getByRole("button", { name: "Create login" })
+  );
 
   const grantRow = adminPage.getByTestId(`grant-row-${username}`);
-  await expect(grantRow).toBeVisible();
+  await expect(grantRow).toBeVisible({ timeout: 15_000 });
   // Grant the seeded profile (id 1, which carries the full sample record).
   await grantRow.locator('input[type="checkbox"]').first().check();
   // Set the access LEVEL via the per-cell select (write is the default).

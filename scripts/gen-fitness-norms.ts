@@ -74,7 +74,7 @@ export interface SexNorms {
   percentiles: number[];
   bands: NormBand[];
 }
-export type Direction = "higher_better";
+export type Direction = "higher_better" | "lower_better";
 export interface MarkerNorms {
   unit: string;
   direction: Direction;
@@ -171,6 +171,120 @@ const BALANCE_BANDS: NormBand[] = [
   { age: 85, values: [3, 6, 12] },
 ];
 
+// ── Max Push-Ups (reps) — ACSM / CSEP age/sex push-up norms (issue #834) ────────
+// Percentiles 10/30/50/70/90 at decade midpoints 25..65 (covers 20-69, where the
+// push-up norms are published). Full push-ups. Values approximated from the ACSM
+// Guidelines / CSEP (Canadian Physical Activity, Fitness & Lifestyle Approach) push-up
+// category tables, read at band midpoints.
+const PUSHUP_PCTS = [10, 30, 50, 70, 90];
+const PUSHUP_MALE: NormBand[] = [
+  { age: 25, values: [13, 18, 22, 29, 36] },
+  { age: 35, values: [9, 14, 17, 24, 30] },
+  { age: 45, values: [8, 11, 13, 20, 25] },
+  { age: 55, values: [5, 8, 10, 15, 21] },
+  { age: 65, values: [3, 6, 8, 12, 18] },
+];
+const PUSHUP_FEMALE: NormBand[] = [
+  { age: 25, values: [9, 13, 15, 22, 30] },
+  { age: 35, values: [7, 11, 13, 20, 27] },
+  { age: 45, values: [4, 8, 11, 15, 24] },
+  { age: 55, values: [1, 5, 7, 12, 21] },
+  { age: 65, values: [1, 3, 5, 12, 17] },
+];
+
+// ── Sit-and-Reach (cm) — ACSM / YMCA flexibility norms (issue #834) ──────────────
+// Percentiles 10/30/50/70/90 at decade midpoints 25..65. Trunk forward-flexion reach in
+// centimeters (YMCA box, zero at the footline). Higher is more flexible. Approximated
+// from the ACSM / YMCA sit-and-reach category tables (converted to cm).
+const SITREACH_PCTS = [10, 30, 50, 70, 90];
+const SITREACH_MALE: NormBand[] = [
+  { age: 25, values: [25, 31, 34, 38, 43] },
+  { age: 35, values: [23, 29, 33, 37, 41] },
+  { age: 45, values: [20, 27, 30, 35, 39] },
+  { age: 55, values: [18, 25, 28, 33, 38] },
+  { age: 65, values: [16, 23, 25, 31, 36] },
+];
+const SITREACH_FEMALE: NormBand[] = [
+  { age: 25, values: [30, 35, 39, 42, 46] },
+  { age: 35, values: [28, 34, 37, 41, 45] },
+  { age: 45, values: [26, 32, 36, 40, 43] },
+  { age: 55, values: [25, 31, 35, 39, 42] },
+  { age: 65, values: [23, 29, 33, 38, 41] },
+];
+
+// ── 30-Second Arm Curl (reps) — Rikli & Jones SFT, older adults 60+ (issue #834) ─
+// The senior-battery upper-body strength item. Percentiles 25/50/75 (the published
+// normal-range bounds + midpoint) at 5-year band midpoints 62..92. 5 lb (women) / 8 lb
+// (men) dumbbell biceps curls in 30 s.
+const ARMCURL_PCTS = [25, 50, 75];
+const ARMCURL_MALE: NormBand[] = [
+  { age: 62, values: [16, 19, 22] },
+  { age: 67, values: [15, 18, 21] },
+  { age: 72, values: [14, 17.5, 21] },
+  { age: 77, values: [13, 16, 19] },
+  { age: 82, values: [13, 16, 19] },
+  { age: 87, values: [11, 14, 17] },
+  { age: 92, values: [10, 12, 14] },
+];
+const ARMCURL_FEMALE: NormBand[] = [
+  { age: 62, values: [13, 16, 19] },
+  { age: 67, values: [12, 15, 18] },
+  { age: 72, values: [11, 14.5, 17] },
+  { age: 77, values: [11, 14, 17] },
+  { age: 82, values: [10, 13, 16] },
+  { age: 87, values: [9, 12, 14] },
+  { age: 92, values: [8, 10.5, 13] },
+];
+
+// ── 2-Minute Step (reps) — Rikli & Jones SFT, older adults 60+ (issue #834) ──────
+// The senior-battery aerobic-endurance item (endurance without a run). Percentiles
+// 25/50/75 at 5-year midpoints 62..92. Full steps (right-knee count) in 2 minutes.
+const STEP2MIN_PCTS = [25, 50, 75];
+const STEP2MIN_MALE: NormBand[] = [
+  { age: 62, values: [87, 101, 115] },
+  { age: 67, values: [85, 99, 113] },
+  { age: 72, values: [80, 96, 112] },
+  { age: 77, values: [73, 90, 107] },
+  { age: 82, values: [68, 84, 101] },
+  { age: 87, values: [55, 75, 91] },
+  { age: 92, values: [44, 63, 86] },
+];
+const STEP2MIN_FEMALE: NormBand[] = [
+  { age: 62, values: [75, 91, 107] },
+  { age: 67, values: [73, 89, 105] },
+  { age: 72, values: [68, 84, 101] },
+  { age: 77, values: [66, 82, 98] },
+  { age: 82, values: [60, 75, 90] },
+  { age: 87, values: [53, 66, 79] },
+  { age: 92, values: [42, 53, 64] },
+];
+
+// ── Timed Up-and-Go (seconds) — Rikli & Jones SFT 8-ft up-and-go (issue #834) ────
+// The senior-battery mobility/agility item and the one LOWER-IS-BETTER marker (a shorter
+// time is fitter). Percentiles 25/50/75 at 5-year midpoints 62..92. Because the engine
+// stores the WORST value at index 0 and the BEST at the last index, the value vectors
+// are DESCENDING (25th percentile = slower = higher time; 75th = faster = lower time).
+// Normal ranges from the Rikli & Jones 8-foot up-and-go tables.
+const TUG_PCTS = [25, 50, 75];
+const TUG_MALE: NormBand[] = [
+  { age: 62, values: [5.6, 4.7, 3.8] },
+  { age: 67, values: [5.7, 5.0, 4.3] },
+  { age: 72, values: [6.0, 5.2, 4.4] },
+  { age: 77, values: [7.2, 5.9, 4.6] },
+  { age: 82, values: [7.6, 6.4, 5.2] },
+  { age: 87, values: [8.9, 7.2, 5.5] },
+  { age: 92, values: [10.0, 8.1, 6.2] },
+];
+const TUG_FEMALE: NormBand[] = [
+  { age: 62, values: [6.0, 5.2, 4.4] },
+  { age: 67, values: [6.4, 5.6, 4.8] },
+  { age: 72, values: [7.1, 6.0, 4.9] },
+  { age: 77, values: [7.4, 6.3, 5.2] },
+  { age: 82, values: [8.7, 7.2, 5.7] },
+  { age: 87, values: [9.6, 7.9, 6.2] },
+  { age: 92, values: [11.5, 9.4, 7.3] },
+];
+
 // Pure builder: assemble the framework envelope from the curated tables. The committed
 // lib/datasets/data/fitness-norms.json is a FIXED POINT of this (guarded by the dataset
 // test). Entries are emitted in the curated marker order for a stable, reviewable diff.
@@ -220,6 +334,61 @@ export function buildFitnessNorms(): FitnessNormsDataset {
         female: { percentiles: BALANCE_PCTS, bands: BALANCE_BANDS },
       },
     },
+    {
+      name: "Max Push-Ups",
+      unit: "reps",
+      direction: "higher_better",
+      source:
+        "ACSM Guidelines / CSEP push-up norms (age/sex category tables, full push-ups).",
+      sexes: {
+        male: { percentiles: PUSHUP_PCTS, bands: PUSHUP_MALE },
+        female: { percentiles: PUSHUP_PCTS, bands: PUSHUP_FEMALE },
+      },
+    },
+    {
+      name: "Sit-and-Reach",
+      unit: "cm",
+      direction: "higher_better",
+      source:
+        "ACSM / YMCA sit-and-reach flexibility norms (trunk forward flexion, cm).",
+      sexes: {
+        male: { percentiles: SITREACH_PCTS, bands: SITREACH_MALE },
+        female: { percentiles: SITREACH_PCTS, bands: SITREACH_FEMALE },
+      },
+    },
+    {
+      name: "30-Second Arm Curl",
+      unit: "reps",
+      direction: "higher_better",
+      source:
+        "Rikli & Jones Senior Fitness Test norms (older adults 60-94; normal-range = 25th-75th centile).",
+      sexes: {
+        male: { percentiles: ARMCURL_PCTS, bands: ARMCURL_MALE },
+        female: { percentiles: ARMCURL_PCTS, bands: ARMCURL_FEMALE },
+      },
+    },
+    {
+      name: "2-Minute Step",
+      unit: "reps",
+      direction: "higher_better",
+      source:
+        "Rikli & Jones Senior Fitness Test norms (older adults 60-94; normal-range = 25th-75th centile).",
+      sexes: {
+        male: { percentiles: STEP2MIN_PCTS, bands: STEP2MIN_MALE },
+        female: { percentiles: STEP2MIN_PCTS, bands: STEP2MIN_FEMALE },
+      },
+    },
+    {
+      name: "Timed Up-and-Go",
+      unit: "seconds",
+      direction: "lower_better",
+      source:
+        "Rikli & Jones Senior Fitness Test 8-foot up-and-go norms (older adults 60-94; lower is fitter).",
+      sexes: {
+        male: { percentiles: TUG_PCTS, bands: TUG_MALE },
+        female: { percentiles: TUG_PCTS, bands: TUG_FEMALE },
+      },
+    },
   ];
 
   return {
@@ -227,20 +396,24 @@ export function buildFitnessNorms(): FitnessNormsDataset {
     id: "fitness-norms",
     title: "Age/sex fitness reference norms",
     description:
-      "Baked age/sex fitness-norm dataset (issue #158) for PERCENTILE context and " +
-      "FITNESS AGE on VO2 Max, grip strength, 30-second chair stand, and single-leg " +
-      "balance. Published aggregate norms (FRIEND registry; Dodds 2014; Rikli & Jones; " +
-      "Springer 2007) — see the per-marker `source` and scripts/gen-fitness-norms.ts " +
-      "for citations. Committed + HUMAN-REVIEWABLE; regenerate with " +
-      "`npm run gen:fitness-norms`. INFORMATIONAL population reference standards, NOT " +
-      "measurements or medical advice.",
+      "Baked age/sex fitness-norm dataset (issues #158, #834) for PERCENTILE context " +
+      "and FITNESS AGE across the Fitness-check battery: VO2 Max, grip strength, " +
+      "30-second chair stand, single-leg balance, max push-ups, sit-and-reach, and the " +
+      "senior-variant items (30-second arm curl, 2-minute step, timed up-and-go). " +
+      "Published aggregate norms (FRIEND registry; Dodds 2014; Rikli & Jones; Springer " +
+      "2007; ACSM/CSEP; ACSM/YMCA) — see the per-marker `source` and " +
+      "scripts/gen-fitness-norms.ts for citations. Committed + HUMAN-REVIEWABLE; " +
+      "regenerate with `npm run gen:fitness-norms`. INFORMATIONAL population reference " +
+      "standards, NOT measurements or medical advice.",
     citation: [
       {
         source:
           "VO2 Max — FRIEND registry (Kaminsky et al., Mayo Clin Proc 2015); Grip " +
-          "Strength — Dodds et al., PLoS ONE 2014; 30-Second Chair Stand — Rikli & " +
-          "Jones Senior Fitness Test norms; Single-Leg Balance — Springer et al., " +
-          "J Geriatr Phys Ther 2007.",
+          "Strength — Dodds et al., PLoS ONE 2014; 30-Second Chair Stand / 30-Second " +
+          "Arm Curl / 2-Minute Step / Timed Up-and-Go — Rikli & Jones Senior Fitness " +
+          "Test norms; Single-Leg Balance — Springer et al., J Geriatr Phys Ther 2007; " +
+          "Max Push-Ups — ACSM/CSEP push-up norms; Sit-and-Reach — ACSM/YMCA " +
+          "flexibility norms.",
         note: "Published aggregate reference standards, rounded from the cited tables; each marker additionally carries its own per-marker `source`. INFORMATIONAL, not measurements or medical advice.",
       },
     ],

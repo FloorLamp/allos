@@ -92,6 +92,11 @@ export const OWNED_TABLES = [
   "coverage_gaps",
   "situations",
   "food_log",
+  // Food-log EVENT ledger (#950): per-tap append-only rows beside the food_log
+  // daily counter, carrying the tap `logged_at` so button ranking can be slot-aware.
+  // Directly owned; deleteProfile clears it by profile_id (the row-ops side-state
+  // rule — the ledger is popped/cleared alongside its counter).
+  "food_log_events",
   // Protein-grams quick-add log (#824): the direct-grams `logged` protein basis — a
   // single running gram total per day (UNIQUE(profile_id, date)), SUMMED with the
   // food-group estimated floor. Directly owned; deleteProfile clears it by profile_id.
@@ -118,6 +123,13 @@ export const OWNED_TABLES = [
   // nothing FKs into it (the situation bridge is suggest-only, no persistent link), so a
   // delete is a plain row delete and deleteProfile clears it by profile_id.
   "injuries",
+  // Fitness-check session rows (#834): one per (profile, date), grouping the battery's
+  // measured tests. Directly owned. Its child fitness_assessment_entries carries no
+  // profile_id and is cleared THROUGH this parent via its ON DELETE CASCADE FK (like
+  // exercise_sets → activities). The tests' VALUES live in the natural stores
+  // (activities/exercise_sets, body_metrics, medical_records), each already cleared by
+  // deleteProfile; deleting this session row is all this table needs.
+  "fitness_assessments",
   // Endurance event plans (#839): the user's race/event goal (date, discipline, target
   // distance/time, status). Directly owned; nothing FKs into it (the weekly trajectory is
   // DERIVED by the pure engine from logged volume, never stored), so a delete is a plain

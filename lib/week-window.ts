@@ -42,3 +42,37 @@ export function weekWindow(
     prevEnd: shiftDateStr(start, -1),
   };
 }
+
+// One week in a trailing series (issue #954): its inclusive [start, end] window and
+// whether it's the current (in-progress) week. Same "week" definition as weekWindow
+// (#223), so the trend's current-week cell and the this-week progress can't drift.
+export interface TrailingWeek {
+  start: string;
+  end: string;
+  isCurrent: boolean;
+}
+
+// The trailing `n` weeks ending with the current (possibly partial) week, OLDEST
+// FIRST — the render order for a left-to-right consistency strip. Week identity
+// follows the profile's mode/weekStart via weekWindow: index 0 is the current week
+// [start, today] (in-progress), and each earlier week is a full 7-day block anchored
+// 7·k days before the current start. Pure calendar arithmetic (UTC-anchored,
+// DST-immune) so it runs in the query layer and the unit tests alike.
+export function trailingWeeks(
+  today: string,
+  mode: WeekMode,
+  weekStart: WeekStart,
+  n: number
+): TrailingWeek[] {
+  const cur = weekWindow(today, mode, weekStart);
+  const weeks: TrailingWeek[] = [];
+  for (let k = 0; k < n; k++) {
+    const start = shiftDateStr(cur.start, -7 * k);
+    weeks.push({
+      start,
+      end: k === 0 ? today : shiftDateStr(start, 6),
+      isCurrent: k === 0,
+    });
+  }
+  return weeks.reverse(); // oldest first
+}

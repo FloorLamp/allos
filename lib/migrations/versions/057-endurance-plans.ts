@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 055 (issue #839): endurance event plans — training TOWARD a race/event.
+// Migration 057 (issue #839): endurance event plans — training TOWARD a race/event.
 // An `endurance_plans` row is the USER'S goal: an event on a date, a discipline
 // (run/ride/swim — the cardio disciplines the classifier knows), a target distance
 // (km, canonical), an optional target time (seconds), and a status. The pure
@@ -54,7 +54,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 55,
-  name: "055-endurance-plans",
+  id: 57,
+  name: "057-endurance-plans",
   up,
 };

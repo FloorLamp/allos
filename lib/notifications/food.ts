@@ -34,7 +34,11 @@ export function buildFoodNudge(
   date: string
 ): NotificationMessage | null {
   if (!isFoodLoggingRelevant(getUserAge(profileId))) return null;
-  const ranked = getFoodGroupLogOrder(profileId);
+  // Slot-aware ranking (#950): the nudge already knows its window, so it passes it
+  // through — the buttons lead with what this profile eats at THIS time of day (fish
+  // at lunch). The SAME getFoodGroupLogOrder the web bar calls, so the two surfaces
+  // rank identically for a given window (one computation, #221).
+  const ranked = getFoodGroupLogOrder(profileId, window);
   const servingsToday = getFoodServingsOnDate(profileId, date);
   return renderFoodNudge(
     profileId,
