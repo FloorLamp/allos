@@ -139,8 +139,11 @@ test.describe("Finding follow-up loop — flagged IOP (#698 §6)", () => {
           .filter({ hasText: "Recheck IOP / glaucoma workup" })
       ).toHaveCount(0, { timeout: WAIT });
 
-      // 6) The biomarker detail page now shows the recorded resolution.
-      await page.goto(`/biomarkers/view?name=${encodeURIComponent(IOP_OD)}`);
+      // 6) The follow-up is ONE bilateral question, so the recorded resolution shows on
+      //    the LEFT-eye page too — where the latest reading is now the normal 17 mmHg
+      //    that resolved it (on the right-eye page the still-flagged 28 offers a fresh
+      //    follow-up, the correct per-eye behavior).
+      await page.goto(`/biomarkers/view?name=${encodeURIComponent(IOP_OS)}`);
       await expect(page.getByTestId("iop-followup-state")).toContainText(
         /Follow-up: resolved · stable/,
         { timeout: WAIT }
