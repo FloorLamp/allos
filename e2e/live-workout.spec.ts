@@ -85,9 +85,13 @@ test("checking off a set auto-starts rest, and Finish stamps the end time (#340)
     "Pause rest timer"
   );
 
-  // Finish stamps end=now and collapses the live strip back to the plain form.
+  // Finish now opens the "Session complete" recap step (#924); Save from there
+  // stamps end=now and collapses the live strip back to the plain form.
   await page.getByTestId("finish-workout").click();
+  await expect(page.getByTestId("session-complete-step")).toBeVisible();
+  await page.getByTestId("recap-save").click();
   await expect(page.getByTestId("live-workout-panel")).toHaveCount(0);
+  await expect(page.getByTestId("session-complete-step")).toHaveCount(0);
   await expect(page.getByTestId("end-time-input")).toHaveValue(/^\d\d:\d\d$/);
 
   // Clean up the auto-saved draft so the shared seed DB is left untouched.
