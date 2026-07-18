@@ -8,6 +8,8 @@ import {
   getFoodGroupLogOrder,
   currentFoodSlot,
   getProteinAdequacy,
+  getProteinToday,
+  getFiberAdequacy,
   getProteinLoggedGrams,
   getProteinQuickAddPreset,
 } from "@/lib/queries";
@@ -21,6 +23,7 @@ import { trackFoodHabit } from "./actions";
 import FoodWeeklyRollup from "@/components/FoodWeeklyRollup";
 import FoodSuggestions from "@/components/FoodSuggestions";
 import ProteinAdequacyCard from "@/components/ProteinAdequacyCard";
+import FiberAdequacyCard from "@/components/FiberAdequacyCard";
 
 // The Food tab of the Nutrition umbrella (#746): the food-group serving log (issue
 // #579) — the INPUT half of nutrition.
@@ -65,6 +68,12 @@ export default async function FoodTab() {
   // Goal-scaled protein adequacy (#767): the ONE gather the coaching finding also reads.
   // Null when there's no intake signal or no bodyweight to scale a target by.
   const proteinAdequacy = getProteinAdequacy(profile.id);
+  // The band-gauge model (#974): today so far + weekly average + goal band. Null when
+  // there's no bodyweight target or no protein data at all.
+  const proteinToday = getProteinToday(profile.id);
+  // Fiber adequacy (#976): the DRI-scaled fiber verdict, the protein pipeline mirrored
+  // with a supplemented basis. Null when there's no intake signal or no DRI target.
+  const fiberAdequacy = getFiberAdequacy(profile.id);
   // Direct protein-grams quick-add (#824): today's manual total + the last-used amount
   // (the repeated scoop size) to pre-fill the box. Protein powder's only home.
   const proteinLoggedGrams = getProteinLoggedGrams(profile.id, date);
@@ -133,9 +142,13 @@ export default async function FoodTab() {
         </div>
 
         <div className="min-w-0 space-y-6 self-start">
-          {proteinAdequacy && (
-            <ProteinAdequacyCard adequacy={proteinAdequacy} />
+          {(proteinToday || proteinAdequacy) && (
+            <ProteinAdequacyCard
+              today={proteinToday}
+              adequacy={proteinAdequacy}
+            />
           )}
+          {fiberAdequacy && <FiberAdequacyCard adequacy={fiberAdequacy} />}
           <ProteinQuickAdd
             today={date}
             initialGrams={proteinLoggedGrams}

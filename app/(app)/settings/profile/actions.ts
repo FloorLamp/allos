@@ -29,6 +29,7 @@ import {
   getProfileHomeAssistant,
   setProfileHomeAssistant,
   setProfileTelegramDisabledKinds,
+  setExcludedFoodGroups,
   isValidTimezone,
   setTimezone,
   setHomeLocation,
@@ -234,6 +235,20 @@ export async function saveTrainingZones(formData: FormData) {
 
   revalidatePath("/settings/profile");
   revalidatePath("/trends");
+}
+
+// Dietary preferences (#975) — the profile's excluded food-group set. Profile-scoped,
+// member-editable (a property of the tracked person). The write core normalizes to
+// canonical catalog slugs (dropping any unknown slug), so a forged post can't store junk;
+// an empty set clears the row (Omnivore). Revalidates the nutrition surfaces the set
+// filters/demotes.
+export async function saveDietaryPreferences(formData: FormData) {
+  const { profile } = await requireWriteAccess();
+  const slugs = formData.getAll("excluded").map((v) => String(v));
+  setExcludedFoodGroups(profile.id, slugs);
+  revalidatePath("/settings/profile");
+  revalidatePath("/nutrition");
+  return { ok: true };
 }
 
 // Emergency card settings (#42) moved to the Medical surface (/medical/background)

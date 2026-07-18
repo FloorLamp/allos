@@ -29,6 +29,8 @@ import {
   E2E_LOGIN_COMPARE,
   E2E_LOGIN_DUP,
   E2E_LOGIN_EMPTY_TRAINING,
+  E2E_LOGIN_NUTRITION,
+  NUTRITION_PROFILE,
   E2E_LOGIN_HC,
   E2E_LOGIN_NOGEAR,
   E2E_LOGIN_FITNESS,
@@ -1761,6 +1763,114 @@ seedMemberLogin(E2E_LOGIN_STRAVA, stravaReauthId);
 // A dedicated, connection-less profile for the Health Connect generate→rotate flow.
 const healthConnectId = fixtureProfileId(HEALTH_CONNECT_PROFILE);
 seedMemberLogin(E2E_LOGIN_HC, healthConnectId);
+
+// ── Nutrition trio (#974 protein gauge / #975 preferences / #976 fiber) ──────
+// A dedicated adult profile carrying everything the three nutrition surfaces read: a
+// recent weigh-in (a target to scale), this-week food servings across protein- AND
+// fiber-bearing groups, a CONFIRMED capsule fiber supplement today (the honest
+// grams-unknown note), sex = male (a DRI fiber target), and one flagged low omega-3 (the
+// #577 engine fires → the vegetarian preset's plant substitution is observable). Isolated
+// on purpose: the preferences spec mutates the excluded set, which on profile 1 would race
+// the coaching specs' suggestion reads. Idempotent — every owned table is cleared first.
+const nutritionId = fixtureProfileId(NUTRITION_PROFILE);
+seedMemberLogin(E2E_LOGIN_NUTRITION, nutritionId);
+{
+  const nToday = today(nutritionId);
+  // Clear prior fixture data so a reused dev server re-seeds cleanly.
+  db.prepare(`DELETE FROM food_log WHERE profile_id = ?`).run(nutritionId);
+  db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(nutritionId);
+  db.prepare(
+    `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = 'Omega-3 Total (OmegaCheck)'`
+  ).run(nutritionId);
+  db.prepare(
+    `DELETE FROM intake_item_logs WHERE item_id IN (SELECT id FROM intake_items WHERE profile_id = ? AND name = 'Fiber capsules')`
+  ).run(nutritionId);
+  db.prepare(
+    `DELETE FROM intake_item_doses WHERE item_id IN (SELECT id FROM intake_items WHERE profile_id = ? AND name = 'Fiber capsules')`
+  ).run(nutritionId);
+  db.prepare(
+    `DELETE FROM intake_items WHERE profile_id = ? AND name = 'Fiber capsules'`
+  ).run(nutritionId);
+  db.prepare(
+    `DELETE FROM profile_settings WHERE profile_id = ? AND key IN ('sex', 'dietary_excluded_groups')`
+  ).run(nutritionId);
+
+  // Sex → a DRI fiber target (adult male = 38 g/day).
+  db.prepare(
+    `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'sex', 'male')`
+  ).run(nutritionId);
+  // A recent weigh-in → a protein target to scale (active band ~95–130 g at 80 kg).
+  db.prepare(
+    `INSERT INTO body_metrics (profile_id, date, weight_kg, notes) VALUES (?, ?, 80, 'e2e:nutrition')`
+  ).run(nutritionId, nToday);
+
+  // This-week food servings — protein- AND fiber-bearing groups, plus fatty_fish so the
+  // vegetarian preset's demotion of an excluded group is observable. Kept modestly below
+  // both targets so the below-verdict copy renders.
+  const logFood = (date: string, slug: string, servings: number) =>
+    db
+      .prepare(
+        `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)`
+      )
+      .run(nutritionId, date, slug, servings);
+  for (const [dayOffset, rows] of [
+    [
+      0,
+      [
+        ["legumes", 1],
+        ["whole_grains", 1],
+        ["fatty_fish", 1],
+      ],
+    ],
+    [
+      -1,
+      [
+        ["leafy_greens", 2],
+        ["eggs", 1],
+      ],
+    ],
+    [
+      -2,
+      [
+        ["poultry", 1],
+        ["berries", 1],
+      ],
+    ],
+  ] as const) {
+    for (const [slug, n] of rows)
+      logFood(shiftDateStr(nToday, dayOffset), slug, n);
+  }
+
+  // A confirmed capsule-unit fiber supplement TODAY → the honest "grams unknown" note.
+  const fiberItemId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority)
+         VALUES (?, 'Fiber capsules', 1, 'supplement', 'daily', 'low')`
+      )
+      .run(nutritionId).lastInsertRowid
+  );
+  const fiberDoseId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+         VALUES (?, '1 capsule', 'morning', 'any', 0)`
+      )
+      .run(fiberItemId).lastInsertRowid
+  );
+  db.prepare(
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, given_at, status)
+     VALUES (?, ?, ?, '1 capsule', ?, 'taken')`
+  ).run(fiberDoseId, fiberItemId, nToday, utcSqlString(new Date()));
+
+  // One flagged low omega-3 reading → the #577 engine surfaces a fish suggestion the
+  // vegetarian preset substitutes to a plant source.
+  db.prepare(
+    `INSERT INTO medical_records
+       (profile_id, date, category, name, value, unit, canonical_name, flag, created_at)
+     VALUES (?, ?, 'lab', 'Omega-3 Total (OmegaCheck)', '3.2', '%', 'Omega-3 Total (OmegaCheck)', 'low', ?)`
+  ).run(nutritionId, nToday, utcSqlString(new Date()));
+}
 
 // A dedicated profile whose sole Data → Review item is a SAME-SOURCE duplicate:
 // two manual weigh-ins on one day (both source NULL → both "Manual entry"), so the

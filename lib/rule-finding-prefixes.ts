@@ -32,6 +32,7 @@ import { FOOD_HABIT_PREFIX } from "./food-habit";
 import { SUN_EXPOSURE_PREFIX } from "./sun-exposure";
 import { ORAL_HEALTH_PREFIX } from "./oral-health-observation";
 import { PROTEIN_ADEQUACY_PREFIX } from "./protein";
+import { FIBER_ADEQUACY_PREFIX } from "./fiber";
 import { ENDURANCE_PLAN_PREFIX } from "./endurance-plan";
 import { ILLNESS_CARE_PREFIX } from "./illness-care";
 import { TEMP_RED_FLAG_PREFIX } from "./temp-red-flag";
@@ -117,6 +118,15 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: PROTEIN_ADEQUACY_PREFIX,
     tier: "coaching",
     builder: "buildProteinAdequacyFindings",
+    reasons: [],
+  },
+  {
+    // Fiber adequacy (#976): the calm DRI-based fiber observation, the protein pipeline
+    // re-instantiated. COACHING tier (#449) — never a push, never the hero; it joins
+    // collectCoachingFindings and rides the shared suppression bus keyed on the topic.
+    prefix: FIBER_ADEQUACY_PREFIX,
+    tier: "coaching",
+    builder: "buildFiberAdequacyFindings",
     reasons: [],
   },
   {

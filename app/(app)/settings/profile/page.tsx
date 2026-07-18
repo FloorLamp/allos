@@ -11,11 +11,14 @@ import {
   getMaxHrOverride,
   getZone2WeeklyTargetMin,
   getRecommendationCadence,
+  getExcludedFoodGroups,
 } from "@/lib/settings";
 import { requireSession } from "@/lib/auth";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
 import { isTrainingRestricted } from "@/lib/age-gate";
+import { isFoodLoggingRelevant } from "@/lib/life-stage";
 import { estimateMaxHr } from "@/lib/training-zones";
+import { FOOD_GROUPS } from "@/lib/food-groups";
 import { PageHeader } from "@/components/ui";
 import SettingsTabs from "../SettingsTabs";
 import ProfileAnchorNav, { type AnchorSection } from "./ProfileAnchorNav";
@@ -23,6 +26,7 @@ import ProfileForm from "./ProfileForm";
 import ProfilePhotoCard from "./ProfilePhotoCard";
 import TrainingZonesForm from "./TrainingZonesForm";
 import RecommendationCadenceForm from "./RecommendationCadenceForm";
+import DietaryPreferencesForm from "./DietaryPreferencesForm";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +50,9 @@ export default async function ProfileSettingsPage() {
   const weekMode = getWeekMode(profile.id);
   const home = getHomeLocation(profile.id);
   const trainingShown = !isTrainingRestricted(profile.id);
+  // Dietary preferences (#975) — meaningless for an infant (milk/formula, not the adult
+  // food-group catalog), hidden on the same predicate the Food tab uses.
+  const nutritionShown = isFoodLoggingRelevant(age);
 
   // The anchor nav must list only the sections actually rendered — Training is
   // dropped for an age-restricted profile, so its anchor is dropped too.
@@ -53,6 +60,9 @@ export default async function ProfileSettingsPage() {
     { id: "identity", label: "Identity & localization" },
     ...(trainingShown
       ? [{ id: "training", label: "Training" } as AnchorSection]
+      : []),
+    ...(nutritionShown
+      ? [{ id: "nutrition", label: "Nutrition" } as AnchorSection]
       : []),
     { id: "coaching", label: "Coaching" },
   ];
@@ -92,6 +102,19 @@ export default async function ProfileSettingsPage() {
                 maxHrOverride={getMaxHrOverride(profile.id)}
                 zone2Target={getZone2WeeklyTargetMin(profile.id)}
                 estimatedMaxHr={age != null ? estimateMaxHr(age) : null}
+              />
+            </section>
+          )}
+          {nutritionShown && (
+            <section id="nutrition" className="scroll-mt-4 space-y-6">
+              <h2 className="section-label">Nutrition</h2>
+              <DietaryPreferencesForm
+                excluded={getExcludedFoodGroups(profile.id)}
+                groups={FOOD_GROUPS.map((g) => ({
+                  slug: g.slug,
+                  name: g.name,
+                  tier: g.tier,
+                }))}
               />
             </section>
           )}

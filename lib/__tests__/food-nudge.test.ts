@@ -13,6 +13,12 @@ import {
   FOOD_NUDGE_WINDOWS,
 } from "@/lib/notifications/food-format";
 import { FOOD_GROUPS } from "@/lib/food-groups";
+import {
+  proteinTodayNudgeLine,
+  proteinIntake,
+  proteinTarget,
+  type ProteinToday,
+} from "@/lib/protein";
 
 const DATE = "2026-07-13";
 // A stable, deliberately non-catalog-order ranking so "ranked order leads" is real.
@@ -41,6 +47,44 @@ describe("renderFoodNudge", () => {
     const first = (msg.actions ?? [])[0];
     expect(first.label).toBe(`${top.name} (2)`);
     expect(msg.body).toContain(`✓ ${top.name} ×2`);
+  });
+
+  it("appends the #974 protein status line when one is supplied, and equals the gauge figure", () => {
+    const target = proteinTarget({
+      goal: "active",
+      bodyweightKg: 80,
+      leanMassKg: null,
+    })!; // 95–130
+    const todayIntake = proteinIntake({
+      dailyTracked: null,
+      dailyLogged: 30,
+      dailyEstimated: 25,
+    })!; // 55 g floor
+    const t: ProteinToday = {
+      todayIntake,
+      todayGrams: todayIntake.grams,
+      target,
+      weeklyAverageGrams: 95,
+    };
+    const line = proteinTodayNudgeLine(t);
+    const msg = renderFoodNudge(
+      1,
+      "Morning",
+      DATE,
+      RANKED,
+      new Map(),
+      "",
+      line
+    );
+    // The nudge carries the SAME today figure the gauge renders (#221) — floor phrasing.
+    expect(msg.body).toContain(line);
+    expect(msg.body).toContain("at least 55 g");
+    expect(String(Math.round(t.todayGrams))).toBe("55");
+  });
+
+  it("omits the protein line when none is supplied (no bare 0 g nag)", () => {
+    const msg = renderFoodNudge(1, "Morning", DATE, RANKED, new Map());
+    expect(msg.body).not.toMatch(/Protein today/);
   });
 
   it("prompts to tap when nothing is logged yet, with no tally", () => {

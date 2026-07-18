@@ -83,17 +83,35 @@ test.describe("Illness round 3 (#859)", () => {
       });
     }
 
-    // Upload a uniquely-salted PNG and await the upload Server-Action POST before
-    // asserting the new thumbnail (settledUpload replaces the bare 15s count poll).
-    await settledUpload(page, strip.getByTestId("symptom-photo-input"), {
-      name: "rash.png",
-      mimeType: "image/png",
-      buffer: uniquePng(),
-    });
-    await expect(deleteButtons).toHaveCount(1, { timeout: 15_000 });
+    // Upload a uniquely-salted PNG and re-drive until a thumbnail renders.
+    // settledUpload's POST arm matches ANY same-origin POST, and this page fires
+    // unrelated posts (earlier steps' revalidations, the offline-queue flush), so
+    // a satisfied settle doesn't prove the UPLOAD landed — CI hit exactly that
+    // (settle resolved, 0 thumbnails for 15s). toPass is justified (a commented
+    // last resort): only an actually-applied upload renders a delete button, so
+    // the loop cannot false-pass; a re-driven attempt that double-lands is
+    // absorbed by the delete-ALL cleanup below.
+    await expect(async () => {
+      await settledUpload(page, strip.getByTestId("symptom-photo-input"), {
+        name: "rash.png",
+        mimeType: "image/png",
+        buffer: uniquePng(),
+      });
+      await expect(deleteButtons.first()).toBeVisible({ timeout: 5_000 });
+    }).toPass({ timeout: 45_000 });
 
-    // Clean up the photo we added so a re-run starts where it began.
-    await settledClick(page, deleteButtons.last());
-    await expect(deleteButtons).toHaveCount(0, { timeout: 15_000 });
+    // Clean up every photo we added (a re-driven upload may have landed twice) so
+    // a re-run starts where it began.
+    for (
+      let remaining = await deleteButtons.count();
+      remaining > 0;
+      remaining--
+    ) {
+      await settledClick(page, deleteButtons.first());
+      await expect(deleteButtons).toHaveCount(remaining - 1, {
+        timeout: 15_000,
+      });
+    }
+    await expect(deleteButtons).toHaveCount(0);
   });
 });

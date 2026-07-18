@@ -32,6 +32,7 @@ import {
   getCanonicalBiomarker,
   getDaylightOutdoorMinutesTotal,
   getProteinAdequacy,
+  getFiberAdequacy,
   getFindingSuppressions,
 } from "./queries";
 import { activeFindings } from "./findings";
@@ -70,6 +71,12 @@ import {
   proteinAdequacyDetail,
   proteinAdequacyEvidence,
 } from "./protein";
+import {
+  fiberAdequacySignalKey,
+  fiberAdequacyTitle,
+  fiberAdequacyDetail,
+  fiberAdequacyEvidence,
+} from "./fiber";
 import { shiftDateStr, lastNDates } from "./date";
 import { fmtWeight, round } from "./units";
 import { formatLongDate } from "./format-date";
@@ -212,6 +219,7 @@ export function collectCoachingFindings(
     ...buildFoodSuggestionFindings(profileId),
     ...buildFoodHabitFindings(profileId),
     ...buildProteinAdequacyFindings(profileId),
+    ...buildFiberAdequacyFindings(profileId),
     ...buildEndurancePlanFindings(profileId, today),
     ...buildSunExposureFindings(profileId, today),
     ...buildOralHealthFindings(profileId),
@@ -277,6 +285,35 @@ export function buildProteinAdequacyFindings(profileId: number): Finding[] {
       // Calm FYI — informational, never an alarm and never a push.
       tone: "info",
       evidence: proteinAdequacyEvidence(a),
+      actionHref: "/nutrition",
+      actionLabel: "Log servings",
+    },
+  ];
+}
+
+// ---- Nutrition (#976): DRI-scaled fiber-adequacy observation ---------------
+
+// A calm, coaching-tier observation when this week's fiber intake is BELOW the DRI
+// adequate-intake target. Reads through getFiberAdequacy — the SAME computation the
+// /nutrition fiber-adequacy card formats — so the card and this finding can never disagree
+// ("one question, one computation"). Coaching tier ONLY (#449): it joins
+// collectCoachingFindings, its dedupeKey rides the shared suppression bus
+// (FIBER_ADEQUACY_PREFIX is registered in RULE_FINDING_PREFIXES), and it NEVER notifies /
+// never reaches the hero. Only the `below` verdict surfaces — a non-tracked basis is a
+// FLOOR, so the copy hedges the shortfall and never asserts a deficiency. No owned SQL is
+// added here (reads through the profile-scoped gather).
+export function buildFiberAdequacyFindings(profileId: number): Finding[] {
+  const a = getFiberAdequacy(profileId);
+  if (!a || a.status !== "below") return [];
+  return [
+    {
+      domain: "fiber-adequacy",
+      dedupeKey: fiberAdequacySignalKey(),
+      title: fiberAdequacyTitle(a),
+      detail: fiberAdequacyDetail(a),
+      // Calm FYI — informational, never an alarm and never a push.
+      tone: "info",
+      evidence: fiberAdequacyEvidence(a),
       actionHref: "/nutrition",
       actionLabel: "Log servings",
     },

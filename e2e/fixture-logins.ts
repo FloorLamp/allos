@@ -279,3 +279,15 @@ export const ENDURANCE_PROFILE = "Endurance Plan (e2e)";
 // beforeAll AND afterAll so it's repeat-safe; the seeded source A1c is re-seeded each boot.
 export const E2E_LOGIN_FLABS = "e2e_flabs";
 export const FLAGGED_LAB_PROFILE = "Flagged Lab (e2e)";
+
+// A dedicated ADULT profile for the nutrition trio (#974/#975/#976). Carries a recent
+// weigh-in (a protein/fiber target to scale), this-week food-group servings across both
+// protein- and fiber-bearing groups (so the protein gauge's weekly marker + the fiber
+// estimate both render), a CONFIRMED capsule-unit fiber supplement today (the honest
+// "grams unknown" fiber note), sex = male (a DRI fiber target), and one flagged low
+// omega-3 reading (so the #577 engine fires and the vegetarian preset's plant-source
+// substitution is observable). Spec-owned: the dietary-preferences spec MUTATES the
+// profile's excluded set, so it lives off profile 1 (whose suggestions the coaching specs
+// read) — and the preferences spec resets the set in afterAll so it's repeat-safe.
+export const E2E_LOGIN_NUTRITION = "e2e_nutrition";
+export const NUTRITION_PROFILE = "Nutrition Trio (e2e)";
