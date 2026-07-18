@@ -292,17 +292,24 @@ export async function extractMedicalDocument(
     // Cross-check the extraction against the source PDF's own text layer — a value the
     // model transcribed wrong or invented, or a name that never appears in the report,
     // is caught deterministically without a second model call (#918 follow-up). Null
-    // for a non-PDF or scanned source (nothing to verify); errors are swallowed so a
-    // reconciliation problem never fails the import.
-    const reconciliation = await reconcileAgainstSource(
-      buffer,
-      mime,
-      results.map((r) => ({
-        name: r.name,
-        value: r.value,
-        value_num: r.value_num,
-      }))
-    );
+    // for a non-PDF or scanned source (nothing to verify). Wrapped in its own guard so
+    // that a reconciliation failure can NEVER fail an extraction that already succeeded
+    // (the outer catch marks the import failed) — the extraction result stands either way.
+    let reconciliation: Awaited<ReturnType<typeof reconcileAgainstSource>> =
+      null;
+    try {
+      reconciliation = await reconcileAgainstSource(
+        buffer,
+        mime,
+        results.map((r) => ({
+          name: r.name,
+          value: r.value,
+          value_num: r.value_num,
+        }))
+      );
+    } catch (err) {
+      log.warn("source reconciliation errored (ignored)", { filename, err });
+    }
     if (reconciliation) {
       const { confirmed, valueMismatch, nameNotFound, total } = reconciliation;
       const fields = {

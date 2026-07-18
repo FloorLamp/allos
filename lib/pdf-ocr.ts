@@ -17,9 +17,12 @@ export async function ocrPdfText(
   buffer: Buffer | Uint8Array,
   maxPages = DEFAULT_MAX_PAGES
 ): Promise<string> {
-  // PDF.js DETACHES the ArrayBuffer it is handed, so every call gets a fresh copy.
-  const fresh = () => Uint8Array.from(buffer);
   const canvasImport = () => import("@napi-rs/canvas");
+  // PDF.js DETACHES the ArrayBuffer it is handed, so each call gets a fresh copy.
+  // We must pass the BUFFER (not a shared proxy) to renderPageAsImage: unpdf wires
+  // the canvas factory per call from `canvasImport`, and a proxy from getDocumentProxy
+  // carries none, so rendering a proxy fails with "@napi-rs/canvas is not available".
+  const fresh = () => Uint8Array.from(buffer);
   let worker: Awaited<
     ReturnType<typeof import("tesseract.js").createWorker>
   > | null = null;
