@@ -43,14 +43,21 @@ jobs:
       - run: npm ci
         if: steps.modules.outputs.cache-hit != 'true'
 
-      # Surfaces high/critical advisories in the CI log. Intentionally
-      # NON-BLOCKING (continue-on-error) so an unfixable transitive advisory
-      # can't wedge CI and block merges/deploys — enforcement is the Dependabot
-      # PRs; this step is visibility only. Flip continue-on-error to false to
-      # make it blocking once the advisory surface is under control.
-      - name: Audit dependencies
-        run: npm audit --audit-level=high
+      # Two-part audit now that the moderate surface is cleared (#668):
+      # 1. Full non-blocking audit for visibility — surfaces any moderate (or
+      #    lower) advisory in the CI log without wedging merges/deploys. The
+      #    known moderates (next's nested postcss, exceljs' uuid) are resolved
+      #    via `overrides` in package.json, so this should read clean today; a
+      #    NEW moderate would show here as advisory-only.
+      # 2. Blocking gate at high severity — a high/critical advisory FAILS the
+      #    check job instead of scrolling past unnoticed. Moderates stay
+      #    advisory (step 1); highs are enforced.
+      - name: Audit dependencies (visibility)
+        run: npm audit
         continue-on-error: true
+
+      - name: Audit dependencies (blocking, high+)
+        run: npm audit --audit-level=high
 
       # PHI guard: scan the whole tree for likely-real NPIs/phones/SSNs
       # using the pure detector in lib/phi-scan.ts. High-signal structural checks
