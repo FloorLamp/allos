@@ -38,7 +38,9 @@ import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 // legitimately changes and the boot reconcile re-flags stored IOP records against the
 // new band (an already-stored >21 mmHg reading picks up its "high" flag on next boot).
 const FLAG_SIGNATURE_GOLDEN =
-  "845b88844009788acecb671242ba574c5817a7b5f91e77de0e65ec4432963153";
+  // A SHA-256 content hash of the canonical dataset; a digit substring
+  // coincidentally forms a Luhn-valid NPI shape — provably synthetic.
+  "845b88844009788acecb671242ba574c5817a7b5f91e77de0e65ec4432963153"; // phi-scan-ok
 
 describe("canonical-biomarkers dataset on the curated-dataset framework", () => {
   it("passes the whole framework harness (citation + identity + refusal + no collisions)", () => {
