@@ -163,18 +163,33 @@ test.describe("Settings IA (#928) — member + matrix", () => {
       // Toggling a Telegram kind persists across a reload (tier-correct action).
       // State-relative + self-restoring so it's repeat-each safe (the fixture DB
       // persists across the 3 repeats).
+      //
+      // The matrix checkbox fires its action from a CLIENT onChange (optimistic
+      // flip + disabled-while-saving), so a click in the hydration window is
+      // silently swallowed while an unrelated on-load POST can still satisfy
+      // settledClick's any-POST arm (the #830 class — this spec failed exactly so
+      // in CI). toPass is justified: "my click landed" is non-atomic and there is
+      // no navigation for followLink — re-click until the OPTIMISTIC flip proves
+      // onChange fired. React batches the flip with `disabled={saving}` into one
+      // render, so once flipped, waiting for the box to re-ENABLE proves the save
+      // round-trip (action + refresh) completed — only then is a reload safe.
+      const toggleMatrixCell = async (testid: string, to: boolean) => {
+        const cell = member.getByTestId(testid);
+        await expect(async () => {
+          await cell.click();
+          await expect(cell).toBeChecked({ checked: to });
+        }).toPass();
+        await expect(cell).toBeEnabled();
+      };
       const tgRefill = member.getByTestId("matrix-cell-telegram-refill");
       const wasChecked = await tgRefill.isChecked();
-      await settledClick(member, tgRefill);
+      await toggleMatrixCell("matrix-cell-telegram-refill", !wasChecked);
       await member.reload();
       await expect(
         member.getByTestId("matrix-cell-telegram-refill")
       ).toBeChecked({ checked: !wasChecked });
       // Restore the fixture (leave the column as we found it).
-      await settledClick(
-        member,
-        member.getByTestId("matrix-cell-telegram-refill")
-      );
+      await toggleMatrixCell("matrix-cell-telegram-refill", wasChecked);
 
       // Configure Home Assistant so the profile has one CONFIGURED channel, then
       // turn a SAFETY kind (dose) off on it — with no other channel configured, the
