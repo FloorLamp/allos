@@ -46,7 +46,12 @@ describe("mobility log actions", () => {
     // identity is recovered on read (session.moves is the canonical slug).
     const comps = JSON.parse(rows[0].components ?? "[]");
     expect(comps).toEqual([
-      { name: "Pigeon pose", type: "recovery", distance_km: null, duration_min: null },
+      {
+        name: "Pigeon pose",
+        type: "recovery",
+        distance_km: null,
+        duration_min: null,
+      },
     ]);
 
     // A second move joins the SAME row.
@@ -117,9 +122,7 @@ describe("mobility log actions", () => {
     actAs(login, profile);
 
     // Hyphenated variant resolves to the stored snake_case slug.
-    const res = await logMobilityMove(
-      fd({ move: "pigeon-pose", date: DATE })
-    );
+    const res = await logMobilityMove(fd({ move: "pigeon-pose", date: DATE }));
     if (!res.ok) throw new Error(res.error);
     expect(res.session.moves).toEqual(["pigeon_pose"]);
   });

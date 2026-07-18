@@ -7,7 +7,10 @@
 import rawMobilityMoves from "./data/mobility-moves.json";
 import { loadDataset } from "./loader";
 import { createMatcher, slugStrategy } from "./matcher";
-import type { MobilityMove, MobilityMoveKind } from "@/scripts/gen-mobility-moves";
+import type {
+  MobilityMove,
+  MobilityMoveKind,
+} from "@/scripts/gen-mobility-moves";
 
 export type { MobilityMove, MobilityMoveKind };
 

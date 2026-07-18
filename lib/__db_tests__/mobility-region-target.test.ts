@@ -71,7 +71,9 @@ describe("mobility_region frequency target (#840)", () => {
     expect(progress!.met).toBe(false);
 
     // A third distinct Glutes day meets it.
-    logMobility(profileId, shiftDateStr(anchor, -3), ["ninety_ninety_hip_switch"]);
+    logMobility(profileId, shiftDateStr(anchor, -3), [
+      "ninety_ninety_hip_switch",
+    ]);
     const met = getFrequencyTargetProgress(profileId).find(
       (p) => p.target.id === targetId
     );

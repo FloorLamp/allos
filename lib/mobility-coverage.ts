@@ -134,7 +134,11 @@ export function mobilityCoverageStrip(
       days: sorted.length,
       lastMobilized: sorted.length ? sorted[sorted.length - 1] : null,
     };
-  }).sort((a, b) => b.days - a.days || REGION_ORDER.indexOf(a.region) - REGION_ORDER.indexOf(b.region));
+  }).sort(
+    (a, b) =>
+      b.days - a.days ||
+      REGION_ORDER.indexOf(a.region) - REGION_ORDER.indexOf(b.region)
+  );
 }
 
 // The display label for a MuscleId (re-export so a finer strip renders through the shared

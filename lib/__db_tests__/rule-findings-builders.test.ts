@@ -1088,7 +1088,9 @@ describe("buildMobilitySuggestionFindings — deficit-driven mobility habits (#8
 
     const findings = buildMobilitySuggestionFindings(profileId, anchor);
     const f = findings.find(
-      (x) => x.dedupeKey === mobilitySuggestSignalKey(FLEXIBILITY_REGION, "flexibility")
+      (x) =>
+        x.dedupeKey ===
+        mobilitySuggestSignalKey(FLEXIBILITY_REGION, "flexibility")
     );
     expect(f).toBeTruthy();
     expect(f!.domain).toBe("mobility-suggest");

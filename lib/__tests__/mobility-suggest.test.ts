@@ -23,9 +23,9 @@ describe("mobilitySuggestions", () => {
   it("suggests nothing without a low measurement or a recovering injury", () => {
     expect(mobilitySuggestions(none)).toEqual([]);
     // A healthy percentile is above the nudge threshold — no suggestion.
-    expect(
-      mobilitySuggestions({ ...none, sitReachPercentile: 60 })
-    ).toEqual([]);
+    expect(mobilitySuggestions({ ...none, sitReachPercentile: 60 })).toEqual(
+      []
+    );
   });
 
   it("suggests the posterior-chain region for a low sit-and-reach percentile", () => {

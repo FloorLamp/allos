@@ -18,10 +18,7 @@
 
 import { db, writeTx, today } from "./db";
 import { parseComponents, type ActivityComponent } from "./types";
-import {
-  canonicalMobilityMove,
-  mobilityMoveName,
-} from "./mobility-moves";
+import { canonicalMobilityMove, mobilityMoveName } from "./mobility-moves";
 
 // The default title for a mobility session. Kept stable so the row reads sanely on the
 // timeline/journal without a per-move title.
@@ -34,8 +31,7 @@ export interface MobilitySession {
 }
 
 export type MobilityLogOutcome =
-  | { kind: "logged"; session: MobilitySession }
-  | { kind: "unknown-move" };
+  { kind: "logged"; session: MobilitySession } | { kind: "unknown-move" };
 
 interface DayRow {
   id: number;
@@ -147,9 +143,10 @@ export function unlogMobilityMoveCore(
     if (!row) return { kind: "logged", session: sessionOf(undefined) };
     const moves = movesOf(row).filter((m) => m !== slug);
     if (moves.length === 0 && (row.duration_min ?? null) === null) {
-      db.prepare(
-        `DELETE FROM activities WHERE id = ? AND profile_id = ?`
-      ).run(row.id, profileId);
+      db.prepare(`DELETE FROM activities WHERE id = ? AND profile_id = ?`).run(
+        row.id,
+        profileId
+      );
       return { kind: "logged", session: sessionOf(undefined) };
     }
     db.prepare(
@@ -179,9 +176,10 @@ export function setMobilityDurationCore(
       return sessionOf(dayRow(profileId, date));
     }
     if (dur === null && movesOf(row).length === 0) {
-      db.prepare(
-        `DELETE FROM activities WHERE id = ? AND profile_id = ?`
-      ).run(row.id, profileId);
+      db.prepare(`DELETE FROM activities WHERE id = ? AND profile_id = ?`).run(
+        row.id,
+        profileId
+      );
       return sessionOf(undefined);
     }
     db.prepare(

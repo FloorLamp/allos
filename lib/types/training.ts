@@ -273,11 +273,7 @@ export interface Goal {
 // (a MuscleRegion) whose progress counts recovery-session mobilized days — SEPARATE from
 // `region` (#482: trained ≠ mobilized). Same target table, different data sources.
 export type FrequencyScopeKind =
-  | "region"
-  | "group"
-  | "type"
-  | "food_group"
-  | "mobility_region";
+  "region" | "group" | "type" | "food_group" | "mobility_region";
 
 // A user-defined "hit X at least N times/week" target.
 export interface FrequencyTarget {

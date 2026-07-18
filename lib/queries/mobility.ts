@@ -75,10 +75,15 @@ export function getMobilityCoverage(
 // (mobilitySuggestions). BOTH the coaching finding builder and the Training-overview
 // one-tap accept affordance read THIS (one question, one computation) — never a second
 // gather. Returns raw suggestions; the caller applies the dismissal filter.
-export function getMobilitySuggestions(profileId: number): MobilitySuggestion[] {
+export function getMobilitySuggestions(
+  profileId: number
+): MobilitySuggestion[] {
   const sex = getUserSex(profileId);
   const age = getUserAge(profileId);
-  const sitReach = getLatestMedicalRecordByCanonical(profileId, "Sit-and-Reach");
+  const sitReach = getLatestMedicalRecordByCanonical(
+    profileId,
+    "Sit-and-Reach"
+  );
   const balance = getLatestMedicalRecordByCanonical(
     profileId,
     "Single-Leg Balance"

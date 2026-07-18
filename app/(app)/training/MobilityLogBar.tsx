@@ -82,9 +82,7 @@ export default function MobilityLogBar({
     const fd = new FormData();
     fd.set("move", slug);
     fd.set("date", today);
-    const res = wasOn
-      ? await unlogMobilityMove(fd)
-      : await logMobilityMove(fd);
+    const res = wasOn ? await unlogMobilityMove(fd) : await logMobilityMove(fd);
     if (res.ok) {
       // Reconcile with the server's authoritative move list.
       setSelected(new Set(res.session.moves));

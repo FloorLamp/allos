@@ -18,8 +18,7 @@ import {
 // bar reconciles its optimistic UI (the food-log #748 item 2 pattern).
 
 export type MobilityLogResult =
-  | { ok: true; session: MobilitySession }
-  | { ok: false; error: string };
+  { ok: true; session: MobilitySession } | { ok: false; error: string };
 
 function resolveDate(formData: FormData, profileId: number): string {
   const raw = String(formData.get("date") ?? "").trim();

@@ -58,7 +58,9 @@ describe("mobility-moves.json dataset", () => {
     expect(isValidMobilityMove(first.slug)).toBe(true);
     expect(mobilityMoveBySlug(first.slug)?.name).toBe(first.name);
     // Canonicalization: a fuzzy variant resolves to the exact stored slug.
-    expect(canonicalMobilityMove(first.slug.replace(/_/g, "-"))).toBe(first.slug);
+    expect(canonicalMobilityMove(first.slug.replace(/_/g, "-"))).toBe(
+      first.slug
+    );
     // Refusal gate + graceful name fallback for an unknown slug.
     expect(isValidMobilityMove("__not_a_move__")).toBe(false);
     expect(canonicalMobilityMove("__not_a_move__")).toBeNull();
