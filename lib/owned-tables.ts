@@ -130,6 +130,11 @@ export const OWNED_TABLES = [
   // (activities/exercise_sets, body_metrics, medical_records), each already cleared by
   // deleteProfile; deleting this session row is all this table needs.
   "fitness_assessments",
+  // Endurance event plans (#839): the user's race/event goal (date, discipline, target
+  // distance/time, status). Directly owned; nothing FKs into it (the weekly trajectory is
+  // DERIVED by the pure engine from logged volume, never stored), so a delete is a plain
+  // row delete and deleteProfile clears it by profile_id.
+  "endurance_plans",
 ] as const;
 
 export type OwnedTable = (typeof OWNED_TABLES)[number];

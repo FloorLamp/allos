@@ -85,6 +85,8 @@ import {
   RECAP_PROFILE,
   E2E_LOGIN_FOODSLOT,
   FOOD_SLOT_PROFILE,
+  E2E_LOGIN_ENDURANCE,
+  ENDURANCE_PROFILE,
 } from "./fixture-logins";
 import { adoptTemplate, activateRoutine } from "../lib/routines";
 
@@ -2858,4 +2860,40 @@ db.prepare(
 seedMemberLogin(E2E_LOGIN_FOODSLOT, foodSlotId, "write");
 console.log(
   `e2e: seeded food-slot ranking + habit-trend fixture — profile ${foodSlotId} (${FOOD_SLOT_PROFILE}) (#950/#954)`
+);
+
+// ── Endurance event plans (#839) ──────────────────────────────────────────────
+// ENDURANCE_PROFILE: a dedicated adult profile with a few weeks of logged runs so a
+// plan created in the spec has a real weekly-volume base + this-week actuals. The spec
+// OWNS the endurance_plans lifecycle (create-and-clean), so hard-clear any leftover
+// plans on a reused server. Runs seeded across the last three weeks + this week.
+const enduranceProfileId = fixtureProfileId(ENDURANCE_PROFILE);
+db.prepare(`DELETE FROM endurance_plans WHERE profile_id = ?`).run(
+  enduranceProfileId
+);
+db.prepare(
+  `DELETE FROM activities WHERE profile_id = ? AND type = 'cardio'`
+).run(enduranceProfileId);
+for (const [ago, km, wt] of [
+  [20, 8, null],
+  [18, 6, null],
+  [13, 9, null],
+  [11, 7, null],
+  [6, 10, "long run"],
+  [4, 6, null],
+  [1, 8, null], // this week so far
+] as const) {
+  db.prepare(
+    `INSERT INTO activities (profile_id, date, type, title, distance_km, workout_type)
+     VALUES (?, ?, 'cardio', 'Running', ?, ?)`
+  ).run(
+    enduranceProfileId,
+    shiftDateStr(today(enduranceProfileId), -ago),
+    km,
+    wt
+  );
+}
+seedMemberLogin(E2E_LOGIN_ENDURANCE, enduranceProfileId, "write");
+console.log(
+  `e2e: seeded endurance-plan fixture — profile ${enduranceProfileId} (${ENDURANCE_PROFILE}) (#839)`
 );

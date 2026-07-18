@@ -37,6 +37,7 @@ import {
   type ExcludedRegionDisclosure,
 } from "./injury-model";
 import type { ConditionConsideration } from "./condition-training-considerations";
+import type { EnduranceArm } from "./endurance-plan";
 import type {
   StrengthRecent,
   CardioRecent,
@@ -140,6 +141,12 @@ export interface NextWorkoutInput {
   // `considerations` on the result so every surface renders the same calm note. Absent /
   // empty ⇒ nothing.
   considerations?: ConditionConsideration[];
+  // The plan-aware cardio ARM for the soonest active endurance plan (#839) — a calm
+  // pre-computed one-line note ("… plan · 6 weeks to go: ~28 km this week, long run ~12 km
+  // due …"). Rides ALONGSIDE the unchanged recommendation like the condition notes; the
+  // gather already applies the illness pause (#837) so an open episode yields null. Passed
+  // straight through to `endurancePlanArm` on the result. Absent / null ⇒ nothing.
+  endurancePlanArm?: EnduranceArm | null;
 }
 
 // The slice of the active routine the core reads to resolve today's session — a
@@ -259,6 +266,10 @@ export interface NextWorkout {
   // Curated condition CONSIDERATION notes (#666) riding alongside — informational, never
   // gating. Pass-through of the input; empty when no mapped active condition.
   considerations: ConditionConsideration[];
+  // The plan-aware cardio ARM (#839) — the soonest active endurance plan's calm one-line
+  // note, riding alongside like the considerations. Null when no active plan / during an
+  // open illness episode (the gather applies the pause). Pass-through of the input.
+  endurancePlanArm: EnduranceArm | null;
 }
 
 // ---- Target helpers ----
@@ -682,6 +693,7 @@ export function recommendNextWorkout(input: NextWorkoutInput): NextWorkout {
     excludedRegions: excludedRegionDisclosures(constraints),
     temperedRegions: [...computeTemperedRegions(constraints)],
     considerations: input.considerations ?? [],
+    endurancePlanArm: input.endurancePlanArm ?? null,
   };
 
   // A behind region/group target fully within an excluded region is dropped from the

@@ -18,6 +18,7 @@ import {
   type InjuryConstraint,
 } from "../injury-model";
 import type { ConditionConsideration } from "../condition-training-considerations";
+import type { EnduranceArm } from "../endurance-plan";
 import type { EquipmentAvailability } from "../equipment-availability";
 import type { WeightUnit } from "../settings";
 import type { AppRoute } from "../hrefs";
@@ -241,6 +242,11 @@ export interface CoachingInput {
   // conditions — informational, never gating/re-ranking. Threaded through so the note
   // rides the same recommendation everywhere. Absent / empty ⇒ nothing.
   considerations?: ConditionConsideration[];
+  // The plan-aware cardio ARM for the soonest active endurance plan (#839) — pre-computed
+  // by the gather (which applies the illness pause, #837). Threaded through so the
+  // dashboard widget + Telegram render the same note the Training overview does. Absent /
+  // null ⇒ no active plan (or held by illness).
+  endurancePlanArm?: EnduranceArm | null;
   // Whether the profile is CURRENTLY mid-workout per derived presence (#921). Used
   // ONLY to pick the rest recommendation's TENSE — while a session is live the card
   // softens to next-session framing instead of contradicting reality by saying
@@ -766,6 +772,9 @@ export function contextNotes(nw: NextWorkout): string[] {
   for (const d of nw.excludedRegions)
     notes.push(`Avoiding ${excludedRegionLabel(d)}`);
   for (const c of nw.considerations) notes.push(c.note);
+  // The plan-aware cardio arm (#839) rides last — a calm forward-looking note, not a
+  // constraint. Suppressed at the gather during an open illness episode (#837).
+  if (nw.endurancePlanArm) notes.push(nw.endurancePlanArm.note);
   return notes;
 }
 

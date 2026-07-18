@@ -32,6 +32,7 @@ import {
 } from "../../hrefs";
 import { refillSignalKey } from "../../refill-nudge";
 import { trainingSignalKey } from "../../workout-nudge";
+import { getActiveEndurancePlans } from "../../endurance-plans";
 import { assessSchedule } from "../../immunization-status";
 import { preventiveAssessmentToUpcomingItem } from "../../preventive-upcoming";
 import { scheduledMatchForRule } from "../../preventive-appointment";
@@ -682,6 +683,38 @@ function trainingItems(profileId: number): UpcomingItem[] {
     }));
 }
 
+// Endurance event days (#839): each active plan's event as a dated forward-looking item,
+// so the EVENT DAY rides the Upcoming page + the calendar feed (domain "training" is a
+// FeedCategory). Hidden for age-restricted profiles, mirroring the Training surface. The
+// key namespace is DISTINCT from the coaching long-session finding prefix ("endurance:"),
+// so the event marker and the calm long-session nudge never collide. Not suppressible — a
+// dated event is a hard commitment, not a dismissable nudge.
+function enduranceEventItems(profileId: number, today: string): UpcomingItem[] {
+  if (isTrainingRestricted(profileId)) return [];
+  return getActiveEndurancePlans(profileId)
+    .filter((p) => p.eventDate >= today)
+    .map((p) => {
+      const disc =
+        p.discipline === "run"
+          ? "Run"
+          : p.discipline === "ride"
+            ? "Ride"
+            : "Swim";
+      const name =
+        p.eventName?.trim() ||
+        `${Math.round(p.targetDistanceKm * 10) / 10} km ${disc}`;
+      return {
+        key: `endurance-event:${p.id}`,
+        domain: "training" as const,
+        title: `Event: ${name}`,
+        detail: `${disc} · ${Math.round(p.targetDistanceKm * 10) / 10} km`,
+        href: "/training" as const,
+        dueDate: p.eventDate,
+        suppressible: false,
+      };
+    });
+}
+
 // Provider-ordered / manually-entered care-plan items with a planned date (issue
 // #84). Reuses getCarePlanItems (profile-scoped read) and the pure adapter, which
 // keeps only OPEN (non-completed/cancelled) DATED items and bands them by their
@@ -742,6 +775,7 @@ const rawUpcoming = cache(function rawUpcoming(
     ...biomarkerItems(profileId, today),
     ...goalItems(profileId),
     ...trainingItems(profileId),
+    ...enduranceEventItems(profileId, today),
   ];
 });
 

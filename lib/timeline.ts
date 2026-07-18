@@ -930,6 +930,57 @@ function collectEvents(
     }
   }
 
+  // Endurance event plans (#839): the EVENT DAY on the calendar/timeline. One event per
+  // active/completed plan on its event_date (an abandoned plan's event is dropped). The
+  // completion itself is a separate milestone row (recorded by the complete action), so it
+  // rides the milestone lane above — this block is the dated event marker only. Gated with
+  // the training domain (an event plan is a training-context concept). NO notifications.
+  if (includeTrainingEvents) {
+    const planBounds = exact("event_date");
+    const plans = db
+      .prepare(
+        `SELECT id, event_name, discipline, event_date, target_distance_km, status, created_at
+           FROM endurance_plans
+          WHERE profile_id = ? AND status != 'abandoned'${planBounds.clause}
+          ORDER BY event_date DESC, id DESC
+          LIMIT ?`
+      )
+      .all(profileId, ...planBounds.params, perTableLimit) as {
+      id: number;
+      event_name: string | null;
+      discipline: string;
+      event_date: string;
+      target_distance_km: number;
+      status: string;
+      created_at: string;
+    }[];
+    for (const p of plans) {
+      const disc =
+        p.discipline === "run"
+          ? "Run"
+          : p.discipline === "ride"
+            ? "Ride"
+            : "Swim";
+      const name =
+        p.event_name?.trim() ||
+        `${Math.round(p.target_distance_km * 10) / 10} km ${disc}`;
+      pushLimited(
+        events,
+        {
+          id: `endurance:${p.id}:event`,
+          date: p.event_date,
+          category: "endurance",
+          title: `Event: ${name}`,
+          subtitle: `${disc} · ${Math.round(p.target_distance_km * 10) / 10} km`,
+          href: "/training",
+          sortTime: timeFromCreatedAt(p.created_at, tz),
+          tone: p.status === "completed" ? "good" : "default",
+        },
+        options
+      );
+    }
+  }
+
   // Symptom log (#799): one event per symptom-DAY (the day's row set), so a run of
   // sick days reads as a compact per-day entry rather than N rows. Worst severity drives
   // the tone; each logged symptom is a detail item (label + severity word). Deep-links
@@ -1088,7 +1139,9 @@ export function getTimelineDates(
         WHERE profile_id = @profileId${restrictedActivityTypeClause(restricted)}`,
       "SELECT since AS date FROM injuries WHERE profile_id = @profileId AND since IS NOT NULL",
       `SELECT resolved_date AS date FROM injuries
-        WHERE profile_id = @profileId AND resolved_date IS NOT NULL`
+        WHERE profile_id = @profileId AND resolved_date IS NOT NULL`,
+      `SELECT event_date AS date FROM endurance_plans
+        WHERE profile_id = @profileId AND status != 'abandoned'`
     );
   }
   for (const r of db
