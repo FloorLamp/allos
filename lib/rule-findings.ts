@@ -88,6 +88,8 @@ import {
   VOLUME_BAND_WINDOW_DAYS,
   type VolumeBandObservation,
 } from "./muscle-volume-bands";
+import { getInjuryConstraints } from "./injuries";
+import { excludedRegions } from "./injury-model";
 import {
   detectWeightAnomalies,
   weightAnomalySignalKey,
@@ -468,6 +470,9 @@ export function buildMuscleVolumeFindings(
     historyWeeks,
     deloadActive: isRoutineDeloadWeek(profileId, today),
     monthAnchor: today.slice(0, 7), // YYYY-MM episode anchor (#436)
+    // Active-injury region exclusion (#838): a shortfall for an off-limits region is noise
+    // while it's out. The SAME injury constraints the recommendation model excludes on.
+    excludedRegions: excludedRegions(getInjuryConstraints(profileId)),
   }).map(volumeObservationToFinding);
 }
 

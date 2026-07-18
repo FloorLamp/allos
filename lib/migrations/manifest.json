@@ -50,5 +50,6 @@
   "049-symptom-photos.ts": "a220e6f481875bd775338e87bda94a8ad0c483b4cd0a4a984730f9264f7f073d",
   "050-followup-chain.ts": "b19d228d321f23dccf9d6b6c2e0e0943bb0c7aa78fcde82e4c0f39a932891421",
   "051-protocol-intake-item.ts": "8f1c3979bac886a7ba28bb4cecb6fecc72739daf1a5620c6d68bdae56fbed7e2",
-  "052-blood-type-parts.ts": "a391e68d7d0e4aa1eb63e9c900d3b4c6ace109fb3688c82b676582fab46c1e11"
+  "052-blood-type-parts.ts": "a391e68d7d0e4aa1eb63e9c900d3b4c6ace109fb3688c82b676582fab46c1e11",
+  "053-injuries.ts": "700e3fde75f2a7f52b62b81c12820739152c0e8f6820ee3348c8d167849ed5b1"
 }

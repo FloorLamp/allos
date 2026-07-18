@@ -42,7 +42,13 @@ import { recommendNextWorkout } from "@/lib/workout-recommendation";
 import { getActiveRoutine, getRoutineCycleStatus } from "@/lib/routines";
 import { availableEquipmentKinds } from "@/lib/equipment";
 import { buildRoutineSessionPrefill } from "@/lib/activity-form-model";
+import { getInjuries, getInjuryConstraints } from "@/lib/injuries";
+import { getConditionConsiderations } from "@/lib/queries";
+import { getActiveSituations } from "@/lib/settings/profile-attrs";
+import { isBuiltInInjurySituation } from "@/lib/situations";
+import { excludedRegionLabel } from "@/lib/injury-model";
 import TodaysSessionCard from "./TodaysSessionCard";
+import InjuryBar from "./InjuryBar";
 import MuscleAnatomy from "@/components/MuscleAnatomy";
 import { dispWeight, fmtDistance, fmtKmh, fmtWeight } from "@/lib/units";
 import LineChartCard from "@/components/LineChartCard";
@@ -143,6 +149,10 @@ export default async function OverviewSection() {
     // Rest-card tense (#921): soften "rest today" to next-session framing while a
     // session is live, matching the dashboard/Telegram surfaces (one computation).
     workoutActive: getWorkoutPresence(profile.id).state === "active",
+    // Injury constraints (#838) + condition considerations (#666): the SAME gather the
+    // dashboard/Telegram surfaces use, so the exclusion/tempering/notes here agree (#221).
+    injuries: getInjuryConstraints(profile.id),
+    considerations: getConditionConsiderations(profile.id),
     weightUnit: wu,
   };
   const [nextWorkout] = recommendCoaching(coachingInput);
@@ -152,6 +162,19 @@ export default async function OverviewSection() {
   // session" hand-off to live mode.
   const nw = recommendNextWorkout(coachingInput);
   const session = nw.session;
+
+  // The injury bar's rows (#838) + the suggest-only Injury-situation bridge state.
+  const injuries = getInjuries(profile.id).map((i) => ({
+    id: i.id,
+    label: i.label,
+    regions: i.regions,
+    status: i.status,
+    since: i.since,
+    notes: i.notes,
+  }));
+  const hasInjurySituation = getActiveSituations(profile.id).some(
+    isBuiltInInjurySituation
+  );
   const sessionCard = session
     ? {
         label:
@@ -201,6 +224,13 @@ export default async function OverviewSection() {
           from the next-workout recommendation below. */}
       <TrainingFindings />
 
+      {/* User-declared injury constraints (#838): log/edit/resolve, and the engine trains
+          around active regions (disclosed on the recommendation below). */}
+      <InjuryBar
+        injuries={injuries}
+        suggestActivateSituation={!hasInjurySituation}
+      />
+
       {showSessionCard && sessionCard && (
         <TodaysSessionCard
           label={sessionCard.label}
@@ -209,6 +239,51 @@ export default async function OverviewSection() {
           prefill={sessionCard.prefill}
           deloadWeek={sessionCard.deloadWeek}
         />
+      )}
+
+      {/* Injury exclusion disclosure (#838) + condition considerations (#666) — the calm
+          context riding ALONGSIDE the (unchanged) recommendation. NEVER silent: the excluded
+          regions are named so the user sees WHY a region is set aside. */}
+      {(nw.excludedRegions.length > 0 ||
+        nw.temperedRegions.length > 0 ||
+        nw.considerations.length > 0 ||
+        nw.substitutionSuggested) && (
+        <div
+          className="card border-l-4 border-l-amber-400 bg-amber-50/40 dark:bg-amber-500/5"
+          data-testid="training-context-notes"
+        >
+          {nw.substitutionSuggested && (
+            <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
+              Today&apos;s routine day works only injured regions — consider a
+              substitution day rather than pushing through.
+            </p>
+          )}
+          {nw.excludedRegions.length > 0 && (
+            <p
+              className="text-sm text-slate-700 dark:text-slate-200"
+              data-testid="injury-exclusion-note"
+            >
+              Avoiding{" "}
+              {nw.excludedRegions.map((d) => excludedRegionLabel(d)).join(", ")}
+              .
+            </p>
+          )}
+          {nw.temperedRegions.length > 0 && (
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+              Easing back on {nw.temperedRegions.join(", ")} — lighter targets
+              while you recover.
+            </p>
+          )}
+          {nw.considerations.map((c) => (
+            <p
+              key={c.key}
+              className="mt-1 text-sm text-slate-600 dark:text-slate-300"
+              data-testid="condition-consideration-note"
+            >
+              {c.note}
+            </p>
+          ))}
+        </div>
       )}
 
       {!showSessionCard && (

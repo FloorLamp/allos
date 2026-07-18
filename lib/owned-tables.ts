@@ -110,6 +110,10 @@ export const OWNED_TABLES = [
   // (no FK to illness_episodes). deleteProfile clears the rows; its on-disk files are
   // unlinked separately (path-contained under data/uploads/symptom-photos/<profileId>/).
   "symptom_photos",
+  // Injury layer (#838): user-declared region constraints on training. Directly owned;
+  // nothing FKs into it (the situation bridge is suggest-only, no persistent link), so a
+  // delete is a plain row delete and deleteProfile clears it by profile_id.
+  "injuries",
 ] as const;
 
 export type OwnedTable = (typeof OWNED_TABLES)[number];
