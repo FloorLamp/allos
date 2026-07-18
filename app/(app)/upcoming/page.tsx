@@ -40,6 +40,7 @@ import SubmitButton from "@/components/SubmitButton";
 import SnoozeDismissMenu from "@/components/SnoozeDismissMenu";
 import PreventiveOverrideMenu from "./PreventiveOverrideMenu";
 import FollowUpResolveControls from "@/components/FollowUpResolveControls";
+import ExplainFinding from "@/components/ExplainFinding";
 import {
   markTaken,
   snoozeItem,
@@ -423,6 +424,16 @@ function Row({
           }}
           carePlanItemId={item.followUpResolve.carePlanItemId}
           resolvingRecordId={item.followUpResolve.resolvingRecordId}
+        />
+      )}
+      {/* "Why is this flagged?" (issue #878, Phase 1): narrate the item's OWN carried
+      reasons via the Light tier, or the deterministic structured fallback keyless.
+      Only shown when the item carries structured reasons. */}
+      {item.reasons != null && item.reasons.length > 0 && (
+        <ExplainFinding
+          title={item.title}
+          detail={item.detail}
+          reasons={item.reasons}
         />
       )}
       {/* Per-item snooze/dismiss popover — the shared OverflowMenu-based menu
