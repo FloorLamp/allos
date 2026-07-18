@@ -203,6 +203,29 @@ describe("suggestFoods — dietary preferences (#975): filter + substitute", () 
     expect(iron!.safetyNotes.some((n) => n.kind === "preference")).toBe(true);
   });
 
+  it("a vegetarian's low omega-3 substitutes the plant alternative when fish is excluded", () => {
+    const out = suggestFoods(
+      baseInput({
+        flagged: [{ name: "Omega-3 Total (OmegaCheck)", flag: "low" }],
+        excludedGroups: [
+          "fatty_fish",
+          "lean_fish",
+          "shellfish",
+          "poultry",
+          "red_meat",
+          "processed_meat",
+        ],
+      })
+    );
+    const omega = out.find((s) => s.key === "omega-3");
+    expect(omega).toBeTruthy();
+    // The fish primary is excluded, so the plant (nuts_seeds — walnuts/flax/algae)
+    // alternative leads instead. Never empty.
+    expect(omega!.foods.map((f) => f.foodGroup)).toContain("nuts_seeds");
+    expect(omega!.foods.map((f) => f.foodGroup)).not.toContain("fatty_fish");
+    expect(omega!.safetyNotes.some((n) => n.kind === "preference")).toBe(true);
+  });
+
   it("keeps the suggestion (never empty) when every source is excluded", () => {
     // Exclude BOTH iron sources — the shortfall must still surface.
     const out = suggestFoods(

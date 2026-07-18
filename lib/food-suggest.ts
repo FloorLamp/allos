@@ -44,7 +44,7 @@ import {
 } from "./datasets/nutrient-food-map";
 import { allergenConflict, type SafetyMedication } from "./supplement-safety";
 import { matchFoodInteractions } from "./food-drug-interactions";
-import { applyPreferenceFilter } from "./dietary-preferences";
+import { applyPreferenceFilter, isExcludedGroup } from "./dietary-preferences";
 
 const ENTRIES: NutrientFoodEntry[] = NUTRIENT_FOOD_ENTRIES;
 const REDUCE_ENTRIES: ReduceFoodEntry[] = REDUCE_FOOD_ENTRIES;
@@ -291,19 +291,43 @@ function buildSuggestion(
     if (hit) notes.push({ kind: "biomarker", text: entry.excessCaution.note });
   }
 
-  // 5. Dietary-preference filter (issue #975). FILTER + SUBSTITUTE: drop the excluded
-  //    groups and lead with the preference-compatible sources; if EVERY source is
-  //    excluded, keep them (a shortfall must never vanish because its only sources are
-  //    excluded — never an empty suggestion). A softer layer than the safety screens
-  //    above — it never withholds the whole suggestion.
+  // 5. Dietary-preference filter (issue #975). FILTER + SUBSTITUTE, never block: drop the
+  //    excluded groups and lead with the preference-compatible sources. When EVERY primary
+  //    is excluded, substitute the entry's alternative source if it's compatible (the
+  //    omega-3 → algae/ALA case, mirroring the allergy fallback); if nothing compatible
+  //    remains, keep the primaries (a shortfall must never vanish because its only sources
+  //    are excluded — never an empty suggestion). A softer layer than the safety screens.
   if (excluded.size > 0) {
-    const compatible = applyPreferenceFilter(foods, excluded);
-    if (compatible.length < foods.length && compatible.length > 0) {
+    const compatible = foods.filter(
+      (f) => !isExcludedGroup(f.foodGroup, excluded)
+    );
+    if (compatible.length > 0 && compatible.length < foods.length) {
       foods = compatible;
       notes.push({
         kind: "preference",
         text: "Sources you don't eat were left out — these fit your dietary preferences.",
       });
+    } else if (compatible.length === 0) {
+      const alt = entry.allergyAlternative;
+      if (
+        alt &&
+        !isExcludedGroup(alt.foodGroup, excluded) &&
+        !allergyStrike(alt, input.allergens)
+      ) {
+        foods = [
+          {
+            food: alt.food,
+            foodGroup: alt.foodGroup,
+            serving: alt.serving,
+            isAlternative: true,
+          },
+        ];
+        notes.push({
+          kind: "preference",
+          text: "The usual sources don't fit your dietary preferences — here's a preference-friendly alternative.",
+        });
+      }
+      // else: leave the primaries in place — the shortfall stays visible (never empty).
     }
   }
 
