@@ -33,6 +33,8 @@ import {
   E2E_LOGIN_NOGEAR,
   E2E_LOGIN_FITNESS,
   E2E_LOGIN_FITNESS_SENIOR,
+  E2E_LOGIN_MOBILITY,
+  MOBILITY_PROFILE,
   E2E_LOGIN_ROUTINE,
   E2E_LOGIN_ROUTINE_BUILDER,
   E2E_LOGIN_ROUTINE_DELOAD,
@@ -1800,6 +1802,35 @@ db.prepare(
   `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', '1954-03-01')`
 ).run(fitnessSeniorId);
 seedMemberLogin(E2E_LOGIN_FITNESS_SENIOR, fitnessSeniorId);
+
+// A dedicated ADULT profile for the mobility spec (#840): sex + birthdate so the
+// fitness-norms percentile gate opens, plus a LOW sit-and-reach vital so the Training
+// overview's Mobility section renders a deficit→habit SUGGESTION (a Legs mobility habit).
+// NO seeded recovery session / mobility_region target — the log bar starts empty and the
+// suggestion is present; the spec owns its own move toggles. Idempotent: clear the
+// profile's recovery activities + mobility_region targets so a reused server re-plants a
+// clean slate.
+const mobilityId = fixtureProfileId(MOBILITY_PROFILE);
+db.prepare(
+  `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'sex', 'male')`
+).run(mobilityId);
+db.prepare(
+  `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', '1985-01-01')`
+).run(mobilityId);
+db.prepare(
+  `DELETE FROM activities WHERE profile_id = ? AND type = 'recovery'`
+).run(mobilityId);
+db.prepare(
+  `DELETE FROM frequency_targets WHERE profile_id = ? AND scope_kind = 'mobility_region'`
+).run(mobilityId);
+db.prepare(
+  `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = 'Sit-and-Reach'`
+).run(mobilityId);
+db.prepare(
+  `INSERT INTO medical_records (profile_id, date, category, name, value_num, unit, canonical_name)
+   VALUES (?, ?, 'vitals', 'Sit-and-Reach', 15, 'cm', 'Sit-and-Reach')`
+).run(mobilityId, today(mobilityId));
+seedMemberLogin(E2E_LOGIN_MOBILITY, mobilityId);
 
 // A dedicated profile with a LIVE, in-progress strength session (issue #921): an
 // activity today with a start_time (~40 min ago), NO end_time, and a fresh

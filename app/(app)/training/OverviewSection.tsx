@@ -43,6 +43,7 @@ import { getActiveRoutine, getRoutineCycleStatus } from "@/lib/routines";
 import { availableEquipmentKinds } from "@/lib/equipment";
 import { buildRoutineSessionPrefill } from "@/lib/activity-form-model";
 import { getInjuries, getInjuryConstraints } from "@/lib/injuries";
+import MobilitySection from "./MobilitySection";
 import { getConditionConsiderations } from "@/lib/queries";
 import { getActiveSituations } from "@/lib/settings/profile-attrs";
 import { isBuiltInInjurySituation } from "@/lib/situations";
@@ -521,6 +522,10 @@ export default async function OverviewSection() {
           </div>
         )}
       </div>
+
+      {/* Mobility (#840): self-contained tap-the-moves log + region-coverage strip,
+          a SEPARATE view next to muscle coverage (never merged — #482). */}
+      <MobilitySection profileId={profile.id} today={todayStr} />
 
       <div className="space-y-6 opacity-85">
         <div>

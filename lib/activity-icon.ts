@@ -48,6 +48,9 @@ const TYPE_FALLBACK: Record<string, ActivityIconKey> = {
   strength: "barbell",
   cardio: "run",
   sport: "medal",
+  // Recovery/mobility sessions (issue #840) icon as the stretch glyph by default;
+  // per-move component names still match the yoga/stretch keyword rules first.
+  recovery: "stretch",
 };
 
 // A keyword is a plain substring by default, or a RegExp when a word boundary

@@ -238,6 +238,16 @@ export const E2E_LOGIN_FITNESS = "e2e_fitness";
 export const FITNESS_PROFILE = "Fitness Check (e2e)";
 export const E2E_LOGIN_FITNESS_SENIOR = "e2e_fitness_senior";
 export const FITNESS_SENIOR_PROFILE = "Fitness Senior (e2e)";
+// A dedicated ADULT profile for the mobility spec (#840). Carries sex + birthdate (so the
+// fitness-norms percentile gate opens) and a LOW sit-and-reach vital, so the Training
+// overview's Mobility section renders a deficit→habit SUGGESTION (a Legs mobility habit).
+// Isolated on purpose: the spec TAPS moves (writing a recovery activity) and the fixture
+// keeps NO seeded recovery session / mobility_region target, so the log bar starts empty
+// and the suggestion is present — state a shared profile couldn't guarantee under
+// --repeat-each. The spec owns + cleans up its own toggles; it never clicks Accept (which
+// would create a persistent target and hide the suggestion on the next repeat).
+export const E2E_LOGIN_MOBILITY = "e2e_mobility";
+export const MOBILITY_PROFILE = "Mobility (e2e)";
 
 // A dedicated ADULT profile for the food-log slot-aware ranking + N-week habit trend
 // specs (#950 / #954). Its per-tap food_log_events ledger is slot-SKEWED — exactly one
