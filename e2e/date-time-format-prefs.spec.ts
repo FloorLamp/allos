@@ -1,18 +1,17 @@
 import { test, expect, type Page } from "@playwright/test";
 
-// Change a Settings select and await the Server-Action POST it fires (Next posts to
-// the current route). Deterministic where the shared "Saved" indicator can't be:
-// it can't tell a second save from a first whose 3s check is still lingering.
+// Change a Settings select and wait for the autosave to LAND. The card's SaveStatus
+// shows a "Saved" check only after the Server Action's write has committed (savedAt
+// is set inside the resolved transition), so gating on it before the next step can't
+// race an uncommitted write. The caller reloads (a fresh page clears the 3s "Saved"
+// linger) between changes so this check always refers to the change just made.
 async function selectAndSave(
   page: Page,
   testId: string,
   value: string
 ): Promise<void> {
-  const saved = page.waitForResponse(
-    (r) => r.request().method() === "POST" && r.url().includes("/settings")
-  );
   await page.getByTestId(testId).selectOption(value);
-  await saved;
+  await expect(page.getByLabel("Saved")).toBeVisible();
 }
 
 // Date/time display login preferences (#964). A login picks its clock (12h/24h) and
@@ -39,11 +38,16 @@ test("flipping the date/time prefs re-renders a record date and a journal timest
     // 24h default — the ride's start renders as "07:15", never a 12h "7:15 AM".
     await expect(page.getByText(/07:15/).first()).toBeVisible();
 
-    // Flip both prefs on Settings → Preferences (autosave on change). Await each
-    // Server-Action POST before the next change so the two back-to-back saves can't
-    // race — the shared "Saved" indicator lingers 3s, so it can't distinguish them.
+    // Flip both prefs on Settings → Preferences (autosave on change). Reload between
+    // the two changes: like the Units card, each field's save posts BOTH values from
+    // its onChange closure, and React defers the first field's re-render inside the
+    // save transition — so a second change fired before that render commits would
+    // post a stale first value. A human's two clicks settle between renders; the
+    // reload gives the second change a committed starting state deterministically.
     await page.goto("/settings");
     await selectAndSave(page, "date-format-select", "iso");
+    await page.reload();
+    await expect(page.getByTestId("date-format-select")).toHaveValue("iso");
     await selectAndSave(page, "time-format-select", "12h");
 
     // They persist across a full reload.
@@ -64,7 +68,9 @@ test("flipping the date/time prefs re-renders a record date and a journal timest
     // other specs.
     await page.goto("/settings");
     await selectAndSave(page, "date-format-select", "mdy");
+    await page.reload();
     await selectAndSave(page, "time-format-select", "24h");
+    await page.reload();
     await expect(page.getByTestId("date-format-select")).toHaveValue("mdy");
     await expect(page.getByTestId("time-format-select")).toHaveValue("24h");
   }
