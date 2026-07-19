@@ -886,6 +886,43 @@ describe("extractionToPersistInput — unresolved analytes (#918 §4)", () => {
   });
 });
 
+describe("extractionToPersistInput — source reconciliation", () => {
+  it("folds the reconciliation into the report, keeping only the unconfirmed rows", () => {
+    const input = extractionToPersistInput(
+      doneExtraction({
+        reconciliation: {
+          total: 3,
+          confirmed: 1,
+          valueMismatch: 1,
+          nameNotFound: 1,
+          confirmedRate: 1 / 3,
+          items: [
+            { name: "Sodium", value: "140", verdict: "confirmed" },
+            { name: "Ferritin", value: "999", verdict: "value_mismatch" },
+            { name: "Made Up", value: "1", verdict: "name_not_found" },
+          ],
+        },
+      }),
+      "2099-12-31"
+    );
+    expect(parseImportReport(input.meta.importReport)?.reconciliation).toEqual({
+      confirmed: 1,
+      total: 3,
+      flags: [
+        { name: "Ferritin", value: "999", verdict: "value_mismatch" },
+        { name: "Made Up", value: "1", verdict: "name_not_found" },
+      ],
+    });
+  });
+
+  it("leaves reconciliation null when the result carries none (replay / non-PDF)", () => {
+    const input = extractionToPersistInput(doneExtraction({}), "2099-12-31");
+    expect(
+      parseImportReport(input.meta.importReport)?.reconciliation
+    ).toBeNull();
+  });
+});
+
 describe("extractionToPersistInput — structured prescription (#414)", () => {
   it("threads structured attribution + sig/strength/course onto a prescription record", () => {
     const input = extractionToPersistInput(
