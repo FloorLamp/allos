@@ -318,3 +318,23 @@ export const NUTRITION_PROFILE = "Nutrition Trio (e2e)";
 // seeded cycle data that the Timeline/phase-chip assertions read.
 export const E2E_LOGIN_CYCLE = "e2e_cycle";
 export const CYCLE_PROFILE = "Cycle Log (e2e)";
+
+// ── Household visit + illness history fixtures (#1009) ────────────────────────
+// A caregiver granted TWO dedicated profiles — a well parent and a currently-sick
+// child — each carrying PAST visits + illness episodes so the merged household
+// history (/household/history) has real cross-profile content to interleave and
+// tag by person. Spec-owned + isolated on purpose: the merged-history / episode-card
+// / promotion specs only READ these fixtures, so concurrent workers never contend,
+// and their dedicated profiles never perturb the illness-hero fixtures' cockpit
+// assertions. The child's episodes are shaped for the episode-card cases: a CLOSED
+// "Flu" that OVERLAPS the parent's Flu (card-present), and an OPEN "Cold" (currently
+// sick → dashboard promotion). The parent also carries a far-past "Chickenpox" that
+// overlaps nobody (card-absent case).
+export const E2E_LOGIN_HHHIST = "e2e_hhhist";
+export const HH_HISTORY_PARENT_PROFILE = "Household History Parent (e2e)";
+export const HH_HISTORY_CHILD_PROFILE = "Household History Child (e2e)";
+
+// A SECOND caregiver granted the SAME two history profiles as READ-ONLY, proving the
+// merged history renders for a view-only grant (reads are allowed) without any write
+// affordance. Separate login so the read-only assertions never race the write one.
+export const E2E_LOGIN_HHHIST_RO = "e2e_hhhist_ro";
