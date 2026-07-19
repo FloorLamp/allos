@@ -76,6 +76,11 @@ function linkAllTables(profileId: number, providerId: number): number {
     `INSERT INTO imaging_studies (profile_id, modality, body_region, reading_provider_id)
      VALUES (?, 'mri', 'Knee', ?)`
   ).run(profileId, providerId);
+  // Dental procedures carry the performing/recording dentist link (#705).
+  db.prepare(
+    `INSERT INTO dental_procedures (profile_id, name, provider_id)
+     VALUES (?, 'Composite filling', ?)`
+  ).run(profileId, providerId);
   return PROVIDER_LINK_COLUMNS.length;
 }
 

@@ -115,6 +115,10 @@ const EXPORT_ALLOWLIST: { table: string; why: string }[] = [
     table: "fitness_assessments",
     why: "fitness-check SESSION rows (#834) — a date + coverage ledger that GROUPS a battery run. The measured VALUES that carry the signal already round-trip through their natural stores: set-based tests via activities/exercise_sets, VO2/grip/etc. via medical_records, body comp via body_metrics — all exported datasets/FHIR. The session row (and its child fitness_assessment_entries) references those, holding no independent clinical payload to export.",
   },
+  {
+    table: "dental_procedures",
+    why: "structured dental procedures/findings (#705). Dental has NO FHIR structured feed (#708 explicitly excludes it — FHIR is dental-poor), so like imaging_studies it is captured via AI extraction + DocumentReference and has no FHIR export builder yet (a dedicated dental exporter is a documented follow-up). Its trendable periodontal MEASUREMENTS already round-trip through the medical_records biomarker dataset.",
+  },
 ];
 
 describe("full export covers every owned domain (issue #465)", () => {
