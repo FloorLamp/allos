@@ -37,10 +37,14 @@ import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 // and visual acuity, qualitative/null bands) add new dataset rows, so the signature
 // legitimately changes and the boot reconcile re-flags stored IOP records against the
 // new band (an already-stored >21 mmHg reading picks up its "high" flag on next boot).
+// Updated for #705: the periodontal analytes (probing depth ≤3 mm, bleeding-on-probing
+// <10%, clinical attachment loss ≤1 mm — all lower_better) add new flag-relevant rows,
+// so the signature legitimately changes and the boot reconcile re-flags stored perio
+// records against the new bands.
 const FLAG_SIGNATURE_GOLDEN =
   // A SHA-256 content hash of the canonical dataset; a digit substring
   // coincidentally forms a Luhn-valid NPI shape — provably synthetic.
-  "845b88844009788acecb671242ba574c5817a7b5f91e77de0e65ec4432963153"; // phi-scan-ok
+  "1548dc69728941965db06075b37a70ca299bdc09abb29f3cf52753d2fcacca3a"; // phi-scan-ok
 
 describe("canonical-biomarkers dataset on the curated-dataset framework", () => {
   it("passes the whole framework harness (citation + identity + refusal + no collisions)", () => {

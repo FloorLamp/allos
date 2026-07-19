@@ -86,6 +86,9 @@ export const PROVIDER_LINK_COLUMNS: ProviderLink[] = [
   // provider — like encounters' two provider columns, so a merge re-points both.
   { table: "imaging_studies", column: "ordering_provider_id" },
   { table: "imaging_studies", column: "reading_provider_id" },
+  // Dental procedures (#705) link the performing/recording dentist, so a merge
+  // re-points them like the other clinical domains.
+  { table: "dental_procedures", column: "provider_id" },
 ];
 
 // The link columns grouped by table (a table may carry more than one — encounters
