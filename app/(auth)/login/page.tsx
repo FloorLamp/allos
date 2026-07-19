@@ -3,6 +3,7 @@ import Wordmark from "@/components/Wordmark";
 import { getCurrentSession } from "@/lib/auth";
 import { safeNextPath } from "@/lib/login-security";
 import { isDemoMode, DEMO_USERNAME, DEMO_PASSWORD } from "@/lib/demo";
+import { canSendAuthEmail } from "@/lib/auth-email";
 import LoginForm from "./LoginForm";
 
 // Reading cookies() makes this dynamic — required, since the redirect-if-already
@@ -31,6 +32,15 @@ export default async function LoginPage(props: {
             Enter your credentials to continue.
           </p>
           <LoginForm next={next} />
+          {canSendAuthEmail() && (
+            <a
+              href="/forgot-password"
+              data-testid="forgot-password-link"
+              className="mt-4 block text-center text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+            >
+              Forgot password?
+            </a>
+          )}
         </div>
         {isDemoMode() && (
           <div

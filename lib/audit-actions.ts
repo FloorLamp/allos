@@ -28,6 +28,10 @@ export const AUDIT_ACTIONS = {
   twofaBypass: "login.2fa-bypass",
   loginCreate: "login.create",
   loginDelete: "login.delete",
+  // Login email lifecycle (issue #985): setting/clearing a login's email address
+  // and sending an invite (set-password) email. target = login id.
+  loginEmailUpdate: "login.email-update",
+  loginInviteSent: "login.invite-sent",
   profileSwitch: "profile.switch",
   profileCreate: "profile.create",
   profileDelete: "profile.delete",

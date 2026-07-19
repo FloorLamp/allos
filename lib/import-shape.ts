@@ -18,6 +18,7 @@ import {
   isRowDrop,
   tallyUnresolvedNames,
   type ImportReport,
+  type ReconciliationSummary,
 } from "./import-report";
 import canonicalSeed from "./canonical-biomarkers.json";
 import { normalizeCanonicalKey } from "./canonical-name";
@@ -723,6 +724,25 @@ export function extractionToPersistInput(
       .filter((r) => r.category === "lab" && !isSeededCanonical(r.canonical))
       .map((r) => ({ name: r.canonical, unit: r.unit }))
   );
+  // Fold the source-text reconciliation (set by the live PDF extract path) into a
+  // debugger-facing summary: the confirmed count plus the rows the source did NOT
+  // corroborate. Null when the source wasn't a reconcilable PDF.
+  const rec = result.reconciliation;
+  const reconciliation: ReconciliationSummary | null = rec
+    ? {
+        confirmed: rec.confirmed,
+        total: rec.total,
+        flags: rec.items
+          .filter(
+            (
+              i
+            ): i is typeof i & {
+              verdict: ReconciliationSummary["flags"][number]["verdict"];
+            } => i.verdict !== "confirmed"
+          )
+          .map((i) => ({ name: i.name, value: i.value, verdict: i.verdict })),
+      }
+    : null;
   const report: ImportReport = {
     drops: result.drops,
     coverage: [],
@@ -730,6 +750,7 @@ export function extractionToPersistInput(
     considered: imported + result.drops.filter(isRowDrop).length,
     unmappedLoincs: [],
     unresolvedNames,
+    reconciliation,
   };
 
   return {

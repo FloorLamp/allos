@@ -1,18 +1,11 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 063 (issue #697): the structured optical-prescription record type — the
+// Migration 065 (issue #697): the structured optical-prescription record type — the
 // eye-care enabler (#707 Phase 1) that unblocks the FHIR VisionPrescription mapper
 // (#708, Phase 2). Mirrors the imaging-study (#702, migration 037) and genomic-variant
-// (#709, migration 036) record types.
-//
-// ── Migration NUMBER note (multi-agent stacking) ──────────────────────────────
-// This landed as 063 (the next contiguous slot on main, which the runner REQUIRES:
-// `assertContiguousIds` + runner.test.ts enforce id === array position). It was
-// RESERVED as 065 in the parallel-branch plan (063 = cycle-tracking, 064 =
-// login-email). Whichever of the three sibling branches integrates first keeps its
-// low number; the others renumber up at integration — a mechanical rename + id bump
-// + index.ts reorder + manifest re-hash. There is no data difference.
+// (#709, migration 036) record types. Lands after 063-cycles (#989) and
+// 064-login-email (#991), the two parallel-branch siblings it stacks behind.
 //
 // Before this table an eyeglass/contact prescription had no structured home: the
 // sphere/cylinder/axis/add/PD fields existed nowhere in the schema, so an optical Rx
@@ -81,7 +74,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 63,
-  name: "063-optical-prescriptions",
+  id: 65,
+  name: "065-optical-prescriptions",
   up,
 };

@@ -10,6 +10,20 @@
 
 import symptomsData from "./symptoms.json";
 
+// The CONTEXT a curated symptom leads with (issue #714). Every mount of the symptom bar
+// leads with its own context's slugs: the illness surfaces with `illness`, the Cycle
+// surface with `cycle`; `general` symptoms (headache, fatigue, …) are context-neutral and
+// follow. The tag is a picker-ORDER lever only — any symptom can still be logged anywhere
+// on any day (multi-membership is correct by construction, #714), and it never restricts
+// the vocabulary. Validated by lib/__tests__/symptoms-dataset.test.ts.
+export type SymptomDomain = "illness" | "cycle" | "general";
+
+export const SYMPTOM_DOMAINS: readonly SymptomDomain[] = [
+  "illness",
+  "cycle",
+  "general",
+];
+
 export interface Symptom {
   // Stable slug — symptom_logs.symptom for a curated entry. NEVER changes once
   // shipped (renames are display-only). Lowercase snake_case.
@@ -18,6 +32,9 @@ export interface Symptom {
   label: string;
   // Optional emoji shown on the chip.
   icon?: string;
+  // Which context this symptom leads with (see SymptomDomain). Required on every curated
+  // entry; custom free-text symptoms carry no domain (they're not in this catalog).
+  domain: SymptomDomain;
 }
 
 export const SYMPTOMS: Symptom[] = (symptomsData as { symptoms: Symptom[] })
@@ -41,6 +58,12 @@ export function isCustomSymptomKey(key: string): boolean {
 
 export function symptomSlugs(): string[] {
   return SYMPTOMS.map((s) => s.slug);
+}
+
+// The curated slugs in a given context, catalog order preserved — the per-mount "lead
+// with these" list (issue #714). Used to build a domain-led picker order.
+export function symptomSlugsInDomain(domain: SymptomDomain): string[] {
+  return SYMPTOMS.filter((s) => s.domain === domain).map((s) => s.slug);
 }
 
 // The display name for a stored key: the catalog label for a curated slug, else the

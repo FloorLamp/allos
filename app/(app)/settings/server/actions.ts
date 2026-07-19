@@ -26,6 +26,9 @@ import { formatBytes } from "@/lib/format-bytes";
 import { setMinTrainingAge } from "@/lib/age-gate";
 import { normalizePublicUrl } from "@/lib/public-url";
 import { setWebhook, deleteWebhook } from "@/lib/notifications/telegram";
+import { setSmtpConfig, isEmailConfigured } from "@/lib/settings";
+import { sendEmail } from "@/lib/email";
+import { isValidEmail } from "@/lib/auth-email";
 import { createLogger } from "@/lib/log";
 import { setTierConfig, clearTierApiKey } from "@/lib/settings/ai-tiers";
 import { parseApiShape, type TierName } from "@/lib/ai-tiers";
@@ -230,6 +233,71 @@ export async function saveMinTrainingAge(formData: FormData) {
   setMinTrainingAge(raw === "" ? null : Number(raw));
   revalidatePath("/", "layout");
   revalidatePath("/settings/server");
+}
+
+// ---- Outbound email / SMTP (global, admin-only) — issue #985 ----
+
+// Save the global SMTP relay config. The password is write-only (the AI-key /
+// Telegram-token posture): a blank submit leaves the stored secret intact, and the
+// "remove password" checkbox clears it. One relay serves the whole instance.
+export async function saveSmtpConfig(formData: FormData) {
+  await requireAdmin();
+  setSmtpConfig({
+    host: String(formData.get("smtp_host") ?? ""),
+    port: Number(formData.get("smtp_port") ?? 587),
+    user: String(formData.get("smtp_user") ?? ""),
+    from: String(formData.get("smtp_from") ?? ""),
+    password: String(formData.get("smtp_password") ?? ""),
+    clearPassword: formData.get("clear_smtp_password") === "1",
+  });
+  revalidatePath("/settings/server");
+}
+
+// Send a test email to an address the admin supplies — the friendly config-test
+// (the register-webhook precedent). Persists edits first so it tests the STORED
+// config, then sends. Returns a friendly outcome; never throws to the boundary.
+export async function sendTestEmail(formData: FormData): Promise<{
+  ok: boolean;
+  message: string;
+}> {
+  await requireAdmin();
+  // Persist any pending edits so the test reflects what will actually be used.
+  saveSmtpConfigSync(formData);
+  const to = String(formData.get("test_to") ?? "").trim();
+  if (!to || !isValidEmail(to))
+    return { ok: false, message: "Enter a valid address to send the test to." };
+  if (!isEmailConfigured())
+    return {
+      ok: false,
+      message: "Set the SMTP host, port, and From address first.",
+    };
+  try {
+    await sendEmail({
+      to,
+      subject: "Allos test email",
+      text: "This is a test email from your Allos instance. SMTP is working.",
+    });
+    return { ok: true, message: `Sent a test email to ${to}.` };
+  } catch {
+    return {
+      ok: false,
+      message:
+        "Couldn't send the test email. Check the host, port, and credentials.",
+    };
+  }
+}
+
+// Persist the SMTP fields from a form without the requireAdmin()/revalidate shell —
+// used by sendTestEmail (already admin-gated) so it tests the just-entered values.
+function saveSmtpConfigSync(formData: FormData): void {
+  setSmtpConfig({
+    host: String(formData.get("smtp_host") ?? ""),
+    port: Number(formData.get("smtp_port") ?? 587),
+    user: String(formData.get("smtp_user") ?? ""),
+    from: String(formData.get("smtp_from") ?? ""),
+    password: String(formData.get("smtp_password") ?? ""),
+    clearPassword: formData.get("clear_smtp_password") === "1",
+  });
 }
 
 // ---- Notifications: global bot credentials (global, admin-only) ----
