@@ -266,4 +266,15 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
     box-shadow: none !important;
     backdrop-filter: none !important;
   }
+
+  /* Scoped printing (#1042 phase 3). The Passport page stacks two print
+     artifacts — the passport summary and the emergency card. A print button
+     stamps `data-print-scope` on <html> (components/print-scope.ts) and the
+     region NOT named by the scope is dropped from the printout, so each
+     artifact still prints alone exactly as its pre-merge page did. An unscoped
+     print (browser Ctrl+P) hides nothing and prints the whole page. */
+  html[data-print-scope="passport"] [data-print-region="emergency"],
+  html[data-print-scope="emergency"] [data-print-region="passport"] {
+    display: none !important;
+  }
 }

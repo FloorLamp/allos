@@ -34,7 +34,6 @@ import {
   IconId,
   IconReportMedical,
   IconClipboardHeart,
-  IconEmergencyBed,
   IconChevronRight,
   IconPuzzle,
   IconSalad,
@@ -156,15 +155,18 @@ const RECORDS: Group = {
     { href: "/encounters", label: "Visits", icon: IconCalendarEvent },
     { href: "/providers", label: "Providers", icon: IconStethoscope },
     { href: "/coverage", label: "Coverage gaps", icon: IconPuzzle },
+    // Passport also carries the Emergency Card as its #emergency section
+    // (#1042 phase 3) — the old /emergency route 308-redirects there
+    // (next.config.js), so one entry covers both print artifacts.
     { href: "/profile", label: "Passport", icon: IconId },
-    // Person-level context (smoking history, risk factors, emergency card) that
-    // moved off Settings → Profile (#928 — data about the person, not config).
+    // Person-level context (smoking history, risk factors, emergency card
+    // opt-in) that moved off Settings → Profile (#928 — data about the person,
+    // not config).
     {
       href: "/medical/background",
       label: "Background",
       icon: IconClipboardHeart,
     },
-    { href: "/emergency", label: "Emergency Card", icon: IconEmergencyBed },
   ],
 };
 

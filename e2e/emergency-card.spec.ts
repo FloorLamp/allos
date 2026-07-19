@@ -1,6 +1,8 @@
 import { test, expect } from "@playwright/test";
 
-// Offline Emergency Card (issue #42). This spec runs in its OWN unauthenticated
+// Offline Emergency Card (issue #42), living as the #emergency section of the
+// Passport page since the #1042 phase-3 merge (the old /emergency route 308-
+// redirects to /profile#emergency). This spec runs in its OWN unauthenticated
 // context and logs in by hand (rather than reusing the shared storageState),
 // because it exercises logout — which destroys the session row server-side, and
 // would otherwise invalidate the shared cookie every other spec relies on.
@@ -18,7 +20,7 @@ async function login(page: import("@playwright/test").Page) {
   });
 }
 
-test("emergency card: opt-in, render, offline copy, and logout clears it (#42)", async ({
+test("emergency card: opt-in, render on the passport page, offline copy, and logout clears it (#42/#1042)", async ({
   page,
   context,
 }) => {
@@ -26,6 +28,16 @@ test("emergency card: opt-in, render, offline copy, and logout clears it (#42)",
   // parallel load of the full suite.
   test.slow();
   await login(page);
+
+  // 0. Nav: the Medical group carries a Passport entry and NO Emergency Card
+  //    entry (the section merged into Passport — #1042 phase 3).
+  await page.goto("/");
+  const sidebar = page.locator("aside nav");
+  await sidebar.getByRole("button", { name: "Medical" }).click();
+  await expect(sidebar.getByRole("link", { name: "Passport" })).toBeVisible();
+  await expect(
+    sidebar.getByRole("link", { name: "Emergency Card" })
+  ).toHaveCount(0);
 
   // 1. Opt in on Medical → Background (off by default). Wait for the autosave
   //    "Saved" indicator so the write has landed before we read the card.
@@ -40,12 +52,48 @@ test("emergency card: opt-in, render, offline copy, and logout clears it (#42)",
     await page.reload();
   }
   await expect(toggle).not.toBeChecked();
+
+  // 1a. While the opt-in is OFF, the passport page still renders the emergency
+  //     section — as the opt-in prompt pointing at Medical → Background.
+  await page.goto("/profile");
+  await expect(
+    page.getByRole("heading", { name: "Health Passport" })
+  ).toBeVisible();
+  const section = page.getByTestId("emergency-section");
+  await expect(section).toContainText("Offline emergency card is off");
+  await expect(
+    section.getByRole("link", { name: /Enable in Medical/ })
+  ).toBeVisible();
+
+  await page.goto("/medical/background");
+  await expect(toggle).not.toBeChecked();
   await toggle.check();
   await expect(page.getByLabel("Saved").first()).toBeVisible();
 
-  // 2. The card renders the seeded allergy + active medication.
+  // 2. The removed /emergency route 308-redirects to the passport page WITH the
+  //    #emergency anchor, where the card renders the seeded allergy + active
+  //    medication, both artifacts stack on one page, and the card's own scoped
+  //    Print affordance is offered.
   await page.goto("/emergency");
+  await expect(page).toHaveURL(/\/profile#emergency$/);
   await expect(page.getByTestId("emergency-card")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Health Passport" })
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("emergency-section").getByRole("button", { name: "Print" })
+  ).toBeVisible();
+  // The anchor scrolled the emergency section into the viewport (the passport
+  // summary above it fills well more than one screen for the seeded profile).
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const el = document.getElementById("emergency");
+        if (!el) return Number.POSITIVE_INFINITY;
+        return el.getBoundingClientRect().top;
+      })
+    )
+    .toBeLessThan(720);
   await expect(page.getByTestId("emergency-allergies")).toContainText(
     "Peanuts"
   );
@@ -77,7 +125,7 @@ test("emergency card: opt-in, render, offline copy, and logout clears it (#42)",
     });
     await context.setOffline(true);
     try {
-      await page.goto("/emergency");
+      await page.goto("/profile");
       await page.getByTestId("offline-view-emergency").click();
       await expect(page.getByTestId("emergency-card")).toContainText("Peanuts");
     } finally {
@@ -98,7 +146,8 @@ test("emergency card: opt-in, render, offline copy, and logout clears it (#42)",
   );
   expect(afterLogout).toBeNull();
 
-  // A direct visit to the card now redirects to login (no session).
+  // A direct visit to the card now redirects to login (no session): the old
+  // route's 308 lands on /profile, whose session gate bounces to /login.
   await page.goto("/emergency");
   await expect(page).toHaveURL(/\/login/);
 
@@ -126,7 +175,7 @@ test("switching profiles via the household strip wipes the previous profile's em
     await toggle.check();
     await expect(page.getByLabel("Saved").first()).toBeVisible();
   }
-  await page.goto("/emergency");
+  await page.goto("/profile#emergency");
   await expect(page.getByTestId("emergency-card")).toBeVisible();
   await expect
     .poll(() => page.evaluate((k) => localStorage.getItem(k), LS_KEY))

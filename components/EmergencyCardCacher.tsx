@@ -8,9 +8,10 @@ import {
 } from "@/components/emergency-offline";
 
 // Refreshes (or clears) the offline localStorage copy of the Emergency Card on
-// each authenticated visit to /emergency (issue #42). Rendered by the server page
-// with the freshly-assembled card when the opt-in is ON, and with a null payload
-// when it's OFF — so toggling the feature off, then reopening the card, purges the
+// each authenticated visit to the Passport page (issue #42; /profile#emergency
+// since the #1042 phase-3 merge). Rendered by the server page with the
+// freshly-assembled card when the opt-in is ON, and with a null payload when
+// it's OFF — so toggling the feature off, then reopening the card, purges the
 // cached copy. Renders nothing.
 export default function EmergencyCardCacher({
   profileId,
