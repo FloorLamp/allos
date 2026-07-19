@@ -19,12 +19,16 @@ export default function IllnessMedicationLogger({
   profileId,
   pediatric,
   canAdd,
+  nowIso,
 }: {
   meds: PrnMedForQuickLog[];
   tz: string;
   profileId?: number;
   pediatric?: PediatricFormContext;
   canAdd: boolean;
+  // The server's redose-window "now" (see QuickLogPrnContent.nowIso) — this is a
+  // "use client" mount, so the frozen-clock env override is invisible here.
+  nowIso: string;
 }) {
   const formatPrefs = useFormatPrefs();
   const [adding, setAdding] = useState(false);
@@ -33,6 +37,7 @@ export default function IllnessMedicationLogger({
     <QuickLogPrnContent
       meds={meds}
       tz={tz}
+      nowIso={nowIso}
       timeFormat={formatPrefs.timeFormat}
       title="Meds"
       headingVariant="section"
