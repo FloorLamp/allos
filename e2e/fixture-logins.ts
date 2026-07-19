@@ -121,6 +121,15 @@ export const EMPTY_TRAINING_PROFILE = "Empty Training (e2e)";
 export const E2E_LOGIN_MENTAL = "e2e_mental";
 export const MENTAL_HEALTH_PROFILE = "Mental Health (e2e)";
 
+// A dedicated, write-granted ADULT profile with NO substance data (#998): the
+// substance-use spec OWNS every write here (an in-app AUDIT-C, an outside DAST-10
+// total, one-tap drinks, the weekly-cap target), so it never touches — or counts
+// rows on — a shared-seed profile, and its isolated session means concurrent
+// workers can't contend. Seed-events hard-clears its substance rows on a reused
+// server; the spec itself asserts RELATIVE counts so --repeat-each stays clean.
+export const E2E_LOGIN_SUBSTANCE = "e2e_substance";
+export const SUBSTANCE_PROFILE = "Substance Use (e2e)";
+
 // A dedicated ADULT profile for the mental-health-visit sensitivity + crisis-
 // resources specs (#997/#996). Seeded with its calendar feed set to FULL detail and
 // a per-profile crisis-resources override; the spec OWNS every appointment it books

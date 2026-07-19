@@ -238,6 +238,10 @@ export function frequencyScopeLabel(kind: string, value: string): string {
   // Mobility-region (#840): the region label with a "Mobility:" qualifier so it reads
   // apart from the strength `region` target of the same region (trained ≠ mobilized, #482).
   if (kind === "mobility_region") return `Mobility: ${value}`;
+  // Substance reduction targets (#998): per_week is a CAP, so any label must say so
+  // (these rows are excluded from the floor-semantics progress surfaces anyway).
+  if (kind === "substance")
+    return `${value[0].toUpperCase() + value.slice(1)} (weekly cap)`;
   return value;
 }
 

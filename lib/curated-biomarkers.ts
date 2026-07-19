@@ -1780,6 +1780,49 @@ export const CURATED_LABS: Biomarker[] = [
     direction: "lower_better",
     note: "Generalized Anxiety Disorder-7 total score (0–21), a validated screening instrument for anxiety severity. Severity bands: 0–4 minimal, 5–9 mild, 10–14 moderate, 15–21 severe. Screening only, NOT a diagnosis. Public domain (Spitzer, Kroenke, Williams, Löwe).",
   },
+
+  // ── Substance-use instruments (issue #998) ─────────────────────────────────
+  // Same contract as the mental-health instruments above: the TOTAL SCORE is a
+  // biomarker-shaped, trended reading with ALL BOUNDS NULL — the severity band
+  // (lib/substance-use.substanceSeverityBand) is the on-screen signal, never a
+  // MedicalFlag, so a score can never ride the flagged-biomarker digest push
+  // (substance data stays off every notification channel). A high score gets only
+  // the calm on-surface discuss-with-a-clinician note — NEVER the crisis surface.
+  // INFORMATIONAL, NOT A DIAGNOSIS. Band sources are in each note; AUDIT/DAST-10
+  // item text is NOT reproduced anywhere in the app (see lib/substance-use.ts).
+  {
+    name: "AUDIT-C",
+    category: "biomarker",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "lower_better",
+    note: "AUDIT-C total score (0–12), the 3-item alcohol-use screen (consumption items of the WHO AUDIT). Bands (UK PHE/NHS scoring): 0–4 lower risk, 5–7 increasing risk, 8–10 higher risk, 11–12 possible dependence; a score of 3+ (women) or 4+ (men) is commonly treated as a positive screen. Screening only, NOT a diagnosis. Public domain (Bush et al. 1998, VA).",
+  },
+  {
+    name: "AUDIT",
+    category: "biomarker",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "lower_better",
+    note: "AUDIT total score (0–40), the WHO 10-item Alcohol Use Disorders Identification Test. Risk zones (WHO manual): 0–7 lower risk, 8–15 increasing risk, 16–19 higher risk, 20–40 possible dependence. Screening only, NOT a diagnosis. Recorded as an outside-administered total (item text not reproduced in-app).",
+  },
+  {
+    name: "DAST-10",
+    category: "biomarker",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "lower_better",
+    note: "Drug Abuse Screening Test (DAST-10) total score (0–10) for non-alcohol drug use in the past 12 months. Bands (Skinner): 0 none reported, 1–2 low, 3–5 moderate, 6–8 substantial, 9–10 severe. Screening only, NOT a diagnosis. Recorded as an outside-administered total (item text not reproduced in-app; © H. A. Skinner / CAMH).",
+  },
 ];
 
 // Curated per-analyte retest cadences, in DAYS, keyed by exact canonical name

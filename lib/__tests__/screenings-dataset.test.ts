@@ -46,12 +46,14 @@ describe("screenings.json dataset", () => {
     expect(keys).toEqual(
       [
         "aaa_ultrasound",
+        "alcohol_screening",
         "anxiety_screening",
         "blood_pressure",
         "cervical_cancer",
         "colorectal_cancer",
         "depression_screening",
         "diabetes_screening",
+        "drug_use_screening",
         "hepatitis_b",
         "hepatitis_c",
         "hiv_screening",
