@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { settledClick } from "./helpers";
 
 // Settings → Audit (issue #22): the admin-only access/modification trail. The
 // admin (the seed + auth.setup log in as admin, which writes a `login.success`
@@ -38,10 +39,20 @@ test.describe("Settings → Audit log", () => {
     await page.goto("/settings/family");
     await page.getByPlaceholder("Username").fill(memberUser);
     await page.getByPlaceholder("Password").fill(memberPass);
-    await page.getByRole("button", { name: "Create login" }).click();
+    await settledClick(
+      page,
+      page.getByRole("button", { name: "Create login" })
+    );
 
+    // The fresh grant row can lag the post-action RSC reconciliation (#999) —
+    // the row is durably committed (settledClick awaited the action POST), so a
+    // reload-retry converges. Same hardening as household-rollup's
+    // createMemberWithGrants (PR #1004).
     const grantRow = page.getByTestId(`grant-row-${memberUser}`);
-    await expect(grantRow).toBeVisible();
+    await expect(async () => {
+      if (!(await grantRow.isVisible())) await page.reload();
+      await expect(grantRow).toBeVisible({ timeout: 3000 });
+    }).toPass({ timeout: 20_000, intervals: [500, 1000, 2000] });
     await grantRow.locator('input[type="checkbox"]').first().check();
     await grantRow.getByRole("button", { name: "Save access" }).click();
     await expect(grantRow.getByText("Access updated.")).toBeVisible();

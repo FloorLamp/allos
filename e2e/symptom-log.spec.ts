@@ -1,11 +1,11 @@
 import { test, expect, type Page } from "@playwright/test";
 import {
-  idleSettle,
+  settledTap,
   ensureUnlogged,
   addFromPicker,
   raiseSeverity,
   lowerSeverity,
-  openNoteInput,
+  saveNote,
 } from "./symptom-helpers";
 
 // Log `key` at worst-severity `level` and CONFIRM it survives a reload, self-healing. The
@@ -48,8 +48,9 @@ async function logAndConfirm(
 // real one-tap card in its ACTIVE-FIRST layout via the shared symptom-helpers (the SAME
 // drivers the episode-page mount uses): the catalog collapses into an "＋ add symptom"
 // picker, logged symptoms render expanded, lowering is an explicit inline confirm, and
-// each logged row carries a note affordance. On the dashboard the settle is networkidle
-// (idleSettle) so each optimistic tap is committed before the next dependent step.
+// each logged row carries a note affordance. On the dashboard the taps are settled
+// (settledTap — the settledClick idiom) so each optimistic tap's Server-Action POST is
+// committed before the next dependent step.
 //
 // The seed logs cough + fever for TODAY, so each test works with symptoms it can own
 // (headache/nausea/chills/body_aches are NOT seeded today) and clears its own leftovers
@@ -59,11 +60,11 @@ test("active-first: catalog collapses into the picker; logging via the picker ra
   page,
 }) => {
   await page.goto("/");
-  const settle = idleSettle(page);
+  const tap = settledTap(page);
   const bar = page.getByTestId("symptom-log-bar").first();
   await expect(bar).toBeVisible();
-  await ensureUnlogged(bar, "headache", settle);
-  await ensureUnlogged(bar, "nausea", settle);
+  await ensureUnlogged(bar, "headache", tap);
+  await ensureUnlogged(bar, "nausea", tap);
 
   // Collapse (#857 acceptance): a non-logged catalog symptom is NOT rendered as a row —
   // its severity chips don't exist until the picker opens, so the card stays compact.
@@ -79,17 +80,17 @@ test("explicit-lower: tapping a labeled lower chip saves directly", async ({
   page,
 }) => {
   await page.goto("/");
-  const settle = idleSettle(page);
+  const tap = settledTap(page);
   const bar = page.getByTestId("symptom-log-bar").first();
   await expect(bar).toBeVisible();
-  await ensureUnlogged(bar, "chills", settle);
+  await ensureUnlogged(bar, "chills", tap);
 
-  await addFromPicker(bar, "chills", settle);
-  await raiseSeverity(bar, "chills", 3, settle);
+  await addFromPicker(bar, "chills", tap);
+  await raiseSeverity(bar, "chills", 3, tap);
   const chills3 = bar.getByTestId("symptom-chills-sev-3");
 
   // A labeled lower chip is already an explicit, reversible edit; no second prompt.
-  await lowerSeverity(bar, "chills", 1, settle);
+  await lowerSeverity(bar, "chills", 1, tap);
   await expect(bar.getByTestId("symptom-chills-lower-confirm")).toHaveCount(0);
   await expect(bar.getByTestId("symptom-chills-sev-1")).toHaveAttribute(
     "aria-pressed",
@@ -98,32 +99,25 @@ test("explicit-lower: tapping a labeled lower chip saves directly", async ({
   await expect(chills3).toHaveAttribute("aria-pressed", "false");
 
   // Tidy up so repeat runs start clean.
-  await ensureUnlogged(bar, "chills", settle);
+  await ensureUnlogged(bar, "chills", tap);
 });
 
 test("note affordance: a logged row opens a one-line note that persists", async ({
   page,
 }) => {
   await page.goto("/");
-  const settle = idleSettle(page);
+  const tap = settledTap(page);
   const bar = page.getByTestId("symptom-log-bar").first();
   await expect(bar).toBeVisible();
-  await ensureUnlogged(bar, "body_aches", settle);
+  await ensureUnlogged(bar, "body_aches", tap);
 
   // Add + commit the symptom first (a note UPDATE needs the row committed).
-  await addFromPicker(bar, "body_aches", settle);
+  await addFromPicker(bar, "body_aches", tap);
 
-  await openNoteInput(bar, "body_aches");
-  await bar
-    .getByTestId("symptom-body_aches-note-input")
-    .fill("spiked after nap");
-  await bar.getByTestId("symptom-body_aches-note-save").click();
-  await settle();
-
-  // The saved note renders under the row.
-  await expect(bar.getByTestId("symptom-body_aches-note")).toHaveText(
-    "spiked after nap"
-  );
+  // Fill + blur-save + reload-verify as one idempotent retry loop (the note save
+  // is optimistic-with-revert and can race the pick action's commit — saveNote's
+  // header has the full story). Persistence is asserted inside.
+  await saveNote(page, "body_aches", "spiked after nap");
 
   // It survives a reload (persisted server-side).
   await page.reload();
@@ -133,5 +127,5 @@ test("note affordance: a logged row opens a one-line note that persists", async 
   );
 
   // Tidy up so repeat runs start clean.
-  await ensureUnlogged(bar2, "body_aches", settle);
+  await ensureUnlogged(bar2, "body_aches", tap);
 });
