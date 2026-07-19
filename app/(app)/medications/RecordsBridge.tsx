@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { IconPlus, IconX, IconArrowBackUp } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { formatLongDate } from "@/lib/format-date";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import type { BridgeSuggestion } from "./med-data";
 import {
   trackMedicationFromRecord,
@@ -27,6 +28,7 @@ export default function RecordsBridge({
   // disclosure with a Restore per row, so a mis-tap is recoverable.
   dismissed?: BridgeSuggestion[];
 }) {
+  const formatPrefs = useFormatPrefs();
   const [busyId, setBusyId] = useState<number | null>(null);
   const router = useRouter();
   const toast = useToast();
@@ -120,7 +122,7 @@ export default function RecordsBridge({
                     </span>
                   )}
                   <span className="ml-2 text-xs text-slate-500 dark:text-slate-400">
-                    {formatLongDate(s.date)}
+                    {formatLongDate(s.date, formatPrefs)}
                   </span>
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
@@ -174,7 +176,7 @@ export default function RecordsBridge({
                     </span>
                   )}
                   <span className="ml-2 text-xs text-slate-500 dark:text-slate-400">
-                    {formatLongDate(s.date)}
+                    {formatLongDate(s.date, formatPrefs)}
                   </span>
                 </div>
                 <button

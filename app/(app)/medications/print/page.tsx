@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { IconArrowLeft } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
+import { getDisplayFormatPrefs } from "@/lib/settings";
 import { MEDICATIONS_HREF } from "@/lib/hrefs";
 import PrintButton from "@/components/illness/PrintButton";
 import MedicationListView from "@/components/medications/MedicationListView";
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
 // dose-string projection the Emergency Card uses (one computation). Prints legibly from
 // dark mode via the @media print block in globals.css.
 export default async function MedicationPrintPage() {
-  const { profile } = await requireSession();
+  const { login, profile } = await requireSession();
   const rows = getCurrentMedicationList(profile.id);
 
   return (
@@ -35,6 +36,7 @@ export default async function MedicationPrintPage() {
           personName={profile.name}
           generatedAt={new Date().toISOString()}
           rows={rows}
+          formatPrefs={getDisplayFormatPrefs(login.id)}
         />
       </div>
     </div>
