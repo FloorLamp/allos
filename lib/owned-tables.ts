@@ -66,6 +66,16 @@ export const OWNED_TABLES = [
   // Structured optical (eyeglass/contact) prescriptions (#697). Ordered BEFORE
   // medical_documents for the same reason — its document_id FK carries no ON DELETE.
   "optical_prescriptions",
+  // Structured skin lesions (#715). Ordered BEFORE medical_documents so deleteProfile
+  // clears the child rows carrying a document_id FK before it drops their parent
+  // medical_documents rows (the FK carries no ON DELETE action).
+  "skin_lesions",
+  // Serial lesion photos (#715): dated photos bound to a skin_lesions row by lesion_id.
+  // Directly owned; its files are unlinked separately (path-contained under
+  // data/uploads/lesion-photos/<profileId>/), the symptom_photos posture. Ordered right
+  // after skin_lesions (its lesion_id FK parent), though the profile sweep runs with
+  // foreign_keys OFF so intra-subtree order is immaterial there.
+  "lesion_photos",
   "medical_documents",
   "allergies",
   "conditions",

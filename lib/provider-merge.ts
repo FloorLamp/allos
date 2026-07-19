@@ -91,6 +91,8 @@ export const PROVIDER_LINK_COLUMNS: ProviderLink[] = [
   { table: "dental_procedures", column: "provider_id" },
   // Optical prescriptions (#697) link the prescribing optometrist.
   { table: "optical_prescriptions", column: "provider_id" },
+  // Skin lesions (#715) link the recording dermatologist.
+  { table: "skin_lesions", column: "provider_id" },
 ];
 
 // The link columns grouped by table (a table may carry more than one — encounters

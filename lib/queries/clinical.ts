@@ -26,6 +26,7 @@ import type {
   ImagingStudy,
   OpticalPrescription,
   DentalProcedure,
+  SkinLesion,
 } from "../types";
 
 // Read layer for the CCD clinical-list domains — allergies and the problem
@@ -366,6 +367,52 @@ export function getDentalProcedureFollowUps(
     .all(profileId) as DentalFollowUpSummary[];
 }
 
+// ---- Skin lesions (issue #715) ----------------------------------------------
+
+// All structured skin-lesion records for a profile, newest first. Each row is a dated
+// observation; the caller groups serial observations of the same lesion by the #482
+// identity (lib/skin-lesion.ts). The builder also loads these as the resolution pool.
+// Profile-scoped.
+export function getSkinLesions(profileId: number): SkinLesion[] {
+  return db
+    .prepare(
+      `SELECT id, label, body_region, body_side, size_mm,
+              asymmetry, border, color, diameter, evolving,
+              status, observed_date, finding, follow_up_interval_days,
+              provider_id, notes, source, document_id, external_id, created_at
+         FROM skin_lesions
+        WHERE profile_id = ?
+        ORDER BY COALESCE(observed_date, '') DESC, id DESC`
+    )
+    .all(profileId) as SkinLesion[];
+}
+
+// The tracked follow-up (issue #700), if any, for each skin-lesion record — so the Skin
+// list can show a record's follow-up state (or offer to track one). Profile-scoped.
+export interface SkinLesionFollowUpSummary {
+  carePlanItemId: number;
+  sourceSkinLesionId: number;
+  plannedDate: string | null;
+  status: string | null;
+  resolution: string | null;
+}
+
+export function getSkinLesionFollowUps(
+  profileId: number
+): SkinLesionFollowUpSummary[] {
+  return db
+    .prepare(
+      `SELECT id AS carePlanItemId,
+              source_skin_lesion_id AS sourceSkinLesionId,
+              planned_date AS plannedDate, status, resolution
+         FROM care_plan_items
+        WHERE profile_id = ? AND source_kind = 'skin'
+          AND source_skin_lesion_id IS NOT NULL
+        ORDER BY id DESC`
+    )
+    .all(profileId) as SkinLesionFollowUpSummary[];
+}
+
 // ---- Flagged-labs follow-up chain (issue #700 labs adapter) -----------------
 
 // Every lab reading a labs follow-up could link — its narrow identity/value shape
@@ -486,10 +533,12 @@ export function getCarePlanItems(profileId: number): CarePlanItem[] {
               cp.notes, cp.source, cp.document_id, cp.external_id, cp.created_at,
               cp.source_kind, cp.source_imaging_study_id,
               cp.source_medical_record_id, cp.source_dental_procedure_id,
+              cp.source_skin_lesion_id,
               cp.recommended_interval_days, cp.resolution,
               cp.resolved_by_imaging_study_id,
               cp.resolved_by_medical_record_id,
-              cp.resolved_by_dental_procedure_id, cp.resolved_at
+              cp.resolved_by_dental_procedure_id,
+              cp.resolved_by_skin_lesion_id, cp.resolved_at
          FROM care_plan_items cp
          LEFT JOIN providers p ON p.id = cp.provider_id
         WHERE cp.profile_id = ?

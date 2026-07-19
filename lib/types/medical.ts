@@ -576,6 +576,55 @@ export interface DentalProcedure {
   created_at: string;
 }
 
+// A structured skin lesion / mole record (table: skin_lesions, issue #715). Each row
+// is a DATED observation of one lesion; serial observations of the SAME lesion share
+// an identity (normalized body_region + body_side + label, see lib/skin-lesion.ts) so
+// a recheck resolves the right follow-up and its photos gather together. `label` is the
+// free-text identity/location ("upper left forearm"); `body_region`/`body_side` are the
+// COARSE body-map bucket. The five ABCDE fields are USER-RECORDED OBSERVATIONS (0/1),
+// never a malignancy score (#715 scope). `status` gates the follow-up loop ('watch'
+// seeds a recheck). Provenance/dedup mirror imaging_studies so the import footprint
+// clears/moves/counts it by document_id.
+export interface SkinLesion {
+  id: number;
+  label: string | null;
+  body_region: string | null;
+  body_side: string | null;
+  size_mm: number | null;
+  asymmetry: 0 | 1;
+  border: 0 | 1;
+  color: 0 | 1;
+  diameter: 0 | 1;
+  evolving: 0 | 1;
+  status: SkinLesionStatusValue;
+  observed_date: string | null;
+  finding: string | null;
+  follow_up_interval_days: number | null;
+  provider_id: number | null;
+  notes: string | null;
+  source: string | null;
+  document_id: number | null;
+  external_id: string | null;
+  created_at: string;
+}
+
+// Mirror of lib/skin-lesion.ts's SkinLesionStatus, inlined here so lib/types has no
+// import into a helper module (the DentalStatus posture).
+export type SkinLesionStatusValue = "active" | "watch" | "removed";
+
+// A stored lesion photo (table: lesion_photos, #715 serial-photo tracking). Rides the
+// medical-uploads posture (per-profile dir, sha256 dedup, profile-scoped serving) but
+// its OWN table + files dir, bound to a lesion by `lesion_id` and dated by `date` so a
+// side-by-side "is this mole changing?" comparison reads chronologically.
+export interface LesionPhoto {
+  id: number;
+  lesion_id: number;
+  date: string;
+  mime_type: string | null;
+  caption: string | null;
+  created_at: string;
+}
+
 // A family-history entry (table: family_history): one condition affecting one
 // relative. `relation` is the affected relative (mother/father/sibling/…);
 // `condition` the display term for their diagnosis; `code`/`code_system` its coded
@@ -632,11 +681,13 @@ export interface CarePlanItem {
   source_imaging_study_id: number | null; // the imaging source finding
   source_medical_record_id: number | null; // the flagged-lab source finding (#700 labs adapter, migration 057)
   source_dental_procedure_id: number | null; // the dental source finding (#705 dental adapter, migration 066)
+  source_skin_lesion_id: number | null; // the skin-lesion source finding (#715 skin adapter, migration 069)
   recommended_interval_days: number | null; // the recommended follow-up interval
   resolution: string | null; // 'resolved' | 'stable' | 'changed' once closed
   resolved_by_imaging_study_id: number | null; // the later study it was resolved against
   resolved_by_medical_record_id: number | null; // the later lab reading it was resolved against (labs adapter)
   resolved_by_dental_procedure_id: number | null; // the later dental record it was resolved against (dental adapter)
+  resolved_by_skin_lesion_id: number | null; // the later lesion record it was resolved against (skin adapter)
   resolved_at: string | null;
 }
 

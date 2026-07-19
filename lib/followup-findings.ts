@@ -32,6 +32,7 @@ import {
   getLabFollowUpRecords,
   getIopFollowUpRecords,
   getDentalProcedures,
+  getSkinLesions,
 } from "./queries/clinical";
 import { isCarePlanItemOpen } from "./care-plan-upcoming";
 import {
@@ -55,10 +56,16 @@ import {
   type IopFollowUpRecord,
 } from "./followup-iop";
 import { dentalFollowUpAdapter, DENTAL_FOLLOWUP_KIND } from "./followup-dental";
+import { skinFollowUpAdapter, SKIN_FOLLOWUP_KIND } from "./followup-skin";
 import { followUpSourceReason } from "./reasons";
 import { biomarkerViewHref } from "./hrefs";
 import type { UpcomingItem } from "./upcoming";
-import type { CarePlanItem, ImagingStudy, DentalProcedure } from "./types";
+import type {
+  CarePlanItem,
+  ImagingStudy,
+  DentalProcedure,
+  SkinLesion,
+} from "./types";
 import type { AppRoute } from "./hrefs";
 
 // The per-domain glue the shared builder needs: the adapter (the pure domain
@@ -122,6 +129,19 @@ const DENTAL_DOMAIN: FollowUpDomain<DentalProcedure> = {
   recordId: (p) => p.id,
   sourceIdOf: (c) => c.source_dental_procedure_id,
   hrefFor: () => "/dental",
+};
+
+// Skin follow-up (#715 ask 3): a "watch this mole, recheck in 3 months" record on a
+// skin_lesions row. Its own adapter (lesion-anchored recheck copy) and
+// source_kind='skin'; the follow-up + the lesion it hangs off live on /skin; a LATER
+// record of the SAME lesion resolves it.
+const SKIN_DOMAIN: FollowUpDomain<SkinLesion> = {
+  kind: SKIN_FOLLOWUP_KIND,
+  adapter: skinFollowUpAdapter,
+  loadRecords: getSkinLesions,
+  recordId: (l) => l.id,
+  sourceIdOf: (c) => c.source_skin_lesion_id,
+  hrefFor: () => "/skin",
 };
 
 // The follow-up items for ONE domain: every OPEN, linked (source_kind = domain.kind),
@@ -227,5 +247,6 @@ export function followUpItems(
     ...domainFollowUpItems(profileId, today, carePlan, LABS_DOMAIN),
     ...domainFollowUpItems(profileId, today, carePlan, IOP_DOMAIN),
     ...domainFollowUpItems(profileId, today, carePlan, DENTAL_DOMAIN),
+    ...domainFollowUpItems(profileId, today, carePlan, SKIN_DOMAIN),
   ];
 }

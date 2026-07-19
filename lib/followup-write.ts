@@ -23,7 +23,8 @@ import {
   type IopFollowUpRecord,
 } from "./followup-iop";
 import { dentalFollowUpTitle, DENTAL_FOLLOWUP_KIND } from "./followup-dental";
-import type { DentalProcedure } from "./types";
+import { skinFollowUpTitle, SKIN_FOLLOWUP_KIND } from "./followup-skin";
+import type { DentalProcedure, SkinLesion } from "./types";
 import { biomarkerFamily } from "./canonical-name";
 import { normalizeResolution } from "./followup";
 import type { ImagingStudy } from "./types";
@@ -145,6 +146,13 @@ const RESOLVE_TARGET_BY_KIND: Record<
   [DENTAL_FOLLOWUP_KIND]: {
     table: "dental_procedures",
     resolvedCol: "resolved_by_dental_procedure_id",
+  },
+  // Skin follow-ups (#715): a later record of the same lesion resolves the "watch this
+  // mole, recheck" chain. Its own record type + resolving-link column (migration 069),
+  // so a resolve can't write into the wrong domain's column.
+  [SKIN_FOLLOWUP_KIND]: {
+    table: "skin_lesions",
+    resolvedCol: "resolved_by_skin_lesion_id",
   },
 };
 
@@ -459,6 +467,105 @@ export function unlinkFollowUpsForDentalProcedure(
         SET resolved_by_dental_procedure_id = NULL
       WHERE profile_id = ? AND resolved_by_dental_procedure_id = ?`
   ).run(profileId, dentalProcedureId);
+}
+
+// ---- Create: track a recheck follow-up for a skin lesion (#715) --------------
+
+// Track a follow-up for one skin lesion: create a linked, OPEN care_plan_item whose
+// planned_date is the observation date (or today when undated) + the recommended
+// interval, carrying source_kind='skin' + the source FK + the interval, so a "watch
+// this mole, recheck in 3 months" lesion becomes a legible, resolvable "Recheck skin
+// lesion — …" follow-up. Idempotent per source record while an open one exists (returns
+// "exists"), so a double-click or a re-offer can't spawn duplicates. `today` seeds the
+// planned_date fallback.
+export function trackSkinFollowUpCore(
+  profileId: number,
+  skinLesionId: number,
+  intervalDays: number,
+  today: string
+): TrackFollowUpOutcome {
+  return writeTx(() => {
+    const record = db
+      .prepare(
+        `SELECT id, label, body_region, body_side, status, observed_date
+           FROM skin_lesions WHERE id = ? AND profile_id = ?`
+      )
+      .get(skinLesionId, profileId) as
+      | Pick<
+          SkinLesion,
+          | "id"
+          | "label"
+          | "body_region"
+          | "body_side"
+          | "status"
+          | "observed_date"
+        >
+      | undefined;
+    if (!record) return { kind: "invalid" as const };
+
+    // One open follow-up per source record — return the existing one instead of a dup.
+    const existing = db
+      .prepare(
+        `SELECT id FROM care_plan_items
+          WHERE profile_id = ? AND source_kind = ?
+            AND source_skin_lesion_id = ? AND resolution IS NULL`
+      )
+      .get(profileId, SKIN_FOLLOWUP_KIND, skinLesionId) as
+      { id: number } | undefined;
+    if (existing)
+      return { kind: "exists" as const, carePlanItemId: existing.id };
+
+    const interval =
+      Number.isFinite(intervalDays) && intervalDays > 0
+        ? Math.floor(intervalDays)
+        : 0;
+    const base = record.observed_date ?? today;
+    const plannedDate = interval > 0 ? shiftDateStr(base, interval) : base;
+    // skinFollowUpTitle only reads label/region/side, so a partial row is enough here.
+    const title = skinFollowUpTitle(record as SkinLesion);
+
+    const info = db
+      .prepare(
+        `INSERT INTO care_plan_items
+           (description, category, planned_date, status, source, source_kind,
+            source_skin_lesion_id, recommended_interval_days, profile_id)
+         VALUES (?, 'follow-up', ?, NULL, NULL, ?, ?, ?, ?)`
+      )
+      .run(
+        title,
+        plannedDate,
+        SKIN_FOLLOWUP_KIND,
+        skinLesionId,
+        interval > 0 ? interval : null,
+        profileId
+      );
+    return {
+      kind: "created" as const,
+      carePlanItemId: Number(info.lastInsertRowid),
+    };
+  });
+}
+
+// NULL the follow-up chain links that point at a skin lesion about to be deleted
+// (#199-#203), the skin mirror of unlinkFollowUpsForImagingStudy. A follow-up whose
+// SOURCE lesion is deleted degrades to a generic care-plan item (source_kind + source
+// FK cleared), and a resolution recorded against a now-deleted later record keeps its
+// outcome text but drops the dead link. Called BEFORE the skin_lesions DELETE so the
+// REFERENCES FKs don't trip. Profile-scoped.
+export function unlinkFollowUpsForSkinLesion(
+  profileId: number,
+  skinLesionId: number
+): void {
+  db.prepare(
+    `UPDATE care_plan_items
+        SET source_kind = NULL, source_skin_lesion_id = NULL
+      WHERE profile_id = ? AND source_skin_lesion_id = ?`
+  ).run(profileId, skinLesionId);
+  db.prepare(
+    `UPDATE care_plan_items
+        SET resolved_by_skin_lesion_id = NULL
+      WHERE profile_id = ? AND resolved_by_skin_lesion_id = ?`
+  ).run(profileId, skinLesionId);
 }
 
 // ---- Row-ops: unlink follow-ups when a source study is deleted --------------
