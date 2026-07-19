@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 070 (issue #703): the effective-radiation-dose column on the imaging
+// Migration 071 (issue #703): the effective-radiation-dose column on the imaging
 // study record (migration 037, #702). One nullable REAL — the study's effective
 // dose in millisieverts (mSv) — captured MANUALLY on the imaging form or, rarely,
 // filled by AI extraction when a report actually prints a dose (most consumer-facing
@@ -33,7 +33,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 70,
-  name: "070-imaging-dose",
+  id: 71,
+  name: "071-imaging-dose",
   up,
 };

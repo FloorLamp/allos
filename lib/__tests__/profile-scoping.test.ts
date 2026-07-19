@@ -146,9 +146,9 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "migration 042 (#799) one-shot backfill: defaults the illness_type flag ON for the SHARED built-in 'Illness' situation across ALL profiles by canonical name — a vocabulary default, not a per-profile read; every runtime situations statement stays profile_id-scoped",
   },
   {
-    file: "lib/migrations/versions/070-imaging-dose.ts",
+    file: "lib/migrations/versions/071-imaging-dose.ts",
     includes: "PRAGMA table_info(imaging_studies)",
-    why: "migration 070 (#703) ADD COLUMN guard: a schema-shape PRAGMA (does dose_msv already exist?) so the non-version-gated migrate() replay no-ops — reads column metadata, never rows",
+    why: "migration 071 (#703) ADD COLUMN guard: a schema-shape PRAGMA (does dose_msv already exist?) so the non-version-gated migrate() replay no-ops — reads column metadata, never rows",
   },
 ];
 

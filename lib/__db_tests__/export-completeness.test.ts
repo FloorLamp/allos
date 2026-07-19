@@ -123,6 +123,14 @@ const EXPORT_ALLOWLIST: { table: string; why: string }[] = [
     table: "dental_procedures",
     why: "structured dental procedures/findings (#705). Dental has NO FHIR structured feed (#708 explicitly excludes it — FHIR is dental-poor), so like imaging_studies it is captured via AI extraction + DocumentReference and has no FHIR export builder yet (a dedicated dental exporter is a documented follow-up). Its trendable periodontal MEASUREMENTS already round-trip through the medical_records biomarker dataset.",
   },
+  {
+    table: "skin_lesions",
+    why: "structured skin-lesion records (#715). Like imaging_studies/dental_procedures, dermatology-lesion tracking has no FHIR structured feed and is a manual/AI-extracted narrative record type with no FHIR export builder yet (a dedicated exporter is a documented follow-up). The lesion row carries no analyte that round-trips through another dataset.",
+  },
+  {
+    table: "lesion_photos",
+    why: "serial lesion photos (#715). PHI-cautious by design, exactly like symptom_photos — the images are binary blobs on disk (data/uploads/lesion-photos/<profileId>/) with only a thin date/caption row here, intentionally excluded from the full data export, and unlinked with the profile on delete.",
+  },
 ];
 
 describe("full export covers every owned domain (issue #465)", () => {
