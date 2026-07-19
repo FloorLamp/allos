@@ -24,6 +24,7 @@ import type {
   CareGoal,
   GenomicVariant,
   ImagingStudy,
+  OpticalPrescription,
 } from "../types";
 
 // Read layer for the CCD clinical-list domains — allergies and the problem
@@ -271,6 +272,26 @@ export function getImagingStudies(profileId: number): ImagingStudy[] {
     contrast: number;
   })[];
   return rows.map((r) => ({ ...r, contrast: r.contrast === 1 }));
+}
+
+// Structured optical prescriptions (#697), newest ISSUED first. Read straight from
+// the table — an Rx is a durable dated fact. Per-eye refraction (OD = right, OS =
+// left) drives the Vision page's history + sphere-over-time progression view; expiry
+// surfaces as plain "expires soon"/"expired" UI text (no findings engine, #697).
+export function getOpticalPrescriptions(
+  profileId: number
+): OpticalPrescription[] {
+  return db
+    .prepare(
+      `SELECT id, kind, od_sphere, od_cylinder, od_axis, od_add,
+              os_sphere, os_cylinder, os_axis, os_add, pd,
+              base_curve, diameter, brand, issued_date, expiry_date,
+              provider_id, notes, source, document_id, external_id, created_at
+         FROM optical_prescriptions
+        WHERE profile_id = ?
+        ORDER BY COALESCE(issued_date, '') DESC, id DESC`
+    )
+    .all(profileId) as OpticalPrescription[];
 }
 
 // The tracked follow-up (issue #700), if any, for each imaging study — so the Imaging

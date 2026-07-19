@@ -28,12 +28,17 @@ import {
   modalityLabel,
   lateralityLabel,
 } from "./imaging-study";
+import {
+  prescriptionDisplayLabel,
+  formatDiopter,
+} from "./optical-prescription";
 import type {
   GenomicResultType,
   GenomicSignificance,
   Zygosity,
   ImagingModality,
   ImagingLaterality,
+  OpticalKind,
 } from "./types/medical";
 
 // The non-record tab kinds, in display order (after the record-category tabs).
@@ -52,6 +57,7 @@ export type ImportTabKind =
   | "care-goals"
   | "genomic-variants"
   | "imaging-studies"
+  | "optical-prescriptions"
   | "appointments"
   | "medications"
   | "body";
@@ -125,6 +131,7 @@ const DOMAIN_TAB_KEYS = new Set<string>([
   "care-goals",
   "genomic-variants",
   "imaging-studies",
+  "optical-prescriptions",
   "appointments",
   "medications",
   "body",
@@ -169,6 +176,11 @@ export function buildImportTabs(
   add("care-goals", "Care goals", counts.careGoals);
   add("genomic-variants", "Genomic variants", counts.genomicVariants);
   add("imaging-studies", "Imaging studies", counts.imagingStudies);
+  add(
+    "optical-prescriptions",
+    "Optical prescriptions",
+    counts.opticalPrescriptions
+  );
   add("appointments", "Appointments", counts.appointments);
   add("medications", "Medications", counts.medications);
   add(
@@ -419,6 +431,28 @@ export function imagingStudyItem(row: {
     ),
     date: row.study_date,
     href: "/imaging",
+  };
+}
+
+export function opticalPrescriptionItem(row: {
+  id: number;
+  kind: OpticalKind;
+  od_sphere: number | null;
+  os_sphere: number | null;
+  pd: number | null;
+  issued_date: string | null;
+}): ProducedItem {
+  return {
+    id: row.id,
+    title: prescriptionDisplayLabel(row),
+    // Factual detail: the per-eye sphere line + PD when present. No interpretation.
+    detail: detailLine(
+      row.od_sphere != null ? `OD ${formatDiopter(row.od_sphere)}` : null,
+      row.os_sphere != null ? `OS ${formatDiopter(row.os_sphere)}` : null,
+      row.pd != null ? `PD ${row.pd}` : null
+    ),
+    date: row.issued_date,
+    href: "/vision",
   };
 }
 

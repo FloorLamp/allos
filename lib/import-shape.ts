@@ -33,12 +33,19 @@ import {
   normalizeLaterality,
   normalizeContrast,
 } from "./imaging-study";
+import {
+  normalizeOpticalKind,
+  parseDiopter,
+  parseAxis,
+  parseMillimeters,
+} from "./optical-prescription";
 import type {
   GenomicResultType,
   GenomicSignificance,
   Zygosity,
   ImagingModality,
   ImagingLaterality,
+  OpticalKind,
 } from "./types/medical";
 import { isRealIsoDate } from "./date";
 import {
@@ -244,6 +251,33 @@ export interface PersistImagingStudy {
   external_id: string | null;
 }
 
+// Optical-prescription projection (#697). The AI Rx-slip path fills this; the
+// deterministic CCD/FHIR path leaves it empty (FHIR VisionPrescription mapping is
+// #708, out of scope). `kind` is already normalized onto the enum here and the
+// per-eye powers / axis / distances are parsed to numbers. The `prescriber`
+// (optometrist) is resolved into the shared providers registry on persist (linked
+// via optical_prescriptions.provider_id).
+export interface PersistOpticalPrescription {
+  kind: OpticalKind;
+  od_sphere: number | null;
+  od_cylinder: number | null;
+  od_axis: number | null;
+  od_add: number | null;
+  os_sphere: number | null;
+  os_cylinder: number | null;
+  os_axis: number | null;
+  os_add: number | null;
+  pd: number | null;
+  base_curve: number | null;
+  diameter: number | null;
+  brand: string | null;
+  issued_date: string | null;
+  expiry_date: string | null;
+  provider: ImportedProvider | null;
+  notes: string | null;
+  external_id: string | null;
+}
+
 // Scheduled-appointment projection (issue #416). Only the FHIR Appointment resource
 // fills this; the AI and CDA paths leave it empty. The attending clinician
 // (`provider`) is resolved into the shared registry on persist (linked via
@@ -299,6 +333,8 @@ export interface PersistInput {
   genomicVariants?: PersistGenomicVariant[];
   // Imaging studies (#702). Optional for the same reason; persist reads it `?? []`.
   imagingStudies?: PersistImagingStudy[];
+  // Optical prescriptions (#697). Optional for the same reason; persist reads `?? []`.
+  opticalPrescriptions?: PersistOpticalPrescription[];
   appointments: PersistAppointment[];
   bodyMetrics: DocBodyMetric[];
   // Body-height samples (metric_samples, metric 'height_cm') — height has no
@@ -620,6 +656,38 @@ export function extractionToPersistInput(
       external_id: null,
     }));
 
+  // Optical prescriptions (#697). Normalize the model's raw kind onto the enum and
+  // parse the per-eye powers / axis / distances off the Rx notation here (one shared
+  // coercion, lib/optical-prescription), so an off-vocabulary term can't fail the
+  // INSERT. The prescriber name is wrapped into an ImportedProvider resolved on
+  // persist. Optional on the done union, so `?? []` covers predating fixtures.
+  const opticalPrescriptions: PersistOpticalPrescription[] = (
+    result.opticalPrescriptions ?? []
+  )
+    // A prescription with no kind signal AND no sphere on either eye is noise (a
+    // belt-and-suspenders drop alongside the normalize-stage one).
+    .filter((p) => p.kind?.trim() || p.od_sphere?.trim() || p.os_sphere?.trim())
+    .map((p) => ({
+      kind: normalizeOpticalKind(p.kind),
+      od_sphere: parseDiopter(p.od_sphere),
+      od_cylinder: parseDiopter(p.od_cylinder),
+      od_axis: parseAxis(p.od_axis),
+      od_add: parseDiopter(p.od_add),
+      os_sphere: parseDiopter(p.os_sphere),
+      os_cylinder: parseDiopter(p.os_cylinder),
+      os_axis: parseAxis(p.os_axis),
+      os_add: parseDiopter(p.os_add),
+      pd: parseMillimeters(p.pd),
+      base_curve: parseMillimeters(p.base_curve),
+      diameter: parseMillimeters(p.diameter),
+      brand: p.brand,
+      issued_date: p.issued_date,
+      expiry_date: p.expiry_date,
+      provider: providerFromName(p.prescriber, "individual"),
+      notes: p.notes,
+      external_id: null,
+    }));
+
   // The document-level source ("Quest Diagnostics", the discharge hospital, …) is
   // registered into the shared providers registry — the AI path's answer to item 3
   // (surface meta.source). Per-row performers (encounter attending / facility) ride
@@ -643,6 +711,7 @@ export function extractionToPersistInput(
     careGoals.length +
     genomicVariants.length +
     imagingStudies.length +
+    opticalPrescriptions.length +
     bodyMetrics.length +
     heights.length +
     headCircs.length;
@@ -696,6 +765,7 @@ export function extractionToPersistInput(
     careGoals,
     genomicVariants,
     imagingStudies,
+    opticalPrescriptions,
     // The AI medical extractor has no appointment shape (it emits care plans, not
     // scheduled visits), so the AI path never produces appointments (#416).
     appointments: [],
@@ -907,6 +977,10 @@ export function healthRecordToPersistInput(
       status: s.status,
       external_id: s.external_id,
     })),
+    // Optical prescriptions have no deterministic feed yet: the FHIR VisionPrescription
+    // mapper is #708 (blocked on this record type), so the CDA/FHIR path emits none —
+    // the AI Rx-slip path is the only producer today (#697).
+    opticalPrescriptions: [],
     bodyMetrics,
     heights,
     headCircs,
