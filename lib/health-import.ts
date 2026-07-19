@@ -7,6 +7,7 @@ import type {
   ImagingModality,
   MedicalCategory,
   MedStopReason,
+  OpticalKind,
   ProviderType,
   Sex,
 } from "./types";
@@ -213,6 +214,33 @@ export interface ImportedImagingStudy {
   external_id: string; // stable dedup key ("fhir:imaging:…")
 }
 
+// A structured optical (eyeglass / contact-lens) prescription pulled from a FHIR
+// VisionPrescription resource (#708 → #697). Provider-neutral + DB-shaped: `kind` is
+// already on the OpticalKind enum and every per-eye power / axis / distance is parsed
+// to a number via the shared optical-prescription coercion (#221), so the persist
+// layer maps it straight to a PersistOpticalPrescription. FHIR-only today — no CDA
+// vision section exists (optical Rx otherwise arrives via the AI Rx-slip path).
+export interface ImportedOpticalPrescription {
+  kind: OpticalKind;
+  od_sphere: number | null;
+  od_cylinder: number | null;
+  od_axis: number | null;
+  od_add: number | null;
+  os_sphere: number | null;
+  os_cylinder: number | null;
+  os_axis: number | null;
+  os_add: number | null;
+  pd: number | null; // interpupillary distance (mm), when the resource carries one
+  base_curve: number | null; // contact-lens base curve (mm)
+  diameter: number | null; // contact-lens diameter (mm)
+  brand: string | null;
+  issued_date: string | null; // dateWritten → YYYY-MM-DD
+  expiry_date: string | null; // no standard R4 element — null unless an extension carries it
+  provider: ImportedProvider | null; // the prescribing optometrist / ophthalmologist
+  notes: string | null; // prism + free-text notes (the row has no prism column)
+  external_id: string; // stable dedup key ("fhir:vision:<id>")
+}
+
 // A scheduled visit / appointment pulled from a FHIR Appointment resource (issue
 // #416). No CDA appointment section exists, so this is FHIR-only today.
 // Provider-neutral: the attending clinician is captured as an ImportedProvider and
@@ -274,6 +302,10 @@ export interface ImportResult {
   // populate it; the CDA path and other parsers omit it (FHIR is dental/imaging-poor
   // structurally elsewhere — imaging arrives structured in Epic/Apple bundles).
   imagingStudies?: ImportedImagingStudy[];
+  // Structured optical prescriptions (#708 → #697). Optional (default []): the FHIR
+  // VisionPrescription mapper populates it; the CDA path and other parsers omit it
+  // (optical Rx is FHIR-only structurally — otherwise it arrives via AI Rx-slip).
+  opticalPrescriptions?: ImportedOpticalPrescription[];
   demographics: ImportDemographics | null;
   // Providers/organizations captured from the record that aren't tied to a single
   // reading — the CCD Care Teams section. Registered into the shared
