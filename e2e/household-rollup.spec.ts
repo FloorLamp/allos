@@ -135,9 +135,12 @@ test.describe("Household view for members (issue #31)", () => {
     ]);
     const memberPage = await loginAs(browser, caregiver);
 
-    // The Household nav entry is now visible for a multi-profile member.
+    // The Household nav entry is now visible for a multi-profile member. Exact:
+    // the #1009 dashboard promotion link ("See the household's visit & illness
+    // history") also carries "household" in its accessible name — a non-exact
+    // role query is a strict-mode collision when the house is sick.
     await expect(
-      memberPage.getByRole("link", { name: "Household" })
+      memberPage.getByRole("link", { name: "Household", exact: true })
     ).toBeVisible();
 
     await memberPage.goto("/household");

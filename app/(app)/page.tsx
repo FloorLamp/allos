@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { IconFlask, IconScale, IconPill } from "@tabler/icons-react";
 import { today } from "@/lib/db";
@@ -97,7 +98,8 @@ import OnboardingResumeCard from "@/components/dashboard/OnboardingResumeCard";
 import OnboardingChecklist from "@/components/dashboard/OnboardingChecklist";
 import ProfileOrientationCard from "@/components/dashboard/ProfileOrientationCard";
 import { saveDashboardLayout, saveIllnessHeroState } from "./actions";
-import { episodeHref } from "@/lib/hrefs";
+import { episodeHref, HOUSEHOLD_HISTORY_HREF } from "@/lib/hrefs";
+import { isHouseholdRecentlySick } from "@/lib/household-history";
 
 export const dynamic = "force-dynamic";
 
@@ -296,6 +298,17 @@ export default async function Dashboard() {
     };
   });
   const heroUi = getIllnessHeroUi(profile.id);
+
+  // Contextual promotion of the merged household history (issue #1009 Ask 2): a CALM
+  // link that surfaces near the illness hero when any accessible member is currently or
+  // recently sick, and recedes once the house is well. Only for a multi-profile login
+  // (a single-profile login has no household to merge). Reuses the SAME episode rows the
+  // hero reads — never a second "who's sick" derivation — via isHouseholdRecentlySick.
+  // It is a link, NOT a notification and NOT a finding (no dedupeKey, no bus): it appears
+  // because it's useful and disappears on its own.
+  const promoteHouseholdHistory =
+    accessible.length > 1 &&
+    isHouseholdRecentlySick(accessible.map((p) => p.id));
 
   // weight-trend: the deduped one-source-per-day series (getBodyMetricDailySeries,
   // #14/#395) — NOT raw all-source rows, which double back the line on a two-device
@@ -590,6 +603,16 @@ export default async function Dashboard() {
           <NeedsAttentionHero items={attention} today={on} />
         </div>
       </div>
+      {promoteHouseholdHistory && (
+        <div className="mb-6" data-testid="household-history-promo">
+          <Link
+            href={HOUSEHOLD_HISTORY_HREF}
+            className="inline-flex items-center gap-2 text-sm font-medium text-sky-700 hover:underline dark:text-sky-300"
+          >
+            See the household&rsquo;s visit &amp; illness history →
+          </Link>
+        </div>
+      )}
       {showRecapCard && finishedRecap && (
         <SessionRecapCard recap={finishedRecap} unit={units.weightUnit} />
       )}

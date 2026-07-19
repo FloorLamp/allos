@@ -60,6 +60,12 @@ export function nutritionTabHref(tab: NutritionTab): AppRoute {
 // /medicine surface for their own Medical-group page.
 export const MEDICATIONS_HREF: AppRoute = "/medications";
 
+// The merged cross-profile household visit + illness history (#1009). A static
+// route shared across ≥4 surfaces (the Household header, the dashboard illness
+// promotion, and the widen-to-household links on Visits + Illness episodes), so it's
+// a named const — one edit re-checks every caller — rather than a re-typed literal.
+export const HOUSEHOLD_HISTORY_HREF: AppRoute = "/household/history";
+
 // The mental-health instrument surface (#716) — PHQ-9/GAD-7 scores under Medical.
 export const INSTRUMENTS_HREF: AppRoute = "/medical/instruments";
 

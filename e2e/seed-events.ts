@@ -80,6 +80,10 @@ import {
   SICK_KID_B_PROFILE,
   E2E_LOGIN_COCARE,
   COCARE_PARENT_PROFILE,
+  E2E_LOGIN_HHHIST,
+  E2E_LOGIN_HHHIST_RO,
+  HH_HISTORY_PARENT_PROFILE,
+  HH_HISTORY_CHILD_PROFILE,
   E2E_LOGIN_CONDREV,
   CONDITION_REVIEW_PROFILE,
   E2E_LOGIN_REASON,
@@ -2913,6 +2917,72 @@ grantProfile(coCareLoginId, sickKidAId);
 console.log(
   `e2e: seeded illness-hero fixtures — sick self ${sickSelfId}, sick kids ${sickKidAId}/${sickKidBId}, caregivers ${careLoginId}/${coCareLoginId} (#858)`
 );
+
+// ── Household visit + illness history fixtures (#1009) ────────────────────────
+// A caregiver granted a well parent + a currently-sick child, each carrying PAST
+// visits + illness episodes, so /household/history has real cross-profile content to
+// merge and tag by person. The child's CLOSED "Flu" overlaps the parent's Flu (the
+// episode-card present case); the child's OPEN "Cold" makes the household currently
+// sick (dashboard promotion); the parent's far-past "Chickenpox" overlaps nobody (the
+// card-absent case). Parent is created FIRST so it carries the lower id — the login's
+// active profile — so the caregiver acts as the well parent.
+{
+  const hhParentId = fixtureProfileId(HH_HISTORY_PARENT_PROFILE);
+  const hhChildId = fixtureProfileId(HH_HISTORY_CHILD_PROFILE);
+  const on = today(hhParentId);
+
+  // Idempotent for a reused dev server.
+  for (const pid of [hhParentId, hhChildId]) {
+    db.prepare("DELETE FROM illness_episodes WHERE profile_id = ?").run(pid);
+    db.prepare(
+      "DELETE FROM encounters WHERE profile_id = ? AND source = 'manual'"
+    ).run(pid);
+  }
+
+  const addEpisode = (
+    pid: number,
+    situation: string,
+    startedAt: string,
+    endedAt: string | null
+  ): void => {
+    db.prepare(
+      `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+       VALUES (?, ?, ?, ?)`
+    ).run(pid, situation, startedAt, endedAt);
+  };
+  const addEncounter = (pid: number, date: string, type: string): void => {
+    db.prepare(
+      `INSERT INTO encounters (profile_id, date, type, source)
+       VALUES (?, ?, ?, 'manual')`
+    ).run(pid, date, type);
+  };
+
+  // Parent: a past visit, a Flu that overlaps the child's, and a far-past Chickenpox.
+  addEncounter(hhParentId, shiftDateStr(on, -40), "Annual physical");
+  addEpisode(hhParentId, "Flu", shiftDateStr(on, -30), shiftDateStr(on, -25));
+  addEpisode(
+    hhParentId,
+    "Chickenpox",
+    shiftDateStr(on, -300),
+    shiftDateStr(on, -295)
+  );
+
+  // Child: a past visit, a Flu overlapping the parent's, and an OPEN Cold (sick now).
+  addEncounter(hhChildId, shiftDateStr(on, -10), "Sick visit");
+  addEpisode(hhChildId, "Flu", shiftDateStr(on, -28), shiftDateStr(on, -24));
+  addEpisode(hhChildId, "Cold", shiftDateStr(on, -2), null);
+
+  const hhLoginId = seedMemberLogin(E2E_LOGIN_HHHIST, hhParentId);
+  grantProfile(hhLoginId, hhChildId);
+
+  // A second caregiver granted BOTH profiles read-only (the view-only grant case).
+  const hhRoLoginId = seedMemberLogin(E2E_LOGIN_HHHIST_RO, hhParentId, "read");
+  grantProfile(hhRoLoginId, hhChildId, "read");
+
+  console.log(
+    `e2e: seeded household-history fixtures — parent ${hhParentId}, child ${hhChildId}, caregivers ${hhLoginId}/${hhRoLoginId} (#1009)`
+  );
+}
 
 // CONDITION_REVIEW (#685): a dedicated profile carrying a positive infection lab
 // result NOT on its problem list, so the condition-suggestion review item surfaces on
