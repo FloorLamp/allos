@@ -104,7 +104,8 @@ describe("saveEmergencyCardSettings", () => {
       name: "Test Contact",
       relation: "Spouse",
     });
-    expect(revalidate).toHaveBeenCalledWith("/emergency");
+    // The card lives on the Passport page since the #1042 phase-3 merge.
+    expect(revalidate).toHaveBeenCalledWith("/profile");
   });
 
   it("refuses a read-only member (requireWriteAccess gate)", async () => {

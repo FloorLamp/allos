@@ -20,7 +20,7 @@ import { clearEmergencyPayload } from "@/components/emergency-offline";
 //
 // The wipe fires only on a CHANGE (never on first mount): a fresh mount already
 // reflects the current profile, and the emergency card is re-cached on the next
-// /emergency visit for whoever is now active.
+// Passport (/profile#emergency) visit for whoever is now active.
 export default function ProfileSwitchWatcher({
   activeProfileId,
 }: {

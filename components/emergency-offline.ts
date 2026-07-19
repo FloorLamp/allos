@@ -5,8 +5,9 @@ import {
 
 // Client-side offline store for the Emergency Card (issue #42). The card's offline
 // copy lives in localStorage under a single well-known key: the authenticated
-// /emergency page refreshes it on every visit (so a med change propagates the next
-// time the card is opened online), and the /offline fallback reads it when there's
+// Passport page (/profile#emergency since the #1042 phase-3 merge) refreshes it on
+// every visit (so a med change propagates the next time the card is opened
+// online), and the /offline fallback reads it when there's
 // no network. localStorage is same-origin and survives being offline, and — unlike
 // stashing PHI in the service-worker HTTP cache — it's trivially clearable, which
 // is how logout / profile-switch wipe it (see clearEmergencyPayload, wired into

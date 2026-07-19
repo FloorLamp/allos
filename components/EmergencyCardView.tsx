@@ -10,7 +10,7 @@ import { isEmergencyCardEmpty, type EmergencyCard } from "@/lib/emergency-card";
 
 // Presentational, DOM-only render of the Emergency Card (issue #42). No hooks and
 // no "use client" directive, so it renders identically on the server (the
-// authenticated /emergency page) and inside a client component (the /offline
+// Passport page's #emergency section) and inside a client component (the /offline
 // fallback that reads it from localStorage). Deliberately terse and high-contrast:
 // a stranger or first responder must be able to read it in a hurry, on paper or a
 // locked-out phone. The print stylesheet (print: utilities) drops chrome and forces

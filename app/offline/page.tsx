@@ -15,7 +15,8 @@ import {
 // middleware's public allowlist and precached on SW install — so it renders even
 // when the app shell itself can't be reached. Client component so "Try again" can
 // re-attempt the navigation and so it can read the offline Emergency Card from
-// localStorage (issue #42): the authenticated /emergency page refreshes that copy
+// localStorage (issue #42): the authenticated Passport page (/profile#emergency)
+// refreshes that copy
 // on each visit, so here — with no network and no session — we can still surface
 // it instead of dead-ending. localStorage is cleared on logout / profile switch,
 // so a stale card never lingers.
