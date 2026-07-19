@@ -2131,6 +2131,33 @@ db.prepare(
    VALUES (1, 'food_group', 'fatty_fish', 2, ?)`
 ).run(`${daysAgo(63)} 09:00:00`);
 
+// ── Substance use (#998): a screening score + a reduction target ─────────────
+// One synthetic, lower-risk AUDIT-C reading (a biomarker-shaped instrument score
+// with its three 0..4 item answers) plus an "≤ 7 drinks/week" reduction target
+// (scope_kind 'substance' — CAP semantics, read by lib/queries/substance.ts, never
+// the floor rollup). The alcohol servings the food log above already records are
+// the consumption ledger — a standard drink IS one `alcohol` food-group serving.
+{
+  const suScore = db
+    .prepare(
+      `INSERT INTO medical_records
+        (date, category, name, value, value_num, unit, canonical_name, profile_id)
+       VALUES (?, 'biomarker', 'AUDIT-C', '3', 3, NULL, 'AUDIT-C', 1)`
+    )
+    .run(daysAgo(20));
+  const suAnswers = db.prepare(
+    `INSERT INTO instrument_responses (profile_id, medical_record_id, item_index, answer)
+     VALUES (1, ?, ?, ?)`
+  );
+  [1, 1, 1].forEach((answer, itemIndex) =>
+    suAnswers.run(Number(suScore.lastInsertRowid), itemIndex, answer)
+  );
+  db.prepare(
+    `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week, created_at)
+     VALUES (1, 'substance', 'alcohol', 7, ?)`
+  ).run(`${daysAgo(30)} 09:00:00`);
+}
+
 // ── Active situations + change log (Trends Ph3 annotations) ──────────────────
 // profile_settings stores only the CURRENT set; the dated start/stop log
 // (situation_events) is what makes situations chartable. Build a small history so
