@@ -159,6 +159,21 @@ function parseCountConc(unit: string): number | null {
 //     so a legitimate "%" reading (hematocrit, O₂ saturation, a bare "42%") is left
 //     as "%" and never misclassified as a concentration.
 function aliasUnitTokens(s: string): string {
+  // UCUM spelling noise (#1018): `{annotation}` braces are UCUM's unity comment
+  // ("{beats}/min" == "/min") and square brackets mark UCUM's non-metric atoms
+  // ("mm[Hg]", "[degF]", "[iU]"). Strip the braces (with their content) and the
+  // brackets (preserving the inner atom) so a document-shipped UCUM spelling
+  // compares equal to the app's canonical text form: mm[Hg] ≡ mmHg, [degF] ≡ degF,
+  // {beats}/min ≡ /min. Bracket REMOVAL, not token aliasing, keeps genuinely
+  // distinct units apart — "[iU]" becomes IU (activity), never enzyme U.
+  s = s.replace(/\{[^}]*\}/g, "");
+  s = s.replace(/[[\]]/g, "");
+  // UCUM's suffixed non-metric atoms: the international inch and avoirdupois
+  // pound/ounce ("[in_i]" → "in_i" after bracket removal). Whole-token, so a
+  // legitimate "in"/"lb"/"oz" is untouched and nothing else contains these atoms.
+  s = s.replace(/\bin_i\b/gi, "in");
+  s = s.replace(/\blb_av\b/gi, "lb");
+  s = s.replace(/\boz_av\b/gi, "oz");
   s = s.replace(/\bgms?\b/gi, "g");
   s = s.replace(/\bcu?mm\b/gi, "uL");
   // Volume-percent (a hematocrit spelling) is just percent.

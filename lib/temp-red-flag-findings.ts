@@ -28,6 +28,7 @@ import {
   detectEpisodeTempRedFlag,
   tempRedFlagEvidence,
   tempRedFlagFullDetail,
+  type TempRedFlagDisplay,
   type TempRedFlagFinding,
 } from "./temp-red-flag";
 import type { Finding } from "./findings";
@@ -43,15 +44,21 @@ function openEpisodeAsOf(profileId: number, date: string) {
 }
 
 // The ONE gather: the red flag the profile's current open episode's latest reading
-// crosses, as a neutral TempRedFlagFinding, or null. Every surface formats over THIS.
+// crosses, as a neutral TempRedFlagFinding, or null. Every surface formats over
+// THIS. `display` is how the app-authored temperature clause renders (#1019): web
+// boundaries pass the viewer's login unit, the Telegram nudge passes "dual";
+// identity (dedupeKey) is display-independent, so the shared dismissal bus is
+// untouched.
 export function tempRedFlagFindingFor(
   profileId: number,
-  date: string
+  date: string,
+  display: TempRedFlagDisplay = "F"
 ): TempRedFlagFinding | null {
   const episode = openEpisodeAsOf(profileId, date);
   if (!episode) return null;
   return detectEpisodeTempRedFlag(episode, {
     ageMonths: profileAgeMonths(profileId, date),
+    display,
   });
 }
 
@@ -84,9 +91,10 @@ function toFinding(
 // assembly. Returns 0 or 1 finding (the latest reading crosses at most one rule).
 export function buildTempRedFlagFindings(
   profileId: number,
-  date: string
+  date: string,
+  display: TempRedFlagDisplay = "F"
 ): Finding[] {
-  const f = tempRedFlagFindingFor(profileId, date);
+  const f = tempRedFlagFindingFor(profileId, date, display);
   if (!f) return [];
   return [toFinding(f, actionHrefFor(profileId, date))];
 }
@@ -97,9 +105,10 @@ export function buildTempRedFlagFindings(
 // "illness-care" Upcoming domain (see the module header).
 export function tempRedFlagItems(
   profileId: number,
-  date: string
+  date: string,
+  display: TempRedFlagDisplay = "F"
 ): UpcomingItem[] {
-  const f = tempRedFlagFindingFor(profileId, date);
+  const f = tempRedFlagFindingFor(profileId, date, display);
   if (!f) return [];
   const href = actionHrefFor(profileId, date);
   return [

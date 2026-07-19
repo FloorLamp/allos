@@ -27,7 +27,7 @@ import {
   collectAttentionModel,
   collectSuppressedAttention,
 } from "@/lib/queries";
-import { getUserBirthdate, getStoredAge } from "@/lib/settings";
+import { getUserBirthdate, getStoredAge, getUnitPrefs } from "@/lib/settings";
 import { groupAttentionForPage, type PageGroupKind } from "@/lib/attention";
 import {
   isItemSuppressibleFlag,
@@ -98,16 +98,20 @@ const GROUP_TONE: Record<PageGroupKind, string> = {
 };
 
 export default async function UpcomingPage() {
-  const { profile } = await requireSession();
+  const { login, profile } = await requireSession();
   const now = today(profile.id);
+  // The viewer's unit prefs (#1019 display-unit policy: web always follows the
+  // login's prefs) so measurement-carrying item strings — the temperature
+  // red-flag, an endurance event distance — render in the viewer's unit.
+  const units = getUnitPrefs(login.id);
   // The ONE unified attention model (issue #524) — the SAME set the dashboard card
   // renders (as an act-now subset). The page shows it in FULL: date-scheduled work
   // in calendar bands, plus the flagged-lab / failing-sync / review signals under
   // their own groupings. Completeness is the point of the planning view.
-  const items = collectAttentionModel(profile.id, now);
+  const items = collectAttentionModel(profile.id, now, units);
   const groups = groupAttentionForPage(items, now);
   const total = items.length;
-  const suppressed = collectSuppressedAttention(profile.id, now);
+  const suppressed = collectSuppressedAttention(profile.id, now, units);
 
   // Preventive well-visits/screenings (issue #82) are only assessed when the
   // profile's age is known; without a birthdate/age they emit nothing. Surface a

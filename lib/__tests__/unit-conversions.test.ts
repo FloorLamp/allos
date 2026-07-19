@@ -6,6 +6,42 @@ import {
   sameUnit,
 } from "@/lib/unit-conversions";
 
+describe("sameUnit — UCUM bracket / annotation spellings (#1018)", () => {
+  it("strips UCUM square brackets so document spellings match canonical text", () => {
+    // Imported BP ships "mm[Hg]" (the repo's own fixtures use it); canonical is
+    // "mmHg" — without stripping, imported BP never charts or flags.
+    expect(sameUnit("mm[Hg]", "mmHg")).toBe(true);
+    expect(sameUnit("[degF]", "degF")).toBe(true);
+    expect(sameUnit("[in_i]", "in")).toBe(true);
+    expect(sameUnit("[lb_av]", "lb")).toBe(true);
+  });
+
+  it("strips {} annotations (UCUM unity comments)", () => {
+    expect(sameUnit("{beats}/min", "/min")).toBe(true);
+    expect(sameUnit("{beats}/min", "bpm")).toBe(true);
+    expect(sameUnit("{breaths}/min", "breaths/min")).toBe(true);
+  });
+
+  it("bracket stripping never collapses genuinely distinct units", () => {
+    // "[iU]" is UCUM's international unit — it must resolve to IU (activity),
+    // never fold onto the bare enzyme U (#759).
+    expect(sameUnit("[iU]/L", "IU/L")).toBe(true);
+    expect(sameUnit("[iU]/L", "U/L")).toBe(false);
+    // mm[Hg] is pressure, not a length; °F is not °C.
+    expect(sameUnit("mm[Hg]", "mm")).toBe(false);
+    expect(sameUnit("[degF]", "degC")).toBe(false);
+    expect(sameUnit("[degF]", "Cel")).toBe(false);
+  });
+
+  it("a bracket-spelled unit converts against the canonical (identity path)", () => {
+    const bp = { name: "Blood Pressure Systolic", unit: "mmHg" };
+    expect(convertToCanonical(120, "mm[Hg]", bp)).toBe(120);
+    expect(isConvertible("mm[Hg]", bp)).toBe(true);
+    const hr = { name: "Heart Rate", unit: "bpm" };
+    expect(convertToCanonical(62, "{beats}/min", hr)).toBe(62);
+  });
+});
+
 describe("sameUnit", () => {
   it("treats a missing unit on either side as a match (can't prove a mismatch)", () => {
     expect(sameUnit(null, "mg/dL")).toBe(true);

@@ -73,7 +73,13 @@ import {
   getMentalHealthShareFull,
 } from "../../settings";
 import { sharedSurfaceDetail } from "../../appointment-sensitivity";
-import type { UpcomingItem } from "../../upcoming";
+import {
+  CANONICAL_DISPLAY_UNITS,
+  type UpcomingDisplayUnits,
+  type UpcomingItem,
+} from "../../upcoming";
+import { fmtDistance } from "../../units";
+import type { DistanceUnit, TemperatureUnit } from "../../settings";
 import {
   type Reason,
   riskReasonsFrom,
@@ -857,7 +863,14 @@ function trainingItems(profileId: number): UpcomingItem[] {
 // key namespace is DISTINCT from the coaching long-session finding prefix ("endurance:"),
 // so the event marker and the calm long-session nudge never collide. Not suppressible — a
 // dated event is a hard commitment, not a dismissable nudge.
-function enduranceEventItems(profileId: number, today: string): UpcomingItem[] {
+// `distanceUnit` is the viewer's display unit (#1019): the web boundary threads
+// the login's pref; login-less callers — calendar feed, digest — default to
+// canonical km. The `key` is unit-independent, so suppression identity never shifts.
+function enduranceEventItems(
+  profileId: number,
+  today: string,
+  distanceUnit: DistanceUnit = "km"
+): UpcomingItem[] {
   if (isTrainingRestricted(profileId)) return [];
   return getActiveEndurancePlans(profileId)
     .filter((p) => p.eventDate >= today)
@@ -868,14 +881,13 @@ function enduranceEventItems(profileId: number, today: string): UpcomingItem[] {
           : p.discipline === "ride"
             ? "Ride"
             : "Swim";
-      const name =
-        p.eventName?.trim() ||
-        `${Math.round(p.targetDistanceKm * 10) / 10} km ${disc}`;
+      const dist = fmtDistance(p.targetDistanceKm, distanceUnit);
+      const name = p.eventName?.trim() || `${dist} ${disc}`;
       return {
         key: `endurance-event:${p.id}`,
         domain: "training" as const,
         title: `Event: ${name}`,
-        detail: `${disc} · ${Math.round(p.targetDistanceKm * 10) / 10} km`,
+        detail: `${disc} · ${dist}`,
         href: "/training" as const,
         dueDate: p.eventDate,
         suppressible: false,
@@ -920,9 +932,15 @@ export function markCarePlanItemDone(profileId: number, id: number): void {
 // the two calls in one request to a single fan-out. Outside a server request (the
 // notify tick, DB tests) cache() degrades to a plain passthrough, so behavior is
 // unchanged — the digest reuse still recomputes per call as before.
+// Display units ride as PRIMITIVE cache() arguments (not an object) so the
+// request-scoped memo still collapses the page's collectUpcoming +
+// collectSuppressedUpcoming pair into one fan-out — an object param would defeat
+// the cache on identity.
 const rawUpcoming = cache(function rawUpcoming(
   profileId: number,
-  today: string
+  today: string,
+  temperatureUnit: TemperatureUnit,
+  distanceUnit: DistanceUnit
 ): UpcomingItem[] {
   return [
     ...doseItems(profileId, today),
@@ -932,7 +950,7 @@ const rawUpcoming = cache(function rawUpcoming(
     ...illnessCareItems(profileId, today),
     ...conditionReviewItems(profileId),
     ...mentalHealthCrisisItems(profileId),
-    ...tempRedFlagItems(profileId, today),
+    ...tempRedFlagItems(profileId, today, temperatureUnit),
     ...interactionItems(profileId),
     ...pgxItems(profileId),
     ...contrastItems(profileId, today),
@@ -947,7 +965,7 @@ const rawUpcoming = cache(function rawUpcoming(
     ...biomarkerItems(profileId, today),
     ...goalItems(profileId),
     ...trainingItems(profileId),
-    ...enduranceEventItems(profileId, today),
+    ...enduranceEventItems(profileId, today, distanceUnit),
   ];
 });
 
@@ -968,14 +986,21 @@ function isItemSuppressed(
 // UpcomingItem[], with snoozed/dismissed items filtered out. `today` is resolved
 // by the caller in the profile's timezone. Read-only and fully profile-scoped.
 // The Telegram digest reuses this, so a suppression applies to the push too.
+// `units` (#1019): a WEB boundary passes the viewer's login prefs so
+// measurement-carrying item strings render in the viewer's unit; login-less
+// callers (digest, calendar feed, AI insights) omit it and get canonical units.
 export function collectUpcoming(
   profileId: number,
-  today: string
+  today: string,
+  units: UpcomingDisplayUnits = CANONICAL_DISPLAY_UNITS
 ): UpcomingItem[] {
   const map = getFindingSuppressions(profileId);
-  return rawUpcoming(profileId, today).filter(
-    (item) => !isItemSuppressed(map, item, today)
-  );
+  return rawUpcoming(
+    profileId,
+    today,
+    units.temperatureUnit,
+    units.distanceUnit
+  ).filter((item) => !isItemSuppressed(map, item, today));
 }
 
 // The actionable household rollup for ONE profile (issue #31): the subset of the
@@ -1026,11 +1051,17 @@ export interface SuppressedUpcoming {
 // UI. A snooze that has since expired is NOT included (its item is live again).
 export function collectSuppressedUpcoming(
   profileId: number,
-  today: string
+  today: string,
+  units: UpcomingDisplayUnits = CANONICAL_DISPLAY_UNITS
 ): SuppressedUpcoming[] {
   const map = getFindingSuppressions(profileId);
   const out: SuppressedUpcoming[] = [];
-  for (const item of rawUpcoming(profileId, today)) {
+  for (const item of rawUpcoming(
+    profileId,
+    today,
+    units.temperatureUnit,
+    units.distanceUnit
+  )) {
     const rec = map.get(signalKey(item));
     // Same persistence-aware decision as the live filter, so a care-persistent
     // follow-up whose only suppression is a resisted dismiss is NOT listed here as

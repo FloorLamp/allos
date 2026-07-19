@@ -195,6 +195,55 @@ describe("canonical biomarker names", () => {
   });
 });
 
+// #1018: an imported Body Temperature converts to canonical °F at the boundary
+// (the heightToCm/weightToKg recognizer model), so a MyChart "38.5 Cel" joins the
+// one series (charts + flags) instead of sitting verbatim as an unconvertible row.
+describe("CCDA imported temperature → canonical °F (#1018)", () => {
+  const tempDoc = (value: string, unit: string) => `<?xml version="1.0"?>
+<ClinicalDocument xmlns="urn:hl7-org:v3">
+  <component><structuredBody><component><section>
+    <code code="8716-3" codeSystem="2.16.840.1.113883.6.1"/>
+    <title>Vital Signs</title>
+    <entry><organizer classCode="CLUSTER" moodCode="EVN">
+      <component><observation classCode="OBS" moodCode="EVN">
+        <code code="8310-5" codeSystem="2.16.840.1.113883.6.1" displayName="Body temperature"/>
+        <effectiveTime value="20230501"/>
+        <value type="PQ" value="${value}" unit="${unit}"/>
+      </observation></component>
+    </organizer></entry>
+  </section></component></structuredBody></component>
+</ClinicalDocument>`;
+
+  it("converts a UCUM Celsius reading (38.5 Cel → 101.3 degF)", () => {
+    const rec = parseCcda(tempDoc("38.5", "Cel")).records[0];
+    expect(rec).toMatchObject({
+      canonical: "Body Temperature",
+      category: "vitals",
+      value_num: 101.3,
+      value: "101.3",
+      unit: "degF",
+    });
+    // Dedup identity keys on the AS-SHIPPED value, so a document whose Cel
+    // reading was stored before the conversion re-imports onto the same row.
+    expect(rec.external_id).toContain(":38.5");
+  });
+
+  it("normalizes a UCUM Fahrenheit spelling ([degF]) onto the canonical unit", () => {
+    const rec = parseCcda(tempDoc("101.3", "[degF]")).records[0];
+    expect(rec).toMatchObject({ value_num: 101.3, unit: "degF" });
+  });
+
+  it("stores an unrecognized unit verbatim rather than guessing", () => {
+    const rec = parseCcda(tempDoc("311.2", "K")).records[0];
+    expect(rec).toMatchObject({ value_num: 311.2, unit: "K" });
+  });
+
+  it("stores an implausible converted value verbatim (junk stays out of the series)", () => {
+    const rec = parseCcda(tempDoc("900", "Cel")).records[0];
+    expect(rec).toMatchObject({ value_num: 900, unit: "Cel" });
+  });
+});
+
 describe("demographics", () => {
   const withPatient = (inner: string) => `<?xml version="1.0"?>
 <ClinicalDocument xmlns="urn:hl7-org:v3">

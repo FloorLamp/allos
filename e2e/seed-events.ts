@@ -116,6 +116,8 @@ import {
   FLAGGED_LAB_PROFILE,
   E2E_LOGIN_IOP,
   FLAGGED_IOP_PROFILE,
+  E2E_LOGIN_CEL_IMPORT,
+  CEL_IMPORT_PROFILE,
 } from "./fixture-logins";
 import { adoptTemplate, activateRoutine } from "../lib/routines";
 
@@ -3379,4 +3381,62 @@ for (const [daysAgo, kg] of [
 seedMemberLogin(E2E_LOGIN_WEIGHT_QA, weightQaId, "write");
 console.log(
   `e2e: seeded weight quick-add fixture — profile ${weightQaId} (${WEIGHT_QUICKADD_PROFILE}) (#1042)`
+);
+
+// ── Legacy imported-Celsius temperature fixture (#1018) ───────────────────────
+// A dedicated sick profile whose ONLY temperature is a LEGACY imported Celsius
+// row — unit 'Cel', source 'ccd', external_id set, flag never derived — exactly
+// the shape the CCDA mapper stored before the import-boundary conversion. Seeded
+// AFTER boot (so migration 074 / the flag reconcile never touch it), it proves
+// the episode read gate in the browser: the cockpit's latest temperature renders
+// the CONVERTED 101.3 °F, never raw "38.5" on the °F axis. Spec-owned + read-only
+// (imported-temp-unit.spec.ts); the situation/episode mirrors seedSickEpisode.
+const celImportId = fixtureProfileId(CEL_IMPORT_PROFILE);
+{
+  const on = today(celImportId);
+  const existingSit = db
+    .prepare(
+      "SELECT id FROM situations WHERE profile_id = ? AND name = 'Illness'"
+    )
+    .get(celImportId) as { id: number } | undefined;
+  const sitId =
+    existingSit?.id ??
+    Number(
+      db
+        .prepare(
+          "INSERT INTO situations (profile_id, name, active, illness_type) VALUES (?, 'Illness', 1, 1)"
+        )
+        .run(celImportId).lastInsertRowid
+    );
+  db.prepare(
+    "UPDATE situations SET active = 1, illness_type = 1 WHERE id = ?"
+  ).run(sitId);
+  db.prepare("DELETE FROM illness_episodes WHERE profile_id = ?").run(
+    celImportId
+  );
+  db.prepare(
+    `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+     VALUES (?, 'Illness', ?, NULL)`
+  ).run(celImportId, shiftDateStr(on, -1));
+  db.prepare(
+    `INSERT INTO symptom_logs (profile_id, date, symptom, severity, note)
+     VALUES (?, ?, 'fever', 2, NULL)
+     ON CONFLICT (profile_id, date, symptom)
+     DO UPDATE SET severity = MAX(symptom_logs.severity, excluded.severity)`
+  ).run(celImportId, on);
+  // Idempotent for a reused dev server: this profile owns exactly one reading.
+  db.prepare(
+    "DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = 'Body Temperature'"
+  ).run(celImportId);
+  db.prepare(
+    `INSERT INTO medical_records
+       (profile_id, date, category, name, value, value_num, unit,
+        canonical_name, source, external_id, notes)
+     VALUES (?, ?, 'vitals', 'Body temperature', '38.5', 38.5, 'Cel',
+             'Body Temperature', 'ccd', 'ccda:vital:8310-5:e2e-cel:38.5', '09:00')`
+  ).run(celImportId, on);
+}
+seedMemberLogin(E2E_LOGIN_CEL_IMPORT, celImportId, "write");
+console.log(
+  `e2e: seeded legacy imported-Cel temperature fixture — profile ${celImportId} (${CEL_IMPORT_PROFILE}) (#1018)`
 );
