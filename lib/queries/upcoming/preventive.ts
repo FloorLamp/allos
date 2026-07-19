@@ -26,6 +26,7 @@ import {
   getSmokingHistory,
 } from "../../settings";
 import { resolveSmoking } from "../../smoking";
+import { appointmentKindInferenceText } from "../../preventive-appointment";
 import { getAppointments } from "../appointments";
 import {
   getMedicalRecords,
@@ -113,12 +114,18 @@ export function getInferredPreventiveSatisfactions(
     });
   }
 
-  // Completed appointments → visits (name-matched on the title).
+  // Completed appointments → visits (name-matched on the title PLUS the explicit
+  // kind's inference text, #997). Folding appointmentKindInferenceText in lets a
+  // mental_health visit satisfy the depression/anxiety screenings via the shared
+  // stream even when its title is generic — the KIND is the reliable signal.
   for (const a of getAppointments(profileId)) {
     if (!isCompletedStatus(a.status)) continue;
     records.push({
       code: null,
-      name: a.title,
+      name:
+        [a.title, appointmentKindInferenceText(a.kind)]
+          .filter(Boolean)
+          .join(" ") || null,
       date: a.scheduled_at.slice(0, 10),
       allow: ["visit"],
     });

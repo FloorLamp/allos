@@ -8,6 +8,7 @@ import {
   getConsolidatedCalendarFeed,
   getPublicUrl,
   getTimezone,
+  getMentalHealthShareFull,
 } from "@/lib/settings";
 import { tokenLifecycleStatus } from "@/lib/token-lifecycle";
 import { requireSession, getAccessibleProfiles } from "@/lib/auth";
@@ -69,6 +70,7 @@ export default async function CalendarFeedPage() {
       reminders: feed.reminders,
       pastWindowDays: feed.pastWindowDays,
       futureWindowDays: feed.futureWindowDays,
+      mentalHealthShareFull: getMentalHealthShareFull(profile.id),
     },
   });
 
@@ -96,6 +98,7 @@ export default async function CalendarFeedPage() {
         reminders: pFeed.reminders,
         pastWindowDays: pFeed.pastWindowDays,
         futureWindowDays: pFeed.futureWindowDays,
+        mentalHealthShareFull: getMentalHealthShareFull(p.id),
       },
       tz: getTimezone(p.id),
       today: pToday,

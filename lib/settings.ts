@@ -32,4 +32,5 @@ export * from "./settings/notifications";
 export * from "./settings/email";
 export * from "./settings/profile-attrs";
 export * from "./settings/calendar-feed";
+export * from "./settings/crisis";
 export * from "./settings/onboarding";

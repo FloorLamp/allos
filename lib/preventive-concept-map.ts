@@ -369,4 +369,48 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
     ],
     canonicalBiomarkers: [],
   },
+
+  // ---- Mental-health VISIT evidence for the depression/anxiety screenings (#997)
+  // A completed mental-health visit is legitimate evidence toward BOTH the
+  // depression and anxiety screenings, so a person in active behavioral-health care
+  // isn't also nagged to get screened. These are `kind: "visit"` matchers (the
+  // existing depression/anxiety entries above are `kind: "screening"`, matched by a
+  // recorded PHQ-9/GAD-7 score), so an APPOINTMENT/ENCOUNTER (which passes
+  // allow:["visit"]) satisfies through the SAME shared inference stream a physical
+  // uses for its check-up — no forked kind-only satisfaction path. Names are
+  // UNAMBIGUOUS behavioral-health terms only (bare "therapy"/"therapist" are left
+  // out — they collapse with physical/occupational therapy, an over-match the #86
+  // conservatism forbids); the explicit `mental_health` KIND contributes the
+  // "mental health visit" phrase via appointmentKindInferenceText, so a generically
+  // titled session still counts.
+  {
+    ruleKey: "depression_screening",
+    kind: "visit",
+    codes: [],
+    names: [
+      "mental health visit",
+      "psychotherapy",
+      "counseling",
+      "psychiatry",
+      "psychiatrist",
+      "psychologist",
+      "behavioral health",
+    ],
+    canonicalBiomarkers: [],
+  },
+  {
+    ruleKey: "anxiety_screening",
+    kind: "visit",
+    codes: [],
+    names: [
+      "mental health visit",
+      "psychotherapy",
+      "counseling",
+      "psychiatry",
+      "psychiatrist",
+      "psychologist",
+      "behavioral health",
+    ],
+    canonicalBiomarkers: [],
+  },
 ];

@@ -3,6 +3,7 @@ import {
   resolveProfileByCalendarToken,
   getCalendarFeed,
   getTimezone,
+  getMentalHealthShareFull,
 } from "@/lib/settings";
 import { getAppointments, collectUpcoming } from "@/lib/queries";
 import {
@@ -80,6 +81,9 @@ export async function GET(
       reminders: feed.reminders,
       pastWindowDays: feed.pastWindowDays,
       futureWindowDays: feed.futureWindowDays,
+      // Sensitivity-aware detail (#997): a mental_health visit stays minimal on
+      // this exported feed unless the profile owner opted it into full detail.
+      mentalHealthShareFull: getMentalHealthShareFull(profileId),
     },
   });
   const ics = buildAppointmentIcs(events, { dtstamp: new Date() });

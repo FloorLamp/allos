@@ -230,8 +230,9 @@ export function mentalHealthCrisisKey(
   return `${MENTAL_HEALTH_PREFIX}crisis:${instrument}:${dateISO}`;
 }
 
-// The default crisis-resources line (US 988 Suicide & Crisis Lifeline). Copy discipline
-// (docs/internals/copy.md) yields to the issue's decided framing here — the resource
-// number and the "you're not alone" register are deliberate.
-export const CRISIS_RESOURCES_LINE =
-  "If you're in crisis or thinking about harming yourself, you're not alone — call or text 988 (US Suicide & Crisis Lifeline) or contact your local emergency services. These results suggest discussing them with a clinician.";
+// The crisis-resources copy is no longer a hardcoded constant here (it used to name a
+// US-only 988 line). The resource list is now OPERATOR-CONFIGURED (issue #996) — see
+// lib/crisis-resources.ts for the pure formatting (crisisFindingLine) and
+// lib/settings/crisis.ts for the global + per-profile resolution — so a self-hosted
+// instance shows its own region's line, or a neutral "contact local emergency
+// services" fallback when unconfigured, never a fabricated number.
