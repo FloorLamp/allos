@@ -1897,6 +1897,66 @@ dentalIns.run(
   null
 );
 
+// ── Skin lesions (#715) ──────────────────────────────────────────────────────
+// Structured skin-lesion records — obviously-fictional, body-map anchored. Two
+// SERIAL observations of the SAME lesion (same label/region/side) show the
+// side-by-side tracking model: a baseline "watch" record 4 months back carrying a
+// recheck interval (the #700 follow-up seed), then a later stable record of the same
+// mole. Plus a second, separate lesion. The ABCDE fields are USER-RECORDED
+// OBSERVATIONS (0/1), never a malignancy score — the app tracks and compares.
+const skinIns = db.prepare(
+  `INSERT INTO skin_lesions
+     (profile_id, label, body_region, body_side, size_mm, asymmetry, border,
+      color, diameter, evolving, status, observed_date, finding,
+      follow_up_interval_days, notes, source)
+   VALUES (1,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,NULL)`
+);
+skinIns.run(
+  "Upper left forearm mole",
+  "forearm",
+  "left",
+  5,
+  0,
+  0,
+  1,
+  0,
+  0,
+  "watch",
+  daysAgo(120),
+  "Even brown, slightly raised. Watch and recheck in ~3 months.",
+  91
+);
+skinIns.run(
+  "Upper left forearm mole",
+  "forearm",
+  "left",
+  5,
+  0,
+  0,
+  1,
+  0,
+  0,
+  "active",
+  daysAgo(20),
+  "Unchanged since the last photo — same size and color.",
+  null
+);
+skinIns.run(
+  "Right shoulder freckle",
+  "shoulder",
+  "right",
+  3,
+  0,
+  0,
+  0,
+  0,
+  0,
+  "active",
+  daysAgo(60),
+  "Small, flat, uniform tan.",
+  null
+);
+
 // ── Care plan / plan of treatment ────────────────────────────────────────────
 // Planned / ordered future care (a health record's Plan of Treatment section).
 // daysAgo(negative) yields a FUTURE date.

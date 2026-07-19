@@ -86,6 +86,11 @@ function linkAllTables(profileId: number, providerId: number): number {
     `INSERT INTO dental_procedures (profile_id, name, provider_id)
      VALUES (?, 'Composite filling', ?)`
   ).run(profileId, providerId);
+  // Skin lesions link the recording dermatologist (#715).
+  db.prepare(
+    `INSERT INTO skin_lesions (profile_id, label, provider_id)
+     VALUES (?, 'Left forearm mole', ?)`
+  ).run(profileId, providerId);
   return PROVIDER_LINK_COLUMNS.length;
 }
 
