@@ -1,29 +1,125 @@
 {
-  "$comment": "Curated symptom vocabulary for the symptom log (issue #799). ~20 everyday symptoms logged at the habit tier — one tap per symptom-day, a 1–4 severity, an optional note. Each has a STABLE slug (symptom_logs.symptom; the #203 discipline — a rename is display-only, never re-slug), a display label, and an optional emoji icon. Free-text custom symptom names are ALSO allowed (stored inline, not in this catalog); this file is only the curated shortcut list. Committed + HUMAN-REVIEWABLE. INFORMATIONAL symptom tracking, NOT medical advice or diagnosis.",
+  "$comment": "Curated symptom vocabulary for the symptom log (issues #799, #714). ~25 everyday symptoms logged at the habit tier — one tap per symptom-day, a 1–4 severity, an optional note. Each has a STABLE slug (symptom_logs.symptom; the #203 discipline — a rename is display-only, never re-slug), a display label, an optional emoji icon, and a `domain` context tag (illness/cycle/general — issue #714) that only orders which slugs each mount leads with (never restricts logging). Free-text custom symptom names are ALSO allowed (stored inline, not in this catalog); this file is only the curated shortcut list. Committed + HUMAN-REVIEWABLE. INFORMATIONAL symptom tracking, NOT medical advice or diagnosis.",
   "symptoms": [
-    { "slug": "fever", "label": "Fever", "icon": "🌡️" },
-    { "slug": "chills", "label": "Chills", "icon": "🥶" },
-    { "slug": "cough", "label": "Cough", "icon": "😷" },
-    { "slug": "sore_throat", "label": "Sore throat", "icon": "🗣️" },
-    { "slug": "runny_nose", "label": "Runny nose", "icon": "🤧" },
-    { "slug": "congestion", "label": "Congestion", "icon": "👃" },
-    { "slug": "sneezing", "label": "Sneezing", "icon": "💨" },
-    { "slug": "headache", "label": "Headache", "icon": "🤕" },
-    { "slug": "body_aches", "label": "Body aches", "icon": "💪" },
-    { "slug": "fatigue", "label": "Fatigue", "icon": "😴" },
-    { "slug": "nausea", "label": "Nausea", "icon": "🤢" },
-    { "slug": "vomiting", "label": "Vomiting", "icon": "🤮" },
-    { "slug": "diarrhea", "label": "Diarrhea", "icon": "🚽" },
-    { "slug": "loss_of_appetite", "label": "Loss of appetite", "icon": "🍽️" },
-    { "slug": "dizziness", "label": "Dizziness", "icon": "💫" },
+    { "slug": "fever", "label": "Fever", "icon": "🌡️", "domain": "illness" },
+    { "slug": "chills", "label": "Chills", "icon": "🥶", "domain": "illness" },
+    { "slug": "cough", "label": "Cough", "icon": "😷", "domain": "illness" },
+    {
+      "slug": "sore_throat",
+      "label": "Sore throat",
+      "icon": "🗣️",
+      "domain": "illness"
+    },
+    {
+      "slug": "runny_nose",
+      "label": "Runny nose",
+      "icon": "🤧",
+      "domain": "illness"
+    },
+    {
+      "slug": "congestion",
+      "label": "Congestion",
+      "icon": "👃",
+      "domain": "illness"
+    },
+    {
+      "slug": "sneezing",
+      "label": "Sneezing",
+      "icon": "💨",
+      "domain": "illness"
+    },
+    {
+      "slug": "headache",
+      "label": "Headache",
+      "icon": "🤕",
+      "domain": "general"
+    },
+    {
+      "slug": "body_aches",
+      "label": "Body aches",
+      "icon": "💪",
+      "domain": "illness"
+    },
+    {
+      "slug": "fatigue",
+      "label": "Fatigue",
+      "icon": "😴",
+      "domain": "general"
+    },
+    { "slug": "nausea", "label": "Nausea", "icon": "🤢", "domain": "general" },
+    {
+      "slug": "vomiting",
+      "label": "Vomiting",
+      "icon": "🤮",
+      "domain": "general"
+    },
+    {
+      "slug": "diarrhea",
+      "label": "Diarrhea",
+      "icon": "🚽",
+      "domain": "general"
+    },
+    {
+      "slug": "loss_of_appetite",
+      "label": "Loss of appetite",
+      "icon": "🍽️",
+      "domain": "general"
+    },
+    {
+      "slug": "dizziness",
+      "label": "Dizziness",
+      "icon": "💫",
+      "domain": "general"
+    },
     {
       "slug": "shortness_of_breath",
       "label": "Shortness of breath",
-      "icon": "🫁"
+      "icon": "🫁",
+      "domain": "illness"
     },
-    { "slug": "ear_pain", "label": "Ear pain", "icon": "👂" },
-    { "slug": "sinus_pressure", "label": "Sinus pressure", "icon": "😮‍💨" },
-    { "slug": "abdominal_pain", "label": "Abdominal pain", "icon": "🤰" },
-    { "slug": "rash", "label": "Rash", "icon": "🔴" }
+    {
+      "slug": "ear_pain",
+      "label": "Ear pain",
+      "icon": "👂",
+      "domain": "illness"
+    },
+    {
+      "slug": "sinus_pressure",
+      "label": "Sinus pressure",
+      "icon": "😮‍💨",
+      "domain": "illness"
+    },
+    {
+      "slug": "abdominal_pain",
+      "label": "Abdominal pain",
+      "icon": "🤰",
+      "domain": "general"
+    },
+    { "slug": "rash", "label": "Rash", "icon": "🔴", "domain": "general" },
+    { "slug": "cramps", "label": "Cramps", "icon": "🩸", "domain": "cycle" },
+    {
+      "slug": "bloating",
+      "label": "Bloating",
+      "icon": "🎈",
+      "domain": "cycle"
+    },
+    {
+      "slug": "breast_tenderness",
+      "label": "Breast tenderness",
+      "icon": "🤱",
+      "domain": "cycle"
+    },
+    {
+      "slug": "mood_swings",
+      "label": "Mood swings",
+      "icon": "🎭",
+      "domain": "cycle"
+    },
+    {
+      "slug": "low_back_pain",
+      "label": "Low back pain",
+      "icon": "🦴",
+      "domain": "cycle"
+    }
   ]
 }

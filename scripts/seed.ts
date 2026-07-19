@@ -1972,6 +1972,34 @@ for (const [ago, time, degF] of tempReadings) {
 }
 reconcileFlags(SEED_PROFILE_ID, tempIds);
 
+// ── Menstrual cycle log (issue #714) ─────────────────────────────────────────
+// A few synthetic, roughly-regular cycles so the Cycle surface (derived phase +
+// cycle-length/variability trend), the Timeline day-view phase/period chip, and the
+// #718 phase-aware ranges all have data. Three completed cycles (~28-day, 5-day
+// periods) plus the most recent still within its follicular span. Obviously-fictional,
+// no PHI. Clear first for a re-seed.
+db.prepare("DELETE FROM cycles WHERE profile_id = ?").run(SEED_PROFILE_ID);
+const seedCycle = db.prepare(
+  `INSERT INTO cycles (profile_id, period_start, period_end, flow, note)
+   VALUES (?, ?, ?, ?, ?)`
+);
+const seededCycles: [number, number, string, string | null][] = [
+  // [startDaysAgo, endDaysAgo, flow, note]
+  [103, 99, "medium", null],
+  [75, 71, "heavy", "cramps day 1"],
+  [47, 43, "medium", null],
+  [19, 15, "light", null],
+];
+for (const [startAgo, endAgo, flow, note] of seededCycles) {
+  seedCycle.run(
+    SEED_PROFILE_ID,
+    daysAgo(startAgo),
+    daysAgo(endAgo),
+    flow,
+    note
+  );
+}
+
 // ── Trends pins + saved views (Trends Ph2/Ph3) ───────────────────────────────
 upsertProfileSetting.run(
   "trend_pins",

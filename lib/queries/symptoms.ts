@@ -3,7 +3,12 @@
 // mapping (labels, custom-vs-curated) lives in lib/symptoms; this module only fetches.
 
 import { db, today } from "../db";
-import { isCustomSymptomKey, symptomSlugs } from "../symptoms";
+import {
+  isCustomSymptomKey,
+  symptomSlugs,
+  symptomSlugsInDomain,
+  type SymptomDomain,
+} from "../symptoms";
 import { rankByRecentFrequency } from "../rank-by-frequency";
 import { recentWindowStart } from "./training/common";
 
@@ -75,7 +80,16 @@ export function getSymptomNotesOnDate(
 // not weight the picker — a mild recurring symptom is still a usual suspect). Returns
 // stored keys (curated slugs + custom names); catalog order breaks ties and is the whole
 // order for a fresh profile. Profile-scoped via the symptom_logs filter.
-export function getSymptomLogOrder(profileId: number): string[] {
+//
+// `leadDomain` (issue #714) makes a mount lead with its context's slugs: the catalog is
+// reordered so that domain's slugs come first, so — on a fresh profile or a tie — the
+// Cycle bar leads with cramps/bloating/… while the illness bar leads with fever/cough/….
+// It's an ORDER lever only: usage still ranks (a heavily-logged symptom outranks a
+// context slug), and every symptom stays loggable on every mount.
+export function getSymptomLogOrder(
+  profileId: number,
+  leadDomain?: SymptomDomain
+): string[] {
   const rows = db
     .prepare(
       `SELECT symptom AS name, date FROM symptom_logs
@@ -85,7 +99,15 @@ export function getSymptomLogOrder(profileId: number): string[] {
     name: string;
     date: string;
   }[];
-  return rankByRecentFrequency(symptomSlugs(), rows, today(profileId));
+  const catalog = leadDomain
+    ? [
+        ...symptomSlugsInDomain(leadDomain),
+        ...symptomSlugs().filter(
+          (s) => !symptomSlugsInDomain(leadDomain).includes(s)
+        ),
+      ]
+    : symptomSlugs();
+  return rankByRecentFrequency(catalog, rows, today(profileId));
 }
 
 export interface SymptomDayRollup {

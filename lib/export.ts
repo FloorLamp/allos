@@ -550,6 +550,18 @@ export const DATASETS: ExportDataset[] = [
        FROM endurance_plans WHERE profile_id = ? ORDER BY event_date DESC, id DESC`,
     countSql: `SELECT COUNT(*) AS n FROM endurance_plans WHERE profile_id = ?`,
   }),
+  tableDataset({
+    // Menstrual cycle log (#714) — the user-entered periods (start/inclusive end, flow,
+    // note). The derived phase + length trends recompute from these on import, so only the
+    // recorded periods round-trip. Per-day cycle symptoms export via symptom_logs.
+    key: "cycles",
+    label: "Cycle log",
+    table: "cycles",
+    columns: ["period_start", "period_end", "flow", "note", "created_at"],
+    select: `SELECT id, period_start, period_end, flow, note, created_at
+       FROM cycles WHERE profile_id = ? ORDER BY period_start DESC, id DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM cycles WHERE profile_id = ?`,
+  }),
   {
     // Supplements + medications (the parent intake_items rows), one per row, with
     // each item's dose SCHEDULE folded into a readable `schedule` summary (built
@@ -1078,6 +1090,7 @@ export const DELETE_POLICY: Record<string, DatasetDeletePolicy> = {
   food_log_events: { revalidate: ["/nutrition", "/"] },
   protein_log: { revalidate: ["/nutrition", "/"] },
   symptom_logs: { revalidate: ["/", "/timeline"] },
+  cycles: { revalidate: ["/medical/cycles", "/timeline", "/"] },
 };
 
 export function getDataset(key: string): ExportDataset | undefined {

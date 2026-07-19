@@ -302,3 +302,12 @@ export const FLAGGED_IOP_PROFILE = "Flagged IOP (e2e)";
 // read) — and the preferences spec resets the set in afterAll so it's repeat-safe.
 export const E2E_LOGIN_NUTRITION = "e2e_nutrition";
 export const NUTRITION_PROFILE = "Nutrition Trio (e2e)";
+
+// A dedicated ADULT profile for the menstrual-cycle spec (#714). Seeded with three
+// completed, roughly-regular periods (so the derived phase, the cycle-length +
+// variability trend, and the regularity read all render) and NO open period. Isolated +
+// spec-owned on purpose: the cycle spec MUTATES this profile's cycles (one-tap start/end,
+// add/delete a period) and it self-cleans within the spec, so it never races profile 1's
+// seeded cycle data that the Timeline/phase-chip assertions read.
+export const E2E_LOGIN_CYCLE = "e2e_cycle";
+export const CYCLE_PROFILE = "Cycle Log (e2e)";
