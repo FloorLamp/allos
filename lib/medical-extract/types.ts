@@ -160,6 +160,24 @@ export interface ExtractedImagingStudy {
   status: string | null; // free-text passthrough (no enum)
 }
 
+// One dental procedure/finding extracted from an uploaded dental exam/treatment
+// record or after-visit summary (#705). PRE-persist AI shape: `status` and
+// `tooth_system` stay as the model's raw strings (normalized to the enums in
+// import-shape via lib/dental); tooth / surface / cdt_code / finding pass through as
+// free text; the date is coerced to strict ISO-or-null. Dental X-rays are imaging
+// studies (#702) — the extractor reads the REPORT/notes, not radiographs.
+export interface ExtractedDentalProcedure {
+  name: string | null; // the procedure or finding ("Composite filling", "Caries watch")
+  status: string | null; // raw ("completed"/"planned"/"watch"/…); normalized downstream
+  tooth: string | null; // tooth designation ("14", "#14", "UL6")
+  tooth_system: string | null; // raw ("universal"/"fdi"/"palmer"); normalized downstream
+  surface: string | null; // surface code ("MOD", "buccal")
+  cdt_code: string | null; // CDT/ADA procedure code ("D2392")
+  procedure_date: string | null; // YYYY-MM-DD
+  finding: string | null; // free-text exam impression
+  follow_up_interval_days: number | null; // recommended recheck cadence, when stated
+}
+
 export interface ExtractionMeta {
   document_type: string | null; // lab | dexa | imaging | immunization | other
   source: string | null;
@@ -193,6 +211,11 @@ export type ExtractionResult =
       // sets it (empty for a non-imaging document), and import-shape reads it with a
       // `?? []` fallback.
       imagingStudies?: ExtractedImagingStudy[];
+      // Dental procedures/findings from an uploaded dental exam/treatment record
+      // (#705). Optional so existing done-result fixtures need no change; the real
+      // extract path always sets it (empty for a non-dental document), and
+      // import-shape reads it with a `?? []` fallback.
+      dentalProcedures?: ExtractedDentalProcedure[];
       // Row-level drops (a clinical entity the model emitted but that was rejected
       // for want of its required identifier) — the AI path's drop accounting, folded
       // into a real ImportReport in import-shape. Parity with the deterministic

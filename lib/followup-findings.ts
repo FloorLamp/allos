@@ -31,6 +31,7 @@ import {
   getImagingStudies,
   getLabFollowUpRecords,
   getIopFollowUpRecords,
+  getDentalProcedures,
 } from "./queries/clinical";
 import { isCarePlanItemOpen } from "./care-plan-upcoming";
 import {
@@ -53,10 +54,11 @@ import {
   IOP_FOLLOWUP_KIND,
   type IopFollowUpRecord,
 } from "./followup-iop";
+import { dentalFollowUpAdapter, DENTAL_FOLLOWUP_KIND } from "./followup-dental";
 import { followUpSourceReason } from "./reasons";
 import { biomarkerViewHref } from "./hrefs";
 import type { UpcomingItem } from "./upcoming";
-import type { CarePlanItem, ImagingStudy } from "./types";
+import type { CarePlanItem, ImagingStudy, DentalProcedure } from "./types";
 import type { AppRoute } from "./hrefs";
 
 // The per-domain glue the shared builder needs: the adapter (the pure domain
@@ -107,6 +109,19 @@ const IOP_DOMAIN: FollowUpDomain<IopFollowUpRecord> = {
   recordId: (r) => r.id,
   sourceIdOf: (c) => c.source_medical_record_id,
   hrefFor: (r) => biomarkerViewHref(r.canonical_name, r.name),
+};
+
+// Dental follow-up (#705 ask 5): a "watch #14, recheck in 6 months" caries watch or a
+// "periodontal re-eval in 3 months" plan on a dental_procedures row. Its own adapter
+// (tooth-anchored recheck copy) and source_kind='dental'; the follow-up + the dental
+// record it hangs off live on /dental; a LATER record on the same tooth resolves it.
+const DENTAL_DOMAIN: FollowUpDomain<DentalProcedure> = {
+  kind: DENTAL_FOLLOWUP_KIND,
+  adapter: dentalFollowUpAdapter,
+  loadRecords: getDentalProcedures,
+  recordId: (p) => p.id,
+  sourceIdOf: (c) => c.source_dental_procedure_id,
+  hrefFor: () => "/dental",
 };
 
 // The follow-up items for ONE domain: every OPEN, linked (source_kind = domain.kind),
@@ -211,5 +226,6 @@ export function followUpItems(
     ...domainFollowUpItems(profileId, today, carePlan, IMAGING_DOMAIN),
     ...domainFollowUpItems(profileId, today, carePlan, LABS_DOMAIN),
     ...domainFollowUpItems(profileId, today, carePlan, IOP_DOMAIN),
+    ...domainFollowUpItems(profileId, today, carePlan, DENTAL_DOMAIN),
   ];
 }

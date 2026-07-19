@@ -24,6 +24,7 @@ import type {
   CareGoal,
   GenomicVariant,
   ImagingStudy,
+  DentalProcedure,
 } from "../types";
 
 // Read layer for the CCD clinical-list domains — allergies and the problem
@@ -301,6 +302,51 @@ export function getImagingStudyFollowUps(
     .all(profileId) as ImagingFollowUpSummary[];
 }
 
+// ---- Dental procedures (issue #705) -----------------------------------------
+
+// All structured dental procedures/findings for a profile, newest first. Like
+// imaging_studies, a dental record is a durable narrative fact (no representative-id
+// retest dedup). Profile-scoped.
+export function getDentalProcedures(profileId: number): DentalProcedure[] {
+  return db
+    .prepare(
+      `SELECT id, name, status, tooth, tooth_system, surface, cdt_code,
+              procedure_date, finding, follow_up_interval_days, provider_id,
+              notes, source, document_id, external_id, created_at
+         FROM dental_procedures
+        WHERE profile_id = ?
+        ORDER BY COALESCE(procedure_date, '') DESC, id DESC`
+    )
+    .all(profileId) as DentalProcedure[];
+}
+
+// The tracked follow-up (issue #700), if any, for each dental record — so the Dental
+// list can show a record's follow-up state (or offer to track one). One row per
+// care_plan_items follow-up linked to a dental source, newest first. Profile-scoped.
+export interface DentalFollowUpSummary {
+  carePlanItemId: number;
+  sourceDentalProcedureId: number;
+  plannedDate: string | null;
+  status: string | null;
+  resolution: string | null;
+}
+
+export function getDentalProcedureFollowUps(
+  profileId: number
+): DentalFollowUpSummary[] {
+  return db
+    .prepare(
+      `SELECT id AS carePlanItemId,
+              source_dental_procedure_id AS sourceDentalProcedureId,
+              planned_date AS plannedDate, status, resolution
+         FROM care_plan_items
+        WHERE profile_id = ? AND source_kind = 'dental'
+          AND source_dental_procedure_id IS NOT NULL
+        ORDER BY id DESC`
+    )
+    .all(profileId) as DentalFollowUpSummary[];
+}
+
 // ---- Flagged-labs follow-up chain (issue #700 labs adapter) -----------------
 
 // Every lab reading a labs follow-up could link — its narrow identity/value shape
@@ -420,10 +466,11 @@ export function getCarePlanItems(profileId: number): CarePlanItem[] {
               cp.planned_date, cp.status, cp.provider_id, p.name AS provider_name,
               cp.notes, cp.source, cp.document_id, cp.external_id, cp.created_at,
               cp.source_kind, cp.source_imaging_study_id,
-              cp.source_medical_record_id,
+              cp.source_medical_record_id, cp.source_dental_procedure_id,
               cp.recommended_interval_days, cp.resolution,
               cp.resolved_by_imaging_study_id,
-              cp.resolved_by_medical_record_id, cp.resolved_at
+              cp.resolved_by_medical_record_id,
+              cp.resolved_by_dental_procedure_id, cp.resolved_at
          FROM care_plan_items cp
          LEFT JOIN providers p ON p.id = cp.provider_id
         WHERE cp.profile_id = ?

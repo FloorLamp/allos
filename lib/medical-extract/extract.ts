@@ -99,6 +99,7 @@ export function resultFromExtractionInput(
     careGoals: clinical.careGoals,
     genomicVariants: clinical.genomicVariants,
     imagingStudies: clinical.imagingStudies,
+    dentalProcedures: clinical.dentalProcedures,
     drops: clinical.drops,
     model,
     raw: JSON.stringify(input),
@@ -116,7 +117,8 @@ export function clinicalCountOf(r: ExtractionSuccess): number {
     r.carePlanItems.length +
     r.careGoals.length +
     (r.genomicVariants?.length ?? 0) +
-    (r.imagingStudies?.length ?? 0)
+    (r.imagingStudies?.length ?? 0) +
+    (r.dentalProcedures?.length ?? 0)
   );
 }
 

@@ -153,6 +153,26 @@ export function clearImportedDocumentRows(
            SELECT id FROM medical_records WHERE profile_id = ? AND document_id = ?
          )`
   ).run(profileId, profileId, docId);
+  // Row-ops side-state (#705 dental adapter): a dental follow-up may link a
+  // dental_procedures row THIS document imported as its SOURCE finding, or a
+  // resolution may cite one. dental_procedures carries no ON DELETE for these FKs, so
+  // NULL those follow-up links FIRST — otherwise deleting the records (in the
+  // footprint loop) would trip the care_plan_items source/resolved FKs. A manual
+  // follow-up is preserved, just de-linked.
+  db.prepare(
+    `UPDATE care_plan_items SET source_kind = NULL, source_dental_procedure_id = NULL
+       WHERE profile_id = ?
+         AND source_dental_procedure_id IN (
+           SELECT id FROM dental_procedures WHERE profile_id = ? AND document_id = ?
+         )`
+  ).run(profileId, profileId, docId);
+  db.prepare(
+    `UPDATE care_plan_items SET resolved_by_dental_procedure_id = NULL
+       WHERE profile_id = ?
+         AND resolved_by_dental_procedure_id IN (
+           SELECT id FROM dental_procedures WHERE profile_id = ? AND document_id = ?
+         )`
+  ).run(profileId, profileId, docId);
   for (const t of IMPORT_FOOTPRINT_TABLES) {
     db.prepare(
       `DELETE FROM ${t.table} WHERE ${t.key} = ? AND ${footprintScope(t)}`
@@ -250,6 +270,25 @@ export function moveImportedDocumentRows(
          WHERE profile_id = ? AND resolved_by_medical_record_id IS NOT NULL
            AND resolved_by_medical_record_id NOT IN (
              SELECT id FROM medical_records WHERE profile_id = ?
+           )`
+    ).run(pid, pid);
+    // Row-ops side-state (#705 dental adapter): the same same-profile re-enforce for
+    // the dental follow-up links — a reassign can move an imported dental record but
+    // not a MANUAL follow-up that links it (or vice-versa). NULL any care_plan_items
+    // link whose dental_procedures source/resolving record no longer lives in that
+    // follow-up's profile.
+    db.prepare(
+      `UPDATE care_plan_items SET source_kind = NULL, source_dental_procedure_id = NULL
+         WHERE profile_id = ? AND source_dental_procedure_id IS NOT NULL
+           AND source_dental_procedure_id NOT IN (
+             SELECT id FROM dental_procedures WHERE profile_id = ?
+           )`
+    ).run(pid, pid);
+    db.prepare(
+      `UPDATE care_plan_items SET resolved_by_dental_procedure_id = NULL
+         WHERE profile_id = ? AND resolved_by_dental_procedure_id IS NOT NULL
+           AND resolved_by_dental_procedure_id NOT IN (
+             SELECT id FROM dental_procedures WHERE profile_id = ?
            )`
     ).run(pid, pid);
   }
@@ -736,6 +775,17 @@ function insertImportRows(
         source, document_id, external_id, profile_id)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
   );
+  // Dental procedures (#705). Same idempotency shape as the other clinical domains:
+  // the per-document delete-set clears this document's prior rows, then the insert
+  // re-adds them. Keyed to the document via document_id so the import footprint
+  // clears/moves/counts it, exactly like imaging_studies.
+  const insDentalProcedure = db.prepare(
+    `INSERT OR IGNORE INTO dental_procedures
+       (name, status, tooth, tooth_system, surface, cdt_code, procedure_date,
+        finding, follow_up_interval_days,
+        source, document_id, external_id, profile_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  );
   // Scheduled appointments (issue #416). Same idempotency as the other clinical
   // domains: the per-document delete-set clears this document's prior rows, then
   // INSERT OR IGNORE dedups within the document via the per-profile unique external_id
@@ -1027,6 +1077,25 @@ function insertImportRows(
       docSource,
       docId,
       scopedExternalId(s.external_id),
+      profileId
+    );
+  }
+  // Dental procedures (#705) — optional on PersistInput, so guard with `?? []` for a
+  // fixture / deterministic-path input that carries none.
+  for (const d of input.dentalProcedures ?? []) {
+    insDentalProcedure.run(
+      d.name,
+      d.status,
+      d.tooth,
+      d.tooth_system,
+      d.surface,
+      d.cdt_code,
+      d.procedure_date,
+      d.finding,
+      d.follow_up_interval_days,
+      docSource,
+      docId,
+      scopedExternalId(d.external_id),
       profileId
     );
   }

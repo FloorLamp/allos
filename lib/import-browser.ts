@@ -28,12 +28,14 @@ import {
   modalityLabel,
   lateralityLabel,
 } from "./imaging-study";
+import { dentalDisplayLabel, dentalStatusLabel } from "./dental";
 import type {
   GenomicResultType,
   GenomicSignificance,
   Zygosity,
   ImagingModality,
   ImagingLaterality,
+  DentalStatus,
 } from "./types/medical";
 
 // The non-record tab kinds, in display order (after the record-category tabs).
@@ -52,6 +54,7 @@ export type ImportTabKind =
   | "care-goals"
   | "genomic-variants"
   | "imaging-studies"
+  | "dental-procedures"
   | "appointments"
   | "medications"
   | "body";
@@ -125,6 +128,7 @@ const DOMAIN_TAB_KEYS = new Set<string>([
   "care-goals",
   "genomic-variants",
   "imaging-studies",
+  "dental-procedures",
   "appointments",
   "medications",
   "body",
@@ -169,6 +173,7 @@ export function buildImportTabs(
   add("care-goals", "Care goals", counts.careGoals);
   add("genomic-variants", "Genomic variants", counts.genomicVariants);
   add("imaging-studies", "Imaging studies", counts.imagingStudies);
+  add("dental-procedures", "Dental", counts.dentalProcedures);
   add("appointments", "Appointments", counts.appointments);
   add("medications", "Medications", counts.medications);
   add(
@@ -419,6 +424,29 @@ export function imagingStudyItem(row: {
     ),
     date: row.study_date,
     href: "/imaging",
+  };
+}
+
+export function dentalProcedureItem(row: {
+  id: number;
+  name: string;
+  status: DentalStatus;
+  tooth: string | null;
+  surface: string | null;
+  cdt_code: string | null;
+  procedure_date: string | null;
+  finding: string | null;
+}): ProducedItem {
+  const status =
+    row.status !== "completed" ? dentalStatusLabel(row.status) : null;
+  return {
+    id: row.id,
+    title: dentalDisplayLabel(row),
+    // Factual detail: lifecycle status (when not plain history), CDT code, then the
+    // free-text finding (truncated by the UI). No added interpretation.
+    detail: detailLine(status, row.cdt_code, row.finding),
+    date: row.procedure_date,
+    href: "/dental",
   };
 }
 

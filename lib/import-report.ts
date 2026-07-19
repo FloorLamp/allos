@@ -41,6 +41,7 @@ export type DropKind =
   | "appointment"
   | "genomic_variant"
   | "imaging_study"
+  | "dental_procedure"
   | "section" // a whole CDA section
   | "resource"; // a whole FHIR resource type
 
