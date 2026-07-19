@@ -1,5 +1,5 @@
 import LineChartCard from "@/components/LineChartCard";
-import { formatLongDate } from "@/lib/format-date";
+import { formatLongDate, type DisplayFormatPrefs } from "@/lib/format-date";
 import type { WeightUnit } from "@/lib/settings";
 import WidgetHeader from "./WidgetHeader";
 
@@ -7,9 +7,11 @@ import WidgetHeader from "./WidgetHeader";
 export default function WeightTrendWidget({
   data,
   weightUnit,
+  formatPrefs,
 }: {
   data: { date: string; value: number }[];
   weightUnit: WeightUnit;
+  formatPrefs: DisplayFormatPrefs;
 }) {
   if (data.length === 1) {
     const point = data[0];
@@ -23,8 +25,8 @@ export default function WeightTrendWidget({
           {point.value} {weightUnit}
         </p>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Recorded {formatLongDate(point.date)}. Add another observation before
-          Allos describes a trend.
+          Recorded {formatLongDate(point.date, formatPrefs)}. Add another
+          observation before Allos describes a trend.
         </p>
       </div>
     );

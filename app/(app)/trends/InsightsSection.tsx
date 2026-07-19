@@ -1,8 +1,9 @@
 import { requireSession } from "@/lib/auth";
+import { getDisplayFormatPrefs } from "@/lib/settings";
 import { today } from "@/lib/db";
 import { getInsights, getRecentNarratives, RECAP_KINDS } from "@/lib/queries";
 import { ALL_ROWS, filterSeriesByRange } from "@/lib/trends";
-import { formatLongDate } from "@/lib/format-date";
+import { formatLongDate, type DisplayFormatPrefs } from "@/lib/format-date";
 import { periodLabel } from "@/lib/recap-narrative";
 import type { NarrativePeriod } from "@/lib/recap-narrative";
 import type { DateRange } from "@/lib/timeline-format";
@@ -13,14 +14,19 @@ import { generateForDate, generateRecap } from "./actions";
 
 // A recap-narrative title from its stored kind + window ("Weekly recap · Jul 3 –
 // Jul 9"). Falls back gracefully when a start date is absent.
-function recapTitle(kind: "week" | "month", start: string | null, end: string) {
+function recapTitle(
+  kind: "week" | "month",
+  start: string | null,
+  end: string,
+  prefs: DisplayFormatPrefs
+) {
   const label = periodLabel(kind as NarrativePeriod)
     .replace("This", "")
     .trim();
   const cap = label.charAt(0).toUpperCase() + label.slice(1);
   const window = start
-    ? `${formatLongDate(start)} – ${formatLongDate(end)}`
-    : formatLongDate(end);
+    ? `${formatLongDate(start, prefs)} – ${formatLongDate(end, prefs)}`
+    : formatLongDate(end, prefs);
   return `${cap} recap · ${window}`;
 }
 
@@ -29,7 +35,8 @@ function recapTitle(kind: "week" | "month", start: string | null, end: string) {
 // both. Hidden by the hub for age-restricted profiles (AI Insights is an age-gated
 // surface), so these generate forms are only ever rendered for eligible profiles.
 export default async function InsightsSection({ range }: { range: DateRange }) {
-  const { profile } = await requireSession();
+  const { login, profile } = await requireSession();
+  const formatPrefs = getDisplayFormatPrefs(login.id);
   // Read every insight (ALL_ROWS overrides the default 30-row cap) so an older
   // window isn't silently truncated before filterSeriesByRange windows it.
   const insights = filterSeriesByRange(
@@ -75,7 +82,8 @@ export default async function InsightsSection({ range }: { range: DateRange }) {
                     {recapTitle(
                       n.kind === "month" ? "month" : "week",
                       n.period_start,
-                      n.period_end
+                      n.period_end,
+                      formatPrefs
                     )}
                   </h3>
                   <span className="badge bg-slate-100 text-slate-500 dark:bg-ink-800 dark:text-slate-400">
@@ -125,7 +133,7 @@ export default async function InsightsSection({ range }: { range: DateRange }) {
               <div key={i.id} className="card">
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className="font-semibold text-slate-800 dark:text-slate-100">
-                    {formatLongDate(i.date)}
+                    {formatLongDate(i.date, formatPrefs)}
                   </h3>
                   <span className="badge bg-slate-100 text-slate-500 dark:bg-ink-800 dark:text-slate-400">
                     {i.model ?? "n/a"}

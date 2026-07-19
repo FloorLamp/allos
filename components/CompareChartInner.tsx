@@ -13,6 +13,7 @@ import {
 } from "recharts";
 import { useChartColors } from "./useChartColors";
 import { formatLongDate } from "@/lib/format-date";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { roundChartValue } from "@/lib/chart-format";
 import {
   dateToEpoch,
@@ -67,6 +68,7 @@ export default function CompareChart({
   // drawn as shaded reference areas positioned by epoch on the time axis.
   windows?: TrendWindow[];
 }) {
+  const formatPrefs = useFormatPrefs();
   const c = useChartColors();
   const snapped = annotations?.length
     ? snapAnnotationsToDates(
@@ -154,7 +156,9 @@ export default function CompareChart({
                 : `${roundChartValue(Number(v))}${name === labelA ? unitA : unitB}`,
               name,
             ]}
-            labelFormatter={(v) => formatLongDate(epochToISO(Number(v)))}
+            labelFormatter={(v) =>
+              formatLongDate(epochToISO(Number(v)), formatPrefs)
+            }
             contentStyle={{
               fontSize: 12,
               borderRadius: 8,

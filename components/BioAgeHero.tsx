@@ -2,7 +2,7 @@ import Link from "next/link";
 import { IconActivityHeartbeat, IconCircleCheck } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
-import { getUserAge } from "@/lib/settings";
+import { getUserAge, getDisplayFormatPrefs } from "@/lib/settings";
 import { getBioAgeReadings } from "@/lib/queries";
 import {
   bioAgeDelta,
@@ -55,7 +55,8 @@ function EstimateNote() {
 }
 
 export default async function BioAgeHero() {
-  const { profile } = await requireSession();
+  const { login, profile } = await requireSession();
+  const formatPrefs = getDisplayFormatPrefs(login.id);
 
   // Adult gate — hidden for child profiles, mirroring the computation's floor
   // (and the fitness age-gate as a defensive belt-and-suspenders).
@@ -221,7 +222,7 @@ export default async function BioAgeHero() {
       </div>
 
       <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-        As of {formatLongDate(latest.date)}
+        As of {formatLongDate(latest.date, formatPrefs)}
       </p>
 
       <EstimateNote />

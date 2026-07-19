@@ -11,7 +11,11 @@ import { groupContiguous } from "@/lib/table-sort";
 import { filterSeriesByRange } from "@/lib/trends";
 import { formatLongDate } from "@/lib/format-date";
 import type { DateRange } from "@/lib/timeline-format";
-import { getUserSex, getUserAgeOn } from "@/lib/settings";
+import {
+  getUserSex,
+  getUserAgeOn,
+  getDisplayFormatPrefs,
+} from "@/lib/settings";
 import { hasFitnessNorms } from "@/lib/fitness-norms";
 import {
   fitnessContextFor,
@@ -43,7 +47,8 @@ export default async function BiomarkersSection({
   panel?: string;
   hrefFor: (opts: { flag?: BiomarkerFlagFilter; panel?: string }) => AppRoute;
 }) {
-  const { profile } = await requireSession();
+  const { login, profile } = await requireSession();
+  const formatPrefs = getDisplayFormatPrefs(login.id);
   const now = today(profile.id);
   // Sex for the age/sex fitness-percentile inline (#158); age is resolved per row
   // from the reading's date. Null sex hides every percentile (adult-context gate).
@@ -105,7 +110,7 @@ export default async function BiomarkersSection({
           <div className="border-t border-black/5 pt-3 dark:border-white/10">
             <div className="mb-1 flex items-center justify-between gap-2">
               <span className="text-xs text-slate-500 dark:text-slate-400">
-                As of {formatLongDate(labTrend.period_end)}
+                As of {formatLongDate(labTrend.period_end, formatPrefs)}
               </span>
               <span className="badge bg-slate-100 text-slate-500 dark:bg-ink-800 dark:text-slate-400">
                 {labTrend.model ?? "n/a"}
