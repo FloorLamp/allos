@@ -426,8 +426,9 @@ test("a caregiver profile path ends with household-oriented next steps", async (
     await expect(dashboard.getByLabel("Recent labs")).toBeChecked();
     // The former "Sick in the household" widget folded into the pinned illness hero
     // (#858), which isn't a pickable card; the surviving illness/household-oriented
-    // widget in the caregiver preset is the "Symptoms" front door (contextual).
-    await expect(dashboard.getByLabel("Symptoms")).toBeChecked();
+    // widget in the caregiver preset is the unified "How are you today?" daily
+    // check-in (#992 — the renamed symptom-log slot carrying the illness front door).
+    await expect(dashboard.getByLabel("How are you today?")).toBeChecked();
     await expect(
       dashboard.getByTestId("onboarding-dashboard-preview")
     ).toContainText("Next appointment");

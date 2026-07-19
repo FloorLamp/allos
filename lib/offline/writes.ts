@@ -21,12 +21,15 @@ import {
   reconcileFlags,
 } from "@/lib/queries";
 import { REPLAYED_KEYS_RETENTION_DAYS, daysAgoModifier } from "@/lib/retention";
+import { normalizeMoodInput } from "@/lib/mood";
+import { resetMoodCheckinIgnored } from "@/lib/settings";
 import type {
   FlowKind,
   QueuedIntent,
   DosePayload,
   BodyMetricPayload,
   VitalsPayload,
+  MoodPayload,
 } from "@/lib/offline/queue";
 
 // ── dose confirm ──────────────────────────────────────────────────────────────
@@ -218,6 +221,54 @@ export function insertVitals(
   return true;
 }
 
+// ── mood check-in (issue #992) ──────────────────────────────────────────────────
+
+// Persist one daily wellbeing check-in — the SINGLE write core shared by the
+// dashboard card's server action, the offline replay, and the Telegram check-in
+// button, all running the same pure normalizeMoodInput guard. IDEMPOTENT PER DAY:
+// upserts on the table's UNIQUE(profile_id, date) key, so a replay or a same-day
+// re-tap updates the one row (last write wins for that day) instead of
+// duplicating it. Every successful write also RESETS the check-in reminder's
+// ignored counter — a submitted check-in re-arms the auto-paused reminder — done
+// here so every write path re-arms identically. Returns false on a rejected
+// payload (bad date / out-of-range scale), true on a successful upsert.
+export function upsertMoodLog(
+  profileId: number,
+  date: string,
+  raw: {
+    valence: unknown;
+    energy?: unknown;
+    anxiety?: unknown;
+    factors?: unknown;
+    note?: unknown;
+  }
+): boolean {
+  if (!isRealIsoDate(date)) return false;
+  const normalized = normalizeMoodInput(raw);
+  if ("error" in normalized) return false;
+  db.prepare(
+    `INSERT INTO mood_logs (profile_id, date, valence, energy, anxiety, factors, notes)
+     VALUES (?,?,?,?,?,?,?)
+     ON CONFLICT(profile_id, date) DO UPDATE SET
+       valence = excluded.valence,
+       energy = excluded.energy,
+       anxiety = excluded.anxiety,
+       factors = excluded.factors,
+       notes = excluded.notes,
+       updated_at = datetime('now')`
+  ).run(
+    profileId,
+    date,
+    normalized.valence,
+    normalized.energy,
+    normalized.anxiety,
+    normalized.factors.length ? JSON.stringify(normalized.factors) : null,
+    normalized.note
+  );
+  resetMoodCheckinIgnored(profileId);
+  return true;
+}
+
 // ── idempotency ledger ──────────────────────────────────────────────────────────
 
 // Has this idempotency key already been applied for this profile? Consulted before
@@ -298,6 +349,15 @@ export function applyIntent(
         bodyFatPct: p.bodyFatPct,
         restingHr: p.restingHr,
         notes: p.notes,
+      });
+    } else if (intent.flow === "mood") {
+      const p = intent.payload as MoodPayload;
+      ok = upsertMoodLog(profileId, intent.date, {
+        valence: p.valence,
+        energy: p.energy,
+        anxiety: p.anxiety,
+        factors: p.factors,
+        note: p.note,
       });
     } else if (intent.flow === "vitals") {
       const p = intent.payload as VitalsPayload;

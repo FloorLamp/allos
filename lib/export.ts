@@ -562,6 +562,26 @@ export const DATASETS: ExportDataset[] = [
        FROM cycles WHERE profile_id = ? ORDER BY period_start DESC, id DESC`,
     countSql: `SELECT COUNT(*) AS n FROM cycles WHERE profile_id = ?`,
   }),
+  tableDataset({
+    // Daily wellbeing check-ins (#992) — one row per day: valence 1–5 plus the
+    // optional energy/anxiety scales, factor chips (a JSON slug array), and note.
+    // Exported verbatim; the coaching observations recompute from these on read.
+    key: "mood_logs",
+    label: "Mood check-ins",
+    table: "mood_logs",
+    columns: [
+      "date",
+      "valence",
+      "energy",
+      "anxiety",
+      "factors",
+      "notes",
+      "created_at",
+    ],
+    select: `SELECT id, date, valence, energy, anxiety, factors, notes, created_at
+       FROM mood_logs WHERE profile_id = ? ORDER BY date DESC, id DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM mood_logs WHERE profile_id = ?`,
+  }),
   {
     // Supplements + medications (the parent intake_items rows), one per row, with
     // each item's dose SCHEDULE folded into a readable `schedule` summary (built
@@ -1121,6 +1141,7 @@ export const DELETE_POLICY: Record<string, DatasetDeletePolicy> = {
   protein_log: { revalidate: ["/nutrition", "/"] },
   symptom_logs: { revalidate: ["/", "/timeline"] },
   cycles: { revalidate: ["/medical/cycles", "/timeline", "/"] },
+  mood_logs: { revalidate: ["/trends", "/"] },
 };
 
 export function getDataset(key: string): ExportDataset | undefined {

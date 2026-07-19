@@ -8,7 +8,7 @@ import {
   getUserBirthdate,
   getUserAge,
 } from "@/lib/settings";
-import { ageInMonthsFromBirthdate } from "@/lib/date";
+import { ageInMonthsFromBirthdate, shiftDateStr } from "@/lib/date";
 import {
   planBodyCharts,
   showGrowthQuickAdd,
@@ -28,6 +28,7 @@ import {
   getLatestHrDay,
   getHrMinutes,
   getGoals,
+  getMoodLogs,
 } from "@/lib/queries";
 import { dispWeight, fmtWeight, round } from "@/lib/units";
 import {
@@ -401,6 +402,15 @@ export default async function BodySection({ range }: { range: DateRange }) {
       value: r.value,
     }))
   ).map((p) => ({ date: p.date, value: round(p.value, 1) }));
+  // Mood trend (#992): the daily wellbeing check-ins as a chartable 1–5 series —
+  // like a vital in shape, but DELIBERATELY never reference-range flagged and never
+  // retested (a subjective self-rating, not a lab; pinned by the mood-guardrails
+  // test). Most recent ~6 months, matching the synced-metrics cap.
+  const moodChart = getMoodLogs(
+    profile.id,
+    shiftDateStr(today(profile.id), -179)
+  ).map((m) => ({ date: m.date, value: m.valence }));
+
   const hrChart = getHrDailySummary(profile.id).map((r) => ({
     date: r.date,
     value: Math.round(r.avg),
@@ -466,6 +476,31 @@ export default async function BodySection({ range }: { range: DateRange }) {
       />
 
       {!plan.growthCardFirst && growthCard}
+
+      {/* Mood trend (#992): the daily wellbeing series. Deliberately no reference
+          bands, no flags, no retest hooks — mood is not a lab, so a low day is a
+          data point, never an "abnormal". Hidden until a check-in exists. */}
+      {moodChart.length > 0 && (
+        <div className="card" data-testid="mood-trend">
+          <div className="mb-3 flex items-baseline justify-between gap-2">
+            <h2 className="font-semibold text-slate-800 dark:text-slate-100">
+              Mood
+            </h2>
+            <span className="text-xs text-slate-500 dark:text-slate-400">
+              1–5 daily check-ins · most recent ~6 months
+            </span>
+          </div>
+          <LineChartCard
+            data={moodChart}
+            label="Mood"
+            color={chartSeries.amber}
+          />
+          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+            A subjective self-rating from your daily check-ins — informational
+            only, never range-checked.
+          </p>
+        </div>
+      )}
 
       {hasSynced && (
         <div className="space-y-3">

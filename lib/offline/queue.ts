@@ -7,18 +7,20 @@
 // lib/offline/queue-db.ts, and the server writes in lib/offline/writes.ts).
 //
 // SCOPE: only these idempotent quick-log flows are queueable — a dose confirm, a
-// dose SKIP (issue #232), a body-metric quick-add, and a vitals quick-add.
+// dose SKIP (issue #232), a body-metric quick-add, a vitals quick-add, and the
+// daily mood check-in (issue #992, idempotent per day).
 // Anything with server-derived state stays online-only. Payloads carry the
 // CAPTURED raw fields + date so a late replay lands on the day the user logged it
 // (issue #28, point 5), never the replay date.
 
-export type FlowKind = "dose" | "skip-dose" | "body-metric" | "vitals";
+export type FlowKind = "dose" | "skip-dose" | "body-metric" | "vitals" | "mood";
 
 export const FLOW_KINDS: readonly FlowKind[] = [
   "dose",
   "skip-dose",
   "body-metric",
   "vitals",
+  "mood",
 ];
 
 // A dose confirm ("dose") is a SET-TO-TAKEN intent and a dose skip ("skip-dose",
@@ -59,7 +61,21 @@ export interface VitalsPayload {
   balance: string | null;
 }
 
-export type IntentPayload = DosePayload | BodyMetricPayload | VitalsPayload;
+// Mood check-in (issue #992) — the captured raw fields of the daily wellbeing
+// tap/expand. Idempotent PER DAY on the server's UNIQUE(profile_id, date) upsert:
+// replaying the same intent (or a later same-day one) updates the day's single
+// row, never duplicates it. Validation happens server-side via the same pure
+// normalizeMoodInput the online action uses.
+export interface MoodPayload {
+  valence: number;
+  energy: number | null;
+  anxiety: number | null;
+  factors: string[];
+  note: string | null;
+}
+
+export type IntentPayload =
+  DosePayload | BodyMetricPayload | VitalsPayload | MoodPayload;
 
 // The maximum number of intents accepted (server) and sent (client) per replay POST
 // — the SINGLE source of truth for both sides so they can never disagree (issue
@@ -277,6 +293,7 @@ export function describeIntent(intent: QueuedIntent): string {
     "skip-dose": "Dose skipped",
     "body-metric": "Body metric",
     vitals: "Vitals",
+    mood: "Mood check-in",
   };
   return `${label[intent.flow]} · ${intent.date}`;
 }

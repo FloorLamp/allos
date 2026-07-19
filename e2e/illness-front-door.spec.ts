@@ -104,15 +104,20 @@ test.describe("Illness front door (#843)", () => {
     await freshProfile(page, "welldash");
     await page.goto("/");
 
-    // Well profile: the calm front door, not the full card.
-    const front = page.getByTestId("feeling-sick-card");
+    // Well profile: the unified "How are you today?" card (#992) leads with the
+    // mood tap and carries the calm illness branch — not the full symptom card.
+    const front = page.getByTestId("how-are-you-card");
     await expect(front).toBeVisible();
+    await expect(front.getByTestId("feeling-sick-activate")).toBeVisible();
     await expect(page.getByTestId("symptom-log-bar")).toHaveCount(0);
 
-    // ONE tap activates Illness AND expands the full card (single action).
+    // ONE tap activates Illness AND expands the full card (single action). The
+    // unified card stays (mood + illness coexist, #992) but its illness branch
+    // now defers to the hero.
     await page.getByTestId("feeling-sick-activate").click();
     await expect(page.getByTestId("symptom-log-bar")).toBeVisible();
-    await expect(page.getByTestId("feeling-sick-card")).toHaveCount(0);
+    await expect(page.getByTestId("feeling-sick-activate")).toHaveCount(0);
+    await expect(front.getByTestId("mood-episode-note")).toBeVisible();
     await expect(page.getByTestId("symptom-logged-count")).toHaveCount(0);
     const symptomEmpty = page.getByTestId("symptom-none-logged");
     await expect(symptomEmpty).toHaveText("No symptoms logged.");

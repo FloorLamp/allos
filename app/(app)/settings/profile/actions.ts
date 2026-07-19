@@ -25,6 +25,9 @@ import {
   getFoodTelegramPrompted,
   setFoodTelegramPrompted,
   setProfileFoodTelegram,
+  setProfileMoodCheckin,
+  setProfileMoodRecap,
+  resetMoodCheckinIgnored,
   setNotifySchedule,
   getProfileHomeAssistant,
   setProfileHomeAssistant,
@@ -282,6 +285,21 @@ export async function saveNotificationPrefs(formData: FormData) {
   if (formData.has("food_telegram_enabled")) {
     const v = formData.get("food_telegram_enabled");
     setProfileFoodTelegram(profile.id, v === "on" || v === "1");
+  }
+
+  // Daily mood check-in (#992): per-profile opt-in (off by default), plus the
+  // weekly-recap mood-line opt-in. Same presence-gating as the food toggle.
+  if (formData.has("mood_checkin_enabled")) {
+    const v = formData.get("mood_checkin_enabled");
+    const enable = v === "on" || v === "1";
+    setProfileMoodCheckin(profile.id, enable);
+    // Turning the check-in ON is an explicit re-engagement — clear any prior
+    // ignored streak so an old auto-pause can't silently swallow the opt-in.
+    if (enable) resetMoodCheckinIgnored(profile.id);
+  }
+  if (formData.has("mood_recap_enabled")) {
+    const v = formData.get("mood_recap_enabled");
+    setProfileMoodRecap(profile.id, v === "on" || v === "1");
   }
 
   // First-connection prompt: the first time this profile becomes fully connectable
