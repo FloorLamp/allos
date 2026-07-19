@@ -361,7 +361,6 @@ export const HH_HISTORY_CHILD_PROFILE = "Household History Child (e2e)";
 // affordance. Separate login so the read-only assertions never race the write one.
 export const E2E_LOGIN_HHHIST_RO = "e2e_hhhist_ro";
 
-<<<<<<< HEAD
 // ── Nav relevance gating fixtures (#1042 phase 1) ─────────────────────────────
 // Two dedicated profiles for the nav-consolidation spec's Cycle/specialty gating
 // assertions, both READ-ONLY in their spec (it only inspects the sidebar), so
@@ -385,7 +384,7 @@ export const NAV_MALE_PROFILE = "Nav Cycle Male (e2e)";
 // (which the trends/kids-growth/nutrition specs read). No birthdate → adult.
 export const E2E_LOGIN_WEIGHT_QA = "e2e_weight_qa";
 export const WEIGHT_QUICKADD_PROFILE = "Weight Quickadd (e2e)";
-=======
+
 // A member granted a dedicated sick profile whose ONLY temperature reading is a
 // LEGACY imported Celsius row (unit 'Cel', source 'ccd', stored before the #1018
 // import-boundary conversion existed), so the episode surfaces prove the
@@ -395,4 +394,3 @@ export const WEIGHT_QUICKADD_PROFILE = "Weight Quickadd (e2e)";
 // fixtures' cockpit assertions.
 export const E2E_LOGIN_CEL_IMPORT = "e2e_cel_import";
 export const CEL_IMPORT_PROFILE = "Cel Import (e2e)";
->>>>>>> origin/main
