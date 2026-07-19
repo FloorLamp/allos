@@ -17,6 +17,10 @@ import {
   drugAllergyEvidence,
   type DrugAllergyHit,
 } from "@/lib/drug-allergy";
+import {
+  coverageScopeLine,
+  type SafetyCoverageModel,
+} from "@/lib/safety-coverage";
 
 // The CROSS-KIND intake warnings (#746): drug-/supplement-interaction hits (#144)
 // and the pharmacogenomics cross-check (#710). A supplement–drug interaction spans
@@ -31,6 +35,7 @@ export default function IntakeWarnings({
   pgxWarnings,
   ototoxicWarnings = [],
   allergyWarnings = [],
+  coverage = null,
 }: {
   interactionWarnings: InteractionHit[];
   pgxWarnings: PgxHit[];
@@ -41,14 +46,19 @@ export default function IntakeWarnings({
   // non-resolved allergy (direct, same-class, or documented cross-reactive class).
   // Optional so a caller that doesn't gather it renders nothing.
   allergyWarnings?: DrugAllergyHit[];
+  // Screening-coverage summary (#1032): when present, an EMPTY result renders a calm
+  // "checked N of M, no flags" scope line instead of nothing — so "no interactions
+  // found" is distinguishable from "your stack isn't in our curated set". Optional
+  // so a caller that doesn't gather it keeps the legacy silent-empty behavior.
+  coverage?: SafetyCoverageModel | null;
 }) {
-  if (
+  const empty =
     interactionWarnings.length === 0 &&
     pgxWarnings.length === 0 &&
     ototoxicWarnings.length === 0 &&
-    allergyWarnings.length === 0
-  )
-    return null;
+    allergyWarnings.length === 0;
+  const scopeLine = coverage ? coverageScopeLine(coverage, empty) : null;
+  if (empty && !scopeLine) return null;
   return (
     <>
       {/* Drug-allergy × medication warnings (issue #1029): a recorded allergy met by
@@ -155,6 +165,18 @@ export default function IntakeWarnings({
             />
           ))}
         </div>
+      )}
+
+      {/* Screening-coverage scope line (#1032): what was checked and how much of the
+          stack the curated set covers. Calm and informational — the legibility fix,
+          not a warning; the "no flags" phrasing never reads as clearance. */}
+      {scopeLine && (
+        <p
+          className="mb-4 text-xs text-slate-500 dark:text-slate-400"
+          data-testid="safety-scope-line"
+        >
+          {scopeLine}
+        </p>
       )}
     </>
   );

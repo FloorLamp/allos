@@ -23,6 +23,7 @@ import {
   getPgxWarnings,
   getOtotoxicWarnings,
   getDrugAllergyWarnings,
+  getSafetyScreeningCoverage,
   getGenomicVariants,
   getFindingSuppressions,
   getAdministrationsForItemsOnDate,
@@ -155,6 +156,9 @@ export interface MedicationsData {
   pgxWarnings: ReturnType<typeof getPgxWarnings>;
   ototoxicWarnings: ReturnType<typeof getOtotoxicWarnings>;
   allergyWarnings: ReturnType<typeof getDrugAllergyWarnings>;
+  // Screening-coverage summary (#1032): the safety strip's "checked N of M" scope
+  // line, so an empty result never renders like an un-run check.
+  coverage: ReturnType<typeof getSafetyScreeningCoverage>;
   current: MedCardData[];
   past: MedCardData[];
   // The recently-used active PRN meds for the Today panel, with pre-formatted
@@ -532,6 +536,7 @@ export function loadMedicationsData(profileId: number): MedicationsData {
     pgxWarnings,
     ototoxicWarnings,
     allergyWarnings,
+    coverage: getSafetyScreeningCoverage(profileId),
     current: currentData,
     past: pastData,
     prnToday,

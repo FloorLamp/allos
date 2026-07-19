@@ -64,6 +64,7 @@ export default async function MedicationsPage() {
           pgxWarnings={data.pgxWarnings}
           ototoxicWarnings={data.ototoxicWarnings}
           allergyWarnings={data.allergyWarnings}
+          coverage={data.coverage}
         />
 
         {medCount === 0 ? (

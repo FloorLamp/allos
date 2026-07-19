@@ -48,6 +48,10 @@ import {
   type DrugAllergyHit,
   type DrugAllergyMedInput,
 } from "../../drug-allergy";
+import {
+  stackScreeningCoverage,
+  type SafetyCoverageModel,
+} from "../../safety-coverage";
 import { biomarkerFamily } from "../../canonical-name";
 import { medicationStartDate } from "../../profile-summary";
 import { getMedicationCourses } from "./medications";
@@ -352,6 +356,25 @@ export function getDrugAllergyWarnings(profileId: number): DrugAllergyHit[] {
     }));
   if (meds.length === 0) return [];
   return crossCheckDrugAllergies(ctx.allergyRecords, meds);
+}
+
+// Safety-screening coverage summary (issue #1032): how much of the ACTIVE stack the
+// curated interaction set actually covers, so an empty safety strip can say
+// "checked N of M, no flags" instead of rendering exactly like "nothing was
+// checked". Reuses the profile-scoped getSupplements read + the pure
+// stackScreeningCoverage over the ONE shared concept matcher, so the fraction can
+// never disagree with what detectInteractions screens. No new SQL.
+export function getSafetyScreeningCoverage(
+  profileId: number
+): SafetyCoverageModel {
+  return stackScreeningCoverage(
+    getSupplements(profileId).map((s) => ({
+      name: s.name,
+      rxcui: s.rxcui,
+      rxcuiIngredients: parseRxcuiIngredients(s.rxcui_ingredients),
+      active: !!s.active,
+    }))
+  );
 }
 
 // Lab categories a monitoring retest keys on — the SAME set the biomarker retest signal

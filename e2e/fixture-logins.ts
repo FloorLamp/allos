@@ -388,3 +388,12 @@ export const DRUG_ALLERGY_PROFILE = "Drug Allergy (e2e)";
 // test), so it stays repeat-safe and never perturbs shared-seed PRN fixtures.
 export const E2E_LOGIN_PRN_FAMILY = "e2e_prn_family";
 export const PRN_FAMILY_PROFILE = "Prn Family (e2e)";
+
+// A member granted a dedicated ADULT profile for the #1032 safety-coverage spec:
+// two name-only active medications (loratadine — off the curated interaction set;
+// sertraline — a name-matched SSRI concept) with NO warnings, so the Medications /
+// Supplements safety strips render the "checked N of M, no flags" scope line
+// instead of the old silent blank, and the name-only rows wear the quiet
+// limited-screening chip. Read-only in its spec, so it stays repeat-safe.
+export const E2E_LOGIN_COVERAGE = "e2e_coverage";
+export const SAFETY_COVERAGE_PROFILE = "Safety Coverage (e2e)";

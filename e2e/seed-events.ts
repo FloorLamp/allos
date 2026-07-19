@@ -116,6 +116,8 @@ import {
   DRUG_ALLERGY_PROFILE,
   E2E_LOGIN_PRN_FAMILY,
   PRN_FAMILY_PROFILE,
+  E2E_LOGIN_COVERAGE,
+  SAFETY_COVERAGE_PROFILE,
 } from "./fixture-logins";
 import { adoptTemplate, activateRoutine } from "../lib/routines";
 
@@ -3469,4 +3471,33 @@ db.prepare(
 seedMemberLogin(E2E_LOGIN_PRN_FAMILY, prnFamilyId, "write");
 console.log(
   `e2e: seeded cross-item PRN counter fixture — profile ${prnFamilyId} (${PRN_FAMILY_PROFILE}) (#1027)`
+);
+
+// ── Safety-coverage empty-state fixture (#1032) ───────────────────────────────
+// A dedicated adult profile whose stack produces NO safety warnings: loratadine
+// (off the curated interaction set entirely) + sertraline (a name-matched SSRI
+// concept with no interacting partner), both name-only (no confirmed RxNorm code).
+// The spec asserts the honest empty state — the "checked 1 of 2, no flags" scope
+// line on both safety strips (instead of the pre-#1032 silent blank) and the quiet
+// limited-screening chip on the name-only rows. Idempotent hard-clear for a reused
+// server. Synthetic, no PHI.
+const coverageId = fixtureProfileId(SAFETY_COVERAGE_PROFILE);
+db.prepare(
+  `DELETE FROM intake_item_logs WHERE item_id IN
+     (SELECT id FROM intake_items WHERE profile_id = ?)`
+).run(coverageId);
+db.prepare(
+  `DELETE FROM intake_item_doses WHERE item_id IN
+     (SELECT id FROM intake_items WHERE profile_id = ?)`
+).run(coverageId);
+db.prepare(`DELETE FROM intake_items WHERE profile_id = ?`).run(coverageId);
+for (const medName of ["Loratadine 10 mg", "Sertraline 50 mg"]) {
+  db.prepare(
+    `INSERT INTO intake_items (profile_id, name, active, kind, as_needed)
+     VALUES (?, ?, 1, 'medication', 1)`
+  ).run(coverageId, medName);
+}
+seedMemberLogin(E2E_LOGIN_COVERAGE, coverageId, "write");
+console.log(
+  `e2e: seeded safety-coverage fixture — profile ${coverageId} (${SAFETY_COVERAGE_PROFILE}) (#1032)`
 );

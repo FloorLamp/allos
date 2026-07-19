@@ -58,9 +58,10 @@ test("the OTC ibuprofen card shows the family-held redose line (no false GO)", a
   await expect(redoseLine).toContainText("Next dose in ~");
   await expect(redoseLine).toContainText("1 of 4 today");
   await expect(redoseLine).toContainText("across 2 items");
-  await expect(main.getByTestId("prn-redose-line")).not.toContainText(
-    "Redose OK"
-  );
+  // No surface (Today panel or med row) shows a false green light.
+  await expect(
+    main.getByTestId("prn-redose-line").filter({ hasText: "Redose OK" })
+  ).toHaveCount(0);
 
   await page.context().close();
 });

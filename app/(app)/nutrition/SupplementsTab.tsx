@@ -17,6 +17,7 @@ import {
   getPgxWarnings,
   getOtotoxicWarnings,
   getDrugAllergyWarnings,
+  getSafetyScreeningCoverage,
   getGenomicVariants,
   getFindingSuppressions,
 } from "@/lib/queries";
@@ -593,6 +594,7 @@ export default async function SupplementsTab() {
         pgxWarnings={pgxWarnings}
         ototoxicWarnings={ototoxicWarnings}
         allergyWarnings={allergyWarnings}
+        coverage={getSafetyScreeningCoverage(profile.id)}
       />
 
       {/* Adherence-pattern observations (issue #45, domain 3) */}
