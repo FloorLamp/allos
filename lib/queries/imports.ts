@@ -18,6 +18,7 @@ import type {
   ImagingModality,
   ImagingLaterality,
   OpticalKind,
+  DentalStatus,
 } from "../types/medical";
 import {
   interleaveImportLog,
@@ -228,6 +229,13 @@ export function getDocumentProduced(
       )
       .get(profileId, docId)
   );
+  const dentalProcedures = scalar(
+    db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM dental_procedures WHERE profile_id = ? AND document_id = ?`
+      )
+      .get(profileId, docId)
+  );
   const appointments = scalar(
     db
       .prepare(
@@ -316,6 +324,7 @@ export function getDocumentProduced(
     genomicVariants,
     imagingStudies,
     opticalPrescriptions,
+    dentalProcedures,
     appointments,
     medications,
     bodyMetrics,
@@ -521,6 +530,26 @@ export function getDocumentOpticalPrescriptions(
     os_sphere: number | null;
     pd: number | null;
     issued_date: string | null;
+  }[];
+}
+
+export function getDocumentDentalProcedures(profileId: number, docId: number) {
+  return db
+    .prepare(
+      `SELECT id, name, status, tooth, surface, cdt_code, procedure_date, finding
+         FROM dental_procedures
+        WHERE profile_id = ? AND document_id = ?
+        ORDER BY COALESCE(procedure_date, '') DESC, id`
+    )
+    .all(profileId, docId) as {
+    id: number;
+    name: string;
+    status: DentalStatus;
+    tooth: string | null;
+    surface: string | null;
+    cdt_code: string | null;
+    procedure_date: string | null;
+    finding: string | null;
   }[];
 }
 

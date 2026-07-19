@@ -81,6 +81,11 @@ function linkAllTables(profileId: number, providerId: number): number {
     `INSERT INTO optical_prescriptions (profile_id, kind, provider_id)
      VALUES (?, 'glasses', ?)`
   ).run(profileId, providerId);
+  // Dental procedures link the performing/recording dentist (#705).
+  db.prepare(
+    `INSERT INTO dental_procedures (profile_id, name, provider_id)
+     VALUES (?, 'Composite filling', ?)`
+  ).run(profileId, providerId);
   return PROVIDER_LINK_COLUMNS.length;
 }
 

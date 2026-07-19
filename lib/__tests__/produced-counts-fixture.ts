@@ -16,6 +16,7 @@ export const EMPTY_PRODUCED_COUNTS: DocumentProducedCounts = {
   genomicVariants: 0,
   imagingStudies: 0,
   opticalPrescriptions: 0,
+  dentalProcedures: 0,
   appointments: 0,
   medications: 0,
   bodyMetrics: 0,

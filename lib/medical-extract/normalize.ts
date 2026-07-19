@@ -26,6 +26,7 @@ import type {
   ExtractedGenomicVariant,
   ExtractedImagingStudy,
   ExtractedOpticalPrescription,
+  ExtractedDentalProcedure,
 } from "./types";
 
 // The tool schema's TOP-LEVEL property names (the `save_medical_data` input_schema
@@ -52,6 +53,7 @@ const EXTRACTION_TOP_LEVEL_KEYS = new Set([
   "genomic_variants",
   "imaging_studies",
   "optical_prescriptions",
+  "dental_procedures",
 ]);
 
 // How many of the tool schema's top-level keys an object names — how payload-like
@@ -303,6 +305,7 @@ export function normalizeClinicalDomains(raw: any): {
   genomicVariants: ExtractedGenomicVariant[];
   imagingStudies: ExtractedImagingStudy[];
   opticalPrescriptions: ExtractedOpticalPrescription[];
+  dentalProcedures: ExtractedDentalProcedure[];
   drops: ImportDrop[];
 } {
   const drops: ImportDrop[] = [];
@@ -561,6 +564,35 @@ export function normalizeClinicalDomains(raw: any): {
     });
   }
 
+  // Dental procedures/findings from an uploaded dental record (#705). A record with
+  // NO name is noise and drops. status/tooth_system stay raw (normalized downstream);
+  // the date is coerced to strict ISO-or-null; tooth/surface/cdt/finding kept verbatim.
+  const dentalProcedures: ExtractedDentalProcedure[] = [];
+  for (const d of arr(raw?.dental_procedures)) {
+    const name = strOrNull(d?.name);
+    if (!name) {
+      drops.push({
+        kind: "dental_procedure",
+        label: strOrNull(d?.tooth) ?? "(empty dental record)",
+        reason: "no_value",
+      });
+      continue;
+    }
+    const followUp = finiteOrNull(d?.follow_up_interval_days);
+    dentalProcedures.push({
+      name,
+      status: strOrNull(d?.status),
+      tooth: strOrNull(d?.tooth),
+      tooth_system: strOrNull(d?.tooth_system),
+      surface: strOrNull(d?.surface),
+      cdt_code: strOrNull(d?.cdt_code),
+      procedure_date: isoDateOrNull(d?.procedure_date),
+      finding: strOrNull(d?.finding),
+      follow_up_interval_days:
+        followUp != null && followUp > 0 ? Math.floor(followUp) : null,
+    });
+  }
+
   return {
     conditions,
     allergies,
@@ -572,6 +604,7 @@ export function normalizeClinicalDomains(raw: any): {
     genomicVariants,
     imagingStudies,
     opticalPrescriptions,
+    dentalProcedures,
     drops,
   };
 }

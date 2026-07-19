@@ -58,6 +58,11 @@ export const IMPORT_FOOTPRINT_TABLES: readonly ImportFootprintTable[] = [
   // (#697). Keyed on document_id like the other clinical domains; a manual Rx
   // carries a NULL document_id and is never touched.
   { table: "optical_prescriptions", key: "document_id" },
+  // Structured dental procedures imported from a dental exam/treatment record (#705).
+  // Keyed on document_id like the other clinical domains; a manual record carries a
+  // NULL document_id and is never touched. Like imaging, it back-references from
+  // care_plan_items (the follow-up chain), so clear/move NULL those links first.
+  { table: "dental_procedures", key: "document_id" },
   // Scheduled appointments imported from a FHIR Appointment resource (#416). A
   // manual booking carries a NULL document_id and is never touched.
   { table: "appointments", key: "document_id" },

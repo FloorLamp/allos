@@ -505,6 +505,55 @@ export interface OpticalPrescription {
   created_at: string;
 }
 
+// ── Dental procedures (#705) ─────────────────────────────────────────────────
+// A structured DENTAL record captured from a dental exam/treatment record or
+// after-visit summary (the AI-extraction path is the primary entry — dental has no
+// FHIR structured feed, #708). Mirrors the imaging-study record type (#702). The
+// general `procedures` table carries name+code+date but NO tooth notation, so a
+// per-tooth timeline ("what's happened to #14") is impossible there; this record
+// type anchors a restoration/extraction/finding to a tooth + surface + CDT code.
+//
+// It ALSO holds dental exam FINDINGS ("watch #14, recheck in 6 months") that seed
+// the follow-up loop (#700), distinguished from history by `status`. Periodontal
+// MEASUREMENTS (probing depth, bleeding-on-probing) are NOT here — they reuse the
+// medical_records biomarker store as curated canonical analytes (the #698 vision-
+// analyte precedent), so they trend + flag on the Biomarkers surface.
+
+// The dental record lifecycle classifier. 'completed' is history; 'planned' is a
+// planned procedure (the #704 planned-procedure signal when invasive); 'watch' is a
+// monitored exam finding that seeds a dental follow-up.
+export type DentalStatus = "completed" | "planned" | "watch";
+
+// The tooth-numbering system the `tooth` value is expressed in. `universal` = ADA
+// Universal (1–32), `fdi` = FDI/ISO two-digit, `palmer` = Palmer notation. Null when
+// the record isn't tooth-specific or the system is unknown.
+export type ToothSystem = "universal" | "fdi" | "palmer";
+
+// A structured dental procedure/finding (table: dental_procedures). `name` is the
+// anchor (the procedure or finding). `tooth`/`surface`/`cdt_code` anchor it
+// clinically; `status` gates the downstream consumers (#704 planned signal, #700
+// follow-up). `finding` is the free-text exam impression; `follow_up_interval_days`
+// is the recommended recheck cadence. Provenance/dedup mirror imaging_studies so the
+// import footprint clears/moves/counts it by document_id.
+export interface DentalProcedure {
+  id: number;
+  name: string;
+  status: DentalStatus;
+  tooth: string | null;
+  tooth_system: ToothSystem | null;
+  surface: string | null;
+  cdt_code: string | null;
+  procedure_date: string | null;
+  finding: string | null;
+  follow_up_interval_days: number | null;
+  provider_id: number | null;
+  notes: string | null;
+  source: string | null;
+  document_id: number | null;
+  external_id: string | null;
+  created_at: string;
+}
+
 // A family-history entry (table: family_history): one condition affecting one
 // relative. `relation` is the affected relative (mother/father/sibling/…);
 // `condition` the display term for their diagnosis; `code`/`code_system` its coded
@@ -560,10 +609,12 @@ export interface CarePlanItem {
   source_kind: string | null; // adapter discriminator ('imaging' | 'labs'); null ⇒ not a follow-up
   source_imaging_study_id: number | null; // the imaging source finding
   source_medical_record_id: number | null; // the flagged-lab source finding (#700 labs adapter, migration 057)
+  source_dental_procedure_id: number | null; // the dental source finding (#705 dental adapter, migration 066)
   recommended_interval_days: number | null; // the recommended follow-up interval
   resolution: string | null; // 'resolved' | 'stable' | 'changed' once closed
   resolved_by_imaging_study_id: number | null; // the later study it was resolved against
   resolved_by_medical_record_id: number | null; // the later lab reading it was resolved against (labs adapter)
+  resolved_by_dental_procedure_id: number | null; // the later dental record it was resolved against (dental adapter)
   resolved_at: string | null;
 }
 

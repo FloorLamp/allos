@@ -39,6 +39,12 @@ import {
   parseAxis,
   parseMillimeters,
 } from "./optical-prescription";
+import {
+  normalizeDentalStatus,
+  normalizeToothSystem,
+  normalizeTooth,
+  normalizeSurface,
+} from "./dental";
 import type {
   GenomicResultType,
   GenomicSignificance,
@@ -46,6 +52,8 @@ import type {
   ImagingModality,
   ImagingLaterality,
   OpticalKind,
+  DentalStatus,
+  ToothSystem,
 } from "./types/medical";
 import { isRealIsoDate } from "./date";
 import {
@@ -278,6 +286,22 @@ export interface PersistOpticalPrescription {
   external_id: string | null;
 }
 
+// Dental-procedure projection (#705). Only the AI extractor fills this (dental has no
+// FHIR structured feed, #708). `status`/`tooth_system` are normalized here; free-text
+// tooth/surface/cdt/finding pass through.
+export interface PersistDentalProcedure {
+  name: string;
+  status: DentalStatus;
+  tooth: string | null;
+  tooth_system: ToothSystem | null;
+  surface: string | null;
+  cdt_code: string | null;
+  procedure_date: string | null;
+  finding: string | null;
+  follow_up_interval_days: number | null;
+  external_id: string | null;
+}
+
 // Scheduled-appointment projection (issue #416). Only the FHIR Appointment resource
 // fills this; the AI and CDA paths leave it empty. The attending clinician
 // (`provider`) is resolved into the shared registry on persist (linked via
@@ -335,6 +359,8 @@ export interface PersistInput {
   imagingStudies?: PersistImagingStudy[];
   // Optical prescriptions (#697). Optional for the same reason; persist reads `?? []`.
   opticalPrescriptions?: PersistOpticalPrescription[];
+  // Dental procedures (#705). Optional for the same reason; persist reads it `?? []`.
+  dentalProcedures?: PersistDentalProcedure[];
   appointments: PersistAppointment[];
   bodyMetrics: DocBodyMetric[];
   // Body-height samples (metric_samples, metric 'height_cm') — height has no
@@ -688,6 +714,31 @@ export function extractionToPersistInput(
       external_id: null,
     }));
 
+  // Dental procedures (#705). Normalize the model's raw status / tooth-system onto the
+  // DB CHECK sets (one shared coercion, lib/dental), so an off-vocabulary term can't
+  // fail the INSERT. A record with no name is noise — drop it.
+  const dentalProcedures: PersistDentalProcedure[] = (
+    result.dentalProcedures ?? []
+  )
+    .filter((d) => d.name?.trim())
+    .map((d) => ({
+      name: d.name!.trim(),
+      status: normalizeDentalStatus(d.status),
+      tooth: normalizeTooth(d.tooth),
+      tooth_system: normalizeToothSystem(d.tooth_system),
+      surface: normalizeSurface(d.surface),
+      cdt_code: d.cdt_code?.trim() || null,
+      procedure_date: d.procedure_date,
+      finding: d.finding,
+      follow_up_interval_days:
+        typeof d.follow_up_interval_days === "number" &&
+        Number.isFinite(d.follow_up_interval_days) &&
+        d.follow_up_interval_days > 0
+          ? Math.floor(d.follow_up_interval_days)
+          : null,
+      external_id: null,
+    }));
+
   // The document-level source ("Quest Diagnostics", the discharge hospital, …) is
   // registered into the shared providers registry — the AI path's answer to item 3
   // (surface meta.source). Per-row performers (encounter attending / facility) ride
@@ -712,6 +763,7 @@ export function extractionToPersistInput(
     genomicVariants.length +
     imagingStudies.length +
     opticalPrescriptions.length +
+    dentalProcedures.length +
     bodyMetrics.length +
     heights.length +
     headCircs.length;
@@ -766,6 +818,7 @@ export function extractionToPersistInput(
     genomicVariants,
     imagingStudies,
     opticalPrescriptions,
+    dentalProcedures,
     // The AI medical extractor has no appointment shape (it emits care plans, not
     // scheduled visits), so the AI path never produces appointments (#416).
     appointments: [],

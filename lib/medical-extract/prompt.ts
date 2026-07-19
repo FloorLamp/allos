@@ -116,6 +116,22 @@ Rules:
     distance in mm), and for CONTACTS only base_curve + diameter (mm) + brand. issued_date
     and expiry_date (ISO YYYY-MM-DD), prescriber (the optometrist's name), notes. A lab /
     imaging / genetics report is NOT an optical prescription — leave this array empty for it.
+  - dental_procedures: when the document is a DENTAL exam/treatment record, chart note, or
+    after-visit summary from a dentist, emit ONE entry into the "dental_procedures" array
+    per procedure DONE or exam finding, describing what the record states — do NOT diagnose:
+    name (the procedure or finding, e.g. "Composite filling", "Extraction", "Crown", "Caries
+    watch", "Periodontal re-evaluation"), status ("completed" for work done, "planned" for a
+    treatment-plan / recommended procedure, "watch" for a monitored finding to recheck), tooth
+    (the tooth number as written, e.g. "14", "#30", "UL6"), tooth_system ("universal" for ADA
+    1-32, "fdi" for two-digit FDI/ISO, "palmer" — omit if unclear), surface (the surface code
+    if given, e.g. "MOD", "buccal"), cdt_code (the CDT/ADA procedure code if present, e.g.
+    "D2392"), procedure_date (ISO YYYY-MM-DD), finding (the free-text clinical impression,
+    e.g. "watch mesial #14 for recurrent decay", "4mm pocket #30 with BOP"),
+    follow_up_interval_days (when the record says to recheck in N months/weeks, the interval
+    in DAYS, e.g. "recheck in 6 months" → 180). A dental X-ray (bitewing/panoramic) is an
+    imaging study, NOT a dental_procedure — leave this array empty for a non-dental document.
+    NOTE: periodontal MEASUREMENTS (pocket depths in mm, bleeding-on-probing %) belong in
+    "results" as their own analytes ("Periodontal Probing Depth", "Bleeding on Probing").
 - Be concise: emit only the structured fields above. Brevity matters — there may be 100+
   results and the response must fit in the output budget.
 - Do not invent data. If the document has no extractable results, return empty arrays.`;
@@ -651,6 +667,58 @@ export const TOOL: Anthropic.Tool = {
             notes: {
               type: ["string", "null"],
               description: "Any other printed note",
+            },
+          },
+          required: [],
+        },
+      },
+      dental_procedures: {
+        type: "array",
+        description:
+          "One entry per dental procedure done or exam finding in a DENTAL exam/treatment record or after-visit summary. Empty for a non-dental document. A dental X-ray is an imaging_study, not here; periodontal pocket-depth / bleeding measurements go in `results`.",
+        items: {
+          type: "object",
+          properties: {
+            name: {
+              type: ["string", "null"],
+              description:
+                "Procedure or finding, e.g. 'Composite filling', 'Extraction', 'Caries watch'",
+            },
+            status: {
+              type: ["string", "null"],
+              description:
+                "completed (work done) / planned (treatment plan) / watch (finding to recheck)",
+            },
+            tooth: {
+              type: ["string", "null"],
+              description: "Tooth number as written, e.g. '14', '#30', 'UL6'",
+            },
+            tooth_system: {
+              type: ["string", "null"],
+              description:
+                "universal (ADA 1-32) / fdi (two-digit) / palmer, if clear",
+            },
+            surface: {
+              type: ["string", "null"],
+              description: "Surface code if given, e.g. 'MOD', 'buccal'",
+            },
+            cdt_code: {
+              type: ["string", "null"],
+              description: "CDT/ADA procedure code if present, e.g. 'D2392'",
+            },
+            procedure_date: {
+              type: ["string", "null"],
+              description: "Procedure/finding date, ISO YYYY-MM-DD, else null",
+            },
+            finding: {
+              type: ["string", "null"],
+              description:
+                "Free-text clinical impression / note, e.g. 'watch mesial #14'",
+            },
+            follow_up_interval_days: {
+              type: ["number", "null"],
+              description:
+                "Recommended recheck interval in DAYS when stated ('recheck in 6 months' → 180)",
             },
           },
           required: [],

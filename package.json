@@ -38,6 +38,7 @@
     "gen:allergen-cross-reactivity": "tsx scripts/gen-allergen-cross-reactivity.ts",
     "gen:pgx": "tsx scripts/gen-pgx.ts",
     "gen:contrast-safety": "tsx scripts/gen-contrast-safety.ts",
+    "gen:dental-safety": "tsx scripts/gen-dental-safety.ts",
     "gen:screenings": "tsx scripts/gen-screenings.ts",
     "gen:nutrient-food-map": "tsx scripts/gen-nutrient-food-map.ts",
     "gen:food-groups": "tsx scripts/gen-food-groups.ts",

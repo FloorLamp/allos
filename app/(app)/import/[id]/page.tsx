@@ -18,6 +18,7 @@ import {
   getDocumentGenomicVariants,
   getDocumentImagingStudies,
   getDocumentOpticalPrescriptions,
+  getDocumentDentalProcedures,
   getDocumentAppointments,
   getDocumentMedications,
   getDocumentBodyRows,
@@ -53,6 +54,7 @@ import {
   genomicVariantItem,
   imagingStudyItem,
   opticalPrescriptionItem,
+  dentalProcedureItem,
   appointmentItem,
   medicationItem,
   bodyItems,
@@ -115,6 +117,10 @@ function listingItems(
     case "optical-prescriptions":
       return getDocumentOpticalPrescriptions(profileId, docId).map(
         opticalPrescriptionItem
+      );
+    case "dental-procedures":
+      return getDocumentDentalProcedures(profileId, docId).map(
+        dentalProcedureItem
       );
     case "appointments":
       return getDocumentAppointments(profileId, docId).map(appointmentItem);

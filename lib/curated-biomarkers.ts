@@ -1408,6 +1408,45 @@ export const CURATED_LABS: Biomarker[] = [
     direction: "in_range",
     note: "Visual acuity of the left eye (OS) as a Snellen fraction (e.g. 20/20). Qualitative — no numeric reference band; trended as a dated timeline, never flagged. Kept as a separate series from the right eye.",
   },
+  // Periodontal analytes (#705) — the dental analogue of the vision analytes above:
+  // measurable, flaggable, trendable dental-exam readings that reuse the biomarker
+  // substrate (medical_records) rather than a parallel dental-readings table (#860/
+  // #944), so a worsening perio trend is visible on the Biomarkers surface (the "is
+  // it getting worse" question). Captured from a dental exam record via AI extraction
+  // (into `results`), or entered manually. INFORMATIONAL, NOT MEDICAL ADVICE.
+  {
+    name: "Periodontal Probing Depth",
+    category: "vitals",
+    unit: "mm",
+    ref_low: null,
+    ref_high: 3,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "lower_better",
+    note: "Sulcus/pocket depth on periodontal probing, in millimetres (the deepest or a representative site). A healthy sulcus is ~1–3 mm; 4 mm and deeper indicates periodontal pocketing worth monitoring. American Academy of Periodontology.",
+  },
+  {
+    name: "Bleeding on Probing",
+    category: "vitals",
+    unit: "%",
+    ref_low: null,
+    ref_high: 10,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "lower_better",
+    note: "Proportion of periodontal sites that bleed on gentle probing, as a full-mouth percentage. A full-mouth score under ~10% is consistent with periodontal stability; higher suggests active gingival inflammation. American Academy of Periodontology.",
+  },
+  {
+    name: "Clinical Attachment Loss",
+    category: "vitals",
+    unit: "mm",
+    ref_low: null,
+    ref_high: 1,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "lower_better",
+    note: "Distance from the cemento-enamel junction to the base of the periodontal pocket, in millimetres — the cumulative attachment lost. 1–2 mm is mild, 3–4 mm moderate, ≥5 mm severe (2017 AAP/EFP staging). Tracks periodontitis progression over time.",
+  },
 
   // ── Mental-health instruments (issue #716) ─────────────────────────────────
   // Validated screening-instrument TOTAL SCORES — PHQ-9 (depression), GAD-7
