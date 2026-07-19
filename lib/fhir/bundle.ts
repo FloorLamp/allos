@@ -17,6 +17,7 @@ import type {
   ImportedFamilyHistory,
   ImportedImagingStudy,
   ImportedImmunization,
+  ImportedOpticalPrescription,
   ImportedProcedure,
   ImportedRecord,
 } from "../health-import";
@@ -55,6 +56,7 @@ import {
   mapMedicationResource,
   mapPatientDemographics,
   mapProcedureResource,
+  mapVisionPrescription,
   observationRecords,
 } from "./resources";
 
@@ -79,6 +81,9 @@ interface MapperOutput {
   // whole output is imaging (ImagingStudy); on a DiagnosticReport it just means the
   // report wasn't imaging (its records/narrative-record channel carried the value).
   imagingStudies?: ImportedImagingStudy[];
+  // A VisionPrescription yields one optical prescription (or null → dropped) — a
+  // single primary shape, like appointment (folds both eyes into one row).
+  opticalPrescription?: ImportedOpticalPrescription | null;
 }
 
 // FHIR resourceType → mapper. Each maps into a provider-neutral ImportedX shape and
@@ -123,6 +128,11 @@ const RESOURCE_MAPPERS: Record<
     const study = mapDocumentReferenceImaging(r, ctx.idPrefix);
     return { imagingStudies: study ? [study] : [] };
   },
+  // Structured optical Rx (#708 → #697). One VisionPrescription folds both eyes into
+  // one optical_prescriptions row; a null result (retracted, or no refraction) drops.
+  VisionPrescription: (r, ctx) => ({
+    opticalPrescription: mapVisionPrescription(r, ctx),
+  }),
 };
 
 // The FHIR resourceTypes this importer consumes via a top-level mapper, PLUS the
@@ -190,6 +200,8 @@ function fhirDropKind(resourceType: string): DropKind {
       return "appointment";
     case "ImagingStudy":
       return "imaging_study";
+    case "VisionPrescription":
+      return "optical_prescription";
     default:
       return "resource";
   }
@@ -257,6 +269,8 @@ function fhirDropLabel(resourceType: string, r: any): string {
           : null) ??
         "Imaging study"
       );
+    case "VisionPrescription":
+      return "Vision prescription";
     default:
       return resourceType;
   }
@@ -321,6 +335,12 @@ function fhirDropReason(resourceType: string, r: any): DropReason {
   // An Appointment drops only when it carries no usable start (nothing else can
   // reject it, since status was handled above) — undatable, so `other`.
   if (resourceType === "Appointment" && !isoDate(r?.start)) return "other";
+  // A VisionPrescription is retracted for a cancelled/draft status (negated), else it
+  // dropped because no lensSpecification carried a refraction (no_value).
+  if (resourceType === "VisionPrescription") {
+    if (status === "cancelled" || status === "draft") return "negated";
+    return "no_value";
+  }
   return "other";
 }
 
@@ -390,6 +410,7 @@ export function entriesToImportResult(
   const careGoals: ImportedCareGoal[] = [];
   const appointments: ImportedAppointment[] = [];
   const imagingStudies: ImportedImagingStudy[] = [];
+  const opticalPrescriptions: ImportedOpticalPrescription[] = [];
   let demographics: ImportDemographics | null = null;
 
   const seenImm = new Set<string>();
@@ -403,6 +424,7 @@ export function entriesToImportResult(
   const seenCareGoal = new Set<string>();
   const seenAppt = new Set<string>();
   const seenImg = new Set<string>();
+  const seenOptical = new Set<string>();
 
   // Import DEBUGGER accumulators.
   const drops: ImportDrop[] = [];
@@ -597,6 +619,22 @@ export function entriesToImportResult(
         }
       }
     }
+    // Optical prescriptions (#708) — a single primary shape (both eyes folded into one
+    // row): an explicit null means the VisionPrescription was retracted or carried no
+    // refraction → a dropped row; a repeated external_id is a `deduped` drop.
+    if (out.opticalPrescription) {
+      if (seenOptical.has(out.opticalPrescription.external_id))
+        drops.push({
+          kind: "optical_prescription",
+          label: out.opticalPrescription.brand ?? out.opticalPrescription.kind,
+          reason: "deduped",
+          section: r.resourceType,
+        });
+      else {
+        seenOptical.add(out.opticalPrescription.external_id);
+        opticalPrescriptions.push(out.opticalPrescription);
+      }
+    } else if (out.opticalPrescription === null) drops.push(dropFor(r));
   }
 
   // Resource types the bundle carried but no mapper consumed (DocumentReference, …)
@@ -629,6 +667,9 @@ export function entriesToImportResult(
   imagingStudies.sort((a, b) =>
     (a.study_date ?? "").localeCompare(b.study_date ?? "")
   );
+  opticalPrescriptions.sort((a, b) =>
+    (a.issued_date ?? "").localeCompare(b.issued_date ?? "")
+  );
 
   const imported =
     records.length +
@@ -641,7 +682,8 @@ export function entriesToImportResult(
     carePlanItems.length +
     careGoals.length +
     appointments.length +
-    imagingStudies.length;
+    imagingStudies.length +
+    opticalPrescriptions.length;
   const rowDrops = drops.filter(
     (d) => d.reason !== "unrecognized_section"
   ).length;
@@ -674,6 +716,7 @@ export function entriesToImportResult(
     careGoals,
     appointments,
     imagingStudies,
+    opticalPrescriptions,
     demographics,
     report,
   };
