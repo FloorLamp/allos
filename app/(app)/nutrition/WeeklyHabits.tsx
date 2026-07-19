@@ -6,6 +6,7 @@ import {
   getIntakeSafetyContext,
 } from "@/lib/queries";
 import type { HabitWeekVerdict } from "@/lib/food-habit-trend";
+import type { DisplayFormatPrefs } from "@/lib/format-date";
 import {
   frequencyScopeLabel,
   frequencyPaceLabel,
@@ -39,7 +40,13 @@ const TREND_CELL_CLASS: Record<HabitWeekVerdict, string> = {
 // plus an add form. User-initiated, reversible; a target here is the SAME row a protocol
 // can adopt as its intervention (frequency_target_id).
 
-export default function WeeklyHabits({ profileId }: { profileId: number }) {
+export default function WeeklyHabits({
+  profileId,
+  formatPrefs,
+}: {
+  profileId: number;
+  formatPrefs?: DisplayFormatPrefs;
+}) {
   const habits = getFrequencyTargetProgress(profileId).filter(
     (p) => p.target.scope_kind === "food_group"
   );
@@ -52,7 +59,7 @@ export default function WeeklyHabits({ profileId }: { profileId: number }) {
   const protocolByTarget = getFrequencyTargetProtocolNames(profileId);
   // N-week consistency trend per habit (#954): the same weekly rollup extended over
   // ~8 weeks so "is this habit sticking?" gets a surface. Keyed by target id.
-  const trends = getFoodHabitTrends(profileId);
+  const trends = getFoodHabitTrends(profileId, formatPrefs);
 
   return (
     <div className="card" data-testid="weekly-habits">

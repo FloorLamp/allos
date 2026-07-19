@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { formatDateShape, type DisplayFormatPrefs } from "@/lib/format-date";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import {
   IconPrinter,
   IconShare,
@@ -39,15 +41,20 @@ function statusBadge(status: ShareLinkView["status"]): string {
   return "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300";
 }
 
-function fmtDate(iso: string): string {
+// Pref-aware (#964/#1020): the viewer's date shape via formatDateShape (local
+// calendar day of the timestamp), replacing the old implicit-locale
+// toLocaleDateString.
+function fmtDate(iso: string, prefs: DisplayFormatPrefs): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime())
     ? iso
-    : d.toLocaleDateString(undefined, {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
+    : formatDateShape(
+        prefs.dateFormat,
+        d.getFullYear(),
+        d.getMonth() + 1,
+        d.getDate(),
+        { monthStyle: "short", year: true }
+      );
 }
 
 // Print + Share controls for the passport page. Client-only so it
@@ -61,6 +68,7 @@ export default function PassportControls({
 }: {
   links: ShareLinkView[];
 }) {
+  const formatPrefs = useFormatPrefs();
   const [open, setOpen] = useState(false);
   const [createdUrl, setCreatedUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -222,7 +230,7 @@ export default function PassportControls({
                         <span className="text-xs text-slate-400">
                           {l.status === "revoked"
                             ? "revoked"
-                            : `expires ${fmtDate(l.expiresAt)}`}
+                            : `expires ${fmtDate(l.expiresAt, formatPrefs)}`}
                         </span>
                       </div>
                       <div className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">

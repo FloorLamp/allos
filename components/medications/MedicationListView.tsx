@@ -1,5 +1,11 @@
 import RxOtcBadge from "@/components/RxOtcBadge";
-import { formatLongDate } from "@/lib/format-date";
+import {
+  DEFAULT_FORMAT_PREFS,
+  formatClock,
+  formatDateShape,
+  formatLongDate,
+  type DisplayFormatPrefs,
+} from "@/lib/format-date";
 import type { MedicationListRow } from "@/lib/medication-list";
 
 // The current-medication list, rendered identically for the printable page and the
@@ -13,20 +19,33 @@ export default function MedicationListView({
   personName,
   generatedAt,
   rows,
+  formatPrefs = DEFAULT_FORMAT_PREFS,
 }: {
   title: string;
   personName: string;
   // ISO timestamp the list was generated — shown so a printed copy is dated.
   generatedAt: string;
   rows: MedicationListRow[];
+  // Login-tier date/time shape (#964). The print page passes the viewer's prefs;
+  // the tokenized /share view has no login in context and keeps the fixed default
+  // (the documented login-less channel policy). Replaces the old implicit-locale
+  // toLocaleString, which leaked the SERVER's locale/format (#1020).
+  formatPrefs?: DisplayFormatPrefs;
 }) {
   const generated = new Date(generatedAt);
   const generatedLabel = Number.isNaN(generated.getTime())
     ? null
-    : generated.toLocaleString(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      });
+    : `${formatDateShape(
+        formatPrefs.dateFormat,
+        generated.getFullYear(),
+        generated.getMonth() + 1,
+        generated.getDate(),
+        { monthStyle: "short", year: true }
+      )}, ${formatClock(
+        formatPrefs.timeFormat,
+        generated.getHours(),
+        generated.getMinutes()
+      )}`;
 
   return (
     <div
@@ -84,7 +103,9 @@ export default function MedicationListView({
                   <td className="py-2 pr-3">{r.schedule}</td>
                   <td className="py-2 pr-3">{r.prescriber ?? "—"}</td>
                   <td className="py-2">
-                    {r.startedOn ? formatLongDate(r.startedOn) : "—"}
+                    {r.startedOn
+                      ? formatLongDate(r.startedOn, formatPrefs)
+                      : "—"}
                   </td>
                 </tr>
               ))}

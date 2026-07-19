@@ -9,6 +9,8 @@ import {
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
 import { formatRecordDate } from "@/lib/record-format";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import type { DisplayFormatPrefs } from "@/lib/format-date";
 import {
   kindLabel,
   formatDiopter,
@@ -34,7 +36,10 @@ function ExpiryBadge({ state }: { state: RxExpiryState }) {
   return null;
 }
 
-function buildColumns(today: string): RecordColumn<OpticalPrescription>[] {
+function buildColumns(
+  today: string,
+  fmt: DisplayFormatPrefs
+): RecordColumn<OpticalPrescription>[] {
   return [
     {
       header: "Prescription",
@@ -59,14 +64,14 @@ function buildColumns(today: string): RecordColumn<OpticalPrescription>[] {
     {
       header: "Issued",
       cellClassName: "whitespace-nowrap text-slate-600 dark:text-slate-300",
-      cell: (rx) => formatRecordDate(rx.issued_date),
+      cell: (rx) => formatRecordDate(rx.issued_date, "—", fmt),
     },
     {
       header: "Expires",
       headerClassName: "hidden sm:table-cell",
       cellClassName:
         "hidden whitespace-nowrap text-slate-500 sm:table-cell dark:text-slate-400",
-      cell: (rx) => formatRecordDate(rx.expiry_date),
+      cell: (rx) => formatRecordDate(rx.expiry_date, "—", fmt),
     },
     {
       header: "Source",
@@ -86,7 +91,8 @@ export default function OpticalPrescriptionList({
   items: OpticalPrescription[];
   today: string;
 }) {
-  const columns = useMemo(() => buildColumns(today), [today]);
+  const fmt = useFormatPrefs();
+  const columns = useMemo(() => buildColumns(today, fmt), [today, fmt]);
   return (
     <div data-testid="optical-prescription-list" className="space-y-3">
       <RecordTable

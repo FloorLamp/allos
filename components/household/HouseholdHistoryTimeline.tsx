@@ -9,6 +9,8 @@ import { encounterHref, episodeHref } from "@/lib/hrefs";
 import { fmtTemp } from "@/lib/units";
 import type { TemperatureUnit } from "@/lib/settings";
 import type { HouseholdHistoryItem } from "@/lib/household-history";
+import { formatDateShape, type DisplayFormatPrefs } from "@/lib/format-date";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 
 // The merged household visit + illness-episode timeline with a per-person toggle
 // (issue #1009 Ask 1). A pure FORMATTER over the pre-built, date-ordered stream the
@@ -17,17 +19,21 @@ import type { HouseholdHistoryItem } from "@/lib/household-history";
 // Person tags ride ON each row (#531/#534): the Avatar's deterministic per-id color +
 // the disambiguated name distinguish two same-named people without a spatial cue.
 
-function fmtDate(d: string | null): string {
+// Pref-aware (#964/#1020): the viewer's date shape via formatDateShape, replacing
+// the old implicit-locale toLocaleDateString (browser-locale dates floated free of
+// the login's pref — this timeline already threads temperatureUnit).
+function fmtDate(d: string | null, prefs: DisplayFormatPrefs): string {
   if (!d) return "—";
   const dt = new Date(`${d}T00:00:00Z`);
   return Number.isNaN(dt.getTime())
     ? d
-    : dt.toLocaleDateString(undefined, {
-        timeZone: "UTC",
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
+    : formatDateShape(
+        prefs.dateFormat,
+        dt.getUTCFullYear(),
+        dt.getUTCMonth() + 1,
+        dt.getUTCDate(),
+        { monthStyle: "short", year: true }
+      );
 }
 
 export default function HouseholdHistoryTimeline({
@@ -39,6 +45,7 @@ export default function HouseholdHistoryTimeline({
   profiles: AvatarProfile[];
   temperatureUnit: TemperatureUnit;
 }) {
+  const formatPrefs = useFormatPrefs();
   const [person, setPerson] = useState<number | "all">("all");
 
   const nameById = useMemo(
@@ -119,7 +126,7 @@ export default function HouseholdHistoryTimeline({
                         Visit
                       </span>
                       <span className="text-sm text-slate-500 dark:text-slate-400">
-                        {fmtDate(item.date)}
+                        {fmtDate(item.date, formatPrefs)}
                       </span>
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
@@ -131,8 +138,10 @@ export default function HouseholdHistoryTimeline({
                 </li>
               );
             }
-            const range = `${fmtDate(item.firstDay)} – ${
-              item.ongoing ? "ongoing" : fmtDate(item.lastActiveDay)
+            const range = `${fmtDate(item.firstDay, formatPrefs)} – ${
+              item.ongoing
+                ? "ongoing"
+                : fmtDate(item.lastActiveDay, formatPrefs)
             }`;
             return (
               <li key={`e-${item.episodeId}`}>

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import NotesText from "@/components/NotesText";
 import { formatLongDate } from "@/lib/format-date";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { FLOW_LABELS, periodLengthDays, type CyclePeriod } from "@/lib/cycle";
 import CycleForm from "./CycleForm";
 import { saveCycleAction, deleteCycleAction } from "./actions";
@@ -14,6 +15,7 @@ import { saveCycleAction, deleteCycleAction } from "./actions";
 // the NEXT one (the cycle length) is shown by the parent list; here we show the period's
 // own bleeding length.
 export default function CycleHistoryRow({ period }: { period: CyclePeriod }) {
+  const formatPrefs = useFormatPrefs();
   const router = useRouter();
   const toast = useToast();
   const [editing, setEditing] = useState(false);
@@ -61,9 +63,11 @@ export default function CycleHistoryRow({ period }: { period: CyclePeriod }) {
     >
       <div className="min-w-0">
         <div className="text-sm font-medium text-slate-800 dark:text-slate-100">
-          {formatLongDate(period.period_start)}
+          {formatLongDate(period.period_start, formatPrefs)}
           {" – "}
-          {period.period_end ? formatLongDate(period.period_end) : "ongoing"}
+          {period.period_end
+            ? formatLongDate(period.period_end, formatPrefs)
+            : "ongoing"}
         </div>
         <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
           {days != null ? `${days} day${days === 1 ? "" : "s"}` : "in progress"}

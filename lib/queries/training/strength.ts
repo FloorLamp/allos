@@ -8,7 +8,11 @@ import {
 } from "../../coaching";
 import { db, today } from "../../db";
 import { isSeedFresh, pickSeedSessions } from "../../exercise-window";
-import { formatLongDate } from "../../format-date";
+import {
+  DEFAULT_FORMAT_PREFS,
+  formatLongDate,
+  type DisplayFormatPrefs,
+} from "../../format-date";
 import type { SetStatus } from "../../journal-format";
 import { judgeTargets, summarizeExercise } from "../../journal-format";
 import {
@@ -248,6 +252,7 @@ export type RecentByExercise = Record<string, RecentSessionSummary[]>;
 export function getRecentByExercise(
   profileId: number,
   unit: WeightUnit,
+  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS,
   limit = 10
 ): RecentByExercise {
   const out: RecentByExercise = {};
@@ -255,7 +260,7 @@ export function getRecentByExercise(
     getRecentExerciseHistory(profileId, limit)
   )) {
     out[key] = h.sessions.map((s) => ({
-      date: formatLongDate(s.date),
+      date: formatLongDate(s.date, prefs),
       href: journalActivityHref(s.activityId),
       equipment: s.equipment,
       text: summarizeExercise(s.sets, unit).text,

@@ -1,5 +1,5 @@
 import LineChartCard from "@/components/LineChartCard";
-import { formatLongDate } from "@/lib/format-date";
+import { formatLongDate, type DisplayFormatPrefs } from "@/lib/format-date";
 import type { WeightUnit } from "@/lib/settings";
 import WidgetHeader from "./WidgetHeader";
 import WeightQuickAdd from "./WeightQuickAdd";
@@ -11,10 +11,12 @@ import WeightQuickAdd from "./WeightQuickAdd";
 export default function WeightTrendWidget({
   data,
   weightUnit,
+  formatPrefs,
   today,
 }: {
   data: { date: string; value: number }[];
   weightUnit: WeightUnit;
+  formatPrefs: DisplayFormatPrefs;
   // The active profile's current date, threaded to the quick-add.
   today: string;
 }) {
@@ -51,8 +53,8 @@ export default function WeightTrendWidget({
           {point.value} {weightUnit}
         </p>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Recorded {formatLongDate(point.date)}. Add another observation before
-          Allos describes a trend.
+          Recorded {formatLongDate(point.date, formatPrefs)}. Add another
+          observation before Allos describes a trend.
         </p>
         {footer}
       </div>

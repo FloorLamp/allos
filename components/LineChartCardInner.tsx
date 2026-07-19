@@ -14,6 +14,7 @@ import {
 import { useChartColors } from "./useChartColors";
 import { chartSeries } from "@/lib/chart-colors";
 import { formatLongDate } from "@/lib/format-date";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { roundChartValue } from "@/lib/chart-format";
 import {
   ANNOTATION_KIND_META,
@@ -76,6 +77,7 @@ export default function LineChartCard({
   // A horizontal target line (e.g. a goal's target value, in this chart's unit).
   referenceValue?: { value: number; label?: string; color?: string } | null;
 }) {
+  const formatPrefs = useFormatPrefs();
   const key = dataKey ?? "value";
   const c = useChartColors();
   // For ISO-date series, default to a compact MM-DD axis and a friendly long
@@ -85,7 +87,8 @@ export default function LineChartCard({
   const tickFmt =
     tickFormatter ?? (isoDates ? (v: string) => v.slice(5) : undefined);
   const labelFmt =
-    labelFormatter ?? (isoDates ? (v: string) => formatLongDate(v) : undefined);
+    labelFormatter ??
+    (isoDates ? (v: string) => formatLongDate(v, formatPrefs) : undefined);
   // Snap annotation markers onto charted dates so their vertical ReferenceLines
   // land on the category axis (recharts otherwise drops an off-point x).
   const snapped = annotations?.length

@@ -2,6 +2,7 @@ import Link from "next/link";
 import Avatar, { type AvatarProfile } from "@/components/Avatar";
 import { HOUSEHOLD_HISTORY_HREF, episodeHref } from "@/lib/hrefs";
 import type { HouseholdEpisodeContext } from "@/lib/household-history";
+import { formatDateShape, type DisplayFormatPrefs } from "@/lib/format-date";
 
 // The household-context card on an illness-episode page (issue #1009 Ask 3). A compact,
 // CALM read (never a notification, never a finding) that answers "did this go around the
@@ -11,16 +12,20 @@ import type { HouseholdEpisodeContext } from "@/lib/household-history";
 // members); the page renders this only when there IS context, so this component assumes
 // a non-empty list and never shows an empty shell.
 
-function fmtDate(d: string | null): string {
+// Pref-aware (#964/#1020): month-day in the viewer's shape via formatDateShape,
+// replacing the old implicit-locale toLocaleDateString (a server-locale leak).
+function fmtDate(d: string | null, prefs: DisplayFormatPrefs): string {
   if (!d) return "—";
   const dt = new Date(`${d}T00:00:00Z`);
   return Number.isNaN(dt.getTime())
     ? d
-    : dt.toLocaleDateString(undefined, {
-        timeZone: "UTC",
-        month: "short",
-        day: "numeric",
-      });
+    : formatDateShape(
+        prefs.dateFormat,
+        dt.getUTCFullYear(),
+        dt.getUTCMonth() + 1,
+        dt.getUTCDate(),
+        { monthStyle: "short" }
+      );
 }
 
 // The dated relation phrase — a fact, no causality.
@@ -39,10 +44,12 @@ export default function HouseholdEpisodeContextCard({
   contexts,
   profilesById,
   nameFor,
+  formatPrefs,
 }: {
   contexts: HouseholdEpisodeContext[];
   profilesById: Map<number, AvatarProfile>;
   nameFor: (id: number) => string;
+  formatPrefs: DisplayFormatPrefs;
 }) {
   return (
     <section className="card space-y-3" data-testid="episode-household-context">
@@ -58,8 +65,8 @@ export default function HouseholdEpisodeContextCard({
       <ul className="flex flex-col gap-2">
         {contexts.map((ctx) => {
           const p = profilesById.get(ctx.profileId);
-          const range = `${fmtDate(ctx.firstDay)}–${
-            ctx.ongoing ? "ongoing" : fmtDate(ctx.lastActiveDay)
+          const range = `${fmtDate(ctx.firstDay, formatPrefs)}–${
+            ctx.ongoing ? "ongoing" : fmtDate(ctx.lastActiveDay, formatPrefs)
           }`;
           return (
             <li key={`${ctx.profileId}-${ctx.episodeId}`}>

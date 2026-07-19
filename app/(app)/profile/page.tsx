@@ -51,6 +51,7 @@ export default async function ProfilePage() {
     createdAt: l.created_at,
   }));
 
+  const formatPrefs = getDisplayFormatPrefs(login.id);
   const emergencyEnabled = getEmergencyCardEnabled(profile.id);
   const card = emergencyEnabled
     ? getEmergencyCard(
@@ -58,7 +59,7 @@ export default async function ProfilePage() {
         profile.name,
         generatedAt,
         units.temperatureUnit,
-        getDisplayFormatPrefs(login.id).timeFormat
+        formatPrefs.timeFormat
       )
     : null;
 
@@ -77,6 +78,7 @@ export default async function ProfilePage() {
           mode="app"
           fields="all"
           generatedAt={generatedAt}
+          formatPrefs={formatPrefs}
         />
       </div>
 

@@ -8,9 +8,13 @@ import StatusBadge from "@/components/StatusBadge";
 import ProviderName from "@/components/ProviderName";
 import NotesText from "@/components/NotesText";
 import { formatRecordDate, titleCase } from "@/lib/record-format";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import type { DisplayFormatPrefs } from "@/lib/format-date";
 import type { CarePlanItem } from "@/lib/types";
 
-const COLUMNS: RecordColumn<CarePlanItem>[] = [
+const buildColumns = (
+  fmt: DisplayFormatPrefs
+): RecordColumn<CarePlanItem>[] => [
   {
     header: "Item",
     cellClassName: "font-medium text-slate-800 dark:text-slate-100",
@@ -42,7 +46,7 @@ const COLUMNS: RecordColumn<CarePlanItem>[] = [
   {
     header: "Planned",
     cellClassName: "whitespace-nowrap text-slate-600 dark:text-slate-300",
-    cell: (c) => formatRecordDate(c.planned_date),
+    cell: (c) => formatRecordDate(c.planned_date, "—", fmt),
   },
   {
     header: "Status",
@@ -63,7 +67,7 @@ export default function CarePlanList({ items }: { items: CarePlanItem[] }) {
   return (
     <RecordTable
       items={items}
-      columns={COLUMNS}
+      columns={buildColumns(useFormatPrefs())}
       emptyMessage="No care-plan items yet. Add one, or import a MyChart / CCD health record to populate your planned care."
       renderEditForm={(c, done) => (
         <CarePlanForm action={updateCarePlanItem} item={c} onDone={done} />

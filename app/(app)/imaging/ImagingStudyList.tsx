@@ -7,6 +7,8 @@ import { updateImagingStudy, deleteImagingStudy } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
 import { formatRecordDate } from "@/lib/record-format";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import type { DisplayFormatPrefs } from "@/lib/format-date";
 import {
   studyDisplayLabel,
   modalityLabel,
@@ -19,10 +21,11 @@ import type { ImagingStudy, ImagingModality } from "@/lib/types";
 // Columns as a factory so the Follow-up cell can read the per-study follow-up map
 // (issue #700) without a module-level global.
 function buildColumns(
-  followUps: Map<number, ImagingFollowUpSummary>
+  followUps: Map<number, ImagingFollowUpSummary>,
+  fmt: DisplayFormatPrefs
 ): RecordColumn<ImagingStudy>[] {
   return [
-    ...BASE_COLUMNS,
+    ...baseColumns(fmt),
     {
       header: "Follow-up",
       headerClassName: "hidden md:table-cell",
@@ -34,7 +37,7 @@ function buildColumns(
   ];
 }
 
-const BASE_COLUMNS: RecordColumn<ImagingStudy>[] = [
+const baseColumns = (fmt: DisplayFormatPrefs): RecordColumn<ImagingStudy>[] => [
   {
     header: "Study",
     cellClassName: "font-medium text-slate-800 dark:text-slate-100",
@@ -72,7 +75,7 @@ const BASE_COLUMNS: RecordColumn<ImagingStudy>[] = [
   {
     header: "Date",
     cellClassName: "whitespace-nowrap text-slate-600 dark:text-slate-300",
-    cell: (s) => formatRecordDate(s.study_date),
+    cell: (s) => formatRecordDate(s.study_date, "—", fmt),
   },
   {
     header: "Source",
@@ -103,9 +106,10 @@ export default function ImagingStudyList({
       if (!m.has(f.sourceImagingStudyId)) m.set(f.sourceImagingStudyId, f);
     return m;
   }, [followUps]);
+  const fmt = useFormatPrefs();
   const columns = useMemo(
-    () => buildColumns(followUpByStudy),
-    [followUpByStudy]
+    () => buildColumns(followUpByStudy, fmt),
+    [followUpByStudy, fmt]
   );
 
   const filtered = useMemo(() => {

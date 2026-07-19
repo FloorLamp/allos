@@ -8,6 +8,8 @@ import NotesText from "@/components/NotesText";
 import RecordProvenance from "@/components/RecordProvenance";
 import { useConfirmedAction } from "@/components/useConfirmedAction";
 import { formatRecordDate } from "@/lib/record-format";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import type { DisplayFormatPrefs } from "@/lib/format-date";
 import { updateSkinLesion, deleteSkinLesion } from "./actions";
 import {
   skinLesionDisplayLabel,
@@ -48,6 +50,7 @@ function LesionRecordRow({
   record: SkinLesion;
   followUp?: SkinLesionFollowUpSummary;
 }) {
+  const fmt = useFormatPrefs();
   const [editing, setEditing] = useState(false);
   const { run: runDelete, pending: deleting } = useConfirmedAction(
     {
@@ -79,7 +82,7 @@ function LesionRecordRow({
       data-testid={`lesion-record-${record.id}`}
     >
       <span className="whitespace-nowrap font-medium text-slate-700 dark:text-slate-200">
-        {formatRecordDate(record.observed_date)}
+        {formatRecordDate(record.observed_date, "—", fmt)}
       </span>
       <StatusBadge status={record.status} />
       {letters && (
