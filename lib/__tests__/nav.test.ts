@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { isRouteActive, isGroupActive, isNavLeafVisible } from "../nav";
+import { DEFAULT_NAV_RELEVANCE } from "../nav-relevance";
 
 describe("isRouteActive", () => {
   it("matches the dashboard only on an exact '/'", () => {
@@ -54,6 +55,7 @@ describe("isNavLeafVisible", () => {
     multiProfile: true,
     foodLoggingRelevant: true,
     hasIntakeItems: false,
+    relevance: DEFAULT_NAV_RELEVANCE,
     restrictedHrefs,
     ...over,
   });
@@ -143,6 +145,24 @@ describe("isNavLeafVisible", () => {
     expect(
       isNavLeafVisible({ href: "/__gated__" }, ctx({ restricted: false }))
     ).toBe(true);
+  });
+
+  it("hides relevanceKey leaves when their relevance bit is false (#1042)", () => {
+    const cycle = { href: "/medical/cycles", relevanceKey: "cycle" as const };
+    const vision = { href: "/vision", relevanceKey: "vision" as const };
+    const off = { cycle: false, vision: false, dental: false };
+    expect(isNavLeafVisible(cycle, ctx({ relevance: off }))).toBe(false);
+    expect(isNavLeafVisible(vision, ctx({ relevance: off }))).toBe(false);
+    // Each key gates only its own leaf.
+    expect(
+      isNavLeafVisible(cycle, ctx({ relevance: { ...off, cycle: true } }))
+    ).toBe(true);
+    // A leaf without a relevanceKey is unaffected.
+    expect(isNavLeafVisible({ href: "/skin" }, ctx({ relevance: off }))).toBe(
+      true
+    );
+    // The all-true default (an un-threaded caller) never over-hides.
+    expect(isNavLeafVisible(cycle, ctx())).toBe(true);
   });
 
   it("keeps /training visible to a restricted profile (#489 is type-aware)", () => {

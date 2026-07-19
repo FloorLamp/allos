@@ -11,6 +11,7 @@ import JournalCalendar from "@/components/JournalCalendar";
 import ThemeToggle from "@/components/ThemeToggle";
 import type { SessionProfile } from "@/lib/auth";
 import type { AppVersion } from "@/lib/version";
+import { DEFAULT_NAV_RELEVANCE, type NavRelevance } from "@/lib/nav-relevance";
 
 // The single source of truth for the sidebar's contents. Rendered
 // verbatim by BOTH the desktop sidebar (app/(app)/layout.tsx) and the mobile
@@ -39,6 +40,7 @@ export default function SidebarContent({
   multiProfile = false,
   foodLoggingRelevant = true,
   hasIntakeItems = false,
+  relevance = DEFAULT_NAV_RELEVANCE,
   reviewCount = 0,
   readOnly = false,
   onNavigate,
@@ -62,6 +64,10 @@ export default function SidebarContent({
   // True when the active profile tracks any intake item (#746); keeps the
   // Nutrition entry (→ Supplements tab) reachable for an infant supplement user.
   hasIntakeItems?: boolean;
+  // Server-resolved relevance bitset (issue #1042) gating the Cycle/Vision/
+  // Dental nav entries. Resolved once by the layout (getNavRelevance) and
+  // threaded through this ONE shared component so both viewports agree.
+  relevance?: NavRelevance;
   // Count of integrations currently needing attention (failed syncs) — shown as
   // a badge on the profile menu, linking to Data → Review. Resolved server-side.
   reviewCount?: number;
@@ -114,6 +120,7 @@ export default function SidebarContent({
         multiProfile={multiProfile}
         foodLoggingRelevant={foodLoggingRelevant}
         hasIntakeItems={hasIntakeItems}
+        relevance={relevance}
       />
       {/* Profile switcher/logout above one bordered box holding the theme toggle
       and version hash as equal, borderless halves (a single segmented control). */}

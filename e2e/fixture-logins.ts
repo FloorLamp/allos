@@ -361,6 +361,30 @@ export const HH_HISTORY_CHILD_PROFILE = "Household History Child (e2e)";
 // affordance. Separate login so the read-only assertions never race the write one.
 export const E2E_LOGIN_HHHIST_RO = "e2e_hhhist_ro";
 
+// ── Nav relevance gating fixtures (#1042 phase 1) ─────────────────────────────
+// Two dedicated profiles for the nav-consolidation spec's Cycle/specialty gating
+// assertions, both READ-ONLY in their spec (it only inspects the sidebar), so
+// concurrent workers never contend and --repeat-each stays clean.
+//   • NAV_FEMALE: sex=female + explicit premenopausal reproductive status, NO
+//     cycle rows — the Cycle entry shows via the status arm of
+//     cycleTrackingRelevant. Owns NO vision/dental rows either, so the
+//     data-gated Vision/Dental entries are provably hidden on the same profile.
+//   • NAV_MALE: sex=male + adult birthdate, NO cycle rows — Cycle hidden.
+export const E2E_LOGIN_NAV_FEMALE = "e2e_nav_female";
+export const NAV_FEMALE_PROFILE = "Nav Cycle Female (e2e)";
+export const E2E_LOGIN_NAV_MALE = "e2e_nav_male";
+export const NAV_MALE_PROFILE = "Nav Cycle Male (e2e)";
+
+// ── Dashboard weight quick-add (#1042 phase 2) ────────────────────────────────
+// A dedicated, write-granted ADULT profile with two seeded weigh-ins (notes
+// 'e2e:seed-weight') so the dashboard weight-trend widget renders its chart.
+// Spec-owned on purpose (#868): the weight-quick-add spec resets every non-seed
+// body_metrics row on it at test start (the smoke.spec direct-DB precedent), so
+// it's repeat-safe and its writes never perturb a shared profile's weight series
+// (which the trends/kids-growth/nutrition specs read). No birthdate → adult.
+export const E2E_LOGIN_WEIGHT_QA = "e2e_weight_qa";
+export const WEIGHT_QUICKADD_PROFILE = "Weight Quickadd (e2e)";
+
 // A member granted a dedicated sick profile whose ONLY temperature reading is a
 // LEGACY imported Celsius row (unit 'Cel', source 'ccd', stored before the #1018
 // import-boundary conversion existed), so the episode surfaces prove the
