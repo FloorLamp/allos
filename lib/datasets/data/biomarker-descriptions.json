@@ -1260,6 +1260,66 @@
       "abbreviation": "CAL",
       "full_name": "Clinical Attachment Loss",
       "description": "The distance from the cemento-enamel junction to the base of the periodontal pocket, in millimeters - the cumulative amount of tooth-supporting attachment that has been lost. Roughly 1-2 mm is mild, 3-4 mm moderate, and 5 mm or more severe. It tracks periodontitis progression over time; lower is better."
+    },
+    {
+      "name": "Hearing Threshold, Right Ear 250 Hz",
+      "full_name": "Hearing Threshold, Right Ear 250 Hz",
+      "description": "The softest 250 Hz tone the right ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better; informational, not a diagnosis."
+    },
+    {
+      "name": "Hearing Threshold, Right Ear 500 Hz",
+      "full_name": "Hearing Threshold, Right Ear 500 Hz",
+      "description": "The softest 500 Hz tone the right ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better; informational, not a diagnosis."
+    },
+    {
+      "name": "Hearing Threshold, Right Ear 1 kHz",
+      "full_name": "Hearing Threshold, Right Ear 1 kHz",
+      "description": "The softest 1 kHz tone the right ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better; informational, not a diagnosis."
+    },
+    {
+      "name": "Hearing Threshold, Right Ear 2 kHz",
+      "full_name": "Hearing Threshold, Right Ear 2 kHz",
+      "description": "The softest 2 kHz tone the right ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better; informational, not a diagnosis."
+    },
+    {
+      "name": "Hearing Threshold, Right Ear 4 kHz",
+      "full_name": "Hearing Threshold, Right Ear 4 kHz",
+      "description": "The softest 4 kHz tone the right ear can hear, in decibels hearing level (dB HL), from an audiogram. 4 kHz is the classic noise-exposure 'notch' frequency. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better; informational, not a diagnosis."
+    },
+    {
+      "name": "Hearing Threshold, Right Ear 8 kHz",
+      "full_name": "Hearing Threshold, Right Ear 8 kHz",
+      "description": "The softest 8 kHz tone the right ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better; informational, not a diagnosis."
+    },
+    {
+      "name": "Hearing Threshold, Left Ear 250 Hz",
+      "full_name": "Hearing Threshold, Left Ear 250 Hz",
+      "description": "The softest 250 Hz tone the left ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better; informational, not a diagnosis."
+    },
+    {
+      "name": "Hearing Threshold, Left Ear 500 Hz",
+      "full_name": "Hearing Threshold, Left Ear 500 Hz",
+      "description": "The softest 500 Hz tone the left ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better; informational, not a diagnosis."
+    },
+    {
+      "name": "Hearing Threshold, Left Ear 1 kHz",
+      "full_name": "Hearing Threshold, Left Ear 1 kHz",
+      "description": "The softest 1 kHz tone the left ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better; informational, not a diagnosis."
+    },
+    {
+      "name": "Hearing Threshold, Left Ear 2 kHz",
+      "full_name": "Hearing Threshold, Left Ear 2 kHz",
+      "description": "The softest 2 kHz tone the left ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better; informational, not a diagnosis."
+    },
+    {
+      "name": "Hearing Threshold, Left Ear 4 kHz",
+      "full_name": "Hearing Threshold, Left Ear 4 kHz",
+      "description": "The softest 4 kHz tone the left ear can hear, in decibels hearing level (dB HL), from an audiogram. 4 kHz is the classic noise-exposure 'notch' frequency. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better; informational, not a diagnosis."
+    },
+    {
+      "name": "Hearing Threshold, Left Ear 8 kHz",
+      "full_name": "Hearing Threshold, Left Ear 8 kHz",
+      "description": "The softest 8 kHz tone the left ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better; informational, not a diagnosis."
     }
   ]
 }

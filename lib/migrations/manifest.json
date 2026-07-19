@@ -65,5 +65,6 @@
   "064-login-email.ts": "f3d484bb9e81e4e0c6d10a722d0510b5a7e47301c3ffc31f93671e0f31401f74",
   "065-optical-prescriptions.ts": "1ae2b513c3cb0cf600322e44ceeaf30dea3da0274f93906e7336fe935fcf4ddd",
   "066-instrument-responses.ts": "9ab5a61800ff261ee67db6bf33e083cac7d3f97907c56de04305ef3246bc3811",
-  "067-dental-procedures.ts": "da964f52c5ba3f56c43881127df76412dda7668d4a6cf07a3a51d2f9691b0ce1"
+  "067-dental-procedures.ts": "da964f52c5ba3f56c43881127df76412dda7668d4a6cf07a3a51d2f9691b0ce1",
+  "068-equipment-hearing-aid.ts": "36a5ab82a2fa09b2dbf7e759321aa60cffcc612b585057393a783a6485999697"
 }

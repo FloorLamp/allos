@@ -1448,6 +1448,152 @@ export const CURATED_LABS: Biomarker[] = [
     note: "Distance from the cemento-enamel junction to the base of the periodontal pocket, in millimetres — the cumulative attachment lost. 1–2 mm is mild, 3–4 mm moderate, ≥5 mm severe (2017 AAP/EFP staging). Tracks periodontitis progression over time.",
   },
 
+  // ── Audiogram pure-tone thresholds (issue #713) ────────────────────────────
+  // Per-EAR (right/left), per-FREQUENCY pure-tone air-conduction hearing
+  // thresholds in decibels hearing level (dB HL) — the audiogram. Like the vision
+  // (IOP/acuity, #698) and periodontal (#705) analytes above, these reuse the
+  // biomarker substrate (medical_records) rather than a parallel audiogram table
+  // (#860/#944 observation-substrate), so each series trends + flags on the
+  // Biomarkers surface for free ("is my hearing getting worse at 4 kHz?"). Normal
+  // hearing is ≤25 dB HL (WHO), so the band flags an elevated threshold; LOWER is
+  // better. The two ears stay SEPARATE series (each frequency its own analyte), but
+  // collapse to ONE "hearing" identity family for starring/dismissal
+  // (biomarkerFamily, lib/canonical-name.ts) — the #482 question is one measure per
+  // person. Captured from an uploaded audiogram report via AI extraction (into
+  // `results`), or entered manually. INFORMATIONAL, NOT MEDICAL ADVICE.
+  {
+    name: "Hearing Threshold, Right Ear 250 Hz",
+    category: "vitals",
+    unit: "dB HL",
+    ref_low: null,
+    ref_high: 25,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "lower_better",
+    note: "Pure-tone air-conduction hearing threshold for the RIGHT ear at 250 Hz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO.",
+  },
+  {
+    name: "Hearing Threshold, Right Ear 500 Hz",
+    category: "vitals",
+    unit: "dB HL",
+    ref_low: null,
+    ref_high: 25,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "lower_better",
+    note: "Pure-tone air-conduction hearing threshold for the RIGHT ear at 500 Hz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO.",
+  },
+  {
+    name: "Hearing Threshold, Right Ear 1 kHz",
+    category: "vitals",
+    unit: "dB HL",
+    ref_low: null,
+    ref_high: 25,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "lower_better",
+    note: "Pure-tone air-conduction hearing threshold for the RIGHT ear at 1 kHz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO.",
+  },
+  {
+    name: "Hearing Threshold, Right Ear 2 kHz",
+    category: "vitals",
+    unit: "dB HL",
+    ref_low: null,
+    ref_high: 25,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "lower_better",
+    note: "Pure-tone air-conduction hearing threshold for the RIGHT ear at 2 kHz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO.",
+  },
+  {
+    name: "Hearing Threshold, Right Ear 4 kHz",
+    category: "vitals",
+    unit: "dB HL",
+    ref_low: null,
+    ref_high: 25,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "lower_better",
+    note: "Pure-tone air-conduction hearing threshold for the RIGHT ear at 4 kHz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it — 4 kHz is the classic noise-notch frequency. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO.",
+  },
+  {
+    name: "Hearing Threshold, Right Ear 8 kHz",
+    category: "vitals",
+    unit: "dB HL",
+    ref_low: null,
+    ref_high: 25,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "lower_better",
+    note: "Pure-tone air-conduction hearing threshold for the RIGHT ear at 8 kHz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO.",
+  },
+  {
+    name: "Hearing Threshold, Left Ear 250 Hz",
+    category: "vitals",
+    unit: "dB HL",
+    ref_low: null,
+    ref_high: 25,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "lower_better",
+    note: "Pure-tone air-conduction hearing threshold for the LEFT ear at 250 Hz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO.",
+  },
+  {
+    name: "Hearing Threshold, Left Ear 500 Hz",
+    category: "vitals",
+    unit: "dB HL",
+    ref_low: null,
+    ref_high: 25,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "lower_better",
+    note: "Pure-tone air-conduction hearing threshold for the LEFT ear at 500 Hz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO.",
+  },
+  {
+    name: "Hearing Threshold, Left Ear 1 kHz",
+    category: "vitals",
+    unit: "dB HL",
+    ref_low: null,
+    ref_high: 25,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "lower_better",
+    note: "Pure-tone air-conduction hearing threshold for the LEFT ear at 1 kHz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO.",
+  },
+  {
+    name: "Hearing Threshold, Left Ear 2 kHz",
+    category: "vitals",
+    unit: "dB HL",
+    ref_low: null,
+    ref_high: 25,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "lower_better",
+    note: "Pure-tone air-conduction hearing threshold for the LEFT ear at 2 kHz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO.",
+  },
+  {
+    name: "Hearing Threshold, Left Ear 4 kHz",
+    category: "vitals",
+    unit: "dB HL",
+    ref_low: null,
+    ref_high: 25,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "lower_better",
+    note: "Pure-tone air-conduction hearing threshold for the LEFT ear at 4 kHz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it — 4 kHz is the classic noise-notch frequency. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO.",
+  },
+  {
+    name: "Hearing Threshold, Left Ear 8 kHz",
+    category: "vitals",
+    unit: "dB HL",
+    ref_low: null,
+    ref_high: 25,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "lower_better",
+    note: "Pure-tone air-conduction hearing threshold for the LEFT ear at 8 kHz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO.",
+  },
+
   // ── Mental-health instruments (issue #716) ─────────────────────────────────
   // Validated screening-instrument TOTAL SCORES — PHQ-9 (depression), GAD-7
   // (anxiety) — as biomarker-shaped, trended series (the observation substrate,

@@ -485,6 +485,7 @@ function appointmentKindFromFhir(r: any): AppointmentKind | null {
   if (!t) return null;
   if (/\b(dental|dentist|teeth|cleaning|hygien)/.test(t)) return "dental";
   if (/\b(vision|eye|optometr|ophthalm)/.test(t)) return "vision";
+  if (/\b(hearing|audiolog|audiogram|audiometr)/.test(t)) return "hearing";
   if (/\bwell[\s-]?child|child\s+check|pediatric\s+well/.test(t))
     return "well_child";
   if (/\b(physical|check[\s-]?up|annual\s+exam|wellness\s+visit)/.test(t))

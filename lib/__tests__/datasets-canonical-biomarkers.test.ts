@@ -44,10 +44,14 @@ import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 // <10%, clinical attachment loss ≤1 mm — all lower_better) add new flag-relevant rows,
 // so the signature legitimately changes and the boot reconcile re-flags stored perio
 // records against the new bands.
+// Updated for #713: the audiogram pure-tone thresholds (12 per-ear, per-frequency dB HL
+// analytes, all lower_better with the ≤25 dB HL WHO band) add new flag-relevant rows,
+// so the signature legitimately changes and the boot reconcile re-flags stored hearing
+// records against the new bands.
 const FLAG_SIGNATURE_GOLDEN =
   // A SHA-256 content hash of the canonical dataset; a digit substring
   // coincidentally forms a Luhn-valid NPI shape — provably synthetic.
-  "6aa446a7dec64c715a2396d833878ef54e96ea4762d80665b2e6c6862db67c78"; // phi-scan-ok
+  "6f2563fc0ec12b58d8b1de2537579a4196d3fe969272ecc86ac852c5ae18425c"; // phi-scan-ok
 
 describe("canonical-biomarkers dataset on the curated-dataset framework", () => {
   it("passes the whole framework harness (citation + identity + refusal + no collisions)", () => {

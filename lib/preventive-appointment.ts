@@ -28,6 +28,7 @@ export const APPOINTMENT_KINDS: AppointmentKind[] = [
   "physical",
   "dental",
   "vision",
+  "hearing",
   "screening",
   "other",
 ];
@@ -38,6 +39,7 @@ export const APPOINTMENT_KIND_LABELS: Record<AppointmentKind, string> = {
   physical: "Physical / check-up",
   dental: "Dental",
   vision: "Vision / eye exam",
+  hearing: "Hearing / audiology",
   screening: "Screening",
   other: "Other",
 };
@@ -61,6 +63,8 @@ function computeKindForRule(ruleKey: string): AppointmentKind | null {
       return "dental";
     case "vision_exam":
       return "vision";
+    case "hearing_screening":
+      return "hearing";
   }
   // Every other catalog rule is a screening-shaped item (incl. skin_check).
   return "screening";
@@ -85,6 +89,7 @@ const RULE_BY_COMPLETED_KIND: Partial<Record<AppointmentKind, string>> = {
   physical: "adult_physical",
   dental: "dental_cleaning",
   vision: "vision_exam",
+  hearing: "hearing_screening",
 };
 
 // The single preventive rule key a completed appointment of this kind satisfies,
