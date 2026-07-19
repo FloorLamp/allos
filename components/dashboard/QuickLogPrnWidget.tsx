@@ -9,6 +9,7 @@ import {
   formatGivenAtClock,
 } from "@/lib/administration-format";
 import { redoseWindowStatus } from "@/lib/prn-redose";
+import { now as clockNow } from "@/lib/clock";
 import { redoseCardLabel } from "@/lib/redose-format";
 import { parseUtcSql } from "@/lib/date";
 import type { TimeFormat } from "@/lib/format-date";
@@ -61,6 +62,7 @@ export function QuickLogPrnContent({
   titleHref,
   showPageLink = true,
   timeFormat,
+  nowIso,
 }: {
   meds: PrnMedForQuickLog[];
   tz: string;
@@ -75,8 +77,18 @@ export function QuickLogPrnContent({
   titleHref?: AppRoute;
   showPageLink?: boolean;
   timeFormat?: TimeFormat;
+  // The redose-window "now", as an ISO instant from the nearest SERVER boundary.
+  // REQUIRED whenever this content is mounted under a "use client" parent (the
+  // illness cockpit/episode logger): in the browser, lib/clock's env override
+  // doesn't exist, so a locally-computed now diverges from the clock-stamped
+  // given_at under ALLOS_TEST_NOW (the frozen e2e clock). Server mounts may omit
+  // it (the local clockNow() below is the same server clock).
+  nowIso?: string;
 }) {
-  const now = new Date();
+  // The frozen-clock seam (#1005): given_at is stamped through lib/clock, so the
+  // elapsed-window "now" must come from the same source (a production no-op). A
+  // client-mounted content receives the server's now via nowIso (see prop note).
+  const now = nowIso ? new Date(nowIso) : clockNow();
   // The redose status line (#798), when the med has confirmed interval/max and
   // something's been logged. Same redoseCardLabel the medications card uses (one
   // computation, so the widget and card never disagree). Marker-agnostic — the card

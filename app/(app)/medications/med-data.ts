@@ -30,6 +30,7 @@ import {
   getMedicalRecords,
 } from "@/lib/queries";
 import { redoseWindowStatus } from "@/lib/prn-redose";
+import { now as clockNow } from "@/lib/clock";
 import { redoseCardLabel } from "@/lib/redose-format";
 import {
   administrationDayLabel,
@@ -194,7 +195,9 @@ export function loadMedicationsData(profileId: number): MedicationsData {
   const todaysActivities = getActivitiesByDate(profileId, todayStr);
   const isWorkoutDay = todaysActivities.length > 0;
   const predictedWorkoutDay = isPredictedWorkoutDay(profileId, todayStr);
-  const { hhmm } = zonedDateParts(tz, new Date());
+  // Through the frozen-clock seam (#1005): a bare new Date() here diverges from
+  // clock-stamped given_at/log times under ALLOS_TEST_NOW (a production no-op).
+  const { hhmm } = zonedDateParts(tz, clockNow());
   const nowMinutes = Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
   const postWorkoutReady = isPostWorkoutReady(
     todaysActivities.map((a) => a.end_time ?? a.start_time),
@@ -241,7 +244,7 @@ export function loadMedicationsData(profileId: number): MedicationsData {
   // Batch the day's administrations for every PRN med in ONE query (#885) rather than
   // one query per PRN item inside the card-builder loop — an N+1 over the un-purged
   // intake_item_logs ledger. Per-item derivation stays in JS below.
-  const nowInstant = new Date();
+  const nowInstant = clockNow();
   const prnMedIds = supplements
     .filter((s) => s.kind === "medication" && s.as_needed === 1)
     .map((s) => s.id);
