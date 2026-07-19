@@ -14,6 +14,8 @@
 // events (no time, no zone — they're the same calendar day everywhere).
 
 import { shiftDateStr } from "./date";
+import type { AppointmentKind } from "./types";
+import { sharedSurfaceDetail } from "./appointment-sensitivity";
 
 export type IcsDetail = "minimal" | "full";
 
@@ -27,6 +29,11 @@ export interface AppointmentLike {
   location: string | null;
   provider_name: string | null;
   notes: string | null;
+  // Optional visit category (#997). A sensitivity-default kind (mental_health)
+  // drops to minimal detail on this exported feed even when detail is "full",
+  // unless the profile owner opted it back in (mentalHealthShareFull). Absent =
+  // treated as no special sensitivity.
+  kind?: AppointmentKind | null;
 }
 
 // A fully-resolved calendar event, ready to serialize. Timing is either a UTC
@@ -109,9 +116,23 @@ function trimOrNull(s: string | null | undefined): string | null {
 // ones are CONFIRMED and carry the reminder alarms.
 export function appointmentToIcsEvent(
   a: AppointmentLike,
-  opts: { tz: string; detail: IcsDetail; defaultDurationMin?: number }
+  opts: {
+    tz: string;
+    detail: IcsDetail;
+    defaultDurationMin?: number;
+    // The profile owner's opt-in to show sensitivity-default kinds (mental_health)
+    // in full detail on this shared/exported feed (#997). Absent/false ⇒ such a
+    // visit is forced to minimal even when `detail` is "full".
+    mentalHealthShareFull?: boolean;
+  }
 ): IcsEvent {
   const cancelled = a.status === "cancelled";
+  // Sensitivity-aware detail (#997): a mental_health visit defaults to minimal on
+  // this exported feed unless the owner overrode it. Every other kind honors the
+  // feed's own detail level unchanged.
+  const detail = sharedSurfaceDetail(a.kind, opts.detail, {
+    sensitiveShareFull: opts.mentalHealthShareFull,
+  });
   const m = DATETIME_RE.exec(a.scheduled_at.trim());
 
   let allDay = true;
@@ -139,7 +160,7 @@ export function appointmentToIcsEvent(
 
   let summary: string;
   let description: string | null = null;
-  if (opts.detail === "full") {
+  if (detail === "full") {
     // Full detail: the real reason/title + provider + notes go to the calendar.
     summary = title ?? provider ?? "Medical appointment";
     const lines = [
@@ -258,7 +279,12 @@ function formatPreviewTime(h: number, mi: number): string {
 // level) and reads the date/time labels from the original wall-clock string.
 export function appointmentToPreviewRow(
   a: AppointmentLike,
-  opts: { tz: string; detail: IcsDetail; defaultDurationMin?: number }
+  opts: {
+    tz: string;
+    detail: IcsDetail;
+    defaultDurationMin?: number;
+    mentalHealthShareFull?: boolean;
+  }
 ): CalendarFeedPreviewRow {
   const ev = appointmentToIcsEvent(a, opts);
   const m = DATETIME_RE.exec(a.scheduled_at.trim());
@@ -287,6 +313,7 @@ export function selectFeedPreviewRows(
     detail: IcsDetail;
     pastWindowDays?: number;
     defaultDurationMin?: number;
+    mentalHealthShareFull?: boolean;
   }
 ): CalendarFeedPreviewRow[] {
   return selectFeedAppointments(appts, {
@@ -297,6 +324,7 @@ export function selectFeedPreviewRows(
       tz: opts.tz,
       detail: opts.detail,
       defaultDurationMin: opts.defaultDurationMin,
+      mentalHealthShareFull: opts.mentalHealthShareFull,
     })
   );
 }
@@ -460,6 +488,11 @@ export interface FeedOptions {
   reminders: boolean; // emit VALARM reminders on events
   pastWindowDays: number;
   futureWindowDays: number | null;
+  // The profile owner's opt-in to show sensitivity-default kinds (mental_health)
+  // at full detail on this exported feed (#997). Absent/false ⇒ a mental_health
+  // visit is forced to minimal ("Medical appointment") even when `detail` is
+  // "full" — privacy-by-default for the one behavioral-health-sensitive kind.
+  mentalHealthShareFull?: boolean;
 }
 
 // The subset of an UpcomingItem this module needs to turn a non-appointment
@@ -572,7 +605,11 @@ export function composeFeedEvents(input: {
       futureWindowDays: options.futureWindowDays,
     });
     for (const a of selected) {
-      const ev = appointmentToIcsEvent(a, { tz, detail: options.detail });
+      const ev = appointmentToIcsEvent(a, {
+        tz,
+        detail: options.detail,
+        mentalHealthShareFull: options.mentalHealthShareFull,
+      });
       // Honor the global reminder toggle (a cancelled event never has alarms).
       events.push(options.reminders ? ev : { ...ev, alarms: false });
     }
@@ -643,7 +680,11 @@ export function composeFeedPreviewRows(input: {
       futureWindowDays: options.futureWindowDays,
     });
     for (const a of selected) {
-      const base = appointmentToPreviewRow(a, { tz, detail: options.detail });
+      const base = appointmentToPreviewRow(a, {
+        tz,
+        detail: options.detail,
+        mentalHealthShareFull: options.mentalHealthShareFull,
+      });
       rows.push({
         uid: base.uid,
         category: "appointment",

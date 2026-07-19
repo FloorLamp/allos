@@ -121,6 +121,19 @@ export const EMPTY_TRAINING_PROFILE = "Empty Training (e2e)";
 export const E2E_LOGIN_MENTAL = "e2e_mental";
 export const MENTAL_HEALTH_PROFILE = "Mental Health (e2e)";
 
+// A dedicated ADULT profile for the mental-health-visit sensitivity + crisis-
+// resources specs (#997/#996). Seeded with its calendar feed set to FULL detail and
+// a per-profile crisis-resources override; the spec OWNS every appointment it books
+// (create-and-verify, filtered by unique title), so it never counts a shared-seed
+// row and --repeat-each stays clean. Isolated session — no contention with the
+// score-accumulating E2E_LOGIN_MENTAL profile.
+export const E2E_LOGIN_CRISIS = "e2e_crisis";
+export const CRISIS_PROFILE = "Crisis Support (e2e)";
+// The per-profile crisis-resources OVERRIDE seeded for CRISIS_PROFILE — a synthetic
+// entry so the passive surface + inline finding render the profile's own line.
+export const CRISIS_OVERRIDE_LABEL = "Crisis Text Line (e2e)";
+export const CRISIS_OVERRIDE_CONTACT = "Text 555-0142";
+
 // A brand-new, write-granted profile with explicit version-1 onboarding state and
 // no health data. The onboarding spec owns every mutation on it.
 export const E2E_LOGIN_ONBOARDING = "e2e_onboarding";

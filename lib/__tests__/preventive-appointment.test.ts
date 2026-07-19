@@ -168,3 +168,25 @@ describe("suggestedBookDate", () => {
     expect(suggestedBookDate(null, "2026-07-10")).toBe("2026-07-10");
   });
 });
+
+// #997 — the mental_health kind + its inference-text fold into the shared
+// preventive-satisfaction stream.
+describe("mental_health kind (#997)", () => {
+  it("is a known kind with a label, but is NOT a single-rule completed kind", () => {
+    expect(isAppointmentKind("mental_health")).toBe(true);
+    expect(APPOINTMENT_KINDS).toContain("mental_health");
+    // Ambiguous (satisfies BOTH depression and anxiety) → no single close-the-loop
+    // rule; it relies on the inference stream instead, like screening/well_child.
+    expect(satisfiedRuleForCompletedKind("mental_health")).toBeNull();
+  });
+
+  it("contributes 'mental health visit' inference text only for mental_health", async () => {
+    const { appointmentKindInferenceText } =
+      await import("../preventive-appointment");
+    expect(appointmentKindInferenceText("mental_health")).toBe(
+      "mental health visit"
+    );
+    expect(appointmentKindInferenceText("physical")).toBeNull();
+    expect(appointmentKindInferenceText(null)).toBeNull();
+  });
+});

@@ -3,6 +3,7 @@ import {
   resolveLoginByConsolidatedCalendarToken,
   getCalendarFeed,
   getTimezone,
+  getMentalHealthShareFull,
 } from "@/lib/settings";
 import { accessibleProfilesForLogin } from "@/lib/auth";
 import { getAppointments, collectUpcoming } from "@/lib/queries";
@@ -82,6 +83,10 @@ export async function GET(
         reminders: feed.reminders,
         pastWindowDays: feed.pastWindowDays,
         futureWindowDays: feed.futureWindowDays,
+        // Each profile carries its OWN mental-health share override (#997) into the
+        // family feed, so a minimal-by-default behavioral-health visit stays minimal
+        // even inside the shared calendar unless that profile opted it into full.
+        mentalHealthShareFull: getMentalHealthShareFull(p.id),
       },
       tz: getTimezone(p.id),
       today: todayStr,

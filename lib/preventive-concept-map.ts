@@ -199,6 +199,22 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "phq 9",
       "phq 2",
       "patient health questionnaire",
+      // A completed MENTAL-HEALTH visit is legitimate evidence toward this screening
+      // (#997), so a person in active behavioral-health care isn't also nagged to get
+      // screened. The `mental_health` appointment KIND folds in "mental health visit"
+      // (appointmentKindInferenceText) and, uniquely, widens its inference `allow` to
+      // include "screening" so it reaches this screening matcher through the SAME
+      // shared stream a physical uses for its check-up — no forked satisfaction path.
+      // Names are UNAMBIGUOUS behavioral-health terms only (bare "therapy"/"therapist"
+      // are left out — they collapse with physical/occupational therapy, an over-match
+      // #86 conservatism forbids).
+      "mental health visit",
+      "psychotherapy",
+      "counseling",
+      "psychiatry",
+      "psychiatrist",
+      "psychologist",
+      "behavioral health",
     ],
     // A recorded PHQ-9 SCORE (the biomarker-shaped instrument reading, #716) is
     // stronger evidence than a bare coded screen, so it satisfies the screening too.
@@ -213,7 +229,20 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
     ruleKey: "anxiety_screening",
     kind: "screening",
     codes: [],
-    names: ["anxiety screening", "gad 7", "generalized anxiety disorder"],
+    names: [
+      "anxiety screening",
+      "gad 7",
+      "generalized anxiety disorder",
+      // A completed mental-health visit satisfies the anxiety screening too (#997) —
+      // same unambiguous behavioral-health synonyms + folded kind text as depression.
+      "mental health visit",
+      "psychotherapy",
+      "counseling",
+      "psychiatry",
+      "psychiatrist",
+      "psychologist",
+      "behavioral health",
+    ],
     canonicalBiomarkers: ["GAD-7"],
   },
   {

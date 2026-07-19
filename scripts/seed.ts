@@ -16,7 +16,7 @@ import {
   diffSituations,
   serializeSituationEvents,
 } from "../lib/trend-annotations";
-import { getTimezone } from "../lib/settings";
+import { getTimezone, setGlobalCrisisResources } from "../lib/settings";
 import { adoptTemplate } from "../lib/routines";
 import { saveFitnessEntry } from "../lib/fitness-assessment";
 import { mobilityMoveName } from "../lib/mobility-moves";
@@ -1525,6 +1525,32 @@ apptIns.run(
   null,
   "scheduled"
 ); // Later
+
+// A scheduled MENTAL-HEALTH visit (#997). Its kind defaults to MINIMAL detail on
+// shared surfaces (the household strip + the family calendar feed) — "Medical
+// appointment", not "Therapy — Dr Okafor" — even though other kinds show full
+// detail; the profile's own pages still show the full title. Synthetic provider.
+db.prepare(
+  `INSERT INTO appointments (profile_id, scheduled_at, provider_id, title, location, notes, status, kind)
+   VALUES (1,?,?,?,?,?,?,?)`
+).run(
+  daysAgo(-8),
+  null,
+  "Therapy session — Dr. Okafor",
+  "Telehealth",
+  null,
+  "scheduled",
+  "mental_health"
+);
+
+// ── Crisis resources (global instance default, #996) ──────────────────
+// Synthetic, region-neutral example entries (reserved 555-01xx numbers) so the
+// crisis surface renders a configured list rather than the neutral fallback. A
+// real self-hoster replaces these with their own region's line(s).
+setGlobalCrisisResources([
+  { label: "Local crisis line (example)", contact: "555-0100" },
+  { label: "Emergency services", contact: "Call your local emergency number" },
+]);
 
 // ── Conditions / problem list ─────────────────────────────────────────
 const condIns = db.prepare(

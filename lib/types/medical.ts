@@ -47,6 +47,7 @@ export type AppointmentKind =
   | "dental"
   | "vision"
   | "hearing"
+  | "mental_health"
   | "screening"
   | "other";
 

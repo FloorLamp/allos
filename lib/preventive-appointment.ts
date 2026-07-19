@@ -29,6 +29,7 @@ export const APPOINTMENT_KINDS: AppointmentKind[] = [
   "dental",
   "vision",
   "hearing",
+  "mental_health",
   "screening",
   "other",
 ];
@@ -40,9 +41,29 @@ export const APPOINTMENT_KIND_LABELS: Record<AppointmentKind, string> = {
   dental: "Dental",
   vision: "Vision / eye exam",
   hearing: "Hearing / audiology",
+  mental_health: "Mental health",
   screening: "Screening",
   other: "Other",
 };
+
+// Extra inference text a completed appointment of this kind contributes to the
+// preventive-satisfaction stream (issue #997), folded into the record name the
+// concept-map matcher sees (lib/queries/upcoming/preventive.ts). The kind is an
+// EXPLICIT structured signal — stronger than title guessing — so a mental_health
+// visit named generically ("Session") still counts as evidence toward the
+// depression/anxiety screenings via the SAME shared inference stream a titled
+// "therapy" visit uses (no forked kind-only satisfaction path). Only the kinds
+// whose title is often uninformative need this; every other kind returns null and
+// relies on its title/provider text as before.
+const KIND_INFERENCE_TEXT: Partial<Record<AppointmentKind, string>> = {
+  mental_health: "mental health visit",
+};
+
+export function appointmentKindInferenceText(
+  kind: AppointmentKind | null
+): string | null {
+  return kind != null ? (KIND_INFERENCE_TEXT[kind] ?? null) : null;
+}
 
 // Narrowing guard for a free-form string coming off a form (validates the write
 // boundary so a tampered value can't reach the DB).
