@@ -1242,6 +1242,24 @@
       "abbreviation": "GAD-7",
       "full_name": "Generalized Anxiety Disorder-7",
       "description": "A validated 7-item questionnaire that scores anxiety severity from 0 to 21, banded minimal / mild / moderate / severe. It is a screening instrument, not a diagnosis. Tracked here as a numeric score over time; informational, not medical advice."
+    },
+    {
+      "name": "Periodontal Probing Depth",
+      "abbreviation": "PPD",
+      "full_name": "Periodontal Probing Depth",
+      "description": "The depth of the gum sulcus or periodontal pocket around a tooth, measured in millimeters with a periodontal probe (usually the deepest or a representative site). A healthy sulcus is about 1-3 mm; readings of 4 mm and deeper indicate periodontal pocketing worth monitoring. Lower is better; this is informational, not a diagnosis."
+    },
+    {
+      "name": "Bleeding on Probing",
+      "abbreviation": "BOP",
+      "full_name": "Bleeding on Probing",
+      "description": "The proportion of periodontal sites that bleed when gently probed, reported as a full-mouth percentage. A full-mouth score under about 10% is consistent with periodontal stability; higher percentages suggest active gum inflammation. Lower is better; informational, not a diagnosis."
+    },
+    {
+      "name": "Clinical Attachment Loss",
+      "abbreviation": "CAL",
+      "full_name": "Clinical Attachment Loss",
+      "description": "The distance from the cemento-enamel junction to the base of the periodontal pocket, in millimeters - the cumulative amount of tooth-supporting attachment that has been lost. Roughly 1-2 mm is mild, 3-4 mm moderate, and 5 mm or more severe. It tracks periodontitis progression over time; lower is better."
     }
   ]
 }

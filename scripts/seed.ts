@@ -930,6 +930,48 @@ for (const p of PANELS) {
     medIds.push(Number(id));
   });
 }
+// Periodontal analytes (#705) — the dental analogue of vision analytes: dated,
+// trendable perio measurements stored as biomarker readings (medical_records) rather
+// than a parallel table (#860 observation-substrate), so a WORSENING trend is visible
+// on the Biomarkers surface. A gently worsening probing depth (2.5 → 3.5 → 5 mm, the
+// last flagging above the 3 mm band) + a bleeding-on-probing reading.
+for (const [days, depth] of [
+  [400, 2.5],
+  [200, 3.5],
+  [30, 5],
+] as const) {
+  medIds.push(
+    Number(
+      insMed.run(
+        daysAgo(days),
+        "vitals",
+        "Periodontal Probing Depth",
+        String(depth),
+        "mm",
+        "≤3 mm",
+        depth,
+        "Periodontal Probing Depth",
+        "Periodontal exam"
+      ).lastInsertRowid
+    )
+  );
+}
+medIds.push(
+  Number(
+    insMed.run(
+      daysAgo(30),
+      "vitals",
+      "Bleeding on Probing",
+      "18",
+      "%",
+      "<10%",
+      18,
+      "Bleeding on Probing",
+      "Periodontal exam"
+    ).lastInsertRowid
+  )
+);
+
 // Derive clinical (high/low) and non-optimal flags from the canonical reference
 // + optimal bands, so seeded readings flag exactly like real imported ones.
 reconcileFlags(SEED_PROFILE_ID, medIds);
@@ -1768,6 +1810,55 @@ opticalIns.run(
   daysAgo(90),
   daysAgo(90 - 365),
   "Daily wear contacts"
+);
+
+// ── Dental procedures (#705) ─────────────────────────────────────────────────
+// Structured dental records — obviously-fictional, tooth-anchored. Covers a
+// completed filling (with tooth/surface/CDT), a caries WATCH finding that carries a
+// recheck interval (the #700 follow-up seed), and a PLANNED extraction — the invasive
+// planned-procedure signal the #704 safety check gates on. Dental X-rays are imaging
+// studies (#702), not modeled here; perio measurements are the biomarkers above.
+const dentalIns = db.prepare(
+  `INSERT INTO dental_procedures
+     (profile_id, name, status, tooth, tooth_system, surface, cdt_code,
+      procedure_date, finding, follow_up_interval_days, notes, source)
+   VALUES (1,?,?,?,?,?,?,?,?,?,?,NULL)`
+);
+dentalIns.run(
+  "Composite filling",
+  "completed",
+  "14",
+  "universal",
+  "MOD",
+  "D2392",
+  daysAgo(200),
+  null,
+  null,
+  null
+);
+dentalIns.run(
+  "Caries watch",
+  "watch",
+  "30",
+  "universal",
+  null,
+  null,
+  daysAgo(30),
+  "Early occlusal decay on #30 — watch and recheck in 6 months.",
+  182,
+  null
+);
+dentalIns.run(
+  "Extraction of tooth #17",
+  "planned",
+  "17",
+  "universal",
+  null,
+  "D7140",
+  null,
+  "Non-restorable third molar; extraction planned.",
+  null,
+  null
 );
 
 // ── Care plan / plan of treatment ────────────────────────────────────────────

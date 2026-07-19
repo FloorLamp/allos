@@ -40,10 +40,14 @@ import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 // Updated for #716: the mental-health instruments (PHQ-9, GAD-7) add two dataset rows
 // with null bands (they carry NO numeric flag — the severity band is the on-screen
 // signal, not a MedicalFlag), so the signature changes but no stored record re-flags.
+// Updated for #705: the periodontal analytes (probing depth ≤3 mm, bleeding-on-probing
+// <10%, clinical attachment loss ≤1 mm — all lower_better) add new flag-relevant rows,
+// so the signature legitimately changes and the boot reconcile re-flags stored perio
+// records against the new bands.
 const FLAG_SIGNATURE_GOLDEN =
   // A SHA-256 content hash of the canonical dataset; a digit substring
   // coincidentally forms a Luhn-valid NPI shape — provably synthetic.
-  "2b0bff3e199082b589e1ba1b2419b73e321ad87a2886b996acbe167fcdac5b36"; // phi-scan-ok
+  "6aa446a7dec64c715a2396d833878ef54e96ea4762d80665b2e6c6862db67c78"; // phi-scan-ok
 
 describe("canonical-biomarkers dataset on the curated-dataset framework", () => {
   it("passes the whole framework harness (citation + identity + refusal + no collisions)", () => {

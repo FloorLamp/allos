@@ -119,6 +119,10 @@ const EXPORT_ALLOWLIST: { table: string; why: string }[] = [
     table: "instrument_responses",
     why: "mental-health instrument PER-ITEM answers (#716). The clinically meaningful value — the PHQ-9/GAD-7 total SCORE — is a medical_records biomarker reading that already round-trips through the FHIR Observation export; these rows are the item breakdown behind that score (kept for the item-9 handling), a supporting decomposition with no independent clinical payload to export, exactly like fitness_assessment_entries relative to its natural stores.",
   },
+  {
+    table: "dental_procedures",
+    why: "structured dental procedures/findings (#705). Dental has NO FHIR structured feed (#708 explicitly excludes it — FHIR is dental-poor), so like imaging_studies it is captured via AI extraction + DocumentReference and has no FHIR export builder yet (a dedicated dental exporter is a documented follow-up). Its trendable periodontal MEASUREMENTS already round-trip through the medical_records biomarker dataset.",
+  },
 ];
 
 describe("full export covers every owned domain (issue #465)", () => {

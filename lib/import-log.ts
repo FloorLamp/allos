@@ -174,6 +174,7 @@ export interface DocumentProducedCounts {
   genomicVariants: number;
   imagingStudies: number;
   opticalPrescriptions: number;
+  dentalProcedures: number;
   appointments: number;
   medications: number;
   bodyMetrics: number;
@@ -203,6 +204,7 @@ export function producedTotal(counts: DocumentProducedCounts): number {
     counts.genomicVariants +
     counts.imagingStudies +
     counts.opticalPrescriptions +
+    counts.dentalProcedures +
     counts.appointments +
     counts.medications +
     counts.bodyMetrics +

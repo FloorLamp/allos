@@ -29,9 +29,16 @@ import {
   type PlannedContrastStudy,
 } from "../../contrast-safety";
 import {
+  crossCheckDentalSafety,
+  type DentalSafetyHit,
+  type PlannedDentalProcedure,
+} from "../../dental-safety";
+import { isInvasiveDentalProcedure, dentalDisplayLabel } from "../../dental";
+import {
   getGenomicVariants,
   getCarePlanItems,
   getImagingStudies,
+  getDentalProcedures,
 } from "../clinical";
 import { getScheduledAppointments } from "../appointments";
 import { isCarePlanItemOpen } from "../../care-plan-upcoming";
@@ -246,4 +253,31 @@ export function getContrastSafetyWarnings(
   if (studies.length === 0) return [];
   const { allergens, conditions } = getIntakeSafetyContext(profileId);
   return crossCheckContrast(studies, { allergens, conditions });
+}
+
+// Dental-procedure safety cross-check (issue #704): a PLANNED INVASIVE dental
+// procedure meeting an antiresorptive (→ MRONJ), high-risk cardiac (→ antibiotic
+// prophylaxis), or anticoagulant (→ bleeding) gate. The planned-procedure signal is
+// the #705 dental record: status='planned' rows that isInvasiveDentalProcedure —
+// extraction / implant / bony or periodontal surgery. A routine cleaning / exam /
+// filling is NON-invasive and is filtered out here, so it can never flag (the #704
+// ask-4 gate, pinned in the DB-tier builder test). Active meds + conditions come from
+// the ONE shared safety-context gather (getIntakeSafetyContext, #661), so this can't
+// drift from the contrast/PGx/interaction consumers. Profile-scoped through the
+// underlying reads (all profile_id-filtered); no new SQL, so the scoping guard is
+// unaffected. Informational, never prescriptive; absence of a flag is not clearance.
+export function getDentalSafetyWarnings(profileId: number): DentalSafetyHit[] {
+  const planned: PlannedDentalProcedure[] = getDentalProcedures(profileId)
+    .filter(
+      (d) =>
+        d.status === "planned" && isInvasiveDentalProcedure(d.name, d.cdt_code)
+    )
+    .map((d) => ({
+      id: d.id,
+      label: dentalDisplayLabel(d),
+      date: d.procedure_date,
+    }));
+  if (planned.length === 0) return [];
+  const { medications, conditions } = getIntakeSafetyContext(profileId);
+  return crossCheckDentalSafety(planned, medications, conditions);
 }

@@ -62,6 +62,9 @@ export type UpcomingDomain =
   | "interaction"
   | "pgx"
   | "contrast"
+  // A planned INVASIVE dental procedure meeting an antiresorptive/cardiac/anticoagulant
+  // pre-procedure safety gate (#704). Care-tier, like contrast/interaction/PGx.
+  | "dental-safety"
   | "appointment"
   | "visit"
   | "screening"
@@ -100,6 +103,9 @@ const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
   interaction: 3,
   pgx: 4,
   contrast: 5,
+  // A planned-invasive-dental pre-procedure safety note (#704) — a care-tier
+  // informational finding, alongside contrast, ahead of the scheduling domains.
+  "dental-safety": 5.5,
   appointment: 6,
   careplan: 7,
   visit: 8,

@@ -26,6 +26,7 @@ import {
   conditionConsiderationKeyStrategy,
 } from "./condition-training-considerations";
 import { contrastDataset, contrastClassStrategy } from "./contrast-safety";
+import { dentalSafetyDataset, dentalKeyStrategy } from "./dental-safety";
 import { driDataset, driNutrientStrategy } from "./dri";
 import {
   drugInteractionsDataset,
@@ -119,6 +120,13 @@ export const DATASETS: RegisteredDataset[] = [
       unknown
     >,
     strategy: contrastClassStrategy,
+  },
+  {
+    dataset: dentalSafetyDataset as unknown as LoadedDataset<
+      Record<string, unknown>,
+      unknown
+    >,
+    strategy: dentalKeyStrategy,
   },
   {
     dataset: driDataset as unknown as LoadedDataset<
