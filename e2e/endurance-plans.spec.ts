@@ -93,5 +93,27 @@ test.describe("endurance event plans (#839)", () => {
     await settledClick(page, page.getByTestId("endurance-submit"));
     // Still exactly one card — the duplicate was rejected.
     await expect(page.getByTestId("endurance-plan-card")).toHaveCount(1);
+
+    // #1019: the Upcoming event item formats its distance per the login's
+    // distanceUnit pref — a miles login sees "6.21 mi", not a hardcoded km.
+    // This login owns its own dedicated prefs; restore km before the test ends
+    // so --repeat-each starts from the same state.
+    try {
+      await page.goto("/settings");
+      const distanceSelect = page.getByTestId("distance-unit-select");
+      await distanceSelect.selectOption("mi");
+      await expect(page.getByLabel("Saved")).toBeVisible();
+      await page.goto("/upcoming");
+      const eventItem = page
+        .locator('[data-testid^="upcoming-item-endurance-event:"]')
+        .first();
+      await expect(eventItem).toBeVisible();
+      await expect(eventItem).toContainText("6.21 mi");
+      await expect(eventItem).not.toContainText("10 km");
+    } finally {
+      await page.goto("/settings");
+      await page.getByTestId("distance-unit-select").selectOption("km");
+      await expect(page.getByLabel("Saved")).toBeVisible();
+    }
   });
 });

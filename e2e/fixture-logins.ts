@@ -360,3 +360,13 @@ export const HH_HISTORY_CHILD_PROFILE = "Household History Child (e2e)";
 // merged history renders for a view-only grant (reads are allowed) without any write
 // affordance. Separate login so the read-only assertions never race the write one.
 export const E2E_LOGIN_HHHIST_RO = "e2e_hhhist_ro";
+
+// A member granted a dedicated sick profile whose ONLY temperature reading is a
+// LEGACY imported Celsius row (unit 'Cel', source 'ccd', stored before the #1018
+// import-boundary conversion existed), so the episode surfaces prove the
+// read-time unit gate end-to-end in the browser: the latest temperature renders
+// CONVERTED ("101.3 °F"), never the raw "38.5" plotted on the °F axis. Read-only
+// in its spec, so it stays repeat-safe and never perturbs the other sick
+// fixtures' cockpit assertions.
+export const E2E_LOGIN_CEL_IMPORT = "e2e_cel_import";
+export const CEL_IMPORT_PROFILE = "Cel Import (e2e)";
