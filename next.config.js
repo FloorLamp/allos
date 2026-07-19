@@ -82,7 +82,11 @@ const nextConfig = {
       // #emergency section. The redirect target still requires a session
       // (requireSession in the (app) layout), so an anonymous hit lands on
       // /login exactly as the old route did.
-      { source: "/emergency", destination: "/profile#emergency", permanent: true },
+      {
+        source: "/emergency",
+        destination: "/profile#emergency",
+        permanent: true,
+      },
     ];
   },
   // Native / heavy server-only packages kept OUT of the server bundle. better-sqlite3
