@@ -241,6 +241,10 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "79892-6": "Intraocular Pressure, Right Eye", // Right eye Intraocular pressure
   "79893-4": "Intraocular Pressure, Left Eye", // Left eye Intraocular pressure
   "56844-4": "Intraocular Pressure", // Intraocular pressure of Eye (unspecified)
+  // Mental-health instrument total scores (#716) — the panel-total LOINCs, so an
+  // extracted questionnaire result routes to the right biomarker series.
+  "44261-6": "PHQ-9", // Patient Health Questionnaire 9 item total score
+  "69737-5": "GAD-7", // Generalized anxiety disorder 7 item total score
   // Visual acuity is a QUALITATIVE, Snellen-fraction reading ("20/20") — no numeric
   // band, so nothing flags it (a dated timeline, not a chart). Uncorrected Snellen
   // per-eye codes route to the per-eye entries; best-corrected / ETDRS variants are

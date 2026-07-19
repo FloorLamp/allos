@@ -114,6 +114,13 @@ export const FORM_PLATEAU_PROFILE = "Form Plateau (e2e)";
 export const E2E_LOGIN_EMPTY_TRAINING = "e2e_empty_training";
 export const EMPTY_TRAINING_PROFILE = "Empty Training (e2e)";
 
+// A dedicated, write-granted ADULT profile with NO instrument scores logged (#716):
+// the mental-health-instruments spec OWNS every write here (it administers a PHQ-9 /
+// GAD-7 in-app), so it never touches — or counts rows on — a shared-seed profile. Its
+// own isolated session means concurrent workers can't contend on its scores.
+export const E2E_LOGIN_MENTAL = "e2e_mental";
+export const MENTAL_HEALTH_PROFILE = "Mental Health (e2e)";
+
 // A brand-new, write-granted profile with explicit version-1 onboarding state and
 // no health data. The onboarding spec owns every mutation on it.
 export const E2E_LOGIN_ONBOARDING = "e2e_onboarding";

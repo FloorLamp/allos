@@ -29,7 +29,14 @@ import {
   intakeHref,
   nutritionTabHref,
   MEDICATIONS_HREF,
+  INSTRUMENTS_HREF,
 } from "../../hrefs";
+import { getInstrumentStates } from "../../instrument-records";
+import {
+  mentalHealthCrisisKey,
+  CRISIS_RESOURCES_LINE,
+  severityBand,
+} from "../../mental-health";
 import { refillSignalKey } from "../../refill-nudge";
 import { trainingSignalKey } from "../../workout-nudge";
 import { getActiveEndurancePlans } from "../../endurance-plans";
@@ -344,6 +351,42 @@ function contrastItems(profileId: number, today: string): UpcomingItem[] {
     band: "today" as const,
     dueText: "Review",
   }));
+}
+
+// Mental-health crisis findings (issue #716) — a CARE-tier, NON-DISMISSIBLE signal. When
+// the latest PHQ-9/GAD-7 score sits in the SEVERE band, or a stored PHQ-9 item 9
+// (suicidal-ideation) answer is positive, surface a crisis-resources + discuss-with-a-
+// clinician finding banded `today` so it reaches Upcoming + the Needs-attention hero for
+// the profile's OWN view. It is `suppressionPolicy: "safety-ungated"` + `suppressible:
+// false`, so the dismissal bus can NEVER hide it and no snooze/dismiss control renders —
+// the deliberate #716 exception, same standing as a safety dose reminder. It is
+// domain "mental-health", which is NOT in the digest DOMAIN_SEQ and has no notify
+// orchestrator, so it NEVER pushes on any channel (the decided harm case: crisis content
+// on a shared/locked device). Informational, never diagnostic — it states the fact
+// (severe band / a self-harm answer) and the resources, never a diagnosis.
+function mentalHealthCrisisItems(profileId: number): UpcomingItem[] {
+  const items: UpcomingItem[] = [];
+  for (const state of getInstrumentStates(profileId)) {
+    if (!state.latest || !state.crisis?.escalate) continue;
+    const { instrument, latest } = state;
+    const band = severityBand(instrument, latest.total);
+    const trigger = state.crisis.selfHarm
+      ? `${instrument} item 9 was answered positively`
+      : `${instrument} is ${band.label.toLowerCase()} (${latest.total})`;
+    items.push({
+      key: mentalHealthCrisisKey(instrument, latest.date),
+      domain: "mental-health" as const,
+      title: "Mental-health check-in",
+      detail: `${trigger}. ${CRISIS_RESOURCES_LINE}`,
+      href: INSTRUMENTS_HREF,
+      dueDate: null,
+      band: "today" as const,
+      dueText: "Support",
+      suppressible: false,
+      suppressionPolicy: "safety-ungated" as const,
+    });
+  }
+  return items;
 }
 
 // Vaccines due/overdue on the tracked schedule (reuses assessSchedule + the same
@@ -763,6 +806,7 @@ const rawUpcoming = cache(function rawUpcoming(
     ...dietaryLimitItems(profileId, today),
     ...illnessCareItems(profileId, today),
     ...conditionReviewItems(profileId),
+    ...mentalHealthCrisisItems(profileId),
     ...tempRedFlagItems(profileId, today),
     ...interactionItems(profileId),
     ...pgxItems(profileId),
