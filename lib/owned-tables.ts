@@ -135,6 +135,12 @@ export const OWNED_TABLES = [
   // DERIVED by the pure engine from logged volume, never stored), so a delete is a plain
   // row delete and deleteProfile clears it by profile_id.
   "endurance_plans",
+  // Menstrual cycle log (#714): one row per recorded period (period_start/period_end,
+  // flow, note) — the cycle's OWN data. Directly owned; nothing FKs into it. Cycle PHASE
+  // and length/variability trends are DERIVED from the history (lib/cycle.ts) and per-day
+  // cycle symptoms live in symptom_logs (a vocabulary extension, no second store), so a
+  // delete is a plain row delete and deleteProfile clears it by profile_id.
+  "cycles",
 ] as const;
 
 export type OwnedTable = (typeof OWNED_TABLES)[number];

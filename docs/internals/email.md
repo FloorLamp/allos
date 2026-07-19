@@ -15,7 +15,7 @@ Phase 1 is **auth email only** — invite links and password-reset links. These 
 - **`lib/auth-token-crypto.ts` (pure) + `lib/auth-tokens.ts` (DB).** The split mirrors `lib/share-token.ts`: hashing + TTL math are pure/unit-tested; the row ops live with `db`. Tokens are **hash-at-rest** (only SHA-256 stored), **single-use** (consumed by ONE atomic `UPDATE … WHERE consumed_at IS NULL AND datetime(expires_at) > datetime('now') RETURNING …`, so two redemptions can't both win and expiry is checked in the same statement), and die on any password change (`invalidateAuthTokensForLogin`) and on login delete (FK `ON DELETE CASCADE`). Invite TTL 24 h, reset TTL 1 h. `kind` ∈ `invite | reset`.
 - **`lib/auth-email-content.ts` (pure) + `lib/auth-email.ts` (orchestration).** Address validation, the no-enumeration message, the message bodies, and the link builder are pure; `sendInviteEmail`/`sendResetEmail` mint a token, build the link from the public URL, and hand the composed mail to the chokepoint. `canSendAuthEmail()` = `isEmailConfigured()` **and** a public URL is set.
 - **`lib/auth-email-ratelimit.ts` (pure).** In-process fixed-window counters (family scale); the reset-request action holds the per-email + per-IP Maps.
-- **Migration 063** (`063-login-email.ts`): `logins.email` (unique-if-set NOCASE via a partial index) + `login_auth_tokens`. Both are login-scoped **global** tables (no `profile_id`, not in `lib/owned-tables.ts`).
+- **Migration 064** (`064-login-email.ts`): `logins.email` (unique-if-set NOCASE via a partial index) + `login_auth_tokens`. Both are login-scoped **global** tables (no `profile_id`, not in `lib/owned-tables.ts`).
 
 ## Security posture (decided up front)
 

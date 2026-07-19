@@ -185,6 +185,9 @@ export default async function ImportDetailPage(props: {
   // they imported under their raw name with no reference band (#918 §4). Kept, like
   // unmapped LOINCs — not a drop.
   const unresolvedNames = report?.unresolvedNames ?? [];
+  // Source-text reconciliation (AI PDF path): rows the report's own text/OCR could
+  // not corroborate. A review signal, not a proven error.
+  const reconciliation = report?.reconciliation ?? null;
   const isTerminalIssue =
     doc.extraction_status === "failed" || doc.extraction_status === "skipped";
   // "Move to profile…" targets: the login's OTHER accessible profiles (admins see
@@ -534,6 +537,45 @@ export default async function ImportDetailPage(props: {
                     Report unresolved analyte{" "}
                     <IconExternalLink className="h-3.5 w-3.5" />
                   </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Source reconciliation (AI PDF path): rows the report's OWN text/OCR could
+            not corroborate — a deterministic cross-check of the model's output. */}
+        {reconciliation && reconciliation.flags.length > 0 && (
+          <div className="card" data-testid="reconciliation-card">
+            <h2 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
+              Source reconciliation ({reconciliation.confirmed}/
+              {reconciliation.total} confirmed)
+            </h2>
+            <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+              Each extracted value was checked against the report’s own text
+              (its PDF text layer, or OCR for a scanned report). The rows below{" "}
+              <strong>couldn’t be corroborated</strong> — the value the model
+              read isn’t next to that name in the source, or the name never
+              appears. Treat these as a <strong>review signal</strong>, not a
+              proven error: a report’s text can be imperfect.
+            </p>
+            <ul className="text-sm text-slate-600 dark:text-slate-300">
+              {reconciliation.flags.map((f, i) => (
+                <li
+                  key={`${f.name}-${i}`}
+                  className="flex flex-wrap items-baseline gap-x-2 border-b border-black/5 py-1 last:border-0 dark:border-white/10"
+                >
+                  <span className="font-medium">{f.name}</span>
+                  {f.value && (
+                    <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                      {f.value}
+                    </span>
+                  )}
+                  <span className="ml-auto rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                    {f.verdict === "value_mismatch"
+                      ? "value not found in source"
+                      : "name not found in source"}
+                  </span>
                 </li>
               ))}
             </ul>

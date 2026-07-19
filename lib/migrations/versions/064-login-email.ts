@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 063 (issue #985 — outbound email, phase 1b login lifecycle). Two
+// Migration 064 (issue #985 — outbound email, phase 1b login lifecycle). Two
 // additions, both login-scoped GLOBAL auth infrastructure (no `profile_id`, so
 // NEITHER goes in lib/owned-tables.ts — same treatment as `logins`/`sessions`):
 //
@@ -55,7 +55,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 63,
-  name: "063-login-email",
+  id: 64,
+  name: "064-login-email",
   up,
 };

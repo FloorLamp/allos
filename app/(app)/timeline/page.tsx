@@ -28,6 +28,9 @@ import { isTrainingRestricted } from "@/lib/age-gate";
 import { today } from "@/lib/db";
 import { getUnitPrefs, getHomeLocation, getTimezone } from "@/lib/settings";
 import DaylightChip from "@/components/DaylightChip";
+import CyclePhaseChip from "@/components/CyclePhaseChip";
+import { listCyclePeriods } from "@/lib/cycle-store";
+import { cyclePhaseOnDate, periodOnDate } from "@/lib/cycle";
 import {
   getTimelinePage,
   TIMELINE_CATEGORIES,
@@ -348,6 +351,10 @@ export default async function TimelinePage(props: {
         days.map((d) => d.date)
       )
     : new Map<string, number>();
+  // Recorded periods for the derived cycle phase + period marker on each day header
+  // (issue #714). One profile-scoped read; the pure cyclePhaseOnDate/periodOnDate
+  // derivations resolve per day. Empty (chip renders nothing) until periods are logged.
+  const cyclePeriods = listCyclePeriods(profile.id);
   const singleDaySelected = Boolean(
     range.from && range.to && range.from === range.to
   );
@@ -511,6 +518,10 @@ export default async function TimelinePage(props: {
                     date={day.date}
                     timezone={profileTimezone}
                     outdoorMinutes={daylightOutdoor.get(day.date) ?? 0}
+                  />
+                  <CyclePhaseChip
+                    phase={cyclePhaseOnDate(cyclePeriods, day.date)}
+                    period={periodOnDate(cyclePeriods, day.date)}
                   />
                 </div>
                 <div className="space-y-3 pl-4">

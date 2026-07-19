@@ -11,7 +11,12 @@ import { frequencyScopeLabel } from "../goals";
 import { illnessCoachingMode, recommendCoaching } from "../coaching";
 import { recommendNextWorkout } from "../workout-recommendation";
 import { isWorkoutNudgeSuppressed } from "../workout-nudge";
+import { workoutPresenceGate } from "../workout-presence-gate";
 import { gatherCoachingInput } from "../queries";
+import {
+  getWorkoutPresence,
+  getFinishedActivityCredit,
+} from "../queries/presence";
 import { getFindingSuppressions } from "../queries/upcoming";
 import type { CoachingInput } from "../coaching";
 import type { WorkoutRecommendation } from "./workout-format";
@@ -24,7 +29,8 @@ export type { WorkoutRecommendation };
 // Omitted (the request-time/manual callers) ⇒ gather fresh.
 export function recommendWorkout(
   profileId: number,
-  gathered?: CoachingInput
+  gathered?: CoachingInput,
+  now: Date = new Date()
 ): WorkoutRecommendation | null {
   // One gather, one core — the dashboard, the overview, and this reminder all
   // read the same computation, so they can't drift.
@@ -37,6 +43,29 @@ export function recommendWorkout(
   // the ramp ends. The one-shot ease-back nudge is a separate slot (runEaseBack).
   if (illnessCoachingMode(input.illness, input.today).mode !== "normal")
     return null;
+
+  // Presence gates (issue #981), the #921 declined-suppression revisit. Both read the
+  // ONE derived workout presence (never a second derivation, #221) + the tracked target
+  // scopes this reminder already reasons over, and both are MARKER-NEUTRAL — returning
+  // null holds the slot out of the send AND the daily `notify_last_workout` marker:
+  //   • active ⇒ HOLD — a live session is running; a "time to train" ping mid-workout is
+  //     absurd (and its rest line would read "you're training now"). A discarded false
+  //     start doesn't consume the day; the next scheduled attempt evaluates fresh.
+  //   • a credit-bearing finish inside the finished window ⇒ SKIP this attempt — the
+  //     finish/recap message (#921/#924) owns that moment. Strictly window-scoped, so a
+  //     dog walk crediting a "walk 5×/week" habit quiets only THIS attempt, never the
+  //     day's lift reminder; a finish crediting nothing tracked still fires.
+  const presence = getWorkoutPresence(profileId, now);
+  const finishCredit =
+    presence.state === "finished" && presence.activityId != null
+      ? getFinishedActivityCredit(profileId, presence.activityId)
+      : null;
+  const gate = workoutPresenceGate(
+    presence,
+    finishCredit,
+    input.routine.map((t) => t.target)
+  );
+  if (gate !== "fire") return null;
 
   const nw = recommendNextWorkout(input);
 

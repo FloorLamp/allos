@@ -60,6 +60,31 @@ test.describe("Import detail: dropped grouping + unmapped-code report", () => {
     await expect(gaps.getByText("Insurance")).toHaveCount(0);
   });
 
+  test("renders the source-reconciliation card with per-verdict badges (#971)", async ({
+    page,
+  }) => {
+    await page.goto("/import/907");
+
+    // The seeded report carries 2 unconfirmed rows out of 12 — the card frames
+    // them as a review signal, one row per flag with its verdict badge.
+    const card = page.getByTestId("reconciliation-card");
+    await expect(
+      card.getByText("Source reconciliation (10/12 confirmed)")
+    ).toBeVisible();
+    await expect(card.getByText("review signal")).toBeVisible();
+
+    const mismatch = card
+      .locator("li")
+      .filter({ hasText: "E2E Mismatch Marker" });
+    await expect(mismatch.getByText("999")).toBeVisible();
+    await expect(mismatch.getByText("value not found in source")).toBeVisible();
+
+    const phantom = card
+      .locator("li")
+      .filter({ hasText: "E2E Phantom Marker" });
+    await expect(phantom.getByText("name not found in source")).toBeVisible();
+  });
+
   test("offers a code/name/unit-only GitHub report link for unmapped lab codes", async ({
     page,
   }) => {
