@@ -71,6 +71,14 @@ import { expect, type Locator, type Page } from "@playwright/test";
 // time out. Use followLink for navigations and a plain `expect` for client-only
 // state (decision tree above). If a click fires an action AND navigates, this
 // still resolves on the action POST.
+//
+// ALSO NOT RELIABLE on a page with steady background action-POST traffic (the
+// dashboard's watchers/pollers): the wait can resolve on a bystander POST while
+// the mutation's own request is still in flight — and a follow-up `page.reload()`
+// then aborts it (the write is lost, not just late). There, prefer asserting a
+// SERVER-rendered marker that only the completed mutation + refresh can produce
+// (the wellbeing card's `mood-server-logged` marker is the precedent) — the
+// assertion's own retry is the settle.
 export async function settledClick(
   page: Page,
   locator: Locator,

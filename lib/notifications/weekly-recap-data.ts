@@ -25,6 +25,7 @@ import {
   getActivitiesByDate,
   getZone2MinutesInWindow,
   getSleepRegularity,
+  getMoodLogs,
 } from "../queries";
 import { recentPRs, recentCardioPRs } from "../coaching";
 import { totalEstimatedKcal, type DatedWeight } from "../calorie-estimate";
@@ -46,6 +47,7 @@ import {
   getActiveSituations,
   getSituationEvents,
   getWeekMode,
+  getProfileMoodRecap,
   getWeekStart,
   getZone2WeeklyTargetMin,
   setProfileSetting,
@@ -255,6 +257,20 @@ export function gatherRecapInput(
       return {
         sri: reg?.sri ?? null,
         socialJetlagMin: reg?.socialJetlagMin ?? null,
+      };
+    })(),
+    // Mood summary (#992): OPT-IN (mood_recap_enabled, off by default) and a
+    // summary only — the widget and the notification render this ONE gather, so
+    // they can never disagree. Null (line omitted) when opted out or unlogged.
+    mood: (() => {
+      if (!getProfileMoodRecap(profileId)) return null;
+      const logs = getMoodLogs(profileId, win.start).filter(
+        (m) => m.date <= win.end
+      );
+      if (logs.length === 0) return null;
+      return {
+        avgValence: logs.reduce((acc, m) => acc + m.valence, 0) / logs.length,
+        daysLogged: logs.length,
       };
     })(),
   };

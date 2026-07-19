@@ -3315,7 +3315,7 @@ console.log(
 // A dedicated sick profile whose ONLY temperature is a LEGACY imported Celsius
 // row — unit 'Cel', source 'ccd', external_id set, flag never derived — exactly
 // the shape the CCDA mapper stored before the import-boundary conversion. Seeded
-// AFTER boot (so migration 073 / the flag reconcile never touch it), it proves
+// AFTER boot (so migration 074 / the flag reconcile never touch it), it proves
 // the episode read gate in the browser: the cockpit's latest temperature renders
 // the CONVERTED 101.3 °F, never raw "38.5" on the °F axis. Spec-owned + read-only
 // (imported-temp-unit.spec.ts); the situation/episode mirrors seedSickEpisode.

@@ -151,26 +151,26 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "migration 071 (#703) ADD COLUMN guard: a schema-shape PRAGMA (does dose_msv already exist?) so the non-version-gated migrate() replay no-ops — reads column metadata, never rows",
   },
   {
-    file: "lib/migrations/versions/073-imported-temperature-degf.ts",
+    file: "lib/migrations/versions/074-imported-temperature-degf.ts",
     includes:
       "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'medical_records'",
-    why: "migration 073 partial-handle guard: a sqlite_master metadata probe (does the table exist yet?) that reads schema, not rows — mirrors migration 038's guard",
+    why: "migration 074 partial-handle guard: a sqlite_master metadata probe (does the table exist yet?) that reads schema, not rows — mirrors migration 038's guard",
   },
   {
-    file: "lib/migrations/versions/073-imported-temperature-degf.ts",
+    file: "lib/migrations/versions/074-imported-temperature-degf.ts",
     includes: "SELECT id, value_num, unit, edited FROM medical_records",
-    why: "migration 073 (#1018) one-shot data converge: rewrites mis-stored imported Body Temperature rows to canonical °F across ALL profiles, keyed by canonical name + unit spelling — a vocabulary-level unit fix, never reading one profile's data into another's; its UPDATEs below key on the ids this SELECT returned",
+    why: "migration 074 (#1018) one-shot data converge: rewrites mis-stored imported Body Temperature rows to canonical °F across ALL profiles, keyed by canonical name + unit spelling — a vocabulary-level unit fix, never reading one profile's data into another's; its UPDATEs below key on the ids this SELECT returned",
   },
   {
-    file: "lib/migrations/versions/073-imported-temperature-degf.ts",
+    file: "lib/migrations/versions/074-imported-temperature-degf.ts",
     includes:
       "UPDATE medical_records SET value = ?, value_num = ?, unit = 'degF'",
-    why: "migration 073 (#1018): the per-row converge UPDATE, keyed by the id the migration's own canonical-name-scoped SELECT produced (ids never recycle — AUTOINCREMENT)",
+    why: "migration 074 (#1018): the per-row converge UPDATE, keyed by the id the migration's own canonical-name-scoped SELECT produced (ids never recycle — AUTOINCREMENT)",
   },
   {
-    file: "lib/migrations/versions/073-imported-temperature-degf.ts",
+    file: "lib/migrations/versions/074-imported-temperature-degf.ts",
     includes: "UPDATE medical_records SET unit = 'degF' WHERE id = ?",
-    why: "migration 073 (#1018): the unit-respell UPDATE ([degF]/°F → degF, value untouched), keyed the same way",
+    why: "migration 074 (#1018): the unit-respell UPDATE ([degF]/°F → degF, value untouched), keyed the same way",
   },
 ];
 

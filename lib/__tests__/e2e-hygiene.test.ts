@@ -53,19 +53,15 @@ const WAITFORTIMEOUT_RE = /\.waitForTimeout\(/g;
 // Frozen offenders as of #868 (per-file counts). Migrate an entry to
 // e2e/helpers.ts and LOWER its number here in the same PR; a fully-migrated file
 // drops out entirely. New files must not appear.
-const NETWORKIDLE_ALLOW: Record<string, number> = {
-  // symptom-helpers.ts's `idleSettle` is the #861 surface-PARAMETERIZED settle:
-  // the dashboard mount of the SymptomLogBar drains its optimistic POST + trailing
-  // router.refresh() via networkidle before a dependent reload, while the episode
-  // page (whose long-lived requests never let networkidle settle) passes noSettle.
-  // Replacing it with settledClick's waitForResponse idiom means arming the
-  // response wait BEFORE the conditional tap inside each driver's toPass loop — a
-  // restructure of the shared optimistic-tap driver that the concurrent #859
-  // (illness round 3, touching the symptom specs/driver) would collide with. The
-  // widened scan now SEES this call (it couldn't before phase 2); frozen here so
-  // no NEW helper-file networkidle hides, migration deferred to after #859 lands.
-  "symptom-helpers.ts": 1,
-};
+//
+// EMPTY as of the #868 tail migration: the last entry (symptom-helpers.ts's
+// `idleSettle`, the old surface-parameterized networkidle settle) was replaced by
+// the `Tap` parameter — `settledTap(page)` wraps settledClick, arming the
+// action-POST wait BEFORE the tap inside each driver's toPass loop, so the
+// dashboard's dependent steps wait on the RIGHT signal and the episode page's
+// default `plainTap` stays optimistic. The suite now has ZERO networkidle waits;
+// any new one fails here.
+const NETWORKIDLE_ALLOW: Record<string, number> = {};
 
 const WAITFORTIMEOUT_ALLOW: Record<string, number> = {
   // IRREDUCIBLE bounded absence-of-effect proofs — the ONE sanctioned waitForTimeout

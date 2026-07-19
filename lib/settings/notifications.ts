@@ -81,6 +81,56 @@ export function setProfileFoodTelegram(
   setProfileSetting(profileId, "food_telegram_enabled", enabled ? "1" : "0");
 }
 
+// ---- Daily mood check-in (issue #992) — per-profile opt-in, off by default ----
+// Whether this profile gets the gentle once-daily wellbeing check-in
+// (Telegram/push). A `mood_checkin_enabled` "1"/"0" flag in profile_settings,
+// mirroring food_telegram_enabled. The companion `mood_checkin_ignored` counter is
+// the engagement-aware auto-pause state: bumped on each sent-but-unanswered
+// check-in, RESET by every submitted check-in (any write path), and consulted by
+// the pure shouldSendMoodCheckin gate (lib/mood.ts) — at
+// MOOD_CHECKIN_AUTOPAUSE_DAYS the reminder holds silently until a submission
+// re-arms it. Never an escalation: pausing is the only behavior.
+
+export function getProfileMoodCheckin(profileId: number): boolean {
+  return getProfileSetting(profileId, "mood_checkin_enabled") === "1";
+}
+
+export function setProfileMoodCheckin(
+  profileId: number,
+  enabled: boolean
+): void {
+  setProfileSetting(profileId, "mood_checkin_enabled", enabled ? "1" : "0");
+}
+
+export function getMoodCheckinIgnored(profileId: number): number {
+  const n = Number(getProfileSetting(profileId, "mood_checkin_ignored"));
+  return Number.isInteger(n) && n > 0 ? n : 0;
+}
+
+export function bumpMoodCheckinIgnored(profileId: number): void {
+  setProfileSetting(
+    profileId,
+    "mood_checkin_ignored",
+    String(getMoodCheckinIgnored(profileId) + 1)
+  );
+}
+
+export function resetMoodCheckinIgnored(profileId: number): void {
+  setProfileSetting(profileId, "mood_checkin_ignored", "0");
+}
+
+// Whether the weekly recap includes the gentle mood line (issue #992) — a summary
+// (average + days logged), never a score to beat. Per-profile opt-in, off by
+// default, read by the ONE gatherRecapInput both the widget and the notification
+// share.
+export function getProfileMoodRecap(profileId: number): boolean {
+  return getProfileSetting(profileId, "mood_recap_enabled") === "1";
+}
+
+export function setProfileMoodRecap(profileId: number, enabled: boolean): void {
+  setProfileSetting(profileId, "mood_recap_enabled", enabled ? "1" : "0");
+}
+
 export function getFoodTelegramPrompted(profileId: number): boolean {
   return getProfileSetting(profileId, "food_telegram_prompted") === "1";
 }

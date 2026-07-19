@@ -165,6 +165,12 @@ export const OWNED_TABLES = [
   // cleared explicitly by profile_id like every owned table). The SCORE itself lives in
   // medical_records (the observation substrate) — this table holds only the item breakdown.
   "instrument_responses",
+  // Daily wellbeing check-ins (#992): one row per profile per day — mood/valence 1–5
+  // plus optional energy/anxiety, factor chips, and a note (migration 073). Directly
+  // owned; nothing FKs into it, and the UNIQUE(profile_id, date) key makes every write
+  // path an idempotent per-day upsert, so a delete is a plain row delete and
+  // deleteProfile clears it by profile_id.
+  "mood_logs",
 ] as const;
 
 export type OwnedTable = (typeof OWNED_TABLES)[number];

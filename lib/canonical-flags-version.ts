@@ -42,7 +42,7 @@ import canonicalSeed from "./canonical-biomarkers.json";
 // whose flags were never derived (conversion returned null at write time) become
 // judgeable. Every stored record must re-reconcile once so an imported 158
 // mm[Hg] blood pressure finally gets its "high" flag — this same pass also
-// covers the Body Temperature rows migration 073 converted to canonical °F.
+// covers the Body Temperature rows migration 074 converted to canonical °F.
 export const FLAG_LOGIC_VERSION = 9;
 
 // The canonical fields that can change a record's derived flag: the reference and

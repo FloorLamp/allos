@@ -611,6 +611,29 @@ export function parseSymptomSeverityCallback(
   return { profileId, severity, slug: m[3] };
 }
 
+// ---- Daily mood check-in (#992) -------------------------------------------------
+
+export interface MoodCheckinCallback {
+  profileId: number;
+  valence: number;
+  date: string;
+}
+
+// Parse a "mood:<profileId>:<valence>:<date>" face-button token (valence 1..5).
+// The profile id is a cross-check — the handler re-resolves the acting profile
+// from the chat id (resolveTapProfile), never trusting the token alone. Malformed
+// (unknown prefix, out-of-range valence, missing date) → null.
+export function parseMoodCheckinCallback(
+  data: unknown
+): MoodCheckinCallback | null {
+  if (typeof data !== "string" || !data.startsWith("mood:")) return null;
+  const m = /^mood:(\d+):([1-5]):(\d{4}-\d{2}-\d{2})$/.exec(data);
+  if (!m) return null;
+  const profileId = Number(m[1]);
+  if (!profileId) return null;
+  return { profileId, valence: Number(m[2]), date: m[3] };
+}
+
 // The 1..4 severity button labels (mirrors the symptom-log bar's scale).
 export const SYMPTOM_SEVERITY_LABELS: Record<number, string> = {
   1: "Mild",

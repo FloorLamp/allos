@@ -23,7 +23,7 @@ import {
 } from "@/lib/import-persist";
 import { assembleIllnessEpisode } from "@/lib/illness-episode";
 import { detectEpisodeTempRedFlag } from "@/lib/temp-red-flag";
-import { up as convergeTemps } from "@/lib/migrations/versions/073-imported-temperature-degf";
+import { up as convergeTemps } from "@/lib/migrations/versions/074-imported-temperature-degf";
 
 const D = "2026-06-10";
 
@@ -191,7 +191,7 @@ describe("episode fever curve unit gate (#1018, stored-row defense)", () => {
   });
 });
 
-describe("migration 073 — stored-row temperature converge (#1018)", () => {
+describe("migration 074 — stored-row temperature converge (#1018)", () => {
   let profile: number;
   const rows = () =>
     db

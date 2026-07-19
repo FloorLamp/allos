@@ -203,13 +203,15 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
   },
   {
     id: "symptom-log",
-    label: "Symptoms",
+    label: "How are you today?",
     description:
-      "The illness front door — a calm \"Feeling sick?\" line when you're well, and one-tap symptom logging (severity per symptom, temperature, today or yesterday) while you're unwell. Hide it from Customize if you never want it.",
-    // On by default. Always available (issue #843, door A): its inactive state is the
-    // calm "Feeling sick?" affordance whose single tap activates Illness and expands the
-    // full card, so the page never gates it out. Not fitness-gated: symptoms matter for
-    // every profile. Hideable like any other widget.
+      "The daily check-in — a one-tap mood log (expand for energy, calm, and factors) plus the illness front door: a quiet \"Not feeling well?\" branch when you're well, deferring to the illness cockpit while you're unwell. Hide it from Customize if you never want it.",
+    // On by default. The unified daily check-in shell (issue #992) composing the mood
+    // tap with the #843 illness front door — two engines, one card, contracts kept
+    // separate (mood is never flagged/escalated; illness keeps its episode machinery).
+    // The id stays `symptom-log` so stored layouts survive the rename. Not
+    // fitness-gated: mood and symptoms matter for every profile. Hideable like any
+    // other widget.
     defaultOn: true,
     fitness: false,
     span: "half",

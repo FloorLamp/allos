@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 073 (issue #1018): one-shot conversion of ALREADY-STORED imported
+// Migration 074 (issue #1018): one-shot conversion of ALREADY-STORED imported
 // Body Temperature rows that skipped the canonical-°F write boundary. The
 // CCDA/FHIR observation mappers used to store `value_num` + `unit` verbatim, so a
 // MyChart "38.5 Cel" sat in the Body Temperature series unconverted — unchartable
@@ -98,7 +98,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 73,
-  name: "073-imported-temperature-degf",
+  id: 74,
+  name: "074-imported-temperature-degf",
   up,
 };

@@ -62,7 +62,7 @@ import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 // strip UCUM brackets/annotations (mm[Hg] ≡ mmHg, [degF] ≡ degF), so imported rows
 // whose flags were never derived become judgeable; the dataset rows are unchanged, but
 // the version bump legitimately changes the signature so the boot reconcile runs once
-// (also re-flagging the Body Temperature rows migration 073 converted to °F).
+// (also re-flagging the Body Temperature rows migration 074 converted to °F).
 const FLAG_SIGNATURE_GOLDEN =
   // A SHA-256 content hash of the canonical dataset; provably synthetic.
   "57ae89646d2be89cf8e0f5bafb5944b22a0a7af35e67e76cafda601c1fc81d8f"; // phi-scan-ok

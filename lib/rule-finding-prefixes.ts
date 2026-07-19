@@ -42,6 +42,7 @@ import { MENTAL_HEALTH_PREFIX } from "./mental-health";
 import { SUBSTANCE_USE_PREFIX } from "./substance-use";
 import { FITNESS_CHECK_PREFIX } from "./fitness-retest";
 import { MOBILITY_SUGGEST_PREFIX } from "./mobility-suggest";
+import { MOOD_OBS_PREFIX, SLEEP_MOOD_PREFIX } from "./mood-observation";
 import type { ReasonCode } from "./reasons";
 
 // The two reach tiers (#449). CARE is push: Upcoming + the non-hideable Needs-attention
@@ -180,6 +181,25 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: MOBILITY_SUGGEST_PREFIX,
     tier: "coaching",
     builder: "buildMobilitySuggestionFindings",
+    reasons: [],
+  },
+  {
+    // Sustained low-mood observation (#992): a calm note from the daily wellbeing
+    // check-ins. COACHING tier by hard product contract — mood is never a push,
+    // never the hero, never escalated (no instrument prompt / crisis linkage from
+    // the daily layer); it joins collectCoachingFindings and rides the shared bus.
+    prefix: MOOD_OBS_PREFIX,
+    tier: "coaching",
+    builder: "buildMoodFindings",
+    reasons: [],
+  },
+  {
+    // Sleep↔mood co-occurrence bridge (#992): ONE calm note when a sustained
+    // sleep-regularity/duration drop overlaps a low-mood window. Co-occurrence
+    // phrasing only (never causal). COACHING tier — never a push, never the hero.
+    prefix: SLEEP_MOOD_PREFIX,
+    tier: "coaching",
+    builder: "buildSleepMoodBridgeFindings",
     reasons: [],
   },
   // ---- Care tier (push; NOT in collectCoachingFindings) ----------------------

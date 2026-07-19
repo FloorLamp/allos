@@ -19,6 +19,7 @@ import {
   getActiveProtocolSummaries,
   getWorkoutPresence,
   getSessionRecap,
+  getMoodOnDate,
 } from "@/lib/queries";
 import { recommendCoaching } from "@/lib/coaching";
 import { collectCoachingFindings } from "@/lib/rule-findings";
@@ -92,7 +93,7 @@ import NextAppointmentWidget, {
 import HealthspanPillarsWidget from "@/components/dashboard/HealthspanPillarsWidget";
 import QuickLogPrnWidget from "@/components/dashboard/QuickLogPrnWidget";
 import ActiveProtocolWidget from "@/components/dashboard/ActiveProtocolWidget";
-import FeelingSickCard from "@/components/dashboard/FeelingSickCard";
+import HowAreYouCard from "@/components/dashboard/HowAreYouCard";
 import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
 import OnboardingResumeCard from "@/components/dashboard/OnboardingResumeCard";
 import OnboardingChecklist from "@/components/dashboard/OnboardingChecklist";
@@ -433,13 +434,15 @@ export default async function Dashboard() {
     ? getActiveProtocolSummaries(profile.id, on, units.weightUnit)
     : [];
 
-  // symptom-log (#799/#843/#858): the Symptoms widget slot is now the INACTIVE-state home
-  // ONLY. When the acting profile's illness is active its FULL cockpit has jumped to the
-  // illness hero above the grid (activeSick), so the widget slot renders NOTHING here — no
-  // duplicate symptom card. Otherwise it is the calm "Feeling sick?" front door (door A)
-  // whose single tap activates Illness and surfaces the cockpit in the hero on the next
-  // render. Hideable from Customize like any other widget.
-  const showFeelingSick = has("symptom-log") && !activeSick;
+  // symptom-log (#799/#843/#858 → #992): the widget slot is now the unified "How are
+  // you today?" daily check-in card — the one-tap mood log composed with the illness
+  // front door. When the acting profile is well it leads with the mood tap plus the
+  // quiet "Not feeling well?" branch (door A — one tap activates Illness and the
+  // cockpit surfaces in the hero on the next render). When illness is ACTIVE the
+  // cockpit lives in the hero above the grid, so the card defers to it with a quiet
+  // note — and still offers the mood tap (mood during illness is signal, #992).
+  // Hideable from Customize like any other widget.
+  const todayMood = has("symptom-log") ? getMoodOnDate(profile.id, on) : null;
 
   // Data-aware empty set (issue #171): a data-aware widget whose domain has no data
   // yet renders an onboarding CTA instead of a blank card. Computed from the same
@@ -548,9 +551,25 @@ export default async function Dashboard() {
           <ActiveProtocolWidget protocols={activeProtocols} />
         ) : null;
       case "symptom-log":
-        // Front door only (#858): the active cockpit lives in the illness hero, so this
-        // renders nothing while the hero is up (available=false below), else the door.
-        return activeSick ? null : <FeelingSickCard />;
+        // The unified daily check-in (#992): mood tap always; the illness branch is
+        // the front door when well, a defer-to-hero note while the cockpit is up.
+        return (
+          <HowAreYouCard
+            date={on}
+            mood={
+              todayMood
+                ? {
+                    valence: todayMood.valence,
+                    energy: todayMood.energy,
+                    anxiety: todayMood.anxiety,
+                    factors: todayMood.factors,
+                    notes: todayMood.notes,
+                  }
+                : null
+            }
+            activeEpisode={activeSick}
+          />
+        );
       default:
         return null;
     }
@@ -568,9 +587,8 @@ export default async function Dashboard() {
       (def.id !== "coaching-observations" || coachingObservations.length > 0) &&
       (def.id !== "weekly-recap" || weeklyRecap !== null) &&
       (def.id !== "active-protocols" || activeProtocols.length > 0) &&
-      // symptom-log is the inactive-state front door only: while the acting profile's
-      // cockpit is in the illness hero (activeSick) the slot renders nothing (#858).
-      (def.id !== "symptom-log" || showFeelingSick) &&
+      // symptom-log is the unified "How are you today?" card (#992): the mood tap is
+      // always offered, so the slot stays available in both illness states.
       // The active illness cockpit now composes the SAME compact medication logger.
       // Keep the standalone PRN widget for well days, but never duplicate it below the
       // acting profile's open cockpit.
