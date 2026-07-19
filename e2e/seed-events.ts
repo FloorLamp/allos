@@ -42,6 +42,10 @@ import {
   NUTRITION_PROFILE,
   E2E_LOGIN_CYCLE,
   CYCLE_PROFILE,
+  E2E_LOGIN_NAV_FEMALE,
+  NAV_FEMALE_PROFILE,
+  E2E_LOGIN_NAV_MALE,
+  NAV_MALE_PROFILE,
   E2E_LOGIN_HC,
   E2E_LOGIN_NOGEAR,
   E2E_LOGIN_FITNESS,
@@ -3308,3 +3312,47 @@ seedMemberLogin(E2E_LOGIN_CYCLE, cycleProfileId, "write");
 console.log(
   `e2e: seeded cycle-log fixture — profile ${cycleProfileId} (${CYCLE_PROFILE}) (#714)`
 );
+
+// ── Nav relevance gating fixtures (#1042 phase 1) ─────────────────────────────
+// Two dedicated, read-only profiles for the nav-consolidation spec:
+//   • NAV_FEMALE — sex=female + explicit premenopausal status, NO cycle rows, so
+//     the Cycle nav entry shows via cycleTrackingRelevant's status arm; no
+//     vision/dental rows either, so those data-gated entries are hidden for it.
+//   • NAV_MALE — sex=male + adult birthdate, NO cycle rows → Cycle hidden.
+// Idempotent on a reused server: hard-clear the relevance-bearing rows and
+// re-write the profile attributes.
+for (const [profileName, loginName, attrs] of [
+  [
+    NAV_FEMALE_PROFILE,
+    E2E_LOGIN_NAV_FEMALE,
+    [
+      ["sex", "female"],
+      ["reproductive_status", "premenopausal"],
+    ],
+  ],
+  [
+    NAV_MALE_PROFILE,
+    E2E_LOGIN_NAV_MALE,
+    [
+      ["sex", "male"],
+      ["birthdate", "1988-04-01"],
+    ],
+  ],
+] as const) {
+  const pid = fixtureProfileId(profileName);
+  db.prepare(`DELETE FROM cycles WHERE profile_id = ?`).run(pid);
+  db.prepare(`DELETE FROM optical_prescriptions WHERE profile_id = ?`).run(pid);
+  db.prepare(`DELETE FROM dental_procedures WHERE profile_id = ?`).run(pid);
+  db.prepare(
+    `DELETE FROM profile_settings WHERE profile_id = ? AND key IN ('sex', 'reproductive_status', 'birthdate', 'age')`
+  ).run(pid);
+  for (const [key, value] of attrs) {
+    db.prepare(
+      `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, ?, ?)`
+    ).run(pid, key, value);
+  }
+  seedMemberLogin(loginName, pid, "read");
+  console.log(
+    `e2e: seeded nav-relevance fixture — profile ${pid} (${profileName}) (#1042)`
+  );
+}
