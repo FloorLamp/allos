@@ -55,7 +55,9 @@ export default function SubstanceInstrumentsForm({
   const allAnswered = answeredCount === def.items.length;
   const runningTotal = Object.values(answers).reduce((a, b) => a + b, 0);
   const band =
-    inApp && allAnswered ? substanceSeverityBand(instrument, runningTotal) : null;
+    inApp && allAnswered
+      ? substanceSeverityBand(instrument, runningTotal)
+      : null;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
