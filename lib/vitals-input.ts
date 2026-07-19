@@ -24,6 +24,8 @@
 // carries an explicit unit selector for each and converts to the canonical unit here
 // (°C→°F, mmol/L→mg/dL). BP/SpO2/HRV/sleep have universal entry units.
 
+import { inMetricBounds } from "./ingest-bounds";
+
 export type TempUnit = "C" | "F";
 export type GlucoseUnit = "mg/dL" | "mmol/L";
 
@@ -163,6 +165,77 @@ export function toCanonicalTempF(
   unit: TempUnit | string | null | undefined
 ): number {
   return unit === "C" ? celsiusToF(value) : value;
+}
+
+// ---- Imported / stored temperature units (#1018) ----------------------------
+// The document-import boundary conversion and the stored-row read gate share ONE
+// spelling recognizer, so "what counts as a temperature unit" can't fork.
+
+// Unit spellings health-record documents actually ship for the two scales — UCUM
+// ("Cel", "[degF]"), degree text ("°C", "deg F"), bare letters, and spelled-out
+// forms. Matching strips every non-letter (the heightToCm precedent), so
+// bracket/degree-sign/whitespace noise can't defeat recognition; an unrecognized
+// spelling resolves to null and the caller NEVER guesses.
+const TEMP_UNIT_SPELLINGS: Record<string, TempUnit> = {
+  c: "C",
+  cel: "C",
+  degc: "C",
+  celsius: "C",
+  f: "F",
+  degf: "F",
+  fahrenheit: "F",
+};
+
+// The temperature scale a unit string denotes, or null when it isn't a recognized
+// temperature spelling (never guess — the heightToCm skip-don't-guess posture).
+export function recognizedTempUnit(
+  unit: string | null | undefined
+): TempUnit | null {
+  if (!unit) return null;
+  const u = unit.toLowerCase().replace(/[^a-z]/g, "");
+  return TEMP_UNIT_SPELLINGS[u] ?? null;
+}
+
+// Convert one imported Body Temperature reading to the canonical-°F storage trio,
+// or null when the reading must be stored VERBATIM instead: the unit spelling is
+// unrecognized (storing an unconverted value as °F would be a guess), or the
+// converted value falls outside the ingest plausibility band (junk must not enter
+// the canonical series wearing a trusted 'degF' unit). This is the same
+// write-boundary conversion every live-entry writer already performs (manual log,
+// Telegram, Health Connect, Withings), applied to the CCDA/FHIR observation
+// mappers (#1018) on the heightToCm/weightToKg model. The caller keys any dedup
+// identity on the AS-SHIPPED value, not this result.
+export function normalizeImportedTemperature(
+  value_num: number | null | undefined,
+  unit: string | null | undefined
+): { value: string; value_num: number; unit: string } | null {
+  if (value_num == null || !Number.isFinite(value_num)) return null;
+  const tu = recognizedTempUnit(unit);
+  if (!tu) return null;
+  const degF = Math.round(toCanonicalTempF(value_num, tu) * 10) / 10;
+  if (!inMetricBounds(VITAL_CANONICAL.temperature.canonical, degF)) return null;
+  return {
+    value: String(degF),
+    value_num: degF,
+    unit: VITAL_CANONICAL.temperature.unit,
+  };
+}
+
+// A STORED Body Temperature row's value on the canonical °F scale, or null when
+// the row can't be trusted as °F (#1018). A NULL/blank unit is trusted as
+// canonical (every app writer stores 'degF'; older extracted rows may carry null —
+// the pre-existing behavior, kept); a recognized non-canonical spelling converts
+// (a legacy imported "38.5 Cel"); an unrecognized unit is EXCLUDED rather than
+// plotted/red-flag-fed as °F. The one read gate for every consumer that builds a
+// °F value from DB rows (the episode fever curve and anything after it).
+export function storedTempToF(
+  value_num: number,
+  unit: string | null | undefined
+): number | null {
+  if (unit == null || unit.trim() === "") return value_num;
+  const tu = recognizedTempUnit(unit);
+  if (!tu) return null;
+  return tu === "C" ? celsiusToF(value_num) : value_num;
 }
 
 // Range-check a canonical (°F) temperature. Returns the user-facing error or null —

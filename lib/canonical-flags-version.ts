@@ -36,7 +36,14 @@ import canonicalSeed from "./canonical-biomarkers.json";
 // normal against its luteal range — so a profile WITH cycle data must re-reconcile
 // its hormone records once. (A profile with NO cycle data derives no phase and
 // re-reconciles to the byte-identical prior flag, so this is a no-op for them.)
-export const FLAG_LOGIC_VERSION = 8;
+// v9: UCUM bracket/annotation stripping in unit matching (#1018) — sameUnit /
+// convertToCanonical now recognize the spellings documents actually ship
+// ("mm[Hg]" ≡ mmHg, "[degF]" ≡ degF, "{beats}/min" ≡ /min), so imported rows
+// whose flags were never derived (conversion returned null at write time) become
+// judgeable. Every stored record must re-reconcile once so an imported 158
+// mm[Hg] blood pressure finally gets its "high" flag — this same pass also
+// covers the Body Temperature rows migration 074 converted to canonical °F.
+export const FLAG_LOGIC_VERSION = 9;
 
 // The canonical fields that can change a record's derived flag: the reference and
 // optimal ranges (incl. sex-specific and age-banded variants), the unit +

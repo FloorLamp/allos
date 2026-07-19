@@ -6,6 +6,7 @@
 // it's unit-tested in lib/__tests__ and the page stays a thin composition.
 
 import type { AppRoute } from "./hrefs";
+import type { DistanceUnit, TemperatureUnit } from "./settings";
 import type { Reason } from "./reasons";
 import type { LifecycleSuppressionPolicy } from "./lifecycle";
 import { daysBetweenDateStr, shiftDateStr } from "./date";
@@ -142,6 +143,23 @@ const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
   "biomarker-flag": 14,
   integration: 15,
   review: 16,
+};
+
+// The viewer's display units for measurement-carrying item strings (#1019 — the
+// display-unit policy): a WEB boundary (the Upcoming page, the dashboard hero)
+// resolves the login's prefs and passes them down so the item builders format
+// temperature/distance in the viewer's unit; a login-less caller (the Telegram
+// digest, the calendar feed, AI insights) omits them and gets canonical units
+// (°F / km — the documented notification stance). Display only: item KEYS and
+// dedupe identities never depend on these.
+export interface UpcomingDisplayUnits {
+  temperatureUnit: TemperatureUnit;
+  distanceUnit: DistanceUnit;
+}
+
+export const CANONICAL_DISPLAY_UNITS: UpcomingDisplayUnits = {
+  temperatureUnit: "F",
+  distanceUnit: "km",
 };
 
 export type UrgencyBand = "overdue" | "today" | "week" | "later";

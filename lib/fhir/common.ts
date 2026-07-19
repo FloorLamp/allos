@@ -2,6 +2,7 @@ import { canonicalBiomarkerForLoinc, isVitalLoinc } from "../biomarker-loinc";
 import type { FhirCodeableConcept } from "../cvx-map";
 import { isRealIsoDate } from "../date";
 import type { ImportedProvider, ImportedRecord } from "../health-import";
+import { VITAL_CANONICAL, normalizeImportedTemperature } from "../vitals-input";
 
 export class FhirError extends Error {}
 
@@ -377,13 +378,24 @@ export function fhirReadingFromCode(
   // so vital signs land under the vitals category — and don't get registered into
   // the AI biomarker vocabulary — exactly as the CDA path routes them.
   const category = isVitalLoinc(loinc) ? "vitals" : "lab";
+  const canonical = canonicalBiomarkerForLoinc(loinc) ?? name;
+  // Body Temperature converts to canonical °F at the import boundary (#1018) —
+  // the same conversion the CDA mapper and every live-entry writer perform, so an
+  // Epic/Apple FHIR "38.5 Cel" joins the series as 101.3 degF. Recognized
+  // spellings only; unrecognized/implausible stays verbatim (never guess). The
+  // external_id keeps the AS-SHIPPED value so a reading's dedup identity is
+  // stable across normalization changes.
+  let stored: FhirObsValue = val;
+  if (canonical === VITAL_CANONICAL.temperature.canonical) {
+    stored = normalizeImportedTemperature(val.value_num, val.unit) ?? val;
+  }
   return {
     category,
     name,
-    canonical: canonicalBiomarkerForLoinc(loinc) ?? name,
-    value: val.value,
-    value_num: val.value_num,
-    unit: val.unit,
+    canonical,
+    value: stored.value,
+    value_num: stored.value_num,
+    unit: stored.unit,
     date,
     loinc: loinc ?? null,
     // Include the value so two distinct same-day readings of the same measure

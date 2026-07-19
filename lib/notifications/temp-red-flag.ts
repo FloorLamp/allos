@@ -64,7 +64,12 @@ export async function runTempRedFlag(
   profileName: string,
   date: string
 ): Promise<{ failed: boolean }> {
-  const finding = tempRedFlagFindingFor(profileId, date);
+  // "dual" display (#1019): the nudge has no login-unit context (prefs are
+  // per-login, notifications per-profile), and a mixed-preference household must
+  // read a fever red-flag correctly either way — so the safety message carries
+  // BOTH scales ("38.5 °C / 101.3 °F"). The dedupeKey is display-independent, so
+  // the bus gating below still matches the web surfaces' keys exactly.
+  const finding = tempRedFlagFindingFor(profileId, date, "dual");
   const actionableKeys = finding ? [finding.dedupeKey] : [];
 
   // Route through the shared findings-suppression bus (#227).
