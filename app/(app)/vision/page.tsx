@@ -1,4 +1,5 @@
 import { requireSession } from "@/lib/auth";
+import { getDisplayFormatPrefs } from "@/lib/settings";
 import { getOpticalPrescriptions } from "@/lib/queries";
 import { today } from "@/lib/db";
 import { PageHeader } from "@/components/ui";
@@ -17,7 +18,7 @@ export const dynamic = "force-dynamic";
 // "expires soon" / "expired" text; the recurring eye-exam reminder lives on the
 // existing vision_exam preventive rule, not duplicated here (#697).
 export default async function VisionPage() {
-  const { profile } = await requireSession();
+  const { login, profile } = await requireSession();
   const prescriptions = getOpticalPrescriptions(profile.id);
 
   return (
@@ -29,7 +30,10 @@ export default async function VisionPage() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="min-w-0 space-y-4 lg:col-span-2">
-          <OpticalProgression items={prescriptions} />
+          <OpticalProgression
+            items={prescriptions}
+            formatPrefs={getDisplayFormatPrefs(login.id)}
+          />
           <OpticalPrescriptionList
             items={prescriptions}
             today={today(profile.id)}

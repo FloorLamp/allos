@@ -7,6 +7,8 @@ import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import NotesText from "@/components/NotesText";
 import { formatRecordDate } from "@/lib/record-format";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import type { DisplayFormatPrefs } from "@/lib/format-date";
 import { uploadLesionPhoto, deleteLesionPhoto } from "./actions";
 import type { LesionPhotoRow } from "@/lib/skin-photo-write";
 
@@ -23,6 +25,7 @@ export default function LesionPhotoStrip({
   lesionId: number;
   photos: LesionPhotoRow[];
 }) {
+  const fmt = useFormatPrefs();
   const router = useRouter();
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
@@ -60,11 +63,13 @@ export default function LesionPhotoStrip({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={`/api/lesion-photo/${p.id}`}
-                alt={`Lesion photo from ${formatRecordDate(p.date)}`}
+                alt={`Lesion photo from ${formatRecordDate(p.date, "—", fmt)}`}
                 className="h-32 w-32 rounded-lg border border-black/10 object-cover dark:border-white/10"
               />
               <figcaption className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                <span className="font-medium">{formatRecordDate(p.date)}</span>
+                <span className="font-medium">
+                  {formatRecordDate(p.date, "—", fmt)}
+                </span>
                 <NotesText
                   as="span"
                   notes={p.caption}
