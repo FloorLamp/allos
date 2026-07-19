@@ -28,7 +28,7 @@ import { getSymptomDaysInRange } from "./queries/symptoms";
 import { getConditions } from "./queries/clinical";
 import type { Condition } from "./types";
 import { symptomLabel } from "./symptoms";
-import { VITAL_CANONICAL } from "./vitals-input";
+import { VITAL_CANONICAL, storedTempToF } from "./vitals-input";
 import {
   getIllnessSituations,
   getSituationEvents,
@@ -109,7 +109,7 @@ export function assembleIllnessEpisode(
   // ── Temperature / fever curve (#800) ────────────────────────────────────────
   const tempRows = db
     .prepare(
-      `SELECT id, date, notes, value_num, flag FROM medical_records
+      `SELECT id, date, notes, value_num, unit, flag FROM medical_records
         WHERE profile_id = ? AND canonical_name = ?
           AND date >= ? AND date <= ? AND value_num IS NOT NULL
         ORDER BY date ASC, COALESCE(notes, '') ASC`
@@ -119,15 +119,28 @@ export function assembleIllnessEpisode(
     date: string;
     notes: string | null;
     value_num: number;
+    unit: string | null;
     flag: string | null;
   }[];
-  const temperatures: TemperaturePoint[] = tempRows.map((r) => ({
-    id: r.id,
-    date: r.date,
-    time: /^\d{2}:\d{2}$/.test(r.notes ?? "") ? r.notes : null,
-    degF: r.value_num,
-    flag: r.flag,
-  }));
+  // Unit-gated (#1018): value_num is only trusted as °F when the row's unit IS a
+  // recognized °F spelling (or NULL — every app writer stores 'degF'; older
+  // extracted rows may carry null, the pre-existing trust, kept). A recognized
+  // Celsius row (a legacy pre-conversion import, "38.5 Cel") converts through the
+  // shared storedTempToF gate; a row with an unrecognized unit is EXCLUDED — it
+  // must never plot on the °F axis, pollute maxTempF/latestTemp, or understate the
+  // reading the temp-red-flag engine judges.
+  const temperatures: TemperaturePoint[] = [];
+  for (const r of tempRows) {
+    const degF = storedTempToF(r.value_num, r.unit);
+    if (degF == null) continue;
+    temperatures.push({
+      id: r.id,
+      date: r.date,
+      time: /^\d{2}:\d{2}$/.test(r.notes ?? "") ? r.notes : null,
+      degF,
+      flag: r.flag,
+    });
+  }
   const maxTempF = temperatures.reduce<number | null>(
     (m, t) => (m == null || t.degF > m ? t.degF : m),
     null
