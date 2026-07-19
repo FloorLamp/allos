@@ -998,6 +998,12 @@
       "description": "Luteinizing hormone is a pituitary hormone that triggers ovulation in women and testosterone production in men. It is used to evaluate reproductive and hormonal function."
     },
     {
+      "name": "Progesterone",
+      "abbreviation": "P4",
+      "full_name": "Progesterone",
+      "description": "Progesterone is a sex hormone that rises sharply after ovulation to prepare and maintain the uterine lining. Its level varies dramatically across the menstrual cycle — low in the follicular phase and much higher in the luteal phase — so it is interpreted by cycle phase."
+    },
+    {
       "name": "Triglyceride/HDL Ratio",
       "abbreviation": "TG/HDL",
       "full_name": "Triglyceride to HDL Cholesterol Ratio",

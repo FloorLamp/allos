@@ -28,7 +28,15 @@ import canonicalSeed from "./canonical-biomarkers.json";
 // screen the extractor left null/normal is promoted to "abnormal" (like an infection-
 // positive) and a LOW-risk screen's blunt "abnormal" is cleared. Existing stored
 // screen rows must re-reconcile once so the boot pass corrects those frozen flags.
-export const FLAG_LOGIC_VERSION = 7;
+// v8: cycle-phase reference ranges (ranges_by_cycle_phase, #718) — for female
+// physiology, the cycle phase on a record's collection date (derived from the logged
+// cycle history) now overrides the coarse status/age proxy in referenceRange for the
+// phase-dependent hormones (FSH/LH/estradiol/progesterone). A stored flag can change
+// meaning — a mid-luteal progesterone flagged "high" under the coarse envelope is
+// normal against its luteal range — so a profile WITH cycle data must re-reconcile
+// its hormone records once. (A profile with NO cycle data derives no phase and
+// re-reconciles to the byte-identical prior flag, so this is a no-op for them.)
+export const FLAG_LOGIC_VERSION = 8;
 
 // The canonical fields that can change a record's derived flag: the reference and
 // optimal ranges (incl. sex-specific and age-banded variants), the unit +
@@ -57,6 +65,10 @@ const FLAG_RELEVANT_FIELDS = [
   // ranges_by_age, so adding/editing a status range flows into the signature and
   // re-reconciles stored flags on the next boot.
   "ranges_by_status",
+  // Cycle-phase reference overrides (JSON object, #718). Hashed by value like
+  // ranges_by_status, so adding/editing a phase range flows into the signature and
+  // re-reconciles the affected profiles' hormone flags on the next boot.
+  "ranges_by_cycle_phase",
   "conversions",
 ] as const;
 

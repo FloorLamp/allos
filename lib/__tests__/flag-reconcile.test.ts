@@ -200,4 +200,95 @@ describe("computeFlagReconciliation", () => {
       []
     );
   });
+
+  // Cycle-phase threading (#718): a progesterone entry whose base envelope (≤23.9)
+  // is tightened to ≤1.5 on a follicular date and stays ≤23.9 on a luteal date.
+  const prog = {
+    name: "Progesterone",
+    unit: "ng/mL",
+    ref_low: null,
+    ref_high: 23.9,
+    ref_low_female: null,
+    ref_high_female: 23.9,
+    direction: "in_range" as const,
+    optimal_low: null,
+    optimal_high: null,
+    optimal_low_male: null,
+    optimal_high_male: null,
+    optimal_low_female: null,
+    optimal_high_female: null,
+    ranges_by_cycle_phase: {
+      follicular: { ref_low: null, ref_high: 1.5 },
+      luteal: { ref_low: null, ref_high: 23.9 },
+    },
+  };
+  const progByName = new Map([["progesterone", prog]]);
+  // Two logged periods 28 days apart. The completed cycle (Jan 1 → Jan 29) splits
+  // follicular vs luteal at 14 days before Jan 29 (= Jan 15). So a Jan 6 draw is
+  // follicular; a Jan 20 draw is luteal.
+  const periods = [
+    {
+      id: 1,
+      period_start: "2024-01-01",
+      period_end: "2024-01-05",
+      flow: null,
+      note: null,
+    },
+    {
+      id: 2,
+      period_start: "2024-01-29",
+      period_end: "2024-02-02",
+      flow: null,
+      note: null,
+    },
+  ];
+
+  it("derives each hormone record's cycle phase from ITS OWN date (#718)", () => {
+    const rows = [
+      // Jan 6 = follicular → 15 ng/mL is above the ≤1.5 follicular ceiling.
+      {
+        id: 1,
+        value_num: 15,
+        unit: "ng/mL",
+        canonical_name: "Progesterone",
+        flag: null,
+        date: "2024-01-06",
+      },
+      // Jan 20 = luteal → 15 ng/mL is within the ≤23.9 luteal range (no flag).
+      {
+        id: 2,
+        value_num: 15,
+        unit: "ng/mL",
+        canonical_name: "Progesterone",
+        flag: null,
+        date: "2024-01-20",
+      },
+    ];
+    expect(
+      computeFlagReconciliation(rows, progByName, { sex: "female", periods })
+    ).toEqual([{ id: 1, flag: "high" }]);
+  });
+
+  it("no periods → the base envelope (≤23.9), byte-identical to pre-#718 (back-compat)", () => {
+    const rows = [
+      {
+        id: 1,
+        value_num: 15,
+        unit: "ng/mL",
+        canonical_name: "Progesterone",
+        flag: null,
+        date: "2024-01-06",
+      },
+    ];
+    // Empty periods and omitted periods both fall back to the base range → no flag.
+    expect(
+      computeFlagReconciliation(rows, progByName, {
+        sex: "female",
+        periods: [],
+      })
+    ).toEqual([]);
+    expect(
+      computeFlagReconciliation(rows, progByName, { sex: "female" })
+    ).toEqual([]);
+  });
 });
