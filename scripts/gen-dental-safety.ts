@@ -199,6 +199,8 @@ const CONDITION_GATES: DentalConditionGate[] = [
       "prosthetic heart valve",
       "mechanical valve",
       "mechanical heart valve",
+      "mechanical aortic valve",
+      "mechanical mitral valve",
       "bioprosthetic valve",
       "prosthetic aortic valve",
       "prosthetic mitral valve",
