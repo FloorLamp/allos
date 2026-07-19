@@ -58,10 +58,11 @@ export default async function MedicationsPage() {
           nowHhmm={data.nowHhmm}
         />
 
-        {/* 2. Safety strip — interaction + PGx warnings (also on Supplements). */}
+        {/* 2. Safety strip — interaction + PGx + ototoxic warnings (also on Supplements). */}
         <IntakeWarnings
           interactionWarnings={data.interactionWarnings}
           pgxWarnings={data.pgxWarnings}
+          ototoxicWarnings={data.ototoxicWarnings}
         />
 
         {medCount === 0 ? (

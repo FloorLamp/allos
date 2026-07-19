@@ -56,6 +56,7 @@ describe("deriveRiskFactors", () => {
         immunocompromised: false,
         dialysis: true,
         pregnant: true,
+        noiseExposure: false,
       },
     });
     expect([...f].sort()).toEqual(
@@ -277,6 +278,43 @@ describe("deriveRiskFactors — visit-cadence inputs (Substrate 3, #707)", () =>
       ).toBe(false);
     }
   });
+
+  it("derives noise-exposure from the self-declared attribute (#717)", () => {
+    const f = deriveRiskFactors({
+      familyConditions: [],
+      activeConditions: [],
+      attributes: { ...EMPTY_RISK_ATTRIBUTES, noiseExposure: true },
+    });
+    expect(f.has("noise-exposure")).toBe(true);
+    // Absent by default.
+    expect(
+      deriveRiskFactors({
+        familyConditions: [],
+        activeConditions: [],
+        attributes: EMPTY_RISK_ATTRIBUTES,
+      }).has("noise-exposure")
+    ).toBe(false);
+  });
+
+  it("derives ototoxic-medication only from the ototoxicMedication input (#717)", () => {
+    const base = {
+      familyConditions: [],
+      activeConditions: [],
+      attributes: EMPTY_RISK_ATTRIBUTES,
+    };
+    expect(
+      deriveRiskFactors({ ...base, ototoxicMedication: true }).has(
+        "ototoxic-medication"
+      )
+    ).toBe(true);
+    for (const v of [false, undefined] as const) {
+      expect(
+        deriveRiskFactors({ ...base, ototoxicMedication: v }).has(
+          "ototoxic-medication"
+        )
+      ).toBe(false);
+    }
+  });
 });
 
 describe("visitModulationFor (Substrate 3, #707)", () => {
@@ -339,6 +377,42 @@ describe("visitModulationFor (Substrate 3, #707)", () => {
     );
     expect(both.multiplier).toBe(0.5);
     expect(both.reasons).toHaveLength(2);
+  });
+
+  it("noise-exposure and ototoxic-medication each bring hearing_screening sooner (#717)", () => {
+    const noise = visitModulationFor(
+      "hearing_screening",
+      new Set<RiskFactor>(["noise-exposure"])
+    );
+    expect(noise.multiplier).toBe(0.5);
+    expect(noise.priority).toBe(2);
+    expect(noise.reasons).toContain(
+      "Noise exposure on file — earlier, more frequent hearing checks recommended (NIOSH / CDC)"
+    );
+
+    const ototoxic = visitModulationFor(
+      "hearing_screening",
+      new Set<RiskFactor>(["ototoxic-medication"])
+    );
+    expect(ototoxic.multiplier).toBe(0.5);
+    expect(ototoxic.reasons).toContain(
+      "Ototoxic medication on file — hearing monitoring is sometimes advised; a hearing check sooner is reasonable (ASHA)"
+    );
+
+    // Both present: tightest multiplier wins, both reasons ride; and neither touches
+    // an unrelated visit rule.
+    const both = visitModulationFor(
+      "hearing_screening",
+      new Set<RiskFactor>(["noise-exposure", "ototoxic-medication"])
+    );
+    expect(both.multiplier).toBe(0.5);
+    expect(both.reasons).toHaveLength(2);
+    expect(
+      visitModulationFor(
+        "vision_exam",
+        new Set<RiskFactor>(["noise-exposure", "ototoxic-medication"])
+      )
+    ).toEqual(NO_MODULATION);
   });
 
   it("does not modulate a retest or screening (visit rules are their own dimension)", () => {

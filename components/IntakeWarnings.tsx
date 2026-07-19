@@ -10,6 +10,7 @@ import {
   PGX_SEVERITY_LABEL,
   type PgxHit,
 } from "@/lib/pgx";
+import { ototoxicTitle, type OtotoxicHit } from "@/lib/ototoxic";
 
 // The CROSS-KIND intake warnings (#746): drug-/supplement-interaction hits (#144)
 // and the pharmacogenomics cross-check (#710). A supplement–drug interaction spans
@@ -22,11 +23,20 @@ import {
 export default function IntakeWarnings({
   interactionWarnings,
   pgxWarnings,
+  ototoxicWarnings = [],
 }: {
   interactionWarnings: InteractionHit[];
   pgxWarnings: PgxHit[];
+  // Ototoxic-medication awareness (#717): an active ototoxic medication → a calm, cited
+  // hearing-safety note. Optional so a caller that doesn't gather it renders nothing.
+  ototoxicWarnings?: OtotoxicHit[];
 }) {
-  if (interactionWarnings.length === 0 && pgxWarnings.length === 0) return null;
+  if (
+    interactionWarnings.length === 0 &&
+    pgxWarnings.length === 0 &&
+    ototoxicWarnings.length === 0
+  )
+    return null;
   return (
     <>
       {/* Drug-/supplement-interaction warnings (issue #144) */}
@@ -81,6 +91,27 @@ export default function IntakeWarnings({
               evidence={`Informational — discuss with your prescriber before any change; do not stop or switch a medication based on this alone. Source: ${hit.source}`}
               dismissKey={hit.dedupeKey}
               dismissLabel={`Dismiss ${pgxTitle(hit)} pharmacogenomic note`}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Ototoxic-medication awareness (issue #717): an active medication that is a
+          well-established ototoxic (hearing/balance-toxic) agent. The class note is
+          relayed AS INFORMATION with its citation; never prescriptive — the app never
+          tells you to change a medication, and the absence of a flag is not clearance. */}
+      {ototoxicWarnings.length > 0 && (
+        <div className="mb-4 space-y-2" data-testid="ototoxic-warnings">
+          {ototoxicWarnings.map((hit) => (
+            <FindingCard
+              key={hit.dedupeKey}
+              testid={`ototoxic-warning-${hit.dedupeKey}`}
+              tone="amber"
+              title={ototoxicTitle(hit)}
+              detail={hit.note}
+              evidence={`Informational — a general note about the medication class, not advice to change anything; discuss any hearing or balance concern with your prescriber. Source: ${hit.citation}`}
+              dismissKey={hit.dedupeKey}
+              dismissLabel={`Dismiss ${ototoxicTitle(hit)} hearing-safety note`}
             />
           ))}
         </div>

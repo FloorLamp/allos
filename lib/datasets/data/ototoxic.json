@@ -1,0 +1,125 @@
+{
+  "$schema": "allos-dataset/v1",
+  "id": "ototoxic",
+  "title": "Ototoxic-medication awareness",
+  "description": "Baked ototoxic-medication awareness dataset (issue #717) — surfaces a calm, informational note when an ACTIVE medication is a well-established ototoxic (hearing/balance-toxic) agent: an AMINOGLYCOSIDE antibiotic, PLATINUM chemotherapy (cisplatin/carboplatin), a high-dose loop DIURETIC, a high-dose long-term SALICYLATE (aspirin), VANCOMYCIN, or QUININE / related antimalarials. Drugs match by RxNorm ingredient CUI + synonym (the shared machinery). INFORMATIONAL, never prescriptive — it never says stop a drug, never blocks anything, and the absence of a flag is NOT clearance (a curated subset). Fully OFFLINE. Committed + HUMAN-REVIEWABLE; regenerate with `npm run gen:ototoxic`.",
+  "citation": [
+    {
+      "source": "American Speech-Language-Hearing Association — Ototoxic Medications",
+      "url": "https://www.asha.org/public/hearing/ototoxic-medications/",
+      "note": "Uncopyrightable clinical facts (these drug classes are ototoxic) stated in our own words and cited to the ASHA consumer reference. Drug generic/brand names are public nomenclature."
+    },
+    {
+      "source": "NIH NIDCD — Hearing, Ear Infections, and Deafness",
+      "url": "https://www.nidcd.nih.gov/health/hearing-ear-infections-deafness",
+      "note": "General NIH reference on hearing loss causes including medication-related (ototoxic) loss, stated in our own words."
+    }
+  ],
+  "identity": {
+    "keys": [
+      "key"
+    ]
+  },
+  "meta": {
+    "version": 1
+  },
+  "entries": [
+    {
+      "key": "aminoglycoside",
+      "category": "aminoglycoside",
+      "label": "Aminoglycoside antibiotics (gentamicin, tobramycin, amikacin)",
+      "rxcuis": [],
+      "synonyms": [
+        "amikacin",
+        "amikin",
+        "aminoglycoside",
+        "garamycin",
+        "gentamicin",
+        "kanamycin",
+        "neomycin",
+        "paromomycin",
+        "plazomicin",
+        "streptomycin",
+        "tobramycin",
+        "tobrex"
+      ],
+      "note": "This is an aminoglycoside antibiotic, a class that can be toxic to the inner ear (hearing and balance) — sometimes permanently. Hearing/balance monitoring is sometimes advised during a course.",
+      "source": "American Speech-Language-Hearing Association — Ototoxic Medications"
+    },
+    {
+      "key": "loop_diuretic",
+      "category": "loop-diuretic",
+      "label": "Loop diuretics (furosemide, bumetanide, ethacrynic acid)",
+      "rxcuis": [],
+      "synonyms": [
+        "bumetanide",
+        "bumex",
+        "demadex",
+        "edecrin",
+        "ethacrynic acid",
+        "furosemide",
+        "lasix",
+        "torasemide",
+        "torsemide"
+      ],
+      "note": "This is a loop diuretic; at high or rapid intravenous doses it can affect hearing (usually reversibly), and the risk rises if it is taken alongside an aminoglycoside antibiotic.",
+      "source": "NIH NIDCD; American Speech-Language-Hearing Association — Ototoxic Medications"
+    },
+    {
+      "key": "platinum_chemo",
+      "category": "platinum-chemo",
+      "label": "Platinum chemotherapy (cisplatin, carboplatin)",
+      "rxcuis": [],
+      "synonyms": [
+        "carboplatin",
+        "cisplatin",
+        "paraplatin",
+        "platinol"
+      ],
+      "note": "This is a platinum-based chemotherapy; cisplatin in particular is strongly toxic to hearing, and the loss can be permanent. Hearing is often monitored during treatment.",
+      "source": "American Speech-Language-Hearing Association — Ototoxic Medications"
+    },
+    {
+      "key": "quinine_antimalarial",
+      "category": "antimalarial",
+      "label": "Quinine and related antimalarials",
+      "rxcuis": [],
+      "synonyms": [
+        "chloroquine",
+        "hydroxychloroquine",
+        "plaquenil",
+        "qualaquin",
+        "quinine"
+      ],
+      "note": "Quinine and related antimalarials can cause ringing in the ears and hearing loss; with quinine this is usually reversible, while the others rarely cause lasting loss.",
+      "source": "NIH NIDCD; American Speech-Language-Hearing Association — Ototoxic Medications"
+    },
+    {
+      "key": "salicylate",
+      "category": "salicylate",
+      "label": "Salicylates (high-dose aspirin)",
+      "rxcuis": [],
+      "synonyms": [
+        "acetylsalicylic acid",
+        "asa",
+        "aspirin",
+        "salicylate",
+        "salsalate"
+      ],
+      "note": "At HIGH doses taken over time, salicylates (aspirin) can cause ringing in the ears or temporary hearing loss that typically reverses when the dose is lowered or stopped. Low-dose (cardioprotective) aspirin is not generally implicated.",
+      "source": "NIH NIDCD; American Speech-Language-Hearing Association — Ototoxic Medications"
+    },
+    {
+      "key": "vancomycin",
+      "category": "glycopeptide",
+      "label": "Vancomycin",
+      "rxcuis": [],
+      "synonyms": [
+        "vancocin",
+        "vancomycin"
+      ],
+      "note": "Vancomycin (a glycopeptide antibiotic) carries a risk of hearing effects, especially at high levels or when combined with an aminoglycoside; drug levels and hearing are sometimes monitored.",
+      "source": "NIH NIDCD; American Speech-Language-Hearing Association — Ototoxic Medications"
+    }
+  ]
+}

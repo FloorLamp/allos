@@ -59,6 +59,7 @@ export async function saveRiskFactors(formData: FormData) {
     immunocompromised: on("immunocompromised"),
     dialysis: on("dialysis"),
     pregnant: on("pregnant"),
+    noiseExposure: on("noise_exposure"),
   });
   revalidatePath("/upcoming");
   revalidatePath("/medical/background");
