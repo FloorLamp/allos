@@ -766,6 +766,52 @@ describe("FHIR Observation component[] + valueless guard", () => {
   });
 });
 
+// #1018: an imported Body Temperature converts to canonical °F at the boundary —
+// the same conversion every live-entry writer performs — so it joins the one
+// series (charts + reference-range flags) instead of sitting verbatim in "Cel".
+describe("FHIR imported temperature → canonical °F (#1018)", () => {
+  const tempObs = (value: number, unit: string) => ({
+    resourceType: "Observation",
+    status: "final",
+    code: {
+      text: "Body temperature",
+      coding: [{ system: "http://loinc.org", code: "8310-5" }],
+    },
+    effectiveDateTime: "2024-05-01",
+    valueQuantity: { value, unit },
+  });
+
+  it("converts a UCUM Celsius reading (38.5 Cel → 101.3 degF)", () => {
+    const r = parseFhirBundle(bundle([tempObs(38.5, "Cel")]));
+    expect(r.records).toHaveLength(1);
+    expect(r.records[0]).toMatchObject({
+      canonical: "Body Temperature",
+      category: "vitals",
+      value_num: 101.3,
+      value: "101.3",
+      unit: "degF",
+    });
+    // Dedup identity keys on the AS-SHIPPED value, so a document whose Cel
+    // reading was stored before the conversion re-imports onto the same row.
+    expect(r.records[0].external_id).toContain(":38.5");
+  });
+
+  it("normalizes a UCUM Fahrenheit spelling ([degF]) onto the canonical unit", () => {
+    const r = parseFhirBundle(bundle([tempObs(101.3, "[degF]")]));
+    expect(r.records[0]).toMatchObject({ value_num: 101.3, unit: "degF" });
+  });
+
+  it("stores an unrecognized unit verbatim rather than guessing", () => {
+    const r = parseFhirBundle(bundle([tempObs(311.2, "K")]));
+    expect(r.records[0]).toMatchObject({ value_num: 311.2, unit: "K" });
+  });
+
+  it("stores an implausible converted value verbatim (junk stays out of the series)", () => {
+    const r = parseFhirBundle(bundle([tempObs(900, "Cel")]));
+    expect(r.records[0]).toMatchObject({ value_num: 900, unit: "Cel" });
+  });
+});
+
 // Fix 3: a lab whose LOINC has no canonical mapping still imports, and is listed in
 // the report's unmappedLoincs annotation (not dropped).
 describe("FHIR unmapped-LOINC surfacing", () => {

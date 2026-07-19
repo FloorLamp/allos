@@ -28,7 +28,11 @@ import { riskReasonsFrom, type Reason } from "../reasons";
 import { getRiskFactors } from "./upcoming/risk";
 import type { RiskFactor } from "../risk-stratification";
 import type { IntegrationId } from "../types";
-import type { UpcomingItem } from "../upcoming";
+import {
+  CANONICAL_DISPLAY_UNITS,
+  type UpcomingDisplayUnits,
+  type UpcomingItem,
+} from "../upcoming";
 import {
   collectUpcoming,
   collectSuppressedUpcoming,
@@ -94,9 +98,13 @@ function flaggedRiskReasons(
 // here, same store as every other finding. This is the item set BOTH surfaces
 // render — the dashboard card via attentionCardItems/groupAttentionForCard, the
 // Upcoming page via groupAttentionForPage.
+// `units` (#1019 display-unit policy): the two WEB boundaries (dashboard hero,
+// Upcoming page) pass the viewer's login prefs so measurement-carrying item
+// strings render in the viewer's unit; count-only callers omit it (canonical).
 export function collectAttentionModel(
   profileId: number,
-  today: string
+  today: string,
+  units: UpcomingDisplayUnits = CANONICAL_DISPLAY_UNITS
 ): UpcomingItem[] {
   const suppressions = getFindingSuppressions(profileId);
   const factors = getRiskFactors(profileId);
@@ -109,7 +117,7 @@ export function collectAttentionModel(
     // its elevation — one risk computation, shared with the retest generator.
     .map((b) => ({ ...b, riskReasons: flaggedRiskReasons(b, factors) }));
   return buildAttentionModel({
-    upcoming: collectUpcoming(profileId, today),
+    upcoming: collectUpcoming(profileId, today, units),
     flaggedBiomarkers,
     integrations: integrationAttention(profileId),
     reviewCount: getReviewPairCount(profileId),
@@ -139,9 +147,10 @@ export function attentionCountForProfile(
 // (review/integration) aren't suppressible, so they never appear here.
 export function collectSuppressedAttention(
   profileId: number,
-  today: string
+  today: string,
+  units: UpcomingDisplayUnits = CANONICAL_DISPLAY_UNITS
 ): SuppressedUpcoming[] {
-  const out = collectSuppressedUpcoming(profileId, today);
+  const out = collectSuppressedUpcoming(profileId, today, units);
   const suppressions = getFindingSuppressions(profileId);
   const factors = getRiskFactors(profileId);
   for (const b of flaggedInWindow(profileId)) {

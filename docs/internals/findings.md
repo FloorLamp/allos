@@ -99,6 +99,15 @@ interface FollowUpAdapter<Source, Candidate> {
 
 ---
 
+## Display units on finding surfaces — the policy (#1019)
+
+A finding/item string that contains a **measurement** (a temperature, a weight, a distance) renders under one fixed policy — decided once here so no builder re-litigates it:
+
+1. **Web: the viewer's login pref, always.** Any measurement-carrying string either takes the unit at format time (the `tempRedFlagTitle`/`tempRedFlagDetail` display parameter, `enduranceEventItems`' distance unit) or carries the raw canonical value on its envelope for render-time formatting — never a baked-in unit. The web boundaries (the Upcoming page, the dashboard hero) resolve `getUnitPrefs(login.id)` and thread it into `collectAttentionModel`/`collectUpcoming` (`UpcomingDisplayUnits`).
+2. **Telegram/notifications: canonical units (kg/km/°F), documented — EXCEPT safety-critical temperature, which renders dual-unit** (`fmtTempDual`, "38.5 °C / 101.3 °F"). Unit prefs are per-**login**; notifications are per-**profile** — there is no pref to consult. The digest/recap weight and distance lines deliberately stay canonical (dual-unit everywhere would be noise); the temperature red-flag nudge is the one safety message where a mixed-preference household must read the number correctly either way, so it errs toward redundancy.
+3. **Identity is display-independent.** `dedupeKey`s and item `key`s never depend on the display unit (pinned in `lib/__tests__/temp-red-flag.test.ts`), so a dismiss on a °C surface silences the °F and Telegram twins through the shared bus.
+4. **Cited source text never converts.** A threshold quoted from a curated dataset (`entry.line`/`entry.label` in `lib/datasets/temperature-red-flags.ts`) is the source's own words and passes through verbatim; only app-authored fact clauses convert.
+
 ## The reason model — structured "why", carried as data (#656, Track A of #860)
 
 Status: **shipped** (findings/upcoming/notification spine; import-review `ActivityDupPair.reason` + `SuggestionDraft.rationale` deliberately out of scope — documented follow-ups)

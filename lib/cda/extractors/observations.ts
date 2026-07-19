@@ -8,6 +8,10 @@ import {
   isVitalLoinc,
 } from "../../biomarker-loinc";
 import type { ImportedProvider, ImportedRecord } from "../../health-import";
+import {
+  VITAL_CANONICAL,
+  normalizeImportedTemperature,
+} from "../../vitals-input";
 import { SECTIONS } from "../constants";
 import type { SectionExtractor } from "../constants";
 import {
@@ -101,22 +105,37 @@ export function mapObservation(
   // reading groups with the same concept elsewhere in the app; otherwise keep
   // the printed name.
   const canonical = canonicalName ?? String(name);
+  // The dedup key carries the AS-SHIPPED value (captured before any unit
+  // normalization below), so a reading's identity is stable across normalization
+  // changes — a re-import of a document whose Celsius reading was stored
+  // pre-conversion (#1018) matches the existing row instead of duplicating it.
+  const external_id = `ccda:${recordCategory === "vitals" ? "vital" : "obs"}:${String(
+    loinc || name
+  ).toLowerCase()}:${date}:${value_num ?? value ?? ""}`;
+  // Body Temperature converts to canonical °F at the import boundary (#1018), the
+  // same conversion every live-entry writer performs — a MyChart "38.5 Cel" must
+  // join the series as 101.3 degF, not as an unconvertible verbatim row that never
+  // charts or flags. Recognized spellings only (UCUM Cel/[degF], °C/°F, text
+  // forms); an unrecognized unit or an implausible converted value stays verbatim
+  // (the heightToCm skip-don't-guess posture).
+  let stored = { value, value_num, unit };
+  if (canonical === VITAL_CANONICAL.temperature.canonical) {
+    stored = normalizeImportedTemperature(value_num, unit) ?? stored;
+  }
   return {
     category: recordCategory,
     name: String(name),
     canonical,
-    value,
-    value_num,
-    unit,
+    value: stored.value,
+    value_num: stored.value_num,
+    unit: stored.unit,
     date,
     loinc: loinc ?? null,
     // Include the value in the dedup key: two distinct same-day observations that
     // share a code/name (or fall back to the same "Result" name with no LOINC)
     // would otherwise collapse to one external_id and dedupe() would drop a real
     // reading. A genuine duplicate (same value) still dedupes.
-    external_id: `ccda:${recordCategory === "vitals" ? "vital" : "obs"}:${String(
-      loinc || name
-    ).toLowerCase()}:${date}:${value_num ?? value ?? ""}`,
+    external_id,
     // The performing lab/org (e.g. "QUEST") — from the observation's own
     // <performer>, else the organizer's.
     provider: providerFromPerformer(obs) ?? fallbackProvider,

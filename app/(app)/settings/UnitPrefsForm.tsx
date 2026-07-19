@@ -71,6 +71,7 @@ export default function UnitPrefsForm({ prefs }: { prefs: UnitPrefs }) {
       <div>
         <label className="label">Distance</label>
         <select
+          data-testid="distance-unit-select"
           value={distanceUnit}
           onChange={(e) => {
             const v = e.target.value as DistanceUnit;

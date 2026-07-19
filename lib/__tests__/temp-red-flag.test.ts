@@ -3,9 +3,13 @@ import {
   detectEpisodeTempRedFlag,
   tempRedFlagDedupeKey,
   tempRedFlagFullDetail,
+  tempRedFlagTitle,
+  tempRedFlagDetail,
   inlineTempRedFlagNote,
   TEMP_RED_FLAG_PREFIX,
 } from "@/lib/temp-red-flag";
+import { detectTempRedFlag } from "@/lib/datasets/temperature-red-flags";
+import { fmtTempDual } from "@/lib/units";
 import type {
   AssembledEpisode,
   TemperaturePoint,
@@ -87,6 +91,53 @@ describe("detectEpisodeTempRedFlag", () => {
     expect(key).toBe(
       "temp-red-flag:illness:2026-06-01:2026-06-02:infant_fever"
     );
+  });
+});
+
+describe("display units (#1019 — web pref / Telegram dual, identity untouched)", () => {
+  const entry = detectTempRedFlag(104.5, null)!; // hyperpyrexia
+
+  it("formatters honor the passed unit; °F stays the default", () => {
+    expect(tempRedFlagTitle(entry, 104.5)).toContain("104.5 °F");
+    expect(tempRedFlagTitle(entry, 104.5, "C")).toContain("40.3 °C");
+    expect(tempRedFlagTitle(entry, 104.5, "C")).not.toContain("104.5 °F");
+    expect(tempRedFlagDetail(entry, 104.5, "C")).toContain(
+      "A temperature of 40.3 °C was logged"
+    );
+  });
+
+  it("the Telegram 'dual' display carries BOTH scales", () => {
+    expect(fmtTempDual(104.5)).toBe("40.3 °C / 104.5 °F");
+    expect(tempRedFlagTitle(entry, 104.5, "dual")).toContain(
+      "40.3 °C / 104.5 °F"
+    );
+    expect(tempRedFlagDetail(entry, 104.5, "dual")).toContain(
+      "40.3 °C / 104.5 °F"
+    );
+  });
+
+  it("cited source lines pass through VERBATIM whatever the display unit", () => {
+    // The dataset's own words quote the threshold ("104°F (40°C)") — a °C viewer
+    // still reads the source's exact line, never a converted rewrite.
+    for (const display of ["F", "C", "dual"] as const) {
+      expect(tempRedFlagDetail(entry, 104.5, display)).toContain(entry.line);
+      expect(tempRedFlagTitle(entry, 104.5, display)).toContain(entry.label);
+    }
+    expect(entry.label).toContain("104°F");
+  });
+
+  it("dedupeKey is identical across display units (dismiss once, silence everywhere)", () => {
+    const findingFor = (display: "F" | "C" | "dual") =>
+      detectEpisodeTempRedFlag(
+        ep({ temperatures: [tp(104.5)], latestTemp: tp(104.5) }),
+        { ageMonths: null, display }
+      )!;
+    const keys = (["F", "C", "dual"] as const).map(
+      (d) => findingFor(d).dedupeKey
+    );
+    expect(new Set(keys).size).toBe(1);
+    // …while the rendered strings DO differ by display.
+    expect(findingFor("C").title).not.toBe(findingFor("F").title);
   });
 });
 
