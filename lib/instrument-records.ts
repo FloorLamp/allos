@@ -16,18 +16,41 @@ import {
   type CrisisDecision,
   INSTRUMENTS,
   instrumentDef,
+  isInstrument,
   severityBand,
   crisisDecision,
 } from "./mental-health";
+import {
+  type SubstanceInstrument,
+  SUBSTANCE_INSTRUMENTS,
+  substanceInstrumentDef,
+  substanceSeverityBand,
+} from "./substance-use";
 
-// One answered item (0-based index → answer 0..3), as captured by the in-app tap-through.
+// The instrument write core serves BOTH catalogs (#716 mental-health, #998
+// substance-use): one biomarker-shaped medical_records row + per-item
+// instrument_responses, regardless of which catalog defines the items/bands.
+// Crisis handling stays STRICTLY mental-health (substance scores never escalate
+// to the crisis surface — #996 is item-9/explicit only).
+export type AnyInstrument = Instrument | SubstanceInstrument;
+
+// The canonical_name a score is stored under, resolved across both catalogs.
+function canonicalNameFor(instrument: AnyInstrument): string {
+  return isInstrument(instrument)
+    ? instrumentDef(instrument).canonicalName
+    : substanceInstrumentDef(instrument).canonicalName;
+}
+
+// One answered item (0-based index → answer), as captured by the in-app tap-through.
+// Mental-health items answer 0..3; AUDIT-C items answer 0..4 (the calling action
+// validates against the instrument's own option set).
 export interface InstrumentAnswer {
   itemIndex: number;
   answer: number;
 }
 
 export interface RecordInstrumentInput {
-  instrument: Instrument;
+  instrument: AnyInstrument;
   date: string; // YYYY-MM-DD (the administration/observed date)
   total: number; // the summed score
   // Per-item answers (in-app administration). Empty/omitted for an OUTSIDE total-only
@@ -42,7 +65,7 @@ export function recordInstrumentScore(
   profileId: number,
   input: RecordInstrumentInput
 ): number {
-  const def = instrumentDef(input.instrument);
+  const canonicalName = canonicalNameFor(input.instrument);
   return writeTx(() => {
     const info = db
       .prepare(
@@ -52,11 +75,11 @@ export function recordInstrumentScore(
       )
       .run(
         input.date,
-        def.canonicalName,
+        canonicalName,
         String(input.total),
         input.total,
         input.notes?.trim() || null,
-        def.canonicalName,
+        canonicalName,
         profileId
       );
     const recordId = Number(info.lastInsertRowid);
@@ -157,6 +180,54 @@ export function getInstrumentReadings(profileId: number): InstrumentReading[] {
       total: r.total,
       band: severityBand(inst, r.total),
       selfHarmAnswer: shByRecord.get(r.id) ?? null,
+    });
+  }
+  return out;
+}
+
+// ---- Substance-use instrument readings (#998) ------------------------------
+
+// One stored substance-instrument score with its derived band. No self-harm/crisis
+// dimension by design: substance scores NEVER touch the crisis machinery (#996 is
+// item-9/explicit only) — a high score gets only the calm on-surface note.
+export interface SubstanceInstrumentReading {
+  id: number;
+  instrument: SubstanceInstrument;
+  date: string;
+  total: number;
+  band: SeverityBand;
+}
+
+const SUBSTANCE_INSTRUMENT_NAMES = SUBSTANCE_INSTRUMENTS as readonly string[];
+
+// All stored substance-instrument readings for a profile, newest-first, banded.
+export function getSubstanceInstrumentReadings(
+  profileId: number
+): SubstanceInstrumentReading[] {
+  const rows = db
+    .prepare(
+      `SELECT id, canonical_name AS canon, date, value_num AS total
+       FROM medical_records
+       WHERE profile_id = ? AND canonical_name IN (${SUBSTANCE_INSTRUMENT_NAMES.map(() => "?").join(",")})
+         AND value_num IS NOT NULL
+       ORDER BY date DESC, id DESC`
+    )
+    .all(profileId, ...SUBSTANCE_INSTRUMENT_NAMES) as {
+    id: number;
+    canon: string;
+    date: string;
+    total: number;
+  }[];
+  const out: SubstanceInstrumentReading[] = [];
+  for (const r of rows) {
+    const inst = SUBSTANCE_INSTRUMENTS.find((k) => k === r.canon);
+    if (!inst) continue;
+    out.push({
+      id: r.id,
+      instrument: inst,
+      date: r.date,
+      total: r.total,
+      band: substanceSeverityBand(inst, r.total),
     });
   }
   return out;

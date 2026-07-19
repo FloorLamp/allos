@@ -27,6 +27,7 @@ import {
   getRecentDatedExercises,
   getFoodSuggestions,
   getFrequencyTargetProgress,
+  getSubstanceWeekState,
   getIntakeSafetyContext,
   getBiomarkerSeries,
   getCanonicalBiomarker,
@@ -65,6 +66,7 @@ import {
   foodHabitInteractions,
   foodHabitInteractionNote,
 } from "./food-habit";
+import { substanceTargetSignalKey, capProgressLine } from "./substance-use";
 import {
   proteinAdequacySignalKey,
   proteinAdequacyTitle,
@@ -218,6 +220,7 @@ export function collectCoachingFindings(
     ...buildAdherencePatternFindings(profileId, today),
     ...buildFoodSuggestionFindings(profileId),
     ...buildFoodHabitFindings(profileId),
+    ...buildSubstanceUseFindings(profileId),
     ...buildProteinAdequacyFindings(profileId),
     ...buildFiberAdequacyFindings(profileId),
     ...buildEndurancePlanFindings(profileId, today),
@@ -396,6 +399,40 @@ export function buildFoodHabitFindings(profileId: number): Finding[] {
         actionLabel: "Log servings",
       };
     });
+}
+
+// ---- Substance use (#998): over-target reduction observation ---------------
+
+// ONE calm, non-judgmental coaching finding when this week's logged standard drinks
+// exceed the profile's own reduction target ("9 drinks logged this week — 2 over
+// your 7-drink weekly cap."). Reads through getSubstanceWeekState — the SAME
+// week-window + food_log rollup the substance surface renders — and formats via the
+// shared capProgressLine, so the page and the finding can never disagree ("one
+// question, one computation"). Coaching tier ONLY (#449): it joins
+// collectCoachingFindings, its dedupeKey rides the shared suppression bus
+// (SUBSTANCE_USE_PREFIX is registered in RULE_FINDING_PREFIXES), and it NEVER
+// notifies / never reaches the hero — substance data stays off every push channel.
+// NO GAMIFICATION (#998, the #716 contract): nothing fires under/at the target — no
+// "on track!" note, no streaks, no milestones; silence is the success state. Nothing
+// fires with no target set (the observation exists only against the user's OWN
+// goal). No owned SQL added here (reads through the profile-scoped query layer).
+export function buildSubstanceUseFindings(profileId: number): Finding[] {
+  const state = getSubstanceWeekState(profileId);
+  if (!state.status || !state.status.over) return [];
+  return [
+    {
+      domain: "substance-use",
+      dedupeKey: substanceTargetSignalKey(state.substance),
+      title: "Alcohol is over your weekly target",
+      detail: capProgressLine(state.status),
+      // Calm FYI — informational, never an alarm and never a push.
+      tone: "info",
+      evidence:
+        "Your own weekly reduction target. Informational, not medical advice.",
+      actionHref: "/medical/substance-use",
+      actionLabel: "View intake",
+    },
+  ];
 }
 
 // ---- Nutrition output (#577): deterministic biomarker→food suggestions ------

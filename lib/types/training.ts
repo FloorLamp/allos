@@ -277,8 +277,12 @@ export interface Goal {
 // is the #579 weekly serving rollup; mobility_region (#840) is a mobility-habit scope
 // (a MuscleRegion) whose progress counts recovery-session mobilized days — SEPARATE from
 // `region` (#482: trained ≠ mobilized). Same target table, different data sources.
+// substance (#998) is a reduction-target scope (a lib/substance-use.ts Substance
+// key) whose per_week is a weekly CAP — a ceiling, the inverse of every other
+// scope's floor — read through lib/queries/substance.ts and deliberately EXCLUDED
+// from getFrequencyTargetProgress (a floor reader would nag toward MORE).
 export type FrequencyScopeKind =
-  "region" | "group" | "type" | "food_group" | "mobility_region";
+  "region" | "group" | "type" | "food_group" | "mobility_region" | "substance";
 
 // A user-defined "hit X at least N times/week" target.
 export interface FrequencyTarget {
