@@ -58,3 +58,4 @@ next-env.d.ts
 
 # Next 16: separate distDir for the e2e demo dev instance
 /.next-demo/
+*.traineddata

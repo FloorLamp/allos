@@ -2,6 +2,7 @@
 // extraction yields, and the ExtractionResult union the pipeline returns.
 import type { MedicalCategory, MedicalFlag, Sex } from "../types";
 import type { ImportDrop } from "../import-report";
+import type { ReconcileReport } from "./reconcile";
 
 // Structured prescription fields the model reads straight off a pharmacy label /
 // medication order (#414). Emitted ONLY on `category === 'prescription'` results,
@@ -197,6 +198,11 @@ export type ExtractionResult =
       // into a real ImportReport in import-shape. Parity with the deterministic
       // importer, which was previously the only path with a report.
       drops: ImportDrop[];
+      // Source-text reconciliation of `results` against the original PDF (text layer
+      // or OCR). Set only by the live extract path for a PDF; absent on the replay
+      // path (resultFromExtractionInput, which has no buffer) and for non-PDF sources.
+      // import-shape folds its summary into the ImportReport.
+      reconciliation?: ReconcileReport | null;
       model: string;
       raw: string;
     }
