@@ -46,6 +46,7 @@ import {
   type MedicationWithHistory,
 } from "@/lib/medication-history";
 import { medicationStartDate } from "@/lib/profile-summary";
+import { monitoringRowNoteText } from "@/lib/medication-monitoring";
 import {
   buildMedicationList,
   type MedicationListRow,
@@ -120,6 +121,10 @@ export interface MedCardData {
   // the card can offer remove-with-undo. Most recent first.
   prnAdministrations: { id: number; label: string }[];
   prnRedoseLine: string | null;
+  // The "Requires monitoring: …" row note (issue #995) — the curated labs a clinician
+  // typically watches while on this drug, listed on the row (independent of dueness).
+  // Null for an unmonitored med or a discontinued one.
+  monitoringNote: string | null;
 }
 
 export interface MedicationsData {
@@ -309,6 +314,13 @@ export function loadMedicationsData(profileId: number): MedicationsData {
       prnDayLabel: prn.label,
       prnAdministrations: prn.administrations,
       prnRedoseLine: prn.redoseLine,
+      monitoringNote: med.active
+        ? monitoringRowNoteText({
+            name: med.name,
+            rxcui: med.rxcui,
+            rxcuiIngredients: parseRxcuiIngredients(med.rxcui_ingredients),
+          })
+        : null,
     };
   };
 

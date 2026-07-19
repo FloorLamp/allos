@@ -46,6 +46,7 @@ export default function MedicationRow({
   strip,
   refillRate,
   prnRedoseLine = null,
+  monitoringNote = null,
   todayStr,
 }: {
   med: Supplement;
@@ -55,6 +56,9 @@ export default function MedicationRow({
   strip: AdherenceDot[];
   refillRate: DoseRate | null;
   prnRedoseLine?: string | null;
+  // The "Requires monitoring: …" note (issue #995) — the curated labs a clinician
+  // typically watches while on this drug. Informational; absent for unmonitored meds.
+  monitoringNote?: string | null;
   // The app's configured today, so the refill badge can project the run-out DATE
   // and the one-tap "Refilled" action shows on the low-supply state (#852 item 3).
   todayStr: string;
@@ -147,6 +151,14 @@ export default function MedicationRow({
               className="mt-0.5 text-xs font-medium text-slate-600 dark:text-slate-300"
             >
               {prnRedoseLine}
+            </div>
+          )}
+          {monitoringNote && (
+            <div
+              data-testid="medication-monitoring-note"
+              className="mt-0.5 text-xs text-sky-700 dark:text-sky-300"
+            >
+              {monitoringNote}
             </div>
           )}
           <AdherenceSummaryLine strip={strip} />
