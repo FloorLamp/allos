@@ -60,10 +60,15 @@ test.describe("mental-health visit sensitivity + crisis resources (#997/#996)", 
   test("the mental_health kind is bookable and shows its full title on the OWN Upcoming view", async () => {
     await bookVisit(page, THERAPY_TITLE, "mental_health");
     const upcoming = page.getByTestId("visits-upcoming");
-    // The profile's OWN view always shows full detail — the real title, never minimized.
+    // The profile's OWN view always shows full detail — the real title, never
+    // minimized. `.first()` (not an exact count): the spec re-books under
+    // --repeat-each, so its own rows accumulate on the reused profile (#868).
     await expect(
-      upcoming.getByTestId("appointment-row").filter({ hasText: THERAPY_TITLE })
-    ).toHaveCount(1);
+      upcoming
+        .getByTestId("appointment-row")
+        .filter({ hasText: THERAPY_TITLE })
+        .first()
+    ).toBeVisible();
   });
 
   test("a mental_health visit defaults to minimal detail on the exported calendar feed", async () => {
