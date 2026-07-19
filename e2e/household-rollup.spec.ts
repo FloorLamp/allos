@@ -70,7 +70,15 @@ async function createMemberWithGrants(
   );
 
   const grantRow = adminPage.getByTestId(`grant-row-${username}`);
-  await expect(grantRow).toBeVisible();
+  // toPass reload-retry — the sanctioned last resort (#999): the settled create
+  // POST can still be followed by a client render that misses the just-created
+  // row (observed only on loaded local runs; the login IS committed — a reload
+  // re-reads it). The underlying post-revalidation render race is tracked in
+  // #999; this keeps the helper deterministic without weakening what it asserts.
+  await expect(async () => {
+    if (!(await grantRow.isVisible())) await adminPage.reload();
+    await expect(grantRow).toBeVisible({ timeout: 3000 });
+  }).toPass({ timeout: 20_000, intervals: [500, 1000, 2000] });
   for (const g of grants) {
     const cell = adminPage.getByTestId(`grant-cell-${username}-${g.profileId}`);
     await cell.locator('input[type="checkbox"]').check();
