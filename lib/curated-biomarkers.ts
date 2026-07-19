@@ -1456,11 +1456,11 @@ export const CURATED_LABS: Biomarker[] = [
   // (#860/#944 observation-substrate), so each series trends + flags on the
   // Biomarkers surface for free ("is my hearing getting worse at 4 kHz?"). Normal
   // hearing is ≤25 dB HL (WHO), so the band flags an elevated threshold; LOWER is
-  // better. The two ears stay SEPARATE series (each frequency its own analyte), but
-  // collapse to ONE "hearing" identity family for starring/dismissal
-  // (biomarkerFamily, lib/canonical-name.ts) — the #482 question is one measure per
-  // person. Captured from an uploaded audiogram report via AI extraction (into
-  // `results`), or entered manually. INFORMATIONAL, NOT MEDICAL ADVICE.
+  // better. Each ear × frequency is its OWN trendable series that flags independently
+  // — deliberately NOT collapsed into one biomarker family (see canonical-name.ts:
+  // folding distinct ear/frequency measurements would let a normal frequency hide a
+  // flagged one, a wrong all-clear). Captured from an uploaded audiogram report via AI
+  // extraction (into `results`), or entered manually. INFORMATIONAL, NOT MEDICAL ADVICE.
   {
     name: "Hearing Threshold, Right Ear 250 Hz",
     category: "vitals",

@@ -441,23 +441,20 @@ function isA1cFamily(lower: string): boolean {
 
 export const HEMOGLOBIN_A1C_FAMILY = "hemoglobin-a1c";
 
-// Audiogram pure-tone thresholds (#713): the two ears × several frequencies are all
-// the SAME measure — "this person's hearing" — for the STARRING / DISMISSAL identity
-// (the #482 question, which the issue states is already settled: two ears = one
-// hearing question). The per-ear, per-frequency SERIES stay distinct (each analyte is
-// its own chart); this family only unifies the star/dismiss identity so a single
-// "hearing" star covers the whole audiogram rather than one lone frequency. It never
-// collapses the series themselves — those are separate canonical names. Members are
-// the finite curated preimage (the SQL IN(...) realization); `match` also catches a
-// freeform "Hearing Threshold …"/pure-tone spelling the extractor didn't snap.
-export const HEARING_FAMILY = "hearing";
-
-function isHearingFamily(lower: string): boolean {
-  return (
-    /hearing threshold/.test(lower) ||
-    /pure[\s-]?tone (?:average|threshold)/.test(lower)
-  );
-}
+// Audiogram pure-tone thresholds (#713) are DELIBERATELY NOT a biomarker family. Each
+// per-ear, per-frequency threshold ("Hearing Threshold, Right Ear 4 kHz") is a DISTINCT
+// measurement, not the same reading under two names — so folding them into one family
+// would over-collapse exactly the way the exclusion discipline above warns against: the
+// family key drives the cross-source dedup partition AND the is_latest/current marker,
+// so a normal 1 kHz (or a normal LEFT ear) reading would mark the whole "hearing" group
+// current/OK and HIDE a flagged 4 kHz (or right-ear) threshold — a wrong all-clear on a
+// safety-relevant flag, and same-value ears on one date would even dedup to one row,
+// dropping an ear. So every audiogram analyte keeps its OWN singleton identity: each
+// ear/frequency stays a separate trendable series that flags independently. (The #713
+// issue framed "two ears = one hearing question" as a family — but that premise breaks
+// the dedup/latest mechanism; the safe realization is separate identities, argued in the
+// PR.) A future per-audiogram summary (a pure-tone average) could carry the "one
+// number" role without collapsing the underlying series.
 
 // The registered identity families. Kept small and well-justified (each entry
 // risks collapsing two distinct analytes — see the exclusion discipline above).
@@ -492,24 +489,6 @@ export const BIOMARKER_FAMILIES: readonly BiomarkerFamily[] = [
       "eag",
     ],
     match: isA1cFamily,
-  },
-  {
-    key: HEARING_FAMILY,
-    members: [
-      "hearing threshold, right ear 250 hz",
-      "hearing threshold, right ear 500 hz",
-      "hearing threshold, right ear 1 khz",
-      "hearing threshold, right ear 2 khz",
-      "hearing threshold, right ear 4 khz",
-      "hearing threshold, right ear 8 khz",
-      "hearing threshold, left ear 250 hz",
-      "hearing threshold, left ear 500 hz",
-      "hearing threshold, left ear 1 khz",
-      "hearing threshold, left ear 2 khz",
-      "hearing threshold, left ear 4 khz",
-      "hearing threshold, left ear 8 khz",
-    ],
-    match: isHearingFamily,
   },
 ];
 
