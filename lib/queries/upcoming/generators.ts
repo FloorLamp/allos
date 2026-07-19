@@ -32,11 +32,9 @@ import {
   INSTRUMENTS_HREF,
 } from "../../hrefs";
 import { getInstrumentStates } from "../../instrument-records";
-import {
-  mentalHealthCrisisKey,
-  CRISIS_RESOURCES_LINE,
-  severityBand,
-} from "../../mental-health";
+import { mentalHealthCrisisKey, severityBand } from "../../mental-health";
+import { crisisFindingLine } from "../../crisis-resources";
+import { getResolvedCrisisResources } from "../../settings";
 import { refillSignalKey } from "../../refill-nudge";
 import { trainingSignalKey } from "../../workout-nudge";
 import { getActiveEndurancePlans } from "../../endurance-plans";
@@ -72,7 +70,9 @@ import {
   getUserAgeOn,
   profileAgeMonths,
   getActiveSituations,
+  getMentalHealthShareFull,
 } from "../../settings";
+import { sharedSurfaceDetail } from "../../appointment-sensitivity";
 import type { UpcomingItem } from "../../upcoming";
 import {
   type Reason,
@@ -462,6 +462,9 @@ function medMonitoringItems(profileId: number, today: string): UpcomingItem[] {
 // (severe band / a self-harm answer) and the resources, never a diagnosis.
 function mentalHealthCrisisItems(profileId: number): UpcomingItem[] {
   const items: UpcomingItem[] = [];
+  // The configured crisis resources for THIS profile (override > global > neutral
+  // fallback, #996). Read once; private to the profile — never crosses to another.
+  const crisisLine = crisisFindingLine(getResolvedCrisisResources(profileId));
   for (const state of getInstrumentStates(profileId)) {
     if (!state.latest || !state.crisis?.escalate) continue;
     const { instrument, latest } = state;
@@ -473,7 +476,7 @@ function mentalHealthCrisisItems(profileId: number): UpcomingItem[] {
       key: mentalHealthCrisisKey(instrument, latest.date),
       domain: "mental-health" as const,
       title: "Mental-health check-in",
-      detail: `${trigger}. ${CRISIS_RESOURCES_LINE}`,
+      detail: `${trigger}. ${crisisLine}`,
       href: INSTRUMENTS_HREF,
       dueDate: null,
       band: "today" as const,
@@ -757,10 +760,36 @@ function biomarkerItems(profileId: number, today: string): UpcomingItem[] {
 // rows, so completed/cancelled drop off). The visit's calendar date drives the
 // band: a visit today lands in Today, tomorrow in This week, and a past-and-still-
 // scheduled one reads as Overdue (a missed/unlogged appointment worth chasing).
-function appointmentItems(profileId: number): UpcomingItem[] {
+//
+// `shared` (#997) applies the sensitivity-aware detail decision: on the SHARED
+// household strip a mental_health visit shows only "Medical appointment" (no
+// provider/reason) unless the profile owner opted it into full shared detail. The
+// profile's OWN Upcoming page passes shared:false and always sees full detail. The
+// `key` stays `appointment:<id>` in both so a dismissal/suppression matches across
+// surfaces.
+function appointmentItems(
+  profileId: number,
+  opts: { shared?: boolean } = {}
+): UpcomingItem[] {
+  const shareFull = opts.shared ? getMentalHealthShareFull(profileId) : true;
   return getScheduledAppointments(profileId).map((a) => {
     // scheduled_at may be a datetime; the banding is calendar-day, so use the date.
     const dueDate = a.scheduled_at.slice(0, 10);
+    const minimal =
+      opts.shared === true &&
+      sharedSurfaceDetail(a.kind, "full", {
+        sensitiveShareFull: shareFull,
+      }) === "minimal";
+    if (minimal) {
+      return {
+        key: `appointment:${a.id}`,
+        domain: "appointment" as const,
+        title: "Medical appointment",
+        detail: "Scheduled visit",
+        href: "/encounters",
+        dueDate,
+      };
+    }
     const parts = [a.provider_name, a.location].filter(Boolean);
     return {
       key: `appointment:${a.id}`,
@@ -978,7 +1007,7 @@ export function collectHouseholdRollup(
     dueDoses: doseItems(profileId, today).filter(live),
     lowRefills: refillItems(profileId, today).filter(live),
     nextAppointment: pickNextAppointment(
-      appointmentItems(profileId).filter(live)
+      appointmentItems(profileId, { shared: true }).filter(live)
     ),
   };
 }

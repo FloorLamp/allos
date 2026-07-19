@@ -26,7 +26,12 @@ import { formatBytes } from "@/lib/format-bytes";
 import { setMinTrainingAge } from "@/lib/age-gate";
 import { normalizePublicUrl } from "@/lib/public-url";
 import { setWebhook, deleteWebhook } from "@/lib/notifications/telegram";
-import { setSmtpConfig, isEmailConfigured } from "@/lib/settings";
+import {
+  setSmtpConfig,
+  isEmailConfigured,
+  setGlobalCrisisResources,
+} from "@/lib/settings";
+import { parseCrisisResourcesText } from "@/lib/crisis-resources";
 import { sendEmail } from "@/lib/email";
 import { isValidEmail } from "@/lib/auth-email";
 import { createLogger } from "@/lib/log";
@@ -206,6 +211,20 @@ export async function verifyOffsiteDestination(): Promise<{
   const result = initOffsiteDestination();
   revalidatePath("/settings/server");
   return result;
+}
+
+// ---- Crisis resources (global, admin-only) — issue #996 ----
+// The operator's region-correct crisis line(s), shown on the passive crisis surface
+// and inline where a crisis trigger fires. No hardcoded 988; an empty list leaves
+// the neutral "contact local emergency services" fallback in place. A per-profile
+// override lives on Settings → Profile.
+export async function saveCrisisResources(formData: FormData) {
+  await requireAdmin();
+  setGlobalCrisisResources(
+    parseCrisisResourcesText(String(formData.get("crisis_resources") ?? ""))
+  );
+  revalidatePath("/settings/server");
+  revalidatePath("/crisis-resources");
 }
 
 // ---- Audit-log retention (global, admin-only) ----

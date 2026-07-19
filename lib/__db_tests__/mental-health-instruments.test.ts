@@ -137,8 +137,12 @@ describe("mental-health crisis builder — care tier, non-dismissible, never pus
     expect(dedupeKeyHasKnownPrefix(crisis!.key)).toBe(true);
     expect(crisis!.key.startsWith(MENTAL_HEALTH_PREFIX)).toBe(true);
     expect(tierForDedupeKey(crisis!.key)).toBe("care");
-    // The 988 crisis resources ride the finding detail.
-    expect(crisis!.detail).toContain("988");
+    // The crisis-resources line rides the finding detail. With no resources
+    // configured (this fixture sets none) it is the neutral fallback + supportive
+    // lead (#996) — never a hardcoded/fabricated number.
+    expect(crisis!.detail).toContain("you’re not alone");
+    expect(crisis!.detail).toContain("local emergency services");
+    expect(crisis!.detail).not.toContain("988");
 
     // Non-dismissible: a blanket dismiss on its key does NOT hide it (safety-ungated).
     dismissFinding(p, crisis!.key);

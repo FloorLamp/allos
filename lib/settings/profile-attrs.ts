@@ -926,3 +926,25 @@ export function setRecommendationLastSignature(
 ): void {
   setProfileSetting(profileId, "recommendation_last_signature", signature);
 }
+
+// Shared-surface detail for the profile's MENTAL-HEALTH visits (#997). A
+// mental_health appointment defaults to MINIMAL detail ("Medical appointment") on
+// shared/exported surfaces — the household strip and the .ics family calendar feed
+// — even when other kinds show full detail. This per-profile flag is the OWNER's
+// opt-in to instead show those visits in full detail on shared surfaces. Default
+// false (privacy-by-default); the profile's OWN surfaces always show full detail
+// regardless (they never consult the shared-surface decision).
+export function getMentalHealthShareFull(profileId: number): boolean {
+  return getProfileSetting(profileId, "mental_health_share_full") === "1";
+}
+
+export function setMentalHealthShareFull(
+  profileId: number,
+  shareFull: boolean
+): void {
+  setProfileSetting(
+    profileId,
+    "mental_health_share_full",
+    shareFull ? "1" : "0"
+  );
+}

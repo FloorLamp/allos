@@ -40,7 +40,10 @@ import {
   setMaxHrOverride,
   setZone2WeeklyTargetMin,
   setRecommendationCadence,
+  setMentalHealthShareFull,
+  setProfileCrisisResourcesOverride,
 } from "@/lib/settings";
+import { parseCrisisResourcesText } from "@/lib/crisis-resources";
 import { parseCadence } from "@/lib/recommendation-run";
 import { parseHome } from "@/lib/home-location";
 import { reconcileFlags } from "@/lib/queries";
@@ -467,6 +470,31 @@ export async function saveRecommendationCadence(formData: FormData) {
   setRecommendationCadence(profile.id, cadence);
   revalidatePath("/settings/profile");
   return { ok: true };
+}
+
+// Shared-surface detail for this profile's MENTAL-HEALTH visits (#997). Off by
+// default (minimal on the household strip + family calendar); the owner may opt in
+// to show them in full detail on those shared surfaces.
+export async function saveMentalHealthShareFull(formData: FormData) {
+  const { profile } = await requireWriteAccess();
+  const on =
+    formData.get("mental_health_share_full") === "1" ||
+    formData.get("mental_health_share_full") === "on";
+  setMentalHealthShareFull(profile.id, on);
+  revalidatePath("/settings/profile");
+  revalidatePath("/");
+}
+
+// Per-profile crisis-resources OVERRIDE (#996) for a mixed-region household. Empty
+// clears the override (inherit the instance default). Private to the profile.
+export async function saveProfileCrisisResources(formData: FormData) {
+  const { profile } = await requireWriteAccess();
+  setProfileCrisisResourcesOverride(
+    profile.id,
+    parseCrisisResourcesText(String(formData.get("crisis_resources") ?? ""))
+  );
+  revalidatePath("/settings/profile");
+  revalidatePath("/crisis-resources");
 }
 
 // Send a test announcement to the profile's HA webhook, independent of the

@@ -32,6 +32,10 @@ import {
   E2E_LOGIN_EMPTY_TRAINING,
   E2E_LOGIN_MENTAL,
   MENTAL_HEALTH_PROFILE,
+  E2E_LOGIN_CRISIS,
+  CRISIS_PROFILE,
+  CRISIS_OVERRIDE_LABEL,
+  CRISIS_OVERRIDE_CONTACT,
   E2E_LOGIN_NUTRITION,
   NUTRITION_PROFILE,
   E2E_LOGIN_CYCLE,
@@ -2216,6 +2220,35 @@ db.prepare(
 seedMemberLogin(E2E_LOGIN_MENTAL, mentalHealthId);
 console.log(
   `e2e: seeded score-free mental-health fixture profile ${mentalHealthId} (${MENTAL_HEALTH_PROFILE}) for the instruments spec (#716)`
+);
+
+// A dedicated ADULT profile for the mental-health-visit sensitivity + crisis specs
+// (#997/#996). Calendar feed set to FULL detail (so the spec can prove a
+// mental_health visit STILL renders as "Medical appointment" — the privacy default),
+// plus a per-profile crisis-resources override so the passive surface + inline
+// finding render the profile's own line. The spec OWNS the appointments it books.
+const crisisProfileId = fixtureProfileId(CRISIS_PROFILE);
+db.prepare(
+  `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'calendar_feed_detail', 'full')
+     ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+).run(crisisProfileId);
+db.prepare(
+  `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'crisis_resources', ?)
+     ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+).run(
+  crisisProfileId,
+  JSON.stringify([
+    { label: CRISIS_OVERRIDE_LABEL, contact: CRISIS_OVERRIDE_CONTACT },
+  ])
+);
+// Idempotent: clear any appointments a prior run's spec booked so the profile keeps
+// a clean contract across a reused server.
+db.prepare(`DELETE FROM appointments WHERE profile_id = ?`).run(
+  crisisProfileId
+);
+seedMemberLogin(E2E_LOGIN_CRISIS, crisisProfileId);
+console.log(
+  `e2e: seeded crisis/mental-health-visit fixture profile ${crisisProfileId} (${CRISIS_PROFILE}) for #997/#996`
 );
 
 console.log(

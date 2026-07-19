@@ -5,7 +5,8 @@ import PageContainer from "@/components/PageContainer";
 import { PageHeader, EmptyState } from "@/components/ui";
 import { Notice } from "@/components/Notice";
 import { biomarkerViewHref } from "@/lib/hrefs";
-import { CRISIS_RESOURCES_LINE } from "@/lib/mental-health";
+import { getResolvedCrisisResources } from "@/lib/settings";
+import CrisisResources from "@/components/CrisisResources";
 import {
   getInstrumentReadings,
   getInstrumentStates,
@@ -22,11 +23,15 @@ export const dynamic = "force-dynamic";
 // note. Informational, never diagnostic — a screening instrument, not a diagnosis.
 
 export default async function InstrumentsPage() {
-  const { profile } = await requireSession();
+  const { profile, login } = await requireSession();
   const td = today(profile.id);
   const readings = getInstrumentReadings(profile.id);
   const states = getInstrumentStates(profile.id);
   const escalating = states.filter((s) => s.crisis?.escalate && s.latest);
+  // Configured crisis resources for THIS profile (override > global > neutral
+  // fallback, #996) — resolved from the profile's own settings, never egressed.
+  const crisisResources = getResolvedCrisisResources(profile.id);
+  const isAdmin = login.role === "admin";
 
   return (
     <PageContainer width="reading" className="mx-auto space-y-6">
@@ -45,9 +50,22 @@ export default async function InstrumentsPage() {
           testid="instrument-crisis-line"
           title="Your recent results suggest reaching out for support"
         >
-          {CRISIS_RESOURCES_LINE}
+          <CrisisResources resources={crisisResources} isAdmin={isAdmin} />
         </Notice>
       ) : null}
+
+      {/* Explicit user affordance (#996): a calm, always-present link to the crisis-
+          resources surface — a deliberate tap, never auto-surfaced, never a trend. */}
+      <p className="text-sm text-slate-500 dark:text-slate-400">
+        Need support now?{" "}
+        <Link
+          href="/crisis-resources"
+          className="text-brand-600 hover:underline dark:text-brand-400"
+          data-testid="instrument-crisis-support-link"
+        >
+          Crisis resources
+        </Link>
+      </p>
 
       <InstrumentsView defaultDate={td} />
 
