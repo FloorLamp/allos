@@ -141,6 +141,13 @@ export const OWNED_TABLES = [
   // cycle symptoms live in symptom_logs (a vocabulary extension, no second store), so a
   // delete is a plain row delete and deleteProfile clears it by profile_id.
   "cycles",
+  // Mental-health instrument per-item answers (#716): one row per answered PHQ-9/GAD-7
+  // item (0..3), linked to the SCORE `medical_records` row via medical_record_id. Directly
+  // owned; deleteProfile clears it by profile_id (its ON DELETE CASCADE FK to
+  // medical_records is a no-op there since the sweep runs with foreign_keys OFF, so it is
+  // cleared explicitly by profile_id like every owned table). The SCORE itself lives in
+  // medical_records (the observation substrate) — this table holds only the item breakdown.
+  "instrument_responses",
 ] as const;
 
 export type OwnedTable = (typeof OWNED_TABLES)[number];
