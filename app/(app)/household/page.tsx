@@ -1,9 +1,11 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import {
   requireSession,
   getAccessibleProfiles,
   accessForProfile,
 } from "@/lib/auth";
+import { HOUSEHOLD_HISTORY_HREF } from "@/lib/hrefs";
 import { today } from "@/lib/db";
 import {
   getActivities,
@@ -163,6 +165,15 @@ export default async function HouseholdPage() {
       <PageHeader
         title="Household"
         subtitle="Everyone at a glance — confirm what's due, or tap a card to open that profile."
+        action={
+          <Link
+            href={HOUSEHOLD_HISTORY_HREF}
+            className="text-sm font-medium text-sky-700 hover:underline dark:text-sky-300"
+            data-testid="household-history-link"
+          >
+            History →
+          </Link>
+        }
       />
       {cards.length === 0 ? (
         <EmptyState

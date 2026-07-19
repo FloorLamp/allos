@@ -1,5 +1,7 @@
-import { requireSession } from "@/lib/auth";
+import Link from "next/link";
+import { requireSession, getAccessibleProfiles } from "@/lib/auth";
 import { today } from "@/lib/db";
+import { HOUSEHOLD_HISTORY_HREF } from "@/lib/hrefs";
 import {
   getAppointments,
   getEncounters,
@@ -39,6 +41,10 @@ export default async function VisitsPage(props: {
   const searchParams = await props.searchParams;
   const { profile } = await requireSession();
   const now = today(profile.id);
+  // Widen-to-household link (issue #1009 Ask 4): shown only when the login can reach
+  // more than one profile — the SAME predicate that gates the Household strip/nav — so
+  // a single-profile login never sees a household affordance.
+  const showHousehold = (await getAccessibleProfiles()).length > 1;
   const appointments = getAppointments(profile.id);
   const encounters = getEncounters(profile.id);
   const providerNames = getProviderNames();
@@ -88,6 +94,17 @@ export default async function VisitsPage(props: {
       <PageHeader
         title="Visits"
         subtitle="Your appointments and visit history in one place — book upcoming visits (they also surface on Upcoming) and review past encounters, diagnoses, and notes."
+        action={
+          showHousehold ? (
+            <Link
+              href={HOUSEHOLD_HISTORY_HREF}
+              className="text-sm font-medium text-sky-700 hover:underline dark:text-sky-300"
+              data-testid="household-view-link"
+            >
+              Household view →
+            </Link>
+          ) : undefined
+        }
       />
 
       {/* Upcoming — the appointments surface. */}
