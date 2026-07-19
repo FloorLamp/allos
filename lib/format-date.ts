@@ -1,4 +1,9 @@
-import { daysBetweenDateStr } from "./date";
+import {
+  daysBetweenDateStr,
+  MONTHS_LONG,
+  MONTHS_SHORT,
+  WEEKDAYS_LONG,
+} from "./date";
 
 // ---- Display-format preferences (login tier, issue #964) ----
 // Two closed-enum display preferences that let a login choose how times and dates
@@ -27,46 +32,11 @@ export const DEFAULT_FORMAT_PREFS: DisplayFormatPrefs = {
 };
 
 // Fixed English calendar names — the app is single-language by design (non-goal:
-// no full i18n), and hardcoding these is precisely what removes the server-locale
+// no full i18n), and hardcoding them is precisely what removes the server-locale
 // dependence that an implicit-locale toLocale call leaked (the record-format.ts
-// bug, #964). On an en-US host these are byte-identical to the old toLocale output.
-const MONTHS_LONG = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-];
-const MONTHS_SHORT = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
-const WEEKDAYS_LONG = [
-  "Sunday",
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-];
+// bug, #964). On an en-US host they are byte-identical to the old toLocale output.
+// The tables live in lib/date.ts (shared with monthNames(), #1020) and are imported
+// above.
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
 

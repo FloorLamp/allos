@@ -7,6 +7,8 @@ import { updateDentalProcedure, deleteDentalProcedure } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
 import { formatRecordDate } from "@/lib/record-format";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import type { DisplayFormatPrefs } from "@/lib/format-date";
 import {
   dentalDisplayLabel,
   dentalStatusLabel,
@@ -19,10 +21,11 @@ import type { DentalProcedure, DentalStatus } from "@/lib/types";
 // Columns as a factory so the Recheck cell can read the per-record follow-up map
 // (issue #700) without a module-level global.
 function buildColumns(
-  followUps: Map<number, DentalFollowUpSummary>
+  followUps: Map<number, DentalFollowUpSummary>,
+  fmt: DisplayFormatPrefs
 ): RecordColumn<DentalProcedure>[] {
   return [
-    ...BASE_COLUMNS,
+    ...baseColumns(fmt),
     {
       header: "Recheck",
       headerClassName: "hidden md:table-cell",
@@ -38,7 +41,9 @@ function buildColumns(
   ];
 }
 
-const BASE_COLUMNS: RecordColumn<DentalProcedure>[] = [
+const baseColumns = (
+  fmt: DisplayFormatPrefs
+): RecordColumn<DentalProcedure>[] => [
   {
     header: "Record",
     cellClassName: "font-medium text-slate-800 dark:text-slate-100",
@@ -68,7 +73,7 @@ const BASE_COLUMNS: RecordColumn<DentalProcedure>[] = [
   {
     header: "Date",
     cellClassName: "whitespace-nowrap text-slate-600 dark:text-slate-300",
-    cell: (d) => formatRecordDate(d.procedure_date),
+    cell: (d) => formatRecordDate(d.procedure_date, "—", fmt),
   },
   {
     header: "Source",
@@ -100,9 +105,10 @@ export default function DentalProcedureList({
         m.set(f.sourceDentalProcedureId, f);
     return m;
   }, [followUps]);
+  const fmt = useFormatPrefs();
   const columns = useMemo(
-    () => buildColumns(followUpByRecord),
-    [followUpByRecord]
+    () => buildColumns(followUpByRecord, fmt),
+    [followUpByRecord, fmt]
   );
 
   const filtered = useMemo(() => {

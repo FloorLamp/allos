@@ -16,6 +16,7 @@ import { chartBand } from "@/lib/chart-colors";
 import { biomarkerAxisDomain } from "@/lib/reference-range";
 import { roundChartValue } from "@/lib/chart-format";
 import { formatLongDate } from "@/lib/format-date";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import {
   dateToEpoch,
   epochToISO,
@@ -69,6 +70,7 @@ export default function BiomarkerChart({
   // region so the intervention that measures this biomarker is visible on its chart.
   windows?: TrendWindow[];
 }) {
+  const formatPrefs = useFormatPrefs();
   const c = useChartColors();
   if (data.length === 0) {
     return (
@@ -231,7 +233,9 @@ export default function BiomarkerChart({
               `${(item?.payload as ChartPoint | undefined)?.bound ?? ""}${fmt(Number(v))}`,
               "Value",
             ]}
-            labelFormatter={(v) => formatLongDate(epochToISO(Number(v)))}
+            labelFormatter={(v) =>
+              formatLongDate(epochToISO(Number(v)), formatPrefs)
+            }
             contentStyle={{
               fontSize: 12,
               borderRadius: 8,

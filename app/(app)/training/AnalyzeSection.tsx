@@ -15,7 +15,11 @@ import {
 import { requireSession } from "@/lib/auth";
 import { exerciseHistoryKey } from "@/lib/lifts";
 import { chartSeries } from "@/lib/chart-colors";
-import { getUnitPrefs, getUserSex } from "@/lib/settings";
+import {
+  getUnitPrefs,
+  getDisplayFormatPrefs,
+  getUserSex,
+} from "@/lib/settings";
 import type { Sex } from "@/lib/types";
 import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
@@ -70,13 +74,14 @@ export default async function AnalyzeSection({
 }) {
   const { login, profile } = await requireSession();
   const units = getUnitPrefs(login.id);
+  const formatPrefs = getDisplayFormatPrefs(login.id);
   const wu = units.weightUnit;
   const du = units.distanceUnit;
   const strength = getStrengthByExercise(profile.id);
-  const cardio = getCardioByActivity(profile.id, du);
-  const sports = getSportByActivity(profile.id);
+  const cardio = getCardioByActivity(profile.id, du, formatPrefs);
+  const sports = getSportByActivity(profile.id, formatPrefs);
   const bodyweightKg = getLatestBodyMetric(profile.id, "weight");
-  const recentByExercise = getRecentByExercise(profile.id, wu);
+  const recentByExercise = getRecentByExercise(profile.id, wu, formatPrefs);
   const goals = getGoals(profile.id);
   const goalProgress = Object.fromEntries(
     getGoalProgressMap(profile.id, goals)
@@ -278,7 +283,7 @@ export default async function AnalyzeSection({
                           href={`/training?tab=log#activity-${s.activityId}`}
                           className="font-medium text-brand-700 hover:underline dark:text-brand-300"
                         >
-                          {formatLongDate(s.date)}
+                          {formatLongDate(s.date, formatPrefs)}
                         </Link>
                       </td>
                       {s.cells.map((cell, i) => (

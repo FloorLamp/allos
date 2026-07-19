@@ -15,6 +15,7 @@ import {
 } from "@/lib/strength-standards";
 import { goalsForExercise, goalTargetText } from "@/lib/goals";
 import { formatLongDate, formatRelativeDate } from "@/lib/format-date";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { dateStrInTz } from "@/lib/date";
 import { suggestNextSet, lastSessionPR, nextSetText } from "@/lib/coaching";
@@ -100,6 +101,7 @@ export default function ExerciseDetailPanel({
   // Analyze shows the benchmark progression in a dedicated card.
   showLevel?: boolean;
 }) {
+  const formatPrefs = useFormatPrefs();
   const todayStr = dateStrInTz(useTimezone());
   const wu = units.weightUnit;
   const info = liftInfo(stat.exercise);
@@ -205,13 +207,13 @@ export default function ExerciseDetailPanel({
         <StatBox
           label="Best set"
           value={bestSetText(stat, wu)}
-          sub={formatLongDate(stat.bestDate)}
+          sub={formatLongDate(stat.bestDate, formatPrefs)}
         />
         <StatBox label="Sessions" value={String(stat.sessions)} />
         <StatBox
           label="Last trained"
           value={formatRelativeDate(stat.lastDate, todayStr)}
-          sub={formatLongDate(stat.lastDate)}
+          sub={formatLongDate(stat.lastDate, formatPrefs)}
           href={`/training?tab=log#activity-${stat.lastActivityId}`}
         />
         {matchedGoals.map((g) => {

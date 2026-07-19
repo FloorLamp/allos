@@ -12,7 +12,11 @@
 // progress (one computation, #221). The past weeks render OUTCOMES; frequencyPace keeps
 // owning the current week's projection — the two share the week definition, not code.
 
-import { formatMonthDay } from "./format-date";
+import {
+  DEFAULT_FORMAT_PREFS,
+  formatMonthDay,
+  type DisplayFormatPrefs,
+} from "./format-date";
 import type { TrailingWeek } from "./week-window";
 
 // How many trailing weeks the strip shows (~two months of daily-habit history).
@@ -49,11 +53,15 @@ export function foodHabitTrendCells(
   weeks: TrailingWeek[],
   countForWeek: (week: TrailingWeek) => number,
   perWeek: number,
-  createdDate: string
+  createdDate: string,
+  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
 ): HabitWeekCell[] {
   return weeks.map((week) => {
     const count = countForWeek(week);
-    const range = `${formatMonthDay(week.start)} – ${formatMonthDay(week.end)}`;
+    const range = `${formatMonthDay(week.start, prefs)} – ${formatMonthDay(
+      week.end,
+      prefs
+    )}`;
     // A week is applicable once the target existed for ANY part of it (its window
     // overlaps [createdDate, ∞)). Weeks entirely before creation are N/A.
     const applicable = week.end >= createdDate;

@@ -17,6 +17,7 @@ import {
 } from "@/lib/lifts";
 import { isValidDuration } from "@/lib/duration";
 import { formatLongDate } from "@/lib/format-date";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import {
   judgeTargets,
   summarizeExercise,
@@ -237,6 +238,7 @@ export default function StrengthSets({
   onPlateFromSuggestion: (weightKg: number) => void;
   onPlateTarget: (si: number, field: "weight" | "weightRight") => void;
 }) {
+  const formatPrefs = useFormatPrefs();
   const p = part;
   // The how-to guide for the current lift (#734). Catalog lifts have one; a
   // custom (non-catalog) lift resolves to undefined, so the ⓘ affordance simply
@@ -695,7 +697,7 @@ export default function StrengthSets({
             {recent.map((sess, i) => {
               const dateEl = (
                 <span className="shrink-0 text-slate-500 dark:text-slate-400">
-                  {formatLongDate(sess.date)}
+                  {formatLongDate(sess.date, formatPrefs)}
                 </span>
               );
               const metrics = (
@@ -1339,7 +1341,7 @@ export default function StrengthSets({
           )}
           {total > 0 && (
             <span className="text-xs text-slate-500 dark:text-slate-400">
-              Total: {total.toLocaleString()} {units.weightUnit}
+              Total: {total.toLocaleString("en-US")} {units.weightUnit}
             </span>
           )}
         </span>

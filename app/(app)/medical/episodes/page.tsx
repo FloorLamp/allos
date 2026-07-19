@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { requireSession, getAccessibleProfiles } from "@/lib/auth";
-import { getUnitPrefs } from "@/lib/settings";
+import { getUnitPrefs, getDisplayFormatPrefs } from "@/lib/settings";
 import { fmtTemp } from "@/lib/units";
+import { formatRecordDate } from "@/lib/record-format";
+import type { DisplayFormatPrefs } from "@/lib/format-date";
 import { summarizeEpisodesForProfile } from "@/lib/illness-episode-summary";
 import { episodeHref, HOUSEHOLD_HISTORY_HREF } from "@/lib/hrefs";
 import PageContainer from "@/components/PageContainer";
@@ -15,22 +17,15 @@ export const dynamic = "force-dynamic";
 // assembly per row). Retroactive by construction: a boundary-edited/retro episode row
 // simply appears here.
 
-function fmtDate(d: string | null): string {
-  if (!d) return "—";
-  const dt = new Date(`${d}T00:00:00Z`);
-  return Number.isNaN(dt.getTime())
-    ? d
-    : dt.toLocaleDateString(undefined, {
-        timeZone: "UTC",
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
-}
+// Pref-aware (#964/#1020): formatRecordDate replaces the old implicit-locale
+// toLocaleDateString, which leaked the server's locale.
+const fmtDate = (d: string | null, prefs: DisplayFormatPrefs): string =>
+  formatRecordDate(d, "—", prefs);
 
 export default async function EpisodesIndexPage() {
   const { login, profile } = await requireSession();
   const temperatureUnit = getUnitPrefs(login.id).temperatureUnit;
+  const formatPrefs = getDisplayFormatPrefs(login.id);
   const episodes = summarizeEpisodesForProfile(profile.id);
   // Widen-to-household link (issue #1009 Ask 4) — shown only for a multi-profile login,
   // the same predicate that gates the Household strip/nav.
@@ -58,8 +53,8 @@ export default async function EpisodesIndexPage() {
       ) : (
         <ul className="flex flex-col gap-2" data-testid="episode-index">
           {episodes.map((e) => {
-            const range = `${fmtDate(e.firstDay)} – ${
-              e.ongoing ? "ongoing" : fmtDate(e.lastActiveDay)
+            const range = `${fmtDate(e.firstDay, formatPrefs)} – ${
+              e.ongoing ? "ongoing" : fmtDate(e.lastActiveDay, formatPrefs)
             }`;
             const outcome =
               e.outcome ??

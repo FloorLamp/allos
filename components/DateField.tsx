@@ -21,6 +21,7 @@ import {
 import { useTimezone } from "@/components/TimezoneProvider";
 import { useWeekStart } from "@/components/WeekStartProvider";
 import { formatLongDate, daysRemainingLabel } from "@/lib/format-date";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 
 // Styled, theme-consistent replacement for <input type="date">. The browser's
 // native date popup can't be CSS-styled, so we render our own calendar.
@@ -70,6 +71,7 @@ export default function DateField({
   inputClassName?: string;
   "data-testid"?: string;
 }) {
+  const formatPrefs = useFormatPrefs();
   const controlled = value !== undefined;
   const [inner, setInner] = useState(defaultValue);
   const val = controlled ? value! : inner;
@@ -214,7 +216,7 @@ export default function DateField({
         data-testid={testId}
         id={id}
         type="text"
-        value={validISO(val) ? formatLongDate(val) : val}
+        value={validISO(val) ? formatLongDate(val, formatPrefs) : val}
         required={required}
         autoFocus={autoFocus}
         placeholder={placeholder}

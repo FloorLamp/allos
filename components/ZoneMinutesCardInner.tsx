@@ -13,6 +13,7 @@ import {
 } from "recharts";
 import { useChartColors } from "./useChartColors";
 import { formatLongDate } from "@/lib/format-date";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { ZONES, ZONE_COLORS } from "@/lib/training-zones";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -39,6 +40,7 @@ export default function ZoneMinutesCardInner({
   data: ZoneWeekDatum[];
   zone2Target?: number;
 }) {
+  const formatPrefs = useFormatPrefs();
   const c = useChartColors();
   if (data.length === 0) {
     return (
@@ -51,7 +53,7 @@ export default function ZoneMinutesCardInner({
     ? (v: string) => String(v).slice(5)
     : undefined;
   const labelFmt = ISO_DATE.test(data[0].week)
-    ? (v: string) => `Week of ${formatLongDate(String(v))}`
+    ? (v: string) => `Week of ${formatLongDate(String(v), formatPrefs)}`
     : undefined;
 
   return (

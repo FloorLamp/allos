@@ -7,9 +7,11 @@ import RecordProvenance from "@/components/RecordProvenance";
 import ProviderName from "@/components/ProviderName";
 import NotesText from "@/components/NotesText";
 import { formatRecordDate } from "@/lib/record-format";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import type { DisplayFormatPrefs } from "@/lib/format-date";
 import type { Procedure } from "@/lib/types";
 
-const COLUMNS: RecordColumn<Procedure>[] = [
+const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Procedure>[] => [
   {
     header: "Procedure",
     cellClassName: "font-medium text-slate-800 dark:text-slate-100",
@@ -43,7 +45,7 @@ const COLUMNS: RecordColumn<Procedure>[] = [
   {
     header: "Date",
     cellClassName: "whitespace-nowrap text-slate-600 dark:text-slate-300",
-    cell: (p) => formatRecordDate(p.date),
+    cell: (p) => formatRecordDate(p.date, "—", fmt),
   },
   {
     header: "Provider",
@@ -69,7 +71,7 @@ export default function ProcedureList({ items }: { items: Procedure[] }) {
   return (
     <RecordTable
       items={items}
-      columns={COLUMNS}
+      columns={buildColumns(useFormatPrefs())}
       emptyMessage="No procedures yet. Add one, or import a MyChart / CCD health record to populate your surgical history."
       renderEditForm={(p, done) => (
         <ProcedureForm action={updateProcedure} procedure={p} onDone={done} />

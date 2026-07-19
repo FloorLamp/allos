@@ -9,13 +9,15 @@ import RecordProvenance from "@/components/RecordProvenance";
 import ProviderName from "@/components/ProviderName";
 import OpenInMaps from "@/components/OpenInMaps";
 import { formatRecordDate } from "@/lib/record-format";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import type { DisplayFormatPrefs } from "@/lib/format-date";
 import type { Encounter } from "@/lib/types";
 
 // The visit date, showing a range when the encounter spans multiple days.
-function dateLabel(e: Encounter): string {
-  const start = formatRecordDate(e.date, "");
+function dateLabel(e: Encounter, fmt: DisplayFormatPrefs): string {
+  const start = formatRecordDate(e.date, "", fmt);
   if (e.end_date && e.end_date !== e.date)
-    return `${start} – ${formatRecordDate(e.end_date, "")}`;
+    return `${start} – ${formatRecordDate(e.end_date, "", fmt)}`;
   return start;
 }
 
@@ -29,11 +31,11 @@ function diagnosisList(diagnoses: string | null): string[] {
     .filter(Boolean);
 }
 
-const COLUMNS: RecordColumn<Encounter>[] = [
+const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [
   {
     header: "Date",
     cellClassName: "whitespace-nowrap text-slate-600 dark:text-slate-300",
-    cell: (e) => dateLabel(e),
+    cell: (e) => dateLabel(e, fmt),
   },
   {
     header: "Visit",
@@ -148,10 +150,11 @@ export default function EncounterList({
   items: Encounter[];
   defaultDate: string;
 }) {
+  const fmt = useFormatPrefs();
   return (
     <RecordTable
       items={items}
-      columns={COLUMNS}
+      columns={buildColumns(fmt)}
       emptyMessage="No visits yet. Add one, or import a MyChart / CCD health record to populate your visit history."
       renderEditForm={(e, done) => (
         <EncounterForm
@@ -163,7 +166,7 @@ export default function EncounterList({
       )}
       confirmDelete={(e) => ({
         title: "Delete visit",
-        message: `Delete the ${dateLabel(e)} visit? This can’t be undone.`,
+        message: `Delete the ${dateLabel(e, fmt)} visit? This can’t be undone.`,
       })}
       onDelete={async (e) => {
         const fd = new FormData();

@@ -1,3 +1,8 @@
+import {
+  DEFAULT_FORMAT_PREFS,
+  formatDateShape,
+  type DisplayFormatPrefs,
+} from "@/lib/format-date";
 import Avatar, { type AvatarProfile } from "@/components/Avatar";
 import { MedicalValue } from "@/components/ui";
 import { NOTICE_TONE } from "@/components/Notice";
@@ -26,16 +31,23 @@ function inScope(fields: Scope, field: ShareField): boolean {
   return fields === "all" || isFieldInScope(fields, field);
 }
 
-function fmtDate(iso: string | null | undefined): string {
+// Pref-aware (#964/#1020): the date shape follows `prefs` (fixed default in share
+// mode); formatDateShape over the UTC parts replaces the old implicit-locale
+// toLocaleDateString, which leaked the server's locale.
+function fmtDate(
+  iso: string | null | undefined,
+  prefs: DisplayFormatPrefs
+): string {
   if (!iso) return "—";
   const d = new Date(iso.length <= 10 ? `${iso}T00:00:00Z` : iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
+  return formatDateShape(
+    prefs.dateFormat,
+    d.getUTCFullYear(),
+    d.getUTCMonth() + 1,
+    d.getUTCDate(),
+    { monthStyle: "short", year: true }
+  );
 }
 
 function Section({
@@ -110,6 +122,7 @@ export default function ProfilePassport({
   mode = "app",
   generatedAt,
   expiresAt,
+  formatPrefs = DEFAULT_FORMAT_PREFS,
 }: {
   summary: ProfileSummary;
   profile: AvatarProfile;
@@ -118,6 +131,9 @@ export default function ProfilePassport({
   mode?: "app" | "share";
   generatedAt: string;
   expiresAt?: string;
+  // Viewer's date shape (#964). The logged-in passport page passes the login's
+  // prefs; the tokenized /share view keeps the fixed default (login-less policy).
+  formatPrefs?: DisplayFormatPrefs;
 }) {
   const { identity, body } = summary;
   const showBody = inScope(fields, "body");
@@ -138,9 +154,11 @@ export default function ProfilePassport({
             Shared read-only copy — not an official medical record
           </div>
           <div className="mt-1 text-amber-800 dark:text-amber-300">
-            Generated {fmtDate(generatedAt)}
-            {expiresAt ? ` · Access expires ${fmtDate(expiresAt)}` : ""}. This
-            summary is provided by the individual and may be incomplete.
+            Generated {fmtDate(generatedAt, formatPrefs)}
+            {expiresAt
+              ? ` · Access expires ${fmtDate(expiresAt, formatPrefs)}`
+              : ""}
+            . This summary is provided by the individual and may be incomplete.
           </div>
         </div>
       )}
@@ -179,7 +197,7 @@ export default function ProfilePassport({
                     {identity.birthdate && (
                       <Fact
                         label="Birthdate"
-                        value={fmtDate(identity.birthdate)}
+                        value={fmtDate(identity.birthdate, formatPrefs)}
                       />
                     )}
                     <Fact
@@ -304,7 +322,7 @@ export default function ProfilePassport({
                     </span>
                     {c.onsetDate && (
                       <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
-                        since {fmtDate(c.onsetDate)}
+                        since {fmtDate(c.onsetDate, formatPrefs)}
                       </span>
                     )}
                   </li>
@@ -367,7 +385,11 @@ export default function ProfilePassport({
                       ? `${Math.round(body.heightCm)} cm`
                       : "—"
                   }
-                  sub={body.heightDate ? fmtDate(body.heightDate) : undefined}
+                  sub={
+                    body.heightDate
+                      ? fmtDate(body.heightDate, formatPrefs)
+                      : undefined
+                  }
                 />
                 <Fact
                   label="Weight"
@@ -376,13 +398,21 @@ export default function ProfilePassport({
                       ? fmtWeight(body.weightKg, weightUnit)
                       : "—"
                   }
-                  sub={body.weightDate ? fmtDate(body.weightDate) : undefined}
+                  sub={
+                    body.weightDate
+                      ? fmtDate(body.weightDate, formatPrefs)
+                      : undefined
+                  }
                 />
                 <Fact label="BMI" value={body.bmi != null ? body.bmi : "—"} />
                 <Fact
                   label="Body fat"
                   value={body.bodyFatPct != null ? `${body.bodyFatPct}%` : "—"}
-                  sub={body.bodyFatDate ? fmtDate(body.bodyFatDate) : undefined}
+                  sub={
+                    body.bodyFatDate
+                      ? fmtDate(body.bodyFatDate, formatPrefs)
+                      : undefined
+                  }
                 />
                 <Fact
                   label="Resting HR"
@@ -392,7 +422,9 @@ export default function ProfilePassport({
                       : "—"
                   }
                   sub={
-                    body.restingHrDate ? fmtDate(body.restingHrDate) : undefined
+                    body.restingHrDate
+                      ? fmtDate(body.restingHrDate, formatPrefs)
+                      : undefined
                   }
                 />
               </div>
@@ -455,7 +487,7 @@ export default function ProfilePassport({
                       />
                       {v.date && (
                         <span className="ml-2 text-xs text-slate-500 dark:text-slate-400">
-                          {fmtDate(v.date)}
+                          {fmtDate(v.date, formatPrefs)}
                         </span>
                       )}
                     </span>
@@ -493,7 +525,7 @@ export default function ProfilePassport({
                         </span>
                         {m.date && (
                           <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
-                            since {fmtDate(m.date)}
+                            since {fmtDate(m.date, formatPrefs)}
                           </span>
                         )}
                       </li>
@@ -524,7 +556,7 @@ export default function ProfilePassport({
                         </span>
                         {s.date && (
                           <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
-                            since {fmtDate(s.date)}
+                            since {fmtDate(s.date, formatPrefs)}
                           </span>
                         )}
                       </li>
@@ -571,7 +603,7 @@ export default function ProfilePassport({
                                         className="whitespace-nowrap"
                                       >
                                         {d.label ? `${d.label}: ` : ""}
-                                        {fmtDate(d.date)}
+                                        {fmtDate(d.date, formatPrefs)}
                                       </span>
                                     ))}
                                   </div>
@@ -636,7 +668,7 @@ export default function ProfilePassport({
                           />
                         </td>
                         <td className="py-1.5 text-right text-xs text-slate-500 dark:text-slate-400">
-                          {fmtDate(h.date)}
+                          {fmtDate(h.date, formatPrefs)}
                         </td>
                       </tr>
                     ))}
@@ -652,8 +684,9 @@ export default function ProfilePassport({
 
       {/* Footer: generated date + disclaimer (screen + print). */}
       <footer className="px-1 pb-4 text-xs text-slate-500 dark:text-slate-400">
-        Generated {fmtDate(generatedAt)}. This summary is for informational
-        purposes only and is not medical advice or a complete medical record.
+        Generated {fmtDate(generatedAt, formatPrefs)}. This summary is for
+        informational purposes only and is not medical advice or a complete
+        medical record.
       </footer>
     </div>
   );

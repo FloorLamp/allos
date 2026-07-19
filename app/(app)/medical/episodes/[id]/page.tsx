@@ -387,6 +387,7 @@ export default async function EpisodePage(props: {
           contexts={householdContexts}
           profilesById={accessibleById}
           nameFor={(pid) => householdNames.get(pid) ?? "Someone"}
+          formatPrefs={formatPrefs}
         />
       )}
 

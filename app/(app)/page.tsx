@@ -409,7 +409,7 @@ export default async function Dashboard() {
   // dismiss here (or on a tab) drops the finding out for free. No push, no hero slot.
   const coachingObservations = has("coaching-observations")
     ? activeFindings(
-        collectCoachingFindings(profile.id, on, units.weightUnit),
+        collectCoachingFindings(profile.id, on, units.weightUnit, formatPrefs),
         getFindingSuppressions(profile.id),
         on
       )
@@ -522,6 +522,7 @@ export default async function Dashboard() {
           <WeightTrendWidget
             data={bodyMetrics}
             weightUnit={units.weightUnit}
+            formatPrefs={formatPrefs}
             today={on}
           />
         );

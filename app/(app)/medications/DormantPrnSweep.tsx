@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { IconArchive, IconX, IconArrowBackUp } from "@tabler/icons-react";
 import { useToast } from "@/components/Toast";
 import { formatLongDate } from "@/lib/format-date";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import type { DormantPrnSuggestion } from "@/lib/dormant-prn";
 import {
   stopMedication,
@@ -26,6 +27,7 @@ export default function DormantPrnSweep({
   suggestions: DormantPrnSuggestion[];
   dismissed?: DormantPrnSuggestion[];
 }) {
+  const formatPrefs = useFormatPrefs();
   const [busyId, setBusyId] = useState<number | null>(null);
   const router = useRouter();
   const toast = useToast();
@@ -92,7 +94,7 @@ export default function DormantPrnSweep({
 
   const dormantLine = (s: DormantPrnSuggestion) =>
     s.lastUsed
-      ? `No doses since ${formatLongDate(s.lastUsed)} (${s.daysSince} days)`
+      ? `No doses since ${formatLongDate(s.lastUsed, formatPrefs)} (${s.daysSince} days)`
       : `No doses in ${s.daysSince} days`;
 
   return (

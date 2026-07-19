@@ -1,4 +1,26 @@
 import { test, expect, type Page } from "@playwright/test";
+import Database from "better-sqlite3";
+import path from "node:path";
+
+// Clears any body-hygiene dismissal so the seeded 92 kg weight-jump finding is
+// guaranteed visible before the finding-text assertion, regardless of retries or
+// prior runs against the shared seeded DB (the resetPreventiveFixture pattern from
+// #206 — same blast radius as rule-findings.spec.ts's reset). Short-lived
+// connection, busy timeout so it never contends with the running server (WAL).
+function resetBodyHygieneDismissals(): void {
+  const dbPath =
+    process.env.ALLOS_DB_PATH ??
+    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const db = new Database(dbPath);
+  try {
+    db.pragma("busy_timeout = 5000");
+    db.prepare(
+      "DELETE FROM upcoming_dismissals WHERE signal_key LIKE 'body-hygiene:%'"
+    ).run();
+  } finally {
+    db.close();
+  }
+}
 
 // Change a Settings select and wait for the autosave to LAND. The card's SaveStatus
 // shows a "Saved" check only after the Server Action's write has committed (savedAt
@@ -20,8 +42,11 @@ async function selectAndSave(
 //   - a record date (the seeded "Essential hypertension" onset, 2019-03-01) renders
 //     in the chosen date shape on /conditions, and
 //   - a journal timestamp (the seeded "Strava morning ride", 07:15–08:17, logged 3
-//     days ago) renders in the chosen clock on the Training → Log feed.
-// Both read seeded rows by VALUE (never an exact count), and the finally block
+//     days ago) renders in the chosen clock on the Training → Log feed,
+//   - a timeline day header renders in the chosen date shape (#1020), and
+//   - the seeded 92 kg weight-jump finding's TEXT re-renders its embedded dates in
+//     the chosen shape (#1020 — same finding, same dedupeKey, reshaped copy).
+// All read seeded rows by VALUE (never an exact count), and the finally block
 // restores the defaults so the shared admin login doesn't leak the preference into
 // other specs.
 
@@ -37,6 +62,25 @@ test("flipping the date/time prefs re-renders a record date and a journal timest
     await expect(page.getByText("Strava morning ride").first()).toBeVisible();
     // 24h default — the ride's start renders as "07:15", never a 12h "7:15 AM".
     await expect(page.getByText(/07:15/).first()).toBeVisible();
+
+    // Timeline day headers default to the mdy long shape ("Monday, July 6") —
+    // never an ISO date (#1020).
+    await page.goto("/timeline");
+    await expect(
+      page.getByText(/^[A-Za-z]+day, [A-Z][a-z]+ \d{1,2}/).first()
+    ).toBeVisible();
+
+    // The seeded weight-jump finding embeds its dates in the default shape too
+    // ("On Monday, July 6 you logged …", #1020).
+    resetBodyHygieneDismissals();
+    await page.goto("/trends?tab=body");
+    await expect(
+      page
+        .getByRole("main")
+        .getByTestId("body-hygiene-findings")
+        .getByText(/On [A-Za-z]+day, [A-Z][a-z]+ \d{1,2} you logged/)
+        .first()
+    ).toBeVisible();
 
     // Flip both prefs on Settings → Preferences (autosave on change). Reload between
     // the two changes: like the Units card, each field's save posts BOTH values from
@@ -63,6 +107,25 @@ test("flipping the date/time prefs re-renders a record date and a journal timest
     await page.goto("/training");
     await expect(page.getByText("Strava morning ride").first()).toBeVisible();
     await expect(page.getByText(/7:15\s*AM/).first()).toBeVisible();
+
+    // Timeline day headers follow the pref ("Monday, 2026-07-06" — iso keeps the
+    // weekday prefix, #1020).
+    await page.goto("/timeline");
+    await expect(
+      page.getByText(/^[A-Za-z]+day, \d{4}-\d{2}-\d{2}$/).first()
+    ).toBeVisible();
+
+    // The weight-jump finding's embedded dates follow the pref too — same
+    // finding, same dedupeKey, reshaped text (#1020).
+    resetBodyHygieneDismissals();
+    await page.goto("/trends?tab=body");
+    await expect(
+      page
+        .getByRole("main")
+        .getByTestId("body-hygiene-findings")
+        .getByText(/On [A-Za-z]+day, \d{4}-\d{2}-\d{2} you logged/)
+        .first()
+    ).toBeVisible();
   } finally {
     // Restore the defaults so the shared admin login preference doesn't bleed into
     // other specs.

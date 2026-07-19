@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/auth";
+import { getDisplayFormatPrefs } from "@/lib/settings";
 import {
   getProtocols,
   getProtocolOutcomeOptions,
@@ -27,7 +28,7 @@ export default async function ProtocolsPage({
 }: {
   searchParams: Promise<{ template?: string }>;
 }) {
-  const { profile } = await requireSession();
+  const { login, profile } = await requireSession();
   const protocols = getProtocols(profile.id);
   const options = getProtocolOutcomeOptions(profile.id);
   // "Recovery gear" (issue #592): the picker studies a recovery device, so filter
@@ -49,7 +50,10 @@ export default async function ProtocolsPage({
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="min-w-0 space-y-4 lg:col-span-2">
-          <ProtocolList items={protocols} />
+          <ProtocolList
+            items={protocols}
+            formatPrefs={getDisplayFormatPrefs(login.id)}
+          />
         </div>
         <div className="min-w-0 space-y-4">
           <div className="card space-y-2" data-testid="protocol-templates">
