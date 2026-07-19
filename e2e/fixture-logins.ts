@@ -370,3 +370,12 @@ export const E2E_LOGIN_HHHIST_RO = "e2e_hhhist_ro";
 // fixtures' cockpit assertions.
 export const E2E_LOGIN_CEL_IMPORT = "e2e_cel_import";
 export const CEL_IMPORT_PROFILE = "Cel Import (e2e)";
+
+// A member granted a dedicated ADULT profile for the drug-allergy × medication
+// cross-check spec (#1029): a recorded "Penicillin — hives" allergy plus a tracked
+// amoxicillin (same-class hit) and cephalexin (documented cross-reactivity hit).
+// Dedicated on purpose — an allergy warning on a SHARED profile would plant surprise
+// safety-strip cards / Upcoming findings that race neighbor specs. The spec owns its
+// dismissal state (reset per test), so it stays repeat-safe.
+export const E2E_LOGIN_DRUG_ALLERGY = "e2e_drug_allergy";
+export const DRUG_ALLERGY_PROFILE = "Drug Allergy (e2e)";

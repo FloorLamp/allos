@@ -43,6 +43,11 @@ import {
   type MedMonitoringHit,
   type MonitoredMedInput,
 } from "../../medication-monitoring";
+import {
+  crossCheckDrugAllergies,
+  type DrugAllergyHit,
+  type DrugAllergyMedInput,
+} from "../../drug-allergy";
 import { biomarkerFamily } from "../../canonical-name";
 import { medicationStartDate } from "../../profile-summary";
 import { getMedicationCourses } from "./medications";
@@ -318,6 +323,35 @@ export function getOtotoxicWarnings(profileId: number): OtotoxicHit[] {
     }));
   if (meds.length === 0) return [];
   return crossCheckOtotoxic(meds);
+}
+
+// Drug-allergy × medication-stack cross-check (issue #1029): each of the profile's
+// NON-RESOLVED recorded allergies matched against its ACTIVE medications — code-first
+// (the allergen's RxNorm substance_code vs the med's product/ingredient CUIs), name
+// fallback (the shared folding token-containment matcher), then the curated class /
+// cross-reactivity dataset (penicillins ↔ cephalosporins, sulfa antibiotics, NSAID/
+// aspirin). Both sides come from the ONE shared safety-context gather
+// (getIntakeSafetyContext, #661 — non-resolved allergy records with ids + codes,
+// active meds with their intake_items ids), so this can't drift from the belt/food/
+// PGx/ototoxic consumers. The SAME pure crossCheckDrugAllergies the /medications +
+// Supplements safety strips and the dismissible care-tier Upcoming finding all format
+// over ("one question, one computation"). Profile-scoped through the underlying reads
+// (all profile_id-filtered); no new SQL, so the scoping guard is unaffected.
+// Informational, never prescriptive — the check runs at surface time, never blocks a
+// med write (#1029 ask 4); absence of a flag is not clearance.
+export function getDrugAllergyWarnings(profileId: number): DrugAllergyHit[] {
+  const ctx = getIntakeSafetyContext(profileId);
+  if (ctx.allergyRecords.length === 0) return [];
+  const meds: DrugAllergyMedInput[] = ctx.medications
+    .filter((m): m is typeof m & { id: number } => m.id != null)
+    .map((m) => ({
+      id: m.id,
+      name: m.name,
+      rxcui: m.rxcui,
+      rxcuiIngredients: m.rxcuiIngredients,
+    }));
+  if (meds.length === 0) return [];
+  return crossCheckDrugAllergies(ctx.allergyRecords, meds);
 }
 
 // Lab categories a monitoring retest keys on — the SAME set the biomarker retest signal

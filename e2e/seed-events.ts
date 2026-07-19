@@ -112,6 +112,8 @@ import {
   FLAGGED_IOP_PROFILE,
   E2E_LOGIN_CEL_IMPORT,
   CEL_IMPORT_PROFILE,
+  E2E_LOGIN_DRUG_ALLERGY,
+  DRUG_ALLERGY_PROFILE,
 } from "./fixture-logins";
 import { adoptTemplate, activateRoutine } from "../lib/routines";
 
@@ -3367,4 +3369,38 @@ const celImportId = fixtureProfileId(CEL_IMPORT_PROFILE);
 seedMemberLogin(E2E_LOGIN_CEL_IMPORT, celImportId, "write");
 console.log(
   `e2e: seeded legacy imported-Cel temperature fixture — profile ${celImportId} (${CEL_IMPORT_PROFILE}) (#1018)`
+);
+
+// ── Drug-allergy × medication cross-check fixture (#1029) ─────────────────────
+// A dedicated adult profile with a recorded "Penicillin — hives" allergy plus two
+// tracked active medications: amoxicillin (a same-class penicillin hit) and
+// cephalexin (the documented penicillin ↔ cephalosporin cross-reactivity hit). The
+// spec asserts the safety-strip cards on /medications and the care-tier Upcoming
+// finding, and owns its dismissal state (reset per test). Idempotent for a reused
+// server: hard-clear this profile's allergies + intake rows before re-seeding.
+// Synthetic, no PHI.
+const drugAllergyId = fixtureProfileId(DRUG_ALLERGY_PROFILE);
+db.prepare(`DELETE FROM allergies WHERE profile_id = ?`).run(drugAllergyId);
+db.prepare(
+  `DELETE FROM intake_item_logs WHERE item_id IN
+     (SELECT id FROM intake_items WHERE profile_id = ?)`
+).run(drugAllergyId);
+db.prepare(
+  `DELETE FROM intake_item_doses WHERE item_id IN
+     (SELECT id FROM intake_items WHERE profile_id = ?)`
+).run(drugAllergyId);
+db.prepare(`DELETE FROM intake_items WHERE profile_id = ?`).run(drugAllergyId);
+db.prepare(
+  `INSERT INTO allergies (profile_id, substance, reaction, severity, status)
+   VALUES (?, 'Penicillin', 'hives', 'moderate', 'active')`
+).run(drugAllergyId);
+for (const medName of ["Amoxicillin 500 mg", "Cephalexin 250 mg"]) {
+  db.prepare(
+    `INSERT INTO intake_items (profile_id, name, active, kind, as_needed)
+     VALUES (?, ?, 1, 'medication', 1)`
+  ).run(drugAllergyId, medName);
+}
+seedMemberLogin(E2E_LOGIN_DRUG_ALLERGY, drugAllergyId, "write");
+console.log(
+  `e2e: seeded drug-allergy cross-check fixture — profile ${drugAllergyId} (${DRUG_ALLERGY_PROFILE}) (#1029)`
 );

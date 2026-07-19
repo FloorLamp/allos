@@ -16,6 +16,7 @@ import {
   getInteractionWarnings,
   getPgxWarnings,
   getOtotoxicWarnings,
+  getDrugAllergyWarnings,
   getGenomicVariants,
   getFindingSuppressions,
 } from "@/lib/queries";
@@ -363,6 +364,16 @@ export default async function SupplementsTab() {
     suppressions,
     todayStr
   );
+  // Drug-allergy × med cross-check (issue #1029): an active medication meeting a
+  // recorded non-resolved allergy. Rendered here AND on the Medications page over the
+  // SAME getDrugAllergyWarnings gather + dedupeKey, so a dismiss on either silences
+  // both (#435/#746) — the shared component keeps the two surfaces from drifting.
+  const allergyWarnings = activeByKey(
+    getDrugAllergyWarnings(profile.id),
+    (hit) => hit.dedupeKey,
+    suppressions,
+    todayStr
+  );
   // The profile's stored PGx variants, threaded to every form for the client-side
   // create/edit PGx notice (a lean projection — enough for phenotype resolution + the
   // marker match, no report prose beyond interpretation/notes the page already holds).
@@ -581,6 +592,7 @@ export default async function SupplementsTab() {
         interactionWarnings={interactionWarnings}
         pgxWarnings={pgxWarnings}
         ototoxicWarnings={ototoxicWarnings}
+        allergyWarnings={allergyWarnings}
       />
 
       {/* Adherence-pattern observations (issue #45, domain 3) */}

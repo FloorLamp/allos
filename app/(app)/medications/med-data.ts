@@ -22,6 +22,7 @@ import {
   getInteractionWarnings,
   getPgxWarnings,
   getOtotoxicWarnings,
+  getDrugAllergyWarnings,
   getGenomicVariants,
   getFindingSuppressions,
   getAdministrationsForItemsOnDate,
@@ -148,6 +149,7 @@ export interface MedicationsData {
   interactionWarnings: ReturnType<typeof getInteractionWarnings>;
   pgxWarnings: ReturnType<typeof getPgxWarnings>;
   ototoxicWarnings: ReturnType<typeof getOtotoxicWarnings>;
+  allergyWarnings: ReturnType<typeof getDrugAllergyWarnings>;
   current: MedCardData[];
   past: MedCardData[];
   // The recently-used active PRN meds for the Today panel, with pre-formatted
@@ -368,6 +370,12 @@ export function loadMedicationsData(profileId: number): MedicationsData {
     suppressions,
     todayStr
   );
+  const allergyWarnings = activeByKey(
+    getDrugAllergyWarnings(profileId),
+    (hit) => hit.dedupeKey,
+    suppressions,
+    todayStr
+  );
 
   const stackItems: InteractionItem[] = supplements.map((s) => ({
     id: s.id,
@@ -491,6 +499,7 @@ export function loadMedicationsData(profileId: number): MedicationsData {
     interactionWarnings,
     pgxWarnings,
     ototoxicWarnings,
+    allergyWarnings,
     current: currentData,
     past: pastData,
     prnToday,

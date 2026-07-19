@@ -102,6 +102,7 @@ import {
   getContrastSafetyWarnings,
   getDentalSafetyWarnings,
   getOtotoxicWarnings,
+  getDrugAllergyWarnings,
   getMedMonitoringItems,
   getPrnOverMaxItems,
 } from "../intake";
@@ -120,6 +121,7 @@ import {
 } from "../../contrast-safety";
 import { dentalSafetyTitle, dentalSafetyDetail } from "../../dental-safety";
 import { ototoxicTitle, ototoxicDetail } from "../../ototoxic";
+import { drugAllergyTitle, drugAllergyFullDetail } from "../../drug-allergy";
 import {
   medMonitoringTitle,
   medMonitoringDetail,
@@ -410,6 +412,33 @@ function ototoxicItems(profileId: number): UpcomingItem[] {
     domain: "ototoxic" as const,
     title: ototoxicTitle(hit),
     detail: ototoxicDetail(hit),
+    href: MEDICATIONS_HREF,
+    dueDate: null,
+    band: "today" as const,
+    dueText: "Review",
+  }));
+}
+
+// Drug-allergy × medication-stack cross-check (issue #1029): an active medication
+// meeting a recorded non-resolved allergy — direct ingredient match, same curated
+// class, or a documented cross-reactive class. Reuses the shared
+// getDrugAllergyWarnings gather (same pure crossCheckDrugAllergies as the
+// /medications + Supplements safety strips), so each (allergy, med) pair surfaces as
+// a dismissible finding keyed by `allergy-med:<allergyId>-<itemId>` (id-keyed per
+// #203 — it dies with either row) — through getFindingSuppressions like every other
+// finding, so a dismiss/snooze silences it everywhere ("dismiss once, silence
+// everywhere"; a clinician-reviewed, deliberately-continued med is the common case).
+// SAFETY / care-tier (per #449 — a recorded-allergy match is exactly the
+// interaction/PGx class of med-safety note): banded to Today so it surfaces on the
+// dashboard "Needs attention" hero. Standing informational finding (no due date),
+// framed "discuss with your prescriber/pharmacist", never prescriptive — the check
+// runs at surface time and never blocks a med write (#1029 ask 4).
+function drugAllergyItems(profileId: number): UpcomingItem[] {
+  return getDrugAllergyWarnings(profileId).map((hit) => ({
+    key: hit.dedupeKey,
+    domain: "allergy-med" as const,
+    title: drugAllergyTitle(hit),
+    detail: drugAllergyFullDetail(hit),
     href: MEDICATIONS_HREF,
     dueDate: null,
     band: "today" as const,
@@ -951,6 +980,7 @@ const rawUpcoming = cache(function rawUpcoming(
     ...conditionReviewItems(profileId),
     ...mentalHealthCrisisItems(profileId),
     ...tempRedFlagItems(profileId, today, temperatureUnit),
+    ...drugAllergyItems(profileId),
     ...interactionItems(profileId),
     ...pgxItems(profileId),
     ...contrastItems(profileId, today),

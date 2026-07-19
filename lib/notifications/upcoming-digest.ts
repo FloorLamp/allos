@@ -24,6 +24,9 @@ const DOMAIN_NOUN: Record<UpcomingDomain, string> = {
   // deliberately NOT pushed — omitted from DOMAIN_SEQ (like the "something's off"
   // signals), so it's never counted in this digest even though the noun exists.
   "condition-review": "condition to review",
+  // A recorded drug allergy met by an active med (#1029). Care-tier, counted in the
+  // push alongside the interaction notes it mirrors.
+  "allergy-med": "allergy note",
   interaction: "interaction",
   pgx: "pharmacogenomic note",
   contrast: "contrast-safety note",
@@ -69,6 +72,7 @@ const DOMAIN_SEQ: UpcomingDomain[] = [
   "refill",
   "dietary-limit",
   "illness-care",
+  "allergy-med",
   "interaction",
   "pgx",
   "contrast",

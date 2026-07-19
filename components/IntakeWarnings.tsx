@@ -11,6 +11,12 @@ import {
   type PgxHit,
 } from "@/lib/pgx";
 import { ototoxicTitle, type OtotoxicHit } from "@/lib/ototoxic";
+import {
+  drugAllergyMatchLabel,
+  drugAllergyDetail,
+  drugAllergyEvidence,
+  type DrugAllergyHit,
+} from "@/lib/drug-allergy";
 
 // The CROSS-KIND intake warnings (#746): drug-/supplement-interaction hits (#144)
 // and the pharmacogenomics cross-check (#710). A supplement–drug interaction spans
@@ -24,21 +30,55 @@ export default function IntakeWarnings({
   interactionWarnings,
   pgxWarnings,
   ototoxicWarnings = [],
+  allergyWarnings = [],
 }: {
   interactionWarnings: InteractionHit[];
   pgxWarnings: PgxHit[];
   // Ototoxic-medication awareness (#717): an active ototoxic medication → a calm, cited
   // hearing-safety note. Optional so a caller that doesn't gather it renders nothing.
   ototoxicWarnings?: OtotoxicHit[];
+  // Drug-allergy × med cross-check (#1029): an active medication meeting a recorded
+  // non-resolved allergy (direct, same-class, or documented cross-reactive class).
+  // Optional so a caller that doesn't gather it renders nothing.
+  allergyWarnings?: DrugAllergyHit[];
 }) {
   if (
     interactionWarnings.length === 0 &&
     pgxWarnings.length === 0 &&
-    ototoxicWarnings.length === 0
+    ototoxicWarnings.length === 0 &&
+    allergyWarnings.length === 0
   )
     return null;
   return (
     <>
+      {/* Drug-allergy × medication warnings (issue #1029): a recorded allergy met by
+          an active med. Informational, never prescriptive — a clinician-reviewed,
+          deliberately-continued med is the common case, so each card is dismissible
+          through the shared bus (same dedupeKey as the Upcoming twin). */}
+      {allergyWarnings.length > 0 && (
+        <div className="mb-4 space-y-2" data-testid="allergy-med-warnings">
+          {allergyWarnings.map((hit) => (
+            <FindingCard
+              key={hit.dedupeKey}
+              testid={`allergy-med-warning-${hit.dedupeKey}`}
+              tone="rose"
+              title={
+                <>
+                  <span className="uppercase">
+                    {drugAllergyMatchLabel(hit)}
+                  </span>{" "}
+                  · {hit.medName} × {hit.substance}
+                </>
+              }
+              detail={drugAllergyDetail(hit)}
+              evidence={drugAllergyEvidence(hit)}
+              dismissKey={hit.dedupeKey}
+              dismissLabel={`Dismiss ${hit.medName} allergy note`}
+            />
+          ))}
+        </div>
+      )}
+
       {/* Drug-/supplement-interaction warnings (issue #144) */}
       {interactionWarnings.length > 0 && (
         <div className="mb-4 space-y-2" data-testid="interaction-warnings">
