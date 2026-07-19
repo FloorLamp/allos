@@ -38,6 +38,7 @@ import { ILLNESS_CARE_PREFIX } from "./illness-care";
 import { TEMP_RED_FLAG_PREFIX } from "./temp-red-flag";
 import { CONDITION_REVIEW_PREFIX } from "./condition-suggestions";
 import { FOLLOWUP_PREFIX } from "./followup";
+import { MENTAL_HEALTH_PREFIX } from "./mental-health";
 import { FITNESS_CHECK_PREFIX } from "./fitness-retest";
 import { MOBILITY_SUGGEST_PREFIX } from "./mobility-suggest";
 import type { ReasonCode } from "./reasons";
@@ -195,6 +196,16 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     tier: "care",
     builder: "followUpItems",
     reasons: ["followup-source"],
+  },
+  {
+    // Mental-health crisis findings (#716) — a care-tier, NON-DISMISSIBLE signal (severe
+    // PHQ-9/GAD-7 or a positive PHQ-9 item 9). It reaches Upcoming + the hero but is
+    // deliberately NEVER pushed (omitted from the digest DOMAIN_SEQ, no notify
+    // orchestrator), and is safety-ungated (the bus cannot hide it).
+    prefix: MENTAL_HEALTH_PREFIX,
+    tier: "care",
+    builder: "mentalHealthCrisisItems",
+    reasons: [],
   },
 ];
 

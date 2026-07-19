@@ -46,17 +46,17 @@ export function findingKey(finding: Pick<Finding, "dedupeKey">): string {
 //     follow-up while a deliberate snooze can still defer it.
 //   - Every other item uses the standard isSuppressed rule.
 export function isItemHiddenBySuppression(
-  item: Pick<UpcomingItem, "carePersistent">,
+  item: Pick<UpcomingItem, "carePersistent" | "suppressionPolicy">,
   record: SuppressionRecord | undefined,
   today: string
 ): boolean {
-  // ONE lifecycle decision (issue #942): a care-persistent item is "snooze-only"
-  // (resists a dismiss, honors a live snooze), everything else is "normal".
-  return isHiddenUnderPolicy(
-    item.carePersistent ? "snooze-only" : "normal",
-    record,
-    today
-  );
+  // ONE lifecycle decision (issue #942): an explicit suppressionPolicy wins (#716 —
+  // "safety-ungated" for the NON-DISMISSIBLE crisis finding, the bus can never hide
+  // it); otherwise a care-persistent item is "snooze-only" (resists a dismiss, honors
+  // a live snooze), and everything else is "normal".
+  const policy =
+    item.suppressionPolicy ?? (item.carePersistent ? "snooze-only" : "normal");
+  return isHiddenUnderPolicy(policy, record, today);
 }
 
 // Whether a suppression record hides its item right now (`today` = the profile-

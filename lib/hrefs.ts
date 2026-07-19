@@ -60,6 +60,9 @@ export function nutritionTabHref(tab: NutritionTab): AppRoute {
 // /medicine surface for their own Medical-group page.
 export const MEDICATIONS_HREF: AppRoute = "/medications";
 
+// The mental-health instrument surface (#716) — PHQ-9/GAD-7 scores under Medical.
+export const INSTRUMENTS_HREF: AppRoute = "/medical/instruments";
+
 // The kind-aware deep link for an intake item / dose (#746): a supplement points
 // at the Nutrition → Supplements tab, a medication at the Medications page. The
 // ONE place the intake-surface seam is encoded, so every deep-linker (Upcoming,

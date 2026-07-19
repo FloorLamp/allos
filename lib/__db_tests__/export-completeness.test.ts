@@ -115,6 +115,10 @@ const EXPORT_ALLOWLIST: { table: string; why: string }[] = [
     table: "fitness_assessments",
     why: "fitness-check SESSION rows (#834) — a date + coverage ledger that GROUPS a battery run. The measured VALUES that carry the signal already round-trip through their natural stores: set-based tests via activities/exercise_sets, VO2/grip/etc. via medical_records, body comp via body_metrics — all exported datasets/FHIR. The session row (and its child fitness_assessment_entries) references those, holding no independent clinical payload to export.",
   },
+  {
+    table: "instrument_responses",
+    why: "mental-health instrument PER-ITEM answers (#716). The clinically meaningful value — the PHQ-9/GAD-7 total SCORE — is a medical_records biomarker reading that already round-trips through the FHIR Observation export; these rows are the item breakdown behind that score (kept for the item-9 handling), a supporting decomposition with no independent clinical payload to export, exactly like fitness_assessment_entries relative to its natural stores.",
+  },
 ];
 
 describe("full export covers every owned domain (issue #465)", () => {

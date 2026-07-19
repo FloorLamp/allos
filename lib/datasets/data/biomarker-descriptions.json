@@ -1230,6 +1230,18 @@
       "name": "Visual Acuity, Left Eye",
       "full_name": "Visual Acuity, Left Eye",
       "description": "How clearly the left eye (OS) sees, written as a Snellen fraction such as 20/20. A qualitative value with no numeric reference range; it is shown as a dated timeline and tracked separately from the right eye."
+    },
+    {
+      "name": "PHQ-9",
+      "abbreviation": "PHQ-9",
+      "full_name": "Patient Health Questionnaire-9",
+      "description": "A validated 9-item questionnaire that scores depression severity from 0 to 27, banded minimal / mild / moderate / moderately severe / severe. It is a screening instrument, not a diagnosis. Tracked here as a numeric score over time; informational, not medical advice."
+    },
+    {
+      "name": "GAD-7",
+      "abbreviation": "GAD-7",
+      "full_name": "Generalized Anxiety Disorder-7",
+      "description": "A validated 7-item questionnaire that scores anxiety severity from 0 to 21, banded minimal / mild / moderate / severe. It is a screening instrument, not a diagnosis. Tracked here as a numeric score over time; informational, not medical advice."
     }
   ]
 }

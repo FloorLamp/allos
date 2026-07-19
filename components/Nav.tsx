@@ -102,6 +102,11 @@ const RECORDS: Group = {
     { href: "/immunizations", label: "Immunizations", icon: IconVaccine },
     { href: "/medical/episodes", label: "Illness episodes", icon: IconVirus },
     { href: "/medical/cycles", label: "Cycle", icon: IconDroplet },
+    {
+      href: "/medical/instruments",
+      label: "Mental health",
+      icon: IconClipboardHeart,
+    },
     { href: "/encounters", label: "Visits", icon: IconCalendarEvent },
     { href: "/providers", label: "Providers", icon: IconStethoscope },
     { href: "/coverage", label: "Coverage gaps", icon: IconPuzzle },

@@ -37,10 +37,13 @@ import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 // and visual acuity, qualitative/null bands) add new dataset rows, so the signature
 // legitimately changes and the boot reconcile re-flags stored IOP records against the
 // new band (an already-stored >21 mmHg reading picks up its "high" flag on next boot).
+// Updated for #716: the mental-health instruments (PHQ-9, GAD-7) add two dataset rows
+// with null bands (they carry NO numeric flag — the severity band is the on-screen
+// signal, not a MedicalFlag), so the signature changes but no stored record re-flags.
 const FLAG_SIGNATURE_GOLDEN =
   // A SHA-256 content hash of the canonical dataset; a digit substring
   // coincidentally forms a Luhn-valid NPI shape — provably synthetic.
-  "845b88844009788acecb671242ba574c5817a7b5f91e77de0e65ec4432963153"; // phi-scan-ok
+  "2b0bff3e199082b589e1ba1b2419b73e321ad87a2886b996acbe167fcdac5b36"; // phi-scan-ok
 
 describe("canonical-biomarkers dataset on the curated-dataset framework", () => {
   it("passes the whole framework harness (citation + identity + refusal + no collisions)", () => {
