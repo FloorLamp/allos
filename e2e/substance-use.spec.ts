@@ -21,6 +21,11 @@ async function weekCount(page: Page): Promise<number> {
 }
 
 test.describe("substance use (#998)", () => {
+  // Serial: every test mutates the ONE shared fixture profile and asserts
+  // relative before/after counts. CI runs workers=1 anyway; this pins the same
+  // ordering for multi-worker local runs (the sibling-spec precedent).
+  test.describe.configure({ mode: "serial" });
+
   let page: Page;
 
   test.beforeAll(async ({ browser }) => {
