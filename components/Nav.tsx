@@ -42,6 +42,11 @@ import {
   type TablerIcon,
 } from "@tabler/icons-react";
 import { isRouteActive, isGroupActive, isNavLeafVisible } from "@/lib/nav";
+import {
+  DEFAULT_NAV_RELEVANCE,
+  type NavRelevance,
+  type NavRelevanceKey,
+} from "@/lib/nav-relevance";
 import type { AppRoute } from "@/lib/hrefs";
 
 type Leaf = {
@@ -61,6 +66,11 @@ type Leaf = {
   // adult food-group serving catalog is meaningless there (issue #591). Cosmetic;
   // the page re-checks isFoodLoggingRelevant server-side. Eligible on unknown age.
   requiresFoodLogging?: boolean;
+  // Entries carrying a `relevanceKey` are dropped when the server-resolved
+  // relevance bitset (lib/nav-relevance.ts, issue #1042) reads false for that
+  // key: the Cycle data/life-stage gate and the Vision/Dental data-presence
+  // gates. Cosmetic — every gated page still renders on a direct URL.
+  relevanceKey?: NavRelevanceKey;
 };
 
 type Group = {
@@ -90,8 +100,19 @@ const RECORDS: Group = {
     { href: "/allergies", label: "Allergies", icon: IconAlertTriangle },
     { href: "/procedures", label: "Procedures", icon: IconMedicalCross },
     { href: "/imaging", label: "Imaging", icon: IconScan },
-    { href: "/vision", label: "Vision", icon: IconEye },
-    { href: "/dental", label: "Dental", icon: IconDental },
+    // Specialty entries (#1042): Vision and Dental show only once the profile has
+    // data — their rows are also created from Data → Import (an always-visible
+    // surface), so hiding the empty entry never strands creation. Skin and Mental
+    // health stay UNGATED on purpose: their pages are the only creation path
+    // today (the lesion form / the in-app instrument flow); their gating
+    // activates in phase 6 with the Health-record "Track a new area" footer.
+    { href: "/vision", label: "Vision", icon: IconEye, relevanceKey: "vision" },
+    {
+      href: "/dental",
+      label: "Dental",
+      icon: IconDental,
+      relevanceKey: "dental",
+    },
     { href: "/skin", label: "Skin", icon: IconBodyScan },
     {
       href: "/family-history",
@@ -107,7 +128,16 @@ const RECORDS: Group = {
     { href: "/medications", label: "Medications", icon: IconPill },
     { href: "/immunizations", label: "Immunizations", icon: IconVaccine },
     { href: "/medical/episodes", label: "Illness episodes", icon: IconVirus },
-    { href: "/medical/cycles", label: "Cycle", icon: IconDroplet },
+    // Cycle shows when cycle tracking is relevant for the active profile —
+    // logged cycles always win; else female + premenopausal (explicit status or
+    // the #494 age fallback). See cycleTrackingRelevant (lib/nav-relevance.ts);
+    // the page itself never hard-blocks (#1042).
+    {
+      href: "/medical/cycles",
+      label: "Cycle",
+      icon: IconDroplet,
+      relevanceKey: "cycle",
+    },
     {
       href: "/medical/instruments",
       label: "Mental health",
@@ -146,10 +176,18 @@ const RECORDS: Group = {
 // on (next.config.js) an href to a page that no longer exists is a `tsc` (⇒
 // `npm run build`) error. The nav-routes / due-signal source guards
 // (lib/__tests__/nav-routes.test.ts) remain as a redundant belt-and-braces check.
+//
+// ORDER (#1042 design principle 1): frequency earns nav position; urgency earns
+// dashboard promotion; NEITHER earns both. The nav is a directory, ordered by
+// how often each surface is deliberately visited — the daily loop deliberately
+// does NOT run through it (dose confirms = dashboard widget/Telegram; activity
+// log = the sidebar's pinned LogActivityButton; live workout = the dock), and
+// episodic surfaces (illness, cycle) get contextual promotion via the existing
+// heroes, not permanent prominence. Reference surfaces (Medical, Data, Settings)
+// sit at the bottom regardless of how important their content is.
 const entries: Entry[] = [
   { href: "/", label: "Dashboard", icon: IconLayoutDashboard },
-  { href: "/timeline", label: "Timeline", icon: IconTimelineEvent },
-  { href: "/trends", label: "Trends", icon: IconTrendingUp },
+  { href: "/training", label: "Training", icon: IconBarbell },
   {
     href: "/nutrition",
     label: "Nutrition",
@@ -157,7 +195,8 @@ const entries: Entry[] = [
     // Hidden for an infant profile (< 1 y); the page also gates server-side (#591).
     requiresFoodLogging: true,
   },
-  { href: "/protocols", label: "Protocols", icon: IconFlask2 },
+  { href: "/timeline", label: "Timeline", icon: IconTimelineEvent },
+  { href: "/trends", label: "Trends", icon: IconTrendingUp },
   { href: "/upcoming", label: "Upcoming", icon: IconCalendarClock },
   {
     href: "/household",
@@ -167,7 +206,9 @@ const entries: Entry[] = [
     // issue #31. The page re-checks the accessible-profile count server-side.
     requiresMultiProfile: true,
   },
-  { href: "/training", label: "Training", icon: IconBarbell },
+  // Protocols holds the slot the Longevity page takes over in #1042 phase 4
+  // (Protocols folds into it as the interventions section).
+  { href: "/protocols", label: "Protocols", icon: IconFlask2 },
   RECORDS,
   // One "Data" umbrella covering both halves — bringing data in (upload/paste/
   // connect) and managing/exporting what's logged. The former standalone /import
@@ -214,6 +255,7 @@ function NavGroup({
   multiProfile,
   foodLoggingRelevant,
   hasIntakeItems,
+  relevance,
 }: {
   group: Group;
   restricted: boolean;
@@ -221,13 +263,14 @@ function NavGroup({
   multiProfile: boolean;
   foodLoggingRelevant: boolean;
   hasIntakeItems: boolean;
+  relevance: NavRelevance;
 }) {
   const pathname = usePathname();
   // Reuse the same visibility predicate as the top-level entries so a group
   // child honors the age-gate (RESTRICTED_HREFS), `adminOnly`,
-  // `requiresMultiProfile`, and `requiresFoodLogging` identically — otherwise
-  // appending a gated leaf to a group's children (which the array shape invites)
-  // would leak it in the sidebar.
+  // `requiresMultiProfile`, `requiresFoodLogging`, and the relevance bitset
+  // identically — otherwise appending a gated leaf to a group's children (which
+  // the array shape invites) would leak it in the sidebar.
   const children = group.children.filter((c) =>
     isNavLeafVisible(c, {
       isAdmin,
@@ -235,6 +278,7 @@ function NavGroup({
       multiProfile,
       foodLoggingRelevant,
       hasIntakeItems,
+      relevance,
       restrictedHrefs: RESTRICTED_HREFS,
     })
   );
@@ -291,6 +335,7 @@ export default function Nav({
   multiProfile = false,
   foodLoggingRelevant = true,
   hasIntakeItems = false,
+  relevance = DEFAULT_NAV_RELEVANCE,
 }: {
   restricted?: boolean;
   isAdmin?: boolean;
@@ -306,6 +351,10 @@ export default function Nav({
   // supplement even though food-group logging isn't relevant. Defaults false so
   // the Food-logging gate stands on its own when a caller doesn't thread it.
   hasIntakeItems?: boolean;
+  // The server-resolved relevance bitset (issue #1042) gating entries flagged
+  // with a `relevanceKey` (Cycle/Vision/Dental). Defaults all-true so a caller
+  // that doesn't thread it never over-hides.
+  relevance?: NavRelevance;
 }) {
   const visible = entries.filter((e) =>
     isGroup(e)
@@ -316,6 +365,7 @@ export default function Nav({
           multiProfile,
           foodLoggingRelevant,
           hasIntakeItems,
+          relevance,
           restrictedHrefs: RESTRICTED_HREFS,
         })
   );
@@ -331,6 +381,7 @@ export default function Nav({
             multiProfile={multiProfile}
             foodLoggingRelevant={foodLoggingRelevant}
             hasIntakeItems={hasIntakeItems}
+            relevance={relevance}
           />
         ) : (
           <NavLink key={e.href} leaf={e} nested={false} />

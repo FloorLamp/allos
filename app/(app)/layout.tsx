@@ -35,6 +35,7 @@ import {
   getActivityEditData,
   getWorkoutPresence,
   profileHasIntakeItems,
+  getNavRelevance,
 } from "@/lib/queries";
 import { getTimelineDates } from "@/lib/timeline";
 import { getFormDeloadContext } from "@/lib/routines";
@@ -141,6 +142,12 @@ export default async function AppLayout({
   // takes a supplement even though food-group logging isn't relevant (#746). The
   // Food tab still gates server-side on isFoodLoggingRelevant.
   const hasIntakeItems = profileHasIntakeItems(profile.id);
+  // The nav-relevance bitset (issue #1042): Cycle relevance (data wins; else
+  // female + premenopausal via explicit status or the #494 age fallback) and the
+  // Vision/Dental data-presence gates. Resolved ONCE here and threaded through
+  // the shared SidebarContent so both viewports agree; cosmetic — the pages
+  // never hard-block on a direct URL.
+  const relevance = getNavRelevance(profile.id);
   // Count of integrations currently in a failed state — drives the header
   // "import review" badge (Data → Review). Self-clearing on the next good sync.
   const reviewCount = getImportReviewCount(profile.id);
@@ -187,6 +194,7 @@ export default async function AppLayout({
                       multiProfile={multiProfile}
                       foodLoggingRelevant={foodLoggingRelevant}
                       hasIntakeItems={hasIntakeItems}
+                      relevance={relevance}
                       reviewCount={reviewCount}
                       readOnly={readOnly}
                     />
@@ -206,6 +214,7 @@ export default async function AppLayout({
                       multiProfile={multiProfile}
                       foodLoggingRelevant={foodLoggingRelevant}
                       hasIntakeItems={hasIntakeItems}
+                      relevance={relevance}
                       reviewCount={reviewCount}
                       readOnly={readOnly}
                     />

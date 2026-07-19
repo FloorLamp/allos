@@ -10,6 +10,7 @@ import { useActivityEditor } from "@/components/ActivityEditorProvider";
 import { useLockBodyScroll } from "@/components/useLockBodyScroll";
 import type { SessionProfile } from "@/lib/auth";
 import type { AppVersion } from "@/lib/version";
+import { DEFAULT_NAV_RELEVANCE, type NavRelevance } from "@/lib/nav-relevance";
 
 // Mobile-only top bar + slide-in drawer. The desktop sidebar in app/layout.tsx is
 // hidden below `md`; this surfaces the same navigation on phones by rendering the
@@ -27,6 +28,7 @@ export default function MobileNav({
   multiProfile = false,
   foodLoggingRelevant = true,
   hasIntakeItems = false,
+  relevance = DEFAULT_NAV_RELEVANCE,
   reviewCount = 0,
   readOnly = false,
 }: {
@@ -50,6 +52,9 @@ export default function MobileNav({
   // True when the active profile tracks any intake item (#746); keeps Nutrition
   // (→ Supplements tab) reachable for an infant supplement user.
   hasIntakeItems?: boolean;
+  // Server-resolved relevance bitset (issue #1042) gating Cycle/Vision/Dental;
+  // threaded into the shared SidebarContent so the drawer matches the desktop.
+  relevance?: NavRelevance;
   // Integrations-needing-attention count for the profile-menu badge (Data →
   // Review). Resolved on the server and threaded through the shared sidebar.
   reviewCount?: number;
@@ -152,6 +157,7 @@ export default function MobileNav({
               multiProfile={multiProfile}
               foodLoggingRelevant={foodLoggingRelevant}
               hasIntakeItems={hasIntakeItems}
+              relevance={relevance}
               reviewCount={reviewCount}
               readOnly={readOnly}
               onNavigate={() => setOpen(false)}

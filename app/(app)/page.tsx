@@ -523,6 +523,7 @@ export default async function Dashboard() {
             data={bodyMetrics}
             weightUnit={units.weightUnit}
             formatPrefs={formatPrefs}
+            today={on}
           />
         );
       case "goals-habits":

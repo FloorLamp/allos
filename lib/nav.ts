@@ -20,9 +20,11 @@ export function isGroupActive(childHrefs: string[], pathname: string): boolean {
   return childHrefs.some((href) => isRouteActive(href, pathname));
 }
 
+import type { NavRelevance, NavRelevanceKey } from "./nav-relevance";
+
 // Whether a nav leaf should be shown, given the viewer's context. This is the
 // single visibility predicate shared by the top-level entries and each group's
-// children in <Nav>, so the two filters can't drift. Three gates, each a
+// children in <Nav>, so the two filters can't drift. Four gates, each a
 // cosmetic hide over an authoritative server-side check:
 //   - `adminOnly`: hidden for non-admins (the page still calls requireAdmin()).
 //   - `requiresMultiProfile`: hidden unless the caller has 2+ ACCESSIBLE profiles
@@ -41,12 +43,18 @@ export function isGroupActive(childHrefs: string[], pathname: string): boolean {
 //     still shows the calm note there), and the Supplements tab is always
 //     reachable. Eligible on unknown age (hide only on a positive infant match
 //     AND no intake items).
+//   - `relevanceKey`: hidden when the server-resolved relevance bitset
+//     (lib/nav-relevance.ts, issue #1042) reads false for that key — the
+//     data/life-stage gate for the Cycle entry and the data-presence gate for
+//     the specialty Medical entries (Vision/Dental). Cosmetic like the rest:
+//     the pages never hard-block on a direct URL.
 export function isNavLeafVisible(
   leaf: {
     href: string;
     adminOnly?: boolean;
     requiresMultiProfile?: boolean;
     requiresFoodLogging?: boolean;
+    relevanceKey?: NavRelevanceKey;
   },
   ctx: {
     isAdmin: boolean;
@@ -54,11 +62,13 @@ export function isNavLeafVisible(
     multiProfile: boolean;
     foodLoggingRelevant: boolean;
     hasIntakeItems: boolean;
+    relevance: NavRelevance;
     restrictedHrefs: ReadonlySet<string>;
   }
 ): boolean {
   if (leaf.adminOnly && !ctx.isAdmin) return false;
   if (leaf.requiresMultiProfile && !ctx.multiProfile) return false;
+  if (leaf.relevanceKey && !ctx.relevance[leaf.relevanceKey]) return false;
   if (
     leaf.requiresFoodLogging &&
     !ctx.foodLoggingRelevant &&
