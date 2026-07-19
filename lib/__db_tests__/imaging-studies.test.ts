@@ -66,6 +66,7 @@ function imagingExtraction(): Extract<ExtractionResult, { status: "done" }> {
         contrast: "with contrast",
         contrast_agent: "gadolinium",
         study_date: "2024-06-01",
+        dose_msv: null,
         impression: "Small joint effusion. No meniscal tear.",
         indication: "Knee pain",
         status: "final",
@@ -77,6 +78,7 @@ function imagingExtraction(): Extract<ExtractionResult, { status: "done" }> {
         contrast: "without contrast",
         contrast_agent: null,
         study_date: "2024-06-01",
+        dose_msv: "0.1 mSv",
         impression: "No acute cardiopulmonary process.",
         indication: "Cough",
         status: "final",
@@ -89,6 +91,7 @@ function imagingExtraction(): Extract<ExtractionResult, { status: "done" }> {
         contrast: null,
         contrast_agent: null,
         study_date: null,
+        dose_msv: null,
         impression: null,
         indication: null,
         status: null,
@@ -147,6 +150,10 @@ describe("AI extraction lands imaging studies through the persist core", () => {
     const cxr = all.find((r) => r.modality === "x-ray")!;
     expect(cxr.laterality).toBe("na");
     expect(cxr.contrast).toBe(false);
+    // A printed dose ("0.1 mSv") is parsed to a number on the import path (#703); the
+    // MRI, which printed none, stays null and falls back to the typical estimate.
+    expect(cxr.dose_msv).toBe(0.1);
+    expect(mri.dose_msv).toBeNull();
     // Import provenance is stamped so the footprint can clear/move/count it.
     expect(cxr.document_id).toBe(doc);
     expect(cxr.source).toBe(`document:${doc}`);

@@ -74,6 +74,23 @@ export function getInferredPreventiveSatisfactions(
   const records: InferenceRecord[] = [];
 
   // Procedures → screenings (coded or name-matched, e.g. colonoscopy, DEXA).
+  //
+  // SCREENING-vs-DIAGNOSTIC INDICATION — a DELIBERATE decision, not an accident (#703).
+  // Any coded/named mammogram (or colonoscopy, DEXA, …) PROCEDURE satisfies its
+  // screening rule with NO indication check, so a DIAGNOSTIC study — a mammogram done
+  // to work up a palpable lump, a colonoscopy done for bleeding — also quiets the
+  // routine-screening clock. imaging_studies now stores an `indication` (#702), so the
+  // ALTERNATIVE is available: gate satisfaction on indication and let a diagnostic
+  // workup NOT reset (or reset differently from) the routine interval.
+  //
+  // We KEEP the current behavior on purpose. The person WAS imaged; if that workup
+  // turned up a finding, it is tracked SEPARATELY through the follow-up loop (#700), not
+  // by re-nagging a routine screening. Distinguishing screening from diagnostic here
+  // would (a) depend on a free-text `indication` that is usually absent or ambiguous,
+  // (b) risk telling someone who just had a diagnostic mammogram that they're "overdue"
+  // for a screening mammogram — noisy and confusing — and (c) duplicate the finding's
+  // own tracking. The indication is captured for the record and the FHIR feed; it is
+  // intentionally NOT gated on here. (Documented in docs/features.md; see #703.)
   for (const p of getProcedures(profileId)) {
     records.push({
       code: p.code,

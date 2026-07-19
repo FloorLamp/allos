@@ -208,6 +208,7 @@ export interface ImportedImagingStudy {
   contrast: boolean;
   contrast_agent: string | null;
   study_date: string | null; // YYYY-MM-DD
+  dose_msv: number | null; // effective dose (mSv); null on the FHIR path (#703)
   impression: string | null; // the radiologist's impression / rendered report narrative
   indication: string | null; // reason the study was ordered
   status: string | null; // free-text passthrough (no enum)

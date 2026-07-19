@@ -29,6 +29,7 @@ function study(over: Partial<ImagingStudy> & { id: number }): ImagingStudy {
     contrast: over.contrast ?? false,
     contrast_agent: null,
     study_date: over.study_date ?? null,
+    dose_msv: over.dose_msv ?? null,
     impression: over.impression ?? null,
     indication: null,
     status: null,

@@ -1,0 +1,222 @@
+{
+  "$schema": "allos-dataset/v1",
+  "id": "radiation-dose",
+  "title": "Typical radiation dose by imaging exam",
+  "description": "Baked typical-radiation-dose dataset (issue #703) — a FALLBACK effective-dose ESTIMATE (millisieverts, mSv) for an imaging study that carries no recorded dose, so the Imaging section can show a calm, clearly-labeled running total. Values are rounded, population-averaged TYPICAL adult figures (order of magnitude, never a measurement of an individual scan), CITED to public references. MRI / ultrasound are 0 (non-ionizing); an unclassified 'other' study has no entry and is never estimated. INFORMATIONAL, never alarmist — dose is a provider conversation, not a verdict. Fully OFFLINE. Committed + HUMAN-REVIEWABLE; regenerate with `npm run gen:radiation-dose`.",
+  "citation": [
+    {
+      "source": "Mettler et al., Radiology 2008 (effective-dose catalog)",
+      "url": "https://pubs.rsna.org/doi/10.1148/radiol.2481071451",
+      "note": "Mettler FA et al. 'Effective doses in radiology and diagnostic nuclear medicine: a catalog.' Radiology 2008;248(1):254-263. Rounded typical effective-dose facts stated in our own words."
+    },
+    {
+      "source": "RadiologyInfo.org (ACR/RSNA patient reference)",
+      "url": "https://www.radiologyinfo.org/en/info/safety-xray",
+      "note": "ACR/RSNA patient-facing 'Radiation Dose in X-Ray and CT Examinations' reference. Uncopyrightable typical-dose facts stated in our own words."
+    }
+  ],
+  "identity": {
+    "keys": [
+      "key"
+    ]
+  },
+  "meta": {
+    "version": 1,
+    "naturalBackgroundMsvPerYear": 3,
+    "naturalBackgroundSource": "NCRP Report No. 160 / UNSCEAR — US average annual effective dose from natural background (~3 mSv/yr)"
+  },
+  "entries": [
+    {
+      "key": "ct-abdomen-pelvis",
+      "modality": "ct",
+      "regions": [
+        "abdomen",
+        "abdominal",
+        "pelvis"
+      ],
+      "msv": 10,
+      "label": "CT abdomen/pelvis",
+      "source": "RadiologyInfo.org (ACR/RSNA patient reference)"
+    },
+    {
+      "key": "ct-cardiac",
+      "modality": "ct",
+      "regions": [
+        "calcium score",
+        "cardiac",
+        "coronary",
+        "heart"
+      ],
+      "msv": 3,
+      "label": "Cardiac CT / calcium score",
+      "source": "Mettler et al., Radiology 2008 (effective-dose catalog)"
+    },
+    {
+      "key": "ct-chest",
+      "modality": "ct",
+      "regions": [
+        "chest",
+        "lung",
+        "pulmonary",
+        "thorax"
+      ],
+      "msv": 7,
+      "label": "CT chest",
+      "source": "RadiologyInfo.org (ACR/RSNA patient reference)"
+    },
+    {
+      "key": "ct-generic",
+      "modality": "ct",
+      "regions": [],
+      "msv": 7,
+      "label": "CT",
+      "source": "Mettler et al., Radiology 2008 (effective-dose catalog)"
+    },
+    {
+      "key": "ct-head",
+      "modality": "ct",
+      "regions": [
+        "brain",
+        "head",
+        "skull"
+      ],
+      "msv": 2,
+      "label": "CT head",
+      "source": "RadiologyInfo.org (ACR/RSNA patient reference)"
+    },
+    {
+      "key": "ct-spine",
+      "modality": "ct",
+      "regions": [
+        "cervical",
+        "lumbar",
+        "spine",
+        "thoracic"
+      ],
+      "msv": 6,
+      "label": "CT spine",
+      "source": "Mettler et al., Radiology 2008 (effective-dose catalog)"
+    },
+    {
+      "key": "dexa",
+      "modality": "dexa",
+      "regions": [],
+      "msv": 0.001,
+      "label": "DEXA bone density",
+      "source": "Mettler et al., Radiology 2008 (effective-dose catalog)"
+    },
+    {
+      "key": "mri",
+      "modality": "mri",
+      "regions": [],
+      "msv": 0,
+      "label": "MRI (no ionizing radiation)",
+      "source": "RadiologyInfo.org (ACR/RSNA patient reference)"
+    },
+    {
+      "key": "ultrasound",
+      "modality": "ultrasound",
+      "regions": [],
+      "msv": 0,
+      "label": "Ultrasound (no ionizing radiation)",
+      "source": "RadiologyInfo.org (ACR/RSNA patient reference)"
+    },
+    {
+      "key": "xray-abdomen",
+      "modality": "x-ray",
+      "regions": [
+        "abdomen",
+        "hip",
+        "kub",
+        "pelvis"
+      ],
+      "msv": 0.7,
+      "label": "Abdominal X-ray",
+      "source": "RadiologyInfo.org (ACR/RSNA patient reference)"
+    },
+    {
+      "key": "xray-chest",
+      "modality": "x-ray",
+      "regions": [
+        "chest",
+        "lung",
+        "rib",
+        "thorax"
+      ],
+      "msv": 0.1,
+      "label": "Chest X-ray",
+      "source": "RadiologyInfo.org (ACR/RSNA patient reference)"
+    },
+    {
+      "key": "xray-dental",
+      "modality": "x-ray",
+      "regions": [
+        "bitewing",
+        "dental",
+        "panoramic",
+        "teeth",
+        "tooth"
+      ],
+      "msv": 0.005,
+      "label": "Dental X-ray",
+      "source": "RadiologyInfo.org (ACR/RSNA patient reference)"
+    },
+    {
+      "key": "xray-extremity",
+      "modality": "x-ray",
+      "regions": [
+        "ankle",
+        "arm",
+        "elbow",
+        "extremity",
+        "finger",
+        "foot",
+        "hand",
+        "knee",
+        "leg",
+        "limb",
+        "shoulder",
+        "toe",
+        "wrist"
+      ],
+      "msv": 0.001,
+      "label": "Extremity X-ray",
+      "source": "Mettler et al., Radiology 2008 (effective-dose catalog)"
+    },
+    {
+      "key": "xray-generic",
+      "modality": "x-ray",
+      "regions": [],
+      "msv": 0.1,
+      "label": "X-ray",
+      "source": "RadiologyInfo.org (ACR/RSNA patient reference)"
+    },
+    {
+      "key": "xray-mammography",
+      "modality": "x-ray",
+      "regions": [
+        "breast",
+        "mammo",
+        "mammogram",
+        "mammograph"
+      ],
+      "msv": 0.4,
+      "label": "Mammography",
+      "source": "RadiologyInfo.org (ACR/RSNA patient reference)"
+    },
+    {
+      "key": "xray-spine",
+      "modality": "x-ray",
+      "regions": [
+        "back",
+        "cervical",
+        "lumbar",
+        "spine",
+        "thoracic"
+      ],
+      "msv": 1.5,
+      "label": "Spine X-ray",
+      "source": "Mettler et al., Radiology 2008 (effective-dose catalog)"
+    }
+  ]
+}

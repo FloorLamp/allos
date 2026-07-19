@@ -135,6 +135,22 @@ export function normalizeContrast(raw: unknown): boolean {
   return false;
 }
 
+// Parse an effective-radiation-dose value (millisieverts) onto a finite, non-negative
+// number, or null (#703). The ONE shared coercion for the manual form AND the import
+// path, so a report's "8 mSv" / a form's "8" both land the same way and an off-value
+// (blank, negative, NaN, a stray unit) degrades to null (no recorded dose → the typical
+// estimate takes over). Strips a trailing "mSv"/"msv" unit if the extractor left it on.
+export function parseDoseMsv(raw: unknown): number | null {
+  if (typeof raw === "number") {
+    return Number.isFinite(raw) && raw >= 0 ? raw : null;
+  }
+  if (typeof raw !== "string") return null;
+  const s = raw.trim().toLowerCase().replace(/m?sv$/i, "").trim();
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
 // Human labels for the UI (pickers + list badges). Kept here so the page, the import
 // listing, and the passport can't disagree about how a term reads.
 export function modalityLabel(m: ImagingModality): string {

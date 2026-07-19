@@ -12,6 +12,7 @@ import {
   modalityLabel,
   IMAGING_MODALITIES,
 } from "@/lib/imaging-study";
+import { formatMsv } from "@/lib/radiation-dose";
 import type { ImagingFollowUpSummary } from "@/lib/queries";
 import type { ImagingStudy, ImagingModality } from "@/lib/types";
 
@@ -43,6 +44,14 @@ const BASE_COLUMNS: RecordColumn<ImagingStudy>[] = [
         {s.contrast ? (
           <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-normal text-amber-700 dark:bg-amber-950 dark:text-amber-300">
             contrast
+          </span>
+        ) : null}
+        {s.dose_msv != null ? (
+          <span
+            className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-normal text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+            title="Effective dose recorded from the report"
+          >
+            {formatMsv(s.dose_msv)}
           </span>
         ) : null}
         {s.impression ? (

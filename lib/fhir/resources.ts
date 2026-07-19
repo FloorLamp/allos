@@ -1168,6 +1168,7 @@ export function mapImagingStudyResource(
     contrast: false,
     contrast_agent: null,
     study_date,
+    dose_msv: null,
     impression: impressionRaw ? capNarrative(impressionRaw) : null,
     indication: conceptListText(r?.reasonCode),
     status: typeof r?.status === "string" ? r.status : null,
@@ -1227,6 +1228,7 @@ export function mapDiagnosticReport(
           contrast: false,
           contrast_agent: null,
           study_date: date,
+          dose_msv: null,
           impression: capNarrative(narrative),
           indication: null,
           status: typeof r?.status === "string" ? r.status : null,
@@ -1295,6 +1297,7 @@ export function mapDocumentReferenceImaging(
     contrast: false,
     contrast_agent: null,
     study_date,
+    dose_msv: null,
     impression: capNarrative(text),
     indication: null,
     status:

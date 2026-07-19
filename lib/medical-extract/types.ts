@@ -155,6 +155,7 @@ export interface ExtractedImagingStudy {
   contrast: string | null; // raw ("with"/"without"/…); coerced to bool in import-shape
   contrast_agent: string | null;
   study_date: string | null; // YYYY-MM-DD
+  dose_msv: string | null; // raw effective dose ("8 mSv"); parsed in import-shape (#703)
   impression: string | null; // the radiologist's report body, verbatim
   indication: string | null; // reason the study was ordered
   status: string | null; // free-text passthrough (no enum)

@@ -101,8 +101,12 @@ Rules:
     "gadolinium", "iodinated"), study_date (ISO YYYY-MM-DD), impression (the radiologist's
     IMPRESSION / FINDINGS text — the report body — captured VERBATIM; for most imaging this
     IS the result), indication (the reason the study was ordered / clinical history, e.g.
-    "screening", "cough", "follow-up of nodule"), status (e.g. "final", "preliminary").
-    Extract the STRUCTURED report only — you cannot see the images themselves. A plain lab
+    "screening", "cough", "follow-up of nodule"), status (e.g. "final", "preliminary"),
+    dose_msv (the effective radiation DOSE in millisieverts, ONLY if the report actually
+    prints one, e.g. "effective dose 8 mSv" or a DLP the report converts to mSv — MOST
+    reports do NOT state a dose, so leave this null unless it's explicitly written; never
+    estimate or infer it). Extract the STRUCTURED report only — you cannot see the images
+    themselves. A plain lab
     or genetics report is NOT an imaging study — leave this array empty for it. NOTE: any
     NUMERIC imaging measurements (DEXA T-scores, coronary calcium score, ejection fraction,
     carotid IMT) still belong in "results" as their own analytes — the imaging_studies entry
@@ -579,6 +583,11 @@ export const TOOL: Anthropic.Tool = {
             study_date: {
               type: ["string", "null"],
               description: "Study date, ISO YYYY-MM-DD, else null",
+            },
+            dose_msv: {
+              type: ["string", "null"],
+              description:
+                "Effective radiation dose in mSv ONLY if the report prints one; else null (most reports omit it — never estimate)",
             },
             impression: {
               type: ["string", "null"],
