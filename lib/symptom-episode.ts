@@ -9,7 +9,10 @@
 // (lib/trend-annotations.ts). Reconstruction semantics MATCH that function: an episode is
 // [start, end) — inclusive start day, EXCLUSIVE end (the stop date is the first inactive
 // day). A null start means active since before the (capped) log began; a null end means
-// ongoing.
+// ongoing. That [start, end) window is the chassis's EXCLUSIVE_END convention
+// (lib/date-range.ts, issue #943): these functions CONSTRUCT a range around `date` from
+// the change-log rather than testing membership, so they don't call rangeContainsDate, but
+// the end-bound they build is the illness domain's declared one.
 
 import type { SituationEvent } from "./trend-annotations";
 

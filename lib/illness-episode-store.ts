@@ -18,6 +18,7 @@
 
 import { db, writeTx } from "./db";
 import { shiftDateStr } from "./date";
+import { rangeContainsDate, EXCLUSIVE_END } from "./date-range";
 import { episodeConditionExternalId } from "./illness-episode-format";
 import { normalizeSituationName } from "./situations";
 import type { IllnessEpisode } from "./symptom-episode";
@@ -82,7 +83,10 @@ export function resolveEpisodeAcrossProfiles(
 // The episode row CONTAINING `date`, tightest (most-recently-started) first — the row
 // analogue of the old episodeForDate derivation. A row covers `date` when its inclusive
 // start is on-or-before it (null start = since before the log) and its exclusive end is
-// strictly after it (null end = ongoing).
+// strictly after it (null end = ongoing). The WHERE clause below is the SQL REALIZATION
+// of the chassis's EXCLUSIVE_END predicate (rangeContainsDate, lib/date-range.ts) — SQL
+// can't call the JS matcher, so the two are kept in step by hand (the #394 finite-preimage
+// precedent); the illness domain's declared end-bound is EXCLUSIVE.
 export function getEpisodeRowForDate(
   profileId: number,
   date: string
@@ -144,7 +148,8 @@ export function mostRecentClosedEpisodeRow(
 // (issue #837), so a sick week reads as a sick week, not a failed one. Loads the
 // episodes overlapping the window ([start,end) semantics: started_at ≤ end, ended_at
 // > start or open) and counts the covered days in JS (the window is ≤ ~31 days, and
-// overlapping episodes are de-duplicated by the day set).
+// overlapping episodes are de-duplicated by the day set). The per-day membership routes
+// through the chassis's EXCLUSIVE_END predicate (rangeContainsDate, lib/date-range.ts).
 export function illnessDaysInWindow(
   profileId: number,
   start: string,
@@ -164,10 +169,12 @@ export function illnessDaysInWindow(
   if (rows.length === 0) return 0;
   let covered = 0;
   for (let d = start; d <= end; d = shiftDateStr(d, 1)) {
-    const inEpisode = rows.some(
-      (r) =>
-        (r.started_at == null || r.started_at <= d) &&
-        (r.ended_at == null || d < r.ended_at)
+    const inEpisode = rows.some((r) =>
+      rangeContainsDate(
+        { start: r.started_at, end: r.ended_at },
+        d,
+        EXCLUSIVE_END
+      )
     );
     if (inEpisode) covered++;
   }
