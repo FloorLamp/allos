@@ -103,7 +103,9 @@ describe("updateOpticalPrescription", () => {
 
     // A cross-profile update is filtered out by the WHERE profile_id.
     actAs(login, other);
-    await updateOpticalPrescription(fd({ id, kind: "glasses", od_sphere: "9" }));
+    await updateOpticalPrescription(
+      fd({ id, kind: "glasses", od_sphere: "9" })
+    );
     expect(
       getOpticalPrescriptions(other.id).some((r) => r.od_sphere === 9)
     ).toBe(false);

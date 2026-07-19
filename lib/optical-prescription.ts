@@ -134,8 +134,7 @@ export function sphereProgression(
 } {
   const points: SphereProgressionPoint[] = prescriptions
     .filter(
-      (p) =>
-        p.issued_date && (p.od_sphere != null || p.os_sphere != null)
+      (p) => p.issued_date && (p.od_sphere != null || p.os_sphere != null)
     )
     .map((p) => ({
       date: p.issued_date as string,

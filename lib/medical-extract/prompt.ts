@@ -589,7 +589,8 @@ export const TOOL: Anthropic.Tool = {
             },
             od_sphere: {
               type: ["string", "null"],
-              description: "Right eye (OD) sphere, printed notation e.g. '-2.00'",
+              description:
+                "Right eye (OD) sphere, printed notation e.g. '-2.00'",
             },
             od_cylinder: {
               type: ["string", "null"],

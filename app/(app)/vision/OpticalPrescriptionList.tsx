@@ -2,7 +2,10 @@
 
 import { useMemo } from "react";
 import OpticalPrescriptionForm from "./OpticalPrescriptionForm";
-import { updateOpticalPrescription, deleteOpticalPrescription } from "./actions";
+import {
+  updateOpticalPrescription,
+  deleteOpticalPrescription,
+} from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
 import { formatRecordDate } from "@/lib/record-format";

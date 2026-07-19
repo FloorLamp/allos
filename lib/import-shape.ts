@@ -665,9 +665,7 @@ export function extractionToPersistInput(
   )
     // A prescription with no kind signal AND no sphere on either eye is noise (a
     // belt-and-suspenders drop alongside the normalize-stage one).
-    .filter(
-      (p) => p.kind?.trim() || p.od_sphere?.trim() || p.os_sphere?.trim()
-    )
+    .filter((p) => p.kind?.trim() || p.od_sphere?.trim() || p.os_sphere?.trim())
     .map((p) => ({
       kind: normalizeOpticalKind(p.kind),
       od_sphere: parseDiopter(p.od_sphere),

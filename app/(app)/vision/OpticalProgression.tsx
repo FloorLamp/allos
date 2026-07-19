@@ -1,8 +1,5 @@
 import { formatRecordDate } from "@/lib/record-format";
-import {
-  sphereProgression,
-  formatDiopter,
-} from "@/lib/optical-prescription";
+import { sphereProgression, formatDiopter } from "@/lib/optical-prescription";
 import type { OpticalPrescription } from "@/lib/types";
 
 // Per-eye sphere-over-time progression — the "is it getting worse?" view (#697). A
@@ -45,8 +42,8 @@ export default function OpticalProgression({
         </div>
       </div>
       <p className="text-xs text-slate-500 dark:text-slate-400">
-        A more negative sphere means more nearsighted (myopic). Informational only,
-        not medical advice.
+        A more negative sphere means more nearsighted (myopic). Informational
+        only, not medical advice.
       </p>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -66,7 +63,9 @@ export default function OpticalProgression({
                 <td className="py-1 pr-3 whitespace-nowrap text-slate-600 dark:text-slate-300">
                   {formatRecordDate(p.date)}
                 </td>
-                <td className="py-1 pr-3 tabular-nums">{formatDiopter(p.od)}</td>
+                <td className="py-1 pr-3 tabular-nums">
+                  {formatDiopter(p.od)}
+                </td>
                 <td className="py-1 tabular-nums">{formatDiopter(p.os)}</td>
               </tr>
             ))}
