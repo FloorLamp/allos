@@ -5,6 +5,7 @@ import {
   getBackupSettings,
   getAuditRetentionMonths,
   getSetting,
+  getSmtpConfigView,
 } from "@/lib/settings";
 import {
   getLastBackup,
@@ -23,6 +24,7 @@ import { PageHeader } from "@/components/ui";
 import AppVersion from "@/components/AppVersion";
 import SettingsTabs from "../SettingsTabs";
 import PublicUrlSettings from "../PublicUrlSettings";
+import SmtpSettings from "./SmtpSettings";
 import AiSettings from "../AiSettings";
 import AiTierSettings from "./AiTierSettings";
 import InstanceTimezoneSettings from "./InstanceTimezoneSettings";
@@ -61,6 +63,7 @@ export default async function ServerSettingsPage() {
       />
       <SettingsTabs isAdmin />
       <PublicUrlSettings publicUrl={publicUrl} />
+      <SmtpSettings config={getSmtpConfigView()} publicUrl={publicUrl} />
       <AiTierSettings
         heavy={getTierConfigView("heavy")}
         light={getTierConfigView("light")}

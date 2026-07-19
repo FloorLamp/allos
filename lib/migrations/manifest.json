@@ -60,5 +60,6 @@
   "059-frequency-target-mobility-region.ts": "2ddc781a254ab7d877052167748820e08981686dd9f1cb60c194aac1a53e9177",
   "060-followup-labs.ts": "bbaebe159a04cb032ee925a8add50cbffe9a1ef747e33335573b8fc51d28defb",
   "061-notify-lifecycle.ts": "99502813b5651a1775f056849bd51e9abd5c2320029d4bcab7d0d7c989df0f82",
-  "062-stable-episode-conditions.ts": "c9f6741b2f7148e3a5eaba0a427fedb4fc0db16772d2403fb8ea862ae5d46655"
+  "062-stable-episode-conditions.ts": "c9f6741b2f7148e3a5eaba0a427fedb4fc0db16772d2403fb8ea862ae5d46655",
+  "063-login-email.ts": "062b5627baeb10804d30108c990f61db2c40498d39a096f4ea2ffd5c81e3f4f6"
 }

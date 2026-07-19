@@ -1,5 +1,6 @@
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { canSendAuthEmail } from "@/lib/auth-email";
 import { PageHeader } from "@/components/ui";
 import SettingsTabs from "../SettingsTabs";
 import FamilyManager from "./FamilyManager";
@@ -16,6 +17,7 @@ interface LoginRow {
   id: number;
   username: string;
   role: "admin" | "member";
+  email: string | null;
 }
 export interface ProfileDataSummary {
   activities: number;
@@ -34,8 +36,11 @@ export default async function FamilySettingsPage() {
     )
     .all() as ProfileRow[];
   const logins = db
-    .prepare("SELECT id, username, role FROM logins ORDER BY id")
+    .prepare("SELECT id, username, role, email FROM logins ORDER BY id")
     .all() as LoginRow[];
+  // Whether the instance can send login-lifecycle mail (SMTP + public URL set):
+  // gates the invite affordances (the ANTHROPIC_API_KEY / unconfigured precedent).
+  const canInvite = canSendAuthEmail();
   // Live-session count per login, for the "signed in on N devices" line + the
   // revoke-all button. Expired rows are excluded to match
   // what getCurrentSession would accept.
@@ -95,6 +100,7 @@ export default async function FamilySettingsPage() {
         access={access}
         summaries={summaries}
         sessionCounts={sessionCounts}
+        canInvite={canInvite}
       />
     </div>
   );

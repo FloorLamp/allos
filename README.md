@@ -206,6 +206,15 @@ Opt-in **weekly recap** and **milestone alerts** ride the same channels (rule-ba
 
 Channel setup, button behavior, digests, and scheduling details: [docs/notifications.md](docs/notifications.md).
 
+## Email (invites & password reset)
+
+Outbound email is **optional** and, in this phase, powers two login-lifecycle flows only (a notification email channel is a planned follow-up):
+
+- **Invite on login creation** — when an admin creates a login in **Settings → Family**, ticking "Email an invite" sends the person a **set-password link** instead of the admin choosing and relaying a password. (A resend button lives on each login's row.)
+- **Self-service password reset** — a **Forgot password?** link on the sign-in page emails a reset link. It's enumeration-safe (the same "if that email is registered…" reply either way), rate-limited, single-use, short-lived, and completing it signs out the login's other sessions. Two-factor auth is never bypassed — a reset changes the password only.
+
+Bring your **own SMTP server** (Fastmail, a Gmail app-password, SES-SMTP, …) — it owns deliverability (SPF/DKIM); the app never talks to a vendor email API and never attaches files or sends any health data in these messages. Configure it under **Settings → Server → Outbound email** (host, port, From, optional username/password), or seed it on first boot with `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` (see `.env.example`). TLS is required (port 465 implicit, 587 via STARTTLS). The invite/reset **links are built from the public app URL**, so set that (Settings → Server) too — sending is refused, with honest copy, until it is. Until SMTP + the public URL are configured, every email affordance stays hidden and the admin's manual password reset in **Settings → Family** remains the fallback. Use **Send test** to verify the relay.
+
 ## Backups
 
 The hourly tick takes a nightly, **integrity-verified** `VACUUM INTO` snapshot of the database (schedule and retention under **Settings → Server → Automated backups**; a snapshot that fails verification never rotates a good one away, and a weekly live-DB integrity check feeds the health endpoint). Snapshots land on the **same volume** as the live DB, so for real durability set **`BACKUP_DEST_DIR`** to a second mounted directory: each verified snapshot is copied there and `data/uploads/` is mirrored incrementally. The destination requires a one-time **Verify destination** click (a sentinel file, so a missing mount fails honestly instead of "backing up" into a container layer), and a mirror that goes stale degrades the health endpoint.
