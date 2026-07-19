@@ -38,6 +38,15 @@ import {
   type OtotoxicHit,
   type OtotoxicMedInput,
 } from "../../ototoxic";
+import {
+  buildMedMonitoring,
+  type MedMonitoringHit,
+  type MonitoredMedInput,
+} from "../../medication-monitoring";
+import { biomarkerFamily } from "../../canonical-name";
+import { medicationStartDate } from "../../profile-summary";
+import { getMedicationCourses } from "./medications";
+import { getMedicalRecords } from "../medical";
 import { isInvasiveDentalProcedure, dentalDisplayLabel } from "../../dental";
 import {
   getGenomicVariants,
@@ -309,4 +318,92 @@ export function getOtotoxicWarnings(profileId: number): OtotoxicHit[] {
     }));
   if (meds.length === 0) return [];
   return crossCheckOtotoxic(meds);
+}
+
+// Lab categories a monitoring retest keys on — the SAME set the biomarker retest signal
+// uses (labs to redraw; vitals/scans/genomics aren't monitoring labs).
+const MONITORING_LAB_CATEGORIES = new Set(["lab", "biomarker"]);
+
+// Medication → required-monitoring-lab bridge (issue #995): retest-shaped hits for the
+// profile's ACTIVE meds whose curated monitoring labs are DUE. The active meds come from
+// the ONE shared safety-context gather (getIntakeSafetyContext, #661 — active + kind
+// 'medication', each carrying its intake_items id), so this can't drift from the
+// interaction/PGx/ototoxic consumers. Each med's start / recent-change dates are derived
+// from its medication_courses (medicationStartDate) + its dose re-time timestamps; the
+// newest date each monitoring lab was drawn comes from getMedicalRecords' current-per-
+// group read, keyed FAMILY-AWARE (#482) so an eAG reading satisfies an HbA1c requirement.
+// The SAME pure buildMedMonitoring the medications-row note and the Upcoming retest items
+// format over ("one question, one computation"). Profile-scoped through the underlying
+// reads (all profile_id-filtered); no new SQL, so the scoping guard is unaffected.
+// Informational, never prescriptive; the absence of an entry is not clearance.
+export function getMedMonitoringItems(
+  profileId: number,
+  todayStr: string = today(profileId)
+): MedMonitoringHit[] {
+  const meds = getIntakeSafetyContext(profileId).medications.filter(
+    (m): m is typeof m & { id: number } => m.id != null
+  );
+  if (meds.length === 0) return [];
+
+  // Per-med start date (open course start, else created_at) + most recent change
+  // (start / dose re-time / course restart), from the profile-scoped reads.
+  const supplements = getSupplements(profileId);
+  const createdById = new Map<number, string | null>(
+    supplements.map((s) => [s.id, s.created_at ?? null])
+  );
+  const coursesByItem = new Map<
+    number,
+    { started_on: string | null; stopped_on: string | null }[]
+  >();
+  for (const c of getMedicationCourses(profileId)) {
+    const arr = coursesByItem.get(c.item_id) ?? [];
+    arr.push({ started_on: c.started_on, stopped_on: c.stopped_on });
+    coursesByItem.set(c.item_id, arr);
+  }
+  const doseChangeByItem = new Map<number, string>();
+  for (const d of getSupplementDoses(profileId)) {
+    const changed = (d.updated_at ?? d.created_at ?? "").slice(0, 10);
+    if (!changed) continue;
+    const prev = doseChangeByItem.get(d.item_id);
+    if (!prev || changed > prev) doseChangeByItem.set(d.item_id, changed);
+  }
+
+  const inputs: MonitoredMedInput[] = meds.map((m) => {
+    const courses = coursesByItem.get(m.id) ?? [];
+    const startDate = medicationStartDate(
+      courses,
+      createdById.get(m.id) ?? null
+    );
+    const dates = [
+      startDate,
+      doseChangeByItem.get(m.id) ?? null,
+      ...courses.map((c) => c.started_on),
+    ].filter((d): d is string => !!d);
+    const recentChangeDate = dates.length
+      ? dates.reduce((a, b) => (a > b ? a : b))
+      : null;
+    return {
+      id: m.id,
+      name: m.name,
+      rxcui: m.rxcui,
+      rxcuiIngredients: m.rxcuiIngredients,
+      startDate,
+      recentChangeDate,
+    };
+  });
+
+  // Newest date each monitoring lab (family-aware) was drawn, over current lab readings.
+  const labDatesByFamily = new Map<string, string>();
+  for (const r of getMedicalRecords(profileId, { current: true })) {
+    if (!MONITORING_LAB_CATEGORIES.has(r.category ?? "")) continue;
+    // Same family key monitoringLabFamilyKey derives for a required lab's canonical
+    // name, so an eAG reading lands under the HbA1c family (#482).
+    const fam = biomarkerFamily(
+      r.canonical_name?.trim() || r.name
+    ).toLowerCase();
+    const prev = labDatesByFamily.get(fam);
+    if (!prev || r.date > prev) labDatesByFamily.set(fam, r.date);
+  }
+
+  return buildMedMonitoring(inputs, labDatesByFamily, todayStr);
 }

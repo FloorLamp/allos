@@ -48,6 +48,10 @@ import {
   medicationDescriptionsDataset,
   medDescriptionsStrategy,
 } from "./medication-descriptions";
+import {
+  medMonitoringDataset,
+  medMonitoringKeyStrategy,
+} from "./medication-monitoring";
 import { metsDataset } from "./mets";
 import { mobilityMovesDataset } from "./mobility-moves";
 import {
@@ -195,6 +199,13 @@ export const DATASETS: RegisteredDataset[] = [
       unknown
     >,
     strategy: medDescriptionsStrategy,
+  },
+  {
+    dataset: medMonitoringDataset as unknown as LoadedDataset<
+      Record<string, unknown>,
+      unknown
+    >,
+    strategy: medMonitoringKeyStrategy,
   },
   {
     dataset: metsDataset as unknown as LoadedDataset<

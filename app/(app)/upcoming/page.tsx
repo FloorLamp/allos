@@ -73,6 +73,7 @@ const DOMAIN_ICON: Record<UpcomingDomain, TablerIcon> = {
   screening: IconMicroscope,
   immunization: IconVaccine,
   biomarker: IconChartLine,
+  "med-monitor": IconMicroscope,
   goal: IconTarget,
   training: IconBarbell,
   careplan: IconClipboardList,

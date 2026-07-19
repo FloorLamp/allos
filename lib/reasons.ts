@@ -46,6 +46,11 @@ export const REASON_CODES = [
   // dashboard coaching card shows ("Held — illness episode open"). No source (it's a
   // fact about the app's own tracked situation, not a citation).
   "coaching-held",
+  // A monitoring lab is due BECAUSE the profile takes a medication that warrants it
+  // (issue #995): "recommended while taking lithium". Carries a citation `source` (the
+  // curated medication-monitoring dataset entry's reference), so the "why" that turns a
+  // bare "lithium level due" into "recommended while taking Lithium" reaches the digest.
+  "medication-monitoring",
 ] as const;
 
 export type ReasonCode = (typeof REASON_CODES)[number];
@@ -121,6 +126,18 @@ export function coachingHeldReason(text: string): Reason {
 // the Upcoming row. No source (it's a fact about the linked record, not a citation).
 export function followUpSourceReason(sourceLabel: string): Reason {
   return { code: "followup-source", text: `for the ${sourceLabel}` };
+}
+
+// A "this monitoring lab is recommended while you take a medication" reason (issue
+// #995) — the med-driven "why" that explains a retest clock that wouldn't otherwise
+// exist ("recommended while taking Lithium"). Carries the curated dataset entry's
+// citation as `source`, so a compact surface can show the provenance.
+export function medMonitoringReason(medLabel: string, source: string): Reason {
+  return {
+    code: "medication-monitoring",
+    text: `Recommended while taking ${medLabel}`,
+    source,
+  };
 }
 
 // Concatenate reason groups into one list, or `undefined` when empty — the shape

@@ -73,6 +73,11 @@ export type UpcomingDomain =
   | "screening"
   | "immunization"
   | "biomarker"
+  // A medication whose curated monitoring labs are DUE (issue #995) — a retest clock
+  // CREATED by taking the drug (lithium → serum level + TSH + renal, clozapine → ANC,
+  // warfarin → INR, …). Bus-gated like the biomarker retest; per-entry reach tier
+  // (#449) — care entries push (a digest highlight) + rank up, coaching entries are calm.
+  | "med-monitor"
   | "goal"
   | "training"
   | "careplan"
@@ -118,6 +123,9 @@ const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
   screening: 9,
   immunization: 10,
   biomarker: 11,
+  // A med-driven monitoring retest (#995) — sort it alongside the biomarker retest clock
+  // it mirrors, just after it.
+  "med-monitor": 11.5,
   goal: 12,
   training: 13,
   // A finding follow-up (#700) is care-tier safety — sort it alongside the other
