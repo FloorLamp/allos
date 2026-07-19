@@ -152,7 +152,9 @@ export default async function Dashboard() {
   // the ONE unified attention model (lib/attention.ts) the Upcoming page renders in
   // full — a strict subset, so the two surfaces always reconcile (issue #524). The
   // model shares its underlying reads with the Telegram digest and the Upcoming list.
-  const attention = collectAttentionModel(profile.id, on);
+  // The login's unit prefs ride along (#1019) so a measurement-carrying item (the
+  // temperature red-flag, an endurance event distance) renders in the viewer's unit.
+  const attention = collectAttentionModel(profile.id, on, units);
 
   // Tier 2 — the household strip. A caregiver reaching 2+ profiles gets a per-
   // profile attention count for their OTHER profiles (same gate as the Household

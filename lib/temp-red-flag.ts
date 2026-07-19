@@ -17,6 +17,8 @@
 // + phrases; it owns no surface.
 
 import type { AssembledEpisode } from "./illness-episode-format";
+import type { TemperatureUnit } from "./settings";
+import { fmtTemp, fmtTempDual } from "./units";
 import {
   detectTempRedFlag,
   type TempRedFlagEntry,
@@ -53,19 +55,34 @@ export function tempRedFlagDedupeKey(
   return `${TEMP_RED_FLAG_PREFIX}${anchor}:${date}:${ruleKey}`;
 }
 
+// How a finding's APP-AUTHORED temperature clause renders (#1019): the viewer's
+// login unit on web surfaces (the display-unit policy — web always follows the
+// viewer's pref), or "dual" for the Telegram nudge (both scales — a mixed-pref
+// household reads a safety message correctly either way). Cited threshold lines
+// quoted from the source dataset (`entry.line`/`entry.label`) are NEVER converted
+// — they are the source's own words; only the app-authored fact clause converts.
+// The dedupeKey is independent of display (pinned in lib/__tests__).
+export type TempRedFlagDisplay = TemperatureUnit | "dual";
+
+function fmtRedFlagTemp(degF: number, display: TempRedFlagDisplay): string {
+  return display === "dual" ? fmtTempDual(degF) : fmtTemp(degF, display);
+}
+
 // Phrasing (quote, never generate). The reading is a fact; the entry's `line` is the
 // source's own instruction.
 export function tempRedFlagTitle(
   entry: TempRedFlagEntry,
-  degF: number
+  degF: number,
+  display: TempRedFlagDisplay = "F"
 ): string {
-  return `Temperature ${degF} °F — ${entry.label}`;
+  return `Temperature ${fmtRedFlagTemp(degF, display)} — ${entry.label}`;
 }
 export function tempRedFlagDetail(
   entry: TempRedFlagEntry,
-  degF: number
+  degF: number,
+  display: TempRedFlagDisplay = "F"
 ): string {
-  return `A temperature of ${degF} °F was logged — ${entry.line}.`;
+  return `A temperature of ${fmtRedFlagTemp(degF, display)} was logged — ${entry.line}.`;
 }
 
 // The self-contained secondary line every non-Finding surface shows (Upcoming item,
@@ -97,6 +114,10 @@ export interface DetectTempRedFlagOptions {
   // Profile age in whole months, or null when unknown. Only the source-published
   // infant band consults it; unknown age never triggers a band (#805 non-goal).
   ageMonths: number | null;
+  // How the finding's app-authored temperature clause renders (#1019): the
+  // viewer's login unit on web surfaces, "dual" for the Telegram nudge. Defaults
+  // to canonical °F. Display only — degF/dedupeKey are unaffected.
+  display?: TempRedFlagDisplay;
   // Detection lookup — injectable for tests; defaults to the committed dataset.
   detect?: (degF: number, ageMonths: number | null) => TempRedFlagEntry | null;
 }
@@ -113,19 +134,22 @@ export function detectEpisodeTempRedFlag(
   const detect = opts.detect ?? detectTempRedFlag;
   const entry = detect(latest.degF, opts.ageMonths);
   if (!entry) return null;
+  const display = opts.display ?? "F";
   return {
     ruleKey: entry.key,
     label: entry.label,
     degF: latest.degF,
     date: latest.date,
+    // Identity is display-independent: the SAME dedupeKey whatever unit the
+    // viewer sees, so a dismiss on a °C surface silences the °F/Telegram twins.
     dedupeKey: tempRedFlagDedupeKey(
       episode.situation,
       episode.start,
       latest.date,
       entry.key
     ),
-    title: tempRedFlagTitle(entry, latest.degF),
-    detail: tempRedFlagDetail(entry, latest.degF),
+    title: tempRedFlagTitle(entry, latest.degF, display),
+    detail: tempRedFlagDetail(entry, latest.degF, display),
     source: entry.source,
   };
 }

@@ -133,6 +133,17 @@ export function fmtTemp(
   return `${degFTo(degF, unit)} ${tempUnitLabel(unit)}`;
 }
 
+// A canonical (°F) temperature rendered in BOTH scales — "38.5 °C / 101.3 °F".
+// The notification form for safety-critical temperature (#1019): a Telegram
+// nudge has no login-unit context (prefs are per-login, notifications
+// per-profile), and a mixed-preference household must read a fever red-flag
+// correctly either way, so the safety message errs toward redundancy. Every
+// other notification measurement stays canonical (see docs/internals/findings.md).
+export function fmtTempDual(degF: number | null | undefined): string {
+  if (degF == null) return "—";
+  return `${fmtTemp(degF, "C")} / ${fmtTemp(degF, "F")}`;
+}
+
 // A speed given in km/h, rendered in the user's distance unit ("12.4 km/h").
 export function fmtKmh(
   kmh: number | null | undefined,
