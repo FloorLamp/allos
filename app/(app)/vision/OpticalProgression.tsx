@@ -61,7 +61,7 @@ export default function OpticalProgression({
             {points.map((p, i) => (
               <tr
                 key={`${p.date}-${i}`}
-                className="border-t border-slate-100 dark:border-slate-800"
+                className="border-t border-black/5 dark:border-white/5"
               >
                 <td className="py-1 pr-3 whitespace-nowrap text-slate-600 dark:text-slate-300">
                   {formatRecordDate(p.date)}
