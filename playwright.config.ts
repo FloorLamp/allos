@@ -29,6 +29,12 @@ const PORT = Number(process.env.E2E_PORT ?? 3100);
 const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
 const executablePath = preinstalledChromium();
 
+// Deterministic outbound-email capture for the email-auth spec (issue #985): the
+// lib/email chokepoint appends every send here as JSON (no SMTP server needed) when
+// EMAIL_TEST_CAPTURE is set. Wiped on each webServer reset (below), so a spec reads
+// only the mail its own run produced.
+const MAILBOX_PATH = "./e2e/.data/mailbox.jsonl";
+
 // A SECOND app instance booted with ALLOS_DEMO_MODE=1 (#181), on its own port +
 // isolated DB, so the demo-mode surfaces (banner, credentials card, disabled
 // upload) can be asserted against a real demo boot WITHOUT running the whole suite
@@ -108,7 +114,7 @@ export default defineConfig({
   // lib/db, which bootstraps the admin login from ADMIN_USERNAME/ADMIN_PASSWORD.
   webServer: [
     {
-      command: `rm -f "${DB_PATH}" "${DB_PATH}-shm" "${DB_PATH}-wal" "${AI_LOG_PATH}" && tsx scripts/seed.ts && tsx e2e/seed-events.ts && ${startCmd}`,
+      command: `rm -f "${DB_PATH}" "${DB_PATH}-shm" "${DB_PATH}-wal" "${AI_LOG_PATH}" "${MAILBOX_PATH}" && tsx scripts/seed.ts && tsx e2e/seed-events.ts && ${startCmd}`,
       url: `http://localhost:${PORT}/login`,
       reuseExistingServer: !process.env.CI,
       timeout: 240_000,
@@ -117,6 +123,8 @@ export default defineConfig({
         ADMIN_USERNAME: "admin",
         ADMIN_PASSWORD: "e2e-admin-pass",
         NODE_ENV: process.env.CI ? "production" : "development",
+        // Capture outbound email to a file (no SMTP server) for the email-auth spec.
+        EMAIL_TEST_CAPTURE: MAILBOX_PATH,
       },
     },
     // Demo instance (#181): same seed + image, booted with ALLOS_DEMO_MODE=1 so the

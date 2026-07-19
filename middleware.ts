@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, SESSION_COOKIE_SECURE } from "./lib/session-cookie";
 import { buildCsp, generateNonce } from "./lib/csp";
+import { isPublicPath } from "./lib/public-paths";
 
 // Coarse, non-authoritative auth gate. The Edge runtime can't open SQLite, so
 // this only checks for the *presence* of a session cookie: it bounces obviously
@@ -26,44 +27,9 @@ const SESSION_TTL_SEC = 30 * 24 * 60 * 60;
 // script-src/style-src/dev-mode reasoning.
 const IS_DEV = process.env.NODE_ENV !== "production";
 
-// Reachable without a session. Everything else requires the cookie.
-const PUBLIC_PATHS = new Set([
-  "/login",
-  "/api/health",
-  "/api/integrations/health-connect/ingest", // token-authenticated push ingest
-  "/api/telegram/webhook", // secret-header authenticated
-  // NOTE: /api/integrations/strava/callback is intentionally NOT public — the
-  // OAuth redirect carries the session cookie (SameSite=Lax), and the handler
-  // binds tokens to the session's active profile, so it requires a live session.
-  // App-router icon routes referenced by the login page's <head>.
-  "/icon.svg",
-  "/apple-icon",
-  "/favicon.ico",
-  // PWA. These must load without a session: a standalone launch
-  // starts unauthenticated, the SW registers on the login page, and the offline
-  // fallback has to render when there's no live session at all. None expose PHI —
-  // the manifest and offline page are static, and the worker's caching policy
-  // never stores auth-gated responses.
-  "/manifest.webmanifest",
-  "/sw.js",
-  "/offline",
-]);
-
-function isPublic(pathname: string): boolean {
-  if (PUBLIC_PATHS.has(pathname)) return true;
-  // next/og serves the apple icon under a hashed child path (/apple-icon/<id>).
-  if (pathname.startsWith("/apple-icon")) return true;
-  // Unauthenticated, read-only "medical passport" share links. The
-  // path carries an unguessable token; the handler (app/share/[token]) validates
-  // it against the DB (hash lookup + expiry/revocation) and 404s on any miss.
-  if (pathname.startsWith("/share/")) return true;
-  // Token-authenticated, read-only calendar subscribe feed (.ics). The path
-  // carries an unguessable per-profile token; the handler (app/api/calendar/
-  // [token]) hashes it, resolves the owning profile, and 404s on any miss/
-  // disabled feed — no session needed (a calendar client has none).
-  if (pathname.startsWith("/api/calendar/")) return true;
-  return false;
-}
+// The session-free path allowlist + the presence check live in lib/public-paths.ts
+// (dependency-free, Edge-safe) so a unit test can cover the set without booting the
+// Edge runtime and the auth-route additions can't diverge from it (issue #985).
 
 // A shared passport is sensitive, unauthenticated content: never let a browser or
 // proxy cache it (a revoked/expired link must stop working immediately), and never
@@ -114,7 +80,7 @@ export function middleware(req: NextRequest) {
     return res;
   };
 
-  if (isPublic(pathname)) {
+  if (isPublicPath(pathname)) {
     // Share links are public but must never be cached or associated with a
     // session — serve them with hardened headers and without touching the cookie.
     // The CSP still rides along (it does not weaken withShareHeaders' stricter

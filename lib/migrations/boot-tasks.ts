@@ -92,6 +92,13 @@ export function bootTasks(db: Database.Database): void {
   // here would be circular" rule).
   seedAiTiersFromEnv(db);
 
+  // SMTP relay (issue #985): seed the global SMTP config from the SMTP_* env vars on
+  // first boot, so an operator can ship the relay via env and let the DB then own it
+  // (the seedTimezoneFromEnv/#875 pattern). Idempotent — never overwrites a value an
+  // admin has since set — and a fresh instance with no SMTP env seeds nothing (email
+  // stays unconfigured → affordances hide, unchanged).
+  seedSmtpFromEnv(db);
+
   // Record an install/first-boot timestamp once, so the health endpoint can tell a
   // genuinely fresh install (exempt from the never-backed-up alarm) from a
   // long-running instance that has NEVER taken a backup (#464). Set only when
@@ -328,6 +335,52 @@ export function seedAiTiersFromEnv(db: Database.Database) {
       put.run(k.baseUrl, baseUrl);
       put.run(k.apiKey, apiKey);
       put.run(k.model, model);
+    })
+  );
+}
+
+// Seed the global SMTP config from the SMTP_* env vars on first boot (issue #985),
+// mirroring seedAiTiersFromEnv. The keys are inlined here (NOT imported from
+// lib/settings/email) to keep this module off the settings import — see the note in
+// seedAiTiersFromEnv / bootTasks. If ANY smtp_* setting is already stored, the admin
+// (or a prior seed) owns the config and we never re-seed; a fresh instance with no
+// SMTP env seeds nothing.
+export function seedSmtpFromEnv(db: Database.Database) {
+  const keys = [
+    "smtp_host",
+    "smtp_port",
+    "smtp_user",
+    "smtp_password",
+    "smtp_from",
+  ];
+  const stored = db
+    .prepare(
+      `SELECT key FROM settings WHERE key IN ('smtp_host','smtp_port','smtp_user','smtp_password','smtp_from') LIMIT 1`
+    )
+    .get() as { key?: string } | undefined;
+  if (stored) return; // SMTP already configured — never re-seed
+  const host = (process.env.SMTP_HOST || "").trim();
+  const port = (process.env.SMTP_PORT || "").trim();
+  const user = (process.env.SMTP_USER || "").trim();
+  const password = process.env.SMTP_PASSWORD || "";
+  const from = (process.env.SMTP_FROM || "").trim();
+  if (!host && !port && !user && !password && !from) return; // nothing to seed
+  const values: Record<string, string> = {
+    smtp_host: host,
+    smtp_port: port,
+    smtp_user: user,
+    smtp_password: password,
+    smtp_from: from,
+  };
+  runBootTx(
+    db.transaction(() => {
+      const put = db.prepare(
+        `INSERT INTO settings (key, value) VALUES (?, ?)
+         ON CONFLICT(key) DO NOTHING`
+      );
+      for (const k of keys) {
+        if (values[k]) put.run(k, values[k]);
+      }
     })
   );
 }

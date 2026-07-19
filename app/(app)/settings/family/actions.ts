@@ -14,7 +14,19 @@ import {
 import { db, writeTx } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 import { checkPasswordStrength } from "@/lib/password-strength";
-import { getSetting, isValidTimezone, setProfileSetting } from "@/lib/settings";
+import {
+  getSetting,
+  isValidTimezone,
+  setProfileSetting,
+  getPublicUrl,
+  isEmailConfigured,
+} from "@/lib/settings";
+import {
+  isValidEmail,
+  normalizeEmail,
+  canSendAuthEmail,
+  sendInviteEmail,
+} from "@/lib/auth-email";
 import {
   normalizeGrantInputs,
   diffGrantAccess,
@@ -315,6 +327,12 @@ export async function createLogin(formData: FormData): Promise<FamilyResult> {
   const password = String(formData.get("password") ?? "");
   const roleRaw = String(formData.get("role") ?? "member");
   const role: Role = roleRaw === "admin" ? "admin" : "member";
+  const email = normalizeEmail(String(formData.get("email") ?? ""));
+  // Offer to email a set-password invite instead of the admin choosing + relaying
+  // a password (issue #985). Only meaningful when an email is set and email is
+  // deliverable; both are re-checked below.
+  const wantsInvite =
+    formData.get("invite") === "1" || formData.get("invite") === "on";
 
   if (!USERNAME_RE.test(username))
     return {
@@ -322,43 +340,158 @@ export async function createLogin(formData: FormData): Promise<FamilyResult> {
       error:
         "Username must be 3–32 characters, letters/digits/dot/dash/underscore.",
     };
+  if (email && !isValidEmail(email))
+    return { ok: false, error: "Enter a valid email address." };
   const strength = checkPasswordStrength(password, { username });
   if (!strength.ok) return { ok: false, error: strength.error };
 
   const passwordHash = await hashPassword(password);
+  let newId: number;
   try {
     const info = db
       .prepare(
-        "INSERT INTO logins (username, password_hash, role) VALUES (?, ?, ?)"
+        "INSERT INTO logins (username, password_hash, role, email) VALUES (?, ?, ?, ?)"
       )
-      .run(username, passwordHash, role);
+      .run(username, passwordHash, role, email || null);
+    newId = Number(info.lastInsertRowid);
     recordAudit({
       loginId: admin.login.id,
       profileId: admin.profile.id,
       action: AUDIT_ACTIONS.loginCreate,
-      target: String(Number(info.lastInsertRowid)),
+      target: String(newId),
       detail: `${username} (${role})`,
     });
   } catch (err) {
-    // Surface the case-insensitive unique-username constraint as a friendly
-    // message instead of a 500.
+    // Surface the case-insensitive unique constraints as friendly messages instead
+    // of a 500 (username and the unique-if-set email index).
     if (
       err instanceof Error &&
       /UNIQUE constraint failed: logins\.username/i.test(err.message)
     ) {
       return { ok: false, error: `Username “${username}” is already taken.` };
     }
+    if (
+      err instanceof Error &&
+      /UNIQUE constraint failed: logins\.email/i.test(err.message)
+    ) {
+      return { ok: false, error: `That email is already in use.` };
+    }
     throw err;
   }
 
+  // Optionally email a set-password invite. A failure here never rolls back the
+  // login — it's created; we just report the invite couldn't go out and the admin
+  // can resend from the login's row.
+  let inviteNote = "";
+  if (wantsInvite) {
+    if (!email) {
+      inviteNote = " Add an email to send an invite.";
+    } else if (!canSendAuthEmail()) {
+      inviteNote =
+        " Couldn't send the invite — configure SMTP and the public app URL on Settings → Server first.";
+    } else {
+      try {
+        await sendInviteEmail(newId, username, email);
+        recordAudit({
+          loginId: admin.login.id,
+          profileId: admin.profile.id,
+          action: AUDIT_ACTIONS.loginInviteSent,
+          target: String(newId),
+        });
+        inviteNote = ` Sent an invite to ${email}.`;
+      } catch {
+        inviteNote =
+          " Couldn't send the invite email. Try again from the login’s row.";
+      }
+    }
+  }
+
   revalidatePath("/settings/family");
-  return {
-    ok: true,
-    message:
-      role === "admin"
-        ? `Created admin “${username}”.`
-        : `Created “${username}”. Grant it a profile below.`,
-  };
+  const base =
+    role === "admin"
+      ? `Created admin “${username}”.`
+      : `Created “${username}”. Grant it a profile below.`;
+  return { ok: true, message: base + inviteNote };
+}
+
+// Set or clear a login's email address (issue #985). Admin-only. The email is
+// optional and unique-if-set (NOCASE); a duplicate surfaces as a friendly message.
+export async function setLoginEmail(formData: FormData): Promise<FamilyResult> {
+  const admin = await requireAdmin();
+  const id = Number(formData.get("id"));
+  const email = normalizeEmail(String(formData.get("email") ?? ""));
+  if (!id) return { ok: false, error: "Unknown login." };
+  const acct = db
+    .prepare("SELECT id, username FROM logins WHERE id = ?")
+    .get(id) as { id: number; username: string } | undefined;
+  if (!acct) return { ok: false, error: "Login not found." };
+  if (email && !isValidEmail(email))
+    return { ok: false, error: "Enter a valid email address." };
+
+  try {
+    db.prepare("UPDATE logins SET email = ? WHERE id = ?").run(
+      email || null,
+      id
+    );
+  } catch (err) {
+    if (
+      err instanceof Error &&
+      /UNIQUE constraint failed: logins\.email/i.test(err.message)
+    ) {
+      return { ok: false, error: `That email is already in use.` };
+    }
+    throw err;
+  }
+  recordAudit({
+    loginId: admin.login.id,
+    profileId: admin.profile.id,
+    action: AUDIT_ACTIONS.loginEmailUpdate,
+    target: String(id),
+  });
+
+  revalidatePath("/settings/family");
+  return { ok: true, message: email ? "Email updated." : "Email cleared." };
+}
+
+// Email a fresh set-password invite to an existing login (issue #985). Admin-only.
+// Refuses with honest, specific copy when the login has no email or the instance
+// can't send (SMTP / public URL unconfigured).
+export async function sendInvite(formData: FormData): Promise<FamilyResult> {
+  const admin = await requireAdmin();
+  const id = Number(formData.get("id"));
+  if (!id) return { ok: false, error: "Unknown login." };
+  const acct = db
+    .prepare("SELECT id, username, email FROM logins WHERE id = ?")
+    .get(id) as
+    { id: number; username: string; email: string | null } | undefined;
+  if (!acct) return { ok: false, error: "Login not found." };
+  if (!acct.email)
+    return { ok: false, error: "Add an email to this login first." };
+  if (!isEmailConfigured())
+    return {
+      ok: false,
+      error:
+        "Couldn't send the invite — configure SMTP on Settings → Server first.",
+    };
+  if (!getPublicUrl())
+    return {
+      ok: false,
+      error:
+        "Couldn't send the invite — set the public app URL on Settings → Server first.",
+    };
+
+  try {
+    await sendInviteEmail(acct.id, acct.username, acct.email);
+  } catch {
+    return { ok: false, error: "Couldn't send the invite email. Try again." };
+  }
+  recordAudit({
+    loginId: admin.login.id,
+    profileId: admin.profile.id,
+    action: AUDIT_ACTIONS.loginInviteSent,
+    target: String(id),
+  });
+  return { ok: true, message: `Sent an invite to ${acct.email}.` };
 }
 
 export async function resetPassword(formData: FormData): Promise<FamilyResult> {
@@ -424,6 +557,10 @@ export async function deleteLogin(formData: FormData): Promise<FamilyResult> {
     db.prepare("DELETE FROM sessions WHERE login_id = ?").run(id);
     db.prepare("DELETE FROM login_profiles WHERE login_id = ?").run(id);
     db.prepare("DELETE FROM login_settings WHERE login_id = ?").run(id);
+    // Outstanding invite/reset tokens (issue #985) die with the login. They also
+    // cascade via the FK, but delete explicitly so this holds even if foreign_keys
+    // is ever off (the sibling deletes above).
+    db.prepare("DELETE FROM login_auth_tokens WHERE login_id = ?").run(id);
     db.prepare("DELETE FROM logins WHERE id = ?").run(id);
   });
   recordAudit({

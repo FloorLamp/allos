@@ -175,6 +175,16 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     fn: "verifyLoginTotp",
     why: "public auth entry point (issue #23 second-factor step); completes a pre-session 2FA challenge, mints the session — no profile-owned data",
   },
+  {
+    file: "app/(auth)/forgot-password/actions.ts",
+    fn: "requestPasswordReset",
+    why: "public auth entry point (issue #985); enumeration-safe + rate-limited self-service reset REQUEST, runs before any session exists — mints a token + sends mail, no profile-owned data",
+  },
+  {
+    file: "app/(auth)/set-password/actions.ts",
+    fn: "completeSetPassword",
+    why: "public auth entry point (issue #985); consumes a single-use invite/reset token to set the login's OWN password, runs before any session exists — no profile-owned data",
+  },
   // --- Thin wrappers that delegate to a gated helper ---
   {
     file: "app/(app)/encounters/appointment-actions.ts",

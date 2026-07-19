@@ -28,6 +28,8 @@ import {
   deleteLogin,
   revokeLoginSessions,
   setGrants,
+  setLoginEmail,
+  sendInvite,
   type FamilyResult,
 } from "./actions";
 
@@ -41,6 +43,7 @@ interface Login {
   id: number;
   username: string;
   role: "admin" | "member";
+  email: string | null;
 }
 
 // A small inline status line shared by every form in this screen.
@@ -66,6 +69,7 @@ export default function FamilyManager({
   access,
   summaries,
   sessionCounts,
+  canInvite,
 }: {
   profiles: Profile[];
   logins: Login[];
@@ -73,6 +77,9 @@ export default function FamilyManager({
   access: Record<number, Record<number, Access>>;
   summaries: Record<number, ProfileDataSummary>;
   sessionCounts: Record<number, number>;
+  // Whether the instance can send login-lifecycle mail (SMTP + public URL set).
+  // Gates the invite affordances; false hides them (Settings → Server sets it up).
+  canInvite: boolean;
 }) {
   return (
     <div className="max-w-3xl space-y-6">
@@ -82,7 +89,11 @@ export default function FamilyManager({
         grants={grants}
         summaries={summaries}
       />
-      <LoginsCard logins={logins} sessionCounts={sessionCounts} />
+      <LoginsCard
+        logins={logins}
+        sessionCounts={sessionCounts}
+        canInvite={canInvite}
+      />
       <GrantsCard
         logins={logins}
         profiles={profiles}
@@ -356,16 +367,20 @@ function ProfileRow({
 function LoginsCard({
   logins,
   sessionCounts,
+  canInvite,
 }: {
   logins: Login[];
   sessionCounts: Record<number, number>;
+  canInvite: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [result, setResult] = useState<FamilyResult | null>(null);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [email, setEmail] = useState("");
   const [role, setRole] = useState<"admin" | "member">("member");
+  const [invite, setInvite] = useState(false);
   const adminCount = logins.filter((a) => a.role === "admin").length;
 
   function create() {
@@ -373,13 +388,17 @@ function LoginsCard({
     fd.set("username", username);
     fd.set("password", password);
     fd.set("role", role);
+    fd.set("email", email);
+    if (invite) fd.set("invite", "1");
     start(async () => {
       const r = await createLogin(fd);
       setResult(r);
       if (r.ok) {
         setUsername("");
         setPassword("");
+        setEmail("");
         setRole("member");
+        setInvite(false);
         router.refresh();
       }
     });
@@ -404,6 +423,7 @@ function LoginsCard({
             login={a}
             isLastAdmin={a.role === "admin" && adminCount <= 1}
             sessionCount={sessionCounts[a.id] ?? 0}
+            canInvite={canInvite}
             onDone={() => router.refresh()}
           />
         ))}
@@ -430,12 +450,34 @@ function LoginsCard({
           <select
             value={role}
             onChange={(e) => setRole(e.target.value as "admin" | "member")}
+            data-testid="create-role"
             className="input"
           >
             <option value="member">Member</option>
             <option value="admin">Admin</option>
           </select>
+          <input
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Email (optional)"
+            type="email"
+            autoComplete="off"
+            className="input sm:col-span-3"
+          />
         </div>
+        {canInvite && (
+          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+            <input
+              type="checkbox"
+              checked={invite}
+              onChange={(e) => setInvite(e.target.checked)}
+              disabled={!email.trim()}
+              data-testid="create-invite"
+              className="h-4 w-4 accent-brand-600 disabled:opacity-40"
+            />
+            Email an invite instead of setting a password out-of-band
+          </label>
+        )}
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -456,11 +498,13 @@ function LoginRow({
   login,
   isLastAdmin,
   sessionCount,
+  canInvite,
   onDone,
 }: {
   login: Login;
   isLastAdmin: boolean;
   sessionCount: number;
+  canInvite: boolean;
   onDone: () => void;
 }) {
   const confirm = useConfirm();
@@ -468,6 +512,8 @@ function LoginRow({
   const [result, setResult] = useState<FamilyResult | null>(null);
   const [open, setOpen] = useState(false);
   const [password, setPassword] = useState("");
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [email, setEmail] = useState(login.email ?? "");
 
   function reset() {
     const fd = new FormData();
@@ -481,6 +527,30 @@ function LoginRow({
         setOpen(false);
         onDone();
       }
+    });
+  }
+
+  function saveEmail() {
+    const fd = new FormData();
+    fd.set("id", String(login.id));
+    fd.set("email", email);
+    start(async () => {
+      const r = await setLoginEmail(fd);
+      setResult(r);
+      if (r.ok) {
+        setEmailOpen(false);
+        onDone();
+      }
+    });
+  }
+
+  function invite() {
+    const fd = new FormData();
+    fd.set("id", String(login.id));
+    start(async () => {
+      const r = await sendInvite(fd);
+      setResult(r);
+      if (r.ok) onDone();
     });
   }
 
@@ -556,8 +626,32 @@ function LoginRow({
               ? "no active sessions"
               : `${sessionCount} active ${sessionCount === 1 ? "session" : "sessions"}`}
           </span>
+          <span
+            data-testid="login-email"
+            className="text-xs text-slate-500 dark:text-slate-400"
+          >
+            {login.email ? login.email : "no email"}
+          </span>
         </div>
         <div className="flex flex-wrap items-center gap-1">
+          {canInvite && login.email && (
+            <button
+              type="button"
+              onClick={invite}
+              disabled={pending}
+              className="btn-ghost"
+              data-testid="send-invite"
+            >
+              Send invite
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setEmailOpen((v) => !v)}
+            className="btn-ghost"
+          >
+            Email
+          </button>
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
@@ -593,6 +687,28 @@ function LoginRow({
           </button>
         </div>
       </div>
+      {emailOpen && (
+        <div className="mt-3 flex items-end gap-2">
+          <input
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Email address"
+            type="email"
+            autoComplete="off"
+            data-testid="edit-email"
+            className="input"
+          />
+          <button
+            type="button"
+            onClick={saveEmail}
+            disabled={pending}
+            className="btn shrink-0"
+            data-testid="save-email"
+          >
+            Save
+          </button>
+        </div>
+      )}
       {open && (
         <div className="mt-3 flex items-end gap-2">
           <input
