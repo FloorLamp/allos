@@ -61,6 +61,11 @@ const MOOD_TABLE_ALLOWLIST = new Set([
   "lib/owned-tables.ts",
   "lib/queries/mood.ts",
   "lib/offline/writes.ts",
+  // The Data → Export dataset registry (#465 export-completeness): every owned
+  // table must round-trip through the full export, so lib/export.ts names the
+  // table for its verbatim SELECT/COUNT/delete-policy — a data-portability
+  // surface, not a flag/retest/streak engine.
+  "lib/export.ts",
 ]);
 
 describe("mood guardrails (#992) — never flagged, never retested", () => {

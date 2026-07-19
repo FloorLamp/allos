@@ -1,5 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
-import { settledClick } from "./helpers";
+import { test, expect, type Page, type Locator } from "@playwright/test";
 
 // The unified "How are you today?" daily check-in card (issue #992): the one-tap
 // mood log composed with the illness front door in ONE shell. Covered states:
@@ -10,6 +9,14 @@ import { settledClick } from "./helpers";
 //      mood series reaches the Trends → Body chart;
 //   4. active-episode — the illness cockpit takes the hero, the card defers with
 //      a quiet note, and the mood tap STILL works (the two coexist).
+//
+// SETTLE DISCIPLINE: the dashboard carries steady background action-POST traffic
+// (watchers/pollers), so settledClick's any-POST wait can resolve on a bystander
+// request while the mood write is still in flight — and a follow-up reload would
+// abort it. Instead the card renders a SERVER-truth marker (`mood-server-logged`,
+// built from the server prop, not client state) that appears/updates only once
+// the write committed and the refresh round-tripped; every mood mutation here
+// settles on that marker (see the note in e2e/helpers.ts).
 //
 // Fixture hygiene (#868): the shared seed makes profile 1 already sick (and
 // already mood-logged), so each test creates a FRESH profile via Settings →
@@ -51,6 +58,22 @@ async function freshProfile(page: Page, label: string): Promise<string> {
   return name;
 }
 
+// Tap one mood face and wait until the SERVER acknowledges the write (the marker
+// re-renders from the refreshed server prop). toPass retries the tap through the
+// hydration window — a pre-hydration click is swallowed, and no single expect can
+// both re-click and await the server marker; the re-tap is safe because the write
+// is an idempotent per-day upsert.
+async function tapMood(page: Page, card: Locator, n: number): Promise<void> {
+  await expect(async () => {
+    await card.getByTestId(`mood-tap-${n}`).click({ timeout: 2_000 });
+    await expect(card.getByTestId("mood-server-logged")).toHaveAttribute(
+      "data-valence",
+      String(n),
+      { timeout: 4_000 }
+    );
+  }).toPass();
+}
+
 test.afterEach(async ({ page }) => {
   await page.goto("/");
   if (
@@ -79,9 +102,10 @@ test.describe("Daily wellbeing check (#992)", () => {
     );
     await expect(card.getByTestId("feeling-sick-activate")).toBeVisible();
     await expect(page.getByTestId("symptom-log-bar")).toHaveCount(0);
+    await expect(card.getByTestId("mood-server-logged")).toHaveCount(0);
 
-    // One tap logs the day.
-    await settledClick(page, card.getByTestId("mood-tap-4"));
+    // One tap logs the day (settled on the server-truth marker).
+    await tapMood(page, card, 4);
     await expect(card.getByTestId("mood-tap-4")).toHaveAttribute(
       "aria-pressed",
       "true"
@@ -96,11 +120,7 @@ test.describe("Daily wellbeing check (#992)", () => {
     );
 
     // Idempotent per day: a re-tap UPDATES the day's one entry.
-    await settledClick(page, card.getByTestId("mood-tap-2"));
-    await expect(card.getByTestId("mood-tap-2")).toHaveAttribute(
-      "aria-pressed",
-      "true"
-    );
+    await tapMood(page, card, 2);
     await page.reload();
     await expect(card.getByTestId("mood-tap-2")).toHaveAttribute(
       "aria-pressed",
@@ -120,15 +140,24 @@ test.describe("Daily wellbeing check (#992)", () => {
     await page.goto("/");
 
     const card = page.getByTestId("how-are-you-card");
-    // Pick a valence, then expand for the detail dimensions.
-    await settledClick(page, card.getByTestId("mood-tap-3"));
+    // Pick a valence (settled on the marker), then expand for the detail.
+    await tapMood(page, card, 3);
     await card.getByTestId("mood-expand").click();
     await expect(card.getByTestId("mood-detail")).toBeVisible();
     await card.getByTestId("mood-energy-2").click();
     await card.getByTestId("mood-anxiety-4").click();
     await card.getByTestId("mood-factor-sleep").click();
     await card.getByTestId("mood-note").fill("short night");
-    await settledClick(page, card.getByTestId("mood-save"));
+    await card.getByTestId("mood-save").click();
+    // The save settles when the server marker reflects the expanded fields.
+    await expect(card.getByTestId("mood-server-logged")).toHaveAttribute(
+      "data-energy",
+      "2"
+    );
+    await expect(card.getByTestId("mood-server-logged")).toHaveAttribute(
+      "data-note",
+      "short night"
+    );
 
     // Persisted: reload, re-expand, everything is still there.
     await page.reload();
@@ -178,11 +207,7 @@ test.describe("Daily wellbeing check (#992)", () => {
     await expect(card.getByTestId("feeling-sick-activate")).toHaveCount(0);
 
     // Mood during illness still logs (illness never hides the mood layer).
-    await settledClick(page, card.getByTestId("mood-tap-2"));
-    await expect(card.getByTestId("mood-tap-2")).toHaveAttribute(
-      "aria-pressed",
-      "true"
-    );
+    await tapMood(page, card, 2);
     await page.reload();
     await expect(card.getByTestId("mood-tap-2")).toHaveAttribute(
       "aria-pressed",

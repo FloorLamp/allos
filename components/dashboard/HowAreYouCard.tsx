@@ -214,6 +214,21 @@ export default function HowAreYouCard({
             ? `Logged: ${MOOD_LABELS[valence - 1]}`
             : "Tap to log your day."}
         </span>
+        {/* Server-truth marker: rendered from the SERVER prop (not local state),
+            so it appears/updates only once the write committed and the refresh
+            round-tripped. The e2e settle hook on a page whose background action
+            POSTs make network-response waits ambiguous (see e2e/helpers.ts). */}
+        {mood ? (
+          <span
+            hidden
+            data-testid="mood-server-logged"
+            data-valence={mood.valence}
+            data-energy={mood.energy ?? ""}
+            data-anxiety={mood.anxiety ?? ""}
+            data-factors={mood.factors.join(",")}
+            data-note={mood.notes ?? ""}
+          />
+        ) : null}
         <button
           type="button"
           data-testid="mood-expand"
