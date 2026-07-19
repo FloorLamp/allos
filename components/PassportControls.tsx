@@ -10,6 +10,7 @@ import {
 import ModalShell from "@/components/ModalShell";
 import { NOTICE_TONE } from "@/components/Notice";
 import SubmitButton from "@/components/SubmitButton";
+import { printRegion } from "@/components/print-scope";
 import {
   SHARE_FIELDS,
   SHARE_TTL_OPTIONS,
@@ -51,7 +52,10 @@ function fmtDate(iso: string): string {
 
 // Print + Share controls for the passport page. Client-only so it
 // can drive window.print() and the share modal; the actual link mutations are
-// Server Actions gated by requireSession().
+// Server Actions gated by requireSession(). Print is scoped to the passport
+// region (#1042 phase 3): the emergency-card section stacked below on the same
+// page is dropped from the printout, so this button still produces the same
+// passport-only artifact it did before the merge.
 export default function PassportControls({
   links,
 }: {
@@ -100,7 +104,7 @@ export default function PassportControls({
       <button
         type="button"
         className="btn-ghost"
-        onClick={() => window.print()}
+        onClick={() => printRegion("passport")}
       >
         <IconPrinter className="h-4 w-4" stroke={1.75} />
         Print

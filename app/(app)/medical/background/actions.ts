@@ -83,5 +83,6 @@ export async function saveEmergencyCardSettings(formData: FormData) {
     relation: String(formData.get("emergency_contact_relation") ?? ""),
   });
   revalidatePath("/medical/background");
-  revalidatePath("/emergency");
+  // The card renders as the Passport page's #emergency section (#1042 phase 3).
+  revalidatePath("/profile");
 }

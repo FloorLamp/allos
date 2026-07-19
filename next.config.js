@@ -69,6 +69,22 @@ const nextConfig = {
       { source: "/share/:path*", headers: SHARE_HEADERS },
     ];
   },
+  // Route-merge redirects (#1042 migration mechanics): a removed route gets a
+  // PERMANENT redirect to its merged page, anchor included — old Telegram
+  // messages, bookmarks, and precached service-worker entries carry absolute
+  // URLs forever, so removal without a redirect strands them (the pre-#285
+  // consolidations dropped routes outright; the #1042 merges do not). The
+  // destination must resolve to a real page — guarded by
+  // lib/__tests__/nav-routes.test.ts.
+  async redirects() {
+    return [
+      // Phase 3: the Emergency Card folded into the Passport page as its
+      // #emergency section. The redirect target still requires a session
+      // (requireSession in the (app) layout), so an anonymous hit lands on
+      // /login exactly as the old route did.
+      { source: "/emergency", destination: "/profile#emergency", permanent: true },
+    ];
+  },
   // Native / heavy server-only packages kept OUT of the server bundle. better-sqlite3
   // is a native module; @napi-rs/canvas is a native rasterizer and tesseract.js loads
   // WASM + worker assets — all used only in the OCR reconciliation fallback

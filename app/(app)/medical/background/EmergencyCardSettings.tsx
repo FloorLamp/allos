@@ -10,11 +10,12 @@ import { BLOOD_TYPES } from "@/lib/emergency-card";
 import type { EmergencyContactSetting } from "@/lib/settings";
 import { saveEmergencyCardSettings } from "./actions";
 
-// Settings → Profile card for the offline Emergency Card (issue #42): the opt-in
-// toggle (OFF by default), a manual blood type, and the emergency contact. All are
-// per-profile. When the toggle is turned off here we also clear the offline copy
-// from this device immediately, so disabling the feature doesn't leave a cached
-// card behind until the next /emergency visit.
+// Medical → Background card for the offline Emergency Card (issue #42): the
+// opt-in toggle (OFF by default), a manual blood type, and the emergency
+// contact. All are per-profile. When the toggle is turned off here we also
+// clear the offline copy from this device immediately, so disabling the feature
+// doesn't leave a cached card behind until the next visit to the card (the
+// Passport page's #emergency section since #1042 phase 3).
 export default function EmergencyCardSettings({
   enabled: initialEnabled,
   bloodType: initialBloodType,
@@ -76,7 +77,7 @@ export default function EmergencyCardSettings({
         A terse, printable summary of allergies, active medications, conditions,
         blood type, and who to call.{" "}
         <Link
-          href="/emergency"
+          href="/profile#emergency"
           className="text-brand-600 hover:underline dark:text-brand-400"
         >
           Open the card

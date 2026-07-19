@@ -153,7 +153,7 @@ export function buildEmergencyCard(input: EmergencyCardInput): EmergencyCard {
 }
 
 // True when the card carries no clinically useful content beyond the person's
-// identity — the /emergency page shows a gentle "nothing recorded yet" note
+// identity — the card view shows a gentle "nothing recorded yet" note
 // rather than an empty scaffold in that case.
 export function isEmergencyCardEmpty(card: EmergencyCard): boolean {
   return (
