@@ -12,6 +12,7 @@
 // only, not medical advice or diagnosis.
 
 import { daysBetweenDateStr, shiftDateStr } from "./date";
+import { rangeContainsDate, INCLUSIVE_END } from "./date-range";
 
 export type CyclePhase = "menstrual" | "follicular" | "luteal";
 export type FlowLevel = "light" | "medium" | "heavy";
@@ -69,6 +70,13 @@ function sortByStart(periods: CyclePeriod[]): CyclePeriod[] {
   );
 }
 
+// A recorded period as the chassis's DateRange (issue #943). The cycle domain's declared
+// end-bound is INCLUSIVE — `period_end` is the last bleeding day — so bleeding-day
+// membership is `rangeContainsDate(periodRange(p), date, INCLUSIVE_END)`.
+function periodRange(p: CyclePeriod) {
+  return { start: p.period_start, end: p.period_end };
+}
+
 // The recorded period that COVERS `date` as a menstrual (bleeding) day, or null. A period
 // covers a date when the date is on/after its start and on/before its inclusive end; an
 // ongoing period (null end) covers every day from its start onward. Used for the period
@@ -85,8 +93,9 @@ export function periodOnDate(
   }
   if (idx === -1) return null;
   const p = sorted[idx];
-  if (p.period_end == null || date <= p.period_end) return p;
-  return null;
+  // `idx` is the latest-started period on-or-before `date`; it covers `date` when the
+  // date is within its inclusive [period_start, period_end] window (the chassis check).
+  return rangeContainsDate(periodRange(p), date, INCLUSIVE_END) ? p : null;
 }
 
 // The cycle PHASE on `date`, or null when it can't be derived (before the first recorded
@@ -118,9 +127,11 @@ export function cyclePhaseOnDate(
   const p = sorted[idx];
   const next = sorted[idx + 1] ?? null;
 
-  // Menstrual — within the recorded period.
-  if (p.period_end == null) return "menstrual"; // ongoing period (only the latest cycle)
-  if (date <= p.period_end) return "menstrual";
+  // Menstrual — within the recorded period's inclusive [start, end] window (`idx`
+  // already guarantees period_start ≤ date). An ongoing period (null end) covers every
+  // day from its start onward — only ever the latest cycle.
+  if (rangeContainsDate(periodRange(p), date, INCLUSIVE_END))
+    return "menstrual";
 
   // Post-period.
   if (next != null) {
