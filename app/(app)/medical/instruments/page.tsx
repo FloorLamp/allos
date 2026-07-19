@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import PageContainer from "@/components/PageContainer";
 import { PageHeader, EmptyState } from "@/components/ui";
+import { Notice } from "@/components/Notice";
 import { biomarkerViewHref } from "@/lib/hrefs";
 import { CRISIS_RESOURCES_LINE } from "@/lib/mental-health";
 import {
@@ -39,17 +40,13 @@ export default async function InstrumentsPage() {
           hidden. Shown whenever the latest PHQ-9/GAD-7 is severe or PHQ-9 item 9 is
           positive. Informational framing, never a diagnosis. */}
       {escalating.length > 0 ? (
-        <div
-          className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm dark:border-rose-800 dark:bg-rose-950/40"
-          data-testid="instrument-crisis-line"
+        <Notice
+          tone="rose"
+          testid="instrument-crisis-line"
+          title="Your recent results suggest reaching out for support"
         >
-          <p className="font-medium text-rose-800 dark:text-rose-200">
-            Your recent results suggest reaching out for support
-          </p>
-          <p className="mt-1 text-rose-700 dark:text-rose-300">
-            {CRISIS_RESOURCES_LINE}
-          </p>
-        </div>
+          {CRISIS_RESOURCES_LINE}
+        </Notice>
       ) : null}
 
       <InstrumentsView defaultDate={td} />
