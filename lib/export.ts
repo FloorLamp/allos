@@ -1090,6 +1090,7 @@ export const DELETE_POLICY: Record<string, DatasetDeletePolicy> = {
   food_log_events: { revalidate: ["/nutrition", "/"] },
   protein_log: { revalidate: ["/nutrition", "/"] },
   symptom_logs: { revalidate: ["/", "/timeline"] },
+  cycles: { revalidate: ["/medical/cycles", "/timeline", "/"] },
 };
 
 export function getDataset(key: string): ExportDataset | undefined {
