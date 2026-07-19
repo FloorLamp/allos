@@ -1250,6 +1250,24 @@
       "description": "A validated 7-item questionnaire that scores anxiety severity from 0 to 21, banded minimal / mild / moderate / severe. It is a screening instrument, not a diagnosis. Tracked here as a numeric score over time; informational, not medical advice."
     },
     {
+      "name": "AUDIT-C",
+      "abbreviation": "AUDIT-C",
+      "full_name": "Alcohol Use Disorders Identification Test - Consumption",
+      "description": "A validated 3-item alcohol-use screen (the consumption items of the WHO AUDIT) scored 0 to 12, banded lower risk / increasing risk / higher risk / possible dependence. It is a screening instrument, not a diagnosis. Tracked here as a numeric score over time; informational, not medical advice."
+    },
+    {
+      "name": "AUDIT",
+      "abbreviation": "AUDIT",
+      "full_name": "Alcohol Use Disorders Identification Test",
+      "description": "The WHO 10-item alcohol-use screen scored 0 to 40, banded by the WHO risk zones: lower risk / increasing risk / higher risk / possible dependence. It is a screening instrument, not a diagnosis. Recorded as a total from an outside administration; informational, not medical advice."
+    },
+    {
+      "name": "DAST-10",
+      "abbreviation": "DAST-10",
+      "full_name": "Drug Abuse Screening Test-10",
+      "description": "A validated 10-item screen for non-alcohol drug use in the past 12 months, scored 0 to 10 and banded none reported / low / moderate / substantial / severe. It is a screening instrument, not a diagnosis. Recorded as a total from an outside administration; informational, not medical advice."
+    },
+    {
       "name": "Periodontal Probing Depth",
       "abbreviation": "PPD",
       "full_name": "Periodontal Probing Depth",
