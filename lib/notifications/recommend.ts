@@ -7,6 +7,7 @@
 // the reminder can reframe on a recovery day. Deterministic, no API. All day
 // boundaries follow the configured app timezone (via gatherCoachingInput).
 
+import { now as clockNow } from "../clock";
 import { frequencyScopeLabel } from "../goals";
 import { illnessCoachingMode, recommendCoaching } from "../coaching";
 import { recommendNextWorkout } from "../workout-recommendation";
@@ -30,7 +31,7 @@ export type { WorkoutRecommendation };
 export function recommendWorkout(
   profileId: number,
   gathered?: CoachingInput,
-  now: Date = new Date()
+  now: Date = clockNow()
 ): WorkoutRecommendation | null {
   // One gather, one core — the dashboard, the overview, and this reminder all
   // read the same computation, so they can't drift.

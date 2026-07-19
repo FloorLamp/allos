@@ -3,6 +3,7 @@
 import "./load-env";
 
 import { db, today } from "../lib/db";
+import { now as clockNow } from "../lib/clock";
 import { shiftDateStr } from "../lib/date";
 import { zonedWallTimeToUtc } from "../lib/calendar-ics";
 import { reconcileFlags } from "../lib/queries";
@@ -1243,7 +1244,7 @@ courseIns.run(ibuprofenId, daysAgo(30), null, null, "PRN for pain");
       ibuprofenDoseId,
       ibuprofenId,
       prnDay,
-      new Date(Date.now() - minutesAgo * 60 * 1000)
+      new Date(clockNow().getTime() - minutesAgo * 60 * 1000)
         .toISOString()
         .slice(0, 19)
         .replace("T", " ")

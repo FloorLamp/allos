@@ -3,6 +3,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { resolveTimezone } from "./timezone";
 import { dateStrInTz, shiftDateStr } from "./date";
+import { now } from "./clock";
 import { runMigrations } from "./migrations/runner";
 import { bootTasks } from "./migrations/boot-tasks";
 import { MIGRATIONS } from "./migrations/versions";
@@ -224,7 +225,10 @@ function resolveAppTimezone(profileId: number): string {
 }
 
 export function today(profileId: number): string {
-  return dateStrInTz(appTimezone(profileId));
+  // The clock seam (lib/clock.ts): `now()` is the real instant in production (the
+  // env override is unset) and the frozen ALLOS_TEST_NOW instant under e2e, so a
+  // suite run can't cross local midnight out from under its "today"-seeded fixtures.
+  return dateStrInTz(appTimezone(profileId), now());
 }
 
 export function yesterday(profileId: number): string {

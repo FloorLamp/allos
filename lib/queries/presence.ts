@@ -4,6 +4,7 @@
 // computation, so every consumer reads it through here.
 
 import { db, today } from "../db";
+import { now as clockNow } from "../clock";
 import { shiftDateStr } from "../date";
 import { getTimezone } from "../settings/display";
 import {
@@ -21,7 +22,7 @@ import { regionsForMove } from "../mobility-coverage";
 // midnight (its `date` still yesterday) stays inside the finished window.
 export function getWorkoutPresence(
   profileId: number,
-  now: Date = new Date()
+  now: Date = clockNow()
 ): WorkoutPresence {
   const tz = getTimezone(profileId);
   const todayStr = today(profileId);

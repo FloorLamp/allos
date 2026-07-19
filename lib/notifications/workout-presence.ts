@@ -22,6 +22,7 @@
 // stale marker is a harmless dead row needing no rename cleanup).
 
 import { today } from "../db";
+import { now as clockNow } from "../clock";
 import { getWorkoutPresence } from "../queries/presence";
 import { getSessionRecap } from "../queries/session-recap";
 import {
@@ -140,7 +141,7 @@ export function buildPostWorkoutFinishReminder(
 // delivery so a no-channel run retries next tick (within the finished window).
 export async function runPostWorkoutFinish(
   profileId: number,
-  now: Date = new Date()
+  now: Date = clockNow()
 ): Promise<{ failed: boolean }> {
   const presence = getWorkoutPresence(profileId, now);
   if (presence.state !== "finished" || presence.activityId == null)
@@ -226,7 +227,7 @@ export function renderStaleWorkoutMessage(
 export async function runStaleWorkoutSuggest(
   profileId: number,
   profileName: string,
-  now: Date = new Date()
+  now: Date = clockNow()
 ): Promise<{ failed: boolean }> {
   const presence = getWorkoutPresence(profileId, now);
   if (

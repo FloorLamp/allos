@@ -43,6 +43,24 @@ const DEMO_PORT = Number(process.env.E2E_DEMO_PORT ?? 3101);
 const DEMO_DB_PATH =
   process.env.ALLOS_DEMO_DB_PATH ?? "./e2e/.data/e2e-demo.db";
 
+// Freeze the app clock for the whole run (issue #990). The seed scripts and both app
+// instances boot under this env (the webServer `env` block applies to the entire
+// `seed && start` shell command), so `lib/clock.ts`'s `now()` — and every date it
+// derives (today(), workout presence, ongoing ranges, relative-time labels) — reads
+// the SAME instant in the fixtures and in the app. A run can then never cross local
+// midnight out from under its "today"-seeded fixtures, and the early-morning
+// now-minus-hours window can't flip a relative-time assertion. Computed ONCE here, at
+// config load, as a fixed mid-day instant TODAY (12:00 local), so the whole run shares
+// it. An externally-supplied ALLOS_TEST_NOW wins — used to stress a boundary hour
+// (e.g. 00:10 local) on demand without waiting for real midnight.
+const FROZEN_NOW =
+  process.env.ALLOS_TEST_NOW ??
+  (() => {
+    const d = new Date();
+    d.setHours(12, 0, 0, 0);
+    return d.toISOString();
+  })();
+
 // The persisted AI activity log (lib/ai-log.ts) is `<cwd>/data/logs/ai.jsonl` —
 // NOT under e2e/.data and NOT affected by ALLOS_DB_PATH, so the DB reset above
 // leaves it alone. AI-adjacent specs (ai-narrative/ai-settings) append offline AI
@@ -125,6 +143,8 @@ export default defineConfig({
         NODE_ENV: process.env.CI ? "production" : "development",
         // Capture outbound email to a file (no SMTP server) for the email-auth spec.
         EMAIL_TEST_CAPTURE: MAILBOX_PATH,
+        // Freeze the clock (seed + app share this instant) — issue #990.
+        ALLOS_TEST_NOW: FROZEN_NOW,
       },
     },
     // Demo instance (#181): same seed + image, booted with ALLOS_DEMO_MODE=1 so the
@@ -140,6 +160,8 @@ export default defineConfig({
         ADMIN_USERNAME: "admin",
         ADMIN_PASSWORD: "e2e-admin-pass",
         NODE_ENV: process.env.CI ? "production" : "development",
+        // Freeze the clock (seed + app share this instant) — issue #990.
+        ALLOS_TEST_NOW: FROZEN_NOW,
         // Next 16 dev takes a per-project single-instance lock, so the demo dev
         // server needs its own distDir (see next.config.js). CI runs `next start`
         // (no lock) off the one shared .next build, so this stays dev-only.
