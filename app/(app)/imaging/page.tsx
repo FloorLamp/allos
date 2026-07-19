@@ -1,8 +1,12 @@
 import { requireSession } from "@/lib/auth";
 import { getImagingStudies, getImagingStudyFollowUps } from "@/lib/queries";
+import { getUserAge } from "@/lib/settings";
+import { today } from "@/lib/db";
+import { cumulativeDose } from "@/lib/radiation-dose";
 import { PageHeader } from "@/components/ui";
 import ImagingStudyForm from "./ImagingStudyForm";
 import ImagingStudyList from "./ImagingStudyList";
+import RadiationDoseCard from "./RadiationDoseCard";
 import { addImagingStudy } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +22,12 @@ export default async function ImagingPage() {
   const { profile } = await requireSession();
   const studies = getImagingStudies(profile.id);
   const followUps = getImagingStudyFollowUps(profile.id);
+  // Cumulative radiation dose (#703): ONE pure computation over the studies, rendered
+  // as a calm, informational trailing-window total. A child profile (age < 18) carries
+  // the age-appropriate framing the app already applies to pediatric surfaces.
+  const dose = cumulativeDose(studies, today(profile.id));
+  const age = getUserAge(profile.id);
+  const pediatric = age !== null && age < 18;
 
   return (
     <div>
@@ -28,6 +38,7 @@ export default async function ImagingPage() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="min-w-0 space-y-4 lg:col-span-2">
+          <RadiationDoseCard cum={dose} pediatric={pediatric} />
           <ImagingStudyList items={studies} followUps={followUps} />
         </div>
 

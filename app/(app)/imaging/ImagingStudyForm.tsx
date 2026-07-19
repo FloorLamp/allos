@@ -156,6 +156,25 @@ export default function ImagingStudyForm({
         </div>
       </div>
       <div>
+        <label className="label" htmlFor={`is-dose-${uid}`}>
+          Effective dose (mSv)
+        </label>
+        <input
+          id={`is-dose-${uid}`}
+          name="dose_msv"
+          type="number"
+          step="any"
+          min="0"
+          inputMode="decimal"
+          className="input"
+          defaultValue={study?.dose_msv ?? ""}
+          placeholder="Only if the report prints one (rare)"
+        />
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          Leave blank to use a typical estimate for the modality.
+        </p>
+      </div>
+      <div>
         <label className="label" htmlFor={`is-indication-${uid}`}>
           Indication
         </label>

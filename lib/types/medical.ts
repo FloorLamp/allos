@@ -481,6 +481,12 @@ export interface ImagingStudy {
   contrast: boolean;
   contrast_agent: string | null;
   study_date: string | null;
+  // Effective radiation dose in millisieverts (mSv), when the report prints it
+  // (#703). Usually null — consumer radiology reports rarely state a dose, so this is
+  // captured manually or, rarely, by AI extraction. When null the Imaging section
+  // falls back to a curated typical-dose-by-modality ESTIMATE, kept separate from
+  // recorded doses. MRI / ultrasound use no ionizing radiation (dose 0).
+  dose_msv: number | null;
   impression: string | null;
   indication: string | null;
   status: string | null;

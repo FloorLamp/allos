@@ -8,6 +8,7 @@ import {
   normalizeModality,
   normalizeLaterality,
   normalizeContrast,
+  parseDoseMsv,
 } from "@/lib/imaging-study";
 import { today } from "@/lib/db";
 import {
@@ -53,8 +54,8 @@ export async function addImagingStudy(formData: FormData): Promise<FormResult> {
   db.prepare(
     `INSERT INTO imaging_studies
        (modality, body_region, laterality, contrast, contrast_agent, study_date,
-        impression, indication, status, notes, source, profile_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,NULL,?)`
+        dose_msv, impression, indication, status, notes, source, profile_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,NULL,?)`
   ).run(
     normalizeModality(formData.get("modality")),
     str(formData, "body_region"),
@@ -62,6 +63,7 @@ export async function addImagingStudy(formData: FormData): Promise<FormResult> {
     normalizeContrast(formData.get("contrast")) ? 1 : 0,
     str(formData, "contrast_agent"),
     dateOrNull(formData.get("study_date")),
+    parseDoseMsv(formData.get("dose_msv")),
     str(formData, "impression"),
     str(formData, "indication"),
     str(formData, "status"),
@@ -81,8 +83,8 @@ export async function updateImagingStudy(
   db.prepare(
     `UPDATE imaging_studies
        SET modality = ?, body_region = ?, laterality = ?, contrast = ?,
-           contrast_agent = ?, study_date = ?, impression = ?, indication = ?,
-           status = ?, notes = ?
+           contrast_agent = ?, study_date = ?, dose_msv = ?, impression = ?,
+           indication = ?, status = ?, notes = ?
      WHERE id = ? AND profile_id = ?`
   ).run(
     normalizeModality(formData.get("modality")),
@@ -91,6 +93,7 @@ export async function updateImagingStudy(
     normalizeContrast(formData.get("contrast")) ? 1 : 0,
     str(formData, "contrast_agent"),
     dateOrNull(formData.get("study_date")),
+    parseDoseMsv(formData.get("dose_msv")),
     str(formData, "impression"),
     str(formData, "indication"),
     str(formData, "status"),

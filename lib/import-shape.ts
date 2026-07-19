@@ -32,6 +32,7 @@ import {
   normalizeModality,
   normalizeLaterality,
   normalizeContrast,
+  parseDoseMsv,
 } from "./imaging-study";
 import {
   normalizeOpticalKind,
@@ -253,6 +254,7 @@ export interface PersistImagingStudy {
   contrast: boolean;
   contrast_agent: string | null;
   study_date: string | null;
+  dose_msv: number | null;
   impression: string | null;
   indication: string | null;
   status: string | null;
@@ -676,6 +678,7 @@ export function extractionToPersistInput(
       contrast: normalizeContrast(s.contrast),
       contrast_agent: s.contrast_agent,
       study_date: s.study_date,
+      dose_msv: parseDoseMsv(s.dose_msv),
       impression: s.impression,
       indication: s.indication,
       status: s.status,
@@ -1025,6 +1028,10 @@ export function healthRecordToPersistInput(
       contrast: s.contrast,
       contrast_agent: s.contrast_agent,
       study_date: s.study_date,
+      // FHIR ImagingStudy carries no simple effective-dose field (dose is a Procedure
+      // extension the mapper doesn't parse), so this stays null on the deterministic
+      // path — the typical estimate fills in downstream (#703).
+      dose_msv: s.dose_msv ?? null,
       impression: s.impression,
       indication: s.indication,
       status: s.status,
