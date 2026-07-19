@@ -1731,8 +1731,7 @@ opticalIns.run(
   null,
   daysAgo(730),
   daysAgo(730 - 365 * 2),
-  "Distance glasses",
-  daysAgo(730)
+  "Distance glasses"
 );
 opticalIns.run(
   "glasses",
@@ -1750,8 +1749,7 @@ opticalIns.run(
   null,
   daysAgo(90),
   daysAgo(90 - 365 * 2),
-  "Updated distance glasses — slight increase",
-  daysAgo(90)
+  "Updated distance glasses — slight increase"
 );
 opticalIns.run(
   "contacts",
@@ -1769,8 +1767,7 @@ opticalIns.run(
   "Acuvue Oasys",
   daysAgo(90),
   daysAgo(90 - 365),
-  "Daily wear contacts",
-  daysAgo(90)
+  "Daily wear contacts"
 );
 
 // ── Care plan / plan of treatment ────────────────────────────────────────────
