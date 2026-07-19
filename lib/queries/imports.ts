@@ -17,6 +17,7 @@ import type {
   Zygosity,
   ImagingModality,
   ImagingLaterality,
+  OpticalKind,
 } from "../types/medical";
 import {
   interleaveImportLog,
@@ -220,6 +221,13 @@ export function getDocumentProduced(
       )
       .get(profileId, docId)
   );
+  const opticalPrescriptions = scalar(
+    db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM optical_prescriptions WHERE profile_id = ? AND document_id = ?`
+      )
+      .get(profileId, docId)
+  );
   const appointments = scalar(
     db
       .prepare(
@@ -276,6 +284,9 @@ export function getDocumentProduced(
             UNION
             SELECT location_provider_id FROM encounters
               WHERE profile_id = ? AND document_id = ? AND location_provider_id IS NOT NULL
+            UNION
+            SELECT provider_id FROM optical_prescriptions
+              WHERE profile_id = ? AND document_id = ? AND provider_id IS NOT NULL
          )`
       )
       .get(
@@ -283,6 +294,8 @@ export function getDocumentProduced(
         docId,
         profileId,
         source,
+        profileId,
+        docId,
         profileId,
         docId,
         profileId,
@@ -302,6 +315,7 @@ export function getDocumentProduced(
     careGoals,
     genomicVariants,
     imagingStudies,
+    opticalPrescriptions,
     appointments,
     medications,
     bodyMetrics,
@@ -485,6 +499,28 @@ export function getDocumentImagingStudies(profileId: number, docId: number) {
     contrast: number;
     study_date: string | null;
     impression: string | null;
+  }[];
+}
+
+export function getDocumentOpticalPrescriptions(
+  profileId: number,
+  docId: number
+) {
+  return db
+    .prepare(
+      `SELECT id, kind, od_sphere, os_sphere, pd, issued_date
+         FROM optical_prescriptions
+        WHERE profile_id = ? AND document_id = ?
+        ORDER BY COALESCE(issued_date, '') DESC, id`
+    )
+    .all(profileId, docId) as {
+    id: number;
+    // CHECK-constrained column, so the stored string IS the enum value.
+    kind: OpticalKind;
+    od_sphere: number | null;
+    os_sphere: number | null;
+    pd: number | null;
+    issued_date: string | null;
   }[];
 }
 

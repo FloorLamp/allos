@@ -107,6 +107,15 @@ Rules:
     NUMERIC imaging measurements (DEXA T-scores, coronary calcium score, ejection fraction,
     carotid IMT) still belong in "results" as their own analytes — the imaging_studies entry
     is the narrative, not those numbers.
+  - optical_prescriptions: when the document is an EYEGLASS or CONTACT-LENS prescription /
+    optometry Rx slip / eye-exam refraction, emit ONE entry into the "optical_prescriptions"
+    array. Capture the printed values verbatim — do NOT compute or convert: kind ("glasses"
+    or "contacts"). Per-eye refraction, where OD = right eye and OS = left eye — od_sphere,
+    od_cylinder, od_axis (whole degrees 0–180), od_add, and os_sphere, os_cylinder, os_axis,
+    os_add. Keep the printed notation, e.g. "-2.00", "+1.25", "plano". Then pd (pupillary
+    distance in mm), and for CONTACTS only base_curve + diameter (mm) + brand. issued_date
+    and expiry_date (ISO YYYY-MM-DD), prescriber (the optometrist's name), notes. A lab /
+    imaging / genetics report is NOT an optical prescription — leave this array empty for it.
 - Be concise: emit only the structured fields above. Brevity matters — there may be 100+
   results and the response must fit in the output budget.
 - Do not invent data. If the document has no extractable results, return empty arrays.`;
@@ -562,6 +571,86 @@ export const TOOL: Anthropic.Tool = {
             status: {
               type: ["string", "null"],
               description: "e.g. 'final', 'preliminary'",
+            },
+          },
+          required: [],
+        },
+      },
+      optical_prescriptions: {
+        type: "array",
+        description:
+          "One entry per eyeglass / contact-lens prescription described by the document. Empty for a plain lab / imaging / genetics report. Capture the printed refraction verbatim — never compute or convert.",
+        items: {
+          type: "object",
+          properties: {
+            kind: {
+              type: ["string", "null"],
+              description: "'glasses' or 'contacts'",
+            },
+            od_sphere: {
+              type: ["string", "null"],
+              description:
+                "Right eye (OD) sphere, printed notation e.g. '-2.00'",
+            },
+            od_cylinder: {
+              type: ["string", "null"],
+              description: "Right eye (OD) cylinder",
+            },
+            od_axis: {
+              type: ["string", "null"],
+              description: "Right eye (OD) axis, whole degrees 0–180",
+            },
+            od_add: {
+              type: ["string", "null"],
+              description: "Right eye (OD) add power",
+            },
+            os_sphere: {
+              type: ["string", "null"],
+              description: "Left eye (OS) sphere, printed notation",
+            },
+            os_cylinder: {
+              type: ["string", "null"],
+              description: "Left eye (OS) cylinder",
+            },
+            os_axis: {
+              type: ["string", "null"],
+              description: "Left eye (OS) axis, whole degrees 0–180",
+            },
+            os_add: {
+              type: ["string", "null"],
+              description: "Left eye (OS) add power",
+            },
+            pd: {
+              type: ["string", "null"],
+              description: "Pupillary distance in mm",
+            },
+            base_curve: {
+              type: ["string", "null"],
+              description: "Contacts only: base curve (mm)",
+            },
+            diameter: {
+              type: ["string", "null"],
+              description: "Contacts only: lens diameter (mm)",
+            },
+            brand: {
+              type: ["string", "null"],
+              description: "Contacts only: lens brand",
+            },
+            issued_date: {
+              type: ["string", "null"],
+              description: "Date issued, ISO YYYY-MM-DD, else null",
+            },
+            expiry_date: {
+              type: ["string", "null"],
+              description: "Expiry date, ISO YYYY-MM-DD, else null",
+            },
+            prescriber: {
+              type: ["string", "null"],
+              description: "The prescribing optometrist's name",
+            },
+            notes: {
+              type: ["string", "null"],
+              description: "Any other printed note",
             },
           },
           required: [],

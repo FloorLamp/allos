@@ -465,6 +465,46 @@ export interface ImagingStudy {
   created_at: string;
 }
 
+// An optical prescription's kind. `glasses` and `contacts` carry the same per-eye
+// refraction (sphere/cylinder/axis/add); only `contacts` adds base_curve/diameter/
+// brand. Normalized in lib/optical-prescription.ts.
+export type OpticalKind = "glasses" | "contacts";
+
+// A structured optical (eyeglass/contact) prescription (table: optical_prescriptions,
+// issue #697). Per-eye refraction in standard optometry notation — OD = right eye,
+// OS = left eye: `*_sphere` / `*_cylinder` / `*_add` are dioptres (may be negative),
+// `*_axis` is a whole degree 0–180. `pd` is pupillary distance (mm). The contacts-only
+// extras (`base_curve` / `diameter` / `brand`) stay null for a glasses Rx.
+// `issued_date` / `expiry_date` bound its validity (expiry surfaces on the Vision page
+// as plain "expires soon"/"expired" text). `provider_id` links the PRESCRIBER in the
+// global providers registry. Provenance/dedup (`source`/`document_id`/`external_id`)
+// mirror the conditions table so the import footprint clears/moves/counts it by
+// document_id.
+export interface OpticalPrescription {
+  id: number;
+  kind: OpticalKind;
+  od_sphere: number | null;
+  od_cylinder: number | null;
+  od_axis: number | null;
+  od_add: number | null;
+  os_sphere: number | null;
+  os_cylinder: number | null;
+  os_axis: number | null;
+  os_add: number | null;
+  pd: number | null;
+  base_curve: number | null;
+  diameter: number | null;
+  brand: string | null;
+  issued_date: string | null;
+  expiry_date: string | null;
+  provider_id: number | null;
+  notes: string | null;
+  source: string | null;
+  document_id: number | null;
+  external_id: string | null;
+  created_at: string;
+}
+
 // A family-history entry (table: family_history): one condition affecting one
 // relative. `relation` is the affected relative (mother/father/sibling/…);
 // `condition` the display term for their diagnosis; `code`/`code_system` its coded

@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 065 (issue #716): per-item answers for an in-app-administered mental-health
+// Migration 066 (issue #716): per-item answers for an in-app-administered mental-health
 // instrument (PHQ-9 / GAD-7).
 //
 // The instrument SCORE reuses the observation substrate (#860/#944): it is a numeric
@@ -43,7 +43,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 65,
-  name: "065-instrument-responses",
+  id: 66,
+  name: "066-instrument-responses",
   up,
 };

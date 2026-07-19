@@ -736,6 +736,19 @@ function insertImportRows(
         source, document_id, external_id, profile_id)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
   );
+  // Optical prescriptions (#697). Same idempotency as the other clinical domains:
+  // the per-document delete-set clears this document's prior rows, then INSERT OR
+  // IGNORE re-inserts. Keyed to the document via document_id so the import footprint
+  // clears/moves/counts it, exactly like conditions/imaging_studies. provider_id is
+  // the resolved shared-registry id for the prescribing optometrist.
+  const insOpticalPrescription = db.prepare(
+    `INSERT OR IGNORE INTO optical_prescriptions
+       (kind, od_sphere, od_cylinder, od_axis, od_add,
+        os_sphere, os_cylinder, os_axis, os_add,
+        pd, base_curve, diameter, brand, issued_date, expiry_date,
+        provider_id, notes, source, document_id, external_id, profile_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  );
   // Scheduled appointments (issue #416). Same idempotency as the other clinical
   // domains: the per-document delete-set clears this document's prior rows, then
   // INSERT OR IGNORE dedups within the document via the per-profile unique external_id
@@ -1027,6 +1040,33 @@ function insertImportRows(
       docSource,
       docId,
       scopedExternalId(s.external_id),
+      profileId
+    );
+  }
+  // Optical prescriptions (#697) — optional on PersistInput, so guard with `?? []`.
+  // The prescriber name resolves into the shared providers registry via providerIdFor.
+  for (const p of input.opticalPrescriptions ?? []) {
+    insOpticalPrescription.run(
+      p.kind,
+      p.od_sphere,
+      p.od_cylinder,
+      p.od_axis,
+      p.od_add,
+      p.os_sphere,
+      p.os_cylinder,
+      p.os_axis,
+      p.os_add,
+      p.pd,
+      p.base_curve,
+      p.diameter,
+      p.brand,
+      p.issued_date,
+      p.expiry_date,
+      providerIdFor(p.provider),
+      p.notes,
+      docSource,
+      docId,
+      scopedExternalId(p.external_id),
       profileId
     );
   }
