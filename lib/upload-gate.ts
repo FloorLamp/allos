@@ -27,6 +27,16 @@ export const MAX_HEALTH_BYTES = 64 * 1024 * 1024; // 64MB
 // largest permitted upload. Exported for the lockstep guard.
 export const MULTIPART_OVERHEAD_MARGIN = 1024 * 1024; // 1MiB
 
+// Soft cap on how many medical documents one multi-file upload submit ingests
+// (issue #1008). Multi-select / drag-drop lets a user hand over a whole stack at
+// once; the extraction engine fans them out through its own concurrency limit +
+// queue, but an unbounded batch could still swamp that queue, so the entry point
+// ingests the first N and returns a friendly "add the rest in another batch" note
+// for the remainder. A SOFT cap (skip the overflow, keep going) — not a hard wall
+// that rejects the whole submit. Lives here with the other upload-gate policy so
+// the client form and the server action share one number.
+export const MEDICAL_UPLOAD_BATCH_CAP = 20;
+
 // Cheap, PRE-BUFFER signals that an upload MIGHT be a deterministic health record
 // (CCD/CDA XML, MyChart XDM zip, SMART Health Card, FHIR bundle) — derived only
 // from the filename extension and the client-declared MIME type, both known from
