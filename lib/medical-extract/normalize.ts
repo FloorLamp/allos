@@ -25,6 +25,7 @@ import type {
   ExtractedCareGoal,
   ExtractedGenomicVariant,
   ExtractedImagingStudy,
+  ExtractedOpticalPrescription,
 } from "./types";
 
 // The tool schema's TOP-LEVEL property names (the `save_medical_data` input_schema
@@ -50,6 +51,7 @@ const EXTRACTION_TOP_LEVEL_KEYS = new Set([
   "care_goals",
   "genomic_variants",
   "imaging_studies",
+  "optical_prescriptions",
 ]);
 
 // How many of the tool schema's top-level keys an object names — how payload-like
@@ -300,6 +302,7 @@ export function normalizeClinicalDomains(raw: any): {
   careGoals: ExtractedCareGoal[];
   genomicVariants: ExtractedGenomicVariant[];
   imagingStudies: ExtractedImagingStudy[];
+  opticalPrescriptions: ExtractedOpticalPrescription[];
   drops: ImportDrop[];
 } {
   const drops: ImportDrop[] = [];
@@ -519,6 +522,45 @@ export function normalizeClinicalDomains(raw: any): {
     });
   }
 
+  // Optical prescriptions from an uploaded Rx slip / eye-exam report (#697). A
+  // prescription with NO per-eye sphere on either side AND no kind is noise and
+  // drops (nothing meaningful to store). kind / per-eye powers stay raw here (parsed
+  // + normalized downstream in import-shape); issued/expiry dates are coerced to
+  // strict ISO-or-null; the prescriber name is kept verbatim (resolved on persist).
+  const opticalPrescriptions: ExtractedOpticalPrescription[] = [];
+  for (const p of arr(raw?.optical_prescriptions)) {
+    const kind = strOrNull(p?.kind);
+    const odSphere = strOrNull(p?.od_sphere);
+    const osSphere = strOrNull(p?.os_sphere);
+    if (!kind && !odSphere && !osSphere) {
+      drops.push({
+        kind: "optical_prescription",
+        label: "(empty prescription)",
+        reason: "no_value",
+      });
+      continue;
+    }
+    opticalPrescriptions.push({
+      kind,
+      od_sphere: odSphere,
+      od_cylinder: strOrNull(p?.od_cylinder),
+      od_axis: strOrNull(p?.od_axis),
+      od_add: strOrNull(p?.od_add),
+      os_sphere: osSphere,
+      os_cylinder: strOrNull(p?.os_cylinder),
+      os_axis: strOrNull(p?.os_axis),
+      os_add: strOrNull(p?.os_add),
+      pd: strOrNull(p?.pd),
+      base_curve: strOrNull(p?.base_curve),
+      diameter: strOrNull(p?.diameter),
+      brand: strOrNull(p?.brand),
+      issued_date: isoDateOrNull(p?.issued_date),
+      expiry_date: isoDateOrNull(p?.expiry_date),
+      prescriber: strOrNull(p?.prescriber),
+      notes: strOrNull(p?.notes),
+    });
+  }
+
   return {
     conditions,
     allergies,
@@ -529,6 +571,7 @@ export function normalizeClinicalDomains(raw: any): {
     careGoals,
     genomicVariants,
     imagingStudies,
+    opticalPrescriptions,
     drops,
   };
 }

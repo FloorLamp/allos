@@ -1,0 +1,111 @@
+"use server";
+import { requireWriteAccess } from "@/lib/auth";
+import { revalidatePath } from "next/cache";
+import { db } from "@/lib/db";
+import { isRealIsoDate } from "@/lib/date";
+import { formError, formOk, type FormResult } from "@/lib/types";
+import {
+  normalizeOpticalKind,
+  parseDiopter,
+  parseAxis,
+  parseMillimeters,
+} from "@/lib/optical-prescription";
+
+// Optical-prescription writes (#697). Session-scoped; every mutation is
+// `WHERE id = ? AND profile_id = ?` and the INSERT carries profile_id. Manual rows
+// carry a NULL source/document_id/external_id (like conditions/imaging_studies), so
+// the per-document import delete-set never touches them; editing an imported row
+// leaves its provenance intact. `kind` is normalized onto the DB CHECK set and the
+// per-eye powers / axis / distances are parsed off the Rx notation through the ONE
+// shared coercion in lib/optical-prescription (the same the import path uses), so a
+// stray form value can never trip the CHECK.
+//
+// The prescriber provider link (provider_id) is populated only on the AI import path
+// (which resolves the extracted optometrist name into the shared registry); this
+// manual form doesn't offer a provider picker yet, so a manual Rx carries a NULL
+// provider_id (the same stance imaging takes for its provider links). A provider
+// merge still re-points it (PROVIDER_LINK_COLUMNS).
+
+function revalidateVision() {
+  revalidatePath("/vision");
+  revalidatePath("/profile");
+  revalidatePath("/");
+}
+
+const str = (formData: FormData, key: string): string | null =>
+  String(formData.get(key) ?? "").trim() || null;
+
+function dateOrNull(raw: unknown): string | null {
+  const v = String(raw ?? "").trim();
+  return isRealIsoDate(v) ? v : null;
+}
+
+// The full column list, in INSERT/UPDATE order, parsed from the form. Kept in one
+// place so add and update stay in lock-step.
+function rxValues(formData: FormData): unknown[] {
+  return [
+    normalizeOpticalKind(formData.get("kind")),
+    parseDiopter(formData.get("od_sphere")),
+    parseDiopter(formData.get("od_cylinder")),
+    parseAxis(formData.get("od_axis")),
+    parseDiopter(formData.get("od_add")),
+    parseDiopter(formData.get("os_sphere")),
+    parseDiopter(formData.get("os_cylinder")),
+    parseAxis(formData.get("os_axis")),
+    parseDiopter(formData.get("os_add")),
+    parseMillimeters(formData.get("pd")),
+    parseMillimeters(formData.get("base_curve")),
+    parseMillimeters(formData.get("diameter")),
+    str(formData, "brand"),
+    dateOrNull(formData.get("issued_date")),
+    dateOrNull(formData.get("expiry_date")),
+    str(formData, "notes"),
+  ];
+}
+
+export async function addOpticalPrescription(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  db.prepare(
+    `INSERT INTO optical_prescriptions
+       (kind, od_sphere, od_cylinder, od_axis, od_add,
+        os_sphere, os_cylinder, os_axis, os_add,
+        pd, base_curve, diameter, brand, issued_date, expiry_date, notes,
+        source, profile_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?)`
+  ).run(...rxValues(formData), profile.id);
+  revalidateVision();
+  return formOk();
+}
+
+export async function updateOpticalPrescription(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const id = Number(formData.get("id"));
+  if (!id) return formError("Couldn't find that prescription.");
+  db.prepare(
+    `UPDATE optical_prescriptions
+       SET kind = ?, od_sphere = ?, od_cylinder = ?, od_axis = ?, od_add = ?,
+           os_sphere = ?, os_cylinder = ?, os_axis = ?, os_add = ?,
+           pd = ?, base_curve = ?, diameter = ?, brand = ?,
+           issued_date = ?, expiry_date = ?, notes = ?
+     WHERE id = ? AND profile_id = ?`
+  ).run(...rxValues(formData), id, profile.id);
+  revalidateVision();
+  return formOk();
+}
+
+export async function deleteOpticalPrescription(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const id = Number(formData.get("id"));
+  if (!id) return formError("Couldn't find that prescription.");
+  db.prepare(
+    "DELETE FROM optical_prescriptions WHERE id = ? AND profile_id = ?"
+  ).run(id, profile.id);
+  revalidateVision();
+  return formOk();
+}

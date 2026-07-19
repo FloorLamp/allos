@@ -59,6 +59,9 @@ export const OWNED_TABLES = [
   // deleteProfile clears the child rows carrying a document_id FK before it drops
   // their parent medical_documents rows (the FK carries no ON DELETE action).
   "imaging_studies",
+  // Structured optical (eyeglass/contact) prescriptions (#697). Ordered BEFORE
+  // medical_documents for the same reason — its document_id FK carries no ON DELETE.
+  "optical_prescriptions",
   "medical_documents",
   "allergies",
   "conditions",

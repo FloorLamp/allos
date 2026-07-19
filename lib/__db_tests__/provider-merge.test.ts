@@ -76,6 +76,11 @@ function linkAllTables(profileId: number, providerId: number): number {
     `INSERT INTO imaging_studies (profile_id, modality, body_region, reading_provider_id)
      VALUES (?, 'mri', 'Knee', ?)`
   ).run(profileId, providerId);
+  // Optical prescriptions link the prescribing optometrist (#697).
+  db.prepare(
+    `INSERT INTO optical_prescriptions (profile_id, kind, provider_id)
+     VALUES (?, 'glasses', ?)`
+  ).run(profileId, providerId);
   return PROVIDER_LINK_COLUMNS.length;
 }
 

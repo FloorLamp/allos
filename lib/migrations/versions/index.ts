@@ -61,6 +61,7 @@ import { migration as m059 } from "./059-frequency-target-mobility-region";
 import { migration as m060 } from "./060-followup-labs";
 import { migration as m061 } from "./061-notify-lifecycle";
 import { migration as m062 } from "./062-stable-episode-conditions";
+import { migration as m063 } from "./063-optical-prescriptions";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -131,4 +132,5 @@ export const MIGRATIONS: Migration[] = [
   m060,
   m061,
   m062,
+  m063,
 ];
