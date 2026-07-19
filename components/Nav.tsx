@@ -7,7 +7,7 @@ import {
   IconLayoutDashboard,
   IconTimelineEvent,
   IconTrendingUp,
-  IconFlask2,
+  IconHourglass,
   IconCalendarClock,
   IconUsersGroup,
   IconBarbell,
@@ -208,9 +208,10 @@ const entries: Entry[] = [
     // issue #31. The page re-checks the accessible-profile count server-side.
     requiresMultiProfile: true,
   },
-  // Protocols holds the slot the Longevity page takes over in #1042 phase 4
-  // (Protocols folds into it as the interventions section).
-  { href: "/protocols", label: "Protocols", icon: IconFlask2 },
+  // Longevity took over Protocols' slot in #1042 phase 4: the healthspan-pillar
+  // page whose #protocols section absorbed the old Protocols hub (the /protocols
+  // URL 308-redirects there). Ungated, exactly as Protocols was.
+  { href: "/longevity", label: "Longevity", icon: IconHourglass },
   RECORDS,
   // One "Data" umbrella covering both halves — bringing data in (upload/paste/
   // connect) and managing/exporting what's logged. The former standalone /import

@@ -219,3 +219,26 @@ export function completenessChecklistMessage(c: InputCompleteness): string {
 export function isBioAgeHiddenForAge(age: number | null): boolean {
   return age != null && !isAdultForClinical(age);
 }
+
+// ── Surface state ─────────────────────────────────────────────────────────────
+
+// Which bio-age surface renders: the headline HERO (≥1 complete draw), the
+// missing-inputs CHECKLIST CTA (no complete draw but at least one of the nine
+// inputs present — a labs-empty profile gets nothing, the page's own empty state
+// covers it), or HIDDEN (age-gated, or nothing to show). ONE decision shared by
+// every bio-age surface — the Biomarkers-page hero (components/BioAgeHero.tsx)
+// and the Longevity page's #bio-age section (#1042 phase 4) — so the section
+// wrapper and the hero can never disagree about whether bio-age renders.
+// `hiddenForProfile` is the caller's combined gate (isBioAgeHiddenForAge +
+// any surface-level restriction like the training age gate).
+export type BioAgeSurface = "hidden" | "checklist" | "hero";
+
+export function bioAgeSurface(
+  hiddenForProfile: boolean,
+  completeDrawCount: number,
+  presentInputCount: number
+): BioAgeSurface {
+  if (hiddenForProfile) return "hidden";
+  if (completeDrawCount > 0) return "hero";
+  return presentInputCount > 0 ? "checklist" : "hidden";
+}

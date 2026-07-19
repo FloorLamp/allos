@@ -8,25 +8,29 @@ import {
 } from "@/lib/queries";
 import { getEquipment } from "@/lib/equipment";
 import { recoveryGearOptions } from "@/lib/protocol-gear";
-import { PageHeader } from "@/components/ui";
-import ProtocolForm from "./ProtocolForm";
-import ProtocolList from "./ProtocolList";
-import { createProtocol } from "./actions";
+import ProtocolForm from "@/app/(app)/protocols/ProtocolForm";
+import ProtocolList from "@/app/(app)/protocols/ProtocolList";
+import { createProtocol } from "@/app/(app)/protocols/actions";
 import {
   PROTOCOL_TEMPLATES,
-  protocolTemplateById,
+  type ProtocolTemplate,
 } from "@/lib/protocol-templates";
 
-export const dynamic = "force-dynamic";
-
-// N-of-1 protocols (issue #161): dated self-experiments (creatine, sauna blocks,
-// Zone 2 emphasis, TRE) with declared outcome metrics the app compares before vs.
-// during. This hub lists protocols and creates new ones; each row links to its
-// before/during detail page.
-export default async function ProtocolsPage({
-  searchParams,
+// Longevity §5 — Protocols / N-of-1 experiments (#1042 phase 4): the absorbed
+// /protocols hub (issue #161), now the page's INTERVENTIONS section — the
+// membership test's second arm ("…or an intervention against a pillar"), which
+// is why it is the one section that renders unconditionally: it's also the
+// creation surface for a first experiment. The Server Actions and the per-
+// protocol detail route (/protocols/[id]) did NOT move — actions are route-
+// independent modules, and the old /protocols hub URL 308-redirects here
+// (next.config.js → /longevity#protocols). This section lists protocols and
+// creates new ones; each row links to its before/during detail page.
+export default async function ProtocolsSection({
+  template,
 }: {
-  searchParams: Promise<{ template?: string }>;
+  // The starter template (issue #571) selected from the templates strip
+  // (?template= on /longevity), seeding the add form. Null when none requested.
+  template: ProtocolTemplate | null;
 }) {
   const { login, profile } = await requireSession();
   const protocols = getProtocols(profile.id);
@@ -37,16 +41,23 @@ export default async function ProtocolsPage({
   const equipment = recoveryGearOptions(getEquipment(profile.id));
   // The profile's supplements + medications for the direct intervention link (#660).
   const intakeItems = getProtocolIntakeOptions(profile.id);
-  // A starter template (issue #571) selected from the templates strip, seeding the
-  // add form. Null when no/unknown template is requested.
-  const template = protocolTemplateById((await searchParams).template);
 
   return (
-    <div>
-      <PageHeader
-        title="Protocols"
-        subtitle="Run an N-of-1 experiment: pick an intervention, declare the outcomes you care about, and Allos compares the baseline window against the intervention window — no p-value theater, just the honest shift."
-      />
+    <section
+      id="protocols"
+      data-testid="longevity-protocols"
+      className="scroll-mt-20"
+    >
+      <div className="mb-3">
+        <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+          Protocols &amp; experiments
+        </h2>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+          Run an N-of-1 experiment: pick an intervention, declare the outcomes
+          you care about, and Allos compares the baseline window against the
+          intervention window — no p-value theater, just the honest shift.
+        </p>
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="min-w-0 space-y-4 lg:col-span-2">
@@ -64,7 +75,7 @@ export default async function ProtocolsPage({
               {PROTOCOL_TEMPLATES.map((t) => (
                 <Link
                   key={t.id}
-                  href={`/protocols?template=${t.id}`}
+                  href={`/longevity?template=${t.id}#protocols`}
                   data-testid={`protocol-template-${t.id}`}
                   className={`badge transition ${
                     template?.id === t.id
@@ -78,7 +89,7 @@ export default async function ProtocolsPage({
               ))}
               {template ? (
                 <Link
-                  href="/protocols"
+                  href="/longevity#protocols"
                   className="badge bg-slate-100 text-slate-600 hover:ring-1 hover:ring-current dark:bg-ink-800 dark:text-slate-300"
                 >
                   Clear
@@ -108,6 +119,6 @@ export default async function ProtocolsPage({
           </p>
         </div>
       </div>
-    </div>
+    </section>
   );
 }
