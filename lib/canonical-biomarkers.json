@@ -3411,6 +3411,28 @@
       "optimal_high": null,
       "direction": "lower_better",
       "note": "Distance from the cemento-enamel junction to the base of the periodontal pocket, in millimetres — the cumulative attachment lost. 1–2 mm is mild, 3–4 mm moderate, ≥5 mm severe (2017 AAP/EFP staging). Tracks periodontitis progression over time."
+    },
+    {
+      "name": "PHQ-9",
+      "category": "biomarker",
+      "unit": null,
+      "ref_low": null,
+      "ref_high": null,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Patient Health Questionnaire-9 total score (0–27), a validated screening instrument for depression severity. Severity bands: 0–4 minimal, 5–9 mild, 10–14 moderate, 15–19 moderately severe, 20–27 severe. Screening only, NOT a diagnosis. Item 9 asks about thoughts of self-harm. Public domain (Spitzer, Williams, Kroenke / Pfizer)."
+    },
+    {
+      "name": "GAD-7",
+      "category": "biomarker",
+      "unit": null,
+      "ref_low": null,
+      "ref_high": null,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "lower_better",
+      "note": "Generalized Anxiety Disorder-7 total score (0–21), a validated screening instrument for anxiety severity. Severity bands: 0–4 minimal, 5–9 mild, 10–14 moderate, 15–21 severe. Screening only, NOT a diagnosis. Public domain (Spitzer, Kroenke, Williams, Löwe)."
     }
   ]
 }

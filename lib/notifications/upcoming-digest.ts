@@ -41,6 +41,11 @@ const DOMAIN_NOUN: Record<UpcomingDomain, string> = {
   // scoped OUT for v1 (like condition-review) — omitted from DOMAIN_SEQ, so it's
   // never counted here even though the noun exists. A push is a follow-up decision.
   followup: "finding follow-up",
+  // A mental-health crisis finding (#716). Care-tier on the hero/Upcoming, but
+  // DELIBERATELY never pushed on any channel — omitted from DOMAIN_SEQ, so it's never
+  // counted in this digest even though the exhaustive Record needs the noun. The
+  // decided harm case is crisis content landing on a shared/locked device.
+  "mental-health": "mental-health check-in",
   // The unified model's "something's off" signals (issue #524) never reach this
   // digest — it groups collectUpcoming, which is date-scheduled due-signals only —
   // but the exhaustive Record needs an entry. DOMAIN_SEQ omits them, so they're

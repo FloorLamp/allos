@@ -61,6 +61,11 @@ const ALLOWLIST: Record<string, string> = {
   enduranceEventItems:
     "endurance event day (#839) — carries its own real event_date; a user-set race " +
     "goal, not a risk-ranked clinical due signal",
+  mentalHealthCrisisItems:
+    "mental-health crisis finding (#716) — a severe PHQ-9/GAD-7 or positive item 9 is a " +
+    "non-dismissible safety signal that is ALREADY maximally urgent; risk-stratified " +
+    "priority (family history / life stage) is N/A and must never rank a crisis line " +
+    "down, so it opts out of this layer like the other safety findings",
 };
 
 // Aggregators/collectors that COMPOSE the builders rather than emit their own

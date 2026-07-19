@@ -7,6 +7,7 @@
 
 import type { AppRoute } from "./hrefs";
 import type { Reason } from "./reasons";
+import type { LifecycleSuppressionPolicy } from "./lifecycle";
 import { daysBetweenDateStr, shiftDateStr } from "./date";
 import { daysRemainingLabel } from "./format-date";
 import { compareSortHint } from "./dose-order";
@@ -76,6 +77,11 @@ export type UpcomingDomain =
   // follow-up that is due/overdue, or that has a matching later record and OFFERS a
   // resolution. Care-tier; an overdue one is care-persistent (see carePersistent).
   | "followup"
+  // A severe mental-health instrument score / positive PHQ-9 item 9 (issue #716): a
+  // care-tier, NON-DISMISSIBLE crisis finding. Care-tier on-screen (Upcoming + hero)
+  // but NEVER pushed — deliberately omitted from the digest DOMAIN_SEQ and given no
+  // notify orchestrator, so no channel ever carries crisis content.
+  | "mental-health"
   | "biomarker-flag"
   | "integration"
   | "review";
@@ -112,6 +118,9 @@ const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
   // care notes (just after the condition-review suggestion), ahead of the calm
   // scheduling/coaching domains.
   followup: 2.7,
+  // A severe/self-harm mental-health finding (#716) — highest-priority care note; sort
+  // it ahead of the other care notes so the crisis line leads the "Today" band.
+  "mental-health": 2.4,
   // The "something's off" signals (issue #524). They never share a date band with
   // the scheduled domains (they carry `signalGroup`, not a due date), so these
   // ranks only order them WITHIN the Flagged / For-review groupings: the clinical
@@ -213,6 +222,14 @@ export interface UpcomingItem {
   // honors a live time-boxed snooze, and the surfaces render a snooze-only menu (no
   // dismiss). Absent for every ordinary item (fully suppressible).
   carePersistent?: boolean;
+  // Explicit suppression policy override (issue #716). When set, it wins over the
+  // carePersistent-derived default in isItemHiddenBySuppression — the ONE lifecycle
+  // decision (#942). "safety-ungated" makes an item structurally NON-DISMISSIBLE and
+  // NON-SNOOZABLE (the crisis finding, same standing as a safety dose reminder): the
+  // bus can never hide it. Absent for every ordinary item (policy derived from
+  // carePersistent). An item using this also sets `suppressible: false` so no
+  // snooze/dismiss control renders.
+  suppressionPolicy?: LifecycleSuppressionPolicy;
   // Finding follow-up resolution offer (issue #700 ask 3): when a matching later
   // record has landed, the row renders inline "mark resolved / stable / changed"
   // controls (confirm-first, #560) that record the outcome against the resolving

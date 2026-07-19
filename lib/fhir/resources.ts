@@ -28,6 +28,7 @@ import type {
   ImportedFamilyHistory,
   ImportedImagingStudy,
   ImportedImmunization,
+  ImportedOpticalPrescription,
   ImportedProcedure,
   ImportedRecord,
 } from "../health-import";
@@ -35,8 +36,14 @@ import type {
   AppointmentKind,
   AppointmentStatus,
   ImagingModality,
+  OpticalKind,
 } from "../types";
 import { normalizeLaterality, normalizeModality } from "../imaging-study";
+import {
+  parseAxis,
+  parseDiopter,
+  parseMillimeters,
+} from "../optical-prescription";
 import type { ImportMedPeriod } from "../medication-course-import";
 import {
   coursesFromImportedMedication,
@@ -1296,6 +1303,173 @@ export function mapDocumentReferenceImaging(
           ? r.status
           : null,
     external_id: imagingExternalId(idPrefix, "docref", r, [study_date]),
+  };
+}
+
+// A stable dedup key for a VisionPrescription: the resource id, else a fallback
+// composed from the kind + issued date. Mirrors imagingExternalId.
+function visionExternalId(
+  idPrefix: string,
+  r: any,
+  fallbackParts: (string | null)[]
+): string {
+  const id =
+    r?.id != null && String(r.id).trim()
+      ? String(r.id).trim()
+      : fallbackParts.filter(Boolean).join("-") || "rx";
+  return `${idPrefix}:vision:${id}`;
+}
+
+// Pick the prescription kind from the lensSpecification product codings — the FHIR
+// ex-visionprescriptionproduct code is `lens` (eyeglasses) or `contact` (contact
+// lens). We map the code EXPLICITLY (never through normalizeOpticalKind, whose
+// "lens" substring rule means eyeglasses, contradicting this vocabulary); when the
+// code is absent, a filled backCurve / power / diameter is the contact-lens tell.
+function visionLensKind(specs: any[]): OpticalKind {
+  for (const s of specs) {
+    for (const c of ccCodings(s?.product)) {
+      const code =
+        typeof c?.code === "string" ? c.code.trim().toLowerCase() : "";
+      if (code === "contact") return "contacts";
+      if (code === "lens") return "glasses";
+    }
+  }
+  if (
+    specs.some(
+      (s) => s?.backCurve != null || s?.power != null || s?.diameter != null
+    )
+  )
+    return "contacts";
+  return "glasses";
+}
+
+// Interpupillary distance (mm): R4 VisionPrescription has NO standard PD element, so
+// read it best-effort from a resource- or spec-level extension whose url names it
+// ("…pupillaryDistance"). Absent in most bundles → null. #708 "PD if present".
+function readVisionPd(r: any, specs: any[]): number | null {
+  const exts = [
+    ...(Array.isArray(r?.extension) ? r.extension : []),
+    ...specs.flatMap((s: any) =>
+      Array.isArray(s?.extension) ? s.extension : []
+    ),
+  ];
+  for (const e of exts) {
+    const url = typeof e?.url === "string" ? e.url.toLowerCase() : "";
+    if (!/pupil/.test(url)) continue;
+    const pd = parseMillimeters(
+      e?.valueQuantity?.value ?? e?.valueDecimal ?? e?.valueInteger
+    );
+    if (pd != null) return pd;
+  }
+  return null;
+}
+
+// Prism corrections + free-text notes across both eyes, folded into one notes string
+// (the optical_prescriptions row has no prism column — prism is preserved as text).
+function visionNotes(od: any, os: any): string | null {
+  const parts: string[] = [];
+  for (const [label, s] of [
+    ["OD", od],
+    ["OS", os],
+  ] as const) {
+    for (const p of Array.isArray(s?.prism) ? s.prism : []) {
+      const amt = parseDiopter(p?.amount);
+      const base = typeof p?.base === "string" ? p.base.trim() : "";
+      if (amt != null)
+        parts.push(`${label} prism ${amt}${base ? ` base ${base}` : ""}`);
+    }
+    for (const n of Array.isArray(s?.note) ? s.note : []) {
+      const t = typeof n?.text === "string" ? n.text.trim() : "";
+      if (t) parts.push(`${label}: ${t}`);
+    }
+  }
+  return parts.length ? parts.join("; ") : null;
+}
+
+// A FHIR R4 VisionPrescription → ONE structured optical prescription (#708 → #697).
+// The per-eye lensSpecification entries fold together (eye = right → OD, left → OS),
+// the product coding picks glasses vs contacts, dateWritten is the issued date, and
+// the prescriber reference resolves into the shared providers registry. EVERY dioptre
+// / axis / mm value runs through the shared optical-prescription parsers (the ONE Rx
+// coercion, #221), so an off-vocabulary value can't reach — let alone fail — the
+// INSERT. prism is captured as a note; PD comes from an extension when present.
+// draft / cancelled / entered-in-error → dropped; so is an Rx with no refraction and
+// no contact-lens spec (nothing distinguishing to store).
+export function mapVisionPrescription(
+  r: any,
+  ctx: FhirBundleCtx
+): ImportedOpticalPrescription | null {
+  const status = r?.status;
+  if (
+    status === "entered-in-error" ||
+    status === "cancelled" ||
+    status === "draft"
+  )
+    return null;
+  const specs = Array.isArray(r?.lensSpecification) ? r.lensSpecification : [];
+  const eyeSpec = (eye: string) =>
+    specs.find(
+      (s: any) =>
+        typeof s?.eye === "string" && s.eye.trim().toLowerCase() === eye
+    ) ?? null;
+  const od = eyeSpec("right");
+  const os = eyeSpec("left");
+
+  const kind = visionLensKind(specs);
+  const od_sphere = parseDiopter(od?.sphere);
+  const od_cylinder = parseDiopter(od?.cylinder);
+  const od_axis = parseAxis(od?.axis);
+  const od_add = parseDiopter(od?.add);
+  const os_sphere = parseDiopter(os?.sphere);
+  const os_cylinder = parseDiopter(os?.cylinder);
+  const os_axis = parseAxis(os?.axis);
+  const os_add = parseDiopter(os?.add);
+
+  // Contact-lens extras (mm) — prefer the right eye's value, else the left's.
+  const base_curve = parseMillimeters(od?.backCurve ?? os?.backCurve);
+  const diameter = parseMillimeters(od?.diameter ?? os?.diameter);
+  const brand =
+    [od?.brand, os?.brand]
+      .map((b) => (typeof b === "string" && b.trim() ? b.trim() : null))
+      .find(Boolean) ?? null;
+
+  const issued_date = isoDate(r?.dateWritten ?? r?.created);
+  const provider = providerFromRefs(
+    r?.prescriber,
+    ctx,
+    r?.contained,
+    "individual"
+  );
+
+  const hasRefraction =
+    od_sphere != null ||
+    od_cylinder != null ||
+    od_add != null ||
+    os_sphere != null ||
+    os_cylinder != null ||
+    os_add != null;
+  // Nothing distinguishing to store — no per-eye power AND no contact-lens geometry.
+  if (!hasRefraction && base_curve == null && diameter == null) return null;
+
+  return {
+    kind,
+    od_sphere,
+    od_cylinder,
+    od_axis,
+    od_add,
+    os_sphere,
+    os_cylinder,
+    os_axis,
+    os_add,
+    pd: readVisionPd(r, specs),
+    base_curve,
+    diameter,
+    brand,
+    issued_date,
+    expiry_date: null,
+    provider,
+    notes: visionNotes(od, os),
+    external_id: visionExternalId(ctx.idPrefix, r, [kind, issued_date]),
   };
 }
 

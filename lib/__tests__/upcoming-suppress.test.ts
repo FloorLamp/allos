@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { signalKey, findingKey, isSuppressed } from "../upcoming-suppress";
+import {
+  signalKey,
+  findingKey,
+  isSuppressed,
+  isItemHiddenBySuppression,
+} from "../upcoming-suppress";
 import type { UpcomingItem } from "../upcoming";
 
 const item = (key: string): UpcomingItem => ({
@@ -79,5 +84,48 @@ describe("isSuppressed", () => {
     expect(
       isSuppressed({ snooze_until: null, dismissed_at: null }, today)
     ).toBe(false);
+  });
+});
+
+// The #716 safety-ungated override: a crisis finding declaring
+// suppressionPolicy "safety-ungated" is NON-DISMISSIBLE and NON-SNOOZABLE — the bus
+// can never hide it, mirroring a safety dose reminder (#449/#942).
+describe("isItemHiddenBySuppression — safety-ungated override (#716)", () => {
+  const today = "2026-07-15";
+  const dismissed = { snooze_until: null, dismissed_at: "2026-07-10" };
+  const liveSnooze = { snooze_until: "2026-08-01", dismissed_at: null };
+
+  it("a safety-ungated item is never hidden by a dismiss", () => {
+    expect(
+      isItemHiddenBySuppression(
+        { suppressionPolicy: "safety-ungated" },
+        dismissed,
+        today
+      )
+    ).toBe(false);
+  });
+
+  it("a safety-ungated item is never hidden by a live snooze either", () => {
+    expect(
+      isItemHiddenBySuppression(
+        { suppressionPolicy: "safety-ungated" },
+        liveSnooze,
+        today
+      )
+    ).toBe(false);
+  });
+
+  it("the explicit policy wins over carePersistent", () => {
+    expect(
+      isItemHiddenBySuppression(
+        { suppressionPolicy: "safety-ungated", carePersistent: true },
+        liveSnooze,
+        today
+      )
+    ).toBe(false);
+  });
+
+  it("without the override, an ordinary item still honors a dismiss", () => {
+    expect(isItemHiddenBySuppression({}, dismissed, today)).toBe(true);
   });
 });

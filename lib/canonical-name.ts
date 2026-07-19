@@ -234,6 +234,17 @@ const CANONICAL_ALIASES: [string, string][] = [
   ["Anti-HCV", "Hepatitis C Antibody (Anti-HCV)"],
   ["HCV Antibody", "Hepatitis C Antibody (Anti-HCV)"],
   ["Hepatitis C Antibody", "Hepatitis C Antibody (Anti-HCV)"],
+  // Mental-health instruments (#716) — the common print spellings snap onto the bare
+  // canonical scores so an extracted questionnaire total joins the right series. PHQ-9
+  // and GAD-7 stay DISTINCT identities (different instruments) — never one family.
+  ["PHQ9", "PHQ-9"],
+  ["PHQ 9", "PHQ-9"],
+  ["Patient Health Questionnaire-9", "PHQ-9"],
+  ["Patient Health Questionnaire 9", "PHQ-9"],
+  ["GAD7", "GAD-7"],
+  ["GAD 7", "GAD-7"],
+  ["Generalized Anxiety Disorder-7", "GAD-7"],
+  ["Generalized Anxiety Disorder 7", "GAD-7"],
   // NOT aliased, on purpose:
   //  • bare "pH" — specimen-ambiguous (an arterial-blood-gas pH is not urine pH); the
   //    §2 trap. Needs a specimen qualifier to resolve.

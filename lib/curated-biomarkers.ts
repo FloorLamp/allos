@@ -1447,6 +1447,50 @@ export const CURATED_LABS: Biomarker[] = [
     direction: "lower_better",
     note: "Distance from the cemento-enamel junction to the base of the periodontal pocket, in millimetres — the cumulative attachment lost. 1–2 mm is mild, 3–4 mm moderate, ≥5 mm severe (2017 AAP/EFP staging). Tracks periodontitis progression over time.",
   },
+
+  // ── Mental-health instruments (issue #716) ─────────────────────────────────
+  // Validated screening-instrument TOTAL SCORES — PHQ-9 (depression), GAD-7
+  // (anxiety) — as biomarker-shaped, trended series (the observation substrate,
+  // #860/#944): the score is a numeric medical_records reading under this canonical
+  // name, so it charts + trends like any biomarker with no parallel value store. The
+  // per-item answers (for the PHQ-9 item-9 handling) live in the one new table
+  // `instrument_responses`; the SCORE is here.
+  //
+  // DELIBERATELY carries NO numeric reference/optimal band (all bounds null, like
+  // Visual Acuity above): the generic MedicalFlag machinery routes a flagged
+  // biomarker into the Telegram/push morning digest BY NAME (getNewlyFlaggedBiomarkers),
+  // and a "PHQ-9: 18 (high)" line landing on a shared/locked device is exactly the
+  // crisis-adjacent harm case the #716 sensitivity decision forbids ("NEVER any
+  // notification on any channel"). So the SEVERITY BAND (minimal/mild/moderate/…),
+  // computed by the ONE pure lib/mental-health.severityBand(), is the on-screen "flag"
+  // these scores carry, and the care-tier escalation for a SEVERE total or a positive
+  // item 9 is the dedicated NON-DISMISSIBLE crisis finding (lib/mental-health +
+  // mentalHealthCrisisItems), never a push. `direction` is informational only here
+  // (lower is better) — with all bounds null nothing is ever flagged or nagged for a
+  // retest (intentionally absent from RETEST_WORTHY/RETEST_DAYS). INFORMATIONAL, NOT
+  // A DIAGNOSIS — a screening instrument, not a diagnostic. Public domain (PHQ/GAD).
+  {
+    name: "PHQ-9",
+    category: "biomarker",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "lower_better",
+    note: "Patient Health Questionnaire-9 total score (0–27), a validated screening instrument for depression severity. Severity bands: 0–4 minimal, 5–9 mild, 10–14 moderate, 15–19 moderately severe, 20–27 severe. Screening only, NOT a diagnosis. Item 9 asks about thoughts of self-harm. Public domain (Spitzer, Williams, Kroenke / Pfizer).",
+  },
+  {
+    name: "GAD-7",
+    category: "biomarker",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "lower_better",
+    note: "Generalized Anxiety Disorder-7 total score (0–21), a validated screening instrument for anxiety severity. Severity bands: 0–4 minimal, 5–9 mild, 10–14 moderate, 15–21 severe. Screening only, NOT a diagnosis. Public domain (Spitzer, Kroenke, Williams, Löwe).",
+  },
 ];
 
 // Curated per-analyte retest cadences, in DAYS, keyed by exact canonical name

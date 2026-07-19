@@ -200,7 +200,21 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "phq 2",
       "patient health questionnaire",
     ],
-    canonicalBiomarkers: [],
+    // A recorded PHQ-9 SCORE (the biomarker-shaped instrument reading, #716) is
+    // stronger evidence than a bare coded screen, so it satisfies the screening too.
+    canonicalBiomarkers: ["PHQ-9"],
+  },
+  {
+    // Anxiety screening (#716): a recorded GAD-7 score satisfies it. Matched by the
+    // GAD-7 canonical biomarker + name synonyms — deliberately NOT by CPT 96127 (the
+    // generic brief-assessment code depression also uses), so a PHQ-9 depression screen
+    // can't cross-satisfy anxiety. (There was no anxiety entry before instrument scores
+    // existed — a visit/encounter satisfied it only through the catalog, not a record.)
+    ruleKey: "anxiety_screening",
+    kind: "screening",
+    codes: [],
+    names: ["anxiety screening", "gad 7", "generalized anxiety disorder"],
+    canonicalBiomarkers: ["GAD-7"],
   },
   {
     ruleKey: "hepatitis_c",

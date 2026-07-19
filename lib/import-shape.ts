@@ -1030,10 +1030,31 @@ export function healthRecordToPersistInput(
       status: s.status,
       external_id: s.external_id,
     })),
-    // Optical prescriptions have no deterministic feed yet: the FHIR VisionPrescription
-    // mapper is #708 (blocked on this record type), so the CDA/FHIR path emits none —
-    // the AI Rx-slip path is the only producer today (#697).
-    opticalPrescriptions: [],
+    // Structured optical prescriptions from a FHIR VisionPrescription (#708 → #697).
+    // Already normalized onto the OpticalKind enum and parsed to numbers by the FHIR
+    // mapper (the shared optical-prescription coercion, #221), so this maps straight
+    // through — unlike the AI path, which normalizes here. The prescriber rides as an
+    // ImportedProvider resolved into the shared registry on persist.
+    opticalPrescriptions: (parsed.opticalPrescriptions ?? []).map((p) => ({
+      kind: p.kind,
+      od_sphere: p.od_sphere,
+      od_cylinder: p.od_cylinder,
+      od_axis: p.od_axis,
+      od_add: p.od_add,
+      os_sphere: p.os_sphere,
+      os_cylinder: p.os_cylinder,
+      os_axis: p.os_axis,
+      os_add: p.os_add,
+      pd: p.pd,
+      base_curve: p.base_curve,
+      diameter: p.diameter,
+      brand: p.brand,
+      issued_date: p.issued_date,
+      expiry_date: p.expiry_date,
+      provider: p.provider,
+      notes: p.notes,
+      external_id: p.external_id,
+    })),
     bodyMetrics,
     heights,
     headCircs,

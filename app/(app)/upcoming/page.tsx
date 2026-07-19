@@ -76,6 +76,8 @@ const DOMAIN_ICON: Record<UpcomingDomain, TablerIcon> = {
   training: IconBarbell,
   careplan: IconClipboardList,
   followup: IconStethoscope,
+  // A calm, medical icon for the crisis check-in (#716) — never an alarm triangle.
+  "mental-health": IconStethoscope,
   "biomarker-flag": IconFlask,
   integration: IconPlugConnectedX,
   review: IconInbox,

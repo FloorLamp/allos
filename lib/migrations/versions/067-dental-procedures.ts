@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 066 (issue #705): the structured DENTAL record type — the dental
+// Migration 067 (issue #705): the structured DENTAL record type — the dental
 // enabler (#707 Phase 1) that unblocks the dental-procedure safety checks (#704,
 // the planned-procedure signal) and supplies the dental adapter for the finding →
 // follow-up → resolution chain (#700, core shipped in migration 050). Mirrors the
@@ -120,7 +120,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 66,
-  name: "066-dental-procedures",
+  id: 67,
+  name: "067-dental-procedures",
   up,
 };

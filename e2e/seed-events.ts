@@ -29,6 +29,8 @@ import {
   E2E_LOGIN_COMPARE,
   E2E_LOGIN_DUP,
   E2E_LOGIN_EMPTY_TRAINING,
+  E2E_LOGIN_MENTAL,
+  MENTAL_HEALTH_PROFILE,
   E2E_LOGIN_NUTRITION,
   NUTRITION_PROFILE,
   E2E_LOGIN_CYCLE,
@@ -2191,6 +2193,22 @@ db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(emptyTrainingId);
 seedMemberLogin(E2E_LOGIN_EMPTY_TRAINING, emptyTrainingId);
 console.log(
   `e2e: seeded activity-free first-run fixture profile ${emptyTrainingId} (${EMPTY_TRAINING_PROFILE}) for the Training Log empty state (#809)`
+);
+
+// A dedicated, score-free ADULT profile for the mental-health-instruments spec (#716).
+// The spec administers PHQ-9/GAD-7 in-app, so it OWNS every write here. Idempotent:
+// hard-clear any instrument scores (and their per-item answers) on a reused server so
+// the profile can never drift out of its empty contract.
+const mentalHealthId = fixtureProfileId(MENTAL_HEALTH_PROFILE);
+db.prepare(`DELETE FROM instrument_responses WHERE profile_id = ?`).run(
+  mentalHealthId
+);
+db.prepare(
+  `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name IN ('PHQ-9','GAD-7')`
+).run(mentalHealthId);
+seedMemberLogin(E2E_LOGIN_MENTAL, mentalHealthId);
+console.log(
+  `e2e: seeded score-free mental-health fixture profile ${mentalHealthId} (${MENTAL_HEALTH_PROFILE}) for the instruments spec (#716)`
 );
 
 console.log(
