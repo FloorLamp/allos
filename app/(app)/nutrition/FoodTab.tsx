@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/auth";
+import { getDisplayFormatPrefs } from "@/lib/settings";
 import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import {
@@ -38,7 +39,7 @@ import FiberAdequacyCard from "@/components/FiberAdequacyCard";
 // informational — never a calorie counter.
 
 export default async function FoodTab() {
-  const { profile } = await requireSession();
+  const { login, profile } = await requireSession();
 
   // Infant profiles (< 1 y) log milk/formula, not the adult food-group catalog, so
   // the serving logger is meaningless for them (issue #591). Show a calm note instead
@@ -216,7 +217,10 @@ export default async function FoodTab() {
               </h3>
               <FoodWeeklyRollup rollup={rollup} />
             </div>
-            <WeeklyHabits profileId={profile.id} />
+            <WeeklyHabits
+              profileId={profile.id}
+              formatPrefs={getDisplayFormatPrefs(login.id)}
+            />
           </section>
         </div>
       </div>

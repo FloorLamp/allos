@@ -23,6 +23,7 @@ import {
 } from "../settings";
 import { zonedDateParts } from "../date";
 import { trailingWeeks } from "../week-window";
+import type { DisplayFormatPrefs } from "../format-date";
 import {
   foodHabitTrendCells,
   HABIT_TREND_WEEKS,
@@ -330,7 +331,8 @@ export function getFoodGroupLogOrder(
 // start), never as misses. Profile-scoped via the frequency_targets + food_log
 // filters. Empty map when the profile tracks no food habits.
 export function getFoodHabitTrends(
-  profileId: number
+  profileId: number,
+  prefs?: DisplayFormatPrefs
 ): Map<number, HabitWeekCell[]> {
   const targets = db
     .prepare(
@@ -387,7 +389,8 @@ export function getFoodHabitTrends(
         countForWeek,
         t.per_week,
         // The target's creation DAY (a week fully before it is not-applicable).
-        t.created_at.slice(0, 10)
+        t.created_at.slice(0, 10),
+        prefs
       )
     );
   }
