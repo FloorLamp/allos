@@ -96,6 +96,7 @@ import {
   getContrastSafetyWarnings,
   getDentalSafetyWarnings,
   getOtotoxicWarnings,
+  getMedMonitoringItems,
   getPrnOverMaxItems,
 } from "../intake";
 import { prnMaxSignalKey } from "../../prn-redose";
@@ -113,6 +114,11 @@ import {
 } from "../../contrast-safety";
 import { dentalSafetyTitle, dentalSafetyDetail } from "../../dental-safety";
 import { ototoxicTitle, ototoxicDetail } from "../../ototoxic";
+import {
+  medMonitoringTitle,
+  medMonitoringDetail,
+} from "../../medication-monitoring";
+import { medMonitoringReason } from "../../reasons";
 import type { AppRoute } from "../../hrefs";
 import { getScheduledAppointments, kindedScheduled } from "../appointments";
 import {
@@ -403,6 +409,44 @@ function ototoxicItems(profileId: number): UpcomingItem[] {
     band: "today" as const,
     dueText: "Review",
   }));
+}
+
+// Medication → required-monitoring-lab bridge (issue #995): retest-shaped Upcoming items
+// for an active med whose curated monitoring labs are DUE — a retest clock CREATED by
+// taking the drug (lithium → serum level + TSH + renal, clozapine → ANC, warfarin → INR,
+// …). Reuses the shared getMedMonitoringItems gather (same pure buildMedMonitoring the
+// medications-row note formats over), so each (med, monitoring-entry) surfaces as a
+// dismissible finding keyed `med-monitor:<medId>:<entryKey>` — it goes through
+// getFindingSuppressions like every other finding, so a dismiss/snooze silences it
+// ("dismiss once, silence everywhere"), MIRRORING the bus-gated biomarker retest lines.
+//
+// Per-entry reach tier (#449 / #995 decision 1): CARE entries (lithium/clozapine/warfarin/
+// valproate/carbamazepine) carry a structured `medication-monitoring` reason + priority,
+// so — banded by real dueness like any retest — they reach the Needs-attention hero and
+// surface as a Telegram digest HIGHLIGHT (the push). COACHING entries (antipsychotic
+// metabolic, amiodarone, methotrexate, ACEi/ARB, metformin) carry no reason/priority, so
+// they stay calm — visible on Upcoming + the medications row note, never pushed. The
+// `med-monitor` domain is deliberately absent from the digest DOMAIN_SEQ, so a coaching
+// item is never even counted in the push; only the care highlight carries it there.
+// Informational, never prescriptive; the absence of an entry is not clearance.
+function medMonitoringItems(profileId: number, today: string): UpcomingItem[] {
+  return getMedMonitoringItems(profileId, today).map((hit) => {
+    const item: UpcomingItem = {
+      key: hit.dedupeKey,
+      domain: "med-monitor" as const,
+      title: medMonitoringTitle(hit),
+      detail: medMonitoringDetail(hit),
+      href: MEDICATIONS_HREF,
+      dueDate: hit.dueDate,
+    };
+    if (hit.tier === "care") {
+      // Care-tier: rank up + carry the cited "why" so it reaches the hero + digest
+      // highlight (the push). The reason leads with the drug the monitor is for.
+      item.priority = 1;
+      item.reasons = [medMonitoringReason(hit.entryLabel, hit.citation)];
+    }
+    return item;
+  });
 }
 
 // Mental-health crisis findings (issue #716) — a CARE-tier, NON-DISMISSIBLE signal. When
@@ -894,6 +938,7 @@ const rawUpcoming = cache(function rawUpcoming(
     ...contrastItems(profileId, today),
     ...dentalSafetyItems(profileId),
     ...ototoxicItems(profileId),
+    ...medMonitoringItems(profileId, today),
     ...appointmentItems(profileId),
     ...carePlanItems(profileId),
     ...followUpItems(profileId, today),

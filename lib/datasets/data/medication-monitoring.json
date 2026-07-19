@@ -1,0 +1,428 @@
+{
+  "$schema": "allos-dataset/v1",
+  "id": "medication-monitoring",
+  "title": "Medication monitoring-lab bridge",
+  "description": "Baked medication-monitoring dataset (issue #995) — the bridge between an ACTIVE medication and the periodic labs a clinician typically monitors while it is taken. Each entry carries the required monitoring labs (by canonical biomarker name, so a matching result satisfies the retest clock family-aware), a baseline-needed flag, an init cadence (tighter right after starting / a dose change) and a maintenance cadence, a per-entry reach tier (care pushes, coaching is calm), and a citation. Drugs match by RxNorm ingredient + synonym (the shared machinery). INFORMATIONAL, never prescriptive — it never says get a test or change a drug, and the absence of an entry is NOT clearance (a curated subset). Fully OFFLINE. Committed + HUMAN-REVIEWABLE; regenerate with `npm run gen:medication-monitoring`.",
+  "citation": [
+    {
+      "source": "Lithium prescribing information — serum level, thyroid, and renal monitoring",
+      "note": "Uncopyrightable clinical facts (lithium is monitored with a serum level, thyroid, and renal tests) stated in our own words; drug names are public nomenclature."
+    },
+    {
+      "source": "FDA Clozapine REMS — Absolute Neutrophil Count (ANC) monitoring",
+      "url": "https://www.newclozapinerems.com/",
+      "note": "The clozapine ANC-monitoring requirement is a public FDA REMS fact, stated in our own words."
+    },
+    {
+      "source": "ACC/AHA anticoagulation guidance — INR monitoring on warfarin",
+      "note": "Warfarin INR monitoring is a well-established clinical fact, stated in our own words."
+    },
+    {
+      "source": "Antiepileptic (valproate/carbamazepine) prescribing information — CBC, LFTs, and drug-level monitoring",
+      "note": "Valproate/carbamazepine CBC/LFT/level monitoring is stated in our own words from the public prescribing information."
+    },
+    {
+      "source": "ADA/APA consensus on antipsychotic metabolic monitoring",
+      "note": "Antipsychotic metabolic monitoring (glucose/HbA1c + lipids) is a public consensus fact, stated in our own words."
+    },
+    {
+      "source": "Amiodarone prescribing information — thyroid and hepatic monitoring",
+      "note": "Amiodarone thyroid/hepatic monitoring is stated in our own words from the public prescribing information."
+    },
+    {
+      "source": "Methotrexate prescribing information — CBC, hepatic, and renal monitoring",
+      "note": "Methotrexate CBC/hepatic/renal monitoring is stated in our own words from the public prescribing information."
+    },
+    {
+      "source": "ACE-inhibitor / ARB prescribing guidance — creatinine and potassium monitoring",
+      "note": "ACEi/ARB creatinine + potassium monitoring is a well-established clinical fact, stated in our own words."
+    },
+    {
+      "source": "Metformin prescribing information — renal function and vitamin B12 monitoring",
+      "note": "Metformin renal + B12 monitoring is stated in our own words from the public prescribing information."
+    }
+  ],
+  "identity": {
+    "keys": [
+      "key"
+    ]
+  },
+  "meta": {
+    "version": 1
+  },
+  "entries": [
+    {
+      "key": "acei_arb",
+      "label": "ACE inhibitors / ARBs",
+      "rxcuis": [],
+      "synonyms": [
+        "altace",
+        "atacand",
+        "avapro",
+        "benazepril",
+        "benicar",
+        "candesartan",
+        "cozaar",
+        "diovan",
+        "enalapril",
+        "irbesartan",
+        "lisinopril",
+        "losartan",
+        "lotensin",
+        "micardis",
+        "olmesartan",
+        "perindopril",
+        "prinivil",
+        "quinapril",
+        "ramipril",
+        "telmisartan",
+        "valsartan",
+        "vasotec",
+        "zestril"
+      ],
+      "labs": [
+        {
+          "canonical": "Creatinine",
+          "label": "creatinine"
+        },
+        {
+          "canonical": "eGFR",
+          "label": "eGFR (kidney function)"
+        },
+        {
+          "canonical": "Potassium",
+          "label": "potassium"
+        }
+      ],
+      "baseline": false,
+      "initDays": 14,
+      "maintenanceDays": 365,
+      "tier": "coaching",
+      "note": "ACE inhibitors and ARBs can affect kidney function and potassium, so creatinine/eGFR and potassium are commonly checked shortly after starting or a dose change and then periodically.",
+      "source": "ACE-inhibitor / ARB prescribing guidance — creatinine and potassium monitoring"
+    },
+    {
+      "key": "amiodarone",
+      "label": "Amiodarone",
+      "rxcuis": [],
+      "synonyms": [
+        "amiodarone",
+        "cordarone",
+        "nexterone",
+        "pacerone"
+      ],
+      "labs": [
+        {
+          "canonical": "TSH",
+          "label": "TSH (thyroid)"
+        },
+        {
+          "canonical": "Free T4",
+          "label": "Free T4"
+        },
+        {
+          "canonical": "ALT",
+          "label": "ALT (liver)"
+        },
+        {
+          "canonical": "AST",
+          "label": "AST (liver)"
+        }
+      ],
+      "baseline": true,
+      "initDays": 90,
+      "maintenanceDays": 180,
+      "tier": "coaching",
+      "note": "Amiodarone can affect the thyroid and liver over time, so thyroid tests (TSH/Free T4) and liver tests (ALT/AST) are commonly checked around starting and then about every 6 months.",
+      "source": "Amiodarone prescribing information — thyroid and hepatic monitoring"
+    },
+    {
+      "key": "carbamazepine",
+      "label": "Carbamazepine",
+      "rxcuis": [],
+      "synonyms": [
+        "carbamazepine",
+        "carbatrol",
+        "epitol",
+        "equetro",
+        "tegretol"
+      ],
+      "labs": [
+        {
+          "canonical": "White Blood Cell Count",
+          "label": "CBC (white cells)"
+        },
+        {
+          "canonical": "ALT",
+          "label": "ALT (liver)"
+        },
+        {
+          "canonical": "AST",
+          "label": "AST (liver)"
+        },
+        {
+          "canonical": "Sodium",
+          "label": "sodium"
+        },
+        {
+          "canonical": "Carbamazepine",
+          "label": "carbamazepine level"
+        }
+      ],
+      "baseline": true,
+      "initDays": 30,
+      "maintenanceDays": 180,
+      "tier": "care",
+      "note": "Carbamazepine is commonly monitored with a blood count (CBC), liver tests (ALT/AST), sodium, and sometimes a drug level — more often early on, then periodically.",
+      "source": "Antiepileptic (valproate/carbamazepine) prescribing information — CBC, LFTs, and drug-level monitoring"
+    },
+    {
+      "key": "clozapine",
+      "label": "Clozapine",
+      "rxcuis": [],
+      "synonyms": [
+        "clozapine",
+        "clozaril",
+        "fazaclo",
+        "versacloz"
+      ],
+      "labs": [
+        {
+          "canonical": "Neutrophils, Absolute",
+          "label": "ANC (neutrophil count)"
+        },
+        {
+          "canonical": "White Blood Cell Count",
+          "label": "CBC (white cells)"
+        }
+      ],
+      "baseline": true,
+      "initDays": 7,
+      "maintenanceDays": 30,
+      "tier": "care",
+      "note": "Clozapine requires close monitoring of the absolute neutrophil count (ANC) — typically weekly early on, then less often — because it can rarely lower the white-cell count. This is generally managed through a formal monitoring program.",
+      "source": "FDA Clozapine REMS — Absolute Neutrophil Count (ANC) monitoring"
+    },
+    {
+      "key": "lithium",
+      "label": "Lithium",
+      "rxcuis": [],
+      "synonyms": [
+        "eskalith",
+        "lithium",
+        "lithium carbonate",
+        "lithium citrate",
+        "lithobid"
+      ],
+      "labs": [
+        {
+          "canonical": "Lithium",
+          "label": "lithium level"
+        },
+        {
+          "canonical": "TSH",
+          "label": "TSH (thyroid)"
+        },
+        {
+          "canonical": "Creatinine",
+          "label": "creatinine"
+        },
+        {
+          "canonical": "eGFR",
+          "label": "eGFR (kidney function)"
+        },
+        {
+          "canonical": "Calcium",
+          "label": "calcium"
+        }
+      ],
+      "baseline": true,
+      "initDays": 30,
+      "maintenanceDays": 180,
+      "tier": "care",
+      "note": "Lithium has a narrow therapeutic range, so clinicians typically check the serum lithium level frequently after starting or a dose change, then about every 6 months once stable, along with thyroid (TSH), kidney function (creatinine/eGFR), and calcium.",
+      "source": "Lithium prescribing information — serum level, thyroid, and renal monitoring"
+    },
+    {
+      "key": "metformin",
+      "label": "Metformin",
+      "rxcuis": [],
+      "synonyms": [
+        "fortamet",
+        "glucophage",
+        "glumetza",
+        "metformin",
+        "riomet"
+      ],
+      "labs": [
+        {
+          "canonical": "Creatinine",
+          "label": "creatinine"
+        },
+        {
+          "canonical": "eGFR",
+          "label": "eGFR (kidney function)"
+        },
+        {
+          "canonical": "Vitamin B12",
+          "label": "vitamin B12"
+        }
+      ],
+      "baseline": false,
+      "initDays": 90,
+      "maintenanceDays": 365,
+      "tier": "coaching",
+      "note": "Metformin is commonly monitored with kidney function (creatinine/eGFR) periodically, and vitamin B12 is sometimes checked with long-term use.",
+      "source": "Metformin prescribing information — renal function and vitamin B12 monitoring"
+    },
+    {
+      "key": "methotrexate",
+      "label": "Methotrexate",
+      "rxcuis": [],
+      "synonyms": [
+        "methotrexate",
+        "otrexup",
+        "rasuvo",
+        "trexall",
+        "xatmep"
+      ],
+      "labs": [
+        {
+          "canonical": "White Blood Cell Count",
+          "label": "CBC (white cells)"
+        },
+        {
+          "canonical": "ALT",
+          "label": "ALT (liver)"
+        },
+        {
+          "canonical": "AST",
+          "label": "AST (liver)"
+        },
+        {
+          "canonical": "Creatinine",
+          "label": "creatinine"
+        }
+      ],
+      "baseline": true,
+      "initDays": 30,
+      "maintenanceDays": 90,
+      "tier": "coaching",
+      "note": "Low-dose methotrexate is commonly monitored with a blood count (CBC), liver tests (ALT/AST), and kidney function — more often after starting or a dose change, then periodically.",
+      "source": "Methotrexate prescribing information — CBC, hepatic, and renal monitoring"
+    },
+    {
+      "key": "second_gen_antipsychotic",
+      "label": "Second-generation antipsychotics",
+      "rxcuis": [],
+      "synonyms": [
+        "abilify",
+        "aripiprazole",
+        "asenapine",
+        "clozapine",
+        "clozaril",
+        "geodon",
+        "invega",
+        "latuda",
+        "lurasidone",
+        "olanzapine",
+        "paliperidone",
+        "quetiapine",
+        "risperdal",
+        "risperidone",
+        "saphris",
+        "seroquel",
+        "ziprasidone",
+        "zyprexa"
+      ],
+      "labs": [
+        {
+          "canonical": "Hemoglobin A1c",
+          "label": "HbA1c"
+        },
+        {
+          "canonical": "Glucose",
+          "label": "fasting glucose"
+        },
+        {
+          "canonical": "LDL Cholesterol",
+          "label": "LDL cholesterol"
+        },
+        {
+          "canonical": "HDL Cholesterol",
+          "label": "HDL cholesterol"
+        },
+        {
+          "canonical": "Triglycerides",
+          "label": "triglycerides"
+        }
+      ],
+      "baseline": true,
+      "initDays": 90,
+      "maintenanceDays": 365,
+      "tier": "coaching",
+      "note": "Second-generation antipsychotics can affect blood sugar, cholesterol, and weight, so clinicians commonly check fasting glucose or HbA1c and a lipid panel around starting and then periodically (metabolic monitoring).",
+      "source": "ADA/APA consensus on antipsychotic metabolic monitoring"
+    },
+    {
+      "key": "valproate",
+      "label": "Valproate / divalproex",
+      "rxcuis": [],
+      "synonyms": [
+        "depakene",
+        "depakote",
+        "divalproex",
+        "divalproex sodium",
+        "sodium valproate",
+        "valproate",
+        "valproic acid"
+      ],
+      "labs": [
+        {
+          "canonical": "ALT",
+          "label": "ALT (liver)"
+        },
+        {
+          "canonical": "AST",
+          "label": "AST (liver)"
+        },
+        {
+          "canonical": "White Blood Cell Count",
+          "label": "CBC (white cells)"
+        },
+        {
+          "canonical": "Valproate",
+          "label": "valproate level"
+        }
+      ],
+      "baseline": true,
+      "initDays": 30,
+      "maintenanceDays": 180,
+      "tier": "care",
+      "note": "Valproate is commonly monitored with liver tests (ALT/AST), a blood count (CBC), and sometimes a drug level — more often after starting or a dose change, then periodically.",
+      "source": "Antiepileptic (valproate/carbamazepine) prescribing information — CBC, LFTs, and drug-level monitoring"
+    },
+    {
+      "key": "warfarin",
+      "label": "Warfarin",
+      "rxcuis": [],
+      "synonyms": [
+        "coumadin",
+        "jantoven",
+        "warfarin"
+      ],
+      "labs": [
+        {
+          "canonical": "INR",
+          "label": "INR"
+        }
+      ],
+      "baseline": false,
+      "initDays": 7,
+      "maintenanceDays": 30,
+      "tier": "care",
+      "note": "Warfarin dosing is guided by the INR blood test, checked often when starting or after a dose change and then usually about every 4 weeks once the level is stable.",
+      "source": "ACC/AHA anticoagulation guidance — INR monitoring on warfarin"
+    }
+  ]
+}

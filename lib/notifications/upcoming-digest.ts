@@ -34,6 +34,11 @@ const DOMAIN_NOUN: Record<UpcomingDomain, string> = {
   screening: "screening",
   immunization: "vaccine",
   biomarker: "lab",
+  // A med-driven monitoring retest (#995). Care-tier entries push via the #656 highlight
+  // (their cited reason), NOT via this per-band count — `med-monitor` is deliberately
+  // omitted from DOMAIN_SEQ, so a coaching-tier monitoring lab is never counted in the
+  // push. The noun exists only because the Record is exhaustive.
+  "med-monitor": "monitoring lab",
   goal: "goal",
   training: "training target",
   careplan: "care-plan item",

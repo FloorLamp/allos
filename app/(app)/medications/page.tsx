@@ -90,6 +90,7 @@ export default async function MedicationsPage() {
                       strip={m.strip}
                       refillRate={m.refillRate}
                       prnRedoseLine={m.prnRedoseLine}
+                      monitoringNote={m.monitoringNote}
                       todayStr={data.todayStr}
                     />
                   ))}
@@ -114,6 +115,7 @@ export default async function MedicationsPage() {
                       strip={m.strip}
                       refillRate={m.refillRate}
                       prnRedoseLine={m.prnRedoseLine}
+                      monitoringNote={m.monitoringNote}
                       todayStr={data.todayStr}
                     />
                   ))}
