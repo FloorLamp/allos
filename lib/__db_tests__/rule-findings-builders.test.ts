@@ -17,7 +17,7 @@
 
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
-import { shiftDateStr } from "@/lib/date";
+import { shiftDateStr, startOfWeekStr, daysBetweenDateStr } from "@/lib/date";
 import {
   buildAdherencePatternFindings,
   buildTrainingObservationFindings,
@@ -268,9 +268,14 @@ describe("buildMuscleVolumeFindings — below-band shortfall (#742)", () => {
 
     // Two same-week sessions of the same under-floor lift: side-delts is clearly
     // below its band, but the profile has only ONE distinct training week — an
-    // unanswered question, not "everything below target" (#719).
+    // unanswered question, not "everything below target" (#719). The second session
+    // lands on anchor's week start (countDistinctWeeks buckets by Sunday-week), so it
+    // stays in the SAME week even on a Sunday run — a fixed `anchor - 1` would cross
+    // into the previous week and clear the cold-start gate, leaking a finding (#990).
+    const sameWeekOffset =
+      daysBetweenDateStr(anchor, startOfWeekStr(anchor, 0)) ?? 0;
     logStrengthSets(profileId, anchor, 0, "Lateral Raise", 2);
-    logStrengthSets(profileId, anchor, -1, "Lateral Raise", 1);
+    logStrengthSets(profileId, anchor, sameWeekOffset, "Lateral Raise", 1);
     // Sanity: this fixture is one week of history, below the gate.
     expect(MIN_BAND_HISTORY_WEEKS).toBeGreaterThan(1);
 

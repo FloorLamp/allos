@@ -3,7 +3,7 @@
 // intervention, whose before/during comparison reads the biomarker family as the
 // declared outcome. Proves the pieces compose end-to-end against the real schema.
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import {
@@ -32,6 +32,21 @@ function logServing(profileId: number, group: string, date: string) {
 }
 
 describe("food-habit → protocol loop (#580)", () => {
+  // Freeze the clock at a fixed MID-week noon (#990). The fixtures seed servings at
+  // `anchor` and `anchor - 1` as "two distinct days this week", plus `anchor - 20` for a
+  // total of three distinct usage days. When the suite runs on the week's first day (a
+  // Sunday, calendar-mode default), `anchor - 1` slips into the previous week — the
+  // weekly count drops to 1 — and no in-week second day exists at all. Pinning `today()`
+  // (and thus `anchor`) to a Wednesday makes both the week membership and the
+  // distinct-day count deterministic regardless of when CI runs; assertions unchanged.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-06-17T12:00:00Z")); // a Wednesday
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("servings feed target progress, and a protocol adopts the target with a biomarker outcome", () => {
     const { profileId, anchor } = makeProfile("food-loop");
 
