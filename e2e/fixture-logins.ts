@@ -374,3 +374,13 @@ export const E2E_LOGIN_NAV_FEMALE = "e2e_nav_female";
 export const NAV_FEMALE_PROFILE = "Nav Cycle Female (e2e)";
 export const E2E_LOGIN_NAV_MALE = "e2e_nav_male";
 export const NAV_MALE_PROFILE = "Nav Cycle Male (e2e)";
+
+// ── Dashboard weight quick-add (#1042 phase 2) ────────────────────────────────
+// A dedicated, write-granted ADULT profile with two seeded weigh-ins (notes
+// 'e2e:seed-weight') so the dashboard weight-trend widget renders its chart.
+// Spec-owned on purpose (#868): the weight-quick-add spec resets every non-seed
+// body_metrics row on it at test start (the smoke.spec direct-DB precedent), so
+// it's repeat-safe and its writes never perturb a shared profile's weight series
+// (which the trends/kids-growth/nutrition specs read). No birthdate → adult.
+export const E2E_LOGIN_WEIGHT_QA = "e2e_weight_qa";
+export const WEIGHT_QUICKADD_PROFILE = "Weight Quickadd (e2e)";

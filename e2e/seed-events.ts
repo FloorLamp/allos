@@ -42,6 +42,8 @@ import {
   NUTRITION_PROFILE,
   E2E_LOGIN_CYCLE,
   CYCLE_PROFILE,
+  E2E_LOGIN_WEIGHT_QA,
+  WEIGHT_QUICKADD_PROFILE,
   E2E_LOGIN_NAV_FEMALE,
   NAV_FEMALE_PROFILE,
   E2E_LOGIN_NAV_MALE,
@@ -3356,3 +3358,25 @@ for (const [profileName, loginName, attrs] of [
     `e2e: seeded nav-relevance fixture — profile ${pid} (${profileName}) (#1042)`
   );
 }
+
+// ── Dashboard weight quick-add fixture (#1042 phase 2) ────────────────────────
+// A dedicated adult profile with exactly two seeded weigh-ins so the dashboard
+// weight-trend widget renders its chart state; the weight-quick-add spec owns
+// every non-seed body_metrics row (it clears them itself at test start).
+// Idempotent: hard-clear and re-insert the seed rows.
+const weightQaId = fixtureProfileId(WEIGHT_QUICKADD_PROFILE);
+db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(weightQaId);
+const weightQaAnchor = today(weightQaId);
+for (const [daysAgo, kg] of [
+  [7, 70],
+  [3, 70.6],
+] as const) {
+  db.prepare(
+    `INSERT INTO body_metrics (profile_id, date, weight_kg, notes)
+     VALUES (?, ?, ?, 'e2e:seed-weight')`
+  ).run(weightQaId, shiftDateStr(weightQaAnchor, -daysAgo), kg);
+}
+seedMemberLogin(E2E_LOGIN_WEIGHT_QA, weightQaId, "write");
+console.log(
+  `e2e: seeded weight quick-add fixture — profile ${weightQaId} (${WEIGHT_QUICKADD_PROFILE}) (#1042)`
+);

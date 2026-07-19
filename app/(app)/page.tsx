@@ -517,7 +517,11 @@ export default async function Dashboard() {
         return <HealthspanPillarsWidget pillars={pillars} />;
       case "weight-trend":
         return (
-          <WeightTrendWidget data={bodyMetrics} weightUnit={units.weightUnit} />
+          <WeightTrendWidget
+            data={bodyMetrics}
+            weightUnit={units.weightUnit}
+            today={on}
+          />
         );
       case "goals-habits":
         return (
