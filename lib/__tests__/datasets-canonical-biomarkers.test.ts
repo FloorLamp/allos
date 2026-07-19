@@ -44,14 +44,20 @@ import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 // <10%, clinical attachment loss ≤1 mm — all lower_better) add new flag-relevant rows,
 // so the signature legitimately changes and the boot reconcile re-flags stored perio
 // records against the new bands.
+// Updated for #718: cycle-phase reference ranges — the ranges_by_cycle_phase field is
+// added to FLAG_RELEVANT_FIELDS (and FLAG_LOGIC_VERSION bumps to 8), the four hormones
+// (FSH/LH/estradiol/progesterone) gain phase ranges, and Progesterone is a new curated
+// row, so the signature legitimately changes. On the next boot the reconcile re-derives
+// the hormone flags for profiles WITH a cycle log against the phase range (a no-op for
+// profiles with none — they derive no phase and re-flag to the identical prior value).
 // Updated for #713: the audiogram pure-tone thresholds (12 per-ear, per-frequency dB HL
 // analytes, all lower_better with the ≤25 dB HL WHO band) add new flag-relevant rows,
-// so the signature legitimately changes and the boot reconcile re-flags stored hearing
-// records against the new bands.
+// so the signature legitimately changes again and the boot reconcile re-flags stored
+// hearing records against the new bands (the combined value below covers both changes).
 const FLAG_SIGNATURE_GOLDEN =
   // A SHA-256 content hash of the canonical dataset; a digit substring
   // coincidentally forms a Luhn-valid NPI shape — provably synthetic.
-  "6f2563fc0ec12b58d8b1de2537579a4196d3fe969272ecc86ac852c5ae18425c"; // phi-scan-ok
+  "e980fc216e0b96f67e76199220de43ddcd58143f48d29ed974ba1b6e55cf6394"; // phi-scan-ok
 
 describe("canonical-biomarkers dataset on the curated-dataset framework", () => {
   it("passes the whole framework harness (citation + identity + refusal + no collisions)", () => {

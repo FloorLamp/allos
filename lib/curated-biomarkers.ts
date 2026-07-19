@@ -40,6 +40,16 @@ export type ReproductiveStatusRanges = Partial<
   Record<ReproductiveStatus, ReproductiveStatusRange>
 >;
 
+// Cycle-phase reference overrides (female physiology only) — issue #718. Mirrors
+// lib/types.CyclePhaseRanges so the JSON round-trips. Keyed by the two phases the
+// non-predictive cycle derivation resolves for hormones: `follicular` (also covering a
+// menstrual date and, since the derived model has no distinct ovulatory phase, the
+// mid-cycle surge → a follicular→ovulatory envelope) and `luteal`.
+export type CyclePhaseRangeKey = "follicular" | "luteal";
+export type CyclePhaseRanges = Partial<
+  Record<CyclePhaseRangeKey, ReproductiveStatusRange>
+>;
+
 export interface Biomarker {
   name: string;
   category: string;
@@ -60,6 +70,11 @@ export interface Biomarker {
   // reproductive hormones. Highest precedence in lib/reference-range (above the age
   // band) when the subject is female and their reproductive_status is set.
   ranges_by_status?: ReproductiveStatusRanges | null;
+  // Cycle-phase reference overrides (female physiology only) for the phase-dependent
+  // reproductive hormones (issue #718). Highest precedence in lib/reference-range
+  // (above ranges_by_status) when the subject is female and their cycle phase on the
+  // record's collection date is derivable from the logged cycle history.
+  ranges_by_cycle_phase?: CyclePhaseRanges | null;
   // Optional map of alternate unit -> factor (value_in_alt * factor = value in the
   // canonical unit). Consumed by lib/unit-conversions for cross-unit flagging.
   conversions?: Record<string, number> | null;
@@ -808,6 +823,30 @@ export const CURATED_LABS: Biomarker[] = [
   //  - LH (mIU/mL): male ~1.7–8.6; premenopausal ~1.0 (luteal) → ~95.6 (ovulatory
   //    surge); postmenopausal ~7.7–58.5.
   //    https://endocrinology.testcatalog.org/show/LH
+  //
+  // ── Cycle-phase reference ranges (ranges_by_cycle_phase, issue #718) ─────────
+  // When the profile logs a menstrual cycle (#714), the reference range for these
+  // four hormones is refined by the PHASE on the record's collection date, above the
+  // coarse status/age proxies. The phase feed (lib/cycle.cyclePhaseOnDate) is
+  // deliberately NON-PREDICTIVE, so it resolves menstrual/follicular/luteal with NO
+  // distinct ovulatory phase — the ~1–2-day ovulatory window (and its mid-cycle
+  // SURGE) falls inside the derived follicular span. So each `follicular` key below
+  // is a follicular→ovulatory ENVELOPE (open low, ceiling = the mid-cycle peak) that a
+  // menstrual date also reads; `luteal` is the luteal-phase range. Low bounds stay
+  // OPEN (null), matching the coarse-envelope convention — the phase-specific HIGH
+  // ceiling is the signal, and an open low adds no false-"low" on draw-timing
+  // variation within a phase. Mapping rationale + trade-offs: full argument in PR #718.
+  // Mayo Clinic Laboratories adult female cycle-phase intervals:
+  //  - Estradiol (pg/mL): follicular 12.5–166, mid-cycle 85.8–498, luteal 43.8–211
+  //    → follicular envelope high 498; luteal high 211.
+  //  - FSH (mIU/mL): follicular 3.5–12.5, mid-cycle 4.7–21.5, luteal 1.7–7.7
+  //    → follicular envelope high 21.5; luteal high 7.7.
+  //  - LH (mIU/mL): follicular 2.4–12.6, mid-cycle 14.0–95.6, luteal 1.0–11.4
+  //    → follicular envelope high 95.6; luteal high 11.4.
+  //  - Progesterone (ng/mL): follicular ≤1.5, luteal 1.8–23.9 (Mayo test 8141) —
+  //    the analyte with the LARGEST phase swing, so a mid-luteal value (~3–24) is
+  //    normal-luteal but "high" against the follicular ≤1.5, the issue's motivating
+  //    case. https://www.mayocliniclabs.com/test-catalog/overview/8141
   // INFORMATIONAL, NOT MEDICAL ADVICE — human-review before clinical use.
   {
     name: "Estradiol",
@@ -840,6 +879,22 @@ export const CURATED_LABS: Biomarker[] = [
         ref_low: null,
         ref_high: 30,
         note: "Postmenopausal E2 ≤~30 pg/mL; open low bound (HRT/atrophy lows aren't flagged). Lets a post-menopausal HIGH estradiol flag.",
+      },
+    },
+    // Cycle-phase override (#718): resolves ABOVE ranges_by_status when the cycle log
+    // covers the collection date. Follicular is a follicular→ovulatory envelope (Mayo
+    // mid-cycle peak ~498) so the physiological estradiol peak isn't false-flagged;
+    // luteal ceiling ~211. Open lows (no new false-"low").
+    ranges_by_cycle_phase: {
+      follicular: {
+        ref_low: null,
+        ref_high: 498,
+        note: "Follicular→ovulatory envelope (Mayo mid-cycle peak ~498 pg/mL); menstrual dates read this too.",
+      },
+      luteal: {
+        ref_low: null,
+        ref_high: 211,
+        note: "Luteal-phase estradiol up to ~211 pg/mL (Mayo).",
       },
     },
     conversions: {
@@ -893,6 +948,21 @@ export const CURATED_LABS: Biomarker[] = [
         note: "Postmenopausal FSH up to ~134.8 mIU/mL (Mayo/ARUP); open low bound so HRT-suppressed values aren't false-flagged 'low'.",
       },
     },
+    // Cycle-phase override (#718): resolves above the 51+ age band and ranges_by_status
+    // when the cycle log covers the collection date. Follicular→ovulatory envelope
+    // (Mayo mid-cycle peak ~21.5); luteal ceiling ~7.7 — a luteal FSH is normally low.
+    ranges_by_cycle_phase: {
+      follicular: {
+        ref_low: null,
+        ref_high: 21.5,
+        note: "Follicular→ovulatory envelope (Mayo mid-cycle peak ~21.5 mIU/mL); menstrual dates read this too.",
+      },
+      luteal: {
+        ref_low: null,
+        ref_high: 7.7,
+        note: "Luteal-phase FSH up to ~7.7 mIU/mL (Mayo).",
+      },
+    },
   },
   {
     name: "Luteinizing Hormone (LH)",
@@ -925,6 +995,79 @@ export const CURATED_LABS: Biomarker[] = [
         ref_high: 58.5,
         note: "Postmenopausal LH up to ~58.5 mIU/mL (Mayo/endocrine); open low bound so HRT-suppressed values aren't false-flagged 'low'.",
       },
+    },
+    // Cycle-phase override (#718): resolves above ranges_by_status when the cycle log
+    // covers the collection date. Follicular→ovulatory envelope carries the LH SURGE
+    // (Mayo mid-cycle peak ~95.6) so it isn't false-flagged; luteal ceiling ~11.4.
+    ranges_by_cycle_phase: {
+      follicular: {
+        ref_low: null,
+        ref_high: 95.6,
+        note: "Follicular→ovulatory envelope carrying the LH surge (Mayo mid-cycle peak ~95.6 mIU/mL); menstrual dates read this too.",
+      },
+      luteal: {
+        ref_low: null,
+        ref_high: 11.4,
+        note: "Luteal-phase LH up to ~11.4 mIU/mL (Mayo/endocrine).",
+      },
+    },
+  },
+  {
+    // Progesterone (issue #718): the analyte with the LARGEST cycle-phase swing —
+    // follicular ≤~1.5 ng/mL vs a mid-luteal peak up to ~24 — so it is the clearest
+    // case for phase-aware ranges. Added as a curated lab (it had no canonical entry).
+    // The BASE range is a reproductive-adult ENVELOPE (open low, ceiling = the luteal
+    // peak) so that WITHOUT cycle data a normal-luteal value isn't false-flagged
+    // "high" (the same coarse-envelope stance as E2/FSH/LH); the phase ranges then
+    // TIGHTEN it — a follicular-date 15 flags "high" (a true catch the envelope
+    // misses), a luteal-date 15 stays normal (the false-high the envelope would have
+    // avoided anyway, now correct per phase). Male progesterone is low (<~1.4 ng/mL).
+    // Postmenopausal ≤~0.5. Mayo test 8141; conversion 1 ng/mL = 3.18 nmol/L.
+    // INFORMATIONAL, NOT MEDICAL ADVICE.
+    name: "Progesterone",
+    category: "lab",
+    unit: "ng/mL",
+    ref_low: null,
+    ref_high: 23.9,
+    ref_low_male: null,
+    ref_high_male: 1.4,
+    ref_low_female: null,
+    ref_high_female: 23.9,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Cycle-phase-dependent (ng/mL). Female base is a reproductive envelope spanning follicular (≤~1.5) → mid-luteal peak (~24) since the app can't know cycle phase without a cycle log; open low so follicular/menstrual lows never false-flag. When the cycle log covers the collection date, ranges_by_cycle_phase refines it (follicular ≤1.5 vs luteal ≤24); when reproductive_status is set, ranges_by_status applies. Male ~≤1.4.",
+    ranges_by_status: {
+      premenopausal: {
+        ref_low: null,
+        ref_high: 23.9,
+        note: "Reproductive-age envelope (follicular ≤~1.5 → mid-luteal peak ~24).",
+      },
+      postmenopausal: {
+        ref_low: null,
+        ref_high: 0.5,
+        note: "Postmenopausal progesterone ≤~0.5 ng/mL (Mayo); open low bound. Lets a post-menopausal HIGH progesterone flag.",
+      },
+    },
+    // Cycle-phase override (#718): the star case. Follicular ≤~1.5 ng/mL; luteal up to
+    // ~24 — so a mid-luteal value reads its luteal range (normal) instead of flagging
+    // "high" against the follicular/coarse range. Open lows (a low luteal progesterone
+    // is draw-timing-dependent and out of scope, mirroring #714's tracking-not-
+    // fertility boundary).
+    ranges_by_cycle_phase: {
+      follicular: {
+        ref_low: null,
+        ref_high: 1.5,
+        note: "Follicular (and menstrual) progesterone ≤~1.5 ng/mL (Mayo). A value well above this on a follicular date is a genuine catch the coarse envelope misses.",
+      },
+      luteal: {
+        ref_low: null,
+        ref_high: 23.9,
+        note: "Luteal-phase progesterone up to ~23.9 ng/mL (Mayo mid-luteal peak); a normal-luteal value is not flagged 'high'.",
+      },
+    },
+    conversions: {
+      "nmol/L": 0.3145,
     },
   },
   // ── Functional fitness markers (issue #158) ────────────────────────────────

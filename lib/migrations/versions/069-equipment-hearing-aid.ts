@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 068 (issue #713): add 'Hearing aid' to the equipment.category enum.
+// Migration 069 (issue #713): add 'Hearing aid' to the equipment.category enum.
 //
 // Hearing aids are the sense-organ trio's DEVICE arm — the #713 ask "hearing aids in
 // the Equipment registry (the glasses/device pattern): a device with usage/history, so
@@ -75,7 +75,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 68,
-  name: "068-equipment-hearing-aid",
+  id: 69,
+  name: "069-equipment-hearing-aid",
   up,
 };

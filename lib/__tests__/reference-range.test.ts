@@ -28,6 +28,7 @@ import {
   SCALE_AXIS_PAD_FRACTION,
   screeningRisk,
   selectAgeBand,
+  selectCyclePhaseRange,
   selectStatusRange,
 } from "@/lib/reference-range";
 
@@ -529,6 +530,187 @@ describe("referenceRange — reproductive status precedence", () => {
     );
     expect(referenceRange(fsh, "female", 30, null)).toEqual(
       referenceRange(fsh, "female", 30)
+    );
+  });
+});
+
+describe("selectCyclePhaseRange (cycle phase, #718)", () => {
+  const ranges = {
+    follicular: { ref_low: null, ref_high: 1.5 },
+    luteal: { ref_low: null, ref_high: 23.9 },
+  };
+
+  it("resolves the phase range for a female on a derived phase", () => {
+    expect(selectCyclePhaseRange(ranges, "female", "follicular")).toEqual({
+      ref_low: null,
+      ref_high: 1.5,
+    });
+    expect(selectCyclePhaseRange(ranges, "female", "luteal")).toEqual({
+      ref_low: null,
+      ref_high: 23.9,
+    });
+  });
+
+  it("maps a MENSTRUAL date onto the follicular range (menses is early follicular)", () => {
+    // The derived model has no distinct ovulatory phase and treats menses as early
+    // follicular — so a menstrual-date hormone reads the follicular envelope.
+    expect(selectCyclePhaseRange(ranges, "female", "menstrual")).toEqual({
+      ref_low: null,
+      ref_high: 1.5,
+    });
+  });
+
+  it("returns null for male sex (female physiology only)", () => {
+    expect(selectCyclePhaseRange(ranges, "male", "luteal")).toBeNull();
+    expect(selectCyclePhaseRange(ranges, "male", "follicular")).toBeNull();
+  });
+
+  it("returns null when sex or phase is unset, or no range exists", () => {
+    expect(selectCyclePhaseRange(ranges, null, "luteal")).toBeNull();
+    expect(selectCyclePhaseRange(ranges, "female", null)).toBeNull();
+    expect(selectCyclePhaseRange(null, "female", "luteal")).toBeNull();
+    // An analyte carrying only a follicular range → no luteal match.
+    expect(
+      selectCyclePhaseRange(
+        { follicular: { ref_low: null, ref_high: 1.5 } },
+        "female",
+        "luteal"
+      )
+    ).toBeNull();
+  });
+
+  it("parses a JSON-string ranges_by_cycle_phase (raw SQLite SELECT shape)", () => {
+    expect(
+      selectCyclePhaseRange(JSON.stringify(ranges), "female", "luteal")
+    ).toEqual({ ref_low: null, ref_high: 23.9 });
+    expect(
+      selectCyclePhaseRange("not json", "female", "follicular")
+    ).toBeNull();
+  });
+});
+
+describe("referenceRange — cycle-phase precedence (#718)", () => {
+  // A progesterone-shaped entry: a reproductive base envelope (open low, luteal-peak
+  // ceiling), a status override, and cycle-phase ranges. Mirrors the committed shape.
+  const progesterone = {
+    ref_low: null,
+    ref_high: 23.9,
+    ref_low_male: null,
+    ref_high_male: 1.4,
+    ref_low_female: null,
+    ref_high_female: 23.9,
+    ranges_by_status: {
+      premenopausal: { ref_low: null, ref_high: 23.9 },
+      postmenopausal: { ref_low: null, ref_high: 0.5 },
+    },
+    ranges_by_cycle_phase: {
+      follicular: { ref_low: null, ref_high: 1.5 },
+      luteal: { ref_low: null, ref_high: 23.9 },
+    },
+  };
+
+  it("cycle phase beats the reproductive-status proxy (phase > status)", () => {
+    // A premenopausal female: status would give the wide 0–23.9 envelope; the
+    // follicular phase tightens the ceiling to 1.5 — proving phase precedence.
+    expect(
+      referenceRange(progesterone, "female", 30, "premenopausal", "follicular")
+    ).toEqual({ low: null, high: 1.5, bySex: true, band: null });
+    expect(
+      referenceRange(progesterone, "female", 30, "premenopausal", "luteal")
+    ).toEqual({ low: null, high: 23.9, bySex: true, band: null });
+  });
+
+  it("a luteal phase widens the ceiling a follicular value would flag against", () => {
+    // The motivating case: 15 ng/mL is 'high' against follicular (≤1.5) but normal
+    // against luteal (≤23.9). Same value, phase decides the resolved range.
+    const foll = referenceRange(progesterone, "female", 30, null, "follicular");
+    const lut = referenceRange(progesterone, "female", 30, null, "luteal");
+    expect(referenceStatus(15, foll.low, foll.high)).toBe("above");
+    expect(referenceStatus(15, lut.low, lut.high)).toBe("in");
+  });
+
+  it("male profiles are unaffected by a cycle phase", () => {
+    expect(referenceRange(progesterone, "male", 40, null, "luteal")).toEqual(
+      referenceRange(progesterone, "male", 40)
+    );
+  });
+
+  it("no phase is byte-identical to today's behavior (back-compat pin)", () => {
+    // The load-bearing pin: with cyclePhase undefined/null the result is exactly the
+    // status/base resolution — nothing about the pre-#718 path moved.
+    expect(referenceRange(progesterone, "female", 30, "premenopausal")).toEqual(
+      referenceRange(progesterone, "female", 30, "premenopausal", null)
+    );
+    expect(referenceRange(progesterone, "female", 30, null, null)).toEqual({
+      low: null,
+      high: 23.9,
+      bySex: true,
+      band: null,
+    });
+  });
+});
+
+describe("reconciledFlag — cycle phase (#718)", () => {
+  // A judged progesterone entry (needs name/unit/direction for the flag path).
+  const progesterone = {
+    name: "Progesterone",
+    unit: "ng/mL",
+    direction: "in_range" as const,
+    ref_low: null,
+    ref_high: 23.9,
+    ref_low_female: null,
+    ref_high_female: 23.9,
+    optimal_low: null,
+    optimal_high: null,
+    optimal_low_male: null,
+    optimal_high_male: null,
+    optimal_low_female: null,
+    optimal_high_female: null,
+    ranges_by_cycle_phase: {
+      follicular: { ref_low: null, ref_high: 1.5 },
+      luteal: { ref_low: null, ref_high: 23.9 },
+    },
+  };
+
+  it("a mid-luteal 15 ng/mL is NOT flagged (normal against the luteal range)", () => {
+    // On a luteal date the value sits in [_, 23.9] → no derived flag (undefined = no
+    // change from a null current flag).
+    expect(
+      reconciledFlag(
+        null,
+        15,
+        "ng/mL",
+        progesterone,
+        "female",
+        30,
+        null,
+        null,
+        "luteal"
+      )
+    ).toBe(undefined);
+  });
+
+  it("the SAME 15 ng/mL IS flagged high against the follicular range", () => {
+    // On a follicular date the ceiling is 1.5 → 'high'. Same value, logged phase decides.
+    expect(
+      reconciledFlag(
+        null,
+        15,
+        "ng/mL",
+        progesterone,
+        "female",
+        30,
+        null,
+        null,
+        "follicular"
+      )
+    ).toBe("high");
+  });
+
+  it("no cycle phase: 15 ng/mL is unflagged against the base envelope (back-compat)", () => {
+    // Without cycle data the base ≤23.9 envelope applies — the pre-#718 behavior.
+    expect(reconciledFlag(null, 15, "ng/mL", progesterone, "female", 30)).toBe(
+      undefined
     );
   });
 });

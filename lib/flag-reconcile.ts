@@ -1,5 +1,6 @@
 import { ageFromBirthdate } from "./date";
 import { reconciledFlag, qualitativeFlagResolution } from "./reference-range";
+import { cyclePhaseOnDate, type CyclePeriod } from "./cycle";
 import type { ReproductiveStatus, Sex } from "./types";
 
 // The canonical-ranges shape reconciledFlag needs to judge a value. Kept loose so
@@ -39,6 +40,12 @@ export interface FlagReconcileContext {
   // profile's hormone records (the same simplification as the stored-age fallback).
   // Threaded into reconciledFlag alongside sex; only affects female physiology.
   reproductiveStatus?: ReproductiveStatus | null;
+  // The profile's logged menstrual periods (issue #718). Unlike the coarse status
+  // above, cycle phase is PER-RECORD: for each row, cyclePhaseOnDate resolves the
+  // phase on that row's OWN collection date, so the phase-specific hormone range
+  // applies (above the status proxy). Absent/empty (no cycle log) → no phase is
+  // derived and the derivation is byte-identical to the pre-#718 behavior.
+  periods?: CyclePeriod[] | null;
 }
 
 // The subject's age (whole years) for a record's collection date: derived from the
@@ -82,9 +89,17 @@ export function computeFlagReconciliation<T>(
 ): FlagChange[] {
   const context: FlagReconcileContext =
     ctx == null || typeof ctx === "string" ? { sex: ctx ?? null } : ctx;
+  const periods = context.periods ?? null;
   const out: FlagChange[] = [];
   for (const r of rows) {
     const cb = cbByName.get(r.canonical_name.toLowerCase());
+    // The cycle phase on THIS record's collection date (#718), or null when there is
+    // no cycle log or the date predates the first recorded period. reconciledFlag only
+    // uses it for female physiology on an analyte that carries phase ranges.
+    const cyclePhase =
+      periods && periods.length > 0 && r.date
+        ? cyclePhaseOnDate(periods, r.date)
+        : null;
     const next = reconciledFlag(
       r.flag,
       r.value_num,
@@ -93,7 +108,8 @@ export function computeFlagReconciliation<T>(
       context.sex ?? null,
       ageForRecord(context, r.date),
       context.reproductiveStatus ?? null,
-      r.reference ?? null
+      r.reference ?? null,
+      cyclePhase
     );
     if (next === undefined) continue;
     out.push({ id: r.id, flag: next });

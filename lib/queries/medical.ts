@@ -12,6 +12,7 @@ import {
   computeFlagReconciliation,
   computeQualitativeFlagChanges,
 } from "../flag-reconcile";
+import { listCyclePeriods } from "../cycle-store";
 import { detectUnitMislabel } from "../reference-range";
 import {
   TITER_DISTINCTIVE_TOKENS,
@@ -978,6 +979,10 @@ export function reconcileFlags(profileId: number, ids?: number[]): number {
   // Reproductive status (female physiology only) overrides the age proxy for the
   // reproductive hormones — a profile-level attribute applied to all its records.
   const reproductiveStatus = getUserReproductiveStatus(profileId);
+  // The profile's logged menstrual periods (#718): computeFlagReconciliation derives
+  // each hormone record's cycle phase from its own collection date, refining the range
+  // above the coarse status proxy. Empty for a profile with no cycle log (→ unchanged).
+  const periods = listCyclePeriods(profileId);
   // Preload the whole canonical table into a case-insensitive map so the loop is a
   // hash lookup, not a per-record `SELECT ... COLLATE NOCASE` (N+1). Mirrors the
   // boot-time reconcileNonOptimalFlags in lib/db.ts. The canonical PK is NOCASE and
@@ -997,6 +1002,7 @@ export function reconcileFlags(profileId: number, ids?: number[]): number {
     birthdate,
     age: storedAge,
     reproductiveStatus,
+    periods,
   });
   // Qualitative pass (#549): the numeric reconcile above bails on value_num IS NULL,
   // so a qualitative value's extractor-guessed flag is never revisited. Route those

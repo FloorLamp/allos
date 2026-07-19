@@ -2,12 +2,14 @@ import type {
   AgeBandedRange,
   BiomarkerDirection,
   CanonicalBiomarker,
+  CyclePhaseRanges,
   MedicalFlag,
   ReproductiveStatus,
   ReproductiveStatusRange,
   ReproductiveStatusRanges,
   Sex,
 } from "./types";
+import type { CyclePhase } from "./cycle";
 import { convertToCanonical } from "./unit-conversions";
 import { qualitativeClassForLoinc } from "./biomarker-loinc";
 
@@ -28,6 +30,11 @@ type AgeBandCarrier = { ranges_by_age?: unknown };
 // reason as AgeBandCarrier — the value is a parsed object (typed rows) or JSON text
 // (a raw SELECT), and selectStatusRange coerces both.
 type StatusCarrier = { ranges_by_status?: unknown };
+
+// Optional carrier for the cycle-phase overrides (issue #718). Same `unknown` reason
+// as StatusCarrier — a parsed object (typed rows) or JSON text (raw SELECT), coerced
+// by selectCyclePhaseRange.
+type CyclePhaseCarrier = { ranges_by_cycle_phase?: unknown };
 
 // The fields needed to resolve a biomarker's optimal band, including the
 // sex-specific overrides and the (optional) age-banded overrides.
@@ -53,7 +60,8 @@ type ReferenceFields = Pick<CanonicalBiomarker, "ref_low" | "ref_high"> &
     >
   > &
   AgeBandCarrier &
-  StatusCarrier;
+  StatusCarrier &
+  CyclePhaseCarrier;
 
 // Coerce the ranges_by_age field to an array. It arrives already parsed (typed
 // CanonicalBiomarker rows) or, straight from a raw SQLite SELECT, as a JSON string
@@ -134,6 +142,67 @@ export function selectStatusRange(
   return r && typeof r === "object" ? r : null;
 }
 
+// Coerce the ranges_by_cycle_phase field to a phase→range map. Same shape/handling as
+// coerceStatusRanges (parsed object OR raw JSON string) — null on anything else.
+function coerceCyclePhaseRanges(v: unknown): CyclePhaseRanges | null {
+  if (v == null) return null;
+  let obj: unknown = v;
+  if (typeof v === "string") {
+    const s = v.trim();
+    if (!s) return null;
+    try {
+      obj = JSON.parse(s);
+    } catch {
+      return null;
+    }
+  }
+  return obj && typeof obj === "object" && !Array.isArray(obj)
+    ? (obj as CyclePhaseRanges)
+    : null;
+}
+
+// Map the DERIVED cycle phase (menstrual/follicular/luteal — lib/cycle) onto the
+// hormone-range key (issue #718). The derived model is deliberately NON-PREDICTIVE:
+// there is NO distinct "ovulatory" phase, so the ~1–2-day ovulatory window — and its
+// mid-cycle hormone SURGE (the LH surge, the estradiol peak, the FSH bump) — falls
+// INSIDE the derived follicular span. Two consequences, both encoded here:
+//   • a MENSTRUAL date reads the follicular range — menses IS early follicular, when
+//     these hormones sit at their follicular baseline;
+//   • a follicular date reads the follicular range, which the curated data defines as
+//     a follicular→ovulatory ENVELOPE (open low, ceiling = the mid-cycle peak) so the
+//     physiological surge is never false-flagged "high". The trade — a genuinely-high
+//     isolated follicular value near the envelope ceiling won't flag — is accepted, the
+//     same "false positive is worse than a missed catch" stance the coarse envelopes
+//     already take; the distinctive gain is the LUTEAL range (progesterone especially).
+// Only luteal maps to the luteal range — the one phase the derivation resolves
+// unambiguously (retrospectively, from the following period).
+type CyclePhaseRangeKey = "follicular" | "luteal";
+
+function cyclePhaseRangeKey(phase: CyclePhase): CyclePhaseRangeKey {
+  return phase === "luteal" ? "luteal" : "follicular";
+}
+
+// The cycle-phase reference override for a subject on a collection date, or null.
+// FEMALE physiology ONLY (like selectStatusRange) — a male/unset sex never resolves.
+// Resolves only when a phase is supplied (the gather layer derived it from the logged
+// cycle history for the record's date) AND the analyte carries a range for that phase.
+// This is the HIGHEST-precedence axis in referenceRange (above the coarse
+// reproductive-status proxy): a logged period covering the collection date is DIRECT
+// evidence of which phase the subject was in, strictly more specific than the
+// menopausal-status or age proxy. When no phase is supplied (no cycle data covers the
+// date) this returns null and referenceRange falls back to the existing behavior.
+export function selectCyclePhaseRange(
+  ranges: unknown,
+  sex: Sex | null | undefined,
+  phase: CyclePhase | null | undefined
+): ReproductiveStatusRange | null {
+  if (sex !== "female" || !phase) return null;
+  const map = coerceCyclePhaseRanges(ranges);
+  if (!map) return null;
+  const r = map[cyclePhaseRangeKey(phase)];
+  return r && typeof r === "object" ? r : null;
+}
+
 // A human label for which band applied, e.g. "age 6–12", "age <2", "age 65+".
 // Null for the adult band (no label needed). Given the half-open [min, max)
 // convention, "age 6–12" covers ages 6 through 11.
@@ -161,7 +230,8 @@ export function referenceRange(
   cb: ReferenceFields | null | undefined,
   sex?: Sex | null,
   age?: number | null,
-  status?: ReproductiveStatus | null
+  status?: ReproductiveStatus | null,
+  cyclePhase?: CyclePhase | null
 ): {
   low: number | null;
   high: number | null;
@@ -169,8 +239,26 @@ export function referenceRange(
   band: AgeBandLabel | null;
 } {
   if (!cb) return { low: null, high: null, bySex: false, band: null };
-  // Reproductive status is the highest-precedence axis (female physiology only) —
-  // above the age band — so a genuinely post-menopausal high hormone flags.
+  // Cycle phase is the HIGHEST-precedence axis (female physiology only) — above the
+  // coarse reproductive-status proxy AND the age band (issue #718) — because a logged
+  // period covering the collection date is direct evidence of the actual phase, so a
+  // mid-luteal progesterone reads its luteal range instead of false-flagging "high"
+  // against the follicular/coarse range. Null cyclePhase (no cycle data covers the
+  // date) → this is skipped and the behavior below is byte-identical to before.
+  const phaseRange = selectCyclePhaseRange(
+    cb.ranges_by_cycle_phase,
+    sex,
+    cyclePhase
+  );
+  if (phaseRange)
+    return {
+      low: phaseRange.ref_low ?? null,
+      high: phaseRange.ref_high ?? null,
+      bySex: true,
+      band: null,
+    };
+  // Reproductive status is the next axis (female physiology only) — above the age
+  // band — so a genuinely post-menopausal high hormone flags.
   const statusRange = selectStatusRange(cb.ranges_by_status, sex, status);
   if (statusRange)
     return {
@@ -549,7 +637,8 @@ export function detectUnitMislabel(
   cb: CanonicalRanges | null | undefined,
   sex?: Sex | null,
   age?: number | null,
-  status?: ReproductiveStatus | null
+  status?: ReproductiveStatus | null,
+  cyclePhase?: CyclePhase | null
 ): UnitMislabel | null {
   const canonUnit = cb?.unit ?? null;
   if (!canonUnit || !unit || valueNum == null) return null;
@@ -557,7 +646,7 @@ export function detectUnitMislabel(
   const parsed = parseReferenceRange(reference);
   if (!parsed || (parsed.low == null && parsed.high == null)) return null;
 
-  const rr = referenceRange(cb, sex, age, status);
+  const rr = referenceRange(cb, sex, age, status, cyclePhase);
   if (rr.low == null && rr.high == null) return null;
 
   // The value + stated range bounds, converted by the STATED (suspect) unit.
@@ -613,7 +702,12 @@ export function reconciledFlag(
   // out-of-range flag from the faithfully-converted-but-wrong value — the same
   // "can't validate → don't assert" stance it takes when convertToCanonical returns
   // null — so the alarming false flag never shows, even before any user correction.
-  reference?: string | null
+  reference?: string | null,
+  // The subject's cycle phase on the record's collection date (issue #718), derived
+  // by the gather layer from the logged cycle history. When set (and the analyte
+  // carries phase ranges), referenceRange picks the phase-specific range. Null (no
+  // cycle data covers the date) → unchanged behavior.
+  cyclePhase?: CyclePhase | null
 ): MedicalFlag | null | undefined {
   const f = currentFlag ?? null;
   if (f === "abnormal") return undefined;
@@ -624,10 +718,21 @@ export function reconciledFlag(
   // A probable unit mislabel (#761): the converted value is faithful but the unit
   // is wrong, so any flag derived from it would be a fabricated abnormality. Leave
   // the stored flag unchanged (don't assert) until the user approves the fix.
-  if (detectUnitMislabel(reference, unit, valueNum, cb, sex, age, status))
+  if (
+    detectUnitMislabel(
+      reference,
+      unit,
+      valueNum,
+      cb,
+      sex,
+      age,
+      status,
+      cyclePhase
+    )
+  )
     return undefined;
 
-  const rr = referenceRange(cb, sex, age, status);
+  const rr = referenceRange(cb, sex, age, status, cyclePhase);
   const ref = referenceStatus(v, rr.low, rr.high);
   if (ref === "above" || ref === "below") {
     const target = ref === "above" ? "high" : "low";
@@ -743,10 +848,11 @@ export function rangeBadge(
   cb: CanonicalRanges | null | undefined,
   sex?: Sex | null,
   age?: number | null,
-  status?: ReproductiveStatus | null
+  status?: ReproductiveStatus | null,
+  cyclePhase?: CyclePhase | null
 ): RangeBadge {
   if (value == null || !cb) return "unknown";
-  const rr = referenceRange(cb, sex, age, status);
+  const rr = referenceRange(cb, sex, age, status, cyclePhase);
   const ref = referenceStatus(value, rr.low, rr.high);
   if (ref === "above") return "high";
   if (ref === "below") return "low";

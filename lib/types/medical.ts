@@ -176,6 +176,21 @@ export type ReproductiveStatusRanges = Partial<
   Record<ReproductiveStatus, ReproductiveStatusRange>
 >;
 
+// Cycle-phase reference overrides for a phase-dependent reproductive hormone
+// (Estradiol/FSH/LH/Progesterone) — issue #718. Keyed by the two phases the
+// non-predictive cycle derivation (lib/cycle) resolves for hormones: `follicular`
+// (which also covers a MENSTRUAL date and — because there is no distinct derived
+// ovulatory phase — the mid-cycle surge, so its curated range is a follicular→
+// ovulatory ENVELOPE) and `luteal`. FEMALE physiology only; selected by the phase on
+// the record's collection date, above the coarse reproductive-status proxy in
+// referenceRange (lib/reference-range.selectCyclePhaseRange). The range shape reuses
+// ReproductiveStatusRange (ref_low/ref_high/note; null low = open). Stored as JSON in
+// canonical_biomarkers.ranges_by_cycle_phase.
+export type CyclePhaseRangeKey = "follicular" | "luteal";
+export type CyclePhaseRanges = Partial<
+  Record<CyclePhaseRangeKey, ReproductiveStatusRange>
+>;
+
 // An age-banded reference/optimal range for a biomarker whose normal values shift
 // with age (the pediatric/geriatric case — e.g. ALP and resting heart rate in
 // children). Ages are WHOLE YEARS (matching ageFromBirthdate) and the band is
@@ -236,6 +251,13 @@ export interface CanonicalBiomarker {
   // lib/reference-range.selectStatusRange. NULL when the analyte isn't hormone-like.
   // Stored as a JSON object in the canonical_biomarkers table.
   ranges_by_status: ReproductiveStatusRanges | null;
+  // Cycle-phase reference overrides (female physiology only) for the phase-dependent
+  // reproductive hormones (issue #718). When the subject is female and their cycle
+  // phase on the record's collection date is derivable from the logged cycle history,
+  // the matching phase range REPLACES all other ranges (above ranges_by_status) — see
+  // lib/reference-range.selectCyclePhaseRange. NULL when the analyte isn't cycle-phase
+  // dependent. Stored as a JSON object in the canonical_biomarkers table.
+  ranges_by_cycle_phase: CyclePhaseRanges | null;
   // Recommended retest cadence, in days, for the Upcoming retest signal. NULL
   // falls back to the flat DEFAULT_RETEST_DAYS (365) — see lib/reference-range.
   // Curated per-analyte in scripts/gen-canonical-biomarkers (RETEST_DAYS) so e.g.
