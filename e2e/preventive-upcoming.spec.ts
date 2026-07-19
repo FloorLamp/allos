@@ -156,9 +156,13 @@ test.describe("preventive care in Upcoming (issues #82 + #86 + #85)", () => {
     await page.goto("/upcoming");
     const main = page.getByRole("main");
 
-    // The depression screening is procedure-coded in the concept map, so its
-    // satisfaction-derived link is the procedures surface. Read-only (a click),
-    // so it runs BEFORE the later test in this serial group declines the rule.
+    // The depression screening's concept-map entry carries a satisfying canonical
+    // biomarker (a recorded PHQ-9 score, #716), so its satisfaction-derived link is
+    // the biomarkers surface — the same derivation as lipids/A1c. (Before #716 it was
+    // procedure-coded only and linked to /procedures.) The #283 pin is unchanged:
+    // the link must land on a REAL surface, never the removed /medical. Read-only
+    // (a click), so it runs BEFORE the later test in this serial group declines
+    // the rule.
     const depression = main.getByTestId(DEPRESSION_KEY);
     await expect(depression).toBeVisible();
     await followLink(
@@ -167,12 +171,12 @@ test.describe("preventive care in Upcoming (issues #82 + #86 + #85)", () => {
         name: "Depression screening",
         exact: true,
       }),
-      /\/procedures/
+      /\/biomarkers/
     );
 
-    await expect(page).toHaveURL(/\/procedures/);
+    await expect(page).toHaveURL(/\/biomarkers/);
     await expect(
-      page.getByRole("main").getByText("Procedures").first()
+      page.getByRole("main").getByText("Biomarkers").first()
     ).toBeVisible();
   });
 
