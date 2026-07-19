@@ -379,3 +379,12 @@ export const CEL_IMPORT_PROFILE = "Cel Import (e2e)";
 // dismissal state (reset per test), so it stays repeat-safe.
 export const E2E_LOGIN_DRUG_ALLERGY = "e2e_drug_allergy";
 export const DRUG_ALLERGY_PROFILE = "Drug Allergy (e2e)";
+
+// A member granted a dedicated ADULT profile for the #1027 cross-item PRN counter
+// spec: OTC ibuprofen (confirmed 6h interval / max 4, PRN) plus a second
+// "Ibuprofen 800 mg" item whose administration one hour before the frozen e2e clock
+// holds the OTC item's redose window ("Next dose in ~5h … across 2 items") and
+// raises the coaching duplication note. Read-only in its spec (dismissals reset per
+// test), so it stays repeat-safe and never perturbs shared-seed PRN fixtures.
+export const E2E_LOGIN_PRN_FAMILY = "e2e_prn_family";
+export const PRN_FAMILY_PROFILE = "Prn Family (e2e)";

@@ -278,13 +278,20 @@ function dietaryLimitItems(profileId: number, today: string): UpcomingItem[] {
 // SAME getFindingSuppressions bus as every other finding. Banded to Today (a
 // standing, informational safety note framed "you've logged more than your confirmed
 // daily max" — never prescriptive), and it clears itself at the next date rollover.
+// FAMILY-AWARE (#1027): the count spans the ingredient family (OTC + Rx ibuprofen
+// together) against the most conservative confirmed max; a multi-item family names
+// every member (#531 — label by what the count spans) and stays keyed on the
+// most-conservative member's id.
 function prnMaxItems(profileId: number, today: string): UpcomingItem[] {
   return getPrnOverMaxItems(profileId, today).map((m) => ({
     key: prnMaxSignalKey(m.id),
     domain: "prn-max" as const,
     title: `${m.name} — over your daily max`,
     detail:
-      `${m.count} logged today vs your confirmed max of ${m.maxDailyCount}. ` +
+      (m.memberNames?.length
+        ? `${m.count} logged today across ${m.memberNames.join(" + ")} vs the ` +
+          `most conservative confirmed max of ${m.maxDailyCount}. `
+        : `${m.count} logged today vs your confirmed max of ${m.maxDailyCount}. `) +
       `Informational — if this looks wrong, adjust the log; if you're in pain, ` +
       `contact your clinician.`,
     href: MEDICATIONS_HREF,

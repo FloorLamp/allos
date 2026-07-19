@@ -29,6 +29,7 @@ import {
   getFrequencyTargetProgress,
   getSubstanceWeekState,
   getIntakeSafetyContext,
+  getActiveMedicationFamilies,
   getBiomarkerSeries,
   getCanonicalBiomarker,
   getDaylightOutdoorMinutesTotal,
@@ -93,7 +94,13 @@ import { fmtWeight, round } from "./units";
 import { formatLongDate } from "./format-date";
 import { describeEta } from "./trend-projection";
 import type { Finding } from "./findings";
-import { biomarkerViewHref, nutritionTabHref, type AppRoute } from "./hrefs";
+import {
+  biomarkerViewHref,
+  nutritionTabHref,
+  MEDICATIONS_HREF,
+  type AppRoute,
+} from "./hrefs";
+import { medDupSignalKey, familyDisplayLabel } from "./medication-family";
 import type { FoodSuggestion } from "./food-suggest";
 import type { WeightUnit } from "./settings";
 import {
@@ -216,12 +223,53 @@ export function buildMobilitySuggestionFindings(
   }));
 }
 
+// ---- Medication therapeutic-duplication note (#1027 ask 3) ------------------
+
+// ONE calm observation per ingredient FAMILY with two or more ACTIVE medication
+// members ("Ibuprofen appears in 2 active medications") — the visibility half of the
+// #1027 cross-item counters (the family-wide redose/over-max math is the protective
+// half). COACHING tier deliberately (#449): it joins collectCoachingFindings, its
+// dedupeKey (`med-dup:<familyKey>`, MED_DUP_PREFIX registered in
+// RULE_FINDING_PREFIXES) rides the shared suppression bus, and it NEVER notifies /
+// never reaches the hero — tracking both an OTC and an Rx strength is often
+// deliberate, so this is informational posture only. Reads through the ONE
+// profile-scoped family gather (getActiveMedicationFamilies), so the note and the
+// widened counters can never disagree about what a family is. The familyKey is
+// derived (CUI-first, cleaned-name fallback) — per #203, resolving/renaming a member
+// re-keys the family and an old dismissal goes inert (it resurfaces once).
+export function buildMedicationDuplicationFindings(
+  profileId: number
+): Finding[] {
+  const findings: Finding[] = [];
+  for (const family of getActiveMedicationFamilies(profileId)) {
+    if (family.members.length < 2) continue;
+    const label = familyDisplayLabel(family.members);
+    findings.push({
+      domain: "med-dup",
+      dedupeKey: medDupSignalKey(family.familyKey),
+      title: `${label} appears in ${family.members.length} active medications`,
+      detail:
+        `${family.members.map((m) => m.name).join(" + ")} share the same active ` +
+        `ingredient, so their doses count together toward the redose window and ` +
+        `daily max.`,
+      tone: "info",
+      evidence:
+        "Informational — tracking an OTC and a prescription strength separately " +
+        "is often deliberate; this note only makes the shared ingredient visible.",
+      actionHref: MEDICATIONS_HREF,
+      actionLabel: "View medications",
+    });
+  }
+  return findings;
+}
+
 export function collectCoachingFindings(
   profileId: number,
   today: string,
   wu: WeightUnit
 ): Finding[] {
   return [
+    ...buildMedicationDuplicationFindings(profileId),
     ...buildTrainingObservationFindings(profileId, today),
     ...buildMuscleVolumeFindings(profileId, today),
     ...buildBodyHygieneFindings(profileId, today, wu),

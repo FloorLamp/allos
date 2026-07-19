@@ -121,8 +121,9 @@ export function cleanMedicationName(raw: string): string {
 // Pull the strength out of a drug name ("Lisinopril 10 mg" → "10 mg"), when the
 // extractor packed it into the name instead of a separate value/unit. Same
 // unit alternation as NAME_STRENGTH_RE: `%` lives outside the `\b`-terminated
-// letter-unit group (see the comment there).
-function strengthFromName(raw: string): string | null {
+// letter-unit group (see the comment there). Exported for the records bridge's
+// #1027 different-strength comparison (lib/medication-record-match.ts).
+export function strengthFromName(raw: string): string | null {
   const m = raw.match(
     /\b\d+(?:\.\d+)?\s*(?:(?:mg|mcg|µg|ug|g|ml|iu|units?|meq)\b|%)/i
   );

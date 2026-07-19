@@ -114,6 +114,8 @@ import {
   CEL_IMPORT_PROFILE,
   E2E_LOGIN_DRUG_ALLERGY,
   DRUG_ALLERGY_PROFILE,
+  E2E_LOGIN_PRN_FAMILY,
+  PRN_FAMILY_PROFILE,
 } from "./fixture-logins";
 import { adoptTemplate, activateRoutine } from "../lib/routines";
 
@@ -3403,4 +3405,68 @@ for (const medName of ["Amoxicillin 500 mg", "Cephalexin 250 mg"]) {
 seedMemberLogin(E2E_LOGIN_DRUG_ALLERGY, drugAllergyId, "write");
 console.log(
   `e2e: seeded drug-allergy cross-check fixture — profile ${drugAllergyId} (${DRUG_ALLERGY_PROFILE}) (#1029)`
+);
+
+// ── Cross-item PRN counter fixture (#1027) ────────────────────────────────────
+// A dedicated adult profile with the issue's two-ibuprofen setup: OTC "Ibuprofen"
+// (PRN, confirmed 6h interval / max 4 — the redose-line carrier) plus a second
+// "Ibuprofen 800 mg" item (PRN, unconfirmed fields) whose administration ONE HOUR
+// before the frozen e2e clock holds the OTC item's redose window across the family.
+// The spec asserts the family-widened "across 2 items" counter line on /medications
+// and the coaching duplication note on the dashboard rollup. Idempotent hard-clear
+// for a reused server. Synthetic, no PHI.
+const prnFamilyId = fixtureProfileId(PRN_FAMILY_PROFILE);
+db.prepare(
+  `DELETE FROM intake_item_logs WHERE item_id IN
+     (SELECT id FROM intake_items WHERE profile_id = ?)`
+).run(prnFamilyId);
+db.prepare(
+  `DELETE FROM intake_item_doses WHERE item_id IN
+     (SELECT id FROM intake_items WHERE profile_id = ?)`
+).run(prnFamilyId);
+db.prepare(`DELETE FROM intake_items WHERE profile_id = ?`).run(prnFamilyId);
+const prnOtcId = Number(
+  db
+    .prepare(
+      `INSERT INTO intake_items
+         (profile_id, name, active, kind, condition, priority, as_needed,
+          redose_notice, min_interval_hours, max_daily_count)
+       VALUES (?, 'Ibuprofen', 1, 'medication', 'daily', 'high', 1, 1, 6, 4)`
+    )
+    .run(prnFamilyId).lastInsertRowid
+);
+db.prepare(
+  `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+   VALUES (?, '200 mg', 'anytime', 'any', 0)`
+).run(prnOtcId);
+const prnRxId = Number(
+  db
+    .prepare(
+      `INSERT INTO intake_items
+         (profile_id, name, active, kind, condition, priority, as_needed)
+       VALUES (?, 'Ibuprofen 800 mg', 1, 'medication', 'daily', 'high', 1)`
+    )
+    .run(prnFamilyId).lastInsertRowid
+);
+const prnRxDoseId = Number(
+  db
+    .prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, '800 mg', 'anytime', 'any', 0)`
+    )
+    .run(prnRxId).lastInsertRowid
+);
+// The sibling administration: 1h before the frozen clock, on the profile-local day.
+db.prepare(
+  `INSERT INTO intake_item_logs (dose_id, item_id, date, given_at, status)
+   VALUES (?, ?, ?, ?, 'taken')`
+).run(
+  prnRxDoseId,
+  prnRxId,
+  today(prnFamilyId),
+  utcSqlString(new Date(clockNow().getTime() - 3_600_000))
+);
+seedMemberLogin(E2E_LOGIN_PRN_FAMILY, prnFamilyId, "write");
+console.log(
+  `e2e: seeded cross-item PRN counter fixture — profile ${prnFamilyId} (${PRN_FAMILY_PROFILE}) (#1027)`
 );
