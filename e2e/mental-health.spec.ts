@@ -46,15 +46,16 @@ test.describe("mental-health instruments (#716)", () => {
     const before = await rows.count();
 
     await pickInstrument(page, "PHQ-9");
-    // 9 items × option 1 = total 9 → Mild.
+    // 9 items × option 1 = total 9 → Mild band (the "Mild → no crisis" logic itself is
+    // pinned by the pure + DB tiers; the crisis line is a persistent, non-dismissible
+    // signal that a prior severe score leaves standing, so this render test never asserts
+    // its ABSENCE on the shared accumulating fixture — #868 relative-state hygiene).
     await answerAll(page, 9, 1);
     await expect(page.getByTestId("instrument-total")).toHaveText("9");
     await expect(page.getByTestId("instrument-band")).toContainText("Mild");
 
     await settledClick(page, page.getByTestId("instrument-submit"));
     await expect(rows).toHaveCount(before + 1);
-    // No crisis line for a mild score.
-    await expect(page.getByTestId("instrument-crisis-line")).toHaveCount(0);
   });
 
   test("a severe PHQ-9 shows the non-dismissible crisis-resources line (988)", async () => {
