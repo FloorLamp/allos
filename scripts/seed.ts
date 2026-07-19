@@ -2223,6 +2223,62 @@ for (const [ago, symptom, severity, note] of seededSymptoms) {
   seedSymptom.run(daysAgo(ago), symptom, severity, note);
 }
 
+// ── Daily mood check-ins (issue #992) ────────────────────────────────────────
+// ~3 weeks of synthetic wellbeing check-ins so the dashboard "How are you today?"
+// card shows a logged state, the Trends → Body mood chart has a series, and the
+// weekly-recap mood line has data when opted in. Ordinary mixed values (mostly
+// 3–5) so the low-mood coaching observation does NOT fire on a fresh seed; the
+// current illness stretch dips (illness tanks mood — the #992 coexistence story)
+// without pulling the 14-day mean under the threshold. Occasional expand fields
+// (energy/anxiety/factors/note) exercise the detail path. Upsert on the per-day
+// key for a re-seed. Synthetic, no real PHI.
+const seedMood = db.prepare(
+  `INSERT INTO mood_logs (profile_id, date, valence, energy, anxiety, factors, notes)
+   VALUES (1, ?, ?, ?, ?, ?, ?)
+   ON CONFLICT (profile_id, date) DO UPDATE SET
+     valence = excluded.valence, energy = excluded.energy,
+     anxiety = excluded.anxiety, factors = excluded.factors,
+     notes = excluded.notes`
+);
+const seededMoods: [
+  number,
+  number,
+  number | null,
+  number | null,
+  string[] | null,
+  string | null,
+][] = [
+  [20, 4, 3, null, null, null],
+  [19, 4, null, 2, null, null],
+  [18, 3, 3, 3, ["work"], null],
+  [17, 5, 4, 2, ["social"], "Great dinner with friends"],
+  [16, 4, null, null, null, null],
+  [14, 3, 2, 3, ["sleep"], "Short night"],
+  [13, 4, 3, 2, null, null],
+  [12, 4, null, null, null, null],
+  [11, 5, 4, 1, null, null],
+  [10, 4, 3, 2, null, null],
+  [8, 3, 3, 3, ["work"], null],
+  [7, 4, 3, 2, null, null],
+  [6, 4, null, null, null, null],
+  [5, 4, 4, 2, null, null],
+  // The current illness episode (daysAgo 3→0): mood dips with the fever.
+  [3, 3, 2, 3, ["health"], null],
+  [2, 2, 1, 3, ["health"], "Fever peaked, rough day"],
+  [1, 3, 2, 2, ["health"], null],
+  [0, 3, 2, 2, ["health"], null],
+];
+for (const [ago, valence, energy, anxiety, factors, note] of seededMoods) {
+  seedMood.run(
+    daysAgo(ago),
+    valence,
+    energy,
+    anxiety,
+    factors ? JSON.stringify(factors) : null,
+    note
+  );
+}
+
 // ── Body temperature over the current episode (#800/#801) ────────────────────
 // A fever curve that peaks on daysAgo(2) (matching the "fever" symptom + "Peaked in
 // the evening" note) then trends down, so the illness-episode view's temperature curve

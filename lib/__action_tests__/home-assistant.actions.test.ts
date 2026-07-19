@@ -52,6 +52,7 @@ describe("saveHomeAssistantPrefs", () => {
         "workout",
         "workout-recap",
         "food",
+        "mood",
         "digest",
         "upcoming",
         "weekly-recap",

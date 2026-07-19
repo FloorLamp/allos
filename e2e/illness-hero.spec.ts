@@ -112,10 +112,12 @@ test("active profile's open episode renders a full cockpit at hero position, no 
   await resolveDialog.getByRole("button", { name: "Cancel" }).click();
   await expect(own).toHaveAttribute("data-expanded", "true");
 
-  // The symptom bar appears EXACTLY once (the widget slot renders nothing while the hero
-  // is up) and the inactive-state "Feeling sick?" card is gone (#858 no-duplicate).
+  // The symptom bar appears EXACTLY once (in the hero; #858 no-duplicate). The
+  // unified "How are you today?" card (#992) stays up for the mood tap but its
+  // illness branch defers to the hero — no second "Not feeling well?" affordance.
   await expect(page.getByTestId("symptom-log-bar")).toHaveCount(1);
-  await expect(page.getByTestId("feeling-sick-card")).toHaveCount(0);
+  await expect(page.getByTestId("feeling-sick-activate")).toHaveCount(0);
+  await expect(page.getByTestId("mood-episode-note")).toBeVisible();
 
   await page.context().close();
 });

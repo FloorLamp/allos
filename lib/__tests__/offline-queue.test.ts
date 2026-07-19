@@ -187,6 +187,9 @@ describe("FLOW_KINDS", () => {
       "skip-dose",
       "body-metric",
       "vitals",
+      // Daily mood check-in (#992): idempotent per profile+date on the server's
+      // UNIQUE(profile_id, date) upsert.
+      "mood",
     ]);
   });
 });

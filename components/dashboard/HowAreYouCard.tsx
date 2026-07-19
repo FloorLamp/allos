@@ -63,7 +63,7 @@ function ScaleRow({
         {name}
       </span>
       <div className="flex items-center gap-1">
-        <span className="text-[10px] text-slate-400">{lowLabel}</span>
+        <span className="text-xs text-slate-400">{lowLabel}</span>
         {[1, 2, 3, 4, 5].map((n) => (
           <button
             key={n}
@@ -80,7 +80,7 @@ function ScaleRow({
             {n}
           </button>
         ))}
-        <span className="text-[10px] text-slate-400">{highLabel}</span>
+        <span className="text-xs text-slate-400">{highLabel}</span>
       </div>
     </div>
   );
@@ -299,13 +299,13 @@ export default function HowAreYouCard({
       {/* The illness branch — a separate engine behind the shared shell. */}
       {activeEpisode ? (
         <p
-          className="mt-3 border-t border-slate-100 pt-2 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400"
+          className="mt-3 border-t border-black/5 pt-2 text-xs text-slate-500 dark:border-white/5 dark:text-slate-400"
           data-testid="mood-episode-note"
         >
           Illness episode active — symptoms and temperature are tracked above.
         </p>
       ) : (
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 dark:border-slate-800">
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-black/5 pt-2 dark:border-white/5">
           <p className="text-xs text-slate-500 dark:text-slate-400">
             Not feeling well? Start tracking symptoms and temperature.
           </p>
