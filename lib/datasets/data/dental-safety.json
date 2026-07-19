@@ -1,0 +1,169 @@
+{
+  "$schema": "allos-dataset/v1",
+  "id": "dental-safety",
+  "title": "Dental-procedure safety cross-check",
+  "description": "Baked dental-procedure safety cross-check dataset (issue #704) — flags when an INVASIVE dental procedure is PLANNED (a bone-manipulating / bleeding-prone status='planned' dental_procedures row, #705) and the active stack / conditions carry a high-consequence interaction: an ANTIRESORPTIVE (bisphosphonate / denosumab) → MRONJ caution, a high-risk CARDIAC condition → antibiotic-prophylaxis note (AHA), or an ANTICOAGULANT → bleeding-management note. Drugs match by RxNorm ingredient CUI + synonym (the shared machinery); conditions by curated keyword. INFORMATIONAL, never prescriptive — it never says stop a drug or take an antibiotic, never blocks a procedure, and the absence of a flag is NOT clearance. A routine cleaning is non-invasive and triggers nothing. Fully OFFLINE. Committed + HUMAN-REVIEWABLE; regenerate with `npm run gen:dental-safety`.",
+  "citation": [
+    {
+      "source": "AAOMS Position Paper on Medication-Related Osteonecrosis of the Jaw (2022)",
+      "url": "https://www.aaoms.org/practice-resources/aaoms-position-papers",
+      "note": "Uncopyrightable clinical facts (antiresorptive → MRONJ risk for invasive dental procedures) stated in our own words and cited to the AAOMS position paper."
+    },
+    {
+      "source": "AHA/ACC Guideline on Prevention of Infective Endocarditis (2007, reaffirmed)",
+      "url": "https://www.ahajournals.org/doi/10.1161/CIRCULATIONAHA.106.183095",
+      "note": "The AHA high-risk cardiac condition set for infective-endocarditis prophylaxis before dental procedures, stated in our own words and cited to the AHA guideline."
+    },
+    {
+      "source": "American Dental Association; ACC/AHA anticoagulation guidance",
+      "url": "https://www.ada.org/resources/ada-library/oral-health-topics/oral-anticoagulant-and-antiplatelet-drugs",
+      "note": "The anticoagulant → bleeding-management consideration for dental extractions, stated in our own words. Drug generic/brand names and RxCUIs are public nomenclature."
+    }
+  ],
+  "identity": {
+    "keys": [
+      "key"
+    ]
+  },
+  "meta": {
+    "version": 1,
+    "conditionGates": [
+      {
+        "key": "cardiac_transplant_valvulopathy",
+        "label": "Cardiac transplant with valvulopathy",
+        "keywords": [
+          "cardiac transplant",
+          "heart transplant"
+        ],
+        "note": "Heart transplant on file — if there is transplant-related valve disease (valvulopathy), antibiotic prophylaxis may be indicated before invasive dental work (AHA). Discuss with your dentist and cardiologist.",
+        "source": "AHA/ACC Guideline on Prevention of Infective Endocarditis (2007, reaffirmed)"
+      },
+      {
+        "key": "congenital_heart_disease",
+        "label": "Certain congenital heart disease",
+        "keywords": [
+          "congenital heart defect",
+          "congenital heart disease",
+          "cyanotic congenital heart",
+          "single ventricle",
+          "tetralogy of fallot",
+          "transposition of the great arteries",
+          "unrepaired congenital heart"
+        ],
+        "note": "Congenital heart disease on file — for the AHA high-risk categories, antibiotic prophylaxis may be indicated before invasive dental work. Discuss with your dentist and cardiologist.",
+        "source": "AHA/ACC Guideline on Prevention of Infective Endocarditis (2007, reaffirmed)"
+      },
+      {
+        "key": "prior_endocarditis",
+        "label": "Previous infective endocarditis",
+        "keywords": [
+          "bacterial endocarditis",
+          "endocarditis",
+          "infective endocarditis"
+        ],
+        "note": "Previous infective endocarditis on file — antibiotic prophylaxis may be indicated before invasive dental work (AHA). Discuss with your dentist and cardiologist.",
+        "source": "AHA/ACC Guideline on Prevention of Infective Endocarditis (2007, reaffirmed)"
+      },
+      {
+        "key": "prosthetic_valve",
+        "label": "Prosthetic heart valve",
+        "keywords": [
+          "aortic valve replacement",
+          "bioprosthetic valve",
+          "mechanical heart valve",
+          "mechanical valve",
+          "mitral valve replacement",
+          "prosthetic aortic valve",
+          "prosthetic heart valve",
+          "prosthetic mitral valve",
+          "prosthetic valve",
+          "prosthetic valve material",
+          "tavi",
+          "tavr",
+          "valve replacement"
+        ],
+        "note": "Prosthetic heart valve on file — antibiotic prophylaxis may be indicated before invasive dental work (AHA). Discuss with your dentist and cardiologist.",
+        "source": "AHA/ACC Guideline on Prevention of Infective Endocarditis (2007, reaffirmed)"
+      }
+    ]
+  },
+  "entries": [
+    {
+      "key": "anticoagulant_doac",
+      "category": "anticoagulant",
+      "label": "Direct oral anticoagulants (apixaban, rivaroxaban, dabigatran)",
+      "rxcuis": [
+        "1037045",
+        "1114195",
+        "1364430"
+      ],
+      "synonyms": [
+        "apixaban",
+        "dabigatran",
+        "edoxaban",
+        "eliquis",
+        "pradaxa",
+        "rivaroxaban",
+        "savaysa",
+        "xarelto"
+      ],
+      "note": "You take a direct oral anticoagulant — discuss bleeding management (such as dose timing) with your dentist and prescriber before an extraction or oral surgery.",
+      "source": "American Dental Association; ACC/AHA anticoagulation guidance"
+    },
+    {
+      "key": "anticoagulant_warfarin",
+      "category": "anticoagulant",
+      "label": "Warfarin",
+      "rxcuis": [
+        "11289"
+      ],
+      "synonyms": [
+        "coumadin",
+        "jantoven",
+        "warfarin"
+      ],
+      "note": "You take warfarin — discuss bleeding management (and whether your INR should be checked) with your dentist and prescriber before an extraction or oral surgery.",
+      "source": "American Dental Association; ACC/AHA anticoagulation guidance"
+    },
+    {
+      "key": "antiresorptive_bisphosphonate",
+      "category": "antiresorptive",
+      "label": "Bisphosphonates (alendronate, risedronate, zoledronate)",
+      "rxcuis": [],
+      "synonyms": [
+        "actonel",
+        "alendronate",
+        "aredia",
+        "atelvia",
+        "binosto",
+        "bisphosphonate",
+        "boniva",
+        "etidronate",
+        "fosamax",
+        "ibandronate",
+        "pamidronate",
+        "reclast",
+        "risedronate",
+        "tiludronate",
+        "zoledronate",
+        "zoledronic acid",
+        "zometa"
+      ],
+      "note": "You take a bisphosphonate — discuss the (small) risk of medication-related osteonecrosis of the jaw (MRONJ) with your dentist before an extraction, implant, or other bony surgery.",
+      "source": "AAOMS Position Paper on Medication-Related Osteonecrosis of the Jaw (2022)"
+    },
+    {
+      "key": "antiresorptive_denosumab",
+      "category": "antiresorptive",
+      "label": "Denosumab (Prolia, Xgeva)",
+      "rxcuis": [],
+      "synonyms": [
+        "denosumab",
+        "prolia",
+        "xgeva"
+      ],
+      "note": "You take denosumab, an antiresorptive — discuss the risk of medication-related osteonecrosis of the jaw (MRONJ) with your dentist before an extraction, implant, or other bony surgery.",
+      "source": "AAOMS Position Paper on Medication-Related Osteonecrosis of the Jaw (2022)"
+    }
+  ]
+}

@@ -87,6 +87,7 @@ import {
   getInteractionWarnings,
   getPgxWarnings,
   getContrastSafetyWarnings,
+  getDentalSafetyWarnings,
   getPrnOverMaxItems,
 } from "../intake";
 import { prnMaxSignalKey } from "../../prn-redose";
@@ -102,6 +103,7 @@ import {
   contrastDetail,
   type ContrastStudySource,
 } from "../../contrast-safety";
+import { dentalSafetyTitle, dentalSafetyDetail } from "../../dental-safety";
 import type { AppRoute } from "../../hrefs";
 import { getScheduledAppointments, kindedScheduled } from "../appointments";
 import {
@@ -340,6 +342,31 @@ function contrastItems(profileId: number, today: string): UpcomingItem[] {
     title: contrastTitle(hit),
     detail: contrastDetail(hit),
     href: CONTRAST_SOURCE_HREF[hit.source],
+    dueDate: null,
+    band: "today" as const,
+    dueText: "Review",
+  }));
+}
+
+// Dental-procedure safety cross-check (issue #704): a PLANNED INVASIVE dental
+// procedure (a status='planned', bone-manipulating dental_procedures row — #705)
+// meeting an antiresorptive (→ MRONJ), high-risk cardiac (→ antibiotic prophylaxis),
+// or anticoagulant (→ bleeding) gate on the active stack / conditions. Reuses the
+// shared getDentalSafetyWarnings gather (same pure crossCheckDentalSafety), so each
+// note surfaces as a dismissible finding keyed by `dental-safety:<procId>:<gateKey>` —
+// it goes through getFindingSuppressions like every other finding, so a dismiss/snooze
+// silences it ("dismiss once, silence everywhere"). SAFETY / care-tier (per #449 — a
+// pre-procedure safety note, like the contrast/interaction/PGx items): banded to Today
+// so it surfaces on the dashboard "Needs attention" hero. A routine cleaning is
+// non-invasive and produces nothing (the gate is in the gather). Standing
+// informational finding (no due date), never prescriptive.
+function dentalSafetyItems(profileId: number): UpcomingItem[] {
+  return getDentalSafetyWarnings(profileId).map((hit) => ({
+    key: hit.dedupeKey,
+    domain: "dental-safety" as const,
+    title: dentalSafetyTitle(hit),
+    detail: dentalSafetyDetail(hit),
+    href: "/dental" as AppRoute,
     dueDate: null,
     band: "today" as const,
     dueText: "Review",
@@ -767,6 +794,7 @@ const rawUpcoming = cache(function rawUpcoming(
     ...interactionItems(profileId),
     ...pgxItems(profileId),
     ...contrastItems(profileId, today),
+    ...dentalSafetyItems(profileId),
     ...appointmentItems(profileId),
     ...carePlanItems(profileId),
     ...followUpItems(profileId, today),
