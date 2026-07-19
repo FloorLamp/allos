@@ -12,7 +12,10 @@ import {
   getZone2WeeklyTargetMin,
   getRecommendationCadence,
   getExcludedFoodGroups,
+  getMentalHealthShareFull,
+  getProfileCrisisResourcesOverride,
 } from "@/lib/settings";
+import { formatCrisisResourcesText } from "@/lib/crisis-resources";
 import { requireSession } from "@/lib/auth";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
 import { isTrainingRestricted } from "@/lib/age-gate";
@@ -27,6 +30,9 @@ import ProfilePhotoCard from "./ProfilePhotoCard";
 import TrainingZonesForm from "./TrainingZonesForm";
 import RecommendationCadenceForm from "./RecommendationCadenceForm";
 import DietaryPreferencesForm from "./DietaryPreferencesForm";
+import MentalHealthPrivacyForm from "./MentalHealthPrivacyForm";
+import CrisisResourcesEditor from "@/components/CrisisResourcesEditor";
+import { saveProfileCrisisResources } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -65,6 +71,7 @@ export default async function ProfileSettingsPage() {
       ? [{ id: "nutrition", label: "Nutrition" } as AnchorSection]
       : []),
     { id: "coaching", label: "Coaching" },
+    { id: "privacy", label: "Privacy & support" },
   ];
 
   return (
@@ -123,6 +130,21 @@ export default async function ProfileSettingsPage() {
             <RecommendationCadenceForm
               cadence={getRecommendationCadence(profile.id)}
               isAdmin={isAdmin}
+            />
+          </section>
+          <section id="privacy" className="scroll-mt-4 space-y-6">
+            <h2 className="section-label">Privacy &amp; support</h2>
+            <MentalHealthPrivacyForm
+              shareFull={getMentalHealthShareFull(profile.id)}
+            />
+            <CrisisResourcesEditor
+              action={saveProfileCrisisResources}
+              initialText={formatCrisisResourcesText(
+                getProfileCrisisResourcesOverride(profile.id) ?? []
+              )}
+              title="Crisis resources (override)"
+              description="Optional per-profile override of the instance-wide crisis resources — for a mixed-region household. Leave empty to use the instance default."
+              testid="crisis-resources-profile"
             />
           </section>
         </div>

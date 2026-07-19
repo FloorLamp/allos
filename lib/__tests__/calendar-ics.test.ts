@@ -971,3 +971,41 @@ describe("FEED_CATEGORIES completeness", () => {
     }
   });
 });
+
+describe("appointmentToIcsEvent — mental_health sensitivity (#997)", () => {
+  const mh: AppointmentLike = {
+    id: 9,
+    scheduled_at: "2026-07-10 14:30",
+    status: "scheduled",
+    title: "Therapy — Dr. Okafor",
+    location: "Telehealth",
+    provider_name: "Dr. Okafor",
+    notes: null,
+    kind: "mental_health",
+  };
+
+  it("defaults to minimal on a FULL-detail feed (no override)", () => {
+    const ev = appointmentToIcsEvent(mh, { tz: "UTC", detail: "full" });
+    expect(ev.summary).toBe("Medical appointment");
+    expect(ev.description).toBeNull();
+    // Location is still emitted (needed to get there) — but no provider/reason.
+    expect(ev.location).toBe("Telehealth");
+  });
+
+  it("honors the owner's full-detail override", () => {
+    const ev = appointmentToIcsEvent(mh, {
+      tz: "UTC",
+      detail: "full",
+      mentalHealthShareFull: true,
+    });
+    expect(ev.summary).toBe("Therapy — Dr. Okafor");
+  });
+
+  it("a non-sensitive kind is unaffected by the override flag", () => {
+    const ev = appointmentToIcsEvent(
+      { ...mh, kind: "physical" },
+      { tz: "UTC", detail: "full" }
+    );
+    expect(ev.summary).toBe("Therapy — Dr. Okafor");
+  });
+});

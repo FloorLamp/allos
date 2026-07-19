@@ -116,8 +116,13 @@ export function getInferredPreventiveSatisfactions(
 
   // Completed appointments → visits (name-matched on the title PLUS the explicit
   // kind's inference text, #997). Folding appointmentKindInferenceText in lets a
-  // mental_health visit satisfy the depression/anxiety screenings via the shared
-  // stream even when its title is generic — the KIND is the reliable signal.
+  // mental_health visit satisfy the depression/anxiety SCREENINGS via the shared
+  // stream even when its title is generic — the KIND is the reliable signal. Those
+  // rules are `screening`-kind (a screening rule isn't a visit rule, unlike the
+  // physical/dental/eye visit rules), so a mental_health appointment additionally
+  // passes "screening" in its `allow` (the care-plan-item precedent of a
+  // multi-kind allow), reaching the depression/anxiety matchers without a forked
+  // satisfaction path. Every other kind stays `allow: ["visit"]`.
   for (const a of getAppointments(profileId)) {
     if (!isCompletedStatus(a.status)) continue;
     records.push({
@@ -127,7 +132,7 @@ export function getInferredPreventiveSatisfactions(
           .filter(Boolean)
           .join(" ") || null,
       date: a.scheduled_at.slice(0, 10),
-      allow: ["visit"],
+      allow: a.kind === "mental_health" ? ["visit", "screening"] : ["visit"],
     });
   }
 

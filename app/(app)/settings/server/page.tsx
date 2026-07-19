@@ -6,7 +6,9 @@ import {
   getAuditRetentionMonths,
   getSetting,
   getSmtpConfigView,
+  getGlobalCrisisResources,
 } from "@/lib/settings";
+import { formatCrisisResourcesText } from "@/lib/crisis-resources";
 import {
   getLastBackup,
   getLastBackupError,
@@ -31,6 +33,8 @@ import InstanceTimezoneSettings from "./InstanceTimezoneSettings";
 import AgeGateSettings from "./AgeGateSettings";
 import BackupSettings from "./BackupSettings";
 import AuditRetentionSettings from "./AuditRetentionSettings";
+import CrisisResourcesEditor from "@/components/CrisisResourcesEditor";
+import { saveCrisisResources } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -104,6 +108,15 @@ export default async function ServerSettingsPage() {
         }}
       />
       <AgeGateSettings minTrainingAge={minTrainingAge()} />
+      <div className="mt-6">
+        <CrisisResourcesEditor
+          action={saveCrisisResources}
+          initialText={formatCrisisResourcesText(getGlobalCrisisResources())}
+          title="Crisis resources"
+          description="Your region’s crisis line(s), shown on the Crisis support page and inline where a crisis trigger fires. Instance-wide default; a profile can override it on Settings → Profile."
+          testid="crisis-resources-server"
+        />
+      </div>
       <AuditRetentionSettings months={getAuditRetentionMonths()} />
       <footer className="mt-10 border-t border-black/10 pt-4 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">
         Version <AppVersion />
