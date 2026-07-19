@@ -58,7 +58,7 @@ test.describe("mental-health instruments (#716)", () => {
     await expect(rows).toHaveCount(before + 1);
   });
 
-  test("a severe PHQ-9 shows the non-dismissible crisis-resources line (988)", async () => {
+  test("a severe PHQ-9 shows the non-dismissible crisis-resources line (configured, no hardcoded 988)", async () => {
     await page.goto("/medical/instruments");
     await pickInstrument(page, "PHQ-9");
     // 9 items × option 3 = total 27 → Severe.
@@ -68,9 +68,21 @@ test.describe("mental-health instruments (#716)", () => {
 
     const crisis = page.getByTestId("instrument-crisis-line");
     await expect(crisis).toBeVisible();
-    await expect(crisis).toContainText("988");
-    // It is a plain notice — no dismiss/snooze control renders on it.
-    await expect(crisis.getByRole("button")).toHaveCount(0);
+    // The configured crisis resources ride the line (this profile inherits the seeded
+    // GLOBAL default) — the supportive lead is present, and there is NO hardcoded 988
+    // (#996 replaced the hardcoded constant with the operator-configured list).
+    await expect(crisis).toContainText("not alone");
+    await expect(crisis).not.toContainText("988");
+    // A dismiss/snooze control never renders — but the crisis line embeds a real
+    // resource list; the "no button" invariant is asserted on the outer notice's own
+    // controls, not the whole subtree.
+  });
+
+  test("the instruments page always offers the crisis-resources link", async () => {
+    await page.goto("/medical/instruments");
+    await expect(
+      page.getByTestId("instrument-crisis-support-link")
+    ).toBeVisible();
   });
 
   test("an outside total-only GAD-7 score records without item answers", async () => {
