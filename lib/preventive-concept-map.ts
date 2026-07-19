@@ -246,6 +246,46 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
     canonicalBiomarkers: ["GAD-7"],
   },
   {
+    // Alcohol-use screening (#998): a recorded AUDIT-C or AUDIT score (the
+    // biomarker-shaped instrument reading) satisfies it, as does a coded alcohol
+    // screen. G0442 is alcohol-specific; 99408/99409 (SBIRT structured screening +
+    // brief intervention) are kept HERE only — they read "alcohol and/or substance
+    // abuse", but crediting one code to two screenings is the #86 over-match
+    // conservatism forbids, and alcohol is their overwhelmingly common use.
+    ruleKey: "alcohol_screening",
+    kind: "screening",
+    codes: [
+      "G0442", // HCPCS annual alcohol misuse screening
+      "99408", // CPT alcohol/substance abuse structured screening + brief intervention (15–30 min)
+      "99409", // CPT alcohol/substance abuse structured screening + brief intervention (>30 min)
+    ],
+    names: [
+      "alcohol screening",
+      "alcohol use screening",
+      "alcohol misuse screening",
+      "audit c",
+      "alcohol use disorders identification test",
+    ],
+    canonicalBiomarkers: ["AUDIT-C", "AUDIT"],
+  },
+  {
+    // Drug-use screening (#998): a recorded DAST-10 score satisfies it. Matched by
+    // the canonical biomarker + unambiguous name synonyms only — deliberately NO
+    // shared SBIRT codes (see alcohol_screening above) so an alcohol screen can't
+    // cross-satisfy the drug screening.
+    ruleKey: "drug_use_screening",
+    kind: "screening",
+    codes: [],
+    names: [
+      "drug use screening",
+      "drug screening questionnaire",
+      "drug abuse screening test",
+      "dast 10",
+      "dast",
+    ],
+    canonicalBiomarkers: ["DAST-10"],
+  },
+  {
     ruleKey: "hepatitis_c",
     kind: "screening",
     // No tracked HCV biomarker, so this infers from a coded/named test only.

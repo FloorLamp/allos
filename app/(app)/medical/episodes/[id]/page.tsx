@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { now as clockNow } from "@/lib/clock";
 import {
   requireSession,
   getAccessibleProfiles,
@@ -321,6 +322,7 @@ export default async function EpisodePage(props: {
                     profileId={target}
                     pediatric={getPediatricFormContext(profileId)}
                     canAdd={canAddMedication}
+                    nowIso={clockNow().toISOString()}
                   />
                 </div>
               )}

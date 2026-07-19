@@ -57,7 +57,7 @@ function walk(dir: string): string[] {
 // else naming the table — a flag reconciler, a retest clock, a streak engine, an
 // importer — is exactly the drift this guard exists to fail.
 const MOOD_TABLE_ALLOWLIST = new Set([
-  "lib/migrations/versions/072-mood-logs.ts",
+  "lib/migrations/versions/073-mood-logs.ts",
   "lib/owned-tables.ts",
   "lib/queries/mood.ts",
   "lib/offline/writes.ts",

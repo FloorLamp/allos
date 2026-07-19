@@ -151,7 +151,15 @@ export interface FrequencyTargetProgress {
 export function getFrequencyTargetProgress(
   profileId: number
 ): FrequencyTargetProgress[] {
-  const targets = getFrequencyTargets(profileId);
+  // Substance reduction targets (#998) are deliberately EXCLUDED here: their
+  // per_week is a weekly CAP (a ceiling), the inverse of every other scope's
+  // floor, so a floor-semantics reader (this rollup, the digest's goals-due
+  // list, the Upcoming unmet-target generator, the presence recap) would render
+  // "2 of 7 — 5 to go", nudging toward MORE consumption. Their progress is the
+  // dedicated lib/queries/substance.ts read over the SAME table.
+  const targets = getFrequencyTargets(profileId).filter(
+    (t) => t.scope_kind !== "substance"
+  );
   if (targets.length === 0) return [];
 
   const since = weekWindowStart(profileId);

@@ -32,6 +32,8 @@ import {
   E2E_LOGIN_EMPTY_TRAINING,
   E2E_LOGIN_MENTAL,
   MENTAL_HEALTH_PROFILE,
+  E2E_LOGIN_SUBSTANCE,
+  SUBSTANCE_PROFILE,
   E2E_LOGIN_CRISIS,
   CRISIS_PROFILE,
   CRISIS_OVERRIDE_LABEL,
@@ -2220,6 +2222,34 @@ db.prepare(
 seedMemberLogin(E2E_LOGIN_MENTAL, mentalHealthId);
 console.log(
   `e2e: seeded score-free mental-health fixture profile ${mentalHealthId} (${MENTAL_HEALTH_PROFILE}) for the instruments spec (#716)`
+);
+
+// A dedicated, substance-data-free ADULT profile for the substance-use spec (#998).
+// The spec OWNS every write (an AUDIT-C tap-through, an outside DAST-10 total,
+// one-tap drinks, the weekly-cap target). Idempotent: hard-clear its substance
+// rows on a reused server so the profile can never drift out of its empty contract
+// (the spec's own assertions stay relative for --repeat-each).
+const substanceId = fixtureProfileId(SUBSTANCE_PROFILE);
+db.prepare(
+  `DELETE FROM instrument_responses WHERE profile_id = ? AND medical_record_id IN (
+     SELECT id FROM medical_records WHERE profile_id = ?
+       AND canonical_name IN ('AUDIT-C','AUDIT','DAST-10'))`
+).run(substanceId, substanceId);
+db.prepare(
+  `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name IN ('AUDIT-C','AUDIT','DAST-10')`
+).run(substanceId);
+db.prepare(
+  `DELETE FROM food_log_events WHERE profile_id = ? AND group_key = 'alcohol'`
+).run(substanceId);
+db.prepare(
+  `DELETE FROM food_log WHERE profile_id = ? AND group_key = 'alcohol'`
+).run(substanceId);
+db.prepare(
+  `DELETE FROM frequency_targets WHERE profile_id = ? AND scope_kind = 'substance'`
+).run(substanceId);
+seedMemberLogin(E2E_LOGIN_SUBSTANCE, substanceId);
+console.log(
+  `e2e: seeded substance-data-free fixture profile ${substanceId} (${SUBSTANCE_PROFILE}) for the substance-use spec (#998)`
 );
 
 // A dedicated ADULT profile for the mental-health-visit sensitivity + crisis specs

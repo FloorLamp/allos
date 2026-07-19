@@ -54,10 +54,13 @@ import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 // analytes, all lower_better with the ≤25 dB HL WHO band) add new flag-relevant rows,
 // so the signature legitimately changes again and the boot reconcile re-flags stored
 // hearing records against the new bands (the combined value below covers both changes).
+// Updated for #998: the substance-use instruments (AUDIT-C, AUDIT, DAST-10) add three
+// dataset rows with null bands (the #716 contract: no numeric flag — the severity band
+// is the on-screen signal, never a MedicalFlag, so a score can't ride the flagged-
+// biomarker digest push), so the signature changes but no stored record re-flags.
 const FLAG_SIGNATURE_GOLDEN =
-  // A SHA-256 content hash of the canonical dataset; a digit substring
-  // coincidentally forms a Luhn-valid NPI shape — provably synthetic.
-  "e980fc216e0b96f67e76199220de43ddcd58143f48d29ed974ba1b6e55cf6394"; // phi-scan-ok
+  // A SHA-256 content hash of the canonical dataset; provably synthetic.
+  "ae12a96c29bcddaccb07151c806ec69cb250cd0c1c3a583c0a3224127f135476"; // phi-scan-ok
 
 describe("canonical-biomarkers dataset on the curated-dataset framework", () => {
   it("passes the whole framework harness (citation + identity + refusal + no collisions)", () => {

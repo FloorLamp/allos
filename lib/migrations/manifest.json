@@ -70,5 +70,6 @@
   "069-equipment-hearing-aid.ts": "01685ae0434285b6d1e3fe96339536316c937a307f2bbc7c67f598bcf43d15ce",
   "070-skin-lesions.ts": "6054251a8f7519b1a0ca53bcdcf07cfe171b7acddd79b27ec4f321a95911fdae",
   "071-imaging-dose.ts": "b55a89ba7573b1b9291b6b8352e23c1e95f899debac29f7cde907dd76d314ddd",
-  "072-mood-logs.ts": "79b202cb9002e5953e69eace6bf1156ddad61bca3d80004b36cfc9c828a9a998"
+  "072-substance-frequency-target.ts": "7f6b964c51238cc14bc18a0dfaf50fae7c6d1fac167e275300582de43e91eab6",
+  "073-mood-logs.ts": "d057e2cfd61c5708ed4ffb5cb0c3cf9138fe7086331b3c05af05087c14d7c352"
 }

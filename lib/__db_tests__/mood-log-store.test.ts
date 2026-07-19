@@ -1,7 +1,7 @@
 // DB INTEGRATION TIER — the mood_logs store (#992): the ONE write core
 // (upsertMoodLog) every path shares, its per-day idempotency, the offline-replay
 // flow, the check-in reminder's auto-pause counter lifecycle, and the check-in
-// builder's gates. Runs against the real schema (migration 072) on a throwaway
+// builder's gates. Runs against the real schema (migration 073) on a throwaway
 // temp DB (lib/__db_tests__/setup.ts).
 
 import { describe, it, expect } from "vitest";

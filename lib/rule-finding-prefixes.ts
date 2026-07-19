@@ -39,6 +39,7 @@ import { TEMP_RED_FLAG_PREFIX } from "./temp-red-flag";
 import { CONDITION_REVIEW_PREFIX } from "./condition-suggestions";
 import { FOLLOWUP_PREFIX } from "./followup";
 import { MENTAL_HEALTH_PREFIX } from "./mental-health";
+import { SUBSTANCE_USE_PREFIX } from "./substance-use";
 import { FITNESS_CHECK_PREFIX } from "./fitness-retest";
 import { MOBILITY_SUGGEST_PREFIX } from "./mobility-suggest";
 import { MOOD_OBS_PREFIX, SLEEP_MOOD_PREFIX } from "./mood-observation";
@@ -114,6 +115,18 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: FOOD_HABIT_PREFIX,
     tier: "coaching",
     builder: "buildFoodHabitFindings",
+    reasons: [],
+  },
+  {
+    // Substance-use over-target observation (#998): a calm, non-judgmental note when
+    // this week's logged standard drinks exceed the user's own reduction target.
+    // COACHING tier (#449) — never a notification, never the hero (substance data
+    // stays off every push channel); joins collectCoachingFindings and rides the
+    // shared suppression bus keyed on the substance. NO gamification: the builder
+    // emits nothing under/at target — silence is the success state.
+    prefix: SUBSTANCE_USE_PREFIX,
+    tier: "coaching",
+    builder: "buildSubstanceUseFindings",
     reasons: [],
   },
   {

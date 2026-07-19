@@ -38,6 +38,7 @@ import {
   IconChevronRight,
   IconPuzzle,
   IconSalad,
+  IconGlassOff,
   type TablerIcon,
 } from "@tabler/icons-react";
 import { isRouteActive, isGroupActive, isNavLeafVisible } from "@/lib/nav";
@@ -111,6 +112,11 @@ const RECORDS: Group = {
       href: "/medical/instruments",
       label: "Mental health",
       icon: IconClipboardHeart,
+    },
+    {
+      href: "/medical/substance-use",
+      label: "Substance use",
+      icon: IconGlassOff,
     },
     {
       href: "/crisis-resources",

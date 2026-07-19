@@ -1,4 +1,5 @@
 import { today } from "@/lib/db";
+import { now as clockNow } from "@/lib/clock";
 import { getTimezone, getUnitPrefs } from "@/lib/settings";
 import { SYMPTOMS } from "@/lib/symptoms";
 import {
@@ -150,6 +151,7 @@ export default function IllnessCockpitBody({
             profileId={target}
             pediatric={getPediatricFormContext(profileId)}
             canAdd={!crossProfile}
+            nowIso={clockNow().toISOString()}
           />
         </div>
       )}

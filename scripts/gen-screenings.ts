@@ -44,6 +44,10 @@
 //   adolescents 12–18 for major depressive disorder where follow-up care exists.
 // Anxiety — USPSTF B: screen children/adolescents 8–18 (2022) and adults 19–64
 //   incl. pregnancy/postpartum (2023) for anxiety disorders. ≥65 is an I statement.
+// Alcohol use — USPSTF B (2018): screen adults 18+ (incl. pregnant women) for
+//   unhealthy alcohol use; brief behavioral counseling where indicated.
+// Drug use — USPSTF B (2020): screen adults 18+ for unhealthy drug use by asking
+//   about use, where diagnosis/treatment services can be offered.
 // HIV — USPSTF A: screen adolescents and adults 15–65 for HIV at least once.
 // Hepatitis B — USPSTF B (2020): screen adolescents/adults at increased risk. The
 //   population is risk-defined, so this ships risk-gated (inert until a risk input
@@ -205,6 +209,38 @@ const SCREENINGS: ScreeningRow[] = [
     // Grade B is 8–18 and 19–64; ≥65 is an I statement, so the window ends at 64.
     // Annual stand-in cadence (USPSTF does not specify an interval).
     schedule: { startMonths: 8 * Y, endMonths: 65 * Y, intervalMonths: 12 },
+  },
+  {
+    key: "alcohol_screening",
+    name: "Alcohol use screening",
+    description:
+      "Screening for unhealthy alcohol use (e.g. an AUDIT-C / AUDIT questionnaire) in adults.",
+    graceMonths: 6,
+    citation: {
+      source: "USPSTF",
+      summary:
+        "Screen adults 18+ (including pregnant women) for unhealthy alcohol use and provide brief behavioral counseling where indicated. Optimal rescreening interval is not established (annual default used here).",
+      grade: "B",
+    },
+    // Adults 18+, open-ended above; annual stand-in cadence (USPSTF does not
+    // specify an interval).
+    schedule: { startMonths: 18 * Y, endMonths: 120 * Y, intervalMonths: 12 },
+  },
+  {
+    key: "drug_use_screening",
+    name: "Drug use screening",
+    description:
+      "Screening for unhealthy drug use (e.g. a DAST questionnaire) in adults, by asking about use.",
+    graceMonths: 6,
+    citation: {
+      source: "USPSTF",
+      summary:
+        "Screen adults 18+ for unhealthy drug use by asking questions about use (2020), when services for accurate diagnosis, treatment, and care can be offered. Optimal rescreening interval is not established (annual default used here).",
+      grade: "B",
+    },
+    // Adults 18+, open-ended above; annual stand-in cadence (USPSTF does not
+    // specify an interval).
+    schedule: { startMonths: 18 * Y, endMonths: 120 * Y, intervalMonths: 12 },
   },
   {
     key: "hepatitis_c",

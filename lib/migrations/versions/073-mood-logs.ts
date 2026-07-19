@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 072 (issue #992): the daily wellbeing check's `mood_logs` table — one
+// Migration 073 (issue #992): the daily wellbeing check's `mood_logs` table — one
 // row per profile per day carrying a 1–5 mood/valence rating plus the optional
 // expand-only dimensions (energy, anxiety/calm — also 1–5), optional factor chips
 // (a JSON array of slugs, normalized in code by lib/mood.ts so an off-vocabulary
@@ -50,7 +50,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 72,
-  name: "072-mood-logs",
+  id: 73,
+  name: "073-mood-logs",
   up,
 };
