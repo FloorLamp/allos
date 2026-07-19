@@ -10,6 +10,7 @@
 // retired group) lands nothing and is answered honestly by the caller.
 
 import { db, writeTx } from "./db";
+import { now as clockNow } from "./clock";
 import { canonicalFoodGroup } from "./food-groups";
 
 // The typed result of a serving write, so a Telegram tap answers from what ACTUALLY
@@ -40,7 +41,7 @@ export function logFoodServingCore(
   // event records WHEN the user reached for the button, because ranking predicts the
   // next tap. Injectable so tests can seed a specific slot; production always passes
   // the default.
-  loggedAt: string = new Date().toISOString()
+  loggedAt: string = clockNow().toISOString()
 ): FoodLogOutcome {
   // Persist the canonical slug, not the raw input (#883): the matcher accepts
   // case/punctuation variants, but downstream readers compare group_key exactly.

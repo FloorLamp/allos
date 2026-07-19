@@ -32,6 +32,7 @@ import { redoseNoticeMessage } from "../redose-format";
 import { formatGivenAtClock } from "../administration-format";
 import { getProfileSetting, setProfileSetting, getTimezone } from "../settings";
 import { parseUtcSql } from "../date";
+import { now as clockNow } from "../clock";
 import { createLogger } from "../log";
 import type { NotificationAction } from "./types";
 
@@ -59,7 +60,7 @@ export async function runRedoseNotices(
   profileId: number,
   _profileName: string,
   date: string,
-  now: Date = new Date()
+  now: Date = clockNow()
 ): Promise<{ failed: boolean }> {
   const items = getRedoseNoticeItems(profileId);
   if (items.length === 0) return { failed: false };

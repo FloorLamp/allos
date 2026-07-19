@@ -13,6 +13,8 @@ import {
   serializeOnboardingState,
 } from "../onboarding";
 import { runBootTx } from "./schema-utils";
+import { clockOverride } from "../clock";
+import { createLogger } from "../log";
 
 // PER-BOOT TASKS (issue #119). These run on EVERY process start, AFTER the
 // versioned migration runner (lib/migrations/runner.ts) has brought the schema to
@@ -58,6 +60,17 @@ import { runBootTx } from "./schema-utils";
 // both. This mirrors the relative order these calls had in the pre-runner
 // migrate() tail.
 export function bootTasks(db: Database.Database): void {
+  // Clock-seam guard (issue #990): ALLOS_TEST_NOW freezes the app's notion of "now"
+  // (lib/clock.ts) and is a TEST HOOK only. Warn loudly on every boot when it is set
+  // so a misconfigured production instance — running on a frozen clock — is visible in
+  // the logs instead of silently drifting.
+  const frozen = clockOverride();
+  if (frozen) {
+    createLogger("clock").warn(
+      `ALLOS_TEST_NOW is set (${frozen}) — the app clock is FROZEN. This is an e2e test hook and must NEVER be set in production.`
+    );
+  }
+
   // First-run auth bootstrap: create the initial admin login + its profile so a
   // fresh database is usable behind the login gate, and so profile 1 exists
   // before the flag reconcile references it.

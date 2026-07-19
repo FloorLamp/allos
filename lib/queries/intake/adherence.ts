@@ -6,6 +6,7 @@
 // mark-taken/skipped log writers (the notification-webhook counterparts), the
 // escalation-authorization helpers, and the adherence-strip range read.
 import { db, today, writeTx } from "../../db";
+import { now as clockNow } from "../../clock";
 import {
   shiftDateStr,
   daysBetweenDateStr,
@@ -261,9 +262,9 @@ export function logAdministration(
   givenAt?: Date
 ): AdministrationOutcome {
   const tz = getTimezone(profileId);
-  const when = givenAt ?? new Date();
+  const when = givenAt ?? clockNow();
   const todayStr = today(profileId);
-  if (givenAt && !isGivenAtAccepted(tz, todayStr, when)) {
+  if (givenAt && !isGivenAtAccepted(tz, todayStr, when, clockNow())) {
     return { kind: "invalid-time" };
   }
   const date = dateStrInTz(tz, when);

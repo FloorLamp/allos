@@ -9,6 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { db, today, writeTx } from "../lib/db";
+import { now as clockNow } from "../lib/clock";
 import { shiftDateStr, utcSqlString } from "../lib/date";
 import { writeRawPayload } from "../lib/integrations/raw-log";
 import { upsertConnection } from "../lib/integrations/connections";
@@ -624,7 +625,9 @@ if (!childId) {
   );
 }
 // A clearly-future date so the appointment always lands in the feed's forward window.
-const soon = new Date();
+// Anchored on the clock seam (#990) so it stays future relative to the app's frozen
+// "today" under e2e, not the real wall clock.
+const soon = clockNow();
 soon.setDate(soon.getDate() + 5);
 const soonDate = soon.toISOString().slice(0, 10);
 db.prepare(
@@ -658,7 +661,7 @@ setWeekMode(PROFILE_ID, "rolling");
 // A fired milestone so the Timeline's `milestone` category has a deterministic
 // entry to render (the milestone engine also fires live on the notify tick, but
 // e2e never runs that). achieved_on is today so it lands at the top of the feed.
-const milestoneDate = new Date().toISOString().slice(0, 10);
+const milestoneDate = clockNow().toISOString().slice(0, 10);
 db.prepare(
   `DELETE FROM milestones WHERE profile_id = ? AND key = 'workouts:50'`
 ).run(PROFILE_ID);
@@ -1205,7 +1208,7 @@ for (const minutesAgo of [90, 45]) {
     prnDoseId,
     prnMedId,
     prnToday,
-    utcSqlString(new Date(Date.now() - minutesAgo * 60 * 1000))
+    utcSqlString(new Date(clockNow().getTime() - minutesAgo * 60 * 1000))
   );
 }
 
@@ -1255,7 +1258,7 @@ db.prepare(
   redoseDoseId,
   redoseMedId,
   today(PROFILE_ID),
-  utcSqlString(new Date(Date.now() - 7 * 60 * 60 * 1000))
+  utcSqlString(new Date(clockNow().getTime() - 7 * 60 * 60 * 1000))
 );
 console.log(
   `e2e: seeded PRN redose-notice fixture "${REDOSE_MED_NAME}" (#798)`
@@ -1891,7 +1894,7 @@ seedMemberLogin(E2E_LOGIN_NUTRITION, nutritionId);
   db.prepare(
     `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, given_at, status)
      VALUES (?, ?, ?, '1 capsule', ?, 'taken')`
-  ).run(fiberDoseId, fiberItemId, nToday, utcSqlString(new Date()));
+  ).run(fiberDoseId, fiberItemId, nToday, utcSqlString(clockNow()));
 
   // One flagged low omega-3 reading → the #577 engine surfaces a fish suggestion the
   // vegetarian preset substitutes to a plant source.
@@ -1899,7 +1902,7 @@ seedMemberLogin(E2E_LOGIN_NUTRITION, nutritionId);
     `INSERT INTO medical_records
        (profile_id, date, category, name, value, unit, canonical_name, flag, created_at)
      VALUES (?, ?, 'lab', 'Omega-3 Total (OmegaCheck)', '3.2', '%', 'Omega-3 Total (OmegaCheck)', 'low', ?)`
-  ).run(nutritionId, nToday, utcSqlString(new Date()));
+  ).run(nutritionId, nToday, utcSqlString(clockNow()));
 }
 
 // A dedicated profile whose sole Data → Review item is a SAME-SOURCE duplicate:
@@ -1985,7 +1988,7 @@ seedMemberLogin(E2E_LOGIN_MOBILITY, mobilityId);
 const presenceId = fixtureProfileId(PRESENCE_PROFILE);
 db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(presenceId);
 {
-  const now = new Date();
+  const now = clockNow();
   const startIso = new Date(now.getTime() - 40 * 60_000);
   const startHHMM = startIso.toISOString().slice(11, 16);
   db.prepare(
@@ -2010,7 +2013,7 @@ seedMemberLogin(E2E_LOGIN_PRESENCE, presenceId);
 const recapId = fixtureProfileId(RECAP_PROFILE);
 db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(recapId);
 {
-  const now = new Date();
+  const now = clockNow();
   const startIso = new Date(now.getTime() - 55 * 60_000);
   const endIso = new Date(now.getTime() - 8 * 60_000);
   // Prior session a week earlier — the baseline the finished session beats.

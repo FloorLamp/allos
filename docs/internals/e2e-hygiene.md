@@ -1,6 +1,6 @@
 # E2E suite hygiene — fixtures, settled interactions, retries=0 lane
 
-Status: **partial** (infrastructure shipped — helpers module, hygiene guard, changed-spec CI lane; suite-wide migration of grandfathered offenders is a follow-up, per #868)
+Status: **partial** (infrastructure shipped — helpers module, hygiene guard, changed-spec CI lane, the frozen app clock #990; suite-wide migration of grandfathered offenders is a follow-up, per #868)
 
 Maintainer documentation for the Playwright suite's reliability discipline (issue
 #868). The user-facing "how to run e2e" note lives in AGENTS.md's browser-e2e
@@ -142,6 +142,42 @@ base and, if any, runs just those at `--repeat-each=3 --retries=0` **before** th
 full suite. A spec that is even 50%-flaky fails three-in-a-row-at-zero-retries, so
 retry-masking can no longer ship a flaky spec. No changed specs → the step is a
 cheap no-op.
+
+## Fix (d) — the frozen app clock (#990)
+
+A fifth failure class, orthogonal to the four above: **fixtures derive dates
+relative to the wall clock** (`today()`, "now − N hours/days"), so whether a seeded
+row lands inside a day/week window depends on WHEN the suite runs. A run that
+crosses local midnight invalidates its "today"-seeded specs en masse — observed
+twice during the 2026-07-18→19 window: `illness-hero`'s "00:05 (Yesterday)" instead
+of a same-day relative age, `workout-presence`'s live-session chip/dock rendering
+nothing (the seeded draft's `date` no longer today), `workout-heatmap`'s active-day
+cells, `protocol-reach`'s ongoing shading. The early-morning `now − N hours` window
+also underflows across midnight.
+
+The fix freezes the app's notion of "now" for the run via a single env-gated seam,
+**`lib/clock.ts`**:
+
+- `now()` reads `ALLOS_TEST_NOW` (an ISO instant) at CALL time — unset ⇒ real time
+  (production is inert, zero behavior change), set ⇒ that fixed instant. It NEVER
+  monkey-patches the global `Date`: timers, session TTLs, and Playwright's own
+  waiting keep real time. Only DATE-DERIVATION paths route through it — `today()`
+  (`lib/db.ts`, the load-bearing consumer), the `now`-defaulting parameters of the
+  workout-presence / recommend / redose / food-slot / dose-log read+write cores, and
+  the seed math that anchors fixtures — so the fixtures and the app agree on "today"
+  by construction. Durations, log/audit timestamps, and cache TTLs stay real.
+- `playwright.config.ts` computes `FROZEN_NOW` ONCE at config load (a fixed mid-day
+  instant TODAY, 12:00 local) and sets `ALLOS_TEST_NOW` in BOTH webServer `env`
+  blocks (default + demo). The webServer `env` applies to the whole
+  `seed && start` shell command, so `scripts/seed.ts`, `e2e/seed-events.ts`, and
+  `next start` all read the same instant. An externally-supplied `ALLOS_TEST_NOW`
+  wins, so a boundary hour (e.g. `00:10` local) can be stress-tested on demand:
+  `ALLOS_TEST_NOW="<today>T00:10:00" npm run test:e2e -- illness-hero workout-presence`.
+
+`ALLOS_TEST_NOW` is a **test hook, not an operator knob** — it is deliberately
+absent from `.env.example`. `bootTasks` (`lib/migrations/boot-tasks.ts`) logs a
+`WARN [clock]` on every boot when it is set, so a misconfigured production instance
+running on a frozen clock is loudly visible.
 
 ## Follow-up (out of scope for the infra PR)
 

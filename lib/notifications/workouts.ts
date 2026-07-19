@@ -5,6 +5,7 @@
 // workout (#221). Returns null when there's nothing to suggest or note.
 
 import { recommendWorkout } from "./recommend";
+import { now as clockNow } from "../clock";
 import { formatWorkoutReminder } from "./workout-format";
 import type { NotificationMessage } from "./types";
 import type { CoachingInput } from "../coaching";
@@ -16,7 +17,7 @@ import { getPublicUrl } from "../settings";
 export function buildWorkoutTargetReminder(
   profileId: number,
   gathered?: CoachingInput,
-  now: Date = new Date()
+  now: Date = clockNow()
 ): NotificationMessage | null {
   return formatWorkoutReminder(
     recommendWorkout(profileId, gathered, now),

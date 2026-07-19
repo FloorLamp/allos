@@ -5,6 +5,7 @@
 // profile-scoped reads and hands them over.
 
 import { db, today } from "../db";
+import { now as clockNow } from "../clock";
 import { getCurrentFlaggedBiomarkers } from "./medical";
 import { getIntakeSafetyContext } from "./intake";
 import { weekWindowStart, recentWindowStart } from "./training/common";
@@ -234,7 +235,7 @@ export function foodSlotForInstant(profileId: number, instant: Date): FoodSlot {
 // renders this as a chip and passes it as the ranking window, so the label and the
 // order lead with the same slot.
 export function currentFoodSlot(profileId: number): FoodSlot {
-  return foodSlotForInstant(profileId, new Date());
+  return foodSlotForInstant(profileId, clockNow());
 }
 
 // The full food-group catalog ordered so the profile's staples lead WITHIN each
