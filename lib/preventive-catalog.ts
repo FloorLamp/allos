@@ -233,6 +233,28 @@ const RECURRING_VISITS: RecurringVisitRule[] = [
     schedule: { type: "recurring", startMonths: 3 * Y, intervalMonths: 24 },
   },
   {
+    // Age-related hearing screening (issue #713) — the sense-organ trio's hearing arm,
+    // the first hearing preventive rule (none existed). Satisfied by a `hearing`
+    // appointment/audiogram. USPSTF gives an I statement for screening asymptomatic
+    // older adults, so this is a calm, individualized default (like skin_check's I
+    // statement) — surfaced from ~50, every ~3 years — that the risk layer (#717:
+    // recorded noise exposure, active ototoxic medication) can bring due SOONER.
+    key: "hearing_screening",
+    name: "Hearing screening",
+    kind: "visit",
+    description:
+      "Periodic hearing check for older adults (an audiogram / audiology visit). Frequency is individualized; brought due sooner by noise exposure or ototoxic-medication use.",
+    graceMonths: 6,
+    citation: {
+      source: "USPSTF (I statement)",
+      summary:
+        "Evidence is insufficient to recommend for or against routine hearing-loss screening in asymptomatic older adults; individualized. Age-related hearing loss is common and often gradual.",
+      reviewed: CATALOG_REVIEWED,
+      grade: "I",
+    },
+    schedule: { type: "recurring", startMonths: 50 * Y, intervalMonths: 36 },
+  },
+  {
     key: "skin_check",
     name: "Skin check",
     kind: "visit",

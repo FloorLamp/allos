@@ -21,6 +21,7 @@ import {
   getMedicationSideEffects,
   getInteractionWarnings,
   getPgxWarnings,
+  getOtotoxicWarnings,
   getGenomicVariants,
   getFindingSuppressions,
   getAdministrationsForItemsOnDate,
@@ -140,6 +141,7 @@ export interface MedicationsData {
   suppressedFoodKeys: string[];
   interactionWarnings: ReturnType<typeof getInteractionWarnings>;
   pgxWarnings: ReturnType<typeof getPgxWarnings>;
+  ototoxicWarnings: ReturnType<typeof getOtotoxicWarnings>;
   current: MedCardData[];
   past: MedCardData[];
   // The recently-used active PRN meds for the Today panel, with pre-formatted
@@ -345,6 +347,12 @@ export function loadMedicationsData(profileId: number): MedicationsData {
     suppressions,
     todayStr
   );
+  const ototoxicWarnings = activeByKey(
+    getOtotoxicWarnings(profileId),
+    (hit) => hit.dedupeKey,
+    suppressions,
+    todayStr
+  );
 
   const stackItems: InteractionItem[] = supplements.map((s) => ({
     id: s.id,
@@ -467,6 +475,7 @@ export function loadMedicationsData(profileId: number): MedicationsData {
     suppressedFoodKeys,
     interactionWarnings,
     pgxWarnings,
+    ototoxicWarnings,
     current: currentData,
     past: pastData,
     prnToday,

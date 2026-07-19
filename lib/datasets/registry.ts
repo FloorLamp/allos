@@ -54,6 +54,7 @@ import {
   nutrientFoodMapDataset,
   nutrientKeyStrategy,
 } from "./nutrient-food-map";
+import { ototoxicDataset, ototoxicKeyStrategy } from "./ototoxic";
 import { pgxDataset, pgxGuidanceStrategy } from "./pgx";
 import { prnDefaultsDataset, prnDefaultSlugStrategy } from "./prn-defaults";
 import { screeningsDataset, screeningKeyStrategy } from "./screenings";
@@ -211,6 +212,13 @@ export const DATASETS: RegisteredDataset[] = [
       unknown
     >,
     strategy: nutrientKeyStrategy,
+  },
+  {
+    dataset: ototoxicDataset as unknown as LoadedDataset<
+      Record<string, unknown>,
+      unknown
+    >,
+    strategy: ototoxicKeyStrategy,
   },
   {
     dataset: pgxDataset as unknown as LoadedDataset<

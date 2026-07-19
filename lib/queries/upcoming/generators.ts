@@ -95,6 +95,7 @@ import {
   getPgxWarnings,
   getContrastSafetyWarnings,
   getDentalSafetyWarnings,
+  getOtotoxicWarnings,
   getPrnOverMaxItems,
 } from "../intake";
 import { prnMaxSignalKey } from "../../prn-redose";
@@ -111,6 +112,7 @@ import {
   type ContrastStudySource,
 } from "../../contrast-safety";
 import { dentalSafetyTitle, dentalSafetyDetail } from "../../dental-safety";
+import { ototoxicTitle, ototoxicDetail } from "../../ototoxic";
 import type { AppRoute } from "../../hrefs";
 import { getScheduledAppointments, kindedScheduled } from "../appointments";
 import {
@@ -374,6 +376,29 @@ function dentalSafetyItems(profileId: number): UpcomingItem[] {
     title: dentalSafetyTitle(hit),
     detail: dentalSafetyDetail(hit),
     href: "/dental" as AppRoute,
+    dueDate: null,
+    band: "today" as const,
+    dueText: "Review",
+  }));
+}
+
+// Ototoxic-medication awareness (issue #717): an active medication that is a
+// well-established ototoxic agent (aminoglycoside, platinum chemo, high-dose loop
+// diuretic, high-dose salicylate, vancomycin, quinine). Reuses the shared
+// getOtotoxicWarnings gather (same pure crossCheckOtotoxic as the /medications +
+// Supplements inline notices), so each note surfaces as a dismissible finding keyed by
+// `ototoxic:<medId>:<entryKey>` — through getFindingSuppressions like every other
+// finding, so a dismiss/snooze silences it everywhere ("dismiss once, silence
+// everywhere"). SAFETY / care-tier (per #449 — a medication-safety note, like the
+// interaction/PGx/dental items): banded to Today so it surfaces on the dashboard "Needs
+// attention" hero. Standing informational finding (no due date), never prescriptive.
+function ototoxicItems(profileId: number): UpcomingItem[] {
+  return getOtotoxicWarnings(profileId).map((hit) => ({
+    key: hit.dedupeKey,
+    domain: "ototoxic" as const,
+    title: ototoxicTitle(hit),
+    detail: ototoxicDetail(hit),
+    href: MEDICATIONS_HREF,
     dueDate: null,
     band: "today" as const,
     dueText: "Review",
@@ -839,6 +864,7 @@ const rawUpcoming = cache(function rawUpcoming(
     ...pgxItems(profileId),
     ...contrastItems(profileId, today),
     ...dentalSafetyItems(profileId),
+    ...ototoxicItems(profileId),
     ...appointmentItems(profileId),
     ...carePlanItems(profileId),
     ...followUpItems(profileId, today),

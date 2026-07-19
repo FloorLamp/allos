@@ -42,7 +42,13 @@ export type AppointmentStatus = (typeof APPOINTMENT_STATUSES)[number];
 // which powers the prefilled "Book" CTA, the scheduled-visit suppression, and the
 // close-the-loop satisfaction on completion.
 export type AppointmentKind =
-  "well_child" | "physical" | "dental" | "vision" | "screening" | "other";
+  | "well_child"
+  | "physical"
+  | "dental"
+  | "vision"
+  | "hearing"
+  | "screening"
+  | "other";
 
 export interface Appointment {
   id: number;

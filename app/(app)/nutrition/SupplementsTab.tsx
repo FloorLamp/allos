@@ -15,6 +15,7 @@ import {
   getDietaryAdequacy,
   getInteractionWarnings,
   getPgxWarnings,
+  getOtotoxicWarnings,
   getGenomicVariants,
   getFindingSuppressions,
 } from "@/lib/queries";
@@ -351,6 +352,17 @@ export default async function SupplementsTab() {
     suppressions,
     todayStr
   );
+  // Ototoxic-medication awareness (issue #717): an active ototoxic medication → a calm,
+  // cited hearing-safety note. Rendered here AND on the Medications page over the SAME
+  // getOtotoxicWarnings gather + dedupeKey, so a dismiss on either silences both
+  // (#435/#746). A supplement is never kind='medication', so this is normally empty on
+  // the Supplements tab — but the shared component keeps the two surfaces from drifting.
+  const ototoxicWarnings = activeByKey(
+    getOtotoxicWarnings(profile.id),
+    (hit) => hit.dedupeKey,
+    suppressions,
+    todayStr
+  );
   // The profile's stored PGx variants, threaded to every form for the client-side
   // create/edit PGx notice (a lean projection — enough for phenotype resolution + the
   // marker match, no report prose beyond interpretation/notes the page already holds).
@@ -568,6 +580,7 @@ export default async function SupplementsTab() {
       <IntakeWarnings
         interactionWarnings={interactionWarnings}
         pgxWarnings={pgxWarnings}
+        ototoxicWarnings={ototoxicWarnings}
       />
 
       {/* Adherence-pattern observations (issue #45, domain 3) */}

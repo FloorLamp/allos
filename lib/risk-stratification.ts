@@ -47,7 +47,13 @@ export type RiskFactor =
   | "healthcare-worker"
   | "immunocompromised"
   | "dialysis"
-  | "pregnant";
+  | "pregnant"
+  // Hearing-screening cadence inputs (#717 / #707 Phase 2). `noise-exposure` is a
+  // self-declared occupational/recreational risk ATTRIBUTE (alongside smoking);
+  // `ototoxic-medication` is DERIVED from an active ototoxic med (the ototoxic
+  // cross-check flags it). Both bring the age-related hearing screening due sooner.
+  | "noise-exposure"
+  | "ototoxic-medication";
 
 // The occupational / immune-status attributes stored per profile (profile_settings,
 // no schema change). Distinct from the clinical conditions/family-history the app
@@ -57,6 +63,10 @@ export interface RiskAttributes {
   immunocompromised: boolean;
   dialysis: boolean;
   pregnant: boolean;
+  // Recorded occupational/recreational NOISE exposure (#717) — a hearing-screening
+  // cadence input (loud workplace, firearms, power tools, concerts). Self-declared like
+  // the others; brings the age-related hearing screening due sooner.
+  noiseExposure: boolean;
 }
 
 export const EMPTY_RISK_ATTRIBUTES: RiskAttributes = {
@@ -64,6 +74,7 @@ export const EMPTY_RISK_ATTRIBUTES: RiskAttributes = {
   immunocompromised: false,
   dialysis: false,
   pregnant: false,
+  noiseExposure: false,
 };
 
 // The already-gathered inputs the classifier reads. The query layer fills these
@@ -88,6 +99,12 @@ export interface RiskInputs {
   // result_type gates live in deriveRiskFactors, NOT here (a raw stored variant is
   // handed through unfiltered, mirroring how the raw condition/family strings are).
   genomicVariants?: GenomicRiskInput[];
+  // Whether an ACTIVE ototoxic medication is on file (#717) — the ototoxic cross-check
+  // (lib/ototoxic.ts, over getIntakeSafetyContext) already resolves this from the active
+  // stack, so the query layer passes the boolean rather than re-deriving it here. A
+  // truthy value activates the `ototoxic-medication` factor. Optional so callers/tests
+  // predating it keep working (absence → no factor).
+  ototoxicMedication?: boolean;
 }
 
 // The variant fields the hereditary-risk classifier reads — a structural subset of
@@ -250,6 +267,12 @@ export function deriveRiskFactors(inputs: RiskInputs): Set<RiskFactor> {
       if (genes.includes(g)) factors.add(factor);
     }
   }
+
+  // Hearing-screening cadence (#717): recorded noise exposure (a self-declared
+  // attribute) and an active ototoxic medication (resolved by the query layer from the
+  // ototoxic cross-check) each bring the age-related hearing screening due sooner.
+  if (inputs.attributes.noiseExposure) factors.add("noise-exposure");
+  if (inputs.ototoxicMedication) factors.add("ototoxic-medication");
 
   if (inputs.attributes.healthcareWorker) factors.add("healthcare-worker");
   if (inputs.attributes.immunocompromised) factors.add("immunocompromised");
@@ -464,6 +487,30 @@ export const RISK_RULES: RiskRule[] = [
     priority: 2,
     reason: "Current smoking — elevated periodontal risk",
     source: "ADA / AAP (informational)",
+  },
+  // Recorded noise exposure → earlier, more frequent hearing screening (#717). Loud
+  // occupational/recreational noise is the leading preventable cause of hearing loss;
+  // hearing_screening base 36mo → ~18mo.
+  {
+    factor: "noise-exposure",
+    visitRules: ["hearing_screening"],
+    cadenceMultiplier: 0.5,
+    priority: 2,
+    reason:
+      "Noise exposure on file — earlier, more frequent hearing checks recommended (NIOSH / CDC)",
+    source: "NIOSH / CDC (informational)",
+  },
+  // Active ototoxic medication → earlier hearing screening (#717). Aminoglycosides,
+  // platinum chemo, high-dose loop diuretics, etc. can affect hearing, so hearing is
+  // monitored sooner while such a medication is on file. hearing_screening → ~18mo.
+  {
+    factor: "ototoxic-medication",
+    visitRules: ["hearing_screening"],
+    cadenceMultiplier: 0.5,
+    priority: 2,
+    reason:
+      "Ototoxic medication on file — hearing monitoring is sometimes advised; a hearing check sooner is reasonable (ASHA)",
+    source: "ASHA (informational)",
   },
 
   // ---- Hereditary-risk screening cadence (#711, #707 Phase 2) -------------------
