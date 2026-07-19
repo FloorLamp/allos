@@ -77,6 +77,15 @@ import {
   fiberAdequacyDetail,
   fiberAdequacyEvidence,
 } from "./fiber";
+import {
+  detectLowMoodWindow,
+  decideSleepMoodBridge,
+  meanNightlySleepMin,
+  MOOD_LOW_WINDOW_DAYS,
+  type LowMoodWindow,
+} from "./mood-observation";
+import { getMoodLogs, getMetricDailyTotals } from "./queries";
+import { getSleepRegularity } from "./queries/sleep";
 import { shiftDateStr, lastNDates } from "./date";
 import { fmtWeight, round } from "./units";
 import { formatLongDate } from "./format-date";
@@ -225,6 +234,115 @@ export function collectCoachingFindings(
     ...buildOralHealthFindings(profileId),
     ...buildFitnessCheckFindings(profileId, today),
     ...buildMobilitySuggestionFindings(profileId, today),
+    ...buildMoodFindings(profileId, today),
+    ...buildSleepMoodBridgeFindings(profileId, today),
+  ];
+}
+
+// ---- Wellbeing (#992): the sustained low-mood observation ------------------
+
+// The ONE low-mood detection both mood builders share (one question, one
+// computation): the low-mood finding and the sleep↔mood bridge key on the same
+// window verdict, so they can never disagree about whether mood "has been low".
+function lowMoodWindowFor(
+  profileId: number,
+  today: string
+): LowMoodWindow | null {
+  const windowStart = shiftDateStr(today, -(MOOD_LOW_WINDOW_DAYS - 1));
+  return detectLowMoodWindow(
+    getMoodLogs(profileId, windowStart).map((m) => ({
+      date: m.date,
+      valence: m.valence,
+    })),
+    today,
+    windowStart
+  );
+}
+
+// A calm, coaching-tier observation when mood check-ins have trended low over a
+// sustained window. Coaching tier ONLY (#449, product-decided in #992): it joins
+// collectCoachingFindings, its dedupeKey rides the shared suppression bus
+// (MOOD_OBS_PREFIX is registered in RULE_FINDING_PREFIXES), and it NEVER notifies
+// / never reaches the hero. The copy is observational and non-diagnostic — no
+// instrument prompt, no crisis linkage, no escalation of any kind (those belong
+// to #716/#996, never the daily layer). No owned SQL added here (reads through
+// the profile-scoped getMoodLogs).
+export function buildMoodFindings(profileId: number, today: string): Finding[] {
+  const low = lowMoodWindowFor(profileId, today);
+  if (!low) return [];
+  return [
+    {
+      domain: "mood-obs",
+      dedupeKey: low.dedupeKey,
+      title: low.title,
+      detail: low.detail,
+      // Calm FYI — a neutral observation from the user's own log, never an alarm.
+      tone: "info",
+      evidence:
+        "From your own daily check-ins — a subjective self-rating, not a screen " +
+        "or a diagnosis.",
+      actionHref: "/trends?tab=body",
+      actionLabel: "View mood trend",
+    },
+  ];
+}
+
+// ---- Wellbeing (#992): the sleep↔mood co-occurrence bridge ------------------
+
+// ONE coaching-tier finding when a sustained sleep-regularity/duration drop
+// CO-OCCURS with the low-mood window above. Deliberately a CO-OCCURRENCE note —
+// "the two often move together" — never a causal or directional claim (#992's
+// design choice). Sleep inputs reuse the SAME computations the Trends sleep
+// surfaces render: getSleepRegularity (the #160 SRI) at two anchors, and the
+// sleep_min daily totals for the duration windows — no second sleep engine.
+// Coaching tier ONLY (#449): joins collectCoachingFindings, SLEEP_MOOD_PREFIX is
+// registered, never a notification, never the hero. No owned SQL added here.
+export function buildSleepMoodBridgeFindings(
+  profileId: number,
+  today: string
+): Finding[] {
+  const low = lowMoodWindowFor(profileId, today);
+  if (!low) return [];
+
+  // SRI over the recent 28-night window vs the 28 nights before it (null when a
+  // window lacks enough recorded nights — the pure decide gate handles nulls).
+  const recentReg = getSleepRegularity(profileId, { asOf: today });
+  const priorReg = getSleepRegularity(profileId, {
+    asOf: shiftDateStr(today, -28),
+  });
+
+  // Mean nightly duration, recent 14 days vs the prior 14 — the same daily
+  // totals series the Body tab's sleep chart renders.
+  const nights = getMetricDailyTotals(profileId, "sleep_min");
+  const recentStart = shiftDateStr(today, -13);
+  const priorEnd = shiftDateStr(today, -14);
+  const priorStart = shiftDateStr(today, -27);
+
+  const obs = decideSleepMoodBridge(
+    {
+      lowMood: low,
+      recentSri: recentReg?.sri ?? null,
+      priorSri: priorReg?.sri ?? null,
+      recentAvgSleepMin: meanNightlySleepMin(nights, recentStart, today),
+      priorAvgSleepMin: meanNightlySleepMin(nights, priorStart, priorEnd),
+    },
+    today.slice(0, 7)
+  );
+  if (!obs) return [];
+  return [
+    {
+      domain: "sleep-mood",
+      dedupeKey: obs.dedupeKey,
+      title: obs.title,
+      detail: obs.detail,
+      // Calm FYI — a pattern note from the user's own data, never an alarm.
+      tone: "info",
+      evidence:
+        "Co-occurrence in your own data — sleep and mood often move together. " +
+        "Not a causal claim and not a diagnosis.",
+      actionHref: "/trends?tab=body",
+      actionLabel: "View trends",
+    },
   ];
 }
 

@@ -22,6 +22,8 @@ export default function ProfileNotificationSettings({
   workoutSummary,
   foodTelegramEnabled,
   foodLoggingRelevant,
+  moodCheckinEnabled,
+  moodRecapEnabled,
 }: {
   telegram: ProfileTelegram;
   botConfigured: boolean;
@@ -29,11 +31,15 @@ export default function ProfileNotificationSettings({
   workoutSummary: string;
   foodTelegramEnabled: boolean;
   foodLoggingRelevant: boolean;
+  moodCheckinEnabled: boolean;
+  moodRecapEnabled: boolean;
 }) {
   const router = useRouter();
   const [enabled, setEnabled] = useState(telegram.telegramEnabled);
   const [chatId, setChatId] = useState(telegram.telegramChatId);
   const [foodEnabled, setFoodEnabled] = useState(foodTelegramEnabled);
+  const [moodEnabled, setMoodEnabled] = useState(moodCheckinEnabled);
+  const [moodRecap, setMoodRecap] = useState(moodRecapEnabled);
   const [suppHours, setSuppHours] = useState(schedule.supplementHours);
   const [workoutEnabled, setWorkoutEnabled] = useState(schedule.workoutEnabled);
   const [digestHour, setDigestHour] = useState(schedule.digestHour);
@@ -61,6 +67,8 @@ export default function ProfileNotificationSettings({
     fd.set("telegram_enabled", enabled ? "1" : "0");
     fd.set("telegram_chat_id", chatId);
     fd.set("food_telegram_enabled", foodEnabled ? "1" : "0");
+    fd.set("mood_checkin_enabled", moodEnabled ? "1" : "0");
+    fd.set("mood_recap_enabled", moodRecap ? "1" : "0");
     fd.set(
       "supp_morning_hour",
       suppHours.Morning == null ? "" : String(suppHours.Morning)
@@ -183,6 +191,43 @@ export default function ProfileNotificationSettings({
               </p>
             </div>
           )}
+
+          {/* Daily mood check-in (#992) — opt-in, off by default: a gentle
+              once-daily "How are you today?" at the evening supplement hour. It
+              auto-pauses after a few ignored days and re-arms the next time a
+              check-in is logged; skipping never escalates anything. */}
+          <div className="border-t border-black/5 pt-5 dark:border-white/5">
+            <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+              <input
+                type="checkbox"
+                checked={moodEnabled}
+                onChange={(e) => setMoodEnabled(e.target.checked)}
+                className="h-4 w-4 accent-brand-600"
+                data-testid="mood-checkin-enabled"
+              />
+              Daily mood check-in
+            </label>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              A gentle once-daily &ldquo;How are you today?&rdquo; in the
+              evening with one-tap answers. It pauses itself after a few ignored
+              days and comes back when you next log a check-in — skipping is
+              always fine.
+            </p>
+            <label className="mt-3 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+              <input
+                type="checkbox"
+                checked={moodRecap}
+                onChange={(e) => setMoodRecap(e.target.checked)}
+                className="h-4 w-4 accent-brand-600"
+                data-testid="mood-recap-enabled"
+              />
+              Mood line in the weekly recap
+            </label>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Adds a one-line summary of the week&rsquo;s check-ins to the
+              weekly recap — an average, never a score to beat.
+            </p>
+          </div>
 
           {/* Schedule — an hourly cron (npm run notify) sends each slot at its hour. */}
           <div className="border-t border-black/5 pt-5 dark:border-white/5">

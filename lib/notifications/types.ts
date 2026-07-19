@@ -21,6 +21,7 @@ export type NotificationKind =
   | "workout-recap" // post-workout session recap line (#924)
   | "ease-back" // one-shot post-illness ease-back re-entry note (#837)
   | "food" // food-log nudge / first-connection opt-in prompt (#682)
+  | "mood" // opt-in daily wellbeing check-in (#992; auto-pauses when ignored)
   | "digest" // morning digest
   | "upcoming" // "what's due" upcoming digest
   | "weekly-recap" // weekly recap summary

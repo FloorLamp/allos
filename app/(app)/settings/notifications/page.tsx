@@ -1,6 +1,8 @@
 import {
   getProfileTelegram,
   getProfileFoodTelegram,
+  getProfileMoodCheckin,
+  getProfileMoodRecap,
   getProfileHomeAssistant,
   getTelegramBotConfig,
   getNotifySchedule,
@@ -105,6 +107,8 @@ export default async function NotificationsSettingsPage() {
             workoutSummary={workoutScheduleSummary(profile.id)}
             foodTelegramEnabled={getProfileFoodTelegram(profile.id)}
             foodLoggingRelevant={isFoodLoggingRelevant(getUserAge(profile.id))}
+            moodCheckinEnabled={getProfileMoodCheckin(profile.id)}
+            moodRecapEnabled={getProfileMoodRecap(profile.id)}
           />
           <HomeAssistantNotificationSettings config={ha} />
         </>

@@ -150,6 +150,12 @@ export interface RecapInput {
   // enough sleep data (below the minimum-nights gate) — the line is omitted then.
   sri?: number | null;
   socialJetlagMin?: number | null;
+  // Mood check-in summary (#992): mean valence + days logged over the window.
+  // Null/omitted when the profile hasn't OPTED IN to the recap mood line
+  // (mood_recap_enabled — off by default) or logged nothing — the line is omitted
+  // then. A gentle summary only, never a delta/score-to-beat (the no-gamification
+  // contract), which is why it deliberately carries no previous-window comparison.
+  mood?: { avgValence: number; daysLogged: number } | null;
 }
 
 export interface RecapLine {
@@ -383,6 +389,17 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
       label: "Sleep regularity",
       value: `${Math.round(input.sri)}/100`,
       delta: shiftH,
+    });
+  }
+
+  // Mood (#992): a gentle, opt-in summary of the window's check-ins. No delta on
+  // purpose — a summary, never a score to beat (the no-gamification contract).
+  if (input.mood != null && input.mood.daysLogged > 0) {
+    const avg = Math.round(input.mood.avgValence * 10) / 10;
+    lines.push({
+      key: "mood",
+      label: "Mood",
+      value: `averaged ${avg}/5 over ${input.mood.daysLogged} check-in${input.mood.daysLogged === 1 ? "" : "s"}`,
     });
   }
 

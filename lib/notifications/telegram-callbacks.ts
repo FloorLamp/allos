@@ -30,6 +30,9 @@ import { getProfileNameById } from "../profile-summary-load";
 import { administrationOutcomeText } from "../administration-format";
 import { logFoodServingCore } from "../food-log-write";
 import { logSymptomCore } from "../symptom-log-write";
+import { upsertMoodLog } from "../offline/writes";
+import { getMoodOnDate } from "../queries/mood";
+import { moodFace, moodLabel } from "../mood";
 import { logTemperatureCore } from "../temperature-log";
 import { getSymptomLogOrder, getCustomSymptomNames } from "../queries";
 import { symptomLabel, symptomSlugs, SYMPTOMS } from "../symptoms";
@@ -71,12 +74,14 @@ import {
   parseRefillCallback,
   parseSkipCallback,
   parseTakeCallback,
+  parseMoodCheckinCallback,
   parseSymptomPickCallback,
   parseSymptomSeverityCallback,
   parseTempReply,
   parseTempReplyMarker,
   tempReplyMarker,
   SYMPTOM_SEVERITY_LABELS,
+  type MoodCheckinCallback,
   type PrnLogCallback,
   type SymptomPickCallback,
   type SymptomSeverityCallback,
@@ -176,6 +181,14 @@ export async function handleCallbackQuery(
   const prn = parsePrnLogCallback(cq.data);
   if (prn) {
     await handlePrnLogTap(cq, prn);
+    return;
+  }
+
+  // Daily mood check-in (#992): a face button logs the day's mood — the same
+  // idempotent per-day upsert the dashboard card and offline replay run.
+  const moodTap = parseMoodCheckinCallback(cq.data);
+  if (moodTap) {
+    await handleMoodTap(cq, moodTap);
     return;
   }
 
@@ -357,6 +370,47 @@ async function handleSymptomPick(
 
 // A severity button tap: log the symptom-day and answer from the typed outcome (never
 // an unconditional confirm — the markDoseTaken contract). Closes the picker on success.
+// A mood check-in face tap (#992). Runs the SAME upsertMoodLog core as the
+// dashboard card and the offline replay (idempotent per profile+date — which also
+// resets the reminder's ignored counter, re-arming an auto-paused check-in), and
+// answers from the write's actual outcome — never an unconditional confirm. A tap
+// on a day that ALREADY has a check-in (e.g. an old message tapped after logging
+// in-app) carries the stored expand fields along so it only changes the valence.
+async function handleMoodTap(
+  cq: TelegramCallbackQuery,
+  token: MoodCheckinCallback
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  const messageId = cq.message?.message_id;
+  const profileId =
+    chatId != null
+      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
+      : null;
+  if (profileId == null || chatId == null || messageId == null) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+  const existing = getMoodOnDate(profileId, token.date);
+  const ok = upsertMoodLog(profileId, token.date, {
+    valence: token.valence,
+    energy: existing?.energy ?? null,
+    anxiety: existing?.anxiety ?? null,
+    factors: existing?.factors ?? [],
+    note: existing?.notes ?? null,
+  });
+  if (!ok) {
+    await answerCallbackQuery(cq.id, "Couldn't log that check-in.");
+    return;
+  }
+  const label = moodLabel(token.valence);
+  await answerCallbackQuery(cq.id, `Logged: ${label}`);
+  await closeMessage(
+    chatId,
+    messageId,
+    `${moodFace(token.valence)} Logged — ${label}. Thanks for checking in.`
+  );
+}
+
 async function handleSymptomSeverity(
   cq: TelegramCallbackQuery,
   token: SymptomSeverityCallback

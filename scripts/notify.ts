@@ -26,6 +26,7 @@ import {
 import { buildWorkoutTargetReminder } from "../lib/notifications/workouts";
 import { buildFoodNudge } from "../lib/notifications/food";
 import { FOOD_NUDGE_WINDOWS } from "../lib/notifications/food-format";
+import { buildMoodCheckin } from "../lib/notifications/mood";
 import { dispatch, prefixForProfile } from "../lib/notifications";
 import {
   prefixMessage,
@@ -38,6 +39,8 @@ import {
   getProfileSetting,
   setProfileSetting,
   getProfileFoodTelegram,
+  getProfileMoodCheckin,
+  bumpMoodCheckinIgnored,
   getTimezone,
   getTelegramBotConfig,
   getAuditRetentionMonths,
@@ -260,8 +263,12 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
   const coachingInput = (): CoachingInput =>
     (coachingInputCache ??= gatherCoachingInput(profile.id, "kg", "km"));
 
-  const dueSlots: { slot: string; build: () => NotificationMessage | null }[] =
-    [];
+  const dueSlots: {
+    slot: string;
+    build: () => NotificationMessage | null;
+    // Optional post-delivery hook (e.g. the mood check-in's ignored-days bump).
+    onDelivered?: () => void;
+  }[] = [];
   for (const w of ["Morning", "Midday", "Evening", "Bedtime"] as const) {
     const slotHour = sched.supplementHours[w];
     // Due across [slotHour, slotHour+1] so a DST-skipped hour or a failed send
@@ -300,6 +307,23 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
         });
     }
   }
+  // Daily mood check-in (#992): opt-in per profile (off by default), riding the
+  // EVENING supplement slot hour — a gentle end-of-day ask, no schedule of its
+  // own. buildMoodCheckin returns null when the day is already logged or the
+  // check-in has AUTO-PAUSED after MOOD_CHECKIN_AUTOPAUSE_DAYS ignored sends
+  // (shouldSendMoodCheckin, lib/mood.ts) — the dueSlots loop treats null as
+  // "nothing due". A DELIVERED send bumps the ignored counter; every submitted
+  // check-in (card / offline replay / Telegram tap) resets it via upsertMoodLog,
+  // re-arming the reminder. Ignoring it never escalates anything.
+  if (getProfileMoodCheckin(profile.id)) {
+    const slotHour = sched.supplementHours.Evening;
+    if (slotHour != null && slotDue(slotHour, hour))
+      dueSlots.push({
+        slot: "mood_checkin",
+        build: () => buildMoodCheckin(profile.id, date),
+        onDelivered: () => bumpMoodCheckinIgnored(profile.id),
+      });
+  }
   if (sched.workoutEnabled) {
     const inf = inferWorkoutSchedule(profile.id);
     if (inf.weekdays.includes(weekday) && slotDue(inf.hour, hour))
@@ -312,7 +336,7 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
 
   const prefix = prefixForProfile(profile.id);
   let anyFailed = false;
-  for (const { slot, build } of dueSlots) {
+  for (const { slot, build, onDelivered } of dueSlots) {
     const key = `notify_last_${slot}`;
     if (getProfileSetting(profile.id, key) === date) {
       log.info("already sent today", { profile: profile.id, slot });
@@ -328,7 +352,10 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
     if (failed) anyFailed = true;
     // Mark once delivered to a channel so it isn't re-sent later today; if nothing
     // delivered (no channel / all failed) leave it unmarked so a retry can recover.
-    if (delivered) setProfileSetting(profile.id, key, date);
+    if (delivered) {
+      setProfileSetting(profile.id, key, date);
+      onDelivered?.();
+    }
   }
 
   // Missed-dose escalation: runs every hour regardless of which
