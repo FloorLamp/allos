@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import Database from "better-sqlite3";
-import { settledClick, settledUpload } from "./helpers";
+import { settledClick } from "./helpers";
 
 // Skin-lesion tracking on /skin (#715): add a body-map-anchored lesion through the real
 // form, see it in its identity CARD with the ABCDE observation + status shown, track a
@@ -90,15 +90,18 @@ test.describe("Skin lesions — add → view → track recheck → photo → fil
       { timeout: 15000 }
     );
 
-    // Attach a dated photo — the serial-comparison strip renders a thumbnail.
+    // Attach a dated photo — the serial-comparison strip renders a thumbnail. The
+    // upload form is explicit-submit (no auto-submit on file change), so set the file
+    // then settledClick the button that fires the POST.
     await card.getByTestId(/^add-lesion-photo-/).click();
     const upload = card.getByTestId(/^lesion-photo-upload-/);
     await expect(upload).toBeVisible();
-    await settledUpload(page, upload.locator('input[type="file"]'), {
+    await upload.locator('input[type="file"]').setInputFiles({
       name: "mole.png",
       mimeType: "image/png",
       buffer: PNG,
     });
+    await settledClick(page, upload.getByRole("button", { name: "Add photo" }));
     await expect(
       card.getByRole("img", { name: /Lesion photo from/ })
     ).toBeVisible({ timeout: 15000 });
