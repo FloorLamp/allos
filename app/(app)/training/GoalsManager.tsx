@@ -30,6 +30,7 @@ import {
   daysRemainingLabel,
   daysUntil,
 } from "@/lib/format-date";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { EmptyState, Tag } from "@/components/ui";
 import {
   updateProgress,
@@ -60,6 +61,7 @@ export default function GoalsManager({
   weightUnit: WeightUnit;
 }) {
   const wu = weightUnit;
+  const formatPrefs = useFormatPrefs();
   // Day math (countdown/overdue) follows the app's configured timezone, not the
   // browser's, so "today" matches the rest of the app.
   const todayStr = dateStrInTz(useTimezone());
@@ -329,7 +331,7 @@ export default function GoalsManager({
 
                 {g.target_date && (
                   <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                    Target: {formatLongDate(g.target_date)}
+                    Target: {formatLongDate(g.target_date, formatPrefs)}
                     {(() => {
                       const label = daysRemainingLabel(g.target_date, todayStr);
                       const n = daysUntil(g.target_date, todayStr);

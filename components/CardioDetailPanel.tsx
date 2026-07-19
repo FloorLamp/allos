@@ -6,6 +6,7 @@ import type { CardioStat } from "@/lib/queries";
 import { fmtDistance, fmtKmh, kmTo, round } from "@/lib/units";
 import { formatMinutes } from "@/lib/duration";
 import { formatLongDate, formatRelativeDate } from "@/lib/format-date";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { dateStrInTz } from "@/lib/date";
 import LineChartCard from "@/components/LineChartCard";
@@ -28,6 +29,7 @@ export default function CardioDetailPanel({
   showTrend?: boolean;
   showRecent?: boolean;
 }) {
+  const formatPrefs = useFormatPrefs();
   const todayStr = dateStrInTz(useTimezone());
   const du = units.distanceUnit;
   const showDistance = stat.hasDistance;
@@ -65,20 +67,20 @@ export default function CardioDetailPanel({
           <StatBox
             label="Longest"
             value={fmtDistance(stat.longestDistanceKm, du)}
-            sub={formatLongDate(stat.longestDistanceDate)}
+            sub={formatLongDate(stat.longestDistanceDate, formatPrefs)}
           />
         )}
         {showDistance && stat.fastestKmh > 0 && (
           <StatBox
             label="Fastest"
             value={fmtKmh(stat.fastestKmh, du)}
-            sub={formatLongDate(stat.fastestKmhDate)}
+            sub={formatLongDate(stat.fastestKmhDate, formatPrefs)}
           />
         )}
         <StatBox
           label="Longest time"
           value={formatMinutes(stat.longestDurationMin)}
-          sub={formatLongDate(stat.longestDurationDate)}
+          sub={formatLongDate(stat.longestDurationDate, formatPrefs)}
         />
         <StatBox label="Sessions" value={String(stat.sessions)} />
         {showDistance && (
@@ -94,7 +96,7 @@ export default function CardioDetailPanel({
         <StatBox
           label="Last done"
           value={formatRelativeDate(stat.lastDate, todayStr)}
-          sub={formatLongDate(stat.lastDate)}
+          sub={formatLongDate(stat.lastDate, formatPrefs)}
           href={`/training?tab=log#activity-${stat.lastActivityId}`}
         />
       </dl>
