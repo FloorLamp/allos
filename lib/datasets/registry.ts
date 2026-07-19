@@ -57,6 +57,10 @@ import {
 import { ototoxicDataset, ototoxicKeyStrategy } from "./ototoxic";
 import { pgxDataset, pgxGuidanceStrategy } from "./pgx";
 import { prnDefaultsDataset, prnDefaultSlugStrategy } from "./prn-defaults";
+import {
+  radiationDoseDataset,
+  radiationDoseKeyStrategy,
+} from "./radiation-dose";
 import { screeningsDataset, screeningKeyStrategy } from "./screenings";
 import {
   strengthStandardsDataset,
@@ -233,6 +237,13 @@ export const DATASETS: RegisteredDataset[] = [
       unknown
     >,
     strategy: prnDefaultSlugStrategy,
+  },
+  {
+    dataset: radiationDoseDataset as unknown as LoadedDataset<
+      Record<string, unknown>,
+      unknown
+    >,
+    strategy: radiationDoseKeyStrategy,
   },
   {
     dataset: screeningsDataset as unknown as LoadedDataset<

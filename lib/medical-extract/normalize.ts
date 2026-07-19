@@ -519,6 +519,7 @@ export function normalizeClinicalDomains(raw: any): {
       contrast: strOrNull(s?.contrast),
       contrast_agent: strOrNull(s?.contrast_agent),
       study_date: isoDateOrNull(s?.study_date),
+      dose_msv: strOrNull(s?.dose_msv),
       impression,
       indication: strOrNull(s?.indication),
       status: strOrNull(s?.status),

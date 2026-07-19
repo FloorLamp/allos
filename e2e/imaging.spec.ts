@@ -10,16 +10,25 @@ import Database from "better-sqlite3";
 // idempotent across CI retries — it only ever touches rows it created.
 const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
 const REGION = "E2EREGION1";
+const DOSE_REGION = "E2EDOSEREGION1";
 
 function cleanup() {
   const handle = new Database(DB_PATH);
   try {
     handle
-      .prepare("DELETE FROM imaging_studies WHERE body_region = ?")
-      .run(REGION);
+      .prepare("DELETE FROM imaging_studies WHERE body_region IN (?, ?)")
+      .run(REGION, DOSE_REGION);
   } finally {
     handle.close();
   }
+}
+
+// A recent ISO date safely inside the trailing-3-year dose window (the app clock is
+// frozen to the run's real "today").
+function recentDate(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 30);
+  return d.toISOString().slice(0, 10);
 }
 
 test.describe("Imaging studies — add → view → filter → edit → delete (#702)", () => {
@@ -86,5 +95,46 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     await expect(list.getByRole("row").filter({ hasText: REGION })).toHaveCount(
       0
     );
+  });
+
+  test("shows a recorded dose and a cumulative radiation-dose total (#703)", async ({
+    page,
+  }) => {
+    test.slow();
+
+    await page.goto("/imaging");
+    const form = page.getByTestId("imaging-study-form");
+    await expect(form).toBeVisible();
+
+    // Add a CT with a recorded effective dose, dated inside the trailing window.
+    await form.getByLabel("Modality").selectOption("ct");
+    await form.getByLabel("Body region").fill(DOSE_REGION);
+    await form.getByLabel("Study date").fill(recentDate());
+    await form.getByLabel("Effective dose (mSv)").fill("10");
+    await form.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(page.getByText("Study saved")).toBeVisible();
+
+    // The list row shows the recorded-dose badge.
+    const list = page.getByTestId("imaging-study-list");
+    const row = list.getByRole("row").filter({ hasText: DOSE_REGION });
+    await expect(row).toContainText("10 mSv");
+
+    // The calm cumulative card renders, with a recorded portion and no alarmist copy.
+    const card = page.getByTestId("radiation-dose-card");
+    await expect(card).toBeVisible();
+    await expect(card).toContainText("trailing 3 years");
+    await expect(card).toContainText("Recorded:");
+    await expect(card.getByTestId("radiation-dose-total")).toContainText("mSv");
+    await expect(card).toContainText("Informational, not medical advice.");
+
+    // Clean up the study we created.
+    await row.getByRole("button", { name: "Delete" }).click();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Delete", exact: true })
+      .click();
+    await expect(
+      list.getByRole("row").filter({ hasText: DOSE_REGION })
+    ).toHaveCount(0);
   });
 });

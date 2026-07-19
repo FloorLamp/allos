@@ -263,7 +263,7 @@ export function getImagingStudies(profileId: number): ImagingStudy[] {
   const rows = db
     .prepare(
       `SELECT id, modality, body_region, laterality, contrast, contrast_agent,
-              study_date, impression, indication, status,
+              study_date, dose_msv, impression, indication, status,
               ordering_provider_id, reading_provider_id, notes,
               source, document_id, external_id, created_at
          FROM imaging_studies

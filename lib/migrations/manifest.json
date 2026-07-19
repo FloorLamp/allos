@@ -68,5 +68,6 @@
   "067-dental-procedures.ts": "da964f52c5ba3f56c43881127df76412dda7668d4a6cf07a3a51d2f9691b0ce1",
   "068-canonical-cycle-phase-ranges.ts": "118aaf38ac2ea026947ee1ecaa569cf0ed92288be9b015d51f45c26814cd5aa0",
   "069-equipment-hearing-aid.ts": "01685ae0434285b6d1e3fe96339536316c937a307f2bbc7c67f598bcf43d15ce",
-  "070-skin-lesions.ts": "6054251a8f7519b1a0ca53bcdcf07cfe171b7acddd79b27ec4f321a95911fdae"
+  "070-skin-lesions.ts": "6054251a8f7519b1a0ca53bcdcf07cfe171b7acddd79b27ec4f321a95911fdae",
+  "071-imaging-dose.ts": "b55a89ba7573b1b9291b6b8352e23c1e95f899debac29f7cde907dd76d314ddd"
 }

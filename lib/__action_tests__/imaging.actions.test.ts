@@ -68,6 +68,32 @@ describe("addImagingStudy", () => {
     expect(s.laterality).toBeNull();
     expect(s.contrast).toBe(false);
   });
+
+  it("parses a recorded effective dose (mSv) and leaves it null when blank (#703)", async () => {
+    const { profile } = seedActor();
+    // A form value with a stray unit still lands as a clean number.
+    await addImagingStudy(
+      fd({ modality: "ct", body_region: "Abdomen", dose_msv: "12.5 mSv" })
+    );
+    // Blank dose stays null (→ the typical estimate takes over on the read side).
+    await addImagingStudy(fd({ modality: "x-ray", body_region: "Chest" }));
+
+    const rows = getImagingStudies(profile.id);
+    const ct = rows.find((r) => r.modality === "ct")!;
+    const cxr = rows.find((r) => r.modality === "x-ray")!;
+    expect(ct.dose_msv).toBe(12.5);
+    expect(cxr.dose_msv).toBeNull();
+  });
+
+  it("updates a recorded dose in place (#703)", async () => {
+    const { profile } = seedActor();
+    await addImagingStudy(fd({ modality: "ct", body_region: "Chest" }));
+    const id = getImagingStudies(profile.id)[0].id;
+    await updateImagingStudy(
+      fd({ id, modality: "ct", body_region: "Chest", dose_msv: "8" })
+    );
+    expect(getImagingStudies(profile.id)[0].dose_msv).toBe(8);
+  });
 });
 
 describe("updateImagingStudy", () => {
