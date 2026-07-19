@@ -1,11 +1,17 @@
 import Link from "next/link";
 import { IconFlask2, IconChevronRight } from "@tabler/icons-react";
-import { formatLongDate } from "@/lib/format-date";
+import { formatLongDate, type DisplayFormatPrefs } from "@/lib/format-date";
 import type { Protocol } from "@/lib/types";
 
 // The protocol list — ongoing protocols carry a live badge; each row deep-links to
 // its before/during detail page. Server-rendered (plain data in).
-export default function ProtocolList({ items }: { items: Protocol[] }) {
+export default function ProtocolList({
+  items,
+  formatPrefs,
+}: {
+  items: Protocol[];
+  formatPrefs: DisplayFormatPrefs;
+}) {
   if (items.length === 0) {
     return (
       <div className="card text-sm text-slate-500 dark:text-slate-400">
@@ -19,8 +25,11 @@ export default function ProtocolList({ items }: { items: Protocol[] }) {
       {items.map((p) => {
         const ongoing = p.end_date == null;
         const range = ongoing
-          ? `Started ${formatLongDate(p.start_date)} · ongoing`
-          : `${formatLongDate(p.start_date)} – ${formatLongDate(p.end_date!)}`;
+          ? `Started ${formatLongDate(p.start_date, formatPrefs)} · ongoing`
+          : `${formatLongDate(p.start_date, formatPrefs)} – ${formatLongDate(
+              p.end_date!,
+              formatPrefs
+            )}`;
         return (
           <li key={p.id}>
             <Link
