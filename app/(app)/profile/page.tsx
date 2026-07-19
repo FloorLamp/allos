@@ -1,4 +1,5 @@
 import { requireSession } from "@/lib/auth";
+import { getDisplayFormatPrefs } from "@/lib/settings";
 import { getUnitPrefs } from "@/lib/settings";
 import { getProfileSummary } from "@/lib/profile-summary-load";
 import { listShareLinks } from "@/lib/share-links-db";
@@ -42,6 +43,7 @@ export default async function ProfilePage() {
         mode="app"
         fields="all"
         generatedAt={generatedAt}
+        formatPrefs={getDisplayFormatPrefs(login.id)}
       />
     </div>
   );

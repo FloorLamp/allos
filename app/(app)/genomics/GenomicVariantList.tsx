@@ -5,6 +5,8 @@ import { updateGenomicVariant, deleteGenomicVariant } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
 import { formatRecordDate } from "@/lib/record-format";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import type { DisplayFormatPrefs } from "@/lib/format-date";
 import {
   variantDisplayLabel,
   resultTypeLabel,
@@ -12,7 +14,9 @@ import {
 } from "@/lib/genomic-variant";
 import type { GenomicVariant } from "@/lib/types";
 
-const COLUMNS: RecordColumn<GenomicVariant>[] = [
+const buildColumns = (
+  fmt: DisplayFormatPrefs
+): RecordColumn<GenomicVariant>[] => [
   {
     header: "Variant",
     cellClassName: "font-medium text-slate-800 dark:text-slate-100",
@@ -45,7 +49,7 @@ const COLUMNS: RecordColumn<GenomicVariant>[] = [
   {
     header: "Reported",
     cellClassName: "whitespace-nowrap text-slate-600 dark:text-slate-300",
-    cell: (v) => formatRecordDate(v.report_date),
+    cell: (v) => formatRecordDate(v.report_date, "—", fmt),
   },
   {
     header: "Source",
@@ -66,7 +70,7 @@ export default function GenomicVariantList({
     <div data-testid="genomic-variant-list">
       <RecordTable
         items={items}
-        columns={COLUMNS}
+        columns={buildColumns(useFormatPrefs())}
         emptyMessage="No genomic variants yet. Add one, or upload a clinical genetics / PGx report to import your results."
         renderEditForm={(v, done) => (
           <GenomicVariantForm

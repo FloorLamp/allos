@@ -1,7 +1,7 @@
 import { IconAlertTriangle } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
-import { getUnitPrefs } from "@/lib/settings";
+import { getUnitPrefs, getDisplayFormatPrefs } from "@/lib/settings";
 import { getFindingSuppressions } from "@/lib/queries";
 import { activeByKey } from "@/lib/findings";
 import { buildBodyHygieneFindings } from "@/lib/rule-findings";
@@ -19,7 +19,12 @@ export default async function BodyHygieneFindings() {
   const now = today(profile.id);
   const wu = getUnitPrefs(login.id).weightUnit;
   const findings = activeByKey(
-    buildBodyHygieneFindings(profile.id, now, wu),
+    buildBodyHygieneFindings(
+      profile.id,
+      now,
+      wu,
+      getDisplayFormatPrefs(login.id)
+    ),
     (f) => f.dedupeKey,
     getFindingSuppressions(profile.id),
     now

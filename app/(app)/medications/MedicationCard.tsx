@@ -26,6 +26,7 @@ import type { AdherenceDot } from "@/lib/supplement-adherence";
 import { daysOfSupplyForItem, isLowSupply, type DoseRate } from "@/lib/refill";
 import type { PediatricFormContext } from "@/lib/prn-dosing";
 import { formatLongDate } from "@/lib/format-date";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { getMedicationInfo } from "@/lib/medication-info";
 import {
   RefillBadge,
@@ -135,6 +136,7 @@ export default function MedicationCard({
   // home, not a scannable list row where it should stay tucked away).
   detailView?: boolean;
 }) {
+  const formatPrefs = useFormatPrefs();
   const s = supplement;
   const [editing, setEditing] = useState(false);
   const [stopping, setStopping] = useState(false);
@@ -186,7 +188,8 @@ export default function MedicationCard({
     )
   );
 
-  const fmt = (d: string | null) => (d ? formatLongDate(d) : "unknown");
+  const fmt = (d: string | null) =>
+    d ? formatLongDate(d, formatPrefs) : "unknown";
 
   return (
     <div

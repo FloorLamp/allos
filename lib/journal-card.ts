@@ -291,7 +291,7 @@ export function buildJournalCards({
   const dayLabel = (date: string): string => {
     if (date === today) return "Today";
     if (date === yesterday) return "Yesterday";
-    return formatLongDate(date);
+    return formatLongDate(date, formatPrefs);
   };
 
   const groups: DayGroup[] = [];

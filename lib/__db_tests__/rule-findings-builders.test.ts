@@ -1152,3 +1152,56 @@ describe("buildMobilitySuggestionFindings — deficit-driven mobility habits (#8
     expect(buildMobilitySuggestionFindings(profileId, anchor)).toEqual([]);
   });
 });
+
+// ---- #1020: finding texts follow the viewer's date shape; dedupeKeys don't ----
+
+describe("finding-text date pref threading (#1020)", () => {
+  it("weight-anomaly: prefs reshape the detail date but never the dedupeKey", () => {
+    const { profileId, anchor } = makeProfile("anomaly-1020");
+    const insWeight = db.prepare(
+      `INSERT INTO body_metrics (profile_id, date, weight_kg) VALUES (?, ?, ?)`
+    );
+    insWeight.run(profileId, shiftDateStr(anchor, -3), 80.0);
+    insWeight.run(profileId, shiftDateStr(anchor, -2), 176.4);
+
+    const byDefault = buildBodyHygieneFindings(profileId, anchor, "kg");
+    const byIso = buildBodyHygieneFindings(profileId, anchor, "kg", {
+      timeFormat: "24h",
+      dateFormat: "iso",
+    });
+
+    expect(byDefault.length).toBeGreaterThan(0);
+    // Identity is format-independent: same keys in both shapes.
+    expect(byIso.map((f) => f.dedupeKey)).toEqual(
+      byDefault.map((f) => f.dedupeKey)
+    );
+    // The embedded date renders in the chosen shape ("On YYYY-MM-DD you logged").
+    // iso keeps the weekday prefix: "On Friday, 2026-07-17 you logged".
+    expect(byIso[0].detail).toMatch(
+      /On [A-Za-z]+, \d{4}-\d{2}-\d{2} you logged/
+    );
+    // default mdy: "On Friday, July 17 you logged".
+    expect(byDefault[0].detail).toMatch(/On [A-Za-z]+, [A-Z][a-z]+ \d{1,2}/);
+  });
+
+  it("fitness-check: prefs reshape the detail date but never the dedupeKey", () => {
+    const { profileId, anchor } = makeProfile("fitness-1020");
+    const lastCheck = shiftDateStr(anchor, -400);
+    db.prepare(
+      "INSERT INTO fitness_assessments (profile_id, date) VALUES (?, ?)"
+    ).run(profileId, lastCheck);
+
+    const byDefault = buildFitnessCheckFindings(profileId, anchor);
+    const byIso = buildFitnessCheckFindings(profileId, anchor, {
+      timeFormat: "24h",
+      dateFormat: "iso",
+    });
+
+    expect(byDefault).toHaveLength(1);
+    expect(byIso.map((f) => f.dedupeKey)).toEqual(
+      byDefault.map((f) => f.dedupeKey)
+    );
+    expect(byIso[0].dedupeKey).toBe(fitnessCheckSignalKey(lastCheck));
+    expect(byIso[0].detail).toContain(lastCheck); // the ISO shape verbatim
+  });
+});

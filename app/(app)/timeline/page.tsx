@@ -26,7 +26,12 @@ import {
 import { requireSession } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import { today } from "@/lib/db";
-import { getUnitPrefs, getHomeLocation, getTimezone } from "@/lib/settings";
+import {
+  getUnitPrefs,
+  getDisplayFormatPrefs,
+  getHomeLocation,
+  getTimezone,
+} from "@/lib/settings";
 import DaylightChip from "@/components/DaylightChip";
 import CyclePhaseChip from "@/components/CyclePhaseChip";
 import { listCyclePeriods } from "@/lib/cycle-store";
@@ -309,6 +314,7 @@ export default async function TimelinePage(props: {
   const searchParams = await props.searchParams;
   const { login, profile } = await requireSession();
   const units = getUnitPrefs(login.id);
+  const formatPrefs = getDisplayFormatPrefs(login.id);
   const trainingRestricted = isTrainingRestricted(profile.id);
   // Home location + timezone for the per-day sunrise/sunset daylight chips (#570).
   // Absent home location → the chip renders nothing.
@@ -364,9 +370,9 @@ export default async function TimelinePage(props: {
     range.to === todayStr
       ? "Through today"
       : range.to
-        ? `Through ${formatLongDate(range.to)}`
+        ? `Through ${formatLongDate(range.to, formatPrefs)}`
         : range.from
-          ? `From ${formatLongDate(range.from)}`
+          ? `From ${formatLongDate(range.from, formatPrefs)}`
           : "All dates";
 
   return (
@@ -456,7 +462,7 @@ export default async function TimelinePage(props: {
       {singleDaySelected && range.from && (
         <div className="card mb-5" data-testid="timeline-symptom-entry">
           <h2 className="mb-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
-            Log symptoms for {formatLongDate(range.from)}
+            Log symptoms for {formatLongDate(range.from, formatPrefs)}
           </h2>
           <SymptomLogBar
             date={range.from}
@@ -507,7 +513,7 @@ export default async function TimelinePage(props: {
                       className="h-4 w-4 text-brand-600 dark:text-brand-400"
                       stroke={1.75}
                     />
-                    {formatLongDate(day.date)}
+                    {formatLongDate(day.date, formatPrefs)}
                   </div>
                   <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                     {day.events.length} event

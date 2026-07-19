@@ -232,13 +232,55 @@ export function isoDate(y: number, m: number, d: number): string {
   return `${y}-${pad(m + 1)}-${pad(d)}`;
 }
 
-// Localized month names indexed 0=Jan … 11=Dec, in the runtime locale. `style`
-// picks long ("January") or short ("Jan") — calendars use short names in tight
-// layouts. (Anchored on a fixed non-DST date so only the month text matters.)
+// Fixed English calendar names — the app is single-language by design (non-goal:
+// no full i18n), and hardcoding these removes the runtime-locale dependence that
+// an implicit-locale toLocale call leaks (the #964 bug class; finished by #1020).
+// These are THE month/weekday tables: lib/format-date builds every date shape from
+// them, and monthNames() below serves the calendar/heatmap consumers.
+export const MONTHS_LONG = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+] as const;
+export const MONTHS_SHORT = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+export const WEEKDAYS_LONG = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+] as const;
+
+// Month names indexed 0=Jan … 11=Dec, from the fixed English tables above (NOT the
+// runtime locale — #1020 purged the toLocaleDateString implementation this used to
+// have). `style` picks long ("January") or short ("Jan") — calendars use short
+// names in tight layouts.
 export function monthNames(style: "long" | "short" = "long"): string[] {
-  return Array.from({ length: 12 }, (_, m) =>
-    new Date(2000, m, 1).toLocaleDateString(undefined, { month: style })
-  );
+  return [...(style === "long" ? MONTHS_LONG : MONTHS_SHORT)];
 }
 
 // One day cell of a month-grid view. `m` is 0-based; `outside` marks the days

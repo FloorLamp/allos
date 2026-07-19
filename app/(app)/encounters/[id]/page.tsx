@@ -6,10 +6,12 @@ import {
   IconFileText,
 } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
+import { getDisplayFormatPrefs } from "@/lib/settings";
 import { getEncounter } from "@/lib/queries";
 import { episodeForProfileDate } from "@/lib/illness-episode";
 import { episodeHref } from "@/lib/hrefs";
 import { formatRecordDate, sourceLabel } from "@/lib/record-format";
+import type { DisplayFormatPrefs } from "@/lib/format-date";
 import { PageHeader } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
 import NotesText from "@/components/NotesText";
@@ -29,10 +31,10 @@ export const dynamic = "force-dynamic";
 // — escaped by default, never dangerouslySetInnerHTML — so nothing in an imported
 // record can inject markup.
 
-function dateLabel(e: Encounter): string {
-  const start = formatRecordDate(e.date, "");
+function dateLabel(e: Encounter, fmt: DisplayFormatPrefs): string {
+  const start = formatRecordDate(e.date, "", fmt);
   if (e.end_date && e.end_date !== e.date)
-    return `${start} – ${formatRecordDate(e.end_date, "")}`;
+    return `${start} – ${formatRecordDate(e.end_date, "", fmt)}`;
   return start;
 }
 
@@ -67,7 +69,8 @@ export default async function EncounterDetailPage(props: {
   params: Promise<{ id: string }>;
 }) {
   const params = await props.params;
-  const { profile } = await requireSession();
+  const { login, profile } = await requireSession();
+  const fmt = getDisplayFormatPrefs(login.id);
   const id = Number(params.id);
   const encounter = id ? getEncounter(profile.id, id) : null;
   if (!encounter) notFound();
@@ -89,7 +92,7 @@ export default async function EncounterDetailPage(props: {
 
       <PageHeader
         title={encounter.type || "Visit"}
-        subtitle={dateLabel(encounter)}
+        subtitle={dateLabel(encounter, fmt)}
       />
 
       {episode && episode.id != null ? (

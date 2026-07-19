@@ -7,9 +7,11 @@ import RecordProvenance from "@/components/RecordProvenance";
 import StatusBadge from "@/components/StatusBadge";
 import NotesText from "@/components/NotesText";
 import { formatRecordDate } from "@/lib/record-format";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import type { DisplayFormatPrefs } from "@/lib/format-date";
 import type { CareGoal } from "@/lib/types";
 
-const COLUMNS: RecordColumn<CareGoal>[] = [
+const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<CareGoal>[] => [
   {
     header: "Goal",
     cellClassName: "font-medium text-slate-800 dark:text-slate-100",
@@ -26,7 +28,7 @@ const COLUMNS: RecordColumn<CareGoal>[] = [
   {
     header: "Target date",
     cellClassName: "whitespace-nowrap text-slate-600 dark:text-slate-300",
-    cell: (g) => formatRecordDate(g.target_date),
+    cell: (g) => formatRecordDate(g.target_date, "—", fmt),
   },
   {
     header: "Status",
@@ -47,7 +49,7 @@ export default function CareGoalList({ items }: { items: CareGoal[] }) {
   return (
     <RecordTable
       items={items}
-      columns={COLUMNS}
+      columns={buildColumns(useFormatPrefs())}
       emptyMessage="No health goals yet. Add one, or import a MyChart / CCD health record to populate goals set in your records."
       renderEditForm={(g, done) => (
         <CareGoalForm action={updateCareGoal} goal={g} onDone={done} />

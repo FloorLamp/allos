@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import { useChartColors } from "./useChartColors";
 import { formatLongDate } from "@/lib/format-date";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -35,6 +36,7 @@ export default function StackedBarCard({
   // Prefix for the tooltip's date label, e.g. "Week of " → "Week of June 8".
   labelPrefix?: string;
 }) {
+  const formatPrefs = useFormatPrefs();
   const c = useChartColors();
   // For ISO-date series, compact the axis to MM-DD and show a friendly long date
   // in the tooltip (matching LineChartCard). Callers passing pre-shortened MM-DD
@@ -42,7 +44,7 @@ export default function StackedBarCard({
   const isoDates = data.length > 0 && ISO_DATE.test(String(data[0].date));
   const tickFmt = isoDates ? (v: string) => String(v).slice(5) : undefined;
   const labelFmt = isoDates
-    ? (v: string) => `${labelPrefix}${formatLongDate(String(v))}`
+    ? (v: string) => `${labelPrefix}${formatLongDate(String(v), formatPrefs)}`
     : undefined;
   if (data.length === 0) {
     return (

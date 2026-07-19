@@ -91,7 +91,11 @@ import { getMoodLogs, getMetricDailyTotals } from "./queries";
 import { getSleepRegularity } from "./queries/sleep";
 import { shiftDateStr, lastNDates } from "./date";
 import { fmtWeight, round } from "./units";
-import { formatLongDate } from "./format-date";
+import {
+  DEFAULT_FORMAT_PREFS,
+  formatLongDate,
+  type DisplayFormatPrefs,
+} from "./format-date";
 import { describeEta } from "./trend-projection";
 import type { Finding } from "./findings";
 import {
@@ -171,9 +175,12 @@ import { isDueOn, timeBucket } from "./supplement-schedule";
 // aged past the per-profile cadence. Never nags a subject who has never done a check
 // (hide, don't shame — #489); never a push (coaching tier). Re-keyed by the last-check
 // date so a new check clears an old dismissal cleanly.
+// `prefs` shapes the date embedded in the detail text only (#1020 — web finding
+// strings render in the viewer's shape); the dedupeKey stays format-independent.
 export function buildFitnessCheckFindings(
   profileId: number,
-  today: string
+  today: string,
+  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
 ): Finding[] {
   const lastDate = getLatestFitnessAssessmentDate(profileId);
   const cadence = getFitnessRetestCadenceDays(profileId);
@@ -185,7 +192,7 @@ export function buildFitnessCheckFindings(
       domain: "fitness-check",
       dedupeKey: fitnessCheckSignalKey(d.lastDate),
       title: "Fitness check due",
-      detail: `Your last fitness check was ${formatLongDate(d.lastDate)}${ago}. Re-run the battery to refresh your percentiles and see check-over-check change.`,
+      detail: `Your last fitness check was ${formatLongDate(d.lastDate, prefs)}${ago}. Re-run the battery to refresh your percentiles and see check-over-check change.`,
       tone: "info",
       evidence:
         "Informational — you set the retest cadence in Profile settings.",
@@ -263,16 +270,20 @@ export function buildMedicationDuplicationFindings(
   return findings;
 }
 
+// `prefs` (#1020): the viewer's date shape for the dates some finding texts embed
+// (fitness-check, weight-anomaly) — the same threading precedent as `wu` for
+// weights (#1019). Defaults keep login-less callers on the documented fixed shape.
 export function collectCoachingFindings(
   profileId: number,
   today: string,
-  wu: WeightUnit
+  wu: WeightUnit,
+  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
 ): Finding[] {
   return [
     ...buildMedicationDuplicationFindings(profileId),
     ...buildTrainingObservationFindings(profileId, today),
     ...buildMuscleVolumeFindings(profileId, today),
-    ...buildBodyHygieneFindings(profileId, today, wu),
+    ...buildBodyHygieneFindings(profileId, today, wu, prefs),
     ...buildGoalPacingFindings(profileId, today),
     ...buildAdherencePatternFindings(profileId, today),
     ...buildFoodSuggestionFindings(profileId),
@@ -283,7 +294,7 @@ export function collectCoachingFindings(
     ...buildEndurancePlanFindings(profileId, today),
     ...buildSunExposureFindings(profileId, today),
     ...buildOralHealthFindings(profileId),
-    ...buildFitnessCheckFindings(profileId, today),
+    ...buildFitnessCheckFindings(profileId, today, prefs),
     ...buildMobilitySuggestionFindings(profileId, today),
     ...buildMoodFindings(profileId, today),
     ...buildSleepMoodBridgeFindings(profileId, today),
@@ -822,17 +833,21 @@ export function buildMuscleVolumeFindings(
 
 // ---- Domain 5: body-metric data hygiene (Trends → Body) -------------------
 
-function weightAnomalyToFinding(a: WeightAnomaly, wu: WeightUnit): Finding {
+function weightAnomalyToFinding(
+  a: WeightAnomaly,
+  wu: WeightUnit,
+  prefs: DisplayFormatPrefs
+): Finding {
   const pct = Math.abs(round(a.changeFraction * 100, 1));
   const dir = a.changeFraction > 0 ? "up" : "down";
   const cur = fmtWeight(a.weightKg, wu);
   const prev = fmtWeight(a.prevWeightKg, wu);
   const detail = a.suspectedUnitError
-    ? `On ${formatLongDate(a.date)} you logged ${cur}, ${pct}% ${dir} from ` +
-      `${prev} on ${formatLongDate(a.prevDate)} — that looks like a kg/lb entry ` +
+    ? `On ${formatLongDate(a.date, prefs)} you logged ${cur}, ${pct}% ${dir} from ` +
+      `${prev} on ${formatLongDate(a.prevDate, prefs)} — that looks like a kg/lb entry ` +
       `mix-up. Fixing or converting it keeps your weight trend honest.`
-    : `On ${formatLongDate(a.date)} you logged ${cur}, ${pct}% ${dir} from ` +
-      `${prev} on ${formatLongDate(a.prevDate)} — a jump that big over just a ` +
+    : `On ${formatLongDate(a.date, prefs)} you logged ${cur}, ${pct}% ${dir} from ` +
+      `${prev} on ${formatLongDate(a.prevDate, prefs)} — a jump that big over just a ` +
       `few days is usually a scale glitch. Check the entry and fix or delete it.`;
   return {
     domain: "body-hygiene",
@@ -853,7 +868,8 @@ function weightAnomalyToFinding(a: WeightAnomaly, wu: WeightUnit): Finding {
 export function buildBodyHygieneFindings(
   profileId: number,
   today: string,
-  wu: WeightUnit
+  wu: WeightUnit,
+  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
 ): Finding[] {
   // ONE source per day (id preserved), not the raw all-source getWeights rows: two
   // scales landing the same/adjacent day would otherwise feed the day-over-day
@@ -866,7 +882,7 @@ export function buildBodyHygieneFindings(
     weightKg: w.weight_kg,
   }));
   return detectWeightAnomalies(weights, today).map((a) =>
-    weightAnomalyToFinding(a, wu)
+    weightAnomalyToFinding(a, wu, prefs)
   );
 }
 

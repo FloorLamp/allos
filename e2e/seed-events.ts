@@ -42,6 +42,12 @@ import {
   NUTRITION_PROFILE,
   E2E_LOGIN_CYCLE,
   CYCLE_PROFILE,
+  E2E_LOGIN_WEIGHT_QA,
+  WEIGHT_QUICKADD_PROFILE,
+  E2E_LOGIN_NAV_FEMALE,
+  NAV_FEMALE_PROFILE,
+  E2E_LOGIN_NAV_MALE,
+  NAV_MALE_PROFILE,
   E2E_LOGIN_HC,
   E2E_LOGIN_NOGEAR,
   E2E_LOGIN_FITNESS,
@@ -3315,6 +3321,72 @@ db.prepare(
 seedMemberLogin(E2E_LOGIN_CYCLE, cycleProfileId, "write");
 console.log(
   `e2e: seeded cycle-log fixture — profile ${cycleProfileId} (${CYCLE_PROFILE}) (#714)`
+);
+
+// ── Nav relevance gating fixtures (#1042 phase 1) ─────────────────────────────
+// Two dedicated, read-only profiles for the nav-consolidation spec:
+//   • NAV_FEMALE — sex=female + explicit premenopausal status, NO cycle rows, so
+//     the Cycle nav entry shows via cycleTrackingRelevant's status arm; no
+//     vision/dental rows either, so those data-gated entries are hidden for it.
+//   • NAV_MALE — sex=male + adult birthdate, NO cycle rows → Cycle hidden.
+// Idempotent on a reused server: hard-clear the relevance-bearing rows and
+// re-write the profile attributes.
+for (const [profileName, loginName, attrs] of [
+  [
+    NAV_FEMALE_PROFILE,
+    E2E_LOGIN_NAV_FEMALE,
+    [
+      ["sex", "female"],
+      ["reproductive_status", "premenopausal"],
+    ],
+  ],
+  [
+    NAV_MALE_PROFILE,
+    E2E_LOGIN_NAV_MALE,
+    [
+      ["sex", "male"],
+      ["birthdate", "1988-04-01"],
+    ],
+  ],
+] as const) {
+  const pid = fixtureProfileId(profileName);
+  db.prepare(`DELETE FROM cycles WHERE profile_id = ?`).run(pid);
+  db.prepare(`DELETE FROM optical_prescriptions WHERE profile_id = ?`).run(pid);
+  db.prepare(`DELETE FROM dental_procedures WHERE profile_id = ?`).run(pid);
+  db.prepare(
+    `DELETE FROM profile_settings WHERE profile_id = ? AND key IN ('sex', 'reproductive_status', 'birthdate', 'age')`
+  ).run(pid);
+  for (const [key, value] of attrs) {
+    db.prepare(
+      `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, ?, ?)`
+    ).run(pid, key, value);
+  }
+  seedMemberLogin(loginName, pid, "read");
+  console.log(
+    `e2e: seeded nav-relevance fixture — profile ${pid} (${profileName}) (#1042)`
+  );
+}
+
+// ── Dashboard weight quick-add fixture (#1042 phase 2) ────────────────────────
+// A dedicated adult profile with exactly two seeded weigh-ins so the dashboard
+// weight-trend widget renders its chart state; the weight-quick-add spec owns
+// every non-seed body_metrics row (it clears them itself at test start).
+// Idempotent: hard-clear and re-insert the seed rows.
+const weightQaId = fixtureProfileId(WEIGHT_QUICKADD_PROFILE);
+db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(weightQaId);
+const weightQaAnchor = today(weightQaId);
+for (const [daysAgo, kg] of [
+  [7, 70],
+  [3, 70.6],
+] as const) {
+  db.prepare(
+    `INSERT INTO body_metrics (profile_id, date, weight_kg, notes)
+     VALUES (?, ?, ?, 'e2e:seed-weight')`
+  ).run(weightQaId, shiftDateStr(weightQaAnchor, -daysAgo), kg);
+}
+seedMemberLogin(E2E_LOGIN_WEIGHT_QA, weightQaId, "write");
+console.log(
+  `e2e: seeded weight quick-add fixture — profile ${weightQaId} (${WEIGHT_QUICKADD_PROFILE}) (#1042)`
 );
 
 // ── Legacy imported-Celsius temperature fixture (#1018) ───────────────────────

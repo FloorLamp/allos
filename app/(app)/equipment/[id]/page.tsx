@@ -5,7 +5,7 @@ import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { getEquipmentById } from "@/lib/equipment";
 import { getEquipmentUsageById, getEquipmentSessions } from "@/lib/queries";
-import { getUnitPrefs } from "@/lib/settings";
+import { getUnitPrefs, getDisplayFormatPrefs } from "@/lib/settings";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import { kindOf } from "@/lib/types";
 import { kgTo, kmTo, round } from "@/lib/units";
@@ -64,6 +64,7 @@ export default async function EquipmentDetailPage(props: {
   if (!equipment) notFound();
 
   const units = getUnitPrefs(login.id);
+  const fmt = getDisplayFormatPrefs(login.id);
   const usage = getEquipmentUsageById(profile.id, id);
   const sessions = getEquipmentSessions(profile.id, id);
   const kind = kindOf(equipment.category);
@@ -114,7 +115,7 @@ export default async function EquipmentDetailPage(props: {
         <Stat
           label="Last used"
           value={formatLastUsed(lastUsed, today(profile.id))}
-          sub={lastUsed ? formatRecordDate(lastUsed, "") : null}
+          sub={lastUsed ? formatRecordDate(lastUsed, "", fmt) : null}
           testId="equipment-stat-last-used"
         />
         {showsDistance ? (
@@ -144,7 +145,7 @@ export default async function EquipmentDetailPage(props: {
         />
         <Stat
           label="Added"
-          value={formatRecordDate(equipment.created_at.slice(0, 10), "—")}
+          value={formatRecordDate(equipment.created_at.slice(0, 10), "—", fmt)}
         />
       </div>
 
@@ -197,7 +198,7 @@ export default async function EquipmentDetailPage(props: {
                         {units.weightUnit}
                       </span>
                     ) : null}
-                    <span>{formatRecordDate(s.date, "")}</span>
+                    <span>{formatRecordDate(s.date, "", fmt)}</span>
                   </span>
                 </li>
               ))}

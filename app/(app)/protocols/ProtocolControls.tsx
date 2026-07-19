@@ -5,6 +5,7 @@ import { IconPencil, IconTrash, IconPlayerStop } from "@tabler/icons-react";
 import SubmitButton from "@/components/SubmitButton";
 import NotesText from "@/components/NotesText";
 import { formatLongDate } from "@/lib/format-date";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import type { Protocol, FormResult, Equipment } from "@/lib/types";
 import type {
   OutcomeOption,
@@ -36,6 +37,7 @@ export default function ProtocolControls({
   endAction: (formData: FormData) => Promise<FormResult>;
   deleteAction: (formData: FormData) => Promise<FormResult>;
 }) {
+  const formatPrefs = useFormatPrefs();
   const [editing, setEditing] = useState(false);
   const ongoing = protocol.end_date == null;
 
@@ -62,9 +64,10 @@ export default function ProtocolControls({
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             {ongoing
-              ? `Started ${formatLongDate(protocol.start_date)} · ongoing`
-              : `${formatLongDate(protocol.start_date)} – ${formatLongDate(
-                  protocol.end_date!
+              ? `Started ${formatLongDate(protocol.start_date, formatPrefs)} · ongoing`
+              : `${formatLongDate(protocol.start_date, formatPrefs)} – ${formatLongDate(
+                  protocol.end_date!,
+                  formatPrefs
                 )}`}
           </p>
         </div>

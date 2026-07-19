@@ -4,6 +4,7 @@ import ActivityIcon from "../ActivityIcon";
 import ActivityProvenance from "@/components/ActivityProvenance";
 import { activityProvenanceLabel } from "@/lib/journal-format";
 import { formatLongDate } from "@/lib/format-date";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { IconX } from "@tabler/icons-react";
 import type { ActivityType } from "@/lib/types";
 import type { ActivityEditData } from "./model";
@@ -41,6 +42,7 @@ export default function ActivityFormHeader({
   onTitleChange: (value: string) => void;
   onClose: () => void;
 }) {
+  const formatPrefs = useFormatPrefs();
   return (
     <div
       data-testid="activity-form-header"
@@ -74,7 +76,7 @@ export default function ActivityFormHeader({
             at-a-glance context for the row being edited. Reads live `date`
             state, so it tracks edits to the field. */}
         <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
-          {formatLongDate(date)}
+          {formatLongDate(date, formatPrefs)}
         </p>
         {/* Provenance + created/updated timestamps for a stored row (issue
             #11). Omitted while creating a new activity (no created_at yet). */}

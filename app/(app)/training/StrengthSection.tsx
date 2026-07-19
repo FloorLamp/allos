@@ -6,7 +6,11 @@ import {
   getGoals,
   getGoalProgressMap,
 } from "@/lib/queries";
-import { getUnitPrefs, getUserSex } from "@/lib/settings";
+import {
+  getUnitPrefs,
+  getUserSex,
+  getDisplayFormatPrefs,
+} from "@/lib/settings";
 import { chartSeries } from "@/lib/chart-colors";
 import { requireSession } from "@/lib/auth";
 import { dispWeight, fmtWeight } from "@/lib/units";
@@ -31,7 +35,11 @@ export default async function StrengthSection() {
   }));
   const exercises = getStrengthByExercise(profile.id);
   const bodyweightKg = getLatestBodyMetric(profile.id, "weight");
-  const recentByExercise = getRecentByExercise(profile.id, wu);
+  const recentByExercise = getRecentByExercise(
+    profile.id,
+    wu,
+    getDisplayFormatPrefs(login.id)
+  );
   const goals = getGoals(profile.id);
   // Plain object (not a Map) so it can cross into the client component.
   const goalProgress = Object.fromEntries(

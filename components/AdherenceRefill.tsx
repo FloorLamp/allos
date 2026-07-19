@@ -11,6 +11,7 @@ import {
   type DoseRate,
 } from "@/lib/refill";
 import { formatMonthDay } from "@/lib/format-date";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 
 // The refill "≈N days of supply left" badge (#38/#301), shared by the supplement
 // ROW and the medication CARD so both surface the same estimate identically
@@ -34,6 +35,7 @@ export function RefillBadge({
   // (supplement rows) that keep the compact days-left form.
   todayStr?: string;
 }) {
+  const formatPrefs = useFormatPrefs();
   const daysLeft = daysOfSupplyForItem(
     quantityOnHand,
     qtyPerDose,
@@ -54,7 +56,7 @@ export function RefillBadge({
       }`}
       title={
         runOut
-          ? `Runs out around ${formatMonthDay(runOut)} — ${refillBasis}`
+          ? `Runs out around ${formatMonthDay(runOut, formatPrefs)} — ${refillBasis}`
           : `Estimated days of supply remaining — ${refillBasis}`
       }
     >
@@ -65,7 +67,7 @@ export function RefillBadge({
       {runOut && (
         <span data-testid="refill-run-out">
           {" "}
-          · runs out ~{formatMonthDay(runOut)}
+          · runs out ~{formatMonthDay(runOut, formatPrefs)}
         </span>
       )}
       <span className="ml-1 font-normal opacity-70">· {refillBasis}</span>

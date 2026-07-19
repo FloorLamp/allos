@@ -6,6 +6,7 @@ import {
   IconStethoscope,
 } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
+import { getDisplayFormatPrefs } from "@/lib/settings";
 import { today } from "@/lib/db";
 import {
   getProvider,
@@ -23,6 +24,7 @@ import {
 } from "@/lib/queries";
 import { formatMergeImpact, providerDisambigLabel } from "@/lib/provider-merge";
 import { formatRecordDate } from "@/lib/record-format";
+import type { DisplayFormatPrefs } from "@/lib/format-date";
 import { PageHeader } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
 import ProviderIdentityCard from "../ProviderIdentityCard";
@@ -39,9 +41,11 @@ export const dynamic = "force-dynamic";
 function ActivitySection({
   label,
   items,
+  fmt,
 }: {
   label: string;
   items: ProviderActivityItem[];
+  fmt: DisplayFormatPrefs;
 }) {
   if (items.length === 0) return null;
   return (
@@ -73,7 +77,7 @@ function ActivitySection({
                 ) : null}
               </span>
               <span className="shrink-0 whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
-                {it.date ? formatRecordDate(it.date, "") : ""}
+                {it.date ? formatRecordDate(it.date, "", fmt) : ""}
               </span>
             </Link>
           </li>
@@ -86,15 +90,17 @@ function ActivitySection({
 function RelationshipStat({
   label,
   value,
+  fmt,
 }: {
   label: string;
   value: string | null;
+  fmt: DisplayFormatPrefs;
 }) {
   return (
     <div className="rounded-lg border border-black/5 bg-white/60 px-4 py-3 dark:border-white/10 dark:bg-black/10">
       <div className="section-label">{label}</div>
       <div className="mt-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
-        {value ? formatRecordDate(value, "—") : "—"}
+        {value ? formatRecordDate(value, "—", fmt) : "—"}
       </div>
     </div>
   );
@@ -105,6 +111,7 @@ export default async function ProviderDetailPage(props: {
 }) {
   const params = await props.params;
   const { profile, login } = await requireSession();
+  const fmt = getDisplayFormatPrefs(login.id);
   const id = Number(params.id);
   const provider = id ? getProvider(id) : undefined;
   if (!provider) notFound();
@@ -176,14 +183,20 @@ export default async function ProviderDetailPage(props: {
 
       {/* Relationship strip (per-profile). */}
       <div className="mt-6 grid gap-3 sm:grid-cols-3">
-        <RelationshipStat label="First seen" value={relationship.firstSeen} />
+        <RelationshipStat
+          label="First seen"
+          value={relationship.firstSeen}
+          fmt={fmt}
+        />
         <RelationshipStat
           label="Most recent visit"
           value={relationship.lastVisit}
+          fmt={fmt}
         />
         <RelationshipStat
           label="Next appointment"
           value={relationship.nextAppointment}
+          fmt={fmt}
         />
       </div>
 
@@ -205,7 +218,12 @@ export default async function ProviderDetailPage(props: {
         ) : (
           <div className="flex flex-col gap-2">
             {sections.map((s) => (
-              <ActivitySection key={s.label} label={s.label} items={s.items} />
+              <ActivitySection
+                key={s.label}
+                label={s.label}
+                items={s.items}
+                fmt={fmt}
+              />
             ))}
           </div>
         )}

@@ -3,7 +3,11 @@ import { journalActivityHref } from "../../timeline-format";
 import type { AppRoute } from "../../hrefs";
 import { startOfWeekStr } from "../../date";
 import { formatMinutes } from "../../duration";
-import { formatLongDate } from "../../format-date";
+import {
+  DEFAULT_FORMAT_PREFS,
+  formatLongDate,
+  type DisplayFormatPrefs,
+} from "../../format-date";
 import type { DistanceUnit } from "../../settings";
 import { getWeekStart } from "../../settings";
 import { assignHashedColors } from "../../trend-colors";
@@ -55,6 +59,7 @@ export interface CardioStat {
 export const getCardioByActivity = cache(function getCardioByActivity(
   profileId: number,
   unit: DistanceUnit,
+  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS,
   recentLimit = 10
 ): CardioStat[] {
   interface Acc extends Omit<CardioStat, "activity"> {
@@ -116,7 +121,7 @@ export const getCardioByActivity = cache(function getCardioByActivity(
     });
     // Newest-first recent list (entries are ascending, so prepend).
     cur.recent.unshift({
-      date: formatLongDate(e.date),
+      date: formatLongDate(e.date, prefs),
       href: journalActivityHref(e.activityId),
       text:
         dist > 0
@@ -235,6 +240,7 @@ export interface SportStat {
 
 export function getSportByActivity(
   profileId: number,
+  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS,
   recentLimit = 10
 ): SportStat[] {
   const map = new Map<string, SportStat>();
@@ -274,7 +280,7 @@ export function getSportByActivity(
     });
     // Newest-first recent list (entries are ascending, so prepend).
     cur.recent.unshift({
-      date: formatLongDate(e.date),
+      date: formatLongDate(e.date, prefs),
       href: journalActivityHref(e.activityId),
       text: formatMinutes(dur || null),
     });

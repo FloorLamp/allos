@@ -3,7 +3,7 @@ import {
   getCardioVolumeByWeek,
   getCardioIntensityMix,
 } from "@/lib/queries";
-import { getUnitPrefs } from "@/lib/settings";
+import { getUnitPrefs, getDisplayFormatPrefs } from "@/lib/settings";
 import { requireSession } from "@/lib/auth";
 import { fmtDistance, fmtKmh } from "@/lib/units";
 import { formatMinutes } from "@/lib/duration";
@@ -39,8 +39,9 @@ function prValue(p: CardioPR, du: "km" | "mi"): string {
 export default async function CardioSection() {
   const { login, profile } = await requireSession();
   const units = getUnitPrefs(login.id);
+  const formatPrefs = getDisplayFormatPrefs(login.id);
   const du = units.distanceUnit;
-  const cardio = getCardioByActivity(profile.id, du);
+  const cardio = getCardioByActivity(profile.id, du, formatPrefs);
   const prs = recentCardioPRs(cardio, today(profile.id), 30);
   const weekly = getCardioVolumeByWeek(profile.id);
   const mix = getCardioIntensityMix(profile.id);

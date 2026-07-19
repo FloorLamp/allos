@@ -4,6 +4,7 @@ import { today } from "@/lib/db";
 import { chartSeries } from "@/lib/chart-colors";
 import {
   getUnitPrefs,
+  getDisplayFormatPrefs,
   getUserSex,
   getUserBirthdate,
   getUserAge,
@@ -77,6 +78,7 @@ import SourceComparison from "./SourceComparison";
 export default async function BodySection({ range }: { range: DateRange }) {
   const { login, profile } = await requireSession();
   const units = getUnitPrefs(login.id);
+  const formatPrefs = getDisplayFormatPrefs(login.id);
   const wu = units.weightUnit;
 
   // Read the whole series (ALL_ROWS overrides the default 365-row cap) so an
@@ -764,7 +766,7 @@ export default async function BodySection({ range }: { range: DateRange }) {
                     className="border-b border-black/5 dark:border-white/10"
                   >
                     <td className="td whitespace-nowrap">
-                      {formatLongDate(w.date)}
+                      {formatLongDate(w.date, formatPrefs)}
                     </td>
                     <td
                       className="td font-medium"
@@ -811,7 +813,7 @@ export default async function BodySection({ range }: { range: DateRange }) {
                     <td className="td text-right">
                       <DeleteBodyMetricButton
                         id={w.id}
-                        label={formatLongDate(w.date)}
+                        label={formatLongDate(w.date, formatPrefs)}
                       />
                     </td>
                   </tr>

@@ -21,7 +21,7 @@ import { chartSeries } from "@/lib/chart-colors";
 import { formatRelativeDate } from "@/lib/format-date";
 import { formatMinutes } from "@/lib/duration";
 import { frequencyScopeLabel } from "@/lib/goals";
-import { getUnitPrefs } from "@/lib/settings";
+import { getUnitPrefs, getDisplayFormatPrefs } from "@/lib/settings";
 import {
   coverageFromSets,
   coverageList,
@@ -102,7 +102,11 @@ export default async function OverviewSection() {
     value: dispWeight(v.volume, wu, 0),
   }));
 
-  const cardio = getCardioByActivity(profile.id, du);
+  const cardio = getCardioByActivity(
+    profile.id,
+    du,
+    getDisplayFormatPrefs(login.id)
+  );
   const cardioPrs = recentCardioPRs(cardio, todayStr, 30);
   const weekly = getCardioVolumeByWeek(profile.id);
   const mix = getCardioIntensityMix(profile.id);

@@ -43,7 +43,11 @@ export default async function HistorySection() {
   );
 
   // Per-exercise recent sessions (last 10) for the exercise detail pane.
-  const recentByExercise = getRecentByExercise(profile.id, wu);
+  const recentByExercise = getRecentByExercise(
+    profile.id,
+    wu,
+    getDisplayFormatPrefs(login.id)
+  );
 
   const summary = getJournalWeekSummary(profile.id);
   const goals = getGoals(profile.id);
@@ -64,8 +68,15 @@ export default async function HistorySection() {
       groups={groups}
       initialCursor={nextBefore}
       exerciseStats={getStrengthByExercise(profile.id)}
-      cardioStats={getCardioByActivity(profile.id, units.distanceUnit)}
-      sportStats={getSportByActivity(profile.id)}
+      cardioStats={getCardioByActivity(
+        profile.id,
+        units.distanceUnit,
+        getDisplayFormatPrefs(login.id)
+      )}
+      sportStats={getSportByActivity(
+        profile.id,
+        getDisplayFormatPrefs(login.id)
+      )}
       goals={goals}
       goalProgress={goalProgress}
       bodyweightKg={getLatestBodyMetric(profile.id, "weight")}

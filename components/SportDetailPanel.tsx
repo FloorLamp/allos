@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import type { SportStat } from "@/lib/queries";
 import { formatMinutes } from "@/lib/duration";
 import { formatLongDate, formatRelativeDate } from "@/lib/format-date";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { dateStrInTz } from "@/lib/date";
 import LineChartCard from "@/components/LineChartCard";
@@ -25,6 +26,7 @@ export default function SportDetailPanel({
   showTrend?: boolean;
   showRecent?: boolean;
 }) {
+  const formatPrefs = useFormatPrefs();
   const todayStr = dateStrInTz(useTimezone());
   const chart = stat.trend.map((t) => ({
     date: t.date,
@@ -52,7 +54,7 @@ export default function SportDetailPanel({
           }
           sub={
             stat.longestDurationMin > 0
-              ? formatLongDate(stat.longestDurationDate)
+              ? formatLongDate(stat.longestDurationDate, formatPrefs)
               : undefined
           }
         />
@@ -64,7 +66,7 @@ export default function SportDetailPanel({
         <StatBox
           label="Last done"
           value={formatRelativeDate(stat.lastDate, todayStr)}
-          sub={formatLongDate(stat.lastDate)}
+          sub={formatLongDate(stat.lastDate, formatPrefs)}
           href={`/training?tab=log#activity-${stat.lastActivityId}`}
         />
       </dl>

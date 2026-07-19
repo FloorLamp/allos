@@ -258,6 +258,14 @@ describe("monthNames", () => {
     // Short labels are an abbreviation of the long ones (locale-independent).
     expect(short.every((n, i) => n.length <= long[i].length)).toBe(true);
   });
+
+  it("is fixed-English, independent of the runtime locale (#1020)", () => {
+    // The old implementation went through toLocaleDateString (runtime locale);
+    // these must now come from the fixed English tables shared with format-date.
+    expect(monthNames("long")[0]).toBe("January");
+    expect(monthNames("long")[11]).toBe("December");
+    expect(monthNames("short")[8]).toBe("Sep");
+  });
 });
 
 describe("monthGridCells", () => {

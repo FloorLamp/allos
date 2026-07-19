@@ -11,6 +11,7 @@ import {
 } from "recharts";
 import { useChartColors } from "./useChartColors";
 import { formatLongDate } from "@/lib/format-date";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import {
   dateToEpoch,
   epochToISO,
@@ -43,6 +44,7 @@ export default function SourceCompareChartInner({
   unit?: string;
   heightClass?: string;
 }) {
+  const formatPrefs = useFormatPrefs();
   const c = useChartColors();
   // Pivot the per-source series onto one date axis; a source without a reading
   // on a date contributes null (its line bridges the gap via connectNulls).
@@ -106,7 +108,9 @@ export default function SourceCompareChartInner({
               `${v}${unit}`,
               labelByKey.get(String(name)) ?? name,
             ]}
-            labelFormatter={(v) => formatLongDate(epochToISO(Number(v)))}
+            labelFormatter={(v) =>
+              formatLongDate(epochToISO(Number(v)), formatPrefs)
+            }
             contentStyle={{
               fontSize: 12,
               borderRadius: 8,
