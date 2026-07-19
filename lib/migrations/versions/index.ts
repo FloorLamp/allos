@@ -66,6 +66,7 @@ import { migration as m064 } from "./064-login-email";
 import { migration as m065 } from "./065-optical-prescriptions";
 import { migration as m066 } from "./066-instrument-responses";
 import { migration as m067 } from "./067-dental-procedures";
+import { migration as m068 } from "./068-canonical-cycle-phase-ranges";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -141,4 +142,5 @@ export const MIGRATIONS: Migration[] = [
   m065,
   m066,
   m067,
+  m068,
 ];

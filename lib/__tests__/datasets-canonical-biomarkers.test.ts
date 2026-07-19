@@ -44,10 +44,16 @@ import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 // <10%, clinical attachment loss ≤1 mm — all lower_better) add new flag-relevant rows,
 // so the signature legitimately changes and the boot reconcile re-flags stored perio
 // records against the new bands.
+// Updated for #718: cycle-phase reference ranges — the ranges_by_cycle_phase field is
+// added to FLAG_RELEVANT_FIELDS (and FLAG_LOGIC_VERSION bumps to 8), the four hormones
+// (FSH/LH/estradiol/progesterone) gain phase ranges, and Progesterone is a new curated
+// row, so the signature legitimately changes. On the next boot the reconcile re-derives
+// the hormone flags for profiles WITH a cycle log against the phase range (a no-op for
+// profiles with none — they derive no phase and re-flag to the identical prior value).
 const FLAG_SIGNATURE_GOLDEN =
   // A SHA-256 content hash of the canonical dataset; a digit substring
   // coincidentally forms a Luhn-valid NPI shape — provably synthetic.
-  "6aa446a7dec64c715a2396d833878ef54e96ea4762d80665b2e6c6862db67c78"; // phi-scan-ok
+  "264f1749a098c1b0817e1b15d0ae48903aeb4b6500c0f3a9e660b6ae8af0f845"; // phi-scan-ok
 
 describe("canonical-biomarkers dataset on the curated-dataset framework", () => {
   it("passes the whole framework harness (citation + identity + refusal + no collisions)", () => {

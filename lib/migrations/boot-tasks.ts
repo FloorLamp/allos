@@ -6,6 +6,7 @@ import {
   computeQualitativeFlagChanges,
 } from "../flag-reconcile";
 import { canonicalFlagsSignature } from "../canonical-flags-version";
+import type { CyclePeriod } from "../cycle";
 import { hashPasswordSync } from "../password";
 import { extractionLeaseMinutes } from "../extraction-lease";
 import {
@@ -414,8 +415,8 @@ export function seedCanonicalBiomarkers(db: Database.Database) {
         ref_low_male, ref_high_male, ref_low_female, ref_high_female,
         optimal_low, optimal_high,
         optimal_low_male, optimal_high_male, optimal_low_female, optimal_high_female,
-        direction, ranges_by_age, ranges_by_status, note, source)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'seed')
+        direction, ranges_by_age, ranges_by_status, ranges_by_cycle_phase, note, source)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'seed')
      ON CONFLICT(name) DO UPDATE SET
        category = excluded.category, unit = excluded.unit,
        ref_low = excluded.ref_low, ref_high = excluded.ref_high,
@@ -431,6 +432,7 @@ export function seedCanonicalBiomarkers(db: Database.Database) {
        direction = excluded.direction,
        ranges_by_age = excluded.ranges_by_age,
        ranges_by_status = excluded.ranges_by_status,
+       ranges_by_cycle_phase = excluded.ranges_by_cycle_phase,
        note = excluded.note,
        source = 'seed'`
   );
@@ -443,6 +445,12 @@ export function seedCanonicalBiomarkers(db: Database.Database) {
     Array.isArray(v) && v.length > 0 ? JSON.stringify(v) : null;
   // Reproductive-status ranges are stored as a JSON object; null when absent.
   const statusRanges = (v: unknown) =>
+    v && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length > 0
+      ? JSON.stringify(v)
+      : null;
+  // Cycle-phase ranges are stored as a JSON object (#718); null when absent. Same
+  // shape/handling as statusRanges.
+  const cyclePhaseRanges = (v: unknown) =>
     v && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length > 0
       ? JSON.stringify(v)
       : null;
@@ -469,6 +477,7 @@ export function seedCanonicalBiomarkers(db: Database.Database) {
         str(b?.direction),
         ageBands(b?.ranges_by_age),
         statusRanges(b?.ranges_by_status),
+        cyclePhaseRanges(b?.ranges_by_cycle_phase),
         str(b?.note)
       );
     }
@@ -514,7 +523,7 @@ function reconcileNonOptimalFlags(db: Database.Database) {
               ref_low_male, ref_high_male, ref_low_female, ref_high_female,
               optimal_low, optimal_high,
               optimal_low_male, optimal_high_male, optimal_low_female, optimal_high_female,
-              direction, ranges_by_age, ranges_by_status
+              direction, ranges_by_age, ranges_by_status, ranges_by_cycle_phase
        FROM canonical_biomarkers`
     )
     .all() as Record<string, unknown>[];
@@ -561,6 +570,25 @@ function reconcileNonOptimalFlags(db: Database.Database) {
         ? "postmenopausal"
         : null;
   };
+  // The profile's logged menstrual periods (#718): each hormone record's cycle phase
+  // is derived per-row from its own collection date, refining the range above the
+  // coarse status proxy. bootTasks is version-agnostic and can run against a schema
+  // that predates migration 063's `cycles` table (an early-revision migration test),
+  // so guard on the table's presence and fall back to no periods (→ unchanged flags).
+  const hasCycles =
+    db
+      .prepare(
+        `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'cycles'`
+      )
+      .get() != null;
+  const periodsStmt = hasCycles
+    ? db.prepare(
+        `SELECT id, period_start, period_end, flow, note FROM cycles
+          WHERE profile_id = ? ORDER BY period_start`
+      )
+    : null;
+  const readPeriods = (profileId: number): CyclePeriod[] =>
+    periodsStmt ? (periodsStmt.all(profileId) as CyclePeriod[]) : [];
 
   const rowsStmt = db.prepare(
     `SELECT id, value_num, unit, canonical_name, flag, date, reference_range FROM medical_records
@@ -596,6 +624,7 @@ function reconcileNonOptimalFlags(db: Database.Database) {
       const birthdate = readBirthdate(p.id);
       const age = readAge(p.id);
       const reproductiveStatus = readReproductiveStatus(p.id);
+      const periods = readPeriods(p.id);
       const rows = (
         rowsStmt.all(p.id) as {
           id: number;
@@ -616,6 +645,7 @@ function reconcileNonOptimalFlags(db: Database.Database) {
         birthdate,
         age,
         reproductiveStatus,
+        periods,
       })) {
         if (c.flag === null) clear.run(c.id);
         else setFlag.run(c.flag, c.id);
