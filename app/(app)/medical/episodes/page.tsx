@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { requireSession } from "@/lib/auth";
+import { requireSession, getAccessibleProfiles } from "@/lib/auth";
 import { getUnitPrefs } from "@/lib/settings";
 import { fmtTemp } from "@/lib/units";
 import { summarizeEpisodesForProfile } from "@/lib/illness-episode-summary";
-import { episodeHref } from "@/lib/hrefs";
+import { episodeHref, HOUSEHOLD_HISTORY_HREF } from "@/lib/hrefs";
 import PageContainer from "@/components/PageContainer";
 import { PageHeader, EmptyState } from "@/components/ui";
 
@@ -32,12 +32,26 @@ export default async function EpisodesIndexPage() {
   const { login, profile } = await requireSession();
   const temperatureUnit = getUnitPrefs(login.id).temperatureUnit;
   const episodes = summarizeEpisodesForProfile(profile.id);
+  // Widen-to-household link (issue #1009 Ask 4) — shown only for a multi-profile login,
+  // the same predicate that gates the Household strip/nav.
+  const showHousehold = (await getAccessibleProfiles()).length > 1;
 
   return (
     <PageContainer width="reading">
       <PageHeader
         title="Illness episodes"
         subtitle="Every logged illness — most recent first."
+        action={
+          showHousehold ? (
+            <Link
+              href={HOUSEHOLD_HISTORY_HREF}
+              className="text-sm font-medium text-sky-700 hover:underline dark:text-sky-300"
+              data-testid="household-view-link"
+            >
+              Household view →
+            </Link>
+          ) : undefined
+        }
       />
       {episodes.length === 0 ? (
         <EmptyState message="No illness episodes yet. When you flag an illness situation and log symptoms, it appears here." />

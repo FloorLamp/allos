@@ -30,6 +30,9 @@ import { isRealIsoDate } from "@/lib/date";
 import { episodeAlternateLogDate } from "@/lib/illness-episode-format";
 import { getEpisodeInRangeEvents } from "@/lib/illness-episode-events";
 import { episodeComparisonFor } from "@/lib/illness-episode-compare";
+import { gatherHouseholdEpisodeContext } from "@/lib/household-history";
+import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
+import HouseholdEpisodeContextCard from "@/components/household/HouseholdEpisodeContextCard";
 import EpisodeComparison from "@/components/illness/EpisodeComparison";
 import EpisodeSummary, {
   EpisodeSummaryFooter,
@@ -191,6 +194,31 @@ export default async function EpisodePage(props: {
   const hasCareContext = showStaleNudge != null || comparison != null;
   const hasUpdateWorkspace = canWrite;
 
+  // Household context (issue #1009 Ask 3): other ACCESSIBLE members' episodes that
+  // overlap or closely precede/follow THIS episode's window — "did this go around the
+  // house?" answered in place. Grant-scoped exactly like the merged history: only the
+  // viewing login's accessible profiles (minus the subject) are considered, so an
+  // ungranted member never appears. The SAME summarize gather the merged view uses,
+  // windowed to this episode's dates (one computation — no second engine). Renders
+  // NOTHING (not an empty shell) when there are no other accessible profiles or no
+  // overlapping/adjacent illness.
+  const otherProfileIds = accessible
+    .map((p) => p.id)
+    .filter((pid) => pid !== profileId);
+  const householdContexts =
+    otherProfileIds.length > 0
+      ? gatherHouseholdEpisodeContext(
+          profileId,
+          {
+            firstDay: assembled.firstDay,
+            lastActiveDay: assembled.lastActiveDay,
+          },
+          otherProfileIds
+        )
+      : [];
+  const householdNames = disambiguateProfileNames(accessible);
+  const accessibleById = new Map(accessible.map((p) => [p.id, p]));
+
   return (
     <PageContainer width="reading" className="mx-auto space-y-5">
       <EpisodeSummary
@@ -350,6 +378,14 @@ export default async function EpisodePage(props: {
             </CardGroupSection>
           )}
         </CardGroup>
+      )}
+
+      {householdContexts.length > 0 && (
+        <HouseholdEpisodeContextCard
+          contexts={householdContexts}
+          profilesById={accessibleById}
+          nameFor={(pid) => householdNames.get(pid) ?? "Someone"}
+        />
       )}
 
       <EpisodeSummaryFooter

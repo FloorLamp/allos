@@ -33,6 +33,7 @@ import { evictPreviewsForDocument } from "@/lib/reprocess-preview-cache";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { createLogger } from "@/lib/log";
+import { MEDICAL_UPLOAD_BATCH_CAP } from "@/lib/upload-gate";
 import {
   ingestMedicalUpload,
   reprocessAllForProfile,
@@ -56,15 +57,56 @@ import type { ReprocessCost } from "@/lib/reprocess-cost";
 
 const log = createLogger("medical");
 
-// Upload a medical document and store it on disk, then kick off AI extraction
-// in the background. The action returns as soon as the file is saved (status
-// 'processing'), so the document appears immediately; the page polls until
-// extraction finishes and imports its results.
-export async function uploadMedicalDocument(formData: FormData) {
+// Outcome of an upload submit, returned to the form so it can tone the toast
+// (single vs batch) and surface the soft-cap overflow note (issue #1008).
+export interface UploadMedicalResult {
+  // How many files were actually handed to the ingest engine (<= the soft cap).
+  // Each becomes its own document row — a success at 'processing', or a failed-doc
+  // row for an oversized/unsupported/mislabeled file — so per-file outcomes land
+  // with no special batch handling.
+  ingested: number;
+  // Files beyond the soft cap that were NOT ingested this submit; the form asks the
+  // user to add them in another batch. 0 for an ordinary within-cap upload.
+  overflow: number;
+}
+
+// Upload one or more medical documents and store each on disk, then kick off AI
+// extraction per file in the background. The action returns as soon as the files
+// are saved (each at status 'processing'), so every document appears immediately;
+// the page polls until extraction finishes and imports its results.
+//
+// Multi-file (issue #1008): the form submits every selected file under the same
+// "file" key, so we read them with getAll and ingest them SEQUENTIALLY — awaiting
+// each ingestMedicalUpload so we never buffer N large file bodies into memory at
+// once (ingestMedicalUpload reads the whole file into a Buffer). A ~20-file soft
+// cap protects the extraction queue: the first N are ingested and any remainder is
+// reported back for another batch, rather than a hard wall that rejects the submit.
+export async function uploadMedicalDocument(
+  formData: FormData
+): Promise<UploadMedicalResult> {
   const { login, profile } = await requireWriteAccess();
-  const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) return;
-  await ingestMedicalUpload(login.id, profile.id, file);
+  // A multi-file submit holds several values under the one "file" key; keep only
+  // real, non-empty Files (an empty file input can yield a zero-byte File).
+  const files = formData
+    .getAll("file")
+    .filter((f): f is File => f instanceof File && f.size > 0);
+  if (files.length === 0) return { ingested: 0, overflow: 0 };
+
+  // Soft cap: ingest the first N, leave the remainder for another batch.
+  const toIngest = files.slice(0, MEDICAL_UPLOAD_BATCH_CAP);
+  const overflow = files.length - toIngest.length;
+
+  // Sequential on purpose — awaiting each keeps at most one file body buffered at a
+  // time. A per-file reject (too large / unsupported / mislabeled) inserts its own
+  // failed-doc row inside ingestMedicalUpload and the loop keeps going, so a mixed
+  // batch lands per-file outcomes with no special handling here.
+  for (const file of toIngest) {
+    await ingestMedicalUpload(login.id, profile.id, file);
+  }
+  // ingestMedicalUpload already revalidates /data per file; one revalidate after the
+  // whole batch keeps the Review feed fresh once everything has landed.
+  revalidatePath("/data");
+  return { ingested: toIngest.length, overflow };
 }
 
 // Preview the cost of "Re-extract all documents" BEFORE running it (issue #208).
