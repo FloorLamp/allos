@@ -1341,7 +1341,7 @@ export default function StrengthSets({
           )}
           {total > 0 && (
             <span className="text-xs text-slate-500 dark:text-slate-400">
-              Total: {total.toLocaleString()} {units.weightUnit}
+              Total: {total.toLocaleString("en-US")} {units.weightUnit}
             </span>
           )}
         </span>
