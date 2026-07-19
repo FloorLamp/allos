@@ -39,6 +39,7 @@
     "gen:pgx": "tsx scripts/gen-pgx.ts",
     "gen:contrast-safety": "tsx scripts/gen-contrast-safety.ts",
     "gen:dental-safety": "tsx scripts/gen-dental-safety.ts",
+    "gen:ototoxic": "tsx scripts/gen-ototoxic.ts",
     "gen:screenings": "tsx scripts/gen-screenings.ts",
     "gen:nutrient-food-map": "tsx scripts/gen-nutrient-food-map.ts",
     "gen:food-groups": "tsx scripts/gen-food-groups.ts",

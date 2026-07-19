@@ -54,6 +54,10 @@ const ALLOWLIST: Record<string, string> = {
     "standing dental-procedure safety cross-check (#704) — a planned invasive dental " +
     "procedure meeting an antiresorptive/cardiac/anticoagulant gate; informational " +
     "pre-procedure safety note, not a risk-ranked due signal",
+  ototoxicItems:
+    "standing ototoxic-medication awareness cross-check (#717) — an active ototoxic " +
+    "medication (aminoglycoside/platinum/loop-diuretic/salicylate/vancomycin/quinine); " +
+    "informational hearing-safety note, not a risk-ranked due signal",
   appointmentItems: "carries its own real appointment date",
   goalItems: "carries its own target date",
   trainingItems: "weekly frequency count — not risk-ranked",

@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 069 (issue #715): the structured SKIN-LESION record type — the skin
+// Migration 070 (issue #715): the structured SKIN-LESION record type — the skin
 // enabler (#707 Phase 1) that supplies the final adapter for the finding →
 // follow-up → resolution chain (#700, core shipped in migration 050). Mirrors the
 // dental record type (#705, migration 067) and the imaging-study type (#702,
@@ -138,7 +138,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 69,
-  name: "069-skin-lesions",
+  id: 70,
+  name: "070-skin-lesions",
   up,
 };

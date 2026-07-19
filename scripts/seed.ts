@@ -274,6 +274,10 @@ const roadBikeId = Number(
   insertEquipment.run("Road Bike", null, "Bike").lastInsertRowid
 );
 insertEquipment.run("Trail Shoes", null, "Shoes");
+// A hearing aid (#713) — the sense-organ trio's DEVICE arm lives in the equipment
+// registry (the glasses/device pattern), so "which aids, since when" is tracked with
+// usage/history. kindOf() maps 'Hearing aid' → the "other" group.
+insertEquipment.run("Phonak Audéo hearing aids", null, "Hearing aid");
 // Link the Zone 2 ride to the road bike so a gear chip renders in the Journal.
 db.prepare(
   `UPDATE activities SET equipment_id = ?
@@ -972,6 +976,37 @@ medIds.push(
     ).lastInsertRowid
   )
 );
+
+// Audiogram pure-tone thresholds (#713) — dated per-ear, per-frequency readings stored
+// as biomarkers (medical_records), the same observation substrate as the perio + vision
+// analytes above. Two dated audiograms (~2 years apart) with a gently worsening
+// high-frequency (4 kHz / 8 kHz) "noise notch" — the recent 4 kHz readings cross the
+// 25 dB HL band so they flag, and each per-ear/frequency series trends on Biomarkers.
+for (const [days, thresholds] of [
+  [730, { "1 kHz": 15, "4 kHz": 25, "8 kHz": 30 }],
+  [20, { "1 kHz": 20, "4 kHz": 40, "8 kHz": 45 }],
+] as const) {
+  for (const ear of ["Right Ear", "Left Ear"] as const) {
+    for (const [freq, db_hl] of Object.entries(thresholds)) {
+      const name = `Hearing Threshold, ${ear} ${freq}`;
+      medIds.push(
+        Number(
+          insMed.run(
+            daysAgo(days),
+            "vitals",
+            name,
+            String(db_hl),
+            "dB HL",
+            "≤25 dB HL",
+            db_hl,
+            name,
+            "Audiogram"
+          ).lastInsertRowid
+        )
+      );
+    }
+  }
+}
 
 // Derive clinical (high/low) and non-optimal flags from the canonical reference
 // + optimal bands, so seeded readings flag exactly like real imported ones.

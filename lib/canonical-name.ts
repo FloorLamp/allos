@@ -441,6 +441,21 @@ function isA1cFamily(lower: string): boolean {
 
 export const HEMOGLOBIN_A1C_FAMILY = "hemoglobin-a1c";
 
+// Audiogram pure-tone thresholds (#713) are DELIBERATELY NOT a biomarker family. Each
+// per-ear, per-frequency threshold ("Hearing Threshold, Right Ear 4 kHz") is a DISTINCT
+// measurement, not the same reading under two names — so folding them into one family
+// would over-collapse exactly the way the exclusion discipline above warns against: the
+// family key drives the cross-source dedup partition AND the is_latest/current marker,
+// so a normal 1 kHz (or a normal LEFT ear) reading would mark the whole "hearing" group
+// current/OK and HIDE a flagged 4 kHz (or right-ear) threshold — a wrong all-clear on a
+// safety-relevant flag, and same-value ears on one date would even dedup to one row,
+// dropping an ear. So every audiogram analyte keeps its OWN singleton identity: each
+// ear/frequency stays a separate trendable series that flags independently. (The #713
+// issue framed "two ears = one hearing question" as a family — but that premise breaks
+// the dedup/latest mechanism; the safe realization is separate identities, argued in the
+// PR.) A future per-audiogram summary (a pure-tone average) could carry the "one
+// number" role without collapsing the underlying series.
+
 // The registered identity families. Kept small and well-justified (each entry
 // risks collapsing two distinct analytes — see the exclusion discipline above).
 export const BIOMARKER_FAMILIES: readonly BiomarkerFamily[] = [

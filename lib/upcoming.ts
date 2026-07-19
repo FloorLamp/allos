@@ -65,6 +65,9 @@ export type UpcomingDomain =
   // A planned INVASIVE dental procedure meeting an antiresorptive/cardiac/anticoagulant
   // pre-procedure safety gate (#704). Care-tier, like contrast/interaction/PGx.
   | "dental-safety"
+  // An active ototoxic medication (#717) — a calm, cited, informational hearing-safety
+  // note. Care-tier, like the interaction/PGx/dental med-safety notes.
+  | "ototoxic"
   | "appointment"
   | "visit"
   | "screening"
@@ -106,6 +109,9 @@ const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
   // A planned-invasive-dental pre-procedure safety note (#704) — a care-tier
   // informational finding, alongside contrast, ahead of the scheduling domains.
   "dental-safety": 5.5,
+  // An active ototoxic-medication hearing-safety note (#717) — a care-tier
+  // informational finding, alongside the other med-safety notes, ahead of scheduling.
+  ototoxic: 5.6,
   appointment: 6,
   careplan: 7,
   visit: 8,

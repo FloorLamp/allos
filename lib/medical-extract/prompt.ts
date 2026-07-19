@@ -132,6 +132,12 @@ Rules:
     imaging study, NOT a dental_procedure — leave this array empty for a non-dental document.
     NOTE: periodontal MEASUREMENTS (pocket depths in mm, bleeding-on-probing %) belong in
     "results" as their own analytes ("Periodontal Probing Depth", "Bleeding on Probing").
+  - AUDIOGRAM / hearing test: when the document is an audiogram or audiology report, put each
+    pure-tone air-conduction threshold into "results" as its OWN analyte, one row per ear per
+    frequency, category "vitals", unit "dB HL", value the number of decibels. Use the canonical
+    names "Hearing Threshold, Right Ear <freq>" and "Hearing Threshold, Left Ear <freq>" where
+    <freq> is one of 250 Hz, 500 Hz, 1 kHz, 2 kHz, 4 kHz, 8 kHz (right = AD/OD, left = AS/OS).
+    There is no separate audiogram object — thresholds are results only.
 - Be concise: emit only the structured fields above. Brevity matters — there may be 100+
   results and the response must fit in the output budget.
 - Do not invent data. If the document has no extractable results, return empty arrays.`;

@@ -46,6 +46,15 @@ const FIELDS: {
     // hint describes that real behavior now that RISK_RULES backs it.
     hint: "Gestational-diabetes (glucose) and anemia (CBC/ferritin) checks are brought due sooner and prioritized.",
   },
+  {
+    // Noise exposure (#717) — occupational/recreational loud noise (loud workplace,
+    // firearms, power tools, concerts). Brings the age-related hearing screening due
+    // sooner (NIOSH/CDC).
+    key: "noiseExposure",
+    name: "noise_exposure",
+    label: "Loud-noise exposure",
+    hint: "Loud workplace, firearms, power tools, or concerts — hearing screening is brought due sooner.",
+  },
 ];
 
 export default function RiskFactorsForm({

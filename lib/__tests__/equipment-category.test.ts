@@ -21,6 +21,7 @@ describe("EQUIPMENT_CATEGORIES", () => {
       "Cold plunge",
       "Red light",
       "Massage device",
+      "Hearing aid",
       "Other",
     ]);
     expect(new Set(EQUIPMENT_CATEGORIES).size).toBe(
@@ -41,6 +42,7 @@ describe("kindOf", () => {
     ["Cold plunge", "recovery"],
     ["Red light", "recovery"],
     ["Massage device", "recovery"],
+    ["Hearing aid", "other"],
     ["Other", "other"],
   ];
   it.each(cases)("classifies %s as %s", (category, kind) => {

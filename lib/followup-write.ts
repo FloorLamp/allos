@@ -148,7 +148,7 @@ const RESOLVE_TARGET_BY_KIND: Record<
     resolvedCol: "resolved_by_dental_procedure_id",
   },
   // Skin follow-ups (#715): a later record of the same lesion resolves the "watch this
-  // mole, recheck" chain. Its own record type + resolving-link column (migration 069),
+  // mole, recheck" chain. Its own record type + resolving-link column (migration 070),
   // so a resolve can't write into the wrong domain's column.
   [SKIN_FOLLOWUP_KIND]: {
     table: "skin_lesions",

@@ -42,7 +42,13 @@ export type AppointmentStatus = (typeof APPOINTMENT_STATUSES)[number];
 // which powers the prefilled "Book" CTA, the scheduled-visit suppression, and the
 // close-the-loop satisfaction on completion.
 export type AppointmentKind =
-  "well_child" | "physical" | "dental" | "vision" | "screening" | "other";
+  | "well_child"
+  | "physical"
+  | "dental"
+  | "vision"
+  | "hearing"
+  | "screening"
+  | "other";
 
 export interface Appointment {
   id: number;
@@ -681,7 +687,7 @@ export interface CarePlanItem {
   source_imaging_study_id: number | null; // the imaging source finding
   source_medical_record_id: number | null; // the flagged-lab source finding (#700 labs adapter, migration 057)
   source_dental_procedure_id: number | null; // the dental source finding (#705 dental adapter, migration 066)
-  source_skin_lesion_id: number | null; // the skin-lesion source finding (#715 skin adapter, migration 069)
+  source_skin_lesion_id: number | null; // the skin-lesion source finding (#715 skin adapter, migration 070)
   recommended_interval_days: number | null; // the recommended follow-up interval
   resolution: string | null; // 'resolved' | 'stable' | 'changed' once closed
   resolved_by_imaging_study_id: number | null; // the later study it was resolved against

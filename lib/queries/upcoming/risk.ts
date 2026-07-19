@@ -16,6 +16,7 @@ import {
   getGenomicVariants,
   hasImportedSmokingHistory,
 } from "../clinical";
+import { getOtotoxicWarnings } from "../intake";
 
 // The profile's active risk-factor set. Family conditions come from every
 // family_history row; personal conditions from the ACTIVE conditions only (a
@@ -47,5 +48,10 @@ export const getRiskFactors = cache(function getRiskFactors(
       significance: v.significance,
       result_type: v.result_type,
     })),
+    // Active ototoxic medication (#717) → the hearing-screening cadence input. Resolved
+    // by the ototoxic cross-check over the shared safety-context gather (active meds), so
+    // the cadence factor and the ototoxic finding can't disagree ("one question, one
+    // computation"). Profile-scoped through getOtotoxicWarnings; no new SQL.
+    ototoxicMedication: getOtotoxicWarnings(profileId).length > 0,
   });
 });

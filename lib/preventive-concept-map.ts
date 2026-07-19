@@ -317,6 +317,39 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
     canonicalBiomarkers: [],
   },
   {
+    // Hearing screening (issue #713): a recorded audiometry/audiogram or an audiology
+    // visit satisfies the age-related hearing screening. CPT audiometry codes are
+    // specific; names are single, unambiguous audiology terms (whole-word matched).
+    // A recorded pure-tone threshold reading is a strong satisfying signal too, so the
+    // audiogram analytes count as canonical biomarkers.
+    ruleKey: "hearing_screening",
+    kind: "visit",
+    codes: [
+      "92557", // CPT comprehensive audiometry (air + bone + speech)
+      "92552", // CPT pure-tone audiometry, air only
+      "92553", // CPT pure-tone audiometry, air and bone
+      "92555", // CPT speech audiometry, threshold
+      "92556", // CPT speech audiometry, threshold with speech recognition
+      "1425003", // SNOMED audiometry
+    ],
+    names: [
+      "audiogram",
+      "audiometry",
+      "hearing test",
+      "hearing exam",
+      "hearing screening",
+      "audiology",
+      "audiologist",
+      "pure tone audiometry",
+    ],
+    canonicalBiomarkers: [
+      "Hearing Threshold, Right Ear 1 kHz",
+      "Hearing Threshold, Left Ear 1 kHz",
+      "Hearing Threshold, Right Ear 4 kHz",
+      "Hearing Threshold, Left Ear 4 kHz",
+    ],
+  },
+  {
     ruleKey: "skin_check",
     kind: "visit",
     codes: [],

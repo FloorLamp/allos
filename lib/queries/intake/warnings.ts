@@ -33,6 +33,11 @@ import {
   type DentalSafetyHit,
   type PlannedDentalProcedure,
 } from "../../dental-safety";
+import {
+  crossCheckOtotoxic,
+  type OtotoxicHit,
+  type OtotoxicMedInput,
+} from "../../ototoxic";
 import { isInvasiveDentalProcedure, dentalDisplayLabel } from "../../dental";
 import {
   getGenomicVariants,
@@ -280,4 +285,28 @@ export function getDentalSafetyWarnings(profileId: number): DentalSafetyHit[] {
   if (planned.length === 0) return [];
   const { medications, conditions } = getIntakeSafetyContext(profileId);
   return crossCheckDentalSafety(planned, medications, conditions);
+}
+
+// Ototoxic-medication awareness (issue #717): a calm, cited, informational note when an
+// ACTIVE medication is a well-established ototoxic (hearing/balance-toxic) agent — an
+// aminoglycoside antibiotic, platinum chemotherapy, a high-dose loop diuretic, a
+// high-dose long-term salicylate, vancomycin, or quinine/related antimalarials. The
+// active meds come from the ONE shared safety-context gather (getIntakeSafetyContext,
+// #661 — active + kind 'medication', each carrying its intake_items id), so this can't
+// drift from the interaction/PGx/dental consumers. The SAME pure crossCheckOtotoxic the
+// /medications + Supplements inline notices and the dismissible Upcoming finding all
+// format over ("one question, one computation"). Profile-scoped through
+// getIntakeSafetyContext (profile_id-filtered); no new SQL, so the scoping guard is
+// unaffected. Informational, never prescriptive; absence of a flag is not clearance.
+export function getOtotoxicWarnings(profileId: number): OtotoxicHit[] {
+  const meds: OtotoxicMedInput[] = getIntakeSafetyContext(profileId)
+    .medications.filter((m): m is typeof m & { id: number } => m.id != null)
+    .map((m) => ({
+      id: m.id,
+      name: m.name,
+      rxcui: m.rxcui,
+      rxcuiIngredients: m.rxcuiIngredients,
+    }));
+  if (meds.length === 0) return [];
+  return crossCheckOtotoxic(meds);
 }

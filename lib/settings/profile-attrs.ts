@@ -283,6 +283,7 @@ const RISK_ATTR_KEYS: Record<keyof RiskAttributes, string> = {
   immunocompromised: "risk_immunocompromised",
   dialysis: "risk_dialysis",
   pregnant: "risk_pregnant",
+  noiseExposure: "risk_noise_exposure",
 };
 
 export function getRiskAttributes(profileId: number): RiskAttributes {
@@ -292,6 +293,7 @@ export function getRiskAttributes(profileId: number): RiskAttributes {
     immunocompromised: read(RISK_ATTR_KEYS.immunocompromised),
     dialysis: read(RISK_ATTR_KEYS.dialysis),
     pregnant: read(RISK_ATTR_KEYS.pregnant),
+    noiseExposure: read(RISK_ATTR_KEYS.noiseExposure),
   };
 }
 

@@ -63,9 +63,15 @@ describe("saveRiskFactors", () => {
         immunocompromised: "0",
         dialysis: "0",
         pregnant: "0",
+        noise_exposure: "1",
       })
     );
-    expect(getRiskAttributes(profile.id).healthcareWorker).toBe(true);
+    const attrs = getRiskAttributes(profile.id);
+    expect(attrs.healthcareWorker).toBe(true);
+    // Noise exposure (#717) persists through the same action → the hearing-screening
+    // cadence input.
+    expect(attrs.noiseExposure).toBe(true);
+    expect(attrs.dialysis).toBe(false);
   });
 
   it("refuses a read-only member (requireWriteAccess gate)", async () => {

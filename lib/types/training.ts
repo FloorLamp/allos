@@ -162,6 +162,7 @@ export const EQUIPMENT_CATEGORIES = [
   "Cold plunge",
   "Red light",
   "Massage device",
+  "Hearing aid",
   "Other",
 ] as const;
 export type EquipmentCategory = (typeof EQUIPMENT_CATEGORIES)[number];
@@ -182,6 +183,10 @@ const EQUIPMENT_KIND: Record<EquipmentCategory, EquipmentKind> = {
   "Cold plunge": "recovery",
   "Red light": "recovery",
   "Massage device": "recovery",
+  // A hearing aid is a personal medical device, not fitness gear — the "other" group
+  // (kindOf's safe default) so it lists in the Equipment registry with usage/history
+  // (#713) without joining a strength/cardio/recovery picker.
+  "Hearing aid": "other",
   Other: "other",
 };
 
