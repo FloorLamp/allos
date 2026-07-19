@@ -64,6 +64,8 @@ const DOMAIN_ICON: Record<string, TablerIcon> = {
   "dietary-limit": IconAlertTriangle,
   "illness-care": IconTemperature,
   "condition-review": IconClipboardPlus,
+  // A calm, medical icon for the mental-health crisis check-in (#716).
+  "mental-health": IconStethoscope,
   interaction: IconAlertTriangle,
   appointment: IconStethoscope,
   visit: IconStethoscope,
