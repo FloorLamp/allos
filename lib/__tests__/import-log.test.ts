@@ -149,6 +149,7 @@ describe("producedTotal", () => {
       careGoals: 1,
       genomicVariants: 1,
       imagingStudies: 1,
+      opticalPrescriptions: 1,
       dentalProcedures: 1,
       appointments: 1,
       medications: 2,
@@ -157,9 +158,10 @@ describe("producedTotal", () => {
       headCircSamples: 1,
       providers: 4,
     };
-    // 14 records + 3 imms + 11 clinical singles (incl. 1 appointment + 1 genomic
-    // variant + 1 imaging study + 1 dental procedure) + 2 meds + 3 body samples.
-    expect(producedTotal(counts)).toBe(14 + 3 + 11 + 2 + 3);
+    // 14 records + 3 imms + 12 clinical singles (incl. 1 appointment + 1 genomic
+    // variant + 1 imaging study + 1 optical prescription + 1 dental procedure) + 2
+    // meds + 3 body samples.
+    expect(producedTotal(counts)).toBe(14 + 3 + 12 + 2 + 3);
   });
 });
 

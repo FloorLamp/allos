@@ -933,8 +933,8 @@ for (const p of PANELS) {
 // Periodontal analytes (#705) — the dental analogue of vision analytes: dated,
 // trendable perio measurements stored as biomarker readings (medical_records) rather
 // than a parallel table (#860 observation-substrate), so a WORSENING trend is visible
-// on the Biomarkers surface. A gently worsening probing depth (2 → 3 → 5 mm, the last
-// flagging above the 3 mm band) + a bleeding-on-probing reading.
+// on the Biomarkers surface. A gently worsening probing depth (2.5 → 3.5 → 5 mm, the
+// last flagging above the 3 mm band) + a bleeding-on-probing reading.
 for (const [days, depth] of [
   [400, 2.5],
   [200, 3.5],
@@ -1743,6 +1743,73 @@ imgIns.run(
   "Osteoporosis screening",
   "final",
   "Numeric T-scores trend as scan biomarkers"
+);
+
+// ── Optical prescriptions (#697) ─────────────────────────────────────────────
+// Synthetic eyeglass / contact-lens prescriptions. Two dated glasses Rx (an older
+// and a newer, sphere trending slightly more myopic so the Vision page's
+// sphere-over-time progression has a real series) plus one current contacts Rx.
+// All values obviously synthetic; no real prescriber/NPI.
+const opticalIns = db.prepare(
+  `INSERT INTO optical_prescriptions
+     (profile_id, kind, od_sphere, od_cylinder, od_axis, od_add,
+      os_sphere, os_cylinder, os_axis, os_add, pd,
+      base_curve, diameter, brand, issued_date, expiry_date, notes, source)
+   VALUES (1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)`
+);
+opticalIns.run(
+  "glasses",
+  -1.75,
+  -0.5,
+  95,
+  null,
+  -1.5,
+  -0.25,
+  85,
+  null,
+  63,
+  null,
+  null,
+  null,
+  daysAgo(730),
+  daysAgo(730 - 365 * 2),
+  "Distance glasses"
+);
+opticalIns.run(
+  "glasses",
+  -2.25,
+  -0.5,
+  95,
+  null,
+  -2.0,
+  -0.25,
+  85,
+  null,
+  63,
+  null,
+  null,
+  null,
+  daysAgo(90),
+  daysAgo(90 - 365 * 2),
+  "Updated distance glasses — slight increase"
+);
+opticalIns.run(
+  "contacts",
+  -2.0,
+  null,
+  null,
+  null,
+  -1.75,
+  null,
+  null,
+  null,
+  null,
+  8.6,
+  14.2,
+  "Acuvue Oasys",
+  daysAgo(90),
+  daysAgo(90 - 365),
+  "Daily wear contacts"
 );
 
 // ── Dental procedures (#705) ─────────────────────────────────────────────────

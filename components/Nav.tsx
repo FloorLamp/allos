@@ -14,6 +14,7 @@ import {
   IconChartLine,
   IconDna,
   IconScan,
+  IconEye,
   IconDental,
   IconPill,
   IconVaccine,
@@ -86,6 +87,7 @@ const RECORDS: Group = {
     { href: "/allergies", label: "Allergies", icon: IconAlertTriangle },
     { href: "/procedures", label: "Procedures", icon: IconMedicalCross },
     { href: "/imaging", label: "Imaging", icon: IconScan },
+    { href: "/vision", label: "Vision", icon: IconEye },
     { href: "/dental", label: "Dental", icon: IconDental },
     {
       href: "/family-history",

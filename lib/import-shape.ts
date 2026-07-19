@@ -34,6 +34,12 @@ import {
   normalizeContrast,
 } from "./imaging-study";
 import {
+  normalizeOpticalKind,
+  parseDiopter,
+  parseAxis,
+  parseMillimeters,
+} from "./optical-prescription";
+import {
   normalizeDentalStatus,
   normalizeToothSystem,
   normalizeTooth,
@@ -45,6 +51,7 @@ import type {
   Zygosity,
   ImagingModality,
   ImagingLaterality,
+  OpticalKind,
   DentalStatus,
   ToothSystem,
 } from "./types/medical";
@@ -252,9 +259,36 @@ export interface PersistImagingStudy {
   external_id: string | null;
 }
 
+// Optical-prescription projection (#697). The AI Rx-slip path fills this; the
+// deterministic CCD/FHIR path leaves it empty (FHIR VisionPrescription mapping is
+// #708, out of scope). `kind` is already normalized onto the enum here and the
+// per-eye powers / axis / distances are parsed to numbers. The `prescriber`
+// (optometrist) is resolved into the shared providers registry on persist (linked
+// via optical_prescriptions.provider_id).
+export interface PersistOpticalPrescription {
+  kind: OpticalKind;
+  od_sphere: number | null;
+  od_cylinder: number | null;
+  od_axis: number | null;
+  od_add: number | null;
+  os_sphere: number | null;
+  os_cylinder: number | null;
+  os_axis: number | null;
+  os_add: number | null;
+  pd: number | null;
+  base_curve: number | null;
+  diameter: number | null;
+  brand: string | null;
+  issued_date: string | null;
+  expiry_date: string | null;
+  provider: ImportedProvider | null;
+  notes: string | null;
+  external_id: string | null;
+}
+
 // Dental-procedure projection (#705). Only the AI extractor fills this (dental has no
-// FHIR structured feed, #708). `status` is already the enum and `tooth_system` is
-// normalized here; free-text tooth/surface/cdt/finding pass through.
+// FHIR structured feed, #708). `status`/`tooth_system` are normalized here; free-text
+// tooth/surface/cdt/finding pass through.
 export interface PersistDentalProcedure {
   name: string;
   status: DentalStatus;
@@ -323,6 +357,8 @@ export interface PersistInput {
   genomicVariants?: PersistGenomicVariant[];
   // Imaging studies (#702). Optional for the same reason; persist reads it `?? []`.
   imagingStudies?: PersistImagingStudy[];
+  // Optical prescriptions (#697). Optional for the same reason; persist reads `?? []`.
+  opticalPrescriptions?: PersistOpticalPrescription[];
   // Dental procedures (#705). Optional for the same reason; persist reads it `?? []`.
   dentalProcedures?: PersistDentalProcedure[];
   appointments: PersistAppointment[];
@@ -646,10 +682,41 @@ export function extractionToPersistInput(
       external_id: null,
     }));
 
+  // Optical prescriptions (#697). Normalize the model's raw kind onto the enum and
+  // parse the per-eye powers / axis / distances off the Rx notation here (one shared
+  // coercion, lib/optical-prescription), so an off-vocabulary term can't fail the
+  // INSERT. The prescriber name is wrapped into an ImportedProvider resolved on
+  // persist. Optional on the done union, so `?? []` covers predating fixtures.
+  const opticalPrescriptions: PersistOpticalPrescription[] = (
+    result.opticalPrescriptions ?? []
+  )
+    // A prescription with no kind signal AND no sphere on either eye is noise (a
+    // belt-and-suspenders drop alongside the normalize-stage one).
+    .filter((p) => p.kind?.trim() || p.od_sphere?.trim() || p.os_sphere?.trim())
+    .map((p) => ({
+      kind: normalizeOpticalKind(p.kind),
+      od_sphere: parseDiopter(p.od_sphere),
+      od_cylinder: parseDiopter(p.od_cylinder),
+      od_axis: parseAxis(p.od_axis),
+      od_add: parseDiopter(p.od_add),
+      os_sphere: parseDiopter(p.os_sphere),
+      os_cylinder: parseDiopter(p.os_cylinder),
+      os_axis: parseAxis(p.os_axis),
+      os_add: parseDiopter(p.os_add),
+      pd: parseMillimeters(p.pd),
+      base_curve: parseMillimeters(p.base_curve),
+      diameter: parseMillimeters(p.diameter),
+      brand: p.brand,
+      issued_date: p.issued_date,
+      expiry_date: p.expiry_date,
+      provider: providerFromName(p.prescriber, "individual"),
+      notes: p.notes,
+      external_id: null,
+    }));
+
   // Dental procedures (#705). Normalize the model's raw status / tooth-system onto the
   // DB CHECK sets (one shared coercion, lib/dental), so an off-vocabulary term can't
-  // fail the INSERT. Optional on the done union, so the `?? []` fallback covers
-  // fixtures that predate this field. A record with no name is noise — drop it.
+  // fail the INSERT. A record with no name is noise — drop it.
   const dentalProcedures: PersistDentalProcedure[] = (
     result.dentalProcedures ?? []
   )
@@ -695,6 +762,7 @@ export function extractionToPersistInput(
     careGoals.length +
     genomicVariants.length +
     imagingStudies.length +
+    opticalPrescriptions.length +
     dentalProcedures.length +
     bodyMetrics.length +
     heights.length +
@@ -749,6 +817,7 @@ export function extractionToPersistInput(
     careGoals,
     genomicVariants,
     imagingStudies,
+    opticalPrescriptions,
     dentalProcedures,
     // The AI medical extractor has no appointment shape (it emits care plans, not
     // scheduled visits), so the AI path never produces appointments (#416).
@@ -961,6 +1030,10 @@ export function healthRecordToPersistInput(
       status: s.status,
       external_id: s.external_id,
     })),
+    // Optical prescriptions have no deterministic feed yet: the FHIR VisionPrescription
+    // mapper is #708 (blocked on this record type), so the CDA/FHIR path emits none —
+    // the AI Rx-slip path is the only producer today (#697).
+    opticalPrescriptions: [],
     bodyMetrics,
     heights,
     headCircs,

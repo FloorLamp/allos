@@ -28,6 +28,10 @@ import {
   modalityLabel,
   lateralityLabel,
 } from "./imaging-study";
+import {
+  prescriptionDisplayLabel,
+  formatDiopter,
+} from "./optical-prescription";
 import { dentalDisplayLabel, dentalStatusLabel } from "./dental";
 import type {
   GenomicResultType,
@@ -35,6 +39,7 @@ import type {
   Zygosity,
   ImagingModality,
   ImagingLaterality,
+  OpticalKind,
   DentalStatus,
 } from "./types/medical";
 
@@ -54,6 +59,7 @@ export type ImportTabKind =
   | "care-goals"
   | "genomic-variants"
   | "imaging-studies"
+  | "optical-prescriptions"
   | "dental-procedures"
   | "appointments"
   | "medications"
@@ -128,6 +134,7 @@ const DOMAIN_TAB_KEYS = new Set<string>([
   "care-goals",
   "genomic-variants",
   "imaging-studies",
+  "optical-prescriptions",
   "dental-procedures",
   "appointments",
   "medications",
@@ -173,6 +180,11 @@ export function buildImportTabs(
   add("care-goals", "Care goals", counts.careGoals);
   add("genomic-variants", "Genomic variants", counts.genomicVariants);
   add("imaging-studies", "Imaging studies", counts.imagingStudies);
+  add(
+    "optical-prescriptions",
+    "Optical prescriptions",
+    counts.opticalPrescriptions
+  );
   add("dental-procedures", "Dental", counts.dentalProcedures);
   add("appointments", "Appointments", counts.appointments);
   add("medications", "Medications", counts.medications);
@@ -424,6 +436,28 @@ export function imagingStudyItem(row: {
     ),
     date: row.study_date,
     href: "/imaging",
+  };
+}
+
+export function opticalPrescriptionItem(row: {
+  id: number;
+  kind: OpticalKind;
+  od_sphere: number | null;
+  os_sphere: number | null;
+  pd: number | null;
+  issued_date: string | null;
+}): ProducedItem {
+  return {
+    id: row.id,
+    title: prescriptionDisplayLabel(row),
+    // Factual detail: the per-eye sphere line + PD when present. No interpretation.
+    detail: detailLine(
+      row.od_sphere != null ? `OD ${formatDiopter(row.od_sphere)}` : null,
+      row.os_sphere != null ? `OS ${formatDiopter(row.os_sphere)}` : null,
+      row.pd != null ? `PD ${row.pd}` : null
+    ),
+    date: row.issued_date,
+    href: "/vision",
   };
 }
 

@@ -465,6 +465,46 @@ export interface ImagingStudy {
   created_at: string;
 }
 
+// An optical prescription's kind. `glasses` and `contacts` carry the same per-eye
+// refraction (sphere/cylinder/axis/add); only `contacts` adds base_curve/diameter/
+// brand. Normalized in lib/optical-prescription.ts.
+export type OpticalKind = "glasses" | "contacts";
+
+// A structured optical (eyeglass/contact) prescription (table: optical_prescriptions,
+// issue #697). Per-eye refraction in standard optometry notation — OD = right eye,
+// OS = left eye: `*_sphere` / `*_cylinder` / `*_add` are dioptres (may be negative),
+// `*_axis` is a whole degree 0–180. `pd` is pupillary distance (mm). The contacts-only
+// extras (`base_curve` / `diameter` / `brand`) stay null for a glasses Rx.
+// `issued_date` / `expiry_date` bound its validity (expiry surfaces on the Vision page
+// as plain "expires soon"/"expired" text). `provider_id` links the PRESCRIBER in the
+// global providers registry. Provenance/dedup (`source`/`document_id`/`external_id`)
+// mirror the conditions table so the import footprint clears/moves/counts it by
+// document_id.
+export interface OpticalPrescription {
+  id: number;
+  kind: OpticalKind;
+  od_sphere: number | null;
+  od_cylinder: number | null;
+  od_axis: number | null;
+  od_add: number | null;
+  os_sphere: number | null;
+  os_cylinder: number | null;
+  os_axis: number | null;
+  os_add: number | null;
+  pd: number | null;
+  base_curve: number | null;
+  diameter: number | null;
+  brand: string | null;
+  issued_date: string | null;
+  expiry_date: string | null;
+  provider_id: number | null;
+  notes: string | null;
+  source: string | null;
+  document_id: number | null;
+  external_id: string | null;
+  created_at: string;
+}
+
 // ── Dental procedures (#705) ─────────────────────────────────────────────────
 // A structured DENTAL record captured from a dental exam/treatment record or
 // after-visit summary (the AI-extraction path is the primary entry — dental has no
@@ -490,13 +530,11 @@ export type DentalStatus = "completed" | "planned" | "watch";
 export type ToothSystem = "universal" | "fdi" | "palmer";
 
 // A structured dental procedure/finding (table: dental_procedures). `name` is the
-// anchor (the procedure or finding, e.g. "Composite filling", "Extraction", "Caries
-// watch"). `tooth`/`surface`/`cdt_code` anchor it clinically; `status` gates the
-// downstream consumers (#704 planned signal, #700 follow-up). `finding` is the
-// free-text exam impression; `follow_up_interval_days` is the recommended recheck
-// cadence (seeds the follow-up planned_date). Provenance/dedup
-// (`source`/`document_id`/`external_id`) mirror imaging_studies so the import
-// footprint clears/moves/counts it by document_id.
+// anchor (the procedure or finding). `tooth`/`surface`/`cdt_code` anchor it
+// clinically; `status` gates the downstream consumers (#704 planned signal, #700
+// follow-up). `finding` is the free-text exam impression; `follow_up_interval_days`
+// is the recommended recheck cadence. Provenance/dedup mirror imaging_studies so the
+// import footprint clears/moves/counts it by document_id.
 export interface DentalProcedure {
   id: number;
   name: string;
@@ -568,10 +606,10 @@ export interface CarePlanItem {
   // Finding → follow-up → resolution chain (issue #700, migration 050). All null for
   // a generic care-plan item; a TRACKED follow-up sets source_kind + one concrete
   // source FK and (once closed) the resolution + a resolving FK.
-  source_kind: string | null; // adapter discriminator ('imaging' | 'labs' | 'iop' | 'dental'); null ⇒ not a follow-up
+  source_kind: string | null; // adapter discriminator ('imaging' | 'labs'); null ⇒ not a follow-up
   source_imaging_study_id: number | null; // the imaging source finding
   source_medical_record_id: number | null; // the flagged-lab source finding (#700 labs adapter, migration 057)
-  source_dental_procedure_id: number | null; // the dental source finding (#705 dental adapter, migration 065)
+  source_dental_procedure_id: number | null; // the dental source finding (#705 dental adapter, migration 066)
   recommended_interval_days: number | null; // the recommended follow-up interval
   resolution: string | null; // 'resolved' | 'stable' | 'changed' once closed
   resolved_by_imaging_study_id: number | null; // the later study it was resolved against

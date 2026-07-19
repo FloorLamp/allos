@@ -24,6 +24,7 @@ import type {
   CareGoal,
   GenomicVariant,
   ImagingStudy,
+  OpticalPrescription,
   DentalProcedure,
 } from "../types";
 
@@ -274,6 +275,26 @@ export function getImagingStudies(profileId: number): ImagingStudy[] {
   return rows.map((r) => ({ ...r, contrast: r.contrast === 1 }));
 }
 
+// Structured optical prescriptions (#697), newest ISSUED first. Read straight from
+// the table — an Rx is a durable dated fact. Per-eye refraction (OD = right, OS =
+// left) drives the Vision page's history + sphere-over-time progression view; expiry
+// surfaces as plain "expires soon"/"expired" UI text (no findings engine, #697).
+export function getOpticalPrescriptions(
+  profileId: number
+): OpticalPrescription[] {
+  return db
+    .prepare(
+      `SELECT id, kind, od_sphere, od_cylinder, od_axis, od_add,
+              os_sphere, os_cylinder, os_axis, os_add, pd,
+              base_curve, diameter, brand, issued_date, expiry_date,
+              provider_id, notes, source, document_id, external_id, created_at
+         FROM optical_prescriptions
+        WHERE profile_id = ?
+        ORDER BY COALESCE(issued_date, '') DESC, id DESC`
+    )
+    .all(profileId) as OpticalPrescription[];
+}
+
 // The tracked follow-up (issue #700), if any, for each imaging study — so the Imaging
 // list can show a study's follow-up state (or offer to track one). Returns one row
 // per care_plan_items follow-up linked to an imaging source, newest follow-up first,
@@ -305,8 +326,7 @@ export function getImagingStudyFollowUps(
 // ---- Dental procedures (issue #705) -----------------------------------------
 
 // All structured dental procedures/findings for a profile, newest first. Like
-// imaging_studies, a dental record is a durable narrative fact (no representative-id
-// retest dedup). Profile-scoped.
+// imaging_studies, a dental record is a durable narrative fact. Profile-scoped.
 export function getDentalProcedures(profileId: number): DentalProcedure[] {
   return db
     .prepare(
@@ -321,8 +341,7 @@ export function getDentalProcedures(profileId: number): DentalProcedure[] {
 }
 
 // The tracked follow-up (issue #700), if any, for each dental record — so the Dental
-// list can show a record's follow-up state (or offer to track one). One row per
-// care_plan_items follow-up linked to a dental source, newest first. Profile-scoped.
+// list can show a record's follow-up state (or offer to track one). Profile-scoped.
 export interface DentalFollowUpSummary {
   carePlanItemId: number;
   sourceDentalProcedureId: number;

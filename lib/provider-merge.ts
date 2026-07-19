@@ -89,6 +89,8 @@ export const PROVIDER_LINK_COLUMNS: ProviderLink[] = [
   // Dental procedures (#705) link the performing/recording dentist, so a merge
   // re-points them like the other clinical domains.
   { table: "dental_procedures", column: "provider_id" },
+  // Optical prescriptions (#697) link the prescribing optometrist.
+  { table: "optical_prescriptions", column: "provider_id" },
 ];
 
 // The link columns grouped by table (a table may carry more than one — encounters
@@ -144,6 +146,7 @@ const TABLE_LABEL: Record<string, [singular: string, plural: string]> = {
   care_plan_items: ["care-plan item", "care-plan items"],
   appointments: ["appointment", "appointments"],
   imaging_studies: ["imaging study", "imaging studies"],
+  optical_prescriptions: ["optical prescription", "optical prescriptions"],
 };
 
 function plural(table: string, count: number): string {

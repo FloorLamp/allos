@@ -157,8 +157,7 @@ export function clearImportedDocumentRows(
   // dental_procedures row THIS document imported as its SOURCE finding, or a
   // resolution may cite one. dental_procedures carries no ON DELETE for these FKs, so
   // NULL those follow-up links FIRST — otherwise deleting the records (in the
-  // footprint loop) would trip the care_plan_items source/resolved FKs. A manual
-  // follow-up is preserved, just de-linked.
+  // footprint loop) would trip the care_plan_items source/resolved FKs.
   db.prepare(
     `UPDATE care_plan_items SET source_kind = NULL, source_dental_procedure_id = NULL
        WHERE profile_id = ?
@@ -274,9 +273,7 @@ export function moveImportedDocumentRows(
     ).run(pid, pid);
     // Row-ops side-state (#705 dental adapter): the same same-profile re-enforce for
     // the dental follow-up links — a reassign can move an imported dental record but
-    // not a MANUAL follow-up that links it (or vice-versa). NULL any care_plan_items
-    // link whose dental_procedures source/resolving record no longer lives in that
-    // follow-up's profile.
+    // not a MANUAL follow-up that links it (or vice-versa).
     db.prepare(
       `UPDATE care_plan_items SET source_kind = NULL, source_dental_procedure_id = NULL
          WHERE profile_id = ? AND source_dental_procedure_id IS NOT NULL
@@ -775,6 +772,19 @@ function insertImportRows(
         source, document_id, external_id, profile_id)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
   );
+  // Optical prescriptions (#697). Same idempotency as the other clinical domains:
+  // the per-document delete-set clears this document's prior rows, then INSERT OR
+  // IGNORE re-inserts. Keyed to the document via document_id so the import footprint
+  // clears/moves/counts it, exactly like conditions/imaging_studies. provider_id is
+  // the resolved shared-registry id for the prescribing optometrist.
+  const insOpticalPrescription = db.prepare(
+    `INSERT OR IGNORE INTO optical_prescriptions
+       (kind, od_sphere, od_cylinder, od_axis, od_add,
+        os_sphere, os_cylinder, os_axis, os_add,
+        pd, base_curve, diameter, brand, issued_date, expiry_date,
+        provider_id, notes, source, document_id, external_id, profile_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  );
   // Dental procedures (#705). Same idempotency shape as the other clinical domains:
   // the per-document delete-set clears this document's prior rows, then the insert
   // re-adds them. Keyed to the document via document_id so the import footprint
@@ -1080,8 +1090,34 @@ function insertImportRows(
       profileId
     );
   }
-  // Dental procedures (#705) — optional on PersistInput, so guard with `?? []` for a
-  // fixture / deterministic-path input that carries none.
+  // Optical prescriptions (#697) — optional on PersistInput, so guard with `?? []`.
+  // The prescriber name resolves into the shared providers registry via providerIdFor.
+  for (const p of input.opticalPrescriptions ?? []) {
+    insOpticalPrescription.run(
+      p.kind,
+      p.od_sphere,
+      p.od_cylinder,
+      p.od_axis,
+      p.od_add,
+      p.os_sphere,
+      p.os_cylinder,
+      p.os_axis,
+      p.os_add,
+      p.pd,
+      p.base_curve,
+      p.diameter,
+      p.brand,
+      p.issued_date,
+      p.expiry_date,
+      providerIdFor(p.provider),
+      p.notes,
+      docSource,
+      docId,
+      scopedExternalId(p.external_id),
+      profileId
+    );
+  }
+  // Dental procedures (#705) — optional on PersistInput, so guard with `?? []`.
   for (const d of input.dentalProcedures ?? []) {
     insDentalProcedure.run(
       d.name,

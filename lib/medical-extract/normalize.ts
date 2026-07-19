@@ -25,6 +25,7 @@ import type {
   ExtractedCareGoal,
   ExtractedGenomicVariant,
   ExtractedImagingStudy,
+  ExtractedOpticalPrescription,
   ExtractedDentalProcedure,
 } from "./types";
 
@@ -51,6 +52,7 @@ const EXTRACTION_TOP_LEVEL_KEYS = new Set([
   "care_goals",
   "genomic_variants",
   "imaging_studies",
+  "optical_prescriptions",
   "dental_procedures",
 ]);
 
@@ -302,6 +304,7 @@ export function normalizeClinicalDomains(raw: any): {
   careGoals: ExtractedCareGoal[];
   genomicVariants: ExtractedGenomicVariant[];
   imagingStudies: ExtractedImagingStudy[];
+  opticalPrescriptions: ExtractedOpticalPrescription[];
   dentalProcedures: ExtractedDentalProcedure[];
   drops: ImportDrop[];
 } {
@@ -522,11 +525,48 @@ export function normalizeClinicalDomains(raw: any): {
     });
   }
 
+  // Optical prescriptions from an uploaded Rx slip / eye-exam report (#697). A
+  // prescription with NO per-eye sphere on either side AND no kind is noise and
+  // drops (nothing meaningful to store). kind / per-eye powers stay raw here (parsed
+  // + normalized downstream in import-shape); issued/expiry dates are coerced to
+  // strict ISO-or-null; the prescriber name is kept verbatim (resolved on persist).
+  const opticalPrescriptions: ExtractedOpticalPrescription[] = [];
+  for (const p of arr(raw?.optical_prescriptions)) {
+    const kind = strOrNull(p?.kind);
+    const odSphere = strOrNull(p?.od_sphere);
+    const osSphere = strOrNull(p?.os_sphere);
+    if (!kind && !odSphere && !osSphere) {
+      drops.push({
+        kind: "optical_prescription",
+        label: "(empty prescription)",
+        reason: "no_value",
+      });
+      continue;
+    }
+    opticalPrescriptions.push({
+      kind,
+      od_sphere: odSphere,
+      od_cylinder: strOrNull(p?.od_cylinder),
+      od_axis: strOrNull(p?.od_axis),
+      od_add: strOrNull(p?.od_add),
+      os_sphere: osSphere,
+      os_cylinder: strOrNull(p?.os_cylinder),
+      os_axis: strOrNull(p?.os_axis),
+      os_add: strOrNull(p?.os_add),
+      pd: strOrNull(p?.pd),
+      base_curve: strOrNull(p?.base_curve),
+      diameter: strOrNull(p?.diameter),
+      brand: strOrNull(p?.brand),
+      issued_date: isoDateOrNull(p?.issued_date),
+      expiry_date: isoDateOrNull(p?.expiry_date),
+      prescriber: strOrNull(p?.prescriber),
+      notes: strOrNull(p?.notes),
+    });
+  }
+
   // Dental procedures/findings from an uploaded dental record (#705). A record with
-  // NO name is noise and drops. status / tooth_system stay raw here (normalized to
-  // the enums downstream in import-shape); the date is coerced to strict ISO-or-null;
-  // tooth / surface / cdt_code / finding text are kept verbatim. Dental X-rays are
-  // imaging studies (#702) — this reads the exam/treatment NOTES only.
+  // NO name is noise and drops. status/tooth_system stay raw (normalized downstream);
+  // the date is coerced to strict ISO-or-null; tooth/surface/cdt/finding kept verbatim.
   const dentalProcedures: ExtractedDentalProcedure[] = [];
   for (const d of arr(raw?.dental_procedures)) {
     const name = strOrNull(d?.name);
@@ -563,6 +603,7 @@ export function normalizeClinicalDomains(raw: any): {
     careGoals,
     genomicVariants,
     imagingStudies,
+    opticalPrescriptions,
     dentalProcedures,
     drops,
   };

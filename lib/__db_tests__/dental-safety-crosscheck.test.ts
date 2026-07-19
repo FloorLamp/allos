@@ -16,7 +16,7 @@
 // Fixtures are 100% synthetic (a throwaway per-file DB via setup.ts). No AI, no network.
 
 import { describe, it, expect } from "vitest";
-import { db } from "@/lib/db";
+import { db, today } from "@/lib/db";
 import {
   getDentalSafetyWarnings,
   collectUpcoming,
@@ -77,7 +77,7 @@ describe("getDentalSafetyWarnings — planned invasive dental × meds/conditions
     );
 
     // Surface 2: the dismissible Upcoming finding — same dedupeKey.
-    const up = collectUpcoming(profileId).find(
+    const up = collectUpcoming(profileId, today(profileId)).find(
       (i) => i.domain === "dental-safety"
     );
     expect(up?.key).toBe(warnings[0].dedupeKey);
@@ -86,7 +86,9 @@ describe("getDentalSafetyWarnings — planned invasive dental × meds/conditions
     // Dismissing it silences the Upcoming finding ("dismiss once, silence everywhere").
     dismissFinding(profileId, warnings[0].dedupeKey);
     expect(
-      collectUpcoming(profileId).some((i) => i.domain === "dental-safety")
+      collectUpcoming(profileId, today(profileId)).some(
+        (i) => i.domain === "dental-safety"
+      )
     ).toBe(false);
   });
 
@@ -118,7 +120,9 @@ describe("getDentalSafetyWarnings — planned invasive dental × meds/conditions
 
     expect(getDentalSafetyWarnings(profileId)).toEqual([]);
     expect(
-      collectUpcoming(profileId).some((i) => i.domain === "dental-safety")
+      collectUpcoming(profileId, today(profileId)).some(
+        (i) => i.domain === "dental-safety"
+      )
     ).toBe(false);
   });
 

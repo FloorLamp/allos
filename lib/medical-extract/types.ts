@@ -160,12 +160,38 @@ export interface ExtractedImagingStudy {
   status: string | null; // free-text passthrough (no enum)
 }
 
+// One optical (eyeglass/contact) prescription extracted from an uploaded Rx slip or
+// eye-exam report (#697). These are the PRE-persist AI shapes: `kind` stays the
+// model's raw string (normalized to the enum in import-shape via
+// lib/optical-prescription), the per-eye powers / axis / distances stay raw strings
+// (parsed downstream — an Rx uses "+1.25", "plano", "DS"), and the issued/expiry
+// dates are coerced to strict ISO-or-null. `prescriber` is the optometrist's name,
+// resolved into the shared providers registry on persist. A printed Rx slip is
+// bounded and highly structured — good extraction territory.
+export interface ExtractedOpticalPrescription {
+  kind: string | null; // raw ("glasses"/"contacts"/…); normalized in import-shape
+  od_sphere: string | null; // right eye; raw dioptre string
+  od_cylinder: string | null;
+  od_axis: string | null;
+  od_add: string | null;
+  os_sphere: string | null; // left eye
+  os_cylinder: string | null;
+  os_axis: string | null;
+  os_add: string | null;
+  pd: string | null; // pupillary distance, mm
+  base_curve: string | null; // contacts only
+  diameter: string | null; // contacts only
+  brand: string | null; // contacts only
+  issued_date: string | null; // YYYY-MM-DD
+  expiry_date: string | null; // YYYY-MM-DD
+  prescriber: string | null; // prescribing optometrist (resolved on persist)
+  notes: string | null;
+}
+
 // One dental procedure/finding extracted from an uploaded dental exam/treatment
-// record or after-visit summary (#705). PRE-persist AI shape: `status` and
-// `tooth_system` stay as the model's raw strings (normalized to the enums in
-// import-shape via lib/dental); tooth / surface / cdt_code / finding pass through as
-// free text; the date is coerced to strict ISO-or-null. Dental X-rays are imaging
-// studies (#702) — the extractor reads the REPORT/notes, not radiographs.
+// record or after-visit summary (#705). PRE-persist AI shape: `status`/`tooth_system`
+// stay raw (normalized in import-shape via lib/dental); tooth/surface/cdt_code/finding
+// pass through as free text; the date is coerced to strict ISO-or-null.
 export interface ExtractedDentalProcedure {
   name: string | null; // the procedure or finding ("Composite filling", "Caries watch")
   status: string | null; // raw ("completed"/"planned"/"watch"/…); normalized downstream
@@ -211,6 +237,10 @@ export type ExtractionResult =
       // sets it (empty for a non-imaging document), and import-shape reads it with a
       // `?? []` fallback.
       imagingStudies?: ExtractedImagingStudy[];
+      // Optical prescriptions from an uploaded Rx slip / eye-exam report (#697).
+      // Optional for the same reason; the real extract path always sets it (empty for
+      // a non-optical document), and import-shape reads it with a `?? []` fallback.
+      opticalPrescriptions?: ExtractedOpticalPrescription[];
       // Dental procedures/findings from an uploaded dental exam/treatment record
       // (#705). Optional so existing done-result fixtures need no change; the real
       // extract path always sets it (empty for a non-dental document), and
