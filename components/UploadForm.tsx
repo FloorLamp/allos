@@ -143,7 +143,7 @@ export default function UploadForm({ demo = false }: { demo?: boolean }) {
           {selected.map((f, i) => (
             <li key={`${f.name}-${i}`} className="flex justify-between gap-3">
               <span className="truncate">{f.name}</span>
-              <span className="shrink-0 tabular-nums text-slate-400 dark:text-slate-500">
+              <span className="shrink-0 tabular-nums text-slate-500 dark:text-slate-400">
                 {formatSize(f.size)}
               </span>
             </li>
