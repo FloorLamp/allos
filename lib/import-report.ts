@@ -83,6 +83,25 @@ export interface UnresolvedName {
   unit?: string | null;
 }
 
+// One extracted row that the source PDF's own text could NOT corroborate — the AI
+// path cross-checked against the report's text/OCR (lib/medical-extract/reconcile)
+// and this row's value wasn't found next to its name (value_mismatch), or the name
+// never appeared at all (name_not_found). A review flag, not a proven error.
+export interface ReconciliationFlag {
+  name: string;
+  value: string | null;
+  verdict: "value_mismatch" | "name_not_found";
+}
+
+// Whole-document reconciliation outcome for an AI-extracted PDF: how many rows the
+// source text confirmed, and the ones it didn't. Absent for non-PDF sources and for
+// a scan whose OCR yielded no usable text (nothing to check against).
+export interface ReconciliationSummary {
+  confirmed: number;
+  total: number;
+  flags: ReconciliationFlag[];
+}
+
 // One section (CDA) or resource type (FHIR) the document contained, and whether
 // the app actually consumed it into a sink. `present` is how many entries /
 // resources it held.
@@ -117,6 +136,9 @@ export interface ImportReport {
   // before this field, and every CCD report, stay valid; parseImportReport defaults
   // it to [].
   unresolvedNames?: UnresolvedName[];
+  // Source-text reconciliation for an AI-extracted PDF (this branch). Absent for CCD
+  // reports, non-PDF sources, and reports stored before this field.
+  reconciliation?: ReconciliationSummary | null;
 }
 
 export function emptyReport(): ImportReport {
@@ -417,6 +439,10 @@ export function mergeReports(
     unresolvedNames: tallyUnresolvedNames(
       present.flatMap((r) => r.unresolvedNames ?? [])
     ),
+    // Reconciliation is single-document (the AI path never merges); carry the first
+    // present one through rather than trying to combine across documents.
+    reconciliation:
+      present.find((r) => r.reconciliation)?.reconciliation ?? null,
   };
 }
 
@@ -455,6 +481,12 @@ export function parseImportReport(raw: string | null): ImportReport | null {
     const unresolvedNames = Array.isArray(obj.unresolvedNames)
       ? (obj.unresolvedNames as UnresolvedName[])
       : [];
+    const reconciliation =
+      obj.reconciliation &&
+      typeof obj.reconciliation === "object" &&
+      Array.isArray(obj.reconciliation.flags)
+        ? (obj.reconciliation as ReconciliationSummary)
+        : null;
     return {
       drops,
       coverage,
@@ -462,6 +494,7 @@ export function parseImportReport(raw: string | null): ImportReport | null {
       considered,
       unmappedLoincs,
       unresolvedNames,
+      reconciliation,
     };
   } catch {
     return null;

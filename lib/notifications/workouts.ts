@@ -15,10 +15,11 @@ import { getPublicUrl } from "../settings";
 // scan. Omitted (manual mode) ⇒ recommendWorkout gathers fresh.
 export function buildWorkoutTargetReminder(
   profileId: number,
-  gathered?: CoachingInput
+  gathered?: CoachingInput,
+  now: Date = new Date()
 ): NotificationMessage | null {
   return formatWorkoutReminder(
-    recommendWorkout(profileId, gathered),
+    recommendWorkout(profileId, gathered, now),
     getPublicUrl()
   );
 }

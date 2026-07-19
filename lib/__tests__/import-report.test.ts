@@ -349,6 +349,11 @@ describe("serialize / parseImportReport", () => {
       considered: 2,
       unmappedLoincs: [{ loinc: "12345-6", name: "Some Assay", count: 2 }],
       unresolvedNames: [{ name: "Urobilinogen", count: 1, unit: "mg/dL" }],
+      reconciliation: {
+        confirmed: 4,
+        total: 5,
+        flags: [{ name: "Ferritin", value: "999", verdict: "value_mismatch" }],
+      },
     };
     const json = serializeImportReport(report)!;
     expect(parseImportReport(json)).toEqual(report);
@@ -364,6 +369,7 @@ describe("serialize / parseImportReport", () => {
       considered: 0,
       unmappedLoincs: [],
       unresolvedNames: [],
+      reconciliation: null,
     });
   });
 });

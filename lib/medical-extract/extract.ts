@@ -21,6 +21,7 @@ import {
   unwrapExtractionInput,
   looksLikeExtractionInput,
 } from "./normalize";
+import { reconcileAgainstSource } from "./reconcile";
 import type { ExtractionResult, ExtractionMeta } from "./types";
 
 // Prefix server logs so extraction activity is easy to grep in the dev/prod
@@ -295,6 +296,41 @@ export async function extractMedicalDocument(
     const result = resultFromExtractionInput(input, knownCanonical, MODEL);
     const results = result.results;
 
+    // Cross-check the extraction against the source PDF's own text layer — a value the
+    // model transcribed wrong or invented, or a name that never appears in the report,
+    // is caught deterministically without a second model call (#918 follow-up). Null
+    // for a non-PDF or scanned source (nothing to verify). Wrapped in its own guard so
+    // that a reconciliation failure can NEVER fail an extraction that already succeeded
+    // (the outer catch marks the import failed) — the extraction result stands either way.
+    let reconciliation: Awaited<ReturnType<typeof reconcileAgainstSource>> =
+      null;
+    try {
+      reconciliation = await reconcileAgainstSource(
+        buffer,
+        mime,
+        results.map((r) => ({
+          name: r.name,
+          value: r.value,
+          value_num: r.value_num,
+        }))
+      );
+    } catch (err) {
+      log.warn("source reconciliation errored (ignored)", { filename, err });
+    }
+    if (reconciliation) {
+      const { confirmed, valueMismatch, nameNotFound, total } = reconciliation;
+      const fields = {
+        filename,
+        confirmed,
+        valueMismatch,
+        nameNotFound,
+        total,
+      };
+      if (valueMismatch || nameNotFound)
+        log.warn("source reconciliation flagged rows", fields);
+      else log.info("source reconciliation clean", fields);
+    }
+
     const clinicalCount = clinicalCountOf(result);
 
     log.info("extraction done", {
@@ -320,7 +356,9 @@ export async function extractMedicalDocument(
           (LOG_PROMPTS ? `\nresponse: ${JSON.stringify(input)}` : "")
       ),
     });
-    return result;
+    // Carry the source reconciliation on the result so import-shape can fold its
+    // summary into the persisted ImportReport (surfaced in the import debugger).
+    return { ...result, reconciliation };
   } catch (err) {
     const secs = ((Date.now() - startedAt) / 1000).toFixed(1);
     const message = describeError(err);
