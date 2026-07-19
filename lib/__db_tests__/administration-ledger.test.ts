@@ -16,7 +16,7 @@
 //      logAdministration allows PRN multiples, decrements supply per administration,
 //      dedups a double-tap, and refuses a forged/far-off given_at (#614).
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import Database from "better-sqlite3";
 import { db, today } from "@/lib/db";
 import { MIGRATIONS } from "@/lib/migrations/versions";
@@ -350,6 +350,20 @@ describe("logAdministration — PRN multiples, per-dose supply, dedup, window gu
 });
 
 describe("getAdministrationsForItemsOnDate — batched, same output as per-item (#885)", () => {
+  // Freeze the clock at a fixed mid-day (#990). The fixtures log administrations at
+  // now − 30/12/6 minutes; run in the 00:00–00:30 window those relative times straddle
+  // local midnight and land on YESTERDAY's profile-local date while the assertions
+  // query today() — so itemA reads 1 admin instead of 2 (a time-of-day flake). Freezing
+  // now() and today() to the same mid-day instant makes it deterministic regardless of
+  // when CI runs; the batched-parity assertions below are unchanged.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-06-15T12:00:00Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("returns each item's day administrations identical to the per-item query", () => {
     // Two PRN meds under one profile, each with several administrations today.
     const { profileId, itemId: itemA } = seedPrnMed(10);
