@@ -143,6 +143,7 @@ export function QuickLogPrnContent({
         linkToDetail
         profileId={profileId}
         rowVariant={rowVariant}
+        compactActions={compact}
       />
     );
   };

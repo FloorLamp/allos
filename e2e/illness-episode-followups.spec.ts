@@ -201,6 +201,27 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     await expect(
       doseWorkingRow.getByTestId("prn-log-more")
     ).toHaveAccessibleName("Earlier dose");
+    // Illness medication rows use the same compact action treatment as the
+    // Medications Today panel: equal icon-only buttons with tooltip/accessibility
+    // labels, rather than a second set of full-width text actions.
+    const illnessDoseActions = [
+      doseWorkingRow.getByTestId("prn-log-now"),
+      doseWorkingRow.getByTestId("prn-log-more"),
+    ];
+    const illnessDoseActionWidths = await Promise.all(
+      illnessDoseActions.map(
+        async (button) => (await button.boundingBox())!.width
+      )
+    );
+    expect(
+      Math.max(...illnessDoseActionWidths) -
+        Math.min(...illnessDoseActionWidths)
+    ).toBeLessThanOrEqual(1);
+    expect(Math.max(...illnessDoseActionWidths)).toBeLessThanOrEqual(36);
+    for (const button of illnessDoseActions) {
+      await expect(button).toHaveAttribute("title", /\S+/);
+      await expect(button.locator("span")).toHaveClass(/sr-only/);
+    }
     const medNameBox = await doseWorkingRow
       .getByRole("link")
       .first()
