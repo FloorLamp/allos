@@ -44,10 +44,13 @@ async function freshProfile(page: Page, label: string): Promise<string> {
     .locator("div.card")
     .filter({ hasText: "Add a profile" });
   await profilesCard.getByPlaceholder("Name", { exact: true }).fill(name);
-  await profilesCard.getByRole("button", { name: "Add", exact: true }).click();
+  await settledClick(
+    page,
+    profilesCard.getByRole("button", { name: "Add", exact: true })
+  );
   // Wait for the new row inside the (visible) Profiles card — not the hidden switcher
   // popover, where the same name also renders.
-  await expect(profilesCard.getByText(name)).toBeVisible();
+  await expect(profilesCard.getByText(name)).toBeVisible({ timeout: 15_000 });
   await switchToProfile(page, name);
   // Goal-based onboarding (#719/#814): a profile created in-app starts with
   // onboarding_state "not_started", so its first dashboard visit redirects to

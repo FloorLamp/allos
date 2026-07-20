@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { settledClick } from "./helpers";
 
 // #851 Medications follow-ups: the OTC-first add form (Rx/OTC flag with an on-demand
 // prescription-fields disclosure, the "Generic"-led brand picker, the amount-only PRN
@@ -212,7 +213,9 @@ test("detail page shows past-administration history (#851 item 13)", async ({
 
 test("logs, edits, and deletes a historical medication dose", async ({
   page,
-}) => {
+}, testInfo) => {
+  const loggedAmount = `${225 + testInfo.repeatEachIndex} mg`;
+  const updatedAmount = `${250 + testInfo.repeatEachIndex} mg`;
   await page.goto("/medications");
   const link = page
     .getByTestId("medication-row")
@@ -237,36 +240,47 @@ test("logs, edits, and deletes a historical medication dose", async ({
   const beforeStart = date.toISOString().slice(0, 10);
   await form.getByTestId("historical-dose-date").fill(beforeStart);
   await form.getByTestId("historical-dose-time").fill("03:17");
-  await form.getByLabel("Amount").fill("225 mg");
-  await form.getByRole("button", { name: "Save dose" }).click();
+  await form.getByLabel("Amount").fill(loggedAmount);
+  await settledClick(page, form.getByRole("button", { name: "Save dose" }));
 
   await expect(page.getByText(`Logged past dose of ${PRN_MED}.`)).toBeVisible();
-  await expect(history).toContainText("225 mg");
+  await expect(history).toContainText(loggedAmount);
   await expect(history).toContainText(/(?:3:17am|03:17)/);
 
   const loggedRow = history
     .getByTestId("dose-history-row")
-    .filter({ hasText: "225 mg" });
+    .filter({ hasText: loggedAmount });
   await loggedRow.getByRole("button", { name: "Dose actions" }).click();
   await page.getByRole("menuitem", { name: "Edit" }).click();
   const editForm = loggedRow.getByTestId("historical-dose-form");
-  await editForm.getByLabel("Amount").fill("250 mg");
+  await editForm.getByLabel("Amount").fill(updatedAmount);
   await editForm.getByTestId("historical-dose-time").fill("04:18");
-  await editForm.getByRole("button", { name: "Save changes" }).click();
+  await settledClick(
+    page,
+    editForm.getByRole("button", { name: "Save changes" })
+  );
   await expect(page.getByText(`Updated dose of ${PRN_MED}.`)).toBeVisible();
 
   const updatedRow = history
     .getByTestId("dose-history-row")
-    .filter({ hasText: "250 mg" });
+    .filter({ hasText: updatedAmount });
   await expect(updatedRow).toContainText(/(?:4:18am|04:18)/);
   await updatedRow.getByRole("button", { name: "Dose actions" }).click();
-  await page.getByRole("menuitem", { name: "Delete" }).click();
+  await settledClick(page, page.getByRole("menuitem", { name: "Delete" }));
   await expect(page.getByText("Dose deleted.")).toBeVisible();
   await expect(updatedRow).toHaveCount(0);
-  await page.getByRole("button", { name: "Undo" }).click();
-  await expect(
-    history.getByTestId("dose-history-row").filter({ hasText: "250 mg" })
-  ).toBeVisible();
+  await settledClick(page, page.getByRole("button", { name: "Undo" }));
+  const restoredRow = history
+    .getByTestId("dose-history-row")
+    .filter({ hasText: updatedAmount });
+  await expect(restoredRow).toBeVisible();
+
+  // Undo is part of the behavior under test; remove the restored fixture again
+  // so --repeat-each starts from the same dose history instead of accumulating
+  // duplicate rows with identical timestamps.
+  await restoredRow.getByRole("button", { name: "Dose actions" }).click();
+  await settledClick(page, page.getByRole("menuitem", { name: "Delete" }));
+  await expect(restoredRow).toHaveCount(0);
 
   // The administration and course correction are one write: editing immediately
   // afterward must show the selected dose date as the new PRN start.
