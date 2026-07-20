@@ -103,6 +103,22 @@ describe("getDentalSafetyWarnings — planned invasive dental × meds/conditions
     expect(warnings[0].note).toMatch(/antibiotic prophylaxis/i);
   });
 
+  it("flags AHA prophylaxis for a CODED-terse prosthetic valve ('AVR' + Z95.2, #1030)", () => {
+    const profileId = makeProfile("dental-coded-valve");
+    addDental(profileId, "Implant placement", "planned", "D6010");
+    // No keyword can match "AVR" — the stored ICD-10 code carries the meaning.
+    db.prepare(
+      `INSERT INTO conditions (profile_id, name, status, code, code_system)
+         VALUES (?, 'AVR', 'active', 'Z95.2', 'ICD-10-CM')`
+    ).run(profileId);
+
+    const warnings = getDentalSafetyWarnings(profileId);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].gate).toBe("cardiac");
+    expect(warnings[0].gateKey).toBe("prosthetic_valve");
+    expect(warnings[0].matchedOn).toBe("AVR");
+  });
+
   it("flags bleeding for an anticoagulant × planned surgical extraction", () => {
     const profileId = makeProfile("dental-bleeding");
     addDental(profileId, "Surgical extraction #32", "planned");

@@ -51,7 +51,11 @@ describe("getIntakeSafetyContext (#661)", () => {
     const ctx = getIntakeSafetyContext(profileId);
     expect(ctx.allergens).toEqual(["fish"]);
     expect(ctx.medications.map((m) => m.name)).toEqual(["Warfarin"]);
-    expect(ctx.conditions).toEqual(["Chronic kidney disease"]);
+    // Coded refs since #1030: the gather carries the row's code/code_system so
+    // every downstream condition screen can be code-first.
+    expect(ctx.conditions).toEqual([
+      { name: "Chronic kidney disease", code: null, codeSystem: null },
+    ]);
     expect(Array.isArray(ctx.situations)).toBe(true);
   });
 });
@@ -112,6 +116,32 @@ describe("getDietaryLimitWarnings — condition caveat (#657)", () => {
     expect(mag).toBeTruthy();
     expect(mag!.conditionCaveat).toContain("Chronic kidney disease, stage 3");
     expect(mag!.conditionCaveat).toContain("magnesium");
+  });
+
+  it("annotates via a CODED-terse condition ('Stage 3 kidney dz' + N18.30, #1030)", () => {
+    const profileId = makeProfile("ul-caveat-coded");
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority, as_needed)
+           VALUES (?, 'Magnesium Glycinate', 1, 'supplement', 'daily', 'high', 0)`
+        )
+        .run(profileId).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, '400 mg', 'morning', 'any', 0)`
+    ).run(itemId);
+    // The label carries no "chronic kidney" substring — the stored code does.
+    db.prepare(
+      `INSERT INTO conditions (profile_id, name, status, code, code_system)
+         VALUES (?, 'Stage 3 kidney dz', 'active', 'N18.30', 'ICD-10-CM')`
+    ).run(profileId);
+
+    const warnings = getDietaryLimitWarnings(profileId);
+    const mag = warnings.find((w) => w.key === "magnesium");
+    expect(mag).toBeTruthy();
+    expect(mag!.conditionCaveat).toContain("Stage 3 kidney dz");
   });
 
   it("carries no caveat when there is no qualifying condition", () => {

@@ -33,6 +33,12 @@
 // (a curated subset; an unrecognized drug/condition carries no flag). Fully OFFLINE.
 
 import {
+  conditionCodeConcepts,
+  conditionInputName,
+  type ConditionConcept,
+  type ConditionInput,
+} from "./condition-codes";
+import {
   DENTAL_DRUG_ENTRIES,
   DENTAL_CONDITION_GATES,
   type DentalDrugEntry,
@@ -92,14 +98,37 @@ export function dentalSafetySignalKey(
   return `dental-safety:${procedureId}:${gateKey}`;
 }
 
-// Whether a normalized condition string satisfies a gate — ANY keyword appears as a
-// substring (keywords are already normalized). Substring (not token-set) is fine here:
-// the keywords are multi-word specific phrases ("prosthetic heart valve", "infective
-// endocarditis") whose presence is the signal.
+// The coded half of the cardiac condition gates (#1030): which curated code
+// CONCEPTS (lib/condition-codes — ICD-10 Z95.2x prosthetic valve, I33
+// endocarditis, the cyanotic-CHD lesions, Z94.1 transplant status) satisfy which
+// dataset gate key. Consulted code-first with the keyword match as the name
+// fallback, so a coded row with a terse label ("AVR" as Z95.2) reaches the
+// antibiotic-prophylaxis note. Keys must exist in DENTAL_CONDITION_GATES —
+// pinned by a pure test so a dataset rename can't silently orphan the mapping.
+export const DENTAL_GATE_CONCEPTS: Record<string, ConditionConcept[]> = {
+  prosthetic_valve: ["prosthetic-heart-valve"],
+  prior_endocarditis: ["infective-endocarditis"],
+  congenital_heart_disease: ["high-risk-congenital-heart-disease"],
+  cardiac_transplant_valvulopathy: ["cardiac-transplant"],
+};
+
+// Whether a condition satisfies a gate: its stored CODE first (the curated
+// concept mapping above), else ANY keyword appears as a substring of the
+// normalized name (keywords are already normalized). Substring (not token-set)
+// is fine here: the keywords are multi-word specific phrases ("prosthetic heart
+// valve", "infective endocarditis") whose presence is the signal.
 function conditionMatchesGate(
+  condition: ConditionInput,
   conditionNorm: string,
   gate: DentalConditionGate
 ): boolean {
+  const concepts = conditionCodeConcepts(condition);
+  if (
+    concepts.size > 0 &&
+    (DENTAL_GATE_CONCEPTS[gate.key] ?? []).some((c) => concepts.has(c))
+  ) {
+    return true;
+  }
   return gate.keywords.some((kw) => conditionNorm.includes(kw));
 }
 
@@ -128,7 +157,7 @@ function drugEntriesForMed(med: SafetyMedication): DentalDrugEntry[] {
 export function crossCheckDentalSafety(
   procedures: readonly PlannedDentalProcedure[],
   meds: readonly SafetyMedication[],
-  conditions: readonly string[]
+  conditions: readonly ConditionInput[]
 ): DentalSafetyHit[] {
   if (procedures.length === 0) return [];
 
@@ -147,11 +176,12 @@ export function crossCheckDentalSafety(
     { gate: DentalConditionGate; condition: string }
   >();
   for (const condition of conditions) {
-    const n = normalize(condition);
-    if (!n) continue;
+    const name = conditionInputName(condition);
+    const n = normalize(name);
+    if (!n && conditionCodeConcepts(condition).size === 0) continue;
     for (const gate of DENTAL_CONDITION_GATES) {
-      if (!condMatch.has(gate.key) && conditionMatchesGate(n, gate))
-        condMatch.set(gate.key, { gate, condition });
+      if (!condMatch.has(gate.key) && conditionMatchesGate(condition, n, gate))
+        condMatch.set(gate.key, { gate, condition: name });
     }
   }
 

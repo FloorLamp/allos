@@ -109,6 +109,20 @@ describe("getContrastSafetyWarnings — planned contrast × allergy/CKD (#701)",
     expect(warnings[0].note).toContain("contrast nephropathy");
   });
 
+  it("flags a CODED-terse CKD row ('CKD' + N18.30) against a planned iodinated study (#1030)", () => {
+    const { profileId, todayStr } = makeProfile("contrast-coded-ckd");
+    addCarePlanItem(profileId, "CT chest with IV contrast");
+    // "CKD" alone stem-matches, so make the label truly terse: no recognizer stem.
+    db.prepare(
+      `INSERT INTO conditions (profile_id, name, status, code, code_system)
+         VALUES (?, 'Kidney condition', 'active', 'N18.30', 'ICD-10-CM')`
+    ).run(profileId);
+    const warnings = getContrastSafetyWarnings(profileId, todayStr);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].gate).toBe("renal");
+    expect(warnings[0].matchedOn).toBe("Kidney condition");
+  });
+
   it("dismissing the finding silences it on Upcoming (shared bus)", () => {
     const { profileId, todayStr } = makeProfile("contrast-dismiss");
     addCarePlanItem(profileId, "CT abdomen with contrast");

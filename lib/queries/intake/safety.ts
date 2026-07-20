@@ -40,8 +40,11 @@ export function getIntakeSafetyContext(profileId: number): IntakeSafetyContext {
       rxcui: s.rxcui,
       rxcuiIngredients: parseRxcuiIngredients(s.rxcui_ingredients),
     }));
+  // Coded refs, not bare names (#1030): the row's code/code_system ride along so
+  // every condition screen downstream (risk factors, contrast CKD, dental
+  // cardiac, condition→nutrient) is code-first with the name fallback.
   const conditions = getConditions(profileId, { status: "active" }).map(
-    (c) => c.name
+    (c) => ({ name: c.name, code: c.code, codeSystem: c.code_system })
   );
   const situations = getActiveSituations(profileId);
   return { allergens, medications, conditions, situations };
