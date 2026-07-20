@@ -23,7 +23,8 @@ import {
 // vision/dental/cycle data, so every entry is present there). No mutations.
 
 // The #1042 frequency order. Household appears for the admin session (it reaches
-// 2+ profiles); Protocols holds the future Longevity slot (phase 4).
+// 2+ profiles); Longevity took over Protocols' slot in phase 4 (the Protocols
+// hub folded into /longevity#protocols).
 const TOP_LEVEL_ORDER = [
   "Dashboard",
   "Training",
@@ -32,7 +33,7 @@ const TOP_LEVEL_ORDER = [
   "Trends",
   "Upcoming",
   "Household",
-  "Protocols",
+  "Longevity",
   "Medical",
   "Data",
   "Settings",
