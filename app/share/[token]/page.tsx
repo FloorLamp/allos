@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { now as clockNow } from "@/lib/clock";
 import { getShareLinkByToken } from "@/lib/share-links-db";
 import { shareLinkStatus, parseShareFields } from "@/lib/share-links";
 import {
@@ -100,6 +101,7 @@ export default async function SharePage(props: {
             episode={assembled}
             generatedAt={new Date().toISOString()}
             timeZone={getTimezone(link.profile_id)}
+            nowIso={clockNow().toISOString()}
           />
         </div>
       </ConfirmProvider>

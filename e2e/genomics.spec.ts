@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import Database from "better-sqlite3";
 
-// Genomic variants CRUD on /genomics (#709): add a structured variant through the
+// Genomic variants CRUD on the #genomics section of /results (#709, #1042 phase 5): add a structured variant through the
 // real form, see it in the list with its reported significance + result-type shown
 // factually, edit it, then delete it. Drives the real UI end-to-end.
 //
@@ -29,7 +29,7 @@ test.describe("Genomic variants — add → view → edit → delete (#709)", ()
   }) => {
     test.slow();
 
-    await page.goto("/genomics");
+    await page.goto("/results#genomics");
     const form = page.getByTestId("genomic-variant-form");
     await expect(form).toBeVisible();
 

@@ -12,6 +12,11 @@ import type {
 import type { AdherenceDot } from "@/lib/supplement-adherence";
 import { daysOfSupplyForItem, isLowSupply, type DoseRate } from "@/lib/refill";
 import {
+  isCoverageLimited,
+  COVERAGE_LIMITED_CHIP,
+  COVERAGE_LIMITED_HINT,
+} from "@/lib/safety-coverage";
+import {
   sortCourses,
   isMedicationCurrent,
   stopReasonLabel,
@@ -139,6 +144,19 @@ export default function MedicationRow({
               doseCount={doses.length}
               todayStr={todayStr}
             />
+            {/* Screening-coverage chip (#1032): a name-only item (no confirmed
+                RxNorm code) is less likely to match a code-keyed safety rule — say
+                so QUIETLY, pointing at the existing #851 confirm flow (the edit
+                form). Informational styling, never a warning. */}
+            {current && isCoverageLimited(med) && (
+              <span
+                className="badge bg-slate-100 text-slate-500 dark:bg-ink-800 dark:text-slate-400"
+                data-testid="coverage-limited-chip"
+                title={COVERAGE_LIMITED_HINT}
+              >
+                {COVERAGE_LIMITED_CHIP}
+              </span>
+            )}
           </div>
           {medMeta && (
             <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">

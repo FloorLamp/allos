@@ -36,7 +36,9 @@ export function preventiveHref(
   if (kind === "visit") return "/encounters";
   const matcher = PREVENTIVE_CONCEPT_MAP.find((m) => m.ruleKey === ruleKey);
   if (!matcher) return "/profile";
-  return matcher.canonicalBiomarkers.length > 0 ? "/biomarkers" : "/procedures";
+  return matcher.canonicalBiomarkers.length > 0
+    ? "/results#biomarkers"
+    : "/procedures";
 }
 
 // The stable suppression/identity key for a preventive rule: `<kind>:<ruleKey>`

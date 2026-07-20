@@ -402,7 +402,7 @@ export function genomicVariantItem(row: {
       resultTypeLabel(row.result_type)
     ),
     date: row.report_date,
-    href: "/genomics",
+    href: "/results#genomics",
   };
 }
 
@@ -435,7 +435,7 @@ export function imagingStudyItem(row: {
       row.impression
     ),
     date: row.study_date,
-    href: "/imaging",
+    href: "/results#imaging",
   };
 }
 

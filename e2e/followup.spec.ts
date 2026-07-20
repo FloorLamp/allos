@@ -4,7 +4,7 @@ import { settledClick } from "./helpers";
 
 // The finding follow-up loop (#700): an incidental imaging finding → a tracked,
 // LEGIBLE follow-up on Upcoming → a resolution OFFER when a later study lands →
-// close the loop. Drives the real UI end-to-end across /imaging + /upcoming.
+// close the loop. Drives the real UI end-to-end across /results#imaging + /upcoming.
 //
 // Fixture discipline (#868, shared seeded DB): a unique body-region marker scopes
 // every row, and a raw-connection cleanup in beforeAll AND afterAll (deleting the
@@ -39,7 +39,7 @@ async function addStudy(
   page: import("@playwright/test").Page,
   opts: { date: string; impression: string }
 ) {
-  await page.goto("/imaging");
+  await page.goto("/results#imaging");
   const form = page.getByTestId("imaging-study-form");
   await expect(form).toBeVisible();
   await form.getByLabel("Modality").selectOption("ct");
@@ -114,7 +114,7 @@ test.describe("Finding follow-up loop — track → legible upcoming → resolve
     ).toHaveCount(0);
 
     // 6) The source study now shows the recorded resolution.
-    await page.goto("/imaging");
+    await page.goto("/results#imaging");
     await expect(
       page
         .getByTestId("imaging-study-list")

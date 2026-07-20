@@ -15,7 +15,7 @@
 // future import that captures a code, and mirrors how the passport's `extractedMeds`
 // read-time fallback (lib/profile-summary-load.ts) already de-dups by cleaned name.
 
-import { cleanMedicationName } from "./prescription-parse";
+import { cleanMedicationName, strengthFromName } from "./prescription-parse";
 import { itemRxcuis } from "./drug-interactions";
 import { splitMedicationName } from "./medication-info";
 
@@ -36,12 +36,16 @@ export interface PrescriptionRecordLike {
 }
 
 // The minimal tracked-med shape: its name + brand (both matched by cleaned name) and
-// its cached RxNorm codes (product rxcui + ingredient CUIs).
+// its cached RxNorm codes (product rxcui + ingredient CUIs). `doseAmounts` (#1027)
+// carries the med's per-dose amount strings ("200 mg") so the bridge can compare a
+// record's strength against what's actually tracked — the common OTC shape keeps the
+// strength in the dose row, not the name.
 export interface TrackedMedLike {
   name: string;
   brand?: string | null;
   rxcui?: string | null;
   rxcuiIngredients?: string[] | null;
+  doseAmounts?: string[] | null;
 }
 
 // The record's display name: the canonical (cleaned) alias when the extractor set
@@ -61,7 +65,9 @@ export function recordMedKey(record: PrescriptionRecordLike): string {
 // The NAME KEY for any medication name (record or tracked med). cleanMedicationName
 // strips a trailing strength/form; splitMedicationName then collapses a brand to its
 // generic so both sides land on the same token ("Advil" and "Ibuprofen" → "ibuprofen").
-function medNameKey(name: string): string {
+// Exported for the #1027 ingredient-family derivation (lib/medication-family.ts) so
+// the bridge and the family key can never disagree on how a med name collapses.
+export function medNameKey(name: string): string {
   const cleaned = cleanMedicationName(name);
   const generic = splitMedicationName(cleaned).name || cleaned;
   return generic.toLowerCase().trim();
@@ -98,28 +104,96 @@ export function recordMatchesMed(
   return !!key && trackedMedKeys(med).has(key);
 }
 
-// The subset of imported prescription records with NO matching tracked med — the
-// bridge's suggestion set. A record whose med is already tracked (under any med's
-// name or brand, active OR paused — a paused med is still "tracked") is dropped, and
-// duplicate records for the same drug collapse to the FIRST (most recent, since the
-// caller passes them date-desc) so the bridge lists one row per untracked drug.
-export function unmatchedPrescriptionRecords<T extends PrescriptionRecordLike>(
-  records: T[],
-  meds: TrackedMedLike[]
-): T[] {
-  const out: T[] = [];
-  const seen = new Set<string>();
-  for (const rec of records) {
-    if (meds.some((m) => recordMatchesMed(rec, m))) continue;
-    const key = recordMedKey(rec);
-    if (key && seen.has(key)) continue;
-    if (key) seen.add(key);
-    out.push(rec);
+// Normalize a strength token for comparison: lowercased, whitespace removed
+// ("800 mg" ≡ "800mg" ≡ "800 MG"). Null in ⇒ null out.
+function normStrength(s: string | null): string | null {
+  const n = (s ?? "").toLowerCase().replace(/\s+/g, "");
+  return n || null;
+}
+
+// Every normalized strength a tracked med is known at: parsed off its NAME
+// ("Ibuprofen 800 mg" → "800mg") plus each dose amount ("200 mg" → "200mg"; a
+// non-strength amount like "1 tab" parses to nothing and is skipped).
+function trackedStrengths(med: TrackedMedLike): Set<string> {
+  const out = new Set<string>();
+  for (const raw of [med.name, ...(med.doseAmounts ?? [])]) {
+    const s = normStrength(raw ? strengthFromName(raw) : null);
+    if (s) out.add(s);
   }
   return out;
 }
 
+// The record's parsed strength (display form, e.g. "800 mg") from its RAW name —
+// the canonical alias is cleaned (strength stripped), so the raw label is the
+// strength carrier. Null when the name carries none (#1026's parenthesized-strength
+// cleaning will widen what parses here).
+export function recordStrength(record: PrescriptionRecordLike): string | null {
+  return strengthFromName(record.name);
+}
+
+// One bridge candidate: an imported prescription record that is either genuinely
+// UNTRACKED (`strengthOffer` null — today's suggestion) or tracked-by-family at a
+// provably DIFFERENT strength (`strengthOffer` = the record's strength, e.g.
+// "800 mg" — the #1027 ask-4 offer, labeled by the attribute that differs, #531).
+export interface BridgeCandidate<T extends PrescriptionRecordLike> {
+  record: T;
+  strengthOffer: string | null;
+}
+
+// The bridge's suggestion set (#560/#817 + #1027 ask 4). A record whose med is
+// already tracked (under any med's name or brand, active OR paused) is FOLDED —
+// UNLESS it carries a parsed strength and every matching tracked med is known at
+// OTHER strengths only, in which case it surfaces as a different-strength OFFER
+// ("Track as separate 800 mg item") instead of being silently absorbed.
+// Conservative by design: no strength on the record, or no known strength on a
+// matched med, keeps today's fold (never guess). Duplicate records for the same
+// drug collapse to the FIRST (most recent, since the caller passes them date-desc).
+export function bridgeCandidates<T extends PrescriptionRecordLike>(
+  records: T[],
+  meds: TrackedMedLike[]
+): BridgeCandidate<T>[] {
+  const out: BridgeCandidate<T>[] = [];
+  const seen = new Set<string>();
+  for (const rec of records) {
+    const matched = meds.filter((m) => recordMatchesMed(rec, m));
+    let strengthOffer: string | null = null;
+    if (matched.length > 0) {
+      const recStr = normStrength(recordStrength(rec));
+      if (!recStr) continue; // no strength on the record → fold
+      const strengthSets = matched.map(trackedStrengths);
+      // Fold when any matched med has no known strength (can't prove a difference)
+      // or already carries this strength.
+      if (strengthSets.some((s) => s.size === 0 || s.has(recStr))) continue;
+      strengthOffer = recordStrength(rec);
+    }
+    const key = recordMedKey(rec);
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    out.push({ record: rec, strengthOffer });
+  }
+  return out;
+}
+
+// The subset of imported prescription records with NO matching tracked med — the
+// pre-#1027 suggestion set, preserved for callers that only want the untracked rows.
+export function unmatchedPrescriptionRecords<T extends PrescriptionRecordLike>(
+  records: T[],
+  meds: TrackedMedLike[]
+): T[] {
+  return bridgeCandidates(records, meds)
+    .filter((c) => c.strengthOffer == null)
+    .map((c) => c.record);
+}
+
 // The bridge dismissal key for a record (issue #203 name-keyed): `med-bridge:<name key>`.
-export function medBridgeDismissalKey(record: PrescriptionRecordLike): string {
-  return MED_BRIDGE_PREFIX + recordMedKey(record);
+// A different-strength OFFER keys with its strength appended
+// (`med-bridge:ibuprofen:800mg`) so waving off the 800 mg offer never suppresses a
+// future plain-ibuprofen suggestion (or a different strength's offer).
+export function medBridgeDismissalKey(
+  record: PrescriptionRecordLike,
+  strengthOffer?: string | null
+): string {
+  const base = MED_BRIDGE_PREFIX + recordMedKey(record);
+  const s = normStrength(strengthOffer ?? null);
+  return s ? `${base}:${s}` : base;
 }

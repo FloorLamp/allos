@@ -9,6 +9,7 @@ import {
   TEMP_RED_FLAG_PREFIX,
 } from "@/lib/temp-red-flag";
 import { detectTempRedFlag } from "@/lib/datasets/temperature-red-flags";
+import { planIllnessCareNudges } from "@/lib/illness-care";
 import { fmtTempDual } from "@/lib/units";
 import type {
   AssembledEpisode,
@@ -158,5 +159,61 @@ describe("tempRedFlagFullDetail / inlineTempRedFlagNote", () => {
     // Infant band needs a known age below the floor.
     expect(inlineTempRedFlagNote(100.6, 2)).toMatch(/contact a clinician/i);
     expect(inlineTempRedFlagNote(100.6, null)).toBeNull();
+  });
+});
+
+// ---- #1025: the dispatch decision has no day granularity --------------------
+//
+// The tick used to gate this nudge once per profile-local day, silencing a NEW
+// crossing logged after the morning's clean assessment until tomorrow. The gate is
+// gone; dedup is owned by the per-finding marker (keyed by the dedupeKey, which
+// embeds the READING's date + rule) plus the bus — so these pin that a new
+// qualifying reading yields a NEW key that no earlier marker can hold back.
+
+describe("re-nudge on a new crossing (#1025)", () => {
+  it("a different reading date (or rule) yields a distinct dedupeKey", () => {
+    const a = tempRedFlagDedupeKey(
+      "illness",
+      "2026-07-10",
+      "2026-07-15",
+      "hyperpyrexia"
+    );
+    const b = tempRedFlagDedupeKey(
+      "illness",
+      "2026-07-10",
+      "2026-07-16",
+      "hyperpyrexia"
+    );
+    const c = tempRedFlagDedupeKey(
+      "illness",
+      "2026-07-10",
+      "2026-07-16",
+      "infant_fever"
+    );
+    expect(a).not.toBe(b);
+    expect(b).not.toBe(c);
+  });
+
+  it("a marker for an earlier finding never holds a NEW crossing's key out of the send set", () => {
+    // The morning tick assessed clean (no finding, nothing marked) — or fired for
+    // yesterday's reading; the 2 PM crossing mints a new key and still sends.
+    const yesterdayKey = tempRedFlagDedupeKey(
+      "illness",
+      "2026-07-10",
+      "2026-07-15",
+      "hyperpyrexia"
+    );
+    const newKey = tempRedFlagDedupeKey(
+      "illness",
+      "2026-07-10",
+      "2026-07-16",
+      "hyperpyrexia"
+    );
+    const plan = planIllnessCareNudges([newKey], [yesterdayKey], []);
+    expect(plan.toSend).toEqual([newKey]);
+    // The stale marker clears (its finding is no longer actionable); the same
+    // reading never re-nags once ITS marker is set.
+    expect(plan.toClear).toEqual([yesterdayKey]);
+    expect(planIllnessCareNudges([newKey], [newKey], []).toSend).toEqual([]);
   });
 });

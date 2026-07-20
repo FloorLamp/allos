@@ -35,7 +35,7 @@ const ROUTES = [
   "/timeline",
   "/upcoming",
   "/data",
-  "/biomarkers",
+  "/results",
   "/nutrition",
   "/medications",
   "/settings",
@@ -104,7 +104,7 @@ test("biomarkers page surfaces a derived clinical index (#40)", async ({
   // one bounded page (#114), so on an unfiltered view the derived rows can land
   // beyond page 1 for a long history — the filter keeps this assertion about
   // "derived indices render", not about pagination order.
-  await page.goto("/biomarkers?q=non-hdl");
+  await page.goto("/results?q=non-hdl");
   // The derived index renders its Derived badge.
   await expect(page.getByTestId("derived-badge").first()).toBeVisible();
 
@@ -126,7 +126,7 @@ test("biomarkers page surfaces a derived clinical index (#40)", async ({
 test("biomarkers page surfaces the derived PhenoAge biological age (#157)", async ({
   page,
 }) => {
-  await page.goto("/biomarkers?q=phenoage");
+  await page.goto("/results?q=phenoage");
   // Renders with the shared "Derived" badge.
   await expect(page.getByTestId("derived-badge").first()).toBeVisible();
 
@@ -146,7 +146,7 @@ test("biomarkers page surfaces the derived PhenoAge biological age (#157)", asyn
 test("biomarkers page shows the biological-age hero for the adult (#209)", async ({
   page,
 }) => {
-  await page.goto("/biomarkers");
+  await page.goto("/results");
   const hero = page.getByRole("main").getByTestId("bio-age-hero");
   await expect(hero).toBeVisible();
   // The headline number and its delta to chronological age.
@@ -188,7 +188,7 @@ test("biological-age hero is absent for a child profile (#209)", async ({
     );
 
     // On the child's Biomarkers page the hero is not rendered at all.
-    await page.goto("/biomarkers");
+    await page.goto("/results");
     await expect(
       page.getByRole("main").getByTestId("bio-age-hero")
     ).toHaveCount(0);

@@ -12,7 +12,7 @@ test.describe("protocol intake-item link (#660 ask 3)", () => {
     page,
   }) => {
     test.slow();
-    await page.goto("/protocols");
+    await page.goto("/longevity#protocols");
     const main = page.getByRole("main");
 
     // The add form offers the seeded Creatine supplement as an intervention.
@@ -59,7 +59,7 @@ test.describe("protocol chart annotations (#660 ask 1)", () => {
       .toISOString()
       .slice(0, 10);
 
-    await page.goto("/protocols");
+    await page.goto("/longevity#protocols");
     const main = page.getByRole("main");
     const form = main.getByTestId("protocol-form");
     await form.getByLabel("Name").fill(uniqueName);
@@ -92,7 +92,7 @@ test.describe("protocol chart annotations (#660 ask 1)", () => {
       page,
       page.getByRole("main").getByRole("button", { name: "Delete" })
     );
-    await page.waitForURL(/\/protocols$/);
+    await page.waitForURL(/\/longevity(?:#|$)/);
     await expect(page.getByRole("main")).not.toContainText(uniqueName);
   });
 });

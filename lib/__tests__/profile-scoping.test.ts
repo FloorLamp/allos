@@ -151,7 +151,7 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "migration 071 (#703) ADD COLUMN guard: a schema-shape PRAGMA (does dose_msv already exist?) so the non-version-gated migrate() replay no-ops — reads column metadata, never rows",
   },
   {
-    file: "lib/migrations/versions/075-encounter-type-code.ts",
+    file: "lib/migrations/versions/076-encounter-type-code.ts",
     includes: "PRAGMA table_info(encounters)",
     why: "migration 075 (#1035) ADD COLUMN guard: a schema-shape PRAGMA (do code/code_system already exist?) so the non-version-gated migrate() replay no-ops — reads column metadata, never rows (mirrors migration 071's guard)",
   },
@@ -176,6 +176,11 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     file: "lib/migrations/versions/074-imported-temperature-degf.ts",
     includes: "UPDATE medical_records SET unit = 'degF' WHERE id = ?",
     why: "migration 074 (#1018): the unit-respell UPDATE ([degF]/°F → degF, value untouched), keyed the same way",
+  },
+  {
+    file: "lib/migrations/versions/075-extraction-completed-at.ts",
+    includes: "PRAGMA table_info(medical_documents)",
+    why: "migration 075 (#1022) ADD COLUMN guard: a schema-shape PRAGMA (does extraction_completed_at already exist?) so the non-version-gated migrate() replay no-ops — reads column metadata, never rows; mirrors migration 071's guard",
   },
 ];
 

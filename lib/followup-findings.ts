@@ -81,15 +81,15 @@ interface FollowUpDomain<S> {
   hrefFor: (source: S) => AppRoute;
 }
 
-// Imaging: the follow-up + its serial view live on /imaging; the inline resolve
-// controls act on the study row there.
+// Imaging: the follow-up + its serial view live in the #imaging section of
+// /results (#1042 phase 5); the inline resolve controls act on the study row there.
 const IMAGING_DOMAIN: FollowUpDomain<ImagingStudy> = {
   kind: IMAGING_FOLLOWUP_KIND,
   adapter: imagingFollowUpAdapter,
   loadRecords: getImagingStudies,
   recordId: (s) => s.id,
   sourceIdOf: (c) => c.source_imaging_study_id,
-  hrefFor: () => "/imaging",
+  hrefFor: () => "/results#imaging",
 };
 
 // Flagged labs: the follow-up's source flagged reading + its serial trend live on the

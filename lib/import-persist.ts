@@ -463,9 +463,16 @@ export function persistDocumentImport(
     // clinical kind an import wrote, not just the immunizations + records the old
     // `immCount + recCount` saw (#212).
     const extractedCount = countImportedDocumentRows(profileId, docId);
+    // `extraction_completed_at` (issue #1022): the moment this document became
+    // 'done' — the digest's "new documents" window keys on it (a doc can complete
+    // long after `uploaded_at`: the upload/digest race, a failed→reprocessed doc).
+    // This UPDATE is the ONE 'done' transition (every extract/import/reprocess
+    // path funnels through persistDocumentImport), so the stamp can't be missed;
+    // a reprocess re-stamps it, which is correct — the re-extraction is news.
     db.prepare(
       `UPDATE medical_documents
-         SET extraction_status = 'done', extracted_count = ?, doc_type = ?,
+         SET extraction_status = 'done', extraction_completed_at = datetime('now'),
+             extracted_count = ?, doc_type = ?,
              source = ?, document_date = ?, patient_name = ?, raw_extraction = ?,
              model = ?, import_report = ?, extraction_error = NULL
        WHERE id = ? AND profile_id = ?`

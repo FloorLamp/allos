@@ -405,3 +405,40 @@ export const CEL_IMPORT_PROFILE = "Cel Import (e2e)";
 // rows would extinguish if seeded there. Read-only in its spec — repeat-safe.
 export const E2E_LOGIN_PREVCODE = "e2e_prevcode";
 export const PREVENTIVE_CODES_PROFILE = "Preventive Codes (e2e)";
+// A member granted a dedicated ADULT profile for the drug-allergy × medication
+// cross-check spec (#1029): a recorded "Penicillin — hives" allergy plus a tracked
+// amoxicillin (same-class hit) and cephalexin (documented cross-reactivity hit).
+// Dedicated on purpose — an allergy warning on a SHARED profile would plant surprise
+// safety-strip cards / Upcoming findings that race neighbor specs. The spec owns its
+// dismissal state (reset per test), so it stays repeat-safe.
+export const E2E_LOGIN_DRUG_ALLERGY = "e2e_drug_allergy";
+export const DRUG_ALLERGY_PROFILE = "Drug Allergy (e2e)";
+
+// A member granted a dedicated ADULT profile for the #1027 cross-item PRN counter
+// spec: OTC ibuprofen (confirmed 6h interval / max 4, PRN) plus a second
+// "Ibuprofen 800 mg" item whose administration one hour before the frozen e2e clock
+// holds the OTC item's redose window ("Next dose in ~5h … across 2 items") and
+// raises the coaching duplication note. Read-only in its spec (dismissals reset per
+// test), so it stays repeat-safe and never perturbs shared-seed PRN fixtures.
+export const E2E_LOGIN_PRN_FAMILY = "e2e_prn_family";
+export const PRN_FAMILY_PROFILE = "Prn Family (e2e)";
+
+// A member granted a dedicated ADULT profile for the #1032 safety-coverage spec:
+// two name-only active medications (loratadine — off the curated interaction set;
+// sertraline — a name-matched SSRI concept) with NO warnings, so the Medications /
+// Supplements safety strips render the "checked N of M, no flags" scope line
+// instead of the old silent blank, and the name-only rows wear the quiet
+// limited-screening chip. Read-only in its spec, so it stays repeat-safe.
+export const E2E_LOGIN_COVERAGE = "e2e_coverage";
+export const SAFETY_COVERAGE_PROFILE = "Safety Coverage (e2e)";
+
+// A member granted a dedicated ADULT profile for the Home Assistant channel-config
+// spec. Isolated as of #1025: the spec persists a REAL (unreachable) HA webhook to
+// prove the config round-trip, and the temperature write paths now dispatch the
+// red-flag nudge immediately — so an HA config left on a shared profile turns any
+// crossing-temp log elsewhere in the suite into a failed real send that overwrites
+// the GLOBAL delivery-health marker the notify-delivery-error spec asserts on. On
+// its own profile (which no spec logs temperatures for), the persisted config can
+// never be dispatched to.
+export const E2E_LOGIN_HA_NOTIFY = "e2e_ha_notify";
+export const HA_NOTIFY_PROFILE = "HA Notify (e2e)";

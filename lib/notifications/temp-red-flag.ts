@@ -13,6 +13,7 @@
 import { tempRedFlagFindingFor } from "../temp-red-flag-findings";
 import { episodeForProfileDate } from "../illness-episode";
 import { tempRedFlagFullDetail } from "../temp-red-flag";
+import { detectTempRedFlag } from "../datasets/temperature-red-flags";
 import { planIllnessCareNudges } from "../illness-care";
 import { getFindingSuppressions } from "../queries/upcoming";
 import { isSuppressed } from "../upcoming-suppress";
@@ -21,7 +22,9 @@ import {
   deleteProfileSetting,
   getProfileSettingKeysWithPrefix,
   getPublicUrl,
+  profileAgeMonths,
 } from "../settings";
+import { db, today } from "../db";
 import { episodeHref } from "../hrefs";
 import { dispatch } from "./index";
 import type { NotificationAction, NotificationMessage } from "./types";
@@ -124,4 +127,50 @@ export async function runTempRedFlag(
     });
   }
   return { failed };
+}
+
+// Event-driven dispatch at the temperature WRITE path (#1025 ask 2): after a
+// successful reading write whose value crosses a red-flag line, evaluate + send
+// immediately instead of waiting up to a day (pre-#1025) or an hour (the tick
+// fallback) — the push exists exactly for the OTHER caregiver (#858), who isn't
+// looking at the logger's inline toast. The cheap pre-check (one dataset lookup)
+// keeps the ordinary-reading write path free of any notification work; everything
+// else — the open-episode framing (a backfilled historical reading is never the
+// episode's LATEST, and no open episode ⇒ no finding), the per-finding marker, the
+// suppression bus, delivery accounting — is the SAME runTempRedFlag the tick runs,
+// so the two paths can never disagree ("one question, one computation").
+//
+// QUIET-HOURS EXEMPT, deliberately (the REDOSE precedent, not the episode-nudge
+// one): a 2 AM 106 °F reading is the overnight-emergency case, and the reading only
+// exists because a caregiver is awake logging it. The tick path keeps its waking
+// window; only this event-driven send skips it.
+export async function dispatchTempRedFlagForReading(
+  profileId: number,
+  degF: number
+): Promise<{ failed: boolean }> {
+  const date = today(profileId);
+  if (!detectTempRedFlag(degF, profileAgeMonths(profileId, date))) {
+    return { failed: false };
+  }
+  const profile = db
+    .prepare("SELECT name FROM profiles WHERE id = ?")
+    .get(profileId) as { name: string } | undefined;
+  if (!profile) return { failed: false };
+  return runTempRedFlag(profileId, profile.name, date);
+}
+
+// Fire-and-forget wrapper for request-path callers (the temperature Server Action,
+// the Telegram temp log, the vitals ingest): never blocks or fails the write, and a
+// send error lands in the persisted error log (#596) via createLogger, not the
+// caller's response.
+export function queueTempRedFlagDispatch(
+  profileId: number,
+  degF: number
+): void {
+  void dispatchTempRedFlagForReading(profileId, degF).catch((e) => {
+    log.error("temp-red-flag write-path dispatch failed", {
+      profile: profileId,
+      err: e instanceof Error ? e : String(e),
+    });
+  });
 }

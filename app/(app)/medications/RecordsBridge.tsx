@@ -124,6 +124,14 @@ export default function RecordsBridge({
                   <span className="ml-2 text-xs text-slate-500 dark:text-slate-400">
                     {formatLongDate(s.date, formatPrefs)}
                   </span>
+                  {s.strengthOffer && (
+                    <span
+                      className="ml-2 text-xs text-slate-500 dark:text-slate-400"
+                      data-testid="records-bridge-strength-note"
+                    >
+                      Already tracked at a different strength
+                    </span>
+                  )}
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
                   <button
@@ -134,7 +142,11 @@ export default function RecordsBridge({
                     data-testid="records-bridge-track"
                   >
                     <IconPlus className="h-3.5 w-3.5" stroke={2.5} />
-                    <span>Track this</span>
+                    <span>
+                      {s.strengthOffer
+                        ? `Track as separate ${s.strengthOffer} item`
+                        : "Track this"}
+                    </span>
                   </button>
                   <button
                     type="button"

@@ -39,7 +39,7 @@ export default async function AllergiesPage() {
                 No known allergies recorded. Positive allergen-specific IgE lab
                 results (e.g. “Peanut IgE”) will also appear here — add them
                 under{" "}
-                <Link href="/biomarkers" className="underline">
+                <Link href="/results#biomarkers" className="underline">
                   Biomarkers
                 </Link>
                 .

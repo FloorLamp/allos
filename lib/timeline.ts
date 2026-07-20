@@ -806,7 +806,7 @@ function collectEvents(
         title: studyDisplayLabel(s),
         subtitle: compactList(meta, 4),
         detail: s.impression,
-        href: "/imaging",
+        href: "/results#imaging",
         sortTime: timeFromCreatedAt(s.created_at, tz),
       },
       options

@@ -73,5 +73,6 @@
   "072-substance-frequency-target.ts": "7f6b964c51238cc14bc18a0dfaf50fae7c6d1fac167e275300582de43e91eab6",
   "073-mood-logs.ts": "d057e2cfd61c5708ed4ffb5cb0c3cf9138fe7086331b3c05af05087c14d7c352",
   "074-imported-temperature-degf.ts": "80651f3de1fb2a6d910e535a8668cb1cd185f0367cdd68e99d0158692063009a",
-  "075-encounter-type-code.ts": "7711061e01ae39bdab444a68caa76cb8af7b057f529a11970bb4722e1986d52c"
+  "075-extraction-completed-at.ts": "d85d66b811a1b2972eb3c1dc35f477ad03aebcca372c00cc759410d0f1226f55",
+  "076-encounter-type-code.ts": "2d27810813e3ef64316f7800a38e3bc687fd454d8721f7c28bd30b17f0f8dfb1"
 }

@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 075 (issue #1035): the encounter TYPE CODE — the CPT/CDT/SNOMED
+// Migration 076 (issue #1035): the encounter TYPE CODE — the CPT/CDT/SNOMED
 // coding both importers already parse for the display text and then drop. The
 // preventive concept map's visit rules carry exact code sets (adult_physical →
 // CPT 99396/…, dental_cleaning → CDT D0120/…, vision_exam → CPT 92014/…)
@@ -39,7 +39,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 75,
-  name: "075-encounter-type-code",
+  id: 76,
+  name: "076-encounter-type-code",
   up,
 };

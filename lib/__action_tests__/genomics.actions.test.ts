@@ -51,7 +51,7 @@ describe("addGenomicVariant", () => {
     expect(v.source).toBeNull();
     expect(v.document_id).toBeNull();
     expect(v.external_id).toBeNull();
-    expect(revalidate).toHaveBeenCalledWith("/genomics");
+    expect(revalidate).toHaveBeenCalledWith("/results");
   });
 
   it("maps ACMG terms and defaults an unknown result_type to 'other'", async () => {

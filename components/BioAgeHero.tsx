@@ -7,6 +7,7 @@ import { getBioAgeReadings } from "@/lib/queries";
 import {
   bioAgeDelta,
   bioAgeDeltaPhrase,
+  bioAgeSurface,
   paceOfAging,
   paceOfAgingPhrase,
   inputCompleteness,
@@ -59,19 +60,27 @@ export default async function BioAgeHero() {
   const formatPrefs = getDisplayFormatPrefs(login.id);
 
   // Adult gate — hidden for child profiles, mirroring the computation's floor
-  // (and the fitness age-gate as a defensive belt-and-suspenders).
+  // (and the fitness age-gate as a defensive belt-and-suspenders). Which surface
+  // renders (hero / missing-inputs checklist / nothing) is the ONE shared
+  // bioAgeSurface decision, so the Longevity page's #bio-age section wrapper
+  // (which consults the same function) can never disagree with this card.
   const age = getUserAge(profile.id);
-  if (isBioAgeHiddenForAge(age) || isTrainingRestricted(profile.id))
-    return null;
+  const hiddenForProfile =
+    isBioAgeHiddenForAge(age) || isTrainingRestricted(profile.id);
 
   const { draws, presentInputs } = getBioAgeReadings(profile.id);
   const completeness = inputCompleteness(presentInputs);
+  const surface = bioAgeSurface(
+    hiddenForProfile,
+    draws.length,
+    completeness.presentCount
+  );
+  if (surface === "hidden") return null;
 
   // No complete draw: show the partial-panel checklist CTA — but only when the
   // profile has at least one of the nine inputs (otherwise the card would be pure
   // noise on a labs-empty profile; the page's own empty state covers that case).
-  if (draws.length === 0) {
-    if (completeness.presentCount === 0) return null;
+  if (surface === "checklist") {
     return (
       <section
         data-testid="bio-age-hero"

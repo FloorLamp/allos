@@ -147,8 +147,9 @@ export function cleanMedicationName(raw: string): string {
 // Pull the strength out of a drug name ("Lisinopril 10 mg" → "10 mg"), when the
 // extractor packed it into the name instead of a separate value/unit. Same
 // unit alternation as NAME_STRENGTH_RE: `%` lives outside the `\b`-terminated
-// letter-unit group (see the comment there).
-function strengthFromName(raw: string): string | null {
+// letter-unit group (see the comment there). Exported for the records bridge's
+// #1027 different-strength comparison (lib/medication-record-match.ts).
+export function strengthFromName(raw: string): string | null {
   // A parenthesized strength/concentration wins and is recovered WHOLE
   // ("albuterol (2.5 MG/3ML)" → "2.5 MG/3ML"), denominator included — the same
   // shape cleanMedicationName strips (#1026). The bare match below would
