@@ -118,6 +118,8 @@ import {
   FLAGGED_IOP_PROFILE,
   E2E_LOGIN_CEL_IMPORT,
   CEL_IMPORT_PROFILE,
+  E2E_LOGIN_PREVCODE,
+  PREVENTIVE_CODES_PROFILE,
 } from "./fixture-logins";
 import { adoptTemplate, activateRoutine } from "../lib/routines";
 
@@ -3439,4 +3441,38 @@ const celImportId = fixtureProfileId(CEL_IMPORT_PROFILE);
 seedMemberLogin(E2E_LOGIN_CEL_IMPORT, celImportId, "write");
 console.log(
   `e2e: seeded legacy imported-Cel temperature fixture — profile ${celImportId} (${CEL_IMPORT_PROFILE}) (#1018)`
+);
+
+// ── Coded preventive satisfaction (#1035/#1037) ───────────────────────────────
+// A dedicated adult profile whose adult_physical and dental_cleaning rules are
+// satisfied ONLY through stored codes: a generic "Office Visit" encounter carrying
+// CPT 99396 (established preventive visit, 40-64) and a completed generic "Prophy"
+// dental row carrying CDT D1110. No name synonym can match either, so the spec's
+// absence assertions prove the code path end-to-end. vision_exam stays DUE (no
+// evidence), anchoring the rendered list. Idempotent: rows are cleared first.
+const prevCodeId = fixtureProfileId(PREVENTIVE_CODES_PROFILE);
+{
+  db.prepare(
+    `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'sex', 'male')`
+  ).run(prevCodeId);
+  db.prepare(
+    `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', '1980-02-01')`
+  ).run(prevCodeId);
+  const pToday = today(prevCodeId);
+  db.prepare(`DELETE FROM encounters WHERE profile_id = ?`).run(prevCodeId);
+  db.prepare(`DELETE FROM dental_procedures WHERE profile_id = ?`).run(
+    prevCodeId
+  );
+  db.prepare(
+    `INSERT INTO encounters (profile_id, date, type, code, code_system, class_code)
+       VALUES (?, ?, 'Office Visit', '99396', 'CPT', 'AMB')`
+  ).run(prevCodeId, shiftDateStr(pToday, -30));
+  db.prepare(
+    `INSERT INTO dental_procedures (profile_id, name, status, cdt_code, procedure_date)
+       VALUES (?, 'Prophy', 'completed', 'D1110', ?)`
+  ).run(prevCodeId, shiftDateStr(pToday, -30));
+}
+seedMemberLogin(E2E_LOGIN_PREVCODE, prevCodeId, "write");
+console.log(
+  `e2e: seeded coded preventive-satisfaction fixture — profile ${prevCodeId} (${PREVENTIVE_CODES_PROFILE}) (#1035/#1037)`
 );
