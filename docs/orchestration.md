@@ -279,6 +279,18 @@ it later from the issue number is guesswork.
    date+time reconstructs an instant ~24h in the FUTURE (workout-presence-gate
    failed exactly so at 00:14 UTC). Discipline: derive a fixture row's date
    AND time from ONE instant. Sweep hook: `grep getUTCHours lib/__db_tests__`.
+   The GENERAL form is the **morning-UTC band** (issue #1048): rows the suite
+   writes at runtime get REAL timestamps (SQL `datetime('now')` defaults),
+   while assertions run on the frozen `ALLOS_TEST_NOW` = today 12:00 — from
+   00:00 to ~11:00 UTC real time LAGS frozen time by hours, and every
+   liveness/recency window reads a just-written row as stale (afternoon runs
+   survive only because future-instant tolerance is built in; morning runs
+   had simply never happened before 2026-07-20). Triage drill for ANY gate
+   failure in that band: reproduce the failed specs on plain MAIN at the same
+   hour — an identical failure proves the band, not the PR; then rerun the
+   gate after ~12:05 UTC (real ≥ frozen, the proven regime) and merge on that
+   green. Do not patch specs to tolerate the band; the structural fix is
+   #1048's design pass.
 9. **Persisted channel config turns event-driven dispatches into marker
    pollution** — the delivery-health marker is GLOBAL (one `notify_lifecycle`
    row), and `notify-delivery-error.spec.ts` asserts the seeded fixture
