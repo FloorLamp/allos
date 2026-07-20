@@ -77,6 +77,65 @@ export function parseMillimeters(raw: unknown): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+// ── Cylinder-notation canonicalization (#1036) ────────────────────────────────
+//
+// The same refraction is written two ways: MINUS-cylinder (US optometry standard,
+// and how contact-lens torics are always written) and PLUS-cylinder (common in
+// ophthalmology). They transpose exactly — "−2.00 −1.00 ×180" ≡ "−3.00 +1.00 ×090"
+// — and the SPHERE differs by the full cylinder amount between the notations, so
+// storing both uncompared makes the sphere-over-time trend read a convention switch
+// as fake myopia progression. Canonical storage is MINUS-cylinder (the kg/km rule
+// applied to notation); this is exact algebra, no heuristics, and no clinical
+// interpretation — the slip's refraction is stored exactly, in one convention.
+
+// One eye's refraction triple, as stored (sphere/cylinder in dioptres, axis in
+// whole degrees 0–180 or null).
+export interface EyeRefraction {
+  sphere: number | null;
+  cylinder: number | null;
+  axis: number | null;
+}
+
+// Quarter-dioptre steps are exact in binary, but keep the algebra safe for odd
+// decimal steps too.
+function roundDiopter(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+// Transpose a plus-cylinder refraction onto canonical minus-cylinder form:
+//   sphere′ = sphere + cyl,  cyl′ = −cyl,  axis′ = (axis + 90) mod 180 (0 ⇒ 180,
+//   matching the 1–180 axis convention: 90 ↔ 180 wrap).
+// A minus-cylinder or cylinder-less triple passes through UNTOUCHED. A plus-cyl
+// entry with a MISSING axis still transposes sphere/cyl (the sphere is what the
+// trend reads) with axis′ = null; a missing sphere transposes cyl/axis only (the
+// minus-cyl sphere would be sphere + cyl, which is unknowable without the sphere).
+export function transposeToMinusCylinder(eye: EyeRefraction): EyeRefraction {
+  const { sphere, cylinder, axis } = eye;
+  if (cylinder == null || cylinder <= 0) return eye;
+  return {
+    sphere: sphere == null ? null : roundDiopter(sphere + cylinder),
+    cylinder: roundDiopter(-cylinder),
+    axis: axis == null ? null : (axis + 90) % 180 || 180,
+  };
+}
+
+// The ONE shared per-eye coercion (#221): parse a slip's sphere/cylinder/axis
+// strings and canonicalize onto minus-cylinder notation. The manual form, the AI
+// Rx-slip extractor, and the FHIR VisionPrescription mapper all route an eye's
+// triple through here, so every path normalizes identically and a plus-cyl entry
+// can never land raw in od_/os_sphere/cylinder/axis.
+export function parseEyeRefraction(
+  sphereRaw: unknown,
+  cylinderRaw: unknown,
+  axisRaw: unknown
+): EyeRefraction {
+  return transposeToMinusCylinder({
+    sphere: parseDiopter(sphereRaw),
+    cylinder: parseDiopter(cylinderRaw),
+    axis: parseAxis(axisRaw),
+  });
+}
+
 export function kindLabel(k: OpticalKind): string {
   return k === "contacts" ? "Contacts" : "Glasses";
 }

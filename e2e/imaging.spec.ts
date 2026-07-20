@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import Database from "better-sqlite3";
+import { settledClick } from "./helpers";
 
 // Imaging-study CRUD on the #imaging section of /results (#702, #1042 phase 5): add a structured study through the real
 // form, see it in the list with its modality + contrast shown, filter by modality,
@@ -11,13 +12,14 @@ import Database from "better-sqlite3";
 const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
 const REGION = "E2EREGION1";
 const DOSE_REGION = "E2EDOSEREGION1";
+const PET_REGION = "E2EPETREGION1";
 
 function cleanup() {
   const handle = new Database(DB_PATH);
   try {
     handle
-      .prepare("DELETE FROM imaging_studies WHERE body_region IN (?, ?)")
-      .run(REGION, DOSE_REGION);
+      .prepare("DELETE FROM imaging_studies WHERE body_region IN (?, ?, ?)")
+      .run(REGION, DOSE_REGION, PET_REGION);
   } finally {
     handle.close();
   }
@@ -135,6 +137,68 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
       .click();
     await expect(
       list.getByRole("row").filter({ hasText: DOSE_REGION })
+    ).toHaveCount(0);
+  });
+
+  test("a PET study estimates into the cumulative dose card without a recorded dose (#1034)", async ({
+    page,
+  }) => {
+    test.slow();
+
+    // Self-clean this test's marker BEFORE running: under --repeat-each the
+    // file-scoped afterAll doesn't run between repeats, and a leftover PET row
+    // would strict-mode-collide the single-row assertions below. Scoped to the
+    // PET marker only so concurrently running neighbor tests are untouched.
+    {
+      const handle = new Database(DB_PATH);
+      try {
+        handle
+          .prepare("DELETE FROM imaging_studies WHERE body_region = ?")
+          .run(PET_REGION);
+      } finally {
+        handle.close();
+      }
+    }
+
+    await page.goto("/imaging");
+    const form = page.getByTestId("imaging-study-form");
+    await expect(form).toBeVisible();
+
+    // Add a PET study dated inside the trailing window with NO recorded dose —
+    // the estimate path. The 'pet' option existing at all is part of #1034 (the
+    // modality formerly fell to 'other' and contributed 0).
+    await form.getByLabel("Modality").selectOption("pet");
+    await form.getByLabel("Body region").fill(PET_REGION);
+    await form.getByLabel("Study date").fill(recentDate());
+    // Close the DateField calendar popup so it can't intercept the Add click.
+    await page.keyboard.press("Escape");
+    await settledClick(
+      page,
+      form.getByRole("button", { name: "Add", exact: true })
+    );
+
+    // The list row shows the PET display label (modality + region — the marker
+    // region alone contains "PET", so assert the full label).
+    const list = page.getByTestId("imaging-study-list");
+    const row = list.getByRole("row").filter({ hasText: PET_REGION });
+    await expect(row).toContainText(`PET ${PET_REGION}`);
+
+    // The cumulative card now carries an estimated portion (the PET typical
+    // dose), and the combined figure reads as an estimate ("≈"). No exact-total
+    // assertion — the shared seed and neighbor tests contribute rows too.
+    const card = page.getByTestId("radiation-dose-card");
+    await expect(card).toBeVisible();
+    await expect(card).toContainText("Estimated:");
+    await expect(card.getByTestId("radiation-dose-total")).toContainText("≈");
+
+    // Clean up the study we created.
+    await row.getByRole("button", { name: "Delete" }).click();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Delete", exact: true })
+      .click();
+    await expect(
+      list.getByRole("row").filter({ hasText: PET_REGION })
     ).toHaveCount(0);
   });
 });

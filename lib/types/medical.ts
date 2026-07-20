@@ -461,9 +461,20 @@ export interface GenomicVariant {
 // hang off.
 
 // Imaging modality. `other` is the safe default for anything not clearly one of the
-// listed classes (normalized in lib/imaging-study.ts).
+// listed classes (normalized in lib/imaging-study.ts). `pet`, `nuclear-medicine`
+// (SPECT/scintigraphy), and `fluoroscopy` (incl. interventional angiography, whose
+// dose mechanism is fluoroscopic) joined in #1034 so the highest-dose modalities
+// stop falling to `other` and contributing 0 to the cumulative radiation total.
 export type ImagingModality =
-  "x-ray" | "ct" | "mri" | "ultrasound" | "dexa" | "other";
+  | "x-ray"
+  | "ct"
+  | "mri"
+  | "ultrasound"
+  | "dexa"
+  | "pet"
+  | "nuclear-medicine"
+  | "fluoroscopy"
+  | "other";
 
 // Which side the study covers, when stated. `na` = not applicable / midline (e.g. a
 // chest X-ray or an abdominal CT), distinct from an unstated (null) laterality.

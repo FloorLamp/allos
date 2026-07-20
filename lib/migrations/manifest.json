@@ -74,5 +74,7 @@
   "073-mood-logs.ts": "d057e2cfd61c5708ed4ffb5cb0c3cf9138fe7086331b3c05af05087c14d7c352",
   "074-imported-temperature-degf.ts": "80651f3de1fb2a6d910e535a8668cb1cd185f0367cdd68e99d0158692063009a",
   "075-extraction-completed-at.ts": "d85d66b811a1b2972eb3c1dc35f477ad03aebcca372c00cc759410d0f1226f55",
-  "076-encounter-type-code.ts": "2d27810813e3ef64316f7800a38e3bc687fd454d8721f7c28bd30b17f0f8dfb1"
+  "076-encounter-type-code.ts": "2d27810813e3ef64316f7800a38e3bc687fd454d8721f7c28bd30b17f0f8dfb1",
+  "077-optical-minus-cylinder.ts": "45514521acbcddf27af7d716a42ef44cacb30c13a89e646af8298359fb47ea1c",
+  "078-imaging-modality-expansion.ts": "ada150bea56ffec2abacc7a0ca70e4904438254c34d2c553caf7aa5f2e8fbe64"
 }

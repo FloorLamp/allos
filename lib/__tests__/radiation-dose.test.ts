@@ -47,6 +47,26 @@ describe("resolveDoseEntry — modality + region matching", () => {
   it("returns null for an unclassified 'other' modality (never a guess)", () => {
     expect(resolveDoseEntry("other", "Whole body")).toBeNull();
   });
+
+  it("resolves the high-dose modalities added in #1034 (region-specific + generic)", () => {
+    expect(resolveDoseEntry("pet", "Whole body")?.key).toBe("pet-wholebody");
+    expect(resolveDoseEntry("pet", null)?.key).toBe("pet-wholebody");
+    expect(
+      resolveDoseEntry("nuclear-medicine", "Myocardial perfusion")?.key
+    ).toBe("nm-cardiac-perfusion");
+    expect(resolveDoseEntry("nuclear-medicine", "Thyroid")?.key).toBe(
+      "nm-thyroid"
+    );
+    // An unspecified nuclear study hits the modality-generic fallback.
+    expect(resolveDoseEntry("nuclear-medicine", null)?.key).toBe("nm-generic");
+    expect(resolveDoseEntry("fluoroscopy", "Coronary")?.key).toBe(
+      "fluoro-coronary-angio"
+    );
+    expect(resolveDoseEntry("fluoroscopy", "Upper GI")?.key).toBe(
+      "fluoro-upper-gi"
+    );
+    expect(resolveDoseEntry("fluoroscopy", null)?.key).toBe("fluoro-generic");
+  });
 });
 
 describe("estimateStudyDose — recorded vs estimate vs none", () => {
@@ -78,6 +98,27 @@ describe("estimateStudyDose — recorded vs estimate vs none", () => {
     const d = estimateStudyDose(study({ modality: "other" }));
     expect(d.source).toBe("none");
     expect(d.msv).toBe(0);
+  });
+
+  it("PET / cardiac-SPECT / fluoro studies estimate NON-ZERO instead of 'none' (#1034)", () => {
+    const pet = estimateStudyDose(
+      study({ modality: "pet", body_region: "Whole body" })
+    );
+    expect(pet.source).toBe("estimate");
+    expect(pet.msv).toBe(25);
+
+    const spect = estimateStudyDose(
+      study({
+        modality: "nuclear-medicine",
+        body_region: "Myocardial perfusion",
+      })
+    );
+    expect(spect.source).toBe("estimate");
+    expect(spect.msv).toBe(12);
+
+    const fluoro = estimateStudyDose(study({ modality: "fluoroscopy" }));
+    expect(fluoro.source).toBe("estimate");
+    expect(fluoro.msv).toBe(10);
   });
 
   it("a negative / non-finite recorded value degrades to the estimate", () => {
@@ -189,6 +230,31 @@ describe("cumulativeDose — recorded and estimated sums stay SEPARATE", () => {
       now
     );
     expect(cum.hasAnyDose).toBe(false);
+  });
+
+  it("a PET study contributes its ~25 mSv to the cumulative total (#1034)", () => {
+    // The cardiac-patient case the issue pins: an annual stress SPECT + a PET
+    // workup formerly contributed 0 while the total read as complete.
+    const cum = cumulativeDose(
+      [
+        study({
+          modality: "pet",
+          body_region: "Whole body",
+          study_date: "2025-03-01",
+        }),
+        study({
+          modality: "nuclear-medicine",
+          body_region: "Myocardial perfusion",
+          study_date: "2025-06-01",
+        }),
+        // A genuinely unknown modality still refuses — the honest gap stays.
+        study({ modality: "other", study_date: "2025-07-01" }),
+      ],
+      now
+    );
+    expect(cum.estimatedMsv).toBe(37); // 25 (PET) + 12 (cardiac SPECT)
+    expect(cum.estimatedCount).toBe(2);
+    expect(cum.studiesInWindow).toBe(3);
   });
 });
 

@@ -28,6 +28,7 @@ import {
 import { producedTotal } from "@/lib/import-log";
 import { extractionToPersistInput } from "@/lib/import-shape";
 import { getTimelineEvents } from "@/lib/timeline";
+import { cumulativeDose } from "@/lib/radiation-dose";
 import type { ExtractionResult } from "@/lib/medical-extract";
 import { db } from "@/lib/db";
 
@@ -183,6 +184,72 @@ describe("AI extraction lands imaging studies through the persist core", () => {
     expect(mri!.href).toBe("/results#imaging");
     // Both studies carry the imaging category and link to the passport surface.
     expect(events.every((e) => e.href === "/results#imaging")).toBe(true);
+  });
+});
+
+describe("high-dose modalities reach the cumulative total end-to-end (#1034)", () => {
+  it("imported PET / cardiac-SPECT / fluoro studies estimate into cumulativeDose", () => {
+    // The false-LOW case the issue pins: before #1034 these modalities
+    // normalized to 'other' (no dataset entry) and contributed 0 while the
+    // 3-year total read as complete. Loose report phrasings exercise the
+    // normalizer; explicit dates keep the window deterministic.
+    const p = newProfile("IMAGING-HIGHDOSE");
+    const d = newDocument(p);
+    const ex = imagingExtraction();
+    ex.imagingStudies = [
+      {
+        modality: "PET/CT",
+        body_region: "Whole body",
+        laterality: "n/a",
+        contrast: null,
+        contrast_agent: null,
+        study_date: "2025-03-01",
+        dose_msv: null,
+        impression: "No hypermetabolic focus.",
+        indication: "Staging",
+        status: "final",
+      },
+      {
+        modality: "Myocardial perfusion SPECT",
+        body_region: "Myocardial perfusion",
+        laterality: "n/a",
+        contrast: null,
+        contrast_agent: null,
+        study_date: "2025-06-01",
+        dose_msv: null,
+        impression: "Normal perfusion.",
+        indication: "Chest pain",
+        status: "final",
+      },
+      {
+        modality: "Coronary angiography",
+        body_region: "Coronary",
+        laterality: "n/a",
+        contrast: null,
+        contrast_agent: null,
+        study_date: "2025-09-01",
+        dose_msv: null,
+        impression: "No obstructive disease.",
+        indication: "Ischemia workup",
+        status: "final",
+      },
+    ];
+    persistDocumentImport(p, d, extractionToPersistInput(ex, "2025-09-01"));
+
+    const rows = getImagingStudies(p);
+    expect(rows.map((r) => r.modality).sort()).toEqual([
+      "fluoroscopy",
+      "nuclear-medicine",
+      "pet",
+    ]);
+
+    // The gather feeds the ONE pure cumulative computation: 25 (PET/CT) +
+    // 12 (cardiac SPECT) + 7 (coronary angiography) — all estimates, none 0.
+    const cum = cumulativeDose(rows, "2026-07-01");
+    expect(cum.studiesInWindow).toBe(3);
+    expect(cum.estimatedCount).toBe(3);
+    expect(cum.estimatedMsv).toBe(44);
+    expect(cum.recordedMsv).toBe(0);
   });
 });
 

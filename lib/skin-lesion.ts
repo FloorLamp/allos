@@ -81,17 +81,161 @@ export function bodyRegionLabel(region: string | null | undefined): string {
   return r.charAt(0).toUpperCase() + r.slice(1);
 }
 
+// Synonym/alias layer (#1038): common loose phrasings — the way a derm report or
+// photo caption names a spot — folded onto the coarse vocabulary. EXCLUSION
+// DISCIPLINE: only anatomically unambiguous mappings belong here (a sole IS on the
+// foot; a calf IS on the leg). Boundary or ambiguous terms (wrist, elbow, ankle,
+// groin, ear, "head", flank, torso) are deliberately ABSENT — guessing a wrong
+// region would silently merge two different moles' follow-up tracks, which is
+// worse than the honest null. Keys are matched against the whole cleaned phrase
+// after qualifier stripping, so multi-word entries ("belly button") work.
+const BODY_REGION_SYNONYMS: Record<string, BodyRegion> = {
+  // abdomen
+  belly: "abdomen",
+  tummy: "abdomen",
+  stomach: "abdomen",
+  abdominal: "abdomen",
+  navel: "abdomen",
+  umbilicus: "abdomen",
+  "belly button": "abdomen",
+  // foot
+  sole: "foot",
+  heel: "foot",
+  toe: "foot",
+  toes: "foot",
+  feet: "foot",
+  instep: "foot",
+  // leg (lower leg)
+  calf: "leg",
+  calves: "leg",
+  shin: "leg",
+  knee: "leg",
+  legs: "leg",
+  // face
+  temple: "face",
+  forehead: "face",
+  cheek: "face",
+  chin: "face",
+  nose: "face",
+  jaw: "face",
+  brow: "face",
+  eyebrow: "face",
+  eyelid: "face",
+  // hand
+  palm: "hand",
+  finger: "hand",
+  fingers: "hand",
+  thumb: "hand",
+  knuckle: "hand",
+  hands: "hand",
+  // arm (upper arm — "upper"/"lower" are stripped as qualifiers, so "upper arm"
+  // reaches "arm" directly; these cover the muscle names)
+  bicep: "arm",
+  biceps: "arm",
+  tricep: "arm",
+  triceps: "arm",
+  arms: "arm",
+  forearms: "forearm",
+  // thigh
+  hamstring: "thigh",
+  quadriceps: "thigh",
+  thighs: "thigh",
+  // buttock
+  buttocks: "buttock",
+  butt: "buttock",
+  glute: "buttock",
+  glutes: "buttock",
+  gluteal: "buttock",
+  // chest (the breast/sternum are on the chest wall)
+  breast: "chest",
+  sternum: "chest",
+  // back (the scapular region is the surface of the back)
+  scapula: "back",
+  "shoulder blade": "back",
+  // neck
+  nape: "neck",
+  // shoulder
+  shoulders: "shoulder",
+  hips: "hip",
+};
+
+// Qualifier tokens stripped before re-matching the core term: laterality ("left
+// upper arm" — the laterality itself lands in body_side via normalizeBodySide),
+// position modifiers, and filler. "back" is NOT here — it is a region.
+const BODY_REGION_QUALIFIERS = new Set([
+  "left",
+  "right",
+  "l",
+  "r",
+  "lt",
+  "rt",
+  "upper",
+  "lower",
+  "mid",
+  "middle",
+  "central",
+  "proximal",
+  "distal",
+  "inner",
+  "outer",
+  "anterior",
+  "posterior",
+  "medial",
+  "lateral",
+  "dorsal",
+  "ventral",
+  "front",
+  "side",
+  "area",
+  "region",
+  "of",
+  "the",
+  "on",
+  "near",
+]);
+
 // Coerce a region onto the coarse vocabulary, or null when empty/unknown. Free text is
 // NOT preserved here (the free-text location detail belongs in `label`); an unknown
 // region degrades to null so filters/grouping stay on the fixed map.
+//
+// Tolerant matching (#1038): the manual form is a <select> (always canonical), but
+// the AI-extraction / import path feeds loose free text ("left upper back",
+// "belly", "R forearm"). Before this fold, every loose phrasing degraded silently
+// to null → 'other', splitting one mole's follow-up track in two. The fold is
+// CONSERVATIVE: exact match first, then the synonym table on the whole phrase,
+// then qualifier-stripping (laterality/position words) and a re-match of the core
+// — an unrecognized core still degrades to null (never guess a region).
 export function normalizeBodyRegion(raw: unknown): BodyRegion | null {
   const v = String(raw ?? "")
     .trim()
     .toLowerCase();
   if (!v) return null;
-  return (BODY_REGIONS as readonly string[]).includes(v)
-    ? (v as BodyRegion)
-    : null;
+  if ((BODY_REGIONS as readonly string[]).includes(v)) return v as BodyRegion;
+
+  const match = (phrase: string): BodyRegion | null => {
+    if ((BODY_REGIONS as readonly string[]).includes(phrase))
+      return phrase as BodyRegion;
+    return BODY_REGION_SYNONYMS[phrase] ?? null;
+  };
+
+  // Fold punctuation/hyphens to spaces so "belly-button" / "arm, left" tokenize.
+  const cleaned = v
+    .replace(/[.,;:()/]+/g, " ")
+    .replace(/-/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const whole = match(cleaned);
+  if (whole) return whole;
+
+  // Strip qualifier tokens and re-match the remaining core ("left upper arm" →
+  // "arm", "R forearm" → "forearm"). A multi-word core only matches if it is
+  // itself a region or a listed synonym — anything else stays null.
+  const core = cleaned
+    .split(" ")
+    .filter((t) => t && !BODY_REGION_QUALIFIERS.has(t))
+    .join(" ");
+  if (!core || core === cleaned) return null;
+  return match(core);
 }
 
 // Laterality of a paired region. 'midline' for a central lesion; null when unknown or
@@ -111,11 +255,34 @@ export function bodySideLabel(side: string | null | undefined): string {
   return (SIDE_LABELS as Record<string, string>)[s] ?? "";
 }
 
+// Laterality abbreviations the import path's loose text uses ("R forearm", "lt").
+const SIDE_ABBREVIATIONS: Record<string, BodySide> = {
+  l: "left",
+  lt: "left",
+  r: "right",
+  rt: "right",
+};
+
+// Tolerant like normalizeBodyRegion (#1038): exact vocabulary first, then the
+// L/R abbreviations, then a LEADING laterality word off a longer phrase ("left
+// upper arm" → left) — the same phrase the region fold strips it from, so the
+// laterality isn't lost when the AI put the whole location in one field.
+// Anything else (including ambiguous words like "center") stays null.
 export function normalizeBodySide(raw: unknown): BodySide | null {
   const v = String(raw ?? "")
     .trim()
     .toLowerCase();
-  return (BODY_SIDES as readonly string[]).includes(v) ? (v as BodySide) : null;
+  if (!v) return null;
+  if ((BODY_SIDES as readonly string[]).includes(v)) return v as BodySide;
+  if (SIDE_ABBREVIATIONS[v]) return SIDE_ABBREVIATIONS[v];
+  const first = v
+    .replace(/[.,;:()/-]+/g, " ")
+    .trim()
+    .split(/\s+/)[0];
+  if (!first || first === v) return null;
+  if ((BODY_SIDES as readonly string[]).includes(first))
+    return first as BodySide;
+  return SIDE_ABBREVIATIONS[first] ?? null;
 }
 
 // A positive size in millimetres, or null. Diameter is one of the ABCDE dimensions;

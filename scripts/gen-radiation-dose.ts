@@ -20,10 +20,13 @@
 // guess).
 //
 // NON-IONIZING modalities (MRI, ultrasound) use NO ionizing radiation and carry a dose
-// of 0 by physics, not by estimate. The `other` modality is deliberately absent — an
-// unclassified study (which could be anything from a low-dose film to a high-dose
-// nuclear/PET or fluoroscopic study) can't be responsibly estimated, so it contributes
-// nothing to the running total rather than a fabricated number.
+// of 0 by physics, not by estimate. The `other` modality is deliberately absent — a
+// genuinely unclassified study can't be responsibly estimated, so it contributes
+// nothing to the running total rather than a fabricated number. The CLASSIFIABLE
+// high-dose modalities — PET, nuclear medicine, fluoroscopy — carry their own entries
+// (#1034): before they existed on the enum they fell into that refusal bucket and the
+// cumulative total silently understated for exactly the patients getting the most
+// radiation.
 //
 // EVERYTHING HERE IS INFORMATIONAL, NEVER ALARMIST. The running total is a
 // quantified-self signal, not a verdict — there is no "you've had too much" line; dose
@@ -218,6 +221,116 @@ const ENTRIES: RadiationDoseEntry[] = [
     label: "DEXA bone density",
     source: METTLER,
   },
+  // ── PET (positron emission tomography, incl. hybrid PET/CT) (#1034) ────────
+  // A whole-body FDG PET/CT — the overwhelmingly common exam — runs ~25 mSv
+  // (tracer ~14 + the co-acquired CT), per the Mettler catalog / RadiologyInfo.
+  // One generic entry: whole-body IS the typical study, so it doubles as the
+  // modality fallback.
+  {
+    key: "pet-wholebody",
+    modality: "pet",
+    regions: [],
+    msv: 25,
+    label: "PET/CT (FDG, whole body)",
+    source: METTLER,
+  },
+  // ── Nuclear medicine (SPECT / scintigraphy) (#1034) ────────────────────────
+  // Study-dependent: the tracer sets the dose. Region-specific entries where the
+  // Mettler catalog supports them, plus a generic mid-range fallback so an
+  // unspecified nuclear study still estimates instead of contributing 0.
+  {
+    key: "nm-cardiac-perfusion",
+    modality: "nuclear-medicine",
+    regions: ["cardiac", "heart", "myocardial", "coronary"],
+    msv: 12,
+    label: "Cardiac SPECT (myocardial perfusion)",
+    source: METTLER,
+  },
+  {
+    key: "nm-bone-scan",
+    modality: "nuclear-medicine",
+    regions: ["bone", "skeletal", "whole body"],
+    msv: 6,
+    label: "Bone scan (Tc-99m)",
+    source: METTLER,
+  },
+  {
+    key: "nm-lung-vq",
+    modality: "nuclear-medicine",
+    regions: ["lung", "pulmonary", "chest"],
+    msv: 2,
+    label: "Lung ventilation/perfusion (V/Q) scan",
+    source: METTLER,
+  },
+  {
+    key: "nm-hepatobiliary",
+    modality: "nuclear-medicine",
+    regions: ["hepatobiliary", "gallbladder", "biliary", "liver"],
+    msv: 3,
+    label: "Hepatobiliary (HIDA) scan",
+    source: METTLER,
+  },
+  {
+    key: "nm-thyroid",
+    modality: "nuclear-medicine",
+    regions: ["thyroid", "neck"],
+    msv: 2,
+    label: "Thyroid scan/uptake",
+    source: METTLER,
+  },
+  {
+    key: "nm-generic",
+    modality: "nuclear-medicine",
+    regions: [],
+    msv: 5,
+    label: "Nuclear medicine study",
+    source: METTLER,
+  },
+  // ── Fluoroscopy (incl. interventional angiography) (#1034) ─────────────────
+  // Procedure-dependent: diagnostic contrast exams run mid-single-digit mSv;
+  // interventional work spans roughly 10–100 mSv. The generic fallback sits at
+  // the low end of the interventional band — still an order-of-magnitude typical
+  // figure, never a measurement.
+  {
+    key: "fluoro-coronary-angio",
+    modality: "fluoroscopy",
+    regions: ["coronary", "cardiac", "heart"],
+    msv: 7,
+    label: "Coronary angiography (diagnostic)",
+    source: METTLER,
+  },
+  {
+    key: "fluoro-upper-gi",
+    modality: "fluoroscopy",
+    regions: ["upper gi", "esophag", "swallow", "stomach"],
+    msv: 6,
+    label: "Upper GI series (barium)",
+    source: METTLER,
+  },
+  {
+    key: "fluoro-barium-enema",
+    modality: "fluoroscopy",
+    regions: ["enema", "colon", "lower gi"],
+    msv: 8,
+    label: "Barium enema (lower GI)",
+    source: METTLER,
+  },
+  {
+    key: "fluoro-vcug",
+    modality: "fluoroscopy",
+    regions: ["vcug", "cystourethro", "bladder", "urethra"],
+    msv: 1.5,
+    label: "Voiding cystourethrogram (VCUG)",
+    source: METTLER,
+  },
+  {
+    key: "fluoro-generic",
+    modality: "fluoroscopy",
+    regions: [],
+    msv: 10,
+    label: "Fluoroscopy / interventional procedure",
+    source: METTLER,
+  },
   // ── Non-ionizing modalities — dose 0 by physics, not estimate ──────────────
   {
     key: "mri",
@@ -277,7 +390,7 @@ export function buildRadiationDoseDataset(): RadiationDoseDataset {
     ],
     identity: { keys: ["key"] },
     meta: {
-      version: 1,
+      version: 2,
       naturalBackgroundMsvPerYear: 3,
       naturalBackgroundSource:
         "NCRP Report No. 160 / UNSCEAR — US average annual effective dose from natural background (~3 mSv/yr)",

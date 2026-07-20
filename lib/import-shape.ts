@@ -37,7 +37,7 @@ import {
 import {
   normalizeOpticalKind,
   parseDiopter,
-  parseAxis,
+  parseEyeRefraction,
   parseMillimeters,
 } from "./optical-prescription";
 import {
@@ -705,26 +705,33 @@ export function extractionToPersistInput(
     // A prescription with no kind signal AND no sphere on either eye is noise (a
     // belt-and-suspenders drop alongside the normalize-stage one).
     .filter((p) => p.kind?.trim() || p.od_sphere?.trim() || p.os_sphere?.trim())
-    .map((p) => ({
-      kind: normalizeOpticalKind(p.kind),
-      od_sphere: parseDiopter(p.od_sphere),
-      od_cylinder: parseDiopter(p.od_cylinder),
-      od_axis: parseAxis(p.od_axis),
-      od_add: parseDiopter(p.od_add),
-      os_sphere: parseDiopter(p.os_sphere),
-      os_cylinder: parseDiopter(p.os_cylinder),
-      os_axis: parseAxis(p.os_axis),
-      os_add: parseDiopter(p.os_add),
-      pd: parseMillimeters(p.pd),
-      base_curve: parseMillimeters(p.base_curve),
-      diameter: parseMillimeters(p.diameter),
-      brand: p.brand,
-      issued_date: p.issued_date,
-      expiry_date: p.expiry_date,
-      provider: providerFromName(p.prescriber, "individual"),
-      notes: p.notes,
-      external_id: null,
-    }));
+    .map((p) => {
+      // Per-eye triples run through the ONE shared coercion (#1036): parse off the
+      // Rx notation AND canonicalize a plus-cylinder slip onto minus-cylinder form,
+      // exactly as the manual form and the FHIR mapper do.
+      const od = parseEyeRefraction(p.od_sphere, p.od_cylinder, p.od_axis);
+      const os = parseEyeRefraction(p.os_sphere, p.os_cylinder, p.os_axis);
+      return {
+        kind: normalizeOpticalKind(p.kind),
+        od_sphere: od.sphere,
+        od_cylinder: od.cylinder,
+        od_axis: od.axis,
+        od_add: parseDiopter(p.od_add),
+        os_sphere: os.sphere,
+        os_cylinder: os.cylinder,
+        os_axis: os.axis,
+        os_add: parseDiopter(p.os_add),
+        pd: parseMillimeters(p.pd),
+        base_curve: parseMillimeters(p.base_curve),
+        diameter: parseMillimeters(p.diameter),
+        brand: p.brand,
+        issued_date: p.issued_date,
+        expiry_date: p.expiry_date,
+        provider: providerFromName(p.prescriber, "individual"),
+        notes: p.notes,
+        external_id: null,
+      };
+    });
 
   // Dental procedures (#705). Normalize the model's raw status / tooth-system onto the
   // DB CHECK sets (one shared coercion, lib/dental), so an off-vocabulary term can't
