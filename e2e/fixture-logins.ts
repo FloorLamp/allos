@@ -421,3 +421,14 @@ export const PRN_FAMILY_PROFILE = "Prn Family (e2e)";
 // limited-screening chip. Read-only in its spec, so it stays repeat-safe.
 export const E2E_LOGIN_COVERAGE = "e2e_coverage";
 export const SAFETY_COVERAGE_PROFILE = "Safety Coverage (e2e)";
+
+// A member granted a dedicated ADULT profile for the Home Assistant channel-config
+// spec. Isolated as of #1025: the spec persists a REAL (unreachable) HA webhook to
+// prove the config round-trip, and the temperature write paths now dispatch the
+// red-flag nudge immediately — so an HA config left on a shared profile turns any
+// crossing-temp log elsewhere in the suite into a failed real send that overwrites
+// the GLOBAL delivery-health marker the notify-delivery-error spec asserts on. On
+// its own profile (which no spec logs temperatures for), the persisted config can
+// never be dispatched to.
+export const E2E_LOGIN_HA_NOTIFY = "e2e_ha_notify";
+export const HA_NOTIFY_PROFILE = "HA Notify (e2e)";

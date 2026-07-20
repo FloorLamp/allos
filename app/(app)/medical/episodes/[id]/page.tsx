@@ -228,6 +228,7 @@ export default async function EpisodePage(props: {
         outcome={row.outcome}
         temperatureUnit={temperatureUnit}
         timeZone={timeZone}
+        nowIso={clockNow().toISOString()}
         formatPrefs={formatPrefs}
         canEdit={canWrite}
         linkLatestMedication
