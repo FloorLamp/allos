@@ -118,6 +118,14 @@ import {
   FLAGGED_IOP_PROFILE,
   E2E_LOGIN_CEL_IMPORT,
   CEL_IMPORT_PROFILE,
+  E2E_LOGIN_DRUG_ALLERGY,
+  DRUG_ALLERGY_PROFILE,
+  E2E_LOGIN_PRN_FAMILY,
+  PRN_FAMILY_PROFILE,
+  E2E_LOGIN_COVERAGE,
+  SAFETY_COVERAGE_PROFILE,
+  E2E_LOGIN_HA_NOTIFY,
+  HA_NOTIFY_PROFILE,
 } from "./fixture-logins";
 import { adoptTemplate, activateRoutine } from "../lib/routines";
 
@@ -3439,4 +3447,144 @@ const celImportId = fixtureProfileId(CEL_IMPORT_PROFILE);
 seedMemberLogin(E2E_LOGIN_CEL_IMPORT, celImportId, "write");
 console.log(
   `e2e: seeded legacy imported-Cel temperature fixture — profile ${celImportId} (${CEL_IMPORT_PROFILE}) (#1018)`
+);
+
+// ── Drug-allergy × medication cross-check fixture (#1029) ─────────────────────
+// A dedicated adult profile with a recorded "Penicillin — hives" allergy plus two
+// tracked active medications: amoxicillin (a same-class penicillin hit) and
+// cephalexin (the documented penicillin ↔ cephalosporin cross-reactivity hit). The
+// spec asserts the safety-strip cards on /medications and the care-tier Upcoming
+// finding, and owns its dismissal state (reset per test). Idempotent for a reused
+// server: hard-clear this profile's allergies + intake rows before re-seeding.
+// Synthetic, no PHI.
+const drugAllergyId = fixtureProfileId(DRUG_ALLERGY_PROFILE);
+db.prepare(`DELETE FROM allergies WHERE profile_id = ?`).run(drugAllergyId);
+db.prepare(
+  `DELETE FROM intake_item_logs WHERE item_id IN
+     (SELECT id FROM intake_items WHERE profile_id = ?)`
+).run(drugAllergyId);
+db.prepare(
+  `DELETE FROM intake_item_doses WHERE item_id IN
+     (SELECT id FROM intake_items WHERE profile_id = ?)`
+).run(drugAllergyId);
+db.prepare(`DELETE FROM intake_items WHERE profile_id = ?`).run(drugAllergyId);
+db.prepare(
+  `INSERT INTO allergies (profile_id, substance, reaction, severity, status)
+   VALUES (?, 'Penicillin', 'hives', 'moderate', 'active')`
+).run(drugAllergyId);
+for (const medName of ["Amoxicillin 500 mg", "Cephalexin 250 mg"]) {
+  db.prepare(
+    `INSERT INTO intake_items (profile_id, name, active, kind, as_needed)
+     VALUES (?, ?, 1, 'medication', 1)`
+  ).run(drugAllergyId, medName);
+}
+seedMemberLogin(E2E_LOGIN_DRUG_ALLERGY, drugAllergyId, "write");
+console.log(
+  `e2e: seeded drug-allergy cross-check fixture — profile ${drugAllergyId} (${DRUG_ALLERGY_PROFILE}) (#1029)`
+);
+
+// ── Cross-item PRN counter fixture (#1027) ────────────────────────────────────
+// A dedicated adult profile with the issue's two-ibuprofen setup: OTC "Ibuprofen"
+// (PRN, confirmed 6h interval / max 4 — the redose-line carrier) plus a second
+// "Ibuprofen 800 mg" item (PRN, unconfirmed fields) whose administration ONE HOUR
+// before the frozen e2e clock holds the OTC item's redose window across the family.
+// The spec asserts the family-widened "across 2 items" counter line on /medications
+// and the coaching duplication note on the dashboard rollup. Idempotent hard-clear
+// for a reused server. Synthetic, no PHI.
+const prnFamilyId = fixtureProfileId(PRN_FAMILY_PROFILE);
+db.prepare(
+  `DELETE FROM intake_item_logs WHERE item_id IN
+     (SELECT id FROM intake_items WHERE profile_id = ?)`
+).run(prnFamilyId);
+db.prepare(
+  `DELETE FROM intake_item_doses WHERE item_id IN
+     (SELECT id FROM intake_items WHERE profile_id = ?)`
+).run(prnFamilyId);
+db.prepare(`DELETE FROM intake_items WHERE profile_id = ?`).run(prnFamilyId);
+const prnOtcId = Number(
+  db
+    .prepare(
+      `INSERT INTO intake_items
+         (profile_id, name, active, kind, condition, priority, as_needed,
+          redose_notice, min_interval_hours, max_daily_count)
+       VALUES (?, 'Ibuprofen', 1, 'medication', 'daily', 'high', 1, 1, 6, 4)`
+    )
+    .run(prnFamilyId).lastInsertRowid
+);
+db.prepare(
+  `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+   VALUES (?, '200 mg', 'anytime', 'any', 0)`
+).run(prnOtcId);
+const prnRxId = Number(
+  db
+    .prepare(
+      `INSERT INTO intake_items
+         (profile_id, name, active, kind, condition, priority, as_needed)
+       VALUES (?, 'Ibuprofen 800 mg', 1, 'medication', 'daily', 'high', 1)`
+    )
+    .run(prnFamilyId).lastInsertRowid
+);
+const prnRxDoseId = Number(
+  db
+    .prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, '800 mg', 'anytime', 'any', 0)`
+    )
+    .run(prnRxId).lastInsertRowid
+);
+// The sibling administration: 1h before the frozen clock, on the profile-local day.
+db.prepare(
+  `INSERT INTO intake_item_logs (dose_id, item_id, date, given_at, status)
+   VALUES (?, ?, ?, ?, 'taken')`
+).run(
+  prnRxDoseId,
+  prnRxId,
+  today(prnFamilyId),
+  utcSqlString(new Date(clockNow().getTime() - 3_600_000))
+);
+seedMemberLogin(E2E_LOGIN_PRN_FAMILY, prnFamilyId, "write");
+console.log(
+  `e2e: seeded cross-item PRN counter fixture — profile ${prnFamilyId} (${PRN_FAMILY_PROFILE}) (#1027)`
+);
+
+// ── Safety-coverage empty-state fixture (#1032) ───────────────────────────────
+// A dedicated adult profile whose stack produces NO safety warnings: loratadine
+// (off the curated interaction set entirely) + sertraline (a name-matched SSRI
+// concept with no interacting partner), both name-only (no confirmed RxNorm code).
+// The spec asserts the honest empty state — the "checked 1 of 2, no flags" scope
+// line on both safety strips (instead of the pre-#1032 silent blank) and the quiet
+// limited-screening chip on the name-only rows. Idempotent hard-clear for a reused
+// server. Synthetic, no PHI.
+const coverageId = fixtureProfileId(SAFETY_COVERAGE_PROFILE);
+db.prepare(
+  `DELETE FROM intake_item_logs WHERE item_id IN
+     (SELECT id FROM intake_items WHERE profile_id = ?)`
+).run(coverageId);
+db.prepare(
+  `DELETE FROM intake_item_doses WHERE item_id IN
+     (SELECT id FROM intake_items WHERE profile_id = ?)`
+).run(coverageId);
+db.prepare(`DELETE FROM intake_items WHERE profile_id = ?`).run(coverageId);
+for (const medName of ["Loratadine 10 mg", "Sertraline 50 mg"]) {
+  db.prepare(
+    `INSERT INTO intake_items (profile_id, name, active, kind, as_needed)
+     VALUES (?, ?, 1, 'medication', 1)`
+  ).run(coverageId, medName);
+}
+seedMemberLogin(E2E_LOGIN_COVERAGE, coverageId, "write");
+console.log(
+  `e2e: seeded safety-coverage fixture — profile ${coverageId} (${SAFETY_COVERAGE_PROFILE}) (#1032)`
+);
+
+// ── HA notification-config fixture (post-#1025 isolation) ─────────────────────
+// A dedicated adult profile for home-assistant-notify.spec.ts. The spec persists a
+// real (unreachable) HA webhook config; since #1025 the temperature write paths
+// dispatch the red-flag nudge immediately, so that config must never live on a
+// profile other specs log temperatures for (a failed real send would overwrite the
+// GLOBAL delivery-health marker seeded above for notify-delivery-error.spec.ts).
+// No health data needed — the spec reads and writes only notification settings.
+const haNotifyId = fixtureProfileId(HA_NOTIFY_PROFILE);
+seedMemberLogin(E2E_LOGIN_HA_NOTIFY, haNotifyId, "write");
+console.log(
+  `e2e: seeded HA notification-config fixture — profile ${haNotifyId} (${HA_NOTIFY_PROFILE})`
 );

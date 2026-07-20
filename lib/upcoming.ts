@@ -60,6 +60,10 @@ export type UpcomingDomain =
   | "dietary-limit"
   | "illness-care"
   | "condition-review"
+  // An active medication meeting a recorded drug allergy (#1029) — direct,
+  // same-class, or documented cross-reactive class. Care-tier, like the
+  // interaction/PGx med-safety notes; informational, never prescriptive.
+  | "allergy-med"
   | "interaction"
   | "pgx"
   | "contrast"
@@ -109,6 +113,10 @@ const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
   // A positive infection / high-risk screen suggesting a problem-list condition to
   // review (#685) — a care-tier suggest-only finding, alongside the illness-care note.
   "condition-review": 2.6,
+  // A recorded drug allergy met by an active med (#1029) — lead the med-safety
+  // notes (an allergy on file outranks a pairwise interaction), just ahead of
+  // interaction.
+  "allergy-med": 2.9,
   interaction: 3,
   pgx: 4,
   contrast: 5,

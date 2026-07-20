@@ -68,6 +68,16 @@ learned by losing work to it:
   cwd-inherited relative path 127s).
 - Agents resumed from transcript with a good state summary recover cleanly
   every time — killing/redispatching is almost never necessary.
+- **Transient API errors (529 Overloaded, 5xx) kill subagents the same way** —
+  the failure notification names the API error, the work is NOT lost, and the
+  same resume drill applies: `SendMessage` with "this was a server-side kill,
+  not a cancellation; re-orient with git status/log, commit coherent
+  uncommitted work, continue from <last reported step>".
+- **A kill labeled "stopped by user" is NOT evidence the owner stopped it.**
+  The environment emits that label for its own reclaims/interrupts too; the
+  owner has stated they never stop agents directly. Do not treat it as a
+  cancellation or a scope signal — apply the normal resume drill. (If a stop
+  ever IS deliberate, the owner will say so in a message; absent one, resume.)
 - **A restore can time-warp your LOCAL view — GitHub's REST API is the only
   authoritative one.** After a restart, the local checkout, the local
   `origin/main` ref (the container's git proxy serves a stale mirror until
@@ -259,6 +269,46 @@ it later from the issue number is guesswork.
    seed still wrote `notify_last_error*` settings keys the reader no longer
    consulted.) Reviewers: a PR that relocates state must grep
    `e2e/seed-events.ts` and `scripts/seed.ts` for the old mechanism.
+8. **The midnight-UTC window (~23:30–00:15 UTC)** — a gate that fails only in
+   this window is almost never the PR. Before blaming the diff, read the run's
+   wall-clock timestamps. Two subclasses, both hit on the #1047 gates:
+   (a) a CLIENT component computing a relative age ("2 hrs ago") from the
+   browser's real clock, which cannot see `ALLOS_TEST_NOW` — a fixture reading
+   stamped 00:05 flips to "(Yesterday)" as real time nears midnight. The pure
+   formatters (`formatRelativeTime`, `readingClockWithRelativeAge`) already
+   take an injectable `now`; the fix is always the #1028 pattern — thread a
+   server-computed `nowIso` prop across the "use client" boundary, never a
+   client-side `new Date()`. (b) a DB-tier fixture pairing `today(profileId)`
+   with a wall clock derived from a SHIFTED real instant (`now - 20min` →
+   `getUTCHours`): just after UTC midnight the hh:mm belongs to yesterday, so
+   date+time reconstructs an instant ~24h in the FUTURE (workout-presence-gate
+   failed exactly so at 00:14 UTC). Discipline: derive a fixture row's date
+   AND time from ONE instant. Sweep hook: `grep getUTCHours lib/__db_tests__`.
+   The GENERAL form is the **morning-UTC band** (issue #1048): rows the suite
+   writes at runtime get REAL timestamps (SQL `datetime('now')` defaults),
+   while assertions run on the frozen `ALLOS_TEST_NOW` = today 12:00 — from
+   00:00 to ~11:00 UTC real time LAGS frozen time by hours, and every
+   liveness/recency window reads a just-written row as stale (afternoon runs
+   survive only because future-instant tolerance is built in; morning runs
+   had simply never happened before 2026-07-20). Triage drill for ANY gate
+   failure in that band: reproduce the failed specs on plain MAIN at the same
+   hour — an identical failure proves the band, not the PR; then rerun the
+   gate after ~12:05 UTC (real ≥ frozen, the proven regime) and merge on that
+   green. Do not patch specs to tolerate the band; the structural fix is
+   #1048's design pass.
+9. **Persisted channel config turns event-driven dispatches into marker
+   pollution** — the delivery-health marker is GLOBAL (one `notify_lifecycle`
+   row), and `notify-delivery-error.spec.ts` asserts the seeded fixture
+   marker. Any spec that PERSISTS notification-channel config (an HA webhook
+   URL, a Telegram chat id) must run on its OWN fixture profile that no other
+   spec triggers sends for — since the #1025 write-path dispatch, a config
+   leaked onto a shared profile turns any crossing-temperature log elsewhere
+   in the suite into a real failed send that overwrites the fixture marker
+   (home-assistant-notify leaked exactly this on profile 1 for months; it was
+   inert only because nothing dispatched during e2e before #1025). Reviewers:
+   a PR that adds an event-driven send path must grep the e2e specs for
+   persisted channel config on shared profiles; a spec that configures a
+   channel gets a dedicated fixture login.
 
 ## Review checklist
 
