@@ -87,7 +87,7 @@ test.describe("command palette — per-hit actions (#662)", () => {
       test.slow();
 
       // Book a scheduled appointment we own (date defaults to today → scheduled).
-      await page.goto("/encounters");
+      await page.goto("/records#visits");
       const upcoming = page.getByTestId("visits-upcoming");
       await expect(upcoming).toBeVisible();
       await upcoming.getByLabel("Reason / title").fill(APPT_MARKER);
@@ -110,7 +110,7 @@ test.describe("command palette — per-hit actions (#662)", () => {
 
       // It settled to completed: back on the Visits page it no longer carries the
       // scheduled-only Cancel control in the Upcoming feed.
-      await page.goto("/encounters");
+      await page.goto("/records#visits");
       const scheduledRow = page
         .getByTestId("visits-upcoming")
         .getByTestId("appointment-row")

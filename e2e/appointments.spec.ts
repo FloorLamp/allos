@@ -16,7 +16,7 @@ test.describe("Visits — Upcoming (appointments) (#288)", () => {
   }) => {
     test.slow();
     await page.goto("/appointments");
-    await expect(page).toHaveURL(/\/encounters$/);
+    await expect(page).toHaveURL(/\/records#visits$/);
     await expect(page.getByRole("heading", { name: "Visits" })).toBeVisible();
   });
 
@@ -26,7 +26,7 @@ test.describe("Visits — Upcoming (appointments) (#288)", () => {
     // Local `next dev` compiles the route on first hit.
     test.slow();
 
-    await page.goto("/encounters");
+    await page.goto("/records#visits");
     await expect(page.getByRole("heading", { name: "Visits" })).toBeVisible();
 
     // The Upcoming section carries the appointments surface.
@@ -46,7 +46,7 @@ test.describe("Visits — Upcoming (appointments) (#288)", () => {
   }) => {
     test.slow();
 
-    await page.goto("/encounters");
+    await page.goto("/records#visits");
     const upcoming = page.getByTestId("visits-upcoming");
 
     // The dedicated future appointment while it's still scheduled (only scheduled
@@ -94,7 +94,7 @@ test.describe("Visits — single Add visit entry (#566)", () => {
   }) => {
     test.slow();
 
-    await page.goto("/encounters");
+    await page.goto("/records#visits");
     const add = page.getByTestId("visits-add");
     await expect(add).toBeVisible();
 
@@ -120,7 +120,7 @@ test.describe("Visits — single Add visit entry (#566)", () => {
   }) => {
     test.slow();
 
-    await page.goto("/encounters");
+    await page.goto("/records#visits");
     const add = page.getByTestId("visits-add");
     await expect(add).toBeVisible();
 

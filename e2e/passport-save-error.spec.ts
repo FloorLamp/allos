@@ -10,7 +10,7 @@ import { test, expect } from "@playwright/test";
 test("submitting the immunization form with a blank vaccine shows an inline error, not a false 'saved' toast (#474)", async ({
   page,
 }) => {
-  await page.goto("/immunizations");
+  await page.goto("/records#immunizations");
 
   const form = page
     .locator("form")

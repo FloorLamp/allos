@@ -12,7 +12,7 @@ test.describe("health risk factors (issue #517)", () => {
     // Local `next dev` compiles the route on first hit.
     test.slow();
 
-    await page.goto("/medical/background");
+    await page.goto("/records#background");
 
     const card = page.getByTestId("risk-factors");
     await expect(card).toBeVisible();
@@ -35,13 +35,13 @@ test.describe("health risk factors (issue #517)", () => {
     // Profile 1's seeded influenza (last season's flu, ~13mo old) reads `due`; the
     // healthcare-worker factor elevates it with a calm reason line. Done here,
     // inside the single on→off window, so no other spec sees the mutated factor.
-    await page.goto("/immunizations");
+    await page.goto("/records#immunizations");
     const flu = page.getByTestId("immunization-prioritized-influenza");
     await expect(flu).toBeVisible();
     await expect(flu).toContainText("Healthcare worker");
 
     // Reset to off, leaving the shared fixture as we found it.
-    await page.goto("/medical/background");
+    await page.goto("/records#background");
     await page.getByTestId("risk-healthcare_worker").uncheck();
     await expect(page.getByLabel("Saved").first()).toBeVisible();
     await page.reload();

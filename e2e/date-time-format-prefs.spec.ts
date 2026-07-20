@@ -55,7 +55,7 @@ test("flipping the date/time prefs re-renders a record date and a journal timest
 }) => {
   try {
     // Baseline: the status-quo defaults (mdy long-date; 24h clock).
-    await page.goto("/conditions");
+    await page.goto("/records#conditions");
     await expect(page.getByText("Mar 1, 2019").first()).toBeVisible();
 
     await page.goto("/training");
@@ -100,7 +100,7 @@ test("flipping the date/time prefs re-renders a record date and a journal timest
     await expect(page.getByTestId("time-format-select")).toHaveValue("12h");
 
     // The record date now renders ISO on /conditions.
-    await page.goto("/conditions");
+    await page.goto("/records#conditions");
     await expect(page.getByText("2019-03-01").first()).toBeVisible();
 
     // The journal timestamp now renders a 12-hour clock on Training → Log.

@@ -107,10 +107,10 @@ test.describe("timeline linked context — visit → document lineage (#662)", (
     const colonoscopy = refs.getByRole("link", {
       name: "Procedure: E2E Colonoscopy",
     });
-    await expect(colonoscopy).toHaveAttribute("href", "/procedures");
+    await expect(colonoscopy).toHaveAttribute("href", "/records#procedures");
     await expect(
       refs.getByRole("link", { name: "Care plan: E2E follow-up in 6 months" })
-    ).toHaveAttribute("href", "/care-plan");
+    ).toHaveAttribute("href", "/records#care-plan");
     await expect(
       refs.getByRole("link", { name: "Medication: E2E Lisinopril" })
     ).toHaveAttribute("href", "/medications");

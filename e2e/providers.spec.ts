@@ -59,7 +59,7 @@ test.describe("Providers registry", () => {
   test("index lists providers, searches, and links to a detail page", async ({
     page,
   }) => {
-    await page.goto("/providers");
+    await page.goto("/records#providers");
     // ProvidersIndex is a client component (search + type filter). Clicking a
     // row's <Link> pre-hydration swallows the client navigation (the URL never
     // changes) — handled below by followLink, which retries the click until the

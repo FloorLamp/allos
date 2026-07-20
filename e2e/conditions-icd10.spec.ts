@@ -7,7 +7,7 @@ import { test, expect } from "@playwright/test";
 test("manual condition entry suggests an ICD-10-CM code the user can confirm (#155)", async ({
   page,
 }) => {
-  await page.goto("/conditions");
+  await page.goto("/records#conditions");
 
   const nameField = page.getByLabel("Condition", { exact: true });
   await expect(nameField).toBeVisible();

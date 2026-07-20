@@ -14,7 +14,7 @@ test.describe("Care plan (#391)", () => {
     // Local `next dev` compiles the route on first hit.
     test.slow();
 
-    await page.goto("/care-plan");
+    await page.goto("/records#care-plan");
     await expect(
       page.getByRole("heading", { name: "Care plan" })
     ).toBeVisible();
@@ -37,7 +37,7 @@ test.describe("Care plan (#391)", () => {
     // page's completion path — the list has no separate mark-done button).
     // Idempotent: re-completing an already-completed row is a harmless no-op, so a
     // CI retry against the reused DB still passes.
-    await page.goto("/care-plan");
+    await page.goto("/records#care-plan");
     const row = page.locator("tr").filter({ hasText: "E2E orthotics fitting" });
     await expect(row).toBeVisible();
     await row.getByRole("button", { name: "Edit" }).click();
@@ -69,7 +69,7 @@ test.describe("Care plan (#391)", () => {
   }) => {
     test.slow();
 
-    await page.goto("/care-goals");
+    await page.goto("/records#health-goals");
     await expect(
       page.getByRole("heading", { name: "Health goals" })
     ).toBeVisible();

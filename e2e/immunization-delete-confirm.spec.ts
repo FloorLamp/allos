@@ -11,7 +11,7 @@ test.describe("Immunization delete confirm (#534)", () => {
     page,
   }) => {
     test.slow();
-    await page.goto("/immunizations");
+    await page.goto("/records#immunizations");
     await expect(
       page.getByRole("heading", { name: "Immunizations" })
     ).toBeVisible();
