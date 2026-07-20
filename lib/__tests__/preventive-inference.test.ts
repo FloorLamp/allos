@@ -113,6 +113,45 @@ describe("matchRuleKeys", () => {
     ).toEqual([]);
   });
 
+  it("a coded encounter with a generic title satisfies the visit rule by code (#1035)", () => {
+    // Epic's "Office Visit" carrying CPT 99396 — the exact case that failed while
+    // the encounter feed hardcoded `code: null`: no name synonym matches, but the
+    // code proves it's the annual physical.
+    expect(
+      matchRuleKeys({ code: "99396", name: "Office Visit" }, ["visit"])
+    ).toEqual(["adult_physical"]);
+    // CDT-coded dental encounter and CPT-coded eye visit, same shape.
+    expect(
+      matchRuleKeys({ code: "D0120", name: "Dental encounter" }, ["visit"])
+    ).toEqual(["dental_cleaning"]);
+    expect(
+      matchRuleKeys({ code: "92014", name: "Eye clinic visit" }, ["visit"])
+    ).toEqual(["vision_exam"]);
+    // A code-less generic encounter still matches nothing (unchanged conservatism)…
+    expect(
+      matchRuleKeys({ code: null, name: "Office Visit" }, ["visit"])
+    ).toEqual([]);
+    // …and a code-less encounter with a matching name still matches by name.
+    expect(
+      matchRuleKeys({ code: null, name: "Annual physical exam" }, ["visit"])
+    ).toEqual(["adult_physical"]);
+  });
+
+  it("a completed dental procedure satisfies dental_cleaning by CDT code or name (#1037)", () => {
+    // The dental record's cdt_code hits the exact-code path with a generic name…
+    expect(matchRuleKeys({ code: "D1110", name: "Prophy" }, ["visit"])).toEqual(
+      ["dental_cleaning"]
+    );
+    // …a code-less "teeth cleaning" hits the whole-word synonym path…
+    expect(
+      matchRuleKeys({ code: null, name: "Teeth cleaning" }, ["visit"])
+    ).toEqual(["dental_cleaning"]);
+    // …and an unrelated dental row (a filling) matches nothing.
+    expect(
+      matchRuleKeys({ code: "D2392", name: "Composite filling" }, ["visit"])
+    ).toEqual([]);
+  });
+
   it("matches specialty 'see the right kind of doctor' visits by specialty word (issue #515)", () => {
     // A dermatology visit's evidence — the provider/facility name folds into the
     // matched text for encounters — satisfies skin_check via the specialty word.

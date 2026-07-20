@@ -395,6 +395,16 @@ export const WEIGHT_QUICKADD_PROFILE = "Weight Quickadd (e2e)";
 export const E2E_LOGIN_CEL_IMPORT = "e2e_cel_import";
 export const CEL_IMPORT_PROFILE = "Cel Import (e2e)";
 
+// A member granted a dedicated ADULT profile proving the CODES → preventive-
+// satisfaction loop (#1035/#1037) in the browser: its ONLY visit evidence is a
+// coded generic encounter ("Office Visit" + CPT 99396 → adult_physical) and a
+// completed CDT-coded dental row ("Prophy" + D1110 → dental_cleaning) — no text
+// field matches a name synonym, so only the code path can satisfy them. Dedicated
+// on purpose (#868): preventive-upcoming.spec.ts relies on profile 1's
+// dental_cleaning item staying DUE (its mark-done fixture), which this profile's
+// rows would extinguish if seeded there. Read-only in its spec — repeat-safe.
+export const E2E_LOGIN_PREVCODE = "e2e_prevcode";
+export const PREVENTIVE_CODES_PROFILE = "Preventive Codes (e2e)";
 // A member granted a dedicated ADULT profile for the drug-allergy × medication
 // cross-check spec (#1029): a recorded "Penicillin — hives" allergy plus a tracked
 // amoxicillin (same-class hit) and cephalexin (documented cross-reactivity hit).

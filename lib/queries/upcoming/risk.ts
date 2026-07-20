@@ -26,9 +26,16 @@ export const getRiskFactors = cache(function getRiskFactors(
   profileId: number
 ): Set<RiskFactor> {
   return deriveRiskFactors({
-    familyConditions: getFamilyHistory(profileId).map((f) => f.condition),
+    // Coded refs, not bare labels (#1030): both tables store code/code_system,
+    // so the recognizers run code-first with the stem fallback — a coded-terse
+    // row ("DM2" as E11.9) tightens cadence like its verbose twin.
+    familyConditions: getFamilyHistory(profileId).map((f) => ({
+      name: f.condition,
+      code: f.code,
+      codeSystem: f.code_system,
+    })),
     activeConditions: getConditions(profileId, { status: "active" }).map(
-      (c) => c.name
+      (c) => ({ name: c.name, code: c.code, codeSystem: c.code_system })
     ),
     attributes: getRiskAttributes(profileId),
     // Resolved smoking status (#706): the structured record wins, else the imported

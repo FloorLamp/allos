@@ -373,6 +373,8 @@ function clinicalNoteToEncounter(
     date,
     end_date: null,
     type: n.title ?? "Clinical Note",
+    code: null,
+    code_system: null,
     class_code: null,
     reason: null,
     diagnoses: [],

@@ -196,6 +196,8 @@ describe("selectReasonTarget / encompassingEncounterInfo pure logic (#267)", () 
     date,
     end_date: null,
     type: null,
+    code: null,
+    code_system: null,
     class_code: null,
     reason: null,
     diagnoses: [],

@@ -26,6 +26,7 @@
 // your clinician", never "stop taking X".
 
 import type { Sex } from "./types";
+import type { ConditionInput } from "./condition-codes";
 import { conditionsContraindicatingNutrient } from "./condition-nutrient";
 import { DRI_NUTRIENTS } from "./datasets/dri";
 
@@ -330,7 +331,7 @@ export function ulWarningTitle(w: UlWarning): string {
 // prescriptive.
 export function ulConditionCaveat(
   nutrientKey: string,
-  conditions: readonly string[]
+  conditions: readonly ConditionInput[]
 ): string | null {
   const hits = conditionsContraindicatingNutrient(nutrientKey, conditions);
   if (hits.length === 0) return null;

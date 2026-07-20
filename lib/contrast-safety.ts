@@ -39,6 +39,11 @@ import {
   type ContrastAllergyGate,
   type ContrastRenalGate,
 } from "./datasets/contrast-safety";
+import {
+  conditionCodeMatches,
+  conditionInputName,
+  type ConditionInput,
+} from "./condition-codes";
 import { conditionsToRiskFactors } from "./risk-stratification";
 
 export type ContrastClass = "iodinated" | "gadolinium";
@@ -202,10 +207,14 @@ export function parsePlannedStudy(
 
 // The first active condition (original label) that maps to CKD via the shared
 // risk-stratification recognizer, or null. Reuses conditionsToRiskFactors per
-// condition so the CKD stem table stays in one place (AGENTS.md — no bespoke parse).
-function ckdCondition(conditions: string[]): string | null {
+// condition so the CKD code table + stem table stay in one place (AGENTS.md — no
+// bespoke parse); a coded-but-tersely-named row ("CKD" as N18.3) now counts too
+// (#1030 — the recognizer is code-first with the stem fallback).
+function ckdCondition(conditions: readonly ConditionInput[]): string | null {
   for (const c of conditions) {
-    if (conditionsToRiskFactors([c]).has("chronic-kidney-disease")) return c;
+    if (conditionsToRiskFactors([c]).has("chronic-kidney-disease")) {
+      return conditionInputName(c);
+    }
   }
   return null;
 }
@@ -213,19 +222,27 @@ function ckdCondition(conditions: string[]): string | null {
 // The first active condition that indicates ADVANCED CKD (ESRD / dialysis / stage 4–5
 // / eGFR < 30) — the gadolinium/NSF gate. This narrow "advanced" recognition is the
 // one contrast-specific extension (risk-stratification recognizes CKD but not its
-// stage). Matched over normalized text so "CKD stage 5" / "ESRD on dialysis" hit.
-function advancedCkdCondition(conditions: string[]): string | null {
+// stage). Matched over normalized text so "CKD stage 5" / "ESRD on dialysis" hit —
+// or by the stored stage code (N18.4/N18.5/N18.6/ESRD → the curated
+// "advanced-kidney-disease" concept, #1030), so a coded row with a terse label
+// ("CKD" as N18.5) reaches the NSF note too.
+function advancedCkdCondition(
+  conditions: readonly ConditionInput[]
+): string | null {
   for (const c of conditions) {
-    const n = normalize(c);
     // Must first be a recognized CKD/renal condition, then carry an advanced marker.
     if (!conditionsToRiskFactors([c]).has("chronic-kidney-disease")) continue;
+    if (conditionCodeMatches(c, "advanced-kidney-disease")) {
+      return conditionInputName(c);
+    }
+    const n = normalize(conditionInputName(c));
     if (
       /\besrd\b/.test(n) ||
       /\bdialysis\b/.test(n) ||
       /end stage/.test(n) ||
       /stage (?:4|5|iv|v|g4|g5)\b/.test(n)
     )
-      return c;
+      return conditionInputName(c);
   }
   return null;
 }
@@ -265,7 +282,7 @@ function allergenMatchesKeyword(
 // hit. Result is deterministically ordered (source, id, gate, class).
 export function crossCheckContrast(
   studies: PlannedContrastStudy[],
-  ctx: { allergens: string[]; conditions: string[] }
+  ctx: { allergens: string[]; conditions: readonly ConditionInput[] }
 ): ContrastHit[] {
   const allergensNorm = ctx.allergens.map((a) => ({
     original: a,

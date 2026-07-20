@@ -123,6 +123,47 @@ describe("cleanMedicationName — grouping name", () => {
   it("never strips the name down to nothing", () => {
     expect(cleanMedicationName("500 mg")).toBe("500 mg");
   });
+
+  // Issue #1026 — the parenthesized strength/concentration rendering
+  // (MyChart/e-prescribing) that NAME_STRENGTH_RE's bare-digit anchor never saw.
+  it("strips a parenthesized strength/concentration (#1026)", () => {
+    expect(cleanMedicationName("albuterol (2.5 MG/3ML)")).toBe("albuterol");
+    expect(cleanMedicationName("Insulin glargine (100 units/mL)")).toBe(
+      "Insulin glargine"
+    );
+    expect(cleanMedicationName("Hydrocortisone (2.5%) cream")).toBe(
+      "Hydrocortisone"
+    );
+  });
+
+  it("strips a MID-name parenthesized strength before a form word (#1026)", () => {
+    expect(cleanMedicationName("amoxicillin (400 mg/5 mL) suspension")).toBe(
+      "amoxicillin"
+    );
+    expect(
+      cleanMedicationName("albuterol (2.5 mg/3 mL) nebulizer solution")
+    ).toBe("albuterol");
+  });
+
+  it("an ingredient/brand parenthetical is NEVER stripped (#1026)", () => {
+    // No digit+unit pair inside the parens — this is identity, not strength.
+    expect(cleanMedicationName("Tylenol (acetaminophen)")).toBe(
+      "Tylenol (acetaminophen)"
+    );
+    expect(cleanMedicationName("Tylenol (acetaminophen) 500 mg")).toBe(
+      "Tylenol (acetaminophen)"
+    );
+  });
+
+  it("a parenthesized-strength-only name never strips to nothing (#1026)", () => {
+    expect(cleanMedicationName("(500 mg)")).toBe("(500 mg)");
+  });
+
+  it("the unparenthesized trailing strength keeps stripping as before", () => {
+    expect(
+      cleanMedicationName("Albuterol 2.5 mg/3 mL nebulizer solution")
+    ).toBe("Albuterol");
+  });
 });
 
 describe("parsePrescription — full record → structured med", () => {
@@ -149,6 +190,18 @@ describe("parsePrescription — full record → structured med", () => {
     expect(p.name).toBe("Hydrocortisone");
     expect(p.strength).toBe("2.5%");
     expect(p.timesPerDay).toBe(2);
+  });
+
+  it("recovers a parenthesized concentration as the strength (#1026)", () => {
+    const p = parsePrescription({
+      name: "albuterol (2.5 MG/3ML)",
+      value: null,
+      unit: null,
+      notes: null,
+    });
+    expect(p.name).toBe("albuterol");
+    // The WHOLE concentration lands in the strength field, denominator included.
+    expect(p.strength).toBe("2.5 MG/3ML");
   });
 
   it("takes strength from value+unit when present", () => {

@@ -94,8 +94,10 @@ export function getDietaryLimitWarnings(
   todayStr: string = today(profileId)
 ): UlWarningWithCaveat[] {
   const { items, ageYears, sex } = stackDriContext(profileId, todayStr);
+  // Coded refs (#1030): the caveat's condition matching is code-first with the
+  // name fallback, so a coded-terse CKD row still annotates the magnesium UL.
   const conditions = getConditions(profileId, { status: "active" }).map(
-    (c) => c.name
+    (c) => ({ name: c.name, code: c.code, codeSystem: c.code_system })
   );
   return stackUlWarnings(items, ageYears, sex).map((w) => ({
     ...w,

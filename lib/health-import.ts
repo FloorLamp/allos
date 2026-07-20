@@ -132,6 +132,12 @@ export interface ImportedEncounter {
   date: string; // start / effectiveTime low, YYYY-MM-DD
   end_date: string | null; // effectiveTime high, YYYY-MM-DD
   type: string | null; // encounter type display, e.g. "Office Visit"
+  // The encounter TYPE code + labeled system (CPT/CDT/SNOMED, #1035) — the coding
+  // the display `type` was resolved from. Feeds the preventive concept map's
+  // visit-rule code sets (a 99396 "Office Visit" IS the annual physical). Distinct
+  // from `class_code` (the AMB/IMP/EMER class).
+  code: string | null;
+  code_system: string | null;
   class_code: string | null; // HL7 ActEncounterCode class, e.g. "AMB"
   reason: string | null; // chief complaint / reason for visit text
   diagnoses: string[]; // visit diagnosis display names (may be empty)

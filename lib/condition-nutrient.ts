@@ -11,6 +11,12 @@
 // only well-established, citable condition→nutrient rules — the map is the sourcing
 // standard, not a second hand-rolled list.
 
+import {
+  conditionCodeConcepts,
+  conditionInputName,
+  type ConditionConcept,
+  type ConditionInput,
+} from "./condition-codes";
 import { NUTRIENT_FOOD_ENTRIES } from "./datasets/nutrient-food-map";
 
 const ENTRIES = NUTRIENT_FOOD_ENTRIES;
@@ -56,19 +62,54 @@ export const CONDITION_NUTRIENT_RULES: ConditionNutrientRule[] =
       }))
   );
 
+// The coded half of the condition→nutrient matching (#1030): which curated code
+// CONCEPTS (lib/condition-codes) satisfy which dataset `match` term. Only the
+// drop-severity terms with a clean code family get an entry (exclusion
+// discipline); a term absent here matches by name substring exactly as before.
+const MATCH_TERM_CONCEPTS: Record<string, ConditionConcept[]> = {
+  "chronic kidney": ["chronic-kidney-disease"],
+  hyperkalemia: ["hyperkalemia"],
+  hypercalcemia: ["hypercalcemia"],
+  wilson: ["wilson-disease"],
+};
+
+// Whether ONE condition satisfies a dataset contraindication `match` term —
+// its stored CODE first (the concept mapping above), else the lowercased name
+// substring the map has always used. THE one matcher for this question, shared
+// by the UL caveat (conditionsContraindicatingNutrient), the supplement belt
+// (conditionConflict in lib/supplement-safety), and the food engine
+// (lib/food-suggest) — so the three surfaces can't disagree about which
+// condition contraindicates a nutrient (#657 / "one question, one computation").
+export function conditionMatchesTerm(
+  term: string,
+  condition: ConditionInput
+): boolean {
+  const needle = term.trim().toLowerCase();
+  if (!needle) return false;
+  const concepts = conditionCodeConcepts(condition);
+  if (
+    concepts.size > 0 &&
+    (MATCH_TERM_CONCEPTS[needle] ?? []).some((c) => concepts.has(c))
+  ) {
+    return true;
+  }
+  return conditionInputName(condition).toLowerCase().includes(needle);
+}
+
 // Active conditions that trigger a drop rule for a given nutrient KEY — the read the
 // UL caveat uses (dri keys nutrients the same way the map does). Each hit carries the
-// matched condition (display form) and the curated caution.
+// matched condition (display form) and the curated caution. Accepts bare names or
+// coded refs (#1030) — a coded-terse row ("CKD stage 3" as N18.30) now triggers.
 export function conditionsContraindicatingNutrient(
   nutrientKey: string,
-  conditions: readonly string[]
+  conditions: readonly ConditionInput[]
 ): { condition: string; caution: string }[] {
   const out: { condition: string; caution: string }[] = [];
   for (const rule of CONDITION_NUTRIENT_RULES) {
     if (rule.nutrientKey !== nutrientKey) continue;
     for (const c of conditions) {
-      if ((c ?? "").toLowerCase().includes(rule.match)) {
-        out.push({ condition: c, caution: rule.caution });
+      if (conditionMatchesTerm(rule.match, c)) {
+        out.push({ condition: conditionInputName(c), caution: rule.caution });
       }
     }
   }

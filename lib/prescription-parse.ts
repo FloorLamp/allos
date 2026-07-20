@@ -46,6 +46,29 @@ const NAME_STRENGTH_RE =
 const NAME_FORM_TAIL_RE =
   /\s+(tablets?|tabs?|capsules?|caps?|pills?|softgels?|lozenges?|patches?|sprays?|drops?|solution|suspension|injection|cream|ointment|gel|elixir|syrup)\b.*$/i;
 
+// A PARENTHESIZED strength/concentration segment in a drug name — the common
+// MyChart/e-prescribing rendering: "albuterol (2.5 MG/3ML)", "amoxicillin
+// (400 mg/5 mL) suspension" (issue #1026). NAME_STRENGTH_RE requires a bare
+// digit after whitespace, so it never saw these. A parenthetical is stripped
+// ONLY when its content is strength-shaped — a number + dose unit, optionally
+// "/denominator" segments for a concentration or combination strength — so an
+// ingredient/brand parenthetical ("Tylenol (acetaminophen)") carries no
+// digit+unit pair and always survives (pinned by test). Position-independent:
+// the segment may sit mid-name before a form word.
+const STRENGTH_CONTENT = String.raw`\d+(?:\.\d+)?\s*(?:mg|mcg|µg|ug|g|ml|iu|units?|meq|%)(?:\s*/\s*\d*(?:\.\d+)?\s*(?:mg|mcg|µg|ug|g|ml|l|iu|units?|meq|%)?)*`;
+// The cleaning form truncates from the strength parenthetical TO THE END —
+// mirroring NAME_STRENGTH_RE's `.*$` — so the form/packaging words that follow
+// ("nebulizer solution", "suspension") go with it.
+const PAREN_STRENGTH_TAIL_RE = new RegExp(
+  String.raw`\(\s*${STRENGTH_CONTENT}\s*\).*$`,
+  "i"
+);
+// Capturing twin for strengthFromName (recovers the bare content, parens off).
+const PAREN_STRENGTH_CAPTURE_RE = new RegExp(
+  String.raw`\(\s*(${STRENGTH_CONTENT})\s*\)`,
+  "i"
+);
+
 // Does a string carry any scheduling signal — a frequency token, an "every N
 // hours" interval, or a PRN marker? A dose-shaped `value` that ALSO carries one
 // of these (e.g. a CCD/FHIR sig "Take 1 tablet by mouth daily") is DIRECTIONS,
@@ -109,7 +132,10 @@ function cleanAmount(amount: string | null): string | null {
 // manually-entered one (so "Lisinopril 10 mg" and "Lisinopril" are one med).
 export function cleanMedicationName(raw: string): string {
   const name = (raw ?? "").trim();
+  // Parenthesized strengths first (position-independent): the parenthetical and
+  // everything after it go — "amoxicillin (400 mg/5 mL) suspension" → "amoxicillin".
   const stripped = name
+    .replace(PAREN_STRENGTH_TAIL_RE, " ")
     .replace(NAME_STRENGTH_RE, "")
     .replace(NAME_FORM_TAIL_RE, "")
     .replace(/\s{2,}/g, " ")
@@ -124,6 +150,12 @@ export function cleanMedicationName(raw: string): string {
 // letter-unit group (see the comment there). Exported for the records bridge's
 // #1027 different-strength comparison (lib/medication-record-match.ts).
 export function strengthFromName(raw: string): string | null {
+  // A parenthesized strength/concentration wins and is recovered WHOLE
+  // ("albuterol (2.5 MG/3ML)" → "2.5 MG/3ML"), denominator included — the same
+  // shape cleanMedicationName strips (#1026). The bare match below would
+  // otherwise stop at the numerator ("2.5 MG").
+  const paren = raw.match(PAREN_STRENGTH_CAPTURE_RE);
+  if (paren) return paren[1].replace(/\s{2,}/g, " ").trim();
   const m = raw.match(
     /\b\d+(?:\.\d+)?\s*(?:(?:mg|mcg|µg|ug|g|ml|iu|units?|meq)\b|%)/i
   );

@@ -151,6 +151,11 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "migration 071 (#703) ADD COLUMN guard: a schema-shape PRAGMA (does dose_msv already exist?) so the non-version-gated migrate() replay no-ops — reads column metadata, never rows",
   },
   {
+    file: "lib/migrations/versions/076-encounter-type-code.ts",
+    includes: "PRAGMA table_info(encounters)",
+    why: "migration 075 (#1035) ADD COLUMN guard: a schema-shape PRAGMA (do code/code_system already exist?) so the non-version-gated migrate() replay no-ops — reads column metadata, never rows (mirrors migration 071's guard)",
+  },
+  {
     file: "lib/migrations/versions/074-imported-temperature-degf.ts",
     includes:
       "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'medical_records'",

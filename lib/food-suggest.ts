@@ -43,6 +43,8 @@ import {
   REDUCE_FOOD_ENTRIES,
 } from "./datasets/nutrient-food-map";
 import { allergenConflict, type SafetyMedication } from "./supplement-safety";
+import { conditionMatchesTerm } from "./condition-nutrient";
+import type { ConditionInput } from "./condition-codes";
 import { matchFoodInteractions } from "./food-drug-interactions";
 import { applyPreferenceFilter, isExcludedGroup } from "./dietary-preferences";
 
@@ -98,8 +100,9 @@ export interface FoodSuggestInput {
   allergens: string[];
   // The active stack's medications, for the food–drug inverse screen.
   medications: SafetyMedication[];
-  // Active condition names (getConditions(..., { status: "active" }).map(c => c.name)).
-  conditions: string[];
+  // Active conditions (the shared safety-context gather) — bare names or coded
+  // refs, so the contraindication screen is code-first (#1030).
+  conditions: ConditionInput[];
   // Active situation names (getActiveSituations(...)).
   situations: string[];
   // Excluded food-group slugs (issue #975 — dietary preferences). A SOFTER layer than the
@@ -159,16 +162,20 @@ export interface FoodSuggestion {
   safetyNotes: FoodSafetyNote[];
 }
 
-// Whether any active condition or situation contains the (lowercased) match term.
+// Whether any active condition or situation satisfies the match term. Conditions
+// go through the SHARED per-term matcher (lib/condition-nutrient — stored code
+// first, name substring fallback, #1030); situations are plain labels and keep
+// the substring test.
 function conditionOrSituationHas(
   term: string,
-  conditions: string[],
+  conditions: ConditionInput[],
   situations: string[]
 ): boolean {
   const needle = term.trim().toLowerCase();
   if (!needle) return false;
-  return [...conditions, ...situations].some((c) =>
-    (c ?? "").toLowerCase().includes(needle)
+  return (
+    conditions.some((c) => conditionMatchesTerm(needle, c)) ||
+    situations.some((s) => (s ?? "").toLowerCase().includes(needle))
   );
 }
 

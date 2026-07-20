@@ -358,6 +358,10 @@ export interface Encounter {
   date: string;
   end_date: string | null;
   type: string | null;
+  // The encounter TYPE code + labeled system (CPT/CDT/SNOMED) captured on import
+  // (#1035) — feeds the preventive visit-rule code matching. NULL on manual rows.
+  code: string | null;
+  code_system: string | null;
   class_code: string | null;
   reason: string | null;
   diagnoses: string | null;
