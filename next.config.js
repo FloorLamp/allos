@@ -178,6 +178,31 @@ const nextConfig = {
         destination: "/records#background",
         permanent: true,
       },
+      // The four SPECIALTY index routes folded into /records (#1042 final tail):
+      // Vision/Dental/Skin/Mental health. The mental-health route's anchor differs
+      // from its path (/medical/instruments → #mental-health). No detail routes lived
+      // under any of these, so an exact-path source is complete; query strings ride
+      // through automatically (the mental-health crisis link stays /crisis-resources).
+      {
+        source: "/vision",
+        destination: "/records#vision",
+        permanent: true,
+      },
+      {
+        source: "/dental",
+        destination: "/records#dental",
+        permanent: true,
+      },
+      {
+        source: "/skin",
+        destination: "/records#skin",
+        permanent: true,
+      },
+      {
+        source: "/medical/instruments",
+        destination: "/records#mental-health",
+        permanent: true,
+      },
     ];
   },
   // Native / heavy server-only packages kept OUT of the server bundle. better-sqlite3

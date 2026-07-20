@@ -396,7 +396,7 @@ function dentalSafetyItems(profileId: number): UpcomingItem[] {
     domain: "dental-safety" as const,
     title: dentalSafetyTitle(hit),
     detail: dentalSafetyDetail(hit),
-    href: "/dental" as AppRoute,
+    href: "/records#dental" as AppRoute,
     dueDate: null,
     band: "today" as const,
     dueText: "Review",

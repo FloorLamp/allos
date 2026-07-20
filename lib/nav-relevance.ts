@@ -13,16 +13,20 @@
 import { lifeStage } from "./life-stage";
 import type { ReproductiveStatus, Sex } from "./types";
 
-// The server-resolved relevance bitset. One key per gated nav entry; a leaf in
-// components/Nav.tsx opts in via `relevanceKey`, and isNavLeafVisible hides it
-// when its bit is false. Keys exist only for entries that are actually gated —
-// the four specialty Medical entries were each evaluated for phase-1 gating
-// (#1042): Vision and Dental are gated (Data → Import creates their rows, so a
-// no-data profile still has an always-visible creation path); Skin and Mental
-// health are NOT gated yet — their pages are the ONLY place their data can be
-// created (the skin lesion form / the in-app instrument flow), so hiding them
-// would strand a new tracker. Their gating activates in phase 6, when the
-// Health-record footer ("Track a new area") becomes the never-gated entry point.
+// The server-resolved relevance bitset. Originally one key per gated nav entry
+// (a leaf in components/Nav.tsx opts in via `relevanceKey`, and isNavLeafVisible
+// hides it when its bit is false); since the #1042 final tail the Vision/Dental
+// bits ALSO gate the folded /records specialty SECTIONS — the same computation
+// drives both, so a hidden nav gate can never disagree with a visible section.
+//   - `cycle`  — still a nav gate (the Cycle leaf).
+//   - `vision`/`dental` — no longer nav leaves (folded into Health record); these
+//     bits now gate the #vision / #dental sections of /records on data presence.
+//     Their rows also arrive via Data → Import (an always-visible creation path),
+//     so hiding an empty section never strands creation.
+// Skin and Mental health carry NO bit: their in-page forms (the skin lesion form /
+// the in-app instrument flow) are the ONLY creation path, so their /records
+// sections render UNCONDITIONALLY (their former nav leaves were likewise ungated) —
+// hiding them would strand a new tracker.
 export interface NavRelevance {
   cycle: boolean;
   vision: boolean;

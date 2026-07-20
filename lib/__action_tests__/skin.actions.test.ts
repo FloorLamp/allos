@@ -65,7 +65,7 @@ describe("addSkinLesion", () => {
     expect(l.source).toBeNull();
     expect(l.document_id).toBeNull();
     expect(l.external_id).toBeNull();
-    expect(revalidate).toHaveBeenCalledWith("/skin");
+    expect(revalidate).toHaveBeenCalledWith("/records");
   });
 
   it("rejects a lesion with neither a label nor a region", async () => {

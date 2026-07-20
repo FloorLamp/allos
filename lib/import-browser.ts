@@ -457,7 +457,7 @@ export function opticalPrescriptionItem(row: {
       row.pd != null ? `PD ${row.pd}` : null
     ),
     date: row.issued_date,
-    href: "/vision",
+    href: "/records#vision",
   };
 }
 
@@ -480,7 +480,7 @@ export function dentalProcedureItem(row: {
     // free-text finding (truncated by the UI). No added interpretation.
     detail: detailLine(status, row.cdt_code, row.finding),
     date: row.procedure_date,
-    href: "/dental",
+    href: "/records#dental",
   };
 }
 

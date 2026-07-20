@@ -17,9 +17,10 @@ import { cycleTrackingRelevant, type NavRelevance } from "../nav-relevance";
 // NavRelevance in lib/nav-relevance.ts): Vision/Dental gate on data presence —
 // their rows are also created from Data → Import (import-persist writes
 // optical_prescriptions/dental_procedures), an always-visible surface, so hiding
-// the empty entry never strands creation. Skin and Mental health are deliberately
-// ungated until the phase-6 Health-record footer exists (their pages are the only
-// creation path today).
+// the empty section never strands creation. Since the #1042 final tail these two
+// bits gate the folded /records #vision / #dental SECTIONS (their nav leaves are
+// gone). Skin and Mental health carry no bit — their /records sections render
+// unconditionally because their in-page forms are the only creation path.
 export function getNavRelevance(profileId: number): NavRelevance {
   const hasCycleRows =
     db

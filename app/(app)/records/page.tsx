@@ -1,4 +1,5 @@
 import { requireSession, getAccessibleProfiles } from "@/lib/auth";
+import { getNavRelevance } from "@/lib/queries/nav-relevance";
 import { PageHeader } from "@/components/ui";
 import ConditionsSection from "./ConditionsSection";
 import AllergiesSection from "./AllergiesSection";
@@ -11,28 +12,36 @@ import BackgroundSection from "./BackgroundSection";
 import CarePlanSection from "./CarePlanSection";
 import HealthGoalsSection from "./HealthGoalsSection";
 import CoverageSection from "./CoverageSection";
+import VisionSection from "./VisionSection";
+import DentalSection from "./DentalSection";
+import SkinSection from "./SkinSection";
+import MentalHealthSection from "./MentalHealthSection";
 
 export const dynamic = "force-dynamic";
 
-// Health record (#1042 phase 6): the eleven core Medical index pages —
-// Conditions, Allergies, Procedures, Immunizations, Family history, Visits,
-// Providers, Background, Care plan, Health goals, and Coverage gaps — merged into
-// ONE stacked-section page at real anchors (/records#conditions, #allergies, …).
-// The removed index routes 308-redirect here with their anchor (next.config.js);
-// the DETAIL routes survive unchanged (/providers/[id], /encounters/[id],
+// Health record (#1042): the Medical index pages merged into ONE stacked-section
+// page at real anchors (/records#conditions, #allergies, … #vision, #mental-health).
+// The removed index routes 308-redirect here with their anchor (next.config.js); the
+// DETAIL routes survive unchanged (/providers/[id], /encounters/[id],
 // /immunizations/[vaccine]). Each section reuses the former index page's content
-// component (moved, not rewritten); Server Actions stayed in their
-// route-independent modules (app/(app)/{conditions,allergies,…}/actions.ts).
+// component (moved, not rewritten); Server Actions stayed in their route-independent
+// modules (app/(app)/{conditions,allergies,vision,dental,skin,medical/instruments}/…).
 //
-// Section visibility mirrors the nav (#1042 rule: a hidden nav child must never be
-// a visible section): none of these eleven leaves carried a nav gate (no
-// relevanceKey / age / multi-profile flag — only Cycle/Vision/Dental are gated,
-// and those are NOT among these), so all eleven sections always render — each with
-// its own empty state when the profile has no rows.
-//
-// The four SPECIALTY sections (Vision/Dental/Skin/Mental health) are deliberately
-// NOT folded in this PR — the issue allows them as follow-ups; they stay on their
-// own data-gated routes for now.
+// Eleven CORE sections (Conditions … Coverage gaps) always render — none of their
+// leaves carried a nav gate — each with its own empty state. The four SPECIALTY
+// sections (Vision/Dental/Skin/Mental health — the #1042 "final tail") fold in AFTER
+// them, and section visibility mirrors the nav predicate (#1042 rule: a hidden nav
+// child must never be a visible section):
+//   - Vision / Dental gate on DATA PRESENCE — the same predicate their former
+//     data-gated nav leaves used (getNavRelevance). Their rows also arrive via
+//     Data → Import (an always-visible creation path), so hiding an empty section
+//     never strands creation.
+//   - Skin / Mental health render UNCONDITIONALLY — their former nav leaves were
+//     ungated, and their in-page forms (the lesion form / the in-app instrument flow)
+//     are the ONLY creation path, so hiding them would strand a new tracker. Mental
+//     health also carries the #716 crisis line, whose safety contract is content, not
+//     route — it travels with the always-rendered section.
+// A gated-hidden section drops BOTH its <section> and its sticky jump-link.
 //
 // A STICKY jump-link row (the issue names it for this large merge) is the page's
 // primary in-page nav; sections carry `scroll-mt` so an anchored jump clears it.
@@ -117,6 +126,40 @@ const SECTIONS = [
   },
 ] as const;
 
+// The four SPECIALTY sections (#1042 final tail), rendered AFTER the eleven core
+// sections. Each carries a data/always gate resolved below; a hidden one drops both
+// its <section> and its jump-link.
+const SPECIALTY_SECTIONS = [
+  {
+    id: "vision",
+    label: "Vision",
+    title: "Vision",
+    subtitle:
+      "Your eyeglass and contact-lens prescriptions — per-eye power, PD, and how your sphere has changed over time. Add them manually or import an uploaded Rx slip.",
+  },
+  {
+    id: "dental",
+    label: "Dental",
+    title: "Dental",
+    subtitle:
+      "Your dental procedures and exam findings, anchored to teeth. Add them manually or import a dental record. Periodontal measurements (pocket depth, bleeding) and dental X-rays live on Results.",
+  },
+  {
+    id: "skin",
+    label: "Skin",
+    title: "Skin",
+    subtitle:
+      "Track moles and spots over time — a body-map location, size, and your ABCDE observations, with dated photos for side-by-side comparison. Flag one to watch and it becomes a tracked recheck.",
+  },
+  {
+    id: "mental-health",
+    label: "Mental health",
+    title: "Mental health",
+    subtitle:
+      "Track validated screening instruments — PHQ-9 and GAD-7 — as severity-banded scores over time. A screening tool, not a diagnosis. Informational, not medical advice.",
+  },
+] as const;
+
 function SectionHeader({
   title,
   subtitle,
@@ -152,10 +195,26 @@ export default async function RecordsPage(props: {
   searchParams: Promise<RecordsSearchParams>;
 }) {
   const searchParams = await props.searchParams;
-  const { profile } = await requireSession();
+  const { login, profile } = await requireSession();
   // Widen-to-household link on the Visits section — shown only when the login can
   // reach 2+ profiles (the SAME predicate that gates the Household strip/nav).
   const showHousehold = (await getAccessibleProfiles()).length > 1;
+
+  // Section visibility mirrors the nav predicate (#1042). Vision/Dental gate on data
+  // presence (getNavRelevance — the SAME computation their former data-gated nav
+  // leaves used); Skin/Mental health render unconditionally (their former nav leaves
+  // were ungated + their in-page forms are the only creation path).
+  const relevance = getNavRelevance(profile.id);
+  const specialtyVisible: Record<string, boolean> = {
+    vision: relevance.vision,
+    dental: relevance.dental,
+    skin: true,
+    "mental-health": true,
+  };
+  const visibleSpecialty = SPECIALTY_SECTIONS.filter(
+    (s) => specialtyVisible[s.id]
+  );
+  const jumpSections = [...SECTIONS, ...visibleSpecialty];
 
   const one = (v: string | string[] | undefined): string | undefined =>
     Array.isArray(v) ? v[0] : v;
@@ -164,18 +223,20 @@ export default async function RecordsPage(props: {
     <div>
       <PageHeader
         title="Health record"
-        subtitle="Your health record in one place — conditions, allergies, procedures, immunizations, family history, visits, providers, background, care plan, health goals, and coverage gaps."
+        subtitle="Your health record in one place — conditions, allergies, procedures, immunizations, family history, visits, providers, background, care plan, health goals, coverage gaps, vision, dental, skin, and mental health."
       />
 
       {/* Sticky jump-link row — the page's primary in-page nav. Horizontally
-          scrollable so the eleven links never force the body to scroll sideways. */}
+          scrollable so the links never force the body to scroll sideways. Only the
+          sections that actually render are linked (a gated specialty section drops
+          its link). */}
       <nav
         aria-label="Health record sections"
         data-testid="records-jump-links"
         className="sticky top-0 z-20 -mx-[max(1.25rem,env(safe-area-inset-left))] mb-8 overflow-x-auto border-b border-black/10 bg-white/85 px-[max(1.25rem,env(safe-area-inset-left))] py-2 backdrop-blur-xl dark:border-white/10 dark:bg-ink-950/85"
       >
         <div className="flex w-max gap-2">
-          {SECTIONS.map((s) => (
+          {jumpSections.map((s) => (
             <a
               key={s.id}
               href={`#${s.id}`}
@@ -333,6 +394,67 @@ export default async function RecordsPage(props: {
           />
           <CoverageSection profileId={profile.id} />
         </section>
+
+        {/* SPECIALTY sections (#1042 final tail), AFTER the eleven core sections.
+            Vision/Dental gate on data presence; Skin/Mental health always render. */}
+        {specialtyVisible.vision ? (
+          <section
+            id="vision"
+            data-testid="records-vision"
+            className="scroll-mt-24"
+          >
+            <SectionHeader
+              title={SPECIALTY_SECTIONS[0].title}
+              subtitle={SPECIALTY_SECTIONS[0].subtitle}
+            />
+            <VisionSection profileId={profile.id} loginId={login.id} />
+          </section>
+        ) : null}
+
+        {specialtyVisible.dental ? (
+          <section
+            id="dental"
+            data-testid="records-dental"
+            className="scroll-mt-24"
+          >
+            <SectionHeader
+              title={SPECIALTY_SECTIONS[1].title}
+              subtitle={SPECIALTY_SECTIONS[1].subtitle}
+            />
+            <DentalSection profileId={profile.id} />
+          </section>
+        ) : null}
+
+        {specialtyVisible.skin ? (
+          <section
+            id="skin"
+            data-testid="records-skin"
+            className="scroll-mt-24"
+          >
+            <SectionHeader
+              title={SPECIALTY_SECTIONS[2].title}
+              subtitle={SPECIALTY_SECTIONS[2].subtitle}
+            />
+            <SkinSection profileId={profile.id} />
+          </section>
+        ) : null}
+
+        {specialtyVisible["mental-health"] ? (
+          <section
+            id="mental-health"
+            data-testid="records-mental-health"
+            className="scroll-mt-24"
+          >
+            <SectionHeader
+              title={SPECIALTY_SECTIONS[3].title}
+              subtitle={SPECIALTY_SECTIONS[3].subtitle}
+            />
+            <MentalHealthSection
+              profileId={profile.id}
+              isAdmin={login.role === "admin"}
+            />
+          </section>
+        ) : null}
       </div>
     </div>
   );

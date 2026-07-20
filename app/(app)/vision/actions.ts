@@ -27,7 +27,9 @@ import {
 // merge still re-points it (PROVIDER_LINK_COLUMNS).
 
 function revalidateVision() {
-  revalidatePath("/vision");
+  // Vision folded into Health record (#1042 final tail): the surface is now
+  // /records#vision.
+  revalidatePath("/records");
   revalidatePath("/profile");
   revalidatePath("/");
 }

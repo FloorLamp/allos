@@ -28,7 +28,9 @@ import {
 // precedent. This form captures the tooth-anchored procedure/finding narrative.
 
 function revalidateDental() {
-  revalidatePath("/dental");
+  // Dental folded into Health record (#1042 final tail): the surface is now
+  // /records#dental.
+  revalidatePath("/records");
   revalidatePath("/timeline");
   revalidatePath("/profile");
   revalidatePath("/");

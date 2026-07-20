@@ -94,7 +94,7 @@ describe("followUpItems builder — skin adapter (#715)", () => {
     expect(reason?.text).toContain("Left forearm mole");
     expect(reason?.text).toContain("ABCDE E"); // the recorded observation, neutrally
     expect(declaredReasonCodesFor(it.key)).toContain("followup-source");
-    expect(it.href).toBe("/skin");
+    expect(it.href).toBe("/records#skin");
     // Not overdue yet ⇒ ordinary suppressibility.
     expect(it.carePersistent).toBeUndefined();
     expect(collectUpcoming(p, now).some((u) => u.key === it.key)).toBe(true);
