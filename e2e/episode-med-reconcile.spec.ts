@@ -70,7 +70,8 @@ async function pickMedication(
   await input.fill(value);
   const option = scope
     .getByRole("listbox")
-    .getByText(value, { exact: true })
+    .getByRole("button")
+    .filter({ hasText: value })
     .first();
   await expect(option).toBeVisible();
   await option.click();
