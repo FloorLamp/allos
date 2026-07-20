@@ -85,6 +85,9 @@ test.describe("Hearing / audiology (#713, #717)", () => {
     await page.goto("/medications");
     const main = page.getByRole("main");
 
+    // Safety notices use the shared disclosure; open it before inspecting the
+    // individual hearing-safety finding.
+    await main.getByTestId("intake-warnings").locator("summary").click();
     const warnings = main.getByTestId("ototoxic-warnings");
     await expect(warnings).toBeVisible();
 
