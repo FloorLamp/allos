@@ -114,13 +114,33 @@ const CONDITION_CODE_FAMILIES: ConditionCodeFamily[] = [
     icd10Prefixes: ["N18.4", "N18.5", "N18.6"],
     snomed: ["46177005"],
   },
-  // Ischemic heart disease — ICD-10 I20–I25 (the issue's named family); SNOMED
-  // ischemic heart disease / coronary arteriosclerosis / MI. Drives the
-  // family-cardiovascular history factor (ACC/AHA).
+  // Ischemic heart disease AND cerebrovascular stroke — ICD-10 I20–I25 (ischemic
+  // heart disease; the #1030 named family) PLUS I60/I61/I63/I64 (the acute stroke
+  // events: subarachnoid + intracerebral hemorrhage, cerebral infarction, and
+  // stroke NOS). Drives the family-cardiovascular history factor (ACC/AHA). SNOMED
+  // ischemic heart disease / coronary arteriosclerosis / MI / cerebrovascular
+  // accident. The stroke codes close the #1039 residual: the FAMILY_KEYWORDS stem
+  // set already treats "stroke" as family-cardiovascular, but a coded-but-tersely-
+  // named row ("CVA" + I63 — no "stroke" substring) matched no prefix and dropped,
+  // the same code-blindness #1030 fixed for the ischemic-heart half ("MI" + I21).
+  // The occlusion/stenosis-without-infarction (I65/I66) and sequelae (I67–I69)
+  // codes are deliberately excluded — exclusion discipline keeps a non-event
+  // cerebrovascular finding from activating the factor.
   {
     concept: "cardiovascular-disease",
-    icd10Prefixes: ["I20", "I21", "I22", "I23", "I24", "I25"],
-    snomed: ["414545008", "53741008", "22298006"],
+    icd10Prefixes: [
+      "I20",
+      "I21",
+      "I22",
+      "I23",
+      "I24",
+      "I25",
+      "I60",
+      "I61",
+      "I63",
+      "I64",
+    ],
+    snomed: ["414545008", "53741008", "22298006", "230690007"],
   },
   // Malignant neoplasms — the whole ICD-10 C chapter (C00–C96 are all malignant;
   // in-situ/benign D codes are deliberately excluded); SNOMED malignant

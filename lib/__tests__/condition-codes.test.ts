@@ -193,6 +193,48 @@ describe("deriveRiskFactors — coded family history (#1030)", () => {
     expect(f).toContain("family-cardiovascular");
   });
 
+  it("a coded-terse family stroke ('CVA' + I63) activates family-cardiovascular (#1039 residual)", () => {
+    // The #1030 code-first family fix covered the ischemic-heart half ("MI"/CAD in
+    // I20–I25) but not the cerebrovascular half: "CVA" has no "stroke" substring and
+    // I63 was outside the code family, so a coded stroke dropped. The added stroke
+    // codes close it — matching the FAMILY_KEYWORDS "stroke" stem's intent.
+    const f = deriveRiskFactors({
+      ...base,
+      familyConditions: [
+        { name: "CVA", code: "I63.9", codeSystem: "ICD-10-CM" },
+      ],
+    });
+    expect(f).toContain("family-cardiovascular");
+  });
+
+  it("a stroke coded by SNOMED (230690007) also activates family-cardiovascular", () => {
+    const f = deriveRiskFactors({
+      ...base,
+      familyConditions: [
+        {
+          name: "Cerebrovascular accident",
+          code: "230690007",
+          codeSystem: "SNOMED CT",
+        },
+      ],
+    });
+    expect(f).toContain("family-cardiovascular");
+  });
+
+  it("a non-event cerebrovascular code (I67 sequelae/other) does NOT activate the factor (exclusion discipline)", () => {
+    const f = deriveRiskFactors({
+      ...base,
+      familyConditions: [
+        {
+          name: "Chronic cerebral ischemia",
+          code: "I67.81",
+          codeSystem: "ICD-10-CM",
+        },
+      ],
+    });
+    expect(f).not.toContain("family-cardiovascular");
+  });
+
   it("a coded family malignancy (C50.911) activates family-cancer", () => {
     const f = deriveRiskFactors({
       ...base,
