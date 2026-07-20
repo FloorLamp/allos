@@ -172,6 +172,11 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     includes: "UPDATE medical_records SET unit = 'degF' WHERE id = ?",
     why: "migration 074 (#1018): the unit-respell UPDATE ([degF]/°F → degF, value untouched), keyed the same way",
   },
+  {
+    file: "lib/migrations/versions/075-extraction-completed-at.ts",
+    includes: "PRAGMA table_info(medical_documents)",
+    why: "migration 075 (#1022) ADD COLUMN guard: a schema-shape PRAGMA (does extraction_completed_at already exist?) so the non-version-gated migrate() replay no-ops — reads column metadata, never rows; mirrors migration 071's guard",
+  },
 ];
 
 // `.prepare(sql)` sites whose argument is a runtime expression (not a string
