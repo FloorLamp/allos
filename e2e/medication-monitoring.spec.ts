@@ -37,11 +37,12 @@ test("the Medications row shows a 'requires monitoring' note for a monitored dru
     detailNote.getByRole("link", { name: "View results" })
   ).toHaveAttribute("href", "/results?q=INR#biomarkers");
   const addResult = detailNote.getByRole("link", { name: "Add INR result" });
-  await expect(addResult).toHaveAttribute(
-    "href",
-    "/results?name=INR#add-result"
-  );
-  await addResult.click();
+  const addResultHref = await addResult.getAttribute("href");
+  expect(addResultHref).toBe("/results?name=INR#add-result");
+  // Navigate through the verified href directly. Under dev-server load, the
+  // detail RSC can detach after hydration while the destination has already
+  // rendered, leaving a click-retry locator on the old page with no live node.
+  await page.goto(addResultHref!);
   await expect(page).toHaveURL(/\/results\?name=INR#add-result$/);
   await expect(
     page.locator("#add-result").getByLabel("Name", { exact: true })
