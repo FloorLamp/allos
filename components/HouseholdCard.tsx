@@ -9,6 +9,7 @@ import {
   IconCheck,
   IconVirus,
   IconBarbell,
+  IconChecklist,
 } from "@tabler/icons-react";
 import Avatar from "@/components/Avatar";
 import type { AvatarProfile } from "@/components/Avatar";
@@ -57,6 +58,11 @@ export interface HouseholdCardData {
   // A compact "mid-workout · N min" chip while this profile is in a live session
   // (#921), else null. Live-only and unlinked (no cross-profile activity route).
   presence: string | null;
+  // A compact structural data-quality gaps line (issue #1045), else null — the same
+  // ranked gap model the dashboard widget formats, condensed. Unlinked (a cross-
+  // profile deep link lands on a dead anchor, #879); tapping the card switches to
+  // this profile where each gap's own CTA is reachable.
+  dataQuality: string | null;
 }
 
 function TrendArrow({ trend, unit }: { trend: WeightTrend; unit: WeightUnit }) {
@@ -221,6 +227,7 @@ export default function HouseholdCard({ data }: { data: HouseholdCardData }) {
     goals,
     sick,
     presence,
+    dataQuality,
   } = data;
 
   return (
@@ -272,6 +279,20 @@ export default function HouseholdCard({ data }: { data: HouseholdCardData }) {
             aria-hidden="true"
           />
           {presence}
+        </div>
+      )}
+
+      {dataQuality && (
+        <div
+          data-testid="household-data-quality"
+          className="mt-3 flex items-start gap-1.5 text-xs text-slate-500 dark:text-slate-400"
+        >
+          <IconChecklist
+            className="mt-0.5 h-3.5 w-3.5 shrink-0"
+            stroke={1.75}
+            aria-hidden="true"
+          />
+          <span className="min-w-0">{dataQuality}</span>
         </div>
       )}
 

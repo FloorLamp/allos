@@ -44,6 +44,7 @@ import { FITNESS_CHECK_PREFIX } from "./fitness-retest";
 import { MOBILITY_SUGGEST_PREFIX } from "./mobility-suggest";
 import { MOOD_OBS_PREFIX, SLEEP_MOOD_PREFIX } from "./mood-observation";
 import { MED_DUP_PREFIX } from "./medication-family";
+import { DATA_QUALITY_PREFIX } from "./data-quality";
 import type { ReasonCode } from "./reasons";
 
 // The two reach tiers (#449). CARE is push: Upcoming + the non-hideable Needs-attention
@@ -212,6 +213,19 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: MED_DUP_PREFIX,
     tier: "coaching",
     builder: "buildMedicationDuplicationFindings",
+    reasons: [],
+  },
+  {
+    // Structural data-quality gaps (#1045): missing birthdate/sex/reproductive
+    // status, unconfirmed RxCUIs, partial PhenoAge panel, failed extractions,
+    // unreviewed risk factors. COACHING tier (#449) — never a notification, never
+    // the hero (structural, one-time, completable prompts, never behavioral nagging).
+    // Joins collectCoachingFindings and rides the shared suppression bus keyed on the
+    // gap TYPE, so a decline silences it on BOTH the dedicated dashboard widget and
+    // the coaching rollup.
+    prefix: DATA_QUALITY_PREFIX,
+    tier: "coaching",
+    builder: "buildDataQualityFindings",
     reasons: [],
   },
   // ---- Care tier (push; NOT in collectCoachingFindings) ----------------------

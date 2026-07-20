@@ -128,6 +128,13 @@ import {
   SAFETY_COVERAGE_PROFILE,
   E2E_LOGIN_HA_NOTIFY,
   HA_NOTIFY_PROFILE,
+  E2E_LOGIN_DQ_GAPPY,
+  DQ_GAPPY_PROFILE,
+  E2E_LOGIN_DQ_COMPLETE,
+  DQ_COMPLETE_PROFILE,
+  E2E_LOGIN_DQ_CARE,
+  DQ_CARE_PARENT_PROFILE,
+  DQ_CARE_CHILD_PROFILE,
 } from "./fixture-logins";
 import { adoptTemplate, activateRoutine } from "../lib/routines";
 
@@ -3623,4 +3630,76 @@ const haNotifyId = fixtureProfileId(HA_NOTIFY_PROFILE);
 seedMemberLogin(E2E_LOGIN_HA_NOTIFY, haNotifyId, "write");
 console.log(
   `e2e: seeded HA notification-config fixture — profile ${haNotifyId} (${HA_NOTIFY_PROFILE})`
+);
+
+// ── Structural data-quality gaps (#1045) ─────────────────────────────────────
+// Idempotent helpers to force a profile's structural fields to a known state on a
+// reused dev server (the profile_settings + medical_documents are re-seeded cleanly).
+function clearProfileAttrs(profileId: number): void {
+  db.prepare(
+    `DELETE FROM profile_settings WHERE profile_id = ?
+       AND key IN ('sex','birthdate','age','reproductive_status','smoking_status',
+                   'smoking_pack_years','smoking_quit_year','smoking_source',
+                   'risk_attributes_reviewed')`
+  ).run(profileId);
+}
+function setAttr(profileId: number, key: string, value: string): void {
+  db.prepare(
+    `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, ?, ?)
+       ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+  ).run(profileId, key, value);
+}
+
+// (A) A GAPPY sole profile: no birthdate, no sex, one failed-extraction document, and a
+// name-only active medication → the dashboard "Data quality" widget shows birthdate,
+// sex, RxCUI, and failed-doc gaps (leverage-ranked). The dismiss test resets its own
+// data-quality dismissals first (below), so its write never sticks across repeats.
+const dqGappyId = fixtureProfileId(DQ_GAPPY_PROFILE);
+clearProfileAttrs(dqGappyId);
+db.prepare(
+  `DELETE FROM medical_documents WHERE profile_id = ? AND filename = 'dq-broken.txt'`
+).run(dqGappyId);
+db.prepare(
+  `INSERT INTO medical_documents
+     (profile_id, filename, stored_path, mime_type, size_bytes,
+      extraction_status, extraction_error, uploaded_at)
+   VALUES (?, 'dq-broken.txt', '', 'text/plain', 12,
+           'failed', 'Unsupported file type.', '2026-01-01 00:00:00')`
+).run(dqGappyId);
+db.prepare(
+  `DELETE FROM intake_items WHERE profile_id = ? AND name = 'DQ Mystery Pill'`
+).run(dqGappyId);
+db.prepare(
+  `INSERT INTO intake_items (profile_id, name, active, kind, as_needed)
+   VALUES (?, 'DQ Mystery Pill', 1, 'medication', 1)`
+).run(dqGappyId);
+seedMemberLogin(E2E_LOGIN_DQ_GAPPY, dqGappyId, "write");
+
+// (B) A COMPLETE sole profile: birthdate (adult) + sex + smoking status + reviewed risk
+// factors, and no meds/labs/failed-docs → the "Data quality" widget self-hides.
+const dqCompleteId = fixtureProfileId(DQ_COMPLETE_PROFILE);
+clearProfileAttrs(dqCompleteId);
+setAttr(dqCompleteId, "sex", "male");
+setAttr(dqCompleteId, "birthdate", "1985-01-01");
+setAttr(dqCompleteId, "smoking_status", "never");
+setAttr(dqCompleteId, "smoking_source", "manual");
+setAttr(dqCompleteId, "risk_attributes_reviewed", "1");
+seedMemberLogin(E2E_LOGIN_DQ_COMPLETE, dqCompleteId, "write");
+
+// (C) A caregiver with a COMPLETE own profile + a GAPPY child → the household page
+// shows a per-member data-quality gaps line on the child's card only.
+const dqParentId = fixtureProfileId(DQ_CARE_PARENT_PROFILE);
+clearProfileAttrs(dqParentId);
+setAttr(dqParentId, "sex", "female");
+setAttr(dqParentId, "birthdate", "1988-06-01");
+setAttr(dqParentId, "smoking_status", "never");
+setAttr(dqParentId, "smoking_source", "manual");
+setAttr(dqParentId, "risk_attributes_reviewed", "1");
+const dqChildId = fixtureProfileId(DQ_CARE_CHILD_PROFILE);
+clearProfileAttrs(dqChildId); // no birthdate/sex → birthdate + sex gaps
+const dqCareLogin = seedMemberLogin(E2E_LOGIN_DQ_CARE, dqParentId, "write");
+grantProfile(dqCareLogin, dqChildId, "write");
+console.log(
+  `e2e: seeded data-quality fixtures — gappy ${dqGappyId}, complete ${dqCompleteId}, ` +
+    `care parent ${dqParentId} + child ${dqChildId} (#1045)`
 );

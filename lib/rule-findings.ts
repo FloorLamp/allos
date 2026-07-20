@@ -46,7 +46,25 @@ import {
   getHomeLocation,
   getUserSex,
   getUserAge,
+  getUserReproductiveStatus,
+  getSmokingHistory,
+  getRiskAttributesReviewed,
 } from "./settings";
+import {
+  getMedicationsMissingRxcuiCount,
+  getFailedExtractionDocumentCount,
+  getLatestMetricSample,
+  getBioAgeReadings,
+  hasImportedSmokingHistory,
+} from "./queries";
+import { resolveSmoking } from "./smoking";
+import { PHENOAGE_INPUT_COUNT } from "./bio-age";
+import {
+  detectDataQualityGaps,
+  dataQualityDedupeKey,
+  type DataQualityInputs,
+  type DataQualityGap,
+} from "./data-quality";
 import { situationHistoryResolver } from "./trend-annotations";
 import { optimalStatus } from "./reference-range";
 import { decideSunExposure, SUN_EXPOSURE_WINDOW_WEEKS } from "./sun-exposure";
@@ -270,6 +288,60 @@ export function buildMedicationDuplicationFindings(
   return findings;
 }
 
+// ---- Structural data-quality gaps (#1045) ----------------------------------
+
+// The builder for the structural data-quality gaps: it GATHERS the profile's
+// structural inputs (the #448 builder shape) and hands them to the pure detectors
+// (lib/data-quality.ts), then maps each gap into the shared Finding envelope. Reuses
+// the EXISTING computations everywhere — lib/bio-age input-completeness (never a
+// second bio-age math), resolveSmoking (the same tri-state the preventive gates read),
+// getLatestMetricSample for height — so a gap and the surface it degrades can't
+// disagree. COACHING tier ONLY (#449): it joins collectCoachingFindings, its dedupeKey
+// (`data-quality:<gap>`, DATA_QUALITY_PREFIX registered) rides the shared suppression
+// bus, and it NEVER notifies / never reaches the hero. STRUCTURAL, one-time gaps only
+// — never behavioral nagging (the hard boundary in lib/data-quality's header). No owned
+// SQL is added here (reads through profile-scoped queries), so the scoping guard holds.
+// The ONE gather → detect for a profile's structural gaps, leverage-ranked. Shared by
+// the dashboard widget/coaching finding (buildDataQualityFindings) and the household
+// rollup (household/page.tsx), so every surface keys on the SAME gap model (one
+// question, one computation). No owned SQL added (reads through profile-scoped queries).
+export function collectDataQualityGaps(profileId: number): DataQualityGap[] {
+  const bioAge = getBioAgeReadings(profileId);
+  const smoking = resolveSmoking(
+    getSmokingHistory(profileId),
+    hasImportedSmokingHistory(profileId)
+  );
+  const sex = getUserSex(profileId);
+  const inputs: DataQualityInputs = {
+    age: getUserAge(profileId),
+    sexKnown: sex !== null,
+    sex,
+    reproductiveStatusKnown: getUserReproductiveStatus(profileId) !== null,
+    heightKnown: getLatestMetricSample(profileId, "height_cm") !== null,
+    smokingKnown: smoking.source !== null,
+    medsMissingRxcui: getMedicationsMissingRxcuiCount(profileId),
+    phenoAgePresentCount: bioAge.presentInputs.length,
+    phenoAgeMissingCount: PHENOAGE_INPUT_COUNT - bioAge.presentInputs.length,
+    failedExtractions: getFailedExtractionDocumentCount(profileId),
+    riskAttributesReviewed: getRiskAttributesReviewed(profileId),
+  };
+  return detectDataQualityGaps(inputs);
+}
+
+export function buildDataQualityFindings(profileId: number): Finding[] {
+  return collectDataQualityGaps(profileId).map((gap) => ({
+    domain: "data-quality",
+    dedupeKey: dataQualityDedupeKey(gap.key),
+    title: gap.label,
+    detail: gap.whyLine,
+    // Calm, structural FYI — never an alarm, never a push (coaching tier).
+    tone: "info",
+    evidence: `Unblocks ${gap.leverage} ${gap.leverage === 1 ? "engine" : "engines"} once fixed.`,
+    actionHref: gap.ctaHref,
+    actionLabel: "Fix it",
+  }));
+}
+
 // `prefs` (#1020): the viewer's date shape for the dates some finding texts embed
 // (fitness-check, weight-anomaly) — the same threading precedent as `wu` for
 // weights (#1019). Defaults keep login-less callers on the documented fixed shape.
@@ -298,6 +370,11 @@ export function collectCoachingFindings(
     ...buildMobilitySuggestionFindings(profileId, today),
     ...buildMoodFindings(profileId, today),
     ...buildSleepMoodBridgeFindings(profileId, today),
+    // Appended LAST (#1045): the structural data-quality gaps join the coaching rollup
+    // (so a decline rides the shared bus and silences the dedicated widget too), but
+    // stay behind the observational domains in rollup order so the dashboard "Coaching
+    // observations" slice keeps leading with training/body patterns.
+    ...buildDataQualityFindings(profileId),
   ];
 }
 

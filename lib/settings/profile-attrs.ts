@@ -313,6 +313,25 @@ export function setRiskAttributes(
 // Re-export so callers can reach the empty default alongside the getters.
 export { EMPTY_RISK_ATTRIBUTES };
 
+// Whether the self-declared risk attributes have ever been REVIEWED (issue #1045).
+// Distinct from "all attributes false": a fresh profile reads every flag as absent, so
+// absence alone can't tell an intentionally-empty review from a never-touched one. The
+// risk-factors form action stamps this marker on save, so the data-quality gap
+// (unlocks the risk-stratified screening cadence) clears once the user has looked at
+// the list — even if they left it empty. A generic profile_settings flag; no schema
+// change (#1045 is migration-free).
+export function getRiskAttributesReviewed(profileId: number): boolean {
+  return getProfileSetting(profileId, "risk_attributes_reviewed") === "1";
+}
+
+export function setRiskAttributesReviewed(
+  profileId: number,
+  reviewed: boolean
+): void {
+  if (reviewed) setProfileSetting(profileId, "risk_attributes_reviewed", "1");
+  else deleteProfileSetting(profileId, "risk_attributes_reviewed");
+}
+
 // ---- Training HR zones (issue #159) — profile scope, no migration ----
 // A manual max-HR override for people who know theirs from a lab/field test (it
 // beats the age formula), and the configurable weekly Zone 2 minutes target the
