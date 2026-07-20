@@ -11,7 +11,7 @@ import { addSuggestedConditionCore } from "@/lib/condition-suggestion-write";
 // `WHERE id = ? AND profile_id = ?`. Manual rows carry a NULL source/document_id.
 
 function revalidateConditions() {
-  revalidatePath("/conditions");
+  revalidatePath("/records");
   revalidatePath("/profile");
   revalidatePath("/");
 }

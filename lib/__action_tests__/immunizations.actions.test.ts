@@ -60,7 +60,7 @@ describe("addImmunization", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].vaccine).toBe("mmr");
     expect(rows[0].dose_label).toBe("1");
-    expect(revalidate).toHaveBeenCalledWith("/immunizations");
+    expect(revalidate).toHaveBeenCalledWith("/records");
   });
 
   it("rejects an impossible date with a typed error, persisting nothing (issue #474)", async () => {

@@ -95,7 +95,7 @@ export async function markCarePlanDone(
   if (!id) return formError("Couldn't find that care-plan item.");
   markCarePlanItemDone(profile.id, id);
   revalidatePath("/upcoming");
-  revalidatePath("/care-plan");
+  revalidatePath("/records");
   revalidatePath("/");
   return formOk();
 }
@@ -146,7 +146,7 @@ export async function resolveFollowUp(formData: FormData): Promise<FormResult> {
     return formError("Couldn't find that follow-up.");
   revalidatePath("/upcoming");
   revalidatePath("/results");
-  revalidatePath("/care-plan");
+  revalidatePath("/records");
   revalidatePath("/");
   return formOk();
 }

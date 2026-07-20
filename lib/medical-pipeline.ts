@@ -557,7 +557,7 @@ function runHealthImport(
 // immunizations, titers, and — when demographics were adopted — settings).
 function revalidateAfterHealthImport() {
   revalidatePath("/data");
-  revalidatePath("/immunizations");
+  revalidatePath("/records");
   revalidatePath("/results");
   revalidatePath("/settings");
   revalidatePath("/settings/profile");
@@ -921,7 +921,7 @@ function revalidateAfterReprocess() {
   revalidatePath("/import/[id]", "page");
   revalidatePath("/results");
   revalidatePath("/trends");
-  revalidatePath("/immunizations");
+  revalidatePath("/records");
   revalidatePath("/");
 }
 

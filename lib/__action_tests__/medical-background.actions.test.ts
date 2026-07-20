@@ -38,7 +38,7 @@ describe("saveSmokingHistory", () => {
       packYears: 22,
       quitYear: 2016,
     });
-    expect(revalidate).toHaveBeenCalledWith("/medical/background");
+    expect(revalidate).toHaveBeenCalledWith("/records");
   });
 
   it("refuses a read-only member (requireWriteAccess gate)", async () => {

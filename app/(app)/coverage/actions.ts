@@ -24,7 +24,7 @@ export async function trackCoverageGap(formData: FormData) {
   const label = String(formData.get("label") ?? "").trim();
   if (!kind || !itemKey || !label) return;
   addCoverageGap(profile.id, kind, itemKey, label);
-  revalidatePath("/coverage");
+  revalidatePath("/records");
 }
 
 // Stop tracking a gap.
@@ -33,7 +33,7 @@ export async function untrackCoverageGap(formData: FormData) {
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id) || id <= 0) return;
   removeCoverageGap(profile.id, id);
-  revalidatePath("/coverage");
+  revalidatePath("/records");
 }
 
 // Fill a gap with private/local AI descriptive context (fill path 1). Returns the
@@ -46,6 +46,6 @@ export async function enrichCoverageGapAction(
   const id = Number(formData.get("id"));
   if (!Number.isInteger(id) || id <= 0) return { status: "not-found" };
   const outcome = await enrichCoverageGap(profile.id, id);
-  revalidatePath("/coverage");
+  revalidatePath("/records");
   return outcome;
 }

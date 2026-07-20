@@ -65,7 +65,7 @@ export async function updateProviderAction(
     detail: name,
   });
   revalidatePath(`/providers/${id}`);
-  revalidatePath("/providers");
+  revalidatePath("/records");
   return {};
 }
 
@@ -111,7 +111,7 @@ export async function mergeProviderAction(
       impact,
     }),
   });
-  revalidatePath("/providers");
+  revalidatePath("/records");
   revalidatePath(`/providers/${survivorId}`);
   redirect(`/providers/${survivorId}?merged=1`);
 }

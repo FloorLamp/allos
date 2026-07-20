@@ -337,7 +337,7 @@ function assessSchedule(rule: PreventiveRule, ctx: Ctx): PreventiveAssessment {
 
 // Where the risk-gated lung prompt sends the user to fill in the missing input —
 // smoking history moved to the Medical → Background surface (#928).
-const SMOKING_SETTINGS_HREF: AppRoute = "/medical/background";
+const SMOKING_SETTINGS_HREF: AppRoute = "/records#background";
 
 // Assess a risk-gated rule (issue #83) against the resolved smoking facts. Age/sex
 // still gate first: the schedule assessment runs, and if the profile is OUTSIDE the

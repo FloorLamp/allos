@@ -31,7 +31,7 @@ function revalidateMedical() {
   revalidatePath("/import/[id]", "page");
   revalidatePath("/results");
   revalidatePath("/biomarkers/view", "page");
-  revalidatePath("/immunizations");
+  revalidatePath("/records");
   // The dashboard derives Recent labs and Needs attention from these records, so
   // a new/edited/deleted reading must refresh its summaries too.
   revalidatePath("/");

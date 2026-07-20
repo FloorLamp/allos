@@ -61,7 +61,7 @@ export async function trackLabFollowUp(
   revalidatePath("/results");
   revalidatePath("/biomarkers/view", "page");
   revalidatePath("/upcoming");
-  revalidatePath("/care-plan");
+  revalidatePath("/records");
   revalidatePath("/");
   return formOk();
 }
@@ -92,7 +92,7 @@ export async function trackIopFollowUp(
   revalidatePath("/results");
   revalidatePath("/biomarkers/view", "page");
   revalidatePath("/upcoming");
-  revalidatePath("/care-plan");
+  revalidatePath("/records");
   revalidatePath("/");
   return formOk();
 }

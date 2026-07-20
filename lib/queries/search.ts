@@ -234,7 +234,7 @@ function immunizationHits(profileId: number, query: string): SearchHit[] {
       key: `immunization:${r.id}`,
       title: display,
       subtitle: r.dose_label ? `${r.dose_label} · ${r.date}` : r.date,
-      href: "/immunizations",
+      href: "/records#immunizations",
       date: r.date,
     }));
 }
@@ -301,7 +301,7 @@ function conditionHits(profileId: number, like: string): SearchHit[] {
     subtitle: r.onset_date
       ? `${r.status} · ${isoDate(r.onset_date)}`
       : r.status,
-    href: "/conditions",
+    href: "/records#conditions",
     date: isoDate(r.onset_date),
   }));
 }
@@ -341,7 +341,7 @@ function allergyHits(profileId: number, like: string): SearchHit[] {
     title: r.substance,
     subtitle:
       [r.reaction, r.severity].filter(Boolean).join(" · ").trim() || r.status,
-    href: "/allergies",
+    href: "/records#allergies",
     date: isoDate(r.onset_date),
   }));
 }
@@ -370,7 +370,7 @@ function procedureHits(profileId: number, like: string): SearchHit[] {
     key: `procedure:${r.id}`,
     title: r.name,
     subtitle: isoDate(r.date) ?? r.code,
-    href: "/procedures",
+    href: "/records#procedures",
     date: isoDate(r.date),
   }));
 }
@@ -465,7 +465,7 @@ function appointmentHits(profileId: number, like: string): SearchHit[] {
       key: `appointment:${r.id}`,
       title,
       subtitle,
-      href: "/encounters",
+      href: "/records#visits",
       date: isoDate(r.scheduled_at),
       // "Mark complete" on a still-scheduled appointment (#662).
       actions: appointmentHitActions(r.id, r.status),
@@ -498,7 +498,7 @@ function familyHistoryHits(profileId: number, like: string): SearchHit[] {
     key: `family-history:${r.id}`,
     title: r.condition,
     subtitle: r.relation,
-    href: "/family-history",
+    href: "/records#family-history",
     date: null,
   }));
 }
@@ -528,7 +528,7 @@ function carePlanHits(profileId: number, like: string): SearchHit[] {
       [r.category, r.status, isoDate(r.planned_date)]
         .filter(Boolean)
         .join(" · ") || null,
-    href: "/care-plan",
+    href: "/records#care-plan",
     date: isoDate(r.planned_date),
   }));
 }
@@ -555,7 +555,7 @@ function careGoalHits(profileId: number, like: string): SearchHit[] {
     title: r.description,
     subtitle:
       [r.status, isoDate(r.target_date)].filter(Boolean).join(" · ") || null,
-    href: "/care-goals",
+    href: "/records#health-goals",
     date: isoDate(r.target_date),
   }));
 }
@@ -617,22 +617,22 @@ const PAGES: {
   },
   {
     title: "Procedures",
-    href: "/procedures",
+    href: "/records#procedures",
     keywords: "surgery surgical operation procedure history cpt",
   },
   {
     title: "Family History",
-    href: "/family-history",
+    href: "/records#family-history",
     keywords: "family history hereditary relatives genetic risk mother father",
   },
   {
     title: "Care Plan",
-    href: "/care-plan",
+    href: "/records#care-plan",
     keywords: "care plan treatment planned orders upcoming procedures tests",
   },
   {
     title: "Health Goals",
-    href: "/care-goals",
+    href: "/records#health-goals",
     keywords:
       "care goals clinical targets a1c blood pressure goal from records",
   },
@@ -648,12 +648,12 @@ const PAGES: {
   },
   {
     title: "Immunizations",
-    href: "/immunizations",
+    href: "/records#immunizations",
     keywords: "vaccines shots",
   },
   {
     title: "Visits",
-    href: "/encounters",
+    href: "/records#visits",
     keywords:
       "visits encounters appointments doctor scheduled booking calendar history",
   },
@@ -687,7 +687,7 @@ const PAGES: {
     // Person-level medical context moved off Settings → Profile (#928): smoking
     // history, health risk factors, and the emergency card.
     title: "Background",
-    href: "/medical/background",
+    href: "/records#background",
     keywords:
       "background smoking history pack years risk factors emergency card blood type contact",
   },

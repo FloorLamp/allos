@@ -2,11 +2,12 @@ import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
-// Appointments merged into the unified Visits page (issue #288). This route now
-// redirects to /encounters, preserving any query string so a stale preventive
+// Appointments merged into the unified Visits page (issue #288), which is itself
+// now the #visits section of the Health record page (#1042 phase 6). This route
+// redirects to /records#visits, preserving any query string so a stale preventive
 // "Book" CTA / calendar link / command-palette focus (?new=1&title=…&kind=…) still
-// lands on the merged page's booking form. Internal links were all updated to
-// /encounters; this covers external bookmarks and any missed deep link.
+// lands on the merged page's booking form. Internal links point at /records#visits;
+// this covers external bookmarks and any missed deep link.
 export default async function AppointmentsRedirect(props: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
@@ -20,5 +21,5 @@ export default async function AppointmentsRedirect(props: {
     }
   }
   const query = qs.toString();
-  redirect(query ? `/encounters?${query}` : "/encounters");
+  redirect(query ? `/records?${query}#visits` : "/records#visits");
 }

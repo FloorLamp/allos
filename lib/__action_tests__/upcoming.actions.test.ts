@@ -140,7 +140,7 @@ describe("markCarePlanDone (issue #84)", () => {
 
     expect(carePlanStatus(id)).toBe("completed");
     expect(revalidate).toHaveBeenCalledWith("/upcoming");
-    expect(revalidate).toHaveBeenCalledWith("/care-plan");
+    expect(revalidate).toHaveBeenCalledWith("/records");
   });
 
   it("ignores a missing id", async () => {

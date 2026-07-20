@@ -45,7 +45,7 @@ describe("confirmConditionSuggestion (#685)", () => {
     expect(rows[0].external_id).toBe("condition-suggest:name:hepatitis c");
 
     const paths = revalidate.mock.calls.map((c) => c[0]);
-    expect(paths).toContain("/conditions");
+    expect(paths).toContain("/records");
     expect(paths).toContain("/upcoming");
   });
 

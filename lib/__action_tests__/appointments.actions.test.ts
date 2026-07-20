@@ -73,7 +73,7 @@ describe("logVisitFromAppointment (#288)", () => {
     // A manual visit — no import provenance, so a document delete never touches it.
     expect(enc.source).toBeNull();
     expect(enc.document_id).toBeNull();
-    expect(revalidate).toHaveBeenCalledWith("/encounters");
+    expect(revalidate).toHaveBeenCalledWith("/records");
   });
 
   it("is idempotent — a second call adds no duplicate visit", async () => {

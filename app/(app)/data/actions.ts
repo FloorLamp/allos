@@ -614,7 +614,7 @@ export async function commitBiomarkers(
   revalidatePath("/results");
   revalidatePath("/data");
   revalidatePath("/");
-  if (outcome.immCount) revalidatePath("/immunizations");
+  if (outcome.immCount) revalidatePath("/records");
   if (outcome.bodyMetricCount || sampleCount) {
     revalidatePath("/trends");
     revalidatePath("/body");

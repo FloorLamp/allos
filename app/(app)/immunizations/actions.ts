@@ -21,7 +21,7 @@ import { formError, formOk, type FormResult } from "@/lib/types";
 // for an unrecognized name — never dropped), the same path the extractor uses.
 
 function revalidateImmunizations() {
-  revalidatePath("/immunizations");
+  revalidatePath("/records");
   // Every per-vaccine detail page too: a dose (esp. a combination shot) credits
   // multiple vaccines, and edit/delete now runs from the detail view, so the
   // list-only revalidate above wouldn't refresh the page the user is on.

@@ -220,8 +220,8 @@ describe("timeline event helpers", () => {
       { kind: "medication", label: "Lisinopril" },
     ]);
     expect(refs).toEqual([
-      { label: "Procedure: Colonoscopy", href: "/procedures" },
-      { label: "Care plan: Follow-up in 6 months", href: "/care-plan" },
+      { label: "Procedure: Colonoscopy", href: "/records#procedures" },
+      { label: "Care plan: Follow-up in 6 months", href: "/records#care-plan" },
       { label: "Medication: Lisinopril", href: "/medications" },
     ]);
   });
@@ -232,7 +232,7 @@ describe("timeline event helpers", () => {
       { kind: "care-plan", label: "   " },
       { kind: "medication", label: "" },
     ]);
-    expect(refs).toEqual([{ label: "Procedure: X-ray", href: "/procedures" }]);
+    expect(refs).toEqual([{ label: "Procedure: X-ray", href: "/records#procedures" }]);
   });
 
   it("derives created-at date/time in the profile timezone (off-by-one safe)", () => {

@@ -348,8 +348,8 @@ function pgxItems(profileId: number): UpcomingItem[] {
 
 // Where a contrast-safety note links, by the planned study's source row.
 const CONTRAST_SOURCE_HREF: Record<ContrastStudySource, AppRoute> = {
-  careplan: "/care-plan",
-  appointment: "/encounters",
+  careplan: "/records#care-plan",
+  appointment: "/records#visits",
   imaging: "/results#imaging",
 };
 
@@ -571,7 +571,7 @@ function immunizationItems(profileId: number, today: string): UpcomingItem[] {
         domain: "immunization" as const,
         title: a.name,
         detail: a.nextLabel ?? a.detail,
-        href: "/immunizations",
+        href: "/records#immunizations",
         dueDate: null,
         band:
           a.status === "overdue" ? ("overdue" as const) : ("today" as const),
@@ -828,7 +828,7 @@ function appointmentItems(
         domain: "appointment" as const,
         title: "Medical appointment",
         detail: "Scheduled visit",
-        href: "/encounters",
+        href: "/records#visits",
         dueDate,
       };
     }
@@ -838,7 +838,7 @@ function appointmentItems(
       domain: "appointment" as const,
       title: a.title?.trim() || a.provider_name || "Appointment",
       detail: parts.length ? parts.join(" · ") : "Scheduled visit",
-      href: "/encounters",
+      href: "/records#visits",
       dueDate,
     };
   });

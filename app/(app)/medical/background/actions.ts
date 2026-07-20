@@ -43,7 +43,7 @@ export async function saveSmokingHistory(formData: FormData) {
   setSmokingHistory(profile.id, { status, packYears, quitYear });
   // The record drives the preventive reminders (Upcoming) and the medical surface.
   revalidatePath("/upcoming");
-  revalidatePath("/medical/background");
+  revalidatePath("/records");
 }
 
 // ---- Health risk factors (profile scope, issue #517) ----
@@ -62,7 +62,7 @@ export async function saveRiskFactors(formData: FormData) {
     noiseExposure: on("noise_exposure"),
   });
   revalidatePath("/upcoming");
-  revalidatePath("/medical/background");
+  revalidatePath("/records");
 }
 
 // ---- Emergency card (profile scope, issue #42) ----
@@ -82,7 +82,7 @@ export async function saveEmergencyCardSettings(formData: FormData) {
     phone: String(formData.get("emergency_contact_phone") ?? ""),
     relation: String(formData.get("emergency_contact_relation") ?? ""),
   });
-  revalidatePath("/medical/background");
+  revalidatePath("/records");
   // The card renders as the Passport page's #emergency section (#1042 phase 3).
   revalidatePath("/profile");
 }

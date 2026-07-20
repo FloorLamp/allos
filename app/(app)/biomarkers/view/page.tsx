@@ -634,7 +634,7 @@ export default async function BiomarkerDetailPage(props: {
             backs your immunization record.
           </span>
           <Link
-            href="/immunizations"
+            href="/records#immunizations"
             className="shrink-0 font-medium text-brand-700 hover:underline dark:text-brand-400"
           >
             See immunity status →

@@ -17,7 +17,7 @@ import {
 // GLOBAL providers registry via a create-on-type name.
 
 function revalidateCarePlan() {
-  revalidatePath("/care-plan");
+  revalidatePath("/records");
   revalidatePath("/");
 }
 
