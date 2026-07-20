@@ -13,6 +13,8 @@
 
 import { expandToComponents } from "./immunization-catalog";
 import { biomarkerFamily } from "./canonical-name";
+import { preventiveRuleByKey } from "./preventive-catalog";
+import { preventiveSignalKey } from "./preventive-upcoming";
 
 // The Upcoming retest nudge keys a biomarker on `biomarker:<family identity>`
 // (lib/queries/upcoming). The identity is the reading's #482 biomarker FAMILY
@@ -43,6 +45,19 @@ export function biomarkerDismissalKey(name: string): string {
 // key too) cover it (issue #283).
 export function biomarkerFlagDismissalKey(name: string): string {
   return `biomarker-flag:${biomarkerFamily(name).toLowerCase()}`;
+}
+
+// The Upcoming preventive item + its push cousin key on `<kind>:<ruleKey>`
+// (preventiveSignalKey — e.g. "screening:colorectal_cancer"). A dismissal is stored
+// under that full key, but the episode-end sweep (recordPreventiveDone / the nudge's
+// toClear) only knows the rule key — so resolve the rule's KIND from the catalog to
+// reproduce the exact signal key the dismiss was stored under (issue #1024). Returns
+// null for an unknown rule key (nothing to retire). Centralized here so the sweep
+// derives the identical key the item/nudge does (the #227 alignment).
+export function preventiveDismissalKey(ruleKey: string): string | null {
+  const rule = preventiveRuleByKey(ruleKey);
+  if (!rule) return null;
+  return preventiveSignalKey(rule.kind, ruleKey);
 }
 
 // The Upcoming immunization nudge keys on `immunization:<catalog code>`
