@@ -127,6 +127,13 @@ export function itemRxcuis(item: {
   return cuis;
 }
 
+// Exported aliases for the drug-allergy cross-check (issue #1029): the SAME
+// normalization + token-containment the concept matcher uses, so a DIRECT
+// allergen-substance × med-name match folds punctuation/case identically to the
+// class/synonym path (one matcher discipline, #482).
+export const normalizeDrugTerm = normalize;
+export const drugTermContains = nameContains;
+
 // The set of concept keys an item resolves to WITHIN a given concept vocabulary.
 // RxCUI is authoritative (an exact match of ANY of the item's CUIs — product-level or
 // cached ingredient — against a concept's ingredient CUIs), and a name/synonym match

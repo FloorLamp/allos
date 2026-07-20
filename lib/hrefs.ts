@@ -103,7 +103,7 @@ export function biomarkerViewHref(
   const name = canonical || rawName?.trim();
   return canonical && name
     ? `/biomarkers/view?name=${encodeURIComponent(name)}`
-    : "/biomarkers";
+    : "/results#biomarkers";
 }
 
 // The Timeline "jump to this day" link: filter the feed to a single day AND

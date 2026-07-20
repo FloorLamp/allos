@@ -153,7 +153,7 @@ export async function POST(req: Request) {
       "/nutrition",
       "/medications",
       "/trends",
-      "/biomarkers",
+      "/results",
     ]) {
       revalidatePath(p);
     }

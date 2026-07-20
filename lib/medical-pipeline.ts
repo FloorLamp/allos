@@ -558,7 +558,7 @@ function runHealthImport(
 function revalidateAfterHealthImport() {
   revalidatePath("/data");
   revalidatePath("/immunizations");
-  revalidatePath("/biomarkers");
+  revalidatePath("/results");
   revalidatePath("/settings");
   revalidatePath("/settings/profile");
   revalidatePath("/");
@@ -773,7 +773,7 @@ function commitPersistInput(
       log.info("adopted user full name from document", { docId });
     }
     if (adopted.changed) revalidatePath("/settings");
-    revalidatePath("/biomarkers");
+    revalidatePath("/results");
     // Imported body metrics surface on Body Metrics and the dashboard.
     revalidatePath("/trends");
     revalidatePath("/");
@@ -919,7 +919,7 @@ export async function reprocessOne(
 function revalidateAfterReprocess() {
   revalidatePath("/data");
   revalidatePath("/import/[id]", "page");
-  revalidatePath("/biomarkers");
+  revalidatePath("/results");
   revalidatePath("/trends");
   revalidatePath("/immunizations");
   revalidatePath("/");

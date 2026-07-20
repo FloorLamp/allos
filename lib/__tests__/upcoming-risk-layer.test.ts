@@ -42,6 +42,10 @@ const ALLOWLIST: Record<string, string> = {
   prnMaxItems:
     "PRN over-daily-max care finding (#798) — a per-day count vs the user's OWN " +
     "confirmed max_daily_count; informational safety note, not a risk-ranked due signal",
+  drugAllergyItems:
+    "standing drug-allergy × medication cross-check (#1029) — a recorded non-resolved " +
+    "allergy met by an active med (direct / same-class / documented cross-reactive " +
+    "class); informational medication-safety note, not a risk-ranked due signal",
   interactionItems:
     "standing interaction warning — informational, not risk-ranked",
   pgxItems:

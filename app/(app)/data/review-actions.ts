@@ -30,7 +30,7 @@ import {
 const EDIT_LOCK_REVALIDATE: Record<string, string[]> = {
   activities: ["/data", "/training", "/journal", "/trends", "/"],
   body_metrics: ["/data", "/trends", "/"],
-  medical_records: ["/data", "/biomarkers", "/biomarkers/view", "/"],
+  medical_records: ["/data", "/results", "/biomarkers/view", "/"],
 };
 
 // Clear the user-edit lock on one imported row so the next sync resumes updating it
@@ -234,7 +234,7 @@ export async function resolvePair(formData: FormData) {
 // surface that renders the reading's flag.
 const MISLABEL_REVALIDATE = [
   "/data",
-  "/biomarkers",
+  "/results",
   "/biomarkers/view",
   "/trends",
   "/",

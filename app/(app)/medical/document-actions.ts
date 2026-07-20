@@ -355,7 +355,7 @@ export async function reassignDocument(
 
   revalidatePath("/import/[id]", "page");
   revalidatePath("/data");
-  revalidatePath("/biomarkers");
+  revalidatePath("/results");
   revalidatePath("/trends");
   revalidatePath("/immunizations");
   revalidatePath("/");
@@ -452,7 +452,7 @@ export async function deleteMedicalDocument(formData: FormData) {
     }
   }
   revalidatePath("/data");
-  revalidatePath("/biomarkers");
+  revalidatePath("/results");
   revalidatePath("/trends");
   // A deleted document can drop immunization rows — refresh the passport view too
   // (reassignDocument already does; this closes the gap #602 noted).

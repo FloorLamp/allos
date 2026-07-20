@@ -1,0 +1,190 @@
+{
+  "$schema": "allos-dataset/v1",
+  "id": "drug-allergy",
+  "title": "Drug-allergy class / cross-reactivity",
+  "description": "Baked drug-allergy class dataset (issue #1029) — resolves recorded drug allergens AND active medications to a small set of well-documented drug-class families (penicillins, cephalosporins, sulfonamide ANTIBIOTICS, NSAIDs, aspirin) for the allergy × medication-stack cross-check, plus the documented cross-class reactivity pairs (penicillins ↔ cephalosporins with the modern low-rate framing; aspirin ↔ COX-1 NSAIDs). Matched by RxNorm ingredient CUI + synonym (the shared machinery). EXCLUSION-DISCIPLINED: absence of an entry is no claim — non-antibiotic sulfonamides and carbapenem pairs are deliberately excluded. INFORMATIONAL, never prescriptive — a hit says discuss with your prescriber/pharmacist, never stop a medication, and the absence of a flag is NOT clearance (a curated subset). Fully OFFLINE. Committed + HUMAN-REVIEWABLE; regenerate with `npm run gen:drug-allergy`.",
+  "citation": [
+    {
+      "source": "AAAAI — Penicillin Allergy: Frequently Asked Questions",
+      "url": "https://www.aaaai.org/tools-for-the-public/conditions-library/allergies/penicillin-allergy-faq",
+      "note": "Class membership + the modern low-rate cephalosporin cross-reactivity framing, stated in our own words. Drug names are public nomenclature."
+    },
+    {
+      "source": "CDC — Evaluation and Diagnosis of Penicillin Allergy for Healthcare Professionals",
+      "url": "https://www.cdc.gov/antibiotic-use/hcp/clinical-signs/penicillin-allergy.html",
+      "note": "Public-domain US federal guidance on penicillin-allergy evaluation; the informational (never prescriptive) posture mirrors its discuss-and-verify framing."
+    },
+    {
+      "source": "Drug Allergy: An Updated Practice Parameter (AAAAI/ACAAI Joint Task Force, 2022)",
+      "url": "https://www.aaaai.org/practice-resources/statements-and-practice-parameters/practice-parameters-and-other-guidelines",
+      "note": "Sulfonamide-antibiotic family scope (non-antibiotic sulfonamides excluded per the evidence) and cross-reactivity facts, stated in our own words."
+    },
+    {
+      "source": "AAAAI — Aspirin-Exacerbated Respiratory Disease (AERD)",
+      "url": "https://www.aaaai.org/conditions-treatments/related-conditions/aspirin-exacerbated-respiratory-disease",
+      "note": "Cross-reactive COX-1 NSAID hypersensitivity facts, stated in our own words."
+    }
+  ],
+  "identity": {
+    "keys": [
+      "key"
+    ]
+  },
+  "meta": {
+    "version": 1,
+    "crossReactivity": [
+      {
+        "a": "aspirin",
+        "b": "nsaids",
+        "note": "People with aspirin hypersensitivity often react to other COX-1-inhibiting NSAIDs (cross-reactive NSAID hypersensitivity), so an NSAID alongside a recorded aspirin allergy — or the reverse — is worth flagging.",
+        "source": "AAAAI — Aspirin-Exacerbated Respiratory Disease (AERD)"
+      },
+      {
+        "a": "cephalosporins",
+        "b": "penicillins",
+        "note": "Penicillins and cephalosporins show possible cross-reactivity in a small share of penicillin-allergic people — modern estimates are low (about 2% overall) and depend on side-chain similarity, but the history is worth flagging before a course.",
+        "source": "AAAAI — Penicillin Allergy: Frequently Asked Questions; CDC — Evaluation and Diagnosis of Penicillin Allergy; Drug Allergy: An Updated Practice Parameter (AAAAI/ACAAI Joint Task Force, 2022)"
+      }
+    ]
+  },
+  "entries": [
+    {
+      "key": "aspirin",
+      "label": "aspirin (salicylates)",
+      "rxcuis": [],
+      "synonyms": [
+        "acetylsalicylic acid",
+        "asa",
+        "aspirin",
+        "excedrin"
+      ],
+      "note": "contains aspirin (a salicylate) — the same drug as the recorded allergen.",
+      "source": "AAAAI — Aspirin-Exacerbated Respiratory Disease (AERD)"
+    },
+    {
+      "key": "cephalosporins",
+      "label": "cephalosporin antibiotics",
+      "rxcuis": [],
+      "synonyms": [
+        "ancef",
+        "cefaclor",
+        "cefadroxil",
+        "cefazolin",
+        "cefdinir",
+        "cefepime",
+        "cefixime",
+        "cefotaxime",
+        "cefpodoxime",
+        "cefprozil",
+        "ceftazidime",
+        "ceftin",
+        "ceftriaxone",
+        "cefuroxime",
+        "cephalexin",
+        "cephalosporin",
+        "cephalosporins",
+        "keflex",
+        "omnicef",
+        "rocephin",
+        "suprax"
+      ],
+      "note": "is a cephalosporin antibiotic — the same drug class as the recorded allergen.",
+      "source": "Drug Allergy: An Updated Practice Parameter (AAAAI/ACAAI Joint Task Force, 2022)"
+    },
+    {
+      "key": "nsaids",
+      "label": "NSAIDs (non-steroidal anti-inflammatory drugs)",
+      "rxcuis": [],
+      "synonyms": [
+        "advil",
+        "aleve",
+        "celebrex",
+        "celecoxib",
+        "diclofenac",
+        "etodolac",
+        "feldene",
+        "flurbiprofen",
+        "ibuprofen",
+        "indocin",
+        "indomethacin",
+        "ketoprofen",
+        "ketorolac",
+        "meloxicam",
+        "mobic",
+        "motrin",
+        "nabumetone",
+        "naprosyn",
+        "naproxen",
+        "naproxen sodium",
+        "nsaid",
+        "nsaids",
+        "oxaprozin",
+        "piroxicam",
+        "sulindac",
+        "toradol",
+        "voltaren"
+      ],
+      "note": "is an NSAID — the same drug class as the recorded allergen. NSAID hypersensitivity is often class-wide (COX-1-mediated) rather than specific to one drug.",
+      "source": "AAAAI — Aspirin-Exacerbated Respiratory Disease (AERD)"
+    },
+    {
+      "key": "penicillins",
+      "label": "penicillin-class antibiotics",
+      "rxcuis": [],
+      "synonyms": [
+        "amoxicillin",
+        "amoxicillin clavulanate",
+        "amoxicillin clavulanic acid",
+        "amoxil",
+        "ampicillin",
+        "ampicillin sulbactam",
+        "augmentin",
+        "benzathine penicillin",
+        "bicillin",
+        "dicloxacillin",
+        "nafcillin",
+        "oxacillin",
+        "penicillin",
+        "penicillin g",
+        "penicillin v",
+        "penicillin v potassium",
+        "penicillin vk",
+        "penicillins",
+        "piperacillin",
+        "piperacillin tazobactam",
+        "unasyn",
+        "zosyn"
+      ],
+      "note": "is a penicillin-class antibiotic — the same drug class as the recorded allergen.",
+      "source": "AAAAI — Penicillin Allergy: Frequently Asked Questions; CDC — Evaluation and Diagnosis of Penicillin Allergy"
+    },
+    {
+      "key": "sulfonamide_antibiotics",
+      "label": "sulfonamide (sulfa) antibiotics",
+      "rxcuis": [],
+      "synonyms": [
+        "bactrim",
+        "co trimoxazole",
+        "cotrimoxazole",
+        "septra",
+        "silvadene",
+        "silver sulfadiazine",
+        "smx tmp",
+        "sulfa",
+        "sulfa antibiotics",
+        "sulfa drugs",
+        "sulfacetamide",
+        "sulfadiazine",
+        "sulfamethoxazole",
+        "sulfamethoxazole trimethoprim",
+        "sulfasalazine",
+        "sulfisoxazole",
+        "sulfonamide",
+        "sulfonamides",
+        "trimethoprim sulfamethoxazole"
+      ],
+      "note": "is a sulfonamide (sulfa) antibiotic — the same drug class as the recorded allergen. (Non-antibiotic sulfonamides like furosemide or hydrochlorothiazide are a different family and are deliberately not flagged.)",
+      "source": "Drug Allergy: An Updated Practice Parameter (AAAAI/ACAAI Joint Task Force, 2022)"
+    }
+  ]
+}

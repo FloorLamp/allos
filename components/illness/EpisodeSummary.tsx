@@ -84,6 +84,7 @@ export default function EpisodeSummary({
   generatedAt,
   temperatureUnit = "F",
   timeZone,
+  nowIso,
   canEdit = false,
   eventProfileId,
   identity,
@@ -107,6 +108,10 @@ export default function EpisodeSummary({
   // caller without a login pref stay in Fahrenheit.
   temperatureUnit?: TemperatureUnit;
   timeZone?: string;
+  // Server-computed "now" for the latest-readings relative ages, forwarded to
+  // EpisodeLatestReadings (a client component whose bare new Date() cannot see the
+  // frozen test clock).
+  nowIso?: string;
   canEdit?: boolean;
   eventProfileId?: number;
   identity?: ReactNode;
@@ -206,6 +211,7 @@ export default function EpisodeSummary({
           episode={episode}
           temperatureUnit={temperatureUnit}
           timeZone={timeZone}
+          nowIso={nowIso}
           linkMedication={linkLatestMedication}
           feverFree={feverFree}
           className="mt-4 border-t border-black/5 pt-4 dark:border-white/5"

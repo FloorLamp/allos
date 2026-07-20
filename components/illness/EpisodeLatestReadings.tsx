@@ -53,6 +53,7 @@ export default function EpisodeLatestReadings({
   linkMedication = false,
   feverFree,
   timeZone,
+  nowIso,
   className = "",
 }: {
   episode: AssembledEpisode;
@@ -60,6 +61,11 @@ export default function EpisodeLatestReadings({
   linkMedication?: boolean;
   feverFree?: { label: string; met: boolean } | null;
   timeZone?: string;
+  // Server-computed "now" for the reading's relative-age label. This is a client
+  // component, so a bare new Date() here reads the BROWSER clock, which cannot see
+  // the frozen test clock (lib/clock) — the same seam class as the PRN widget's
+  // nowIso prop. Server parents pass clockNow().toISOString().
+  nowIso?: string;
   className?: string;
 }) {
   const formatPrefs = useFormatPrefs();
@@ -95,7 +101,11 @@ export default function EpisodeLatestReadings({
                   temperature.date,
                   temperature.time,
                   formatPrefs,
-                  { timeZone, timeFormat: formatPrefs.timeFormat }
+                  {
+                    timeZone,
+                    timeFormat: formatPrefs.timeFormat,
+                    now: nowIso ? new Date(nowIso) : undefined,
+                  }
                 )}
               </span>
             </>
@@ -132,6 +142,7 @@ export default function EpisodeLatestReadings({
                 {whenLabel(episode, dose.date, dose.time, formatPrefs, {
                   timeZone,
                   timeFormat: formatPrefs.timeFormat,
+                  now: nowIso ? new Date(nowIso) : undefined,
                 })}
               </span>
             </>

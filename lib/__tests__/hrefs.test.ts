@@ -34,9 +34,11 @@ describe("biomarkerViewHref", () => {
 
   it("falls back to the biomarkers list when there is no canonical name", () => {
     // An uncanonicalized reading has no ?name= the view can resolve.
-    expect(biomarkerViewHref(null, "Some Raw Analyte")).toBe("/biomarkers");
-    expect(biomarkerViewHref(undefined)).toBe("/biomarkers");
-    expect(biomarkerViewHref("   ")).toBe("/biomarkers");
+    expect(biomarkerViewHref(null, "Some Raw Analyte")).toBe(
+      "/results#biomarkers"
+    );
+    expect(biomarkerViewHref(undefined)).toBe("/results#biomarkers");
+    expect(biomarkerViewHref("   ")).toBe("/results#biomarkers");
   });
 
   it("encodes query-unsafe characters in the canonical name", () => {

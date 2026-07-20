@@ -89,7 +89,10 @@ export const PALETTE_ACTIONS: PaletteAction[] = [
     label: "Add biomarker record",
     keywords: ["lab", "result", "blood", "biomarker", "panel", "test"],
     icon: "chart",
-    target: { kind: "navigate", href: `/biomarkers?${FOCUS_PARAM}=1` },
+    target: {
+      kind: "navigate",
+      href: `/results?${FOCUS_PARAM}=1#biomarkers`,
+    },
   },
 ];
 

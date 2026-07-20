@@ -142,7 +142,7 @@ describe("buildAttentionModel — the one item builder (issue #524)", () => {
         ],
       })
     );
-    expect(item.href).toBe("/biomarkers");
+    expect(item.href).toBe("/results#biomarkers");
   });
 
   it("an out-of-range flag outranks a merely non-optimal one within its group (#517 priority)", () => {

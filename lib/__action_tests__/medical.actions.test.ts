@@ -60,7 +60,7 @@ describe("addRecord", () => {
     expect(rows[0].value_num).toBe(130);
     // reconcileFlags ran inside the write transaction: 130 > ref_high 99 → 'high'.
     expect(rows[0].flag).toBe("high");
-    expect(revalidate).toHaveBeenCalledWith("/biomarkers");
+    expect(revalidate).toHaveBeenCalledWith("/results");
   });
 
   it("rejects an impossible date (no row written)", async () => {
@@ -168,7 +168,7 @@ describe("deleteRecord", () => {
     await deleteRecord(fd({ id }));
 
     expect(getMedicalRecords(profile.id)).toHaveLength(0);
-    expect(revalidate).toHaveBeenCalledWith("/biomarkers");
+    expect(revalidate).toHaveBeenCalledWith("/results");
   });
 });
 
