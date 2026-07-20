@@ -28,6 +28,7 @@ import {
 import { contrastDataset, contrastClassStrategy } from "./contrast-safety";
 import { dentalSafetyDataset, dentalKeyStrategy } from "./dental-safety";
 import { driDataset, driNutrientStrategy } from "./dri";
+import { drugAllergyDataset, drugAllergyKeyStrategy } from "./drug-allergy";
 import {
   drugInteractionsDataset,
   drugInteractionPairStrategy,
@@ -143,6 +144,13 @@ export const DATASETS: RegisteredDataset[] = [
       unknown
     >,
     strategy: driNutrientStrategy,
+  },
+  {
+    dataset: drugAllergyDataset as unknown as LoadedDataset<
+      Record<string, unknown>,
+      unknown
+    >,
+    strategy: drugAllergyKeyStrategy,
   },
   {
     dataset: drugInteractionsDataset as unknown as LoadedDataset<

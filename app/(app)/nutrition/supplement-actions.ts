@@ -935,6 +935,12 @@ const INTAKE_FINDING_PREFIXES = [
   "dietary-limit:",
   "rda-adequacy:",
   "prn-max:",
+  // Ototoxic-medication awareness (#717) — rendered dismissible by IntakeWarnings
+  // since it shipped, but its namespace was missing here, so the card's dismiss
+  // always refused. Registered alongside the new allergy namespace (#1029 fix-up).
+  "ototoxic:",
+  // Drug-allergy × med cross-check (#1029) — `allergy-med:<allergyId>-<itemId>`.
+  "allergy-med:",
   FOOD_TIMING_PREFIX,
   KEEP_APART_PREFIX,
 ];

@@ -498,17 +498,21 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
   }
 
   // Single-reading temperature red flags (#859 item 3) — a sibling care-tier,
-  // bus-gated nudge assessed once per profile-local DAY, same discipline as
-  // illness-care above. Its own assessed marker so a red-flag failure retries
-  // independently of the duration/trajectory check.
-  if (
-    waking &&
-    getProfileSetting(profile.id, "notify_tempredflag_assessed") !== date
-  ) {
+  // bus-gated nudge. Assessed EVERY waking tick (#1025): the once-per-day gate the
+  // illness-care/preventive jobs use was over-copied here — their inputs are
+  // day-granular, but this one's input is the episode's LATEST reading, which
+  // changes intra-day exactly during the fever days that matter (a 2 PM 104 °F
+  // reading used to wait for tomorrow's first tick). The run is cheap (the open
+  // episode's latest reading + one dataset lookup), and dedup is owned by the
+  // per-finding marker inside runTempRedFlag (the dedupeKey embeds the reading's
+  // date + rule) plus the shared suppression bus — so re-running never re-nags.
+  // The tick is now the FALLBACK for readings that arrive without an event; the
+  // write paths dispatch immediately (dispatchTempRedFlagForReading, quiet-hours
+  // exempt like redose — the overnight logging caregiver is awake by definition).
+  if (waking) {
     try {
       const trf = await runTempRedFlag(profile.id, profile.name, date);
       if (trf.failed) anyFailed = true;
-      else setProfileSetting(profile.id, "notify_tempredflag_assessed", date);
     } catch (e) {
       log.error("temp-red-flag check failed", {
         profile: profile.id,

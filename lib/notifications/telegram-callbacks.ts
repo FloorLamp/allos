@@ -41,6 +41,7 @@ import { isTaskConfigured } from "../ai-resolve";
 import { mapSymptomText } from "../symptom-text-map";
 import { profileAgeMonths } from "../settings";
 import { inlineTempRedFlagNote } from "../temp-red-flag";
+import { queueTempRedFlagDispatch } from "./temp-red-flag";
 import { fmtTemp } from "../units";
 import { preventiveRuleByKey } from "../preventive-catalog";
 import { preventiveSignalKey } from "../preventive-upcoming";
@@ -524,6 +525,11 @@ export async function handleTempReply(
     });
     return true;
   }
+  // Event-driven red-flag push (#1025): a crossing reading dispatches the
+  // co-caregiver nudge NOW (fire-and-forget, quiet-hours exempt like redose); the
+  // per-finding marker + bus own dedup, so the logger's own toast below and the
+  // push can't double-nag.
+  queueTempRedFlagDispatch(markedProfile, outcome.degF);
   const redFlag = inlineTempRedFlagNote(
     outcome.degF,
     profileAgeMonths(markedProfile, date)

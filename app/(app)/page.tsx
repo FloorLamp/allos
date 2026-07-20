@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { IconFlask, IconScale, IconPill } from "@tabler/icons-react";
+import { now as clockNow } from "@/lib/clock";
 import { today } from "@/lib/db";
 import {
   getGoals,
@@ -279,6 +280,10 @@ export default async function Dashboard() {
       status: episodeCollapsedStatus(c.episode, units.temperatureUnit, {
         timeZone: getTimezone(c.profileId),
         timeFormat: formatPrefs.timeFormat,
+        // The frozen-clock seam (#1028 class): the reading's relative age must come
+        // from lib/clock, not a bare new Date() fallback — the suite freezes only
+        // the former.
+        now: clockNow(),
       }),
       feverFree: schoolReturn
         ? {
