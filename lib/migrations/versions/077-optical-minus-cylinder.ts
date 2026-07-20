@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 075 (issue #1036): one-shot transposition of ALREADY-STORED optical
+// Migration 077 (issue #1036): one-shot transposition of ALREADY-STORED optical
 // prescriptions written in PLUS-cylinder (ophthalmology) notation onto the app's
 // canonical MINUS-cylinder (optometry) convention.
 //
@@ -67,7 +67,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 75,
-  name: "075-optical-minus-cylinder",
+  id: 77,
+  name: "077-optical-minus-cylinder",
   up,
 };

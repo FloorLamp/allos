@@ -611,7 +611,7 @@ export async function commitBiomarkers(
     insertedRecordIds: outcome.insertedRecordIds,
   });
   const sampleCount = outcome.heightCount + outcome.headCircCount;
-  revalidatePath("/biomarkers");
+  revalidatePath("/results");
   revalidatePath("/data");
   revalidatePath("/");
   if (outcome.immCount) revalidatePath("/immunizations");

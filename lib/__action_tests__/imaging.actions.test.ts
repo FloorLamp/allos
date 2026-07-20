@@ -55,7 +55,7 @@ describe("addImagingStudy", () => {
     // Provider links are captured structurally but not populated from this form yet.
     expect(s.ordering_provider_id).toBeNull();
     expect(s.reading_provider_id).toBeNull();
-    expect(revalidate).toHaveBeenCalledWith("/imaging");
+    expect(revalidate).toHaveBeenCalledWith("/results");
   });
 
   it("defaults an unknown modality to 'other' and a missing laterality to null", async () => {

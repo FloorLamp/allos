@@ -86,6 +86,7 @@ export default function IllnessCockpitBody({
         episode={episode}
         temperatureUnit={temperatureUnit}
         timeZone={tz}
+        nowIso={clockNow().toISOString()}
         linkMedication
         feverFree={
           schoolReturn

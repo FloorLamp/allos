@@ -1105,7 +1105,7 @@ export const DELETE_POLICY: Record<string, DatasetDeletePolicy> = {
   body_metrics: { revalidate: ["/trends", "/"] },
   medical_records: {
     // Also refresh the import document subpages, which list these readings.
-    revalidate: ["/biomarkers", "/biomarkers/view", "/import/[id]", "/"],
+    revalidate: ["/results", "/biomarkers/view", "/import/[id]", "/"],
     cleanupStars: true,
   },
   immunizations: {
@@ -1122,8 +1122,8 @@ export const DELETE_POLICY: Record<string, DatasetDeletePolicy> = {
   metric_samples: { revalidate: ["/trends", "/"] },
   // Clinical passport domains newly exported/deletable (#465).
   procedures: { revalidate: ["/procedures", "/"] },
-  genomic_variants: { revalidate: ["/genomics", "/"] },
-  imaging_studies: { revalidate: ["/imaging", "/"] },
+  genomic_variants: { revalidate: ["/results", "/"] },
+  imaging_studies: { revalidate: ["/results", "/"] },
   optical_prescriptions: { revalidate: ["/vision", "/"] },
   family_history: { revalidate: ["/family-history", "/"] },
   care_plan_items: { revalidate: ["/care-plan", "/"] },
@@ -1132,7 +1132,7 @@ export const DELETE_POLICY: Record<string, DatasetDeletePolicy> = {
   immunization_overrides: { revalidate: ["/immunizations", "/"] },
   preventive_events: { revalidate: ["/upcoming", "/"] },
   preventive_overrides: { revalidate: ["/upcoming", "/"] },
-  protocols: { revalidate: ["/protocols", "/"] },
+  protocols: { revalidate: ["/longevity", "/"] },
   milestones: { revalidate: ["/"] },
   equipment: { revalidate: ["/settings/equipment", "/training"] },
   frequency_targets: { revalidate: ["/training", "/"] },

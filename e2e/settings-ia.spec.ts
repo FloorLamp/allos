@@ -38,6 +38,14 @@ test.describe("Settings IA (#928) — admin", () => {
     ).toBeVisible();
     await expect(page.getByTestId("push-settings")).toBeVisible();
     await expect(page.getByTestId("notification-matrix")).toBeVisible();
+
+    // Guard (moved from home-assistant-notify.spec.ts when that spec went to its
+    // own fixture profile): the HA card's submit button is deliberately NOT named
+    // "Save" — role name matching is substring-based, and pre-existing specs (e.g.
+    // preventive-nudge.spec.ts) click a bare "Save" on this admin page. Exactly one
+    // "Save"-named button (the Telegram card's) must exist, or those clicks turn
+    // strict-mode ambiguous.
+    await expect(page.getByRole("button", { name: "Save" })).toHaveCount(1);
   });
 
   test("the Profile tab has a sticky anchor jump-nav that jumps to each section", async ({

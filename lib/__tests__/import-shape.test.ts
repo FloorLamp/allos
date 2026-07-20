@@ -605,6 +605,8 @@ describe("healthRecordToPersistInput (deterministic path)", () => {
           date: "2026-06-08",
           end_date: "2026-06-08",
           type: "Office Visit",
+          code: "99213",
+          code_system: "CPT",
           class_code: "AMB",
           reason: "Fever",
           diagnoses: ["Fever"],

@@ -33,12 +33,14 @@ interface FilterCtx {
   current: boolean;
 }
 
-// Build a /biomarkers URL from the active filters, dropping empty ones.
+// Build a filtered URL for the #biomarkers section of /results from the active
+// filters, dropping empty ones (#1042 phase 5 — the anchor keeps a filter/sort/
+// pager navigation on the section).
 function qs(params: Record<string, string | undefined>): AppRoute {
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) if (v) sp.set(k, v);
   const s = sp.toString();
-  return s ? `/biomarkers?${s}` : "/biomarkers";
+  return s ? `/results?${s}#biomarkers` : "/results#biomarkers";
 }
 
 // The grouping identity for a reading: its canonical name when present, else the

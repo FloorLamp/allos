@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   recordMatchesMed,
   unmatchedPrescriptionRecords,
+  bridgeCandidates,
   recordMedKey,
   recordDisplayName,
   medBridgeDismissalKey,
@@ -46,6 +47,23 @@ describe("recordMatchesMed", () => {
   it("matches by cleaned name across a strength suffix", () => {
     expect(recordMatchesMed({ name: "Lisinopril 10 mg" }, med)).toBe(true);
     expect(recordMatchesMed({ name: "lisinopril" }, med)).toBe(true);
+  });
+
+  it("matches a parenthesized-strength record to a plain-named tracked med (#1026)", () => {
+    // The MyChart concentration rendering must not read as a different drug —
+    // before the cleanMedicationName fix the bridge suggested a duplicate here.
+    expect(
+      recordMatchesMed(
+        { name: "albuterol (2.5 MG/3ML)" },
+        { name: "Albuterol" }
+      )
+    ).toBe(true);
+    expect(
+      recordMatchesMed(
+        { name: "amoxicillin (400 mg/5 mL) suspension" },
+        { name: "Amoxicillin" }
+      )
+    ).toBe(true);
   });
 
   it("does not match a different drug", () => {
@@ -142,5 +160,77 @@ describe("medBridgeDismissalKey", () => {
     expect(medBridgeDismissalKey({ name: "Tylenol" })).toBe(
       medBridgeDismissalKey({ name: "Acetaminophen 500 mg" })
     );
+  });
+});
+
+// ---- #1027 ask 4: different-strength offers (bridgeCandidates) --------------
+
+describe("bridgeCandidates — same family, different strength (#1027)", () => {
+  const trackedOtc = {
+    name: "Ibuprofen",
+    rxcui: null,
+    doseAmounts: ["200 mg"],
+  };
+
+  it("offers a family-matched record at a provably DIFFERENT strength instead of folding", () => {
+    const out = bridgeCandidates(
+      [{ name: "ibuprofen 800 mg tablet", canonical_name: "ibuprofen" }],
+      [trackedOtc]
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].strengthOffer).toBe("800 mg");
+  });
+
+  it("folds the SAME strength ('200mg' ≡ '200 mg') and a record with no strength", () => {
+    expect(
+      bridgeCandidates(
+        [{ name: "Ibuprofen 200mg", canonical_name: "ibuprofen" }],
+        [trackedOtc]
+      )
+    ).toHaveLength(0);
+    expect(
+      bridgeCandidates(
+        [{ name: "Ibuprofen", canonical_name: "ibuprofen" }],
+        [trackedOtc]
+      )
+    ).toHaveLength(0);
+  });
+
+  it("folds when the tracked med has NO known strength (never guess a difference)", () => {
+    expect(
+      bridgeCandidates(
+        [{ name: "ibuprofen 800 mg", canonical_name: "ibuprofen" }],
+        [{ name: "Ibuprofen", rxcui: null }]
+      )
+    ).toHaveLength(0);
+  });
+
+  it("a strength parsed off the tracked med's NAME also counts as known", () => {
+    expect(
+      bridgeCandidates(
+        [{ name: "ibuprofen 800 mg", canonical_name: "ibuprofen" }],
+        [{ name: "Ibuprofen 800 mg", rxcui: null }]
+      )
+    ).toHaveLength(0);
+  });
+
+  it("an untracked record still surfaces with no strength offer", () => {
+    const out = bridgeCandidates(
+      [{ name: "Amoxicillin 500 mg", canonical_name: "Amoxicillin" }],
+      [trackedOtc]
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].strengthOffer).toBeNull();
+  });
+
+  it("the offer's dismissal key carries the strength so it never suppresses the plain suggestion", () => {
+    const rec = {
+      name: "ibuprofen 800 mg tablet",
+      canonical_name: "ibuprofen",
+    };
+    expect(medBridgeDismissalKey(rec, "800 mg")).toBe(
+      `${MED_BRIDGE_PREFIX}ibuprofen:800mg`
+    );
+    expect(medBridgeDismissalKey(rec)).toBe(`${MED_BRIDGE_PREFIX}ibuprofen`);
   });
 });

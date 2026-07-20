@@ -36,6 +36,7 @@ import {
 import {
   hasImportedSmokingHistory,
   getCarePlanItems,
+  getDentalProcedures,
   getProcedures,
 } from "../clinical";
 import { getRiskFactors } from "./risk";
@@ -68,7 +69,8 @@ const INFERENCE_RESULT_CATEGORIES = new Set(["lab", "biomarker", "vitals"]);
 // the merge happens in-memory in preventiveItems below. Every read here is
 // profile-scoped (each getX filters profile_id). Records are routed to the rule
 // KINDS their source can legitimately satisfy: procedures/labs → screenings,
-// appointments/encounters → visits, completed care-plan items → either.
+// appointments/encounters/completed dental procedures → visits, completed
+// care-plan items → either.
 export function getInferredPreventiveSatisfactions(
   profileId: number
 ): PreventiveSatisfaction[] {
@@ -144,14 +146,36 @@ export function getInferredPreventiveSatisfactions(
   // rule (skin/eye/dental). Whole-word matching against the SAME specific phrases
   // keeps this within the #86 conservatism: bare "skin" still matches nothing; a
   // specialty word ("dermatology") or an explicit phrase ("skin check") does.
+  // The imported TYPE CODE (#1035) now feeds the concept map's exact-code path
+  // too, so Epic's generic "Office Visit" carrying CPT 99396 satisfies
+  // adult_physical even when every text field is generic.
   for (const e of getEncounters(profileId)) {
     records.push({
-      code: null,
+      code: e.code,
       name:
         [e.type, e.reason, e.notes, e.provider_name, e.location_name]
           .filter(Boolean)
           .join(" ") || null,
       date: e.date,
+      allow: ["visit"],
+    });
+  }
+
+  // Completed DENTAL procedures → the dental visit rule (issue #1037). The
+  // dental-specific record type carries its own CDT column (D1110/D0120 → the
+  // concept map's exact-code path) and a free-text name (→ the whole-word
+  // synonyms), so a logged cleaning/exam satisfies dental_cleaning exactly like
+  // a colonoscopy row satisfies its screening. Only status='completed' rows are
+  // evidence — a 'planned' extraction or a 'watch' finding is not a done
+  // cleaning (mirrors the appointment isCompletedStatus conservatism) — and a
+  // row with no procedure_date is skipped by the pure layer (can't be placed on
+  // the timeline), same as every other source.
+  for (const d of getDentalProcedures(profileId)) {
+    if (d.status !== "completed") continue;
+    records.push({
+      code: d.cdt_code,
+      name: d.name,
+      date: d.procedure_date,
       allow: ["visit"],
     });
   }

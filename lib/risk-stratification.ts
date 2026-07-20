@@ -21,6 +21,12 @@
 // query layer (lib/queries/upcoming) and hands it plain inputs, so the thresholds
 // are unit-tested in isolation (lib/__tests__/risk-stratification.test.ts).
 
+import {
+  conditionCodeConcepts,
+  conditionInputName,
+  type ConditionConcept,
+  type ConditionInput,
+} from "./condition-codes";
 import type { LifeStage } from "./life-stage";
 import type { SmokingStatusValue } from "./smoking";
 import type { GenomicResultType, GenomicSignificance } from "./types/medical";
@@ -80,10 +86,11 @@ export const EMPTY_RISK_ATTRIBUTES: RiskAttributes = {
 // The already-gathered inputs the classifier reads. The query layer fills these
 // from profile-scoped reads; this module never touches the DB.
 export interface RiskInputs {
-  // Raw family_history.condition strings (any relation).
-  familyConditions: string[];
-  // Names of the profile's ACTIVE conditions.
-  activeConditions: string[];
+  // family_history.condition labels (any relation) — bare strings, or coded refs
+  // carrying the row's code/code_system so the code table counts too (#1030).
+  familyConditions: ConditionInput[];
+  // The profile's ACTIVE conditions — bare names or coded refs (#1030).
+  activeConditions: ConditionInput[];
   attributes: RiskAttributes;
   // The profile's resolved smoking status (lib/smoking) — `current` activates the
   // current-smoking factor (a periodontal-risk input for the dental visit cadence,
@@ -170,6 +177,31 @@ const CONDITION_KEYWORDS: { factor: RiskFactor; stems: string[] }[] = [
   },
 ];
 
+// The coded halves of the two keyword tables (#1030): which curated code
+// CONCEPTS (lib/condition-codes) activate which factor. Consulted alongside the
+// stems — per-concept code-first with name fallback, unioned, the
+// matchConceptKeysIn shape — so a coded-but-tersely-named row ("DM2" + E11.9)
+// lands the factor the stem match misses, and an uncoded/unknown-code row keeps
+// today's stem behavior exactly.
+const CONDITION_CONCEPT_FACTORS: {
+  factor: RiskFactor;
+  concepts: ConditionConcept[];
+}[] = [
+  { factor: "diabetes", concepts: ["diabetes"] },
+  { factor: "hypertension", concepts: ["hypertension"] },
+  { factor: "chronic-kidney-disease", concepts: ["chronic-kidney-disease"] },
+];
+
+const FAMILY_CONCEPT_FACTORS: {
+  factor: RiskFactor;
+  concepts: ConditionConcept[];
+}[] = [
+  { factor: "family-cardiovascular", concepts: ["cardiovascular-disease"] },
+  { factor: "family-cancer", concepts: ["malignant-neoplasm"] },
+  { factor: "family-diabetes", concepts: ["diabetes"] },
+  { factor: "family-glaucoma", concepts: ["glaucoma"] },
+];
+
 // The curated GENE → hereditary-risk factor table (#711). EXCLUSION-DISCIPLINED:
 // only genes with an ESTABLISHED screening guideline get an entry, so a variant in a
 // gene NOT listed here (APOE ε4, HTT/Huntington, and every other predictive-only
@@ -217,16 +249,24 @@ function drivesHereditaryCadence(v: GenomicRiskInput): boolean {
 // Derive the active risk factors from the gathered inputs. Pure and total — an
 // empty input yields an empty set. Family and personal conditions are keyword-
 // matched; the occupational/immune attributes map straight through.
-// The risk factors a set of ACTIVE CONDITION labels imply (via the CONDITION_KEYWORDS
-// stem table). Factored out of deriveRiskFactors so a caller with only condition names
-// in hand — the contrast-safety cross-check's CKD gate (#701) — reuses the SAME
-// recognizer rather than a bespoke parse (AGENTS.md), and the two can't drift.
+// The risk factors a set of ACTIVE CONDITIONS imply — the stored CODE consulted
+// first (the curated CONDITION_CONCEPT_FACTORS table over lib/condition-codes,
+// #1030), with the CONDITION_KEYWORDS stem match as the name fallback, unioned
+// per row (the matchConceptKeysIn shape — a combination code like E11.21 keeps
+// its name's kidney stem). Factored out of deriveRiskFactors so a caller with
+// only conditions in hand — the contrast-safety cross-check's CKD gate (#701) —
+// reuses the SAME recognizer rather than a bespoke parse (AGENTS.md), and the
+// two can't drift. Accepts bare names (unchanged callers/tests) or coded refs.
 export function conditionsToRiskFactors(
-  activeConditions: string[]
+  activeConditions: readonly ConditionInput[]
 ): Set<RiskFactor> {
   const factors = new Set<RiskFactor>();
   for (const raw of activeConditions) {
-    const n = norm(raw);
+    const concepts = conditionCodeConcepts(raw);
+    for (const { factor, concepts: keys } of CONDITION_CONCEPT_FACTORS) {
+      if (keys.some((k) => concepts.has(k))) factors.add(factor);
+    }
+    const n = norm(conditionInputName(raw));
     for (const { factor, stems } of CONDITION_KEYWORDS) {
       if (stems.some((s) => n.includes(s))) factors.add(factor);
     }
@@ -238,7 +278,14 @@ export function deriveRiskFactors(inputs: RiskInputs): Set<RiskFactor> {
   const factors = new Set<RiskFactor>();
 
   for (const raw of inputs.familyConditions) {
-    const n = norm(raw);
+    // Code table first (family_history rows carry code/code_system too, #1030),
+    // stem match as the name fallback — unioned, same shape as the personal-
+    // condition recognizer above.
+    const concepts = conditionCodeConcepts(raw);
+    for (const { factor, concepts: keys } of FAMILY_CONCEPT_FACTORS) {
+      if (keys.some((k) => concepts.has(k))) factors.add(factor);
+    }
+    const n = norm(conditionInputName(raw));
     for (const { factor, stems } of FAMILY_KEYWORDS) {
       if (stems.some((s) => n.includes(s))) factors.add(factor);
     }

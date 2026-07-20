@@ -43,6 +43,7 @@ import { SUBSTANCE_USE_PREFIX } from "./substance-use";
 import { FITNESS_CHECK_PREFIX } from "./fitness-retest";
 import { MOBILITY_SUGGEST_PREFIX } from "./mobility-suggest";
 import { MOOD_OBS_PREFIX, SLEEP_MOOD_PREFIX } from "./mood-observation";
+import { MED_DUP_PREFIX } from "./medication-family";
 import type { ReasonCode } from "./reasons";
 
 // The two reach tiers (#449). CARE is push: Upcoming + the non-hideable Needs-attention
@@ -200,6 +201,17 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: SLEEP_MOOD_PREFIX,
     tier: "coaching",
     builder: "buildSleepMoodBridgeFindings",
+    reasons: [],
+  },
+  {
+    // Medication therapeutic-duplication note (#1027): two or more ACTIVE meds
+    // sharing an ingredient family ("Ibuprofen appears in 2 active medications").
+    // COACHING tier (#449) — never a notification, never the hero (the protective
+    // half is the family-wide redose/over-max math); joins collectCoachingFindings
+    // and rides the shared suppression bus keyed on the derived family key.
+    prefix: MED_DUP_PREFIX,
+    tier: "coaching",
+    builder: "buildMedicationDuplicationFindings",
     reasons: [],
   },
   // ---- Care tier (push; NOT in collectCoachingFindings) ----------------------

@@ -205,12 +205,20 @@ export function gatherDigestInput(
     MAX_FLAGGED
   );
 
+  // "New" means the extraction COMPLETED since the cursor (issue #1022) — not
+  // uploaded since. `extraction_completed_at` is stamped by the one 'done'
+  // transition (lib/import-persist.ts), so a document that finished extracting
+  // after a digest already passed its upload time (the upload/digest race) or
+  // that failed and was reprocessed days later still announces exactly once, the
+  // morning after it actually became readable. Backfilled rows (migration 075)
+  // carry their uploaded_at, keeping pre-existing history out of the window.
   const newDocumentLabels = (
     db
       .prepare(
         `SELECT filename, doc_type, source FROM medical_documents
-          WHERE profile_id = ? AND uploaded_at > ? AND extraction_status = 'done'
-          ORDER BY uploaded_at DESC LIMIT ?`
+          WHERE profile_id = ? AND extraction_completed_at > ?
+            AND extraction_status = 'done'
+          ORDER BY extraction_completed_at DESC LIMIT ?`
       )
       .all(profileId, since, MAX_NEW_DOCS) as {
       filename: string;

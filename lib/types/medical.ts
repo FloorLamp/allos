@@ -358,6 +358,10 @@ export interface Encounter {
   date: string;
   end_date: string | null;
   type: string | null;
+  // The encounter TYPE code + labeled system (CPT/CDT/SNOMED) captured on import
+  // (#1035) — feeds the preventive visit-rule code matching. NULL on manual rows.
+  code: string | null;
+  code_system: string | null;
   class_code: string | null;
   reason: string | null;
   diagnoses: string | null;
@@ -763,4 +767,8 @@ export interface MedicalDocument {
   // section/resource coverage. NULL for AI-extracted docs or pre-feature rows.
   import_report: string | null;
   uploaded_at: string;
+  // When extraction last transitioned to 'done' (issue #1022) — stamped by the
+  // one finalize UPDATE in lib/import-persist.ts; the digest's "new documents"
+  // window keys on it. NULL until a document first completes.
+  extraction_completed_at: string | null;
 }

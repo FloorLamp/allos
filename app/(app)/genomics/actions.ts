@@ -24,7 +24,7 @@ import {
 // derives or stores a risk interpretation.
 
 function revalidateGenomics() {
-  revalidatePath("/genomics");
+  revalidatePath("/results");
   revalidatePath("/profile");
   revalidatePath("/");
 }

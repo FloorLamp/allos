@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 076 (issue #1034): grow the imaging_studies.modality CHECK with the
+// Migration 078 (issue #1034): grow the imaging_studies.modality CHECK with the
 // three high-dose modalities the enum omitted — 'pet', 'nuclear-medicine'
 // (SPECT/scintigraphy), and 'fluoroscopy' (incl. interventional angiography,
 // whose dose mechanism is fluoroscopic).
@@ -102,7 +102,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 76,
-  name: "076-imaging-modality-expansion",
+  id: 78,
+  name: "078-imaging-modality-expansion",
   up,
 };

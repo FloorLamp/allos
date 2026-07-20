@@ -116,7 +116,7 @@ export default async function BiomarkerDetailPage(props: {
     return (
       <div>
         <Link
-          href="/biomarkers"
+          href="/results#biomarkers"
           className="mb-4 inline-flex items-center gap-1 text-sm text-brand-700 hover:underline dark:text-brand-400"
         >
           <IconArrowLeft className="h-4 w-4" /> Back to biomarkers
@@ -503,7 +503,7 @@ export default async function BiomarkerDetailPage(props: {
   return (
     <div>
       <Link
-        href="/biomarkers"
+        href="/results#biomarkers"
         className="mb-4 inline-flex items-center gap-1 text-sm text-brand-700 hover:underline"
       >
         <IconArrowLeft className="h-4 w-4" /> Back to biomarkers

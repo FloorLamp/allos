@@ -181,9 +181,9 @@ describe("AI extraction lands imaging studies through the persist core", () => {
     expect(mri).toBeTruthy();
     expect(mri!.category).toBe("imaging");
     expect(mri!.detail).toBe("Small joint effusion. No meniscal tear.");
-    expect(mri!.href).toBe("/imaging");
+    expect(mri!.href).toBe("/results#imaging");
     // Both studies carry the imaging category and link to the passport surface.
-    expect(events.every((e) => e.href === "/imaging")).toBe(true);
+    expect(events.every((e) => e.href === "/results#imaging")).toBe(true);
   });
 });
 

@@ -20,6 +20,7 @@ import {
   isGivenAtAccepted,
 } from "../../dose-log-window";
 import { decrementSupply, incrementSupply } from "./refill";
+import { getMedicationFamilyStates } from "./prn-family";
 import type {
   AdministrationOutcome,
   DoseStatus,
@@ -687,40 +688,71 @@ export function getRedoseArmingState(
   };
 }
 
-// A PRN med whose today's administration count has EXCEEDED its confirmed daily max
-// (#798) — the input to the over-max care finding (the #148 UL-warning shape applied
-// per-day). Only items with a confirmed max_daily_count are considered; "over" is
-// strictly greater than the max (you've logged MORE than the label allows today).
-// Amount-aware mg accounting (sum of administered mg vs a mg ceiling) is a noted
-// follow-up; the confirmed COUNT is the reliable signal and what the finding uses.
+// A PRN med (or ingredient FAMILY, #1027) whose today's administration count has
+// EXCEEDED the confirmed daily max (#798) — the input to the over-max care finding
+// (the #148 UL-warning shape applied per-day). "Over" is strictly greater than the
+// max (you've logged MORE than the label allows today).
+//
+// FAMILY-AWARE (#1027 ask 2): the count is the ingredient family's COMBINED taken
+// count (OTC ibuprofen + Rx ibuprofen 800 together), compared against the most
+// conservative confirmed max_daily_count among members. The finding is anchored to
+// the member holding that most-conservative max (lowest id on a tie), so its
+// dedupeKey stays `prn-max:<itemId>` — identical to the pre-family key for a
+// single-item family (#203: keys stable where possible). Members with unconfirmed
+// fields still contribute their logged administrations (a logged dose is a fact
+// regardless of config); a family with NO confirmed max produces nothing (the #798
+// liability gate). Amount-aware mg accounting stays a noted follow-up; the
+// confirmed COUNT is the reliable signal.
 export interface PrnOverMaxItem {
   id: number;
   name: string;
   count: number;
   maxDailyCount: number;
+  // Every family member's name, when the count spans MORE than one item (the #531
+  // label-by-what-differs rule for the finding copy); absent for a solo item.
+  memberNames?: string[];
 }
 
 export function getPrnOverMaxItems(
   profileId: number,
   date: string
 ): PrnOverMaxItem[] {
-  return db
+  const out: PrnOverMaxItem[] = [];
+  const seenFamilies = new Set<string>();
+  const states = getMedicationFamilyStates(profileId, date);
+  // Anchor selection needs each member's own confirmed max + PRN flag; re-read the
+  // active PRN-configured meds once (profile-scoped).
+  const configured = db
     .prepare(
-      `SELECT id, name, count, maxDailyCount FROM (
-         SELECT s.id AS id, s.name AS name,
-                (SELECT COUNT(*) FROM intake_item_logs l
-                  WHERE l.item_id = s.id AND l.date = ? AND l.status = 'taken')
-                  AS count,
-                s.max_daily_count AS maxDailyCount
-           FROM intake_items s
-          WHERE s.profile_id = ? AND s.active = 1
-            AND s.as_needed = 1 AND s.kind = 'medication'
-            AND s.max_daily_count IS NOT NULL AND s.max_daily_count > 0
-       )
-       WHERE count > maxDailyCount
-       ORDER BY name`
+      `SELECT id, name, max_daily_count AS maxDailyCount
+         FROM intake_items
+        WHERE profile_id = ? AND active = 1
+          AND as_needed = 1 AND kind = 'medication'
+          AND max_daily_count IS NOT NULL AND max_daily_count > 0
+        ORDER BY id`
     )
-    .all(date, profileId) as PrnOverMaxItem[];
+    .all(profileId) as { id: number; name: string; maxDailyCount: number }[];
+  for (const item of configured) {
+    const state = states.get(item.id);
+    if (!state || seenFamilies.has(state.familyKey)) continue;
+    seenFamilies.add(state.familyKey);
+    const max = state.minConfirmedMax ?? item.maxDailyCount;
+    if (state.countToday <= max) continue;
+    // Anchor: the configured member holding the most conservative max (lowest id
+    // on a tie) — `configured` is id-ordered, so the first match wins.
+    const anchor =
+      configured.find(
+        (c) => state.memberIds.includes(c.id) && c.maxDailyCount === max
+      ) ?? item;
+    out.push({
+      id: anchor.id,
+      name: anchor.name,
+      count: state.countToday,
+      maxDailyCount: max,
+      ...(state.memberIds.length > 1 ? { memberNames: state.memberNames } : {}),
+    });
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 // One PRN med surfaced for one-tap logging (dashboard widget + med card): its id,
@@ -728,6 +760,12 @@ export function getPrnOverMaxItems(
 // carries the confirmed redose interval/max (null when not configured) so the widget
 // can render a marker-agnostic "redose open / next in ~Xh" status line without a
 // second query (the same window math the notice uses, via redoseWindowStatus).
+// Since #1027 it ALSO carries the ingredient-FAMILY counters — the combined count,
+// latest administration, and most conservative confirmed max across every active med
+// sharing the ingredient — which are what the redose window math must consume (an
+// OTC ibuprofen dose an hour ago holds the Rx item's "redose OK"). For a solo item
+// the family values equal the per-item ones. The per-item count/lastGivenAt stay for
+// the "N today · last 4:02pm" day label (the item's own administrations).
 export interface PrnMedForQuickLog {
   id: number;
   name: string;
@@ -736,17 +774,26 @@ export interface PrnMedForQuickLog {
   lastGivenAt: string | null;
   minIntervalHours: number | null;
   maxDailyCount: number | null;
+  familyCount: number;
+  familyLastGivenAt: string | null;
+  // min confirmed max across the family; falls back to the item's own max.
+  familyMaxDailyCount: number | null;
+  // Number of active items in the ingredient family (1 for a solo item) — lets the
+  // widget note that the counters span sibling items.
+  familyMemberCount: number;
 }
 
 // Active PRN (as-needed) medications for the quick-log widget, each with today's
 // administration count + latest intake time. Recently-used float to the top (most
 // recent last-administration first — the widget's "recently-used" ordering), then
-// alphabetical. One profile-scoped read so the widget and any other surface agree.
+// alphabetical. One profile-scoped read so the widget and any other surface agree;
+// the #1027 family counters are overlaid from the ONE getMedicationFamilyStates
+// gather so every redose surface widens identically.
 export function getPrnMedicationsForQuickLog(
   profileId: number
 ): PrnMedForQuickLog[] {
   const date = today(profileId);
-  return db
+  const rows = db
     .prepare(
       `SELECT s.id AS id, s.name AS name,
               (SELECT d.amount FROM intake_item_doses d
@@ -765,7 +812,24 @@ export function getPrnMedicationsForQuickLog(
           AND s.as_needed = 1 AND s.kind = 'medication'
         ORDER BY (lastGivenAt IS NULL), lastGivenAt DESC, s.name`
     )
-    .all(date, profileId) as PrnMedForQuickLog[];
+    .all(date, profileId) as Omit<
+    PrnMedForQuickLog,
+    | "familyCount"
+    | "familyLastGivenAt"
+    | "familyMaxDailyCount"
+    | "familyMemberCount"
+  >[];
+  const families = getMedicationFamilyStates(profileId, date);
+  return rows.map((r) => {
+    const fam = families.get(r.id);
+    return {
+      ...r,
+      familyCount: fam?.countToday ?? r.count,
+      familyLastGivenAt: fam?.latestGivenAt ?? r.lastGivenAt,
+      familyMaxDailyCount: fam?.minConfirmedMax ?? r.maxDailyCount,
+      familyMemberCount: fam?.memberIds.length ?? 1,
+    };
+  });
 }
 
 // The name of an intake item this profile owns, or null — for the Telegram /dose

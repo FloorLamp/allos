@@ -27,7 +27,7 @@ test("protocol references recovery gear + tracks practice adherence (#344)", asy
     .toISOString()
     .slice(0, 10);
 
-  await page.goto("/protocols");
+  await page.goto("/longevity#protocols");
   const main = page.getByRole("main");
   const form = main.getByTestId("protocol-form");
 
@@ -69,6 +69,6 @@ test("protocol references recovery gear + tracks practice adherence (#344)", asy
   // Self-clean.
   page.on("dialog", (d) => d.accept());
   await detailMain.getByRole("button", { name: "Delete" }).click();
-  await page.waitForURL(/\/protocols$/);
+  await page.waitForURL(/\/longevity(?:#|$)/);
   await expect(page.getByRole("main")).not.toContainText(uniqueName);
 });

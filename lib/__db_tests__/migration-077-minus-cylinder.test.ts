@@ -1,4 +1,4 @@
-// DB INTEGRATION TIER — migration 075 (#1036): the one-shot transposition of
+// DB INTEGRATION TIER — migration 077 (#1036): the one-shot transposition of
 // stored PLUS-cylinder optical prescriptions onto canonical MINUS-cylinder
 // notation. Applied to a hand-built minimal table (the migration-045 pattern):
 // a plus-cyl row transposes per the exact algebra (sphere += cyl, cyl negated,
@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from "vitest";
 import Database from "better-sqlite3";
-import { up } from "@/lib/migrations/versions/075-optical-minus-cylinder";
+import { up } from "@/lib/migrations/versions/077-optical-minus-cylinder";
 
 interface RxRow {
   id: number;
@@ -57,7 +57,7 @@ function row(db: Database.Database, id: number): RxRow {
     .get(id) as RxRow;
 }
 
-describe("migration 075 — plus-cylinder rows transpose to canonical minus-cyl", () => {
+describe("migration 077 — plus-cylinder rows transpose to canonical minus-cyl", () => {
   it("transposes stored plus-cyl rows and leaves minus-cyl / cyl-less rows untouched", () => {
     const { db, ids } = seed();
     const minusBefore = row(db, ids.minus);

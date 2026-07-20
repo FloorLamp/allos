@@ -21,7 +21,11 @@
 
 import { findCrossReactivity } from "./allergen-cross-reactivity";
 import { matchFoodInteractions } from "./food-drug-interactions";
-import { CONDITION_NUTRIENT_RULES } from "./condition-nutrient";
+import {
+  CONDITION_NUTRIENT_RULES,
+  conditionMatchesTerm,
+} from "./condition-nutrient";
+import { conditionInputName, type ConditionInput } from "./condition-codes";
 
 // Normalize a phrase to comparable token form: lowercased, apostrophes dropped,
 // any non-alphanumeric run collapsed to a single space, trimmed. Mirrors the
@@ -188,16 +192,17 @@ export interface ConditionHit {
 // annotation, since the belt distrusts the model.
 export function conditionConflict(
   name: string,
-  conditions: readonly string[]
+  conditions: readonly ConditionInput[]
 ): ConditionHit | null {
-  const clean = conditions.map((c) => (c ?? "").trim()).filter(Boolean);
-  if (clean.length === 0) return null;
+  if (conditions.length === 0) return null;
   for (const rule of CONDITION_NUTRIENT_RULES) {
     if (!rule.nutrientTokens.some((t) => tokenContains(name, t))) continue;
-    for (const c of clean) {
-      if (c.toLowerCase().includes(rule.match)) {
+    for (const c of conditions) {
+      // The shared per-rule matcher (#1030): stored code first, name substring
+      // fallback — the same test the UL caveat and the food engine run.
+      if (conditionMatchesTerm(rule.match, c)) {
         return {
-          condition: c,
+          condition: conditionInputName(c),
           nutrient: rule.nutrientTokens[0],
           caution: rule.caution,
         };
@@ -214,8 +219,9 @@ export interface SafetyContext {
   allergens: string[];
   // Current medications (kind === 'medication', active).
   medications: SafetyMedication[];
-  // Active condition names (display form) — the deterministic condition screen (#657).
-  conditions: string[];
+  // Active conditions — display names, or coded refs carrying the stored
+  // code/code_system so the condition screens are code-first (#657/#1030).
+  conditions: ConditionInput[];
 }
 
 // Why a suggestion was dropped by the safety guard, or null when it passes.

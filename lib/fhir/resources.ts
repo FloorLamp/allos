@@ -635,6 +635,13 @@ export function mapEncounterResource(
   if (!date) return null;
   const end = isoDate(r?.period?.end ?? r?.actualPeriod?.end);
   const type = conceptName(Array.isArray(r?.type) ? r.type[0] : r?.type);
+  // The encounter TYPE code + labeled system off the first type[].coding (issue
+  // #1035) — the CPT/CDT coding the display resolves from, feeding the preventive
+  // concept map's visit-rule code sets (the CDA twin skips the ActCode class,
+  // which FHIR carries separately in `class`).
+  const { code, system } = pickCoding(
+    Array.isArray(r?.type) ? r.type[0] : r?.type
+  );
   const classCode = encounterClass(r?.class);
   // Attending clinician (participant[].individual) — prefer the named individual.
   const provider = providerFromRefs(
@@ -671,6 +678,8 @@ export function mapEncounterResource(
     date,
     end_date: end,
     type,
+    code,
+    code_system: system,
     class_code: classCode,
     reason: encounterReason(r),
     diagnoses,

@@ -163,6 +163,10 @@ describe("encounters extraction", () => {
     expect(e.date).toBe("2026-06-08");
     expect(e.end_date).toBe("2026-06-08");
     expect(e.type).toBe("Office Visit"); // resolved via the narrative reference
+    // The TYPE code is captured alongside the display (#1035) — the CPT coding,
+    // never the ActEncounterCode class translation.
+    expect(e.code).toBe("99213");
+    expect(e.code_system).toBe("CPT");
     expect(e.class_code).toBe("AMB"); // HL7 ActEncounterCode translation
     expect(e.diagnoses).toEqual(["Fever"]);
     expect(e.provider).toMatchObject({
@@ -185,6 +189,44 @@ describe("encounters extraction", () => {
   it("does not fabricate a reason when the document has no Reason for Visit", () => {
     const r = extractFromCcda(doc(ENCOUNTERS));
     expect(r.encounters![0].reason).toBeNull();
+  });
+
+  it("never stores the ActEncounterCode class as the type code (#1035)", () => {
+    // The class rides the TOP-LEVEL coding here; the CPT preventive-visit code
+    // (99396 — established preventive, 40-64) is a translation. The type code must
+    // be the CPT one, and an all-ActCode <code> yields null rather than "AMB".
+    const classFirst = `
+      <section>
+        <code code="46240-8" codeSystem="2.16.840.1.113883.6.1"/>
+        <entry><encounter classCode="ENC" moodCode="EVN">
+          <templateId root="2.16.840.1.113883.10.20.22.4.49"/>
+          <id root="1.2.3" extension="ENC-901"/>
+          <code code="AMB" codeSystem="2.16.840.1.113883.5.4">
+            <translation code="99396" codeSystem="2.16.840.1.113883.6.12" displayName="Office Visit"/>
+          </code>
+          <effectiveTime><low value="20260301"/></effectiveTime>
+        </encounter></entry>
+      </section>`;
+    const r = extractFromCcda(doc(classFirst));
+    expect(r.encounters).toHaveLength(1);
+    expect(r.encounters![0].code).toBe("99396");
+    expect(r.encounters![0].code_system).toBe("CPT");
+    expect(r.encounters![0].class_code).toBe("AMB");
+
+    const classOnly = `
+      <section>
+        <code code="46240-8" codeSystem="2.16.840.1.113883.6.1"/>
+        <entry><encounter classCode="ENC" moodCode="EVN">
+          <templateId root="2.16.840.1.113883.10.20.22.4.49"/>
+          <id root="1.2.3" extension="ENC-902"/>
+          <code code="AMB" codeSystem="2.16.840.1.113883.5.4"/>
+          <effectiveTime><low value="20260302"/></effectiveTime>
+        </encounter></entry>
+      </section>`;
+    const r2 = extractFromCcda(doc(classOnly));
+    expect(r2.encounters![0].code).toBeNull();
+    expect(r2.encounters![0].code_system).toBeNull();
+    expect(r2.encounters![0].class_code).toBe("AMB");
   });
 
   it("handles an encounter with no performer, location, or diagnosis", () => {

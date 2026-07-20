@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import Database from "better-sqlite3";
 import { settledClick } from "./helpers";
 
-// Imaging-study CRUD on /imaging (#702): add a structured study through the real
+// Imaging-study CRUD on the #imaging section of /results (#702, #1042 phase 5): add a structured study through the real
 // form, see it in the list with its modality + contrast shown, filter by modality,
 // edit its impression, then delete it. Drives the real UI end-to-end.
 //
@@ -40,7 +40,7 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
   test("stores a structured study and shows it factually", async ({ page }) => {
     test.slow();
 
-    await page.goto("/imaging");
+    await page.goto("/results#imaging");
     const form = page.getByTestId("imaging-study-form");
     await expect(form).toBeVisible();
 
@@ -104,7 +104,7 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
   }) => {
     test.slow();
 
-    await page.goto("/imaging");
+    await page.goto("/results#imaging");
     const form = page.getByTestId("imaging-study-form");
     await expect(form).toBeVisible();
 

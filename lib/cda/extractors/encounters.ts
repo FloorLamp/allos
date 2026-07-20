@@ -16,6 +16,7 @@ import {
   addressOf,
   asArray,
   buildNarrativeIdMap,
+  codeSystemLabel,
   codedDisplayName,
   collectText,
   effTime,
@@ -42,6 +43,29 @@ function encounterClassCode(code: any): string | null {
     }
   }
   return null;
+}
+
+// The encounter TYPE code + system off the encounter <code> (issue #1035) — the
+// CPT/CDT/local coding the display `type` resolves from, feeding the preventive
+// concept map's visit-rule code sets. The procedures pattern (pickCode) minus one
+// wrinkle: the ActEncounterCode class (AMB/IMP/EMER) rides the SAME <code> as a
+// <translation> (or occasionally as the top-level coding), and it already lands
+// in `class_code` — so ActCode codings are skipped here rather than ever being
+// stored as the "type code". Prefers the top-level coding, then the first
+// non-ActCode translation; nullFlavor codings are ignored.
+function encounterTypeCode(code: any): {
+  code: string | null;
+  system: string | null;
+} {
+  for (const c of [code, ...asArray(code?.translation)]) {
+    if (!c || c["@_code"] == null || c["@_nullFlavor"] != null) continue;
+    if (c["@_codeSystem"] === ACT_CODE_OID) continue; // the class, not the type
+    return {
+      code: String(c["@_code"]),
+      system: codeSystemLabel(c["@_codeSystem"]),
+    };
+  }
+  return { code: null, system: null };
 }
 
 // The first non-nullFlavor <id> extension on the encounter — the stable identity
@@ -173,6 +197,7 @@ function mapEncounter(
   const date = start ?? effTime(enc?.effectiveTime);
   if (!date) return null;
   const type = codedDisplayName(enc?.code, ids);
+  const { code, system } = encounterTypeCode(enc?.code);
   const classCode = encounterClassCode(enc?.code);
   const provider = providerFromPerformer(enc, "individual");
   const location = encounterLocation(enc);
@@ -191,6 +216,8 @@ function mapEncounter(
     date,
     end_date: end,
     type,
+    code,
+    code_system: system,
     class_code: classCode,
     reason: null,
     diagnoses,

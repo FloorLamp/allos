@@ -56,15 +56,34 @@ export function recapWindow(today: string, days = 7): RecapWindow {
 // defaults to "rolling" — which makes the 7-day window byte-for-byte identical to
 // `recapWindow(today, 7)` — so callers that don't pass a mode keep the original
 // trailing-seven behavior.
+//
+// `completed` (issue #1021) selects the NOTIFICATION's calendar-mode window: the
+// last COMPLETED calendar week (the in-progress week's comparison slot) with the
+// full week before it as the new comparison — so "week starts Monday, recap Monday
+// 9am" summarizes the week that just ended instead of a nine-hour "week", and every
+// send-day choice yields a full 7-day subject compared against another full week.
+// The dashboard card keeps the DEFAULT in-progress window (it must keep matching
+// the routine counters, #223), and rolling mode is untouched on both surfaces (a
+// trailing seven days is always a full-length week). One window-selection
+// parameter over the ONE shared computation — never a second recap engine (#221).
 export function resolveRecapWindow(
   today: string,
   days = 7,
   weekMode: WeekMode = "rolling",
-  weekStart: WeekStart = 0
+  weekStart: WeekStart = 0,
+  completed = false
 ): RecapWindow {
-  return days === 7
-    ? weekWindow(today, weekMode, weekStart)
-    : recapWindow(today, days);
+  if (days !== 7) return recapWindow(today, days);
+  const win = weekWindow(today, weekMode, weekStart);
+  if (!completed || weekMode !== "calendar") return win;
+  // Shift back one week: the in-progress week's comparison window (the last full
+  // calendar week) becomes the subject, and the full week before it the comparison.
+  return {
+    start: win.prevStart,
+    end: win.prevEnd,
+    prevStart: shiftDateStr(win.prevStart, -7),
+    prevEnd: shiftDateStr(win.prevStart, -1),
+  };
 }
 
 // A short noun for the period length, used in the delta phrasing ("last week"
@@ -109,6 +128,12 @@ export interface RecapInput {
   // non-weekly periods (weekMode only defines a week).
   weekMode?: WeekMode;
   weekStart?: WeekStart;
+  // Calendar-mode completed-week selection (issue #1021): true on the NOTIFICATION
+  // path, where the recap summarizes the last COMPLETED calendar week rather than
+  // the in-progress one. Omitted/false ⇒ the dashboard's in-progress window; no
+  // effect in rolling mode or for non-weekly periods. Carried on the input so
+  // buildWeeklyRecap resolves the SAME window the gather filtered by.
+  completedWeek?: boolean;
   // Workouts (one per activity) in the current and previous seven-day windows.
   workouts: RecapWorkout[];
   prevWorkouts: RecapWorkout[];
@@ -228,7 +253,8 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
     input.today,
     days,
     input.weekMode,
-    input.weekStart
+    input.weekStart,
+    input.completedWeek ?? false
   );
   const noun = periodNounFor(days);
   const wu = input.weightUnit;

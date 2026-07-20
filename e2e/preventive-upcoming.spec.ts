@@ -171,10 +171,10 @@ test.describe("preventive care in Upcoming (issues #82 + #86 + #85)", () => {
         name: "Depression screening",
         exact: true,
       }),
-      /\/biomarkers/
+      /\/results/
     );
 
-    await expect(page).toHaveURL(/\/biomarkers/);
+    await expect(page).toHaveURL(/\/results/);
     await expect(
       page.getByRole("main").getByText("Biomarkers").first()
     ).toBeVisible();

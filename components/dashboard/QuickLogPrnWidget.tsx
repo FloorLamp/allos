@@ -93,22 +93,29 @@ export function QuickLogPrnContent({
   // something's been logged. Same redoseCardLabel the medications card uses (one
   // computation, so the widget and card never disagree). Marker-agnostic — the card
   // always shows current window state regardless of the one-shot notification marker.
+  // Family-widened window math (#1027): the clock/count/max span the ingredient
+  // family (an OTC ibuprofen dose holds the Rx item's "Redose OK"), with the
+  // "across N items" tail marking a cross-item counter.
   const redoseLineFor = (m: PrnMedForQuickLog): string | null => {
     if (
       m.minIntervalHours == null ||
       m.maxDailyCount == null ||
-      !m.lastGivenAt
+      !m.familyLastGivenAt
     ) {
       return null;
     }
     return redoseCardLabel(
       redoseWindowStatus({
         minIntervalHours: m.minIntervalHours,
-        maxDailyCount: m.maxDailyCount,
-        latestGivenAt: parseUtcSql(m.lastGivenAt),
-        countToday: m.count,
+        maxDailyCount: Math.min(
+          m.maxDailyCount,
+          m.familyMaxDailyCount ?? m.maxDailyCount
+        ),
+        latestGivenAt: parseUtcSql(m.familyLastGivenAt),
+        countToday: m.familyCount,
         now,
-      })
+      }),
+      m.familyMemberCount
     );
   };
   const visibleMeds = compact ? meds.slice(0, 3) : meds;

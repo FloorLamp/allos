@@ -25,19 +25,23 @@ export function countFragment(
 // The one-shot redose NOTICE message (title + body) for the fire case. `lastClock` is
 // the profile-local clock time of the arming administration ("4:02pm"); empty when
 // unknown. Example: "6h since Ibuprofen (4:02pm) — your minimum interval has passed ·
-// 2 of 4 today."
+// 2 of 4 today." `sinceName` (#1027) names the med the ARMING administration belongs
+// to when a same-ingredient SIBLING's dose armed the clock — the body then reads
+// honestly ("8h since Ibuprofen OTC") while the title keeps the notice's own item.
 export function redoseNoticeMessage(input: {
   name: string;
   sinceHours: number;
   lastClock: string;
   countToday: number;
   maxDailyCount: number;
+  sinceName?: string | null;
 }): { title: string; body: string } {
   const at = input.lastClock ? ` (${input.lastClock})` : "";
+  const since = input.sinceName?.trim() || input.name;
   return {
     title: `Redose window open — ${input.name}`,
     body:
-      `${hoursLabel(input.sinceHours)} since ${input.name}${at} — your minimum ` +
+      `${hoursLabel(input.sinceHours)} since ${since}${at} — your minimum ` +
       `interval has passed · ${countFragment(input.countToday, input.maxDailyCount)}.`,
   };
 }
@@ -48,10 +52,17 @@ export function redoseNoticeMessage(input: {
 //   • at the confirmed max → "Max reached · 4 of 4 today"
 //   • window open          → "Redose OK — min interval passed · 2 of 4 today"
 //   • not yet              → "Next dose in ~2h · 1 of 4 today"
-export function redoseCardLabel(status: RedoseStatus | null): string | null {
+// `familyMemberCount` (#1027) > 1 appends "across N items" so a counter fed by a
+// same-ingredient sibling's doses says so ("the cross-item counter line").
+export function redoseCardLabel(
+  status: RedoseStatus | null,
+  familyMemberCount = 1
+): string | null {
   if (!status) return null;
   const count = countFragment(status.countToday, status.maxDailyCount);
-  if (status.atMax) return `Max reached · ${count}`;
-  if (status.open) return `Redose OK — min interval passed · ${count}`;
-  return `Next dose in ~${hoursLabel(status.opensInHours)} · ${count}`;
+  const across =
+    familyMemberCount > 1 ? ` across ${familyMemberCount} items` : "";
+  if (status.atMax) return `Max reached · ${count}${across}`;
+  if (status.open) return `Redose OK — min interval passed · ${count}${across}`;
+  return `Next dose in ~${hoursLabel(status.opensInHours)} · ${count}${across}`;
 }

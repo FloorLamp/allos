@@ -71,7 +71,7 @@ test.describe("Hearing / audiology (#713, #717)", () => {
   test("seeded audiogram thresholds render + flag on the Biomarkers surface (#713)", async ({
     page,
   }) => {
-    await page.goto("/biomarkers?q=" + encodeURIComponent("Hearing Threshold"));
+    await page.goto("/results?q=" + encodeURIComponent("Hearing Threshold"));
     const main = page.getByRole("main");
     // The seeded per-ear/per-frequency series show; the recent 4 kHz reading is above
     // the ≤25 dB HL band (visibility, not an exact count over the shared seed).

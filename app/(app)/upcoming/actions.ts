@@ -145,7 +145,7 @@ export async function resolveFollowUp(formData: FormData): Promise<FormResult> {
   if (res.kind === "not-found")
     return formError("Couldn't find that follow-up.");
   revalidatePath("/upcoming");
-  revalidatePath("/imaging");
+  revalidatePath("/results");
   revalidatePath("/care-plan");
   revalidatePath("/");
   return formOk();

@@ -459,3 +459,69 @@ describe("issue #711 — hereditary-risk screening cadence via collectUpcoming",
     ).toBe(false);
   });
 });
+
+// Issue #1030 — CODED conditions count: a condition imported with an ICD/SNOMED
+// code but a terse display name ("DM2" + E11.9) must reach the risk layer through
+// the code table (code-first, stem fallback) and tighten cadence end-to-end. The
+// pure tier proves the matcher; only this tier sees the gather (conditions +
+// family_history rows carrying code/code_system into getRiskFactors).
+describe("issue #1030 — coded-terse conditions drive cadence via collectUpcoming", () => {
+  function codedCondition(
+    profileId: number,
+    name: string,
+    code: string,
+    system = "ICD-10-CM"
+  ): void {
+    db.prepare(
+      `INSERT INTO conditions (profile_id, name, status, code, code_system)
+         VALUES (?, ?, 'active', ?, ?)`
+    ).run(profileId, name, code, system);
+  }
+
+  it("'DM2' + E11.9 tightens the vision_exam cadence like verbose diabetes", () => {
+    const pid = makeProfile("Coded diabetic eyes", "1980-01-01");
+    recordVisit(pid, "vision_exam", shiftDateStr(now, -420));
+    expect(
+      collectUpcoming(pid, now).some((i) => i.key === "visit:vision_exam")
+    ).toBe(false);
+
+    // The stem match can't see "DM2"; the stored code carries the meaning.
+    codedCondition(pid, "DM2", "E11.9");
+    const item = collectUpcoming(pid, now).find(
+      (i) => i.key === "visit:vision_exam"
+    );
+    expect(item, "vision exam now due via the coded condition").toBeTruthy();
+    expect(item!.detail).toContain(
+      "Diabetes on file — annual dilated eye exam recommended (ADA)"
+    );
+  });
+
+  it("a coded-terse family cardiac row (I25.10) tightens the lipid retest", () => {
+    const pid = makeProfile("Coded cardiac FH", "1980-01-01");
+    insertLab(pid, "LDL Cholesterol", shiftDateStr(now, -200));
+    expect(
+      collectUpcoming(pid, now).some(
+        (i) => i.key === "biomarker:ldl cholesterol"
+      )
+    ).toBe(false);
+
+    db.prepare(
+      `INSERT INTO family_history (profile_id, relation, condition, code, code_system)
+         VALUES (?, 'father', 'CAD', 'I25.10', 'ICD-10-CM')`
+    ).run(pid);
+    const item = collectUpcoming(pid, now).find(
+      (i) => i.key === "biomarker:ldl cholesterol"
+    );
+    expect(item, "lipid retest now due via the coded family row").toBeTruthy();
+    expect(item!.detail).toContain("Family history of heart disease");
+  });
+
+  it("an unknown-code, unmatched-name condition changes nothing (exclusion discipline)", () => {
+    const pid = makeProfile("Coded unknown", "1980-01-01");
+    recordVisit(pid, "vision_exam", shiftDateStr(now, -420));
+    codedCondition(pid, "Migraine", "G43.909");
+    expect(
+      collectUpcoming(pid, now).some((i) => i.key === "visit:vision_exam")
+    ).toBe(false);
+  });
+});

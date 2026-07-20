@@ -81,7 +81,7 @@ function eventDateInEpisode(
 function revalidateEpisodeEvents() {
   revalidatePath("/medical/episodes/[id]", "page");
   revalidatePath("/medications");
-  revalidatePath("/biomarkers");
+  revalidatePath("/results");
   revalidatePath("/timeline");
   revalidatePath("/");
 }

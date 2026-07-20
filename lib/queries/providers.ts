@@ -237,7 +237,7 @@ export function getProviderLabs(
     date: r.date,
     label: r.name,
     sublabel: r.category,
-    href: "/biomarkers",
+    href: "/results#biomarkers",
   }));
 }
 

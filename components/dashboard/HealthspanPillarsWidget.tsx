@@ -10,18 +10,22 @@ import WidgetHeader from "./WidgetHeader";
 // Dashboard healthspan-pillars widget (issue #161): a row of evidence-backed
 // longevity pillars — VO₂ Max percentile, sleep regularity, biological age, and
 // the share of tracked biomarkers in their optimal range — each a thin formatter
-// over its source computation (never re-derived here) and deep-linking to its
-// detail surface. Deliberately PILLARS, not a composite score. Only the pillars
-// whose data exists are passed in, so absent pillars simply don't render.
+// over its source computation (never re-derived here). Deliberately PILLARS, not
+// a composite score. Only the pillars whose data exists are passed in, so absent
+// pillars simply don't render. This widget is the COMPACT formatter over the
+// pillar model; the Longevity page (/longevity, #1042 phase 4) is its expanded
+// twin — each card deep-links to the page section that expands it (pillar.href =
+// pillarHref, the /longevity#<anchor> rule), and the page reuses the tone/trend
+// atoms exported here so the two surfaces style the same facts identically.
 
-const TONE_VALUE: Record<PillarTone, string> = {
+export const PILLAR_TONE_CLASS: Record<PillarTone, string> = {
   good: "text-emerald-600 dark:text-emerald-400",
   warn: "text-amber-600 dark:text-amber-400",
   bad: "text-rose-600 dark:text-rose-400",
   neutral: "text-slate-700 dark:text-slate-200",
 };
 
-function TrendArrow({ pillar }: { pillar: Pillar }) {
+export function TrendArrow({ pillar }: { pillar: Pillar }) {
   if (!pillar.trend) return null;
   const Icon =
     pillar.trend.direction === "up"
@@ -44,7 +48,7 @@ export default function HealthspanPillarsWidget({
 }) {
   return (
     <div className="card" data-testid="healthspan-pillars-widget">
-      <WidgetHeader title="Healthspan pillars" href="/trends" />
+      <WidgetHeader title="Healthspan pillars" href="/longevity" />
       <div className="grid gap-2 sm:grid-cols-2">
         {pillars.map((p) => (
           <Link
@@ -55,7 +59,7 @@ export default function HealthspanPillarsWidget({
           >
             <span className="section-label">{p.label}</span>
             <span
-              className={`mt-1 text-lg font-bold tabular-nums ${TONE_VALUE[p.tone]}`}
+              className={`mt-1 text-lg font-bold tabular-nums ${PILLAR_TONE_CLASS[p.tone]}`}
               data-testid={`pillar-${p.key}-value`}
             >
               {p.value}

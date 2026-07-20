@@ -463,9 +463,16 @@ export function persistDocumentImport(
     // clinical kind an import wrote, not just the immunizations + records the old
     // `immCount + recCount` saw (#212).
     const extractedCount = countImportedDocumentRows(profileId, docId);
+    // `extraction_completed_at` (issue #1022): the moment this document became
+    // 'done' — the digest's "new documents" window keys on it (a doc can complete
+    // long after `uploaded_at`: the upload/digest race, a failed→reprocessed doc).
+    // This UPDATE is the ONE 'done' transition (every extract/import/reprocess
+    // path funnels through persistDocumentImport), so the stamp can't be missed;
+    // a reprocess re-stamps it, which is correct — the re-extraction is news.
     db.prepare(
       `UPDATE medical_documents
-         SET extraction_status = 'done', extracted_count = ?, doc_type = ?,
+         SET extraction_status = 'done', extraction_completed_at = datetime('now'),
+             extracted_count = ?, doc_type = ?,
              source = ?, document_date = ?, patient_name = ?, raw_extraction = ?,
              model = ?, import_report = ?, extraction_error = NULL
        WHERE id = ? AND profile_id = ?`
@@ -710,10 +717,10 @@ function insertImportRows(
   // the resolved shared-registry ids for the attending clinician + facility.
   const insEncounter = db.prepare(
     `INSERT OR IGNORE INTO encounters
-       (date, end_date, type, class_code, reason, diagnoses, notes,
-        provider_id, location_provider_id, source, document_id, external_id,
-        profile_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+       (date, end_date, type, code, code_system, class_code, reason, diagnoses,
+        notes, provider_id, location_provider_id, source, document_id,
+        external_id, profile_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   );
   // Procedures + family history. Same idempotency as records/conditions: the
   // per-document delete-set (above) clears this document's prior rows, then INSERT
@@ -984,6 +991,8 @@ function insertImportRows(
       e.date,
       e.end_date,
       e.type,
+      e.code ?? null,
+      e.code_system ?? null,
       e.class_code,
       e.reason,
       e.diagnoses.length ? e.diagnoses.join("; ") : null,

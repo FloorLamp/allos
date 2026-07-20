@@ -29,7 +29,7 @@ import { formError, formOk, type FormResult } from "@/lib/types";
 function revalidateMedical() {
   revalidatePath("/data");
   revalidatePath("/import/[id]", "page");
-  revalidatePath("/biomarkers");
+  revalidatePath("/results");
   revalidatePath("/biomarkers/view", "page");
   revalidatePath("/immunizations");
   // The dashboard derives Recent labs and Needs attention from these records, so
