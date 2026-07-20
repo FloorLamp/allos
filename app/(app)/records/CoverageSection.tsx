@@ -1,22 +1,18 @@
-import { requireSession } from "@/lib/auth";
-import { PageHeader, EmptyState } from "@/components/ui";
-import PageContainer from "@/components/PageContainer";
+import { EmptyState } from "@/components/ui";
 import { getCoverageGaps, getCoverageGapCandidates } from "@/lib/queries";
 import { taskEndpointInfo } from "@/lib/ai-resolve";
 import { buildCatalogRequest } from "@/lib/coverage-gaps";
 import CoverageGaps from "@/components/CoverageGaps";
 
-export const dynamic = "force-dynamic";
-
-// Coverage gaps (issue #550). When a profile has a biomarker/med/condition the
-// curated catalogs don't cover, this page surfaces it and offers two fill paths:
+// Coverage gaps (issue #550; former /coverage index, #1042 phase 6), now the
+// #coverage section of /records. When a profile has a biomarker/med/condition the
+// curated catalogs don't cover, this surfaces it and offers two fill paths:
 // private/local AI descriptive context, or a de-identified maintainer catalog
-// request the user reviews and files. A tracked gap the catalog later covers shows
-// a "now available" state (computed live against the current catalogs).
-export default async function CoveragePage() {
-  const { profile } = await requireSession();
-  const tracked = getCoverageGaps(profile.id);
-  const candidates = getCoverageGapCandidates(profile.id);
+// request the user reviews and files. A tracked gap the catalog later covers
+// shows a "now available" state (computed live against the current catalogs).
+export default function CoverageSection({ profileId }: { profileId: number }) {
+  const tracked = getCoverageGaps(profileId);
+  const candidates = getCoverageGapCandidates(profileId);
   // The coverage blurb runs on the Light tier (falling back to Heavy) — show the
   // backend that would actually serve it.
   const ai = taskEndpointInfo("coverage");
@@ -28,12 +24,7 @@ export default async function CoveragePage() {
   );
 
   return (
-    <PageContainer width="reading" className="mx-auto">
-      <PageHeader
-        title="Coverage gaps"
-        subtitle="Biomarkers, medications, and conditions the curated catalogs don't cover yet — track one to add context or request it be catalogued."
-      />
-
+    <div>
       {tracked.length === 0 && candidates.length === 0 ? (
         <EmptyState message="No coverage gaps — everything you've logged is covered by the curated catalogs." />
       ) : (
@@ -52,6 +43,6 @@ export default async function CoveragePage() {
         reference range, flag, or interaction. Curated data drives all clinical
         logic. Informational, not medical advice.
       </p>
-    </PageContainer>
+    </div>
   );
 }
