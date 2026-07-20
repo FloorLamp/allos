@@ -10,6 +10,7 @@
 
 import type { NotificationMessage } from "./types";
 import type { LifecycleSuppressionPolicy } from "../lifecycle";
+import { formatMedicationDoseProduct } from "../medication-dose-format";
 
 export type EscalationWindow = "Morning" | "Midday" | "Evening" | "Bedtime";
 
@@ -32,6 +33,7 @@ export interface EscalationCandidate {
   supplementId: number;
   supplementName: string;
   amount: string | null;
+  product?: string | null;
   window: EscalationWindow;
   // The window's scheduled reminder hour (0–23, profile-local), so the elapsed
   // check anchors on when the reminder went out.
@@ -65,6 +67,7 @@ export interface EscalationDue {
   supplementId: number;
   supplementName: string;
   amount: string | null;
+  product?: string | null;
   window: EscalationWindow;
   escalateChatId: string | null;
 }
@@ -111,6 +114,7 @@ export function escalationsDue(
       supplementId: c.supplementId,
       supplementName: c.supplementName,
       amount: c.amount,
+      ...(c.product ? { product: c.product } : {}),
       window: c.window,
       escalateChatId: c.escalateChatId,
     });
@@ -134,7 +138,8 @@ export function renderEscalationMessage(
   date: string
 ): NotificationMessage {
   const who = profileName ? `${profileName} — ` : "";
-  const amt = due.amount ? ` (${due.amount})` : "";
+  const dose = formatMedicationDoseProduct(due.amount, due.product);
+  const amt = dose ? ` (${dose})` : "";
   const suppId = due.supplementId;
   return {
     title: `⚠️ Missed dose: ${who}${due.supplementName}`,

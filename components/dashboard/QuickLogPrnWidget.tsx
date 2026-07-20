@@ -6,11 +6,11 @@ import type { AppRoute } from "@/lib/hrefs";
 import {
   administrationDayLabel,
   administrationLastDoseLabel,
-  formatGivenAtClock,
+  formatGivenAtClockWithRelativeAge,
 } from "@/lib/administration-format";
 import { redoseWindowStatus } from "@/lib/prn-redose";
 import { now as clockNow } from "@/lib/clock";
-import { redoseCardLabel } from "@/lib/redose-format";
+import { redoseActionIsPrimary, redoseCardLabel } from "@/lib/redose-format";
 import { parseUtcSql } from "@/lib/date";
 import type { TimeFormat } from "@/lib/format-date";
 
@@ -96,7 +96,7 @@ export function QuickLogPrnContent({
   // Family-widened window math (#1027): the clock/count/max span the ingredient
   // family (an OTC ibuprofen dose holds the Rx item's "Redose OK"), with the
   // "across N items" tail marking a cross-item counter.
-  const redoseLineFor = (m: PrnMedForQuickLog): string | null => {
+  const redoseStatusFor = (m: PrnMedForQuickLog) => {
     if (
       m.minIntervalHours == null ||
       m.maxDailyCount == null ||
@@ -104,37 +104,42 @@ export function QuickLogPrnContent({
     ) {
       return null;
     }
-    return redoseCardLabel(
-      redoseWindowStatus({
-        minIntervalHours: m.minIntervalHours,
-        maxDailyCount: Math.min(
-          m.maxDailyCount,
-          m.familyMaxDailyCount ?? m.maxDailyCount
-        ),
-        latestGivenAt: parseUtcSql(m.familyLastGivenAt),
-        countToday: m.familyCount,
-        now,
-      }),
-      m.familyMemberCount
-    );
+    return redoseWindowStatus({
+      minIntervalHours: m.minIntervalHours,
+      maxDailyCount: Math.min(
+        m.maxDailyCount,
+        m.familyMaxDailyCount ?? m.maxDailyCount
+      ),
+      latestGivenAt: parseUtcSql(m.familyLastGivenAt),
+      countToday: m.familyCount,
+      now,
+    });
   };
   const visibleMeds = compact ? meds.slice(0, 3) : meds;
   const remainingMeds = compact ? meds.slice(3) : [];
   const medControl = (m: PrnMedForQuickLog) => {
-    const lastClock = formatGivenAtClock(tz, m.lastGivenAt, timeFormat);
-    const redoseLine = redoseLineFor(m);
+    const lastClock = formatGivenAtClockWithRelativeAge(
+      tz,
+      m.lastGivenAt,
+      timeFormat,
+      now
+    );
+    const redoseStatus = redoseStatusFor(m);
+    const redoseLine = redoseCardLabel(redoseStatus, m.familyMemberCount);
     return (
       <QuickLogPrnControl
         key={m.id}
         itemId={m.id}
         name={m.name}
         doseAmount={m.amount}
+        product={m.product}
         dayLabel={
           redoseLine
             ? administrationLastDoseLabel(m.count, lastClock)
             : administrationDayLabel(m.count, lastClock)
         }
         redoseLine={redoseLine}
+        redosePrimary={redoseActionIsPrimary(redoseStatus)}
         linkToDetail
         profileId={profileId}
         rowVariant={rowVariant}

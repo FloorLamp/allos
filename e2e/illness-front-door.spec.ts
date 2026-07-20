@@ -90,7 +90,8 @@ async function pickMedication(
   await input.fill(value);
   const option = scope
     .getByRole("listbox")
-    .getByText(value, { exact: true })
+    .getByRole("button")
+    .filter({ hasText: value })
     .first();
   await expect(option).toBeVisible();
   await option.click();
@@ -200,6 +201,7 @@ test.describe("Illness front door (#843)", () => {
 
     // Entry point 1 — the Medications page quick-add.
     await page.goto("/medications");
+    await page.getByTestId("medication-add-toggle").click();
     const quickAdd = page.getByTestId("quick-add-medication");
     await expect(quickAdd).toBeVisible();
     await pickMedication(page, "Ibuprofen");

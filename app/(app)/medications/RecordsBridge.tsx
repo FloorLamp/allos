@@ -100,10 +100,12 @@ export default function RecordsBridge({
     <section data-testid="records-bridge">
       {suggestions.length > 0 && (
         <>
-          <h2 className="mb-2 section-label">From your records</h2>
-          <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
-            Imported prescriptions that aren’t on your medication list yet.
-            Track one to get dose check-offs, interactions, and refill tracking.
+          <h3 className="mb-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
+            From your records
+          </h3>
+          <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
+            These imported prescriptions are not tracked yet. Add one to include
+            it in reminders and safety checks.
           </p>
           <div className="space-y-2">
             {suggestions.map((s) => (
@@ -155,7 +157,7 @@ export default function RecordsBridge({
                     aria-label={`Dismiss ${s.name}`}
                     title="Dismiss"
                     data-testid="records-bridge-dismiss"
-                    className="tap-target flex h-8 w-8 items-center justify-center rounded text-slate-500 hover:text-rose-500 dark:text-slate-400 dark:hover:text-rose-400"
+                    className="tap-target flex h-8 w-8 items-center justify-center rounded text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-ink-750 dark:hover:text-slate-200"
                   >
                     <IconX className="h-4 w-4" />
                   </button>
@@ -168,7 +170,7 @@ export default function RecordsBridge({
 
       {dismissed.length > 0 && (
         <details className="mt-2" data-testid="records-bridge-dismissed">
-          <summary className="cursor-pointer text-xs font-medium text-slate-500 hover:underline dark:text-slate-400">
+          <summary className="cursor-pointer section-label hover:underline">
             Dismissed ({dismissed.length})
           </summary>
           <div className="mt-2 space-y-2">
@@ -196,7 +198,7 @@ export default function RecordsBridge({
                   onClick={() => restore(s)}
                   disabled={busyId != null}
                   data-testid="records-bridge-restore"
-                  className="btn btn-sm"
+                  className="btn-ghost btn-sm"
                 >
                   <IconArrowBackUp className="h-3.5 w-3.5" stroke={2} />
                   <span>Restore</span>

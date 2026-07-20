@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { Supplement } from "@/lib/types";
 
 // The optional refill-tracking block shared by both intake forms (#846): units on
@@ -17,25 +18,30 @@ export default function RefillTracking({
   const s = supplement;
   const loadedQty =
     s?.quantity_on_hand != null ? Math.max(0, s.quantity_on_hand) : "";
-  // Collapsed by default (#851 item 6): refill tracking is opt-in machinery (#38), so
-  // it stays tucked behind a disclosure unless this item is already tracked (a set
-  // quantity_on_hand). A <details> keeps its inputs in the DOM even when closed, so the
-  // quantity/per-dose fields still submit.
   const tracked = s?.quantity_on_hand != null;
+  const [enabled, setEnabled] = useState(tracked);
   return (
-    <details
-      open={tracked}
+    <div
       data-testid="refill-tracking"
       className="sm:col-span-2 border-t border-black/5 pt-4 dark:border-white/5"
     >
-      <summary className="cursor-pointer text-sm font-medium text-slate-700 dark:text-slate-200">
-        Refill tracking (optional)
-      </summary>
-      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+      <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(event) => setEnabled(event.target.checked)}
+          className="h-4 w-4 rounded border-slate-300 text-brand-600 dark:border-slate-600"
+        />
+        Track supply and refills
+      </label>
+      <p className="mt-1 pl-6 text-xs text-slate-500 dark:text-slate-400">
         Track units on hand to see “≈N days left” and get a refill nudge when
-        you’re running low. Leave the quantity blank to skip tracking.
+        you’re running low.
       </p>
-      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div
+        className={`${enabled ? "grid" : "hidden"} mt-3 grid-cols-1 gap-3 sm:grid-cols-2`}
+        aria-hidden={!enabled}
+      >
         <div>
           <label className="label" htmlFor={`intake-qty-${fid}`}>
             Quantity on hand
@@ -47,15 +53,9 @@ export default function RefillTracking({
             min={0}
             step="any"
             defaultValue={loadedQty}
+            disabled={!enabled}
             className="input"
-            placeholder="e.g. 90 pills"
-          />
-          {/* The value the form LOADED with, so updateSupplement can compare-and-
-              set the concurrently-decremented on-hand counter (#467). */}
-          <input
-            type="hidden"
-            name="quantity_on_hand_loaded"
-            value={loadedQty}
+            placeholder="e.g. 90"
           />
         </div>
         <div>
@@ -69,11 +69,25 @@ export default function RefillTracking({
             min={0}
             step="any"
             defaultValue={s?.qty_per_dose ?? 1}
+            disabled={!enabled}
             className="input"
             placeholder="1"
           />
         </div>
       </div>
-    </details>
+      {!enabled && (
+        <>
+          <input type="hidden" name="quantity_on_hand" value="" />
+          <input
+            type="hidden"
+            name="qty_per_dose"
+            value={s?.qty_per_dose ?? 1}
+          />
+        </>
+      )}
+      {/* The value the form LOADED with, so updateSupplement can compare-and-set
+          the concurrently-decremented on-hand counter (#467). */}
+      <input type="hidden" name="quantity_on_hand_loaded" value={loadedQty} />
+    </div>
   );
 }

@@ -18,7 +18,8 @@ function supp(
   id: number,
   name: string,
   priority: SupplementPriority = "high",
-  kind: SupplementKind = "supplement"
+  kind: SupplementKind = "supplement",
+  product: string | null = null
 ): Supplement {
   return {
     id,
@@ -29,7 +30,7 @@ function supp(
     condition: "daily",
     priority,
     brand: null,
-    product: null,
+    product,
     situation: null,
     situation_id: null,
     stack: null,
@@ -95,6 +96,7 @@ function entry(opts: {
   priority?: SupplementPriority;
   food?: FoodTiming;
   kind?: SupplementKind;
+  product?: string | null;
   adherence?: Partial<AdherenceSummary>;
 }): WindowDose {
   return {
@@ -108,7 +110,8 @@ function entry(opts: {
       opts.suppId,
       opts.name,
       opts.priority ?? "high",
-      opts.kind ?? "supplement"
+      opts.kind ?? "supplement",
+      opts.product ?? null
     ),
     taken: opts.taken ?? false,
     skipped: opts.skipped ?? false,
@@ -118,6 +121,20 @@ function entry(opts: {
 
 describe("renderWindowMessage", () => {
   const DATE = "2026-07-05";
+
+  it("keeps a medication formulation beside its scheduled dose", () => {
+    const msg = renderWindowMessage(1, "Morning", DATE, [
+      entry({
+        doseId: 10,
+        suppId: 1,
+        name: "Acetaminophen",
+        amount: "160 mg",
+        kind: "medication",
+        product: "Children's oral suspension (160 mg / 5 mL)",
+      }),
+    ]);
+    expect(msg.body).toContain("Acetaminophen — 160 mg / 5 mL");
+  });
 
   it("lists pending doses with taps and no already-taken section when nothing is taken", () => {
     const msg = renderWindowMessage(1, "Morning", DATE, [

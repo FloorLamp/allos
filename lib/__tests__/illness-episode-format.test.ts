@@ -180,7 +180,11 @@ describe("episodeCollapsedStatus", () => {
         when: "at 12:05 AM (18 hrs ago)",
         high: true,
       },
-      lastMeds: { name: "Ibuprofen", when: "4:02 PM (2 hrs ago)" },
+      lastMeds: {
+        name: "Ibuprofen",
+        dose: "200 mg",
+        when: "4:02 PM (2 hrs ago)",
+      },
       worsening: false,
     });
   });
@@ -232,11 +236,14 @@ function med(
     time: string | null;
     time24?: string | null;
     amount?: string | null;
-  }[]
+    product?: string | null;
+  }[],
+  product: string | null = null
 ): EpisodeMedication {
   return {
     itemId: 1,
     name,
+    product,
     count: admins.length,
     administrations: admins.map((a) => ({
       ...a,
@@ -259,6 +266,51 @@ describe("episodeLastDoseClause", () => {
       ],
     });
     expect(episodeLastDoseClause(e, "12h")).toBe("last ibuprofen 4:02 PM");
+  });
+  it("includes the saved formulation with the latest dose", () => {
+    const e = ep({
+      medications: [
+        med(
+          "Acetaminophen",
+          [{ date: "2026-06-03", time: "4:02pm", amount: "160 mg" }],
+          "Children's oral suspension (160 mg / 5 mL)"
+        ),
+      ],
+    });
+    expect(episodeLastDoseClause(e, "12h")).toBe(
+      "last acetaminophen · 160 mg / 5 mL 4:02 PM"
+    );
+    expect(illnessTimelineEvents(e)[0]).toMatchObject({
+      detail: "160 mg / 5 mL",
+    });
+  });
+  it("uses each administration's snapshot after a formulation change", () => {
+    const e = ep({
+      medications: [
+        med(
+          "Acetaminophen",
+          [
+            {
+              date: "2026-06-02",
+              time: "4:02pm",
+              amount: "160 mg",
+              product: "Children's oral suspension (160 mg / 5 mL)",
+            },
+            {
+              date: "2026-06-03",
+              time: "4:02pm",
+              amount: "160 mg",
+              product: "Chewable tablet (160 mg)",
+            },
+          ],
+          "Chewable tablet (160 mg)"
+        ),
+      ],
+    });
+    expect(illnessTimelineEvents(e).map((event) => event.detail)).toEqual([
+      "160 mg / 5 mL",
+      "160 mg · Chewable tablet (160 mg)",
+    ]);
   });
   it("picks the globally latest administration across meds", () => {
     const e = ep({

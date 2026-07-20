@@ -1,9 +1,12 @@
 import { IconCircleCheck } from "@tabler/icons-react";
-import DoseStatusControl from "@/components/DoseStatusControl";
 import QuickLogPrnControl from "@/components/dashboard/QuickLogPrnControl";
 import TodayMedRow from "@/components/medications/TodayMedRow";
+import ScheduledDoseAction from "@/components/medications/ScheduledDoseAction";
 import { medicationHref } from "@/lib/hrefs";
 import { buildTodayPanelModel } from "@/lib/medication-today";
+import type { TimeFormat } from "@/lib/format-date";
+import { formatMedicationDoseLine } from "@/lib/medication-dose-format";
+import { formatGivenAtClockWithRelativeAge } from "@/lib/administration-format";
 import type { MedCardData } from "./med-data";
 
 // The Today panel that LEADS the Medications page (#817): the daily-use job first.
@@ -23,6 +26,9 @@ export default function MedicationsTodayPanel({
   taken,
   skipped,
   nowHhmm,
+  nowIso,
+  timeFormat,
+  timezone,
 }: {
   // The current, due, SCHEDULED (non-PRN) meds with their doses.
   scheduled: MedCardData[];
@@ -30,14 +36,19 @@ export default function MedicationsTodayPanel({
   prnToday: {
     id: number;
     name: string;
+    product: string | null;
     amount: string | null;
     dayLabel: string;
     redoseLine: string | null;
+    redosePrimary: boolean;
   }[];
   taken: Set<number>;
   skipped: Set<number>;
   // The profile's local wall clock (HH:MM), so past-due is judged in the profile's tz.
   nowHhmm: string;
+  nowIso: string;
+  timeFormat: TimeFormat;
+  timezone: string;
 }) {
   const dueScheduled = scheduled.filter(
     (d) => d.med.as_needed !== 1 && d.due && d.doses.length > 0
@@ -54,7 +65,13 @@ export default function MedicationsTodayPanel({
       doses: d.doses.map((dose) => ({
         id: dose.id,
         timeOfDay: dose.time_of_day,
-        label: dose.amount || dose.time_of_day || "Dose",
+        label:
+          formatMedicationDoseLine({
+            amount: null,
+            timeOfDay: dose.time_of_day,
+            asNeeded: false,
+            timeFormat,
+          }) || "",
         resolved: taken.has(dose.id) || skipped.has(dose.id),
       })),
     })),
@@ -63,51 +80,79 @@ export default function MedicationsTodayPanel({
 
   return (
     <section data-testid="medications-today" className="card">
-      <h2 className="mb-3 section-label text-brand-700 dark:text-brand-400">
-        Today
-      </h2>
+      <div>
+        <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">
+          Today
+        </h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          Check off scheduled doses or log an as-needed medication.
+        </p>
+      </div>
       {model.allDone && (
         <div
           data-testid="today-all-done"
-          className="mb-3 flex items-center gap-1.5 text-sm font-medium text-emerald-700 dark:text-emerald-400"
+          className="mt-4 flex items-center gap-1.5 text-sm font-medium text-emerald-700 dark:text-emerald-400"
         >
           <IconCircleCheck className="h-4 w-4" stroke={2} aria-hidden="true" />
           All done today
         </div>
       )}
-      <div className="space-y-3">
-        {model.meds.map((m) => {
+      <div className="mt-3 divide-y divide-black/5 dark:divide-white/5">
+        {model.meds.flatMap((m) => {
           const card = byId.get(m.id)!;
-          return (
-            <TodayMedRow
-              key={m.id}
-              testId="today-scheduled-med"
-              itemId={m.id}
-              name={card.med.name}
-              href={medicationHref(m.id)}
-              control={m.doses.map((dose) => (
-                <span
-                  key={dose.id}
-                  data-testid="today-dose"
-                  data-past-due={dose.pastDue ? "1" : undefined}
-                  className={
-                    dose.pastDue
-                      ? "rounded-full ring-2 ring-amber-400 dark:ring-amber-500"
-                      : undefined
-                  }
-                  title={dose.pastDue ? "Past due — earlier today" : undefined}
-                >
-                  <DoseStatusControl
+          return m.doses.map((dose) => {
+            const storedDose = card.doses.find((item) => item.id === dose.id);
+            const isTaken = taken.has(dose.id);
+            const takenTime = formatGivenAtClockWithRelativeAge(
+              timezone,
+              card.takenDoseTimes[dose.id],
+              timeFormat,
+              new Date(nowIso)
+            );
+            return (
+              <TodayMedRow
+                key={dose.id}
+                testId="today-scheduled-med"
+                itemId={m.id}
+                name={card.med.name}
+                detail={formatMedicationDoseLine({
+                  amount: storedDose?.amount ?? null,
+                  product: card.med.product,
+                  timeOfDay: dose.timeOfDay,
+                  asNeeded: false,
+                  timeFormat,
+                })}
+                href={medicationHref(m.id)}
+                pastDue={dose.pastDue}
+                status={
+                  dose.pastDue || (isTaken && takenTime) ? (
+                    <>
+                      {dose.pastDue ? (
+                        <span className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                          Past due
+                        </span>
+                      ) : null}
+                      {isTaken && takenTime ? (
+                        <span className="text-xs text-slate-500 dark:text-slate-400">
+                          {takenTime}
+                        </span>
+                      ) : null}
+                    </>
+                  ) : null
+                }
+                control={
+                  <ScheduledDoseAction
                     doseId={dose.id}
-                    taken={taken.has(dose.id)}
+                    doseLabel=""
+                    taken={isTaken}
                     skipped={skipped.has(dose.id)}
-                    variant="pill"
-                    label={dose.label}
+                    compactActions
                   />
-                </span>
-              ))}
-            />
-          );
+                }
+                variant="embedded"
+              />
+            );
+          });
         })}
 
         {prnToday.map((m) => (
@@ -116,9 +161,13 @@ export default function MedicationsTodayPanel({
             itemId={m.id}
             name={m.name}
             doseAmount={m.amount}
+            product={m.product}
             dayLabel={m.dayLabel}
             redoseLine={m.redoseLine}
+            redosePrimary={m.redosePrimary}
             linkToDetail
+            rowVariant="embedded"
+            compactActions
           />
         ))}
       </div>

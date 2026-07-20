@@ -6,6 +6,7 @@
 // OWN confirmed numbers — never "you can take more".
 
 import type { RedoseStatus } from "./prn-redose";
+import { formatMedicationDoseProduct } from "./medication-dose-format";
 
 // A short "6h" / "6.5h" for an elapsed/remaining hour count, one decimal place at
 // most (whole hours drop the decimal naturally). Pure.
@@ -30,6 +31,8 @@ export function countFragment(
 // honestly ("8h since Ibuprofen OTC") while the title keeps the notice's own item.
 export function redoseNoticeMessage(input: {
   name: string;
+  amount?: string | null;
+  product?: string | null;
   sinceHours: number;
   lastClock: string;
   countToday: number;
@@ -38,10 +41,16 @@ export function redoseNoticeMessage(input: {
 }): { title: string; body: string } {
   const at = input.lastClock ? ` (${input.lastClock})` : "";
   const since = input.sinceName?.trim() || input.name;
+  const dose = formatMedicationDoseProduct(input.amount, input.product);
+  // A family sibling can arm this window. Its name is known, but its product is
+  // not part of this formatter input, so never attach the current item's dose to
+  // a sibling name.
+  const medication =
+    since === input.name && dose ? `${since} · ${dose}` : since;
   return {
     title: `Redose window open — ${input.name}`,
     body:
-      `${hoursLabel(input.sinceHours)} since ${since}${at} — your minimum ` +
+      `${hoursLabel(input.sinceHours)} since ${medication}${at} — your minimum ` +
       `interval has passed · ${countFragment(input.countToday, input.maxDailyCount)}.`,
   };
 }
@@ -65,4 +74,11 @@ export function redoseCardLabel(
   if (status.atMax) return `Max reached · ${count}${across}`;
   if (status.open) return `Redose OK — min interval passed · ${count}${across}`;
   return `Next dose in ~${hoursLabel(status.opensInHours)} · ${count}${across}`;
+}
+
+// A redose window is guidance, not a hard gate: logging always remains available.
+// It receives CTA emphasis only when there is no configured window yet, or when the
+// confirmed interval has passed and the daily maximum has not been reached.
+export function redoseActionIsPrimary(status: RedoseStatus | null): boolean {
+  return status == null || (status.open && !status.atMax);
 }

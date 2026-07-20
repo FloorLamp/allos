@@ -6,12 +6,14 @@ import MedicationRow from "./MedicationRow";
 import MedicationListActions from "./MedicationListActions";
 import RecordsBridge from "./RecordsBridge";
 import DormantPrnSweep from "./DormantPrnSweep";
-import MedicationForm from "@/components/MedicationForm";
-import QuickAddMedication from "@/components/QuickAddMedication";
-import IntakeWarnings from "@/components/IntakeWarnings";
+import MedicationAddWorkspace from "./MedicationAddWorkspace";
+import IntakeWarnings, { IntakeSafetyScope } from "@/components/IntakeWarnings";
 import ProviderDatalist from "@/components/ProviderDatalist";
 import { addSupplement } from "@/app/(app)/nutrition/supplement-actions";
-import { PageHeader, EmptyState } from "@/components/ui";
+import CardGroup, { CardGroupSection } from "@/components/CardGroup";
+import PageContainer from "@/components/PageContainer";
+import { getDisplayFormatPrefs, getUnitPrefs } from "@/lib/settings";
+import { IconChevronDown } from "@tabler/icons-react";
 
 export const dynamic = "force-dynamic";
 
@@ -22,33 +24,64 @@ export const dynamic = "force-dynamic";
 //   2. Safety strip — cross-kind interaction (#144) + PGx (#710) warnings, the same
 //      dedupeKeys the Supplements tab renders through the shared bus (dismiss once,
 //      silence both — #435); renders nothing when quiet.
-//   3. Current medications — scannable rows (not lifecycle cards); a row links to
-//      the /medications/[id] clinical-record detail page.
-//   4. From your records — suggest-only bridge for imported prescriptions with no
-//      tracked med (#560).
-//   5. Past / discontinued — collapsed rows linking to detail.
-//   6. Add medication — an OTC quick-add (#843: name → label-default prefill → confirm)
-//      then the full med-specific form with a medication-aware name combobox.
+//   3. Medication list — current medications as flat, dose-forward rows in one
+//      surface, with Past collapsed below and print/share in the section header.
+//   4. Review medication list — imported-prescription and dormant-PRN suggestions
+//      grouped as maintenance work rather than floating page sections.
+//   5. Add medication — one header CTA opens an inline workspace that starts with
+//      OTC quick-add and switches to the full prescription/schedule form on demand.
 // One intake_items table; supplements live on Nutrition → Supplements.
 export default async function MedicationsPage() {
-  const { profile } = await requireSession();
-  const data = loadMedicationsData(profile.id);
+  const { login, profile } = await requireSession();
+  const formatPrefs = getDisplayFormatPrefs(login.id);
+  const data = loadMedicationsData(
+    profile.id,
+    getUnitPrefs(login.id).weightUnit,
+    formatPrefs.timeFormat
+  );
   const medCount = data.current.length + data.past.length;
+  const prnCount = data.current.filter(
+    (item) => item.med.as_needed === 1
+  ).length;
+  const hasReviewItems =
+    data.bridge.length > 0 ||
+    data.dismissedBridge.length > 0 ||
+    data.dormantPrn.length > 0 ||
+    data.dismissedDormantPrn.length > 0;
+  const hasSafetyWarnings =
+    data.interactionWarnings.length > 0 ||
+    data.pgxWarnings.length > 0 ||
+    data.ototoxicWarnings.length > 0 ||
+    data.allergyWarnings.length > 0;
+  const subtitle = [
+    `${data.current.length} current`,
+    prnCount > 0 ? `${prnCount} as needed` : null,
+    `${data.past.length} past`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
-    <div>
+    <PageContainer width="reading" className="mx-auto">
       {/* Provider picker options for the medication add/edit forms. */}
       <ProviderDatalist names={getProviderNames()} />
-      <PageHeader
-        title="Medications"
+      <MedicationAddWorkspace
         subtitle={
           medCount === 0
-            ? "Prescription and OTC medications — dose check-offs, courses, side effects, and refills."
-            : `${data.current.length} current · ${data.past.length} past`
+            ? "Track prescriptions, over-the-counter medications, doses, and refills."
+            : subtitle
         }
+        action={addSupplement}
+        allSupplements={data.allSupplements}
+        stackItems={data.stackItems}
+        pgxVariants={data.pgxVariants}
+        trainingRestricted={data.trainingRestricted}
+        pediatric={data.pediatric}
+        age={data.age}
+        todayStr={data.todayStr}
       />
 
-      <div className="space-y-6">
+      <div className="space-y-5">
         {/* 1. Today panel (leads). */}
         <MedicationsTodayPanel
           scheduled={data.current}
@@ -56,9 +89,14 @@ export default async function MedicationsPage() {
           taken={data.taken}
           skipped={data.skipped}
           nowHhmm={data.nowHhmm}
+          nowIso={data.nowIso}
+          timeFormat={formatPrefs.timeFormat}
+          timezone={data.tz}
         />
 
-        {/* 2. Safety strip — interaction + PGx + ototoxic warnings (also on Supplements). */}
+        {/* 2. Safety strip — medication-related interaction, PGx, and ototoxic
+            warnings. Cross-kind interactions also appear on Supplements; medication-only
+            findings stay here. */}
         <IntakeWarnings
           interactionWarnings={data.interactionWarnings}
           pgxWarnings={data.pgxWarnings}
@@ -67,111 +105,104 @@ export default async function MedicationsPage() {
           coverage={data.coverage}
         />
 
-        {medCount === 0 ? (
-          <EmptyState message="No medications yet. Add one below. Supplements live on the Nutrition → Supplements tab." />
-        ) : (
-          <>
-            {/* 3. Current medications — scannable rows. */}
-            {data.current.length > 0 && (
-              <section>
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <h2 className="section-label text-rose-600 dark:text-rose-400">
-                    Current
-                  </h2>
-                  {/* Print / share the current-medication list (#852 item 4). */}
-                  <MedicationListActions />
-                </div>
-                <div className="space-y-3">
-                  {data.current.map((m) => (
-                    <MedicationRow
-                      key={m.med.id}
-                      med={m.med}
-                      doses={m.doses}
-                      courses={m.courses}
-                      sideEffects={m.sideEffects}
-                      strip={m.strip}
-                      refillRate={m.refillRate}
-                      prnRedoseLine={m.prnRedoseLine}
-                      monitoringNote={m.monitoringNote}
-                      todayStr={data.todayStr}
-                    />
-                  ))}
-                </div>
-              </section>
+        {/* 3. Current medications stay primary. Past medications use their own muted,
+            collapsed surface below so the two states are distinguishable at a glance. */}
+        <CardGroup
+          title="Current medications"
+          description={`${data.current.length} active medication${data.current.length === 1 ? "" : "s"} · Dose schedules, refill status, and recent adherence.`}
+          action={
+            data.current.length > 0 ? <MedicationListActions /> : undefined
+          }
+          data-testid="medication-list"
+        >
+          <CardGroupSection>
+            {data.current.length > 0 ? (
+              <div className="divide-y divide-black/5 dark:divide-white/5">
+                {data.current.map((m) => (
+                  <MedicationRow
+                    key={m.med.id}
+                    med={m.med}
+                    doses={m.doses}
+                    courses={m.courses}
+                    sideEffects={m.sideEffects}
+                    strip={m.strip}
+                    refillRate={m.refillRate}
+                    prnRedoseLine={m.prnRedoseLine}
+                    monitoringNote={m.monitoringNote}
+                    todayStr={data.todayStr}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                No current medications yet.
+              </p>
             )}
+          </CardGroupSection>
+        </CardGroup>
 
-            {/* 5. Past / discontinued — collapsed rows. */}
-            {data.past.length > 0 && (
-              <details>
-                <summary className="cursor-pointer section-label">
-                  Past / discontinued ({data.past.length})
-                </summary>
-                <div className="mt-2 space-y-3">
-                  {data.past.map((m) => (
-                    <MedicationRow
-                      key={m.med.id}
-                      med={m.med}
-                      doses={m.doses}
-                      courses={m.courses}
-                      sideEffects={m.sideEffects}
-                      strip={m.strip}
-                      refillRate={m.refillRate}
-                      prnRedoseLine={m.prnRedoseLine}
-                      monitoringNote={m.monitoringNote}
-                      todayStr={data.todayStr}
-                    />
-                  ))}
-                </div>
-              </details>
+        {data.past.length > 0 ? (
+          <details className="card group" data-testid="past-medications">
+            <summary className="-m-2 flex w-[calc(100%+1rem)] cursor-pointer list-none items-center justify-between gap-4 rounded-lg p-2 outline-none transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500/40 [&::-webkit-details-marker]:hidden dark:hover:bg-ink-850">
+              <span className="min-w-0">
+                <span className="block text-base font-semibold text-slate-700 dark:text-slate-200">
+                  Past medications
+                </span>
+                <span className="mt-1 block text-sm text-slate-500 dark:text-slate-400">
+                  {data.past.length} completed or stopped
+                </span>
+              </span>
+              <IconChevronDown className="h-4 w-4 shrink-0 text-slate-500 transition-transform group-open:rotate-180 dark:text-slate-400" />
+            </summary>
+            <div className="mt-5 divide-y divide-black/5 border-t border-black/5 pt-1 dark:divide-white/5 dark:border-white/5">
+              {data.past.map((m) => (
+                <MedicationRow
+                  key={m.med.id}
+                  med={m.med}
+                  doses={m.doses}
+                  courses={m.courses}
+                  sideEffects={m.sideEffects}
+                  strip={m.strip}
+                  refillRate={m.refillRate}
+                  prnRedoseLine={m.prnRedoseLine}
+                  todayStr={data.todayStr}
+                />
+              ))}
+            </div>
+          </details>
+        ) : null}
+
+        {/* 4. Maintenance suggestions share one review surface instead of floating rows. */}
+        {hasReviewItems ? (
+          <CardGroup
+            title="Review medication list"
+            description="Resolve imported prescriptions and medications that may no longer be current."
+            data-testid="medication-review"
+          >
+            {(data.bridge.length > 0 || data.dismissedBridge.length > 0) && (
+              <CardGroupSection>
+                <RecordsBridge
+                  suggestions={data.bridge}
+                  dismissed={data.dismissedBridge}
+                />
+              </CardGroupSection>
             )}
-          </>
-        )}
+            {(data.dormantPrn.length > 0 ||
+              data.dismissedDormantPrn.length > 0) && (
+              <CardGroupSection>
+                <DormantPrnSweep
+                  suggestions={data.dormantPrn}
+                  dismissed={data.dismissedDormantPrn}
+                />
+              </CardGroupSection>
+            )}
+          </CardGroup>
+        ) : null}
 
-        {/* 4. From your records — suggest-only prescription bridge (+ dismissed list). */}
-        <RecordsBridge
-          suggestions={data.bridge}
-          dismissed={data.dismissedBridge}
-        />
-
-        {/* 4b. Dormant-PRN sweep (#880) — suggest-only "move to past" for active PRN meds
-            with no dose in 90+ days; the existing-backlog cleanup. */}
-        <DormantPrnSweep
-          suggestions={data.dormantPrn}
-          dismissed={data.dismissedDormantPrn}
-        />
+        {!hasSafetyWarnings ? (
+          <IntakeSafetyScope coverage={data.coverage} />
+        ) : null}
       </div>
-
-      {/* 6a. OTC quick-add (#843) — the common case (an OTC PRN med) in ~three fields:
-          name → label-default prefill → confirm. Creates the SAME intake_items row the
-          full form does. The full form below stays the long-tail path. */}
-      <div className="card mt-6">
-        <h2 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
-          Quick add (OTC)
-        </h2>
-        <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
-          For an over-the-counter med like ibuprofen — pick the name and
-          confirm. Use the full form below for prescriptions, schedules, and
-          prescriber details.
-        </p>
-        <QuickAddMedication action={addSupplement} pediatric={data.pediatric} />
-      </div>
-
-      {/* 6b. Add medication — the med-specific form (med-aware combobox).
-          Supplements are added on the Nutrition → Supplements tab. */}
-      <div className="card mt-6">
-        <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-          Add medication
-        </h2>
-        <MedicationForm
-          action={addSupplement}
-          allSupplements={data.allSupplements}
-          stackItems={data.stackItems}
-          pgxVariants={data.pgxVariants}
-          trainingRestricted={data.trainingRestricted}
-          pediatric={data.pediatric}
-          age={data.age}
-        />
-      </div>
-    </div>
+    </PageContainer>
   );
 }

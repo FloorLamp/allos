@@ -63,6 +63,16 @@ test("the OTC ibuprofen card shows the family-held redose line (no false GO)", a
     main.getByTestId("prn-redose-line").filter({ hasText: "Redose OK" })
   ).toHaveCount(0);
 
+  // The interval is guidance, not a lock: Taken now remains enabled, but while
+  // the window is held it uses the neutral action treatment instead of CTA color.
+  const row = redoseLine.locator(
+    "xpath=ancestor::*[@data-testid='quick-log-prn-item']"
+  );
+  const takeNow = row.getByTestId("prn-log-now");
+  await expect(takeNow).toBeEnabled();
+  await expect(takeNow).toHaveClass(/bg-white\/70/);
+  await expect(takeNow).not.toHaveClass(/bg-brand-600/);
+
   await page.context().close();
 });
 

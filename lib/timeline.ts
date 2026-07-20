@@ -475,7 +475,12 @@ function collectEvents(
               GROUP_CONCAT(
                 ii.name || '::' || COALESCE(NULLIF(TRIM(l.amount), ''),
                                             NULLIF(TRIM(d.amount), ''),
-                                            'Dose confirmed'),
+                                            'Dose confirmed') ||
+                CASE WHEN ii.kind = 'medication'
+                           AND COALESCE(NULLIF(TRIM(l.product), ''),
+                                        NULLIF(TRIM(ii.product), '')) IS NOT NULL
+                     THEN ' · ' || COALESCE(NULLIF(TRIM(l.product), ''),
+                                             TRIM(ii.product)) ELSE '' END,
                 '||'
               ) AS dose_details
          FROM intake_item_logs l

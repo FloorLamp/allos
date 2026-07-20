@@ -19,6 +19,7 @@ import {
 } from "../../upcoming-suppress";
 import { isDueOn, timeBucket } from "../../supplement-schedule";
 import { doseSortKey } from "../../dose-order";
+import { formatMedicationDoseProduct } from "../../medication-dose-format";
 import {
   daysOfSupplyLeft,
   isLowSupply,
@@ -178,7 +179,9 @@ function doseItems(profileId: number, today: string): UpcomingItem[] {
     if (!supp || !supp.active || !isDueOn(supp, ctx)) continue;
     const detail = [
       supp.kind === "medication" ? "Medication" : null,
-      dose.amount,
+      supp.kind === "medication"
+        ? formatMedicationDoseProduct(dose.amount, supp.product)
+        : dose.amount,
     ]
       .filter(Boolean)
       .join(" · ");

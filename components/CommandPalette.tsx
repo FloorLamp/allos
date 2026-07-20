@@ -290,9 +290,16 @@ export default function CommandPalette({
         fd.set("id", String(action.entityId));
         if (action.kind === "log-dose") {
           const res = await logMedicationAdministration(fd);
-          toast(res.ok ? "Dose logged" : res.error, {
-            tone: res.ok ? "success" : "error",
-          });
+          toast(
+            res.ok
+              ? res.outcome === "duplicate"
+                ? "Dose already logged just now"
+                : "Dose logged"
+              : res.error,
+            {
+              tone: res.ok ? "success" : "error",
+            }
+          );
           if (!res.ok) return;
         } else if (action.kind === "refill") {
           const res = await refillMedication(fd);

@@ -26,6 +26,7 @@ import { deleteDatasetRows } from "@/app/(app)/data/manage-actions";
 import {
   getSupplements,
   getSupplementDoses,
+  getMedicationCourses,
   getInteractionWarnings,
   getFindingSuppressions,
 } from "@/lib/queries";
@@ -102,12 +103,105 @@ describe("addSupplement", () => {
   it("creates a kind='medication' row with prescriber", async () => {
     const { profile } = seedActor();
     await addSupplement(
-      fd({ name: "Lisinopril", kind: "medication", prescriber: "Dr House" })
+      fd({
+        name: "Lisinopril",
+        kind: "medication",
+        prescriber: "Dr House",
+        started_on: "2025-02-03",
+      })
     );
     const items = getSupplements(profile.id);
     const row = itemRow(items[0].id);
     expect(row.kind).toBe("medication");
     expect(row.prescriber).toBe("Dr House");
+    expect(getMedicationCourses(profile.id)[0].started_on).toBe("2025-02-03");
+  });
+
+  it("edits the selected medication course start date", async () => {
+    const { profile } = seedActor();
+    await addSupplement(
+      fd({
+        name: "Lisinopril",
+        kind: "medication",
+        started_on: "2025-01-01",
+      })
+    );
+    const med = getSupplements(profile.id)[0];
+    const course = getMedicationCourses(profile.id)[0];
+
+    const result = await updateSupplement(
+      fd({
+        id: med.id,
+        name: med.name,
+        kind: "medication",
+        course_id: course.id,
+        started_on: "2025-02-03",
+      })
+    );
+
+    expect(result.ok).toBe(true);
+    expect(getMedicationCourses(profile.id)[0].started_on).toBe("2025-02-03");
+  });
+
+  it("keeps an as-needed start date optional and allows it to be cleared", async () => {
+    const { profile } = seedActor();
+    const added = await addSupplement(
+      fd({
+        name: "As-needed test medication",
+        kind: "medication",
+        as_needed: "1",
+        started_on: "",
+      })
+    );
+
+    expect(added.ok).toBe(true);
+    const med = getSupplements(profile.id)[0];
+    let course = getMedicationCourses(profile.id)[0];
+    expect(course.started_on).toBeNull();
+
+    const dated = await updateSupplement(
+      fd({
+        id: med.id,
+        name: med.name,
+        kind: "medication",
+        as_needed: "1",
+        course_id: course.id,
+        started_on: "2025-02-03",
+      })
+    );
+    expect(dated.ok).toBe(true);
+    course = getMedicationCourses(profile.id)[0];
+    expect(course.started_on).toBe("2025-02-03");
+
+    const cleared = await updateSupplement(
+      fd({
+        id: med.id,
+        name: med.name,
+        kind: "medication",
+        as_needed: "1",
+        course_id: course.id,
+        started_on: "",
+      })
+    );
+    expect(cleared.ok).toBe(true);
+    expect(getMedicationCourses(profile.id)[0].started_on).toBeNull();
+  });
+
+  it("still requires a start date for a scheduled medication", async () => {
+    const { profile } = seedActor();
+    const result = await addSupplement(
+      fd({
+        name: "Scheduled test medication",
+        kind: "medication",
+        started_on: "",
+      })
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      error: "Enter a start date that isn't in the future.",
+    });
+    expect(getSupplements(profile.id)).toHaveLength(0);
   });
 });
 

@@ -3,10 +3,8 @@
 // match NO curated rule used to render exactly like a stack that was checked and
 // came up clean: nothing. The empty state is the more dangerous one (a real
 // interaction the curated set simply doesn't cover), so coverage must be legible at
-// the point of use: instead of silent null, the safety strips render a calm scope
-// line ("Screened against a curated set … N of M match it. No flags found."), and a
-// name-only item (no confirmed RxNorm code — even less likely to match a code-keyed
-// rule) wears a quiet limited-coverage chip pointing at the #851 confirm flow.
+// the point of use: instead of silent null, the intake pages end with a quiet scope
+// disclosure ("Screened against a curated set … N of M match it. No flags found.").
 //
 // THE PRINCIPLE (stated in docs/internals/findings.md): a safety surface must never
 // let absence of a finding read as an affirmative all-clear; when coverage is
@@ -55,12 +53,6 @@ export function stackScreeningCoverage(
   return { total: active.length, matched, unresolved };
 }
 
-// Whether an individual item's screening coverage is LIMITED (name-only — no
-// confirmed RxNorm code). The med card's quiet chip keys on this.
-export function isCoverageLimited(item: { rxcui: string | null }): boolean {
-  return !item.rxcui?.trim();
-}
-
 // The calm scope line for the safety strips: states what was checked and how much
 // of the stack the curated set covers, and — when the check rendered no flags —
 // says "no flags" WITHOUT letting it read as clearance. Null for an empty stack
@@ -88,9 +80,3 @@ export function coverageScopeLine(
   }
   return parts.join(" ");
 }
-
-// The quiet per-item chip copy (the med card) — a nudge toward the existing #851
-// RxNorm confirm flow, never a warning.
-export const COVERAGE_LIMITED_CHIP = "Limited screening";
-export const COVERAGE_LIMITED_HINT =
-  "No confirmed RxNorm code — interaction and safety checks match this item by name only. Confirm its RxNorm match in the edit form to improve screening.";

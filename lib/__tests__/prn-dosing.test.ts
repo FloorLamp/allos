@@ -5,6 +5,8 @@ import {
   isWeightStale,
   weightStalenessDays,
   mlForBand,
+  formulationForSlug,
+  formulationSlugForProduct,
   kgToLbs,
   pediatricDoseSuggestion,
 } from "@/lib/prn-dosing";
@@ -12,9 +14,33 @@ import { prnDefaultsFor, type PediatricBand } from "@/lib/prn-defaults";
 
 const IBUPROFEN = prnDefaultsFor({ name: "Ibuprofen", rxcui: "5640" })!;
 const ASPIRIN = prnDefaultsFor({ name: "Aspirin", rxcui: "1191" })!;
+const ACETAMINOPHEN = prnDefaultsFor({
+  name: "Acetaminophen",
+  rxcui: "161",
+})!;
 
 // Ibuprofen bands: 24→100, 36→150, 48→200, 60→250, 72→300 (mg).
 const BANDS: PediatricBand[] = IBUPROFEN.pediatric!.bands;
+
+describe("pediatric formulation persistence", () => {
+  const formulations = ACETAMINOPHEN.pediatric!.formulations;
+
+  it("resolves a picker slug to the exact product label", () => {
+    expect(
+      formulationForSlug(formulations, "childrens_susp_160_5")?.label
+    ).toBe("Children's oral suspension (160 mg / 5 mL)");
+  });
+
+  it("restores a picker slug from a saved product label", () => {
+    expect(
+      formulationSlugForProduct(
+        formulations,
+        "Children's oral suspension (160 mg / 5 mL)"
+      )
+    ).toBe("childrens_susp_160_5");
+    expect(formulationSlugForProduct(formulations, "Unknown product")).toBe("");
+  });
+});
 
 describe("bandForWeightLbs — conservative lower-band rounding", () => {
   it("a weight inside a band maps to that band", () => {
@@ -137,14 +163,19 @@ describe("pediatricDoseSuggestion — orchestrated lookup", () => {
     expect(r.kind).toBe("stale-weight");
   });
 
-  it("below the smallest band → ask-doctor refusal, never an extrapolated dose", () => {
+  it("below the smallest band reports the unmatched weight boundary", () => {
     // 8 kg ≈ 17.6 lb, below the 24-lb smallest band; age passes (12 months).
     const r = pediatricDoseSuggestion({
       ...base,
       ageMonths: 12,
       weightKg: 8,
     });
-    expect(r.kind).toBe("ask-doctor");
+    expect(r).toEqual({
+      kind: "below-weight-band",
+      weightLbs: 17.6,
+      minimumLbs: 24,
+      recordedDate: "2026-06-01",
+    });
   });
 
   it("aspirin has no pediatric table → no-pediatric (structurally cannot dose)", () => {

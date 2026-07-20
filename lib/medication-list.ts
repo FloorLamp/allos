@@ -6,29 +6,36 @@
 // the Emergency Card / passport share the medicationDoseDetail() dose-string projection
 // so their "detail" can never drift from the print list's dose column. Pure — no DB.
 
+import { formatMedicationDoseProduct } from "./medication-dose-format";
+
 // The dose/PRN detail string a compact surface shows for a medication (e.g. "10 mg" or
 // "10 mg · as needed"). Extracted so the passport/Emergency Card gather and the med-list
 // dose column are ONE computation. `doseAmounts` are the distinct strengths; a PRN med
 // appends "as needed". Null when there's nothing to show.
 export function medicationDoseDetail(
   doseAmounts: string[],
-  asNeeded: boolean
+  asNeeded: boolean,
+  product?: string | null
 ): string | null {
   const strength = [...new Set(doseAmounts.filter(Boolean))].join(", ");
   return (
-    [strength, asNeeded ? "as needed" : null].filter(Boolean).join(" · ") ||
-    null
+    [
+      formatMedicationDoseProduct(strength || null, product),
+      asNeeded ? "as needed" : null,
+    ]
+      .filter(Boolean)
+      .join(" · ") || null
   );
 }
 
-// Human schedule label for the list's Schedule column: a PRN med reads "As needed
-// (PRN)"; a scheduled med reads its distinct time-of-day buckets ("Morning, Evening")
+// Human schedule label for the list's Schedule column: an as-needed med reads "As
+// needed"; a scheduled med reads its distinct time-of-day buckets ("Morning, Evening")
 // when it has timed doses, else the neutral "Scheduled".
 export function medicationScheduleLabel(
   timesOfDay: (string | null)[],
   asNeeded: boolean
 ): string {
-  if (asNeeded) return "As needed (PRN)";
+  if (asNeeded) return "As needed";
   const buckets = [
     ...new Set(timesOfDay.map((t) => (t || "").trim()).filter(Boolean)),
   ];
@@ -60,7 +67,7 @@ export interface MedicationListRow {
 }
 
 // Assemble the current-medication list rows, sorted by name (case-insensitive). Each
-// row carries name, brand/product subtitle, dose strengths, schedule/PRN, prescriber,
+// row carries name, brand subtitle, dose strengths + product formulation, schedule/PRN, prescriber,
 // and the start date — the fields a "bring your medication list" artifact needs.
 export function buildMedicationList(
   input: MedicationListInput[]
@@ -69,8 +76,11 @@ export function buildMedicationList(
     .map((m) => ({
       id: m.id,
       name: m.name,
-      subtitle: [m.brand, m.product].filter(Boolean).join(" · ") || null,
-      dose: [...new Set(m.doseAmounts.filter(Boolean))].join(", ") || null,
+      subtitle: m.brand?.trim() || null,
+      dose: formatMedicationDoseProduct(
+        [...new Set(m.doseAmounts.filter(Boolean))].join(", ") || null,
+        m.product
+      ),
       schedule: medicationScheduleLabel(m.timesOfDay, m.asNeeded),
       prescriber: m.prescriber?.trim() || null,
       startedOn: m.startedOn,

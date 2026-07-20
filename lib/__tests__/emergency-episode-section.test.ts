@@ -30,6 +30,7 @@ function ep(over: Partial<AssembledEpisode> = {}): AssembledEpisode {
       {
         itemId: 1,
         name: "Ibuprofen",
+        product: "Children's oral suspension (100 mg / 5 mL)",
         count: 2,
         administrations: [
           { date: "2026-06-03", time: "9:00pm", amount: "200 mg" },
@@ -57,6 +58,7 @@ describe("emergencyEpisodeSection", () => {
       name: "Ibuprofen",
       time: "8:00 AM",
       amount: "200 mg",
+      product: "Children's oral suspension (100 mg / 5 mL)",
     });
   });
 

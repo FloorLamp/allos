@@ -1,7 +1,7 @@
 "use client";
 
 import type { Dispatch, SetStateAction } from "react";
-import { IconX } from "@tabler/icons-react";
+import { IconPlus, IconX } from "@tabler/icons-react";
 import type { PairRelation } from "@/lib/types";
 
 // One keep-apart / take-together pair row's client state (shared, #846).
@@ -30,8 +30,8 @@ export default function KeepApartPairsEditor({
   }
 
   return (
-    <div className="sm:col-span-2">
-      <label className="label">Interactions</label>
+    <div className="border-t border-black/5 pt-4 sm:col-span-2 dark:border-white/5">
+      <div className="mb-2 section-label">Timing with other items</div>
       {pairRows.length > 0 && (
         <div className="space-y-2">
           {pairRows.map((p, i) => (
@@ -47,8 +47,8 @@ export default function KeepApartPairsEditor({
                 className="input col-span-2 sm:col-auto sm:w-36"
                 aria-label="Relation"
               >
-                <option value="separate">keep apart from</option>
-                <option value="with">take together with</option>
+                <option value="separate">Keep apart from</option>
+                <option value="with">Take together with</option>
               </select>
               <select
                 value={p.otherId || others[0].id}
@@ -68,7 +68,7 @@ export default function KeepApartPairsEditor({
                 value={p.note}
                 onChange={(e) => setPair(i, { note: e.target.value })}
                 className="input sm:w-40"
-                placeholder="note (optional)"
+                placeholder="Note (optional)"
                 aria-label="Note"
               />
               <button
@@ -76,7 +76,7 @@ export default function KeepApartPairsEditor({
                 onClick={() =>
                   setPairRows((ps) => ps.filter((_, j) => j !== i))
                 }
-                className="tap-target flex h-8 w-8 items-center justify-center justify-self-end rounded text-slate-300 hover:text-rose-500 dark:text-slate-600 dark:hover:text-rose-400"
+                className="tap-target flex h-10 w-10 items-center justify-center justify-self-end rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 dark:text-slate-400 dark:hover:bg-rose-950 dark:hover:text-rose-400"
                 aria-label="Remove interaction"
               >
                 <IconX className="h-4 w-4" />
@@ -93,9 +93,10 @@ export default function KeepApartPairsEditor({
             { otherId: others[0].id, relation: "separate", note: "" },
           ])
         }
-        className="mt-2 text-xs font-medium text-brand-700 hover:underline dark:text-brand-400"
+        className="btn-ghost btn-sm mt-2"
       >
-        + Add interaction
+        <IconPlus className="h-4 w-4" stroke={2} aria-hidden="true" />
+        Add interaction
       </button>
     </div>
   );

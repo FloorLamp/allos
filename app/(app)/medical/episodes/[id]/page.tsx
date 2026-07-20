@@ -81,7 +81,8 @@ export default async function EpisodePage(props: {
     profile: activeProfile,
     access: activeAccess,
   } = await requireSession();
-  const temperatureUnit = getUnitPrefs(login.id).temperatureUnit;
+  const units = getUnitPrefs(login.id);
+  const temperatureUnit = units.temperatureUnit;
   const formatPrefs = getDisplayFormatPrefs(login.id);
 
   // Resolve across the viewer's accessible set — never trust a client-provided profile
@@ -321,7 +322,10 @@ export default async function EpisodePage(props: {
                     meds={prnMeds}
                     tz={getTimezone(profileId)}
                     profileId={target}
-                    pediatric={getPediatricFormContext(profileId)}
+                    pediatric={getPediatricFormContext(
+                      profileId,
+                      units.weightUnit
+                    )}
                     canAdd={canAddMedication}
                     nowIso={clockNow().toISOString()}
                   />

@@ -76,5 +76,7 @@
   "075-extraction-completed-at.ts": "d85d66b811a1b2972eb3c1dc35f477ad03aebcca372c00cc759410d0f1226f55",
   "076-encounter-type-code.ts": "2d27810813e3ef64316f7800a38e3bc687fd454d8721f7c28bd30b17f0f8dfb1",
   "077-optical-minus-cylinder.ts": "45514521acbcddf27af7d716a42ef44cacb30c13a89e646af8298359fb47ea1c",
-  "078-imaging-modality-expansion.ts": "ada150bea56ffec2abacc7a0ca70e4904438254c34d2c553caf7aa5f2e8fbe64"
+  "078-imaging-modality-expansion.ts": "ada150bea56ffec2abacc7a0ca70e4904438254c34d2c553caf7aa5f2e8fbe64",
+  "079-intake-log-product.ts": "05fb1ea5614e1b0113124f169d0ed77a1ef7aa9923f4edd9ad7d80881de7ddd0",
+  "080-intake-log-supply-adjusted.ts": "85935312cfd04cda93beadfac508dd9b44c698d901253126a484aa8a78e3e03f"
 }

@@ -43,6 +43,7 @@ import { profileAgeMonths } from "../settings";
 import { inlineTempRedFlagNote } from "../temp-red-flag";
 import { queueTempRedFlagDispatch } from "./temp-red-flag";
 import { fmtTemp } from "../units";
+import { formatMedicationDoseProduct } from "../medication-dose-format";
 import { preventiveRuleByKey } from "../preventive-catalog";
 import { preventiveSignalKey } from "../preventive-upcoming";
 import { refillSignalKey } from "../refill-nudge";
@@ -246,8 +247,9 @@ export async function handleDoseCommand(
   for (const pid of profileIds) {
     const prefix = multi ? `${getProfileNameById(pid) ?? "Profile"}: ` : "";
     for (const m of getPrnMedicationsForQuickLog(pid)) {
+      const dose = formatMedicationDoseProduct(m.amount, m.product);
       actions.push({
-        label: `💊 ${prefix}${m.name}${m.count > 0 ? ` (${m.count} today)` : ""}`,
+        label: `💊 ${prefix}${m.name}${dose ? ` · ${dose}` : ""}${m.count > 0 ? ` (${m.count} today)` : ""}`,
         data: `prn:${pid}:${m.id}:${prnLogToken()}`,
       });
     }

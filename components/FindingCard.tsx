@@ -80,6 +80,7 @@ export function FindingCard({
   tone,
   testid,
   icon = true,
+  embedded = false,
   title,
   detail,
   evidence,
@@ -92,6 +93,9 @@ export function FindingCard({
   // The amber/rose/violet hazard blocks lead with an alert triangle; the calm
   // slate RDA block has no icon.
   icon?: boolean;
+  // A grouped parent can supply the shared surface and dividers. In that layout,
+  // keep the finding anatomy but avoid nesting another tinted card inside it.
+  embedded?: boolean;
   title: ReactNode;
   detail: ReactNode;
   evidence: ReactNode;
@@ -101,30 +105,29 @@ export function FindingCard({
   dismissLabel: string;
 }) {
   const t = TEXT[tone];
-  const body = (
-    <div>
-      <p className="font-semibold">{title}</p>
-      <p className={`mt-0.5 ${t.detail}`}>{detail}</p>
-      {children}
-      <p className={`mt-1 text-xs ${t.evidence}`}>{evidence}</p>
-    </div>
-  );
   return (
     <div
       data-testid={testid}
-      className={`rounded-lg border px-3 py-2.5 text-sm ${NOTICE_TONE[tone]}`}
+      className={
+        embedded
+          ? "py-3 text-sm first:pt-0 last:pb-0"
+          : `rounded-lg border px-3 py-2.5 text-sm ${NOTICE_TONE[tone]}`
+      }
     >
       <div className="flex items-start justify-between gap-2">
-        {icon ? (
-          <div className="flex items-start gap-1.5">
+        <div
+          className={`flex min-w-0 items-start gap-1.5 ${embedded ? t.detail : ""}`}
+        >
+          {icon ? (
             <IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            {body}
-          </div>
-        ) : (
-          body
-        )}
+          ) : null}
+          <p className="font-semibold">{title}</p>
+        </div>
         <DismissFindingButton dedupeKey={dismissKey} label={dismissLabel} />
       </div>
+      <p className={`mt-0.5 ${t.detail}`}>{detail}</p>
+      {children}
+      <p className={`mt-1 text-xs ${t.evidence}`}>{evidence}</p>
     </div>
   );
 }

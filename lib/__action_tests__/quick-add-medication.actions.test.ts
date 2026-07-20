@@ -7,7 +7,7 @@
 // pinned in lib/__tests__/quick-add-medication.test.ts; this pins the resulting ROW.
 
 import { describe, it, expect } from "vitest";
-import { db } from "@/lib/db";
+import { db, today } from "@/lib/db";
 import { addSupplement } from "@/app/(app)/nutrition/supplement-actions";
 import { quickAddMedicationFormData } from "@/lib/quick-add-medication";
 import { seedActor, fd } from "./harness";
@@ -19,6 +19,7 @@ interface MedRow {
   condition: string;
   priority: string;
   brand: string | null;
+  product: string | null;
   as_needed: number;
   min_interval_hours: number | null;
   max_daily_count: number | null;
@@ -30,7 +31,7 @@ interface MedRow {
 function latestMedNamed(profileId: number, name: string): MedRow {
   return db
     .prepare(
-      `SELECT id, name, kind, condition, priority, brand, as_needed,
+      `SELECT id, name, kind, condition, priority, brand, product, as_needed,
               min_interval_hours, max_daily_count, redose_notice, active, source
          FROM intake_items
         WHERE profile_id = ? AND name = ?
@@ -48,6 +49,13 @@ function doseAmount(itemId: number): string | null {
   return row?.amount ?? null;
 }
 
+function courseStart(itemId: number): string | null {
+  const row = db
+    .prepare("SELECT started_on FROM medication_courses WHERE item_id = ?")
+    .get(itemId) as { started_on: string | null } | undefined;
+  return row?.started_on ?? null;
+}
+
 // The columns that define "the same medication" — everything the two paths set.
 function shape(row: MedRow) {
   return {
@@ -55,6 +63,7 @@ function shape(row: MedRow) {
     condition: row.condition,
     priority: row.priority,
     brand: row.brand,
+    product: row.product,
     as_needed: row.as_needed,
     min_interval_hours: row.min_interval_hours,
     max_daily_count: row.max_daily_count,
@@ -118,6 +127,25 @@ describe("OTC quick-add row parity (#843)", () => {
       .prepare("SELECT COUNT(*) AS c FROM medication_courses WHERE item_id = ?")
       .get(quickRow.id) as { c: number };
     expect(courses.c).toBeGreaterThan(0);
+    expect(courseStart(quickRow.id)).toBeNull();
+  });
+
+  it("uses today for a scheduled quick-add but leaves a PRN start unknown", async () => {
+    const { profile } = seedActor();
+    await addSupplement(
+      quickAddMedicationFormData({
+        name: "Scheduled quick med",
+        asNeeded: false,
+      })
+    );
+    const scheduled = latestMedNamed(profile.id, "Scheduled quick med");
+    expect(courseStart(scheduled.id)).toBe(today(profile.id));
+
+    await addSupplement(
+      quickAddMedicationFormData({ name: "PRN quick med", asNeeded: true })
+    );
+    const prn = latestMedNamed(profile.id, "PRN quick med");
+    expect(courseStart(prn.id)).toBeNull();
   });
 
   it("opts in to the redose notice only when both label numbers are confirmed", async () => {
@@ -136,5 +164,20 @@ describe("OTC quick-add row parity (#843)", () => {
     expect(row.redose_notice).toBe(1);
     expect(row.min_interval_hours).toBe(6);
     expect(row.max_daily_count).toBe(4);
+  });
+
+  it("persists a selected pediatric formulation as the medication product", async () => {
+    const { profile } = seedActor();
+    await addSupplement(
+      quickAddMedicationFormData({
+        name: "Acetaminophen",
+        product: "Children's oral suspension (160 mg / 5 mL)",
+        amount: "160 mg",
+        asNeeded: true,
+      })
+    );
+
+    const row = latestMedNamed(profile.id, "Acetaminophen");
+    expect(row.product).toBe("Children's oral suspension (160 mg / 5 mL)");
   });
 });

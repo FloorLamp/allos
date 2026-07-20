@@ -18,6 +18,7 @@ import { getTimezone } from "../../settings";
 import {
   DOSE_LOG_DATE_WINDOW_DAYS,
   isGivenAtAccepted,
+  isHistoricalDoseTimeAccepted,
 } from "../../dose-log-window";
 import { decrementSupply, incrementSupply } from "./refill";
 import { getMedicationFamilyStates } from "./prn-family";
@@ -26,6 +27,7 @@ import type {
   DoseStatus,
   DoseTakenOutcome,
   EscalationAckOutcome,
+  HistoricalDoseOutcome,
 } from "../../types";
 
 // A Telegram dose token carries the day the reminder was sent so a late tap still
@@ -69,6 +71,31 @@ export function getTakenDoseIds(profileId: number, date: string): Set<number> {
     )
     .all(profileId, date) as { dose_id: number }[];
   return new Set(rows.map((r) => r.dose_id));
+}
+
+// Actual administration timestamp for each scheduled dose taken on `date`, scoped
+// through the dose's parent item. Scheduled doses have at most one taken row per
+// (dose,date); ordering newest-first also makes this safe for older data that predates
+// that invariant. The UI formats the stored UTC value in the profile timezone.
+export function getTakenDoseTimes(
+  profileId: number,
+  date: string
+): Map<number, string> {
+  const rows = db
+    .prepare(
+      `SELECT l.dose_id, COALESCE(l.given_at, l.taken_at) AS taken_at
+         FROM intake_item_logs l
+         JOIN intake_item_doses d ON d.id = l.dose_id
+         JOIN intake_items s ON s.id = d.item_id
+        WHERE s.profile_id = ? AND l.date = ? AND l.status = 'taken'
+        ORDER BY COALESCE(l.given_at, l.taken_at) DESC, l.id DESC`
+    )
+    .all(profileId, date) as { dose_id: number; taken_at: string }[];
+  const out = new Map<number, string>();
+  for (const row of rows) {
+    if (!out.has(row.dose_id)) out.set(row.dose_id, row.taken_at);
+  }
+  return out;
 }
 
 // Dose ids deliberately SKIPPED on `date` (issue #232) — the other half of the
@@ -326,6 +353,260 @@ export function logAdministration(
   });
 }
 
+// Backfill one taken medication dose at an explicit profile-local date/time. This
+// is intentionally separate from reminder/quick-log ingestion: a deliberate history
+// edit may reach any past date inside a medication course, including a stopped
+// course, while stale buttons keep their tighter two-day bound.
+// A PRN dose is also evidence that its course had already begun: when it predates the
+// next applicable course, that course's start moves back to the administration date
+// in the SAME transaction as the log. Scheduled courses retain strict boundaries.
+// The selected live dose anchors scheduled-day identity; amountOverride is snapshotted
+// without changing the current schedule. Supply movement is explicit because an older
+// dose may predate a later refill or inventory reconciliation.
+export function logHistoricalMedicationDose(
+  profileId: number,
+  itemId: number,
+  doseId: number,
+  givenAt: Date,
+  amountOverride: string | null,
+  adjustSupply: boolean
+): HistoricalDoseOutcome {
+  const tz = getTimezone(profileId);
+  const todayStr = today(profileId);
+  if (!isHistoricalDoseTimeAccepted(tz, todayStr, givenAt)) {
+    return { kind: "invalid-time" };
+  }
+  const date = dateStrInTz(tz, givenAt);
+  const givenAtStr = utcSqlString(givenAt);
+
+  return writeTx((): HistoricalDoseOutcome => {
+    const dose = db
+      .prepare(
+        `SELECT d.item_id, d.amount, s.as_needed
+           FROM intake_item_doses d
+           JOIN intake_items s ON s.id = d.item_id
+          WHERE d.id = ? AND d.item_id = ? AND d.retired = 0
+            AND s.profile_id = ? AND s.kind = 'medication'`
+      )
+      .get(doseId, itemId, profileId) as
+      { item_id: number; amount: string | null; as_needed: number } | undefined;
+    if (!dose) return { kind: "stale-dose" };
+
+    const inCourse = db
+      .prepare(
+        `SELECT 1
+           FROM medication_courses c
+           JOIN intake_items s ON s.id = c.item_id
+          WHERE c.item_id = ? AND s.profile_id = ?
+            AND (c.started_on IS NULL OR c.started_on <= ?)
+            AND (c.stopped_on IS NULL OR c.stopped_on >= ?)
+          LIMIT 1`
+      )
+      .get(itemId, profileId, date, date);
+
+    // PRN use can legitimately predate the date first entered in the app. Find the
+    // next course that this administration can extend backward; stopped courses are
+    // eligible only when the chosen date is on/before their stop. The update waits
+    // until duplicate/status validation succeeds so a rejected log never mutates the
+    // course. Profile ownership is enforced through the parent on both statements.
+    const courseToExtend =
+      !inCourse && dose.as_needed === 1
+        ? (db
+            .prepare(
+              `SELECT c.id
+                 FROM medication_courses c
+                 JOIN intake_items s ON s.id = c.item_id
+                WHERE c.item_id = ? AND s.profile_id = ?
+                  AND c.started_on IS NOT NULL AND c.started_on > ?
+                  AND (c.stopped_on IS NULL OR c.stopped_on >= ?)
+                ORDER BY c.started_on ASC, c.id ASC
+                LIMIT 1`
+            )
+            .get(itemId, profileId, date, date) as { id: number } | undefined)
+        : undefined;
+    if (!inCourse && !courseToExtend) return { kind: "outside-course" };
+
+    if (dose.as_needed !== 1) {
+      const existing = db
+        .prepare(
+          `SELECT l.status
+             FROM intake_item_logs l
+             JOIN intake_items s ON s.id = l.item_id
+            WHERE l.dose_id = ? AND l.date = ? AND s.profile_id = ?
+            ORDER BY l.id LIMIT 1`
+        )
+        .get(doseId, date, profileId) as { status: DoseStatus } | undefined;
+      if (existing) {
+        return {
+          kind:
+            existing.status === "skipped" ? "already-skipped" : "already-taken",
+        };
+      }
+    } else {
+      const duplicate = db
+        .prepare(
+          `SELECT l.id
+             FROM intake_item_logs l
+             JOIN intake_items s ON s.id = l.item_id
+            WHERE l.dose_id = ? AND l.status = 'taken'
+              AND s.profile_id = ? AND l.given_at IS NOT NULL
+              AND ABS(strftime('%s', l.given_at) - strftime('%s', ?)) <= ?
+            LIMIT 1`
+        )
+        .get(doseId, profileId, givenAtStr, ADMIN_DEDUP_WINDOW_SEC);
+      if (duplicate) return { kind: "duplicate" };
+    }
+
+    const amount = amountOverride?.trim() || dose.amount;
+    if (courseToExtend) {
+      db.prepare(
+        `UPDATE medication_courses
+            SET started_on = ?
+          WHERE id = ? AND item_id = ?
+            AND EXISTS (
+              SELECT 1 FROM intake_items s
+               WHERE s.id = medication_courses.item_id
+                 AND s.profile_id = ? AND s.kind = 'medication'
+            )`
+      ).run(date, courseToExtend.id, itemId, profileId);
+    }
+    db.prepare(
+      `INSERT INTO intake_item_logs
+         (dose_id, item_id, date, amount, given_at, supply_adjusted)
+       VALUES (?,?,?,?,?,?)`
+    ).run(doseId, itemId, date, amount, givenAtStr, adjustSupply ? 1 : 0);
+    if (adjustSupply) decrementSupply(profileId, itemId);
+    return { kind: "logged", date };
+  });
+}
+
+// Edit one existing taken medication ledger row. The row keeps its dose identity and
+// supply effect: changing when/how much was recorded does not consume or restore
+// inventory. Date/course rules mirror logHistoricalMedicationDose, including moving a
+// PRN course start backward only after uniqueness checks pass. Scheduled edits retain
+// one status row per dose/date; PRN edits retain the per-administration time dedup.
+export function updateHistoricalMedicationDose(
+  profileId: number,
+  itemId: number,
+  logId: number,
+  givenAt: Date,
+  amountOverride: string | null
+): HistoricalDoseOutcome {
+  const tz = getTimezone(profileId);
+  const todayStr = today(profileId);
+  if (!isHistoricalDoseTimeAccepted(tz, todayStr, givenAt)) {
+    return { kind: "invalid-time" };
+  }
+  const date = dateStrInTz(tz, givenAt);
+  const givenAtStr = utcSqlString(givenAt);
+
+  return writeTx((): HistoricalDoseOutcome => {
+    const row = db
+      .prepare(
+        `SELECT l.dose_id, l.amount, d.amount AS dose_amount, s.as_needed
+           FROM intake_item_logs l
+           JOIN intake_item_doses d ON d.id = l.dose_id
+           JOIN intake_items s ON s.id = l.item_id
+          WHERE l.id = ? AND l.item_id = ? AND l.status = 'taken'
+            AND s.profile_id = ? AND s.kind = 'medication'`
+      )
+      .get(logId, itemId, profileId) as
+      | {
+          dose_id: number;
+          amount: string | null;
+          dose_amount: string | null;
+          as_needed: number;
+        }
+      | undefined;
+    if (!row) return { kind: "stale-dose" };
+
+    const inCourse = db
+      .prepare(
+        `SELECT 1
+           FROM medication_courses c
+           JOIN intake_items s ON s.id = c.item_id
+          WHERE c.item_id = ? AND s.profile_id = ?
+            AND (c.started_on IS NULL OR c.started_on <= ?)
+            AND (c.stopped_on IS NULL OR c.stopped_on >= ?)
+          LIMIT 1`
+      )
+      .get(itemId, profileId, date, date);
+    const courseToExtend =
+      !inCourse && row.as_needed === 1
+        ? (db
+            .prepare(
+              `SELECT c.id
+                 FROM medication_courses c
+                 JOIN intake_items s ON s.id = c.item_id
+                WHERE c.item_id = ? AND s.profile_id = ?
+                  AND c.started_on IS NOT NULL AND c.started_on > ?
+                  AND (c.stopped_on IS NULL OR c.stopped_on >= ?)
+                ORDER BY c.started_on ASC, c.id ASC
+                LIMIT 1`
+            )
+            .get(itemId, profileId, date, date) as { id: number } | undefined)
+        : undefined;
+    if (!inCourse && !courseToExtend) return { kind: "outside-course" };
+
+    if (row.as_needed !== 1) {
+      const existing = db
+        .prepare(
+          `SELECT l.status
+             FROM intake_item_logs l
+             JOIN intake_items s ON s.id = l.item_id
+            WHERE l.dose_id = ? AND l.date = ? AND l.id <> ?
+              AND s.profile_id = ?
+            ORDER BY l.id LIMIT 1`
+        )
+        .get(row.dose_id, date, logId, profileId) as
+        { status: DoseStatus } | undefined;
+      if (existing) {
+        return {
+          kind:
+            existing.status === "skipped" ? "already-skipped" : "already-taken",
+        };
+      }
+    } else {
+      const duplicate = db
+        .prepare(
+          `SELECT l.id
+             FROM intake_item_logs l
+             JOIN intake_items s ON s.id = l.item_id
+            WHERE l.dose_id = ? AND l.id <> ? AND l.status = 'taken'
+              AND s.profile_id = ? AND l.given_at IS NOT NULL
+              AND ABS(strftime('%s', l.given_at) - strftime('%s', ?)) <= ?
+            LIMIT 1`
+        )
+        .get(row.dose_id, logId, profileId, givenAtStr, ADMIN_DEDUP_WINDOW_SEC);
+      if (duplicate) return { kind: "duplicate" };
+    }
+
+    if (courseToExtend) {
+      db.prepare(
+        `UPDATE medication_courses
+            SET started_on = ?
+          WHERE id = ? AND item_id = ?
+            AND EXISTS (
+              SELECT 1 FROM intake_items s
+               WHERE s.id = medication_courses.item_id
+                 AND s.profile_id = ? AND s.kind = 'medication'
+            )`
+      ).run(date, courseToExtend.id, itemId, profileId);
+    }
+    const amount = amountOverride?.trim() || row.dose_amount;
+    db.prepare(
+      `UPDATE intake_item_logs
+          SET date = ?, given_at = ?, amount = ?
+        WHERE id = ? AND item_id = ?
+          AND EXISTS (
+            SELECT 1 FROM intake_items s
+             WHERE s.id = intake_item_logs.item_id AND s.profile_id = ?
+          )`
+    ).run(date, givenAtStr, amount, logId, itemId, profileId);
+    return { kind: "logged", date };
+  });
+}
+
 // The day's PRN administrations for one item, most-recent first — for the med
 // card's "2 today · last 4:02pm" line. given_at is the real intake time; taken_at
 // is when it was recorded. Profile-scoped via the parent item (the denormalized
@@ -339,10 +620,11 @@ export function getAdministrationsForItemOnDate(
   given_at: string | null;
   taken_at: string;
   amount: string | null;
+  product: string | null;
 }[] {
   return db
     .prepare(
-      `SELECT l.id, l.given_at, l.taken_at, l.amount
+      `SELECT l.id, l.given_at, l.taken_at, l.amount, l.product
          FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.item_id
         WHERE s.profile_id = ? AND l.item_id = ? AND l.date = ?
@@ -354,6 +636,7 @@ export function getAdministrationsForItemOnDate(
     given_at: string | null;
     taken_at: string;
     amount: string | null;
+    product: string | null;
   }[];
 }
 
@@ -374,6 +657,7 @@ export function getAdministrationsForItemsOnDate(
     given_at: string | null;
     taken_at: string;
     amount: string | null;
+    product: string | null;
   }[]
 > {
   const out = new Map<
@@ -383,13 +667,14 @@ export function getAdministrationsForItemsOnDate(
       given_at: string | null;
       taken_at: string;
       amount: string | null;
+      product: string | null;
     }[]
   >();
   if (itemIds.length === 0) return out;
   const placeholders = itemIds.map(() => "?").join(", ");
   const rows = db
     .prepare(
-      `SELECT l.item_id, l.id, l.given_at, l.taken_at, l.amount
+      `SELECT l.item_id, l.id, l.given_at, l.taken_at, l.amount, l.product
          FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.item_id
         WHERE s.profile_id = ? AND l.item_id IN (${placeholders}) AND l.date = ?
@@ -402,6 +687,7 @@ export function getAdministrationsForItemsOnDate(
     given_at: string | null;
     taken_at: string;
     amount: string | null;
+    product: string | null;
   }[];
   for (const r of rows) {
     const arr = out.get(r.item_id) ?? [];
@@ -410,30 +696,33 @@ export function getAdministrationsForItemsOnDate(
       given_at: r.given_at,
       taken_at: r.taken_at,
       amount: r.amount,
+      product: r.product,
     });
     out.set(r.item_id, arr);
   }
   return out;
 }
 
-// PRN administration history for the med's OWN detail page (#851 item 13): every
-// administration on/after `sinceDate`, most recent first, so the page can answer "how
-// often last month" — the card alone shows only TODAY. Profile-scoped via the parent
-// item. Returns the intake time (given_at ?? taken_at) + amount for grouping/formatting
-// in the profile's timezone at the call site.
-export function getPrnAdministrationHistory(
+// Taken-dose history for a medication's detail page: scheduled and PRN ledger rows
+// on/after `sinceDate`, most recent first. The detail page passes its earliest course
+// date for bounded scheduled courses and the ISO floor for open-ended/PRN history.
+// Returns exact intake time + snapshotted amount for formatting at the call site.
+export function getMedicationDoseHistory(
   profileId: number,
   itemId: number,
   sinceDate: string
 ): {
+  id: number;
+  dose_id: number;
   date: string;
   given_at: string | null;
   taken_at: string;
   amount: string | null;
+  product: string | null;
 }[] {
   return db
     .prepare(
-      `SELECT l.date, l.given_at, l.taken_at, l.amount
+      `SELECT l.id, l.dose_id, l.date, l.given_at, l.taken_at, l.amount, l.product
          FROM intake_item_logs l
          JOIN intake_items s ON s.id = l.item_id
         WHERE s.profile_id = ? AND l.item_id = ? AND l.status = 'taken'
@@ -441,14 +730,17 @@ export function getPrnAdministrationHistory(
         ORDER BY l.date DESC, COALESCE(l.given_at, l.taken_at) DESC, l.id DESC`
     )
     .all(profileId, itemId, sinceDate) as {
+    id: number;
+    dose_id: number;
     date: string;
     given_at: string | null;
     taken_at: string;
     amount: string | null;
+    product: string | null;
   }[];
 }
 
-// ---- Undoable PRN administration delete (issue #851 item 11) ----
+// ---- Undoable medication administration delete (issue #851 item 11) ----
 //
 // A fat-fingered PRN Log tap is otherwise PERMANENT and NOT cosmetic: the phantom
 // administration decremented on-hand supply, ADVANCED the redose window (the next real
@@ -472,14 +764,17 @@ interface CapturedAdministration {
   taken_at: string;
   given_at: string | null;
   amount: string | null;
+  product: string | null;
   status: string;
+  supply_adjusted: number;
 }
 
-// Delete one PRN administration (an intake_item_logs row) with capture-for-undo, and
-// invert its supply decrement. Auth-blind, profileId-first. Ownership is verified via
-// the parent item's profile_id (the ledger has no profile_id column). Returns the undo
-// token (deleted_rows id) or null when the row isn't the profile's / is gone. One
-// IMMEDIATE transaction so the capture + delete + supply re-credit commit together.
+// Delete one taken medication administration (an intake_item_logs row) with
+// capture-for-undo, and invert its supply decrement only when that row originally
+// changed supply. Auth-blind, profileId-first. Ownership is verified via the parent
+// item's profile_id (the ledger has no profile_id column). Returns the undo token
+// (deleted_rows id) or null when the row isn't the profile's / is gone. One IMMEDIATE
+// transaction so the capture + delete + any supply re-credit commit together.
 export function deleteAdministrationLog(
   profileId: number,
   logId: number
@@ -488,10 +783,11 @@ export function deleteAdministrationLog(
     const row = db
       .prepare(
         `SELECT l.id, l.dose_id, l.item_id, l.date, l.taken_at, l.given_at,
-                l.amount, l.status
+                l.amount, l.product, l.status, l.supply_adjusted
            FROM intake_item_logs l
            JOIN intake_items s ON s.id = l.item_id
-          WHERE l.id = ? AND s.profile_id = ?`
+          WHERE l.id = ? AND s.profile_id = ? AND s.kind = 'medication'
+            AND l.status = 'taken'`
       )
       .get(logId, profileId) as
       (CapturedAdministration & { id: number }) | undefined;
@@ -504,7 +800,9 @@ export function deleteAdministrationLog(
       taken_at: row.taken_at,
       given_at: row.given_at,
       amount: row.amount,
+      product: row.product,
       status: row.status,
+      supply_adjusted: row.supply_adjusted,
     };
     const info = db
       .prepare(
@@ -516,7 +814,9 @@ export function deleteAdministrationLog(
     db.prepare(`DELETE FROM intake_item_logs WHERE id = ?`).run(logId);
     // Invert the supply decrement the administration applied (a 'taken' row consumed
     // supply). incrementSupply is a no-op when quantity_on_hand IS NULL (untracked).
-    if (row.status === "taken") incrementSupply(profileId, row.item_id);
+    if (row.status === "taken" && row.supply_adjusted === 1) {
+      incrementSupply(profileId, row.item_id);
+    }
     return Number(info.lastInsertRowid);
   });
 }
@@ -552,7 +852,7 @@ export function updateAdministrationLog(
   });
 }
 
-// Restore a captured PRN administration from its undo token (routed here by
+// Restore a captured medication administration from its undo token (routed here by
 // restoreDeletedRow's kind branch). Re-inserts the ledger row (NEW id) and RE-applies
 // the supply decrement (the inverse of the delete's re-credit), then drops the holding
 // row — all in one IMMEDIATE transaction. Returns false when the token is gone (already
@@ -589,10 +889,14 @@ export function restoreAdministrationLog(
       .get(captured.dose_id, captured.item_id, profileId);
     if (!dose) return false;
 
+    // Undo tokens captured before the supply flag was introduced represent ordinary
+    // logs, all of which consumed supply. Default those legacy payloads to 1.
+    const supplyAdjusted = captured.supply_adjusted ?? 1;
     db.prepare(
       `INSERT INTO intake_item_logs
-         (dose_id, item_id, date, taken_at, given_at, amount, status)
-       VALUES (?,?,?,?,?,?,?)`
+         (dose_id, item_id, date, taken_at, given_at, amount, product, status,
+          supply_adjusted)
+       VALUES (?,?,?,?,?,?,?,?,?)`
     ).run(
       captured.dose_id,
       captured.item_id,
@@ -600,9 +904,11 @@ export function restoreAdministrationLog(
       captured.taken_at,
       captured.given_at,
       captured.amount,
-      captured.status
+      captured.product ?? null,
+      captured.status,
+      supplyAdjusted
     );
-    if (captured.status === "taken") {
+    if (captured.status === "taken" && supplyAdjusted === 1) {
       decrementSupply(profileId, captured.item_id);
     }
     db.prepare(`DELETE FROM deleted_rows WHERE id = ? AND profile_id = ?`).run(
@@ -623,6 +929,8 @@ export function restoreAdministrationLog(
 export interface RedoseNoticeItem {
   id: number;
   name: string;
+  product: string | null;
+  amount: string | null;
   minIntervalHours: number;
   maxDailyCount: number;
 }
@@ -630,7 +938,10 @@ export interface RedoseNoticeItem {
 export function getRedoseNoticeItems(profileId: number): RedoseNoticeItem[] {
   return db
     .prepare(
-      `SELECT id, name,
+      `SELECT id, name, product,
+              (SELECT d.amount FROM intake_item_doses d
+                WHERE d.item_id = intake_items.id AND d.retired = 0
+                ORDER BY d.sort, d.id LIMIT 1) AS amount,
               min_interval_hours AS minIntervalHours,
               max_daily_count AS maxDailyCount
          FROM intake_items
@@ -769,6 +1080,7 @@ export function getPrnOverMaxItems(
 export interface PrnMedForQuickLog {
   id: number;
   name: string;
+  product: string | null;
   amount: string | null;
   count: number;
   lastGivenAt: string | null;
@@ -795,7 +1107,7 @@ export function getPrnMedicationsForQuickLog(
   const date = today(profileId);
   const rows = db
     .prepare(
-      `SELECT s.id AS id, s.name AS name,
+      `SELECT s.id AS id, s.name AS name, s.product AS product,
               (SELECT d.amount FROM intake_item_doses d
                 WHERE d.item_id = s.id AND d.retired = 0
                 ORDER BY d.sort, d.id LIMIT 1) AS amount,

@@ -61,7 +61,7 @@ describe("logMedicationAdministration action (#797)", () => {
     const res = await logMedicationAdministration(
       fd({ id: itemId, offset: "now" })
     );
-    expect(res.ok).toBe(true);
+    expect(res).toEqual({ ok: true, outcome: "logged" });
     expect(adminRows(itemId)).toBe(1);
     expect(onHand(itemId)).toBe(9);
     expect(revalidate).toHaveBeenCalledWith("/medications");
@@ -117,7 +117,7 @@ describe("logMedicationAdministration action (#797)", () => {
     const second = await logMedicationAdministration(
       fd({ id: itemId, offset: "now" })
     );
-    expect(second.ok).toBe(true); // duplicate is still a success (idempotent)
+    expect(second).toEqual({ ok: true, outcome: "duplicate" });
     expect(adminRows(itemId)).toBe(1);
     expect(onHand(itemId)).toBe(9); // decremented once
   });

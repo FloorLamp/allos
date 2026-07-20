@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { captureDelete } from "@/lib/undo-delete-db";
 import { getUnitPrefs } from "@/lib/settings";
 import { insertBodyMetric } from "@/lib/offline/writes";
+import { submittedWeightUnit } from "@/lib/units";
 
 // Body-metrics write path. Moved here from the former standalone /body-metrics
 // page when Body Metrics was absorbed into the Trends "Body" tab (sidebar
@@ -22,7 +23,10 @@ export async function addBodyMetric(formData: FormData) {
   const wrote = insertBodyMetric(profile.id, {
     date: String(formData.get("date") ?? "").trim(),
     weight: String(formData.get("weight") ?? ""), // in the login's weight unit
-    weightUnit: prefs.weightUnit,
+    weightUnit: submittedWeightUnit(
+      formData.get("weight_unit"),
+      prefs.weightUnit
+    ),
     bodyFatPct: strOrNull(formData.get("body_fat_pct")),
     restingHr: strOrNull(formData.get("resting_hr")),
     notes: strOrNull(formData.get("notes")),

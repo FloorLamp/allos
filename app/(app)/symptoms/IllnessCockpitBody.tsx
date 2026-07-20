@@ -54,7 +54,8 @@ export default function IllnessCockpitBody({
   const altDate =
     episodeAlternateLogDate(episode.ongoing, episode.firstDay, date) ??
     undefined;
-  const temperatureUnit = getUnitPrefs(loginId).temperatureUnit;
+  const units = getUnitPrefs(loginId);
+  const temperatureUnit = units.temperatureUnit;
   const tz = getTimezone(profileId);
   // The write target the bar/control/end button post — only for a household member's
   // cockpit; the acting profile's own cockpit omits it (active-profile write path).
@@ -150,7 +151,7 @@ export default function IllnessCockpitBody({
             meds={prnMeds}
             tz={tz}
             profileId={target}
-            pediatric={getPediatricFormContext(profileId)}
+            pediatric={getPediatricFormContext(profileId, units.weightUnit)}
             canAdd={!crossProfile}
             nowIso={clockNow().toISOString()}
           />

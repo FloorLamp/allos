@@ -20,6 +20,7 @@ import type {
   PrnDefaultEntry,
   PrnFormulation,
 } from "./prn-defaults";
+import type { WeightUnit } from "./settings";
 import { daysBetweenDateStr } from "./date";
 
 // The profile's pediatric-dosing context, threaded from the med page into the form so
@@ -30,8 +31,16 @@ export interface PediatricFormContext {
   ageMonths: number | null;
   weightKg: number | null;
   weightDate: string | null;
+  // The acting login's display preference. The inline weight update writes through
+  // the standard body-metric path, which converts this unit back to canonical kg.
+  weightUnit: WeightUnit;
   today: string;
 }
+
+// Shared child/adult boundary for every medication-form pediatric surface and its
+// selection-prefill engine. Keeping this here prevents the quick, full, and edit
+// paths from drifting onto different age gates.
+export const PEDIATRIC_MAX_AGE_MONTHS = 216; // 18 years
 
 // Canonical body weight is stored in kilograms; OTC pediatric charts are in pounds.
 const KG_PER_LB = 0.45359237;
@@ -113,6 +122,34 @@ export function mlForBand(
   return Math.round(ml * 20) / 20;
 }
 
+// Resolve the stable picker value to the curated formulation that should be stored
+// with the medication. The database keeps the human-readable label in `product` so
+// the concentration remains useful outside this form (lists, detail, print/share).
+export function formulationForSlug(
+  formulations: readonly PrnFormulation[],
+  slug: string | null | undefined
+): PrnFormulation | null {
+  if (!slug) return null;
+  return formulations.find((formulation) => formulation.slug === slug) ?? null;
+}
+
+// Restore the picker from an already-saved product label. Also accept a stored slug
+// defensively so an early/internal caller cannot strand the selection.
+export function formulationSlugForProduct(
+  formulations: readonly PrnFormulation[],
+  product: string | null | undefined
+): string {
+  const normalized = product?.trim().toLocaleLowerCase();
+  if (!normalized) return "";
+  return (
+    formulations.find(
+      (formulation) =>
+        formulation.slug.toLocaleLowerCase() === normalized ||
+        formulation.label.trim().toLocaleLowerCase() === normalized
+    )?.slug ?? ""
+  );
+}
+
 // The label caveat that rides EVERY pediatric suggestion — the confirm-line reminder
 // that this is a label lookup, not a prescription.
 export const PEDIATRIC_DOSE_CAVEAT =
@@ -122,9 +159,15 @@ export const PEDIATRIC_DOSE_CAVEAT =
 // a prompt (never a computed dose), matching issue #798's "gates are refusals".
 export type PediatricDoseResult =
   | { kind: "no-pediatric" } // ingredient has no OTC pediatric weight-band table
-  | { kind: "ask-doctor"; reason: string } // age gate, or a weight below the smallest band
+  | { kind: "ask-doctor"; reason: string } // the label's hard age gate
   | { kind: "need-weight" } // no recorded weight to band from
   | { kind: "stale-weight"; recordedDate: string | null; thresholdDays: number }
+  | {
+      kind: "below-weight-band";
+      weightLbs: number;
+      minimumLbs: number;
+      recordedDate: string | null;
+    }
   | {
       kind: "dose";
       mg: number;
@@ -169,15 +212,25 @@ export function pediatricDoseSuggestion(input: {
   const weightLbs = kgToLbs(input.weightKg);
   const band = bandForWeightLbs(ped.bands, weightLbs);
   if (!band) {
-    // Below the smallest label band — the chart doesn't cover this child, so refuse
-    // with the label's own "ask a doctor" rather than extrapolating a smaller dose.
-    return { kind: "ask-doctor", reason: ped.ageGateText };
+    // Below the smallest label band is distinct from the medication's AGE gate. The
+    // old path reused ageGateText here (e.g. "under 3 months") even for an older,
+    // lighter child, making it appear that the form had ignored the profile's age.
+    // Keep refusing to extrapolate, but report the actual unmatched weight boundary.
+    const minimumLbs = Math.min(
+      ...ped.bands.map((candidate) => candidate.minLbs)
+    );
+    return {
+      kind: "below-weight-band",
+      weightLbs: Math.round(weightLbs * 10) / 10,
+      minimumLbs,
+      recordedDate: input.weightDate,
+    };
   }
 
-  const formulation =
-    input.formulationSlug != null
-      ? (ped.formulations.find((f) => f.slug === input.formulationSlug) ?? null)
-      : null;
+  const formulation = formulationForSlug(
+    ped.formulations,
+    input.formulationSlug
+  );
   return {
     kind: "dose",
     mg: band.mg,

@@ -64,6 +64,7 @@ export async function runEscalations(
         supplementId: e.supp.id,
         supplementName: e.supp.name,
         amount: e.dose.amount,
+        product: e.supp.kind === "medication" ? e.supp.product : null,
         window: w,
         slotHour,
         escalateAfterMin:

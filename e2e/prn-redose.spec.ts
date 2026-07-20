@@ -92,9 +92,9 @@ test("med form: confirm flow pre-fills OTC label defaults and opts in (#798)", a
 }) => {
   await page.goto("/medications");
 
-  const addCard = page
-    .locator("div.card")
-    .filter({ hasText: "Add medication" });
+  await page.getByTestId("medication-add-toggle").click();
+  await page.getByTestId("medication-add-full").click();
+  const addCard = page.getByTestId("medication-add-panel");
   await expect(addCard).toBeVisible();
 
   // Name an ingredient the curated dataset knows so the pre-fill affordance appears.

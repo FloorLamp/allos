@@ -219,6 +219,24 @@ describe("renderEscalationMessage", () => {
     expect(msg.body).toContain("10 mg");
   });
 
+  it("keeps a medication's formulation beside its dose", () => {
+    const msg = renderEscalationMessage(
+      "Child",
+      {
+        doseId: 1,
+        supplementId: 10,
+        supplementName: "Acetaminophen",
+        amount: "160 mg",
+        product: "Children's oral suspension (160 mg / 5 mL)",
+        window: "Evening",
+        escalateChatId: null,
+      },
+      3,
+      "2026-07-11"
+    );
+    expect(msg.body).toContain("160 mg / 5 mL");
+  });
+
   it("omits the amount when absent", () => {
     const msg = renderEscalationMessage(
       "",

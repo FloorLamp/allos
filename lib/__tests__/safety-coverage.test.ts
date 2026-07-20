@@ -2,14 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   stackScreeningCoverage,
   coverageScopeLine,
-  isCoverageLimited,
   type CoverageItem,
 } from "@/lib/safety-coverage";
 
 // Pure-tier pins for the #1032 screening-coverage summarizer: the scope-line model
 // over a stack — an all-off-dataset stack reads "0 of M", a fully-resolved clean
-// stack "M of M, no flags" — plus the per-item limited-coverage state and the
-// honest-empty copy discipline (absence of a flag never reads as clearance).
+// stack "M of M, no flags" — plus the honest-empty copy discipline (absence of a
+// flag never reads as clearance).
 
 function item(over: Partial<CoverageItem> = {}): CoverageItem {
   return { name: "Sertraline 50 mg", rxcui: "36437", active: true, ...over };
@@ -84,13 +83,5 @@ describe("coverageScopeLine (#1032)", () => {
     expect(
       coverageScopeLine({ total: 0, matched: 0, unresolved: 0 }, true)
     ).toBeNull();
-  });
-});
-
-describe("isCoverageLimited (#1032)", () => {
-  it("limited exactly when the item carries no confirmed RxNorm code", () => {
-    expect(isCoverageLimited({ rxcui: null })).toBe(true);
-    expect(isCoverageLimited({ rxcui: "  " })).toBe(true);
-    expect(isCoverageLimited({ rxcui: "5640" })).toBe(false);
   });
 });

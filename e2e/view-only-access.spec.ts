@@ -84,6 +84,25 @@ test.describe("View-only access (issue #33)", () => {
     const form = memberPage.getByTestId("vitals-quick-add");
     await expect(form).toBeVisible();
 
+    // A read-only medication detail keeps today's scheduled status visible, just
+    // as the PRN detail keeps its day summary visible, without exposing mutations.
+    await memberPage.goto("/medications");
+    const medicationLink = memberPage
+      .getByTestId("medication-row")
+      .filter({ hasText: "Adherence Refill Med (e2e)" })
+      .getByTestId("medication-row-link");
+    await expect(medicationLink).toBeVisible();
+    await memberPage.goto((await medicationLink.getAttribute("href"))!);
+    const scheduledToday = memberPage.getByTestId("scheduled-today");
+    await expect(scheduledToday).toBeVisible();
+    await expect(
+      scheduledToday.getByTestId("scheduled-dose-readonly")
+    ).toBeVisible();
+    await expect(scheduledToday.getByTestId("dose-status")).toHaveCount(0);
+
+    await memberPage.goto("/trends?tab=body");
+    const readOnlyForm = memberPage.getByTestId("vitals-quick-add");
+
     // WRITE is blocked: submitting the (still-rendered) form hits addVitals, whose
     // requireWriteAccess() redirects a read-only member to the app ROOT before any
     // row is written. That redirect is the unmistakable signature of the server
@@ -91,9 +110,9 @@ test.describe("View-only access (issue #33)", () => {
     // (see the write-member test below). We assert the redirect on pathname, not
     // the toast: VitalsQuickAdd optimistically toasts once the action call
     // resolves, so the toast is not a reliable "it wrote" signal on a redirect.
-    await form.getByLabel("Systolic (mmHg)").fill("118");
-    await form.getByLabel("Diastolic (mmHg)").fill("76");
-    await form.getByRole("button", { name: "Save vitals" }).click();
+    await readOnlyForm.getByLabel("Systolic (mmHg)").fill("118");
+    await readOnlyForm.getByLabel("Diastolic (mmHg)").fill("76");
+    await readOnlyForm.getByRole("button", { name: "Save vitals" }).click();
 
     await memberPage.waitForURL((u) => u.pathname === "/", { timeout: 20_000 });
 

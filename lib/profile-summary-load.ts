@@ -145,7 +145,8 @@ export function getProfileSummary(
       // Emergency Card / passport and the printable list can't drift on dose text.
       const detail = medicationDoseDetail(
         medDoseAmounts.get(s.id) ?? [],
-        s.as_needed === 1
+        s.as_needed === 1,
+        s.product
       );
       return {
         name: s.name,

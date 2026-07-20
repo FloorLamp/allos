@@ -16,15 +16,12 @@
 import type { MedicationInfo } from "./medication-info";
 import { redoseLabelDefaults, type PrnDefaultEntry } from "./prn-defaults";
 import {
+  PEDIATRIC_MAX_AGE_MONTHS,
   pediatricDoseSuggestion,
   type PediatricFormContext,
 } from "./prn-dosing";
 import type { FoodTiming } from "./types";
 import type { TimeBucket } from "./supplement-schedule";
-
-// Above this age no OTC pediatric weight-band chart applies — the child is dosed as
-// an adult (mirrors the form's CHILD_MAX_AGE_MONTHS gate, #798).
-const CHILD_MAX_AGE_MONTHS = 216; // 18 years
 
 // The prefillable fields. Each maps to one form control the resolver may suggest.
 export type PrefillField =
@@ -71,7 +68,7 @@ function isChild(pediatric: PediatricFormContext | null | undefined): boolean {
   return (
     pediatric != null &&
     pediatric.ageMonths != null &&
-    pediatric.ageMonths < CHILD_MAX_AGE_MONTHS
+    pediatric.ageMonths < PEDIATRIC_MAX_AGE_MONTHS
   );
 }
 

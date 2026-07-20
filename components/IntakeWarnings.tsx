@@ -1,3 +1,4 @@
+import { IconAlertTriangle, IconChevronDown } from "@tabler/icons-react";
 import { FindingCard } from "@/components/FindingCard";
 import {
   interactionTitle,
@@ -22,14 +23,42 @@ import {
   type SafetyCoverageModel,
 } from "@/lib/safety-coverage";
 
-// The CROSS-KIND intake warnings (#746): drug-/supplement-interaction hits (#144)
-// and the pharmacogenomics cross-check (#710). A supplement–drug interaction spans
-// both kinds, so these render IDENTICALLY on BOTH the Nutrition → Supplements tab
-// and the Medications page, over the SAME getInteractionWarnings / getPgxWarnings
-// gathers and the SAME dedupeKey — so a dismiss on either surface (or on Upcoming)
-// silences every twin through the shared findings bus (#435). One shared component
-// so the two surfaces can't drift ("one question, one computation"). Inputs are
-// already filtered through the suppression bus by the caller.
+export function IntakeSafetyScope({
+  coverage,
+  className = "",
+}: {
+  coverage: SafetyCoverageModel;
+  className?: string;
+}) {
+  const scopeLine = coverageScopeLine(coverage, true);
+  if (!scopeLine) return null;
+
+  return (
+    <details
+      className={`group px-1 text-xs text-slate-500 dark:text-slate-400 ${className}`}
+      data-testid="safety-scope-footer"
+    >
+      <summary
+        className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded outline-none transition hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500/40 [&::-webkit-details-marker]:hidden dark:hover:text-slate-200"
+        data-testid="safety-scope-summary"
+      >
+        <span>Curated safety screen · no flags found</span>
+        <IconChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+      </summary>
+      <p
+        className="mt-1 max-w-prose leading-relaxed"
+        data-testid="safety-scope-line"
+      >
+        {scopeLine}
+      </p>
+    </details>
+  );
+}
+
+// One calm safety-notices card for the intake surface's relevant findings. Callers
+// scope whole-stack results before rendering: cross-kind interactions appear on both
+// related surfaces, while medication-only findings stay on Medications. The card owns
+// the single warning icon; embedded finding rows do not repeat it.
 export default function IntakeWarnings({
   interactionWarnings,
   pgxWarnings,
@@ -39,145 +68,184 @@ export default function IntakeWarnings({
 }: {
   interactionWarnings: InteractionHit[];
   pgxWarnings: PgxHit[];
-  // Ototoxic-medication awareness (#717): an active ototoxic medication → a calm, cited
-  // hearing-safety note. Optional so a caller that doesn't gather it renders nothing.
   ototoxicWarnings?: OtotoxicHit[];
-  // Drug-allergy × med cross-check (#1029): an active medication meeting a recorded
-  // non-resolved allergy (direct, same-class, or documented cross-reactive class).
-  // Optional so a caller that doesn't gather it renders nothing.
   allergyWarnings?: DrugAllergyHit[];
-  // Screening-coverage summary (#1032): when present, an EMPTY result renders a calm
-  // "checked N of M, no flags" scope line instead of nothing — so "no interactions
-  // found" is distinguishable from "your stack isn't in our curated set". Optional
-  // so a caller that doesn't gather it keeps the legacy silent-empty behavior.
   coverage?: SafetyCoverageModel | null;
 }) {
-  const empty =
-    interactionWarnings.length === 0 &&
-    pgxWarnings.length === 0 &&
-    ototoxicWarnings.length === 0 &&
-    allergyWarnings.length === 0;
-  const scopeLine = coverage ? coverageScopeLine(coverage, empty) : null;
-  if (empty && !scopeLine) return null;
+  const total =
+    interactionWarnings.length +
+    pgxWarnings.length +
+    ototoxicWarnings.length +
+    allergyWarnings.length;
+  if (total === 0) return null;
+  const scopeLine = coverage ? coverageScopeLine(coverage, false) : null;
+
+  const major = interactionWarnings.filter(
+    (hit) => hit.severity === "major"
+  ).length;
+  const summary = [
+    allergyWarnings.length > 0
+      ? `${allergyWarnings.length} allergy note${allergyWarnings.length === 1 ? "" : "s"}`
+      : null,
+    interactionWarnings.length > 0
+      ? `${interactionWarnings.length} interaction${interactionWarnings.length === 1 ? "" : "s"}${major > 0 ? ` (${major} major)` : ""}`
+      : null,
+    pgxWarnings.length > 0
+      ? `${pgxWarnings.length} pharmacogenomic note${pgxWarnings.length === 1 ? "" : "s"}`
+      : null,
+    ototoxicWarnings.length > 0
+      ? `${ototoxicWarnings.length} hearing-safety note${ototoxicWarnings.length === 1 ? "" : "s"}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const sectionClass = (divided: boolean) =>
+    `${divided ? "mt-3 border-t border-black/5 pt-3 dark:border-white/5 " : ""}divide-y divide-black/5 dark:divide-white/5`;
+
   return (
-    <>
-      {/* Drug-allergy × medication warnings (issue #1029): a recorded allergy met by
-          an active med. Informational, never prescriptive — a clinician-reviewed,
-          deliberately-continued med is the common case, so each card is dismissible
-          through the shared bus (same dedupeKey as the Upcoming twin). */}
-      {allergyWarnings.length > 0 && (
-        <div className="mb-4 space-y-2" data-testid="allergy-med-warnings">
-          {allergyWarnings.map((hit) => (
-            <FindingCard
-              key={hit.dedupeKey}
-              testid={`allergy-med-warning-${hit.dedupeKey}`}
-              tone="rose"
-              title={
-                <>
-                  <span className="uppercase">
-                    {drugAllergyMatchLabel(hit)}
-                  </span>{" "}
-                  · {hit.medName} × {hit.substance}
-                </>
-              }
-              detail={drugAllergyDetail(hit)}
-              evidence={drugAllergyEvidence(hit)}
-              dismissKey={hit.dedupeKey}
-              dismissLabel={`Dismiss ${hit.medName} allergy note`}
-            />
-          ))}
-        </div>
-      )}
+    <details
+      className="card group"
+      data-testid="intake-warnings"
+      open={total <= 2}
+    >
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg outline-none transition hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500/40 [&::-webkit-details-marker]:hidden dark:hover:text-slate-200">
+        <span className="min-w-0">
+          <span className="flex items-center gap-2">
+            <IconAlertTriangle className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" />
+            <span className="text-base font-semibold text-slate-800 dark:text-slate-100">
+              Safety notices
+            </span>
+          </span>
+          <span className="mt-0.5 block pl-6 text-sm text-slate-500 dark:text-slate-400">
+            {summary}
+          </span>
+        </span>
+        <IconChevronDown className="h-4 w-4 shrink-0 text-slate-500 transition-transform group-open:rotate-180 dark:text-slate-400" />
+      </summary>
 
-      {/* Drug-/supplement-interaction warnings (issue #144) */}
-      {interactionWarnings.length > 0 && (
-        <div className="mb-4 space-y-2" data-testid="interaction-warnings">
-          {interactionWarnings.map((hit) => (
-            <FindingCard
-              key={hit.dedupeKey}
-              testid={`interaction-warning-${hit.dedupeKey}`}
-              tone="rose"
-              title={
-                <>
-                  <span className="uppercase">
-                    {SEVERITY_LABEL[hit.severity]}
-                  </span>{" "}
-                  · {interactionTitle(hit)}
-                </>
-              }
-              detail={hit.mechanism}
-              evidence={`Informational, not medical advice — discuss with your prescriber or pharmacist. Source: ${hit.source}`}
-              dismissKey={hit.dedupeKey}
-              dismissLabel={`Dismiss ${interactionTitle(hit)} interaction`}
-            />
-          ))}
-        </div>
-      )}
+      <div className="mt-4 border-t border-black/5 pt-4 dark:border-white/5">
+        {allergyWarnings.length > 0 ? (
+          <div
+            className={sectionClass(false)}
+            data-testid="allergy-med-warnings"
+          >
+            {allergyWarnings.map((hit) => (
+              <FindingCard
+                key={hit.dedupeKey}
+                testid={`allergy-med-warning-${hit.dedupeKey}`}
+                tone="rose"
+                embedded
+                icon={false}
+                title={
+                  <>
+                    {drugAllergyMatchLabel(hit)} · {hit.medName} ×{" "}
+                    {hit.substance}
+                  </>
+                }
+                detail={drugAllergyDetail(hit)}
+                evidence={drugAllergyEvidence(hit)}
+                dismissKey={hit.dedupeKey}
+                dismissLabel={`Dismiss ${hit.medName} allergy note`}
+              />
+            ))}
+          </div>
+        ) : null}
 
-      {/* Pharmacogenomics cross-check (issue #710): a stored PGx result affecting an
-          active medication. CPIC's guidance direction is relayed AS INFORMATION with
-          its citation; never prescriptive — the app never auto-changes a med. */}
-      {pgxWarnings.length > 0 && (
-        <div className="mb-4 space-y-2" data-testid="pgx-warnings">
-          {pgxWarnings.map((hit) => (
-            <FindingCard
-              key={hit.dedupeKey}
-              testid={`pgx-warning-${hit.dedupeKey}`}
-              tone="violet"
-              title={
-                <>
-                  <span className="uppercase">
-                    {PGX_SEVERITY_LABEL[hit.severity]}
-                  </span>{" "}
-                  · {pgxTitle(hit)}
-                </>
-              }
-              detail={
-                <>
-                  {hit.gene} {pgxStatusLabel(hit)} on file. CPIC guidance:{" "}
-                  {hit.guidance}
-                </>
-              }
-              evidence={`Informational — discuss with your prescriber before any change; do not stop or switch a medication based on this alone. Source: ${hit.source}`}
-              dismissKey={hit.dedupeKey}
-              dismissLabel={`Dismiss ${pgxTitle(hit)} pharmacogenomic note`}
-            />
-          ))}
-        </div>
-      )}
+        {interactionWarnings.length > 0 ? (
+          <div
+            className={sectionClass(allergyWarnings.length > 0)}
+            data-testid="interaction-warnings"
+          >
+            {interactionWarnings.map((hit) => (
+              <FindingCard
+                key={hit.dedupeKey}
+                testid={`interaction-warning-${hit.dedupeKey}`}
+                tone="rose"
+                embedded
+                icon={false}
+                title={
+                  <>
+                    {SEVERITY_LABEL[hit.severity]} · {interactionTitle(hit)}
+                  </>
+                }
+                detail={hit.mechanism}
+                evidence={`Informational, not medical advice — discuss with your prescriber or pharmacist. Source: ${hit.source}`}
+                dismissKey={hit.dedupeKey}
+                dismissLabel={`Dismiss ${interactionTitle(hit)} interaction`}
+              />
+            ))}
+          </div>
+        ) : null}
 
-      {/* Ototoxic-medication awareness (issue #717): an active medication that is a
-          well-established ototoxic (hearing/balance-toxic) agent. The class note is
-          relayed AS INFORMATION with its citation; never prescriptive — the app never
-          tells you to change a medication, and the absence of a flag is not clearance. */}
-      {ototoxicWarnings.length > 0 && (
-        <div className="mb-4 space-y-2" data-testid="ototoxic-warnings">
-          {ototoxicWarnings.map((hit) => (
-            <FindingCard
-              key={hit.dedupeKey}
-              testid={`ototoxic-warning-${hit.dedupeKey}`}
-              tone="amber"
-              title={ototoxicTitle(hit)}
-              detail={hit.note}
-              evidence={`Informational — a general note about the medication class, not advice to change anything; discuss any hearing or balance concern with your prescriber. Source: ${hit.citation}`}
-              dismissKey={hit.dedupeKey}
-              dismissLabel={`Dismiss ${ototoxicTitle(hit)} hearing-safety note`}
-            />
-          ))}
-        </div>
-      )}
+        {pgxWarnings.length > 0 ? (
+          <div
+            className={sectionClass(
+              allergyWarnings.length > 0 || interactionWarnings.length > 0
+            )}
+            data-testid="pgx-warnings"
+          >
+            {pgxWarnings.map((hit) => (
+              <FindingCard
+                key={hit.dedupeKey}
+                testid={`pgx-warning-${hit.dedupeKey}`}
+                tone="violet"
+                embedded
+                icon={false}
+                title={
+                  <>
+                    {PGX_SEVERITY_LABEL[hit.severity]} · {pgxTitle(hit)}
+                  </>
+                }
+                detail={
+                  <>
+                    {hit.gene} {pgxStatusLabel(hit)} on file. CPIC guidance:{" "}
+                    {hit.guidance}
+                  </>
+                }
+                evidence={`Informational — discuss with your prescriber before any change; do not stop or switch a medication based on this alone. Source: ${hit.source}`}
+                dismissKey={hit.dedupeKey}
+                dismissLabel={`Dismiss ${pgxTitle(hit)} pharmacogenomic note`}
+              />
+            ))}
+          </div>
+        ) : null}
 
-      {/* Screening-coverage scope line (#1032): what was checked and how much of the
-          stack the curated set covers. Calm and informational — the legibility fix,
-          not a warning; the "no flags" phrasing never reads as clearance. */}
-      {scopeLine && (
-        <p
-          className="mb-4 text-xs text-slate-500 dark:text-slate-400"
-          data-testid="safety-scope-line"
-        >
-          {scopeLine}
-        </p>
-      )}
-    </>
+        {ototoxicWarnings.length > 0 ? (
+          <div
+            className={sectionClass(
+              allergyWarnings.length > 0 ||
+                interactionWarnings.length > 0 ||
+                pgxWarnings.length > 0
+            )}
+            data-testid="ototoxic-warnings"
+          >
+            {ototoxicWarnings.map((hit) => (
+              <FindingCard
+                key={hit.dedupeKey}
+                testid={`ototoxic-warning-${hit.dedupeKey}`}
+                tone="amber"
+                embedded
+                icon={false}
+                title={ototoxicTitle(hit)}
+                detail={hit.note}
+                evidence={`Informational — a general note about the medication class, not advice to change anything; discuss any hearing or balance concern with your prescriber. Source: ${hit.citation}`}
+                dismissKey={hit.dedupeKey}
+                dismissLabel={`Dismiss ${ototoxicTitle(hit)} hearing-safety note`}
+              />
+            ))}
+          </div>
+        ) : null}
+
+        {scopeLine ? (
+          <p
+            className={`${total > 0 ? "mt-3 border-t border-black/5 pt-3 dark:border-white/5" : ""} text-xs text-slate-500 dark:text-slate-400`}
+            data-testid="safety-scope-line"
+          >
+            {scopeLine}
+          </p>
+        ) : null}
+      </div>
+    </details>
   );
 }

@@ -28,12 +28,19 @@ describe("medicationDoseDetail (#852 item 4 — shared with the Emergency Card)"
     expect(medicationDoseDetail(["10 mg"], true)).toBe("10 mg · as needed");
     expect(medicationDoseDetail([], true)).toBe("as needed");
     expect(medicationDoseDetail([], false)).toBeNull();
+    expect(
+      medicationDoseDetail(
+        ["160 mg"],
+        true,
+        "Children's oral suspension (160 mg / 5 mL)"
+      )
+    ).toBe("160 mg / 5 mL · as needed");
   });
 });
 
 describe("medicationScheduleLabel (#852 item 4)", () => {
   it("reads PRN, distinct buckets, or the neutral fallback", () => {
-    expect(medicationScheduleLabel([], true)).toBe("As needed (PRN)");
+    expect(medicationScheduleLabel([], true)).toBe("As needed");
     expect(
       medicationScheduleLabel(["Morning", "Morning", "Evening"], false)
     ).toBe("Morning, Evening");
@@ -67,7 +74,7 @@ describe("buildMedicationList (#852 item 4)", () => {
     expect(rows[0]).toMatchObject({
       name: "Aspirin",
       dose: "81 mg",
-      schedule: "As needed (PRN)",
+      schedule: "As needed",
       prescriber: null,
       startedOn: "2023-06-01",
     });
@@ -104,5 +111,18 @@ describe("buildMedicationList (#852 item 4)", () => {
     // strength half of it (same distinct-strength join), so they can't drift.
     expect(medicationDoseDetail(["200 mg"], true)).toBe("200 mg · as needed");
     expect(rows[0].dose).toBe("200 mg");
+  });
+
+  it("puts formulation in the dose column instead of duplicating the identity subtitle", () => {
+    const rows = buildMedicationList([
+      input({
+        name: "Acetaminophen",
+        brand: "Tylenol",
+        product: "Children's oral suspension (160 mg / 5 mL)",
+        doseAmounts: ["160 mg"],
+      }),
+    ]);
+    expect(rows[0].subtitle).toBe("Tylenol");
+    expect(rows[0].dose).toBe("160 mg / 5 mL");
   });
 });

@@ -55,23 +55,25 @@ export default function MedicationListActions() {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2 print:hidden">
+    <div className="flex items-center gap-1 print:hidden">
       <Link
         href={PRINT_HREF}
-        className="btn-ghost"
+        className="tap-target flex h-9 w-9 items-center justify-center rounded-lg border border-black/10 bg-white/70 text-slate-600 transition hover:bg-white hover:text-slate-900 dark:border-white/10 dark:bg-ink-850 dark:text-slate-300 dark:hover:bg-ink-750 dark:hover:text-slate-100"
         data-testid="medication-print-link"
+        aria-label="Print medication list"
+        title="Print medication list"
       >
         <IconPrinter className="h-4 w-4" stroke={1.75} />
-        Print list
       </Link>
       <button
         type="button"
-        className="btn"
+        className="tap-target flex h-9 w-9 items-center justify-center rounded-lg border border-black/10 bg-white/70 text-slate-600 transition hover:bg-white hover:text-slate-900 dark:border-white/10 dark:bg-ink-850 dark:text-slate-300 dark:hover:bg-ink-750 dark:hover:text-slate-100"
         data-testid="medication-share-open"
+        aria-label="Share medication list"
+        title="Share medication list"
         onClick={() => setOpen(true)}
       >
         <IconShare className="h-4 w-4" stroke={1.75} />
-        Share
       </button>
 
       {open && (

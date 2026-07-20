@@ -7,6 +7,7 @@ import {
   IconActivityHeartbeat,
 } from "@tabler/icons-react";
 import { isEmergencyCardEmpty, type EmergencyCard } from "@/lib/emergency-card";
+import { formatMedicationDoseProduct } from "@/lib/medication-dose-format";
 
 // Presentational, DOM-only render of the Emergency Card (issue #42). No hooks and
 // no "use client" directive, so it renders identically on the server (the
@@ -138,9 +139,9 @@ export default function EmergencyCardView({ card }: { card: EmergencyCard }) {
                     <span className="font-medium text-slate-900 dark:text-slate-100 print:text-black">
                       {a.name}
                     </span>
-                    {a.amount && (
+                    {formatMedicationDoseProduct(a.amount, a.product) && (
                       <span className="text-slate-600 dark:text-slate-300 print:text-black">
-                        {a.amount}
+                        {formatMedicationDoseProduct(a.amount, a.product)}
                       </span>
                     )}
                     {a.time && (

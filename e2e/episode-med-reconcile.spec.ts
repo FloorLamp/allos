@@ -131,13 +131,16 @@ test.describe("Episode-end medication reconciliation (#880)", () => {
     // 6) The ibuprofen has left Current for Past — the med list that IS the doctor-visit
     // artifact no longer misrepresents it as a standing med.
     await page.goto("/medications");
-    await expect(page.getByText(/Past \/ discontinued/)).toBeVisible();
-    await page.getByText(/Past \/ discontinued/).click();
+    const past = page.getByTestId("past-medications");
+    await expect(past).toBeVisible();
+    await past.locator("summary").click();
     await expect(
       page.getByTestId("medication-row").filter({ hasText: "Ibuprofen" })
     ).toBeVisible();
     // It is no longer a Current med (a fresh profile has only this med).
-    await expect(page.getByRole("heading", { name: "Current" })).toHaveCount(0);
+    await expect(
+      page.getByTestId("medication-list").getByTestId("medication-row")
+    ).toHaveCount(0);
   });
 
   test("dormant-PRN sweep: a PRN med unused for 90+ days can be moved to Past", async ({
@@ -198,7 +201,7 @@ test.describe("Episode-end medication reconciliation (#880)", () => {
     await expect(
       sweep.getByTestId("dormant-prn-item").filter({ hasText: medName })
     ).toHaveCount(0);
-    await page.getByText(/Past \/ discontinued/).click();
+    await page.getByTestId("past-medications").locator("summary").click();
     await expect(
       page.getByTestId("medication-row").filter({ hasText: medName })
     ).toBeVisible();

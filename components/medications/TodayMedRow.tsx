@@ -18,20 +18,24 @@ export default function TodayMedRow({
   detail,
   href,
   control,
+  status,
   sublines,
   footer,
   testId = "today-med-row",
   itemId,
+  pastDue = false,
   variant = "inset",
 }: {
   name: string;
   detail?: string | null;
   href?: AppRoute;
-  control: React.ReactNode;
+  control?: React.ReactNode;
+  status?: React.ReactNode;
   sublines?: React.ReactNode;
   footer?: React.ReactNode;
   testId?: string;
   itemId?: number;
+  pastDue?: boolean;
   variant?: "inset" | "embedded";
 }) {
   return (
@@ -39,43 +43,51 @@ export default function TodayMedRow({
       data-testid={testId}
       data-today-row="1"
       data-item-id={itemId}
+      data-past-due={pastDue ? "1" : undefined}
       className={
         variant === "embedded"
           ? "flex flex-col gap-2 border-b border-black/5 py-3 last:border-b-0 dark:border-white/5"
           : "flex flex-col gap-2 rounded-lg border border-black/5 p-3 dark:border-white/5"
       }
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <IconPill className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" />
-          {href ? (
-            <Link
-              href={href}
-              className="flex min-w-0 items-baseline gap-1 text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
-            >
-              <span className="truncate">{name}</span>
-              {detail ? (
-                <span className="shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400">
-                  · {detail}
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="flex min-w-0 items-start gap-2">
+          <IconPill className="mt-0.5 h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" />
+          <div className="min-w-0">
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              {href ? (
+                <Link
+                  href={href}
+                  className="flex min-w-0 items-baseline gap-1 text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+                >
+                  <span className="truncate">{name}</span>
+                  {detail ? (
+                    <span className="shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400">
+                      · {detail}
+                    </span>
+                  ) : null}
+                </Link>
+              ) : (
+                <span className="flex min-w-0 items-baseline gap-1 text-sm font-medium text-slate-800 dark:text-slate-100">
+                  <span className="truncate">{name}</span>
+                  {detail ? (
+                    <span className="shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400">
+                      · {detail}
+                    </span>
+                  ) : null}
                 </span>
-              ) : null}
-            </Link>
-          ) : (
-            <span className="flex min-w-0 items-baseline gap-1 text-sm font-medium text-slate-800 dark:text-slate-100">
-              <span className="truncate">{name}</span>
-              {detail ? (
-                <span className="shrink-0 text-xs font-normal text-slate-500 dark:text-slate-400">
-                  · {detail}
-                </span>
-              ) : null}
-            </span>
-          )}
+              )}
+              {status}
+            </div>
+            {sublines}
+          </div>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-          {control}
-        </div>
+        {control ? (
+          <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+            {control}
+          </div>
+        ) : null}
       </div>
-      {sublines}
       {footer}
     </div>
   );
