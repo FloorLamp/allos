@@ -47,7 +47,7 @@ test.describe("command palette — per-hit actions (#662)", () => {
     // The chip drives a client navigation (router.push) — retry the URL assertion
     // past the pre-hydration window rather than a networkidle gate.
     await addResult.click();
-    await expect(page).toHaveURL(/\/biomarkers\?.*name=LDL(\+|%20)Cholesterol/);
+    await expect(page).toHaveURL(/\/results\?.*name=LDL(\+|%20)Cholesterol/);
 
     // The add form's Name field is prefilled with the analyte the user searched.
     await expect(page.locator("#rec-new-name")).toHaveValue("LDL Cholesterol");
