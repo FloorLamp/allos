@@ -42,10 +42,10 @@ test("logging vitals persists and renders alongside synced readings (#16)", asyn
     page.getByRole("heading", { name: "Sleep per night" })
   ).toBeVisible();
 
-  // #114: the /biomarkers browser ships only one bounded page of rows, so its
+  // #114: the biomarkers browser (/results#biomarkers) ships only one bounded page of rows, so its
   // table always renders the pagination footer ("Showing N of M") — a cheap proof
   // the bounded-payload table surfaced regardless of lab-history size.
-  await page.goto("/biomarkers");
+  await page.goto("/results");
   const pager = page.getByTestId("biomarkers-pagination");
   await expect(pager).toBeVisible();
   await expect(pager).toContainText("Showing");

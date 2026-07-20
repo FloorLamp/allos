@@ -141,8 +141,10 @@ describe("timeline event helpers", () => {
     expect(medicalRecordHref(null, ["A B"], "A B")).toBe(
       "/biomarkers/view?name=A%20B"
     );
-    expect(medicalRecordHref(null, ["LDL", "HDL"], "LDL")).toBe("/biomarkers");
-    expect(medicalRecordHref(null, [], null)).toBe("/biomarkers");
+    expect(medicalRecordHref(null, ["LDL", "HDL"], "LDL")).toBe(
+      "/results#biomarkers"
+    );
+    expect(medicalRecordHref(null, [], null)).toBe("/results#biomarkers");
   });
 
   it("parses pipe-delimited detail-item payloads", () => {

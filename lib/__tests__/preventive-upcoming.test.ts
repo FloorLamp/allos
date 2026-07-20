@@ -44,9 +44,11 @@ describe("preventiveHref", () => {
 
   it("derives a screening's surface from what satisfies it (issue #283)", () => {
     // Lab-satisfied (the concept map lists canonical biomarkers) → biomarkers.
-    expect(preventiveHref("screening", "lipid_screening")).toBe("/biomarkers");
+    expect(preventiveHref("screening", "lipid_screening")).toBe(
+      "/results#biomarkers"
+    );
     expect(preventiveHref("screening", "diabetes_screening")).toBe(
-      "/biomarkers"
+      "/results#biomarkers"
     );
     // Procedure/coded-satisfied → procedures.
     expect(preventiveHref("screening", "colorectal_cancer")).toBe(

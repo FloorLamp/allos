@@ -333,7 +333,7 @@ export async function POST(req: Request) {
     "/",
     "/trends",
     "/training",
-    "/biomarkers",
+    "/results",
     "/data",
     "/integrations/health-connect",
   ]) {

@@ -7,7 +7,7 @@ import { test, expect } from "@playwright/test";
 // fixture (e2e/seed-events.ts) stars "E2E APOE Genotype", a genomics record dated
 // 2023.
 test("a starred genomics tile is not marked stale (#381)", async ({ page }) => {
-  await page.goto("/biomarkers");
+  await page.goto("/results");
 
   const card = page.getByTestId("starred-biomarkers");
   await expect(card).toBeVisible();

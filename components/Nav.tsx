@@ -12,8 +12,6 @@ import {
   IconUsersGroup,
   IconBarbell,
   IconChartLine,
-  IconDna,
-  IconScan,
   IconEye,
   IconDental,
   IconBodyScan,
@@ -93,12 +91,15 @@ const RECORDS: Group = {
   group: "Medical",
   icon: IconReportMedical,
   children: [
-    { href: "/biomarkers", label: "Biomarkers", icon: IconChartLine },
-    { href: "/genomics", label: "Genomics", icon: IconDna },
+    // Results (#1042 phase 5): the Biomarkers / Imaging / Genomics index pages
+    // merged into ONE stacked-section page (/results#biomarkers|#imaging|
+    // #genomics) — one leaf replaces the three. The per-biomarker detail route
+    // (/biomarkers/view) survives at its own URL; like other unlinked detail
+    // pages it highlights no nav entry.
+    { href: "/results", label: "Results", icon: IconChartLine },
     { href: "/conditions", label: "Conditions", icon: IconStethoscope },
     { href: "/allergies", label: "Allergies", icon: IconAlertTriangle },
     { href: "/procedures", label: "Procedures", icon: IconMedicalCross },
-    { href: "/imaging", label: "Imaging", icon: IconScan },
     // Specialty entries (#1042): Vision and Dental show only once the profile has
     // data — their rows are also created from Data → Import (an always-visible
     // surface), so hiding the empty entry never strands creation. Skin and Mental

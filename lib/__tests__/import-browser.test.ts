@@ -322,7 +322,7 @@ describe("genomic variants (#709)", () => {
     // Detail is the reported classification only — no metabolizer/risk commentary.
     expect(item.detail).toBe("Pharmacogenomic");
     expect(item.date).toBe("2024-02-01");
-    expect(item.href).toBe("/genomics");
+    expect(item.href).toBe("/results#genomics");
   });
 
   it("shows the ACMG significance for a hereditary-risk variant", () => {
@@ -373,7 +373,7 @@ describe("imaging studies (#702)", () => {
       "MRI · Left · with contrast · Small joint effusion. No tear."
     );
     expect(item.date).toBe("2024-03-01");
-    expect(item.href).toBe("/imaging");
+    expect(item.href).toBe("/results#imaging");
   });
 
   it("shapes a non-contrast study with 'na' laterality omitted from label + detail", () => {

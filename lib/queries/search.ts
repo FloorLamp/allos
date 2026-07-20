@@ -609,7 +609,12 @@ const PAGES: {
     href: "/profile",
     keywords: "health passport summary medical overview conditions medications",
   },
-  { title: "Biomarkers", href: "/biomarkers", keywords: "labs bloodwork" },
+  {
+    // The merged Results page (#1042 phase 5) — Biomarkers + Imaging + Genomics.
+    title: "Results",
+    href: "/results",
+    keywords: "labs bloodwork biomarkers imaging radiology genomics variants",
+  },
   {
     title: "Procedures",
     href: "/procedures",

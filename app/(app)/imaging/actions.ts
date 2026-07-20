@@ -32,7 +32,7 @@ import {
 // untouched); the screening-vs-diagnostic decision is deferred to the owner (#703).
 
 function revalidateImaging() {
-  revalidatePath("/imaging");
+  revalidatePath("/results");
   revalidatePath("/timeline");
   revalidatePath("/profile");
   revalidatePath("/");

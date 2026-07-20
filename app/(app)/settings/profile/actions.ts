@@ -140,7 +140,7 @@ export async function saveProfileSettings(formData: FormData) {
   // age are persisted so the reconcile reads the new demographics.
   if (sexChanged || rsChanged || birthdateChanged || ageChanged) {
     reconcileFlags(profile.id);
-    revalidatePath("/biomarkers");
+    revalidatePath("/results");
     revalidatePath("/biomarkers/view", "page");
   }
 

@@ -350,7 +350,7 @@ function pgxItems(profileId: number): UpcomingItem[] {
 const CONTRAST_SOURCE_HREF: Record<ContrastStudySource, AppRoute> = {
   careplan: "/care-plan",
   appointment: "/encounters",
-  imaging: "/imaging",
+  imaging: "/results#imaging",
 };
 
 // Contrast-safety cross-check (issue #701): a PLANNED contrast imaging study (an

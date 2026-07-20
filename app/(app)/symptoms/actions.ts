@@ -263,7 +263,7 @@ export async function logTemperature(
   revalidatePath("/");
   revalidatePath("/timeline");
   revalidatePath("/trends");
-  revalidatePath("/biomarkers");
+  revalidatePath("/results");
   // Event-driven red-flag push (#1025): a reading that crosses a cited line
   // dispatches the co-caregiver nudge NOW (fire-and-forget; quiet-hours exempt like
   // redose) instead of waiting for the tick. The per-finding marker + suppression
