@@ -13,25 +13,26 @@ const NAME = "History Guard D3";
 
 test("dosage restructure keeps the taken history at its original amount", async ({
   page,
-}) => {
+}, testInfo) => {
+  // The changed-spec scrutiny lane repeats this test against one seeded database.
+  // Give each attempt its own item so an earlier run cannot inflate row counts.
+  const name = `${NAME} ${testInfo.repeatEachIndex}-${testInfo.retry}`;
   await page.goto("/nutrition?tab=supplements");
 
   // ── Create a split-dose supplement: 500 mg Morning + 500 mg Evening ────────
   const addCard = page
     .locator("div.card")
     .filter({ hasText: "Add supplement" });
-  await addCard.getByLabel("Name").fill(NAME);
+  await addCard.getByLabel("Name").fill(name);
   await addCard.getByLabel("Amount").first().fill("500 mg");
   await addCard.getByLabel("Time of day").first().selectOption("Morning");
-  await addCard
-    .getByRole("button", { name: "+ Add dose (split across times)" })
-    .click();
+  await addCard.getByRole("button", { name: "Add dose", exact: true }).click();
   await addCard.getByLabel("Amount").nth(1).fill("500 mg");
   await addCard.getByLabel("Time of day").nth(1).selectOption("Evening");
   await addCard.getByRole("button", { name: "Add", exact: true }).click();
 
   // One row per dose renders (both due today for a daily supplement).
-  const rows = page.locator("div.card").filter({ hasText: NAME });
+  const rows = page.locator("div.card").filter({ hasText: name });
   await expect(rows).toHaveCount(2);
 
   // ── Confirm the Morning dose ────────────────────────────────────────────────
@@ -39,7 +40,7 @@ test("dosage restructure keeps the taken history at its original amount", async 
     .locator("section")
     .filter({ has: page.getByRole("heading", { name: "Morning" }) })
     .locator("div.card")
-    .filter({ hasText: NAME });
+    .filter({ hasText: name });
   await morningRow.getByRole("button", { name: "Mark taken" }).click();
   await expect(
     morningRow.getByRole("button", { name: "Mark not taken" })
@@ -72,9 +73,9 @@ test("dosage restructure keeps the taken history at its original amount", async 
   const confirmedEvent = page
     .locator("details")
     .filter({ hasText: "Supplement doses confirmed" })
-    .filter({ hasText: NAME })
+    .filter({ hasText: name })
     .first();
   await confirmedEvent.locator("summary").click();
-  await expect(confirmedEvent.getByText(NAME).first()).toBeVisible();
+  await expect(confirmedEvent.getByText(name).first()).toBeVisible();
   await expect(confirmedEvent.getByText("500 mg").first()).toBeVisible();
 });

@@ -27,7 +27,9 @@ async function bookVisit(page: Page, title: string, kind: string) {
     page,
     upcoming.getByRole("button", { name: "Add", exact: true })
   );
-  await expect(page.getByText("Appointment saved")).toBeVisible();
+  // Repeated runs can leave an earlier success toast visible briefly. Assert the
+  // newest toast instead of making the locator strict across both messages.
+  await expect(page.getByText("Appointment saved").last()).toBeVisible();
 }
 
 test.describe("mental-health visit sensitivity + crisis resources (#997/#996)", () => {
