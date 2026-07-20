@@ -58,6 +58,58 @@ describe("skin-lesion normalizers (#715)", () => {
     expect(normalizeBodyRegion("")).toBeNull();
   });
 
+  it("folds loose import phrasings onto the coarse map (#1038)", () => {
+    // The issue's alias matrix — synonym terms.
+    expect(normalizeBodyRegion("belly")).toBe("abdomen");
+    expect(normalizeBodyRegion("Tummy")).toBe("abdomen");
+    expect(normalizeBodyRegion("stomach")).toBe("abdomen");
+    expect(normalizeBodyRegion("sole")).toBe("foot");
+    expect(normalizeBodyRegion("heel")).toBe("foot");
+    expect(normalizeBodyRegion("calf")).toBe("leg");
+    expect(normalizeBodyRegion("shin")).toBe("leg");
+    expect(normalizeBodyRegion("temple")).toBe("face");
+    expect(normalizeBodyRegion("forehead")).toBe("face");
+    expect(normalizeBodyRegion("palm")).toBe("hand");
+    expect(normalizeBodyRegion("bicep")).toBe("arm");
+    expect(normalizeBodyRegion("belly button")).toBe("abdomen");
+    expect(normalizeBodyRegion("shoulder blade")).toBe("back");
+  });
+
+  it("strips laterality/position qualifiers and re-matches the core (#1038)", () => {
+    expect(normalizeBodyRegion("left upper arm")).toBe("arm");
+    expect(normalizeBodyRegion("R forearm")).toBe("forearm");
+    expect(normalizeBodyRegion("upper back")).toBe("back");
+    expect(normalizeBodyRegion("lower back")).toBe("back");
+    expect(normalizeBodyRegion("Left lower leg")).toBe("leg");
+    expect(normalizeBodyRegion("right upper outer thigh")).toBe("thigh");
+    // Qualifier stripping composes with the synonym table.
+    expect(normalizeBodyRegion("left calf")).toBe("leg");
+  });
+
+  it("stays conservative: an unmatched token degrades to null, never a guess (#1038)", () => {
+    expect(normalizeBodyRegion("widget")).toBeNull();
+    // Ambiguous / boundary terms are deliberately NOT folded.
+    expect(normalizeBodyRegion("wrist")).toBeNull();
+    expect(normalizeBodyRegion("groin")).toBeNull();
+    expect(normalizeBodyRegion("torso")).toBeNull();
+    expect(normalizeBodyRegion("left widget")).toBeNull(); // stripped core still unknown
+    // A multi-word core that isn't a listed phrase stays null.
+    expect(normalizeBodyRegion("hand ring finger")).toBeNull();
+    // The manual form's canonical tokens still pass through unchanged.
+    for (const r of ["scalp", "face", "arm", "leg", "foot", "other"]) {
+      expect(normalizeBodyRegion(r)).toBe(r);
+    }
+  });
+
+  it("normalizeBodySide reads abbreviations and a leading laterality word (#1038)", () => {
+    expect(normalizeBodySide("L")).toBe("left");
+    expect(normalizeBodySide("rt")).toBe("right");
+    expect(normalizeBodySide("left upper arm")).toBe("left");
+    expect(normalizeBodySide("R forearm")).toBe("right");
+    // Non-laterality leading words stay null — no guessing.
+    expect(normalizeBodySide("upper arm")).toBeNull();
+  });
+
   it("coerces side + size + flags", () => {
     expect(normalizeBodySide("LEFT")).toBe("left");
     expect(normalizeBodySide("center")).toBeNull();
@@ -113,5 +165,25 @@ describe("skin-lesion identity (#482)", () => {
     expect(sameLesion(base, les({ id: 2, body_side: "right" }))).toBe(false);
     expect(sameLesion(base, les({ id: 3, body_region: "arm" }))).toBe(false);
     expect(sameLesion(base, les({ id: 4, label: "second mole" }))).toBe(false);
+  });
+
+  it("groups two loose-phrased observations of ONE mole together (#1038)", () => {
+    // The split-track case the fold heals: the same mole imported once with the
+    // canonical region and later with a derm report's loose phrasing. Both key
+    // through normalizeBodyRegion/normalizeBodySide, so the identity matches.
+    const a = les({
+      id: 1,
+      label: "mole near elbow",
+      body_region: "arm",
+      body_side: "left",
+    });
+    const b = les({
+      id: 2,
+      label: "Mole near elbow",
+      body_region: "left upper arm",
+      body_side: "L",
+    });
+    expect(skinLesionIdentityKey(a)).toBe(skinLesionIdentityKey(b));
+    expect(sameLesion(a, b)).toBe(true);
   });
 });
