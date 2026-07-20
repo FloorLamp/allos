@@ -248,6 +248,25 @@ it later from the issue number is guesswork.
   infinite-loop poison is deterministic — it fails the same shard every time,
   including a `--max-failures=1` probe; degradation passes on a settled re-run).
   This cost hours on the #1047-#1062 train before the pattern was clear.
+- **Don't chain full gates — an exhausted container makes even the "re-run
+  fresh" remedy lie (2026-07-20, #1045).** After ~65 min of continuous e2e (two
+  back-to-back full 4-shard gates + an isolation re-run) the box degraded so far
+  that a 40-test isolation run took **15 min** (~5× normal) and REPRODUCED the
+  exact same ~18 failures — because under severe starvation the failure set is
+  NOT random: the heaviest-rendering specs (chart pages, multi-section `/records`,
+  detail pages) blow the 5 s `toBeVisible` timeout FIRST and DETERMINISTICALLY.
+  So "same failures twice" is NOT proof of a real bug when the container is spent
+  — the `--max-failures=1`/isolation heuristic above assumes a SETTLED box, and a
+  chained-gate box is not settled. Two defenses: (a) never run gates back-to-back
+  — let the box idle, or better, don't re-gate locally at all once you have a
+  clean fresh-runner signal; (b) **CI on a fresh GitHub runner is the ultimate
+  authority.** Bonus: a PR that touches shared e2e infra (`e2e/seed-events.ts`,
+  `e2e/fixture-logins.ts`, `e2e/helpers.ts`) makes CI run the WHOLE suite (not
+  the changed-spec lane), so its green IS a full-suite pass on a clean box — trust
+  it over a local run on your degraded container. Before calling a wide local
+  failure a regression, confirm the diff could even reach those specs (a purely
+  additive fixture that only creates NEW profiles cannot break records/qualitative/
+  protocols specs that read OTHER profiles — that's degradation, full stop).
 - **Mass-failure triage drill** (when a local full suite fails wide): (1) check
   memory pressure first (above); (2) rerun a handful of the failed specs in
   isolation — passing alone means suite-scale starvation, failing alone means a
@@ -279,7 +298,18 @@ it later from the issue number is guesswork.
    with write, never append.
 2. **Strict-mode collisions** — scope `getByText`/`getByRole` to a container;
    anchor cards on their own heading, not `hasText` (watch cards / pacing cards
-   often repeat the same string earlier in the DOM).
+   often repeat the same string earlier in the DOM). **A page CONSOLIDATION/FOLD
+   retroactively breaks OTHER specs' unscoped selectors**: when a merge moves N
+   section forms onto one page (the #1042 specialty fold put Vision/Dental/Skin/
+   Mental-health forms onto `/records`), a neighbor spec's page-wide
+   `getByRole("button",{name:"Save"})` that was unique becomes a strict-mode
+   violation (its symptom is a cryptic `text.replace is not a function` from
+   Playwright's selector-generator, not a plain "resolved to N elements"). This
+   is a REAL fold-introduced failure (proves out: passes on main, fails on the
+   fold branch), and the fix is a spec-selector scope (anchor Save to the edit
+   `<form>`) — the folding orchestrator's lane, not the product author's. When
+   reviewing/gating a consolidation, expect exactly this and re-run any spec that
+   drove the folded-in pages.
 3. **Autosave races** — wait for the Saved indicator before any reload.
 4. **Collapsed `<details>`** — click the summary before asserting contents.
 5. **Component variants** — a testid may cover multiple visual variants
