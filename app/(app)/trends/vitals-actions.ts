@@ -40,6 +40,6 @@ export async function addVitals(formData: FormData) {
   // A rejected/empty vitals input is a no-op — skip revalidation.
   if (!wrote) return;
   revalidatePath("/trends");
-  revalidatePath("/biomarkers");
+  revalidatePath("/results");
   revalidatePath("/");
 }

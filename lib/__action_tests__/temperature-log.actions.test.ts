@@ -72,7 +72,7 @@ describe("logTemperature — canonical write + fever flag", () => {
       notes: "02:15", // the reading's clock time rides notes (fever curve)
     });
     expect(revalidate).toHaveBeenCalledWith("/timeline");
-    expect(revalidate).toHaveBeenCalledWith("/biomarkers");
+    expect(revalidate).toHaveBeenCalledWith("/results");
   });
 
   it("logs a °F reading without conversion", async () => {

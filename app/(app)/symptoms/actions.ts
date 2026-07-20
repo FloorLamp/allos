@@ -262,7 +262,7 @@ export async function logTemperature(
   revalidatePath("/");
   revalidatePath("/timeline");
   revalidatePath("/trends");
-  revalidatePath("/biomarkers");
+  revalidatePath("/results");
   // Single-reading red flag (#859 item 3): surface the source's cited instruction
   // inline at the moment of logging, age-banded. Null when the reading crosses none.
   const redFlag = inlineTempRedFlagNote(

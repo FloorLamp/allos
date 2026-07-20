@@ -5,8 +5,7 @@ import {
   getProviderNames,
 } from "@/lib/queries";
 import { today } from "@/lib/db";
-import { requireSession } from "@/lib/auth";
-import { PageHeader, EmptyState } from "@/components/ui";
+import { EmptyState } from "@/components/ui";
 import MedicalFilters from "@/components/MedicalFilters";
 import { parseSortColumn, parseSortDir } from "@/lib/table-sort";
 import {
@@ -22,25 +21,34 @@ import ProviderDatalist from "@/components/ProviderDatalist";
 import { addRecord } from "@/app/(app)/medical/actions";
 import { BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
 
-export const dynamic = "force-dynamic";
+// The query params the Biomarkers section consumes — the former /biomarkers index
+// page's searchParams, unchanged (#1042 phase 5 moved the content, not the
+// behavior). They ride the ONE /results URL; the other sections ignore them.
+export interface BiomarkersSearchParams {
+  category?: string;
+  panel?: string;
+  range?: string;
+  q?: string;
+  sort?: string;
+  dir?: string;
+  current?: string;
+  p?: string;
+  // Prefill the add form's name from the command palette's "Add result" hit
+  // action (#662). Reached as /results?new=1&name=<canonical>#biomarkers.
+  name?: string;
+}
 
-export default async function BiomarkersPage(props: {
-  searchParams: Promise<{
-    category?: string;
-    panel?: string;
-    range?: string;
-    q?: string;
-    sort?: string;
-    dir?: string;
-    current?: string;
-    p?: string;
-    // Prefill the add form's name from the command palette's "Add result" hit
-    // action (#662). Reached as /biomarkers?new=1&name=<canonical>.
-    name?: string;
-  }>;
+// The former /biomarkers index page body (#1042 phase 5): the filterable analyte
+// browser + bio-age hero + starred tiles + add form, now the #biomarkers section
+// of /results. The per-biomarker detail/series page (/biomarkers/view) survives
+// at its own route.
+export default function BiomarkersSection({
+  profileId,
+  searchParams,
+}: {
+  profileId: number;
+  searchParams: BiomarkersSearchParams;
 }) {
-  const searchParams = await props.searchParams;
-  const { profile } = await requireSession();
   // Prescriptions are medications and don't belong in the Biomarkers browser —
   // they live on the document detail view and Supplements & Meds. So they're never
   // a valid `?category=` here, never listed (excludeCategories below), and never
@@ -63,7 +71,7 @@ export default async function BiomarkersPage(props: {
   );
   const dir = parseSortDir(searchParams.dir);
   const current = searchParams.current === "1";
-  const storedRecords = getMedicalRecords(profile.id, {
+  const storedRecords = getMedicalRecords(profileId, {
     category: active,
     excludeCategories: ["prescription"],
     panel,
@@ -77,7 +85,7 @@ export default async function BiomarkersPage(props: {
   // are folded in as read-only virtual rows, filtered by the same active filters and
   // sorted/marked-latest over the combined set so they behave like stored analytes.
   const derivedRecords = filterDerivedForTable(
-    getDerivedBiomarkerReadings(profile.id),
+    getDerivedBiomarkerReadings(profileId),
     { category: active, excludeCategories: ["prescription"], panel, range, q }
   );
   const records = prepareTableRecords(storedRecords, derivedRecords, {
@@ -89,16 +97,11 @@ export default async function BiomarkersPage(props: {
   // bounded as lab history grows (#114) — the full deduped list is built above in
   // one pass, then sliced here by the `?p=` page (clamped to a real page).
   const pageData = paginateRecords(records, Number(searchParams.p));
-  const canonicalOptions = getCanonicalAutocomplete(profile.id);
-  const now = today(profile.id);
+  const canonicalOptions = getCanonicalAutocomplete(profileId);
+  const now = today(profileId);
 
   return (
     <div>
-      <PageHeader
-        title="Biomarkers"
-        subtitle="Explore your results, track each biomarker over time, and star the ones you watch."
-      />
-
       {/* Shared datalists for the record forms' autocomplete inputs: canonical
           names for the canonical-name field, and the provider registry for the
           inline editor's "Performed by" field (mirrors the document view). */}

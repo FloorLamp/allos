@@ -52,7 +52,7 @@ describe("saveProfileSettings re-reconciles flags when birthdate is set (#628)",
     await saveProfileSettings(fd({ birthdate: "2016-06-01" }));
 
     expect(flagOf(id)).toBeNull(); // pediatric band → normal, flag cleared
-    expect(revalidate).toHaveBeenCalledWith("/biomarkers");
+    expect(revalidate).toHaveBeenCalledWith("/results");
   });
 
   it("recomputes when the stored-age fallback is set (no birthdate)", async () => {
@@ -67,7 +67,7 @@ describe("saveProfileSettings re-reconciles flags when birthdate is set (#628)",
     await saveProfileSettings(fd({ age: "8" }));
 
     expect(flagOf(id)).toBeNull();
-    expect(revalidate).toHaveBeenCalledWith("/biomarkers");
+    expect(revalidate).toHaveBeenCalledWith("/results");
   });
 
   it("does not reconcile (or revalidate biomarkers) when birthdate is unchanged", async () => {
@@ -80,6 +80,6 @@ describe("saveProfileSettings re-reconciles flags when birthdate is set (#628)",
     await saveProfileSettings(fd({ timezone: "America/New_York" }));
 
     expect(flagOf(id)).toBe("high"); // untouched
-    expect(revalidate).not.toHaveBeenCalledWith("/biomarkers");
+    expect(revalidate).not.toHaveBeenCalledWith("/results");
   });
 });

@@ -30,7 +30,7 @@ export async function toggleStarBiomarker(formData: FormData) {
       ).run(profile.id, name);
     }
   });
-  revalidatePath("/biomarkers");
+  revalidatePath("/results");
   revalidatePath("/biomarkers/view", "page");
   revalidatePath("/");
 }
@@ -58,7 +58,7 @@ export async function trackLabFollowUp(
     today(profile.id)
   );
   if (res.kind === "invalid") return formError("Couldn't find that reading.");
-  revalidatePath("/biomarkers");
+  revalidatePath("/results");
   revalidatePath("/biomarkers/view", "page");
   revalidatePath("/upcoming");
   revalidatePath("/care-plan");
@@ -89,7 +89,7 @@ export async function trackIopFollowUp(
     today(profile.id)
   );
   if (res.kind === "invalid") return formError("Couldn't find that reading.");
-  revalidatePath("/biomarkers");
+  revalidatePath("/results");
   revalidatePath("/biomarkers/view", "page");
   revalidatePath("/upcoming");
   revalidatePath("/care-plan");

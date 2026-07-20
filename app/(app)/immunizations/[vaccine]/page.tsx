@@ -196,7 +196,7 @@ export default async function VaccineDetailPage(props: {
                   No antibody/titer results on file for this vaccine (
                   {entry.antibodyMarkers.join(", ")}). They appear automatically
                   when a matching lab result is added under{" "}
-                  <Link href="/biomarkers" className="underline">
+                  <Link href="/results#biomarkers" className="underline">
                     Biomarkers
                   </Link>
                   .

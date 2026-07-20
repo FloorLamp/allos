@@ -140,7 +140,7 @@ describe("resolveFollowUp action", () => {
     expect(cp.status).toBe("completed");
     expect(cp.resolution).toBe("stable");
     expect(cp.resolvedBy).toBe(laterId);
-    expect(revalidate).toHaveBeenCalledWith("/imaging");
+    expect(revalidate).toHaveBeenCalledWith("/results");
   });
 
   it("rejects a bad outcome and an unknown follow-up", async () => {

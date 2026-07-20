@@ -199,7 +199,7 @@ export function buildPillars(inputs: PillarInputs): Pillar[] {
       )} vs calendar ${inputs.bioAge.delta.chronoAge}`,
       tone: bioAgeTone(inputs.bioAge.delta),
       trend: inputs.bioAge.trend ?? null,
-      href: "/biomarkers",
+      href: "/results#biomarkers",
     });
   }
 
@@ -211,7 +211,7 @@ export function buildPillars(inputs: PillarInputs): Pillar[] {
       detail: "Tracked markers inside their optimal range",
       tone: optimalTone(inputs.optimal),
       trend: null,
-      href: "/biomarkers",
+      href: "/results#biomarkers",
     });
   }
 

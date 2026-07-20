@@ -316,7 +316,7 @@ export function medicalRecordHref(
   if (names.length === 1 && firstName) {
     return biomarkerViewHref(firstName);
   }
-  return "/biomarkers";
+  return "/results#biomarkers";
 }
 
 // Parse the "label::value::unit::flag" pipe-delimited GROUP_CONCAT payloads the
