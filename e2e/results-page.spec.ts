@@ -31,25 +31,29 @@ test("renders all three anchored sections with the seeded data (#1042)", async (
   // table always shows its pagination footer (#114).
   const biomarkers = page.getByTestId("results-biomarkers");
   await expect(
-    biomarkers.getByRole("heading", { name: "Biomarkers" })
+    biomarkers.getByRole("heading", { name: "Biomarkers", exact: true })
   ).toBeVisible();
   await expect(biomarkers.getByTestId("biomarkers-pagination")).toContainText(
     "Showing"
   );
 
-  // Imaging: the seeded MRI study renders in the study list.
+  // Imaging: the seeded knee MRI renders in the study list (label:
+  // "MRI Left Left Knee" — modality + laterality + region).
   const imaging = page.getByTestId("results-imaging");
   await expect(
     imaging.getByRole("heading", { name: "Imaging", exact: true })
   ).toBeVisible();
   await expect(
-    imaging.getByTestId("imaging-study-list").getByText("MRI Left Knee").first()
+    imaging
+      .getByTestId("imaging-study-list")
+      .getByText(/Left Knee/)
+      .first()
   ).toBeVisible();
 
   // Genomics: the seeded pharmacogenomic variant renders in the variant list.
   const genomics = page.getByTestId("results-genomics");
   await expect(
-    genomics.getByRole("heading", { name: "Genomic variants" })
+    genomics.getByRole("heading", { name: "Genomic variants", exact: true })
   ).toBeVisible();
   await expect(
     genomics.getByTestId("genomic-variant-list").getByText("CYP2C19").first()
