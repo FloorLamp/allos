@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import Database from "better-sqlite3";
 import { settledClick } from "./helpers";
 
-// Skin-lesion tracking on /skin (#715): add a body-map-anchored lesion through the real
+// Skin-lesion tracking on the Skin section of /records (#715, folded #1042): add a body-map-anchored lesion through the real
 // form, see it in its identity CARD with the ABCDE observation + status shown, track a
 // recheck follow-up on a watch lesion, attach a serial PHOTO (the "is this changing?"
 // comparison), filter by status, edit, then delete. Drives the real UI end-to-end.
@@ -52,7 +52,7 @@ test.describe("Skin lesions — add → view → track recheck → photo → fil
   }) => {
     test.slow();
 
-    await page.goto("/skin");
+    await page.goto("/records#skin");
     const form = page.getByTestId("skin-lesion-form");
     await expect(form).toBeVisible();
 

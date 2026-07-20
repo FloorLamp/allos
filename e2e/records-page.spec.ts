@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
 import Database from "better-sqlite3";
+import { loginAs } from "./nav";
+import { E2E_LOGIN_NAV_MALE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // The merged Health record page (#1042 phase 6): the eleven core Medical index
 // pages (Conditions, Allergies, Procedures, Immunizations, Family history,
@@ -139,6 +141,96 @@ test("a detail route survives and its back-link points at the merged section (#1
   await expect(
     page.getByRole("link", { name: /Back to immunizations/ }).first()
   ).toHaveAttribute("href", "/records#immunizations");
+});
+
+// ── Specialty sections (#1042 final tail) ────────────────────────────────────
+// Vision/Dental/Skin/Mental health fold in AFTER the eleven core sections. Section
+// visibility mirrors the nav predicate: Vision/Dental are DATA-GATED (present only
+// when the profile has rows — the same computation their former data-gated nav leaves
+// used), while Skin/Mental health render UNCONDITIONALLY (their in-page forms are the
+// only creation path). The shared seeded profile (profile 1) owns
+// optical_prescriptions + dental_procedures + skin_lesions, so all four render for it.
+
+test("the four specialty sections render for the seeded profile, with their forms (#1042)", async ({
+  page,
+}) => {
+  test.slow();
+  await page.goto("/records");
+  const jump = page.getByTestId("records-jump-links");
+  for (const label of ["Vision", "Dental", "Skin", "Mental health"]) {
+    await expect(jump.getByRole("link", { name: label })).toBeVisible();
+  }
+  // Each section renders with its own former-page form testid, proving the moved
+  // content component is wired.
+  await expect(
+    page.getByTestId("records-vision").getByTestId("optical-prescription-form")
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("records-dental").getByTestId("dental-procedure-form")
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("records-skin").getByTestId("skin-lesion-form")
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("records-mental-health").getByTestId("instruments-form")
+  ).toBeVisible();
+  // Mental health's crisis line travels with the section (the safety contract is
+  // content, not route, #1042) — its always-present support link is here.
+  await expect(
+    page
+      .getByTestId("records-mental-health")
+      .getByTestId("instrument-crisis-support-link")
+  ).toBeVisible();
+});
+
+test("Vision/Dental sections hide for a no-data profile; Skin/Mental health still render (#1042)", async ({
+  browser,
+}) => {
+  // The male nav fixture owns no optical/dental rows (e2e/fixture-logins.ts), so the
+  // data-gated sections + their jump-links drop while the always-rendered ones stay.
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_NAV_MALE,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await page.goto("/records");
+    await expect(
+      page.getByRole("heading", { name: "Health record", exact: true })
+    ).toBeVisible();
+    const jump = page.getByTestId("records-jump-links");
+    // Data-gated: absent (no rows) — both the section and its jump-link.
+    await expect(page.getByTestId("records-vision")).toHaveCount(0);
+    await expect(page.getByTestId("records-dental")).toHaveCount(0);
+    await expect(jump.getByRole("link", { name: "Vision" })).toHaveCount(0);
+    await expect(jump.getByRole("link", { name: "Dental" })).toHaveCount(0);
+    // Ungated: always render (their forms are the only creation path).
+    await expect(page.getByTestId("records-skin")).toBeVisible();
+    await expect(page.getByTestId("records-mental-health")).toBeVisible();
+    await expect(jump.getByRole("link", { name: "Skin" })).toBeVisible();
+    await expect(
+      jump.getByRole("link", { name: "Mental health" })
+    ).toBeVisible();
+  } finally {
+    await page.context().close();
+  }
+});
+
+test("the four specialty index routes 308-redirect to their anchored sections (#1042)", async ({
+  page,
+}) => {
+  const redirects = [
+    { from: "/vision", anchor: "vision" },
+    { from: "/dental", anchor: "dental" },
+    { from: "/skin", anchor: "skin" },
+    { from: "/medical/instruments", anchor: "mental-health" },
+  ];
+  for (const r of redirects) {
+    await page.goto(r.from);
+    await expect(page).toHaveURL(new RegExp(`/records#${r.anchor}$`));
+    // The seeded admin profile owns vision/dental/skin data, and Skin/Mental health
+    // always render, so every target section is present here.
+    await expect(page.getByTestId(`records-${r.anchor}`)).toBeVisible();
+  }
 });
 
 test("the Medical nav group shows one Health record leaf in place of the eleven (#1042)", async ({

@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import Database from "better-sqlite3";
 
-// Dental-record CRUD on /dental (#705): add a tooth-anchored procedure through the
+// Dental-record CRUD on the Dental section of /records (#705, folded #1042): add a tooth-anchored procedure through the
 // real form, see it in the list with its tooth + status shown, filter by status,
 // track a recheck follow-up on a watch finding, edit, then delete. Drives the real UI
 // end-to-end.
@@ -40,7 +40,7 @@ test.describe("Dental records — add → view → filter → track recheck → 
   }) => {
     test.slow();
 
-    await page.goto("/dental");
+    await page.goto("/records#dental");
     const form = page.getByTestId("dental-procedure-form");
     await expect(form).toBeVisible();
 

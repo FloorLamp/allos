@@ -14,8 +14,8 @@ import {
 // 2. The Cycle entry is relevance-gated per cycleTrackingRelevant: visible for a
 //    female premenopausal fixture, hidden for a male fixture with no cycle rows —
 //    and the gate is COSMETIC (the page renders on a direct URL either way).
-// 3. The data-gated specialty entries (Vision/Dental) hide on a no-data profile
-//    while the deliberately-ungated ones (Skin, Mental health) stay visible.
+// 3. The four specialty surfaces (Vision/Dental/Skin/Mental health) folded into the
+//    Health record page (#1042 final tail) — none is a Medical nav leaf anymore.
 //
 // Fixture hygiene (#868): the gating tests run as the two dedicated read-only
 // nav fixtures (e2e/fixture-logins.ts) in their own cookie-less contexts; the
@@ -78,7 +78,7 @@ async function gotoExpandedMedical(page: Page): Promise<void> {
   ).toBeVisible();
 }
 
-test("Cycle entry shows for a female premenopausal profile; empty Vision/Dental hide (#1042)", async ({
+test("Cycle entry shows for a female premenopausal profile; the folded Medical group is its final shape (#1042)", async ({
   browser,
 }) => {
   const page = await loginAs(browser, {
@@ -89,23 +89,36 @@ test("Cycle entry shows for a female premenopausal profile; empty Vision/Dental 
     await gotoExpandedMedical(page);
     const nav = page.locator("aside nav");
     await expect(nav.getByRole("link", { name: "Cycle" })).toBeVisible();
-    // Health record (#1042 phase 6): the eleven core index leaves collapsed into
-    // ONE "Health record" leaf — so it's present and none of the folded ones are.
-    await expect(
-      nav.getByRole("link", { name: "Health record" })
-    ).toBeVisible();
+    // The #1042 target Medical group — Health record · Results · Medications ·
+    // Illness episodes · Cycle · Passport — is present. (Substance use, a #998
+    // surface that post-dates the #1042 design, also lives here and is untouched by
+    // this PR.)
+    for (const present of [
+      "Health record",
+      "Results",
+      "Medications",
+      "Illness episodes",
+      "Cycle",
+      "Passport",
+    ]) {
+      await expect(nav.getByRole("link", { name: present })).toBeVisible();
+    }
+    // The eleven core index leaves collapsed into "Health record" …
     for (const gone of ["Conditions", "Providers", "Coverage gaps", "Visits"]) {
       await expect(nav.getByRole("link", { name: gone })).toHaveCount(0);
     }
-    // Data-gated specialty entries: this profile owns no vision/dental rows.
-    await expect(nav.getByRole("link", { name: "Vision" })).toHaveCount(0);
-    await expect(nav.getByRole("link", { name: "Dental" })).toHaveCount(0);
-    // The four specialty leaves are NOT folded in phase 6 (issue allows them as
-    // follow-ups): Skin and Mental health stay visible with no data.
-    await expect(nav.getByRole("link", { name: "Skin" })).toBeVisible();
-    await expect(
-      nav.getByRole("link", { name: "Mental health" })
-    ).toBeVisible();
+    // … and the four specialty leaves + the standalone Crisis support leaf are gone
+    // too (all folded into Health record; /crisis-resources stays a route, only its
+    // nav slot was removed).
+    for (const gone of [
+      "Vision",
+      "Dental",
+      "Skin",
+      "Mental health",
+      "Crisis support",
+    ]) {
+      await expect(nav.getByRole("link", { name: gone })).toHaveCount(0);
+    }
   } finally {
     await page.context().close();
   }
