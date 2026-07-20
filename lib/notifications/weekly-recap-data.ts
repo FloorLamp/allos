@@ -125,10 +125,15 @@ function windowAdherence(
 // Gather the recap facts for one profile over the trailing seven days. weightUnit
 // controls how the values render (the dashboard passes the login's preference; the
 // notification uses canonical kg). distanceUnit only feeds the cardio stats query.
+// `completedWeek` (issue #1021) is the notification's calendar-mode window
+// selection: the last COMPLETED calendar week instead of the dashboard's
+// in-progress one — same gather, one window-selection parameter (#221); a no-op in
+// rolling mode and for non-weekly periods.
 export function gatherRecapInput(
   profileId: number,
   weightUnit: WeightUnit = "kg",
-  days = 7
+  days = 7,
+  completedWeek = false
 ): RecapInput {
   const td = today(profileId);
   // "This week" per the profile's week_mode for the 7-day recap (issue #223), so
@@ -136,7 +141,7 @@ export function gatherRecapInput(
   // back to a trailing window inside resolveRecapWindow.
   const weekMode = getWeekMode(profileId);
   const weekStart = getWeekStart(profileId);
-  const win = resolveRecapWindow(td, days, weekMode, weekStart);
+  const win = resolveRecapWindow(td, days, weekMode, weekStart, completedWeek);
 
   // Only the recap's two windows (current + previous) reduce these, and win.prevStart
   // is the earliest bound of either, so bound the load there (issue #389) instead of
@@ -173,19 +178,22 @@ export function gatherRecapInput(
   // PRs (strength + cardio) set within the recap window; labels are canonical
   // exercise / activity display names, de-duplicated in first-seen order. The PR
   // helpers' `within` is INCLUSIVE both ends, so it must be the number of days from
-  // the window start to today — derived from `win.start` so it tracks whichever
+  // the window start to its end — both derived from `win` so they track whichever
   // window resolveRecapWindow produced (a calendar week can be a partial, <7-day
-  // span). This matches the workout window exactly, so a PR dated on `win.prevEnd`
-  // (whose workout lands in the *previous* window) never leaks in (issues #190/#223).
-  const withinDays = daysBetweenDateStr(win.start, td) ?? days - 1;
+  // span; the notification's completed week, #1021, ends BEFORE today). This
+  // matches the workout window exactly, so a PR dated on `win.prevEnd` (whose
+  // workout lands in the *previous* window) never leaks in (issues #190/#223), and
+  // a PR set after a completed window's end (the in-progress week) never leaks
+  // back in either (`within` excludes dates past its anchor).
+  const withinDays = daysBetweenDateStr(win.start, win.end) ?? days - 1;
   const strengthPRs = recentPRs(
     getStrengthByExercise(profileId),
-    td,
+    win.end,
     withinDays
   );
   const cardioPRs = recentCardioPRs(
     getCardioByActivity(profileId, "km"),
-    td,
+    win.end,
     withinDays
   );
   const prLabels: string[] = [];
@@ -230,6 +238,7 @@ export function gatherRecapInput(
     periodDays: days,
     weekMode,
     weekStart,
+    completedWeek,
     workouts,
     prevWorkouts,
     volumeKg,
@@ -298,17 +307,26 @@ export function getPeriodRecap(
 // Build + send this profile's weekly recap for `date`. Marks the day done (dedup)
 // whether it sent or found nothing to say, so it isn't recomputed every hour. Sends
 // in canonical kg (the notification has no login-unit context).
+//
+// The notification passes completedWeek (issue #1021): in calendar mode it
+// summarizes the last COMPLETED week — a recap arriving on/after the week
+// boundary reads as a full-week verdict, not a 9-hour "week" compared against 7
+// full days. The dashboard card (getWeeklyRecap above) keeps the in-progress
+// window; rolling mode is identical on both surfaces.
 export async function runWeeklyRecap(
   profileId: number,
   profileName: string,
   date: string
 ): Promise<{ failed: boolean }> {
   const dedupKey = "notify_last_weekly_recap";
-  const recap = buildWeeklyRecap(gatherRecapInput(profileId, "kg"));
+  const recap = buildWeeklyRecap(gatherRecapInput(profileId, "kg", 7, true));
   // Surface the stored AI recap narrative when one exists for this window (#421).
   // READ-ONLY — the tick must never call Claude (quota atomicity assumes a single
   // AI-calling process); it only SELECTs a narrative the web process already
-  // generated, falling back to the bullet lines when there is none.
+  // generated, falling back to the bullet lines when there is none. The picker
+  // keys on the recap's OWN window, so a completed-week recap (#1021) only
+  // surfaces a narrative anchored inside that completed week — an in-progress
+  // narrative never re-narrates the wrong week (it falls back to bullets).
   const narrative = pickRecapNarrative(
     getRecentNarratives(profileId, ["week"], 5),
     recap

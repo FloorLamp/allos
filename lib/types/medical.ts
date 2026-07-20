@@ -752,4 +752,8 @@ export interface MedicalDocument {
   // section/resource coverage. NULL for AI-extracted docs or pre-feature rows.
   import_report: string | null;
   uploaded_at: string;
+  // When extraction last transitioned to 'done' (issue #1022) — stamped by the
+  // one finalize UPDATE in lib/import-persist.ts; the digest's "new documents"
+  // window keys on it. NULL until a document first completes.
+  extraction_completed_at: string | null;
 }
