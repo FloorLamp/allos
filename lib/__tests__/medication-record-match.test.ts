@@ -48,6 +48,23 @@ describe("recordMatchesMed", () => {
     expect(recordMatchesMed({ name: "lisinopril" }, med)).toBe(true);
   });
 
+  it("matches a parenthesized-strength record to a plain-named tracked med (#1026)", () => {
+    // The MyChart concentration rendering must not read as a different drug —
+    // before the cleanMedicationName fix the bridge suggested a duplicate here.
+    expect(
+      recordMatchesMed(
+        { name: "albuterol (2.5 MG/3ML)" },
+        { name: "Albuterol" }
+      )
+    ).toBe(true);
+    expect(
+      recordMatchesMed(
+        { name: "amoxicillin (400 mg/5 mL) suspension" },
+        { name: "Amoxicillin" }
+      )
+    ).toBe(true);
+  });
+
   it("does not match a different drug", () => {
     expect(recordMatchesMed({ name: "Metformin 500 mg" }, med)).toBe(false);
   });
