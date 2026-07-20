@@ -232,7 +232,9 @@ describe("timeline event helpers", () => {
       { kind: "care-plan", label: "   " },
       { kind: "medication", label: "" },
     ]);
-    expect(refs).toEqual([{ label: "Procedure: X-ray", href: "/records#procedures" }]);
+    expect(refs).toEqual([
+      { label: "Procedure: X-ray", href: "/records#procedures" },
+    ]);
   });
 
   it("derives created-at date/time in the profile timezone (off-by-one safe)", () => {

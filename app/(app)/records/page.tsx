@@ -197,7 +197,10 @@ export default async function RecordsPage(props: {
             title={SECTIONS[0].title}
             subtitle={SECTIONS[0].subtitle}
           />
-          <ConditionsSection profileId={profile.id} cond={one(searchParams.cond)} />
+          <ConditionsSection
+            profileId={profile.id}
+            cond={one(searchParams.cond)}
+          />
         </section>
 
         <section

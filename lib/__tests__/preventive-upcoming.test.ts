@@ -54,7 +54,9 @@ describe("preventiveHref", () => {
     expect(preventiveHref("screening", "colorectal_cancer")).toBe(
       "/records#procedures"
     );
-    expect(preventiveHref("screening", "osteoporosis")).toBe("/records#procedures");
+    expect(preventiveHref("screening", "osteoporosis")).toBe(
+      "/records#procedures"
+    );
   });
 
   it("falls back to the passport for a rule the concept map can't satisfy", () => {
