@@ -182,7 +182,7 @@ export default async function SubstanceUsePage() {
             : null}
           {" · "}
           <Link
-            href="/medical/background"
+            href="/records#background"
             className="text-brand-600 hover:underline dark:text-brand-400"
           >
             Update in Background

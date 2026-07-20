@@ -12,7 +12,7 @@ import { formError, formOk, type FormResult } from "@/lib/types";
 // the care_goals table is DISTINCT from the `goals` table (personal fitness goals).
 
 function revalidateCareGoals() {
-  revalidatePath("/care-goals");
+  revalidatePath("/records");
   revalidatePath("/");
 }
 

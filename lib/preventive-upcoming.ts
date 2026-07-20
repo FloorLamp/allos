@@ -33,12 +33,12 @@ export function preventiveHref(
   kind: PreventiveAssessment["kind"],
   ruleKey: string
 ): AppRoute {
-  if (kind === "visit") return "/encounters";
+  if (kind === "visit") return "/records#visits";
   const matcher = PREVENTIVE_CONCEPT_MAP.find((m) => m.ruleKey === ruleKey);
   if (!matcher) return "/profile";
   return matcher.canonicalBiomarkers.length > 0
     ? "/results#biomarkers"
-    : "/procedures";
+    : "/records#procedures";
 }
 
 // The stable suppression/identity key for a preventive rule: `<kind>:<ruleKey>`
@@ -63,7 +63,7 @@ function bookHrefForRule(a: PreventiveAssessment, today: string): AppRoute {
   const params = new URLSearchParams({ new: "1", title: a.name });
   if (kind) params.set("kind", kind);
   params.set("date", suggestedBookDate(a.nextDueDate, today));
-  return `/encounters?${params.toString()}`;
+  return `/records?${params.toString()}#visits`;
 }
 
 // Map one due/overdue preventive assessment to an Upcoming item. Overdue → the
@@ -88,7 +88,7 @@ export function preventiveAssessmentToUpcomingItem(
       domain: a.kind,
       title: a.name,
       detail: `Scheduled for ${ctx.scheduledDate}`,
-      href: "/encounters",
+      href: "/records#visits",
       dueDate: null,
       band: "later",
       dueText: "Scheduled",

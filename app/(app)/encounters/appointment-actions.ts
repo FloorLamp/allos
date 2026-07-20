@@ -40,7 +40,7 @@ const kindOf = (formData: FormData): string | null => {
 // changes, so keep their caches in lockstep. Appointments and encounters now share
 // the /encounters surface (issue #288), so that's the one page path to revalidate.
 function revalidate() {
-  revalidatePath("/encounters");
+  revalidatePath("/records");
   revalidatePath("/upcoming");
   revalidatePath("/");
 }
@@ -190,7 +190,7 @@ export async function completeCarePlanItemFromAppointment(
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that care-plan item.");
   markCarePlanItemDone(profile.id, id);
-  revalidatePath("/care-plan");
+  revalidatePath("/records");
   revalidate();
   return formOk();
 }

@@ -16,24 +16,15 @@ import {
   IconDental,
   IconBodyScan,
   IconPill,
-  IconVaccine,
   IconVirus,
   IconDroplet,
-  IconCalendarEvent,
-  IconAlertTriangle,
-  IconStethoscope,
-  IconMedicalCross,
-  IconHeartHandshake,
   IconLifebuoy,
-  IconClipboardList,
-  IconTarget,
   IconDatabase,
   IconSettings,
   IconId,
   IconReportMedical,
   IconClipboardHeart,
   IconChevronRight,
-  IconPuzzle,
   IconSalad,
   IconGlassOff,
   type TablerIcon,
@@ -91,21 +82,27 @@ const RECORDS: Group = {
   group: "Medical",
   icon: IconReportMedical,
   children: [
+    // Health record (#1042 phase 6): the eleven core Medical index pages —
+    // Conditions, Allergies, Procedures, Immunizations, Family history, Visits,
+    // Providers, Background, Care plan, Health goals, and Coverage gaps — merged
+    // into ONE stacked-section page (/records#<anchor>). One "Health record" leaf,
+    // FIRST in the group, replaces all eleven. The removed index routes
+    // 308-redirect to their anchor (next.config.js); their DETAIL routes
+    // (/providers/[id], /encounters/[id], /immunizations/[vaccine]) survive.
+    { href: "/records", label: "Health record", icon: IconReportMedical },
     // Results (#1042 phase 5): the Biomarkers / Imaging / Genomics index pages
     // merged into ONE stacked-section page (/results#biomarkers|#imaging|
     // #genomics) — one leaf replaces the three. The per-biomarker detail route
     // (/biomarkers/view) survives at its own URL; like other unlinked detail
     // pages it highlights no nav entry.
     { href: "/results", label: "Results", icon: IconChartLine },
-    { href: "/conditions", label: "Conditions", icon: IconStethoscope },
-    { href: "/allergies", label: "Allergies", icon: IconAlertTriangle },
-    { href: "/procedures", label: "Procedures", icon: IconMedicalCross },
     // Specialty entries (#1042): Vision and Dental show only once the profile has
     // data — their rows are also created from Data → Import (an always-visible
     // surface), so hiding the empty entry never strands creation. Skin and Mental
     // health stay UNGATED on purpose: their pages are the only creation path
-    // today (the lesion form / the in-app instrument flow); their gating
-    // activates in phase 6 with the Health-record "Track a new area" footer.
+    // today (the lesion form / the in-app instrument flow). These four specialty
+    // surfaces are NOT folded into Health record in phase 6 — the issue allows
+    // them as follow-ups; they stay on their own data-gated routes for now.
     { href: "/vision", label: "Vision", icon: IconEye, relevanceKey: "vision" },
     {
       href: "/dental",
@@ -114,19 +111,10 @@ const RECORDS: Group = {
       relevanceKey: "dental",
     },
     { href: "/skin", label: "Skin", icon: IconBodyScan },
-    {
-      href: "/family-history",
-      label: "Family History",
-      icon: IconHeartHandshake,
-    },
-    { href: "/care-plan", label: "Care Plan", icon: IconClipboardList },
-    { href: "/care-goals", label: "Health Goals", icon: IconTarget },
     // Supplements left this group for the Nutrition → Supplements tab (#746);
-    // Medications kept a Medical-group home of their own (next to Conditions /
-    // Allergies / Providers). The old combined "/medicine" surface now redirects
-    // to the Supplements tab.
+    // Medications kept a Medical-group home of their own. The old combined
+    // "/medicine" surface now redirects to the Supplements tab.
     { href: "/medications", label: "Medications", icon: IconPill },
-    { href: "/immunizations", label: "Immunizations", icon: IconVaccine },
     { href: "/medical/episodes", label: "Illness episodes", icon: IconVirus },
     // Cycle shows when cycle tracking is relevant for the active profile —
     // logged cycles always win; else female + premenopausal (explicit status or
@@ -153,21 +141,10 @@ const RECORDS: Group = {
       label: "Crisis support",
       icon: IconLifebuoy,
     },
-    { href: "/encounters", label: "Visits", icon: IconCalendarEvent },
-    { href: "/providers", label: "Providers", icon: IconStethoscope },
-    { href: "/coverage", label: "Coverage gaps", icon: IconPuzzle },
     // Passport also carries the Emergency Card as its #emergency section
     // (#1042 phase 3) — the old /emergency route 308-redirects there
     // (next.config.js), so one entry covers both print artifacts.
     { href: "/profile", label: "Passport", icon: IconId },
-    // Person-level context (smoking history, risk factors, emergency card
-    // opt-in) that moved off Settings → Profile (#928 — data about the person,
-    // not config).
-    {
-      href: "/medical/background",
-      label: "Background",
-      icon: IconClipboardHeart,
-    },
   ],
 };
 

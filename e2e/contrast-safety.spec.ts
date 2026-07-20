@@ -72,10 +72,10 @@ test.describe("Contrast-safety cross-check (#701)", () => {
   });
   test.afterAll(cleanup);
 
-  test("shows the iodinated-contrast allergy note inline on /care-plan", async ({
+  test("shows the iodinated-contrast allergy note inline on /records#care-plan", async ({
     page,
   }) => {
-    await page.goto("/care-plan");
+    await page.goto("/records#care-plan");
     const notes = page.getByTestId("contrast-safety-notes");
     await expect(notes).toBeVisible();
 

@@ -58,7 +58,7 @@ describe("deleteDatasetRows — immunizations (regression: missing DELETE_POLICY
     ).toEqual({ vaccine: "tdap" });
     // The policy's revalidate paths (plus the Data page) fired.
     expect(revalidate).toHaveBeenCalledWith("/data");
-    expect(revalidate).toHaveBeenCalledWith("/immunizations");
+    expect(revalidate).toHaveBeenCalledWith("/records");
   });
 
   it("never deletes another profile's immunization rows", async () => {

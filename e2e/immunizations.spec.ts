@@ -15,7 +15,7 @@ test.describe("Immunizations (#391)", () => {
     // Local `next dev` compiles the immunizations routes on first hit.
     test.slow();
 
-    await page.goto("/immunizations");
+    await page.goto("/records#immunizations");
     await expect(
       page.getByRole("heading", { name: "Immunizations" })
     ).toBeVisible();
@@ -68,7 +68,7 @@ test.describe("Immunizations (#391)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     try {
-      await member.goto("/immunizations");
+      await member.goto("/records#immunizations");
       await expect(
         member.getByRole("heading", { name: "Immunizations" })
       ).toBeVisible();

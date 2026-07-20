@@ -10,7 +10,7 @@ import { formError, formOk, type FormResult } from "@/lib/types";
 // import delete-set never touches them.
 
 function revalidateFamilyHistory() {
-  revalidatePath("/family-history");
+  revalidatePath("/records");
   revalidatePath("/profile");
   revalidatePath("/");
 }

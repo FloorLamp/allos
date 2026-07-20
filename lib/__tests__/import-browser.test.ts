@@ -204,7 +204,7 @@ describe("row shapers", () => {
         onset_date: null,
         code: "I10",
       })
-    ).toMatchObject({ href: "/conditions", detail: "active · I10" });
+    ).toMatchObject({ href: "/records#conditions", detail: "active · I10" });
     expect(
       allergyItem({
         id: 1,
@@ -213,7 +213,7 @@ describe("row shapers", () => {
         severity: "moderate",
         status: "active",
       })
-    ).toMatchObject({ href: "/allergies", title: "Penicillin" });
+    ).toMatchObject({ href: "/records#allergies", title: "Penicillin" });
     expect(
       immunizationItem({
         id: 1,
@@ -221,10 +221,10 @@ describe("row shapers", () => {
         vaccine: "MMR",
         dose_label: "1",
       })
-    ).toMatchObject({ href: "/immunizations", date: "2020-05-01" });
+    ).toMatchObject({ href: "/records#immunizations", date: "2020-05-01" });
     expect(
       procedureItem({ id: 1, name: "Appendectomy", code: "44970", date: null })
-    ).toMatchObject({ href: "/procedures" });
+    ).toMatchObject({ href: "/records#procedures" });
     expect(
       familyHistoryItem({
         id: 1,
@@ -233,7 +233,7 @@ describe("row shapers", () => {
         onset_age: 55,
       })
     ).toMatchObject({
-      href: "/family-history",
+      href: "/records#family-history",
       detail: "Father · onset age 55",
     });
     expect(
@@ -244,7 +244,7 @@ describe("row shapers", () => {
         planned_date: "2026-09-01",
         status: "planned",
       })
-    ).toMatchObject({ href: "/care-plan", date: "2026-09-01" });
+    ).toMatchObject({ href: "/records#care-plan", date: "2026-09-01" });
     expect(
       careGoalItem({
         id: 1,
@@ -252,7 +252,7 @@ describe("row shapers", () => {
         target_date: null,
         status: "active",
       })
-    ).toMatchObject({ href: "/care-goals" });
+    ).toMatchObject({ href: "/records#health-goals" });
     expect(
       medicationItem({ id: 1, name: "Lisinopril", kind: "medication" })
     ).toMatchObject({ href: "/medications", detail: "medication" });

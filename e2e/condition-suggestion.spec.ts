@@ -24,7 +24,7 @@ const WAIT = 15_000;
 // Remove any "HIV" condition currently on the problem list (RecordTable trash →
 // confirm dialog). No-op when the list is clean, so it's a safe repeat-reset.
 async function removeHivCondition(page: Page): Promise<void> {
-  await page.goto("/conditions");
+  await page.goto("/records#conditions");
   // Re-query the HIV rows each iteration (lazy locator) so a click never targets a
   // row detached by the prior delete's revalidate.
   const hivRows = () => page.getByRole("row").filter({ hasText: "HIV" });
@@ -81,7 +81,7 @@ test.describe("condition-suggestion review (#685)", () => {
       await expect(item).toHaveCount(0, { timeout: WAIT });
 
       // It now lives on the problem list...
-      await page.goto("/conditions");
+      await page.goto("/records#conditions");
       await expect(
         page.getByRole("row").filter({ hasText: "HIV" })
       ).toHaveCount(1, { timeout: WAIT });

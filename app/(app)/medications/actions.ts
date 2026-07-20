@@ -426,7 +426,7 @@ export async function promoteSideEffectToIntolerance(
   if (!id) return formError("Couldn't find that side effect.");
   promoteMedicationSideEffect(profile.id, id, today(profile.id));
   revalidatePath("/medications");
-  revalidatePath("/allergies");
+  revalidatePath("/records");
   revalidatePath("/");
   return formOk();
 }

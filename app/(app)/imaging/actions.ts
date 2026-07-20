@@ -149,6 +149,6 @@ export async function trackImagingFollowUp(
   if (res.kind === "invalid") return formError("Couldn't find that study.");
   revalidateImaging();
   revalidatePath("/upcoming");
-  revalidatePath("/care-plan");
+  revalidatePath("/records");
   return formOk();
 }

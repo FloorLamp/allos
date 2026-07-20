@@ -74,7 +74,7 @@ describe("addEncounter", () => {
     // Manual rows carry NULL provenance so the import delete-set never touches them.
     expect(e.source).toBeNull();
     expect(e.document_id).toBeNull();
-    expect(revalidate).toHaveBeenCalledWith("/encounters");
+    expect(revalidate).toHaveBeenCalledWith("/records");
   });
 
   it("rejects a missing or impossible date", async () => {

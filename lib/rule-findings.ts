@@ -534,7 +534,7 @@ export function buildOralHealthFindings(profileId: number): Finding[] {
       evidence:
         "Diabetes and periodontitis are bidirectionally linked (ADA / AAP). " +
         "Informational, not medical advice.",
-      actionHref: "/encounters",
+      actionHref: "/records#visits",
       actionLabel: "Dental care",
     },
   ];

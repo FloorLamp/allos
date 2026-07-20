@@ -116,6 +116,68 @@ const nextConfig = {
         destination: "/results#genomics",
         permanent: true,
       },
+      // Phase 6: the eleven core Medical index pages folded into /records as
+      // anchored sections. EXACT-path sources only (path-to-regexp without a
+      // wildcard matches nothing deeper), so the DETAIL routes never get caught —
+      // /providers/[id], /encounters/[id], and /immunizations/[vaccine] all
+      // survive at their own URLs. Query strings pass through (the Visits Book-CTA
+      // ?title/?kind/?date/?new prefill, Conditions' ?cond filter, Immunizations'
+      // ?sort/?dir/?status table state).
+      {
+        source: "/conditions",
+        destination: "/records#conditions",
+        permanent: true,
+      },
+      {
+        source: "/allergies",
+        destination: "/records#allergies",
+        permanent: true,
+      },
+      {
+        source: "/procedures",
+        destination: "/records#procedures",
+        permanent: true,
+      },
+      {
+        source: "/immunizations",
+        destination: "/records#immunizations",
+        permanent: true,
+      },
+      {
+        source: "/family-history",
+        destination: "/records#family-history",
+        permanent: true,
+      },
+      {
+        source: "/encounters",
+        destination: "/records#visits",
+        permanent: true,
+      },
+      {
+        source: "/providers",
+        destination: "/records#providers",
+        permanent: true,
+      },
+      {
+        source: "/care-plan",
+        destination: "/records#care-plan",
+        permanent: true,
+      },
+      {
+        source: "/care-goals",
+        destination: "/records#health-goals",
+        permanent: true,
+      },
+      {
+        source: "/coverage",
+        destination: "/records#coverage",
+        permanent: true,
+      },
+      {
+        source: "/medical/background",
+        destination: "/records#background",
+        permanent: true,
+      },
     ];
   },
   // Native / heavy server-only packages kept OUT of the server bundle. better-sqlite3

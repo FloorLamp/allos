@@ -47,7 +47,7 @@ test.describe("Visit detail page", () => {
   });
 
   test("the Visits list row links to the detail page", async ({ page }) => {
-    await page.goto("/encounters");
+    await page.goto("/records#visits");
     // EncounterList is a client component; clicking a row's <Link> before it
     // hydrates swallows the client navigation (the URL never changes). followLink
     // retries the click until the router commits the detail URL — no networkidle
@@ -84,7 +84,7 @@ test.describe("Visits — single Add visit entry logs a past visit (#566)", () =
   }) => {
     test.slow();
 
-    await page.goto("/encounters");
+    await page.goto("/records#visits");
     const add = page.getByTestId("visits-add");
     await expect(add).toBeVisible();
 

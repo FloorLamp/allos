@@ -66,7 +66,7 @@ describe("carePlanItemToUpcomingItem", () => {
     expect(item.domain).toBe("careplan");
     expect(item.key).toBe("careplan:42");
     expect(item.carePlanItemId).toBe(42);
-    expect(item.href).toBe("/care-plan");
+    expect(item.href).toBe("/records#care-plan");
     expect(item.title).toBe("Repeat screening colonoscopy");
     // Real planned_date rides the generic date-banding (no explicit band/dueText).
     expect(item.dueDate).toBe("2026-09-01");

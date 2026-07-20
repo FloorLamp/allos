@@ -650,7 +650,7 @@ function collectEvents(
         title: c.name,
         subtitle: resolved ? "Resolved condition" : `${c.status} condition`,
         detail: c.notes,
-        href: "/conditions",
+        href: "/records#conditions",
         sortTime: timeFromCreatedAt(c.created_at, tz),
         tone: resolved ? "good" : "default",
       },
@@ -697,7 +697,7 @@ function collectEvents(
           3
         ),
         detail: a.notes,
-        href: "/allergies",
+        href: "/records#allergies",
         sortTime: timeFromCreatedAt(a.created_at, tz),
         tone: a.status === "active" ? "warn" : "default",
       },

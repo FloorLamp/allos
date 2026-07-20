@@ -109,7 +109,7 @@ test.describe("Settings IA (#928) — admin", () => {
 
   test("the health cards moved to Medical → Background", async ({ page }) => {
     test.slow();
-    await page.goto("/medical/background");
+    await page.goto("/records#background");
     await expect(
       page.getByRole("heading", { name: "Background" })
     ).toBeVisible();

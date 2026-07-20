@@ -148,6 +148,6 @@ export async function trackDentalFollowUp(
   if (res.kind === "invalid") return formError("Couldn't find that record.");
   revalidateDental();
   revalidatePath("/upcoming");
-  revalidatePath("/care-plan");
+  revalidatePath("/records");
   return formOk();
 }

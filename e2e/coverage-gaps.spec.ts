@@ -12,7 +12,7 @@ const GAP = "Serum Fictionase (e2e)";
 test("track an uncatalogued biomarker and get a de-identified catalog request (#550)", async ({
   page,
 }) => {
-  await page.goto("/coverage");
+  await page.goto("/records#coverage");
 
   // The seeded uncatalogued analyte appears as a trackable candidate.
   const candidate = page

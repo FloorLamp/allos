@@ -287,7 +287,7 @@ export function getProviderImmunizations(
     date: r.date,
     label: r.vaccine,
     sublabel: r.dose_label,
-    href: "/immunizations",
+    href: "/records#immunizations",
   }));
 }
 
@@ -312,7 +312,7 @@ export function getProviderProcedures(
     date: r.date,
     label: r.name,
     sublabel: r.code,
-    href: "/procedures",
+    href: "/records#procedures",
   }));
 }
 
@@ -337,7 +337,7 @@ export function getProviderCarePlan(
     date: r.planned_date,
     label: r.description,
     sublabel: r.status,
-    href: "/care-plan",
+    href: "/records#care-plan",
   }));
 }
 
@@ -362,7 +362,7 @@ export function getProviderAppointments(
     date: r.scheduled_at,
     label: r.title || "Appointment",
     sublabel: r.status,
-    href: "/encounters",
+    href: "/records#visits",
   }));
 }
 

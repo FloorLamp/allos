@@ -282,7 +282,7 @@ export function conditionItem(row: {
     title: row.name,
     detail: detailLine(row.status, row.code),
     date: row.onset_date,
-    href: "/conditions",
+    href: "/records#conditions",
   };
 }
 
@@ -298,7 +298,7 @@ export function allergyItem(row: {
     title: row.substance,
     detail: detailLine(row.reaction, row.severity, row.status),
     date: null,
-    href: "/allergies",
+    href: "/records#allergies",
   };
 }
 
@@ -313,7 +313,7 @@ export function immunizationItem(row: {
     title: row.vaccine,
     detail: detailLine(row.dose_label),
     date: row.date,
-    href: "/immunizations",
+    href: "/records#immunizations",
   };
 }
 
@@ -328,7 +328,7 @@ export function procedureItem(row: {
     title: row.name,
     detail: detailLine(row.code),
     date: row.date,
-    href: "/procedures",
+    href: "/records#procedures",
   };
 }
 
@@ -346,7 +346,7 @@ export function familyHistoryItem(row: {
       row.onset_age != null ? `onset age ${row.onset_age}` : null
     ),
     date: null,
-    href: "/family-history",
+    href: "/records#family-history",
   };
 }
 
@@ -362,7 +362,7 @@ export function carePlanItemRow(row: {
     title: row.description,
     detail: detailLine(row.category, row.status),
     date: row.planned_date,
-    href: "/care-plan",
+    href: "/records#care-plan",
   };
 }
 
@@ -377,7 +377,7 @@ export function careGoalItem(row: {
     title: row.description,
     detail: detailLine(row.status),
     date: row.target_date,
-    href: "/care-goals",
+    href: "/records#health-goals",
   };
 }
 
@@ -497,7 +497,7 @@ export function appointmentItem(row: {
     detail: detailLine(row.location ?? row.status),
     // The scheduled date (drop any time portion for the listing's date column).
     date: row.scheduled_at.slice(0, 10),
-    href: "/encounters",
+    href: "/records#visits",
   };
 }
 

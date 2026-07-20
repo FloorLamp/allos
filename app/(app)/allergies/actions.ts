@@ -15,7 +15,7 @@ import {
 // so the per-document import delete-set never touches them.
 
 function revalidateAllergies() {
-  revalidatePath("/allergies");
+  revalidatePath("/records");
   revalidatePath("/profile");
   revalidatePath("/");
 }

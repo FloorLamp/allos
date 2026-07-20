@@ -47,7 +47,7 @@ export default async function VaccineDetailPage(props: {
     return (
       <div>
         <Link
-          href="/immunizations"
+          href="/records#immunizations"
           className="mb-4 inline-flex items-center gap-1 text-sm text-brand-700 hover:underline dark:text-brand-400"
         >
           <IconArrowLeft className="h-4 w-4" /> Back to immunizations
@@ -101,7 +101,7 @@ export default async function VaccineDetailPage(props: {
       {/* Provider picker options for the inline dose-edit form. */}
       <ProviderDatalist names={getProviderNames()} />
       <Link
-        href="/immunizations"
+        href="/records#immunizations"
         className="mb-4 inline-flex items-center gap-1 text-sm text-brand-700 hover:underline dark:text-brand-400"
       >
         <IconArrowLeft className="h-4 w-4" /> Back to immunizations

@@ -17,7 +17,7 @@ import {
 // shared GLOBAL providers registry via a create-on-type name.
 
 function revalidateProcedures() {
-  revalidatePath("/procedures");
+  revalidatePath("/records");
   revalidatePath("/profile");
   revalidatePath("/");
 }

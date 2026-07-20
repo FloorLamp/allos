@@ -163,7 +163,7 @@ export async function trackSkinFollowUp(
   if (res.kind === "invalid") return formError("Couldn't find that record.");
   revalidateSkin();
   revalidatePath("/upcoming");
-  revalidatePath("/care-plan");
+  revalidatePath("/records");
   return formOk();
 }
 

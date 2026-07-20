@@ -352,7 +352,7 @@ export async function promoteEpisodeToConditionAction(
   if (outcome.kind === "invalid")
     return { ok: false, error: "Couldn't create the condition." };
   revalidatePath("/medical/episodes/[id]", "page");
-  revalidatePath("/conditions");
+  revalidatePath("/records");
   return { ok: true };
 }
 
@@ -374,7 +374,7 @@ export async function unpromoteEpisodeConditionAction(
 
   unpromoteEpisodeConditionCore(profileId, row.id);
   revalidatePath("/medical/episodes/[id]", "page");
-  revalidatePath("/conditions");
+  revalidatePath("/records");
   return { ok: true };
 }
 

@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import {
   getImmunizations,
@@ -19,20 +18,18 @@ import {
   type VaccineStatus,
   type ImmunizationFilter,
 } from "@/lib/immunization-status";
-import { PageHeader, EmptyState } from "@/components/ui";
+import { EmptyState } from "@/components/ui";
 import { dataSectionHref } from "@/lib/hrefs";
 import { Notice } from "@/components/Notice";
 import { parseSortColumn, parseSortDir, sortRows } from "@/lib/table-sort";
 import SortableHeader from "@/components/SortableHeader";
-import { STATUS_TEXT, statusBadge } from "./status-ui";
-import ScheduleGrid from "./ScheduleGrid";
-import ImmunizationForm from "./ImmunizationForm";
-import ImmunizationHistory from "./ImmunizationHistory";
-import ImmunizationStatusFilter from "./ImmunizationStatusFilter";
-import MyChartImport from "./MyChartImport";
-import { addImmunization } from "./actions";
-
-export const dynamic = "force-dynamic";
+import { STATUS_TEXT, statusBadge } from "@/app/(app)/immunizations/status-ui";
+import ScheduleGrid from "@/app/(app)/immunizations/ScheduleGrid";
+import ImmunizationForm from "@/app/(app)/immunizations/ImmunizationForm";
+import ImmunizationHistory from "@/app/(app)/immunizations/ImmunizationHistory";
+import ImmunizationStatusFilter from "@/app/(app)/immunizations/ImmunizationStatusFilter";
+import MyChartImport from "@/app/(app)/immunizations/MyChartImport";
+import { addImmunization } from "@/app/(app)/immunizations/actions";
 
 const TITER_BADGE = {
   immune:
@@ -86,26 +83,32 @@ function sortValue(
   }
 }
 
-export default async function ImmunizationsPage(props: {
-  searchParams: Promise<{ sort?: string; dir?: string; status?: string }>;
+// The former /immunizations index body (#1042 phase 6), now the #immunizations
+// section of /records. The master table's sort/filter ride the ?sort/?dir/?status
+// query params on the ONE /records URL; the per-vaccine detail page
+// (/immunizations/[vaccine]) survives at its own route.
+export default function ImmunizationsSection({
+  profileId,
+  searchParams,
+}: {
+  profileId: number;
+  searchParams: { sort?: string; dir?: string; status?: string };
 }) {
-  const searchParams = await props.searchParams;
-  const { profile } = await requireSession();
-  const now = today(profile.id);
-  const birthdate = getUserBirthdate(profile.id);
-  const sex = getUserSex(profile.id);
+  const now = today(profileId);
+  const birthdate = getUserBirthdate(profileId);
+  const sex = getUserSex(profileId);
   // Age drives the schedule: prefer the birthdate, but fall back to the stored
   // whole-year age (a profile can set an age without a DOB) so adult
   // recommendations still work — only per-band dose placement on the grid
   // genuinely needs a birthdate. Shares the canonical month-resolution policy
   // (issue #310) so every surface agrees which vaccines are due.
-  const ageMonths = ageMonthsFrom(birthdate, getStoredAge(profile.id), now);
+  const ageMonths = ageMonthsFrom(birthdate, getStoredAge(profileId), now);
   const hasAge = ageMonths != null;
 
-  const records = getImmunizations(profile.id);
+  const records = getImmunizations(profileId);
   const providerNames = getProviderNames();
-  const titers = getImmunityTiters(profile.id);
-  const overrides = getImmunizationOverrides(profile.id);
+  const titers = getImmunityTiters(profileId);
+  const overrides = getImmunizationOverrides(profileId);
   const summary = assessSchedule(
     records.map((r) => ({ vaccine: r.vaccine, date: r.date })),
     ageMonths,
@@ -120,7 +123,7 @@ export default async function ImmunizationsPage(props: {
   // never disagree on which vaccines a risk factor ranks up. A calm reason line
   // explains why; the status sort below leads a risk-elevated vaccine within its
   // band.
-  const riskFactors = getRiskFactors(profile.id);
+  const riskFactors = getRiskFactors(profileId);
   const riskByCode = new Map(
     summary.assessments.map((a) => [
       a.code,
@@ -164,21 +167,21 @@ export default async function ImmunizationsPage(props: {
     <div>
       {/* Shared provider picker options for the add + edit forms. */}
       <ProviderDatalist names={providerNames} />
-      <PageHeader
-        title="Immunizations"
-        subtitle={subtitle}
-        action={
-          <div className="hidden gap-2 sm:flex">
-            <Summary count={summary.overdueCount} label="Overdue" tone="rose" />
-            <Summary count={summary.dueCount} label="Due" tone="amber" />
-            <Summary
-              count={summary.unknownCount}
-              label="No record"
-              tone="slate"
-            />
-          </div>
-        }
-      />
+
+      {/* Section status line + at-a-glance counts (the old PageHeader subtitle +
+          action, inlined so the merged /records SectionHeader stays generic). */}
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <p className="text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>
+        <div className="hidden gap-2 sm:flex">
+          <Summary count={summary.overdueCount} label="Overdue" tone="rose" />
+          <Summary count={summary.dueCount} label="Due" tone="amber" />
+          <Summary
+            count={summary.unknownCount}
+            label="No record"
+            tone="slate"
+          />
+        </div>
+      </div>
 
       {!hasAge && (
         <Notice tone="amber" className="mb-5">

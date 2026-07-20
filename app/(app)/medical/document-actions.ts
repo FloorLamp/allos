@@ -357,7 +357,7 @@ export async function reassignDocument(
   revalidatePath("/data");
   revalidatePath("/results");
   revalidatePath("/trends");
-  revalidatePath("/immunizations");
+  revalidatePath("/records");
   revalidatePath("/");
   return {
     status: "done",
@@ -456,6 +456,6 @@ export async function deleteMedicalDocument(formData: FormData) {
   revalidatePath("/trends");
   // A deleted document can drop immunization rows — refresh the passport view too
   // (reassignDocument already does; this closes the gap #602 noted).
-  revalidatePath("/immunizations");
+  revalidatePath("/records");
   revalidatePath("/");
 }

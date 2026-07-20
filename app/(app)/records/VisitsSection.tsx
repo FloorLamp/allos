@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { requireSession, getAccessibleProfiles } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { HOUSEHOLD_HISTORY_HREF } from "@/lib/hrefs";
 import {
@@ -13,14 +12,12 @@ import type { CarePlanMatchItem } from "@/lib/care-plan-appointment";
 import { isRealIsoDate } from "@/lib/date";
 import { isAppointmentKind } from "@/lib/preventive-appointment";
 import ProviderDatalist from "@/components/ProviderDatalist";
-import { PageHeader, EmptyState } from "@/components/ui";
-import AddVisitEntry from "./AddVisitEntry";
-import AppointmentList from "./AppointmentList";
-import EncounterList from "./EncounterList";
-import { createAppointment } from "./appointment-actions";
-import { addEncounter } from "./actions";
-
-export const dynamic = "force-dynamic";
+import { EmptyState } from "@/components/ui";
+import AddVisitEntry from "@/app/(app)/encounters/AddVisitEntry";
+import AppointmentList from "@/app/(app)/encounters/AppointmentList";
+import EncounterList from "@/app/(app)/encounters/EncounterList";
+import { createAppointment } from "@/app/(app)/encounters/appointment-actions";
+import { addEncounter } from "@/app/(app)/encounters/actions";
 
 // A single value from the (string | string[]) searchParams shape.
 function one(v: string | string[] | undefined): string | null {
@@ -28,30 +25,33 @@ function one(v: string | string[] | undefined): string | null {
   return s?.trim() || null;
 }
 
-// The unified Visits page (issue #288): appointments (future, scheduling) and
+// The unified Visits surface (issue #288; former /encounters index, #1042 phase
+// 6), now the #visits section of /records. Appointments (future, scheduling) and
 // encounters (past, clinical) are one continuum in the user's head, so they share
-// ONE surface with two sections — "Upcoming" (the appointments management +
-// booking form + #85 Book CTA + calendar-feed hookup) and "Past" (imported/manual
-// visit history with /encounters/[id] detail links). The tables stay separate
-// (different shapes and lifecycles); only the page merged. `/appointments`
-// redirects here.
-export default async function VisitsPage(props: {
-  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+// two sub-sections — "Upcoming" (appointments management + booking form + #85
+// Book CTA + calendar-feed hookup) and "Past" (imported/manual visit history with
+// /encounters/[id] detail links, which survive). The tables stay separate
+// (different shapes and lifecycles). Book/palette deep links land here via the
+// query params (title/kind/date/new), which ride the ONE /records URL.
+export default function VisitsSection({
+  profileId,
+  searchParams,
+  showHousehold,
+}: {
+  profileId: number;
+  searchParams: { [key: string]: string | string[] | undefined };
+  // The login can reach 2+ profiles — the SAME predicate that gates the Household
+  // strip/nav — so a single-profile login never sees the household affordance.
+  showHousehold: boolean;
 }) {
-  const searchParams = await props.searchParams;
-  const { profile } = await requireSession();
-  const now = today(profile.id);
-  // Widen-to-household link (issue #1009 Ask 4): shown only when the login can reach
-  // more than one profile — the SAME predicate that gates the Household strip/nav — so
-  // a single-profile login never sees a household affordance.
-  const showHousehold = (await getAccessibleProfiles()).length > 1;
-  const appointments = getAppointments(profile.id);
-  const encounters = getEncounters(profile.id);
+  const now = today(profileId);
+  const appointments = getAppointments(profileId);
+  const encounters = getEncounters(profileId);
   const providerNames = getProviderNames();
   // Open care-plan items a completed appointment can offer to close (issue #658).
   // Pared to the fields the pure matcher needs; the client computes the per-
   // appointment matches so the offer mirrors the preventive/log-visit CTAs.
-  const openCarePlanItems: CarePlanMatchItem[] = getCarePlanItems(profile.id)
+  const openCarePlanItems: CarePlanMatchItem[] = getCarePlanItems(profileId)
     .filter((c) => isCarePlanItemOpen(c.status))
     .map((c) => ({
       id: c.id,
@@ -63,9 +63,9 @@ export default async function VisitsPage(props: {
 
   // Prefill the booking form from a preventive "Book" CTA (issue #85): the item's
   // title + mapped visit kind + suggested date arrive as query params (now pointed
-  // at /encounters). Only build a prefill when a title or kind is present; a lone
-  // ?new=1 (command palette) just focuses the empty form. A real ISO date param
-  // seeds the form's default date.
+  // at /records#visits). Only build a prefill when a title or kind is present; a
+  // lone ?new=1 (command palette) just focuses the empty form. A real ISO date
+  // param seeds the form's default date.
   const ctaTitle = one(searchParams.title);
   const ctaKindRaw = one(searchParams.kind);
   const ctaKind = isAppointmentKind(ctaKindRaw) ? ctaKindRaw : null;
@@ -91,36 +91,33 @@ export default async function VisitsPage(props: {
     <div className="space-y-10">
       {/* Shared provider picker options for every add + edit form on the page. */}
       <ProviderDatalist names={providerNames} />
-      <PageHeader
-        title="Visits"
-        subtitle="Your appointments and visit history in one place — book upcoming visits (they also surface on Upcoming) and review past encounters, diagnoses, and notes."
-        action={
-          showHousehold ? (
-            <Link
-              href={HOUSEHOLD_HISTORY_HREF}
-              className="text-sm font-medium text-sky-700 hover:underline dark:text-sky-300"
-              data-testid="household-view-link"
-            >
-              Household view →
-            </Link>
-          ) : undefined
-        }
-      />
+
+      {showHousehold && (
+        <div className="-mt-2">
+          <Link
+            href={HOUSEHOLD_HISTORY_HREF}
+            className="text-sm font-medium text-sky-700 hover:underline dark:text-sky-300"
+            data-testid="household-view-link"
+          >
+            Household view →
+          </Link>
+        </div>
+      )}
 
       {/* Upcoming — the appointments surface. */}
       <section data-testid="visits-upcoming">
-        <h2 className="mb-3 section-label">Upcoming</h2>
+        <h3 className="mb-3 section-label">Upcoming</h3>
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="min-w-0 space-y-6 lg:col-span-2">
             <section>
-              <h3 className="mb-2 flex items-center gap-2 section-label">
+              <h4 className="mb-2 flex items-center gap-2 section-label">
                 Scheduled
                 {scheduled.length > 0 && (
                   <span className="text-slate-500 dark:text-slate-400">
                     ({upcomingCount} upcoming)
                   </span>
                 )}
-              </h3>
+              </h4>
               {scheduled.length === 0 ? (
                 <EmptyState message="No scheduled appointments. Add one to see it here and on Upcoming." />
               ) : (
@@ -174,7 +171,7 @@ export default async function VisitsPage(props: {
           single "Add visit" entry above (toggle to "Already happened"), so this
           section is history-only. */}
       <section data-testid="visits-past">
-        <h2 className="mb-3 section-label">Past</h2>
+        <h3 className="mb-3 section-label">Past</h3>
         <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
           To log a visit that already happened, use{" "}
           <span className="font-medium text-slate-500 dark:text-slate-400">

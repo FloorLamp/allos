@@ -18,7 +18,7 @@ import {
 // registry via create-on-type names, same as the appointments/medical forms.
 
 function revalidateEncounters() {
-  revalidatePath("/encounters");
+  revalidatePath("/records");
   revalidatePath("/profile");
   revalidatePath("/");
 }

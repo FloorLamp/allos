@@ -144,7 +144,7 @@ export const ONBOARDING_FOCUS_DEFS: readonly OnboardingFocusDef[] = [
     label: "Stay ahead of appointments and preventive care",
     description: "Add the next visit or bring in an existing care summary.",
     actionLabel: "Add an appointment",
-    actionHref: "/encounters",
+    actionHref: "/records#visits",
   },
   {
     id: "caregiving",

@@ -89,11 +89,19 @@ test("Cycle entry shows for a female premenopausal profile; empty Vision/Dental 
     await gotoExpandedMedical(page);
     const nav = page.locator("aside nav");
     await expect(nav.getByRole("link", { name: "Cycle" })).toBeVisible();
+    // Health record (#1042 phase 6): the eleven core index leaves collapsed into
+    // ONE "Health record" leaf — so it's present and none of the folded ones are.
+    await expect(
+      nav.getByRole("link", { name: "Health record" })
+    ).toBeVisible();
+    for (const gone of ["Conditions", "Providers", "Coverage gaps", "Visits"]) {
+      await expect(nav.getByRole("link", { name: gone })).toHaveCount(0);
+    }
     // Data-gated specialty entries: this profile owns no vision/dental rows.
     await expect(nav.getByRole("link", { name: "Vision" })).toHaveCount(0);
     await expect(nav.getByRole("link", { name: "Dental" })).toHaveCount(0);
-    // Deliberately ungated until phase 6 (their pages are the only creation
-    // path): Skin and Mental health stay visible with no data.
+    // The four specialty leaves are NOT folded in phase 6 (issue allows them as
+    // follow-ups): Skin and Mental health stay visible with no data.
     await expect(nav.getByRole("link", { name: "Skin" })).toBeVisible();
     await expect(
       nav.getByRole("link", { name: "Mental health" })

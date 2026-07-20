@@ -8,7 +8,7 @@ import { followLink } from "./helpers";
 test("titer link lands on the populated biomarker detail page, not the empty state", async ({
   page,
 }) => {
-  await page.goto("/immunizations");
+  await page.goto("/records#immunizations");
 
   const titerLink = page.getByRole("link", {
     name: "Hepatitis B Surface Antibody",

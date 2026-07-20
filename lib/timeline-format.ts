@@ -168,9 +168,9 @@ export function visitLinkedRefs(
 ): NonNullable<TimelineEvent["linkedRefs"]> {
   const hrefFor = (kind: VisitLinkedRow["kind"]): AppRoute =>
     kind === "procedure"
-      ? "/procedures"
+      ? "/records#procedures"
       : kind === "care-plan"
-        ? "/care-plan"
+        ? "/records#care-plan"
         : MEDICATIONS_HREF;
   const kindLabel = (kind: VisitLinkedRow["kind"]): string =>
     kind === "procedure"
