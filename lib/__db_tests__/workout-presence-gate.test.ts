@@ -50,9 +50,16 @@ function insertActiveDraft(profileId: number, now: Date, quietMin = 2): number {
 }
 
 // A completed manual cardio "walk" whose end instant is `ageMin` before now (in a
-// UTC-tz profile, wall time = UTC), crediting a `type:'cardio'` target.
+// UTC-tz profile, wall time = UTC), crediting a `type:'cardio'` target. The row's
+// `date` comes from the SAME end instant, not today(profileId): the presence gate
+// reconstructs the finish instant as zonedWallTimeToUtc(tz, date, end_time), and a
+// suite run in the first `ageMin` minutes after UTC midnight puts the end wall
+// clock on YESTERDAY — pairing it with today's date claimed a finish ~24h in the
+// FUTURE, so the gate saw no recent finish and the reminder fired (the #990
+// date-boundary fixture class; this was its last surviving instance).
 function insertFinishedWalk(profileId: number, now: Date, ageMin = 20): number {
   const end = new Date(now.getTime() - ageMin * 60_000);
+  const date = end.toISOString().slice(0, 10); // UTC profile: local date = UTC date
   const hh = String(end.getUTCHours()).padStart(2, "0");
   const mm = String(end.getUTCMinutes()).padStart(2, "0");
   const created = utcSqlString(end);
@@ -64,8 +71,7 @@ function insertFinishedWalk(profileId: number, now: Date, ageMin = 20): number {
             created_at, updated_at, source)
          VALUES (?, ?, 'cardio', 'Dog walk', '12:40', ?, NULL, ?, ?, NULL)`
       )
-      .run(profileId, today(profileId), `${hh}:${mm}`, created, created)
-      .lastInsertRowid
+      .run(profileId, date, `${hh}:${mm}`, created, created).lastInsertRowid
   );
 }
 
