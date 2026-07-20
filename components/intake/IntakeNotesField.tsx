@@ -10,7 +10,7 @@ export default function IntakeNotesField({
   defaultValue?: string | null;
 }) {
   return (
-    <div className="sm:col-span-2">
+    <div className="border-t border-black/5 pt-4 sm:col-span-2 dark:border-white/5">
       <label className="label" htmlFor={`intake-notes-${fid}`}>
         Notes
       </label>

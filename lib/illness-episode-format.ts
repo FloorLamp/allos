@@ -17,6 +17,7 @@ import {
 } from "./format-date";
 import type { TemperatureUnit } from "./settings";
 import { fmtTemp } from "./units";
+import { formatMedicationDoseProduct } from "./medication-dose-format";
 
 // A single severity reading of one symptom on one day.
 export interface SymptomSeriesPoint {
@@ -44,7 +45,7 @@ export interface TemperaturePoint {
   flag: string | null; // reference-range flag ("high" for a fever), or null
 }
 
-// One PRN administration (#797) within the episode, with its snapshotted amount.
+// One PRN administration (#797) within the episode, with its snapshotted dose.
 export interface AdministrationPoint {
   // Present for DB-backed episode assemblies; optional for synthetic summaries/tests.
   id?: number;
@@ -52,6 +53,7 @@ export interface AdministrationPoint {
   time: string | null; // profile-local clock of given_at, or null
   time24?: string | null; // profile-local HH:MM for the edit control
   amount: string | null; // snapshot at confirm time ("200 mg")
+  product?: string | null; // formulation/concentration at confirm time
 }
 
 export type IllnessTimelineEvent =
@@ -115,7 +117,9 @@ export function illnessTimelineEvents(
         time: a.time,
         time24: a.time24 ?? null,
         label: m.name,
-        detail: a.amount || "Amount not recorded",
+        detail:
+          formatMedicationDoseProduct(a.amount, a.product ?? m.product) ||
+          "Amount not recorded",
         itemId: m.itemId,
         amount: a.amount,
       }))
@@ -167,6 +171,7 @@ function severityLabelForTimeline(severity: number): string {
 export interface EpisodeMedication {
   itemId: number;
   name: string;
+  product?: string | null;
   count: number;
   administrations: AdministrationPoint[];
 }
@@ -174,6 +179,7 @@ export interface EpisodeMedication {
 export interface LatestEpisodeDose extends AdministrationPoint {
   itemId: number;
   name: string;
+  product?: string | null;
 }
 
 // A condition whose onset falls inside the episode window — bridged/promoted context.
@@ -321,7 +327,7 @@ export interface EpisodeCollapsedStatus {
     when: string | null;
     high: boolean;
   } | null;
-  lastMeds: { name: string; when: string | null } | null;
+  lastMeds: { name: string; dose: string | null; when: string | null } | null;
   worsening: boolean;
 }
 
@@ -417,6 +423,7 @@ export function episodeCollapsedStatus(
     lastMeds: lastDose
       ? {
           name: lastDose.name,
+          dose: formatMedicationDoseProduct(lastDose.amount, lastDose.product),
           when: collapsedReadingWhen(
             lastDose.date,
             lastDose.time,
@@ -471,7 +478,12 @@ export function episodeLatestDose(
         a.date > best.date ||
         (a.date === best.date && clock > bestClock);
       if (better) {
-        best = { ...a, itemId: med.itemId, name: med.name };
+        best = {
+          ...a,
+          itemId: med.itemId,
+          name: med.name,
+          product: a.product ?? med.product,
+        };
       }
     }
   }
@@ -485,9 +497,11 @@ export function episodeLastDoseClause(
   const best = episodeLatestDose(ep);
   if (!best) return null;
   const name = best.name.toLowerCase();
+  const dose = formatMedicationDoseProduct(best.amount, best.product);
+  const medication = dose ? `${name} · ${dose}` : name;
   return best.time
-    ? `last ${name} ${formatClockValue(best.time, timeFormat)}`
-    : `last ${name}`;
+    ? `last ${medication} ${formatClockValue(best.time, timeFormat)}`
+    : `last ${medication}`;
 }
 
 // The cross-profile accordion line: "Mia · sick day 3 · 101.3 °F · worsening ↑ · last
@@ -560,6 +574,7 @@ export interface EmergencyEpisodeAdministration {
   name: string;
   time: string | null;
   amount: string | null;
+  product?: string | null;
 }
 
 // The Emergency Card's conditional active-episode section — the ER intake answer to
@@ -597,6 +612,7 @@ export function emergencyEpisodeSection(
           name: med.name,
           time: a.time ? formatClockValue(a.time, timeFormat) : null,
           amount: a.amount,
+          product: a.product ?? med.product,
         });
       }
     }

@@ -6,12 +6,11 @@ import { E2E_LOGIN_COVERAGE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 // tracks two name-only meds that yield NO warnings (loratadine — off the curated
 // interaction set; sertraline — matched but partnerless), so pre-#1032 both safety
 // strips rendered exactly nothing — indistinguishable from "never checked". Now the
-// empty state renders a calm scope line ("checked 1 of 2, no flags — a curated
-// check, not an exhaustive one") on BOTH intake surfaces, and each name-only med
-// row wears the quiet limited-screening chip pointing at the RxNorm confirm flow.
+// empty state renders a quiet scope disclosure (not the active-warning card) on
+// BOTH intake surfaces without repeating a limited-screening chip on every row.
 // Read-only on an isolated fixture login (#868) — repeat-safe by construction.
 
-test("the Medications safety strip renders the honest empty state + limited-screening chips", async ({
+test("the Medications page keeps empty screening context in the footer", async ({
   browser,
 }) => {
   const page = await loginAs(browser, {
@@ -20,6 +19,25 @@ test("the Medications safety strip renders the honest empty state + limited-scre
   });
   await page.goto("/medications");
   const main = page.getByRole("main");
+
+  await expect(main.getByTestId("intake-warnings")).toHaveCount(0);
+  const footer = main.getByTestId("safety-scope-footer");
+  await expect(footer).toBeVisible();
+  expect(
+    await footer.evaluate((node) => {
+      const medicationList = document.querySelector(
+        '[data-testid="medication-list"]'
+      );
+      return Boolean(
+        medicationList &&
+        medicationList.compareDocumentPosition(node) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      );
+    })
+  ).toBe(true);
+  const summary = main.getByTestId("safety-scope-summary");
+  await expect(summary).toHaveText("Curated safety screen · no flags found");
+  await summary.click();
 
   const scope = main.getByTestId("safety-scope-line");
   await expect(scope).toBeVisible();
@@ -30,8 +48,7 @@ test("the Medications safety strip renders the honest empty state + limited-scre
   // Degraded-coverage honesty: both meds are name-only.
   await expect(scope).toContainText("no confirmed RxNorm code");
 
-  // The per-item chip renders quietly on the name-only rows (both are current).
-  await expect(main.getByTestId("coverage-limited-chip")).toHaveCount(2);
+  await expect(main.getByTestId("coverage-limited-chip")).toHaveCount(0);
 
   await page.context().close();
 });
@@ -45,6 +62,24 @@ test("the Supplements tab renders the same scope line (one computation, both sur
   });
   await page.goto("/nutrition?tab=supplements");
   const main = page.getByRole("main");
+
+  await expect(main.getByTestId("intake-warnings")).toHaveCount(0);
+  const footer = main.getByTestId("safety-scope-footer");
+  await expect(footer).toBeVisible();
+  expect(
+    await footer.evaluate((node) => {
+      const addCard = document.querySelector(
+        '[data-testid="add-supplement-card"]'
+      );
+      return Boolean(
+        addCard &&
+        addCard.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING
+      );
+    })
+  ).toBe(true);
+  const summary = main.getByTestId("safety-scope-summary");
+  await expect(summary).toHaveText("Curated safety screen · no flags found");
+  await summary.click();
 
   const scope = main.getByTestId("safety-scope-line");
   await expect(scope).toBeVisible();

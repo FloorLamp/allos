@@ -49,7 +49,7 @@ export function RefillBadge({
   return (
     <span
       data-testid="refill-days-left"
-      className={`badge ${
+      className={`badge whitespace-nowrap ${
         lowSupply
           ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
           : "bg-slate-100 text-slate-500 dark:bg-ink-800 dark:text-slate-400"
@@ -65,12 +65,14 @@ export function RefillBadge({
           a date is what you tell the pharmacy. Shown only where todayStr is threaded
           (the medication row + card); the supplement row keeps the compact form. */}
       {runOut && (
-        <span data-testid="refill-run-out">
+        <span className="hidden sm:inline" data-testid="refill-run-out">
           {" "}
           · runs out ~{formatMonthDay(runOut, formatPrefs)}
         </span>
       )}
-      <span className="ml-1 font-normal opacity-70">· {refillBasis}</span>
+      <span className="ml-1 hidden font-normal opacity-70 sm:inline">
+        · {refillBasis}
+      </span>
     </span>
   );
 }

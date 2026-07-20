@@ -23,6 +23,7 @@ function parseCount(text: string | null): number {
 test("Today panel shows the PRN med's administrations, detail shows the ledger (#797/#817)", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1024, height: 1000 });
   await page.goto("/medications");
 
   // In the #817 redesign the daily-use surface is the Today panel: a PRN med is a
@@ -33,7 +34,9 @@ test("Today panel shows the PRN med's administrations, detail shows the ledger (
     .getByTestId("quick-log-prn-item")
     .filter({ hasText: MED });
   await expect(prnRow).toBeVisible();
-  await expect(prnRow.getByTestId("prn-day-label")).toContainText(/\d+ today/);
+  await expect(prnRow.getByTestId("prn-day-label")).toContainText(
+    /\d+ today .* \((?:just now|\d+ (?:mins?|hrs?) ago)\)/
+  );
 
   // The med's clinical-record detail page keeps the day's administration ledger
   // ("N today · last …") and never a scheduled take/skip control for a PRN med.
@@ -46,7 +49,30 @@ test("Today panel shows the PRN med's administrations, detail shows the ledger (
   const admin = detail.getByTestId("prn-administrations");
   await expect(admin).toBeVisible();
   await expect(admin).toContainText(/\d+ today/);
-  await expect(admin).toContainText(/last \d{1,2}:\d{2}(am|pm)/);
+  await expect(admin).toContainText(
+    /last \d{1,2}:\d{2}(?:am|pm)? \((?:just now|\d+ (?:mins?|hrs?) ago)\)/
+  );
+  await expect(
+    admin.getByTestId("prn-administration-row").first()
+  ).toContainText(
+    /\d{1,2}:\d{2}(?:am|pm)? \((?:just now|\d+ (?:mins?|hrs?) ago)\)/
+  );
+
+  const overviewBox = await detail
+    .getByTestId("medication-overview")
+    .boundingBox();
+  const guidanceBox = await detail
+    .getByTestId("medication-guidance")
+    .boundingBox();
+  expect(overviewBox).not.toBeNull();
+  expect(guidanceBox).not.toBeNull();
+  expect(Math.abs(overviewBox!.y - guidanceBox!.y)).toBeLessThanOrEqual(2);
+  expect(Math.abs(overviewBox!.width - guidanceBox!.width)).toBeLessThanOrEqual(
+    2
+  );
+  expect(
+    Math.abs(overviewBox!.height - guidanceBox!.height)
+  ).toBeLessThanOrEqual(2);
   await expect(detail.getByTestId("dose-status")).toHaveCount(0);
 });
 
@@ -83,6 +109,16 @@ test("dashboard quick-log widget logs an administration and updates the count (#
   await settledClick(page, item.getByTestId("prn-log-now"));
   await expect(label).toContainText(`${before + 1} today`);
 
+  // A second immediate tap is deduplicated. Make that explicit instead of showing
+  // the same success copy as a newly persisted administration.
+  await settledClick(page, item.getByTestId("prn-log-now"));
+  await expect(
+    page.getByRole("status").filter({
+      hasText: `${MED} was already logged just now.`,
+    })
+  ).toBeVisible();
+  await expect(label).toContainText(`${before + 1} today`);
+
   // The retro-time affordance reveals the offset / custom-time options.
   await item.getByTestId("prn-log-more").click();
   await expect(item.getByTestId("prn-log-options")).toBeVisible();
@@ -92,7 +128,7 @@ test("dashboard quick-log widget logs an administration and updates the count (#
   // CLEAN UP (#868): remove the administration just logged so the shared fixture returns
   // to its seeded count — otherwise a --repeat-each run accumulates doses and the dedup
   // window collapses the next log. The dashboard widget has no remove affordance, so do
-  // it on the med's detail page (the most-recent chip is the one logged "now").
+  // it on the med's detail page (the most-recent row is the one logged "now").
   await page.goto("/medications");
   const rowLink = page
     .getByTestId("medication-row")
@@ -101,11 +137,11 @@ test("dashboard quick-log widget logs an administration and updates the count (#
   await followLink(page, rowLink, /\/medications\/\d+/);
   const detail = page.getByTestId("medication-detail");
   const admin = detail.getByTestId("prn-administrations");
-  const chips = admin.getByTestId("prn-administration-chip");
-  await expect(chips.first()).toBeVisible();
+  const rows = admin.getByTestId("prn-administration-row");
+  await expect(rows.first()).toBeVisible();
   await settledClick(
     page,
-    chips.first().getByTestId("prn-administration-remove")
+    rows.first().getByTestId("prn-administration-remove")
   );
   // Back to the seeded count (the "Dose removed." undo toast is left to expire — the
   // removal must persist for cleanup, so we do NOT click Undo).

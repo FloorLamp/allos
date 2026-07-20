@@ -211,6 +211,29 @@ test.describe("Illness-episode view (#801)", () => {
       member.getByRole("button", { name: "More episode actions" })
     ).toHaveCount(0);
 
+    // Medication links retain the episode subject's grants-scoped context. Before this
+    // boundary matched episode detail, following the linked dose tried only the ACTIVE
+    // profile and incorrectly 404ed.
+    const medicationLink = member
+      .getByTestId("episode-last-dose")
+      .getByRole("link")
+      .first();
+    await expect(medicationLink).toBeVisible();
+    await followLink(member, medicationLink, /\/medications\/\d+/);
+    await expect(member.getByTestId("medication-detail")).toBeVisible();
+    await expect(member.getByTestId("medication-subject-name")).toHaveText(
+      "admin"
+    );
+    await expect(member.getByTestId("medication-switch-profile")).toBeVisible();
+    await expect(member.getByTestId("medication-overview")).toBeVisible();
+    // Cross-profile medication detail stays read-only until the explicit profile switch.
+    await expect(
+      member.getByRole("button", { name: "Medication actions" })
+    ).toHaveCount(0);
+    await expect(
+      member.getByRole("button", { name: "Log past dose" })
+    ).toHaveCount(0);
+
     await member.context().close();
   });
 });

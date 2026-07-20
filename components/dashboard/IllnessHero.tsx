@@ -197,6 +197,9 @@ export default function IllnessHero({
                           <span aria-hidden="true">·</span>
                           <span data-testid="illness-cockpit-last-meds">
                             Last meds {c.status.lastMeds.name}
+                            {c.status.lastMeds.dose
+                              ? ` · ${c.status.lastMeds.dose}`
+                              : ""}
                             {c.status.lastMeds.when
                               ? ` ${c.status.lastMeds.when}`
                               : ""}

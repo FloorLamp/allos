@@ -45,6 +45,7 @@ import { PRIORITY_ORDER } from "../supplement-schedule";
 import { dispatch } from "./index";
 import type { NotificationAction, NotificationMessage } from "./types";
 import { createLogger } from "../log";
+import { formatMedicationDoseProduct } from "../medication-dose-format";
 
 const log = createLogger("notify");
 
@@ -96,7 +97,11 @@ export function renderPostWorkoutFinishMessage(
 
   const body = pending
     .map((e) => {
-      const amt = e.dose.amount ? ` — ${e.dose.amount}` : "";
+      const dose =
+        e.supp.kind === "medication"
+          ? formatMedicationDoseProduct(e.dose.amount, e.supp.product)
+          : e.dose.amount;
+      const amt = dose ? ` — ${dose}` : "";
       const mark = e.supp.priority === "mandatory" ? "🔴 " : "• ";
       return `${mark}${e.supp.name}${amt}`;
     })

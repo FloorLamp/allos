@@ -5,7 +5,11 @@
 
 import type { AdministrationOutcome } from "./types";
 import { parseUtcSql, zonedDateParts } from "./date";
-import { formatClock, type TimeFormat } from "./format-date";
+import {
+  formatClock,
+  formatCompactRelativeTime,
+  type TimeFormat,
+} from "./format-date";
 
 // Render a stored UTC administration time ("YYYY-MM-DD HH:MM:SS") as a profile-local
 // clock ("4:02pm") for the "last …" line. Empty string on a missing/garbage value so
@@ -23,6 +27,26 @@ export function formatGivenAtClock(
   const { hhmm } = zonedDateParts(tz, d);
   const [hStr, m] = hhmm.split(":");
   return formatClock(timeFormat, Number(hStr), Number(m), "lower-nospace");
+}
+
+// A displayed administration that landed on the profile's current local day keeps
+// its exact clock while adding elapsed context: "4:02pm (2 hrs ago)". Older times
+// stay as plain clocks because their neighboring date already supplies the useful
+// context. `now` is injectable so server-rendered and frozen-clock e2e surfaces use
+// the same instant rather than drifting at hydration.
+export function formatGivenAtClockWithRelativeAge(
+  tz: string,
+  stored: string | null | undefined,
+  timeFormat: TimeFormat = "12h",
+  now: Date = new Date()
+): string {
+  const d = parseUtcSql(stored);
+  if (!d) return "";
+  const clock = formatGivenAtClock(tz, stored, timeFormat);
+  if (zonedDateParts(tz, d).date !== zonedDateParts(tz, now).date) {
+    return clock;
+  }
+  return `${clock} (${formatCompactRelativeTime(d.toISOString(), now)})`;
 }
 
 // The med card / widget subtitle for a PRN med's day: "2 today · last 4:02pm", or

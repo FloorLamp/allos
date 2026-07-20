@@ -17,6 +17,7 @@ import {
 } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import Link from "next/link";
+import { formatMedicationDoseProduct } from "@/lib/medication-dose-format";
 
 function shortDate(date: string, prefs: DisplayFormatPrefs): string {
   const parsed = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
@@ -95,7 +96,12 @@ export default function EpisodeLatestReadings({
               >
                 {fmtTemp(temperature.degF, temperatureUnit)}
               </span>
-              <span className="whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
+              <span
+                // The minute-age is intentionally computed at render time; the
+                // server and first client render can straddle a minute boundary.
+                suppressHydrationWarning
+                className="whitespace-nowrap text-xs text-slate-500 dark:text-slate-400"
+              >
                 {whenLabel(
                   episode,
                   temperature.date,
@@ -136,9 +142,14 @@ export default function EpisodeLatestReadings({
                 ) : (
                   dose.name
                 )}
-                {dose.amount ? ` · ${dose.amount}` : ""}
+                {formatMedicationDoseProduct(dose.amount, dose.product)
+                  ? ` · ${formatMedicationDoseProduct(dose.amount, dose.product)}`
+                  : ""}
               </span>
-              <span className="whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
+              <span
+                suppressHydrationWarning
+                className="whitespace-nowrap text-xs text-slate-500 dark:text-slate-400"
+              >
                 {whenLabel(episode, dose.date, dose.time, formatPrefs, {
                   timeZone,
                   timeFormat: formatPrefs.timeFormat,

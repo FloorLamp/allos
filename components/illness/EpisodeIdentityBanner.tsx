@@ -1,7 +1,5 @@
-import { IconArrowsExchange } from "@tabler/icons-react";
-import Avatar, { type AvatarProfile } from "@/components/Avatar";
-import SubmitButton from "@/components/SubmitButton";
-import { switchProfileAction } from "@/app/(app)/user-actions";
+import type { AvatarProfile } from "@/components/Avatar";
+import ProfileIdentityBanner from "@/components/ProfileIdentityBanner";
 
 // Whose episode this is, rendered ON the page (issues #879 / #531 / #534). The episode
 // page can now show ANY accessible profile's episode (a caregiver opening a household
@@ -21,32 +19,10 @@ export default function EpisodeIdentityBanner({
   crossProfile: boolean;
 }) {
   return (
-    <div
-      data-testid="episode-identity-banner"
-      className="flex items-center gap-3 print:hidden"
-    >
-      <Avatar profile={profile} size="md" />
-      <div className="min-w-0 flex-1">
-        <div
-          data-testid="episode-subject-name"
-          className="truncate text-lg font-semibold text-slate-800 dark:text-slate-100"
-        >
-          {profile.name}
-        </div>
-      </div>
-      {crossProfile && (
-        <form action={switchProfileAction}>
-          <input type="hidden" name="profileId" value={profile.id} />
-          <SubmitButton
-            className="btn-ghost shrink-0"
-            pendingLabel="Switching…"
-            data-testid="episode-switch-profile"
-          >
-            <IconArrowsExchange className="h-4 w-4" stroke={1.75} />
-            Act as {profile.name}
-          </SubmitButton>
-        </form>
-      )}
-    </div>
+    <ProfileIdentityBanner
+      profile={profile}
+      crossProfile={crossProfile}
+      testIdPrefix="episode"
+    />
   );
 }

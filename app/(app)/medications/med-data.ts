@@ -9,7 +9,7 @@
 import {
   getSupplements,
   getSupplementDoses,
-  getTakenDoseIds,
+  getTakenDoseTimes,
   getSkippedDoseIds,
   getSupplementLogsInRange,
   getSupplementPairs,
@@ -34,13 +34,14 @@ import {
 } from "@/lib/queries";
 import { redoseWindowStatus } from "@/lib/prn-redose";
 import { now as clockNow } from "@/lib/clock";
-import { redoseCardLabel } from "@/lib/redose-format";
+import { redoseActionIsPrimary, redoseCardLabel } from "@/lib/redose-format";
 import {
   administrationDayLabel,
   administrationLastDoseLabel,
-  formatGivenAtClock,
+  formatGivenAtClockWithRelativeAge,
 } from "@/lib/administration-format";
 import { activeByKey } from "@/lib/findings";
+import { intakeWarningsForSurface } from "@/lib/intake-warning-surface";
 import { isSuppressed } from "@/lib/upcoming-suppress";
 import { FOOD_TIMING_PREFIX } from "@/lib/food-drug-interactions";
 import { type InteractionItem } from "@/lib/drug-interactions";
@@ -50,7 +51,7 @@ import {
   type MedicationWithHistory,
 } from "@/lib/medication-history";
 import { medicationStartDate } from "@/lib/profile-summary";
-import { monitoringRowNoteText } from "@/lib/medication-monitoring";
+import { monitoringSummaryForMed } from "@/lib/medication-monitoring";
 import {
   buildMedicationList,
   type MedicationListRow,
@@ -64,6 +65,7 @@ import {
   getSituationEvents,
   getTimezone,
   getUserAge,
+  type WeightUnit,
 } from "@/lib/settings";
 import { situationHistoryResolver } from "@/lib/trend-annotations";
 import { isDueOn, isPostWorkoutReady } from "@/lib/supplement-schedule";
@@ -82,6 +84,7 @@ import {
   type AdherenceDot,
 } from "@/lib/supplement-adherence";
 import type { DoseRate } from "@/lib/refill";
+import type { TimeFormat } from "@/lib/format-date";
 import {
   buildAdherenceCalendar,
   type AdherenceCalendarModel,
@@ -125,19 +128,33 @@ export interface MedCardData {
   due: boolean;
   pairs: SupplementPair[];
   prnDayLabel: string | null;
-  // Today's PRN administrations with their ledger ids (#851 item 11), so each chip on
-  // the card can offer remove-with-undo. Most recent first.
-  prnAdministrations: { id: number; label: string }[];
+  // Today's as-needed administrations with their ledger ids and snapshotted amounts,
+  // so each history row can show what was taken and offer remove-with-undo. Most
+  // recent first.
+  prnAdministrations: {
+    id: number;
+    label: string;
+    amount: string | null;
+    product: string | null;
+  }[];
   prnRedoseLine: string | null;
+  prnRedosePrimary: boolean;
   // The "Requires monitoring: …" row note (issue #995) — the curated labs a clinician
   // typically watches while on this drug, listed on the row (independent of dueness).
   // Null for an unmonitored med or a discontinued one.
   monitoringNote: string | null;
+  monitoringLabs: string[];
+  // Today's actual administration timestamp by scheduled dose id. Stored values stay
+  // raw here so each surface can apply the login's global 12h/24h preference.
+  takenDoseTimes: Record<number, string>;
 }
 
 export interface MedicationsData {
   todayStr: string;
   tz: string;
+  // One server-clock instant shared by relative administration labels rendered in
+  // server and client components, including frozen-clock browser tests.
+  nowIso: string;
   // The profile's local wall clock (HH:MM) at load, so the Today panel can flag a
   // past-bucket unresolved dose in the profile's timezone (#852 item 1).
   nowHhmm: string;
@@ -166,9 +183,11 @@ export interface MedicationsData {
   prnToday: {
     id: number;
     name: string;
+    product: string | null;
     amount: string | null;
     dayLabel: string;
     redoseLine: string | null;
+    redosePrimary: boolean;
   }[];
   bridge: BridgeSuggestion[];
   // Bridge suggestions the user has dismissed (#852 item 6): surfaced in a collapsed
@@ -184,7 +203,11 @@ export interface MedicationsData {
 }
 
 // Load everything the Medications surfaces render, computed once for the profile.
-export function loadMedicationsData(profileId: number): MedicationsData {
+export function loadMedicationsData(
+  profileId: number,
+  weightUnit: WeightUnit = "kg",
+  timeFormat: TimeFormat = "12h"
+): MedicationsData {
   const supplements = getSupplements(profileId);
   const doses = getSupplementDoses(profileId);
   const dosesBySupp = new Map<number, SupplementDose[]>();
@@ -196,7 +219,8 @@ export function loadMedicationsData(profileId: number): MedicationsData {
 
   const todayStr = today(profileId);
   const tz = getTimezone(profileId);
-  const taken = getTakenDoseIds(profileId, todayStr);
+  const takenTimes = getTakenDoseTimes(profileId, todayStr);
+  const taken = new Set(takenTimes.keys());
   const skipped = getSkippedDoseIds(profileId, todayStr);
   const activeSituations = new Set(getActiveSituations(profileId));
   const situationsOn = situationHistoryResolver(
@@ -208,7 +232,8 @@ export function loadMedicationsData(profileId: number): MedicationsData {
   const predictedWorkoutDay = isPredictedWorkoutDay(profileId, todayStr);
   // Through the frozen-clock seam (#1005): a bare new Date() here diverges from
   // clock-stamped given_at/log times under ALLOS_TEST_NOW (a production no-op).
-  const { hhmm } = zonedDateParts(tz, clockNow());
+  const nowInstant = clockNow();
+  const { hhmm } = zonedDateParts(tz, nowInstant);
   const nowMinutes = Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
   const postWorkoutReady = isPostWorkoutReady(
     todaysActivities.map((a) => a.end_time ?? a.start_time),
@@ -255,7 +280,6 @@ export function loadMedicationsData(profileId: number): MedicationsData {
   // Batch the day's administrations for every PRN med in ONE query (#885) rather than
   // one query per PRN item inside the card-builder loop — an N+1 over the un-purged
   // intake_item_logs ledger. Per-item derivation stays in JS below.
-  const nowInstant = clockNow();
   const prnMedIds = supplements
     .filter((s) => s.kind === "medication" && s.as_needed === 1)
     .map((s) => s.id);
@@ -273,44 +297,68 @@ export function loadMedicationsData(profileId: number): MedicationsData {
     s: Supplement
   ): {
     label: string | null;
-    administrations: { id: number; label: string }[];
+    administrations: {
+      id: number;
+      label: string;
+      amount: string | null;
+      product: string | null;
+    }[];
     redoseLine: string | null;
+    redosePrimary: boolean;
   } => {
     if (s.as_needed !== 1)
-      return { label: null, administrations: [], redoseLine: null };
+      return {
+        label: null,
+        administrations: [],
+        redoseLine: null,
+        redosePrimary: true,
+      };
     const admins = adminsByItem.get(s.id) ?? [];
     const administrations = admins.map((a) => ({
       id: a.id,
-      label: formatGivenAtClock(tz, a.given_at ?? a.taken_at),
+      label: formatGivenAtClockWithRelativeAge(
+        tz,
+        a.given_at ?? a.taken_at,
+        timeFormat,
+        nowInstant
+      ),
+      amount: a.amount,
+      product: a.product,
     }));
     const last = admins[0] ? (admins[0].given_at ?? admins[0].taken_at) : null;
     const fam = familyStates.get(s.id);
     const famLast = fam?.latestGivenAt ?? last;
     const famCount = fam?.countToday ?? admins.length;
     let redoseLine: string | null = null;
+    let redosePrimary = true;
     if (s.min_interval_hours != null && s.max_daily_count != null && famLast) {
       const effectiveMax =
         fam?.minConfirmedMax != null
           ? Math.min(s.max_daily_count, fam.minConfirmedMax)
           : s.max_daily_count;
-      redoseLine = redoseCardLabel(
-        redoseWindowStatus({
-          minIntervalHours: s.min_interval_hours,
-          maxDailyCount: effectiveMax,
-          latestGivenAt: parseUtcSql(famLast),
-          countToday: famCount,
-          now: nowInstant,
-        }),
-        fam?.memberIds.length ?? 1
-      );
+      const redoseStatus = redoseWindowStatus({
+        minIntervalHours: s.min_interval_hours,
+        maxDailyCount: effectiveMax,
+        latestGivenAt: parseUtcSql(famLast),
+        countToday: famCount,
+        now: nowInstant,
+      });
+      redoseLine = redoseCardLabel(redoseStatus, fam?.memberIds.length ?? 1);
+      redosePrimary = redoseActionIsPrimary(redoseStatus);
     }
-    const lastClock = formatGivenAtClock(tz, last);
+    const lastClock = formatGivenAtClockWithRelativeAge(
+      tz,
+      last,
+      timeFormat,
+      nowInstant
+    );
     return {
       label: redoseLine
         ? administrationLastDoseLabel(admins.length, lastClock)
         : administrationDayLabel(admins.length, lastClock),
       administrations,
       redoseLine,
+      redosePrimary,
     };
   };
 
@@ -322,6 +370,13 @@ export function loadMedicationsData(profileId: number): MedicationsData {
   const buildCardData = (med: Supplement): MedCardData => {
     const doseIds = (dosesBySupp.get(med.id) ?? []).map((d) => d.id);
     const prn = prnInfoFor(med);
+    const monitoring = med.active
+      ? monitoringSummaryForMed({
+          name: med.name,
+          rxcui: med.rxcui,
+          rxcuiIngredients: parseRxcuiIngredients(med.rxcui_ingredients),
+        })
+      : null;
     return {
       med,
       doses: dosesBySupp.get(med.id) ?? [],
@@ -341,13 +396,15 @@ export function loadMedicationsData(profileId: number): MedicationsData {
       prnDayLabel: prn.label,
       prnAdministrations: prn.administrations,
       prnRedoseLine: prn.redoseLine,
-      monitoringNote: med.active
-        ? monitoringRowNoteText({
-            name: med.name,
-            rxcui: med.rxcui,
-            rxcuiIngredients: parseRxcuiIngredients(med.rxcui_ingredients),
-          })
-        : null,
+      prnRedosePrimary: prn.redosePrimary,
+      monitoringNote: monitoring?.text ?? null,
+      monitoringLabs: monitoring?.labels ?? [],
+      takenDoseTimes: Object.fromEntries(
+        doseIds.flatMap((doseId) => {
+          const takenAt = takenTimes.get(doseId);
+          return takenAt ? [[doseId, takenAt] as const] : [];
+        })
+      ),
     };
   };
 
@@ -374,13 +431,13 @@ export function loadMedicationsData(profileId: number): MedicationsData {
     )
     .map(([k]) => k);
 
-  const interactionWarnings = activeByKey(
+  const allInteractionWarnings = activeByKey(
     getInteractionWarnings(profileId),
     (hit) => hit.dedupeKey,
     suppressions,
     todayStr
   );
-  const pgxWarnings = activeByKey(
+  const allPgxWarnings = activeByKey(
     getPgxWarnings(profileId),
     (hit) => hit.dedupeKey,
     suppressions,
@@ -397,6 +454,12 @@ export function loadMedicationsData(profileId: number): MedicationsData {
     (hit) => hit.dedupeKey,
     suppressions,
     todayStr
+  );
+  const { interactionWarnings, pgxWarnings } = intakeWarningsForSurface(
+    "medication",
+    supplements,
+    allInteractionWarnings,
+    allPgxWarnings
   );
 
   const stackItems: InteractionItem[] = supplements.map((s) => ({
@@ -418,40 +481,48 @@ export function loadMedicationsData(profileId: number): MedicationsData {
       notes: v.notes,
     }));
 
-  const pediatric: PediatricFormContext = getPediatricFormContext(profileId);
+  const pediatric: PediatricFormContext = getPediatricFormContext(
+    profileId,
+    weightUnit
+  );
 
   // Today panel PRN rows — the recently-used ordering the dashboard quick-log uses,
   // with the same pre-formatted labels (one computation).
   const prnToday = getPrnMedicationsForQuickLog(profileId).map((m) => {
-    const lastClock = formatGivenAtClock(tz, m.lastGivenAt);
+    const lastClock = formatGivenAtClockWithRelativeAge(
+      tz,
+      m.lastGivenAt,
+      timeFormat,
+      nowInstant
+    );
     // Family-widened window math (#1027): the clock/count/max span the ingredient
     // family, so an OTC sibling's dose holds this row's "Redose OK" too.
-    const redoseLine =
+    const redoseStatus =
       m.minIntervalHours != null &&
       m.maxDailyCount != null &&
       m.familyLastGivenAt
-        ? redoseCardLabel(
-            redoseWindowStatus({
-              minIntervalHours: m.minIntervalHours,
-              maxDailyCount: Math.min(
-                m.maxDailyCount,
-                m.familyMaxDailyCount ?? m.maxDailyCount
-              ),
-              latestGivenAt: parseUtcSql(m.familyLastGivenAt),
-              countToday: m.familyCount,
-              now: nowInstant,
-            }),
-            m.familyMemberCount
-          )
+        ? redoseWindowStatus({
+            minIntervalHours: m.minIntervalHours,
+            maxDailyCount: Math.min(
+              m.maxDailyCount,
+              m.familyMaxDailyCount ?? m.maxDailyCount
+            ),
+            latestGivenAt: parseUtcSql(m.familyLastGivenAt),
+            countToday: m.familyCount,
+            now: nowInstant,
+          })
         : null;
+    const redoseLine = redoseCardLabel(redoseStatus, m.familyMemberCount);
     return {
       id: m.id,
       name: m.name,
+      product: m.product,
       amount: m.amount,
       dayLabel: redoseLine
         ? administrationLastDoseLabel(m.count, lastClock)
         : administrationDayLabel(m.count, lastClock),
       redoseLine,
+      redosePrimary: redoseActionIsPrimary(redoseStatus),
     };
   });
 
@@ -522,6 +593,7 @@ export function loadMedicationsData(profileId: number): MedicationsData {
   return {
     todayStr,
     tz,
+    nowIso: nowInstant.toISOString(),
     nowHhmm: hhmm,
     trainingRestricted,
     age: getUserAge(profileId),
@@ -618,5 +690,9 @@ export function getMedicationAdherenceCalendar(
     situationsOn,
     takenByDose
   );
-  return buildAdherenceCalendar(strip);
+  const courses = getMedicationCourses(profileId).filter(
+    (course) => course.item_id === itemId
+  );
+  const startedOn = medicationStartDate(courses, med.created_at);
+  return buildAdherenceCalendar(strip, startedOn);
 }

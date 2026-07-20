@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { IconSearch, IconX } from "@tabler/icons-react";
 import { fuzzyFilter } from "@/lib/fuzzy";
 
 // Shared autocomplete. Two modes via `allowFreeText`:
@@ -63,6 +64,7 @@ export default function Combobox({
   const highlightCls =
     "bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300";
   const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const listboxId = useId();
 
   const q = value.trim().toLowerCase();
@@ -94,7 +96,11 @@ export default function Combobox({
 
   return (
     <div ref={ref} className="relative">
+      <span className="pointer-events-none absolute inset-y-0 left-0 z-10 flex w-10 items-center justify-center text-slate-500 dark:text-slate-400">
+        <IconSearch className="h-4 w-4" stroke={2} aria-hidden="true" />
+      </span>
       <input
+        ref={inputRef}
         id={id}
         value={value}
         name={name}
@@ -145,16 +151,39 @@ export default function Combobox({
             setOpen(false);
           }
         }}
-        className={`input ${inputClassName} ${badge ? "pr-28" : ""} ${
+        className={`input pl-9 ${inputClassName} ${
+          badge ? (value && !disabled ? "pr-36" : "pr-28") : ""
+        } ${value && !disabled && !badge ? "pr-10" : ""} ${
           invalid
             ? "border-rose-300 focus:border-rose-400 focus:ring-rose-400 dark:border-rose-800 dark:focus:border-rose-700 dark:focus:ring-rose-700"
             : ""
         }`}
       />
       {badge && (
-        <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
+        <span
+          className={`pointer-events-none absolute inset-y-0 flex items-center ${
+            value && !disabled ? "right-10" : "right-2"
+          }`}
+        >
           {badge}
         </span>
+      )}
+      {value && !disabled && (
+        <button
+          type="button"
+          aria-label={`Clear ${ariaLabel ?? "selection"}`}
+          title="Clear"
+          className="absolute inset-y-0 right-0 z-10 flex w-10 items-center justify-center rounded-r-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => {
+            onChange("");
+            setHighlight(0);
+            setOpen(true);
+            inputRef.current?.focus();
+          }}
+        >
+          <IconX className="h-4 w-4" stroke={2} aria-hidden="true" />
+        </button>
       )}
       {open && (filtered.length > 0 || showUse || !allowFreeText) && (
         <ul

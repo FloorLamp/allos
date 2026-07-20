@@ -156,7 +156,8 @@ export function assembleIllnessEpisode(
   // linked dose so history still shows the same amount as the Meds logger.
   const admRows = db
     .prepare(
-      `SELECT l.id AS id, l.item_id AS item_id, ii.name AS name, l.date AS date,
+      `SELECT l.id AS id, l.item_id AS item_id, ii.name AS name,
+              COALESCE(l.product, ii.product) AS product, l.date AS date,
               l.given_at AS given_at, l.taken_at AS taken_at,
               COALESCE(l.amount, d.amount) AS amount
          FROM intake_item_logs l
@@ -171,6 +172,7 @@ export function assembleIllnessEpisode(
     id: number;
     item_id: number;
     name: string;
+    product: string | null;
     date: string;
     given_at: string | null;
     taken_at: string;
@@ -180,7 +182,13 @@ export function assembleIllnessEpisode(
   for (const r of admRows) {
     let med = byMed.get(r.item_id);
     if (!med) {
-      med = { itemId: r.item_id, name: r.name, count: 0, administrations: [] };
+      med = {
+        itemId: r.item_id,
+        name: r.name,
+        product: r.product,
+        count: 0,
+        administrations: [],
+      };
       byMed.set(r.item_id, med);
     }
     const parsed = parseUtcSql(r.given_at ?? r.taken_at);
@@ -191,6 +199,7 @@ export function assembleIllnessEpisode(
       time: localClock,
       time24: localClock,
       amount: r.amount,
+      product: r.product,
     };
     med.administrations.push(point);
     med.count += 1;

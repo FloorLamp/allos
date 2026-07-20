@@ -7,12 +7,14 @@ import type { ReactNode } from "react";
 export default function CardGroup({
   title,
   description,
+  action,
   children,
   className,
   "data-testid": testId,
 }: {
   title: string;
   description?: string;
+  action?: ReactNode;
   children: ReactNode;
   className?: string;
   "data-testid"?: string;
@@ -22,15 +24,18 @@ export default function CardGroup({
       className={["card", className].filter(Boolean).join(" ")}
       data-testid={testId}
     >
-      <div>
-        <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">
-          {title}
-        </h2>
-        {description ? (
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            {description}
-          </p>
-        ) : null}
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">
+            {title}
+          </h2>
+          {description ? (
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              {description}
+            </p>
+          ) : null}
+        </div>
+        {action ? <div className="shrink-0">{action}</div> : null}
       </div>
       {children}
     </section>

@@ -149,7 +149,7 @@ export default function BiomarkersSection({
         />
       )}
 
-      <div className="card mb-6">
+      <div className="card mb-6" id="add-result">
         <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
           Add medical record
         </h2>

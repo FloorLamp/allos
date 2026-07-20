@@ -17,6 +17,7 @@ import {
   type EpisodeMedSuggestion,
 } from "../../episode-med-reconcile";
 import type { PediatricFormContext } from "../../prn-dosing";
+import type { WeightUnit } from "../../settings";
 import type { MedicationCourse, MedicationSideEffect } from "../../types";
 
 // The pediatric label-dosing context (#798) for a medication form: the profile's age
@@ -25,7 +26,8 @@ import type { MedicationCourse, MedicationSideEffect } from "../../types";
 // child's dose amount from the band. ONE computation shared by the Medications loader
 // and the symptom-card quick-add, so both surfaces read the same context.
 export function getPediatricFormContext(
-  profileId: number
+  profileId: number,
+  weightUnit: WeightUnit = "kg"
 ): PediatricFormContext {
   const todayStr = today(profileId);
   const latestWeight = getLatestBodyMetricDated(profileId, "weight");
@@ -33,6 +35,7 @@ export function getPediatricFormContext(
     ageMonths: profileAgeMonths(profileId, todayStr),
     weightKg: latestWeight?.value ?? null,
     weightDate: latestWeight?.date ?? null,
+    weightUnit,
     today: todayStr,
   };
 }
@@ -153,8 +156,9 @@ export function getMedicationSideEffects(
 // action and the import persist). The course upholds active=1 ⇔ an open course:
 // it's left OPEN only when the med is active, and CLOSED (stopped_on = its start
 // date) when the med is already paused (active=0) — so flipping a PAUSED
-// supplement to a medication lands it in Past, not Current. started_on falls back
-// to the med's created_at date when the caller has no better start date. A single
+// supplement to a medication lands it in Past, not Current. started_on normally
+// falls back to the med's created_at date when the caller has no better start date;
+// manual PRN entry can explicitly preserve an unknown (NULL) start instead. A single
 // INSERT...SELECT that is:
 //   - profile-scoped (references intake_items WHERE profile_id = ?),
 //   - a no-op unless the row is a medication with NO existing course,
@@ -163,21 +167,33 @@ export function getMedicationSideEffects(
 export function ensureMedicationCourse(
   profileId: number,
   itemId: number,
-  startedOn: string | null
+  startedOn: string | null,
+  preserveUnknownStart = false
 ): void {
   db.prepare(
     `INSERT INTO medication_courses (item_id, started_on, stopped_on, created_at)
-       SELECT ii.id, COALESCE(?, date(ii.created_at)),
+       SELECT ii.id,
+              CASE WHEN ? = 1 THEN ? ELSE COALESCE(?, date(ii.created_at)) END,
               CASE WHEN ii.active = 1
                    THEN NULL
-                   ELSE COALESCE(?, date(ii.created_at)) END,
+                   ELSE CASE WHEN ? = 1 THEN ? ELSE COALESCE(?, date(ii.created_at)) END
+              END,
               datetime('now')
          FROM intake_items ii
         WHERE ii.id = ? AND ii.profile_id = ? AND ii.kind = 'medication'
           AND NOT EXISTS (
             SELECT 1 FROM medication_courses c WHERE c.item_id = ii.id
           )`
-  ).run(startedOn, startedOn, itemId, profileId);
+  ).run(
+    preserveUnknownStart ? 1 : 0,
+    startedOn,
+    startedOn,
+    preserveUnknownStart ? 1 : 0,
+    startedOn,
+    startedOn,
+    itemId,
+    profileId
+  );
 }
 
 // Create the medication COURSES an import DERIVED from the source's effective

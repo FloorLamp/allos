@@ -19,6 +19,7 @@ describe("quickAddMedicationFields (#843)", () => {
       quickAddMedicationFields({
         name: "Ibuprofen",
         brand: "Advil",
+        product: "Children's oral suspension (160 mg / 5 mL)",
         amount: "200 mg",
         asNeeded: true,
         minIntervalHours: 6,
@@ -29,6 +30,7 @@ describe("quickAddMedicationFields (#843)", () => {
     expect(m.kind).toBe("medication");
     expect(m.condition).toBe("daily");
     expect(m.brand).toBe("Advil");
+    expect(m.product).toBe("Children's oral suspension (160 mg / 5 mL)");
     expect(m.as_needed).toBe("1");
     expect(m.min_interval_hours).toBe("6");
     expect(m.max_daily_count).toBe("4");
@@ -50,6 +52,7 @@ describe("quickAddMedicationFields (#843)", () => {
     );
     expect(m.name).toBe("Acetaminophen"); // trimmed
     expect(m.brand).toBeUndefined();
+    expect(m.product).toBeUndefined();
     expect(m.as_needed).toBeUndefined();
     expect(m.min_interval_hours).toBeUndefined();
     expect(m.max_daily_count).toBeUndefined();

@@ -14,6 +14,7 @@ test("shows the seeded warfarin + ibuprofen interaction warning on /medications"
 }) => {
   await page.goto("/medications");
   const main = page.getByRole("main");
+  await main.getByTestId("intake-warnings").locator("summary").click();
 
   const warnings = main.getByTestId("interaction-warnings");
   await expect(warnings).toBeVisible();
@@ -99,6 +100,7 @@ test("flags the seeded combination-medication pair (Hyzaar + Klor-Con) on /medic
 }) => {
   await page.goto("/medications");
   const main = page.getByRole("main");
+  await main.getByTestId("intake-warnings").locator("summary").click();
 
   const warnings = main.getByTestId("interaction-warnings");
   await expect(warnings).toBeVisible();
@@ -110,4 +112,42 @@ test("flags the seeded combination-medication pair (Hyzaar + Klor-Con) on /medic
   await expect(row).toBeVisible();
   await expect(row).toContainText("MODERATE", { ignoreCase: true });
   await expect(row).toContainText("potassium", { ignoreCase: true });
+});
+
+test("scopes intake warnings to the items represented on each surface", async ({
+  page,
+}) => {
+  await page.goto("/medications");
+  let main = page.getByRole("main");
+  let notices = main.getByTestId("intake-warnings");
+  await notices.locator("summary").click();
+  await expect(
+    notices
+      .getByTestId("interaction-warnings")
+      .filter({ hasText: "Calcium + Iron" })
+  ).toHaveCount(0);
+  await expect(
+    notices
+      .locator('[data-testid^="interaction-warning-interaction:"]')
+      .filter({ hasText: "Sertraline" })
+      .filter({ hasText: "Ibuprofen" })
+  ).toBeVisible();
+
+  await page.goto("/nutrition?tab=supplements");
+  main = page.getByRole("main");
+  notices = main.getByTestId("intake-warnings");
+  await notices.locator("summary").click();
+  await expect(
+    notices
+      .locator('[data-testid^="interaction-warning-interaction:"]')
+      .filter({ hasText: "Calcium" })
+      .filter({ hasText: "Iron" })
+  ).toBeVisible();
+  await expect(
+    notices
+      .locator('[data-testid^="interaction-warning-interaction:"]')
+      .filter({ hasText: "Sertraline" })
+      .filter({ hasText: "Ibuprofen" })
+  ).toHaveCount(0);
+  await expect(notices.getByTestId("pgx-warnings")).toHaveCount(0);
 });

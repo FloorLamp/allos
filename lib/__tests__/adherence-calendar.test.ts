@@ -46,4 +46,28 @@ describe("buildAdherenceCalendar (#852 item 5)", () => {
       counts: { taken: 0, partial: 0, skipped: 0, missed: 0, na: 0 },
     });
   });
+
+  it("excludes days before the medication course started", () => {
+    const dots: AdherenceDot[] = [
+      { date: "2024-01-01", state: "missed" },
+      { date: "2024-01-02", state: "missed" },
+      { date: "2024-01-03", state: "taken" },
+      { date: "2024-01-04", state: "skipped" },
+    ];
+
+    const { weeks, counts } = buildAdherenceCalendar(dots, "2024-01-03");
+    const realDays = weeks.flat().filter((cell) => cell.date != null);
+
+    expect(realDays).toEqual([
+      { date: "2024-01-03", state: "taken" },
+      { date: "2024-01-04", state: "skipped" },
+    ]);
+    expect(counts).toEqual({
+      taken: 1,
+      partial: 0,
+      skipped: 1,
+      missed: 0,
+      na: 0,
+    });
+  });
 });

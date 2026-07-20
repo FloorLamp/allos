@@ -22,6 +22,32 @@ test("the Medications row shows a 'requires monitoring' note for a monitored dru
   await expect(note).toBeVisible();
   await expect(note).toContainText(/Requires monitoring/i);
   await expect(note).toContainText("INR");
+
+  const detailHref = await warfarinRow
+    .getByTestId("medication-row-link")
+    .getAttribute("href");
+  await page.goto(detailHref!);
+  const detailNote = page.getByTestId("medication-monitoring-detail");
+  await expect(detailNote).toBeVisible();
+  await expect(detailNote).toContainText(
+    "your clinician may periodically review INR"
+  );
+  await expect(detailNote).toContainText(
+    "Discuss the timing with your prescriber"
+  );
+  await expect(
+    detailNote.getByRole("link", { name: "Review results" })
+  ).toHaveAttribute("href", "/results?q=INR#biomarkers");
+  const addResult = detailNote.getByRole("link", { name: "Add INR result" });
+  await expect(addResult).toHaveAttribute(
+    "href",
+    "/results?name=INR#add-result"
+  );
+  await addResult.click();
+  await expect(page).toHaveURL(/\/results\?name=INR#add-result$/);
+  await expect(
+    page.locator("#add-result").getByLabel("Name", { exact: true })
+  ).toHaveValue("INR");
 });
 
 test("a med-driven monitoring retest surfaces on the Upcoming page", async ({

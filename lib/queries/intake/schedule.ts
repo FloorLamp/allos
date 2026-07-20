@@ -70,6 +70,21 @@ export function getMedication(
   return row ?? null;
 }
 
+// Resolve one medication across a viewer's ACCESSIBLE profile ids. This mirrors the
+// illness-episode detail boundary: every individual lookup remains profile-scoped, and
+// the caller supplies only ids already filtered by the grants layer. A medication owned
+// by an ungranted profile therefore remains indistinguishable from a missing id.
+export function resolveMedicationAcrossProfiles(
+  profileIds: number[],
+  id: number
+): { profileId: number; medication: Supplement } | null {
+  for (const profileId of profileIds) {
+    const medication = getMedication(profileId, id);
+    if (medication) return { profileId, medication };
+  }
+  return null;
+}
+
 // All CURRENTLY SCHEDULED doses, ordered for stable rendering. Doses are a
 // child of supplements, so they're scoped through the parent's profile_id.
 // Retired doses (removed from the schedule by an edit but kept for their

@@ -84,6 +84,7 @@ test.describe("Pharmacogenomics cross-check (#710)", () => {
   }) => {
     await page.goto("/medications");
     const main = page.getByRole("main");
+    await main.getByTestId("intake-warnings").locator("summary").click();
 
     const warnings = main.getByTestId("pgx-warnings");
     await expect(warnings).toBeVisible();
@@ -117,9 +118,9 @@ test.describe("Pharmacogenomics cross-check (#710)", () => {
     page,
   }) => {
     await page.goto("/medications");
-    const addCard = page
-      .locator("div.card")
-      .filter({ hasText: "Add medication" });
+    await page.getByTestId("medication-add-toggle").click();
+    await page.getByTestId("medication-add-full").click();
+    const addCard = page.getByTestId("medication-add-panel");
 
     // Typing a CYP2D6-affected opioid with an ultrarapid variant on file lights the
     // inline note — no save needed; the pure crossCheckPgx runs client-side.

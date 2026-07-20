@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   redoseNoticeMessage,
+  redoseActionIsPrimary,
   redoseCardLabel,
   hoursLabel,
   countFragment,
@@ -32,6 +33,19 @@ describe("redoseNoticeMessage", () => {
     });
     expect(m.body).not.toMatch(/\(/);
     expect(m.body.toLowerCase()).not.toContain("you can");
+  });
+
+  it("includes the saved formulation in the notice body", () => {
+    const m = redoseNoticeMessage({
+      name: "Acetaminophen",
+      amount: "160 mg",
+      product: "Children's oral suspension (160 mg / 5 mL)",
+      sinceHours: 4,
+      lastClock: "5:00 PM",
+      countToday: 1,
+      maxDailyCount: 5,
+    });
+    expect(m.body).toContain("Acetaminophen · 160 mg / 5 mL");
   });
 });
 
@@ -65,6 +79,15 @@ describe("redoseCardLabel", () => {
   it("not yet open shows the countdown", () => {
     expect(redoseCardLabel(status({ open: false, opensInHours: 2 }))).toBe(
       "Next dose in ~2h · 1 of 4 today"
+    );
+  });
+
+  it("reserves CTA emphasis for an open window below the daily max", () => {
+    expect(redoseActionIsPrimary(null)).toBe(true);
+    expect(redoseActionIsPrimary(status({ open: false }))).toBe(false);
+    expect(redoseActionIsPrimary(status({ open: true }))).toBe(true);
+    expect(redoseActionIsPrimary(status({ open: true, atMax: true }))).toBe(
+      false
     );
   });
 });

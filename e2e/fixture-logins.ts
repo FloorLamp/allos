@@ -17,8 +17,8 @@ export const E2E_MEMBER_PASSWORD = "e2e-member-pass-1234";
 //   - integrations-strava: the disconnected (no-connection) setup form,
 //   - immunizations: proving reads are profile-scoped (Riley's own empty list),
 //   - ai-logs-access: a member is bounced off the admin-only AI logs page.
-// Every one of those is a READ, so concurrent sessions of this login never
-// contend on shared data.
+// Most uses are reads. The pediatric-medication persistence spec adds one medication
+// on the isolated e2e DB; no other spec depends on Riley's medication list.
 export const E2E_LOGIN_CHILD = "e2e_child";
 
 // A member granted a dedicated profile whose Strava connection is seeded in the

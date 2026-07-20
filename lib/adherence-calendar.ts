@@ -28,8 +28,15 @@ function weekday(date: string): number {
 }
 
 export function buildAdherenceCalendar(
-  dots: AdherenceDot[]
+  dots: AdherenceDot[],
+  startedOn: string | null = null
 ): AdherenceCalendarModel {
+  // A fixed lookback window can extend before the medication existed. Those days
+  // are outside the course—not missed and not merely "not due"—so omit them from
+  // both the visible calendar and its legend counts.
+  const visibleDots = startedOn
+    ? dots.filter((dot) => dot.date >= startedOn)
+    : dots;
   const counts: Record<AdherenceState, number> = {
     taken: 0,
     partial: 0,
@@ -37,14 +44,14 @@ export function buildAdherenceCalendar(
     missed: 0,
     na: 0,
   };
-  for (const d of dots) counts[d.state]++;
+  for (const d of visibleDots) counts[d.state]++;
 
   const cells: AdherenceCalendarCell[] = [];
-  if (dots.length > 0) {
+  if (visibleDots.length > 0) {
     // Pad the first partial week with blanks up to the first day's weekday.
-    const lead = weekday(dots[0].date);
+    const lead = weekday(visibleDots[0].date);
     for (let i = 0; i < lead; i++) cells.push({ date: null, state: null });
-    for (const d of dots) cells.push({ date: d.date, state: d.state });
+    for (const d of visibleDots) cells.push({ date: d.date, state: d.state });
     // Pad the final partial week so every row is 7 wide.
     while (cells.length % 7 !== 0) cells.push({ date: null, state: null });
   }

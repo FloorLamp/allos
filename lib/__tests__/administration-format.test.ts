@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   formatGivenAtClock,
+  formatGivenAtClockWithRelativeAge,
   administrationDayLabel,
   administrationLastDoseLabel,
   administrationOutcomeText,
@@ -8,6 +9,7 @@ import {
 } from "@/lib/administration-format";
 import {
   isGivenAtAccepted,
+  isHistoricalDoseTimeAccepted,
   DOSE_LOG_DATE_WINDOW_DAYS,
 } from "@/lib/dose-log-window";
 import type { AdministrationOutcome } from "@/lib/types";
@@ -37,6 +39,43 @@ describe("formatGivenAtClock", () => {
   it("returns empty string for a missing/garbage value", () => {
     expect(formatGivenAtClock("UTC", null)).toBe("");
     expect(formatGivenAtClock("UTC", "not-a-date")).toBe("");
+  });
+});
+
+describe("formatGivenAtClockWithRelativeAge", () => {
+  const now = new Date("2026-07-15T22:02:00Z");
+
+  it("adds relative age in parentheses for the profile's current day", () => {
+    expect(
+      formatGivenAtClockWithRelativeAge(
+        "America/New_York",
+        "2026-07-15 20:02:00",
+        "12h",
+        now
+      )
+    ).toBe("4:02pm (2 hrs ago)");
+  });
+
+  it("keeps an older day's time as a plain clock", () => {
+    expect(
+      formatGivenAtClockWithRelativeAge(
+        "America/New_York",
+        "2026-07-14 20:02:00",
+        "12h",
+        now
+      )
+    ).toBe("4:02pm");
+  });
+
+  it("respects 24-hour time", () => {
+    expect(
+      formatGivenAtClockWithRelativeAge(
+        "America/New_York",
+        "2026-07-15 20:02:00",
+        "24h",
+        now
+      )
+    ).toBe("16:02 (2 hrs ago)");
   });
 });
 
@@ -143,5 +182,36 @@ describe("isGivenAtAccepted (#614 window guard for given_at)", () => {
     expect(isGivenAtAccepted(tz, todayStr, new Date("garbage"), now)).toBe(
       false
     );
+  });
+});
+
+describe("isHistoricalDoseTimeAccepted", () => {
+  const tz = "UTC";
+  const now = new Date("2026-07-15T12:00:00Z");
+  const todayStr = "2026-07-15";
+
+  it("accepts an intentional entry at any past date", () => {
+    expect(
+      isHistoricalDoseTimeAccepted(
+        tz,
+        todayStr,
+        new Date("2021-06-25T08:00:00Z"),
+        now
+      )
+    ).toBe(true);
+  });
+
+  it("rejects future and invalid instants", () => {
+    expect(
+      isHistoricalDoseTimeAccepted(
+        tz,
+        todayStr,
+        new Date("2026-07-16T08:00:00Z"),
+        now
+      )
+    ).toBe(false);
+    expect(
+      isHistoricalDoseTimeAccepted(tz, todayStr, new Date("invalid"), now)
+    ).toBe(false);
   });
 });

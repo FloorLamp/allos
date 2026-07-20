@@ -111,6 +111,8 @@ export async function runRedoseNotices(
 
     const msg = redoseNoticeMessage({
       name: item.name,
+      amount: item.amount,
+      product: item.product,
       sinceHours: decision.sinceHours,
       lastClock: formatGivenAtClock(tz, arming.latestGivenAt),
       countToday: decision.countToday,

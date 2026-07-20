@@ -53,21 +53,21 @@ test("Nutrition is a Food | Supplements tab umbrella (#746)", async ({
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 });
 
-test("the Medications page renders its cards and add form (#746)", async ({
+test("the Medications page renders its list and inline add workflow (#746)", async ({
   page,
 }) => {
   await page.goto("/medications");
-  // The #747 parity fixture med card renders here now.
+  // The #747 parity fixture renders in the shared, scannable medication list.
   await expect(
     page
-      .locator("div.card")
+      .getByTestId("medication-list")
+      .getByTestId("medication-row")
       .filter({ hasText: "Adherence Refill Med (e2e)" })
       .first()
   ).toBeVisible();
-  // The kind-locked medication add form.
-  await expect(
-    page.getByRole("heading", { name: "Add medication" })
-  ).toBeVisible();
+  // The kind-locked add workflow opens inline instead of occupying the page at rest.
+  await page.getByTestId("medication-add-toggle").click();
+  await expect(page.getByTestId("medication-add-panel")).toBeVisible();
 });
 
 // ── Infant supplements reachability (#746) ───────────────────────────────────

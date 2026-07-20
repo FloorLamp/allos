@@ -35,6 +35,7 @@ export default function IntakeInteractionNotices({
   pgxVariants,
   excludeId,
   age = null,
+  showFood = true,
 }: {
   name: string;
   rxcui: string | null;
@@ -45,6 +46,9 @@ export default function IntakeInteractionNotices({
   // The profile's age in whole years (issue #851 item 4): an age-gated food note
   // (alcohol → adult) is hidden for a child on the form notice too. Null = unknown.
   age?: number | null;
+  // Existing-item detail pages already render the dismissible FoodGuidance line.
+  // They disable this duplicate form formatter while keeping drug and PGx notices.
+  showFood?: boolean;
 }) {
   const candidateInteractions = useMemo(() => {
     if (!name.trim()) return [];
@@ -58,9 +62,9 @@ export default function IntakeInteractionNotices({
   }, [name, rxcui, rxcuiIngredients, pgxVariants]);
 
   const candidateFoodInteractions = useMemo(() => {
-    if (!name.trim()) return [];
+    if (!showFood || !name.trim()) return [];
     return matchFoodInteractions({ name, rxcui, rxcuiIngredients }, age);
-  }, [name, rxcui, rxcuiIngredients, age]);
+  }, [showFood, name, rxcui, rxcuiIngredients, age]);
 
   return (
     <>
@@ -71,28 +75,28 @@ export default function IntakeInteractionNotices({
         >
           <div className="flex items-start gap-1.5">
             <IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <div className="space-y-1">
-              <p className="font-semibold">
-                Possible interaction
-                {candidateInteractions.length > 1 ? "s" : ""} with your current
-                stack
+            <p className="font-semibold">
+              Possible interaction
+              {candidateInteractions.length > 1 ? "s" : ""} with your current
+              stack
+            </p>
+          </div>
+          <div className="mt-1 space-y-1">
+            {candidateInteractions.map((hit) => (
+              <p
+                key={hit.dedupeKey}
+                className="text-amber-700 dark:text-amber-300"
+              >
+                <span className="font-medium">
+                  {SEVERITY_LABEL[hit.severity]}:
+                </span>{" "}
+                {interactionTitle(hit)} — {hit.mechanism}
               </p>
-              {candidateInteractions.map((hit) => (
-                <p
-                  key={hit.dedupeKey}
-                  className="text-amber-700 dark:text-amber-300"
-                >
-                  <span className="font-medium">
-                    {SEVERITY_LABEL[hit.severity]}:
-                  </span>{" "}
-                  {interactionTitle(hit)} — {hit.mechanism}
-                </p>
-              ))}
-              <p className="text-xs text-amber-700 dark:text-amber-400">
-                Informational only — discuss with your prescriber or pharmacist.
-                You can still save this item.
-              </p>
-            </div>
+            ))}
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              Informational only — discuss with your prescriber or pharmacist.
+              You can still save this item.
+            </p>
           </div>
         </div>
       )}
@@ -104,28 +108,28 @@ export default function IntakeInteractionNotices({
         >
           <div className="flex items-start gap-1.5">
             <IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <div className="space-y-1">
-              <p className="font-semibold">
-                Pharmacogenomic note{candidatePgx.length > 1 ? "s" : ""} for
-                this medication
+            <p className="font-semibold">
+              Pharmacogenomic note{candidatePgx.length > 1 ? "s" : ""} for this
+              medication
+            </p>
+          </div>
+          <div className="mt-1 space-y-1">
+            {candidatePgx.map((hit) => (
+              <p
+                key={hit.dedupeKey}
+                className="text-violet-700 dark:text-violet-300"
+              >
+                <span className="font-medium">
+                  {PGX_SEVERITY_LABEL[hit.severity]}:
+                </span>{" "}
+                {hit.gene} {pgxStatusLabel(hit)} on file — {hit.guidance}
               </p>
-              {candidatePgx.map((hit) => (
-                <p
-                  key={hit.dedupeKey}
-                  className="text-violet-700 dark:text-violet-300"
-                >
-                  <span className="font-medium">
-                    {PGX_SEVERITY_LABEL[hit.severity]}:
-                  </span>{" "}
-                  {hit.gene} {pgxStatusLabel(hit)} on file — {hit.guidance}
-                </p>
-              ))}
-              <p className="text-xs text-violet-700 dark:text-violet-400">
-                Informational — discuss with your prescriber before any change;
-                do not stop or switch a medication based on this alone. You can
-                still save this item.
-              </p>
-            </div>
+            ))}
+            <p className="text-xs text-violet-700 dark:text-violet-400">
+              Informational — discuss with your prescriber before any change; do
+              not stop or switch a medication based on this alone. You can still
+              save this item.
+            </p>
           </div>
         </div>
       )}
@@ -137,23 +141,20 @@ export default function IntakeInteractionNotices({
         >
           <div className="flex items-start gap-1.5">
             <IconAlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <div className="space-y-1">
-              <p className="font-semibold">Food guidance for this item</p>
-              {candidateFoodInteractions.map((hit) => (
-                <div
-                  key={hit.key}
-                  className="text-amber-700 dark:text-amber-300"
-                >
-                  <p>
-                    <span className="font-medium">{hit.food}:</span>{" "}
-                    {foodGuidanceLine(hit)}
-                  </p>
-                  <p className="text-xs text-amber-700 dark:text-amber-400">
-                    {foodGuidanceDetail(hit)}
-                  </p>
-                </div>
-              ))}
-            </div>
+            <p className="font-semibold">Food guidance for this item</p>
+          </div>
+          <div className="mt-1 space-y-1">
+            {candidateFoodInteractions.map((hit) => (
+              <div key={hit.key} className="text-amber-700 dark:text-amber-300">
+                <p>
+                  <span className="font-medium">{hit.food}:</span>{" "}
+                  {foodGuidanceLine(hit)}
+                </p>
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  {foodGuidanceDetail(hit)}
+                </p>
+              </div>
+            ))}
           </div>
         </div>
       )}

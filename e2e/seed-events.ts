@@ -1219,7 +1219,7 @@ const prnDoseId = Number(
 db.prepare(
   `INSERT INTO medication_courses (item_id, started_on, stopped_on, stop_reason, notes)
    VALUES (?, ?, NULL, NULL, 'PRN — e2e fixture')`
-).run(prnMedId, shiftDateStr(today(PROFILE_ID), -30));
+).run(prnMedId, shiftDateStr(today(PROFILE_ID), -5));
 // Two administrations earlier today, so the card shows "2 today". given_at is
 // computed from seed-time minus a fixed offset (45m / 90m ago) — always well outside
 // the widget's ~2-minute double-tap dedup window from the later test-run "now", so a
@@ -1330,6 +1330,14 @@ const browserProviderId = Number(
     )
     .run().lastInsertRowid
 );
+// Give the scheduled medication fixture a structured provider as well as its
+// legacy free-text prescriber. The medication detail can then prove that a
+// registry-backed provider navigates to the provider detail page.
+db.prepare(
+  `UPDATE intake_items
+      SET provider_id = ?
+    WHERE id = ? AND profile_id = ? AND kind = 'medication'`
+).run(browserProviderId, parityMedId, PROFILE_ID);
 const insBrowserRecord = db.prepare(
   `INSERT INTO medical_records
      (profile_id, date, category, name, value, value_num, unit, panel,

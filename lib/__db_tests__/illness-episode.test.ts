@@ -69,8 +69,8 @@ function newPrnMed(
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, as_needed)
-         VALUES (?, ?, 1, 'medication', 'daily', 'high', 1)`
+           (profile_id, name, product, active, kind, condition, priority, as_needed)
+         VALUES (?, ?, 'Children''s oral suspension (100 mg / 5 mL)', 1, 'medication', 'daily', 'high', 1)`
       )
       .run(profileId, name).lastInsertRowid
   );
@@ -163,12 +163,20 @@ describe("assembleIllnessEpisode — 5-day fixture (#448)", () => {
     // PRN meds: ibuprofen 3× with snapshotted amounts.
     expect(a.medications.length).toBe(1);
     expect(a.medications[0].name).toBe("Ibuprofen");
+    expect(a.medications[0].product).toBe(
+      "Children's oral suspension (100 mg / 5 mL)"
+    );
     expect(a.medications[0].count).toBe(3);
     expect(a.totalAdministrations).toBe(3);
     expect(a.medications[0].administrations.map((x) => x.amount)).toEqual([
       "200 mg",
       "200 mg",
       "400 mg",
+    ]);
+    expect(a.medications[0].administrations.map((x) => x.product)).toEqual([
+      "Children's oral suspension (100 mg / 5 mL)",
+      "Children's oral suspension (100 mg / 5 mL)",
+      "Children's oral suspension (100 mg / 5 mL)",
     ]);
 
     // Notes carry the symptom note.
