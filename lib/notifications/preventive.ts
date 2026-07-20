@@ -20,6 +20,7 @@ import { today } from "../db";
 import {
   assessProfilePreventive,
   getFindingSuppressions,
+  clearPreventiveDismissal,
 } from "../queries/upcoming";
 import { kindedScheduled } from "../queries/appointments";
 import { scheduledMatchForRule } from "../preventive-appointment";
@@ -107,6 +108,12 @@ export async function runPreventive(
   // a successful send.
   for (const ruleKey of toClear) {
     deleteProfileSetting(profileId, markerKey(ruleKey));
+    // The episode ended without an explicit "done" (satisfied by record inference,
+    // aged out, overridden) — retire any indefinite page dismissal too, so the next
+    // cycle's due isn't silenced by this episode's stale suppression (issue #1024).
+    // recordPreventiveDone covers the "done"-tap / satisfying-event paths; this covers
+    // the rest (and the notification-less instances are covered there in turn).
+    clearPreventiveDismissal(profileId, ruleKey);
     log.info("preventive episode ended", { profile: profileId, rule: ruleKey });
   }
 
