@@ -84,6 +84,8 @@ import WeightTrendWidget from "@/components/dashboard/WeightTrendWidget";
 import GoalsHabitsWidget from "@/components/dashboard/GoalsHabitsWidget";
 import CoachingWidget from "@/components/dashboard/CoachingWidget";
 import CoachingObservations from "@/components/dashboard/CoachingObservations";
+import DataQualityWidget from "@/components/dashboard/DataQualityWidget";
+import { DATA_QUALITY_PREFIX } from "@/lib/data-quality";
 import WeeklyRecapWidget from "@/components/dashboard/WeeklyRecapWidget";
 import RecentLabsWidget, {
   type RecentLabRow,
@@ -408,16 +410,31 @@ export default async function Dashboard() {
       )
     : [];
 
-  // coaching-observations (#449): the dashboard rollup of the four #45 tab-only
-  // observational domains. ONE computation (collectCoachingFindings) feeds this and
-  // the tabs, filtered through the SAME findings-bus store as everything else — so a
-  // dismiss here (or on a tab) drops the finding out for free. No push, no hero slot.
+  // coaching-observations (#449) + data-quality (#1045): BOTH read the ONE
+  // collectCoachingFindings computation (data-quality joins it, #1045), filtered
+  // through the SAME findings-bus store — so a dismiss on either widget (or a tab)
+  // drops the finding out for free. The rollup renders every active coaching finding;
+  // the data-quality widget renders just the `data-quality:` slice (leverage-ranked,
+  // top-3). Data-quality gaps are appended LAST in collectCoachingFindings, so the
+  // rollup's lead stays the observational patterns. No push, no hero slot for either.
+  const activeCoaching =
+    has("coaching-observations") || has("data-quality")
+      ? activeFindings(
+          collectCoachingFindings(
+            profile.id,
+            on,
+            units.weightUnit,
+            formatPrefs
+          ),
+          getFindingSuppressions(profile.id),
+          on
+        )
+      : [];
   const coachingObservations = has("coaching-observations")
-    ? activeFindings(
-        collectCoachingFindings(profile.id, on, units.weightUnit, formatPrefs),
-        getFindingSuppressions(profile.id),
-        on
-      )
+    ? activeCoaching
+    : [];
+  const dataQualityFindings = has("data-quality")
+    ? activeCoaching.filter((f) => f.dedupeKey.startsWith(DATA_QUALITY_PREFIX))
     : [];
 
   // weekly-recap — the last seven days, rule-based (no AI). Same gather as the
@@ -546,6 +563,10 @@ export default async function Dashboard() {
         return coachingObservations.length ? (
           <CoachingObservations findings={coachingObservations} />
         ) : null;
+      case "data-quality":
+        return dataQualityFindings.length ? (
+          <DataQualityWidget findings={dataQualityFindings} />
+        ) : null;
       case "weekly-recap":
         return weeklyRecap ? <WeeklyRecapWidget recap={weeklyRecap} /> : null;
       case "quick-log-prn":
@@ -595,6 +616,7 @@ export default async function Dashboard() {
     available:
       (def.id !== "next-appointment" || hasScheduledAppt) &&
       (def.id !== "coaching-observations" || coachingObservations.length > 0) &&
+      (def.id !== "data-quality" || dataQualityFindings.length > 0) &&
       (def.id !== "weekly-recap" || weeklyRecap !== null) &&
       (def.id !== "active-protocols" || activeProtocols.length > 0) &&
       // symptom-log is the unified "How are you today?" card (#992): the mood tap is

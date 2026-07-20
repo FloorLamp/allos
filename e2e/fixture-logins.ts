@@ -432,6 +432,33 @@ export const PRN_FAMILY_PROFILE = "Prn Family (e2e)";
 export const E2E_LOGIN_COVERAGE = "e2e_coverage";
 export const SAFETY_COVERAGE_PROFILE = "Safety Coverage (e2e)";
 
+// ── Structural data-quality gaps (#1045) ──────────────────────────────────────
+// A member whose SOLE (active) profile is intentionally GAPPY — no birthdate, no sex,
+// and one failed-extraction document — so the dashboard "Data quality" widget renders
+// the top-3 structural gaps (birthdate, sex, failed doc) with fix-it CTAs, and the
+// dismiss test can silence one across the widget + the coaching rollup. Dedicated +
+// isolated on purpose (#868): the dismiss test WRITES an upcoming_dismissals row on it,
+// so it never perturbs a shared profile, and each test resets its own data-quality
+// dismissals first so --repeat-each stays clean.
+export const E2E_LOGIN_DQ_GAPPY = "e2e_dq_gappy";
+export const DQ_GAPPY_PROFILE = "Data Quality Gappy (e2e)";
+
+// A member whose SOLE (active) profile is structurally COMPLETE — birthdate + sex +
+// smoking status + reviewed risk factors, and no meds/labs/failed-docs — so the
+// "Data quality" widget SELF-HIDES (renders nothing, the absent-pillar rule). Proves
+// the widget disappears on a complete profile.
+export const E2E_LOGIN_DQ_COMPLETE = "e2e_dq_complete";
+export const DQ_COMPLETE_PROFILE = "Data Quality Complete (e2e)";
+
+// A caregiver granted TWO profiles — its own COMPLETE base profile plus a GAPPY child
+// (no birthdate/sex) — so the household page shows a per-member data-quality gaps line
+// on the child's card (kids are where birthdate/sex gaps cluster). Read-only in its
+// spec, so concurrent workers never contend and it never perturbs the dashboard
+// gappy/complete fixtures above.
+export const E2E_LOGIN_DQ_CARE = "e2e_dq_care";
+export const DQ_CARE_PARENT_PROFILE = "Data Quality Parent (e2e)";
+export const DQ_CARE_CHILD_PROFILE = "Data Quality Child (e2e)";
+
 // A member granted a dedicated ADULT profile for the Home Assistant channel-config
 // spec. Isolated as of #1025: the spec persists a REAL (unreachable) HA webhook to
 // prove the config round-trip, and the temperature write paths now dispatch the

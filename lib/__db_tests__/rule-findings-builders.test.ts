@@ -29,6 +29,7 @@ import {
   buildMuscleVolumeFindings,
   buildFitnessCheckFindings,
   buildMobilitySuggestionFindings,
+  buildDataQualityFindings,
   collectCoachingFindings,
 } from "@/lib/rule-findings";
 import { fitnessCheckSignalKey } from "@/lib/fitness-retest";
@@ -946,6 +947,10 @@ describe("collectCoachingFindings — the #449 unified rollup", () => {
       ...buildAdherencePatternFindings(profileId, anchor),
       ...buildFoodSuggestionFindings(profileId),
       ...buildFoodHabitFindings(profileId),
+      // #1045: the structural data-quality gaps join the rollup too (a bare fixture
+      // profile has no birthdate/sex → those gaps fire), so the union must include them
+      // or the "rollup == union" parity check would flag the appended block.
+      ...buildDataQualityFindings(profileId),
     ].map((f) => f.dedupeKey);
 
     const rolled = collectCoachingFindings(profileId, anchor, "kg").map(

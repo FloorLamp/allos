@@ -20,7 +20,14 @@ import {
   getBodyMetricDailySeries,
   getWorkoutPresence,
   collectHouseholdRollup,
+  getFindingSuppressions,
 } from "@/lib/queries";
+import { collectDataQualityGaps } from "@/lib/rule-findings";
+import {
+  householdDataQualityLine,
+  dataQualityDedupeKey,
+} from "@/lib/data-quality";
+import { activeByKey } from "@/lib/findings";
 import {
   getActiveSituations,
   getDisplayFormatPrefs,
@@ -113,6 +120,19 @@ export default async function HouseholdPage() {
     // next visit) reusing the Upcoming aggregation's per-domain builders.
     const rollup = collectHouseholdRollup(pid, day);
 
+    // Structural data-quality gaps (issue #1045), bus-filtered so a member's own
+    // dismissal silences the line here too (dismiss once, silence everywhere). Kids'
+    // profiles are where birthdate/sex gaps cluster and the caregiver is who can fix
+    // them — the same ranked gap model the dashboard widget formats, condensed.
+    const dataQuality = householdDataQualityLine(
+      activeByKey(
+        collectDataQualityGaps(pid),
+        (g) => dataQualityDedupeKey(g.key),
+        getFindingSuppressions(pid),
+        day
+      )
+    );
+
     // Whether THIS login may WRITE this profile: admins always can, a member per
     // its grant level. Read-only cards show the attention items but no quick-action
     // buttons; the server action (confirmDoseAction) re-checks this per profile.
@@ -157,6 +177,7 @@ export default async function HouseholdPage() {
       // the viewer's OWN log, so a cross-profile link would land on a dead anchor,
       // #879) — a plain chip, not a button.
       presence: householdPresenceChip(getWorkoutPresence(pid)),
+      dataQuality,
     };
   });
 

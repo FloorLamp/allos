@@ -157,6 +157,20 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     span: "half",
   },
   {
+    id: "data-quality",
+    label: "Data quality",
+    description:
+      "Structural gaps that quietly hold engines back — a missing birthdate, unset sex, unconfirmed medication codes, a failed document — ranked by how many features each fix unlocks. One-time fixes, not nagging; self-hides when there are none.",
+    // On by default so the highest-leverage fixes are discoverable — but it self-hides
+    // (renders nothing) when a profile has no structural gaps (the absent-pillar rule),
+    // so it's silent for a complete profile. Not fitness-gated (birthdate/sex/doc gaps
+    // matter for every profile, kids especially). Not data-aware: an empty state would
+    // be noise, not an onboarding CTA — a complete profile should see NOTHING.
+    defaultOn: true,
+    fitness: false,
+    span: "half",
+  },
+  {
     id: "healthspan-pillars",
     label: "Healthspan pillars",
     description:

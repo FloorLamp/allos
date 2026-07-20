@@ -11,6 +11,7 @@ import { revalidatePath } from "next/cache";
 import {
   setSmokingHistory,
   setRiskAttributes,
+  setRiskAttributesReviewed,
   setEmergencyCardEnabled,
   setBloodType,
   setEmergencyContact,
@@ -61,8 +62,13 @@ export async function saveRiskFactors(formData: FormData) {
     pregnant: on("pregnant"),
     noiseExposure: on("noise_exposure"),
   });
+  // Stamp the review marker (#1045): saving the form is the explicit review, so the
+  // data-quality "review risk factors" gap clears even when the user leaves the list
+  // empty (absence-of-flags can't tell an intentional empty review from a fresh one).
+  setRiskAttributesReviewed(profile.id, true);
   revalidatePath("/upcoming");
   revalidatePath("/records");
+  revalidatePath("/");
 }
 
 // ---- Emergency card (profile scope, issue #42) ----
