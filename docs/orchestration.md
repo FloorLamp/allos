@@ -73,6 +73,11 @@ learned by losing work to it:
   same resume drill applies: `SendMessage` with "this was a server-side kill,
   not a cancellation; re-orient with git status/log, commit coherent
   uncommitted work, continue from <last reported step>".
+- **A kill labeled "stopped by user" is NOT evidence the owner stopped it.**
+  The environment emits that label for its own reclaims/interrupts too; the
+  owner has stated they never stop agents directly. Do not treat it as a
+  cancellation or a scope signal — apply the normal resume drill. (If a stop
+  ever IS deliberate, the owner will say so in a message; absent one, resume.)
 - **A restore can time-warp your LOCAL view — GitHub's REST API is the only
   authoritative one.** After a restart, the local checkout, the local
   `origin/main` ref (the container's git proxy serves a stale mirror until
