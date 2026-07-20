@@ -429,7 +429,12 @@ export default function MedicationForm({
 
       <div className="section-label sm:col-span-2">Medication details</div>
 
-      <div className="grid gap-4 sm:col-span-2 sm:grid-cols-2 sm:items-start">
+      <div
+        data-testid="medication-details-grid"
+        className={`grid gap-4 sm:col-span-2 sm:items-start ${
+          medInfo ? "sm:grid-cols-2" : ""
+        }`}
+      >
         <div className="space-y-4">
           <div>
             <label className="label" htmlFor={`med-name-${fid}`}>
