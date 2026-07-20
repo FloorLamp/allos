@@ -11,6 +11,9 @@ import {
   type RecapInput,
 } from "@/lib/weekly-recap";
 import { recentPRs, type ExerciseSummary } from "@/lib/coaching";
+import { weekWindow } from "@/lib/week-window";
+import { shiftDateStr, daysBetweenDateStr } from "@/lib/date";
+import type { WeekStart } from "@/lib/settings";
 
 const TODAY = "2026-07-09"; // a Thursday
 
@@ -81,6 +84,126 @@ describe("recap honors week_mode (issue #223)", () => {
     const recap = buildWeeklyRecap(baseInput());
     expect(recap.start).toBe("2026-07-03");
     expect(recap.end).toBe(TODAY);
+  });
+});
+
+// Issue #1021: the NOTIFICATION's calendar-mode window is the last COMPLETED week
+// (completed = true), so "week starts Monday, recap Monday 9am" summarizes the
+// full week that just ended — never a 9-hour "week" compared against 7 full days.
+// The dashboard (completed omitted/false) keeps the in-progress window (#223), and
+// rolling mode is byte-for-byte untouched on both surfaces.
+describe("completed-week window selection (issue #1021)", () => {
+  const MONDAY = 1;
+
+  it("headline case — recap day = week start: subject is the last FULL week, not a 1-day window", () => {
+    // 2026-07-06 is a Monday; week starts Monday, recap sent Monday morning.
+    const win = resolveRecapWindow("2026-07-06", 7, "calendar", MONDAY, true);
+    expect(win).toEqual({
+      start: "2026-06-29",
+      end: "2026-07-05",
+      prevStart: "2026-06-22",
+      prevEnd: "2026-06-28",
+    });
+  });
+
+  it("every (weekStart, sendDay) pair yields a full 7-day subject — the last completed week — with a full 7-day comparison", () => {
+    for (let weekStart = 0; weekStart <= 6; weekStart++) {
+      for (let sendOffset = 0; sendOffset <= 6; sendOffset++) {
+        // Walk a full week of send days from an anchor date.
+        const today = shiftDateStr("2026-07-06", sendOffset);
+        const win = resolveRecapWindow(
+          today,
+          7,
+          "calendar",
+          weekStart as WeekStart,
+          true
+        );
+        const inProgress = weekWindow(
+          today,
+          "calendar",
+          weekStart as WeekStart
+        );
+        // Subject = the in-progress week's comparison slot (the last full week).
+        expect(win.start).toBe(inProgress.prevStart);
+        expect(win.end).toBe(inProgress.prevEnd);
+        // Always exactly 7 days, ending the day before the current week starts.
+        expect(daysBetweenDateStr(win.start, win.end)).toBe(6);
+        expect(win.end).toBe(shiftDateStr(inProgress.start, -1));
+        // Comparison = the full week immediately before, contiguous.
+        expect(daysBetweenDateStr(win.prevStart, win.prevEnd)).toBe(6);
+        expect(win.prevEnd).toBe(shiftDateStr(win.start, -1));
+      }
+    }
+  });
+
+  it("rolling mode is untouched by completed (always a full trailing week already)", () => {
+    expect(resolveRecapWindow(TODAY, 7, "rolling", 0, true)).toEqual(
+      resolveRecapWindow(TODAY, 7, "rolling", 0, false)
+    );
+    expect(resolveRecapWindow(TODAY, 7, "rolling", 0, true)).toEqual(
+      recapWindow(TODAY)
+    );
+  });
+
+  it("the dashboard (non-completed) calendar path is unchanged", () => {
+    expect(resolveRecapWindow(TODAY, 7, "calendar", MONDAY, false)).toEqual(
+      resolveRecapWindow(TODAY, 7, "calendar", MONDAY)
+    );
+    expect(resolveRecapWindow(TODAY, 7, "calendar", MONDAY)).toEqual(
+      weekWindow(TODAY, "calendar", MONDAY)
+    );
+  });
+
+  it("non-weekly periods ignore completed (week_mode only defines a week)", () => {
+    expect(resolveRecapWindow(TODAY, 30, "calendar", MONDAY, true)).toEqual(
+      recapWindow(TODAY, 30)
+    );
+  });
+
+  it("buildWeeklyRecap follows completedWeek: the recap's own range names the summarized week", () => {
+    // Thursday 2026-07-09, week starts Monday → completed week Mon 06-29 – Sun 07-05.
+    const recap = buildWeeklyRecap(
+      baseInput({
+        weekMode: "calendar",
+        weekStart: MONDAY,
+        completedWeek: true,
+      })
+    );
+    expect(recap.start).toBe("2026-06-29");
+    expect(recap.end).toBe("2026-07-05");
+  });
+
+  it("pickRecapNarrative follows the shifted window — an in-progress narrative is not re-narrated", () => {
+    const recap = buildWeeklyRecap(
+      baseInput({
+        weekMode: "calendar",
+        weekStart: MONDAY,
+        completedWeek: true,
+        workouts: [{ date: "2026-07-01", type: "strength" }],
+      })
+    );
+    // A narrative generated for the in-progress week (period_end = today) must
+    // NOT be picked for the completed-week recap…
+    expect(
+      pickRecapNarrative(
+        [{ period_start: "2026-07-06", period_end: TODAY, summary: "current" }],
+        recap
+      )
+    ).toBeNull();
+    // …while one anchored inside the completed week is.
+    expect(
+      pickRecapNarrative(
+        [
+          { period_start: "2026-07-06", period_end: TODAY, summary: "current" },
+          {
+            period_start: "2026-06-29",
+            period_end: "2026-07-05",
+            summary: "completed",
+          },
+        ],
+        recap
+      )
+    ).toBe("completed");
   });
 });
 

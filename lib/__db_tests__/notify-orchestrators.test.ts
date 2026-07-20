@@ -30,7 +30,14 @@ import {
   getProfileSetting,
   setUserBirthdate,
   setUserSex,
+  setWeekMode,
+  setWeekStart,
 } from "@/lib/settings";
+import {
+  runWeeklyRecap,
+  getWeeklyRecap,
+} from "@/lib/notifications/weekly-recap-data";
+import { weekWindow } from "@/lib/week-window";
 import { runRefills } from "@/lib/notifications/refill";
 import { runPreventive } from "@/lib/notifications/preventive";
 import { runEscalations } from "@/lib/notifications/escalate";
@@ -577,6 +584,84 @@ describe("buildWorkoutTargetReminder", () => {
     expect(msg!.kind).toBe("workout");
     expect(typeof msg!.title).toBe("string");
     expect(msg!.title.length).toBeGreaterThan(0);
+  });
+});
+
+// =====================================================================
+// runWeeklyRecap — calendar-mode completed-week window (issue #1021). The
+// notification summarizes the last COMPLETED calendar week; the dashboard card
+// (getWeeklyRecap) keeps the in-progress window (#223). One gather, one
+// window-selection parameter (#221) — this pins the two surfaces apart end-to-end.
+// =====================================================================
+describe("runWeeklyRecap calendar-mode completed week (#1021)", () => {
+  const MONDAY = 1;
+
+  it("notification names + summarizes the completed week; the dashboard keeps the in-progress window", async () => {
+    const p = newProfile("RecapCalendar");
+    setWeekMode(p, "calendar");
+    setWeekStart(p, MONDAY);
+    const td = today(p);
+    // Explicit fixture dates derived from the pure window math (not real-now
+    // recency windows): one workout inside the COMPLETED week, none in the
+    // in-progress one.
+    const w = weekWindow(td, "calendar", MONDAY);
+    db.prepare(
+      `INSERT INTO activities (profile_id, date, type, title, duration_min)
+       VALUES (?, ?, 'strength', 'Completed-week Session', 45)`
+    ).run(p, w.prevEnd);
+
+    configureTelegram(p);
+    const fetchMock = stubFetch();
+    const res = await runWeeklyRecap(p, "RecapCalendar", td);
+    expect(res.failed).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(getProfileSetting(p, "notify_last_weekly_recap")).toBe(td);
+
+    // The message's date range names the SUMMARIZED (completed) week — never a
+    // window ending today — and counts the completed week's workout.
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    const text = String(body.text);
+    expect(text).toContain(`${w.prevStart} – ${w.prevEnd}`);
+    expect(text).not.toContain(`– ${td}`);
+    expect(text).toContain("Workouts: 1");
+
+    // The dashboard card renders the SAME gather with the in-progress window:
+    // its range ends today and the completed week's workout sits in its
+    // comparison slot, not its subject.
+    const card = getWeeklyRecap(p, "kg");
+    expect(card.start).toBe(w.start);
+    expect(card.end).toBe(td);
+  });
+
+  it("a workout logged in the in-progress week does NOT enter the completed-week notification", async () => {
+    const p = newProfile("RecapCalendarLeak");
+    setWeekMode(p, "calendar");
+    setWeekStart(p, MONDAY);
+    const td = today(p);
+    const w = weekWindow(td, "calendar", MONDAY);
+    // One workout in the completed week + one today (in-progress week).
+    db.prepare(
+      `INSERT INTO activities (profile_id, date, type, title, duration_min)
+       VALUES (?, ?, 'strength', 'Old Session', 45)`
+    ).run(p, w.prevStart);
+    db.prepare(
+      `INSERT INTO activities (profile_id, date, type, title, duration_min)
+       VALUES (?, ?, 'strength', 'Today Session', 45)`
+    ).run(p, td);
+
+    configureTelegram(p);
+    const fetchMock = stubFetch();
+    await runWeeklyRecap(p, "RecapCalendarLeak", td);
+    const text = String(
+      JSON.parse(fetchMock.mock.calls[0][1].body as string).text
+    );
+    // Subject counts ONLY the completed week's single workout; the in-progress
+    // session belongs to the NEXT recap. Under the old in-progress window this
+    // read "Workouts: 1 (1 last week)" — today's session as the subject with the
+    // completed week demoted to the comparison slot; now the comparison is the
+    // week BEFORE the completed one (empty).
+    expect(text).toContain(`${w.prevStart} – ${w.prevEnd}`);
+    expect(text).toContain("Workouts: 1 (strength 1) (0 last week)");
   });
 });
 
