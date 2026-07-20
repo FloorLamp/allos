@@ -91,10 +91,14 @@ Rules:
     (ISO YYYY-MM-DD). A lab report of ordinary blood analytes is NOT a genetics report —
     leave this array empty for it.
   - imaging_studies: when the document is a RADIOLOGY / IMAGING report (an X-ray, CT, MRI,
-    ultrasound, DEXA/bone-density, mammogram, or similar), emit ONE entry into the
-    "imaging_studies" array describing the study. Capture what the report states — do NOT
-    diagnose or add commentary of your own: modality (one of "x-ray", "ct", "mri",
-    "ultrasound", "dexa", "other" — a mammogram or plain film is "x-ray"), body_region
+    ultrasound, DEXA/bone-density, mammogram, PET, nuclear-medicine, fluoroscopy, or
+    similar), emit ONE entry into the "imaging_studies" array describing the study.
+    Capture what the report states — do NOT diagnose or add commentary of your own:
+    modality (one of "x-ray", "ct", "mri", "ultrasound", "dexa", "pet",
+    "nuclear-medicine", "fluoroscopy", "other" — a mammogram or plain film is "x-ray";
+    a hybrid PET/CT is "pet"; SPECT / scintigraphy / a bone scan is
+    "nuclear-medicine"; an angiogram or fluoroscopy-guided procedure is
+    "fluoroscopy"), body_region
     (the anatomy imaged, e.g. "Chest", "Left Knee", "Abdomen/Pelvis"), laterality
     ("left" / "right" / "bilateral" / "na" when not applicable/midline), contrast (was IV
     or oral contrast given? "with" / "without"), contrast_agent (the agent if named, e.g.

@@ -923,6 +923,9 @@ const IMAGING_NARRATIVE_MAX = 8000;
 // normalizeModality (which reads report PHRASINGS) can't resolve, so this small
 // bridge maps the standard codes; anything not listed falls back to
 // normalizeModality on the coding display. Mammography (MG) is an x-ray study.
+// PT/NM joined with the enum's high-dose modalities (#1034); RF (fluoroscopy) and
+// XA (x-ray angiography) map to `fluoroscopy` — their dose mechanism — rather
+// than plain x-ray.
 const DICOM_MODALITY: Record<string, ImagingModality> = {
   CT: "ct",
   CTA: "ct",
@@ -938,9 +941,12 @@ const DICOM_MODALITY: Record<string, ImagingModality> = {
   DX: "x-ray",
   DR: "x-ray",
   XR: "x-ray",
-  RF: "x-ray",
-  XA: "x-ray",
+  RF: "fluoroscopy",
+  XA: "fluoroscopy",
   MG: "x-ray",
+  PT: "pet",
+  PET: "pet",
+  NM: "nuclear-medicine",
   BMD: "dexa",
   DXA: "dexa",
   BONE: "dexa",

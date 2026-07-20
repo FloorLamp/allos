@@ -35,8 +35,18 @@ export const DOSE_WINDOW_YEARS = 3;
 
 // Modalities that use IONIZING radiation (an effective dose worth tracking). MRI and
 // ultrasound are non-ionizing (0); 'other' is unclassifiable and never estimated.
+// PET / nuclear medicine / fluoroscopy joined in #1034 — they are among the
+// HIGHEST-dose modalities, and before they existed on the enum they normalized to
+// 'other' and silently contributed 0 to the cumulative total.
 const IONIZING_MODALITIES: ReadonlySet<ImagingModality> =
-  new Set<ImagingModality>(["x-ray", "ct", "dexa"]);
+  new Set<ImagingModality>([
+    "x-ray",
+    "ct",
+    "dexa",
+    "pet",
+    "nuclear-medicine",
+    "fluoroscopy",
+  ]);
 
 export type DoseSource = "recorded" | "estimate" | "none";
 

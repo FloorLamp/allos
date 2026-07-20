@@ -21,7 +21,7 @@
     ]
   },
   "meta": {
-    "version": 1,
+    "version": 2,
     "naturalBackgroundMsvPerYear": 3,
     "naturalBackgroundSource": "NCRP Report No. 160 / UNSCEAR — US average annual effective dose from natural background (~3 mSv/yr)"
   },
@@ -106,12 +106,147 @@
       "source": "Mettler et al., Radiology 2008 (effective-dose catalog)"
     },
     {
+      "key": "fluoro-barium-enema",
+      "modality": "fluoroscopy",
+      "regions": [
+        "colon",
+        "enema",
+        "lower gi"
+      ],
+      "msv": 8,
+      "label": "Barium enema (lower GI)",
+      "source": "Mettler et al., Radiology 2008 (effective-dose catalog)"
+    },
+    {
+      "key": "fluoro-coronary-angio",
+      "modality": "fluoroscopy",
+      "regions": [
+        "cardiac",
+        "coronary",
+        "heart"
+      ],
+      "msv": 7,
+      "label": "Coronary angiography (diagnostic)",
+      "source": "Mettler et al., Radiology 2008 (effective-dose catalog)"
+    },
+    {
+      "key": "fluoro-generic",
+      "modality": "fluoroscopy",
+      "regions": [],
+      "msv": 10,
+      "label": "Fluoroscopy / interventional procedure",
+      "source": "Mettler et al., Radiology 2008 (effective-dose catalog)"
+    },
+    {
+      "key": "fluoro-upper-gi",
+      "modality": "fluoroscopy",
+      "regions": [
+        "esophag",
+        "stomach",
+        "swallow",
+        "upper gi"
+      ],
+      "msv": 6,
+      "label": "Upper GI series (barium)",
+      "source": "Mettler et al., Radiology 2008 (effective-dose catalog)"
+    },
+    {
+      "key": "fluoro-vcug",
+      "modality": "fluoroscopy",
+      "regions": [
+        "bladder",
+        "cystourethro",
+        "urethra",
+        "vcug"
+      ],
+      "msv": 1.5,
+      "label": "Voiding cystourethrogram (VCUG)",
+      "source": "Mettler et al., Radiology 2008 (effective-dose catalog)"
+    },
+    {
       "key": "mri",
       "modality": "mri",
       "regions": [],
       "msv": 0,
       "label": "MRI (no ionizing radiation)",
       "source": "RadiologyInfo.org (ACR/RSNA patient reference)"
+    },
+    {
+      "key": "nm-bone-scan",
+      "modality": "nuclear-medicine",
+      "regions": [
+        "bone",
+        "skeletal",
+        "whole body"
+      ],
+      "msv": 6,
+      "label": "Bone scan (Tc-99m)",
+      "source": "Mettler et al., Radiology 2008 (effective-dose catalog)"
+    },
+    {
+      "key": "nm-cardiac-perfusion",
+      "modality": "nuclear-medicine",
+      "regions": [
+        "cardiac",
+        "coronary",
+        "heart",
+        "myocardial"
+      ],
+      "msv": 12,
+      "label": "Cardiac SPECT (myocardial perfusion)",
+      "source": "Mettler et al., Radiology 2008 (effective-dose catalog)"
+    },
+    {
+      "key": "nm-generic",
+      "modality": "nuclear-medicine",
+      "regions": [],
+      "msv": 5,
+      "label": "Nuclear medicine study",
+      "source": "Mettler et al., Radiology 2008 (effective-dose catalog)"
+    },
+    {
+      "key": "nm-hepatobiliary",
+      "modality": "nuclear-medicine",
+      "regions": [
+        "biliary",
+        "gallbladder",
+        "hepatobiliary",
+        "liver"
+      ],
+      "msv": 3,
+      "label": "Hepatobiliary (HIDA) scan",
+      "source": "Mettler et al., Radiology 2008 (effective-dose catalog)"
+    },
+    {
+      "key": "nm-lung-vq",
+      "modality": "nuclear-medicine",
+      "regions": [
+        "chest",
+        "lung",
+        "pulmonary"
+      ],
+      "msv": 2,
+      "label": "Lung ventilation/perfusion (V/Q) scan",
+      "source": "Mettler et al., Radiology 2008 (effective-dose catalog)"
+    },
+    {
+      "key": "nm-thyroid",
+      "modality": "nuclear-medicine",
+      "regions": [
+        "neck",
+        "thyroid"
+      ],
+      "msv": 2,
+      "label": "Thyroid scan/uptake",
+      "source": "Mettler et al., Radiology 2008 (effective-dose catalog)"
+    },
+    {
+      "key": "pet-wholebody",
+      "modality": "pet",
+      "regions": [],
+      "msv": 25,
+      "label": "PET/CT (FDG, whole body)",
+      "source": "Mettler et al., Radiology 2008 (effective-dose catalog)"
     },
     {
       "key": "ultrasound",

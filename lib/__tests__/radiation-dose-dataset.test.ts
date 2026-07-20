@@ -24,6 +24,9 @@ const MODALITIES = new Set([
   "mri",
   "ultrasound",
   "dexa",
+  "pet",
+  "nuclear-medicine",
+  "fluoroscopy",
   "other",
 ]);
 
@@ -58,7 +61,14 @@ describe("radiation-dose.json dataset", () => {
   });
 
   it("every ionizing modality has a generic (empty-regions) fallback entry", () => {
-    for (const m of ["x-ray", "ct", "dexa"]) {
+    for (const m of [
+      "x-ray",
+      "ct",
+      "dexa",
+      "pet",
+      "nuclear-medicine",
+      "fluoroscopy",
+    ]) {
       const hasGeneric = radiationDoseDataset.entries.some(
         (e) => e.modality === m && e.regions.length === 0
       );

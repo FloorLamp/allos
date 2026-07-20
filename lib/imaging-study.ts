@@ -18,6 +18,9 @@ export const IMAGING_MODALITIES: readonly ImagingModality[] = [
   "mri",
   "ultrasound",
   "dexa",
+  "pet",
+  "nuclear-medicine",
+  "fluoroscopy",
   "other",
 ];
 
@@ -35,6 +38,25 @@ export function normalizeModality(raw: unknown): ImagingModality {
   if (typeof raw !== "string") return "other";
   const s = raw.trim().toLowerCase();
   if (!s) return "other";
+  // PET FIRST, before CT/x-ray: a hybrid "PET/CT" (or "PET-CT", "FDG PET/CT")
+  // resolves to `pet` — the tracer study dominates the dose, the same reason MRI
+  // is checked before CT below (#1034).
+  if (/\bpet\b/.test(s) || s.includes("positron emission") || /\bfdg\b/.test(s))
+    return "pet";
+  // Nuclear medicine BEFORE CT/dexa/x-ray: "SPECT/CT" rides the tracer study,
+  // and a "bone scan" (scintigraphy) must never fall to the dexa/x-ray branches.
+  if (
+    s.includes("nuclear") ||
+    /\bspect\b/.test(s) ||
+    s.includes("scintigra") ||
+    s.includes("myocardial perfusion") ||
+    s.includes("bone scan") ||
+    /\bhida\b/.test(s) ||
+    s.includes("thyroid uptake") ||
+    /\bv\/?q\b/.test(s) ||
+    (s.includes("ventilation") && s.includes("perfusion"))
+  )
+    return "nuclear-medicine";
   if (
     s.includes("mri") ||
     s.includes("magnetic resonance") ||
@@ -68,6 +90,24 @@ export function normalizeModality(raw: unknown): ImagingModality {
     /\bus\b/.test(s)
   )
     return "ultrasound";
+  // Fluoroscopy AFTER MRI/CT — "CT angiography" / "MR angiography" ride their
+  // cross-sectional modality (their dose mechanism) — but BEFORE x-ray, so a
+  // "barium swallow x-ray" resolves to the fluoroscopic exam it is. Catheter
+  // angiography / interventional work lands here too (#1034): its dose mechanism
+  // is fluoroscopic, so it must never fall to `other`.
+  if (
+    s.includes("fluoro") ||
+    s.includes("angiogra") ||
+    s.includes("arteriogra") ||
+    s.includes("interventional") ||
+    s.includes("barium") ||
+    s.includes("upper gi") ||
+    /\bvcug\b/.test(s) ||
+    s.includes("cystourethrogra") ||
+    s.includes("cardiac cath") ||
+    s.includes("heart cath")
+  )
+    return "fluoroscopy";
   if (
     s.includes("x-ray") ||
     s.includes("xray") ||
@@ -165,6 +205,12 @@ export function modalityLabel(m: ImagingModality): string {
       return "Ultrasound";
     case "dexa":
       return "DEXA";
+    case "pet":
+      return "PET";
+    case "nuclear-medicine":
+      return "Nuclear medicine";
+    case "fluoroscopy":
+      return "Fluoroscopy";
     case "other":
       return "Other";
   }

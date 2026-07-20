@@ -41,12 +41,53 @@ describe("normalizeModality", () => {
     expect(normalizeModality("MR angiogram")).toBe("mri");
   });
 
+  it("maps PET phrasings, with PET winning over CT on a hybrid study (#1034)", () => {
+    expect(normalizeModality("PET")).toBe("pet");
+    expect(normalizeModality("PET/CT")).toBe("pet");
+    expect(normalizeModality("PET-CT")).toBe("pet");
+    expect(normalizeModality("FDG PET/CT whole body")).toBe("pet");
+    expect(normalizeModality("Positron emission tomography")).toBe("pet");
+  });
+
+  it("maps nuclear-medicine phrasings, winning over CT/DEXA/x-ray branches (#1034)", () => {
+    expect(normalizeModality("Nuclear medicine")).toBe("nuclear-medicine");
+    expect(normalizeModality("SPECT")).toBe("nuclear-medicine");
+    expect(normalizeModality("SPECT/CT")).toBe("nuclear-medicine");
+    expect(normalizeModality("Scintigraphy")).toBe("nuclear-medicine");
+    expect(normalizeModality("Myocardial perfusion study")).toBe(
+      "nuclear-medicine"
+    );
+    expect(normalizeModality("Bone scan")).toBe("nuclear-medicine");
+    expect(normalizeModality("HIDA scan")).toBe("nuclear-medicine");
+    expect(normalizeModality("Thyroid uptake")).toBe("nuclear-medicine");
+    expect(normalizeModality("V/Q scan")).toBe("nuclear-medicine");
+  });
+
+  it("maps fluoroscopy/angiography phrasings — but CTA/MRA ride their cross-sectional modality (#1034)", () => {
+    expect(normalizeModality("Fluoroscopy")).toBe("fluoroscopy");
+    expect(normalizeModality("fluoro")).toBe("fluoroscopy");
+    expect(normalizeModality("Coronary angiography")).toBe("fluoroscopy");
+    expect(normalizeModality("Angiogram")).toBe("fluoroscopy");
+    expect(normalizeModality("Interventional radiology procedure")).toBe(
+      "fluoroscopy"
+    );
+    expect(normalizeModality("Barium swallow x-ray")).toBe("fluoroscopy");
+    expect(normalizeModality("VCUG")).toBe("fluoroscopy");
+    // The dose mechanism rules the hybrids: CT angiography is a CT, MR
+    // angiography is an MRI — only catheter/fluoro work lands here.
+    expect(normalizeModality("CT angiography")).toBe("ct");
+    expect(normalizeModality("MR angiogram")).toBe("mri");
+  });
+
   it("falls back to 'other' for unknown / absent", () => {
     expect(normalizeModality(null)).toBe("other");
     expect(normalizeModality("")).toBe("other");
-    expect(normalizeModality("PET-CT-ish nuclear thing")).toBe("ct"); // CT wins on the word
-    expect(normalizeModality("nuclear medicine")).toBe("other");
+    // Formerly pinned to 'ct'/'other' — #1034 gave PET and nuclear medicine
+    // their own branches, so these now classify instead of miscounting.
+    expect(normalizeModality("PET-CT-ish nuclear thing")).toBe("pet");
+    expect(normalizeModality("nuclear medicine")).toBe("nuclear-medicine");
     expect(normalizeModality(42)).toBe("other");
+    expect(normalizeModality("elastography")).toBe("other");
   });
 });
 
@@ -99,6 +140,9 @@ describe("labels", () => {
     expect(modalityLabel("mri")).toBe("MRI");
     expect(modalityLabel("ultrasound")).toBe("Ultrasound");
     expect(modalityLabel("dexa")).toBe("DEXA");
+    expect(modalityLabel("pet")).toBe("PET");
+    expect(modalityLabel("nuclear-medicine")).toBe("Nuclear medicine");
+    expect(modalityLabel("fluoroscopy")).toBe("Fluoroscopy");
     expect(modalityLabel("other")).toBe("Other");
     expect(lateralityLabel("left")).toBe("Left");
     expect(lateralityLabel("na")).toBe("N/A");

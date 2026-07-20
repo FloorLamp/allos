@@ -60,8 +60,10 @@ describe("addImagingStudy", () => {
 
   it("defaults an unknown modality to 'other' and a missing laterality to null", async () => {
     const { profile } = seedActor();
+    // "nuclear medicine ..." classifies as nuclear-medicine since #1034 gave the
+    // high-dose modalities their own branches; use a genuinely unknown phrasing.
     await addImagingStudy(
-      fd({ modality: "nuclear medicine thing", body_region: "Whole body" })
+      fd({ modality: "thermography thing", body_region: "Whole body" })
     );
     const s = getImagingStudies(profile.id)[0];
     expect(s.modality).toBe("other");
