@@ -7,7 +7,7 @@ import { formError, formOk, type FormResult } from "@/lib/types";
 import {
   normalizeOpticalKind,
   parseDiopter,
-  parseAxis,
+  parseEyeRefraction,
   parseMillimeters,
 } from "@/lib/optical-prescription";
 
@@ -41,17 +41,31 @@ function dateOrNull(raw: unknown): string | null {
 }
 
 // The full column list, in INSERT/UPDATE order, parsed from the form. Kept in one
-// place so add and update stay in lock-step.
+// place so add and update stay in lock-step. Each eye's sphere/cyl/axis triple goes
+// through the ONE shared coercion (parseEyeRefraction), which also canonicalizes a
+// plus-cylinder entry onto minus-cylinder notation (#1036) — the form keeps
+// accepting either notation as typed (users copy off the slip); the canonical form
+// is what saves, and the form echoes it back on edit.
 function rxValues(formData: FormData): unknown[] {
+  const od = parseEyeRefraction(
+    formData.get("od_sphere"),
+    formData.get("od_cylinder"),
+    formData.get("od_axis")
+  );
+  const os = parseEyeRefraction(
+    formData.get("os_sphere"),
+    formData.get("os_cylinder"),
+    formData.get("os_axis")
+  );
   return [
     normalizeOpticalKind(formData.get("kind")),
-    parseDiopter(formData.get("od_sphere")),
-    parseDiopter(formData.get("od_cylinder")),
-    parseAxis(formData.get("od_axis")),
+    od.sphere,
+    od.cylinder,
+    od.axis,
     parseDiopter(formData.get("od_add")),
-    parseDiopter(formData.get("os_sphere")),
-    parseDiopter(formData.get("os_cylinder")),
-    parseAxis(formData.get("os_axis")),
+    os.sphere,
+    os.cylinder,
+    os.axis,
     parseDiopter(formData.get("os_add")),
     parseMillimeters(formData.get("pd")),
     parseMillimeters(formData.get("base_curve")),

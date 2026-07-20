@@ -9,6 +9,8 @@ import {
   rxExpiryState,
   kindLabel,
   sphereProgression,
+  transposeToMinusCylinder,
+  parseEyeRefraction,
 } from "@/lib/optical-prescription";
 
 describe("normalizeOpticalKind", () => {
@@ -79,6 +81,93 @@ describe("formatDiopter", () => {
   });
 });
 
+describe("transposeToMinusCylinder (#1036)", () => {
+  it("transposes a plus-cylinder refraction: sphere += cyl, cyl negated, axis ± 90", () => {
+    // −3.00 +1.00 ×090 ≡ −2.00 −1.00 ×180 (the issue's canonical example).
+    expect(
+      transposeToMinusCylinder({ sphere: -3, cylinder: 1, axis: 90 })
+    ).toEqual({ sphere: -2, cylinder: -1, axis: 180 });
+    // Axis below 90 gains 90.
+    expect(
+      transposeToMinusCylinder({ sphere: 0.5, cylinder: 0.75, axis: 20 })
+    ).toEqual({ sphere: 1.25, cylinder: -0.75, axis: 110 });
+  });
+
+  it("wraps the axis on the 1–180 convention (180 → 90, 90 → 180, 0 → 90)", () => {
+    expect(
+      transposeToMinusCylinder({ sphere: -1, cylinder: 2, axis: 180 }).axis
+    ).toBe(90);
+    expect(
+      transposeToMinusCylinder({ sphere: -1, cylinder: 2, axis: 90 }).axis
+    ).toBe(180);
+    // Axis 0 and 180 name the same meridian; both transpose to 90.
+    expect(
+      transposeToMinusCylinder({ sphere: -1, cylinder: 2, axis: 0 }).axis
+    ).toBe(90);
+  });
+
+  it("transposes the inverse back to the original (exact algebra, no loss)", () => {
+    const minus = transposeToMinusCylinder({
+      sphere: -3,
+      cylinder: 1,
+      axis: 90,
+    });
+    // Inverting by hand (the plus-cyl transposition is its own inverse shape):
+    expect(minus.sphere! + minus.cylinder!).toBe(-3);
+    expect(-minus.cylinder!).toBe(1);
+    expect((minus.axis! + 90) % 180 || 180).toBe(90);
+  });
+
+  it("still transposes sphere/cyl when the axis is missing (axis stays null)", () => {
+    expect(
+      transposeToMinusCylinder({ sphere: -3, cylinder: 1, axis: null })
+    ).toEqual({ sphere: -2, cylinder: -1, axis: null });
+  });
+
+  it("keeps a missing sphere null (sphere + cyl is unknowable) but transposes cyl/axis", () => {
+    expect(
+      transposeToMinusCylinder({ sphere: null, cylinder: 1.5, axis: 45 })
+    ).toEqual({ sphere: null, cylinder: -1.5, axis: 135 });
+  });
+
+  it("handles plano + plus-cyl (sphere 0 transposes to +cyl)", () => {
+    expect(
+      transposeToMinusCylinder({ sphere: 0, cylinder: 1, axis: 175 })
+    ).toEqual({ sphere: 1, cylinder: -1, axis: 85 });
+  });
+
+  it("passes minus-cylinder and cylinder-less refractions through UNTOUCHED", () => {
+    const minus = { sphere: -2, cylinder: -1, axis: 180 };
+    expect(transposeToMinusCylinder(minus)).toBe(minus);
+    const sphereOnly = { sphere: -2, cylinder: null, axis: null };
+    expect(transposeToMinusCylinder(sphereOnly)).toBe(sphereOnly);
+    const zeroCyl = { sphere: -2, cylinder: 0, axis: 90 };
+    expect(transposeToMinusCylinder(zeroCyl)).toBe(zeroCyl);
+  });
+});
+
+describe("parseEyeRefraction — the one shared per-eye coercion (#1036)", () => {
+  it("parses slip notation then canonicalizes onto minus-cylinder", () => {
+    expect(parseEyeRefraction("-3.00", "+1.00", "90")).toEqual({
+      sphere: -2,
+      cylinder: -1,
+      axis: 180,
+    });
+    // Already minus-cyl: parsed, unchanged.
+    expect(parseEyeRefraction("-2.00", "-1.00", "180")).toEqual({
+      sphere: -2,
+      cylinder: -1,
+      axis: 180,
+    });
+    // Plano sphere spelled out, no cylinder.
+    expect(parseEyeRefraction("plano", "", "")).toEqual({
+      sphere: 0,
+      cylinder: null,
+      axis: null,
+    });
+  });
+});
+
 describe("prescriptionDisplayLabel", () => {
   it("shows the kind and a compact per-eye sphere", () => {
     expect(
@@ -128,6 +217,40 @@ describe("sphereProgression", () => {
     expect(points).toHaveLength(1);
     expect(netOd).toBeNull(); // only one point
     expect(netOs).toBeNull();
+  });
+
+  it("a mixed-notation history for an UNCHANGED eye trends flat once canonicalized (#1036)", () => {
+    // The failing case this pins: an optometrist minus-cyl Rx followed by an
+    // ophthalmologist plus-cyl Rx for the SAME refraction. Raw storage would show
+    // a fake −1.00 D "progression" (the full cylinder); through the shared
+    // coercion both store identically and the net change is exactly 0.
+    const minusCyl = parseEyeRefraction("-2.00", "-1.00", "180");
+    const plusCyl = parseEyeRefraction("-3.00", "+1.00", "90");
+    expect(plusCyl).toEqual(minusCyl);
+    const { netOd } = sphereProgression([
+      {
+        issued_date: "2024-01-01",
+        od_sphere: minusCyl.sphere,
+        os_sphere: null,
+      },
+      { issued_date: "2026-01-01", od_sphere: plusCyl.sphere, os_sphere: null },
+    ]);
+    expect(netOd).toBe(0);
+  });
+});
+
+describe("prescriptionDisplayLabel — notation identity (#1036)", () => {
+  it("both notations of one refraction render the same label once canonicalized", () => {
+    const minusCyl = parseEyeRefraction("-2.00", "-1.00", "180");
+    const plusCyl = parseEyeRefraction("-3.00", "+1.00", "90");
+    const label = (sphere: number | null) =>
+      prescriptionDisplayLabel({
+        kind: "glasses",
+        od_sphere: sphere,
+        os_sphere: null,
+      });
+    expect(label(plusCyl.sphere)).toBe(label(minusCyl.sphere));
+    expect(label(plusCyl.sphere)).toBe("Glasses (OD -2.00)");
   });
 });
 

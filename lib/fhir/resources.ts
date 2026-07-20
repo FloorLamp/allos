@@ -40,8 +40,8 @@ import type {
 } from "../types";
 import { normalizeLaterality, normalizeModality } from "../imaging-study";
 import {
-  parseAxis,
   parseDiopter,
+  parseEyeRefraction,
   parseMillimeters,
 } from "../optical-prescription";
 import type { ImportMedPeriod } from "../medication-course-import";
@@ -1426,13 +1426,18 @@ export function mapVisionPrescription(
   const os = eyeSpec("left");
 
   const kind = visionLensKind(specs);
-  const od_sphere = parseDiopter(od?.sphere);
-  const od_cylinder = parseDiopter(od?.cylinder);
-  const od_axis = parseAxis(od?.axis);
+  // Per-eye triples run through the ONE shared coercion (#1036): parse AND
+  // canonicalize a plus-cylinder (ophthalmology-notation) spec onto minus-cylinder
+  // form, exactly as the manual form and the AI Rx-slip path do.
+  const odRx = parseEyeRefraction(od?.sphere, od?.cylinder, od?.axis);
+  const osRx = parseEyeRefraction(os?.sphere, os?.cylinder, os?.axis);
+  const od_sphere = odRx.sphere;
+  const od_cylinder = odRx.cylinder;
+  const od_axis = odRx.axis;
   const od_add = parseDiopter(od?.add);
-  const os_sphere = parseDiopter(os?.sphere);
-  const os_cylinder = parseDiopter(os?.cylinder);
-  const os_axis = parseAxis(os?.axis);
+  const os_sphere = osRx.sphere;
+  const os_cylinder = osRx.cylinder;
+  const os_axis = osRx.axis;
   const os_add = parseDiopter(os?.add);
 
   // Contact-lens extras (mm) — prefer the right eye's value, else the left's.
