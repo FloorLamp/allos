@@ -12,6 +12,7 @@ import {
   biomarkerFlagDismissalKey,
   immunizationDismissalKey,
   immunizationCodesLosingBacking,
+  preventiveDismissalKey,
 } from "../../dismissal-keys";
 import { cleanupOrphanStars, biomarkerFamilyKey } from "../medical";
 
@@ -180,6 +181,29 @@ export function migrateRenamedBiomarker(
     profileId,
     biomarkerFlagDismissalKey(oldName)
   );
+}
+
+// Retire a preventive rule's DISMISSAL when its due EPISODE ends (issue #1024). A
+// preventive item's `<kind>:<ruleKey>` dismissal is the "normal" lifecycle — dismissed
+// → hidden indefinitely — so without this, dismissing THIS episode's nag ("stop nagging
+// me about this one") silently suppresses EVERY future cycle's due, on both the Upcoming
+// page and the push (same bus, same key). The #203 row-ops disease: a string-keyed
+// leftover becomes wrong suppression. So a satisfying event (recordPreventiveDone) OR the
+// nudge's episode-end sweep (toClear — a rule leaving actionable for any reason) clears
+// it, mirroring clearImmunizationDismissals one domain over, and the NEXT cycle's due
+// surfaces fresh. SNOOZES are left untouched (dismissed_at IS NULL) — they self-expire by
+// design; a lasting opt-out lives in preventive_overrides, not here. No-op for an unknown
+// rule key. Profile-scoped.
+export function clearPreventiveDismissal(
+  profileId: number,
+  ruleKey: string
+): void {
+  const key = preventiveDismissalKey(ruleKey);
+  if (!key) return;
+  db.prepare(
+    `DELETE FROM upcoming_dismissals
+       WHERE profile_id = ? AND signal_key = ? AND dismissed_at IS NOT NULL`
+  ).run(profileId, key);
 }
 
 // Clear the retest dismissals for the given immunization component codes (their

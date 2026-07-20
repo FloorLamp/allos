@@ -6,7 +6,8 @@
 // never diverge on WHICH items are due. Every read here is profile-scoped
 // (enforced by lib/__tests__/profile-scoping.test.ts).
 
-import { db } from "../../db";
+import { db, writeTx } from "../../db";
+import { clearPreventiveDismissal } from "./suppressions";
 import {
   assessCatalog,
   type PreventiveOverride,
@@ -228,11 +229,18 @@ export function recordPreventiveDone(
   date: string,
   source = "manual"
 ): void {
-  db.prepare(
-    `INSERT INTO preventive_events (profile_id, rule_key, date, source)
-       VALUES (?, ?, ?, ?)
-     ON CONFLICT(profile_id, rule_key, date, source) DO NOTHING`
-  ).run(profileId, ruleKey, date, source);
+  writeTx(() => {
+    db.prepare(
+      `INSERT INTO preventive_events (profile_id, rule_key, date, source)
+         VALUES (?, ?, ?, ?)
+       ON CONFLICT(profile_id, rule_key, date, source) DO NOTHING`
+    ).run(profileId, ruleKey, date, source);
+    // A satisfying event ENDS the episode this rule's dismissal belonged to, so retire
+    // that dismissal — the next cycle's due surfaces fresh instead of hitting the stale
+    // suppression (issue #1024). Snoozes are left alone (they self-expire); a lasting
+    // opt-out lives in preventive_overrides.
+    clearPreventiveDismissal(profileId, ruleKey);
+  });
 }
 
 // Set a declined / not-applicable override on a preventive rule, upserting on

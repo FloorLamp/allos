@@ -4,7 +4,26 @@ import {
   biomarkerFlagDismissalKey,
   immunizationDismissalKey,
   immunizationCodesLosingBacking,
+  preventiveDismissalKey,
 } from "../dismissal-keys";
+
+describe("preventiveDismissalKey (issue #1024)", () => {
+  it("reproduces the item/nudge `<kind>:<ruleKey>` signal by resolving the rule kind", () => {
+    // A screening rule keys under `screening:<ruleKey>`; a visit rule under
+    // `visit:<ruleKey>` — the exact string a dismiss was stored under, so the
+    // episode-end sweep can retire it.
+    expect(preventiveDismissalKey("colorectal_cancer")).toBe(
+      "screening:colorectal_cancer"
+    );
+    expect(preventiveDismissalKey("adult_physical")).toBe(
+      "visit:adult_physical"
+    );
+  });
+
+  it("returns null for an unknown rule key (nothing to retire)", () => {
+    expect(preventiveDismissalKey("not_a_real_rule")).toBeNull();
+  });
+});
 
 describe("biomarkerDismissalKey", () => {
   it("keys a non-family analyte on its own lowercased/trimmed name", () => {
