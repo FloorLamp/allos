@@ -87,6 +87,14 @@ const nextConfig = {
         destination: "/profile#emergency",
         permanent: true,
       },
+      // Phase 4: the Protocols hub folded into the Longevity page as its
+      // interventions section. Only the exact hub URL redirects — the
+      // per-protocol detail pages (/protocols/[id]) still live under /protocols.
+      {
+        source: "/protocols",
+        destination: "/longevity#protocols",
+        permanent: true,
+      },
       // Phase 5: the three read-heavy result index pages folded into /results as
       // anchored sections. EXACT-path sources only (path-to-regexp without a
       // wildcard matches nothing deeper), which matters for /biomarkers: the

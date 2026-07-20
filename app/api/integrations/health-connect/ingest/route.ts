@@ -28,6 +28,7 @@ import {
   upsertBodyMetrics,
   type IngestCounts,
 } from "@/lib/integrations/normalize";
+import { queueTempRedFlagDispatch } from "@/lib/notifications/temp-red-flag";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { readBodyCapped } from "@/lib/request-body";
 import { writeRawPayload } from "@/lib/integrations/raw-log";
@@ -284,6 +285,20 @@ export async function POST(req: Request) {
       log.error("health-connect post-commit reconcile failed", {
         err: err instanceof Error ? err.message : String(err),
       });
+    }
+    // Event-driven temperature red-flag push (#1025): a pushed reading that crosses
+    // a cited line dispatches the co-caregiver nudge NOW (fire-and-forget,
+    // quiet-hours exempt like redose) instead of waiting for the next tick. The
+    // shared orchestrator re-derives the finding from the OPEN episode's LATEST
+    // reading — so a rolling-window re-push of an older reading, or a batch with no
+    // open episode, sends nothing — and the per-finding marker + suppression bus own
+    // dedup. The cheap pre-check inside the helper keeps ordinary batches free of
+    // notification work; the hottest reading in the batch is the trigger candidate.
+    const batchTemps = parsed.vitals
+      .filter((v) => v.canonical === "Body Temperature")
+      .map((v) => v.value_num);
+    if (batchTemps.length) {
+      queueTempRedFlagDispatch(INGEST_PROFILE_ID, Math.max(...batchTemps));
     }
   }
 

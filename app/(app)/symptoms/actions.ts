@@ -7,6 +7,7 @@ import { zonedDateParts } from "@/lib/date";
 import { getTimezone } from "@/lib/settings";
 import { logTemperatureCore } from "@/lib/temperature-log";
 import { inlineTempRedFlagNote } from "@/lib/temp-red-flag";
+import { queueTempRedFlagDispatch } from "@/lib/notifications/temp-red-flag";
 import { profileAgeMonths } from "@/lib/settings";
 import {
   logSymptomCore,
@@ -263,6 +264,11 @@ export async function logTemperature(
   revalidatePath("/timeline");
   revalidatePath("/trends");
   revalidatePath("/results");
+  // Event-driven red-flag push (#1025): a reading that crosses a cited line
+  // dispatches the co-caregiver nudge NOW (fire-and-forget; quiet-hours exempt like
+  // redose) instead of waiting for the tick. The per-finding marker + suppression
+  // bus inside the shared orchestrator own dedup, so this never double-sends.
+  queueTempRedFlagDispatch(profileId, outcome.degF);
   // Single-reading red flag (#859 item 3): surface the source's cited instruction
   // inline at the moment of logging, age-banded. Null when the reading crosses none.
   const redFlag = inlineTempRedFlagNote(

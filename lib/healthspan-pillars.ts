@@ -23,7 +23,7 @@ import {
   strengthTone,
   type StrengthLevel,
 } from "./strength-standards";
-import { rangeBadge } from "./reference-range";
+import { rangeBadge, type RangeBadge } from "./reference-range";
 import { convertToCanonical } from "./unit-conversions";
 import type { CanonicalBiomarker, Sex } from "./types";
 
@@ -43,6 +43,30 @@ export interface BiomarkerReading {
   cb: CanonicalBiomarker | null | undefined;
 }
 
+// A reading carrying its display + canonical names, for the expanded Longevity
+// breakdown (#1042 phase 4) — the canonical name feeds biomarkerViewHref.
+export interface NamedBiomarkerReading extends BiomarkerReading {
+  name: string;
+  canonicalName: string | null;
+}
+
+// The ONE judgment both the pillar's hit-rate count and the Longevity page's
+// per-marker breakdown consume: null = unjudgeable (no canonical row, value
+// missing/unconvertible, or no curated band) and the marker is excluded from
+// numerator AND denominator; otherwise the rangeBadge verdict (agreeing with the
+// badges shown on every biomarker surface).
+function judgeReading(
+  r: BiomarkerReading,
+  sex?: Sex | null,
+  age?: number | null
+): Exclude<RangeBadge, "unknown"> | null {
+  if (r.value_num == null || !r.cb) return null;
+  const v = convertToCanonical(r.value_num, r.unit, r.cb);
+  if (v == null) return null;
+  const badge = rangeBadge(v, r.cb, sex, age);
+  return badge === "unknown" ? null : badge;
+}
+
 // The share of tracked biomarkers whose LATEST reading sits in its optimal band.
 // A marker counts toward the denominator only when we can judge it — a curated
 // range exists and the value converts to the canonical unit (rangeBadge !==
@@ -56,21 +80,67 @@ export function optimalRangeHitRate(
   let optimal = 0;
   let total = 0;
   for (const r of readings) {
-    if (r.value_num == null || !r.cb) continue;
-    const v = convertToCanonical(r.value_num, r.unit, r.cb);
-    if (v == null) continue;
-    const badge = rangeBadge(v, r.cb, sex, age);
-    if (badge === "unknown") continue;
+    const badge = judgeReading(r, sex, age);
+    if (badge == null) continue;
     total++;
     if (badge === "optimal") optimal++;
   }
   return { optimal, total };
 }
 
+// The per-marker breakdown behind the hit rate, for the Longevity page's expanded
+// #biomarkers section. Same inputs, same judgeReading, so its row counts ALWAYS
+// reconcile with optimalRangeHitRate for the same readings (pinned by a test) —
+// the expanded view is a formatter over the pillar's own computation, never a
+// second engine. Non-optimal rows sort first (they're the actionable ones).
+export interface OptimalShareRow {
+  name: string;
+  canonicalName: string | null;
+  badge: Exclude<RangeBadge, "unknown">;
+}
+
+export function optimalShareRows(
+  readings: NamedBiomarkerReading[],
+  sex?: Sex | null,
+  age?: number | null
+): OptimalShareRow[] {
+  const rows: OptimalShareRow[] = [];
+  for (const r of readings) {
+    const badge = judgeReading(r, sex, age);
+    if (badge == null) continue;
+    rows.push({ name: r.name, canonicalName: r.canonicalName, badge });
+  }
+  return rows.sort((a, b) => {
+    const aOpt = a.badge === "optimal" ? 1 : 0;
+    const bOpt = b.badge === "optimal" ? 1 : 0;
+    if (aOpt !== bOpt) return aOpt - bOpt;
+    return a.name.localeCompare(b.name);
+  });
+}
+
 // ── Pillars ──────────────────────────────────────────────────────────────────
 
 export type PillarKey =
   "vo2max" | "strength" | "sleep-regularity" | "bio-age" | "optimal-biomarkers";
+
+// Where each pillar's EXPANDED section lives on the Longevity page (#1042 phase
+// 4). ONE map drives both the widget deep-links (pillar hrefs below) and the
+// page's section anchors (lib/longevity.ts), so a compact pillar card always
+// lands on the section that expands that same pillar — the two can't drift.
+// vo2max and strength share the #fitness section (both are fitness standings
+// expanded by the fitness-check read view).
+export const PILLAR_ANCHOR: Record<PillarKey, string> = {
+  "bio-age": "bio-age",
+  vo2max: "fitness",
+  strength: "fitness",
+  "sleep-regularity": "sleep",
+  "optimal-biomarkers": "biomarkers",
+};
+
+// The widget deep-link for a pillar: the Longevity page section that expands it.
+export function pillarHref(key: PillarKey): AppRoute {
+  return `/longevity#${PILLAR_ANCHOR[key]}`;
+}
 
 export type PillarTone = "good" | "warn" | "bad" | "neutral";
 
@@ -159,7 +229,7 @@ export function buildPillars(inputs: PillarInputs): Pillar[] {
           : "VO₂ Max percentile for your age & sex",
       tone: vo2Tone(p),
       trend: inputs.vo2.trend ?? null,
-      href: "/biomarkers/view?name=VO2+Max",
+      href: pillarHref("vo2max"),
     });
   }
 
@@ -173,7 +243,7 @@ export function buildPillars(inputs: PillarInputs): Pillar[] {
       // strengthTone returns good/warn/bad, all valid PillarTones.
       tone: strengthTone(level),
       trend: inputs.strength.trend ?? null,
-      href: "/trends?tab=fitness",
+      href: pillarHref("strength"),
     });
   }
 
@@ -185,7 +255,7 @@ export function buildPillars(inputs: PillarInputs): Pillar[] {
       detail: "Consistency of your sleep–wake timing",
       tone: sriTone(inputs.sleep.sri),
       trend: inputs.sleep.trend ?? null,
-      href: "/trends?tab=body",
+      href: pillarHref("sleep-regularity"),
     });
   }
 
@@ -199,7 +269,7 @@ export function buildPillars(inputs: PillarInputs): Pillar[] {
       )} vs calendar ${inputs.bioAge.delta.chronoAge}`,
       tone: bioAgeTone(inputs.bioAge.delta),
       trend: inputs.bioAge.trend ?? null,
-      href: "/results#biomarkers",
+      href: pillarHref("bio-age"),
     });
   }
 
@@ -211,7 +281,7 @@ export function buildPillars(inputs: PillarInputs): Pillar[] {
       detail: "Tracked markers inside their optimal range",
       tone: optimalTone(inputs.optimal),
       trend: null,
-      href: "/results#biomarkers",
+      href: pillarHref("optimal-biomarkers"),
     });
   }
 

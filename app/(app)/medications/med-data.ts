@@ -22,12 +22,15 @@ import {
   getInteractionWarnings,
   getPgxWarnings,
   getOtotoxicWarnings,
+  getDrugAllergyWarnings,
+  getSafetyScreeningCoverage,
   getGenomicVariants,
   getFindingSuppressions,
   getAdministrationsForItemsOnDate,
   getPediatricFormContext,
   getPrnMedicationsForQuickLog,
   getMedicalRecords,
+  getMedicationFamilyStates,
 } from "@/lib/queries";
 import { redoseWindowStatus } from "@/lib/prn-redose";
 import { now as clockNow } from "@/lib/clock";
@@ -84,7 +87,7 @@ import {
   type AdherenceCalendarModel,
 } from "@/lib/adherence-calendar";
 import {
-  unmatchedPrescriptionRecords,
+  bridgeCandidates,
   medBridgeDismissalKey,
   type TrackedMedLike,
 } from "@/lib/medication-record-match";
@@ -103,6 +106,10 @@ export interface BridgeSuggestion {
   detail: string | null;
   date: string;
   dedupeKey: string;
+  // Non-null when the drug is already tracked at a provably DIFFERENT strength
+  // (#1027 ask 4): the record's parsed strength ("800 mg"), so the row offers
+  // "Track as separate 800 mg item" instead of folding silently.
+  strengthOffer: string | null;
 }
 
 // The per-med derived context every card/row formats over. `prnRedoseLine` is the
@@ -148,6 +155,10 @@ export interface MedicationsData {
   interactionWarnings: ReturnType<typeof getInteractionWarnings>;
   pgxWarnings: ReturnType<typeof getPgxWarnings>;
   ototoxicWarnings: ReturnType<typeof getOtotoxicWarnings>;
+  allergyWarnings: ReturnType<typeof getDrugAllergyWarnings>;
+  // Screening-coverage summary (#1032): the safety strip's "checked N of M" scope
+  // line, so an empty result never renders like an un-run check.
+  coverage: ReturnType<typeof getSafetyScreeningCoverage>;
   current: MedCardData[];
   past: MedCardData[];
   // The recently-used active PRN meds for the Today panel, with pre-formatted
@@ -253,6 +264,11 @@ export function loadMedicationsData(profileId: number): MedicationsData {
     prnMedIds,
     todayStr
   );
+  // The #1027 ingredient-family counters — the redose window math consumes the
+  // FAMILY's latest administration / combined count / most conservative confirmed
+  // max (an OTC ibuprofen dose holds the Rx item's "Redose OK"); the day label
+  // stays the item's OWN administrations.
+  const familyStates = getMedicationFamilyStates(profileId, todayStr);
   const prnInfoFor = (
     s: Supplement
   ): {
@@ -268,16 +284,24 @@ export function loadMedicationsData(profileId: number): MedicationsData {
       label: formatGivenAtClock(tz, a.given_at ?? a.taken_at),
     }));
     const last = admins[0] ? (admins[0].given_at ?? admins[0].taken_at) : null;
+    const fam = familyStates.get(s.id);
+    const famLast = fam?.latestGivenAt ?? last;
+    const famCount = fam?.countToday ?? admins.length;
     let redoseLine: string | null = null;
-    if (s.min_interval_hours != null && s.max_daily_count != null && last) {
+    if (s.min_interval_hours != null && s.max_daily_count != null && famLast) {
+      const effectiveMax =
+        fam?.minConfirmedMax != null
+          ? Math.min(s.max_daily_count, fam.minConfirmedMax)
+          : s.max_daily_count;
       redoseLine = redoseCardLabel(
         redoseWindowStatus({
           minIntervalHours: s.min_interval_hours,
-          maxDailyCount: s.max_daily_count,
-          latestGivenAt: parseUtcSql(last),
-          countToday: admins.length,
+          maxDailyCount: effectiveMax,
+          latestGivenAt: parseUtcSql(famLast),
+          countToday: famCount,
           now: nowInstant,
-        })
+        }),
+        fam?.memberIds.length ?? 1
       );
     }
     const lastClock = formatGivenAtClock(tz, last);
@@ -368,6 +392,12 @@ export function loadMedicationsData(profileId: number): MedicationsData {
     suppressions,
     todayStr
   );
+  const allergyWarnings = activeByKey(
+    getDrugAllergyWarnings(profileId),
+    (hit) => hit.dedupeKey,
+    suppressions,
+    todayStr
+  );
 
   const stackItems: InteractionItem[] = supplements.map((s) => ({
     id: s.id,
@@ -394,16 +424,24 @@ export function loadMedicationsData(profileId: number): MedicationsData {
   // with the same pre-formatted labels (one computation).
   const prnToday = getPrnMedicationsForQuickLog(profileId).map((m) => {
     const lastClock = formatGivenAtClock(tz, m.lastGivenAt);
+    // Family-widened window math (#1027): the clock/count/max span the ingredient
+    // family, so an OTC sibling's dose holds this row's "Redose OK" too.
     const redoseLine =
-      m.minIntervalHours != null && m.maxDailyCount != null && m.lastGivenAt
+      m.minIntervalHours != null &&
+      m.maxDailyCount != null &&
+      m.familyLastGivenAt
         ? redoseCardLabel(
             redoseWindowStatus({
               minIntervalHours: m.minIntervalHours,
-              maxDailyCount: m.maxDailyCount,
-              latestGivenAt: parseUtcSql(m.lastGivenAt),
-              countToday: m.count,
+              maxDailyCount: Math.min(
+                m.maxDailyCount,
+                m.familyMaxDailyCount ?? m.maxDailyCount
+              ),
+              latestGivenAt: parseUtcSql(m.familyLastGivenAt),
+              countToday: m.familyCount,
               now: nowInstant,
-            })
+            }),
+            m.familyMemberCount
           )
         : null;
     return {
@@ -426,23 +464,29 @@ export function loadMedicationsData(profileId: number): MedicationsData {
       brand: s.brand,
       rxcui: s.rxcui,
       rxcuiIngredients: parseRxcuiIngredients(s.rxcui_ingredients),
+      // Dose amounts carry the strength for the common "Ibuprofen" + "200 mg"
+      // shape, so the bridge's different-strength offer (#1027) can compare.
+      doseAmounts: (dosesBySupp.get(s.id) ?? [])
+        .map((d) => d.amount)
+        .filter((a): a is string => !!a),
     }));
   const prescriptionRecords = getMedicalRecords(profileId, {
     category: "prescription",
     sort: "date",
     dir: "desc",
   });
-  const allBridge: BridgeSuggestion[] = unmatchedPrescriptionRecords(
+  const allBridge: BridgeSuggestion[] = bridgeCandidates(
     prescriptionRecords,
     trackedMeds
-  ).map((r) => {
-    const dedupeKey = medBridgeDismissalKey(r);
+  ).map(({ record: r, strengthOffer }) => {
+    const dedupeKey = medBridgeDismissalKey(r, strengthOffer);
     return {
       recordId: r.id,
       name: r.canonical_name?.trim() || r.name,
       detail: [r.value, r.unit].filter(Boolean).join(" ") || null,
       date: r.date,
       dedupeKey,
+      strengthOffer,
     };
   });
   const isDismissed = (s: BridgeSuggestion) => {
@@ -491,6 +535,8 @@ export function loadMedicationsData(profileId: number): MedicationsData {
     interactionWarnings,
     pgxWarnings,
     ototoxicWarnings,
+    allergyWarnings,
+    coverage: getSafetyScreeningCoverage(profileId),
     current: currentData,
     past: pastData,
     prnToday,

@@ -99,6 +99,16 @@ interface FollowUpAdapter<Source, Candidate> {
 
 ---
 
+## Empty safety results are never affirmative all-clears (#1032)
+
+Status: **shipped** (intake safety strips + per-item chip; the principle applies to every safety surface)
+
+The safety-logic datasets are, by explicit design, **curated high-value subsets** (51 interaction rules, 34 PGx entries, 6 ototoxic classes, the drug-allergy classes, 2 contrast entries, …). The principle, stated once here alongside the #449 tiers: **a safety surface must never let _absence of a finding_ read as an _affirmative all-clear_; when coverage is partial, say so.** A profile whose entire stack is off-dataset must not render identically to one that was genuinely screened against matching rules and came up clean — the empty one is the more dangerous state.
+
+Concretely (the intake strips, the first tenants): `IntakeWarnings` renders a calm **scope line** on an empty result instead of `null` — "Screened against a curated set of common drug and supplement interactions — N of M active items match it. No flags found — a curated check, not an exhaustive one." (`coverageScopeLine` over `stackScreeningCoverage`, `lib/safety-coverage.ts`; "matched" resolves through the ONE shared `matchConceptKeys` matcher so the fraction can't disagree with the detector). A **name-only item** (no confirmed RxCUI — even less likely to match a code-keyed rule) wears a quiet **"Limited screening" chip** on its med row, pointing at the existing #851 RxNorm-confirm flow as the improvement path. This is a **legibility** fix, not a new warning class: no red, no interstitial, never prescriptive, and it never asks to grow the datasets (that's the #1033 depth roadmap). A NEW safety surface with an empty state (preventive, contrast, dental, a future matcher) adopts the same stance: distinguish "clear" from "not covered" wherever an empty result renders.
+
+---
+
 ## Display units on finding surfaces — the policy (#1019)
 
 A finding/item string that contains a **measurement** (a temperature, a weight, a distance) renders under one fixed policy — decided once here so no builder re-litigates it:

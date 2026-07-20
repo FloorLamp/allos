@@ -8,7 +8,7 @@ import { followLink } from "./helpers";
 test("the Sun exposure template prefills the add-protocol form", async ({
   page,
 }) => {
-  await page.goto("/protocols");
+  await page.goto("/longevity#protocols");
 
   const strip = page.getByTestId("protocol-templates");
   await expect(strip).toBeVisible();
@@ -16,7 +16,7 @@ test("the Sun exposure template prefills the add-protocol form", async ({
   await expect(sun).toBeVisible();
   await sun.click();
 
-  await expect(page).toHaveURL(/\/protocols\?template=sun-exposure/);
+  await expect(page).toHaveURL(/\/longevity\?template=sun-exposure/);
   // The add form is prefilled with the template's name.
   const form = page.getByTestId("protocol-form");
   await expect(form.locator('input[name="name"]')).toHaveValue(
@@ -31,7 +31,7 @@ test("the Sun exposure template prefills the add-protocol form", async ({
   await followLink(
     page,
     page.getByRole("link", { name: "Clear" }),
-    /\/protocols$/
+    /\/longevity#protocols$/
   );
   await expect(
     page.getByTestId("protocol-form").locator('input[name="name"]')
