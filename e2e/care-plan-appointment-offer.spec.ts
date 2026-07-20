@@ -36,7 +36,12 @@ test.describe("Care-plan close-the-loop on appointment completion (#658)", () =>
     await page.goto("/records#care-plan");
     await page.locator("#cp-desc-new").fill(ITEM);
     await page.locator("#cp-status-new").fill("planned");
-    await page.getByRole("button", { name: "Add", exact: true }).click();
+    // Scope the "Add" to the Care plan section — the merged Health record page
+    // (#1042 phase 6) has one "Add" per section.
+    await page
+      .getByTestId("records-care-plan")
+      .getByRole("button", { name: "Add", exact: true })
+      .click();
     await expect(page.getByText("Care-plan item saved")).toBeVisible();
 
     // Book a matching colonoscopy appointment (defaults to today → scheduled).
