@@ -170,6 +170,8 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     await form.getByLabel("Modality").selectOption("pet");
     await form.getByLabel("Body region").fill(PET_REGION);
     await form.getByLabel("Study date").fill(recentDate());
+    // Close the DateField calendar popup so it can't intercept the Add click.
+    await page.keyboard.press("Escape");
     await settledClick(
       page,
       form.getByRole("button", { name: "Add", exact: true })

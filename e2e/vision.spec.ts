@@ -120,11 +120,24 @@ test.describe("Optical prescriptions — add → view → edit → delete (#697)
     await fillEye(0, String(TRANSPOSE_MARKER), "-1.00", "180");
     await fillEye(1, String(TRANSPOSE_MARKER), "-1.00", "180");
     await form.getByLabel("Issued").fill("2010-01-01");
+    // Close the DateField's calendar popup — left open it overlays the Add
+    // button and intercepts the click (Escape is the field's documented close).
+    await page.keyboard.press("Escape");
     await settledClick(
       page,
       form.getByRole("button", { name: "Add", exact: true })
     );
     await expect(page.getByText("Prescription saved").first()).toBeVisible();
+    // The save resets the form AND fires router.refresh(), whose RSC apply can
+    // re-render the page mid-fill and wipe values typed in the gap. Wait for the
+    // SERVER-rendered marker of the completed refresh — the first Rx appearing in
+    // the list — before touching the form again (the helpers.ts precedent for
+    // pages with post-action refresh traffic).
+    const list = page.getByTestId("optical-prescription-list");
+    await expect(
+      list.getByRole("row").filter({ hasText: "OD -7.25" })
+    ).toHaveCount(1);
+    await expect(form.getByLabel("Sphere").first()).toHaveValue("");
 
     // Rx 2 — the SAME refraction in plus-cyl (ophthalmology) notation, dated
     // NEWER than every seeded Rx so it is the progression's last point:
@@ -133,6 +146,7 @@ test.describe("Optical prescriptions — add → view → edit → delete (#697)
     await fillEye(0, "-8.25", "+1.00", "90");
     await fillEye(1, "-8.25", "+1.00", "90");
     await form.getByLabel("Issued").fill("2035-01-01");
+    await page.keyboard.press("Escape");
     await settledClick(
       page,
       form.getByRole("button", { name: "Add", exact: true })
@@ -140,7 +154,6 @@ test.describe("Optical prescriptions — add → view → edit → delete (#697)
 
     // Both rows display the CANONICAL sphere (−7.25) — the plus-cyl entry was
     // transposed on save; its as-typed −8.25 sphere appears nowhere.
-    const list = page.getByTestId("optical-prescription-list");
     await expect(
       list.getByRole("row").filter({ hasText: "OD -7.25" })
     ).toHaveCount(2);
