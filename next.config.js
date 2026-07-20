@@ -87,6 +87,14 @@ const nextConfig = {
         destination: "/profile#emergency",
         permanent: true,
       },
+      // Phase 4: the Protocols hub folded into the Longevity page as its
+      // interventions section. Only the exact hub URL redirects — the
+      // per-protocol detail pages (/protocols/[id]) still live under /protocols.
+      {
+        source: "/protocols",
+        destination: "/longevity#protocols",
+        permanent: true,
+      },
     ];
   },
   // Native / heavy server-only packages kept OUT of the server bundle. better-sqlite3

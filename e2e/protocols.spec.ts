@@ -23,7 +23,7 @@ test.describe("protocols create → compare (issue #161)", () => {
       .toISOString()
       .slice(0, 10);
 
-    await page.goto("/protocols");
+    await page.goto("/longevity#protocols");
     const main = page.getByRole("main");
 
     const form = main.getByTestId("protocol-form");
@@ -61,7 +61,7 @@ test.describe("protocols create → compare (issue #161)", () => {
     // Self-clean: delete it (confirm dialog) and confirm it drops off the list.
     page.on("dialog", (d) => d.accept());
     await detailMain.getByRole("button", { name: "Delete" }).click();
-    await page.waitForURL(/\/protocols$/);
+    await page.waitForURL(/\/longevity(?:#|$)/);
     await expect(page.getByRole("main")).not.toContainText(uniqueName);
   });
 });
@@ -76,7 +76,7 @@ test.describe("protocols recovery-gear filter (#592)", () => {
     page,
   }) => {
     test.slow();
-    await page.goto("/protocols");
+    await page.goto("/longevity#protocols");
     const select = page.getByTestId("protocol-equipment");
     await expect(select).toBeVisible();
 

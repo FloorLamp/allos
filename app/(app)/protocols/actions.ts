@@ -13,7 +13,9 @@ import { parseScopedPractice } from "@/lib/protocol-practice";
 import { formError, formOk, type FormResult } from "@/lib/types";
 
 function revalidateProtocols(id?: number) {
-  revalidatePath("/protocols");
+  // The hub lives on the Longevity page's #protocols section (#1042 phase 4);
+  // the per-protocol detail route below still lives under /protocols.
+  revalidatePath("/longevity");
   if (id) revalidatePath(`/protocols/${id}`);
   revalidatePath("/timeline");
   revalidatePath("/");
@@ -340,5 +342,5 @@ export async function deleteProtocol(formData: FormData): Promise<FormResult> {
   if (existing.situation && existing.end_date == null)
     deactivateSituation(profile.id, existing.situation, id);
   revalidateProtocols();
-  redirect("/protocols");
+  redirect("/longevity#protocols");
 }

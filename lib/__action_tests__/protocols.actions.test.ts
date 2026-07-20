@@ -99,7 +99,9 @@ describe("createProtocol", () => {
     ]);
     // Situation activated via the shared situations wiring.
     expect(getActiveSituations(profile.id)).toContain("Creatine loading");
-    expect(revalidate).toHaveBeenCalledWith("/protocols");
+    // The hub revalidates the Longevity page (its #protocols section, #1042
+    // phase 4).
+    expect(revalidate).toHaveBeenCalledWith("/longevity");
   });
 });
 

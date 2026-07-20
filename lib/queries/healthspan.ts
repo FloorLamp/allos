@@ -24,7 +24,9 @@ import { isAdultForClinical } from "../life-stage";
 import {
   buildPillars,
   optimalRangeHitRate,
-  type BiomarkerReading,
+  optimalShareRows,
+  type NamedBiomarkerReading,
+  type OptimalShareRow,
   type Pillar,
   type PillarInputs,
   type PillarTrend,
@@ -118,17 +120,37 @@ export function getHealthspanPillars(profileId: number): Pillar[] {
   }
 
   // % of tracked biomarkers in their optimal range — the curated optimal bands.
-  const readings: BiomarkerReading[] = getMedicalRecords(profileId, {
-    current: true,
-  })
+  const hitRate = optimalRangeHitRate(
+    gatherOptimalReadings(profileId),
+    sex,
+    age
+  );
+  if (hitRate.total > 0) inputs.optimal = hitRate;
+
+  return buildPillars(inputs);
+}
+
+// The ONE gather feeding both the optimal pillar's hit rate (above) and the
+// Longevity page's per-marker breakdown (getOptimalShareRows) — the expanded
+// section judges exactly the readings the pillar counted, never a second query
+// shape (#1042 phase 4).
+function gatherOptimalReadings(profileId: number): NamedBiomarkerReading[] {
+  return getMedicalRecords(profileId, { current: true })
     .filter((r) => LAB_CATEGORIES.has(r.category) && r.canonical_name)
     .map((r) => ({
+      name: r.name,
+      canonicalName: r.canonical_name ?? null,
       value_num: r.value_num,
       unit: r.unit,
       cb: getCanonicalBiomarker(r.canonical_name as string) ?? null,
     }));
-  const hitRate = optimalRangeHitRate(readings, sex, age);
-  if (hitRate.total > 0) inputs.optimal = hitRate;
+}
 
-  return buildPillars(inputs);
+// The per-marker rows behind the optimal-share pillar, for the Longevity page's
+// expanded #biomarkers section (non-optimal first — the judged set and verdicts
+// are optimalShareRows over the SAME gather as the pillar count).
+export function getOptimalShareRows(profileId: number): OptimalShareRow[] {
+  const sex = getUserSex(profileId);
+  const age = getUserAge(profileId);
+  return optimalShareRows(gatherOptimalReadings(profileId), sex, age);
 }

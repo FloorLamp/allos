@@ -37,7 +37,7 @@ function refresh() {
   revalidatePath("/equipment");
   revalidatePath("/data");
   revalidatePath("/training");
-  revalidatePath("/protocols");
+  revalidatePath("/longevity");
 }
 
 export async function createEquipmentAction(
