@@ -350,6 +350,8 @@ describe("health-record import: encounters → encounters table", () => {
         date: "2026-06-08",
         end_date: "2026-06-08",
         type: "Office Visit",
+        code: "99213",
+        code_system: "CPT",
         class_code: "AMB",
         reason: "Fever",
         diagnoses: ["Fever"],
@@ -413,6 +415,9 @@ describe("health-record import: encounters → encounters table", () => {
     expect(rows[0]).toMatchObject({
       date: "2026-06-08",
       type: "Office Visit",
+      // The TYPE code round-trips through persist (#1035).
+      code: "99213",
+      code_system: "CPT",
       class_code: "AMB",
       reason: "Fever",
       diagnoses: "Fever", // stored as the joined summary column

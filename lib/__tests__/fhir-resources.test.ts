@@ -469,6 +469,57 @@ describe("FHIR Encounter → ImportedEncounter", () => {
     });
   });
 
+  it("captures the encounter TYPE code from type[].coding (#1035)", () => {
+    const r = parseFhirBundle(
+      bundle([
+        {
+          resourceType: "Encounter",
+          id: "enc-coded",
+          status: "finished",
+          class: {
+            system: "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+            code: "AMB",
+          },
+          // Epic's common shape: a generic display with the CPT preventive-visit
+          // code in the coding — the code is what proves it's the annual physical.
+          type: [
+            {
+              text: "Office Visit",
+              coding: [
+                {
+                  system: "http://www.ama-assn.org/go/cpt",
+                  code: "99396",
+                  display: "Est patient preventive visit 40-64",
+                },
+              ],
+            },
+          ],
+          period: { start: "2026-03-01" },
+        },
+      ])
+    );
+    expect(r.encounters).toHaveLength(1);
+    expect(r.encounters![0]).toMatchObject({
+      type: "Office Visit",
+      code: "99396",
+      class_code: "AMB",
+    });
+    // A coding-less type (text only) leaves the code null.
+    const r2 = parseFhirBundle(
+      bundle([
+        {
+          resourceType: "Encounter",
+          id: "enc-plain",
+          status: "finished",
+          type: [{ text: "Office Visit" }],
+          period: { start: "2026-03-02" },
+        },
+      ])
+    );
+    expect(r2.encounters![0].code).toBeNull();
+    expect(r2.encounters![0].code_system).toBeNull();
+  });
+
   it("skips entered-in-error and dateless encounters", () => {
     const r = parseFhirBundle(
       bundle([

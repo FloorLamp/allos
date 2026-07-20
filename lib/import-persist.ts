@@ -710,10 +710,10 @@ function insertImportRows(
   // the resolved shared-registry ids for the attending clinician + facility.
   const insEncounter = db.prepare(
     `INSERT OR IGNORE INTO encounters
-       (date, end_date, type, class_code, reason, diagnoses, notes,
-        provider_id, location_provider_id, source, document_id, external_id,
-        profile_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+       (date, end_date, type, code, code_system, class_code, reason, diagnoses,
+        notes, provider_id, location_provider_id, source, document_id,
+        external_id, profile_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   );
   // Procedures + family history. Same idempotency as records/conditions: the
   // per-document delete-set (above) clears this document's prior rows, then INSERT
@@ -984,6 +984,8 @@ function insertImportRows(
       e.date,
       e.end_date,
       e.type,
+      e.code ?? null,
+      e.code_system ?? null,
       e.class_code,
       e.reason,
       e.diagnoses.length ? e.diagnoses.join("; ") : null,

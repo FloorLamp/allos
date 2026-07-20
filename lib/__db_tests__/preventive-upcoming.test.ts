@@ -250,3 +250,118 @@ describe("preventive inference from a specialty encounter (issue #515)", () => {
     ).toBe(true);
   });
 });
+
+// Issue #1035 — the imported encounter TYPE CODE feeds the concept map's exact-code
+// path, so a coded visit with a generic title satisfies its visit rule.
+describe("preventive inference from a coded encounter (issue #1035)", () => {
+  it("an imported 'Office Visit' carrying CPT 99396 satisfies adult_physical", () => {
+    const codedId = makeProfile("Coded Encounter Test");
+
+    // Overdue before the record: 46yo, no visit on file.
+    expect(
+      collectUpcoming(codedId, now).some(
+        (i) => i.key === "visit:adult_physical"
+      )
+    ).toBe(true);
+
+    // Epic's generic display + the CPT preventive-visit code (established, 40-64).
+    // No text field matches an adult_physical name synonym — the CODE is the proof.
+    db.prepare(
+      `INSERT INTO encounters (profile_id, date, type, code, code_system, class_code)
+         VALUES (?, ?, 'Office Visit', '99396', 'CPT', 'AMB')`
+    ).run(codedId, now);
+
+    expect(
+      getInferredPreventiveSatisfactions(codedId).some(
+        (s) => s.ruleKey === "adult_physical"
+      )
+    ).toBe(true);
+    expect(
+      collectUpcoming(codedId, now).some(
+        (i) => i.key === "visit:adult_physical"
+      )
+    ).toBe(false);
+  });
+
+  it("a code-less generic encounter still satisfies nothing (conservatism unchanged)", () => {
+    const plainId = makeProfile("Uncoded Encounter Test");
+    db.prepare(
+      `INSERT INTO encounters (profile_id, date, type)
+         VALUES (?, ?, 'Office Visit')`
+    ).run(plainId, now);
+    expect(
+      collectUpcoming(plainId, now).some(
+        (i) => i.key === "visit:adult_physical"
+      )
+    ).toBe(true);
+  });
+});
+
+// Issue #1037 — dental_procedures is a preventive-satisfaction source: a recorded
+// completed cleaning/exam (CDT-coded or synonym-named) satisfies dental_cleaning.
+describe("preventive inference from dental_procedures (issue #1037)", () => {
+  it("a completed D1110 prophylaxis satisfies dental_cleaning by code", () => {
+    const dentalId = makeProfile("Dental Inference Test");
+
+    expect(
+      collectUpcoming(dentalId, now).some(
+        (i) => i.key === "visit:dental_cleaning"
+      )
+    ).toBe(true);
+
+    // Generic name; the CDT code carries the meaning (the concept map's code path).
+    db.prepare(
+      `INSERT INTO dental_procedures (profile_id, name, status, cdt_code, procedure_date)
+         VALUES (?, 'Prophy', 'completed', 'D1110', ?)`
+    ).run(dentalId, now);
+
+    expect(
+      getInferredPreventiveSatisfactions(dentalId).some(
+        (s) => s.ruleKey === "dental_cleaning"
+      )
+    ).toBe(true);
+    expect(
+      collectUpcoming(dentalId, now).some(
+        (i) => i.key === "visit:dental_cleaning"
+      )
+    ).toBe(false);
+  });
+
+  it("a code-less 'Teeth cleaning' row satisfies via the whole-word name path", () => {
+    const namedId = makeProfile("Dental Name Test");
+    db.prepare(
+      `INSERT INTO dental_procedures (profile_id, name, status, procedure_date)
+         VALUES (?, 'Teeth cleaning', 'completed', ?)`
+    ).run(namedId, now);
+    expect(
+      collectUpcoming(namedId, now).some(
+        (i) => i.key === "visit:dental_cleaning"
+      )
+    ).toBe(false);
+  });
+
+  it("a planned cleaning is NOT evidence, and a completed filling matches nothing", () => {
+    const plannedId = makeProfile("Dental Planned Test");
+    // A booked-but-not-done cleaning (status gate) …
+    db.prepare(
+      `INSERT INTO dental_procedures (profile_id, name, status, cdt_code, procedure_date)
+         VALUES (?, 'Adult prophylaxis', 'planned', 'D1110', ?)`
+    ).run(plannedId, now);
+    // … and a completed restorative row whose CDT code/name map to no rule.
+    db.prepare(
+      `INSERT INTO dental_procedures (profile_id, name, status, cdt_code, procedure_date)
+         VALUES (?, 'Composite filling', 'completed', 'D2392', ?)`
+    ).run(plannedId, now);
+
+    expect(
+      getInferredPreventiveSatisfactions(plannedId).some(
+        (s) => s.ruleKey === "dental_cleaning"
+      )
+    ).toBe(false);
+    expect(
+      collectUpcoming(plannedId, now).some(
+        (i) => i.key === "visit:dental_cleaning"
+      )
+    ).toBe(true);
+  });
+});

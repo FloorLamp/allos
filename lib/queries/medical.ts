@@ -1269,7 +1269,8 @@ export const getEncounters = cache(function getEncounters(
 ): Encounter[] {
   return db
     .prepare(
-      `SELECT e.id, e.date, e.end_date, e.type, e.class_code, e.reason,
+      `SELECT e.id, e.date, e.end_date, e.type, e.code, e.code_system,
+              e.class_code, e.reason,
               e.diagnoses, e.provider_id, p.name AS provider_name,
               e.location_provider_id, l.name AS location_name,
               l.address AS location_address,
@@ -1291,7 +1292,8 @@ export function getEncounter(profileId: number, id: number): Encounter | null {
   return (
     (db
       .prepare(
-        `SELECT e.id, e.date, e.end_date, e.type, e.class_code, e.reason,
+        `SELECT e.id, e.date, e.end_date, e.type, e.code, e.code_system,
+                e.class_code, e.reason,
                 e.diagnoses, e.provider_id, p.name AS provider_name,
                 e.location_provider_id, l.name AS location_name,
                 l.address AS location_address,

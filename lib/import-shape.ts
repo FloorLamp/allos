@@ -171,6 +171,12 @@ export interface PersistEncounter {
   date: string;
   end_date: string | null;
   type: string | null;
+  // Encounter TYPE code + labeled system (CPT/CDT/SNOMED, #1035). The structured
+  // CCD/FHIR path fills these; the AI path leaves them null. Optional so existing
+  // PersistInput literals (the DB-tier fixtures) need no change; the persist core
+  // writes them with a `?? null` fallback (the genomicVariants precedent).
+  code?: string | null;
+  code_system?: string | null;
   class_code: string | null;
   reason: string | null;
   diagnoses: string[];
@@ -589,6 +595,9 @@ export function extractionToPersistInput(
     date: e.date,
     end_date: e.end_date,
     type: e.type,
+    // The AI extraction result carries no structured encounter type coding.
+    code: null,
+    code_system: null,
     class_code: e.class_code,
     reason: e.reason,
     diagnoses: e.diagnoses,
@@ -964,6 +973,8 @@ export function healthRecordToPersistInput(
       date: e.date,
       end_date: e.end_date,
       type: e.type,
+      code: e.code,
+      code_system: e.code_system,
       class_code: e.class_code,
       reason: e.reason,
       diagnoses: e.diagnoses,
