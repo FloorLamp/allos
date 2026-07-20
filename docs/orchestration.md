@@ -200,9 +200,18 @@ it later from the issue number is guesswork.
   it is the single highest-value gate in the pipeline.
 - **Double-green before merging a UI/migration PR:** CI green (check + e2e,
   including CI's changed-specs repeat lane) AND a local CI-parity full-suite
-  run. Lib/docs-only PRs merge on CI green alone. **Rebase waiver:** when a
-  rebase's delta is text-only (README/docs conflict resolution), CI's full e2e
-  - changed-specs lane on the exact rebased tip, plus the pre-rebase local full
+  run. Lib/docs-only PRs merge on CI green alone. **Relaxed bar for contained
+  diffs (owner-approved 2026-07-20):** a low-blast-radius PR (a lib fix, a
+  bug cluster that changed a handful of specs) merges on CI green + typecheck
+  - pure + db + the PR's OWN changed-spec lane — SKIP the full local suite.
+    The full local suite is reserved for MIGRATION PRs and BIG UI merges (a nav
+    consolidation, a multi-page feature). CI never runs the full e2e suite for a
+    normal PR (only the changed specs at `--repeat-each=3`, plus a whole-suite
+    fallback ONLY when a shared `e2e/*.ts` infra file changed) — so for a big UI
+    merge, the local full suite is the ONLY full-suite signal and stays
+    mandatory. **Rebase waiver:** when a
+    rebase's delta is text-only (README/docs conflict resolution), CI's full e2e
+  * changed-specs lane on the exact rebased tip, plus the pre-rebase local full
     suite, is sufficient — don't burn a second local full run.
     **Branch-cut waiver:** a branch cut before a spec-fix merged to main will
     re-fail that spec in the local full suite (the fix isn't on the branch; the
@@ -221,6 +230,24 @@ it later from the issue number is guesswork.
   `next start` is lean AND is the mode that actually gates. Never run a full
   suite while any agent is building or a second suite is running; one full
   suite on the machine at a time.
+- **SHARD the full local suite — a single 460-spec `next start` process
+  degrades even solo on a quiet box (2026-07-20).** A lean single-worker CI-mode
+  run of the WHOLE suite in one process climbs to ~50 min and starts failing
+  60+ UNRELATED specs with server-death timeouts (`element(s) not found`,
+  `toBeVisible` timeouts) partway through — the long-lived app+demo servers
+  degrade cumulatively, NOT a memory-at-start problem (14 GB free, no swap; the
+  memory sample stays flat while it dies). The fix is to run `--shard=N/M`:
+  each shard is a fresh `npx playwright test` invocation → fresh servers → each
+  chunk finishes in 3-6 min clean. **Use `/4` (≈115 specs/shard), not `/3`** —
+  the third of three still degraded in testing; four holds. Run the shards as
+  SEPARATE sequential invocations (not chained in one shell after a heavy
+  pure+db+build run — that shell's accumulated RSS pushes the last shard over).
+  A shard that fails wide with server-death timeouts is **transient container
+  degradation, not a regression**: re-run THAT shard fresh on a settled box; a
+  clean re-run is the authority. Do NOT chase it as a code bug (a real
+  infinite-loop poison is deterministic — it fails the same shard every time,
+  including a `--max-failures=1` probe; degradation passes on a settled re-run).
+  This cost hours on the #1047-#1062 train before the pattern was clear.
 - **Mass-failure triage drill** (when a local full suite fails wide): (1) check
   memory pressure first (above); (2) rerun a handful of the failed specs in
   isolation — passing alone means suite-scale starvation, failing alone means a
@@ -328,6 +355,26 @@ it later from the issue number is guesswork.
 - Migration hygiene: append-only, manifest regenerated, number announced.
 - Flag owner-visible judgment calls in the review (tone unifications, behavior
   loosenings) so the owner can veto cheaply.
+
+**Migration-train renumber recipe (the orchestrator, merging N migration PRs in
+sequence — done 3× on the #1059/#1061/#1062 train):** when several in-flight
+branches each claimed the same slot (all cut from the same main), merge them one
+at a time; each after the first renumbers to the next free number. Per PR: (1)
+`git merge origin/main`; (2) `git mv NNN-slug.ts MMM-slug.ts` for each colliding
+migration and bump its `id:` + `name:` + the `Migration NNN` comment inside; (3)
+fix `versions/index.ts` — the import conflict resolves to MAIN's slot import PLUS
+your renamed import, and append your `mMMM` to the array; (4) `prettier --write`
+the renamed migration file, `sha256sum` it, and put that hash under the new
+filename key in `manifest.json` (keep main's entries); (5) grep for the OLD
+number in TEST files — a `migration-NNN-*.test.ts` name and its import path, and
+the profile-scoping allowlist's `NNN-slug.ts` PRAGMA entry, all need the new
+number; (6) validate BEFORE the full gate with the cheap deterministic tier:
+`migration-immutability` (hashes match) + db-tier `migrate`/`runner` (contiguous
+chain applies) + `typecheck`. **Append-append conflict hazard:** resolving
+fixture files (`seed-events.ts`, `fixture-logins.ts`) by concatenating ours+theirs
+can drop a shared boundary line — a `console.log(...` whose closing `);` sat on
+the other side of the `=======` — so ALWAYS `typecheck` after; the error is a
+bare `',' expected` at the seam.
 
 ## Cadence & lifecycle
 
