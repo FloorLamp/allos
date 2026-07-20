@@ -50,7 +50,7 @@ export default function TodayMedRow({
           : "flex flex-col gap-2 rounded-lg border border-black/5 p-3 dark:border-white/5"
       }
     >
-      <div className="flex flex-wrap items-start justify-between gap-2">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
         <div className="flex min-w-0 items-start gap-2">
           <IconPill className="mt-0.5 h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" />
           <div className="min-w-0">
@@ -83,9 +83,7 @@ export default function TodayMedRow({
           </div>
         </div>
         {control ? (
-          <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-            {control}
-          </div>
+          <div className="flex shrink-0 items-center gap-1.5">{control}</div>
         ) : null}
       </div>
       {footer}

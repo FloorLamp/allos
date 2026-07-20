@@ -29,14 +29,12 @@ test("the Medications row shows a 'requires monitoring' note for a monitored dru
   await page.goto(detailHref!);
   const detailNote = page.getByTestId("medication-monitoring-detail");
   await expect(detailNote).toBeVisible();
+  await expect(detailNote).toContainText("may need periodic INR monitoring");
   await expect(detailNote).toContainText(
-    "your clinician may periodically review INR"
-  );
-  await expect(detailNote).toContainText(
-    "Discuss the timing with your prescriber"
+    "Ask your prescriber which tests you need and how often"
   );
   await expect(
-    detailNote.getByRole("link", { name: "Review results" })
+    detailNote.getByRole("link", { name: "View results" })
   ).toHaveAttribute("href", "/results?q=INR#biomarkers");
   const addResult = detailNote.getByRole("link", { name: "Add INR result" });
   await expect(addResult).toHaveAttribute(

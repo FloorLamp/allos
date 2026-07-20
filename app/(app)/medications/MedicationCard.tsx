@@ -665,20 +665,20 @@ export default function MedicationCard({
             >
               <div className="section-label">Monitoring</div>
               <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                While taking {s.name}, your clinician may periodically review{" "}
+                {s.name} may need periodic{" "}
                 {new Intl.ListFormat("en", {
                   style: "long",
                   type: "conjunction",
-                }).format(monitoringLabs)}
-                . Review results already on file or add a completed test result.
-                Discuss the timing with your prescriber.
+                }).format(monitoringLabs)}{" "}
+                monitoring. Ask your prescriber which tests you need and how
+                often.
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                 <Link
                   href={`/results?q=${encodeURIComponent(monitoringLabs[0])}#biomarkers`}
                   className="font-medium text-brand-600 hover:underline dark:text-brand-400"
                 >
-                  Review results
+                  View results
                 </Link>
                 <Link
                   href={`/results?name=${encodeURIComponent(monitoringLabs[0])}#add-result`}

@@ -212,7 +212,18 @@ test("Add medication opens one inline quick-add and full-details workspace", asy
 
   await panel.getByTestId("medication-add-full").click();
   await expect(panel.getByTestId("quick-add-medication")).toHaveCount(0);
-  await expect(panel.getByRole("combobox", { name: "Name" })).toBeVisible();
+  const nameInput = panel.getByRole("combobox", { name: "Name" });
+  await expect(nameInput).toBeVisible();
+  // Before a catalog medication is selected there is no description preview in
+  // the second column, so the identity controls should use the available width
+  // instead of leaving half the form blank.
+  const [detailsGridBox, nameInputBox] = await Promise.all([
+    panel.getByTestId("medication-details-grid").boundingBox(),
+    nameInput.boundingBox(),
+  ]);
+  expect(detailsGridBox).not.toBeNull();
+  expect(nameInputBox).not.toBeNull();
+  expect(nameInputBox!.width / detailsGridBox!.width).toBeGreaterThan(0.9);
   const scheduledStart = panel.getByLabel("Started on");
   const scheduledStartDisplay = await scheduledStart.inputValue();
   expect(scheduledStartDisplay).not.toBe("");
@@ -266,6 +277,18 @@ test("the medication workspace stays usable without horizontal overflow on mobil
 
   await expect(page.getByTestId("medication-add-toggle")).toBeVisible();
   await expect(page.getByTestId("medication-list")).toBeVisible();
+  const scheduled = page
+    .getByTestId("today-scheduled-med")
+    .filter({ hasText: "Adherence Refill Med (e2e)" });
+  const [scheduledLinkBox, scheduledActionBox] = await Promise.all([
+    scheduled.getByRole("link").boundingBox(),
+    scheduled.getByTestId("dose-take").boundingBox(),
+  ]);
+  expect(scheduledLinkBox).not.toBeNull();
+  expect(scheduledActionBox).not.toBeNull();
+  expect(
+    Math.abs(scheduledLinkBox!.y - scheduledActionBox!.y)
+  ).toBeLessThanOrEqual(4);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth
@@ -347,6 +370,11 @@ test("a medication row links to its clinical-record detail page", async ({
   ).toBeLessThanOrEqual(2);
 
   const doseHistory = detail.getByTestId("dose-history");
+  // The newest seeded dose is from yesterday. Its database insertion timestamp is
+  // today, but history must use the dose's logical date before adding relative age.
+  await expect(
+    doseHistory.getByTestId("dose-history-row").first()
+  ).not.toContainText("(just now)");
   await doseHistory.getByRole("button", { name: "Log past dose" }).click();
   const historyForm = doseHistory.getByTestId("historical-dose-form");
   await expect(historyForm).toContainText(

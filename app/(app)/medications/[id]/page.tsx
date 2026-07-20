@@ -8,7 +8,10 @@ import {
   resolveMedicationAcrossProfiles,
 } from "@/lib/queries";
 import { parseUtcSql, zonedDateParts } from "@/lib/date";
-import { formatGivenAtClockWithRelativeAge } from "@/lib/administration-format";
+import {
+  formatGivenAtClock,
+  formatGivenAtClockWithRelativeAge,
+} from "@/lib/administration-format";
 import { MEDICATIONS_HREF } from "@/lib/hrefs";
 import { getDisplayFormatPrefs, getUnitPrefs } from "@/lib/settings";
 import { PageHeader } from "@/components/ui";
@@ -105,12 +108,19 @@ export default async function MedicationDetailPage(props: {
       id: dose.id,
       doseId: dose.dose_id,
       date: dose.date,
-      time: formatGivenAtClockWithRelativeAge(
-        data.tz,
-        storedTime,
-        formatPrefs.timeFormat,
-        new Date(data.nowIso)
-      ),
+      // Legacy scheduled logs may have only `taken_at`, which is the time the row
+      // was recorded rather than the date represented by `l.date`. Only attach
+      // relative age when the dose's logical date is today; otherwise its adjacent
+      // date already supplies the useful context and "just now" would be false.
+      time:
+        dose.date === data.todayStr
+          ? formatGivenAtClockWithRelativeAge(
+              data.tz,
+              storedTime,
+              formatPrefs.timeFormat,
+              new Date(data.nowIso)
+            )
+          : formatGivenAtClock(data.tz, storedTime, formatPrefs.timeFormat),
       timeValue: instant ? zonedDateParts(data.tz, instant).hhmm : "",
       amount: dose.amount,
       product: dose.product,
