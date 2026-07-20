@@ -69,6 +69,8 @@ test("the interaction surfaces on Upcoming and stays hidden once dismissed", asy
     .filter({ hasText: "Ibuprofen" })
     .first();
   await expect(finding).toBeVisible();
+  const findingTestId = await finding.getAttribute("data-testid");
+  expect(findingTestId).toMatch(/^upcoming-item-interaction:/);
 
   // The item's menu is the shared OverflowMenu popover (#281): its trigger is a
   // button, and the panel is portaled to <body> — so the Dismiss item is located
@@ -79,14 +81,10 @@ test("the interaction surfaces on Upcoming and stays hidden once dismissed", asy
     .getByRole("menuitem", { name: "Dismiss" })
     .click();
 
-  // After the server action + reload, THIS pair's finding is gone — the other
-  // seeded interaction pairs legitimately remain.
-  await expect(
-    main
-      .locator('[data-testid^="upcoming-item-interaction:"]')
-      .filter({ hasText: "Warfarin" })
-      .filter({ hasText: "Ibuprofen" })
-  ).toHaveCount(0);
+  // After the server action + reload, THIS item-id pair is gone. Other tests can
+  // add another ibuprofen medication, producing a separate, legitimate
+  // Warfarin + Ibuprofen finding that must not make this assertion fail.
+  await expect(main.getByTestId(findingTestId!)).toHaveCount(0);
 });
 
 // Combination medications (issue #279): the seed's Hyzaar (losartan/HCTZ — a combo
@@ -131,6 +129,7 @@ test("scopes intake warnings to the items represented on each surface", async ({
       .locator('[data-testid^="interaction-warning-interaction:"]')
       .filter({ hasText: "Sertraline" })
       .filter({ hasText: "Ibuprofen" })
+      .first()
   ).toBeVisible();
 
   await page.goto("/nutrition?tab=supplements");

@@ -33,6 +33,14 @@ async function createMember(
     adminPage,
     adminPage.getByRole("button", { name: "Create login" })
   );
+  await expect(
+    adminPage.getByText(`Created “${username}”. Grant it a profile below.`)
+  ).toBeVisible();
+
+  // The login is durable once the action returns, but the client-side
+  // router.refresh() can leave the access matrix on its previous RSC payload
+  // under CI load. Reload from the server before locating the new grant row.
+  await adminPage.reload();
 
   const grantRow = adminPage.getByTestId(`grant-row-${username}`);
   await expect(grantRow).toBeVisible({ timeout: 15_000 });
