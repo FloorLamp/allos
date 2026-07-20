@@ -128,20 +128,20 @@ const DENTAL_DOMAIN: FollowUpDomain<DentalProcedure> = {
   loadRecords: getDentalProcedures,
   recordId: (p) => p.id,
   sourceIdOf: (c) => c.source_dental_procedure_id,
-  hrefFor: () => "/dental",
+  hrefFor: () => "/records#dental",
 };
 
 // Skin follow-up (#715 ask 3): a "watch this mole, recheck in 3 months" record on a
 // skin_lesions row. Its own adapter (lesion-anchored recheck copy) and
-// source_kind='skin'; the follow-up + the lesion it hangs off live on /skin; a LATER
-// record of the SAME lesion resolves it.
+// source_kind='skin'; the follow-up + the lesion it hangs off live on the
+// /records#skin section; a LATER record of the SAME lesion resolves it.
 const SKIN_DOMAIN: FollowUpDomain<SkinLesion> = {
   kind: SKIN_FOLLOWUP_KIND,
   adapter: skinFollowUpAdapter,
   loadRecords: getSkinLesions,
   recordId: (l) => l.id,
   sourceIdOf: (c) => c.source_skin_lesion_id,
-  hrefFor: () => "/skin",
+  hrefFor: () => "/records#skin",
 };
 
 // The follow-up items for ONE domain: every OPEN, linked (source_kind = domain.kind),

@@ -66,8 +66,10 @@ export const MEDICATIONS_HREF: AppRoute = "/medications";
 // a named const — one edit re-checks every caller — rather than a re-typed literal.
 export const HOUSEHOLD_HISTORY_HREF: AppRoute = "/household/history";
 
-// The mental-health instrument surface (#716) — PHQ-9/GAD-7 scores under Medical.
-export const INSTRUMENTS_HREF: AppRoute = "/medical/instruments";
+// The mental-health instrument surface (#716) — PHQ-9/GAD-7 scores. Folded into
+// Health record as the #mental-health section of /records (#1042 final tail); the
+// old /medical/instruments route 308-redirects here.
+export const INSTRUMENTS_HREF: AppRoute = "/records#mental-health";
 
 // The kind-aware deep link for an intake item / dose (#746): a supplement points
 // at the Nutrition → Supplements tab, a medication at the Medications page. The

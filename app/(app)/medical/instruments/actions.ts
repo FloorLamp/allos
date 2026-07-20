@@ -23,7 +23,9 @@ export type InstrumentActionResult =
   { ok: true; id: number } | { ok: false; error: string };
 
 function revalidateInstruments() {
-  revalidatePath("/medical/instruments");
+  // Mental-health instruments folded into Health record (#1042 final tail): the
+  // surface is now /records#mental-health.
+  revalidatePath("/records");
   revalidatePath("/timeline");
   revalidatePath("/upcoming");
   revalidatePath("/");

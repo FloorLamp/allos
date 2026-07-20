@@ -1,8 +1,6 @@
 import Link from "next/link";
-import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
-import PageContainer from "@/components/PageContainer";
-import { PageHeader, EmptyState } from "@/components/ui";
+import { EmptyState } from "@/components/ui";
 import { Notice } from "@/components/Notice";
 import { biomarkerViewHref } from "@/lib/hrefs";
 import { getResolvedCrisisResources } from "@/lib/settings";
@@ -11,35 +9,39 @@ import {
   getInstrumentReadings,
   getInstrumentStates,
 } from "@/lib/instrument-records";
-import InstrumentsView from "./InstrumentsView";
+import InstrumentsView from "@/app/(app)/medical/instruments/InstrumentsView";
 
-export const dynamic = "force-dynamic";
-
-// The mental-health instrument surface (issue #716), under Medical. Tracks validated
+// The mental-health instrument surface (issue #716), former /medical/instruments,
+// now the #mental-health section of /records (#1042 final tail). Tracks validated
 // screening instruments — PHQ-9 (depression), GAD-7 (anxiety) — as numeric, severity-
-// banded scores (the app's measurement DNA), NOT a mood diary. Administer in-app or enter
-// an outside score; each score trends like a biomarker. A SEVERE score or a positive
-// PHQ-9 item 9 shows a NON-DISMISSIBLE crisis-resources line + a discuss-with-a-clinician
-// note. Informational, never diagnostic — a screening instrument, not a diagnosis.
-
-export default async function InstrumentsPage() {
-  const { profile, login } = await requireSession();
-  const td = today(profile.id);
-  const readings = getInstrumentReadings(profile.id);
-  const states = getInstrumentStates(profile.id);
+// banded scores (the app's measurement DNA), NOT a mood diary. Administer in-app or
+// enter an outside score; each score trends like a biomarker. A SEVERE score or a
+// positive PHQ-9 item 9 shows a NON-DISMISSIBLE crisis-resources line + a discuss-
+// with-a-clinician note. Informational, never diagnostic — a screening instrument,
+// not a diagnosis.
+//
+// The in-app instrument flow is the ONLY creation path for this domain, and the
+// safety contract is content, not route (#1042): the crisis line travels WITH this
+// section. So the section renders unconditionally (its former nav leaf was ungated) —
+// the crisis line is thus always reachable whenever there is a signal to show it.
+// Server Actions + client component stayed in app/(app)/medical/instruments/.
+export default function MentalHealthSection({
+  profileId,
+  isAdmin,
+}: {
+  profileId: number;
+  isAdmin: boolean;
+}) {
+  const td = today(profileId);
+  const readings = getInstrumentReadings(profileId);
+  const states = getInstrumentStates(profileId);
   const escalating = states.filter((s) => s.crisis?.escalate && s.latest);
   // Configured crisis resources for THIS profile (override > global > neutral
   // fallback, #996) — resolved from the profile's own settings, never egressed.
-  const crisisResources = getResolvedCrisisResources(profile.id);
-  const isAdmin = login.role === "admin";
+  const crisisResources = getResolvedCrisisResources(profileId);
 
   return (
-    <PageContainer width="reading" className="mx-auto space-y-6">
-      <PageHeader
-        title="Mental health"
-        subtitle="Track validated screening instruments — PHQ-9 and GAD-7 — as severity-banded scores over time. A screening tool, not a diagnosis. Informational, not medical advice."
-      />
-
+    <div className="space-y-6">
       {/* Non-dismissible crisis-resources line (#716). Rendered structurally OUTSIDE the
           dismissal bus — the same standing as a safety dose reminder — so it can never be
           hidden. Shown whenever the latest PHQ-9/GAD-7 is severe or PHQ-9 item 9 is
@@ -106,6 +108,6 @@ export default async function InstrumentsPage() {
           </ul>
         )}
       </section>
-    </PageContainer>
+    </div>
   );
 }

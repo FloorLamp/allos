@@ -56,7 +56,7 @@ describe("addDentalProcedure", () => {
     expect(d.source).toBeNull();
     expect(d.document_id).toBeNull();
     expect(d.external_id).toBeNull();
-    expect(revalidate).toHaveBeenCalledWith("/dental");
+    expect(revalidate).toHaveBeenCalledWith("/records");
   });
 
   it("rejects an empty name", async () => {

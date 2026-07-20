@@ -1124,7 +1124,7 @@ export const DELETE_POLICY: Record<string, DatasetDeletePolicy> = {
   procedures: { revalidate: ["/records", "/"] },
   genomic_variants: { revalidate: ["/results", "/"] },
   imaging_studies: { revalidate: ["/results", "/"] },
-  optical_prescriptions: { revalidate: ["/vision", "/"] },
+  optical_prescriptions: { revalidate: ["/records", "/"] },
   family_history: { revalidate: ["/records", "/"] },
   care_plan_items: { revalidate: ["/records", "/"] },
   care_goals: { revalidate: ["/records", "/"] },

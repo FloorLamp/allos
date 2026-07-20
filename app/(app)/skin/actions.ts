@@ -30,7 +30,9 @@ import {
 // default). The five ABCDE fields are USER-RECORDED OBSERVATIONS, never scored.
 
 function revalidateSkin() {
-  revalidatePath("/skin");
+  // Skin folded into Health record (#1042 final tail): the surface is now
+  // /records#skin.
+  revalidatePath("/records");
   revalidatePath("/timeline");
   revalidatePath("/profile");
   revalidatePath("/");

@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import Database from "better-sqlite3";
 import { settledClick } from "./helpers";
 
-// Optical-prescription CRUD on /vision (#697): add a structured Rx through the real
+// Optical-prescription CRUD on the Vision section of /records (#697, folded #1042): add a structured Rx through the real
 // form, see it in the list with its per-eye sphere shown, edit it, then delete it.
 // Drives the real UI end-to-end.
 //
@@ -37,7 +37,7 @@ test.describe("Optical prescriptions — add → view → edit → delete (#697)
   }) => {
     test.slow();
 
-    await page.goto("/vision");
+    await page.goto("/records#vision");
     const form = page.getByTestId("optical-prescription-form");
     await expect(form).toBeVisible();
 
@@ -99,7 +99,7 @@ test.describe("Optical prescriptions — add → view → edit → delete (#697)
       }
     }
 
-    await page.goto("/vision");
+    await page.goto("/records#vision");
     const form = page.getByTestId("optical-prescription-form");
     await expect(form).toBeVisible();
 

@@ -43,11 +43,16 @@ test.describe("Care plan (#391)", () => {
     await row.getByRole("button", { name: "Edit" }).click();
 
     // Two "Status" inputs now exist (the always-present add form + this edit
-    // form); target the edit form's by its non-"new" id, then save.
-    await page
-      .locator('input[id^="cp-status-"]:not([id="cp-status-new"])')
-      .fill("completed");
-    await page.getByRole("button", { name: "Save" }).click();
+    // form); target the edit form's by its non-"new" id. Scope Save to that same
+    // edit <form>: after the #1042 specialty fold, /records also renders the
+    // Vision/Dental/Skin/Mental-health section forms, whose submit buttons are
+    // also labelled "Save" — so a page-wide getByRole("button",{name:"Save"})
+    // is a strict-mode violation. Anchor to the on-element form, not position.
+    const editForm = page.locator(
+      'form:has(input[id^="cp-status-"]:not([id="cp-status-new"]))'
+    );
+    await editForm.locator('input[id^="cp-status-"]').fill("completed");
+    await editForm.getByRole("button", { name: "Save" }).click();
     await expect(page.getByText("Care-plan item updated")).toBeVisible();
 
     // The row now reads Completed on the page …

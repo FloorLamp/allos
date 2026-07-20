@@ -58,7 +58,7 @@ describe("addOpticalPrescription", () => {
     expect(rx.document_id).toBeNull();
     expect(rx.external_id).toBeNull();
     expect(rx.provider_id).toBeNull();
-    expect(revalidate).toHaveBeenCalledWith("/vision");
+    expect(revalidate).toHaveBeenCalledWith("/records");
   });
 
   it("keeps contacts extras and defaults an unknown kind to glasses", async () => {

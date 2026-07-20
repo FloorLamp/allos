@@ -12,18 +12,13 @@ import {
   IconUsersGroup,
   IconBarbell,
   IconChartLine,
-  IconEye,
-  IconDental,
-  IconBodyScan,
   IconPill,
   IconVirus,
   IconDroplet,
-  IconLifebuoy,
   IconDatabase,
   IconSettings,
   IconId,
   IconReportMedical,
-  IconClipboardHeart,
   IconChevronRight,
   IconSalad,
   IconGlassOff,
@@ -56,8 +51,10 @@ type Leaf = {
   requiresFoodLogging?: boolean;
   // Entries carrying a `relevanceKey` are dropped when the server-resolved
   // relevance bitset (lib/nav-relevance.ts, issue #1042) reads false for that
-  // key: the Cycle data/life-stage gate and the Vision/Dental data-presence
-  // gates. Cosmetic — every gated page still renders on a direct URL.
+  // key. In nav today only Cycle uses it (the data/life-stage gate); the
+  // Vision/Dental data-presence bits from the SAME bitset now gate their folded
+  // /records specialty sections instead. Cosmetic — every gated page still renders
+  // on a direct URL.
   relevanceKey?: NavRelevanceKey;
 };
 
@@ -82,13 +79,16 @@ const RECORDS: Group = {
   group: "Medical",
   icon: IconReportMedical,
   children: [
-    // Health record (#1042 phase 6): the eleven core Medical index pages —
-    // Conditions, Allergies, Procedures, Immunizations, Family history, Visits,
-    // Providers, Background, Care plan, Health goals, and Coverage gaps — merged
-    // into ONE stacked-section page (/records#<anchor>). One "Health record" leaf,
-    // FIRST in the group, replaces all eleven. The removed index routes
-    // 308-redirect to their anchor (next.config.js); their DETAIL routes
-    // (/providers/[id], /encounters/[id], /immunizations/[vaccine]) survive.
+    // Health record (#1042): the core Medical index pages — Conditions, Allergies,
+    // Procedures, Immunizations, Family history, Visits, Providers, Background, Care
+    // plan, Health goals, Coverage gaps, AND the four specialty surfaces Vision,
+    // Dental, Skin, Mental health — merged into ONE stacked-section page
+    // (/records#<anchor>). One "Health record" leaf, FIRST in the group, replaces
+    // them all. The removed index routes 308-redirect to their anchor
+    // (next.config.js); their DETAIL routes (/providers/[id], /encounters/[id],
+    // /immunizations/[vaccine]) survive. The specialty sections mirror the nav
+    // predicate inside the page (Vision/Dental data-gated, Skin/Mental health always
+    // rendered) — see app/(app)/records/page.tsx.
     { href: "/records", label: "Health record", icon: IconReportMedical },
     // Results (#1042 phase 5): the Biomarkers / Imaging / Genomics index pages
     // merged into ONE stacked-section page (/results#biomarkers|#imaging|
@@ -96,21 +96,6 @@ const RECORDS: Group = {
     // (/biomarkers/view) survives at its own URL; like other unlinked detail
     // pages it highlights no nav entry.
     { href: "/results", label: "Results", icon: IconChartLine },
-    // Specialty entries (#1042): Vision and Dental show only once the profile has
-    // data — their rows are also created from Data → Import (an always-visible
-    // surface), so hiding the empty entry never strands creation. Skin and Mental
-    // health stay UNGATED on purpose: their pages are the only creation path
-    // today (the lesion form / the in-app instrument flow). These four specialty
-    // surfaces are NOT folded into Health record in phase 6 — the issue allows
-    // them as follow-ups; they stay on their own data-gated routes for now.
-    { href: "/vision", label: "Vision", icon: IconEye, relevanceKey: "vision" },
-    {
-      href: "/dental",
-      label: "Dental",
-      icon: IconDental,
-      relevanceKey: "dental",
-    },
-    { href: "/skin", label: "Skin", icon: IconBodyScan },
     // Supplements left this group for the Nutrition → Supplements tab (#746);
     // Medications kept a Medical-group home of their own. The old combined
     // "/medicine" surface now redirects to the Supplements tab.
@@ -127,20 +112,15 @@ const RECORDS: Group = {
       relevanceKey: "cycle",
     },
     {
-      href: "/medical/instruments",
-      label: "Mental health",
-      icon: IconClipboardHeart,
-    },
-    {
       href: "/medical/substance-use",
       label: "Substance use",
       icon: IconGlassOff,
     },
-    {
-      href: "/crisis-resources",
-      label: "Crisis support",
-      icon: IconLifebuoy,
-    },
+    // Mental health folded into Health record (#1042 final tail): its crisis line
+    // travels WITH the /records#mental-health section (the safety contract is
+    // content, not route), so the standalone "Crisis support" nav slot was removed
+    // too — /crisis-resources stays a reachable route (the section's calm link + the
+    // non-dismissible escalation notice both point at it), only the nav leaf is gone.
     // Passport also carries the Emergency Card as its #emergency section
     // (#1042 phase 3) — the old /emergency route 308-redirects there
     // (next.config.js), so one entry covers both print artifacts.
@@ -333,8 +313,9 @@ export default function Nav({
   // the Food-logging gate stands on its own when a caller doesn't thread it.
   hasIntakeItems?: boolean;
   // The server-resolved relevance bitset (issue #1042) gating entries flagged
-  // with a `relevanceKey` (Cycle/Vision/Dental). Defaults all-true so a caller
-  // that doesn't thread it never over-hides.
+  // with a `relevanceKey` (Cycle in nav; the Vision/Dental bits now gate the
+  // /records specialty sections). Defaults all-true so a caller that doesn't thread
+  // it never over-hides.
   relevance?: NavRelevance;
 }) {
   const visible = entries.filter((e) =>
