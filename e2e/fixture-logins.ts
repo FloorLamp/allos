@@ -478,3 +478,20 @@ export const HA_NOTIFY_PROFILE = "HA Notify (e2e)";
 // entirely on its OWN profile (never a shared-seed row, so --repeat-each stays clean).
 export const E2E_LOGIN_VISITLINKS = "e2e_visitlinks";
 export const VISITLINKS_PROFILE = "Visit Links (e2e)";
+
+// A member granted TWO dedicated profiles for the profile-switch toaster spec
+// (#296), so its ACTIVE-PROFILE switching runs in its OWN cookie context and can
+// never strand the shared admin storageState on a fixture profile — the shard-3
+// cascade on PR #1110 (a mid-switch failure left the shared session on the wrong
+// profile, and 17 later specs in the same worker saw the empty profile's data as
+// data-gated app-shell failures). Each profile carries its OWN pre-existing
+// TERMINAL document/import-job history (a done doc, a failed doc, a ready import
+// job) so switching between them exercises the silent-reseed on BOTH — the fix's
+// "switch there, no ghost toasts; switch back, still none" invariant — without
+// touching profile 1 or profile 2 (whose toaster histories the shared-session era
+// depended on). TOAST_A sorts to the LOWER profile id (seeded first), so it is the
+// login's default active profile on sign-in. Read-only grant: the spec only reads
+// and switches, never writes profile-owned data.
+export const E2E_LOGIN_TOASTS = "e2e_toasts";
+export const TOAST_SWITCH_A_PROFILE = "Toaster A (e2e)";
+export const TOAST_SWITCH_B_PROFILE = "Toaster B (e2e)";
