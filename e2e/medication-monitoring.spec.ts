@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { medicationRow, medicationRowLink } from "./med-card-helpers";
 
 // Medication → required-monitoring-lab bridge (issue #995). The seed's ACTIVE "Warfarin"
 // medication (kind medication, course started ~90 days ago, NO INR reading on file) is a
@@ -13,9 +14,7 @@ test("the Medications row shows a 'requires monitoring' note for a monitored dru
 }) => {
   await page.goto("/medications");
 
-  const warfarinRow = page
-    .getByTestId("medication-row")
-    .filter({ hasText: "Warfarin" });
+  const warfarinRow = medicationRow(page, "Warfarin");
   await expect(warfarinRow).toBeVisible();
 
   const note = warfarinRow.getByTestId("medication-monitoring-note");
@@ -23,9 +22,7 @@ test("the Medications row shows a 'requires monitoring' note for a monitored dru
   await expect(note).toContainText(/Requires monitoring/i);
   await expect(note).toContainText("INR");
 
-  const detailHref = await warfarinRow
-    .getByTestId("medication-row-link")
-    .getAttribute("href");
+  const detailHref = await medicationRowLink(warfarinRow).getAttribute("href");
   await page.goto(detailHref!);
   const detailNote = page.getByTestId("medication-monitoring-detail");
   await expect(detailNote).toBeVisible();

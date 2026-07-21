@@ -1,6 +1,12 @@
 import { test, expect, type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import {
+  medicationRow,
+  medicationRowLink,
+  medicationDoseSummary,
+  prnTodayItem,
+} from "./med-card-helpers";
 
 // #846 medication form split + selection prefill. The Medications page renders the
 // real MedicationForm (not a supplement-shaped shared body): its placeholders are
@@ -54,14 +60,13 @@ test("med form is medication-shaped and selection-prefills on pick (#846)", asyn
 
   // The new PRN medication lands as a current medication row that links to its
   // clinical-record detail page (the standard medication row shape).
-  const row = page
-    .getByTestId("medication-row")
-    .filter({ hasText: "Naproxen" })
-    .first();
+  // This test adds a "Naproxen" med with no cleanup, so a --repeat-each run accumulates
+  // same-named rows on the shared profile — narrow to the leading match.
+  const row = medicationRow(page, "Naproxen").first(); // first-ok: accumulating fixture row
   await expect(row).toBeVisible();
-  await expect(row.getByTestId("medication-row-link")).toBeVisible();
+  await expect(medicationRowLink(row)).toBeVisible();
   await expect(row.getByText("As Needed", { exact: true })).toBeVisible();
-  await expect(row.getByTestId("medication-dose-summary")).toHaveText("220 mg");
+  await expect(medicationDoseSummary(row)).toHaveText("220 mg");
 });
 
 test("a newly catalogued med (#881) is pickable and prefills with zero code change", async ({
@@ -90,10 +95,8 @@ test("a newly catalogued med (#881) is pickable and prefills with zero code chan
 
   await addCard.getByRole("button", { name: "Add", exact: true }).click();
 
-  const row = page
-    .getByTestId("medication-row")
-    .filter({ hasText: "Dextromethorphan" })
-    .first();
+  // Added with no cleanup, so --repeat-each accumulates same-named rows.
+  const row = medicationRow(page, "Dextromethorphan").first(); // first-ok: accumulating fixture row
   await expect(row).toBeVisible();
 });
 
@@ -231,17 +234,13 @@ test("a pediatric formulation persists from quick add to the medication list", a
     await expect(bands.filter({ hasText: "36–47 lb" })).toContainText("7.5 mL");
     await quickAdd.getByRole("button", { name: "Quick add" }).click();
 
-    const row = page
-      .getByTestId("medication-row")
-      .filter({ hasText: "Acetaminophen" })
-      .first();
+    // The child fixture profile accumulates "Acetaminophen" rows across a --repeat-each
+    // run (no cleanup), so narrow to the leading match on both surfaces.
+    const row = medicationRow(page, "Acetaminophen").first(); // first-ok: accumulating fixture row
     // The shared compact formatter must show the SELECTED band's dose, not replace
     // every band with the product's fixed 160 mg / 5 mL concentration.
     await expect(
-      page
-        .getByTestId("quick-log-prn-item")
-        .filter({ hasText: "Acetaminophen" })
-        .first()
+      prnTodayItem(page, "Acetaminophen").first() // first-ok: see the row narrowing above
     ).toContainText("240 mg / 7.5 mL");
     await expect(row).toContainText("240 mg / 7.5 mL");
   } finally {

@@ -1,6 +1,13 @@
 import { test, expect } from "@playwright/test";
 import Database from "better-sqlite3";
 import path from "node:path";
+import {
+  intakeWarnings,
+  expandIntakeWarnings,
+  interactionWarnings,
+  interactionWarningRows,
+  pgxWarnings,
+} from "./intake-warnings-helpers";
 
 // Drug-/supplement-interaction checking (issue #144). The seed gives profile 1 a
 // known-interacting pair — Warfarin (rxcui-keyed) + Ibuprofen (name-matched), a MAJOR
@@ -14,9 +21,9 @@ test("shows the seeded warfarin + ibuprofen interaction warning on /medications"
 }) => {
   await page.goto("/medications");
   const main = page.getByRole("main");
-  await main.getByTestId("intake-warnings").locator("summary").click();
+  await expandIntakeWarnings(main);
 
-  const warnings = main.getByTestId("interaction-warnings");
+  const warnings = interactionWarnings(main);
   await expect(warnings).toBeVisible();
   await expect(warnings).toContainText("Warfarin");
   await expect(warnings).toContainText("Ibuprofen");
@@ -98,12 +105,11 @@ test("flags the seeded combination-medication pair (Hyzaar + Klor-Con) on /medic
 }) => {
   await page.goto("/medications");
   const main = page.getByRole("main");
-  await main.getByTestId("intake-warnings").locator("summary").click();
+  await expandIntakeWarnings(main);
 
-  const warnings = main.getByTestId("interaction-warnings");
+  const warnings = interactionWarnings(main);
   await expect(warnings).toBeVisible();
-  const row = warnings
-    .locator('[data-testid^="interaction-warning-interaction:"]')
+  const row = interactionWarningRows(warnings)
     .filter({ hasText: "Hyzaar" })
     .filter({ hasText: "Klor-Con" })
     .first();
@@ -117,16 +123,13 @@ test("scopes intake warnings to the items represented on each surface", async ({
 }) => {
   await page.goto("/medications");
   let main = page.getByRole("main");
-  let notices = main.getByTestId("intake-warnings");
-  await notices.locator("summary").click();
+  let notices = intakeWarnings(main);
+  await expandIntakeWarnings(main);
   await expect(
-    notices
-      .getByTestId("interaction-warnings")
-      .filter({ hasText: "Calcium + Iron" })
+    interactionWarnings(notices).filter({ hasText: "Calcium + Iron" })
   ).toHaveCount(0);
   await expect(
-    notices
-      .locator('[data-testid^="interaction-warning-interaction:"]')
+    interactionWarningRows(notices)
       .filter({ hasText: "Sertraline" })
       .filter({ hasText: "Ibuprofen" })
       .first()
@@ -134,19 +137,17 @@ test("scopes intake warnings to the items represented on each surface", async ({
 
   await page.goto("/nutrition?tab=supplements");
   main = page.getByRole("main");
-  notices = main.getByTestId("intake-warnings");
-  await notices.locator("summary").click();
+  notices = intakeWarnings(main);
+  await expandIntakeWarnings(main);
   await expect(
-    notices
-      .locator('[data-testid^="interaction-warning-interaction:"]')
+    interactionWarningRows(notices)
       .filter({ hasText: "Calcium" })
       .filter({ hasText: "Iron" })
   ).toBeVisible();
   await expect(
-    notices
-      .locator('[data-testid^="interaction-warning-interaction:"]')
+    interactionWarningRows(notices)
       .filter({ hasText: "Sertraline" })
       .filter({ hasText: "Ibuprofen" })
   ).toHaveCount(0);
-  await expect(notices.getByTestId("pgx-warnings")).toHaveCount(0);
+  await expect(pgxWarnings(notices)).toHaveCount(0);
 });

@@ -1,5 +1,14 @@
 import { test, expect } from "@playwright/test";
-import { followLink, settledClick } from "./helpers";
+import { settledClick } from "./helpers";
+import {
+  medicationsToday,
+  prnTodayItem,
+  prnAdministrations,
+  prnAdministrationRows,
+  medicationOverview,
+  medicationGuidance,
+  openMedDetailViaLink,
+} from "./med-card-helpers";
 
 // #797 PRN administration ledger: a PRN (as-needed) medication can be logged
 // multiple times a day with real times, and both the Medications-page card and the
@@ -28,11 +37,9 @@ test("Today panel shows the PRN med's administrations, detail shows the ledger (
 
   // In the #817 redesign the daily-use surface is the Today panel: a PRN med is a
   // one-tap administration row (QuickLogPrnControl), NOT a scheduled dose pill.
-  const todayPanel = page.getByTestId("medications-today");
+  const todayPanel = medicationsToday(page);
   await expect(todayPanel).toBeVisible();
-  const prnRow = todayPanel
-    .getByTestId("quick-log-prn-item")
-    .filter({ hasText: MED });
+  const prnRow = prnTodayItem(todayPanel, MED);
   await expect(prnRow).toBeVisible();
   await expect(prnRow.getByTestId("prn-day-label")).toContainText(
     /\d+ today .* \((?:just now|\d+ (?:mins?|hrs?) ago)\)/
@@ -40,30 +47,19 @@ test("Today panel shows the PRN med's administrations, detail shows the ledger (
 
   // The med's clinical-record detail page keeps the day's administration ledger
   // ("N today · last …") and never a scheduled take/skip control for a PRN med.
-  const rowLink = page
-    .getByTestId("medication-row")
-    .filter({ hasText: MED })
-    .getByTestId("medication-row-link");
-  await followLink(page, rowLink, /\/medications\/\d+/);
-  const detail = page.getByTestId("medication-detail");
-  const admin = detail.getByTestId("prn-administrations");
+  const detail = await openMedDetailViaLink(page, MED);
+  const admin = prnAdministrations(detail);
   await expect(admin).toBeVisible();
   await expect(admin).toContainText(/\d+ today/);
   await expect(admin).toContainText(
     /last \d{1,2}:\d{2}(?:am|pm)? \((?:just now|\d+ (?:mins?|hrs?) ago)\)/
   );
-  await expect(
-    admin.getByTestId("prn-administration-row").first()
-  ).toContainText(
+  await expect(prnAdministrationRows(admin).first()).toContainText(
     /\d{1,2}:\d{2}(?:am|pm)? \((?:just now|\d+ (?:mins?|hrs?) ago)\)/
   );
 
-  const overviewBox = await detail
-    .getByTestId("medication-overview")
-    .boundingBox();
-  const guidanceBox = await detail
-    .getByTestId("medication-guidance")
-    .boundingBox();
+  const overviewBox = await medicationOverview(detail).boundingBox();
+  const guidanceBox = await medicationGuidance(detail).boundingBox();
   expect(overviewBox).not.toBeNull();
   expect(guidanceBox).not.toBeNull();
   expect(Math.abs(overviewBox!.y - guidanceBox!.y)).toBeLessThanOrEqual(2);
@@ -84,9 +80,7 @@ test("dashboard quick-log widget logs an administration and updates the count (#
   const widget = page.getByTestId("quick-log-prn");
   await expect(widget).toBeVisible();
 
-  const item = widget
-    .getByTestId("quick-log-prn-item")
-    .filter({ hasText: MED });
+  const item = prnTodayItem(widget, MED);
   if (!(await item.isVisible())) {
     const more = widget.getByTestId("quick-log-prn-more");
     await expect(more).toContainText(/More medications/);
@@ -130,14 +124,9 @@ test("dashboard quick-log widget logs an administration and updates the count (#
   // window collapses the next log. The dashboard widget has no remove affordance, so do
   // it on the med's detail page (the most-recent row is the one logged "now").
   await page.goto("/medications");
-  const rowLink = page
-    .getByTestId("medication-row")
-    .filter({ hasText: MED })
-    .getByTestId("medication-row-link");
-  await followLink(page, rowLink, /\/medications\/\d+/);
-  const detail = page.getByTestId("medication-detail");
-  const admin = detail.getByTestId("prn-administrations");
-  const rows = admin.getByTestId("prn-administration-row");
+  const detail = await openMedDetailViaLink(page, MED);
+  const admin = prnAdministrations(detail);
+  const rows = prnAdministrationRows(admin);
   await expect(rows.first()).toBeVisible();
   await settledClick(
     page,

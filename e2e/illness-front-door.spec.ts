@@ -1,5 +1,6 @@
 import { test, expect, type Page, type Locator } from "@playwright/test";
 import { settledClick } from "./helpers";
+import { medicationRow, prnTodayItem } from "./med-card-helpers";
 
 // The illness "first hour" front door (issue #843). Three doors, one story:
 //   A. the dashboard Symptoms widget's inactive state IS the front door — a calm
@@ -211,9 +212,7 @@ test.describe("Illness front door (#843)", () => {
     // Picking prefills the dose amount from the OTC label defaults (#798/#846).
     await expect(page.getByTestId("quick-add-amount")).not.toHaveValue("");
     await page.getByRole("button", { name: "Quick add" }).click();
-    await expect(
-      page.getByTestId("medication-row").filter({ hasText: "Ibuprofen" })
-    ).toBeVisible();
+    await expect(medicationRow(page, "Ibuprofen")).toBeVisible();
 
     // Entry point 2 — inline on the dashboard symptom card. Open the door first.
     await page.goto("/");
@@ -228,9 +227,7 @@ test.describe("Illness front door (#843)", () => {
     await expect(page.getByTestId("illness-add-medication")).toBeVisible();
     // And the med really landed on the Medications page.
     await page.goto("/medications");
-    await expect(
-      page.getByTestId("medication-row").filter({ hasText: "Acetaminophen" })
-    ).toBeVisible();
+    await expect(medicationRow(page, "Acetaminophen")).toBeVisible();
   });
 
   test("sick day 1: feeling sick → symptoms + fever → quick-add ibuprofen → dose → redose chip", async ({
@@ -278,10 +275,10 @@ test.describe("Illness front door (#843)", () => {
 
     // 5) Log a dose from the dashboard PRN quick-log widget, then the redose chip shows.
     await page.goto("/");
-    const prnItem = page
-      .getByTestId("quick-log-prn")
-      .getByTestId("quick-log-prn-item")
-      .filter({ hasText: "Ibuprofen" });
+    const prnItem = prnTodayItem(
+      page.getByTestId("quick-log-prn"),
+      "Ibuprofen"
+    );
     await expect(prnItem).toBeVisible();
     await settledClick(page, prnItem.getByTestId("prn-log-now"));
 

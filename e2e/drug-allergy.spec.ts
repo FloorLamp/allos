@@ -7,6 +7,7 @@ import {
   DRUG_ALLERGY_PROFILE,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
+import { allergyWarnings, allergyWarningRows } from "./intake-warnings-helpers";
 
 // Drug-allergy × medication-stack cross-check (issue #1029). The dedicated fixture
 // profile records a "Penicillin — hives" allergy and tracks amoxicillin (same-class
@@ -54,13 +55,12 @@ test("shows the recorded-allergy warnings on /medications (same-class + cross-re
   await page.goto("/medications");
   const main = page.getByRole("main");
 
-  const warnings = main.getByTestId("allergy-med-warnings");
+  const warnings = allergyWarnings(main);
   await expect(warnings).toBeVisible();
 
   // Same-class hit: amoxicillin × the recorded penicillin allergy, with the
   // recorded reaction and the informational, cited framing.
-  const classCard = warnings
-    .locator('[data-testid^="allergy-med-warning-allergy-med:"]')
+  const classCard = allergyWarningRows(warnings)
     .filter({ hasText: "Amoxicillin" })
     .first();
   await expect(classCard).toBeVisible();
@@ -70,8 +70,7 @@ test("shows the recorded-allergy warnings on /medications (same-class + cross-re
   await expect(classCard).toContainText("Source:");
 
   // Cross-class hit: cephalexin carries the possible-cross-reactivity framing.
-  const crossCard = warnings
-    .locator('[data-testid^="allergy-med-warning-allergy-med:"]')
+  const crossCard = allergyWarningRows(warnings)
     .filter({ hasText: "Cephalexin" })
     .first();
   await expect(crossCard).toBeVisible();

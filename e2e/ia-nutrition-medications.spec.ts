@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import path from "node:path";
 import { followLink } from "./helpers";
+import { medicationList, medicationRow } from "./med-card-helpers";
 
 // IA split (#746): supplements folded into the Nutrition → Supplements tab,
 // medications became a standalone Medical-group page, and /medicine permanently
@@ -59,11 +60,7 @@ test("the Medications page renders its list and inline add workflow (#746)", asy
   await page.goto("/medications");
   // The #747 parity fixture renders in the shared, scannable medication list.
   await expect(
-    page
-      .getByTestId("medication-list")
-      .getByTestId("medication-row")
-      .filter({ hasText: "Adherence Refill Med (e2e)" })
-      .first()
+    medicationRow(medicationList(page), "Adherence Refill Med (e2e)")
   ).toBeVisible();
   // The kind-locked add workflow opens inline instead of occupying the page at rest.
   await page.getByTestId("medication-add-toggle").click();
