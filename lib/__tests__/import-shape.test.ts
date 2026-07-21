@@ -593,6 +593,8 @@ describe("healthRecordToPersistInput (deterministic path)", () => {
       notes: null,
       external_id: "ccda:covid:2021-11-01",
       provider: null,
+      // Tier-1 visit link (#1050): null here — this fixture carries no encounter ref.
+      encounter_external_id: null,
     });
     expect(input.bodyMetrics).toEqual([]);
   });

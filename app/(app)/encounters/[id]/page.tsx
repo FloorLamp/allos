@@ -7,9 +7,16 @@ import {
 } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { getDisplayFormatPrefs } from "@/lib/settings";
-import { getEncounter } from "@/lib/queries";
+import {
+  getEncounter,
+  linkedRowsForEncounter,
+  suggestionsForEncounter,
+  episodeForLinkedEncounter,
+} from "@/lib/queries";
 import { episodeForProfileDate } from "@/lib/illness-episode";
 import { episodeHref } from "@/lib/hrefs";
+import { daysBetweenDateStr } from "@/lib/date";
+import FromThisVisit from "@/components/visit-links/FromThisVisit";
 import { formatRecordDate, sourceLabel } from "@/lib/record-format";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
 import { PageHeader } from "@/components/ui";
@@ -79,6 +86,18 @@ export default async function EncounterDetailPage(props: {
   // Reverse episode association (#856 items 7-8): if this visit's date falls inside an
   // illness episode, chip a link back to it. Derived by date — no FK.
   const episode = episodeForProfileDate(profile.id, encounter.date);
+  // The EXPLICIT episode ↔ visit link (#1053): when this visit was accepted as an
+  // episode's resulting encounter, show a "During illness episode: …, day N" back-link
+  // (day computed from the episode's start). Distinct from the date-derived chip above.
+  const linkedEpisode = episodeForLinkedEncounter(profile.id, encounter.id);
+  const linkedEpisodeDay =
+    linkedEpisode?.started_at != null
+      ? (daysBetweenDateStr(linkedEpisode.started_at, encounter.date) ?? 0) + 1
+      : null;
+  // From-this-visit rows already linked + the read-time "From this visit?" suggestions
+  // (#1050). The linked rows/suggestions target the ACTIVE profile's encounter.
+  const linkedRows = linkedRowsForEncounter(profile.id, encounter.id);
+  const visitSuggestions = suggestionsForEncounter(profile.id, encounter.id);
 
   return (
     <PageContainer width="reading" data-testid="encounter-detail">
@@ -95,7 +114,16 @@ export default async function EncounterDetailPage(props: {
         subtitle={dateLabel(encounter, fmt)}
       />
 
-      {episode && episode.id != null ? (
+      {linkedEpisode ? (
+        <Link
+          href={episodeHref(linkedEpisode.id)}
+          className="mb-4 inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700 transition hover:bg-amber-200 dark:bg-amber-950 dark:text-amber-300"
+          data-testid="encounter-episode-backlink"
+        >
+          During illness episode: {linkedEpisode.situation}
+          {linkedEpisodeDay != null ? `, day ${linkedEpisodeDay}` : ""}
+        </Link>
+      ) : episode && episode.id != null ? (
         <Link
           href={episodeHref(episode.id)}
           className="mb-4 inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700 transition hover:bg-amber-200 dark:bg-amber-950 dark:text-amber-300"
@@ -222,6 +250,13 @@ export default async function EncounterDetailPage(props: {
           </DetailRow>
         </dl>
       </div>
+
+      <FromThisVisit
+        profileId={profile.id}
+        encounterId={encounter.id}
+        linkedRows={linkedRows}
+        suggestions={visitSuggestions}
+      />
 
       <p className="mt-4 px-1 text-xs text-slate-500 dark:text-slate-400">
         Informational only, not medical advice. Imported visits come from
