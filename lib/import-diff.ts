@@ -14,6 +14,7 @@
 // remove+add. Rows with no stable identity (the AI path leaves external_id null)
 // key on their date+name identity, so only their VALUE fields drive change/equal.
 
+import { round } from "./units";
 import { cleanMedicationName } from "./prescription-parse";
 import type { PersistInput, PersistRecord } from "./import-shape";
 
@@ -315,7 +316,10 @@ export function bodyMetricRow(f: {
   resting_hr: number | null;
 }): DiffRow {
   const parts = [
-    f.weight_kg != null ? `${f.weight_kg} kg` : null,
+    // Round the canonical kg for display (#1109) — an integration weight can be
+    // stored full-precision on older rows; the compare `fields` below keep the raw
+    // value so change-detection is unaffected.
+    f.weight_kg != null ? `${round(f.weight_kg, 2)} kg` : null,
     f.body_fat_pct != null ? `${f.body_fat_pct}% bf` : null,
     f.resting_hr != null ? `${f.resting_hr} bpm` : null,
   ].filter(Boolean);

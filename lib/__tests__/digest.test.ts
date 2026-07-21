@@ -184,3 +184,59 @@ describe("dedupeFlaggedByAnalyte", () => {
     expect(dedupeFlaggedByAnalyte([])).toEqual([]);
   });
 });
+
+describe("digest renders bounded-precision numbers (issue #1109)", () => {
+  // The reported bug: a full-precision canonical distance reaching the family chat
+  // verbatim ("32.397218025887694 km"). The digest now formats it through the shared
+  // fmtDistance boundary, canonical km per the notification unit policy.
+  it("rounds a cardio distance line via fmtDistance", () => {
+    const model = buildDigest({
+      ...empty,
+      activities: [
+        {
+          title: "Morning ride",
+          type: "cardio",
+          durationMin: 62,
+          distanceKm: 32.397218025887694,
+        },
+      ],
+    });
+    const line = model?.sections.find((s) => s.heading === "Yesterday")
+      ?.lines[0];
+    expect(line).toBe("🏋️ Morning ride — 32.4 km");
+  });
+
+  // The class guard (issue #1109): a full-precision float on EVERY numeric digest
+  // field, rendered end to end — no output line may carry 3+ decimal places. The
+  // tripwire so the next raw canonical-float interpolation fails a test instead of
+  // shipping 17 digits to a chat.
+  it("no rendered line carries a long decimal, even on full-precision inputs", () => {
+    const model = buildDigest({
+      ...empty,
+      activities: [
+        {
+          title: "Long ride",
+          type: "cardio",
+          durationMin: 184,
+          distanceKm: 32.397218025887694,
+        },
+        {
+          title: "Strength",
+          type: "strength",
+          durationMin: 47,
+          distanceKm: null,
+        },
+      ],
+      weightKg: 70.438218025887694,
+      newFlaggedBiomarkers: [
+        { name: "Glucose", value: "129 mg/dL", flag: "high" },
+      ],
+    });
+    expect(model).not.toBeNull();
+    const msg = renderDigestMessage(model!);
+    for (const line of msg.body.split("\n")) {
+      expect(line).not.toMatch(/\d+\.\d{3,}/);
+    }
+    expect(msg.title).not.toMatch(/\d+\.\d{3,}/);
+  });
+});

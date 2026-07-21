@@ -3,6 +3,7 @@ import {
   unscopeExternalId,
   recordRow,
   medicationRow,
+  bodyMetricRow,
   diffRows,
   computeImportDiff,
   snapshotFromPersistInput,
@@ -240,5 +241,23 @@ describe("snapshotFromPersistInput medications", () => {
 describe("medicationRow", () => {
   it("strips strength/form to a stable grouping key", () => {
     expect(medicationRow("Lisinopril 10 mg tablet").key).toBe("med:lisinopril");
+  });
+});
+
+describe("bodyMetricRow display precision (issue #1109)", () => {
+  it("rounds a full-precision integration weight in the label but keeps the raw compare field", () => {
+    const row = bodyMetricRow({
+      date: "2026-05-10",
+      weight_kg: 70.438218025887694,
+      body_fat_pct: 18.2,
+      resting_hr: 54,
+    });
+    // The user-facing label is rounded (no 17-digit float in the reprocess diff)…
+    expect(row.label).toBe("70.44 kg, 18.2% bf, 54 bpm");
+    expect(row.label).not.toMatch(/\d+\.\d{3,}/);
+    // …but the serialized compare field keeps the raw stored value (full precision
+    // beyond 2dp), so a reprocess that re-derives the same reading is still detected
+    // as unchanged rather than diffing against the rounded label.
+    expect(row.fields).toContain("weight_kg=70.4382");
   });
 });

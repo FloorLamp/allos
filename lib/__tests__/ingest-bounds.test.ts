@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   METRIC_BOUNDS,
+  METRIC_ROUND_DP,
   inMetricBounds,
   boundedOrNull,
+  roundForMetric,
   inTimeWindow,
   MIN_INGEST_TIME_MS,
   FUTURE_SLACK_MS,
@@ -130,6 +132,65 @@ describe("boundedOrNull", () => {
 
   it("passes an unknown metric's value through unchanged", () => {
     expect(boundedOrNull("no_such_metric", 12345)).toBe(12345);
+  });
+
+  // Issue #1109: boundedOrNull is the shared point every provider funnels canonical
+  // values through, so it also rounds to the metric's storage precision — a raw
+  // provider float never reaches storage.
+  it("rounds an in-bounds value to the metric's storage precision", () => {
+    // The concrete full-precision floats from the real HC payload in the issue.
+    expect(boundedOrNull("distance_km", 32.397218025887694)).toBe(32.4);
+    expect(boundedOrNull("distance_km", 27.83881802588772)).toBe(27.84);
+    expect(boundedOrNull("weight_kg", 70.43821)).toBe(70.44);
+    expect(boundedOrNull("active_kcal", 470.60464280472473)).toBe(470.6);
+    expect(boundedOrNull("hydration_l", 19.519318)).toBe(19.5);
+  });
+
+  it("still returns null when an out-of-bounds value would round into range", () => {
+    // Bounds run on the RAW value, so a 5,000 kg reading is dropped, not rounded.
+    expect(boundedOrNull("weight_kg", 5000.004)).toBeNull();
+  });
+});
+
+describe("roundForMetric (issue #1109)", () => {
+  it("rounds masses and distance to 2dp", () => {
+    expect(roundForMetric("weight_kg", 70.43821)).toBe(70.44);
+    expect(roundForMetric("distance_km", 32.397218025887694)).toBe(32.4);
+    expect(roundForMetric("lean_mass_kg", 55.678)).toBe(55.68);
+    expect(roundForMetric("bone_mass_kg", 2.9449)).toBe(2.94);
+    expect(roundForMetric("body_water_kg", 41.2351)).toBe(41.24);
+    expect(roundForMetric("muscle_mass_kg", 30.005)).toBe(30.01);
+  });
+
+  it("rounds energy, grams, and liters to 1dp", () => {
+    expect(roundForMetric("active_kcal", 470.60464280472473)).toBe(470.6);
+    expect(roundForMetric("total_kcal", 2145.987)).toBe(2146);
+    expect(roundForMetric("nutrition_kcal", 450.05)).toBe(450.1);
+    expect(roundForMetric("protein_g", 30.449)).toBe(30.4);
+    expect(roundForMetric("hydration_l", 19.519318)).toBe(19.5);
+    expect(roundForMetric("sodium_g", 2.349)).toBe(2.3);
+  });
+
+  it("leaves an unregistered metric and a non-finite value unchanged", () => {
+    expect(roundForMetric("steps", 12345)).toBe(12345);
+    expect(roundForMetric("resting_hr", 58)).toBe(58);
+    expect(roundForMetric("no_such_metric", 1.23456789)).toBe(1.23456789);
+    expect(roundForMetric("weight_kg", NaN)).toBeNaN();
+  });
+
+  it("is idempotent — re-rounding an already-rounded value is a fixed point", () => {
+    // Deterministic idempotency is what keeps the SELECT-before-compare upserts
+    // seeing equality on a re-push (unchanged, not a spurious write).
+    for (const [metric] of Object.entries(METRIC_ROUND_DP)) {
+      const once = roundForMetric(metric, 12.3456789);
+      expect(roundForMetric(metric, once)).toBe(once);
+    }
+  });
+
+  it("every rounded metric carries a plausibility bound (both opt-in maps agree)", () => {
+    for (const metric of Object.keys(METRIC_ROUND_DP)) {
+      expect(METRIC_BOUNDS[metric]).toBeDefined();
+    }
   });
 });
 
