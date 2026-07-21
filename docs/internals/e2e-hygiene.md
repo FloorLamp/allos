@@ -204,6 +204,22 @@ absent from `.env.example`. `bootTasks` (`lib/migrations/boot-tasks.ts`) logs a
 `WARN [clock]` on every boot when it is set, so a misconfigured production instance
 running on a frozen clock is loudly visible.
 
+**The timezone pin (the #1103 follow-up).** Freezing at the run's REAL start
+(#1103) removed the real-vs-frozen skew but left the frozen LOCAL time-of-day
+equal to whatever hour CI started — and bucket-progression assertions (a Morning
+dose is past due only once the profile-local clock passes 11:00,
+`lib/medication-today.ts`) then failed deterministically for any run starting
+00:00–10:59 UTC. The fix stabilizes the TIMEZONE instead of the clock:
+`e2e/seed-events.ts` pins the instance-default timezone to the `Etc/GMT` offset
+in which the frozen instant reads 13:mm local (`e2e/pinned-timezone.ts`, unit
+test `lib/__tests__/pinned-timezone.test.ts`) — deterministic Midday at every
+UTC start hour, zero skew preserved, and the local date always equals the frozen
+instant's UTC date so `today()` and SQL-stamped rows can't diverge. Every
+profile without a per-profile timezone resolves to the pin at read time; a
+fixture designed against UTC wall-times opts out per-profile
+(`setTimezone(id, "UTC")` — the food-slot ranking profile). The demo server
+stays UTC (its specs are time-neutral).
+
 ## Fix (e) — sharded CI, the on-demand full-suite workflow, and flake telemetry
 
 Three CI-shape changes from the flaky-e2e hardening pass (the merge-latency side

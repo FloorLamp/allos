@@ -10,7 +10,7 @@ import path from "node:path";
 
 import { db, today, writeTx } from "../lib/db";
 import { now as clockNow } from "../lib/clock";
-import { shiftDateStr, utcSqlString } from "../lib/date";
+import { shiftDateStr, utcSqlString, zonedDateParts } from "../lib/date";
 import { writeRawPayload } from "../lib/integrations/raw-log";
 import { upsertConnection } from "../lib/integrations/connections";
 import {
@@ -142,6 +142,23 @@ import {
   TOAST_SWITCH_B_PROFILE,
 } from "./fixture-logins";
 import { adoptTemplate, activateRoutine } from "../lib/routines";
+import { getTimezone, setInstanceTimezone, setTimezone } from "../lib/settings";
+import { pinnedTimezone } from "./pinned-timezone";
+
+// Pin the instance-default timezone so the frozen clock (#1103's run-start
+// ALLOS_TEST_NOW) reads 13:mm LOCAL — deterministic Midday — at every UTC start
+// hour; see e2e/pinned-timezone.ts for why the run-start freeze alone left
+// bucket-progression assertions (past-due doses) hour-dependent. Global-only on
+// purpose: every profile without an explicit per-profile timezone resolves to
+// the instance default at READ time (lib/settings getTimezone), including
+// profiles specs create at runtime. A fixture that DEPENDS on UTC wall-times
+// opts out per-profile below (the food-slot ranking profile). The demo server
+// seeds via scripts/seed.ts only and stays UTC — its specs are time-neutral.
+if (process.env.ALLOS_TEST_NOW) {
+  const { zone } = pinnedTimezone(process.env.ALLOS_TEST_NOW);
+  setInstanceTimezone(zone);
+  console.log(`e2e: pinned instance timezone ${zone} (frozen local ~13:00)`);
+}
 
 // A persisted notification-delivery failure (#131) so Settings → Notifications
 // surfaces the "Last notification delivery failed" marker for the e2e to assert.
@@ -2038,7 +2055,10 @@ db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(presenceId);
 {
   const now = clockNow();
   const startIso = new Date(now.getTime() - 40 * 60_000);
-  const startHHMM = startIso.toISOString().slice(11, 16);
+  // start_time is HH:MM wall clock IN THE PROFILE'S TIMEZONE (see
+  // lib/workout-presence.ts) — a bare UTC slice diverges from it by the pinned
+  // offset (top of file), so derive the wall time through the profile's zone.
+  const startHHMM = zonedDateParts(getTimezone(presenceId), startIso).hhmm;
   db.prepare(
     `INSERT INTO activities
        (profile_id, date, type, title, start_time, end_time, created_at, updated_at, source)
@@ -2089,8 +2109,12 @@ db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(recapId);
       .run(
         recapId,
         today(recapId),
-        startIso.toISOString().slice(11, 16),
-        endIso.toISOString().slice(11, 16),
+        // Wall clock in the profile's timezone, NOT a UTC slice: presence
+        // reconstructs the end instant via zonedWallTimeToUtc, so a UTC slice
+        // reads 60×offset minutes off under the pinned instance timezone and
+        // pushed the ~8-min-ago finish outside FINISHED_WINDOW_MIN.
+        zonedDateParts(getTimezone(recapId), startIso).hhmm,
+        zonedDateParts(getTimezone(recapId), endIso).hhmm,
         utcSqlString(startIso),
         utcSqlString(endIso)
       ).lastInsertRowid
@@ -3182,6 +3206,12 @@ console.log(
 // food_log + food_log_events + food_group targets so a reused server always starts from
 // this exact skew.
 const foodSlotId = fixtureProfileId(FOOD_SLOT_PROFILE);
+// Opt this profile OUT of the pinned instance timezone (top of file): its taps
+// below are stamped at fixed UTC wall-times (08/12/18Z) designed against the
+// UTC slot boundaries this comment block describes, and the spec's
+// whatever-slot-now-is assertion is hour-robust by design — pinning would shift
+// the tap→slot mapping instead of stabilizing anything.
+setTimezone(foodSlotId, "UTC");
 const foodSlotAnchor = today(foodSlotId);
 db.prepare(`DELETE FROM food_log WHERE profile_id = ?`).run(foodSlotId);
 db.prepare(`DELETE FROM food_log_events WHERE profile_id = ?`).run(foodSlotId);

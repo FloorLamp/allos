@@ -28,7 +28,7 @@ test.describe("record ↔ visit / episode ↔ visit linking (#1050/#1053)", () =
     await page.goto("/records#visits");
     await followLink(
       page,
-      page.getByRole("link", { name: /Office Visit/ }).first(),
+      page.getByRole("link", { name: /Office Visit/ }).first(), // first-ok: dedicated VISITLINKS fixture profile — the only Office Visit rows are this spec's own
       /\/encounters\/\d+/
     );
     await expect(page.getByTestId("encounter-detail")).toBeVisible();
@@ -60,7 +60,7 @@ test.describe("record ↔ visit / episode ↔ visit linking (#1050/#1053)", () =
     await page.goto("/medications");
     await followLink(
       page,
-      page.getByRole("link", { name: /Amoxicillin \(e2e\)/ }).first(),
+      page.getByRole("link", { name: /Amoxicillin \(e2e\)/ }).first(), // first-ok: dedicated VISITLINKS fixture profile — Amoxicillin (e2e) exists only in this spec's seed
       /\/medications\/\d+/
     );
     await expect(page.getByTestId("medication-detail")).toBeVisible();
@@ -73,7 +73,7 @@ test.describe("record ↔ visit / episode ↔ visit linking (#1050/#1053)", () =
     await page.goto("/medical/episodes");
     await followLink(
       page,
-      page.getByRole("link", { name: /sinus infection/i }).first(),
+      page.getByRole("link", { name: /sinus infection/i }).first(), // first-ok: dedicated VISITLINKS fixture profile — the sinus-infection episode is this spec's own fixture
       /\/medical\/episodes\/\d+/
     );
     const care = page.getByTestId("episode-care");
