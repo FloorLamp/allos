@@ -353,6 +353,25 @@ it later from the issue number is guesswork.
    gate after ~12:05 UTC (real ≥ frozen, the proven regime) and merge on that
    green. Do not patch specs to tolerate the band; the structural fix is
    #1048's design pass.
+   **The band is BROAD, not two specs (2026-07-21, ~03:00 UTC).** It was first
+   seen as `workout-presence` + `temperature-unit`, but a night gate showed
+   ~10 recency/liveness-gated specs failing identically on plain main:
+   `protocol-reach` (×4 — the "ongoing protocol" annotations + biomarker
+   outcome options), `protein-adequacy`, `profile-switch-toasts` ("no ghost
+   toasts on first poll"), `qualitative-chart` (×3), plus the original two —
+   all rendering only the app shell (main content data-gated-out), no server
+   error logged, seed clean. So a night full-suite gate ALWAYS carries ~10
+   rotating false-failures, which is indistinguishable at a glance from
+   (a) a real regression or (b) single-process whole-suite degradation — and
+   tonight all three got confused on one gate. Discipline: (1) at night, the
+   ONLY authoritative full green is a post-12:05-UTC rerun; (2) to clear a
+   specific PR before then, the bisect is decisive — run the SAME failing
+   specs on the PR's BASE commit (pre-change main) at the SAME hour; identical
+   failures ⇒ band, and the PR's own changed spec passing + a green check job
+   is enough to merge on the carve-out (this is how food-nudge #1097 merged).
+   (3) A `BUILD=1` when checking out an OLDER commit in a reused worktree is
+   usually the downgrade guard (`user_version` newer than the old code's max
+   migration) — `rm data/allos.db*` and rebuild, it is NOT a real build break.
 9. **Persisted channel config turns event-driven dispatches into marker
    pollution** — the delivery-health marker is GLOBAL (one `notify_lifecycle`
    row), and `notify-delivery-error.spec.ts` asserts the seeded fixture
