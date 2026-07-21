@@ -216,6 +216,22 @@ it later from the issue number is guesswork.
   product defects that retries would have masked (a debounced-autosave orphan
   row poisoning the next repeat; a live-mode finish seam remounting the form) —
   it is the single highest-value gate in the pipeline.
+  - **A NEW e2e spec is not verified until it has RUN — the dispatch brief must
+    require it (2026-07-21).** "Only you run e2e" means the orchestrator owns
+    FULL suites; it does NOT excuse an agent from running the ONE new spec it
+    authored. #1066 (`/sleep` page) and #1115 (coaching) both shipped brand-new
+    specs that failed in CI on the first push because the agents never ran them
+    (the brief said "CI gates e2e"). Every UI-feature brief now says: run your
+    new/changed spec in CI-parity (`--repeat-each=3 --retries=0`, your port
+    pair) before pushing. An unrun spec is a guaranteed CI round-trip.
+  - **Adding a nav entry breaks the hardcoded nav-order spec (2026-07-21).**
+    `e2e/nav-consolidation.spec.ts` pins the whole top-level order in a
+    `TOP_LEVEL_ORDER` literal (#1042). #1066 added a data-gated "Sleep" leaf and
+    left that list stale → a deterministic shard failure the agent's own
+    sleep-page spec didn't catch. Any brief that may add a nav entry must say:
+    update `TOP_LEVEL_ORDER` too. (Fixing this pre-existing spec is the
+    orchestrator's lane — it's an e2e spec edit — but flag it in the brief so it
+    lands in the same push.)
 - **Double-green before merging a UI/migration PR:** CI green (check + e2e,
   including CI's changed-specs repeat lane) AND a local CI-parity full-suite
   run. Lib/docs-only PRs merge on CI green alone. **Relaxed bar for contained
