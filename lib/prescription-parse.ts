@@ -127,6 +127,19 @@ function cleanAmount(amount: string | null): string | null {
   return looksLikeDose(cleaned) ? cleaned : null;
 }
 
+// True when a string has as many "(" as ")" — a cheap balance proxy good enough
+// for drug names (which never legitimately nest). Used to reject a paren strip
+// that would cut into a NESTED parenthetical and strand a dangling bracket.
+function parensBalanced(s: string): boolean {
+  let depth = 0;
+  for (const ch of s) {
+    if (ch === "(") depth++;
+    else if (ch === ")") depth--;
+    if (depth < 0) return false;
+  }
+  return depth === 0;
+}
+
 // Strip a trailing strength/form off a drug name to get a stable grouping name.
 // Used for both the stored med name and for de-duping an extracted med against a
 // manually-entered one (so "Lisinopril 10 mg" and "Lisinopril" are one med).
@@ -134,8 +147,14 @@ export function cleanMedicationName(raw: string): string {
   const name = (raw ?? "").trim();
   // Parenthesized strengths first (position-independent): the parenthetical and
   // everything after it go — "amoxicillin (400 mg/5 mL) suspension" → "amoxicillin".
-  const stripped = name
-    .replace(PAREN_STRENGTH_TAIL_RE, " ")
+  // PAREN_STRENGTH_TAIL_RE's `.*$` eats the closing bracket that trails the
+  // strength, so on a NESTED shape ("Drug (foo (2.5 mg))") it would leave an
+  // unbalanced "Drug (foo". Only accept the paren strip when the result's brackets
+  // stay balanced; otherwise skip that pass and leave the (rare, contrived) nested
+  // name intact rather than mangle it — the strength is still recovered separately.
+  const parenStripped = name.replace(PAREN_STRENGTH_TAIL_RE, " ");
+  const base = parensBalanced(parenStripped) ? parenStripped : name;
+  const stripped = base
     .replace(NAME_STRENGTH_RE, "")
     .replace(NAME_FORM_TAIL_RE, "")
     .replace(/\s{2,}/g, " ")

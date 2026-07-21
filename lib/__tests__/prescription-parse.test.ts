@@ -3,6 +3,7 @@ import {
   parseSig,
   parsePrescription,
   cleanMedicationName,
+  strengthFromName,
   looksLikeDose,
 } from "../prescription-parse";
 
@@ -157,6 +158,33 @@ describe("cleanMedicationName — grouping name", () => {
 
   it("a parenthesized-strength-only name never strips to nothing (#1026)", () => {
     expect(cleanMedicationName("(500 mg)")).toBe("(500 mg)");
+  });
+
+  it("strips a strength parenthetical while a preceding ingredient one survives (#1026)", () => {
+    // Two separate parentheticals: identity kept, strength dropped.
+    expect(cleanMedicationName("Tylenol (acetaminophen) (500 mg)")).toBe(
+      "Tylenol (acetaminophen)"
+    );
+  });
+
+  it("a unit-only parenthetical (no number) is NOT a strength and survives (#1026)", () => {
+    // No digit → not strength-shaped, so these stay put (identity/noise, not dose).
+    expect(cleanMedicationName("Insulin (units)")).toBe("Insulin (units)");
+    expect(cleanMedicationName("Drug (mg)")).toBe("Drug (mg)");
+  });
+
+  it("a NESTED parenthetical is left intact rather than mangled (#1026)", () => {
+    // Stripping "(2.5 mg))" alone would strand a dangling "Drug (foo" — the
+    // balance guard rejects that and keeps the (contrived) nested name whole.
+    expect(cleanMedicationName("Drug (foo (2.5 mg))")).toBe(
+      "Drug (foo (2.5 mg))"
+    );
+  });
+
+  it("recovers the strength even from a nested parenthetical (#1026)", () => {
+    // The name is left intact by the balance guard, but the strength is still
+    // pulled out separately so the dose field is populated.
+    expect(strengthFromName("Drug (foo (2.5 mg))")).toBe("2.5 mg");
   });
 
   it("the unparenthesized trailing strength keeps stripping as before", () => {
