@@ -137,6 +137,23 @@ import {
   DQ_CARE_CHILD_PROFILE,
 } from "./fixture-logins";
 import { adoptTemplate, activateRoutine } from "../lib/routines";
+import { setInstanceTimezone, setTimezone } from "../lib/settings";
+import { pinnedTimezone } from "./pinned-timezone";
+
+// Pin the instance-default timezone so the frozen clock (#1103's run-start
+// ALLOS_TEST_NOW) reads 13:mm LOCAL — deterministic Midday — at every UTC start
+// hour; see e2e/pinned-timezone.ts for why the run-start freeze alone left
+// bucket-progression assertions (past-due doses) hour-dependent. Global-only on
+// purpose: every profile without an explicit per-profile timezone resolves to
+// the instance default at READ time (lib/settings getTimezone), including
+// profiles specs create at runtime. A fixture that DEPENDS on UTC wall-times
+// opts out per-profile below (the food-slot ranking profile). The demo server
+// seeds via scripts/seed.ts only and stays UTC — its specs are time-neutral.
+if (process.env.ALLOS_TEST_NOW) {
+  const { zone } = pinnedTimezone(process.env.ALLOS_TEST_NOW);
+  setInstanceTimezone(zone);
+  console.log(`e2e: pinned instance timezone ${zone} (frozen local ~13:00)`);
+}
 
 // A persisted notification-delivery failure (#131) so Settings → Notifications
 // surfaces the "Last notification delivery failed" marker for the e2e to assert.
@@ -3177,6 +3194,12 @@ console.log(
 // food_log + food_log_events + food_group targets so a reused server always starts from
 // this exact skew.
 const foodSlotId = fixtureProfileId(FOOD_SLOT_PROFILE);
+// Opt this profile OUT of the pinned instance timezone (top of file): its taps
+// below are stamped at fixed UTC wall-times (08/12/18Z) designed against the
+// UTC slot boundaries this comment block describes, and the spec's
+// whatever-slot-now-is assertion is hour-robust by design — pinning would shift
+// the tap→slot mapping instead of stabilizing anything.
+setTimezone(foodSlotId, "UTC");
 const foodSlotAnchor = today(foodSlotId);
 db.prepare(`DELETE FROM food_log WHERE profile_id = ?`).run(foodSlotId);
 db.prepare(`DELETE FROM food_log_events WHERE profile_id = ?`).run(foodSlotId);
