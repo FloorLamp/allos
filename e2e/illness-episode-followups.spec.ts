@@ -254,16 +254,23 @@ test.describe("Illness-episode follow-ups (#856)", () => {
       /bg-brand/
     );
     const medicationRows = page.getByTestId("illness-event-medication");
-    await expect(medicationRows.first()).toContainText(/mg|mL|Add amount/i);
-    await expect(
-      medicationRows.first().getByRole("link").first()
-    ).toHaveAttribute("href", /^\/medications\/\d+$/);
-    await expect(medicationRows.first().getByRole("link").first()).toHaveClass(
+    // Target a DOSED (mg/mL) med row by content, not `.first()`: under the pinned
+    // clock (#1110) the seed's relative-time ibuprofen doses shift local-day, so the
+    // FIRST med row is nondeterministic — a PRN with a non-mg/mL dose (Klor-Con
+    // "10 mEq") can sort ahead and fail a bare `.first()` mg/mL assertion. The seed's
+    // ibuprofen "200 mg" doses are always in the episode, so a mg/mL row is stable.
+    const dosedMedicationRow = medicationRows
+      .filter({ hasText: /\d+(?:\.\d+)?\s*(?:mg|mL)/i })
+      .first(); // first-ok: filtered to a dosed (mg/mL) med row; all such rows render identically
+    await expect(dosedMedicationRow).toBeVisible();
+    await expect(dosedMedicationRow).toContainText(/mg|mL/i);
+    await expect(dosedMedicationRow.getByRole("link").first()).toHaveAttribute(
+      "href",
+      /^\/medications\/\d+$/
+    );
+    await expect(dosedMedicationRow.getByRole("link").first()).toHaveClass(
       /text-brand-600/
     );
-    await expect(
-      medicationRows.filter({ hasText: /\d+(?:\.\d+)?\s*(?:mg|mL)/i }).first()
-    ).toBeVisible();
     await expect(
       page
         .getByTestId("illness-event-appointment")
