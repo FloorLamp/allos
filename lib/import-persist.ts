@@ -15,6 +15,7 @@ import {
   createImportedMedicationCourses,
   recordPreventiveDone,
   sweepImmunizationDismissals,
+  reapplyVisitLinkDecisions,
 } from "./queries";
 import { matchAppointmentForEncounter } from "./appointment-encounter-match";
 import { satisfiedRuleForCompletedKind } from "./preventive-appointment";
@@ -172,6 +173,29 @@ export function clearImportedDocumentRows(
            SELECT id FROM dental_procedures WHERE profile_id = ? AND document_id = ?
          )`
   ).run(profileId, profileId, docId);
+  // Row-ops side-state (#1050/#1053): a record/med/condition/procedure/imaging/
+  // immunization or illness_episode — possibly from ANOTHER document, or manual — may
+  // link an encounter THIS document produced (encounter_id, no ON DELETE). NULL those
+  // back-links FIRST so deleting the encounter (in the footprint loop) can't trip the
+  // FK. A tier-1 link re-derives when its own document reprocesses; a tier-2 accepted
+  // link re-applies via reapplyVisitLinkDecisions once both rows exist again.
+  for (const table of [
+    "medical_records",
+    "intake_items",
+    "conditions",
+    "procedures",
+    "imaging_studies",
+    "immunizations",
+    "illness_episodes",
+  ]) {
+    db.prepare(
+      `UPDATE ${table} SET encounter_id = NULL
+         WHERE profile_id = ?
+           AND encounter_id IN (
+             SELECT id FROM encounters WHERE profile_id = ? AND document_id = ?
+           )`
+    ).run(profileId, profileId, docId);
+  }
   for (const t of IMPORT_FOOTPRINT_TABLES) {
     db.prepare(
       `DELETE FROM ${t.table} WHERE ${t.key} = ? AND ${footprintScope(t)}`
@@ -231,6 +255,27 @@ export function moveImportedDocumentRows(
          WHERE profile_id = ? AND encounter_id IS NOT NULL
            AND encounter_id NOT IN (SELECT id FROM encounters WHERE profile_id = ?)`
     ).run(pid, pid);
+  }
+  // Row-ops side-state (#1050/#1053): the record/med/condition/procedure/imaging/
+  // immunization/episode → encounter link must never cross profiles either. Same
+  // re-enforce on BOTH affected profiles: NULL any encounter_id whose target visit no
+  // longer lives in that row's profile (a link whose both ends moved together stays).
+  for (const pid of [srcProfileId, destProfileId]) {
+    for (const table of [
+      "medical_records",
+      "intake_items",
+      "conditions",
+      "procedures",
+      "imaging_studies",
+      "immunizations",
+      "illness_episodes",
+    ]) {
+      db.prepare(
+        `UPDATE ${table} SET encounter_id = NULL
+           WHERE profile_id = ? AND encounter_id IS NOT NULL
+             AND encounter_id NOT IN (SELECT id FROM encounters WHERE profile_id = ?)`
+      ).run(pid, pid);
+    }
   }
   // Row-ops side-state (#700): a follow-up's source/resolving imaging link must never
   // cross profiles. A reassign can move an imported imaging study but not a MANUAL
@@ -457,6 +502,12 @@ export function persistDocumentImport(
     // Close the appointment → encounter loop: a just-imported encounter that
     // matches a still-scheduled appointment marks it completed + linked (#288).
     autoCompleteAppointmentsFromEncounters(profileId, docId);
+
+    // Re-apply the user's durable tier-2 visit-link decisions (#1050/#1053): a
+    // reprocess deleted-and-reinserted this document's rows under new ids but the
+    // SAME external_ids, so a previously-accepted link is restored (and a dead
+    // decision swept). Tier-1 FHIR links already self-healed above at insert.
+    reapplyVisitLinkDecisions(profileId);
 
     // The toast + Review feed report ONE "N items imported" number. Tally it off
     // the footprint tables here — after every insert loop — so it counts every
@@ -1160,6 +1211,43 @@ function insertImportRows(
       profileId
     );
   }
+  // Tier-1 VISIT LINKS (#1050): resolve each FHIR encounter reference (recovered by
+  // the mappers as `encounter_external_id`) to the local encounter row just inserted,
+  // and stamp encounter_id on the linked record. Deterministic + free — re-derived
+  // every import, so it self-heals on reprocess. Only the document path carries
+  // encounter references (the paste/AI path leaves them null), so guard on docSource.
+  const resolveEnc = makeEncounterResolver(profileId, docSource);
+  if (docSource) {
+    linkRowsByExternalId(
+      profileId,
+      docSource,
+      "medical_records",
+      input.records,
+      resolveEnc
+    );
+    linkRowsByExternalId(
+      profileId,
+      docSource,
+      "conditions",
+      input.conditions,
+      resolveEnc
+    );
+    linkRowsByExternalId(
+      profileId,
+      docSource,
+      "procedures",
+      input.procedures,
+      resolveEnc
+    );
+    linkRowsByExternalId(
+      profileId,
+      docSource,
+      "immunizations",
+      input.immunizations,
+      resolveEnc
+    );
+  }
+
   // Project each prescription record into a structured medication row. The
   // name-dedup set starts from the meds that survived the delete-set (manual +
   // other documents') and grows as we insert, so neither a manual med nor a
@@ -1174,6 +1262,9 @@ function insertImportRows(
       existing: existingMeds.all(profileId) as { name: string }[],
       insMed,
       insMedDose,
+      // Tier-1: the med projected from a prescription that named an encounter is
+      // stamped with the resolved local encounter id at INSERT (#1050).
+      resolveEnc: docSource ? resolveEnc : undefined,
     }
   );
 
@@ -1189,6 +1280,52 @@ function insertImportRows(
 }
 
 type Stmt = Database.Statement;
+
+// Tier-1 visit link (#1050): a memoized resolver from a RAW encounter external_id
+// (`ccda:encounter:<id>`, as the mappers emit it) to the local encounter row id. An
+// imported encounter is stored under the SCOPED external_id `<docSource>|<raw>`, so
+// the lookup re-scopes before querying — stable across reprocess of the same
+// document. Returns null when the reference dangles (never a wrong link).
+export function makeEncounterResolver(
+  profileId: number,
+  docSource: string | null
+): (raw: string | null | undefined) => number | null {
+  const cache = new Map<string, number | null>();
+  return (raw) => {
+    if (!raw || !docSource) return null;
+    if (cache.has(raw)) return cache.get(raw)!;
+    const row = db
+      .prepare(
+        `SELECT id FROM encounters WHERE profile_id = ? AND external_id = ?`
+      )
+      .get(profileId, `${docSource}|${raw}`) as { id: number } | undefined;
+    const id = row ? row.id : null;
+    cache.set(raw, id);
+    return id;
+  };
+}
+
+// Stamp encounter_id on each row of `rows` (a table whose stored external_id is the
+// scoped `<docSource>|<raw>`) whose `encounter_external_id` resolves to a local
+// encounter. Only sets a currently-null link (a manual re-link is never clobbered).
+function linkRowsByExternalId(
+  profileId: number,
+  docSource: string,
+  table: string,
+  rows: { external_id: string | null; encounter_external_id?: string | null }[],
+  resolveEnc: (raw: string | null | undefined) => number | null
+): void {
+  const stmt = db.prepare(
+    `UPDATE ${table} SET encounter_id = ?
+      WHERE profile_id = ? AND external_id = ? AND encounter_id IS NULL`
+  );
+  for (const r of rows) {
+    if (!r.encounter_external_id || !r.external_id) continue;
+    const encId = resolveEnc(r.encounter_external_id);
+    if (encId == null) continue;
+    stmt.run(encId, profileId, `${docSource}|${r.external_id}`);
+  }
+}
 
 // Project an import's prescription records into structured kind='medication'
 // intake_items rows (+ their dose rows). Runs inside insertImportRows' caller
@@ -1207,7 +1344,14 @@ function persistExtractedMedications(
   profileId: number,
   docId: number | null,
   records: PersistRecord[],
-  ctx: { existing: { name: string }[]; insMed: Stmt; insMedDose: Stmt }
+  ctx: {
+    existing: { name: string }[];
+    insMed: Stmt;
+    insMedDose: Stmt;
+    // Tier-1 (#1050): resolve the prescription's encounter reference to a local
+    // encounter row id, stamped onto the projected med. Absent → no linking.
+    resolveEnc?: (raw: string | null | undefined) => number | null;
+  }
 ): number {
   const prescriptions = records.filter((r) => r.category === "prescription");
   if (prescriptions.length === 0) return 0;
@@ -1227,6 +1371,9 @@ function persistExtractedMedications(
     {
       med: ReturnType<typeof parsePrescription>;
       courses: ImportedMedicationCourse[];
+      // Tier-1 (#1050): the encounter this med was prescribed at, from the first
+      // grouped prescription record that named one.
+      encExt: string | null;
     }
   >();
   const order: string[] = [];
@@ -1248,15 +1395,17 @@ function persistExtractedMedications(
     if (seen.has(key)) continue; // already a manual/other-doc med — don't duplicate
     let g = groups.get(key);
     if (!g) {
-      g = { med, courses: [] };
+      g = { med, courses: [], encExt: r.encounter_external_id ?? null };
       groups.set(key, g);
       order.push(key);
     }
+    if (!g.encExt && r.encounter_external_id)
+      g.encExt = r.encounter_external_id;
     if (r.courses && r.courses.length) g.courses.push(...r.courses);
   }
 
   for (const key of order) {
-    const { med, courses } = groups.get(key)!;
+    const { med, courses, encExt } = groups.get(key)!;
     const info = ctx.insMed.run(
       med.name,
       med.sig, // directions kept as the row's notes (may be null)
@@ -1270,6 +1419,16 @@ function persistExtractedMedications(
       profileId
     );
     const medId = Number(info.lastInsertRowid);
+
+    // Tier-1 visit link (#1050): stamp the resolved encounter id onto the med.
+    if (ctx.resolveEnc && encExt) {
+      const encId = ctx.resolveEnc(encExt);
+      if (encId != null) {
+        db.prepare(
+          `UPDATE intake_items SET encounter_id = ? WHERE id = ? AND profile_id = ?`
+        ).run(encId, medId, profileId);
+      }
+    }
 
     // Courses: when the source carried effective period(s), create
     // one medication_courses row per DERIVED course (open/closed synced to

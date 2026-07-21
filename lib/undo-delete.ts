@@ -212,6 +212,13 @@ export const UNDO_KINDS: Record<string, KindSpec> = {
             onMissing: "null",
             global: true,
           },
+          // Visit link (#1050): if the linked encounter was deleted since capture,
+          // restore the record with the link NULLed (the document_id treatment).
+          {
+            column: "encounter_id",
+            table: "encounters",
+            onMissing: "null",
+          },
         ],
       },
     ],
@@ -268,6 +275,13 @@ export const UNDO_KINDS: Record<string, KindSpec> = {
           {
             column: "situation_id",
             table: "situations",
+            onMissing: "null",
+          },
+          // Visit link (#1050): a medication "prescribed at" a visit whose encounter
+          // was deleted since capture restores with the link NULLed.
+          {
+            column: "encounter_id",
+            table: "encounters",
             onMissing: "null",
           },
         ],

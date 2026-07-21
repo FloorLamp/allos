@@ -6,7 +6,10 @@ import {
   getProviderNames,
   getMedicationDoseHistory,
   resolveMedicationAcrossProfiles,
+  encounterForRecord,
 } from "@/lib/queries";
+import { encounterHref } from "@/lib/hrefs";
+import { formatRecordDate } from "@/lib/record-format";
 import { parseUtcSql, zonedDateParts } from "@/lib/date";
 import {
   formatGivenAtClock,
@@ -134,6 +137,11 @@ export default async function MedicationDetailPage(props: {
       ? null
       : getMedicationAdherenceCalendar(profileId, m.med.id);
 
+  // "Prescribed at: <visit>" (#1050) — the deterministic tier-1 link (a resolved
+  // FHIR MedicationRequest.encounter) or a user-accepted suggestion, whichever set
+  // this med's encounter_id. Links back to the visit detail.
+  const prescribedAt = encounterForRecord(profileId, "medication", m.med.id);
+
   return (
     <PageContainer
       width="reading"
@@ -165,6 +173,22 @@ export default async function MedicationDetailPage(props: {
         >
           Viewing {subject.name}&apos;s medication. Act as {subject.name} to
           make changes or view their full medication list.
+        </p>
+      ) : null}
+      {prescribedAt ? (
+        <p
+          className="mb-4 text-sm text-slate-600 dark:text-slate-300"
+          data-testid="medication-prescribed-at"
+        >
+          Prescribed at:{" "}
+          <Link
+            href={encounterHref(prescribedAt.id)}
+            className="font-medium text-brand-700 hover:underline dark:text-brand-300"
+          >
+            {prescribedAt.type || "Visit"},{" "}
+            {formatRecordDate(prescribedAt.date, "", formatPrefs)}
+            {prescribedAt.providerName ? ` — ${prescribedAt.providerName}` : ""}
+          </Link>
         </p>
       ) : null}
       <MedicationCard

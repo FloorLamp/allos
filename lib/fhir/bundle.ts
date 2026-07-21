@@ -637,6 +637,24 @@ export function entriesToImportResult(
     } else if (out.opticalPrescription === null) drops.push(dropFor(r));
   }
 
+  // Tier-1 VISIT-DIAGNOSIS links (#1050): where an Encounter.diagnosis[].condition
+  // resolved to a Condition we imported, stamp that condition's encounter_external_id
+  // so the persist layer maps it to the local visit row. The prose diagnoses blob on
+  // the encounter stays for display; this is the row link. Only stamps a condition
+  // that doesn't already carry an encounter link (its own Condition.encounter, if any,
+  // would win — but conditions carry no such reference here, so this is the only
+  // source). Runs after the collection loop so every condition + encounter is present.
+  const condByExt = new Map(conditions.map((c) => [c.external_id, c]));
+  for (const enc of encounters) {
+    for (const condExt of enc.diagnosis_condition_external_ids ?? []) {
+      const c = condByExt.get(condExt);
+      if (c && !c.encounter_external_id)
+        c.encounter_external_id = enc.external_id;
+    }
+    // The transient tagging field is never persisted — drop it now that it's consumed.
+    delete enc.diagnosis_condition_external_ids;
+  }
+
   // Resource types the bundle carried but no mapper consumed (DocumentReference, …)
   // — surfaced in coverage AND as an unrecognized-section drop.
   const coverage = fhirCoverage(entries);

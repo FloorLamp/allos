@@ -1,0 +1,225 @@
+// Record ↔ visit and episode ↔ visit link SUGGESTION engine (issues #1050/#1053).
+//
+// PURE — no DB, no network. Every function takes already-loaded rows and returns
+// plain data, so the whole file is exhaustively unit-testable (the confidence
+// matrix, the ≥2-encounter picker rule, the episode-containment rule, the
+// decision-filter). The DB read/derive layer that feeds these rows in and persists
+// the outcome lives in lib/queries/visit-links.ts; the accept/decline/manual-link
+// actions live in the record/episode/medication action modules.
+//
+// DESIGN (from #1050). Suggestions are DERIVED AT READ TIME over whatever rows exist
+// now — never minted at import, never stored — so existing records are covered with
+// no backfill, late-arriving data pairs in both directions for free, and editing a
+// record's date/provider self-corrects the set on next render. The ONLY stored tier-2
+// state is the accept/decline DECISION (visit_link_decisions), keyed on stable
+// identity tokens so it survives the delete-and-reinsert reprocess.
+//
+// TIERS (record ↔ visit):
+//   - strong: same profile + same date + the record's provider matches the
+//     encounter's attending clinician (provider_id) or its facility
+//     (location_provider_id).
+//   - medium: same date + exactly ONE encounter that day (no provider corroboration).
+//   - AMBIGUITY (hard, #531/#534): a record whose date matches ≥2 encounters gets a
+//     PICKER, never a ranked guess — UNLESS provider corroboration resolves to
+//     exactly one candidate (corroboration is a match, not a guess). No suggestion at
+//     all when dates don't match exactly (no fuzzy windows in v1).
+
+export type VisitLinkDomain =
+  | "record"
+  | "condition"
+  | "procedure"
+  | "imaging"
+  | "immunization"
+  | "medication"
+  | "episode";
+
+export type VisitLinkConfidence = "strong" | "medium";
+
+// A row's STABLE identity token — the crux of decision durability. An imported row
+// keeps its external_id verbatim across reprocess (row ids churn), so we key on it;
+// a manual row (external_id null) never churns, so its id is stable. Mirrors the
+// import-review activityToken precedent exactly.
+export function stableToken(row: {
+  id: number;
+  external_id?: string | null;
+}): string {
+  return row.external_id ? `ext:${row.external_id}` : `id:${row.id}`;
+}
+
+// The order-independent signature of a (encounter, target) pair — a sorted join of
+// the two stable tokens, so a decision re-derives identically after row ids change.
+export function visitLinkSignature(
+  encounterToken: string,
+  targetToken: string
+): string {
+  return [encounterToken, targetToken].sort().join("::");
+}
+
+// A visit-anchored record eligible for linking (already UNLINKED — the caller
+// excludes rows whose encounter_id is set). `providerId` is the record's own
+// provider (prescriber / performer / ordering clinician), used for corroboration.
+export interface LinkableRecord {
+  domain: VisitLinkDomain;
+  id: number;
+  external_id: string | null;
+  date: string | null; // YYYY-MM-DD
+  providerId: number | null;
+  // A short human label for the UI (drug name, lab name, condition name, …).
+  label: string;
+}
+
+export interface LinkableEncounter {
+  id: number;
+  external_id: string | null;
+  date: string; // YYYY-MM-DD
+  providerId: number | null; // attending clinician
+  locationProviderId: number | null; // facility
+}
+
+// One record's suggestion: either a single confident pick (`encounter` +
+// `confidence`) or a `candidates` picker (≥2 same-day, unresolved). Never both.
+export interface RecordVisitSuggestion {
+  record: LinkableRecord;
+  encounter?: LinkableEncounter;
+  confidence?: VisitLinkConfidence;
+  candidates?: LinkableEncounter[];
+}
+
+// Does the record's provider corroborate this encounter (same clinician OR facility)?
+function corroborates(rec: LinkableRecord, enc: LinkableEncounter): boolean {
+  if (rec.providerId == null) return false;
+  return (
+    enc.providerId === rec.providerId ||
+    enc.locationProviderId === rec.providerId
+  );
+}
+
+// Suggest a visit link for ONE unlinked record against the profile's encounters,
+// minus any (encounter, record) pair the user already declined. Returns null when
+// nothing matches (no same-date encounter, or every same-date encounter declined).
+export function suggestForRecord(
+  rec: LinkableRecord,
+  encounters: LinkableEncounter[],
+  declinedSignatures: ReadonlySet<string>
+): RecordVisitSuggestion | null {
+  if (!rec.date) return null;
+  const recToken = stableToken(rec);
+  const sameDay = encounters.filter(
+    (e) =>
+      e.date === rec.date &&
+      !declinedSignatures.has(visitLinkSignature(stableToken(e), recToken))
+  );
+  if (sameDay.length === 0) return null;
+
+  if (sameDay.length === 1) {
+    return {
+      record: rec,
+      encounter: sameDay[0],
+      confidence: corroborates(rec, sameDay[0]) ? "strong" : "medium",
+    };
+  }
+
+  // ≥2 same-day encounters. Provider corroboration may resolve to exactly one — a
+  // determinate match, not a ranked guess — otherwise a PICKER (never guess, #534).
+  const corroborated = sameDay.filter((e) => corroborates(rec, e));
+  if (corroborated.length === 1) {
+    return { record: rec, encounter: corroborated[0], confidence: "strong" };
+  }
+  return { record: rec, candidates: sameDay };
+}
+
+// Suggest links for a batch of unlinked records (the encounter page's "From this
+// visit?" block reads the inverse — see suggestForEncounter). Drops records with no
+// suggestion.
+export function suggestForRecords(
+  records: LinkableRecord[],
+  encounters: LinkableEncounter[],
+  declinedSignatures: ReadonlySet<string>
+): RecordVisitSuggestion[] {
+  const out: RecordVisitSuggestion[] = [];
+  for (const rec of records) {
+    const s = suggestForRecord(rec, encounters, declinedSignatures);
+    if (s) out.push(s);
+  }
+  return out;
+}
+
+// The ENCOUNTER-side view: which unlinked records look like they belong to THIS one
+// visit. A record is offered here only when the visit is its single confident pick
+// (strong or medium) — an ambiguous record (its date matched ≥2 encounters and
+// provider didn't resolve it) is NOT auto-offered under any one visit; it surfaces
+// as a picker on the record's own page instead. This keeps the encounter's batch
+// "link all" honest — every row in it resolves uniquely to this visit.
+export interface EncounterFromVisit {
+  suggestions: { record: LinkableRecord; confidence: VisitLinkConfidence }[];
+}
+
+export function suggestForEncounter(
+  encounter: LinkableEncounter,
+  records: LinkableRecord[],
+  declinedSignatures: ReadonlySet<string>
+): EncounterFromVisit {
+  const suggestions: EncounterFromVisit["suggestions"] = [];
+  for (const rec of records) {
+    const s = suggestForRecord(rec, [encounter], declinedSignatures);
+    // suggestForRecord over a single-encounter list can only ever return a single
+    // pick (never a picker), so `s.encounter` is this encounter when it matched.
+    if (s?.encounter && s.encounter.id === encounter.id && s.confidence) {
+      suggestions.push({ record: rec, confidence: s.confidence });
+    }
+  }
+  return { suggestions };
+}
+
+// ── Episode ↔ visit (#1053) ─────────────────────────────────────────────────────
+//
+// An encounter dated WITHIN an episode's range (start → lastActiveDay, inclusive,
+// exact containment — no fuzzy windows) is a strong suggestion. 0 in range ⇒
+// nothing; exactly 1 ⇒ a single suggestion (still user-accepted — a routine cleaning
+// during a cold week is in-range and unrelated, so containment is a suggestion
+// signal, not proof); ≥2 in range ⇒ a picker, never a ranked guess (#534). No
+// provider tiering — containment is the only signal. Declined pairs are filtered.
+
+export interface EpisodeRange {
+  id: number; // episodes have stable ids — the token is `id:<id>`
+  start: string | null; // YYYY-MM-DD
+  lastActiveDay: string | null; // YYYY-MM-DD
+}
+
+export interface EpisodeVisitSuggestion {
+  // A single in-range visit (the caller shows "Seen at …, link this visit?").
+  encounter?: LinkableEncounter;
+  // OR ≥2 in-range visits — a picker.
+  candidates?: LinkableEncounter[];
+}
+
+// The episode's stable token, for pairing with an encounter token in a decision.
+export function episodeToken(episode: { id: number }): string {
+  return `id:${episode.id}`;
+}
+
+export function encounterInEpisodeRange(
+  episode: EpisodeRange,
+  encounterDate: string
+): boolean {
+  if (!episode.start || !episode.lastActiveDay) return false;
+  return (
+    encounterDate >= episode.start && encounterDate <= episode.lastActiveDay
+  );
+}
+
+export function suggestForEpisode(
+  episode: EpisodeRange,
+  encounters: LinkableEncounter[],
+  declinedSignatures: ReadonlySet<string>
+): EpisodeVisitSuggestion | null {
+  const epToken = episodeToken(episode);
+  const inRange = encounters.filter(
+    (e) =>
+      encounterInEpisodeRange(episode, e.date) &&
+      !declinedSignatures.has(visitLinkSignature(stableToken(e), epToken))
+  );
+  if (inRange.length === 0) return null;
+  if (inRange.length === 1) return { encounter: inRange[0] };
+  return { candidates: inRange };
+}

@@ -78,5 +78,7 @@
   "077-optical-minus-cylinder.ts": "45514521acbcddf27af7d716a42ef44cacb30c13a89e646af8298359fb47ea1c",
   "078-imaging-modality-expansion.ts": "ada150bea56ffec2abacc7a0ca70e4904438254c34d2c553caf7aa5f2e8fbe64",
   "079-intake-log-product.ts": "05fb1ea5614e1b0113124f169d0ed77a1ef7aa9923f4edd9ad7d80881de7ddd0",
-  "080-intake-log-supply-adjusted.ts": "85935312cfd04cda93beadfac508dd9b44c698d901253126a484aa8a78e3e03f"
+  "080-intake-log-supply-adjusted.ts": "85935312cfd04cda93beadfac508dd9b44c698d901253126a484aa8a78e3e03f",
+  "081-visit-record-links.ts": "425823aeecdd09a93e085e688fe84078eea448d5b019d9b07c27964c53c250a7",
+  "082-episode-visit-link.ts": "be4a9d62b7af41d2f670e7686b4fe62a684b575bbcad3525c12ae11e22276641"
 }

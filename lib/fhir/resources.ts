@@ -65,6 +65,25 @@ import {
 } from "./common";
 import type { FhirBundleCtx } from "./common";
 
+// Tier-1 visit link (#1050): resolve a resource's `encounter` reference within the
+// bundle to the referenced Encounter's external_id — the SAME key
+// mapEncounterResource forms (`ccda:encounter:<id>`), so the persist layer can map it
+// to the local encounter row. Returns null when there's no reference, it dangles
+// (ctx.resolve returns nothing), the target isn't an Encounter, or it carries no id
+// (so no stable key) — NEVER a wrong link. `encounter` is a Reference in R4/R5; a
+// list (rare) uses the first entry.
+export function encounterRefExternalId(
+  r: any,
+  ctx?: FhirBundleCtx
+): string | null {
+  if (!ctx) return null;
+  const ref = Array.isArray(r?.encounter) ? r.encounter[0] : r?.encounter;
+  if (!ref) return null;
+  const enc = ctx.resolve(ref, r?.contained);
+  if (!enc || enc.resourceType !== "Encounter" || enc.id == null) return null;
+  return `ccda:encounter:${enc.id}`;
+}
+
 export function mapImmunizationResource(
   r: any,
   idPrefix: string,
@@ -94,6 +113,8 @@ export function mapImmunizationResource(
     notes: lot ? `Lot ${lot}` : null,
     external_id: `${idPrefix}:${code}:${date}`,
     provider,
+    // Tier-1 visit link (#1050): the visit this vaccine was given at.
+    encounter_external_id: encounterRefExternalId(r, ctx),
   };
 }
 
@@ -124,6 +145,8 @@ export function observationRecords(
   const provider = ctx
     ? providerFromRefs(r?.performer, ctx, r?.contained, "organization")
     : null;
+  // Tier-1 visit link (#1050): the Encounter this Observation was drawn at.
+  const encExt = encounterRefExternalId(r, ctx);
 
   const out: ImportedRecord[] = [];
   // A component-bearing Observation carries its numbers in the components (BP), so
@@ -152,10 +175,12 @@ export function observationRecords(
   // (#681/#684/#722) — the shared isUnmappedLabLoinc already excludes them from the
   // unmapped-code report, so without this the FHIR path would persist them as junk
   // labs that never surface in that report (#693).
-  return out.filter(
-    (rec) =>
-      !isNonAnalyteLoinc(rec.loinc) && !isDerivedPercentileLoinc(rec.loinc)
-  );
+  return out
+    .filter(
+      (rec) =>
+        !isNonAnalyteLoinc(rec.loinc) && !isDerivedPercentileLoinc(rec.loinc)
+    )
+    .map((rec) => ({ ...rec, encounter_external_id: encExt }));
 }
 
 // Back-compat single-reading accessor: the FIRST reading an Observation yields, or
@@ -430,6 +455,9 @@ export function mapMedicationResource(
     prescriber,
     pharmacy,
     rxNumber,
+    // Tier-1 visit link (#1050): the visit this was prescribed at
+    // (MedicationRequest.encounter) — the dropped-source field this issue recovers.
+    encounter_external_id: encounterRefExternalId(r, ctx),
   };
 }
 
@@ -607,8 +635,12 @@ function encounterReason(r: any): string | null {
 // Visit diagnoses: each Encounter.diagnosis[].condition is a Reference to a
 // Condition (R4) or a CodeableReference (R5). Resolve the reference to read the
 // problem name; fall back to an inline CodeableReference.concept.
-function encounterDiagnoses(r: any, ctx: FhirBundleCtx): string[] {
+function encounterDiagnoses(
+  r: any,
+  ctx: FhirBundleCtx
+): { names: string[]; conditionExternalIds: string[] } {
   const out: string[] = [];
+  const conditionExternalIds: string[] = [];
   const seen = new Set<string>();
   const push = (name: string | null) => {
     if (!name) return;
@@ -620,10 +652,17 @@ function encounterDiagnoses(r: any, ctx: FhirBundleCtx): string[] {
   };
   for (const d of Array.isArray(r?.diagnosis) ? r.diagnosis : []) {
     const cond = ctx.resolve(d?.condition, r?.contained);
-    if (cond?.resourceType === "Condition") push(conceptName(cond.code));
-    else if (d?.condition?.concept) push(conceptName(d.condition.concept));
+    if (cond?.resourceType === "Condition") {
+      push(conceptName(cond.code));
+      // Tier-1 visit-diagnosis link (#1050): recompute the resolved Condition's
+      // external_id off the SAME mapper the condition sink uses, so bundle.ts can
+      // stamp encounter_external_id onto the imported condition row.
+      const ext = mapConditionResource(cond)?.external_id;
+      if (ext && !conditionExternalIds.includes(ext))
+        conditionExternalIds.push(ext);
+    } else if (d?.condition?.concept) push(conceptName(d.condition.concept));
   }
-  return out;
+  return { names: out, conditionExternalIds };
 }
 
 export function mapEncounterResource(
@@ -663,7 +702,7 @@ export function mapEncounterResource(
       "organization"
     ) ??
     providerFromRefs(r?.serviceProvider, ctx, r?.contained, "organization");
-  const diagnoses = encounterDiagnoses(r, ctx);
+  const { names: diagnoses, conditionExternalIds } = encounterDiagnoses(r, ctx);
   // With a source id the key is stable + reprocess-idempotent; without one, fold in
   // the date/type/class so two id-less same-day visits don't collide. Kept under the
   // `ccda:encounter:` namespace the encounters sink already dedups on (FHIR resource
@@ -690,6 +729,10 @@ export function mapEncounterResource(
     // Comment Activity).
     notes: null,
     external_id,
+    // Transient (NOT persisted — PersistEncounter drops it): the external_ids of the
+    // Conditions this visit diagnosed, so bundle.ts can stamp each imported condition
+    // row's encounter_external_id in a post-pass (#1050).
+    diagnosis_condition_external_ids: conditionExternalIds,
   };
 }
 
@@ -722,6 +765,8 @@ export function mapProcedureResource(
     date,
     provider,
     external_id: procedureExternalId({ name, code, date }),
+    // Tier-1 visit link (#1050): the visit this Procedure.encounter referenced.
+    encounter_external_id: encounterRefExternalId(r, ctx),
   };
 }
 

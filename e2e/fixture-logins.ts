@@ -469,3 +469,12 @@ export const DQ_CARE_CHILD_PROFILE = "Data Quality Child (e2e)";
 // never be dispatched to.
 export const E2E_LOGIN_HA_NOTIFY = "e2e_ha_notify";
 export const HA_NOTIFY_PROFILE = "HA Notify (e2e)";
+
+// A member granted a dedicated ADULT profile for the record↔visit / episode↔visit
+// linking spec (#1050/#1053). Seeds a self-contained visit + a same-day unlinked
+// medication (with its prescription record) + an illness episode spanning that day
+// with no linked visit — so the spec drives "From this visit?" → link all, the med's
+// "Prescribed at" line, and the cockpit Care suggestion → link → encounter back-link
+// entirely on its OWN profile (never a shared-seed row, so --repeat-each stays clean).
+export const E2E_LOGIN_VISITLINKS = "e2e_visitlinks";
+export const VISITLINKS_PROFILE = "Visit Links (e2e)";

@@ -100,6 +100,11 @@ export const OWNED_TABLES = [
   "profile_share_links",
   "upcoming_dismissals",
   "import_pair_decisions",
+  // Visit-link accept/decline decisions (#1050/#1053): durable, stable-key choices
+  // that survive the delete-and-reinsert reprocess, mirroring import_pair_decisions.
+  // Directly owned; deleteProfile clears it by profile_id. NOT an import-footprint
+  // table (written by the accept/dismiss actions, not the document import).
+  "visit_link_decisions",
   "import_tombstones",
   "ai_usage_counters",
   "deleted_rows",

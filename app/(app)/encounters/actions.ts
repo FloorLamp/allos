@@ -8,6 +8,7 @@ import {
   resolveProviderIdByName,
   resolveProviderOnEdit,
 } from "@/lib/providers-db";
+import { nullEncounterLinks } from "@/lib/queries";
 
 // Visit / encounter writes. Session-scoped; every mutation is
 // `WHERE id = ? AND profile_id = ?` and the INSERT carries profile_id. Manual rows
@@ -115,6 +116,10 @@ export async function deleteEncounter(formData: FormData): Promise<FormResult> {
     db.prepare(
       "UPDATE appointments SET encounter_id = NULL WHERE encounter_id = ? AND profile_id = ?"
     ).run(id, profile.id);
+    // Row-ops side-state (#1050/#1053): NULL every record/med/condition/procedure/
+    // imaging/immunization/episode back-link to this visit before deleting it — those
+    // encounter_id FKs carry no ON DELETE, so the FK would otherwise block the delete.
+    nullEncounterLinks(profile.id, id);
     db.prepare("DELETE FROM encounters WHERE id = ? AND profile_id = ?").run(
       id,
       profile.id
