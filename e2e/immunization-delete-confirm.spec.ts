@@ -11,10 +11,8 @@ test.describe("Immunization delete confirm (#534)", () => {
     page,
   }) => {
     test.slow();
-    await page.goto("/records#immunizations");
-    await expect(
-      page.getByRole("heading", { name: "Immunizations" })
-    ).toBeVisible();
+    await page.goto("/records/history/immunizations");
+    await expect(page.getByTestId("records-immunizations")).toBeVisible();
 
     // The history table lives inside the collapsed "All recorded doses"
     // <details> — expand it first, or its rows aren't visible to locate.

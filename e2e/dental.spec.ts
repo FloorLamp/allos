@@ -40,7 +40,7 @@ test.describe("Dental records — add → view → filter → track recheck → 
   }) => {
     test.slow();
 
-    await page.goto("/records#dental");
+    await page.goto("/records/specialty/dental");
     const form = page.getByTestId("dental-procedure-form");
     await expect(form).toBeVisible();
 

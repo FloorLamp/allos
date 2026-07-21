@@ -15,10 +15,8 @@ test.describe("Immunizations (#391)", () => {
     // Local `next dev` compiles the immunizations routes on first hit.
     test.slow();
 
-    await page.goto("/records#immunizations");
-    await expect(
-      page.getByRole("heading", { name: "Immunizations" })
-    ).toBeVisible();
+    await page.goto("/records/history/immunizations");
+    await expect(page.getByTestId("records-immunizations")).toBeVisible();
 
     // The sortable Vaccines table renders rows, each drilling into a detail page.
     await expect(page.getByRole("heading", { name: "Vaccines" })).toBeVisible();
@@ -68,10 +66,8 @@ test.describe("Immunizations (#391)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     try {
-      await member.goto("/records#immunizations");
-      await expect(
-        member.getByRole("heading", { name: "Immunizations" })
-      ).toBeVisible();
+      await member.goto("/records/history/immunizations");
+      await expect(member.getByTestId("records-immunizations")).toBeVisible();
 
       // Riley has zero recorded doses …
       await expect(member.getByText(/All recorded doses \(0\)/)).toBeVisible();

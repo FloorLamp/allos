@@ -218,9 +218,9 @@ test("command palette surfaces a seeded allergy for 'penicillin' (#19)", async (
   const results = page.getByRole("listbox", { name: "Results" });
   await expect(results.getByText("Allergies", { exact: true })).toBeVisible();
   const hit = results.getByRole("option", { name: /Penicillin/i });
-  // Selecting it navigates to the allergies passport page.
-  await followLink(page, hit.first(), /\/records#allergies$/);
-  await expect(page).toHaveURL(/\/records#allergies$/);
+  // Selecting it navigates to the Problems pane (Conditions + Allergies).
+  await followLink(page, hit.first(), /\/records\/problems$/);
+  await expect(page).toHaveURL(/\/records\/problems$/);
 });
 
 // #38: a refill-tracked supplement (seed sets Magnesium Glycinate's on-hand

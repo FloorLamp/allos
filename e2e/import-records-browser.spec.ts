@@ -31,7 +31,7 @@ test.describe("Import detail: tabbed records browser", () => {
     const chip = page.getByTestId("import-providers-chip");
     await expect(chip).toHaveText("Providers 1");
     expect(await chip.evaluate((el) => el.tagName)).toBe("A");
-    await expect(chip).toHaveAttribute("href", "/records#providers");
+    await expect(chip).toHaveAttribute("href", "/records/care/providers");
 
     // Default tab (no ?tab=) is the FIRST non-empty tab — Labs — marked current,
     // and its editable table renders the lab rows.
@@ -102,14 +102,14 @@ test.describe("Import detail: tabbed records browser", () => {
     );
     await expect(
       conditions.getByTestId("produced-item").getByRole("link")
-    ).toHaveAttribute("href", "/records#conditions");
+    ).toHaveAttribute("href", "/records/problems");
 
     await page.goto("/import/908?tab=immunizations");
     const imms = page.getByTestId("produced-listing");
     await expect(imms.getByTestId("produced-item")).toContainText("E2E Tdap");
     await expect(
       imms.getByTestId("produced-item").getByRole("link")
-    ).toHaveAttribute("href", "/records#immunizations");
+    ).toHaveAttribute("href", "/records/history/immunizations");
 
     // An unknown ?tab= falls back to the default (first) tab instead of a
     // broken panel.

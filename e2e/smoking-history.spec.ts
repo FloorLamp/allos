@@ -13,7 +13,7 @@ test.describe("smoking history (issue #83)", () => {
     // Local `next dev` compiles the route on first hit.
     test.slow();
 
-    await page.goto("/records#background");
+    await page.goto("/records/care/overview");
 
     const card = page.getByTestId("smoking-history");
     await expect(card).toBeVisible();

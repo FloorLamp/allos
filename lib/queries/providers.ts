@@ -280,7 +280,7 @@ export function getProviderLabs(
     date: r.date,
     label: r.name,
     sublabel: r.category,
-    href: "/results#biomarkers",
+    href: "/results/biomarkers",
   }));
 }
 
@@ -330,7 +330,7 @@ export function getProviderImmunizations(
     date: r.date,
     label: r.vaccine,
     sublabel: r.dose_label,
-    href: "/records#immunizations",
+    href: "/records/history/immunizations",
   }));
 }
 
@@ -355,7 +355,7 @@ export function getProviderProcedures(
     date: r.date,
     label: r.name,
     sublabel: r.code,
-    href: "/records#procedures",
+    href: "/records/history/procedures",
   }));
 }
 
@@ -380,7 +380,7 @@ export function getProviderCarePlan(
     date: r.planned_date,
     label: r.description,
     sublabel: r.status,
-    href: "/records#care-plan",
+    href: "/records/care/overview",
   }));
 }
 
@@ -405,7 +405,7 @@ export function getProviderAppointments(
     date: r.scheduled_at,
     label: r.title || "Appointment",
     sublabel: r.status,
-    href: "/records#visits",
+    href: "/records/history/visits",
   }));
 }
 
@@ -431,7 +431,7 @@ export function getProviderImaging(
     date: r.study_date,
     label: r.body_region ? `${r.modality} · ${r.body_region}` : r.modality,
     sublabel: null,
-    href: "/results#imaging",
+    href: "/results/imaging",
   }));
 }
 
@@ -455,7 +455,7 @@ export function getProviderVision(
     date: r.issued_date,
     label: r.kind === "contacts" ? "Contact lenses" : "Glasses",
     sublabel: "Prescription",
-    href: "/records#vision",
+    href: "/records/specialty/vision",
   }));
 }
 
@@ -480,7 +480,7 @@ export function getProviderDental(
     date: r.procedure_date,
     label: r.name,
     sublabel: r.tooth ? `Tooth ${r.tooth}` : null,
-    href: "/records#dental",
+    href: "/records/specialty/dental",
   }));
 }
 
@@ -505,7 +505,7 @@ export function getProviderSkin(
     date: r.observed_date,
     label: r.label || r.body_region || "Skin lesion",
     sublabel: r.body_region,
-    href: "/records#skin",
+    href: "/records/specialty/skin",
   }));
 }
 

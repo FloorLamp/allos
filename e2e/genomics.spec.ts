@@ -29,7 +29,7 @@ test.describe("Genomic variants — add → view → edit → delete (#709)", ()
   }) => {
     test.slow();
 
-    await page.goto("/results#genomics");
+    await page.goto("/results/genomics");
     const form = page.getByTestId("genomic-variant-form");
     await expect(form).toBeVisible();
 

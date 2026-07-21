@@ -122,7 +122,7 @@ export default async function ProfilePage() {
               the phone is lost while unlocked).
             </p>
             <Link
-              href="/records#emergency-card"
+              href="/records/care/overview#emergency-card"
               className="btn mt-4 inline-flex w-fit"
             >
               <IconSettings className="h-4 w-4" stroke={1.75} />

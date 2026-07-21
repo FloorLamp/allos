@@ -28,7 +28,7 @@ export default function AllergiesSection({ profileId }: { profileId: number }) {
             <p className="text-sm text-slate-500 dark:text-slate-400">
               No known allergies recorded. Positive allergen-specific IgE lab
               results (e.g. “Peanut IgE”) will also appear here — add them under{" "}
-              <Link href="/results#biomarkers" className="underline">
+              <Link href="/results/biomarkers" className="underline">
                 Biomarkers
               </Link>
               .

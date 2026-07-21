@@ -192,7 +192,7 @@ export default async function ProviderDetailPage(props: {
   return (
     <PageContainer width="reading" data-testid="provider-detail">
       <Link
-        href="/records#providers"
+        href="/records/care/providers"
         className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 transition hover:text-brand-700 dark:text-slate-400 dark:hover:text-brand-300"
       >
         <IconArrowLeft className="h-4 w-4" stroke={1.75} />

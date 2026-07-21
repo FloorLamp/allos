@@ -168,9 +168,9 @@ export function visitLinkedRefs(
 ): NonNullable<TimelineEvent["linkedRefs"]> {
   const hrefFor = (kind: VisitLinkedRow["kind"]): AppRoute =>
     kind === "procedure"
-      ? "/records#procedures"
+      ? "/records/history/procedures"
       : kind === "care-plan"
-        ? "/records#care-plan"
+        ? "/records/care/overview"
         : MEDICATIONS_HREF;
   const kindLabel = (kind: VisitLinkedRow["kind"]): string =>
     kind === "procedure"
@@ -316,7 +316,7 @@ export function medicalRecordHref(
   if (names.length === 1 && firstName) {
     return biomarkerViewHref(firstName);
   }
-  return "/results#biomarkers";
+  return "/results/biomarkers";
 }
 
 // Parse the "label::value::unit::flag" pipe-delimited GROUP_CONCAT payloads the

@@ -270,9 +270,9 @@ test.describe("preventive care in Upcoming (issues #82 + #86 + #85)", () => {
     await followLink(
       page,
       skin.getByRole("link", { name: "Book" }),
-      /\/records\?/
+      /\/records\/history\/visits\?/
     );
-    await expect(page).toHaveURL(/\/records\?/);
+    await expect(page).toHaveURL(/\/records\/history\/visits\?/);
 
     // The create form is prefilled from the preventive item: its title and the
     // rule's mapped visit kind (skin check → screening).

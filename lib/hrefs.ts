@@ -66,10 +66,10 @@ export const MEDICATIONS_HREF: AppRoute = "/medications";
 // a named const — one edit re-checks every caller — rather than a re-typed literal.
 export const HOUSEHOLD_HISTORY_HREF: AppRoute = "/household/history";
 
-// The mental-health instrument surface (#716) — PHQ-9/GAD-7 scores. Folded into
-// Health record as the #mental-health section of /records (#1042 final tail); the
-// old /medical/instruments route 308-redirects here.
-export const INSTRUMENTS_HREF: AppRoute = "/records#mental-health";
+// The mental-health instrument surface (#716) — PHQ-9/GAD-7 scores. Lives on the
+// Health record's Specialty › Mental health tab (#1079, was the #mental-health
+// section since #1042); the old /medical/instruments route 308-redirects here.
+export const INSTRUMENTS_HREF: AppRoute = "/records/specialty/mental-health";
 
 // The kind-aware deep link for an intake item / dose (#746): a supplement points
 // at the Nutrition → Supplements tab, a medication at the Medications page. The
@@ -105,7 +105,7 @@ export function biomarkerViewHref(
   const name = canonical || rawName?.trim();
   return canonical && name
     ? `/biomarkers/view?name=${encodeURIComponent(name)}`
-    : "/results#biomarkers";
+    : "/results/biomarkers";
 }
 
 // The Timeline "jump to this day" link: filter the feed to a single day AND

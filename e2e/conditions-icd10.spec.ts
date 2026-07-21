@@ -7,7 +7,7 @@ import { test, expect } from "@playwright/test";
 test("manual condition entry suggests an ICD-10-CM code the user can confirm (#155)", async ({
   page,
 }) => {
-  await page.goto("/records#conditions");
+  await page.goto("/records/problems");
 
   // Scope to the Conditions section — on the merged Health record page (#1042
   // phase 6) other sections carry a "Condition" field (Family history) and an

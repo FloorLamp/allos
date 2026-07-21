@@ -234,7 +234,7 @@ function immunizationHits(profileId: number, query: string): SearchHit[] {
       key: `immunization:${r.id}`,
       title: display,
       subtitle: r.dose_label ? `${r.dose_label} · ${r.date}` : r.date,
-      href: "/records#immunizations",
+      href: "/records/history/immunizations",
       date: r.date,
     }));
 }
@@ -301,7 +301,7 @@ function conditionHits(profileId: number, like: string): SearchHit[] {
     subtitle: r.onset_date
       ? `${r.status} · ${isoDate(r.onset_date)}`
       : r.status,
-    href: "/records#conditions",
+    href: "/records/problems",
     date: isoDate(r.onset_date),
   }));
 }
@@ -341,7 +341,7 @@ function allergyHits(profileId: number, like: string): SearchHit[] {
     title: r.substance,
     subtitle:
       [r.reaction, r.severity].filter(Boolean).join(" · ").trim() || r.status,
-    href: "/records#allergies",
+    href: "/records/problems",
     date: isoDate(r.onset_date),
   }));
 }
@@ -370,7 +370,7 @@ function procedureHits(profileId: number, like: string): SearchHit[] {
     key: `procedure:${r.id}`,
     title: r.name,
     subtitle: isoDate(r.date) ?? r.code,
-    href: "/records#procedures",
+    href: "/records/history/procedures",
     date: isoDate(r.date),
   }));
 }
@@ -465,7 +465,7 @@ function appointmentHits(profileId: number, like: string): SearchHit[] {
       key: `appointment:${r.id}`,
       title,
       subtitle,
-      href: "/records#visits",
+      href: "/records/history/visits",
       date: isoDate(r.scheduled_at),
       // "Mark complete" on a still-scheduled appointment (#662).
       actions: appointmentHitActions(r.id, r.status),
@@ -498,7 +498,7 @@ function familyHistoryHits(profileId: number, like: string): SearchHit[] {
     key: `family-history:${r.id}`,
     title: r.condition,
     subtitle: r.relation,
-    href: "/records#family-history",
+    href: "/records/care/overview",
     date: null,
   }));
 }
@@ -528,7 +528,7 @@ function carePlanHits(profileId: number, like: string): SearchHit[] {
       [r.category, r.status, isoDate(r.planned_date)]
         .filter(Boolean)
         .join(" · ") || null,
-    href: "/records#care-plan",
+    href: "/records/care/overview",
     date: isoDate(r.planned_date),
   }));
 }
@@ -555,7 +555,7 @@ function careGoalHits(profileId: number, like: string): SearchHit[] {
     title: r.description,
     subtitle:
       [r.status, isoDate(r.target_date)].filter(Boolean).join(" · ") || null,
-    href: "/records#health-goals",
+    href: "/records/care/overview",
     date: isoDate(r.target_date),
   }));
 }
@@ -617,22 +617,22 @@ const PAGES: {
   },
   {
     title: "Procedures",
-    href: "/records#procedures",
+    href: "/records/history/procedures",
     keywords: "surgery surgical operation procedure history cpt",
   },
   {
     title: "Family History",
-    href: "/records#family-history",
+    href: "/records/care/overview",
     keywords: "family history hereditary relatives genetic risk mother father",
   },
   {
     title: "Care Plan",
-    href: "/records#care-plan",
+    href: "/records/care/overview",
     keywords: "care plan treatment planned orders upcoming procedures tests",
   },
   {
     title: "Health Goals",
-    href: "/records#health-goals",
+    href: "/records/care/overview",
     keywords:
       "care goals clinical targets a1c blood pressure goal from records",
   },
@@ -648,12 +648,12 @@ const PAGES: {
   },
   {
     title: "Immunizations",
-    href: "/records#immunizations",
+    href: "/records/history/immunizations",
     keywords: "vaccines shots",
   },
   {
     title: "Visits",
-    href: "/records#visits",
+    href: "/records/history/visits",
     keywords:
       "visits encounters appointments doctor scheduled booking calendar history",
   },
@@ -687,7 +687,7 @@ const PAGES: {
     // Person-level medical context moved off Settings → Profile (#928): smoking
     // history, health risk factors, and the emergency card.
     title: "Background",
-    href: "/records#background",
+    href: "/records/care/overview",
     keywords:
       "background smoking history pack years risk factors emergency card blood type contact",
   },

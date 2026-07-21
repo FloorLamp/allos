@@ -282,7 +282,7 @@ export function conditionItem(row: {
     title: row.name,
     detail: detailLine(row.status, row.code),
     date: row.onset_date,
-    href: "/records#conditions",
+    href: "/records/problems",
   };
 }
 
@@ -298,7 +298,7 @@ export function allergyItem(row: {
     title: row.substance,
     detail: detailLine(row.reaction, row.severity, row.status),
     date: null,
-    href: "/records#allergies",
+    href: "/records/problems",
   };
 }
 
@@ -313,7 +313,7 @@ export function immunizationItem(row: {
     title: row.vaccine,
     detail: detailLine(row.dose_label),
     date: row.date,
-    href: "/records#immunizations",
+    href: "/records/history/immunizations",
   };
 }
 
@@ -328,7 +328,7 @@ export function procedureItem(row: {
     title: row.name,
     detail: detailLine(row.code),
     date: row.date,
-    href: "/records#procedures",
+    href: "/records/history/procedures",
   };
 }
 
@@ -346,7 +346,7 @@ export function familyHistoryItem(row: {
       row.onset_age != null ? `onset age ${row.onset_age}` : null
     ),
     date: null,
-    href: "/records#family-history",
+    href: "/records/care/overview",
   };
 }
 
@@ -362,7 +362,7 @@ export function carePlanItemRow(row: {
     title: row.description,
     detail: detailLine(row.category, row.status),
     date: row.planned_date,
-    href: "/records#care-plan",
+    href: "/records/care/overview",
   };
 }
 
@@ -377,7 +377,7 @@ export function careGoalItem(row: {
     title: row.description,
     detail: detailLine(row.status),
     date: row.target_date,
-    href: "/records#health-goals",
+    href: "/records/care/overview",
   };
 }
 
@@ -402,7 +402,7 @@ export function genomicVariantItem(row: {
       resultTypeLabel(row.result_type)
     ),
     date: row.report_date,
-    href: "/results#genomics",
+    href: "/results/genomics",
   };
 }
 
@@ -435,7 +435,7 @@ export function imagingStudyItem(row: {
       row.impression
     ),
     date: row.study_date,
-    href: "/results#imaging",
+    href: "/results/imaging",
   };
 }
 
@@ -457,7 +457,7 @@ export function opticalPrescriptionItem(row: {
       row.pd != null ? `PD ${row.pd}` : null
     ),
     date: row.issued_date,
-    href: "/records#vision",
+    href: "/records/specialty/vision",
   };
 }
 
@@ -480,7 +480,7 @@ export function dentalProcedureItem(row: {
     // free-text finding (truncated by the UI). No added interpretation.
     detail: detailLine(status, row.cdt_code, row.finding),
     date: row.procedure_date,
-    href: "/records#dental",
+    href: "/records/specialty/dental",
   };
 }
 
@@ -497,7 +497,7 @@ export function appointmentItem(row: {
     detail: detailLine(row.location ?? row.status),
     // The scheduled date (drop any time portion for the listing's date column).
     date: row.scheduled_at.slice(0, 10),
-    href: "/records#visits",
+    href: "/records/history/visits",
   };
 }
 

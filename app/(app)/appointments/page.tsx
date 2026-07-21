@@ -21,5 +21,7 @@ export default async function AppointmentsRedirect(props: {
     }
   }
   const query = qs.toString();
-  redirect(query ? `/records?${query}#visits` : "/records#visits");
+  redirect(
+    query ? `/records/history/visits?${query}` : "/records/history/visits"
+  );
 }

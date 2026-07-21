@@ -142,9 +142,9 @@ describe("timeline event helpers", () => {
       "/biomarkers/view?name=A%20B"
     );
     expect(medicalRecordHref(null, ["LDL", "HDL"], "LDL")).toBe(
-      "/results#biomarkers"
+      "/results/biomarkers"
     );
-    expect(medicalRecordHref(null, [], null)).toBe("/results#biomarkers");
+    expect(medicalRecordHref(null, [], null)).toBe("/results/biomarkers");
   });
 
   it("parses pipe-delimited detail-item payloads", () => {
@@ -220,8 +220,11 @@ describe("timeline event helpers", () => {
       { kind: "medication", label: "Lisinopril" },
     ]);
     expect(refs).toEqual([
-      { label: "Procedure: Colonoscopy", href: "/records#procedures" },
-      { label: "Care plan: Follow-up in 6 months", href: "/records#care-plan" },
+      { label: "Procedure: Colonoscopy", href: "/records/history/procedures" },
+      {
+        label: "Care plan: Follow-up in 6 months",
+        href: "/records/care/overview",
+      },
       { label: "Medication: Lisinopril", href: "/medications" },
     ]);
   });
@@ -233,7 +236,7 @@ describe("timeline event helpers", () => {
       { kind: "medication", label: "" },
     ]);
     expect(refs).toEqual([
-      { label: "Procedure: X-ray", href: "/records#procedures" },
+      { label: "Procedure: X-ray", href: "/records/history/procedures" },
     ]);
   });
 

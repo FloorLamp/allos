@@ -40,7 +40,7 @@ function qs(params: Record<string, string | undefined>): AppRoute {
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) if (v) sp.set(k, v);
   const s = sp.toString();
-  return s ? `/results?${s}#biomarkers` : "/results#biomarkers";
+  return s ? `/results/biomarkers?${s}` : "/results/biomarkers";
 }
 
 // The grouping identity for a reading: its canonical name when present, else the

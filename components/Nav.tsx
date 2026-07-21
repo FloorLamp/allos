@@ -80,22 +80,24 @@ const RECORDS: Group = {
   group: "Medical",
   icon: IconReportMedical,
   children: [
-    // Health record (#1042): the core Medical index pages — Conditions, Allergies,
-    // Procedures, Immunizations, Family history, Visits, Providers, Background, Care
-    // plan, Health goals, Coverage gaps, AND the four specialty surfaces Vision,
-    // Dental, Skin, Mental health — merged into ONE stacked-section page
-    // (/records#<anchor>). One "Health record" leaf, FIRST in the group, replaces
-    // them all. The removed index routes 308-redirect to their anchor
-    // (next.config.js); their DETAIL routes (/providers/[id], /encounters/[id],
-    // /immunizations/[vaccine]) survive. The specialty sections mirror the nav
-    // predicate inside the page (Vision/Dental data-gated, Skin/Mental health always
-    // rendered) — see app/(app)/records/page.tsx.
+    // Health record (#1042, retabbed #1079): the core Medical index pages —
+    // Conditions, Allergies, Procedures, Immunizations, Family history, Visits,
+    // Providers, Background, Care plan, Health goals, AND the four specialty surfaces
+    // Vision, Dental, Skin, Mental health — merged into ONE surface, now organized as
+    // two-level tabs (group → section → pane) under /records (History / Problems /
+    // Care / Specialty). One "Health record" leaf, FIRST in the group, replaces them
+    // all; bare /records lands on /records/history/visits. The removed index routes
+    // 308-redirect to their owning pane (next.config.js); their DETAIL routes
+    // (/providers/[id], /encounters/[id], /immunizations/[vaccine]) survive. The
+    // Vision/Dental panes are data-gated (getNavRelevance) — a hidden sub-tab's route
+    // re-gates server-side; Skin/Mental health always render.
     { href: "/records", label: "Health record", icon: IconReportMedical },
-    // Results (#1042 phase 5): the Biomarkers / Imaging / Genomics index pages
-    // merged into ONE stacked-section page (/results#biomarkers|#imaging|
-    // #genomics) — one leaf replaces the three. The per-biomarker detail route
-    // (/biomarkers/view) survives at its own URL; like other unlinked detail
-    // pages it highlights no nav entry.
+    // Results (#1042 phase 5, retabbed #1079): the Biomarkers / Imaging / Genomics
+    // index pages merged into ONE surface, now route-per-tab under /results
+    // (/results/biomarkers|/imaging|/genomics) — one leaf replaces the three; bare
+    // /results lands on /results/biomarkers. The per-biomarker detail route
+    // (/biomarkers/view) survives at its own URL; like other unlinked detail pages it
+    // highlights no nav entry.
     { href: "/results", label: "Results", icon: IconChartLine },
     // Supplements left this group for the Nutrition → Supplements tab (#746);
     // Medications kept a Medical-group home of their own. The old combined
@@ -118,7 +120,7 @@ const RECORDS: Group = {
       icon: IconGlassOff,
     },
     // Mental health folded into Health record (#1042 final tail): its crisis line
-    // travels WITH the /records#mental-health section (the safety contract is
+    // travels WITH the /records/specialty/mental-health pane (the safety contract is
     // content, not route), so the standalone "Crisis support" nav slot was removed
     // too — /crisis-resources stays a reachable route (the section's calm link + the
     // non-dismissible escalation notice both point at it), only the nav leaf is gone.

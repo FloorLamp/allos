@@ -95,77 +95,80 @@ const nextConfig = {
         destination: "/longevity#protocols",
         permanent: true,
       },
-      // Phase 5: the three read-heavy result index pages folded into /results as
-      // anchored sections. EXACT-path sources only (path-to-regexp without a
-      // wildcard matches nothing deeper), which matters for /biomarkers: the
-      // per-biomarker detail page /biomarkers/view SURVIVES at its route and must
-      // never be caught by the index redirect. Query strings (e.g. the palette's
-      // ?new=1&name=… prefill, the ?q= filter) pass through to the destination.
+      // #1079: the three read-heavy result index pages are now route-per-tab under
+      // /results (superseding the #1042 anchored-section targets). EXACT-path
+      // sources only (path-to-regexp without a wildcard matches nothing deeper),
+      // which matters for /biomarkers: the per-biomarker detail page
+      // /biomarkers/view SURVIVES at its route and must never be caught by the index
+      // redirect. Query strings (e.g. the ?q= filter) pass through to the tab route.
       {
         source: "/biomarkers",
-        destination: "/results#biomarkers",
+        destination: "/results/biomarkers",
         permanent: true,
       },
       {
         source: "/imaging",
-        destination: "/results#imaging",
+        destination: "/results/imaging",
         permanent: true,
       },
       {
         source: "/genomics",
-        destination: "/results#genomics",
+        destination: "/results/genomics",
         permanent: true,
       },
-      // Phase 6: the eleven core Medical index pages folded into /records as
-      // anchored sections. EXACT-path sources only (path-to-regexp without a
-      // wildcard matches nothing deeper), so the DETAIL routes never get caught —
-      // /providers/[id], /encounters/[id], and /immunizations/[vaccine] all
-      // survive at their own URLs. Query strings pass through (the Visits Book-CTA
-      // ?title/?kind/?date/?new prefill, Conditions' ?cond filter, Immunizations'
+      // #1079: the core Medical index pages are now two-level tabs under /records
+      // (group → section → pane), superseding the #1042 anchored-section targets.
+      // Each old route points at the pane that now owns its section: Conditions +
+      // Allergies share the Problems pane; Procedures/Immunizations/Visits live under
+      // History; Family history/Care plan/Health goals/Background share the Care ›
+      // Overview pane; Providers is Care › Providers. EXACT-path sources only, so the
+      // DETAIL routes never get caught — /providers/[id], /encounters/[id], and
+      // /immunizations/[vaccine] all survive at their own URLs. Query strings pass
+      // through (the Visits Book-CTA prefill, Conditions' ?cond filter, Immunizations'
       // ?sort/?dir/?status table state).
       {
         source: "/conditions",
-        destination: "/records#conditions",
+        destination: "/records/problems",
         permanent: true,
       },
       {
         source: "/allergies",
-        destination: "/records#allergies",
+        destination: "/records/problems",
         permanent: true,
       },
       {
         source: "/procedures",
-        destination: "/records#procedures",
+        destination: "/records/history/procedures",
         permanent: true,
       },
       {
         source: "/immunizations",
-        destination: "/records#immunizations",
+        destination: "/records/history/immunizations",
         permanent: true,
       },
       {
         source: "/family-history",
-        destination: "/records#family-history",
+        destination: "/records/care/overview",
         permanent: true,
       },
       {
         source: "/encounters",
-        destination: "/records#visits",
+        destination: "/records/history/visits",
         permanent: true,
       },
       {
         source: "/providers",
-        destination: "/records#providers",
+        destination: "/records/care/providers",
         permanent: true,
       },
       {
         source: "/care-plan",
-        destination: "/records#care-plan",
+        destination: "/records/care/overview",
         permanent: true,
       },
       {
         source: "/care-goals",
-        destination: "/records#health-goals",
+        destination: "/records/care/overview",
         permanent: true,
       },
       {
@@ -177,32 +180,33 @@ const nextConfig = {
       },
       {
         source: "/medical/background",
-        destination: "/records#background",
+        destination: "/records/care/overview",
         permanent: true,
       },
-      // The four SPECIALTY index routes folded into /records (#1042 final tail):
-      // Vision/Dental/Skin/Mental health. The mental-health route's anchor differs
-      // from its path (/medical/instruments → #mental-health). No detail routes lived
-      // under any of these, so an exact-path source is complete; query strings ride
-      // through automatically (the mental-health crisis link stays /crisis-resources).
+      // The four SPECIALTY index routes now live under /records/specialty/<id>
+      // (#1079). Vision/Dental are data-gated — a redirect there re-gates
+      // server-side and falls to the first visible specialty pane when the profile
+      // has no rows. No detail routes lived under any of these, so an exact-path
+      // source is complete; query strings ride through automatically (the
+      // mental-health crisis link stays /crisis-resources).
       {
         source: "/vision",
-        destination: "/records#vision",
+        destination: "/records/specialty/vision",
         permanent: true,
       },
       {
         source: "/dental",
-        destination: "/records#dental",
+        destination: "/records/specialty/dental",
         permanent: true,
       },
       {
         source: "/skin",
-        destination: "/records#skin",
+        destination: "/records/specialty/skin",
         permanent: true,
       },
       {
         source: "/medical/instruments",
-        destination: "/records#mental-health",
+        destination: "/records/specialty/mental-health",
         permanent: true,
       },
     ];

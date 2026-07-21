@@ -40,7 +40,7 @@ test.describe("mental-health instruments (#716)", () => {
   });
 
   test("in-app PHQ-9 computes a mild band and records a score", async () => {
-    await page.goto("/records#mental-health");
+    await page.goto("/records/specialty/mental-health");
     await expect(page.getByTestId("instruments-form")).toBeVisible();
 
     const rows = page.getByTestId(/^instrument-reading-\d+$/);
@@ -60,7 +60,7 @@ test.describe("mental-health instruments (#716)", () => {
   });
 
   test("a severe PHQ-9 shows the non-dismissible crisis-resources line (configured, no hardcoded 988)", async () => {
-    await page.goto("/records#mental-health");
+    await page.goto("/records/specialty/mental-health");
     await pickInstrument(page, "PHQ-9");
     // 9 items × option 3 = total 27 → Severe.
     await answerAll(page, 9, 3);
@@ -80,14 +80,14 @@ test.describe("mental-health instruments (#716)", () => {
   });
 
   test("the instruments page always offers the crisis-resources link", async () => {
-    await page.goto("/records#mental-health");
+    await page.goto("/records/specialty/mental-health");
     await expect(
       page.getByTestId("instrument-crisis-support-link")
     ).toBeVisible();
   });
 
   test("an outside total-only GAD-7 score records without item answers", async () => {
-    await page.goto("/records#mental-health");
+    await page.goto("/records/specialty/mental-health");
     const rows = page.getByTestId(/^instrument-reading-\d+$/);
     const before = await rows.count();
 
