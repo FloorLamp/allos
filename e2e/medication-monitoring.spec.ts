@@ -22,8 +22,7 @@ test("the Medications row shows a 'requires monitoring' note for a monitored dru
   await expect(note).toContainText(/Requires monitoring/i);
   await expect(note).toContainText("INR");
 
-  const detailHref =
-    await medicationRowLink(warfarinRow).getAttribute("href");
+  const detailHref = await medicationRowLink(warfarinRow).getAttribute("href");
   await page.goto(detailHref!);
   const detailNote = page.getByTestId("medication-monitoring-detail");
   await expect(detailNote).toBeVisible();

@@ -30,7 +30,9 @@ export function intakeWarnings(scope: Locator | Page): Locator {
 // Open the disclosure so the individual finding sections are inspectable. The card is a
 // native <details> (auto-open only when ≤2 findings), so this is a pure client toggle —
 // a plain click on its summary, no Server-Action POST to await.
-export async function expandIntakeWarnings(scope: Locator | Page): Promise<void> {
+export async function expandIntakeWarnings(
+  scope: Locator | Page
+): Promise<void> {
   await intakeWarnings(scope).locator("summary").click();
 }
 

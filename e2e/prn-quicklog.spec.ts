@@ -54,9 +54,7 @@ test("Today panel shows the PRN med's administrations, detail shows the ledger (
   await expect(admin).toContainText(
     /last \d{1,2}:\d{2}(?:am|pm)? \((?:just now|\d+ (?:mins?|hrs?) ago)\)/
   );
-  await expect(
-    prnAdministrationRows(admin).first()
-  ).toContainText(
+  await expect(prnAdministrationRows(admin).first()).toContainText(
     /\d{1,2}:\d{2}(?:am|pm)? \((?:just now|\d+ (?:mins?|hrs?) ago)\)/
   );
 

@@ -94,7 +94,10 @@ export function medicationsToday(scope: Locator | Page): Locator {
 
 // A scheduled, currently-due medication's tri-state dose-check-off row in the Today panel
 // (`today-scheduled-med`), filtered to its name.
-export function scheduledTodayItem(scope: Locator | Page, name: string): Locator {
+export function scheduledTodayItem(
+  scope: Locator | Page,
+  name: string
+): Locator {
   return scope.getByTestId("today-scheduled-med").filter({ hasText: name });
 }
 

@@ -7,10 +7,7 @@ import {
   DRUG_ALLERGY_PROFILE,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
-import {
-  allergyWarnings,
-  allergyWarningRows,
-} from "./intake-warnings-helpers";
+import { allergyWarnings, allergyWarningRows } from "./intake-warnings-helpers";
 
 // Drug-allergy × medication-stack cross-check (issue #1029). The dedicated fixture
 // profile records a "Penicillin — hives" allergy and tracks amoxicillin (same-class

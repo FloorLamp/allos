@@ -406,9 +406,7 @@ test("records bridge tracks an imported prescription that has no tracked med", a
   }).toPass();
 
   // The tracked med now appears as a current medication row.
-  await expect(
-    medicationRow(page, "E2E Bridge Track Med")
-  ).toBeVisible();
+  await expect(medicationRow(page, "E2E Bridge Track Med")).toBeVisible();
 });
 
 test("records bridge dismisses a suggestion via the findings bus", async ({
