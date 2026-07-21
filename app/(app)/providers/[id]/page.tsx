@@ -19,7 +19,13 @@ import {
   getProviderProcedures,
   getProviderCarePlan,
   getProviderAppointments,
+  getProviderImaging,
+  getProviderVision,
+  getProviderDental,
+  getProviderSkin,
   getProviderMergeImpact,
+  getAffiliatesFor,
+  getSuggestedAffiliations,
   type ProviderActivityItem,
 } from "@/lib/queries";
 import { formatMergeImpact, providerDisambigLabel } from "@/lib/provider-merge";
@@ -29,6 +35,7 @@ import { PageHeader } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
 import ProviderIdentityCard from "../ProviderIdentityCard";
 import ProviderMergePanel from "../ProviderMergePanel";
+import ProviderAffiliations from "../ProviderAffiliations";
 
 export const dynamic = "force-dynamic";
 
@@ -134,6 +141,10 @@ export default async function ProviderDetailPage(props: {
     { label: "Procedures", items: getProviderProcedures(profile.id, id) },
     { label: "Care plan", items: getProviderCarePlan(profile.id, id) },
     { label: "Appointments", items: getProviderAppointments(profile.id, id) },
+    { label: "Imaging", items: getProviderImaging(profile.id, id) },
+    { label: "Vision", items: getProviderVision(profile.id, id) },
+    { label: "Dental", items: getProviderDental(profile.id, id) },
+    { label: "Skin", items: getProviderSkin(profile.id, id) },
   ];
   const totalActivity = sections.reduce((n, s) => n + s.items.length, 0);
 
@@ -141,6 +152,26 @@ export default async function ProviderDetailPage(props: {
   // summary of what absorbing THAT provider would move (global, across profiles).
   // Each carries a composite disambiguation label (#532) so two same-named rows —
   // the case merge targets — never render as byte-identical option/confirm text.
+  // Affiliations (issue #1055): the linked counterparts, the derived suggestions
+  // involving this provider, and the opposite-type names for the manual picker (the
+  // registry is global; suggestions are the acting profile's co-occurrence).
+  const affiliates = getAffiliatesFor(id, provider.type);
+  const counterpartType =
+    provider.type === "individual" ? "organization" : "individual";
+  const affiliateIds = new Set(affiliates.map((a) => a.id));
+  const affiliationSuggestions = getSuggestedAffiliations(profile.id).filter(
+    (s) => s.individualId === id || s.organizationId === id
+  );
+  const counterpartNames = getProviders()
+    .filter(
+      (p) =>
+        p.type === counterpartType &&
+        p.archived === 0 &&
+        p.id !== id &&
+        !affiliateIds.has(p.id)
+    )
+    .map((p) => p.name);
+
   const allProviders = isAdmin ? getProviders() : [];
   const candidates = isAdmin
     ? allProviders
@@ -180,6 +211,16 @@ export default async function ProviderDetailPage(props: {
 
       {/* Global identity card — admin-only edit. */}
       <ProviderIdentityCard provider={provider} canEdit={isAdmin} />
+
+      {/* Affiliations — linked edges (read-only for members) + admin suggest/link. */}
+      <ProviderAffiliations
+        providerId={id}
+        providerType={provider.type}
+        affiliates={affiliates}
+        suggestions={affiliationSuggestions}
+        counterpartNames={counterpartNames}
+        canEdit={isAdmin}
+      />
 
       {/* Relationship strip (per-profile). */}
       <div className="mt-6 grid gap-3 sm:grid-cols-3">

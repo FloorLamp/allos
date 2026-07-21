@@ -21,8 +21,27 @@ export interface Provider {
   identifier: string | null;
   phone: string | null;
   address: string | null;
+  // Provider specialty (issue #1056). `specialty_code` is the NUCC taxonomy code,
+  // verbatim (code-first identity, like the NPI); `specialty` is the human display
+  // string (curated NUCC label or the document's displayName). Both nullable.
+  specialty_code: string | null;
+  specialty: string | null;
+  // Lifecycle (issue #1057): an archived provider drops out of the default directory
+  // and picker suggestions but keeps every FK'd record's link. Instance-level.
+  archived: 0 | 1;
+  // Contact edit-lock (issue #1058): set by a manual phone/address edit; the import
+  // upsert then preserves the edited contact fields (the #133 edit-lock stance).
+  contact_edited: 0 | 1;
   created_at: string;
 }
+
+// Affiliation edge state (issue #1055): 'linked' is an accepted individual ↔
+// organization affiliation; 'declined' a remembered "don't re-suggest this pair".
+// Single source of truth for the union AND the provider_affiliations.status CHECK
+// (enum-parity test), the visit-link decision precedent folded into the edge row.
+export const PROVIDER_AFFILIATION_STATUSES = ["linked", "declined"] as const;
+export type ProviderAffiliationStatus =
+  (typeof PROVIDER_AFFILIATION_STATUSES)[number];
 
 // A scheduled medical visit. Profile-owned; optionally
 // linked to the shared providers registry via a nullable provider_id FK.
@@ -508,6 +527,9 @@ export interface ImagingStudy {
   status: string | null;
   ordering_provider_id: number | null;
   reading_provider_id: number | null;
+  // Ordering / reading (radiologist) providers, joined for display (#1088).
+  ordering_provider_name?: string | null;
+  reading_provider_name?: string | null;
   notes: string | null;
   source: string | null;
   document_id: number | null;
@@ -548,6 +570,8 @@ export interface OpticalPrescription {
   issued_date: string | null;
   expiry_date: string | null;
   provider_id: number | null;
+  // Prescriber, joined for display (#1088). NULL for a self-entered Rx.
+  provider_name?: string | null;
   notes: string | null;
   source: string | null;
   document_id: number | null;
@@ -597,6 +621,8 @@ export interface DentalProcedure {
   finding: string | null;
   follow_up_interval_days: number | null;
   provider_id: number | null;
+  // Recording provider, joined for display (#1088). NULL for a self-photographed lesion.
+  provider_name?: string | null;
   notes: string | null;
   source: string | null;
   document_id: number | null;
@@ -629,6 +655,8 @@ export interface SkinLesion {
   finding: string | null;
   follow_up_interval_days: number | null;
   provider_id: number | null;
+  // Recording provider, joined for display (#1088). NULL for a self-photographed lesion.
+  provider_name?: string | null;
   notes: string | null;
   source: string | null;
   document_id: number | null;

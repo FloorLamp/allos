@@ -1,5 +1,10 @@
-import { getImagingStudies, getImagingStudyFollowUps } from "@/lib/queries";
+import {
+  getImagingStudies,
+  getImagingStudyFollowUps,
+  getProviderNames,
+} from "@/lib/queries";
 import { getUserAge } from "@/lib/settings";
+import ProviderDatalist from "@/components/ProviderDatalist";
 import { today } from "@/lib/db";
 import { cumulativeDose } from "@/lib/radiation-dose";
 import ImagingStudyForm from "@/app/(app)/imaging/ImagingStudyForm";
@@ -27,6 +32,8 @@ export default function ImagingSection({ profileId }: { profileId: number }) {
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
+      {/* Shared provider picker options for the add + edit forms (#1088). */}
+      <ProviderDatalist names={getProviderNames()} />
       <div className="min-w-0 space-y-4 lg:col-span-2">
         <RadiationDoseCard cum={dose} pediatric={pediatric} />
         <ImagingStudyList items={studies} followUps={followUps} />

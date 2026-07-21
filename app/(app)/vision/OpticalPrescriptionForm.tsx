@@ -225,6 +225,34 @@ export default function OpticalPrescriptionForm({
         </div>
       </div>
       <div>
+        <label className="label" htmlFor={`rx-provider-${uid}`}>
+          Prescriber
+        </label>
+        {/* Create-on-type from the shared registry via <datalist id="provider-names">. */}
+        <input
+          id={`rx-provider-${uid}`}
+          name="provider"
+          list="provider-names"
+          className="input"
+          defaultValue={rx?.provider_name ?? ""}
+          placeholder="e.g. Dr. Nguyen (optometrist)"
+        />
+        {editing && (
+          <>
+            <input
+              type="hidden"
+              name="provider_id"
+              value={rx?.provider_id ?? ""}
+            />
+            <input
+              type="hidden"
+              name="provider_loaded"
+              value={rx?.provider_name ?? ""}
+            />
+          </>
+        )}
+      </div>
+      <div>
         <label className="label" htmlFor={`rx-notes-${uid}`}>
           Notes
         </label>

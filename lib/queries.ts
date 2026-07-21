@@ -37,6 +37,7 @@ export * from "./queries/equipment";
 export * from "./queries/healthspan";
 export * from "./queries/sun";
 export * from "./queries/providers";
+export * from "./queries/affiliations";
 export * from "./queries/nav-relevance";
 export * from "./queries/data-quality";
 // The shared, GLOBAL providers registry — not profile-scoped, but

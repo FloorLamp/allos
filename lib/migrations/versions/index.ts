@@ -82,6 +82,8 @@ import { migration as m080 } from "./080-intake-log-supply-adjusted";
 import { migration as m081 } from "./081-visit-record-links";
 import { migration as m082 } from "./082-episode-visit-link";
 import { migration as m083 } from "./083-metric-sample-origin";
+import { migration as m084 } from "./084-provider-registry-lifecycle";
+import { migration as m085 } from "./085-provider-affiliations";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -173,4 +175,6 @@ export const MIGRATIONS: Migration[] = [
   m081,
   m082,
   m083,
+  m084,
+  m085,
 ];

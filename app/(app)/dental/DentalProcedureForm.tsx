@@ -198,6 +198,34 @@ export default function DentalProcedureForm({
         />
       </div>
       <div>
+        <label className="label" htmlFor={`dp-provider-${uid}`}>
+          Provider
+        </label>
+        {/* Create-on-type from the shared registry via <datalist id="provider-names">. */}
+        <input
+          id={`dp-provider-${uid}`}
+          name="provider"
+          list="provider-names"
+          className="input"
+          defaultValue={record?.provider_name ?? ""}
+          placeholder="e.g. Dr. Rivera (dentist)"
+        />
+        {editing && (
+          <>
+            <input
+              type="hidden"
+              name="provider_id"
+              value={record?.provider_id ?? ""}
+            />
+            <input
+              type="hidden"
+              name="provider_loaded"
+              value={record?.provider_name ?? ""}
+            />
+          </>
+        )}
+      </div>
+      <div>
         <label className="label" htmlFor={`dp-notes-${uid}`}>
           Notes
         </label>

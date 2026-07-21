@@ -6,6 +6,7 @@ import TrackSkinFollowUpControl from "./TrackSkinFollowUpControl";
 import LesionPhotoStrip from "./LesionPhotoStrip";
 import NotesText from "@/components/NotesText";
 import RecordProvenance from "@/components/RecordProvenance";
+import ProviderName from "@/components/ProviderName";
 import { useConfirmedAction } from "@/components/useConfirmedAction";
 import { formatRecordDate } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
@@ -103,6 +104,14 @@ function LesionRecordRow({
         notes={record.finding}
         className="min-w-0 flex-1 text-xs text-slate-500 dark:text-slate-400"
       />
+      {record.provider_id ? (
+        <ProviderName
+          name={record.provider_name ?? "Provider"}
+          providerId={record.provider_id}
+          size="sm"
+          className="text-xs text-slate-500 dark:text-slate-400"
+        />
+      ) : null}
       <RecordProvenance source={record.source} />
       <TrackSkinFollowUpControl
         recordId={record.id}

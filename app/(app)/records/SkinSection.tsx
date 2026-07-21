@@ -1,5 +1,10 @@
-import { getSkinLesions, getSkinLesionFollowUps } from "@/lib/queries";
+import {
+  getSkinLesions,
+  getSkinLesionFollowUps,
+  getProviderNames,
+} from "@/lib/queries";
 import { getLesionPhotos } from "@/lib/skin-photo-write";
+import ProviderDatalist from "@/components/ProviderDatalist";
 import SkinLesionForm from "@/app/(app)/skin/SkinLesionForm";
 import SkinLesionList from "@/app/(app)/skin/SkinLesionList";
 import { addSkinLesion } from "@/app/(app)/skin/actions";
@@ -20,6 +25,8 @@ export default function SkinSection({ profileId }: { profileId: number }) {
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
+      {/* Shared provider picker options for the add + edit forms (#1088). */}
+      <ProviderDatalist names={getProviderNames()} />
       <div className="min-w-0 space-y-4 lg:col-span-2">
         <SkinLesionList items={records} followUps={followUps} photos={photos} />
       </div>

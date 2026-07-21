@@ -24,6 +24,10 @@ function provider(
     identifier: null,
     phone: null,
     address: null,
+    specialty_code: null,
+    specialty: null,
+    archived: 0,
+    contact_edited: 0,
     created_at: "2020-01-01",
     ...p,
   };

@@ -212,6 +212,61 @@ export default function ImagingStudyForm({
           />
         </div>
         <div>
+          <label className="label" htmlFor={`is-ordering-${uid}`}>
+            Ordering provider
+          </label>
+          {/* Create-on-type from the shared registry via <datalist id="provider-names">. */}
+          <input
+            id={`is-ordering-${uid}`}
+            name="ordering_provider"
+            list="provider-names"
+            className="input"
+            defaultValue={study?.ordering_provider_name ?? ""}
+            placeholder="e.g. Dr. Lee"
+          />
+          {editing && (
+            <>
+              <input
+                type="hidden"
+                name="ordering_provider_id"
+                value={study?.ordering_provider_id ?? ""}
+              />
+              <input
+                type="hidden"
+                name="ordering_provider_loaded"
+                value={study?.ordering_provider_name ?? ""}
+              />
+            </>
+          )}
+        </div>
+        <div>
+          <label className="label" htmlFor={`is-reading-${uid}`}>
+            Reading radiologist
+          </label>
+          <input
+            id={`is-reading-${uid}`}
+            name="reading_provider"
+            list="provider-names"
+            className="input"
+            defaultValue={study?.reading_provider_name ?? ""}
+            placeholder="e.g. Dr. Osei"
+          />
+          {editing && (
+            <>
+              <input
+                type="hidden"
+                name="reading_provider_id"
+                value={study?.reading_provider_id ?? ""}
+              />
+              <input
+                type="hidden"
+                name="reading_provider_loaded"
+                value={study?.reading_provider_name ?? ""}
+              />
+            </>
+          )}
+        </div>
+        <div>
           <label className="label" htmlFor={`is-notes-${uid}`}>
             Notes
           </label>

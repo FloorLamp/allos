@@ -264,7 +264,12 @@ export function getImagingStudies(profileId: number): ImagingStudy[] {
     .prepare(
       `SELECT id, modality, body_region, laterality, contrast, contrast_agent,
               study_date, dose_msv, impression, indication, status,
-              ordering_provider_id, reading_provider_id, notes,
+              ordering_provider_id, reading_provider_id,
+              (SELECT p.name FROM providers p WHERE p.id = imaging_studies.ordering_provider_id)
+                AS ordering_provider_name,
+              (SELECT p.name FROM providers p WHERE p.id = imaging_studies.reading_provider_id)
+                AS reading_provider_name,
+              notes,
               source, document_id, external_id, created_at
          FROM imaging_studies
         WHERE profile_id = ?
@@ -288,7 +293,10 @@ export function getOpticalPrescriptions(
       `SELECT id, kind, od_sphere, od_cylinder, od_axis, od_add,
               os_sphere, os_cylinder, os_axis, os_add, pd,
               base_curve, diameter, brand, issued_date, expiry_date,
-              provider_id, notes, source, document_id, external_id, created_at
+              provider_id,
+              (SELECT p.name FROM providers p WHERE p.id = optical_prescriptions.provider_id)
+                AS provider_name,
+              notes, source, document_id, external_id, created_at
          FROM optical_prescriptions
         WHERE profile_id = ?
         ORDER BY COALESCE(issued_date, '') DESC, id DESC`
@@ -333,6 +341,8 @@ export function getDentalProcedures(profileId: number): DentalProcedure[] {
     .prepare(
       `SELECT id, name, status, tooth, tooth_system, surface, cdt_code,
               procedure_date, finding, follow_up_interval_days, provider_id,
+              (SELECT p.name FROM providers p WHERE p.id = dental_procedures.provider_id)
+                AS provider_name,
               notes, source, document_id, external_id, created_at
          FROM dental_procedures
         WHERE profile_id = ?
@@ -379,7 +389,10 @@ export function getSkinLesions(profileId: number): SkinLesion[] {
       `SELECT id, label, body_region, body_side, size_mm,
               asymmetry, border, color, diameter, evolving,
               status, observed_date, finding, follow_up_interval_days,
-              provider_id, notes, source, document_id, external_id, created_at
+              provider_id,
+              (SELECT p.name FROM providers p WHERE p.id = skin_lesions.provider_id)
+                AS provider_name,
+              notes, source, document_id, external_id, created_at
          FROM skin_lesions
         WHERE profile_id = ?
         ORDER BY COALESCE(observed_date, '') DESC, id DESC`

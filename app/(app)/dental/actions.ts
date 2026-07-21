@@ -14,6 +14,10 @@ import {
   trackDentalFollowUpCore,
   unlinkFollowUpsForDentalProcedure,
 } from "@/lib/followup-write";
+import {
+  resolveProviderIdByName,
+  resolveProviderOnEdit,
+} from "@/lib/providers-db";
 
 // Dental-procedure writes (#705). Session-scoped; every mutation is
 // `WHERE id = ? AND profile_id = ?` and the INSERT carries profile_id. Manual rows
@@ -55,11 +59,17 @@ export async function addDentalProcedure(
   const { profile } = await requireWriteAccess();
   const name = str(formData, "name");
   if (!name) return formError("Enter a procedure or finding name.");
+  // The performing/recording dentist, resolved through the shared GLOBAL registry
+  // via a create-on-type name (#1088). NULL for a self-entered record.
+  const providerId = resolveProviderIdByName(
+    String(formData.get("provider") ?? ""),
+    "individual"
+  );
   db.prepare(
     `INSERT INTO dental_procedures
        (name, status, tooth, tooth_system, surface, cdt_code, procedure_date,
-        finding, follow_up_interval_days, notes, source, profile_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,NULL,?)`
+        finding, follow_up_interval_days, notes, provider_id, source, profile_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,NULL,?)`
   ).run(
     name,
     normalizeDentalStatus(formData.get("status")),
@@ -71,6 +81,7 @@ export async function addDentalProcedure(
     str(formData, "finding"),
     intOrNull(formData.get("follow_up_interval_days")),
     str(formData, "notes"),
+    providerId,
     profile.id
   );
   revalidateDental();
@@ -85,11 +96,17 @@ export async function updateDentalProcedure(
   if (!id) return formError("Couldn't find that record.");
   const name = str(formData, "name");
   if (!name) return formError("Enter a procedure or finding name.");
+  const providerId = resolveProviderOnEdit(
+    Number(formData.get("provider_id")) || null,
+    String(formData.get("provider_loaded") ?? ""),
+    String(formData.get("provider") ?? ""),
+    "individual"
+  );
   db.prepare(
     `UPDATE dental_procedures
        SET name = ?, status = ?, tooth = ?, tooth_system = ?, surface = ?,
            cdt_code = ?, procedure_date = ?, finding = ?,
-           follow_up_interval_days = ?, notes = ?
+           follow_up_interval_days = ?, notes = ?, provider_id = ?
      WHERE id = ? AND profile_id = ?`
   ).run(
     name,
@@ -102,6 +119,7 @@ export async function updateDentalProcedure(
     str(formData, "finding"),
     intOrNull(formData.get("follow_up_interval_days")),
     str(formData, "notes"),
+    providerId,
     id,
     profile.id
   );

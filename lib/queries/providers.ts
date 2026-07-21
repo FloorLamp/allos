@@ -29,6 +29,12 @@ export interface ProviderActivityCounts {
   procedures: number;
   carePlan: number;
   appointments: number;
+  // Specialty/imaging record types (#1088): once their provider FK is user-settable,
+  // they aggregate here like every other provider-linked record.
+  imaging: number;
+  vision: number;
+  dental: number;
+  skin: number;
 }
 
 // The relationship strip: first time this profile saw the provider, the most
@@ -108,6 +114,39 @@ export function getProviderActivityCounts(
         )
         .get(profileId, providerId)
     ),
+    imaging: n(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM imaging_studies
+             WHERE profile_id = ?
+               AND (ordering_provider_id = ? OR reading_provider_id = ?)`
+        )
+        .get(profileId, providerId, providerId)
+    ),
+    vision: n(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM optical_prescriptions
+             WHERE profile_id = ? AND provider_id = ?`
+        )
+        .get(profileId, providerId)
+    ),
+    dental: n(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM dental_procedures
+             WHERE profile_id = ? AND provider_id = ?`
+        )
+        .get(profileId, providerId)
+    ),
+    skin: n(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM skin_lesions
+             WHERE profile_id = ? AND provider_id = ?`
+        )
+        .get(profileId, providerId)
+    ),
   };
 }
 
@@ -125,7 +164,11 @@ export function getProviderActivityTotal(
     c.immunizations +
     c.procedures +
     c.carePlan +
-    c.appointments
+    c.appointments +
+    c.imaging +
+    c.vision +
+    c.dental +
+    c.skin
   );
 }
 
@@ -363,6 +406,106 @@ export function getProviderAppointments(
     label: r.title || "Appointment",
     sublabel: r.status,
     href: "/records#visits",
+  }));
+}
+
+export function getProviderImaging(
+  profileId: number,
+  providerId: number
+): ProviderActivityItem[] {
+  const rows = db
+    .prepare(
+      `SELECT id, study_date, modality, body_region FROM imaging_studies
+         WHERE profile_id = ?
+           AND (ordering_provider_id = ? OR reading_provider_id = ?)
+         ORDER BY COALESCE(study_date, '') DESC, id DESC`
+    )
+    .all(profileId, providerId, providerId) as {
+    id: number;
+    study_date: string | null;
+    modality: string;
+    body_region: string | null;
+  }[];
+  return rows.map((r) => ({
+    id: r.id,
+    date: r.study_date,
+    label: r.body_region ? `${r.modality} · ${r.body_region}` : r.modality,
+    sublabel: null,
+    href: "/results#imaging",
+  }));
+}
+
+export function getProviderVision(
+  profileId: number,
+  providerId: number
+): ProviderActivityItem[] {
+  const rows = db
+    .prepare(
+      `SELECT id, issued_date, kind FROM optical_prescriptions
+         WHERE profile_id = ? AND provider_id = ?
+         ORDER BY COALESCE(issued_date, '') DESC, id DESC`
+    )
+    .all(profileId, providerId) as {
+    id: number;
+    issued_date: string | null;
+    kind: string;
+  }[];
+  return rows.map((r) => ({
+    id: r.id,
+    date: r.issued_date,
+    label: r.kind === "contacts" ? "Contact lenses" : "Glasses",
+    sublabel: "Prescription",
+    href: "/records#vision",
+  }));
+}
+
+export function getProviderDental(
+  profileId: number,
+  providerId: number
+): ProviderActivityItem[] {
+  const rows = db
+    .prepare(
+      `SELECT id, procedure_date, name, tooth FROM dental_procedures
+         WHERE profile_id = ? AND provider_id = ?
+         ORDER BY COALESCE(procedure_date, '') DESC, id DESC`
+    )
+    .all(profileId, providerId) as {
+    id: number;
+    procedure_date: string | null;
+    name: string;
+    tooth: string | null;
+  }[];
+  return rows.map((r) => ({
+    id: r.id,
+    date: r.procedure_date,
+    label: r.name,
+    sublabel: r.tooth ? `Tooth ${r.tooth}` : null,
+    href: "/records#dental",
+  }));
+}
+
+export function getProviderSkin(
+  profileId: number,
+  providerId: number
+): ProviderActivityItem[] {
+  const rows = db
+    .prepare(
+      `SELECT id, observed_date, label, body_region FROM skin_lesions
+         WHERE profile_id = ? AND provider_id = ?
+         ORDER BY COALESCE(observed_date, '') DESC, id DESC`
+    )
+    .all(profileId, providerId) as {
+    id: number;
+    observed_date: string | null;
+    label: string | null;
+    body_region: string | null;
+  }[];
+  return rows.map((r) => ({
+    id: r.id,
+    date: r.observed_date,
+    label: r.label || r.body_region || "Skin lesion",
+    sublabel: r.body_region,
+    href: "/records#skin",
   }));
 }
 

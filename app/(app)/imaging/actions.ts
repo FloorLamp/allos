@@ -15,6 +15,10 @@ import {
   trackImagingFollowUpCore,
   unlinkFollowUpsForImagingStudy,
 } from "@/lib/followup-write";
+import {
+  resolveProviderIdByName,
+  resolveProviderOnEdit,
+} from "@/lib/providers-db";
 
 // Imaging-study writes (#702). Session-scoped; every mutation is
 // `WHERE id = ? AND profile_id = ?` and the INSERT carries profile_id. Manual rows
@@ -48,14 +52,23 @@ function dateOrNull(raw: unknown): string | null {
 
 export async function addImagingStudy(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
-  // A manual row carries a NULL document_id / external_id (omitted here so they
-  // default NULL) so the per-document import delete-set never touches it — the same
-  // shape as a manual procedure/condition.
+  // Ordering + reading (radiologist) providers, each resolved through the shared
+  // GLOBAL registry via a create-on-type name (#1088). Both NULL for a self-entered
+  // study. A manual row carries a NULL document_id / external_id (omitted here so
+  // they default NULL) so the per-document import delete-set never touches it.
+  const orderingProviderId = resolveProviderIdByName(
+    String(formData.get("ordering_provider") ?? "")
+  );
+  const readingProviderId = resolveProviderIdByName(
+    String(formData.get("reading_provider") ?? ""),
+    "individual"
+  );
   db.prepare(
     `INSERT INTO imaging_studies
        (modality, body_region, laterality, contrast, contrast_agent, study_date,
-        dose_msv, impression, indication, status, notes, source, profile_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,NULL,?)`
+        dose_msv, impression, indication, status, notes,
+        ordering_provider_id, reading_provider_id, source, profile_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?)`
   ).run(
     normalizeModality(formData.get("modality")),
     str(formData, "body_region"),
@@ -68,6 +81,8 @@ export async function addImagingStudy(formData: FormData): Promise<FormResult> {
     str(formData, "indication"),
     str(formData, "status"),
     str(formData, "notes"),
+    orderingProviderId,
+    readingProviderId,
     profile.id
   );
   revalidateImaging();
@@ -80,11 +95,24 @@ export async function updateImagingStudy(
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that study.");
+  // Keep each loaded provider link unless its typed name actually changed (#601).
+  const orderingProviderId = resolveProviderOnEdit(
+    Number(formData.get("ordering_provider_id")) || null,
+    String(formData.get("ordering_provider_loaded") ?? ""),
+    String(formData.get("ordering_provider") ?? "")
+  );
+  const readingProviderId = resolveProviderOnEdit(
+    Number(formData.get("reading_provider_id")) || null,
+    String(formData.get("reading_provider_loaded") ?? ""),
+    String(formData.get("reading_provider") ?? ""),
+    "individual"
+  );
   db.prepare(
     `UPDATE imaging_studies
        SET modality = ?, body_region = ?, laterality = ?, contrast = ?,
            contrast_agent = ?, study_date = ?, dose_msv = ?, impression = ?,
-           indication = ?, status = ?, notes = ?
+           indication = ?, status = ?, notes = ?,
+           ordering_provider_id = ?, reading_provider_id = ?
      WHERE id = ? AND profile_id = ?`
   ).run(
     normalizeModality(formData.get("modality")),
@@ -98,6 +126,8 @@ export async function updateImagingStudy(
     str(formData, "indication"),
     str(formData, "status"),
     str(formData, "notes"),
+    orderingProviderId,
+    readingProviderId,
     id,
     profile.id
   );

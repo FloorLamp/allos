@@ -1,6 +1,7 @@
 import { canonicalBiomarkerForLoinc, isVitalLoinc } from "../biomarker-loinc";
 import type { FhirCodeableConcept } from "../cvx-map";
 import { isRealIsoDate } from "../date";
+import { nuccLabel } from "../nucc-taxonomy";
 import type { ImportedProvider, ImportedRecord } from "../health-import";
 import { VITAL_CANONICAL, normalizeImportedTemperature } from "../vitals-input";
 
@@ -222,6 +223,44 @@ function fhirAddress(res: any): string | null {
   return addressLine(Array.isArray(addr) ? addr[0] : addr);
 }
 
+// The NUCC provider-taxonomy specialty off a FHIR CodeableConcept[] (issue #1056):
+// { code, display } from the coding whose system is the NUCC taxonomy URI, else null.
+// Used for PractitionerRole.specialty and Practitioner.qualification[].code.
+function fhirSpecialty(
+  concepts: any
+): { code: string; display: string | null } | null {
+  const list = Array.isArray(concepts)
+    ? concepts
+    : concepts != null
+      ? [concepts]
+      : [];
+  for (const cc of list) {
+    for (const coding of Array.isArray(cc?.coding) ? cc.coding : []) {
+      const sys = String(coding?.system ?? "");
+      if (!/nucc\.org\/provider-taxonomy/i.test(sys)) continue;
+      const code = String(coding?.code ?? "").trim();
+      if (!code) continue;
+      const display = String(coding?.display ?? cc?.text ?? "").trim() || null;
+      return { code, display };
+    }
+  }
+  return null;
+}
+
+// Attach a captured specialty onto a provider candidate (mutates + returns it), when
+// the candidate exists and the source carried a NUCC code.
+function withSpecialty(
+  p: ImportedProvider | null,
+  spec: { code: string; display: string | null } | null
+): ImportedProvider | null {
+  if (!p || !spec) return p;
+  return {
+    ...p,
+    specialtyCode: spec.code,
+    specialty: nuccLabel(spec.code, spec.display),
+  };
+}
+
 // A Practitioner / Organization / Location / PractitionerRole resource →
 // ImportedProvider. PractitionerRole prefers its referenced Practitioner, falling
 // back to its Organization. Returns null when no usable name is present.
@@ -232,14 +271,17 @@ function providerFromResource(
   if (!res) return null;
   const rt = res.resourceType;
   if (rt === "PractitionerRole") {
+    // PractitionerRole.specialty (issue #1056) describes the clinician in THIS role;
+    // attach it to whichever face resolves.
+    const roleSpec = fhirSpecialty(res.specialty);
     const prac = providerFromResource(
       resolve(res.practitioner, res.contained),
       resolve
     );
-    if (prac) return prac;
-    return providerFromResource(
-      resolve(res.organization, res.contained),
-      resolve
+    if (prac) return withSpecialty(prac, roleSpec);
+    return withSpecialty(
+      providerFromResource(resolve(res.organization, res.contained), resolve),
+      roleSpec
     );
   }
   if (rt === "Organization" || rt === "Location") {
@@ -260,6 +302,13 @@ function providerFromResource(
   if (rt === "Practitioner") {
     const name = humanName(res);
     if (!name) return null;
+    // Practitioner.qualification[].code carries the specialty when no wrapping
+    // PractitionerRole did (issue #1056).
+    const spec = fhirSpecialty(
+      (Array.isArray(res.qualification) ? res.qualification : [])
+        .map((q: any) => q?.code)
+        .filter(Boolean)
+    );
     return {
       name,
       type: "individual",
@@ -267,6 +316,8 @@ function providerFromResource(
       identifier: fhirOtherIdentifier(res),
       phone: fhirPhone(res),
       address: fhirAddress(res),
+      specialtyCode: spec?.code ?? null,
+      specialty: spec ? nuccLabel(spec.code, spec.display) : null,
     };
   }
   return null;

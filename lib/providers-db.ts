@@ -33,13 +33,54 @@ export function resolveProviderId(
   return writeTx((): number => {
     db.prepare(
       `INSERT OR IGNORE INTO providers
-         (name, type, npi, identifier, phone, address, dedup_key)
-       VALUES (?,?,?,?,?,?,?)`
-    ).run(p.name, p.type, p.npi, p.identifier, p.phone, p.address, key);
+         (name, type, npi, identifier, phone, address, specialty_code, specialty,
+          dedup_key)
+       VALUES (?,?,?,?,?,?,?,?,?)`
+    ).run(
+      p.name,
+      p.type,
+      p.npi,
+      p.identifier,
+      p.phone,
+      p.address,
+      p.specialtyCode ?? null,
+      p.specialty ?? null,
+      key
+    );
     const row = db
       .prepare("SELECT id FROM providers WHERE dedup_key = ?")
       .get(key) as { id: number } | undefined;
-    return row!.id;
+    const id = row!.id;
+    // Refresh the richer descriptive fields on an EXISTING row from this import
+    // (issues #1056/#1057/#1058). Only overwrite when the incoming candidate carries
+    // a value (a sparse re-import must not null good data):
+    //   • specialty_code / specialty — always refreshed when present (#1056);
+    //   • phone / address — refreshed only when NOT manually edit-locked
+    //     (contact_edited = 0); import-vs-import stays last-write-wins (#1058/#467);
+    //   • archived → 0 — a re-import that resolves here proves the provider is active
+    //     again, so it UN-ARCHIVES (#1057, the one behavioral subtlety pinned by test).
+    if (p.specialtyCode)
+      db.prepare(`UPDATE providers SET specialty_code = ? WHERE id = ?`).run(
+        p.specialtyCode,
+        id
+      );
+    if (p.specialty)
+      db.prepare(`UPDATE providers SET specialty = ? WHERE id = ?`).run(
+        p.specialty,
+        id
+      );
+    if (p.phone)
+      db.prepare(
+        `UPDATE providers SET phone = ? WHERE id = ? AND contact_edited = 0`
+      ).run(p.phone, id);
+    if (p.address)
+      db.prepare(
+        `UPDATE providers SET address = ? WHERE id = ? AND contact_edited = 0`
+      ).run(p.address, id);
+    db.prepare(
+      `UPDATE providers SET archived = 0 WHERE id = ? AND archived = 1`
+    ).run(id);
+    return id;
   });
 }
 
@@ -93,10 +134,13 @@ export function resolveProviderOnEdit(
 
 // The full shared registry, alphabetical. Used to seed the provider picker's
 // combobox and the (optional) providers list view.
+const PROVIDER_COLUMNS = `id, name, type, npi, identifier, phone, address,
+        specialty_code, specialty, archived, contact_edited, created_at`;
+
 export function getProviders(): Provider[] {
   return db
     .prepare(
-      `SELECT id, name, type, npi, identifier, phone, address, created_at
+      `SELECT ${PROVIDER_COLUMNS}
          FROM providers ORDER BY name COLLATE NOCASE`
     )
     .all() as Provider[];
@@ -105,16 +149,32 @@ export function getProviders(): Provider[] {
 // One provider by id (or undefined). Global lookup — providers are shared.
 export function getProvider(id: number): Provider | undefined {
   return db
-    .prepare(
-      `SELECT id, name, type, npi, identifier, phone, address, created_at
-         FROM providers WHERE id = ?`
-    )
+    .prepare(`SELECT ${PROVIDER_COLUMNS} FROM providers WHERE id = ?`)
     .get(id) as Provider | undefined;
 }
 
 // Just the display names, for the datalist that powers the create-on-type picker.
+// Archived providers are EXCLUDED from suggestions (issue #1057) — a retired
+// clinician shouldn't be offered — but a user can still type an exact archived name,
+// which resolveProviderIdByName resolves to the existing row.
 export function getProviderNames(): string[] {
-  return getProviders().map((p) => p.name);
+  return (
+    db
+      .prepare(
+        `SELECT name FROM providers WHERE archived = 0 ORDER BY name COLLATE NOCASE`
+      )
+      .all() as { name: string }[]
+  ).map((r) => r.name);
+}
+
+// Archive / un-archive a provider (issue #1057). Instance-level lifecycle flag; the
+// GLOBAL mutation is admin-gated at the action. Archiving NEVER touches history —
+// every FK'd record keeps its link and renders the provider name as before.
+export function setProviderArchived(id: number, archived: boolean): void {
+  db.prepare(`UPDATE providers SET archived = ? WHERE id = ?`).run(
+    archived ? 1 : 0,
+    id
+  );
 }
 
 // Update a shared provider's identity fields (issue #275). GLOBAL mutation — the
@@ -143,11 +203,29 @@ export function updateProviderIdentity(id: number, input: ProviderInput): void {
         .prepare("SELECT id FROM providers WHERE dedup_key = ? AND id <> ?")
         .get(key, id) as { id: number } | undefined;
       if (clash) throw new Error(friendlyClash);
+      // The manual identity card is the edit-lock trigger (issue #1058): asserting a
+      // phone/address here sets contact_edited = 1, so a later import upsert preserves
+      // it (see resolveProviderId). Only lock when the user actually supplied a
+      // contact value — clearing both leaves the flag as-is so imports can repopulate.
+      const locksContact = !!(p.phone || p.address);
       db.prepare(
         `UPDATE providers
-            SET name = ?, type = ?, npi = ?, identifier = ?, phone = ?, address = ?, dedup_key = ?
+            SET name = ?, type = ?, npi = ?, identifier = ?, phone = ?, address = ?,
+                specialty_code = ?, specialty = ?, dedup_key = ?
+                ${locksContact ? ", contact_edited = 1" : ""}
           WHERE id = ?`
-      ).run(p.name, p.type, p.npi, p.identifier, p.phone, p.address, key, id);
+      ).run(
+        p.name,
+        p.type,
+        p.npi,
+        p.identifier,
+        p.phone,
+        p.address,
+        p.specialtyCode ?? null,
+        p.specialty ?? null,
+        key,
+        id
+      );
     });
   } catch (err) {
     if (
@@ -210,6 +288,59 @@ export function mergeProviders(survivorId: number, duplicateId: number): void {
       db.prepare(`UPDATE ${table} SET ${column} = ? WHERE ${column} = ?`).run(
         survivorId,
         duplicateId
+      );
+    }
+    // Re-key affiliation edges (issue #1055) — the ONE provider link the generic
+    // loop above can't do, because provider_affiliations has a UNIQUE(individual_id,
+    // organization_id) pair a plain re-point UPDATE would collide on, and re-keying
+    // can create a self-edge (survivor↔survivor). UPDATE OR IGNORE skips a would-be
+    // duplicate (leaving the stale duplicate-keyed row), the follow-up DELETE clears
+    // those, and the final DELETE drops any self-edge the re-key produced. These two
+    // columns are the documented exception on the merge-link reflection test.
+    db.prepare(
+      `UPDATE OR IGNORE provider_affiliations SET individual_id = ? WHERE individual_id = ?`
+    ).run(survivorId, duplicateId);
+    db.prepare(
+      `UPDATE OR IGNORE provider_affiliations SET organization_id = ? WHERE organization_id = ?`
+    ).run(survivorId, duplicateId);
+    db.prepare(
+      `DELETE FROM provider_affiliations WHERE individual_id = ? OR organization_id = ?`
+    ).run(duplicateId, duplicateId);
+    db.prepare(
+      `DELETE FROM provider_affiliations WHERE individual_id = organization_id`
+    ).run();
+    // Reconcile the survivor's descriptive/lifecycle fields from the absorbed row
+    // (row-ops side-state): keep the survivor's non-null specialty, else inherit the
+    // absorbed one (#1056); the pair is ARCHIVED only if BOTH were (an archived +
+    // active merge stays active, #1057); the contact stays LOCKED if EITHER was
+    // edited, so imports keep respecting the manual correction (#1058).
+    const dup = db
+      .prepare(
+        `SELECT specialty_code, specialty, archived, contact_edited
+           FROM providers WHERE id = ?`
+      )
+      .get(duplicateId) as
+      | {
+          specialty_code: string | null;
+          specialty: string | null;
+          archived: number;
+          contact_edited: number;
+        }
+      | undefined;
+    if (dup) {
+      db.prepare(
+        `UPDATE providers
+            SET specialty_code = COALESCE(specialty_code, ?),
+                specialty = COALESCE(specialty, ?),
+                archived = CASE WHEN archived = 1 AND ? = 1 THEN 1 ELSE 0 END,
+                contact_edited = CASE WHEN contact_edited = 1 OR ? = 1 THEN 1 ELSE 0 END
+          WHERE id = ?`
+      ).run(
+        dup.specialty_code,
+        dup.specialty,
+        dup.archived,
+        dup.contact_edited,
+        survivorId
       );
     }
     db.prepare("DELETE FROM providers WHERE id = ?").run(duplicateId);

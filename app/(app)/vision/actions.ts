@@ -10,6 +10,10 @@ import {
   parseEyeRefraction,
   parseMillimeters,
 } from "@/lib/optical-prescription";
+import {
+  resolveProviderIdByName,
+  resolveProviderOnEdit,
+} from "@/lib/providers-db";
 
 // Optical-prescription writes (#697). Session-scoped; every mutation is
 // `WHERE id = ? AND profile_id = ?` and the INSERT carries profile_id. Manual rows
@@ -83,14 +87,20 @@ export async function addOpticalPrescription(
   formData: FormData
 ): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
+  // The prescribing optometrist, resolved through the shared GLOBAL registry via a
+  // create-on-type name (#1088). NULL for a self-entered Rx — never nagged.
+  const providerId = resolveProviderIdByName(
+    String(formData.get("provider") ?? ""),
+    "individual"
+  );
   db.prepare(
     `INSERT INTO optical_prescriptions
        (kind, od_sphere, od_cylinder, od_axis, od_add,
         os_sphere, os_cylinder, os_axis, os_add,
         pd, base_curve, diameter, brand, issued_date, expiry_date, notes,
-        source, profile_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?)`
-  ).run(...rxValues(formData), profile.id);
+        provider_id, source, profile_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?)`
+  ).run(...rxValues(formData), providerId, profile.id);
   revalidateVision();
   return formOk();
 }
@@ -101,14 +111,21 @@ export async function updateOpticalPrescription(
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that prescription.");
+  // Keep the loaded provider link unless the typed name actually changed (#601).
+  const providerId = resolveProviderOnEdit(
+    Number(formData.get("provider_id")) || null,
+    String(formData.get("provider_loaded") ?? ""),
+    String(formData.get("provider") ?? ""),
+    "individual"
+  );
   db.prepare(
     `UPDATE optical_prescriptions
        SET kind = ?, od_sphere = ?, od_cylinder = ?, od_axis = ?, od_add = ?,
            os_sphere = ?, os_cylinder = ?, os_axis = ?, os_add = ?,
            pd = ?, base_curve = ?, diameter = ?, brand = ?,
-           issued_date = ?, expiry_date = ?, notes = ?
+           issued_date = ?, expiry_date = ?, notes = ?, provider_id = ?
      WHERE id = ? AND profile_id = ?`
-  ).run(...rxValues(formData), id, profile.id);
+  ).run(...rxValues(formData), providerId, id, profile.id);
   revalidateVision();
   return formOk();
 }

@@ -20,6 +20,10 @@ import {
   deleteLesionPhotoCore,
   deleteLesionPhotosForLesion,
 } from "@/lib/skin-photo-write";
+import {
+  resolveProviderIdByName,
+  resolveProviderOnEdit,
+} from "@/lib/providers-db";
 
 // Skin-lesion writes (#715). Session-scoped; every mutation is `WHERE id = ? AND
 // profile_id = ?` and the INSERT carries profile_id. Manual rows carry a NULL
@@ -57,12 +61,18 @@ export async function addSkinLesion(formData: FormData): Promise<FormResult> {
   const region = normalizeBodyRegion(formData.get("body_region"));
   if (!label && !region)
     return formError("Give the lesion a label or a body-map region.");
+  // The recording dermatologist, resolved through the shared GLOBAL registry via a
+  // create-on-type name (#1088). NULL for a self-photographed lesion.
+  const providerId = resolveProviderIdByName(
+    String(formData.get("provider") ?? ""),
+    "individual"
+  );
   db.prepare(
     `INSERT INTO skin_lesions
        (label, body_region, body_side, size_mm, asymmetry, border, color,
         diameter, evolving, status, observed_date, finding,
-        follow_up_interval_days, notes, source, profile_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?)`
+        follow_up_interval_days, notes, provider_id, source, profile_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?)`
   ).run(
     label,
     region,
@@ -78,6 +88,7 @@ export async function addSkinLesion(formData: FormData): Promise<FormResult> {
     str(formData, "finding"),
     intOrNull(formData.get("follow_up_interval_days")),
     str(formData, "notes"),
+    providerId,
     profile.id
   );
   revalidateSkin();
@@ -94,12 +105,18 @@ export async function updateSkinLesion(
   const region = normalizeBodyRegion(formData.get("body_region"));
   if (!label && !region)
     return formError("Give the lesion a label or a body-map region.");
+  const providerId = resolveProviderOnEdit(
+    Number(formData.get("provider_id")) || null,
+    String(formData.get("provider_loaded") ?? ""),
+    String(formData.get("provider") ?? ""),
+    "individual"
+  );
   db.prepare(
     `UPDATE skin_lesions
        SET label = ?, body_region = ?, body_side = ?, size_mm = ?,
            asymmetry = ?, border = ?, color = ?, diameter = ?, evolving = ?,
            status = ?, observed_date = ?, finding = ?,
-           follow_up_interval_days = ?, notes = ?
+           follow_up_interval_days = ?, notes = ?, provider_id = ?
      WHERE id = ? AND profile_id = ?`
   ).run(
     label,
@@ -116,6 +133,7 @@ export async function updateSkinLesion(
     str(formData, "finding"),
     intOrNull(formData.get("follow_up_interval_days")),
     str(formData, "notes"),
+    providerId,
     id,
     profile.id
   );

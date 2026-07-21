@@ -17,6 +17,7 @@ import {
   getProviderActivityCounts,
   getProviderActivityTotal,
 } from "@/lib/queries/providers";
+import { linkAffiliation, getAffiliatesFor } from "@/lib/queries/affiliations";
 import { PROVIDER_LINK_COLUMNS } from "@/lib/provider-merge";
 
 function newProfile(name: string): number {
@@ -33,6 +34,18 @@ function newProvider(name: string, dedup: string): number {
         `INSERT INTO providers (name, type, dedup_key) VALUES (?, 'individual', ?)`
       )
       .run(name, dedup).lastInsertRowid
+  );
+}
+
+function newTypedProvider(
+  name: string,
+  type: "individual" | "organization",
+  dedup: string
+): number {
+  return Number(
+    db
+      .prepare(`INSERT INTO providers (name, type, dedup_key) VALUES (?, ?, ?)`)
+      .run(name, type, dedup).lastInsertRowid
   );
 }
 
@@ -176,11 +189,83 @@ describe("provider activity reads are per-profile scoped", () => {
     expect(a.procedures).toBe(1);
     expect(a.carePlan).toBe(1);
     expect(a.appointments).toBe(1);
-    // Total for A excludes B's identical rows.
+    // Total for A excludes B's identical rows. 8 core links + the #1088 specialty/
+    // imaging domains linkAllTables now also plants: imaging (ordering + reading rows,
+    // both count) = 2, vision = 1, dental = 1, skin = 1 → 13.
     expect(getProviderActivityTotal(profileA, survivor)).toBe(
       getProviderActivityTotal(profileB, survivor)
     );
-    expect(getProviderActivityTotal(profileA, survivor)).toBe(8);
+    expect(getProviderActivityTotal(profileA, survivor)).toBe(13);
+  });
+});
+
+// Row-ops side-state (#1055): merge re-keys affiliation edges onto the survivor,
+// dedupes a would-be duplicate pair, and drops a self-edge — the special-cased link
+// the reflection test excuses from the generic PROVIDER_LINK_COLUMNS re-point.
+describe("mergeProviders re-keys affiliation edges (#1055)", () => {
+  it("moves a duplicate individual's affiliation onto the survivor", () => {
+    const east = newTypedProvider(
+      "Care East",
+      "organization",
+      `org-${Math.random()}`
+    );
+    // survivor + duplicate are individuals (from beforeEach). Affiliate the DUPLICATE
+    // with the org, then merge it into the survivor.
+    expect(linkAffiliation(duplicate, east)).toBe(true);
+    expect(getAffiliatesFor(duplicate, "individual").map((a) => a.id)).toEqual([
+      east,
+    ]);
+
+    mergeProviders(survivor, duplicate);
+
+    // The edge now belongs to the survivor; none dangles on the absorbed row.
+    expect(getAffiliatesFor(survivor, "individual").map((a) => a.id)).toEqual([
+      east,
+    ]);
+    const dangling = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM provider_affiliations
+          WHERE individual_id = ? OR organization_id = ?`
+      )
+      .get(duplicate, duplicate) as { n: number };
+    expect(dangling.n).toBe(0);
+  });
+
+  it("dedupes a pair both providers share, leaving one edge and no self-edge", () => {
+    const east = newTypedProvider(
+      "Shared Org",
+      "organization",
+      `org2-${Math.random()}`
+    );
+    linkAffiliation(survivor, east);
+    linkAffiliation(duplicate, east);
+    mergeProviders(survivor, east === survivor ? duplicate : duplicate);
+    const rows = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM provider_affiliations WHERE organization_id = ?`
+      )
+      .get(east) as { n: number };
+    expect(rows.n).toBe(1); // the UNIQUE-colliding duplicate was dropped
+    // No self-edge (survivor↔survivor) was created.
+    const selfEdges = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM provider_affiliations WHERE individual_id = organization_id`
+      )
+      .get() as { n: number };
+    expect(selfEdges.n).toBe(0);
+  });
+
+  it("keeps the survivor's non-null specialty and un-archives an active-merge pair", () => {
+    // The survivor is archived + specialty-less; the duplicate is active + specialized.
+    db.prepare(`UPDATE providers SET archived = 1 WHERE id = ?`).run(survivor);
+    db.prepare(
+      `UPDATE providers SET specialty = 'Cardiology', specialty_code = '207RC0000X', contact_edited = 1 WHERE id = ?`
+    ).run(duplicate);
+    mergeProviders(survivor, duplicate);
+    const s = getProvider(survivor)!;
+    expect(s.specialty).toBe("Cardiology"); // inherited (survivor was null)
+    expect(s.archived).toBe(0); // active-merge → active
+    expect(s.contact_edited).toBe(1); // locked if EITHER was
   });
 });
 

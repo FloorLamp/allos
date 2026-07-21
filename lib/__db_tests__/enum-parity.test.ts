@@ -25,6 +25,7 @@ import {
   CONDITION_STATUSES,
   EQUIPMENT_CATEGORIES,
   GOAL_STATUSES,
+  PROVIDER_AFFILIATION_STATUSES,
   SUGGESTION_STATUSES,
 } from "@/lib/types";
 
@@ -77,6 +78,11 @@ const REGISTRY: {
     expected: MEDICAL_CATEGORIES,
   },
   { table: "equipment", column: "category", expected: EQUIPMENT_CATEGORIES },
+  {
+    table: "provider_affiliations",
+    column: "status",
+    expected: PROVIDER_AFFILIATION_STATUSES,
+  },
 ];
 
 describe("enum enforcement parity — DB CHECK ⇔ TS union/array", () => {
