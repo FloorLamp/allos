@@ -34,6 +34,7 @@ const ROUTES = [
   "/training",
   "/trends",
   "/timeline",
+  "/sleep",
   "/upcoming",
   "/data",
   "/results",

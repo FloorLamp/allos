@@ -27,10 +27,15 @@ import type { ReproductiveStatus, Sex } from "./types";
 // the in-app instrument flow) are the ONLY creation path, so their /records
 // sections render UNCONDITIONALLY (their former nav leaves were likewise ungated) —
 // hiding them would strand a new tracker.
+//   - `sleep` — a nav gate for the dedicated Sleep entry (#1066), between Trends
+//     and Upcoming. Pure data presence (has any recorded sleep session), exactly
+//     like vision/dental: no life-stage logic, and the page stays reachable by URL
+//     (the pillar deep-link and dashboard tile both link it) even when hidden.
 export interface NavRelevance {
   cycle: boolean;
   vision: boolean;
   dental: boolean;
+  sleep: boolean;
 }
 
 export type NavRelevanceKey = keyof NavRelevance;
@@ -41,6 +46,7 @@ export const DEFAULT_NAV_RELEVANCE: NavRelevance = {
   cycle: true,
   vision: true,
   dental: true,
+  sleep: true,
 };
 
 export interface CycleRelevanceInput {

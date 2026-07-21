@@ -821,6 +821,62 @@ for (let i = 1; i <= 28; i++) {
 }
 console.log("e2e: seeded 28 nightly sleep sessions for profile 1 (SRI, #160)");
 
+// ── Sleep page fixture (issue #1066) ──[SLEEP-PAGE-1066]───────────────────────
+// Self-contained block layered on the #160 SRI nights above — keep it standalone
+// and clearly marked so a parallel #1117 edit to this file merges trivially.
+// Adds, for profile 1:
+//   (a) per-night sleep STAGE samples for the last 14 wake-days (today-13 … today),
+//       so the Sleep page "Stage composition" chart and the hero stage bar render;
+//   (b) an afternoon NAP on wake-day `today`, so the hero shows it as a SEPARATE
+//       line ("+ nap"), never summed into the main overnight session (the #1118
+//       main-vs-nap split — verified by the nap-line assertion in sleep-page.spec).
+// Synthetic values only (no PHI). Idempotent: clears its own rows first.
+const sleepStageInsert = db.prepare(
+  `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+   VALUES (?, 'manual', ?, ?, ?, ?, ?)`
+);
+for (let i = 0; i <= 13; i++) {
+  const wakeDay = shiftDateStr(COACH_TODAY, -i);
+  const bedDay = shiftDateStr(wakeDay, -1);
+  const start = `${bedDay}T23:00:00Z`;
+  const end = `${wakeDay}T07:00:00Z`;
+  // deterministic light jitter so the stacked areas aren't perfectly flat
+  const jitter = (i * 5) % 20;
+  const stages: [string, number][] = [
+    ["sleep_deep_min", 80 + jitter],
+    ["sleep_rem_min", 100 - jitter],
+    ["sleep_light_min", 250 + jitter],
+    ["sleep_awake_min", 25 + (jitter % 10)],
+  ];
+  for (const [metric, value] of stages) {
+    db.prepare(
+      `DELETE FROM metric_samples
+        WHERE profile_id = ? AND metric = ? AND source = 'manual' AND date = ?`
+    ).run(PROFILE_ID, metric, wakeDay);
+    sleepStageInsert.run(PROFILE_ID, metric, wakeDay, start, end, value);
+  }
+}
+// Afternoon nap on `today` (wake-day = today, so it groups with the overnight
+// coaching low-sleep session above). mainSleepSession keeps the longer overnight
+// as the "night" and this stays a separate nap figure.
+db.prepare(
+  `DELETE FROM metric_samples
+    WHERE profile_id = ? AND metric = 'sleep_min' AND source = 'manual'
+      AND start_time = ?`
+).run(PROFILE_ID, `${COACH_TODAY}T13:00:00Z`);
+db.prepare(
+  `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+   VALUES (?, 'manual', 'sleep_min', ?, ?, ?, 45)`
+).run(
+  PROFILE_ID,
+  COACH_TODAY,
+  `${COACH_TODAY}T13:00:00Z`,
+  `${COACH_TODAY}T13:45:00Z`
+);
+console.log(
+  "e2e: seeded sleep stages (14 nights) + a same-day nap for profile 1 (#1066)"
+);
+
 // ── Multi-source metric fixture (issue #14) ───────────────────────────────────
 // The SAME metric (nightly HRV) reported by TWO sources — Health Connect and
 // Oura — over the last five nights, so the Trends → Body "Compare sources"

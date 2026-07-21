@@ -12,6 +12,7 @@ import {
   getUserSex,
 } from "../settings/profile-attrs";
 import { cycleTrackingRelevant, type NavRelevance } from "../nav-relevance";
+import { hasSleepData } from "./sleep";
 
 // The relevance bitset for the active profile. Key policy (documented on
 // NavRelevance in lib/nav-relevance.ts): Vision/Dental gate on data presence —
@@ -45,5 +46,7 @@ export function getNavRelevance(profileId: number): NavRelevance {
     }),
     vision: hasVisionRows,
     dental: hasDentalRows,
+    // Data presence only (any recorded sleep session) — the #1066 Sleep nav gate.
+    sleep: hasSleepData(profileId),
   };
 }

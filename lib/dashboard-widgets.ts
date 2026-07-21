@@ -194,6 +194,20 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     dataAware: true,
   },
   {
+    id: "sleep-last-night",
+    label: "Last night's sleep",
+    description:
+      "How you slept last night — duration, bed/wake, and your regularity — at a glance, linking to the full Sleep page.",
+    // On by default so the morning ritual is served by promotion, not nav position
+    // (issue #1066 — the illness-hero / weight-quick-add principle). Data-aware: a
+    // profile with no sleep sessions yet gets an onboarding CTA instead of a blank
+    // card. Not fitness-gated — sleep matters for every profile.
+    defaultOn: true,
+    fitness: false,
+    span: "half",
+    dataAware: true,
+  },
+  {
     id: "quick-log-prn",
     label: "Log a PRN dose",
     description:

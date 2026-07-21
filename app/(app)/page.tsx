@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { IconFlask, IconScale, IconPill } from "@tabler/icons-react";
+import { IconFlask, IconScale, IconPill, IconMoon } from "@tabler/icons-react";
 import { now as clockNow } from "@/lib/clock";
 import { today } from "@/lib/db";
 import {
@@ -16,6 +16,8 @@ import {
   collectAttentionModel,
   attentionCountForProfile,
   getHealthspanPillars,
+  getLastNightSummary,
+  getSleepRegularity,
   getPrnMedicationsForQuickLog,
   getActiveProtocolSummaries,
   getWorkoutPresence,
@@ -94,6 +96,7 @@ import NextAppointmentWidget, {
   type NextAppointment,
 } from "@/components/dashboard/NextAppointmentWidget";
 import HealthspanPillarsWidget from "@/components/dashboard/HealthspanPillarsWidget";
+import SleepLastNightWidget from "@/components/dashboard/SleepLastNightWidget";
 import QuickLogPrnWidget from "@/components/dashboard/QuickLogPrnWidget";
 import ActiveProtocolWidget from "@/components/dashboard/ActiveProtocolWidget";
 import HowAreYouCard from "@/components/dashboard/HowAreYouCard";
@@ -341,6 +344,17 @@ export default async function Dashboard() {
     ? getHealthspanPillars(profile.id)
     : [];
 
+  // sleep-last-night (issue #1066): the morning "how did I sleep" tile — the SAME
+  // lastNightSummary model the /sleep hero reads (one question, one computation),
+  // with the SRI alongside as the second figure. Null summary → the data-aware CTA.
+  const sleepSummary = has("sleep-last-night")
+    ? getLastNightSummary(profile.id)
+    : null;
+  const sleepSri =
+    has("sleep-last-night") && sleepSummary != null
+      ? (getSleepRegularity(profile.id)?.sri ?? null)
+      : null;
+
   // recent-labs (medical): the current reading per lab/biomarker marker, flagged
   // markers surfaced first so an out-of-range result is the headline. Selection
   // policy is the shared recentLabHighlights (issue #313).
@@ -478,6 +492,8 @@ export default async function Dashboard() {
     emptyIds.add("healthspan-pillars");
   if (has("quick-log-prn") && prnMeds.length === 0)
     emptyIds.add("quick-log-prn");
+  if (has("sleep-last-night") && sleepSummary == null)
+    emptyIds.add("sleep-last-night");
 
   // The onboarding CTA for a data-aware widget whose domain is empty — the
   // dashboard doubling as the setup checklist, each empty widget pointing at the
@@ -524,6 +540,16 @@ export default async function Dashboard() {
             ctaHref="/medications"
           />
         );
+      case "sleep-last-night":
+        return (
+          <WidgetEmpty
+            title="Last night's sleep"
+            icon={IconMoon}
+            message="No sleep data yet. Connect Health Connect, Oura, or Withings to see how you slept each morning."
+            ctaLabel="Connect a source"
+            ctaHref="/data"
+          />
+        );
       default:
         return null;
     }
@@ -539,6 +565,10 @@ export default async function Dashboard() {
         return <NextAppointmentWidget appointment={nextAppt} />;
       case "healthspan-pillars":
         return <HealthspanPillarsWidget pillars={pillars} />;
+      case "sleep-last-night":
+        return sleepSummary ? (
+          <SleepLastNightWidget summary={sleepSummary} sri={sleepSri} />
+        ) : null;
       case "weight-trend":
         return (
           <WeightTrendWidget

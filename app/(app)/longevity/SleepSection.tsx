@@ -40,10 +40,10 @@ export default async function SleepSection({
           {section.title}
         </h2>
         <Link
-          href="/trends?tab=body"
+          href="/sleep"
           className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
         >
-          Sleep charts
+          Sleep page
         </Link>
       </div>
 
