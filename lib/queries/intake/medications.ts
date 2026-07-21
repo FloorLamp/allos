@@ -7,6 +7,7 @@
 import { db, today, writeTx } from "../../db";
 import { normalizeSeverity, SEVERITY_LABELS } from "../../medication-history";
 import { parsePrescription } from "../../prescription-parse";
+import { resolveExactPrescriberId } from "../../providers-db";
 import { profileAgeMonths } from "../../settings";
 import { getLatestBodyMetricDated } from "../metrics";
 import { getEpisodeRow } from "../../illness-episode-store";
@@ -511,17 +512,19 @@ export function createMedicationFromRecord(
 ): { id: number; name: string } | null {
   const rec = db
     .prepare(
-      `SELECT name, value, unit, notes, document_id
+      `SELECT id, name, value, unit, notes, document_id, provider_id
          FROM medical_records
         WHERE id = ? AND profile_id = ? AND category = 'prescription'`
     )
     .get(recordId, profileId) as
     | {
+        id: number;
         name: string;
         value: string | null;
         unit: string | null;
         notes: string | null;
         document_id: number | null;
+        provider_id: number | null;
       }
     | undefined;
   if (!rec || !rec.name?.trim()) return null;
@@ -533,14 +536,31 @@ export function createMedicationFromRecord(
     notes: rec.notes,
   });
 
+  // Prescriber link (#1051 semantics decision (a)): carry the source record's
+  // structured provider_id THROUGH when it is an INDIVIDUAL (the prescriber the
+  // import already resolved into the registry — "the structured link it is holding");
+  // an org/absent link falls back to resolving the parsed prescriber TEXT into an
+  // existing individual row (exact only, never an org / near-miss). Either way an
+  // organization never occupies the prescriber link.
+  let providerId: number | null = null;
+  if (rec.provider_id != null) {
+    const p = db
+      .prepare("SELECT type FROM providers WHERE id = ?")
+      .get(rec.provider_id) as { type: string } | undefined;
+    if (p?.type === "individual") providerId = rec.provider_id;
+  }
+  if (providerId == null && med.prescriber) {
+    providerId = resolveExactPrescriberId(med.prescriber);
+  }
+
   return writeTx(() => {
     const info = db
       .prepare(
         `INSERT INTO intake_items
            (name, notes, active, condition, priority, kind,
             prescriber, pharmacy, rx_number, as_needed,
-            document_id, source, profile_id)
-         VALUES (?,?,1,'daily','high','medication',?,?,?,?,?,'extracted',?)`
+            document_id, source, provider_id, source_record_id, profile_id)
+         VALUES (?,?,1,'daily','high','medication',?,?,?,?,?,'extracted',?,?,?)`
       )
       .run(
         med.name,
@@ -550,6 +570,8 @@ export function createMedicationFromRecord(
         med.rxNumber,
         med.asNeeded ? 1 : 0,
         rec.document_id,
+        providerId,
+        rec.id,
         profileId
       );
     const medId = Number(info.lastInsertRowid);

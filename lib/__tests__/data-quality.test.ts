@@ -22,6 +22,7 @@ const COMPLETE_ADULT: DataQualityInputs = {
   heightKnown: false, // adult → pediatric-height gate never fires
   smokingKnown: true,
   medsMissingRxcui: 0,
+  prescribersNeedingLink: 0,
   phenoAgePresentCount: 9,
   phenoAgeMissingCount: 0,
   failedExtractions: 0,
@@ -255,6 +256,7 @@ describe("leverage ranking is stable and deterministic", () => {
       heightKnown: false,
       smokingKnown: false, // smoking gated on adult → age null suppresses it
       medsMissingRxcui: 1, // med-rxcui (4)
+      prescribersNeedingLink: 0,
       phenoAgePresentCount: 0,
       phenoAgeMissingCount: 9,
       failedExtractions: 1, // failed (1)

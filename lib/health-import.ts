@@ -107,6 +107,12 @@ export interface ImportedRecord {
   // the bundle. The persist layer maps it to the local encounter row's id. Null when
   // the source carried no encounter reference (or it dangled).
   encounter_external_id?: string | null;
+  // Tier-1 indication link (#1052): the external_id of the Condition a
+  // MedicationRequest.reasonReference pointed at, resolved within the bundle. Set only
+  // on prescription records; the persist layer maps it to the local condition row and
+  // stamps the projected medication's indication_condition_id. Null when the source
+  // carried no reason reference (or it dangled).
+  indication_condition_external_id?: string | null;
 }
 
 // An allergy / intolerance pulled from a CCD Allergies section. Substance

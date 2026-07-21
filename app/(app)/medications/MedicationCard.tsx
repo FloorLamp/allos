@@ -113,6 +113,7 @@ export default function MedicationCard({
   defaultHistoryTime,
   canWrite = true,
   initialAction,
+  conditions = [],
 }: {
   supplement: Supplement;
   doses: SupplementDose[];
@@ -183,6 +184,8 @@ export default function MedicationCard({
   canWrite?: boolean;
   // List-row overflow actions land on this detail view with the relevant form open.
   initialAction?: "edit" | "stop";
+  // The profile's conditions for the "For condition…" indication picker (#1052).
+  conditions?: { id: number; name: string }[];
 }) {
   const s = supplement;
   const router = useRouter();
@@ -231,6 +234,7 @@ export default function MedicationCard({
           trainingRestricted={trainingRestricted}
           pediatric={pediatric}
           age={age}
+          conditions={conditions}
           course={open ?? ordered[ordered.length - 1]}
           todayStr={todayStr}
         />
@@ -243,9 +247,13 @@ export default function MedicationCard({
   const medInfo = getMedicationInfo(s.name);
 
   // Keep the structured provider separate from the free-text prescription
-  // metadata so it can use the registry's standard provider-detail link.
+  // metadata so it can use the registry's standard provider-detail link. Under #1051
+  // (semantics decision (a)) the LINKED provider is the prescriber, so prefer it and
+  // drop the redundant free-text prescriber when it's present — the registry name
+  // wins so renames/merges propagate; the free-text prescriber stays only as the
+  // fallback for an unlinked med (`provider_name` null).
   const medMeta = medicationMetaLine({
-    prescriber: s.prescriber,
+    prescriber: s.provider_name ? null : s.prescriber,
     pharmacy: s.pharmacy,
     rx_number: s.rx_number,
     provider_name: null,
@@ -353,6 +361,20 @@ export default function MedicationCard({
                     className="text-xs text-slate-500 dark:text-slate-400"
                   />
                 )}
+              </div>
+            )}
+            {s.indication_condition_name && (
+              <div
+                className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+                data-testid="medication-indication"
+              >
+                For:{" "}
+                <Link
+                  href="/records"
+                  className="font-medium text-brand-700 hover:underline dark:text-brand-300"
+                >
+                  {s.indication_condition_name}
+                </Link>
               </div>
             )}
             <div className="mt-2">

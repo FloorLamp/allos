@@ -1585,6 +1585,25 @@ condIns.run(
   "Resolved with supplementation"
 ); // coherent with the climbing Vitamin D panel
 
+// Med → prescriber + indication links (#1051/#1052): Sertraline is prescribed by Dr.
+// Anita Patel (the individual registry row) FOR a recorded depression condition — so
+// the med detail shows a LINKED prescriber + a "For:" line, and the condition shows a
+// "Treated with:" section. (drPatel + sertId are seeded above.)
+const depressionCondId = Number(
+  condIns.run(
+    "Major depressive disorder",
+    "F33.1",
+    "ICD-10",
+    "active",
+    daysAgo(400),
+    null,
+    "Managed with an SSRI"
+  ).lastInsertRowid
+);
+db.prepare(
+  "UPDATE intake_items SET provider_id = ?, indication_condition_id = ? WHERE id = ?"
+).run(drPatel, depressionCondId, sertId);
+
 // ── Allergies ─────────────────────────────────────────────────────────
 // The Amoxicillin course seeded above is DISCONTINUED (a past, inactive med), so a
 // documented Penicillin allergy is coherent — discovered after the course, which is

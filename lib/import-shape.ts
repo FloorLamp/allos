@@ -133,6 +133,11 @@ export interface PersistRecord {
   // persist layer resolves it to the local encounter row and sets encounter_id.
   // Null/absent on the AI path (no encounter references).
   encounter_external_id?: string | null;
+  // Tier-1 indication link (#1052): the external_id of the Condition a prescription's
+  // MedicationRequest.reasonReference pointed at (resolved in-bundle). The persist
+  // layer resolves it to the local condition row and stamps the projected medication's
+  // indication_condition_id. Null/absent on the AI path.
+  indication_condition_external_id?: string | null;
 }
 
 export interface PersistImmunization {
@@ -912,6 +917,9 @@ export function healthRecordToPersistInput(
     rxNumber: r.rxNumber ?? null,
     // Tier-1 visit link (#1050): the resolved encounter reference rides through.
     encounter_external_id: r.encounter_external_id ?? null,
+    // Tier-1 indication link (#1052): the resolved reason (condition) reference.
+    indication_condition_external_id:
+      r.indication_condition_external_id ?? null,
   }));
   // Project body-metric records (weight / body fat / resting HR) into body_metrics
   // — the same single-home rule the AI path uses.

@@ -1,7 +1,7 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
+import { db, writeTx } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import type { ConditionStatus } from "@/lib/types";
@@ -93,10 +93,19 @@ export async function deleteCondition(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that condition.");
-  db.prepare("DELETE FROM conditions WHERE id = ? AND profile_id = ?").run(
-    id,
-    profile.id
-  );
+  writeTx(() => {
+    // A medication may link this condition as its indication (#1052) — a REFERENCES
+    // FK with no ON DELETE. NULL that back-link FIRST so the delete can't trip the
+    // FK (the row-ops convention: deleting the condition NULLs the med's "For:" link).
+    db.prepare(
+      `UPDATE intake_items SET indication_condition_id = NULL
+        WHERE indication_condition_id = ? AND profile_id = ?`
+    ).run(id, profile.id);
+    db.prepare("DELETE FROM conditions WHERE id = ? AND profile_id = ?").run(
+      id,
+      profile.id
+    );
+  });
   revalidateConditions();
   return formOk();
 }

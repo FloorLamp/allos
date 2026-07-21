@@ -84,6 +84,35 @@ export function encounterRefExternalId(
   return `ccda:encounter:${enc.id}`;
 }
 
+// Tier-1 med→indication link (#1052): resolve a MedicationRequest's `reasonReference`
+// (R4, a Reference[]) or `reason` (R5, a CodeableReference[] carrying `.reference`)
+// within the bundle to the referenced Condition's external_id — the SAME key
+// mapConditionResource forms — so the persist layer can map it to the local condition
+// row and stamp the projected med's indication_condition_id. Returns the first
+// resolvable Condition's external_id, else null when there's no reference, it dangles
+// (ctx.resolve returns nothing), the target isn't a Condition, or it yields no stable
+// key — NEVER a wrong link (a dangling ref ⇒ null).
+export function reasonConditionExternalId(
+  r: any,
+  ctx?: FhirBundleCtx
+): string | null {
+  if (!ctx) return null;
+  const refs: any[] = [];
+  if (Array.isArray(r?.reasonReference)) refs.push(...r.reasonReference);
+  else if (r?.reasonReference) refs.push(r.reasonReference);
+  if (Array.isArray(r?.reason)) {
+    for (const rr of r.reason) if (rr?.reference) refs.push(rr.reference);
+  }
+  for (const ref of refs) {
+    const res = ctx.resolve(ref, r?.contained);
+    if (res?.resourceType === "Condition") {
+      const ext = mapConditionResource(res)?.external_id;
+      if (ext) return ext;
+    }
+  }
+  return null;
+}
+
 export function mapImmunizationResource(
   r: any,
   idPrefix: string,
@@ -458,6 +487,9 @@ export function mapMedicationResource(
     // Tier-1 visit link (#1050): the visit this was prescribed at
     // (MedicationRequest.encounter) — the dropped-source field this issue recovers.
     encounter_external_id: encounterRefExternalId(r, ctx),
+    // Tier-1 indication link (#1052): the condition this was prescribed FOR
+    // (MedicationRequest.reasonReference) — the other dropped-source field.
+    indication_condition_external_id: reasonConditionExternalId(r, ctx),
   };
 }
 

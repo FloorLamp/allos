@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getConditions } from "@/lib/queries";
+import { getConditions, getMedicationsByIndication } from "@/lib/queries";
 import ConditionForm from "@/app/(app)/conditions/ConditionForm";
 import ConditionList from "@/app/(app)/conditions/ConditionList";
 import { addCondition } from "@/app/(app)/conditions/actions";
@@ -29,6 +29,9 @@ export default function ConditionsSection({
       ? cond
       : undefined;
   const rows = getConditions(profileId, status ? { status } : {});
+  // Med → indication inverse view (#1052): condition id → treating med names, so the
+  // list can show a "Treated with:" sub-line. One query for the whole list (no N+1).
+  const treatedWith = Object.fromEntries(getMedicationsByIndication(profileId));
   const active = cond ?? "all";
 
   return (
@@ -56,7 +59,7 @@ export default function ConditionsSection({
             );
           })}
         </div>
-        <ConditionList items={rows} />
+        <ConditionList items={rows} treatedWith={treatedWith} />
       </div>
 
       <div className="min-w-0 space-y-4">

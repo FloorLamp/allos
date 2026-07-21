@@ -113,9 +113,18 @@ export interface Supplement {
   source: string | null;
   // The prescribing provider — a medication links to the shared
   // GLOBAL registry via provider_id; provider_name is joined for display. NULL for
-  // supplements and unlinked medications.
+  // supplements and unlinked medications. Under #1051 semantics decision (a) this is
+  // the prescriber (an INDIVIDUAL); the pharmacy free text holds the org half.
   provider_id: number | null;
   provider_name?: string | null;
+  // The prescription medical_records row this medication was projected from (#1051):
+  // provenance, and the transitive "Prescribed at" chain once that record links its
+  // visit. NULL for manual meds / supplements.
+  source_record_id: number | null;
+  // The condition this medication treats — the med → indication link (#1052). NULL
+  // when unlinked. indication_condition_name is joined for the "For:" display line.
+  indication_condition_id: number | null;
+  indication_condition_name?: string | null;
 }
 
 // Whether a row is an ordinary supplement or a prescription medication.

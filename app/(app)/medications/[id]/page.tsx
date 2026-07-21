@@ -7,6 +7,7 @@ import {
   getMedicationDoseHistory,
   resolveMedicationAcrossProfiles,
   encounterForRecord,
+  getConditions,
 } from "@/lib/queries";
 import { encounterHref } from "@/lib/hrefs";
 import { formatRecordDate } from "@/lib/record-format";
@@ -140,7 +141,20 @@ export default async function MedicationDetailPage(props: {
   // "Prescribed at: <visit>" (#1050) — the deterministic tier-1 link (a resolved
   // FHIR MedicationRequest.encounter) or a user-accepted suggestion, whichever set
   // this med's encounter_id. Links back to the visit detail.
-  const prescribedAt = encounterForRecord(profileId, "medication", m.med.id);
+  // "Prescribed at" (#1050 + #1051 transitive chain): the med's OWN visit link, else
+  // — for a med projected from a prescription record (source_record_id) — the visit
+  // that record itself resolved to. So a bridged/imported med inherits its record's
+  // visit without a second stored link.
+  const prescribedAt =
+    encounterForRecord(profileId, "medication", m.med.id) ??
+    (m.med.source_record_id
+      ? encounterForRecord(profileId, "record", m.med.source_record_id)
+      : null);
+  // Conditions for the "For condition…" indication picker (#1052) on the edit form.
+  const medConditions = getConditions(profileId).map((c) => ({
+    id: c.id,
+    name: c.name,
+  }));
 
   return (
     <PageContainer
@@ -225,6 +239,7 @@ export default async function MedicationDetailPage(props: {
         defaultHistoryTime={data.nowHhmm}
         canWrite={canWrite}
         initialAction={initialAction}
+        conditions={medConditions}
       />
       <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">
         For reference only — not medical advice.

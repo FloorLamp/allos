@@ -109,11 +109,15 @@ export default function MedicationForm({
   age = null,
   course,
   todayStr,
+  conditions = [],
 }: {
   action: (formData: FormData) => Promise<FormResult>;
   supplement?: Supplement;
   doses?: SupplementDose[];
   allSupplements?: { id: number; name: string }[];
+  // The profile's recorded conditions, for the optional "For condition…" indication
+  // picker (#1052). Absent → the picker doesn't render (surfaces that don't thread it).
+  conditions?: { id: number; name: string }[];
   stackItems?: InteractionItem[];
   pgxVariants?: PgxVariantInput[];
   pairs?: SupplementPair[];
@@ -505,6 +509,34 @@ export default function MedicationForm({
               ))}
             </select>
           </div>
+
+          {conditions.length > 0 && (
+            <div>
+              <label className="label" htmlFor={`med-indication-${fid}`}>
+                For condition
+                <span className="ml-1 font-normal text-slate-500 dark:text-slate-400">
+                  (optional)
+                </span>
+              </label>
+              {/* Med → indication link (#1052): what this med treats, chosen from the
+                  profile's recorded conditions. Submits indication_condition_id, which
+                  the action validates for ownership. */}
+              <select
+                id={`med-indication-${fid}`}
+                name="indication_condition_id"
+                defaultValue={s?.indication_condition_id ?? ""}
+                className="input"
+                data-testid="med-indication-picker"
+              >
+                <option value="">—</option>
+                {conditions.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div>
             <label className="label" htmlFor={`med-started-on-${fid}`}>

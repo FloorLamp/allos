@@ -56,6 +56,7 @@ import {
   getLatestMetricSample,
   getBioAgeReadings,
   hasImportedSmokingHistory,
+  countPrescribersNeedingLink,
 } from "./queries";
 import { resolveSmoking } from "./smoking";
 import { PHENOAGE_INPUT_COUNT } from "./bio-age";
@@ -320,6 +321,7 @@ export function collectDataQualityGaps(profileId: number): DataQualityGap[] {
     heightKnown: getLatestMetricSample(profileId, "height_cm") !== null,
     smokingKnown: smoking.source !== null,
     medsMissingRxcui: getMedicationsMissingRxcuiCount(profileId),
+    prescribersNeedingLink: countPrescribersNeedingLink(profileId),
     phenoAgePresentCount: bioAge.presentInputs.length,
     phenoAgeMissingCount: PHENOAGE_INPUT_COUNT - bioAge.presentInputs.length,
     failedExtractions: getFailedExtractionDocumentCount(profileId),

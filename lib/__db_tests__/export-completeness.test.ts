@@ -88,6 +88,10 @@ const EXPORT_ALLOWLIST: { table: string; why: string }[] = [
     why: "record↔visit / episode↔visit accept-decline bookkeeping (#1050/#1053); provenance/navigation decisions keyed on stable tokens, not health data — the linked encounter_id lives on the exported record/episode rows",
   },
   {
+    table: "med_link_decisions",
+    why: "med↔prescriber / med↔indication accept-decline bookkeeping (#1051/#1052); provenance/navigation decisions keyed on stable tokens, not health data — the resulting provider_id / indication_condition_id live on the exported intake_items rows",
+  },
+  {
     table: "import_tombstones",
     why: "re-import suppression bookkeeping (merged/deleted source-owned natural keys); operational dedup state, not health data",
   },

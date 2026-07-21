@@ -20,7 +20,7 @@ import {
 import { matchAppointmentForEncounter } from "./appointment-encounter-match";
 import { satisfiedRuleForCompletedKind } from "./preventive-appointment";
 import { parsePrescription, cleanMedicationName } from "./prescription-parse";
-import { resolveProviderId } from "./providers-db";
+import { resolveProviderId, resolveExactPrescriberId } from "./providers-db";
 import { cleanProviderInput, providerDedupKey } from "./providers";
 import type {
   ImportedProvider,
@@ -196,6 +196,26 @@ export function clearImportedDocumentRows(
            )`
     ).run(profileId, profileId, docId);
   }
+  // Row-ops side-state (#1051/#1052): a medication (possibly from ANOTHER document, or
+  // manual) may link a prescription medical_records row (source_record_id) or a
+  // condition (indication_condition_id) THIS document produced — both REFERENCES FKs
+  // with no ON DELETE. NULL those back-links FIRST so deleting the record/condition (in
+  // the footprint loop) can't trip the FK. The med survives, its provenance/indication
+  // link honestly gone (a tier-1 link re-derives when its own document reprocesses).
+  db.prepare(
+    `UPDATE intake_items SET source_record_id = NULL
+       WHERE profile_id = ?
+         AND source_record_id IN (
+           SELECT id FROM medical_records WHERE profile_id = ? AND document_id = ?
+         )`
+  ).run(profileId, profileId, docId);
+  db.prepare(
+    `UPDATE intake_items SET indication_condition_id = NULL
+       WHERE profile_id = ?
+         AND indication_condition_id IN (
+           SELECT id FROM conditions WHERE profile_id = ? AND document_id = ?
+         )`
+  ).run(profileId, profileId, docId);
   for (const t of IMPORT_FOOTPRINT_TABLES) {
     db.prepare(
       `DELETE FROM ${t.table} WHERE ${t.key} = ? AND ${footprintScope(t)}`
@@ -276,6 +296,28 @@ export function moveImportedDocumentRows(
              AND encounter_id NOT IN (SELECT id FROM encounters WHERE profile_id = ?)`
       ).run(pid, pid);
     }
+  }
+  // Row-ops side-state (#1051/#1052): a med's source_record_id (→ medical_records) and
+  // indication_condition_id (→ conditions) must never cross profiles either. A reassign
+  // can move a med but not a tier-2-linked condition from another document (or
+  // vice-versa) — re-enforce same-profile on BOTH affected profiles: NULL any link
+  // whose target no longer lives in that med's profile (a link whose both ends moved
+  // together stays intact, since the target now lives alongside the med).
+  for (const pid of [srcProfileId, destProfileId]) {
+    db.prepare(
+      `UPDATE intake_items SET source_record_id = NULL
+         WHERE profile_id = ? AND source_record_id IS NOT NULL
+           AND source_record_id NOT IN (
+             SELECT id FROM medical_records WHERE profile_id = ?
+           )`
+    ).run(pid, pid);
+    db.prepare(
+      `UPDATE intake_items SET indication_condition_id = NULL
+         WHERE profile_id = ? AND indication_condition_id IS NOT NULL
+           AND indication_condition_id NOT IN (
+             SELECT id FROM conditions WHERE profile_id = ?
+           )`
+    ).run(pid, pid);
   }
   // Row-ops side-state (#700): a follow-up's source/resolving imaging link must never
   // cross profiles. A reassign can move an imported imaging study but not a MANUAL
@@ -882,8 +924,8 @@ function insertImportRows(
     `INSERT INTO intake_items
        (name, notes, active, condition, priority, kind,
         prescriber, pharmacy, rx_number, as_needed,
-        document_id, source, profile_id)
-     VALUES (?,?,1,'daily','high','medication',?,?,?,?,?,'extracted',?)`
+        document_id, source, provider_id, source_record_id, profile_id)
+     VALUES (?,?,1,'daily','high','medication',?,?,?,?,?,'extracted',?,?,?)`
   );
   const insMedDose = db.prepare(
     `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
@@ -1217,6 +1259,8 @@ function insertImportRows(
   // every import, so it self-heals on reprocess. Only the document path carries
   // encounter references (the paste/AI path leaves them null), so guard on docSource.
   const resolveEnc = makeEncounterResolver(profileId, docSource);
+  const resolveCondition = makeConditionResolver(profileId, docSource);
+  const resolveSourceRecord = makeSourceRecordResolver(profileId, docSource);
   if (docSource) {
     linkRowsByExternalId(
       profileId,
@@ -1265,6 +1309,11 @@ function insertImportRows(
       // Tier-1: the med projected from a prescription that named an encounter is
       // stamped with the resolved local encounter id at INSERT (#1050).
       resolveEnc: docSource ? resolveEnc : undefined,
+      // Tier-1 indication (#1052): a prescription that named a reason Condition
+      // stamps the projected med's indication_condition_id.
+      resolveCondition: docSource ? resolveCondition : undefined,
+      // Provenance (#1051): source_record_id back to the prescription record.
+      resolveSourceRecord: docSource ? resolveSourceRecord : undefined,
     }
   );
 
@@ -1297,6 +1346,53 @@ export function makeEncounterResolver(
     const row = db
       .prepare(
         `SELECT id FROM encounters WHERE profile_id = ? AND external_id = ?`
+      )
+      .get(profileId, `${docSource}|${raw}`) as { id: number } | undefined;
+    const id = row ? row.id : null;
+    cache.set(raw, id);
+    return id;
+  };
+}
+
+// Tier-1 indication link (#1052): a memoized resolver from a RAW condition external_id
+// (`ccda:condition:...`, as mapConditionResource emits it) to the local condition row
+// id. Imported conditions are stored under the SCOPED external_id `<docSource>|<raw>`
+// (the same scoping the encounter resolver uses), so the lookup re-scopes before
+// querying — stable across reprocess. Returns null when the reference dangles.
+export function makeConditionResolver(
+  profileId: number,
+  docSource: string | null
+): (raw: string | null | undefined) => number | null {
+  const cache = new Map<string, number | null>();
+  return (raw) => {
+    if (!raw || !docSource) return null;
+    if (cache.has(raw)) return cache.get(raw)!;
+    const row = db
+      .prepare(
+        `SELECT id FROM conditions WHERE profile_id = ? AND external_id = ?`
+      )
+      .get(profileId, `${docSource}|${raw}`) as { id: number } | undefined;
+    const id = row ? row.id : null;
+    cache.set(raw, id);
+    return id;
+  };
+}
+
+// Provenance link (#1051): resolve a prescription record's RAW external_id to the local
+// medical_records row id just inserted (stored scoped `<docSource>|<raw>`), so a
+// projected medication can carry source_record_id back to the record it came from —
+// buying the transitive "Prescribed at" chain through the record's own visit link.
+export function makeSourceRecordResolver(
+  profileId: number,
+  docSource: string | null
+): (raw: string | null | undefined) => number | null {
+  const cache = new Map<string, number | null>();
+  return (raw) => {
+    if (!raw || !docSource) return null;
+    if (cache.has(raw)) return cache.get(raw)!;
+    const row = db
+      .prepare(
+        `SELECT id FROM medical_records WHERE profile_id = ? AND external_id = ?`
       )
       .get(profileId, `${docSource}|${raw}`) as { id: number } | undefined;
     const id = row ? row.id : null;
@@ -1351,6 +1447,12 @@ function persistExtractedMedications(
     // Tier-1 (#1050): resolve the prescription's encounter reference to a local
     // encounter row id, stamped onto the projected med. Absent → no linking.
     resolveEnc?: (raw: string | null | undefined) => number | null;
+    // Tier-1 indication (#1052): resolve the prescription's reason (condition)
+    // reference to a local condition row id, stamped onto the projected med.
+    resolveCondition?: (raw: string | null | undefined) => number | null;
+    // Provenance (#1051): resolve the source prescription record's external_id to
+    // its local medical_records row id, stamped as the med's source_record_id.
+    resolveSourceRecord?: (raw: string | null | undefined) => number | null;
   }
 ): number {
   const prescriptions = records.filter((r) => r.category === "prescription");
@@ -1374,6 +1476,12 @@ function persistExtractedMedications(
       // Tier-1 (#1050): the encounter this med was prescribed at, from the first
       // grouped prescription record that named one.
       encExt: string | null;
+      // Tier-1 indication (#1052): the reason condition, from the first grouped
+      // prescription record that named one.
+      indExt: string | null;
+      // Provenance (#1051): the external_id of the FIRST source prescription record,
+      // resolved to source_record_id at insert (the group's representative record).
+      srcExt: string | null;
     }
   >();
   const order: string[] = [];
@@ -1395,17 +1503,36 @@ function persistExtractedMedications(
     if (seen.has(key)) continue; // already a manual/other-doc med — don't duplicate
     let g = groups.get(key);
     if (!g) {
-      g = { med, courses: [], encExt: r.encounter_external_id ?? null };
+      g = {
+        med,
+        courses: [],
+        encExt: r.encounter_external_id ?? null,
+        indExt: r.indication_condition_external_id ?? null,
+        srcExt: r.external_id ?? null,
+      };
       groups.set(key, g);
       order.push(key);
     }
     if (!g.encExt && r.encounter_external_id)
       g.encExt = r.encounter_external_id;
+    if (!g.indExt && r.indication_condition_external_id)
+      g.indExt = r.indication_condition_external_id;
+    if (!g.srcExt && r.external_id) g.srcExt = r.external_id;
     if (r.courses && r.courses.length) g.courses.push(...r.courses);
   }
 
   for (const key of order) {
-    const { med, courses, encExt } = groups.get(key)!;
+    const { med, courses, encExt, indExt, srcExt } = groups.get(key)!;
+    // Prescriber link (#1051 semantics decision (a)): resolve the parsed prescriber
+    // TEXT into an EXISTING individual registry row (exact only — never an org, never
+    // a near-miss/ambiguous). source_record_id links back to the source prescription
+    // record (provenance / the transitive "Prescribed at" chain).
+    const providerId = med.prescriber
+      ? resolveExactPrescriberId(med.prescriber)
+      : null;
+    const sourceRecordId = ctx.resolveSourceRecord
+      ? ctx.resolveSourceRecord(srcExt)
+      : null;
     const info = ctx.insMed.run(
       med.name,
       med.sig, // directions kept as the row's notes (may be null)
@@ -1416,6 +1543,8 @@ function persistExtractedMedications(
       // document_id — traces the row back to its source document for the
       // delete-set; profile_id closes the insert.
       docId,
+      providerId,
+      sourceRecordId,
       profileId
     );
     const medId = Number(info.lastInsertRowid);
@@ -1427,6 +1556,16 @@ function persistExtractedMedications(
         db.prepare(
           `UPDATE intake_items SET encounter_id = ? WHERE id = ? AND profile_id = ?`
         ).run(encId, medId, profileId);
+      }
+    }
+
+    // Tier-1 indication link (#1052): stamp the resolved condition id onto the med.
+    if (ctx.resolveCondition && indExt) {
+      const condId = ctx.resolveCondition(indExt);
+      if (condId != null) {
+        db.prepare(
+          `UPDATE intake_items SET indication_condition_id = ? WHERE id = ? AND profile_id = ?`
+        ).run(condId, medId, profileId);
       }
     }
 

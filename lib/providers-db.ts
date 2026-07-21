@@ -12,6 +12,10 @@ import {
   providerLinkTables,
   type ProviderMergeImpact,
 } from "./provider-merge";
+import {
+  resolveExactIndividualProvider,
+  type RegistryProviderRow,
+} from "./prescriber-link";
 
 // The shared providers registry data layer. GLOBAL, like
 // logins/profiles — a family shares one "Quest Diagnostics" / "Dr. Smith", so
@@ -130,6 +134,27 @@ export function resolveProviderOnEdit(
   const norm = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
   if (norm(loadedName) === norm(submittedName)) return loadedId;
   return resolveProviderIdByName(submittedName, type);
+}
+
+// Exact write-time resolution of a free-text prescriber to an INDIVIDUAL registry row
+// (#1051 ask 2), entity-type-aware. UNLIKE resolveProviderIdByName it NEVER creates a
+// row and NEVER links to an organization — it matches only an existing individual-type
+// row by exact normalized name (or NPI), and returns null on ambiguity / a near-miss /
+// an org-only name (those are surfaced by the #1045 suggest-and-accept detector, never
+// linked silently). The registry is small + global, so fetching the whole table and
+// deciding in the pure engine (resolveExactIndividualProvider) is both correct and
+// cheap. Returns the linked provider id, or null.
+export function resolveExactPrescriberId(
+  text: string | null | undefined,
+  npi: string | null | undefined = null
+): number | null {
+  const t = (text ?? "").replace(/\s+/g, " ").trim();
+  const nn = (npi ?? "").replace(/\D/g, "");
+  if (!t && !nn) return null;
+  const rows = db
+    .prepare("SELECT id, type, name, npi FROM providers")
+    .all() as RegistryProviderRow[];
+  return resolveExactIndividualProvider(t, nn, rows);
 }
 
 // The full shared registry, alphabetical. Used to seed the provider picker's

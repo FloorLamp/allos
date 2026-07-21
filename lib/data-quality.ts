@@ -58,6 +58,7 @@ export type DataQualityGapKey =
   | "pediatric-height"
   | "smoking-status"
   | "med-rxcui"
+  | "prescriber-link"
   | "phenoage-inputs"
   | "failed-extractions"
   | "risk-attributes";
@@ -97,6 +98,11 @@ export interface DataQualityInputs {
   smokingKnown: boolean;
   // Count of ACTIVE medications with no confirmed RxCUI (name-only safety matching).
   medsMissingRxcui: number;
+  // Count of medications with a free-text prescriber that near-misses an individual
+  // provider (or matches an org-only row) but isn't linked (#1051). The exact backfill
+  // can't claim these — a suggest-and-accept correction unlocks provider-centric views
+  // and #1050's strong-tier visit suggestions.
+  prescribersNeedingLink: number;
   // PhenoAge input completeness (reuses lib/bio-age — never a second computation):
   // how many of the nine analytes are present, and how many are still missing.
   phenoAgePresentCount: number;
@@ -207,6 +213,23 @@ function medRxcuiGap(i: DataQualityInputs): DataQualityGap | null {
   };
 }
 
+function prescriberLinkGap(i: DataQualityInputs): DataQualityGap | null {
+  if (i.prescribersNeedingLink <= 0) return null;
+  const n = i.prescribersNeedingLink;
+  const noun = n === 1 ? "medication's prescriber" : "medications' prescribers";
+  return {
+    key: "prescriber-link",
+    label: `Link ${n} ${n === 1 ? "prescriber" : "prescribers"}`,
+    whyLine:
+      `${n} ${noun} ${n === 1 ? "is" : "are"} recorded as free text with a ` +
+      `likely registry match — linking unlocks provider-centric views, propagates ` +
+      `renames/merges, and strengthens visit-link suggestions.`,
+    // The link is confirmed per-med on the medications surface.
+    ctaHref: MEDICATIONS_HREF,
+    leverage: 2,
+  };
+}
+
 function phenoAgeGap(i: DataQualityInputs): DataQualityGap | null {
   // Adult-only (PhenoAge is an adult population model), and only the PARTIAL-panel
   // state — at least one of the nine inputs present but not all. A labs-empty profile
@@ -261,6 +284,7 @@ function riskAttributesGap(i: DataQualityInputs): DataQualityGap | null {
 const DETECTORS: ((i: DataQualityInputs) => DataQualityGap | null)[] = [
   birthdateGap,
   medRxcuiGap,
+  prescriberLinkGap,
   sexGap,
   smokingStatusGap,
   reproductiveStatusGap,
@@ -316,6 +340,8 @@ function shortGapNoun(key: DataQualityGapKey): string {
       return "smoking status";
     case "med-rxcui":
       return "RxNorm codes";
+    case "prescriber-link":
+      return "prescriber links";
     case "phenoage-inputs":
       return "bio-age labs";
     case "failed-extractions":

@@ -34,7 +34,11 @@ export function getSupplements(profileId: number): Supplement[] {
       `SELECT intake_items.*,
               COALESCE(situations.name, intake_items.situation) AS situation,
               (SELECT p.name FROM providers p WHERE p.id = intake_items.provider_id)
-                AS provider_name
+                AS provider_name,
+              (SELECT c.name FROM conditions c
+                WHERE c.id = intake_items.indication_condition_id
+                  AND c.profile_id = intake_items.profile_id)
+                AS indication_condition_name
          FROM intake_items
          LEFT JOIN situations
                 ON situations.id = intake_items.situation_id
@@ -58,7 +62,11 @@ export function getMedication(
       `SELECT intake_items.*,
               COALESCE(situations.name, intake_items.situation) AS situation,
               (SELECT p.name FROM providers p WHERE p.id = intake_items.provider_id)
-                AS provider_name
+                AS provider_name,
+              (SELECT c.name FROM conditions c
+                WHERE c.id = intake_items.indication_condition_id
+                  AND c.profile_id = intake_items.profile_id)
+                AS indication_condition_name
          FROM intake_items
          LEFT JOIN situations
                 ON situations.id = intake_items.situation_id

@@ -23,6 +23,7 @@ import {
 import {
   resolveProviderIdByName,
   resolveProviderOnEdit,
+  resolveExactPrescriberId,
 } from "@/lib/providers-db";
 import {
   lookupRxNormCandidates,
@@ -87,6 +88,13 @@ function fields(formData: FormData) {
     ? (priorityRaw as SupplementPriority)
     : "high";
   const situation = condition === "situational" ? str("situation") : null;
+  // Med → indication link (#1052): the condition this medication treats, chosen from
+  // the "For condition…" picker (a conditions-list select). Medications only; a blank
+  // value or a supplement clears it. Ownership is validated in the action before it's
+  // written (an untrusted id is dropped to null).
+  const indicationRaw = Number(formData.get("indication_condition_id"));
+  const indicationConditionIdRaw =
+    Number.isInteger(indicationRaw) && indicationRaw > 0 ? indicationRaw : null;
   // Missed-dose escalation. Only a critical supplement carries an
   // escalation window/override; clear them when it's toggled off so a stale value
   // can't fire later. escalate_after_min is a positive minute count (else null →
@@ -189,7 +197,22 @@ function fields(formData: FormData) {
     redoseNotice,
     rxcui,
     rxcuiIngredients,
+    indicationConditionIdRaw,
   };
+}
+
+// Validate a submitted indication condition id belongs to the profile as a real
+// condition (#1052); a medication only, else null. Untrusted form id → dropped.
+function resolveIndicationConditionId(
+  profileId: number,
+  kind: SupplementKind,
+  raw: number | null
+): number | null {
+  if (kind !== "medication" || raw == null) return null;
+  const row = db
+    .prepare("SELECT id FROM conditions WHERE id = ? AND profile_id = ?")
+    .get(raw, profileId) as { id: number } | undefined;
+  return row ? row.id : null;
 }
 
 interface DoseInput {
@@ -319,12 +342,27 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
   }
   const doses = collapsePrnDoses(parseDoses(formData), f.asNeeded === 1);
   const pairs = parsePairs(formData);
-  // Prescribing provider: medications only, resolved into the shared
-  // GLOBAL registry (create-on-type); NULL for supplements.
-  const providerId =
+  // Prescriber (#1051 semantics decision (a)): provider_id is the prescribing
+  // INDIVIDUAL. The picker resolves-or-creates against the registry as an INDIVIDUAL
+  // (type: "individual" — never the silent org default that mints mistyped person
+  // rows). When the picker is left blank, fall back to resolving the free-text
+  // prescriber into an EXISTING individual row (exact only; never an org, never a
+  // near-miss). NULL for supplements.
+  let providerId =
     f.kind === "medication"
-      ? resolveProviderIdByName(String(formData.get("provider") ?? ""))
+      ? resolveProviderIdByName(
+          String(formData.get("provider") ?? ""),
+          "individual"
+        )
       : null;
+  if (f.kind === "medication" && providerId == null && f.prescriber) {
+    providerId = resolveExactPrescriberId(f.prescriber);
+  }
+  const indicationConditionId = resolveIndicationConditionId(
+    profile.id,
+    f.kind,
+    f.indicationConditionIdRaw
+  );
   writeTx(() => {
     // Link the situational item to its id-keyed situation ROW (#560), creating the
     // row if this is a new label; the free-text `situation` column is kept as a
@@ -340,8 +378,8 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
             quantity_on_hand, qty_per_dose,
             kind, prescriber, pharmacy, rx_number, rx, as_needed,
             min_interval_hours, max_daily_count, redose_notice,
-            rxcui, rxcui_ingredients, provider_id, source, profile_id)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?)`
+            rxcui, rxcui_ingredients, provider_id, indication_condition_id, source, profile_id)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?)`
       )
       .run(
         name,
@@ -370,6 +408,7 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
         f.rxcui,
         f.rxcuiIngredients,
         providerId,
+        indicationConditionId,
         profile.id
       );
     const suppId = Number(info.lastInsertRowid);
@@ -433,14 +472,25 @@ export async function updateSupplement(
   // a kind flip back to supplement clears a stale link. Keep the loaded link unless
   // the field was actually changed (#601), so an unrelated edit can't relink an
   // ambiguously-named prescriber to a freshly-coined duplicate.
-  const providerId =
+  let providerId =
     f.kind === "medication"
       ? resolveProviderOnEdit(
           Number(formData.get("provider_id")) || null,
           String(formData.get("provider_loaded") ?? ""),
-          String(formData.get("provider") ?? "")
+          String(formData.get("provider") ?? ""),
+          "individual"
         )
       : null;
+  // As on add: an empty prescriber picker falls back to an exact free-text match
+  // against an existing individual registry row (#1051), never an org / near-miss.
+  if (f.kind === "medication" && providerId == null && f.prescriber) {
+    providerId = resolveExactPrescriberId(f.prescriber);
+  }
+  const indicationConditionId = resolveIndicationConditionId(
+    profile.id,
+    f.kind,
+    f.indicationConditionIdRaw
+  );
   const result = writeTx(() => {
     // Verify ownership before touching the supplement or its child rows — the
     // form id is untrusted. Bail (no-op) when it isn't owned. Also snapshot the
@@ -501,7 +551,8 @@ export async function updateSupplement(
              quantity_on_hand = ?, qty_per_dose = ?,
              kind = ?, prescriber = ?, pharmacy = ?, rx_number = ?, rx = ?, as_needed = ?,
              min_interval_hours = ?, max_daily_count = ?, redose_notice = ?,
-             rxcui = ?, rxcui_ingredients = ?, provider_id = ?
+             rxcui = ?, rxcui_ingredients = ?, provider_id = ?,
+             indication_condition_id = ?
        WHERE id = ? AND profile_id = ?`
     ).run(
       name,
@@ -530,6 +581,7 @@ export async function updateSupplement(
       f.rxcui,
       f.rxcuiIngredients,
       providerId,
+      indicationConditionId,
       id,
       profile.id
     );

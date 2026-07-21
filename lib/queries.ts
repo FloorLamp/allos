@@ -21,6 +21,7 @@ export * from "./queries/symptoms";
 export * from "./queries/mood";
 export * from "./queries/medical";
 export * from "./queries/visit-links";
+export * from "./queries/med-links";
 export * from "./queries/derived";
 export * from "./queries/appointments";
 export * from "./queries/intake";

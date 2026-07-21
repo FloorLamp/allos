@@ -1,5 +1,5 @@
 import { requireSession } from "@/lib/auth";
-import { getProviderNames } from "@/lib/queries";
+import { getProviderNames, getConditions } from "@/lib/queries";
 import { loadMedicationsData } from "./med-data";
 import MedicationsTodayPanel from "./MedicationsTodayPanel";
 import MedicationRow from "./MedicationRow";
@@ -39,6 +39,12 @@ export default async function MedicationsPage() {
     getUnitPrefs(login.id).weightUnit,
     formatPrefs.timeFormat
   );
+  // Conditions for the "For condition…" indication picker (#1052) on the add/edit
+  // med forms — just id + name.
+  const medConditions = getConditions(profile.id).map((c) => ({
+    id: c.id,
+    name: c.name,
+  }));
   const medCount = data.current.length + data.past.length;
   const prnCount = data.current.filter(
     (item) => item.med.as_needed === 1
@@ -79,6 +85,7 @@ export default async function MedicationsPage() {
         pediatric={data.pediatric}
         age={data.age}
         todayStr={data.todayStr}
+        conditions={medConditions}
       />
 
       <div className="space-y-5">

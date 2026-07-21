@@ -113,6 +113,19 @@ describe("undo-delete registry", () => {
       // #1050: the "prescribed at" visit link nulls on restore when its encounter
       // is gone.
       { column: "encounter_id", table: "encounters", onMissing: "null" },
+      // #1051 provenance link + #1052 indication link: the source prescription
+      // medical_records row and the treated condition both null on restore when
+      // their target is gone. Profile-owned, probed WITH the profile_id scope.
+      {
+        column: "source_record_id",
+        table: "medical_records",
+        onMissing: "null",
+      },
+      {
+        column: "indication_condition_id",
+        table: "conditions",
+        onMissing: "null",
+      },
     ]);
 
     // Every externalRef target is a real table name and its onMissing is one of the

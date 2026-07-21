@@ -284,6 +284,22 @@ export const UNDO_KINDS: Record<string, KindSpec> = {
             table: "encounters",
             onMissing: "null",
           },
+          // Provenance link (#1051): the source prescription medical_records row a
+          // medication was projected from. If that record was deleted since capture,
+          // restore with source_record_id NULLed. Profile-owned, so probed WITH scope.
+          {
+            column: "source_record_id",
+            table: "medical_records",
+            onMissing: "null",
+          },
+          // Indication link (#1052): the condition a medication treats. If that
+          // condition was deleted since capture, restore with the link NULLed.
+          // Profile-owned, so probed WITH the profile_id scope.
+          {
+            column: "indication_condition_id",
+            table: "conditions",
+            onMissing: "null",
+          },
         ],
       },
       {
