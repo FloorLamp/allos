@@ -87,59 +87,87 @@ describe("composeFinishNudge", () => {
   });
 });
 
-// A minimal RoutineTargetProgress-shaped fixture (only `met` matters to the line);
-// the reminder derives its behind-set the same way — routine.filter(t => !t.met).
-function target(met: boolean) {
-  return { met };
+// A minimal FrequencyTargetProgress-shaped fixture for the workout-scoped recap line.
+function target(
+  scope_kind: string,
+  scope_value: string,
+  count: number,
+  per_week: number
+) {
+  return {
+    target: { scope_kind, scope_value },
+    count,
+    per_week,
+    met: count >= per_week,
+  };
 }
 
-describe("weeklyRemainingLine (#981 §3)", () => {
-  it("behind ⇒ 'N of M this week — one more to go' (met of total)", () => {
-    // 3 targets, 2 met → 1 remaining.
-    expect(
-      weeklyRemainingLine([target(true), target(true), target(false)])
-    ).toBe("2 of 3 this week — one more to go.");
-  });
-
-  it("more than one remaining ⇒ pluralized tail", () => {
-    expect(
-      weeklyRemainingLine([target(true), target(false), target(false)])
-    ).toBe("1 of 3 this week — 2 more to go.");
-  });
-
-  it("all met ⇒ a calm celebratory-neutral line", () => {
-    expect(weeklyRemainingLine([target(true), target(true)])).toBe(
-      "All weekly targets met — nice work."
+describe("weeklyRemainingLine (#981 §3, #1122)", () => {
+  it("leads with the in-progress workout target, pace-framed (count 1 / per_week 2)", () => {
+    // The issue's example: a `region` (Legs) target the session just advanced.
+    expect(weeklyRemainingLine([target("region", "Legs", 1, 2)])).toBe(
+      "Legs — 1 of 2 this week, one more to go."
     );
   });
 
-  it("no targets ⇒ omitted (null)", () => {
-    expect(weeklyRemainingLine([])).toBeNull();
+  it("pluralizes the tail when more than one session remains", () => {
+    expect(weeklyRemainingLine([target("type", "cardio", 1, 3)])).toBe(
+      "Cardio — 1 of 3 this week, 2 more to go."
+    );
   });
 
-  // #221 pin: the line's "remaining" count is EXACTLY the reminder's behind-set for
-  // the same rollup — the two read one computation and can't drift.
-  it("remaining equals the reminder's behind-set for the same fixture", () => {
-    for (const routine of [
-      [target(true), target(false), target(false)],
-      [target(true), target(true), target(true)],
-      [target(false)],
-      [] as { met: boolean }[],
-    ]) {
-      const behindCount = routine.filter((t) => !t.met).length; // the reminder's behind
-      const line = weeklyRemainingLine(routine);
-      if (routine.length === 0) {
-        expect(line).toBeNull();
-        continue;
-      }
-      if (behindCount === 0) {
-        expect(line).toBe("All weekly targets met — nice work.");
-        continue;
-      }
-      const met = routine.length - behindCount;
-      const tail =
-        behindCount === 1 ? "one more to go" : `${behindCount} more to go`;
-      expect(line).toBe(`${met} of ${routine.length} this week — ${tail}.`);
-    }
+  it("excludes food_group targets from a WORKOUT recap (#1122 defect 1)", () => {
+    // A lifting session can't advance veg-servings; grading it here is the "0 of N" bug.
+    // With only a food_group target present, the workout recap has nothing to say.
+    expect(
+      weeklyRemainingLine([target("food_group", "vegetables", 0, 5)])
+    ).toBeNull();
+  });
+
+  it("excludes mobility_region targets too, and leads with the workout one", () => {
+    // food_group + mobility_region are dropped; the in-progress `region` leads.
+    expect(
+      weeklyRemainingLine([
+        target("food_group", "vegetables", 0, 5),
+        target("mobility_region", "Legs", 0, 3),
+        target("region", "Chest", 1, 2),
+      ])
+    ).toBe("Chest — 1 of 2 this week, one more to go.");
+  });
+
+  it("leads with the closest-to-done in-progress target", () => {
+    // Lower body needs 1 more (2 of 3), Cardio needs 2 more (1 of 3) → lead with Lower.
+    expect(
+      weeklyRemainingLine([
+        target("type", "cardio", 1, 3),
+        target("group", "Lower", 2, 3),
+      ])
+    ).toBe("Lower body — 2 of 3 this week, one more to go.");
+  });
+
+  it("all workout targets met ⇒ a calm celebratory-neutral line", () => {
+    expect(
+      weeklyRemainingLine([
+        target("region", "Legs", 2, 2),
+        target("type", "cardio", 3, 3),
+      ])
+    ).toBe("All weekly targets met — nice work.");
+  });
+
+  it("no workout targets at all ⇒ omitted (null)", () => {
+    expect(weeklyRemainingLine([])).toBeNull();
+    expect(
+      weeklyRemainingLine([target("mobility_region", "Legs", 0, 3)])
+    ).toBeNull();
+  });
+
+  it("nothing advanced and nothing met ⇒ stays quiet (no misleading '0 of N')", () => {
+    // Targets exist but this session didn't advance any (all count 0) — don't tally them.
+    expect(
+      weeklyRemainingLine([
+        target("region", "Legs", 0, 2),
+        target("type", "cardio", 0, 3),
+      ])
+    ).toBeNull();
   });
 });
