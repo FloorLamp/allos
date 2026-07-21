@@ -375,7 +375,12 @@ python… ; done` CI-poll loop running in the background was starving the
    hour — an identical failure proves the band, not the PR; then rerun the
    gate after ~12:05 UTC (real ≥ frozen, the proven regime) and merge on that
    green. Do not patch specs to tolerate the band; the structural fix is
-   #1048's design pass.
+   #1048's design pass. **RESOLVED 2026-07-21 (PR #1103):** the frozen instant
+   is now the run's REAL start, not a fixed noon, so real time can no longer lag
+   frozen time by hours at any hour — the band and its night-gate discipline
+   below are history, kept for the triage pattern. The one residual: a run that
+   STARTS within its own duration (~25 min) of real midnight can still roll
+   SQL-stamped rows a day ahead of the frozen date.
    **The band is BROAD, not two specs (2026-07-21, ~03:00 UTC).** It was first
    seen as `workout-presence` + `temperature-unit`, but a night gate showed
    ~10 recency/liveness-gated specs failing identically on plain main:
