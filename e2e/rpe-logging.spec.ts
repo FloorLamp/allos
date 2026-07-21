@@ -122,20 +122,28 @@ test("RPE selector round-trips through the activity form (#743)", async ({
   // reloaded selector read "RPE" (not set) at retries=0 (PR #1110 run 29837494962).
   await settledClick(page, rpe.getByRole("button", { name: "Increase RPE" }));
   await expect(rpeValue).toHaveText("8");
-  await settledClick(page, rpe.getByRole("button", { name: "Increase RPE" }));
+  // Wait for the HALF-POINT autosave's own Server Action response before moving on,
+  // so 8.5 is DURABLY persisted before we navigate. The autosave is debounced
+  // (700ms); settledClick alone can settle on the intervening router.refresh() RSC
+  // POST rather than the 8.5-carrying save, letting the reload read the prior
+  // integer save — the ~50%-under-load census flake (rpe-logging:68 read back "8").
+  // Filtering on the Next-Action header selects the Server Action save specifically,
+  // never the RSC refresh. Armed BEFORE the step so the response can't be missed.
+  const halfPointSaved = page.waitForResponse(
+    (r) =>
+      r.request().method() === "POST" &&
+      r.request().headers()["next-action"] != null &&
+      r.ok(),
+    { timeout: 15_000 }
+  );
+  await rpe.getByRole("button", { name: "Increase RPE" }).click();
   await expect(rpeValue).toHaveText("8.5");
+  await halfPointSaved;
 
   // Close the editor and RELOAD — the persisted rating must survive a fresh load.
+  // 8.5 is committed above, so a single reload reads it (the toPass is a cheap
+  // guard against a slow reopen render, not the persistence race the await closed).
   await page.keyboard.press("Escape");
-
-  // Retry the reload→reopen→read against the DURABLE persisted value. The
-  // half-point autosave is DEBOUNCED (700ms) and coalesces the two rapid Increase
-  // clicks, so a single settledClick can return on the FIRST increment's save POST
-  // (persisting 8) while the 8.5-carrying save is still in flight — under
-  // full-suite load the reloaded editor then reads back the integer "8" (the
-  // deterministic 3/3 census failure this fixes). A second reload lands after the
-  // debounce has flushed, so retrying the whole reopen picks up the durable 8.5.
-  // The last successful iteration leaves the editor open for the cleanup below.
   await expect(async () => {
     await page.goto("/training");
     const card = cardsByTitle(page, title);
