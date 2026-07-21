@@ -10,7 +10,7 @@ import path from "node:path";
 
 import { db, today, writeTx } from "../lib/db";
 import { now as clockNow } from "../lib/clock";
-import { shiftDateStr, utcSqlString } from "../lib/date";
+import { shiftDateStr, utcSqlString, zonedDateParts } from "../lib/date";
 import { writeRawPayload } from "../lib/integrations/raw-log";
 import { upsertConnection } from "../lib/integrations/connections";
 import {
@@ -139,7 +139,7 @@ import {
   VISITLINKS_PROFILE,
 } from "./fixture-logins";
 import { adoptTemplate, activateRoutine } from "../lib/routines";
-import { setInstanceTimezone, setTimezone } from "../lib/settings";
+import { getTimezone, setInstanceTimezone, setTimezone } from "../lib/settings";
 import { pinnedTimezone } from "./pinned-timezone";
 
 // Pin the instance-default timezone so the frozen clock (#1103's run-start
@@ -2052,7 +2052,10 @@ db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(presenceId);
 {
   const now = clockNow();
   const startIso = new Date(now.getTime() - 40 * 60_000);
-  const startHHMM = startIso.toISOString().slice(11, 16);
+  // start_time is HH:MM wall clock IN THE PROFILE'S TIMEZONE (see
+  // lib/workout-presence.ts) — a bare UTC slice diverges from it by the pinned
+  // offset (top of file), so derive the wall time through the profile's zone.
+  const startHHMM = zonedDateParts(getTimezone(presenceId), startIso).hhmm;
   db.prepare(
     `INSERT INTO activities
        (profile_id, date, type, title, start_time, end_time, created_at, updated_at, source)
@@ -2103,8 +2106,12 @@ db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(recapId);
       .run(
         recapId,
         today(recapId),
-        startIso.toISOString().slice(11, 16),
-        endIso.toISOString().slice(11, 16),
+        // Wall clock in the profile's timezone, NOT a UTC slice: presence
+        // reconstructs the end instant via zonedWallTimeToUtc, so a UTC slice
+        // reads 60×offset minutes off under the pinned instance timezone and
+        // pushed the ~8-min-ago finish outside FINISHED_WINDOW_MIN.
+        zonedDateParts(getTimezone(recapId), startIso).hhmm,
+        zonedDateParts(getTimezone(recapId), endIso).hhmm,
         utcSqlString(startIso),
         utcSqlString(endIso)
       ).lastInsertRowid
