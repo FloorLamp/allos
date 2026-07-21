@@ -99,19 +99,27 @@ test("the sticky jump links scroll to their sections (#1042)", async ({
 test("the eleven removed index routes 308-redirect to their anchored sections (#1042)", async ({
   page,
 }) => {
+  // Request-level assertion — no per-route Chromium navigation. Each removed index
+  // route answers a 308 whose Location IS the anchored /records section (Next's
+  // config-level redirect fires before auth, and page.request shares the session
+  // context's cookies anyway). The coverage here is the redirect MAP; the rendered
+  // target sections are asserted by the "renders all eleven anchored sections"
+  // sibling test above.
   for (const r of REDIRECTS) {
-    await page.goto(r.from);
-    await expect(page).toHaveURL(
-      new RegExp(`/records#${r.anchor.replace(/[-]/g, "-")}$`)
-    );
-    await expect(page.getByTestId(`records-${r.anchor}`)).toBeVisible();
+    const res = await page.request.get(r.from, { maxRedirects: 0 });
+    expect(res.status(), r.from).toBe(308);
+    expect(res.headers()["location"], r.from).toBe(`/records#${r.anchor}`);
   }
 
   // Query strings ride through the redirect — the Visits Book-CTA deep link
-  // (?new=1&title=…) still lands on the merged booking form.
-  await page.goto("/encounters?new=1&title=Physical");
-  await expect(page).toHaveURL(/\/records\?new=1&title=Physical#visits$/);
-  await expect(page.getByTestId("records-visits")).toBeVisible();
+  // (?new=1&title=…) keeps its query on the way to the merged booking form.
+  const withQuery = await page.request.get("/encounters?new=1&title=Physical", {
+    maxRedirects: 0,
+  });
+  expect(withQuery.status()).toBe(308);
+  expect(withQuery.headers()["location"]).toBe(
+    "/records?new=1&title=Physical#visits"
+  );
 });
 
 test("a detail route survives and its back-link points at the merged section (#1042)", async ({
@@ -218,6 +226,8 @@ test("Vision/Dental sections hide for a no-data profile; Skin/Mental health stil
 test("the four specialty index routes 308-redirect to their anchored sections (#1042)", async ({
   page,
 }) => {
+  // Request-level assertion — no per-route Chromium navigation (the target sections'
+  // render is covered by the "four specialty sections render" sibling test above).
   const redirects = [
     { from: "/vision", anchor: "vision" },
     { from: "/dental", anchor: "dental" },
@@ -225,11 +235,9 @@ test("the four specialty index routes 308-redirect to their anchored sections (#
     { from: "/medical/instruments", anchor: "mental-health" },
   ];
   for (const r of redirects) {
-    await page.goto(r.from);
-    await expect(page).toHaveURL(new RegExp(`/records#${r.anchor}$`));
-    // The seeded admin profile owns vision/dental/skin data, and Skin/Mental health
-    // always render, so every target section is present here.
-    await expect(page.getByTestId(`records-${r.anchor}`)).toBeVisible();
+    const res = await page.request.get(r.from, { maxRedirects: 0 });
+    expect(res.status(), r.from).toBe(308);
+    expect(res.headers()["location"], r.from).toBe(`/records#${r.anchor}`);
   }
 });
 
