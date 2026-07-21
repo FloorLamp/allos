@@ -21,6 +21,7 @@ import {
   getSleepSignal,
   getSleepSessions,
   getMainSleepNightlyMinutes,
+  getLastNightSummary,
   getMetricDailyTotals,
 } from "@/lib/queries";
 import { setTimezone } from "@/lib/settings";
@@ -113,6 +114,23 @@ describe("getSleepSignal — main overnight session, not the nap-summed total (#
       { date: "2026-02-02", value: 420 },
       { date: "2026-02-03", value: 300 },
     ]);
+  });
+
+  // Issue #1066: the Sleep-page hero + dashboard tile share getLastNightSummary,
+  // which MUST pick the main overnight (not the latest/nap session) for the latest
+  // wake-day. This pins the exact defect CI caught in the #1066 branch (the hero
+  // rendered the 90-min nap instead of the 300-min night).
+  it("getLastNightSummary returns the main overnight (300), with the nap counted separately (#1066)", () => {
+    const summary = getLastNightSummary(profileId);
+    expect(summary).not.toBeNull();
+    expect(summary!.wakeDay).toBe("2026-02-03");
+    // The 5h overnight — NOT the 90-min nap that ends later the same wake-day.
+    expect(summary!.durationMin).toBe(300);
+    // The nap is a separate figure, never folded into durationMin.
+    expect(summary!.napMin).toBe(90);
+    // Baseline is the prior night's main session (420) → a negative delta.
+    expect(summary!.baselineAvgMin).toBe(420);
+    expect(summary!.deltaMin).toBe(-120);
   });
 
   it("SRI's session input KEEPS the nap (naps are never dropped at the source level)", () => {

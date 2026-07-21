@@ -10,7 +10,12 @@ import path from "node:path";
 
 import { db, today, writeTx } from "../lib/db";
 import { now as clockNow } from "../lib/clock";
-import { shiftDateStr, utcSqlString, zonedDateParts } from "../lib/date";
+import {
+  shiftDateStr,
+  utcSqlString,
+  zonedDateParts,
+  zonedWallTimeToUtc,
+} from "../lib/date";
 import { writeRawPayload } from "../lib/integrations/raw-log";
 import { upsertConnection } from "../lib/integrations/connections";
 import {
@@ -827,10 +832,22 @@ console.log("e2e: seeded 28 nightly sleep sessions for profile 1 (SRI, #160)");
 // Adds, for profile 1:
 //   (a) per-night sleep STAGE samples for the last 14 wake-days (today-13 … today),
 //       so the Sleep page "Stage composition" chart and the hero stage bar render;
-//   (b) an afternoon NAP on wake-day `today`, so the hero shows it as a SEPARATE
-//       line ("+ nap"), never summed into the main overnight session (the #1118
-//       main-vs-nap split — verified by the nap-line assertion in sleep-page.spec).
-// Synthetic values only (no PHI). Idempotent: clears its own rows first.
+//   (b) a deterministic LAST NIGHT on wake-day `today` — a 5h main overnight
+//       (23:00 → 04:00 LOCAL) plus an afternoon NAP (13:00 → 13:45 LOCAL) — so the
+//       hero shows the 5h main session and the nap as a SEPARATE line, never summed
+//       (the #1118 main-vs-nap split; asserted by sleep-page.spec).
+//
+// CRITICAL (#1110 pinned instance timezone): `lastNightSummary` groups sessions by
+// the profile-LOCAL calendar date of each session END, so the fixture MUST build
+// instants through the profile timezone (zonedWallTimeToUtc), NOT bare UTC. A bare
+// `…Z` string under the run's Etc/GMT±N zone lands on the wrong wake-day (e.g. a
+// 13:00Z nap becomes tomorrow-02:00 local), which strands the nap alone on the
+// latest wake-day and makes the hero render the NAP instead of the night. The
+// overnight is seeded here (not relied on from the naive-timestamp coaching block
+// above) precisely so its wake-day placement is tz-correct and deterministic.
+// Synthetic values only (no PHI). Idempotent: clears its own windows first.
+const sleepTz = getTimezone(PROFILE_ID);
+const iso = (d: Date) => d.toISOString();
 const sleepStageInsert = db.prepare(
   `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
    VALUES (?, 'manual', ?, ?, ?, ?, ?)`
@@ -838,8 +855,11 @@ const sleepStageInsert = db.prepare(
 for (let i = 0; i <= 13; i++) {
   const wakeDay = shiftDateStr(COACH_TODAY, -i);
   const bedDay = shiftDateStr(wakeDay, -1);
-  const start = `${bedDay}T23:00:00Z`;
-  const end = `${wakeDay}T07:00:00Z`;
+  // Stage rows are grouped by the stored `date` column (getSleepStageDailyTotals),
+  // not by the window, so tz placement doesn't affect them; still build the window
+  // through the profile tz for consistency.
+  const start = iso(zonedWallTimeToUtc(sleepTz, bedDay, "23:00"));
+  const end = iso(zonedWallTimeToUtc(sleepTz, wakeDay, "07:00"));
   // deterministic light jitter so the stacked areas aren't perfectly flat
   const jitter = (i * 5) % 20;
   const stages: [string, number][] = [
@@ -856,25 +876,33 @@ for (let i = 0; i <= 13; i++) {
     sleepStageInsert.run(PROFILE_ID, metric, wakeDay, start, end, value);
   }
 }
-// Afternoon nap on `today` (wake-day = today, so it groups with the overnight
-// coaching low-sleep session above). mainSleepSession keeps the longer overnight
-// as the "night" and this stays a separate nap figure.
-db.prepare(
-  `DELETE FROM metric_samples
-    WHERE profile_id = ? AND metric = 'sleep_min' AND source = 'manual'
-      AND start_time = ?`
-).run(PROFILE_ID, `${COACH_TODAY}T13:00:00Z`);
-db.prepare(
-  `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
-   VALUES (?, 'manual', 'sleep_min', ?, ?, ?, 45)`
-).run(
-  PROFILE_ID,
-  COACH_TODAY,
-  `${COACH_TODAY}T13:00:00Z`,
-  `${COACH_TODAY}T13:45:00Z`
+// Last night on `today`: a 5h main overnight (23:00 prev → 04:00 today, LOCAL) and
+// a 45-min afternoon nap (13:00 → 13:45 today, LOCAL). Both land on wake-day
+// `today` in the profile tz; mainSleepSession keeps the 5h overnight and the nap is
+// a separate figure. Idempotent by the exact tz-correct windows.
+const overnightStart = iso(
+  zonedWallTimeToUtc(sleepTz, COACH_YESTERDAY, "23:00")
 );
+const overnightEnd = iso(zonedWallTimeToUtc(sleepTz, COACH_TODAY, "04:00"));
+const napStart = iso(zonedWallTimeToUtc(sleepTz, COACH_TODAY, "13:00"));
+const napEnd = iso(zonedWallTimeToUtc(sleepTz, COACH_TODAY, "13:45"));
+const sleepSessionInsert = db.prepare(
+  `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+   VALUES (?, 'manual', 'sleep_min', ?, ?, ?, ?)`
+);
+for (const [start, end, value] of [
+  [overnightStart, overnightEnd, 300],
+  [napStart, napEnd, 45],
+] as [string, string, number][]) {
+  db.prepare(
+    `DELETE FROM metric_samples
+      WHERE profile_id = ? AND metric = 'sleep_min' AND source = 'manual'
+        AND start_time = ?`
+  ).run(PROFILE_ID, start);
+  sleepSessionInsert.run(PROFILE_ID, COACH_TODAY, start, end, value);
+}
 console.log(
-  "e2e: seeded sleep stages (14 nights) + a same-day nap for profile 1 (#1066)"
+  "e2e: seeded sleep stages (14 nights) + a tz-correct 5h night & nap for profile 1 (#1066)"
 );
 
 // ── Multi-source metric fixture (issue #14) ───────────────────────────────────
