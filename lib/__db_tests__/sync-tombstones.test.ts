@@ -367,4 +367,25 @@ describe("metric_samples delete → resync (no resurrection, #653)", () => {
     expect(counts).toMatchObject({ inserted: 0, suppressed: 1 });
     expect(sampleCount()).toBe(0);
   });
+
+  it("a tombstone still matches when a cumulative snapshot's end advances", () => {
+    const moving = { ...SAMPLE, metric: "steps", value: 3000 };
+    expect(upsertMetricSamples(profileId, [moving], source).inserted).toBe(1);
+    const row = db
+      .prepare(
+        "SELECT * FROM metric_samples WHERE profile_id = ? AND metric = 'steps' AND start_time = ?"
+      )
+      .get(profileId, moving.start_time) as Record<string, unknown>;
+    db.prepare(
+      "DELETE FROM metric_samples WHERE id = ? AND profile_id = ?"
+    ).run(row.id, profileId);
+    writeImportTombstoneForRow(profileId, "metric_samples", row);
+
+    const counts = upsertMetricSamples(
+      profileId,
+      [{ ...moving, end_time: "2026-03-10T20:00:00Z", value: 7000 }],
+      source
+    );
+    expect(counts).toMatchObject({ inserted: 0, suppressed: 1 });
+  });
 });

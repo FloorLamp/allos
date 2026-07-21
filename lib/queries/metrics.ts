@@ -2,6 +2,7 @@ import { db } from "../db";
 import {
   PROVIDER_PREFERENCE,
   pickOneProviderPerDay,
+  pickRowsOneOriginPerSourceDay,
   pickRowsOneSourcePerDay,
 } from "../metric-providers";
 import { sourceKey, sourcePreference } from "../metric-source-priority";
@@ -188,17 +189,24 @@ export function getMetricDailyTotals(
   const cutoff = recentDates[recentDates.length - 1].date;
   const rows = db
     .prepare(
-      `SELECT date, source, SUM(value) AS value
+      `SELECT date, source, origin, SUM(value) AS value
          FROM metric_samples WHERE profile_id = ? AND metric = ? AND date >= ?
-        GROUP BY date, source`
+        GROUP BY date, source, origin`
     )
     .all(profileId, metric, cutoff) as {
     date: string;
     source: string | null;
+    origin: string | null;
     value: number;
   }[];
   return pickOneProviderPerDay(
-    rows,
+    pickRowsOneOriginPerSourceDay(
+      rows,
+      (r) => r.date,
+      (r) => r.source,
+      (r) => r.origin,
+      (r) => r.value
+    ),
     sourcePreference(metric, priority, PROVIDER_PREFERENCE)
   )
     .sort((a, b) => (a.date < b.date ? 1 : -1))
@@ -264,7 +272,7 @@ export function getSleepStageDailyTotals(
   const cutoff = recentDates[recentDates.length - 1].date;
   const rows = db
     .prepare(
-      `SELECT date, source,
+      `SELECT date, source, origin,
               SUM(CASE WHEN metric = 'sleep_deep_min'  THEN value ELSE 0 END) AS deep,
               SUM(CASE WHEN metric = 'sleep_rem_min'   THEN value ELSE 0 END) AS rem,
               SUM(CASE WHEN metric = 'sleep_light_min' THEN value ELSE 0 END) AS light,
@@ -272,18 +280,26 @@ export function getSleepStageDailyTotals(
          FROM metric_samples
         WHERE profile_id = ? AND date >= ?
           AND metric IN ('sleep_deep_min','sleep_rem_min','sleep_light_min','sleep_awake_min')
-        GROUP BY date, source`
+        GROUP BY date, source, origin`
     )
     .all(profileId, cutoff) as {
     date: string;
     source: string | null;
+    origin: string | null;
     deep: number;
     rem: number;
     light: number;
     awake: number;
   }[];
-  return pickRowsOneSourcePerDay(
+  const oneOrigin = pickRowsOneOriginPerSourceDay(
     rows,
+    (r) => r.date,
+    (r) => r.source,
+    (r) => r.origin,
+    (r) => r.deep + r.rem + r.light + r.awake
+  );
+  return pickRowsOneSourcePerDay(
+    oneOrigin,
     preferenceFor(profileId, "sleep_min"),
     (r) => r.date,
     (r) => r.source,
@@ -324,7 +340,7 @@ export function getSleepSessions(
       .all(profileId) as { source: string | null }[]
   ).map((r) => r.source);
   let sourceFilter = "";
-  let params: (number | string)[] = [profileId, limit];
+  let selectedSource: string | null = null;
   if (sources.length > 1) {
     const chosen = getMetricSourcePriority(profileId)["sleep_min"];
     let picked =
@@ -342,20 +358,52 @@ export function getSleepSessions(
       picked = sourceKey(newest?.source);
     }
     sourceFilter = " AND source = ?";
-    params = [profileId, picked, limit];
+    selectedSource = picked;
   }
-  return db
+  // Bound the read by recent wake dates before origin selection. Applying LIMIT to
+  // raw rows would let duplicate origins consume the cap and drop valid older
+  // nights; the final slice happens only after one origin remains per source/day.
+  const dateParams: (number | string)[] = [profileId];
+  if (selectedSource != null) dateParams.push(selectedSource);
+  dateParams.push(limit);
+  const recentDates = db
     .prepare(
-      `SELECT start_time AS start, end_time AS end, source
+      `SELECT date FROM metric_samples
+        WHERE profile_id = ? AND metric = 'sleep_min'${sourceFilter}
+        GROUP BY date ORDER BY date DESC LIMIT ?`
+    )
+    .all(...dateParams) as { date: string }[];
+  if (recentDates.length === 0) return [];
+  const cutoff = recentDates[recentDates.length - 1].date;
+
+  const rowParams: (number | string)[] = [profileId];
+  if (selectedSource != null) rowParams.push(selectedSource);
+  rowParams.push(cutoff);
+  const rows = db
+    .prepare(
+      `SELECT date, start_time AS start, end_time AS end, source, origin, value
          FROM metric_samples
         WHERE profile_id = ? AND metric = 'sleep_min'${sourceFilter}
-        ORDER BY end_time DESC LIMIT ?`
+          AND date >= ?
+        ORDER BY end_time DESC`
     )
-    .all(...params) as {
+    .all(...rowParams) as {
+    date: string;
     start: string;
     end: string;
     source: string | null;
+    origin: string | null;
+    value: number;
   }[];
+  return pickRowsOneOriginPerSourceDay(
+    rows,
+    (r) => r.date,
+    (r) => r.source,
+    (r) => r.origin,
+    (r) => r.value
+  )
+    .slice(0, limit)
+    .map(({ start, end, source }) => ({ start, end, source }));
 }
 
 // The date (YYYY-MM-DD) of the `limitDays`-th most-recent distinct HR day, or null
@@ -637,9 +685,32 @@ export function getMetricSeriesBySource(
   if (recentDates.length === 0) return [];
   const cutoff = recentDates[recentDates.length - 1].date;
   const agg = metricAggregation(metric);
+  if (agg === "SUM") {
+    const rows = db
+      .prepare(
+        `SELECT date, source, origin, SUM(value) AS value
+           FROM metric_samples WHERE profile_id = ? AND metric = ? AND date >= ?
+          GROUP BY date, source, origin`
+      )
+      .all(profileId, metric, cutoff) as {
+      date: string;
+      source: string | null;
+      origin: string | null;
+      value: number;
+    }[];
+    return foldSourceSeries(
+      pickRowsOneOriginPerSourceDay(
+        rows,
+        (r) => r.date,
+        (r) => r.source,
+        (r) => r.origin,
+        (r) => r.value
+      )
+    );
+  }
   const rows = db
     .prepare(
-      `SELECT date, source, ${agg}(value) AS value
+      `SELECT date, source, AVG(value) AS value
          FROM metric_samples WHERE profile_id = ? AND metric = ? AND date >= ?
         GROUP BY date, source`
     )

@@ -47,6 +47,43 @@ export function pickOneProviderPerDay(
   return out;
 }
 
+// Health Connect is one integration source but may contain several device/app
+// origins. Filter arbitrary rows to one origin per (date, source), choosing the
+// origin with the greatest coverage/value weight. Null-origin legacy rows form a
+// normal candidate group. Ties break by origin key for deterministic reads.
+export function pickRowsOneOriginPerSourceDay<T>(
+  rows: T[],
+  dateOf: (row: T) => string,
+  sourceOf: (row: T) => string | null,
+  originOf: (row: T) => string | null,
+  weightOf: (row: T) => number = () => 1
+): T[] {
+  const keyOf = (row: T) => `${dateOf(row)}\0${sourceKey(sourceOf(row))}`;
+  const originKey = (origin: string | null) => origin ?? "";
+  const weights = new Map<string, Map<string, number>>();
+  for (const row of rows) {
+    const key = keyOf(row);
+    let byOrigin = weights.get(key);
+    if (!byOrigin) {
+      byOrigin = new Map();
+      weights.set(key, byOrigin);
+    }
+    const origin = originKey(originOf(row));
+    byOrigin.set(origin, (byOrigin.get(origin) ?? 0) + weightOf(row));
+  }
+  const chosen = new Map<string, string>();
+  for (const [key, byOrigin] of weights) {
+    const winner = [...byOrigin.entries()].sort(
+      ([aOrigin, aWeight], [bOrigin, bWeight]) =>
+        bWeight - aWeight || aOrigin.localeCompare(bOrigin)
+    )[0]?.[0];
+    if (winner != null) chosen.set(key, winner);
+  }
+  return rows.filter(
+    (row) => chosen.get(keyOf(row)) === originKey(originOf(row))
+  );
+}
+
 // Filter arbitrary per-source rows down to ONE source per day, generically: the
 // first source present in `preference` wins; else the source with the largest
 // summed `weightOf` (defaults to row count — "most coverage"); ties break

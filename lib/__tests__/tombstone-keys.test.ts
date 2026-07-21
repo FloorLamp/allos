@@ -30,8 +30,13 @@ describe("tombstone key composition", () => {
       bodyMetricTombstoneKey("2026-07-12", "oura")
     );
     expect(
-      metricSampleTombstoneKey("steps", "health-connect", "t0", "t1")
-    ).not.toBe(metricSampleTombstoneKey("steps", "health-connect", "t0", "t2"));
+      metricSampleTombstoneKey("steps", "health-connect", "fitbit", "t0")
+    ).not.toBe(
+      metricSampleTombstoneKey("steps", "health-connect", "garmin", "t0")
+    );
+    expect(
+      metricSampleTombstoneKey("steps", "health-connect", null, "t0")
+    ).toBe(metricSampleTombstoneKey("steps", "health-connect", null, "t0"));
     expect(hrMinuteTombstoneKey("2026-07-12T07:00", "health-connect")).not.toBe(
       hrMinuteTombstoneKey("2026-07-12T07:01", "health-connect")
     );
@@ -76,17 +81,23 @@ describe("importTombstoneForRow — derive (table, key) from a captured root row
     ).toBeNull();
   });
 
-  it("metric_samples: keyed by (metric, source, start, end); null when a field is missing (#653)", () => {
+  it("metric_samples: keyed by (metric, source, origin, start); null when a required field is missing (#653/#1101)", () => {
     expect(
       importTombstoneForRow("metric_samples", {
         metric: "steps",
         source: "health-connect",
+        origin: "com.fitbit.FitbitMobile",
         start_time: "t0",
         end_time: "t1",
       })
     ).toEqual({
       table: "metric_samples",
-      key: metricSampleTombstoneKey("steps", "health-connect", "t0", "t1"),
+      key: metricSampleTombstoneKey(
+        "steps",
+        "health-connect",
+        "com.fitbit.FitbitMobile",
+        "t0"
+      ),
     });
     // A missing natural-key field means it isn't a source-owned re-import target.
     expect(

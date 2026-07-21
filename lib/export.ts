@@ -719,8 +719,16 @@ export const DATASETS: ExportDataset[] = [
     key: "metric_samples",
     label: "Metric samples",
     table: "metric_samples",
-    columns: ["date", "metric", "value", "start_time", "end_time", "source"],
-    select: `SELECT id, date, metric, value, start_time, end_time, source
+    columns: [
+      "date",
+      "metric",
+      "value",
+      "start_time",
+      "end_time",
+      "source",
+      "origin",
+    ],
+    select: `SELECT id, date, metric, value, start_time, end_time, source, origin
        FROM metric_samples WHERE profile_id = ?
        ORDER BY date DESC, metric, start_time DESC`,
     countSql: `SELECT COUNT(*) AS n FROM metric_samples WHERE profile_id = ?`,

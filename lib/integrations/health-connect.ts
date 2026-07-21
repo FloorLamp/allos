@@ -1,6 +1,7 @@
 import type { ActivityType } from "@/lib/types";
 import { zonedDateParts, zonedMinuteStr } from "@/lib/date";
 import { boundedOrNull, inTimeWindow } from "@/lib/ingest-bounds";
+import { metricAggregation } from "@/lib/metric-buckets";
 import type {
   NormActivity,
   NormHrMinute,
@@ -74,6 +75,19 @@ export interface ParsedPayload {
   activities: NormActivity[];
   vitals: NormVital[];
   skipped: number;
+  details: HealthConnectSyncDetails;
+}
+
+export interface HealthConnectOriginChoice {
+  date: string;
+  metric: string;
+  chosen: string;
+  ignored: string[];
+}
+
+export interface HealthConnectSyncDetails {
+  warnings: string[];
+  origins: HealthConnectOriginChoice[];
 }
 
 // ---- local time helpers (day/minute attribution in the PROFILE's IANA timezone) ----
@@ -111,6 +125,53 @@ function asArray(v: unknown): Record<string, unknown>[] {
   return Array.isArray(v)
     ? (v.filter((x) => x && typeof x === "object") as Record<string, unknown>[])
     : [];
+}
+
+// The webhook exporter preserves the Android package that originally wrote a
+// Health Connect record under metadata.data_origin. Keep it separate from the
+// integration source so Fitbit-via-HC and Garmin-via-HC can coexist (#1102).
+function dataOrigin(rec: Record<string, unknown>): string | null {
+  const metadata = rec.metadata;
+  if (!metadata || typeof metadata !== "object") return null;
+  const raw = (metadata as Record<string, unknown>).data_origin;
+  return typeof raw === "string" && raw.trim() ? raw.trim() : null;
+}
+
+function originChoices(
+  samples: NormMetricSample[]
+): HealthConnectOriginChoice[] {
+  const groups = new Map<string, Map<string, number>>();
+  for (const sample of samples) {
+    if (metricAggregation(sample.metric) !== "SUM" || !sample.origin) continue;
+    const key = `${sample.date}\0${sample.metric}`;
+    let byOrigin = groups.get(key);
+    if (!byOrigin) {
+      byOrigin = new Map();
+      groups.set(key, byOrigin);
+    }
+    byOrigin.set(
+      sample.origin,
+      (byOrigin.get(sample.origin) ?? 0) + sample.value
+    );
+  }
+  const out: HealthConnectOriginChoice[] = [];
+  for (const [key, byOrigin] of groups) {
+    if (byOrigin.size < 2) continue;
+    const [date, metric] = key.split("\0");
+    const ordered = [...byOrigin.entries()].sort(
+      ([aOrigin, aValue], [bOrigin, bValue]) =>
+        bValue - aValue || aOrigin.localeCompare(bOrigin)
+    );
+    out.push({
+      date,
+      metric,
+      chosen: ordered[0][0],
+      ignored: ordered.slice(1).map(([origin]) => origin),
+    });
+  }
+  return out.sort(
+    (a, b) => b.date.localeCompare(a.date) || a.metric.localeCompare(b.metric)
+  );
 }
 
 // ---- exercise type → (activity type, title) ----
@@ -197,6 +258,7 @@ export function parseHealthConnectPayload(
     activities: [],
     vitals: [],
     skipped: 0,
+    details: { warnings: [], origins: [] },
   };
   if (!body || typeof body !== "object") {
     return out;
@@ -326,6 +388,7 @@ export function parseHealthConnectPayload(
         start_time: start,
         end_time: end,
         value,
+        origin: dataOrigin(rec),
         activity_external_id: null,
       });
     }
@@ -374,6 +437,7 @@ export function parseHealthConnectPayload(
         start_time: start,
         end_time: end,
         value,
+        origin: dataOrigin(rec),
       });
     }
   }
@@ -398,6 +462,7 @@ export function parseHealthConnectPayload(
         start_time: t,
         end_time: t,
         value,
+        origin: dataOrigin(rec),
       });
     }
   };
@@ -499,12 +564,14 @@ export function parseHealthConnectPayload(
   );
 
   // HRV: a point measurement → metric_samples (start == end == time).
-  for (const h of asArray(payload.heart_rate_variability)) {
+  const hrvRecords = asArray(payload.heart_rate_variability);
+  const hrvBefore = out.samples.length;
+  for (const h of hrvRecords) {
     const t = typeof h.time === "string" ? h.time : undefined;
     const p = parts(t, tz);
     const ms = boundedOrNull(
       "hrv_ms",
-      num(h.milliseconds, h.ms, h.rmssd, h.value)
+      num(h.rmssd_millis, h.milliseconds, h.ms, h.rmssd, h.value)
     );
     if (!p || !t || ms == null) {
       out.skipped++;
@@ -516,7 +583,13 @@ export function parseHealthConnectPayload(
       start_time: t,
       end_time: t,
       value: ms,
+      origin: dataOrigin(h),
     });
+  }
+  if (hrvRecords.length > 0 && out.samples.length === hrvBefore) {
+    out.details.warnings.push(
+      "heart_rate_variability records were all skipped — exporter shape not recognized"
+    );
   }
 
   // Sleep: total duration (minutes) per session → metric_samples 'sleep_min', plus a
@@ -558,6 +631,7 @@ export function parseHealthConnectPayload(
       start_time: start,
       end_time: end,
       value: sleepMin,
+      origin: dataOrigin(s),
     });
 
     // Per-stage breakdown. Each stage carries its own start/end (+ duration); we key
@@ -592,6 +666,7 @@ export function parseHealthConnectPayload(
         start_time: stStart,
         end_time: stEnd,
         value: stMin,
+        origin: dataOrigin(s),
       });
     }
   }
@@ -601,24 +676,39 @@ export function parseHealthConnectPayload(
     string,
     { sum: number; n: number; min: number; max: number }
   >();
-  for (const s of asArray(payload.heart_rate)) {
+  const heartRateRecords = asArray(payload.heart_rate);
+  let acceptedHeartRate = 0;
+  for (const s of heartRateRecords) {
     const p = parts(s.time, tz);
     const bpm = boundedOrNull(
       "heart_rate_bpm",
-      num(s.bpm, s.beatsPerMinute, s.value)
+      num(s.avg, s.bpm, s.beatsPerMinute, s.value)
     );
     if (!p || bpm == null) {
       out.skipped++;
       continue;
     }
+    acceptedHeartRate++;
+    const statedN = num(s.n, s.count, s.sample_count);
+    const n =
+      statedN != null && statedN > 0 ? Math.max(1, Math.round(statedN)) : 1;
+    const statedMin = boundedOrNull("heart_rate_bpm", num(s.min));
+    const statedMax = boundedOrNull("heart_rate_bpm", num(s.max));
+    const min = statedMin ?? bpm;
+    const max = statedMax ?? bpm;
     const b = buckets.get(p.minute);
-    if (!b) buckets.set(p.minute, { sum: bpm, n: 1, min: bpm, max: bpm });
+    if (!b) buckets.set(p.minute, { sum: bpm * n, n, min, max });
     else {
-      b.sum += bpm;
-      b.n += 1;
-      b.min = Math.min(b.min, bpm);
-      b.max = Math.max(b.max, bpm);
+      b.sum += bpm * n;
+      b.n += n;
+      b.min = Math.min(b.min, min);
+      b.max = Math.max(b.max, max);
     }
+  }
+  if (heartRateRecords.length > 0 && acceptedHeartRate === 0) {
+    out.details.warnings.push(
+      "heart_rate records were all skipped — exporter shape not recognized"
+    );
   }
   for (const [ts, b] of buckets) {
     out.hrMinutes.push({
@@ -678,6 +768,8 @@ export function parseHealthConnectPayload(
     sample.activity_external_id =
       exerciseByWindow.get(`${sample.start_time}\0${sample.end_time}`) ?? null;
   }
+
+  out.details.origins = originChoices(out.samples);
 
   return out;
 }

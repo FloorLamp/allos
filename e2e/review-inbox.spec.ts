@@ -41,6 +41,11 @@ test.describe("Data → Review import inbox", () => {
     const hcCard = review.getByTestId("source-health-connect");
     await expect(hcCard.getByText("Google Health Connect")).toBeVisible();
     await expect(hcCard.getByText("30 new · 10 changed")).toBeVisible();
+    await expect(
+      hcCard
+        .getByText("Total calories: Garmin used · Fitbit ignored as duplicate")
+        .first() // first-ok: within the source-health-connect card, the reconciliation line appears in both the collapsed latest-state and the recent-history list — assert the latest (same pattern as the Strava "Sync failed" line below)
+    ).toBeVisible();
     await expect(hcCard.getByText(/Push-only/)).toBeVisible();
 
     // Strava's card (connected in the seed) offers a per-provider Sync now button;

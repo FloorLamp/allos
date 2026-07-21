@@ -33,6 +33,7 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { readBodyCapped } from "@/lib/request-body";
 import { writeRawPayload } from "@/lib/integrations/raw-log";
 import { countPayloadRecords, MAX_INGEST_RECORDS } from "@/lib/ingest-bounds";
+import { serializeHealthConnectSyncDetails } from "@/lib/integrations/sync-details";
 
 // A rolling-48h phone export batch is small (a few days of samples/activities as
 // JSON); 2MB is comfortably above any legitimate payload, so a larger body is
@@ -322,6 +323,7 @@ export async function POST(req: Request) {
     suppressed: tally.suppressed,
     edited: tally.edited,
     skipped: tally.skipped,
+    details: serializeHealthConnectSyncDetails(parsed.details),
     raw_ref: rawRef,
   });
   log.info("health-connect ingest", summary);

@@ -82,6 +82,9 @@ export interface IntegrationSyncEvent {
   // legacy rows recorded before the column existed (migration 033).
   edited: number | null;
   skipped: number | null;
+  // Optional structured diagnostics for a successful sync (currently Health
+  // Connect exporter-shape warnings and within-source origin choices).
+  details?: string | null;
   // Bare filename of the captured raw provider payload under
   // data/integration-payloads/<profile_id>/ (issue #9), or null. Read back only by
   // the admin-only raw viewer route; never surfaced to members.
@@ -94,6 +97,7 @@ export interface IntegrationSyncEvent {
 export interface MetricSample {
   id: number;
   source: string;
+  origin: string | null;
   metric: string;
   date: string;
   start_time: string;

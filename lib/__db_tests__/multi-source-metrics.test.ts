@@ -288,6 +288,82 @@ describe("getMetricDailyTotals — additive metrics never sum across sources", (
   });
 });
 
+describe("getMetricDailyTotals — one origin within Health Connect (#1102)", () => {
+  it("uses one origin subtotal instead of adding Garmin and Fitbit", () => {
+    const date = "2024-02-06";
+    upsertMetricSamples(
+      profileId,
+      [
+        {
+          ...sample("total_kcal", date, 470),
+          origin: "com.garmin.android.apps.connectmobile",
+        },
+        {
+          ...sample("total_kcal", date, 19.5, {
+            start: `${date}T08:00`,
+            end: `${date}T08:15`,
+          }),
+          origin: "com.fitbit.FitbitMobile",
+        },
+        {
+          ...sample("total_kcal", date, 12.9, {
+            start: `${date}T08:15`,
+            end: `${date}T08:30`,
+          }),
+          origin: "com.fitbit.FitbitMobile",
+        },
+      ],
+      "health-connect"
+    );
+    upsertMetricSamples(profileId, [sample("total_kcal", date, 300)], "strava");
+
+    expect(getMetricDailyTotals(profileId, "total_kcal")).toContainEqual({
+      date,
+      value: 470,
+    });
+    const bySource = getMetricSeriesBySource(profileId, "total_kcal");
+    expect(
+      bySource.find((series) => series.source === "health-connect")?.data
+    ).toContainEqual({ date, value: 470 });
+    expect(
+      bySource.find((series) => series.source === "strava")?.data
+    ).toContainEqual({ date, value: 300 });
+  });
+});
+
+describe("getMetricDailyTotals — cumulative snapshots plus disjoint buckets (#1101)", () => {
+  it("replaces a moving-end snapshot but still sums a different start", () => {
+    const date = "2024-02-08";
+    const cumulative = {
+      ...sample("distance_km", date, 4, {
+        start: `${date}T00:00`,
+        end: `${date}T12:00`,
+      }),
+      origin: "com.fitbit.FitbitMobile",
+    };
+    upsertMetricSamples(profileId, [cumulative], "health-connect");
+    upsertMetricSamples(
+      profileId,
+      [
+        { ...cumulative, value: 8, end_time: `${date}T20:00` },
+        {
+          ...sample("distance_km", date, 2, {
+            start: `${date}T21:00`,
+            end: `${date}T22:00`,
+          }),
+          origin: "com.fitbit.FitbitMobile",
+        },
+      ],
+      "health-connect"
+    );
+
+    expect(getMetricDailyTotals(profileId, "distance_km")).toContainEqual({
+      date,
+      value: 10,
+    });
+  });
+});
+
 describe("sleep — stages and sessions keep one source per night", () => {
   const DATE = "2024-02-05";
   const hcWindow = { start: "2024-02-04T23:00", end: "2024-02-05T07:00" };
@@ -354,6 +430,42 @@ describe("sleep — stages and sessions keep one source per night", () => {
     const sessions = getSleepSessions(profileId);
     const sources = new Set(sessions.map((s) => s.source));
     expect(sources.size).toBe(1);
+  });
+
+  it("sessions keep one origin within the selected Health Connect stream", () => {
+    const date = "2024-02-09";
+    upsertMetricSamples(
+      profileId,
+      [
+        {
+          ...sample("sleep_min", date, 480, {
+            start: "2024-02-08T23:00",
+            end: "2024-02-09T07:00",
+          }),
+          origin: "com.fitbit.FitbitMobile",
+        },
+        {
+          ...sample("sleep_min", date, 420, {
+            start: "2024-02-09T00:00",
+            end: "2024-02-09T07:00",
+          }),
+          origin: "com.garmin.android.apps.connectmobile",
+        },
+      ],
+      "health-connect"
+    );
+
+    const sessions = getSleepSessions(profileId);
+    expect(sessions).toContainEqual({
+      start: "2024-02-08T23:00",
+      end: "2024-02-09T07:00",
+      source: "health-connect",
+    });
+    expect(sessions).not.toContainEqual({
+      start: "2024-02-09T00:00",
+      end: "2024-02-09T07:00",
+      source: "health-connect",
+    });
   });
 });
 
