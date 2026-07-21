@@ -29,6 +29,7 @@ import {
 import { getProfileNameById } from "../profile-summary-load";
 import { administrationOutcomeText } from "../administration-format";
 import { logFoodServingCore } from "../food-log-write";
+import { addProteinGramsCore } from "../protein-log-write";
 import { logSymptomCore } from "../symptom-log-write";
 import { upsertMoodLog } from "../offline/writes";
 import { getMoodOnDate } from "../queries/mood";
@@ -52,7 +53,9 @@ import {
   type AllCallback,
   type EscalationCallback,
   type FoodLogCallback,
+  type FoodMoreCallback,
   type FoodOptInCallback,
+  type FoodProteinCallback,
   type PreventiveCallback,
   type PreventiveTapOutcome,
   type RefillCallback,
@@ -65,12 +68,15 @@ import {
   foodLogAnswerText,
   foodOptInAnswerText,
   foodOptInCloseText,
+  foodProteinAnswerText,
   foodStaleDateAnswerText,
   foodTapDateGuard,
   parseAllCallback,
   parseEscalationCallback,
   parseFoodLogCallback,
+  parseFoodMoreCallback,
   parseFoodOptInCallback,
+  parseFoodProteinCallback,
   parsePreventiveCallback,
   parsePrnLogCallback,
   parseRefillCallback,
@@ -102,6 +108,10 @@ import {
 import { collectWindowDoses, windowSessionForDose } from "./supplements";
 import { renderWindowMessage } from "./supplement-format";
 import { buildFoodNudge } from "./food";
+import {
+  countVisibleFoodButtons,
+  FOOD_NUDGE_BUTTON_COUNT,
+} from "./food-format";
 import {
   answerCallbackQuery,
   closeMessage,
@@ -170,6 +180,20 @@ export async function handleCallbackQuery(
   const foodLog = parseFoodLogCallback(cq.data);
   if (foodLog) {
     await handleFoodLog(cq, foodLog);
+    return;
+  }
+  // Protein "+Xg" quick-log (#1073): the reserved pseudo-group button logs grams via
+  // addProteinGramsCore (writing the __protein__ ranking event too), then rebuilds the nudge.
+  const foodProtein = parseFoodProteinCallback(cq.data);
+  if (foodProtein) {
+    await handleFoodProtein(cq, foodProtein);
+    return;
+  }
+  // "➕ Show more" (#1075): reveal the next FOOD_NUDGE_BUTTON_COUNT ranked buttons in place —
+  // a stateless view change, answered quietly.
+  const foodMore = parseFoodMoreCallback(cq.data);
+  if (foodMore) {
+    await handleFoodMore(cq, foodMore);
     return;
   }
   const foodOptIn = parseFoodOptInCallback(cq.data);
@@ -1029,9 +1053,92 @@ async function handleFoodLog(
   if (chatId == null || messageId == null || rows.length === 0) return;
   // Re-render the whole nudge from current state (same builder as the send, so the
   // ranking + tally stay one computation) and edit in place through the chokepoint,
-  // which re-applies the "[Name] " prefix for a shared chat.
-  const rebuilt = buildFoodNudge(profileId, food.window, food.date);
+  // which re-applies the "[Name] " prefix for a shared chat. Preserve the current
+  // expansion (#1075): rebuild at the visible count read off the keyboard, so a tap after
+  // "Show more" keeps the expanded window rather than collapsing to the compact default.
+  const visibleCount = countVisibleFoodButtons(rows) || undefined;
+  const rebuilt = buildFoodNudge(
+    profileId,
+    food.window,
+    food.date,
+    visibleCount
+  );
   if (rebuilt) await rebuildMessage(profileId, chatId, messageId, rebuilt);
+}
+
+// Handle a protein "+Xg" quick-log button (#1073): resolve the acting profile from the
+// chat, apply the SAME cross-date guard as a food tap (#947 — a stale keyboard would log
+// to the wrong day), log the grams through addProteinGramsCore (which also records the
+// __protein__ ranking event), answer honestly from the typed outcome (never an
+// unconditional confirm), then rebuild the nudge at the current expansion so the refreshed
+// protein total shows. Buttons are NOT consumed — a second scoop is one more tap.
+async function handleFoodProtein(
+  cq: TelegramCallbackQuery,
+  token: FoodProteinCallback
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  const profileId =
+    chatId != null
+      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
+      : null;
+  if (profileId == null) {
+    await answerCallbackQuery(cq.id);
+    return;
+  }
+  if (foodTapDateGuard(token.date, today(profileId)).kind === "stale-date") {
+    await answerCallbackQuery(cq.id, foodStaleDateAnswerText(token.date));
+    return;
+  }
+  const outcome = addProteinGramsCore(profileId, token.date, token.grams);
+  await answerCallbackQuery(cq.id, foodProteinAnswerText(outcome, token.grams));
+
+  const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
+  const messageId = cq.message?.message_id;
+  if (chatId == null || messageId == null || rows.length === 0) return;
+  const visibleCount = countVisibleFoodButtons(rows) || undefined;
+  const rebuilt = buildFoodNudge(
+    profileId,
+    token.window,
+    token.date,
+    visibleCount
+  );
+  if (rebuilt) await rebuildMessage(profileId, chatId, messageId, rebuilt);
+}
+
+// Handle a "➕ Show more" tap (#1075): reveal the next FOOD_NUDGE_BUTTON_COUNT ranked
+// buttons in place. STATELESS — the current visible count is derived by counting the ranked
+// buttons already in the keyboard, so no token field / stored count is needed; a double-tap
+// is harmless (it re-resolves to the next window). A view change, so answer QUIETLY (no
+// toast). Rebuilds through the chokepoint, which re-applies the shared-chat "[Name] " prefix.
+async function handleFoodMore(
+  cq: TelegramCallbackQuery,
+  token: FoodMoreCallback
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  const profileId =
+    chatId != null
+      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
+      : null;
+  const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
+  const messageId = cq.message?.message_id;
+  if (
+    profileId == null ||
+    chatId == null ||
+    messageId == null ||
+    rows.length === 0
+  ) {
+    await answerCallbackQuery(cq.id);
+    return;
+  }
+  const current = countVisibleFoodButtons(rows);
+  const rebuilt = buildFoodNudge(
+    profileId,
+    token.window,
+    token.date,
+    current + FOOD_NUDGE_BUTTON_COUNT
+  );
+  if (rebuilt) await rebuildMessage(profileId, chatId, messageId, rebuilt);
+  await answerCallbackQuery(cq.id);
 }
 
 // Handle the first-connection food opt-in prompt (#682): flip the per-profile

@@ -6,13 +6,17 @@
 // never sees it.
 
 import {
-  getFoodGroupLogOrder,
+  getFoodNudgeRankedKeys,
   getFoodServingsOnDate,
+  getFoodSlotServingsOnDate,
+  getProteinLoggedGrams,
+  getProteinQuickAddPreset,
   getProteinToday,
 } from "../queries";
 import { getPublicUrl, getUserAge } from "../settings";
 import { isFoodLoggingRelevant } from "../life-stage";
 import { proteinTodayNudgeLine } from "../protein";
+import { PROTEIN_NUDGE_KEY } from "../protein-nudge";
 import {
   foodOptInCallbackData,
   renderFoodNudge,
@@ -36,27 +40,48 @@ import {
 export function buildFoodNudge(
   profileId: number,
   window: FoodNudgeWindow,
-  date: string
+  date: string,
+  // How many ranked buttons to render (#1075). Defaults to the compact FOOD_NUDGE_BUTTON_COUNT
+  // for a fresh send; the "Show more" handler + a food/protein tap after expansion pass the
+  // current visible count (read off the keyboard) so the per-tap rebuild preserves it.
+  visibleCount?: number
 ): NotificationMessage | null {
   if (!isFoodLoggingRelevant(getUserAge(profileId))) return null;
-  // Slot-aware ranking (#950): the nudge already knows its window, so it passes it
-  // through — the buttons lead with what this profile eats at THIS time of day (fish
-  // at lunch). The SAME getFoodGroupLogOrder the web bar calls, so the two surfaces
-  // rank identically for a given window (one computation, #221).
-  const ranked = getFoodGroupLogOrder(profileId, window);
-  const servingsToday = getFoodServingsOnDate(profileId, date);
+  // Slot-aware ranking (#950/#1073): the nudge knows its window, so it passes it through —
+  // the buttons lead with what this profile eats at THIS time of day (fish at lunch), and
+  // the reserved __protein__ pseudo-group joins the ranked keys for a protein-logging
+  // profile so it surfaces in the slots they shake. Shares blendFoodOrder with the web bar
+  // (one computation, #221).
+  const rankedKeys = getFoodNudgeRankedKeys(profileId, window);
+  // Buttons are SLOT-scoped counts (#1016); the tally line is the DAY total.
+  const slotServings = getFoodSlotServingsOnDate(profileId, window, date);
+  const dayServings = getFoodServingsOnDate(profileId, date);
   // Today-vs-goal protein status line (#974) from the SAME gather the gauge reads (#221).
   // Null when there's no target or no protein data — the renderer then omits the line.
   const pt = getProteinToday(profileId);
-  const proteinLine = pt ? proteinTodayNudgeLine(pt) : null;
+  let proteinLine = pt ? proteinTodayNudgeLine(pt) : null;
+  // A protein-tracker with no target (no bodyweight) still gets a day-grams line when
+  // they've logged protein today, so the "+Xg protein" button's contribution is visible and
+  // distinct from the food-serving tally (#1073). getProteinLoggedGrams is a raw stored
+  // total — no second engine (#221).
+  if (!proteinLine && rankedKeys.includes(PROTEIN_NUDGE_KEY)) {
+    const grams = getProteinLoggedGrams(profileId, date);
+    if (grams > 0) proteinLine = `Protein ${grams} g today`;
+  }
+  const presetGrams = getProteinQuickAddPreset(profileId) ?? undefined;
   return renderFoodNudge(
     profileId,
     window,
     date,
-    ranked,
-    servingsToday,
-    getPublicUrl(),
-    proteinLine
+    rankedKeys,
+    slotServings,
+    dayServings,
+    {
+      deepLinkBase: getPublicUrl(),
+      proteinLine,
+      visibleCount,
+      proteinPresetGrams: presetGrams,
+    }
   );
 }
 

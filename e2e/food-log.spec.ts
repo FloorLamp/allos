@@ -30,6 +30,26 @@ test("logging a serving shows in the day count and the weekly rollup, undo decre
   await expect(count).toHaveText(String(before));
 });
 
+test("the day-scoped count chip is labeled 'today' (and 'yesterday' on the toggle) (#1016)", async ({
+  page,
+}) => {
+  await page.goto("/nutrition");
+  await expect(page.getByTestId("food-log-bar")).toBeVisible();
+
+  // The web bar stays a DAY surface by design (#1016) — its chips are day totals, and the
+  // tooltip names the day so a mid-day read isn't mistaken for a per-slot count (the
+  // Telegram nudge is where counts go slot-scoped). Copy-level assert, count-independent.
+  await expect(page.getByTestId("count-eggs")).toHaveAttribute(
+    "title",
+    /today$/
+  );
+  await page.getByTestId("food-day-yesterday").click();
+  await expect(page.getByTestId("count-eggs")).toHaveAttribute(
+    "title",
+    /yesterday$/
+  );
+});
+
 test("the today/yesterday toggle backfills yesterday, not today (#748 item 1)", async ({
   page,
 }) => {

@@ -263,6 +263,14 @@ export default function FoodLogBar({
                       </button>
                       <span
                         data-testid={`count-${g.slug}`}
+                        // Day-scoped by design (#1016): the web bar is a day surface (day
+                        // heading + yesterday toggle), so its chips stay day totals — the
+                        // tooltip names the day ("N today"/"N yesterday") so a mid-day read
+                        // isn't mistaken for a per-slot count (the Telegram nudge is where
+                        // counts go slot-scoped).
+                        title={`${count} ${count === 1 ? "serving" : "servings"} ${
+                          mode === "today" ? "today" : "yesterday"
+                        }`}
                         className="w-5 text-center text-sm font-semibold tabular-nums text-slate-700 dark:text-slate-200"
                       >
                         {count}
