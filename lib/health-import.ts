@@ -57,6 +57,8 @@ export interface ImportedImmunization {
   // The administering provider/organization (CCD `<performer>`), when carried.
   // Resolved into the shared registry and linked via immunizations.provider_id.
   provider?: ImportedProvider | null;
+  // Tier-1 visit link (#1050): the Encounter this Immunization.encounter referenced.
+  encounter_external_id?: string | null;
 }
 
 // A generic clinical record destined for `medical_records`. `category` decides
@@ -95,6 +97,11 @@ export interface ImportedRecord {
   prescriber?: string | null;
   pharmacy?: string | null;
   rxNumber?: string | null;
+  // Tier-1 visit link (#1050): the external_id of the Encounter this reading's FHIR
+  // resource referenced (Observation/MedicationRequest.encounter), resolved within
+  // the bundle. The persist layer maps it to the local encounter row's id. Null when
+  // the source carried no encounter reference (or it dangled).
+  encounter_external_id?: string | null;
 }
 
 // An allergy / intolerance pulled from a CCD Allergies section. Substance
@@ -120,6 +127,10 @@ export interface ImportedCondition {
   onset_date: string | null; // YYYY-MM-DD
   resolved_date: string | null;
   external_id: string;
+  // Tier-1 visit-diagnosis link (#1050): set when an Encounter.diagnosis[].condition
+  // resolves to THIS condition — the visit it was diagnosed at. The prose blob on the
+  // encounter stays for display; this is the row link. Null otherwise.
+  encounter_external_id?: string | null;
 }
 
 // A visit / encounter pulled from a CCD Encounters section.
@@ -145,6 +156,11 @@ export interface ImportedEncounter {
   location: ImportedProvider | null; // facility / performing organization
   notes: string | null; // the encounter's free-text narrative / visit summary
   external_id: string; // stable dedup key ("ccda:encounter:<id>")
+  // TRANSIENT (#1050) — the external_ids of the Conditions this visit diagnosed
+  // (FHIR Encounter.diagnosis[].condition, resolved in-bundle). Consumed by the
+  // bundle assembler's tagging post-pass to stamp each condition's
+  // encounter_external_id, then dropped — it is NEVER persisted on the encounter row.
+  diagnosis_condition_external_ids?: string[];
 }
 
 // A procedure pulled from a CCD Procedures section or a FHIR Procedure resource.
@@ -157,6 +173,8 @@ export interface ImportedProcedure {
   date: string | null; // YYYY-MM-DD, when known
   provider: ImportedProvider | null;
   external_id: string; // stable dedup key ("ccda:procedure:…")
+  // Tier-1 visit link (#1050): the Encounter this Procedure.encounter referenced.
+  encounter_external_id?: string | null;
 }
 
 // A family-history entry — one condition affecting one relative — pulled from a CCD

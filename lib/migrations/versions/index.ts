@@ -79,6 +79,8 @@ import { migration as m077 } from "./077-optical-minus-cylinder";
 import { migration as m078 } from "./078-imaging-modality-expansion";
 import { migration as m079 } from "./079-intake-log-product";
 import { migration as m080 } from "./080-intake-log-supply-adjusted";
+import { migration as m081 } from "./081-visit-record-links";
+import { migration as m082 } from "./082-episode-visit-link";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -167,4 +169,6 @@ export const MIGRATIONS: Migration[] = [
   m078,
   m079,
   m080,
+  m081,
+  m082,
 ];

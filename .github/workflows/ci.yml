@@ -97,13 +97,108 @@ jobs:
       - name: Test (DB) + coverage
         run: npm run test:db:coverage
 
+  # Changed-spec scrutiny lane (#868, fix c; #889), as its OWN job so its
+  # zero-retry verdict lands fast and short-circuits before the sharded full
+  # suite below finishes. The full suite's `retries: 1` proves "passes within N
+  # attempts", not "works" — a ≤50%-flaky spec can ship green. Zero retries ×
+  # three repeats fails a spec that isn't reliably green, so retry-masking can't
+  # land a flaky/changed spec.
+  #   • base ref: under pull_request the checkout is the MERGE commit, so HEAD^1
+  #     is the PR base parent (fetch-depth:2 guarantees it's present). We prefer
+  #     the event's base.sha when it happens to be in history, else fall back to
+  #     HEAD^1 — robust for both PR and push (HEAD^1 is the prior commit).
+  #   • auth.setup.ts is passed alongside so the login dependency runs even
+  #     though the file filter wouldn't otherwise match it.
+  #
+  # SHARED INFRA (#889): a PR that edits ONLY a shared e2e module — helpers.ts,
+  # seed-events.ts, fixture-logins.ts, nav.ts, symptom-helpers.ts, auth.setup.ts
+  # — changed no `*.spec.ts`, so the spec filter matched nothing and this lane
+  # used to skip entirely. That's backwards: shared infra is the HIGHEST blast
+  # radius (seed-events.ts + fixture-logins.ts build the seed EVERY spec runs
+  # against; nav.ts re-exports helpers.ts). A grep import-map would be
+  # structurally dishonest for exactly those files — it maps seed-events.ts to
+  # zero importing specs and would run nothing. So when any shared (non-spec)
+  # e2e/*.ts changed we fall back to the WHOLE suite at --retries=0 (no
+  # repeat-each): one bounded extra pass, total coverage for the infra blast
+  # radius. repeat-each is deliberately NOT applied suite-wide (that ~27 min run
+  # is the cost the fallback avoids). A mixed diff (spec + infra) does BOTH — the
+  # changed specs at --repeat-each=3 AND the full suite at --retries=0 — so
+  # neither set is dropped.
+  e2e-changed:
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth 2: the pull_request checkout is the MERGE commit, so depth 2
+      # brings both parents — enough for the diffs below (HEAD^1 is the PR base).
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      # Cheap gate BEFORE the expensive setup/build: this job has work only when
+      # the PR touched something under e2e/. (Docs-only PRs trivially pass too.)
+      - name: Detect changed e2e files
+        id: e2e-diff
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            BASE="HEAD^1"
+          fi
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+          if git diff --name-only "$BASE" HEAD | grep -qE '^e2e/.*\.ts$'; then
+            echo "any=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "any=false" >> "$GITHUB_OUTPUT"
+            echo "No changed e2e files - skipping the retries=0 lane."
+          fi
+
+      - uses: ./.github/actions/e2e-setup
+        if: steps.e2e-diff.outputs.any == 'true'
+
+      - name: E2E changed specs + shared-infra scrutiny (retries=0)
+        if: steps.e2e-diff.outputs.any == 'true'
+        run: |
+          DIFF=$(git diff --name-only "${{ steps.e2e-diff.outputs.base }}" HEAD)
+          CHANGED_SPECS=$(echo "$DIFF" | grep -E '^e2e/.*\.spec\.ts$' || true)
+          CHANGED_INFRA=$(echo "$DIFF" | grep -E '^e2e/.*\.ts$' | grep -vE '\.spec\.ts$' || true)
+
+          if [ -n "$CHANGED_SPECS" ]; then
+            echo "Changed e2e specs (running at --repeat-each=3 --retries=0):"
+            echo "$CHANGED_SPECS"
+            npx playwright test e2e/auth.setup.ts $CHANGED_SPECS --repeat-each=3 --retries=0
+          fi
+
+          if [ -n "$CHANGED_INFRA" ]; then
+            echo "Changed shared e2e infra (whole suite at --retries=0 - highest blast radius):"
+            echo "$CHANGED_INFRA"
+            npx playwright test --retries=0
+          fi
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() && steps.e2e-diff.outputs.any == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-changed
+          path: playwright-report/
+          retention-days: 7
+
   # Browser end-to-end tier: boots the real Next app against an isolated seeded
   # SQLite DB and drives it in Chromium (Playwright). Separate job so it runs in
   # parallel with `check` and its slower browser/build steps don't gate the fast
   # lint/type/unit feedback. No secrets; no ANTHROPIC_API_KEY, so AI features
   # degrade gracefully (the flows under test don't need them).
+  #
+  # SHARDED 4-way (flaky-e2e hardening): each shard is a fresh runner + fresh
+  # `npx playwright test --shard=N/4` invocation → fresh app/demo servers per
+  # chunk. This cuts the per-push e2e wall-clock roughly in half AND removes the
+  # long-lived-server cumulative degradation the orchestration runbook documents
+  # for single-process full runs (docs/orchestration.md). fail-fast is off so a
+  # red shard still lets the others finish — one push yields the full failure
+  # picture instead of a partial one.
   e2e:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       # fetch-depth 2: the pull_request checkout is the MERGE commit, so depth 2
       # brings both parents — enough for the docs-only diff below (HEAD^1 is the
@@ -129,125 +224,26 @@ jobs:
             echo "Docs-only diff - skipping the browser suite."
           fi
 
-      - uses: actions/setup-node@v7
+      - uses: ./.github/actions/e2e-setup
         if: steps.changes.outputs.code == 'true'
-        with:
-          node-version-file: .nvmrc
-          cache: npm
 
-      # Same node_modules cache as the `check` job (see the comment there).
-      - name: Cache node_modules
-        id: modules
+      - name: E2E (Playwright, shard ${{ matrix.shard }}/4)
         if: steps.changes.outputs.code == 'true'
-        uses: actions/cache@v6
-        with:
-          path: node_modules
-          key: modules-${{ runner.os }}-${{ hashFiles('.nvmrc') }}-${{ hashFiles('package-lock.json') }}
+        run: npm run test:e2e -- --shard=${{ matrix.shard }}/4
 
-      - run: npm ci
-        if: steps.changes.outputs.code == 'true' && steps.modules.outputs.cache-hit != 'true'
-
-      # Chromium binary cache, keyed on the lockfile (which pins the
-      # @playwright/test version and with it the browser build). On a hit the
-      # ~25s download is skipped and only the OS dependencies are (re)applied —
-      # apt is a near-no-op when they're already present on the runner image.
-      - name: Cache Playwright Chromium
-        id: playwright
-        if: steps.changes.outputs.code == 'true'
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-
-      - name: Install Playwright Chromium
-        if: steps.changes.outputs.code == 'true' && steps.playwright.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
-
-      - name: Install Playwright OS deps
-        if: steps.changes.outputs.code == 'true' && steps.playwright.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
-
-      # Next's incremental compile cache, shared ACROSS RUNS (#61): keyed on the
-      # lockfile + source hash, with a lockfile-only restore key so a source-only
-      # change still warms from the previous build instead of compiling cold.
-      # Saves ~1-2 min of the Build step on cache hits.
-      - name: Restore Next.js build cache
-        if: steps.changes.outputs.code == 'true'
-        uses: actions/cache@v6
-        with:
-          path: .next/cache
-          key: nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('app/**', 'components/**', 'lib/**', 'public/**', 'next.config.*') }}
-          restore-keys: |
-            nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
-
-      # CI runs production-like: build once, then the Playwright webServer boots
-      # `next start` against the built app (see playwright.config.ts).
-      - name: Build
-        if: steps.changes.outputs.code == 'true'
-        run: npm run build
-
-      # Changed-spec lane (#868, fix c; #889): run the specs this PR changed at
-      # --repeat-each=3 --retries=0, BEFORE the full (retry-tolerant) suite. The
-      # full suite's `retries: 1` proves "passes within N attempts", not "works" —
-      # a ≤50%-flaky spec can ship green. Zero retries × three repeats fails a spec
-      # that isn't reliably green, so retry-masking can't land a flaky/changed spec.
-      #   • base ref: under pull_request the checkout is the MERGE commit, so HEAD^1
-      #     is the PR base parent (fetch-depth:2 above guarantees it's present). We
-      #     prefer the event's base.sha when it happens to be in history, else fall
-      #     back to HEAD^1 — robust for both PR and push (HEAD^1 is the prior commit).
-      #   • auth.setup.ts is passed alongside so the login dependency runs even
-      #     though the file filter wouldn't otherwise match it.
-      #
-      # SHARED INFRA (#889): a PR that edits ONLY a shared e2e module — helpers.ts,
-      # seed-events.ts, fixture-logins.ts, nav.ts, symptom-helpers.ts, auth.setup.ts
-      # — changed no `*.spec.ts`, so the spec filter above matched nothing and this
-      # lane used to skip entirely. That's backwards: shared infra is the HIGHEST
-      # blast radius (seed-events.ts + fixture-logins.ts build the seed EVERY spec
-      # runs against; nav.ts re-exports helpers.ts). A grep import-map would be
-      # structurally dishonest for exactly those files — it maps seed-events.ts to
-      # zero importing specs and would run nothing. So when any shared (non-spec)
-      # e2e/*.ts changed we fall back to the WHOLE suite at --retries=0 (no
-      # repeat-each): one bounded (~9 min) extra pass, total coverage for the infra
-      # blast radius. repeat-each is deliberately NOT applied suite-wide (that ~27
-      # min run is the cost the fallback avoids). A mixed diff (spec + infra) does
-      # BOTH — the changed specs at --repeat-each=3 AND the full suite at
-      # --retries=0 — so neither set is dropped.
-      - name: E2E changed specs + shared-infra scrutiny (retries=0)
-        if: steps.changes.outputs.code == 'true'
-        run: |
-          BASE="${{ github.event.pull_request.base.sha }}"
-          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
-            BASE="HEAD^1"
-          fi
-          DIFF=$(git diff --name-only "$BASE" HEAD)
-          CHANGED_SPECS=$(echo "$DIFF" | grep -E '^e2e/.*\.spec\.ts$' || true)
-          CHANGED_INFRA=$(echo "$DIFF" | grep -E '^e2e/.*\.ts$' | grep -vE '\.spec\.ts$' || true)
-
-          if [ -z "$CHANGED_SPECS" ] && [ -z "$CHANGED_INFRA" ]; then
-            echo "No changed e2e specs or shared infra - skipping the retries=0 lane."
-            exit 0
-          fi
-
-          if [ -n "$CHANGED_SPECS" ]; then
-            echo "Changed e2e specs (running at --repeat-each=3 --retries=0):"
-            echo "$CHANGED_SPECS"
-            npx playwright test e2e/auth.setup.ts $CHANGED_SPECS --repeat-each=3 --retries=0
-          fi
-
-          if [ -n "$CHANGED_INFRA" ]; then
-            echo "Changed shared e2e infra (whole suite at --retries=0 - highest blast radius):"
-            echo "$CHANGED_INFRA"
-            npx playwright test --retries=0
-          fi
-
-      - name: E2E (Playwright)
-        if: steps.changes.outputs.code == 'true'
-        run: npm run test:e2e
+      # Flake telemetry: with `retries: 1`, a test that failed then passed on
+      # retry ships a GREEN run — this surfaces those pass-on-retry tests in the
+      # job summary so every flake detection is recorded instead of thrown away
+      # (the measured backlog that gates ever dropping full-suite retries).
+      # Telemetry only — always exits 0; the suite step above gates.
+      - name: Flake report
+        if: ${{ !cancelled() && steps.changes.outputs.code == 'true' }}
+        run: node scripts/e2e-flake-report.mjs test-results/e2e-results.json | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Playwright report
         if: ${{ !cancelled() && steps.changes.outputs.code == 'true' }}
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report
+          name: playwright-report-shard-${{ matrix.shard }}
           path: playwright-report/
           retention-days: 7

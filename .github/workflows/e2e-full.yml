@@ -1,0 +1,64 @@
+name: E2E full suite (on demand)
+
+# The fresh-runner full-suite gate (flaky-e2e hardening). The orchestration
+# runbook's conclusion after the #1045/#1047 gate trains: "CI on a fresh GitHub
+# runner is the ultimate authority" — a local full-suite run on a long-lived
+# container degrades cumulatively and produces wide fake failure sets that cost
+# hours to triage. This workflow institutionalizes that conclusion: instead of
+# running a full local suite before a migration PR or big UI merge, dispatch
+# this against the branch (the UI's "Run workflow" button, or the GitHub API's
+# workflow-dispatch endpoint) and trust its verdict.
+#
+# Defaults are the strict, flake-revealing form: --retries=0 (a spec must pass
+# first try). Bump repeat_each to 3 to apply the changed-spec lane's bar
+# suite-wide when hardening (expect ~3x the runtime).
+#
+# Same 4-way shard shape as ci.yml's e2e job: fresh runner + fresh servers per
+# chunk, no cumulative degradation, full failure picture (fail-fast off).
+
+on:
+  workflow_dispatch:
+    inputs:
+      retries:
+        description: "Playwright --retries (0 = strict; 1 = ci.yml's tolerant full-suite mode)"
+        type: choice
+        options: ["0", "1"]
+        default: "0"
+      repeat_each:
+        description: "Playwright --repeat-each (3 = the changed-spec lane's bar, suite-wide)"
+        type: choice
+        options: ["1", "2", "3"]
+        default: "1"
+
+concurrency:
+  group: e2e-full-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e-full:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/e2e-setup
+
+      - name: E2E full suite (shard ${{ matrix.shard }}/4, retries=${{ inputs.retries }}, repeat-each=${{ inputs.repeat_each }})
+        run: npm run test:e2e -- --shard=${{ matrix.shard }}/4 --retries=${{ inputs.retries }} --repeat-each=${{ inputs.repeat_each }}
+
+      # Only meaningful when retries > 0 (a retries=0 run has no "flaky" status —
+      # a flake IS a failure there); harmless otherwise. See scripts/e2e-flake-report.mjs.
+      - name: Flake report
+        if: ${{ !cancelled() }}
+        run: node scripts/e2e-flake-report.mjs test-results/e2e-results.json | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-full-report-shard-${{ matrix.shard }}
+          path: playwright-report/
+          retention-days: 7

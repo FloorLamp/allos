@@ -84,6 +84,10 @@ const EXPORT_ALLOWLIST: { table: string; why: string }[] = [
     why: "import dedup bookkeeping (merge/keep-both signatures); transient processing state",
   },
   {
+    table: "visit_link_decisions",
+    why: "record↔visit / episode↔visit accept-decline bookkeeping (#1050/#1053); provenance/navigation decisions keyed on stable tokens, not health data — the linked encounter_id lives on the exported record/episode rows",
+  },
+  {
     table: "import_tombstones",
     why: "re-import suppression bookkeeping (merged/deleted source-owned natural keys); operational dedup state, not health data",
   },

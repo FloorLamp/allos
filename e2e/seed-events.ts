@@ -135,6 +135,8 @@ import {
   E2E_LOGIN_DQ_CARE,
   DQ_CARE_PARENT_PROFILE,
   DQ_CARE_CHILD_PROFILE,
+  E2E_LOGIN_VISITLINKS,
+  VISITLINKS_PROFILE,
 } from "./fixture-logins";
 import { adoptTemplate, activateRoutine } from "../lib/routines";
 import { setInstanceTimezone, setTimezone } from "../lib/settings";
@@ -3734,3 +3736,64 @@ console.log(
   `e2e: seeded data-quality fixtures — gappy ${dqGappyId}, complete ${dqCompleteId}, ` +
     `care parent ${dqParentId} + child ${dqChildId} (#1045)`
 );
+
+// ── Record ↔ visit / episode ↔ visit linking fixture (#1050/#1053) ──────────────
+// A self-contained profile: one visit, a same-day UNLINKED medication (with its
+// prescription record + a course started that day so the tier-2 engine dates it), and
+// an illness episode spanning that day with NO linked visit. The spec drives the
+// "From this visit?" batch link, the med "Prescribed at" line, and the cockpit Care
+// suggestion → link → encounter back-link. OWNS every row (dedicated profile), so the
+// suite's shared-seed counts are untouched.
+{
+  const vlProfileId = fixtureProfileId(VISITLINKS_PROFILE);
+  const VL_DATE = "2026-05-12";
+  // A visit on VL_DATE with an attending provider (also seeds the provider row).
+  // providers carries a NOT NULL UNIQUE dedup_key, so seed it explicitly.
+  db.prepare(
+    `INSERT OR IGNORE INTO providers (name, type, dedup_key)
+     VALUES ('Dr. Vera Vasquez (e2e)', 'individual', 'e2e:vera-vasquez')`
+  ).run();
+  const vlProviderId = (
+    db
+      .prepare("SELECT id FROM providers WHERE dedup_key = 'e2e:vera-vasquez'")
+      .get() as { id: number }
+  ).id;
+  // Idempotent: only seed the visit + med + episode once per profile.
+  const existingVisit = db
+    .prepare(
+      "SELECT id FROM encounters WHERE profile_id = ? AND date = ? AND type = 'Office Visit'"
+    )
+    .get(vlProfileId, VL_DATE) as { id: number } | undefined;
+  if (!existingVisit) {
+    db.prepare(
+      `INSERT INTO encounters (profile_id, date, type, class_code, reason, provider_id)
+       VALUES (?, ?, 'Office Visit', 'AMB', 'Sinus infection', ?)`
+    ).run(vlProfileId, VL_DATE, vlProviderId);
+    // An unlinked medication + its prescription record + a course dated VL_DATE, with
+    // the SAME provider so the suggestion reads STRONG.
+    const vlMedId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items (profile_id, name, kind, provider_id)
+           VALUES (?, 'Amoxicillin (e2e)', 'medication', ?)`
+        )
+        .run(vlProfileId, vlProviderId).lastInsertRowid
+    );
+    db.prepare(
+      "INSERT INTO medication_courses (item_id, started_on) VALUES (?, ?)"
+    ).run(vlMedId, VL_DATE);
+    db.prepare(
+      `INSERT INTO medical_records (profile_id, date, category, name, provider_id)
+       VALUES (?, ?, 'prescription', 'Amoxicillin 500 mg (e2e)', ?)`
+    ).run(vlProfileId, VL_DATE, vlProviderId);
+    // An illness episode spanning VL_DATE, no linked visit yet.
+    db.prepare(
+      `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+       VALUES (?, 'sinus infection', '2026-05-10', '2026-05-15')`
+    ).run(vlProfileId);
+  }
+  seedMemberLogin(E2E_LOGIN_VISITLINKS, vlProfileId, "write");
+  console.log(
+    `e2e: seeded visit-link fixture — profile ${vlProfileId} (${VISITLINKS_PROFILE}) #1050/#1053`
+  );
+}

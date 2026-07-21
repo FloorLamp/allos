@@ -128,6 +128,11 @@ export interface PersistRecord {
   prescriber?: string | null;
   pharmacy?: string | null;
   rxNumber?: string | null;
+  // Tier-1 visit link (#1050): the external_id of the Encounter this reading's source
+  // referenced (Observation/MedicationRequest.encounter, resolved in-bundle). The
+  // persist layer resolves it to the local encounter row and sets encounter_id.
+  // Null/absent on the AI path (no encounter references).
+  encounter_external_id?: string | null;
 }
 
 export interface PersistImmunization {
@@ -138,6 +143,8 @@ export interface PersistImmunization {
   external_id: string | null;
   // The administering provider (CCD <performer>), resolved + linked.
   provider: ImportedProvider | null;
+  // Tier-1 visit link (#1050): the Encounter this vaccine was given at.
+  encounter_external_id?: string | null;
 }
 
 // Allergy / condition projections. The deterministic CCD path fills
@@ -161,6 +168,8 @@ export interface PersistCondition {
   onset_date: string | null;
   resolved_date: string | null;
   external_id: string | null;
+  // Tier-1 visit-diagnosis link (#1050): the visit this was diagnosed at.
+  encounter_external_id?: string | null;
 }
 
 // Encounter / visit projection. The deterministic CCD path fills
@@ -196,6 +205,8 @@ export interface PersistProcedure {
   date: string | null;
   provider: ImportedProvider | null;
   external_id: string | null;
+  // Tier-1 visit link (#1050): the visit this Procedure.encounter referenced.
+  encounter_external_id?: string | null;
 }
 
 export interface PersistFamilyHistory {
@@ -899,6 +910,8 @@ export function healthRecordToPersistInput(
     prescriber: r.prescriber ?? null,
     pharmacy: r.pharmacy ?? null,
     rxNumber: r.rxNumber ?? null,
+    // Tier-1 visit link (#1050): the resolved encounter reference rides through.
+    encounter_external_id: r.encounter_external_id ?? null,
   }));
   // Project body-metric records (weight / body fat / resting HR) into body_metrics
   // — the same single-home rule the AI path uses.
@@ -956,6 +969,7 @@ export function healthRecordToPersistInput(
       notes: im.notes,
       external_id: im.external_id,
       provider: im.provider ?? null,
+      encounter_external_id: im.encounter_external_id ?? null,
     })),
     allergies: (parsed.allergies ?? []).map((a) => ({
       substance: a.substance,
@@ -975,6 +989,7 @@ export function healthRecordToPersistInput(
       onset_date: c.onset_date,
       resolved_date: c.resolved_date,
       external_id: c.external_id,
+      encounter_external_id: c.encounter_external_id ?? null,
     })),
     encounters: (parsed.encounters ?? []).map((e) => ({
       date: e.date,
@@ -997,6 +1012,7 @@ export function healthRecordToPersistInput(
       date: p.date,
       provider: p.provider ?? null,
       external_id: p.external_id,
+      encounter_external_id: p.encounter_external_id ?? null,
     })),
     familyHistory: (parsed.familyHistory ?? []).map((f) => ({
       relation: f.relation,
