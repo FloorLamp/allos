@@ -25,7 +25,7 @@ import {
 } from "@/lib/journal-format";
 import {
   suggestNextSet,
-  deloadFormSuggestion,
+  contextualNextSet,
   sessionBestSet,
   sessionWorkSets,
   sideSets,
@@ -316,9 +316,18 @@ export default function StrengthSets({
       units.weightUnit
     );
     // On a deload week for a routine lift, replace the progression with the deload-
-    // adjusted load (#923) — carried by the Use button, the set-1 ghost + focus-fill, and
-    // the plate-builder seed alike, since they all read this one `suggestion`.
-    return deloadFormSuggestion(base, p.name, deload);
+    // adjusted load — carried by the Use button, the set-1 ghost + focus-fill, and the
+    // plate-builder seed alike, since they all read this one `suggestion`. Routes through
+    // the ONE shared contextualNextSet (#1115 Fix B) so that ON THE DELOAD AXIS the form,
+    // the session card, the detail panel, and the coaching card can't disagree
+    // (#221/#923/#741). The OTHER modifier — the recovering-injury 0.6× temper (#838) — is
+    // applied on the server-resolved surfaces (coaching card, Training-overview session
+    // card, Analyze/detail panel) but NOT here: the live logger's client tree only receives
+    // `deloadContext` (isDeloadWeek + routineKeys), not the recovering-region set, so a
+    // recovering-injury lift can still seed a heavier load in the form than the Analyze
+    // deep-link recommends. Closing that gap needs the injury context threaded through the
+    // form the way `deloadContext` already is — a deferred follow-up.
+    return contextualNextSet(base, p.name, { deloadWeek: deload });
   };
   // Bilateral parts get one suggestion; per-side parts get an independent
   // suggestion per side (#335) — sessionBestSet already treats each side as its

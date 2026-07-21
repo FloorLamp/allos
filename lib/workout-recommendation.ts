@@ -606,6 +606,44 @@ export function resolveTodayRoutineDayIndex(routine: {
   return ((routine.position % n) + n) % n;
 }
 
+// The active routine's prescribed LOADING cadence (#1115 Fix A): how many consecutive
+// STRENGTH (loading) days the plan itself schedules, and how many loading days it
+// prescribes per rotation cycle. A routine day with a non-empty `focus` is a loading
+// (strength) day; a `kind:"cardio"` day (empty `focus`) is ACTIVE RECOVERY by intent
+// and breaks the run. The rotation is CIRCULAR (a sequence, not a calendar), so the
+// consecutive run wraps the cycle boundary. Null when there's no routine, it has no
+// days, or it has no loading days at all (a cardio-only plan) — callers then keep the
+// generic thresholds. Used to lift the schedule-based rest triggers so a 6-day PPL
+// can't trip a generic 4-day rule (only DEVIATION from the plan warrants a
+// schedule-based rest nudge). Pure over the day shapes.
+export function routineLoadingCadence(
+  routine: ActiveRoutineInput | null | undefined
+): { maxConsecutiveLoadingDays: number; loadingDaysPerCycle: number } | null {
+  if (!routine || routine.days.length === 0) return null;
+  const loading = routine.days.map((d) => d.focus.length > 0);
+  const n = loading.length;
+  const total = loading.filter(Boolean).length;
+  if (total === 0) return null;
+  // Every day is a loading day — the run never breaks within the rotation, so it's a
+  // full lap (a rest is taken OUTSIDE the sequence, which the model doesn't encode).
+  if (total === n) {
+    return { maxConsecutiveLoadingDays: n, loadingDaysPerCycle: n };
+  }
+  // Longest circular run of consecutive loading days: walk two laps and cap the run at
+  // n (a run can't exceed one full lap once a non-loading day exists).
+  let best = 0;
+  let run = 0;
+  for (let i = 0; i < n * 2; i++) {
+    if (loading[i % n]) {
+      run += 1;
+      best = Math.max(best, Math.min(run, n));
+    } else {
+      run = 0;
+    }
+  }
+  return { maxConsecutiveLoadingDays: best, loadingDaysPerCycle: total };
+}
+
 // Resolve TODAY'S routine day from the rotation cursor, filling each slot with the
 // first candidate the user can actually do (equipment de-rank — a no-op when the
 // registry is empty, so a gym user / cold start gets the first listed candidate)

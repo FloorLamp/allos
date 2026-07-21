@@ -7,6 +7,7 @@ import {
 import {
   isLoadingDay,
   loadingDates,
+  dayPlannedIntent,
   DAY_LOADING_DURATION_FLOOR_MIN,
   type PolarizedSplit,
 } from "../training-zones";
@@ -131,5 +132,51 @@ describe("loadingDates", () => {
         { date: "2026-07-11", durationMin: 10 }, // short → dropped
       ])
     ).toEqual(["2026-07-08", "2026-07-10"]);
+  });
+});
+
+// #1115 Fix A′: the subjective session rating (activities.intensity) collapsed to the
+// plannedIntent seam isLoadingDay honors. Easy → non-loading even long/un-zoned; hard →
+// loading even under the duration floor; moderate/NULL → defer to observed signals.
+describe("dayPlannedIntent (#1115 Fix A′)", () => {
+  it("maps a self-rated easy day to easy (breaks the loading streak)", () => {
+    expect(dayPlannedIntent(["easy"])).toBe("easy");
+    // …and isLoadingDay then treats a long un-zoned easy ride as NON-loading.
+    expect(
+      isLoadingDay({
+        date: "2026-07-10",
+        durationMin: 120,
+        plannedIntent: dayPlannedIntent(["easy"]),
+      })
+    ).toBe(false);
+  });
+
+  it("maps a self-rated hard day to hard (loads even under the duration floor)", () => {
+    expect(dayPlannedIntent(["hard"])).toBe("hard");
+    expect(
+      isLoadingDay({
+        date: "2026-07-10",
+        durationMin: 12, // below the 30-min floor
+        plannedIntent: dayPlannedIntent(["hard"]),
+      })
+    ).toBe(true);
+  });
+
+  it("leaves moderate / unrated as null (defer to observed signals)", () => {
+    expect(dayPlannedIntent(["moderate"])).toBeNull();
+    expect(dayPlannedIntent([null])).toBeNull();
+    expect(dayPlannedIntent([])).toBeNull();
+    expect(dayPlannedIntent([undefined])).toBeNull();
+  });
+
+  it("aggregates a multi-activity day: any hard wins, else easy needs no moderate", () => {
+    expect(dayPlannedIntent(["easy", "hard"])).toBe("hard"); // a hard session is fatigue
+    expect(dayPlannedIntent(["easy", null])).toBe("easy"); // pure easy day
+    expect(dayPlannedIntent(["easy", "moderate"])).toBeNull(); // defer when mixed with moderate
+  });
+
+  it("is case/whitespace tolerant (GROUP_CONCAT / stored casing)", () => {
+    expect(dayPlannedIntent([" Easy "])).toBe("easy");
+    expect(dayPlannedIntent(["HARD"])).toBe("hard");
   });
 });

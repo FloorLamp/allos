@@ -29,6 +29,7 @@ import {
 } from "@/lib/muscle-coverage";
 import { bandVerdict, bandPresentation } from "@/lib/muscle-volume-bands";
 import {
+  contextualNextSet,
   deloadAdjust,
   nextSetText,
   recentCardioPRs,
@@ -37,6 +38,8 @@ import {
   suggestNextSet,
   type CardioPR,
 } from "@/lib/coaching";
+import { regionForExercise } from "@/lib/lifts";
+import { RECOVERING_LOAD_FACTOR } from "@/lib/injury-model";
 import { loadingDates } from "@/lib/training-zones";
 import { recommendNextWorkout } from "@/lib/workout-recommendation";
 import { getActiveRoutine, getRoutineCycleStatus } from "@/lib/routines";
@@ -240,16 +243,25 @@ export default async function OverviewSection() {
           .filter((s) => s.exercise)
           .map((s) => {
             const base = s.seed ? suggestNextSet(s.seed, wu) : null;
-            // On a deload week run the slot's sets + load target through the ONE
-            // shared deloadAdjust (#741) so this card and the recommendation copy
-            // can't disagree; otherwise the ordinary prescription.
-            const { sets, nextSet } = session.deloadWeek
+            // The slot's LOAD target runs through the ONE shared contextualNextSet
+            // (#1115 Fix B): deload week (#741) AND recovering-injury temper (#838) —
+            // this closes the today's-session card's injury-temper gap (#923 closed it
+            // for deload, left it open for injury). The SET COUNT still reduces on a
+            // deload week via the same deloadAdjust math (shared, #741).
+            const slotRegion = regionForExercise(s.exercise);
+            const nextSet = contextualNextSet(base, s.exercise, {
+              deloadWeek: session.deloadWeek,
+              recoveringRegion:
+                slotRegion != null && nw.temperedRegions.includes(slotRegion),
+              recoveringFactor: RECOVERING_LOAD_FACTOR,
+            });
+            const sets = session.deloadWeek
               ? deloadAdjust({
                   exercise: s.exercise,
                   sets: s.sets,
-                  nextSet: base,
-                })
-              : { sets: s.sets, nextSet: base };
+                  nextSet: null,
+                }).sets
+              : s.sets;
             const reps =
               s.repMin === s.repMax ? `${s.repMax}` : `${s.repMin}–${s.repMax}`;
             return {

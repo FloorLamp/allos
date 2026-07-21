@@ -7,6 +7,7 @@ import { currentStreak } from "../streak";
 import { classifyPolarization, type PolarizedSplit } from "../training-zones";
 import {
   recommendNextWorkout,
+  routineLoadingCadence,
   type ActiveRoutineInput,
   type DatedExercise,
   type NextWorkout,
@@ -24,10 +25,9 @@ import type { WeightUnit } from "../settings";
 import type { AppRoute } from "../hrefs";
 import { regionForExercise, type MuscleRegion } from "../lifts";
 import {
-  deloadAdjust,
+  contextualNextSet,
   suggestNextSet,
   nextSetText,
-  temperRecoveringNextSet,
   type NextSet,
   type NextSetSeed,
 } from "./strength";
@@ -423,6 +423,27 @@ export function restRecommendation(
   // (#754). Falls back to all activity dates when the load-aware set isn't supplied.
   const loadDates = input.loadingDates ?? trainingDates;
 
+  // Routine-aware cadence (#1115 Fix A): the schedule-derived thresholds are lifted to
+  // the active routine's PRESCRIBED loading cadence, so a plan that legitimately
+  // schedules many consecutive strength days (a 6-day PPL) can't trip a generic 4-day
+  // rule — only DEVIATION from the plan (one more consecutive loading day, or a fuller
+  // week than prescribed) warrants a schedule-based rest nudge. The physiological
+  // triggers above (sleep, RHR) are routine-independent and already returned. Off a
+  // routine, the generic thresholds stand unchanged.
+  const cadence = routineLoadingCadence(input.activeRoutine);
+  const effConsecutive = cadence
+    ? Math.max(
+        th.overtrainingConsecutiveDays,
+        cadence.maxConsecutiveLoadingDays + 1
+      )
+    : th.overtrainingConsecutiveDays;
+  const effWindowActive = cadence
+    ? Math.max(
+        th.overtrainingWindowActiveDays,
+        Math.min(cadence.loadingDaysPerCycle + 1, th.overtrainingWindowDays + 1)
+      )
+    : th.overtrainingWindowActiveDays;
+
   // Poor sleep — only when sleep data exists. When a personal night-to-night
   // spread is known, the deficit that counts as "poor" widens to at least
   // `multiplier × spread`, so a variable sleeper needs a real drop (not just a
@@ -493,7 +514,7 @@ export function restRecommendation(
   // satisfiable. (The dashboard StreakWidget that #222 pinned this against has since
   // been removed; the weekly recap's movement-based streak is a separate signal.)
   const streak = currentStreak(today, loadDates);
-  if (streak >= th.overtrainingConsecutiveDays) {
+  if (streak >= effConsecutive) {
     return restRec(
       "rest-overtraining",
       `You've trained ${streak} days in a row`,
@@ -506,7 +527,7 @@ export function restRecommendation(
     today,
     th.overtrainingWindowDays
   );
-  if (active >= th.overtrainingWindowActiveDays) {
+  if (active >= effWindowActive) {
     return restRec(
       "rest-load",
       `You've trained ${active} of the last ${th.overtrainingWindowDays} days`,
@@ -605,9 +626,13 @@ function strengthExerciseRec(
   tempered = false
 ): Recommendation {
   const base = suggestNextSet(exercise, wu);
-  const nextSet = tempered
-    ? temperRecoveringNextSet(base, exercise.exercise, RECOVERING_LOAD_FACTOR)
-    : base;
+  // Route through the ONE shared modifier composition (#1115 Fix B) so this card and
+  // every other next-set surface can't disagree. This path carries only the injury
+  // temper (routine-gap/habit strength isn't deload-gated).
+  const nextSet = contextualNextSet(base, exercise.exercise, {
+    recoveringRegion: tempered,
+    recoveringFactor: RECOVERING_LOAD_FACTOR,
+  });
   return {
     id: `strength-${exercise.exercise}`,
     kind: "strength",
@@ -866,28 +891,17 @@ function formatWorkoutItem(
       const label = nw.session?.label ?? "Today's session";
       const deload = nw.session?.deloadWeek ?? false;
       const rawNext = item.exercise ? suggestNextSet(item.exercise, wu) : null;
-      // Recovering-injury tempering (#838) composes BEFORE deload: an injury week is not a
-      // deload week (distinct states), and if both apply the lighter of the two wins by
-      // sequencing. Applied when the lead lift's region is recovering.
-      const baseNext: NextSet | null =
-        item.exercise && regionTempered(item.exercise.exercise, nw)
-          ? temperRecoveringNextSet(
-              rawNext,
-              item.exercise.exercise,
-              RECOVERING_LOAD_FACTOR
-            )
-          : rawNext;
-      // Deload week (#741): shave the lead lift's load through the ONE shared
-      // deloadAdjust and phrase it, so this compact card agrees with the
-      // Training-overview session card and the Telegram nudge.
-      const nextSet =
-        deload && item.exercise
-          ? deloadAdjust({
-              exercise: item.exercise.exercise,
-              sets: 0,
-              nextSet: baseNext,
-            }).nextSet
-          : baseNext;
+      // Recovering-injury tempering (#838) + deload week (#741) through the ONE shared
+      // composition (#1115 Fix B): temper-then-deload so a lift that is both gets the
+      // lighter stacked result, and this compact card agrees with the Training-overview
+      // session card, the live logger, the detail panel, and the Telegram nudge.
+      const nextSet = item.exercise
+        ? contextualNextSet(rawNext, item.exercise.exercise, {
+            recoveringRegion: regionTempered(item.exercise.exercise, nw),
+            recoveringFactor: RECOVERING_LOAD_FACTOR,
+            deloadWeek: deload,
+          })
+        : rawNext;
       const list = nw.exercises.join(", ");
       const prefix = deload ? "Deload week — " : "";
       return {

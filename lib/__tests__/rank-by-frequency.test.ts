@@ -1,5 +1,44 @@
 import { describe, expect, it } from "vitest";
-import { rankByFrequency, rankByRecentFrequency } from "../rank-by-frequency";
+import {
+  rankByFrequency,
+  rankByRecentFrequency,
+  prioritizeRoutineSlots,
+} from "../rank-by-frequency";
+
+// #1115 Fix C: the picker floats today's prescribed routine slots to the front of the
+// already-frequency-ranked lift list, then keeps the frequency order for everything
+// else. Off a routine (empty priority) the order is byte-for-byte unchanged.
+describe("prioritizeRoutineSlots", () => {
+  const ranked = ["Squat", "Bench Press", "Deadlift", "Overhead Press", "Row"];
+
+  it("returns the list byte-for-byte off a routine (empty priority)", () => {
+    expect(prioritizeRoutineSlots(ranked, [])).toEqual(ranked);
+    expect(prioritizeRoutineSlots(ranked, [])).toBe(ranked); // same reference
+  });
+
+  it("floats the prescribed slots to the front in slot order, rest unchanged", () => {
+    // A "Push day": Bench + Overhead float ahead; Squat/Deadlift/Row keep their order.
+    expect(
+      prioritizeRoutineSlots(ranked, ["Bench Press", "Overhead Press"])
+    ).toEqual(["Bench Press", "Overhead Press", "Squat", "Deadlift", "Row"]);
+  });
+
+  it("matches case-insensitively and keeps the picker's own casing", () => {
+    expect(prioritizeRoutineSlots(ranked, ["bench press"])).toEqual([
+      "Bench Press",
+      "Squat",
+      "Deadlift",
+      "Overhead Press",
+      "Row",
+    ]);
+  });
+
+  it("skips a prescribed name the catalog doesn't list, de-dupes priority", () => {
+    expect(
+      prioritizeRoutineSlots(ranked, ["Deadlift", "Deadlift", "Nordic Curl"])
+    ).toEqual(["Deadlift", "Squat", "Bench Press", "Overhead Press", "Row"]);
+  });
+});
 
 describe("rankByFrequency", () => {
   it("keeps curated order when nothing has been logged", () => {

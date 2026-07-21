@@ -431,10 +431,12 @@ export interface DayLoadInput {
   // Total bounded session minutes on the day — the fallback signal when the HR split
   // is absent or too thin to trust.
   durationMin?: number | null;
-  // Optional DECLARED intent (routine day type / deload). When present it WINS over
-  // the observed signals: a planned easy/deload day is non-loading even with no HR
-  // data; a planned hard day is loading. Unused until #740/#741 supply it (issue #754
-  // ships observed-only, with the seam shaped for planned intent).
+  // Optional DECLARED intent. When present it WINS over the observed signals: a planned
+  // easy day is non-loading even with no HR data; a planned hard day is loading. First
+  // populated by the SUBJECTIVE session rating (`dayPlannedIntent` over
+  // `activities.intensity`, #1115 Fix A′). If a routine day-type is ALSO resolved for
+  // the day, the routine-declared intent is the plan of record and wins; the self-rating
+  // fills the (common) gap where no routine day-type is known.
   plannedIntent?: "easy" | "hard" | null;
 }
 
@@ -453,6 +455,31 @@ export function isLoadingDay(day: DayLoadInput): boolean {
     return day.durationMin >= DAY_LOADING_DURATION_FLOOR_MIN;
   }
   return true;
+}
+
+// The per-day DECLARED intent derived from finished sessions' SUBJECTIVE intensity
+// rating (`activities.intensity`: "easy" | "moderate" | "hard" | null) — #1115 Fix A′.
+// This POPULATES the long-dormant `plannedIntent` seam isLoadingDay already honors
+// (#754), the FIRST populator: a self-rated EASY day breaks the loading streak even
+// when long/un-zoned (the user's "cardio = rest," by FEEL, no zone model or routine
+// `kind` needed — #1122's capture finally reaches the rest engine here); a self-rated
+// HARD day counts as loading even under the duration floor; a MODERATE/unrated day
+// defers to the observed HR/duration signals (null — the deliberate 3→2-valued gap,
+// "moderate" never maps to "hard"). Per-day aggregation across multiple activities: any
+// HARD makes the day hard (a hard session is fatigue regardless of an easy one logged
+// alongside); else an EASY with no moderate present makes it easy; else null.
+export function dayPlannedIntent(
+  intensities: readonly (string | null | undefined)[]
+): "easy" | "hard" | null {
+  let sawEasy = false;
+  let sawModerate = false;
+  for (const raw of intensities) {
+    const v = raw?.trim().toLowerCase();
+    if (v === "hard") return "hard";
+    if (v === "easy") sawEasy = true;
+    else if (v === "moderate") sawModerate = true;
+  }
+  return sawEasy && !sawModerate ? "easy" : null;
 }
 
 // The subset of days that are LOADING (fatigue-accumulating), as a date list — the
