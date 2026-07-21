@@ -8,6 +8,11 @@ import { test, expect } from "@playwright/test";
 // no rows, so it's safe against the shared seeded DB. The seed ships a PPL program
 // whose most recent Push/Pull/Leg sessions land inside the trailing 7-day window, so
 // the coverage list (and its verdict chips) have content.
+//
+// Value->presence (one-question-one-computation): the band THRESHOLDS + bandVerdict
+// computation are pinned by lib/__tests__/muscle-volume-bands.test.ts (VOLUME_BANDS,
+// bandVerdict). This spec asserts the chip renders a verdict from the known set (the
+// on-element data-verdict marker) with matching human copy, never a threshold number.
 
 const VERDICTS = ["below", "within", "above", "untrained"];
 
