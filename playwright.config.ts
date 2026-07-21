@@ -92,9 +92,21 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   // The "github" reporter emits one workflow annotation per failure, so a red CI
   // run names its failing tests in the check-run annotations (readable via API)
-  // instead of only inside the job log.
+  // instead of only inside the job log. The "json" report feeds
+  // scripts/e2e-flake-report.mjs: with `retries: 1`, a test that failed then
+  // passed on retry gets status "flaky" — a confirmed flake detection that
+  // previously evaporated into a green run. CI surfaces those in the job summary
+  // so the flake backlog is measured instead of masked. The json file lives in
+  // test-results/ (wiped by Playwright at run start, written at run end), NOT in
+  // playwright-report/ — the html reporter cleans that folder and ordering
+  // between the two would be fragile.
   reporter: process.env.CI
-    ? [["list"], ["github"], ["html", { open: "never" }]]
+    ? [
+        ["list"],
+        ["github"],
+        ["html", { open: "never" }],
+        ["json", { outputFile: "test-results/e2e-results.json" }],
+      ]
     : "list",
   use: {
     baseURL: `http://localhost:${PORT}`,

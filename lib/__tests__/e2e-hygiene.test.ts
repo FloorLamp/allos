@@ -26,13 +26,25 @@ import { fileURLToPath } from "node:url";
 // discipline as the migration hash manifest). This is a per-file COUNT freeze,
 // not line numbers, so it survives ordinary edits.
 //
+// A THIRD frozen pattern (the fixture-ownership follow-through):
+//
+//   (iii) .first() — on a SHARED seeded surface (an offer list, a dose list, a
+//         review inbox) "the first row" is whatever a neighbor spec or a retry
+//         left on top, which the orchestration runbook calls the #1 recurring
+//         failure class. A .first() scoped to a spec-OWNED fixture is fine —
+//         mark that line with a `first-ok: <why>` comment and it is not
+//         counted. Everything else is frozen at today's per-file count; new
+//         unmarked occurrences fail. Prefer an exact locator (testid, unique
+//         marker text the spec planted) or a dedicated fixture login
+//         (e2e/fixture-logins.ts) over "whichever row is first".
+//
 // NOT mechanically enforced here (documented rule only — see
 // docs/internals/e2e-hygiene.md): exact-count assertions against SHARED-SEED
 // fixture rows ("2 today", "≥ 2 episode rows"). Detecting those syntactically
 // (a numeric literal inside a toContainText/toHaveCount against a seeded testid)
 // is too clever — it can't tell a shared-seed count from a spec's own
 // self-created fixture, so it would fire on legitimate dedicated-fixture asserts
-// and miss obfuscated ones. The honest scope is the two mechanically-detectable
+// and miss obfuscated ones. The honest scope is the three mechanically-detectable
 // anti-patterns above; the fixture-ownership rule lives in the doc and is a
 // review/convention gate, not a linter.
 
@@ -49,6 +61,11 @@ const SCAN_EXCLUDE = new Set(["helpers.ts"]);
 // couldn't see helper files AND couldn't see the options-arg form).
 const NETWORKIDLE_RE = /waitForLoadState\(\s*["']networkidle["']/g;
 const WAITFORTIMEOUT_RE = /\.waitForTimeout\(/g;
+const FIRST_RE = /\.first\(\)/g;
+// A `.first()` on a line carrying a `first-ok: <why>` comment is a reviewed,
+// spec-owned-fixture use and is excluded from the count (the same same-line
+// escape-marker shape as phi-scan's `phi-scan-ok`).
+const FIRST_OK_MARKER = "first-ok";
 
 // Frozen offenders as of #868 (per-file counts). Migrate an entry to
 // e2e/helpers.ts and LOWER its number here in the same PR; a fully-migrated file
@@ -85,6 +102,117 @@ const WAITFORTIMEOUT_ALLOW: Record<string, number> = {
   "profile-switch-toasts.spec.ts": 3,
 };
 
+// Frozen .first() offenders (per-file counts, `first-ok`-marked lines excluded)
+// as of the flaky-e2e hardening pass. Same immutable-downward discipline as the
+// two lists above: migrate a spec onto an exact locator / dedicated fixture and
+// LOWER its number in the same PR; a NEW unmarked .first() (or a new file) fails.
+const FIRST_ALLOW: Record<string, number> = {
+  "activity-equipment.spec.ts": 5,
+  "ai-settings.spec.ts": 4,
+  "allergen-cross-reactivity.spec.ts": 1,
+  "audit-log.spec.ts": 2,
+  "care-plan-appointment-offer.spec.ts": 1,
+  "condition-suggestion.spec.ts": 1,
+  "contrast-safety.spec.ts": 1,
+  "crisis-mental-health-visit.spec.ts": 4,
+  "cycle.spec.ts": 2,
+  "dashboard.spec.ts": 5,
+  "date-time-format-prefs.spec.ts": 10,
+  "dental.spec.ts": 2,
+  "dose-history.spec.ts": 9,
+  "dose-skip.spec.ts": 2,
+  "drug-allergy.spec.ts": 3,
+  "drug-interactions.spec.ts": 4,
+  "edit-lock-badge.spec.ts": 2,
+  "emergency-card.spec.ts": 3,
+  "encounters.spec.ts": 2,
+  "endurance-plans.spec.ts": 2,
+  "entry-ergonomics.spec.ts": 24,
+  "episode-med-reconcile.spec.ts": 2,
+  "equipment-manager.spec.ts": 1,
+  "equipment-registry.spec.ts": 1,
+  "exercise-guide.spec.ts": 4,
+  "food-drug-interactions.spec.ts": 3,
+  "food-slot-ranking.spec.ts": 4,
+  "form-fill-paths.spec.ts": 2,
+  "goal-metric-switch.spec.ts": 2,
+  "hearing.spec.ts": 2,
+  "home-location.spec.ts": 3,
+  "household-history.spec.ts": 4,
+  "ia-nutrition-medications.spec.ts": 1,
+  "illness-care.spec.ts": 1,
+  "illness-episode-followups.spec.ts": 29,
+  "illness-episode.spec.ts": 5,
+  "illness-front-door.spec.ts": 1,
+  "illness-round3.spec.ts": 6,
+  "immunizations.spec.ts": 2,
+  "import-dedup.spec.ts": 3,
+  "import-records-browser.spec.ts": 1,
+  "imported-temp-unit.spec.ts": 1,
+  "integrations-health-connect.spec.ts": 3,
+  "journal-provenance.spec.ts": 7,
+  "kids-growth.spec.ts": 2,
+  "live-workout.spec.ts": 1,
+  "longevity.spec.ts": 1,
+  "manual-temperature.spec.ts": 2,
+  "maps-links.spec.ts": 1,
+  "medication-monitoring.spec.ts": 1,
+  "medication-prefill.spec.ts": 12,
+  "medications-followups.spec.ts": 6,
+  "medications-page.spec.ts": 2,
+  "medications-ux-r2.spec.ts": 4,
+  "mobile-ui-polish.spec.ts": 8,
+  "mobility.spec.ts": 2,
+  "muscle-anatomy.spec.ts": 4,
+  "muscle-coverage.spec.ts": 2,
+  "muscle-volume-bands.spec.ts": 1,
+  "needs-attention-menu.spec.ts": 2,
+  "offsite-backup.spec.ts": 1,
+  "onboarding.spec.ts": 2,
+  "pace-tone.spec.ts": 1,
+  "palette-actions.spec.ts": 3,
+  "pgx-crosscheck.spec.ts": 1,
+  "preventive-nudge.spec.ts": 2,
+  "preventive-upcoming.spec.ts": 1,
+  "prn-family.spec.ts": 1,
+  "prn-quicklog.spec.ts": 3,
+  "records-page.spec.ts": 1,
+  "results-page.spec.ts": 3,
+  "review-inbox.spec.ts": 3,
+  "risk-factors.spec.ts": 2,
+  "routine-builder.spec.ts": 1,
+  "routine-deload.spec.ts": 1,
+  "routine-recommendation.spec.ts": 2,
+  "rpe-logging.spec.ts": 3,
+  "session-recap.spec.ts": 6,
+  "settings-ia.spec.ts": 1,
+  "share-link.spec.ts": 1,
+  "situations.spec.ts": 1,
+  "skin.spec.ts": 4,
+  "smoke.spec.ts": 8,
+  "smoking-history.spec.ts": 4,
+  "strength-standards.spec.ts": 3,
+  "supplement-add-reset.spec.ts": 1,
+  "symptom-helpers.ts": 2,
+  "symptom-log.spec.ts": 6,
+  "symptom-text-intake.spec.ts": 1,
+  "temperature-unit.spec.ts": 3,
+  "timeline-linked-context.spec.ts": 1,
+  "training-restriction.spec.ts": 1,
+  "training-zones.spec.ts": 1,
+  "trends-per-tab.spec.ts": 1,
+  "two-factor.spec.ts": 2,
+  "undo-delete.spec.ts": 3,
+  "unit-mislabel-review.spec.ts": 1,
+  "view-only-access.spec.ts": 1,
+  "vision.spec.ts": 3,
+  "visits-lifecycle.spec.ts": 3,
+  "weekly-recap.spec.ts": 2,
+  "weight-quick-add.spec.ts": 1,
+  "workout-heatmap.spec.ts": 1,
+  "workout-presence.spec.ts": 1,
+};
+
 function specFiles(): { name: string; text: string }[] {
   return fs
     .readdirSync(E2E_DIR)
@@ -102,21 +230,35 @@ function countMatches(text: string, re: RegExp): number {
 function checkPattern(
   label: string,
   re: RegExp,
-  allow: Record<string, number>
+  allow: Record<string, number>,
+  opts?: {
+    hint?: string;
+    // Lines matching this marker are excluded before counting (the first-ok escape).
+    excludeLineMarker?: string;
+  }
 ) {
   const files = specFiles();
   const seen = new Set<string>();
   const violations: string[] = [];
+  const hint =
+    opts?.hint ??
+    `New occurrences are banned — use e2e/helpers.ts (settledClick/followLink); ` +
+      `see docs/internals/e2e-hygiene.md.`;
 
   for (const { name, text } of files) {
-    const count = countMatches(text, re);
+    const marker = opts?.excludeLineMarker;
+    const scanText = marker
+      ? text
+          .split("\n")
+          .filter((line) => !line.includes(marker))
+          .join("\n")
+      : text;
+    const count = countMatches(scanText, re);
     const allowed = allow[name] ?? 0;
     seen.add(name);
     if (count > allowed) {
       violations.push(
-        `${name}: ${count} ${label} (allowed ${allowed}). ` +
-          `New occurrences are banned — use e2e/helpers.ts (settledClick/followLink); ` +
-          `see docs/internals/e2e-hygiene.md.`
+        `${name}: ${count} ${label} (allowed ${allowed}). ${hint}`
       );
     } else if (count < allowed) {
       violations.push(
@@ -155,6 +297,17 @@ describe("e2e suite hygiene guard (issue #868)", () => {
       WAITFORTIMEOUT_RE,
       WAITFORTIMEOUT_ALLOW
     );
+  });
+
+  it("no NEW unmarked .first() in an e2e/*.ts (scope to an owned fixture, or mark first-ok)", () => {
+    checkPattern(".first()", FIRST_RE, FIRST_ALLOW, {
+      excludeLineMarker: FIRST_OK_MARKER,
+      hint:
+        `New .first() on a shared surface is banned — target a spec-owned fixture ` +
+        `via an exact locator (testid / marker text you planted / e2e/fixture-logins.ts), ` +
+        `or add a same-line \`first-ok: <why>\` comment for a reviewed, ` +
+        `owned-fixture use; see docs/internals/e2e-hygiene.md.`,
+    });
   });
 
   it("the blessed interaction module exists and exports settledClick + followLink", () => {

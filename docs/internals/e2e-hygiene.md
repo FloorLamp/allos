@@ -1,6 +1,6 @@
 # E2E suite hygiene — fixtures, settled interactions, retries=0 lane
 
-Status: **partial** (infrastructure shipped — helpers module, hygiene guard, changed-spec CI lane, the frozen app clock #990; suite-wide migration of grandfathered offenders is a follow-up, per #868)
+Status: **partial** (infrastructure shipped — helpers module, hygiene guard incl. the `.first()` count-freeze, changed-spec CI lane, the frozen app clock #990, the sharded CI e2e matrix + on-demand full-suite workflow + pass-on-retry flake telemetry; suite-wide migration of grandfathered offenders is a follow-up, per #868)
 
 Maintainer documentation for the Playwright suite's reliability discipline (issue
 #868). The user-facing "how to run e2e" note lives in AGENTS.md's browser-e2e
@@ -91,6 +91,24 @@ value also fails, with a message to lower the allowlist — so the list only eve
 shrinks as offenders migrate. Migrating a spec and dropping its allowlist entry
 happen in the same PR.
 
+#### The `.first()` count-freeze (the fixture-ownership follow-through)
+
+The guard freezes a THIRD pattern: **`.first()`**. On a SHARED seeded surface (an
+offer list, a dose list, a review inbox) "the first row" is whatever a neighbor
+spec or a retry of this spec left on top — the orchestration runbook's #1
+recurring failure class. The full fixture-ownership rule stays a convention gate
+(below — exact-count assertions can't be linted honestly), but `.first()` IS
+mechanically detectable, so its growth is frozen with the same immutable-downward
+per-file allowlist: a NEW unmarked `.first()` fails CI.
+
+A `.first()` that is genuinely scoped to a spec-OWNED fixture (a list the spec
+created and cleans, a locator already narrowed to a unique planted marker) is
+legitimate — mark that line with a same-line `first-ok: <why>` comment (the
+`phi-scan-ok` escape-marker shape) and it is excluded from the count. The
+preferred fix when migrating an offender is an exact locator (testid, unique
+marker text the spec planted) or a dedicated fixture login
+(`e2e/fixture-logins.ts`), not a marker.
+
 ### Not mechanically enforced — the fixture-ownership rule (class 1)
 
 Detecting an "exact-count assertion against a shared-seed row" syntactically is
@@ -179,10 +197,43 @@ absent from `.env.example`. `bootTasks` (`lib/migrations/boot-tasks.ts`) logs a
 `WARN [clock]` on every boot when it is set, so a misconfigured production instance
 running on a frozen clock is loudly visible.
 
+## Fix (e) — sharded CI, the on-demand full-suite workflow, and flake telemetry
+
+Three CI-shape changes from the flaky-e2e hardening pass (the merge-latency side
+of the problem; the orchestration runbook `docs/orchestration.md` documents the
+pain they replace):
+
+- **The CI e2e job is a 4-way shard matrix.** Each shard is a fresh runner + a
+  fresh `npx playwright test --shard=N/4` invocation → fresh app/demo servers per
+  chunk. That roughly halves the per-push e2e wall-clock AND removes the
+  long-lived-server cumulative degradation the runbook documents for
+  single-process full runs (its local finding — "each shard finishes clean where
+  one process degrades" — applied to CI). The changed-spec scrutiny lane moved to
+  its own `e2e-changed` job so its zero-retry verdict lands fast without waiting
+  on the matrix. Shared setup (Node, deps, Chromium, `next build`) lives in the
+  composite action `.github/actions/e2e-setup/action.yml` so the jobs can't
+  drift.
+- **`.github/workflows/e2e-full.yml` (workflow_dispatch) is the fresh-runner
+  full-suite gate.** Dispatch it against any branch (defaults: `--retries=0`,
+  4-way sharded; `repeat_each` up to 3 for suite-wide hardening). It
+  institutionalizes the runbook's conclusion that "CI on a fresh GitHub runner is
+  the ultimate authority" — use it in place of a local full-suite run before a
+  migration PR or big UI merge, and skip the local degradation-vs-regression
+  triage entirely.
+- **Pass-on-retry flake telemetry.** The full suite still runs `retries: 1`, and
+  a pass-on-retry ships a GREEN run — previously a confirmed flake detection
+  thrown away. The CI config now adds a `json` reporter
+  (`test-results/e2e-results.json`), and every full-suite shard runs
+  `scripts/e2e-flake-report.mjs`, which posts the run's `status: "flaky"` tests
+  to the job summary. Telemetry only (always exit 0): it measures the flake
+  backlog — file or fix what it surfaces — and is the precondition for the
+  retries-drop decision below.
+
 ## Follow-up (out of scope for the infra PR)
 
 Migrate the grandfathered offenders incrementally, one spec per PR (the #860
-Track-B incremental-migration discipline), lowering the allowlist each time until
-it is empty; then migrate the cross-ownership anatomy assertions (class 2) onto
-shared per-component driver helpers (the `e2e/symptom-helpers.ts` extraction
-pattern); then revisit dropping full-suite retries once the flake surface is small.
+Track-B incremental-migration discipline), lowering the allowlists (`networkidle`
+/ `waitForTimeout` / `.first()`) each time until they are empty; then migrate the
+cross-ownership anatomy assertions (class 2) onto shared per-component driver
+helpers (the `e2e/symptom-helpers.ts` extraction pattern); then revisit dropping
+full-suite retries once the flake reports (fix e) read consistently clean.
