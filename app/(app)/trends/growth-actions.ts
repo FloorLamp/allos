@@ -12,8 +12,8 @@ import { normalizeGrowthInput } from "@/lib/growth-input";
 // them (lib/import-persist) — so a manually entered value feeds the WHO/CDC growth
 // charts and the height/head-circ Body charts identically to an imported reading.
 //
-// A point metric uses a fixed midnight window for the date, so the natural key
-// (profile_id, metric, source='manual', start_time, end_time) is stable across
+// A point metric uses a fixed midnight start for the date, so the natural key
+// (profile_id, metric, source='manual', origin=NULL, start_time) is stable across
 // re-entries: logging the same date again CORRECTS that day rather than stacking a
 // second point. source='manual' also means an integration/document push (which
 // carries its own source) never reads or clobbers a manual row.
@@ -27,7 +27,7 @@ function upsertManualSample(
   db.prepare(
     `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
        VALUES (?, 'manual', ?, ?, ?, ?, ?)
-     ON CONFLICT(profile_id, metric, source, start_time, end_time) DO UPDATE SET
+     ON CONFLICT DO UPDATE SET
        value = excluded.value, date = excluded.date`
   ).run(profileId, metric, date, ts, ts, value);
 }

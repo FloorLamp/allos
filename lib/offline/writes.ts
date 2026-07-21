@@ -154,9 +154,9 @@ export function insertBodyMetric(
 // ── vitals quick-add ────────────────────────────────────────────────────────────
 
 // Insert-or-update a manual daily metric sample (sleep/HRV) — one row per date so a
-// re-entry corrects rather than duplicates. Identical to the vitals action's upsert:
-// source='manual' with a fixed midnight window makes the natural key stable, and the
-// `source` in the UNIQUE key keeps a Health Connect push from ever touching it.
+// re-entry corrects rather than duplicates. source='manual', origin=NULL, and a
+// fixed midnight start make the natural key stable, while `source` keeps a Health
+// Connect push from ever touching it.
 function upsertManualSample(
   profileId: number,
   metric: string,
@@ -167,7 +167,7 @@ function upsertManualSample(
   db.prepare(
     `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
        VALUES (?, 'manual', ?, ?, ?, ?, ?)
-     ON CONFLICT(profile_id, metric, source, start_time, end_time) DO UPDATE SET
+     ON CONFLICT DO UPDATE SET
        value = excluded.value, date = excluded.date`
   ).run(profileId, metric, date, ts, ts, value);
 }
