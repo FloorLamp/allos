@@ -5,7 +5,8 @@ import { test, expect } from "@playwright/test";
 // coverage mode on Training → Overview beside the #736 list (which stays — the
 // figure is additive, never replacing the accessible list). Assertions are
 // structural (stable data-testid / per-muscle data-muscle + data-state
-// attributes), never pixel-based. Read-only against the shared seeded DB.
+// attributes), with bounding-box checks only for the activity-card layout this
+// spec owns. Read-only against the shared seeded DB.
 
 test("per-exercise anatomy renders in the detail panel guide section (#737)", async ({
   page,
@@ -59,14 +60,55 @@ test("per-session anatomy renders on a strength session's journal card, absent f
   const pushCard = page.locator(".card", { hasText: "Push day" }).first();
   await expect(pushCard).toBeVisible();
 
-  const session = pushCard.getByTestId("session-muscles");
+  const visualBox = pushCard.getByTestId("activity-visuals");
+  await expect(visualBox).toBeVisible();
+  await expect(visualBox).toHaveClass(/rounded-lg/);
+  await expect(visualBox).toHaveClass(/border/);
+  const visualBounds = await visualBox.boundingBox();
+  const detailBounds = await pushCard
+    .getByTestId("activity-parts")
+    .boundingBox();
+  expect(visualBounds).not.toBeNull();
+  expect(detailBounds).not.toBeNull();
+  expect(visualBounds!.x).toBeGreaterThan(detailBounds!.x);
+  expect(visualBounds!.width).toBeLessThan(detailBounds!.width);
+  expect(detailBounds!.y).toBeLessThan(visualBounds!.y + visualBounds!.height);
+
+  // The shared right-hand slot starts at the same card-top baseline for a
+  // muscle figure and for a richer Strava card whose summary wraps differently.
+  const stravaCard = page.locator(".card", {
+    hasText: "Strava morning ride",
+  });
+  const [pushBounds, stravaBounds, stravaVisualBounds] = await Promise.all([
+    pushCard.boundingBox(),
+    stravaCard.boundingBox(),
+    stravaCard.getByTestId("activity-visuals").boundingBox(),
+  ]);
+  expect(pushBounds).not.toBeNull();
+  expect(stravaBounds).not.toBeNull();
+  expect(stravaVisualBounds).not.toBeNull();
+  expect(visualBounds!.y - pushBounds!.y).toBeCloseTo(
+    stravaVisualBounds!.y - stravaBounds!.y,
+    0
+  );
+  const session = visualBox.getByTestId("session-muscles");
   await expect(session).toBeVisible();
-  // The accompanying TEXT list (never color-only) names the worked muscles.
-  await expect(session).toContainText("Chest");
 
   const figure = session.getByTestId("muscle-anatomy");
   await expect(figure).toBeVisible();
   await expect(figure).toHaveAttribute("data-mode", "session");
+  await expect(figure).toHaveAttribute(
+    "aria-label",
+    /muscles this session worked/
+  );
+  await expect(figure.locator("text")).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileVisualBounds = await visualBox.boundingBox();
+  const mobileFigureBounds = await figure.boundingBox();
+  expect(mobileVisualBounds).not.toBeNull();
+  expect(mobileFigureBounds).not.toBeNull();
+  expect(mobileVisualBounds!.height).toBeCloseTo(128, 0);
+  expect(mobileFigureBounds!.height).toBeLessThanOrEqual(112);
   // Bench Press works the chest; the figure marks it as worked this session.
   await expect(figure.locator('[data-muscle="chest"]')).toHaveAttribute(
     "data-state",
