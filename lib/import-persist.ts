@@ -186,6 +186,8 @@ export function clearImportedDocumentRows(
     "procedures",
     "imaging_studies",
     "immunizations",
+    "optical_prescriptions",
+    "dental_procedures",
     "illness_episodes",
   ]) {
     db.prepare(
@@ -288,6 +290,8 @@ export function moveImportedDocumentRows(
       "procedures",
       "imaging_studies",
       "immunizations",
+      "optical_prescriptions",
+      "dental_procedures",
       "illness_episodes",
     ]) {
       db.prepare(

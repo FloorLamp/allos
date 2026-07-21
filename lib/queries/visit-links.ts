@@ -8,12 +8,17 @@ import {
   type EpisodeRange,
   type EpisodeVisitSuggestion,
   type VisitLinkDomain,
+  type CreateVisitDomain,
+  type CreateVisitCandidate,
   stableToken,
   episodeToken,
   visitLinkSignature,
   suggestForRecord,
   suggestForEncounter,
   suggestForEpisode,
+  shouldOfferCreateVisit,
+  CREATE_VISIT_DOMAINS,
+  CREATE_VISIT_ENCOUNTER_KEY,
 } from "../visit-link-suggest";
 
 // The DB read/derive + decision-persistence layer for record ↔ visit and episode ↔
@@ -89,6 +94,23 @@ const RECORD_DOMAINS: Record<
     dateExpr: "t.date",
     providerExpr: "t.provider_id",
     labelExpr: "t.vaccine",
+    externalIdExpr: "t.external_id",
+  },
+  // #1099 completes the #1050 update-note set: optical prescriptions + dental
+  // procedures gain encounter_id (migration 089) and become linkable/suggestable like
+  // the others, and they seed the "Create a visit from this record?" affordance.
+  optical: {
+    table: "optical_prescriptions",
+    dateExpr: "t.issued_date",
+    providerExpr: "t.provider_id",
+    labelExpr: "COALESCE(t.brand, t.kind)",
+    externalIdExpr: "t.external_id",
+  },
+  dental: {
+    table: "dental_procedures",
+    dateExpr: "t.procedure_date",
+    providerExpr: "t.provider_id",
+    labelExpr: "t.name",
     externalIdExpr: "t.external_id",
   },
 };
@@ -423,6 +445,251 @@ export function linkedRowsForEncounter(
   return out;
 }
 
+// ── "Create a visit from this record?" (#1099) ───────────────────────────────────
+//
+// The inverse of the link flow: a visit-implying record (optical Rx / completed dental
+// procedure / imaging study) dated D with NO encounter on D can seed a skeleton
+// encounter. The pure decision is shouldOfferCreateVisit; this layer gathers the
+// current rows and, on accept, creates + links atomically. Provenance
+// (source='derived-from-record', a derived external_id) marks the row so it's
+// distinguishable from an imported/manual visit and a later real import is
+// identifiable.
+
+// Extra per-domain gate for the CREATE offer only (NOT the #1050 link universe): a
+// 'planned'/'watch' dental procedure hasn't happened, so it implies no past visit —
+// only a completed one does. Optical Rx (a written Rx always implies an exam) and
+// imaging (a dated study was performed) need no gate.
+const CREATE_EXTRA: Partial<Record<CreateVisitDomain, string>> = {
+  dental: "t.status = 'completed'",
+};
+
+// The derived encounter's TYPE text per source domain. The `type` is what feeds the
+// preventive concept map, so "Eye exam" / "Dental exam" match the vision_exam /
+// dental_cleaning name synonyms — a derived vision visit satisfies vision_exam via the
+// normal encounter path (#1099/#1098). Imaging has no preventive rule, so its type is
+// a neutral, honest visit label.
+const DERIVED_ENCOUNTER_TYPE: Record<CreateVisitDomain, string> = {
+  optical: "Eye exam",
+  dental: "Dental exam",
+  imaging: "Imaging",
+};
+
+export interface CreateVisitOffer {
+  domain: CreateVisitDomain;
+  id: number;
+  label: string;
+  date: string;
+}
+
+function sameDayEncounterCount(profileId: number, date: string): number {
+  return (
+    db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM encounters WHERE profile_id = ? AND date = ?`
+      )
+      .get(profileId, date) as { n: number }
+  ).n;
+}
+
+// Has the user declined the "create a visit" offer for this record (the `create`
+// sentinel decision, keyed on the record's stable token so it survives reprocess)?
+function isCreateDeclined(
+  profileId: number,
+  domain: CreateVisitDomain,
+  recToken: string
+): boolean {
+  return !!db
+    .prepare(
+      `SELECT 1 FROM visit_link_decisions
+        WHERE profile_id = ? AND domain = ? AND encounter_key = ?
+          AND target_key = ? AND decision = 'declined' LIMIT 1`
+    )
+    .get(profileId, domain, CREATE_VISIT_ENCOUNTER_KEY, recToken);
+}
+
+// Read one unlinked, dated, create-eligible record (applies the per-domain gate).
+function getCreateCandidate(
+  profileId: number,
+  domain: CreateVisitDomain,
+  id: number
+): (CreateVisitCandidate & { providerId: number | null }) | null {
+  const c = RECORD_DOMAINS[domain];
+  const extra = CREATE_EXTRA[domain];
+  const row = db
+    .prepare(
+      `SELECT t.id, ${c.externalIdExpr} AS external_id, ${c.dateExpr} AS date,
+              ${c.providerExpr} AS providerId, ${c.labelExpr} AS label
+         FROM ${c.table} t
+        WHERE t.profile_id = ? AND t.id = ? AND t.encounter_id IS NULL
+              AND ${c.dateExpr} IS NOT NULL
+              ${extra ? `AND ${extra}` : ""}`
+    )
+    .get(profileId, id) as
+    | {
+        id: number;
+        external_id: string | null;
+        date: string;
+        providerId: number | null;
+        label: string | null;
+      }
+    | undefined;
+  return row
+    ? {
+        domain,
+        id: row.id,
+        external_id: row.external_id,
+        date: row.date,
+        label: row.label ?? "",
+        providerId: row.providerId,
+      }
+    : null;
+}
+
+// The single-record create offer (record detail / import-review), or null when the
+// record is missing/linked/undated, an encounter already exists that day (#1050 owns
+// it), or the offer was declined.
+export function createVisitOfferForRecord(
+  profileId: number,
+  domain: CreateVisitDomain,
+  id: number
+): CreateVisitOffer | null {
+  const rec = getCreateCandidate(profileId, domain, id);
+  if (!rec) return null;
+  const recToken = stableToken({ id: rec.id, external_id: rec.external_id });
+  const count = sameDayEncounterCount(profileId, rec.date!);
+  if (
+    !shouldOfferCreateVisit(
+      rec,
+      count,
+      isCreateDeclined(profileId, domain, recToken)
+    )
+  )
+    return null;
+  return { domain, id: rec.id, label: rec.label, date: rec.date! };
+}
+
+// Every create-a-visit offer, optionally limited to ONE domain (each record section
+// renders only its own domain's offers) and/or to the rows a single document produced
+// (the import-review surface, #1099).
+export function createVisitOffers(
+  profileId: number,
+  only?: CreateVisitDomain,
+  documentId?: number
+): CreateVisitOffer[] {
+  const out: CreateVisitOffer[] = [];
+  for (const domain of only ? [only] : CREATE_VISIT_DOMAINS) {
+    const c = RECORD_DOMAINS[domain];
+    const extra = CREATE_EXTRA[domain];
+    const rows = db
+      .prepare(
+        `SELECT t.id, ${c.externalIdExpr} AS external_id, ${c.dateExpr} AS date,
+                ${c.labelExpr} AS label
+           FROM ${c.table} t
+          WHERE t.profile_id = ? AND t.encounter_id IS NULL
+                AND ${c.dateExpr} IS NOT NULL
+                ${extra ? `AND ${extra}` : ""}
+                ${documentId ? "AND t.document_id = ?" : ""}`
+      )
+      .all(...(documentId ? [profileId, documentId] : [profileId])) as {
+      id: number;
+      external_id: string | null;
+      date: string;
+      label: string | null;
+    }[];
+    for (const r of rows) {
+      const rec: CreateVisitCandidate = {
+        domain,
+        id: r.id,
+        external_id: r.external_id,
+        date: r.date,
+        label: r.label ?? "",
+      };
+      const recToken = stableToken({ id: r.id, external_id: r.external_id });
+      const count = sameDayEncounterCount(profileId, r.date);
+      if (
+        shouldOfferCreateVisit(
+          rec,
+          count,
+          isCreateDeclined(profileId, domain, recToken)
+        )
+      ) {
+        out.push({ domain, id: r.id, label: r.label ?? "", date: r.date });
+      }
+    }
+  }
+  return out;
+}
+
+// ACCEPT: create the skeleton encounter from the record AND link the record, in ONE
+// writeTx. Returns the new encounter id, or null when the record is
+// missing/linked/undated/gated-out or an encounter already exists that day (the guard,
+// re-checked under the write lock so a concurrent import can't race a duplicate in).
+export function createVisitFromRecord(
+  profileId: number,
+  domain: CreateVisitDomain,
+  recordId: number
+): number | null {
+  return writeTx(() => {
+    const rec = getCreateCandidate(profileId, domain, recordId);
+    if (!rec || !rec.date) return null;
+    // GUARD (safety, race-safe): never fabricate when an encounter already exists
+    // that day — defer to #1050's link/picker.
+    if (sameDayEncounterCount(profileId, rec.date) > 0) return null;
+
+    const externalId = `derived:${domain}:${recordId}`;
+    const encId = Number(
+      db
+        .prepare(
+          `INSERT INTO encounters
+             (profile_id, date, type, provider_id, source, external_id)
+           VALUES (?, ?, ?, ?, 'derived-from-record', ?)`
+        )
+        .run(
+          profileId,
+          rec.date,
+          DERIVED_ENCOUNTER_TYPE[domain],
+          rec.providerId,
+          externalId
+        ).lastInsertRowid
+    );
+
+    const table = RECORD_DOMAINS[domain].table;
+    db.prepare(
+      `UPDATE ${table} SET encounter_id = ? WHERE id = ? AND profile_id = ?`
+    ).run(encId, recordId, profileId);
+
+    // Durable 'linked' decision (reprocess re-apply), keyed on the two stable tokens —
+    // the same accounting linkRecordToEncounter records.
+    const encToken = stableToken({ id: encId, external_id: externalId });
+    const recToken = recordTokenById(profileId, domain, recordId);
+    if (recToken)
+      upsertDecision(profileId, domain, encToken, recToken, "linked");
+    return encId;
+  });
+}
+
+// DECLINE: remember the "create a visit" decision so the prompt never re-nags. Keyed
+// on the record's STABLE token (the create sentinel on the encounter side), so it
+// survives the delete-and-reinsert reprocess (#203).
+export function declineCreateVisit(
+  profileId: number,
+  domain: CreateVisitDomain,
+  recordId: number
+): boolean {
+  return writeTx(() => {
+    const recToken = recordTokenById(profileId, domain, recordId);
+    if (!recToken) return false;
+    upsertDecision(
+      profileId,
+      domain,
+      CREATE_VISIT_ENCOUNTER_KEY,
+      recToken,
+      "declined"
+    );
+    return true;
+  });
+}
+
 // ── Episode ↔ visit (#1053) ─────────────────────────────────────────────────────
 
 export function suggestionForEpisode(
@@ -563,6 +830,23 @@ export function reapplyVisitLinkDecisions(profileId: number): void {
     decision: "linked" | "declined";
   }[];
   for (const d of rows) {
+    // #1099 "create a visit" DECLINE decisions carry the `create` sentinel on the
+    // encounter side — there is no encounter to resolve or re-link. Keep the decision
+    // as long as its target record still exists; sweep it only when that record is
+    // gone (the same dead-row hygiene, #203).
+    if (d.encounter_key === CREATE_VISIT_ENCOUNTER_KEY) {
+      const targetId = resolveToken(
+        profileId,
+        domainTable(d.domain),
+        d.target_key
+      );
+      if (targetId == null) {
+        db.prepare(
+          `DELETE FROM visit_link_decisions WHERE id = ? AND profile_id = ?`
+        ).run(d.id, profileId);
+      }
+      continue;
+    }
     const encId = resolveToken(profileId, "encounters", d.encounter_key);
     const targetTable = domainTable(d.domain);
     const targetId = resolveToken(profileId, targetTable, d.target_key);

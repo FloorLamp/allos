@@ -2,8 +2,10 @@ import {
   getDentalProcedures,
   getDentalProcedureFollowUps,
   getProviderNames,
+  createVisitOffers,
 } from "@/lib/queries";
 import ProviderDatalist from "@/components/ProviderDatalist";
+import CreateVisitFromRecord from "@/components/visit-links/CreateVisitFromRecord";
 import DentalProcedureForm from "@/app/(app)/dental/DentalProcedureForm";
 import DentalProcedureList from "@/app/(app)/dental/DentalProcedureList";
 import { addDentalProcedure } from "@/app/(app)/dental/actions";
@@ -19,12 +21,19 @@ import { addDentalProcedure } from "@/app/(app)/dental/actions";
 export default function DentalSection({ profileId }: { profileId: number }) {
   const records = getDentalProcedures(profileId);
   const followUps = getDentalProcedureFollowUps(profileId);
+  // "Create a visit from this record?" (#1099): a completed procedure dated D with no
+  // encounter that day.
+  const createVisitOffersList = createVisitOffers(profileId, "dental");
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       {/* Shared provider picker options for the add + edit forms (#1088). */}
       <ProviderDatalist names={getProviderNames()} />
       <div className="min-w-0 space-y-4 lg:col-span-2">
+        <CreateVisitFromRecord
+          profileId={profileId}
+          offers={createVisitOffersList}
+        />
         <DentalProcedureList items={records} followUps={followUps} />
       </div>
 

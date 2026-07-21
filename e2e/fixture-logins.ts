@@ -495,3 +495,12 @@ export const VISITLINKS_PROFILE = "Visit Links (e2e)";
 export const E2E_LOGIN_TOASTS = "e2e_toasts";
 export const TOAST_SWITCH_A_PROFILE = "Toaster A (e2e)";
 export const TOAST_SWITCH_B_PROFILE = "Toaster B (e2e)";
+
+// #1099 — "Create a visit from this record?". A dedicated profile carrying ONE optical
+// prescription dated a day with NO encounter, so the create-a-visit prompt renders on
+// the Vision record card. The spec OWNS the profile (dedicated login), so accepting the
+// prompt (which mutates: creates an encounter + links the Rx) can't disturb any
+// shared-seed count. Idempotent under --repeat-each: the spec accepts only when the
+// prompt is still present, then asserts the created-visit end-state.
+export const E2E_LOGIN_CREATEVISIT = "e2e_createvisit";
+export const CREATEVISIT_PROFILE = "Create Visit (e2e)";

@@ -8,8 +8,11 @@ import {
   linkEpisodeToEncounter,
   declineEpisodeVisitLink,
   unlinkEpisodeFromEncounter,
+  createVisitFromRecord,
+  declineCreateVisit,
 } from "@/lib/queries";
 import type { VisitLinkDomain } from "@/lib/visit-link-suggest";
+import { isCreateVisitDomain } from "@/lib/visit-link-suggest";
 
 // Record ↔ visit and episode ↔ visit accept/decline/manual-link writes (#1050/#1053).
 // These are rendered as plain server-component <form action={…}> submits, so each
@@ -27,6 +30,8 @@ const RECORD_DOMAINS: ReadonlySet<string> = new Set([
   "procedure",
   "imaging",
   "immunization",
+  "optical",
+  "dental",
 ]);
 
 function recordDomain(
@@ -56,6 +61,7 @@ function parsePairs(
 function revalidateVisitLinks() {
   revalidatePath("/encounters", "layout");
   revalidatePath("/records");
+  revalidatePath("/results");
   revalidatePath("/medications", "layout");
   revalidatePath("/medical/episodes", "layout");
   revalidatePath("/");
@@ -171,6 +177,50 @@ export async function unlinkRecordVisitAction(
   const recordId = Number(formData.get("recordId"));
   if (domain && recordId) {
     unlinkRecordFromEncounter(profileId, domain, recordId);
+    revalidateVisitLinks();
+  }
+}
+
+// ── "Create a visit from this record?" (#1099) ───────────────────────────────────
+
+// Accept: create the skeleton encounter from the record AND link it (one writeTx in
+// the lib core). Only the three visit-implying create domains (optical/dental/imaging)
+// are honored.
+export async function createVisitFromRecordAction(
+  formData: FormData
+): Promise<void> {
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
+  const domain = String(formData.get("domain") ?? "");
+  const recordId = Number(formData.get("recordId"));
+  if (isCreateVisitDomain(domain) && recordId) {
+    createVisitFromRecord(profileId, domain, recordId);
+    revalidateVisitLinks();
+  }
+}
+
+// Decline: remember the "create a visit" decision so the prompt never re-nags.
+export async function declineCreateVisitAction(
+  formData: FormData
+): Promise<void> {
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
+  const domain = String(formData.get("domain") ?? "");
+  const recordId = Number(formData.get("recordId"));
+  if (isCreateVisitDomain(domain) && recordId) {
+    declineCreateVisit(profileId, domain, recordId);
     revalidateVisitLinks();
   }
 }

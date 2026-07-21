@@ -22,6 +22,7 @@ import {
   getDocumentAppointments,
   getDocumentMedications,
   getDocumentBodyRows,
+  createVisitOffers,
 } from "@/lib/queries";
 import { getUserFullName, getUnitPrefs } from "@/lib/settings";
 import { requireSession, getAccessibleProfiles } from "@/lib/auth";
@@ -31,6 +32,7 @@ import { Notice } from "@/components/Notice";
 import ImportDetailActions from "@/components/ImportDetailActions";
 import ReassignDocument from "@/components/ReassignDocument";
 import ExtractedRecords from "@/components/ExtractedRecords";
+import CreateVisitFromRecord from "@/components/visit-links/CreateVisitFromRecord";
 import ImportTabStrip from "@/components/ImportTabStrip";
 import ProducedListing from "@/components/ProducedListing";
 import ProviderDatalist from "@/components/ProviderDatalist";
@@ -250,6 +252,10 @@ export default async function ImportDetailPage(props: {
         )
       : [];
   const canonicalOptions = getCanonicalAutocomplete(profile.id);
+  // "Create a visit from this record?" (#1099), scoped to the records THIS document
+  // produced: a visit-implying optical/dental/imaging row dated D with no encounter
+  // that day. Read-time — an encounter imported alongside self-heals the prompt away.
+  const createVisitOffersList = createVisitOffers(profile.id, undefined, id);
   const src = `/medical/file/${id}`;
   const mime = doc.mime_type ?? "";
   const lower = doc.filename.toLowerCase();
@@ -285,6 +291,13 @@ export default async function ImportDetailPage(props: {
         }
       />
       <div className="space-y-6">
+        {/* "Create a visit from this record?" (#1099) — freshly imported
+            visit-implying records with no encounter that day. */}
+        <CreateVisitFromRecord
+          profileId={profile.id}
+          offers={createVisitOffersList}
+        />
+
         {/* Provenance */}
         <div className="card">
           <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">

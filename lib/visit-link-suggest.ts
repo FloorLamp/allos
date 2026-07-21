@@ -31,6 +31,8 @@ export type VisitLinkDomain =
   | "imaging"
   | "immunization"
   | "medication"
+  | "optical"
+  | "dental"
   | "episode";
 
 export type VisitLinkConfidence = "strong" | "medium";
@@ -222,4 +224,76 @@ export function suggestForEpisode(
   if (inRange.length === 0) return null;
   if (inRange.length === 1) return { encounter: inRange[0] };
   return { candidates: inRange };
+}
+
+// ── "Create a visit from this record?" (#1099) ───────────────────────────────────
+//
+// The INVERSE of #1050's link-to-existing: some records IMPLY a visit happened (an
+// optical Rx ⇒ an eye exam, a completed dental procedure ⇒ a dental visit, an imaging
+// study ⇒ a radiology visit) but no encounter row exists. This offers a one-tap
+// affordance to create a skeleton encounter from the record — NEVER a silent
+// auto-create (the #560/#817/#1053 never-fabricate posture).
+//
+// SCOPE: only the three visit-implying record types with a structured date + provider
+// (optical_prescriptions, dental_procedures, imaging_studies). Labs/vitals are
+// deliberately excluded — a lab draw's "visit" is often not a meaningful encounter.
+//
+// READ-TIME, no stored suggestion state (the #1050 stance). The prompt condition is
+// derived on render from the current rows, so a late-arriving encounter self-heals it
+// away. The ONLY stored state is the accept (the created encounter + its link) and the
+// DECLINE decision (visit_link_decisions with the `create` sentinel encounter_key).
+//
+// THE GUARD (safety): the prompt is SUPPRESSED whenever an encounter exists on date D.
+// Encounters carry no structured `kind` column — only free-text `type` — and #1050's
+// link/picker already fires for ANY same-day encounter (it does not kind-filter). So
+// keying the #1099 create-suppression on "any same-day encounter" makes create and
+// #1050's link/picker mutually exclusive by construction: a record shows EITHER
+// "Create a visit" (no same-day encounter) OR #1050's link/picker (≥1 same-day
+// encounter), never both. That directly realizes the issue's "then the correct
+// affordance is #1050's link suggestion" / "≥2 same-day → #1050's picker". A rare
+// wrong-kind same-day collision yields a declinable #1050 link, not a spurious create
+// (the conservative direction — never fabricate).
+
+// The record types that can seed a "create a visit" offer.
+export type CreateVisitDomain = "optical" | "dental" | "imaging";
+
+export const CREATE_VISIT_DOMAINS: readonly CreateVisitDomain[] = [
+  "optical",
+  "dental",
+  "imaging",
+] as const;
+
+export function isCreateVisitDomain(s: string): s is CreateVisitDomain {
+  return (CREATE_VISIT_DOMAINS as readonly string[]).includes(s);
+}
+
+// The sentinel encounter-side token for a "create a visit" DECLINE decision: there is
+// no encounter yet, so the decision is keyed (domain, `create`, <record stable
+// token>). `create` can never collide with a real encounter token (`ext:`/`id:`).
+export const CREATE_VISIT_ENCOUNTER_KEY = "create";
+
+// A visit-implying record eligible to seed an encounter (already UNLINKED — the caller
+// excludes rows whose encounter_id is set — and dated).
+export interface CreateVisitCandidate {
+  domain: CreateVisitDomain;
+  id: number;
+  external_id: string | null;
+  date: string | null; // YYYY-MM-DD
+  // A short human label for the UI (Rx kind, dental procedure name, imaging study).
+  label: string;
+}
+
+// Should we offer to CREATE a visit from this record? Pure decision over the current
+// rows. Offers only when the record is dated, NOT declined, and NO encounter exists on
+// its date (else #1050's link/picker owns it). `sameDayEncounterCount` is the number
+// of the profile's encounters dated on the record's date.
+export function shouldOfferCreateVisit(
+  rec: CreateVisitCandidate,
+  sameDayEncounterCount: number,
+  declined: boolean
+): boolean {
+  if (!rec.date) return false;
+  if (declined) return false;
+  if (sameDayEncounterCount > 0) return false;
+  return true;
 }
