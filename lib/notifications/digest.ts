@@ -8,7 +8,7 @@
 
 import type { NotificationMessage } from "./types";
 import type { ActivityType, SupplementKind } from "../types";
-import { fmtWeight } from "../units";
+import { fmtWeight, fmtDistance } from "../units";
 import { intakeWindowNoun, intakeItemNoun } from "./supplement-format";
 import { situationActivationLine } from "../situations";
 
@@ -107,7 +107,10 @@ export interface DigestModel {
 // Short key stat for an activity line: distance for cardio, else duration.
 function activityStat(a: DigestActivity): string {
   if (a.type === "cardio" && a.distanceKm != null) {
-    return ` — ${a.distanceKm} km`;
+    // Canonical km per the notification unit policy (a chat has no login-unit
+    // context), rounded via the shared formatter rather than the raw stored float
+    // (#1109) — matches the adjacent fmtWeight line.
+    return ` — ${fmtDistance(a.distanceKm, "km")}`;
   }
   if (a.durationMin != null) return ` — ${a.durationMin} min`;
   return "";

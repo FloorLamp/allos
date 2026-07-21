@@ -143,18 +143,77 @@ export function inMetricBounds(metric: string, value: number): boolean {
   return value >= b.min && value <= b.max;
 }
 
-// Convenience gate for the parsers: returns `value` when it is a finite, in-bounds
-// number, else null. Because the parsers already treat a null value as a
-// skipped/dropped record, wrapping a parsed value in this makes out-of-bounds
-// values fold into the EXISTING skip-and-count path with no extra branching — a
-// physiologically-impossible reading is dropped and reflected in the Review inbox's
-// "· N skipped" segment, exactly like a malformed one.
+// ---- storage precision for raw canonical floats (issue #1109) ----
+//
+// A provider payload delivers full-precision doubles — a Health Connect distance of
+// 32.397218025887694 km, an energy of 470.60464280472473 kcal, a Withings weight of
+// 70.4382 kg. Stored verbatim they leak up to 17 digits into any surface that trusts
+// the column: the morning digest ("32.397218025887694 km" to a family chat), the
+// reprocess-diff UI, CSV export, and every future formatter. Some boundaries already
+// round (Strava distance 2dp, document-extraction weight 2dp, Health Connect
+// body-fat/RHR), but two ingests (Health Connect distance/weight/energy and Withings
+// weight/body-composition) skipped it, so raw floats sat in storage. We fix the CLASS
+// at the ONE shared point every provider already funnels canonical values through —
+// boundedOrNull, below — so all providers store the same bounded precision and a new
+// provider inherits it for free (the "one question, one computation" rule). This is
+// canonical-value hygiene, NOT unit handling: display-unit conversion stays at the
+// display boundary (lib/units.ts) per the units convention.
+//
+// Keyed by the SAME metric identifier as METRIC_BOUNDS. A metric ABSENT here is
+// stored verbatim (rounding is opt-in, mirroring bounds): integer-valued metrics
+// (steps, resting_hr, BP, sleep minutes) and values a parser already rounds (glucose,
+// body temperature) need no entry. Distances round to 2dp (~10 m, matching Strava's
+// existing rule); masses (kg) to 2dp (10 g, matching document extraction); energy,
+// grams, and liters to 1dp.
+export const METRIC_ROUND_DP: Record<string, number> = {
+  // masses (kg) → 2dp / 10 g
+  weight_kg: 2,
+  lean_mass_kg: 2,
+  muscle_mass_kg: 2,
+  body_water_kg: 2,
+  bone_mass_kg: 2,
+  // distance (km) → 2dp / ~10 m
+  distance_km: 2,
+  // energy (kcal) → 1dp
+  active_kcal: 1,
+  total_kcal: 1,
+  nutrition_kcal: 1,
+  // fluids (L) → 1dp
+  hydration_l: 1,
+  // nutrients (g) → 1dp
+  protein_g: 1,
+  carbs_g: 1,
+  fat_g: 1,
+  sugar_g: 1,
+  sodium_g: 1,
+  fiber_g: 1,
+};
+
+// Round a canonical value to its metric's registered storage precision. An
+// unregistered metric — or a non-finite value — is returned unchanged. Deterministic,
+// so a re-ingest of the same raw reading yields the same stored value and the
+// SELECT-before-compare upserts still see equality (unchanged, not a spurious write).
+export function roundForMetric(metric: string, value: number): number {
+  const dp = METRIC_ROUND_DP[metric];
+  if (dp == null || !Number.isFinite(value)) return value;
+  const f = 10 ** dp;
+  return Math.round(value * f) / f;
+}
+
+// Convenience gate for the parsers: returns `value` (ROUNDED to the metric's storage
+// precision, above) when it is a finite, in-bounds number, else null. Because the
+// parsers already treat a null value as a skipped/dropped record, wrapping a parsed
+// value in this makes out-of-bounds values fold into the EXISTING skip-and-count path
+// with no extra branching — a physiologically-impossible reading is dropped and
+// reflected in the Review inbox's "· N skipped" segment, exactly like a malformed one.
+// The bounds test runs on the RAW value (rounding shifts it by at most half a quantum,
+// far inside the conservative envelopes), and the stored value is the rounded one.
 export function boundedOrNull(
   metric: string,
   value: number | null
 ): number | null {
   if (value == null) return null;
-  return inMetricBounds(metric, value) ? value : null;
+  return inMetricBounds(metric, value) ? roundForMetric(metric, value) : null;
 }
 
 // ---- timestamp sanity window ----
