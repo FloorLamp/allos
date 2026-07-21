@@ -31,7 +31,9 @@ async function confirmDelete(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await settledClick(
     page,
-    page.getByRole("dialog").getByRole("button", { name: "Delete", exact: true })
+    page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Delete", exact: true })
   );
 }
 
