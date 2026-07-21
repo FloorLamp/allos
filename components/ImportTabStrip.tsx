@@ -46,7 +46,7 @@ export default function ImportTabStrip({
       })}
       {providers > 0 && (
         <Link
-          href="/records#providers"
+          href="/records/care/providers"
           data-testid="import-providers-chip"
           title="Providers referenced by this import live in the shared registry."
           className="badge inline-flex items-center gap-1 bg-slate-100 text-slate-700 transition hover:bg-brand-100 hover:text-brand-700 dark:bg-ink-800 dark:text-slate-200 dark:hover:bg-brand-950 dark:hover:text-brand-300"

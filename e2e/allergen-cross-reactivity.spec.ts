@@ -11,7 +11,7 @@ import { test, expect } from "@playwright/test";
 test("Allergies page shows the birch cross-reactivity note (#153)", async ({
   page,
 }) => {
-  await page.goto("/records#allergies");
+  await page.goto("/records/problems");
 
   const panel = page.getByTestId("cross-reactivity");
   await expect(panel).toBeVisible();

@@ -1,48 +1,45 @@
 import { test, expect } from "@playwright/test";
+import { followLink } from "./helpers";
 
-// The merged Results page (#1042 phase 5): the Biomarkers / Imaging / Genomics
-// index pages fold into ONE stacked-section page at real anchors
-// (/results#biomarkers, #imaging, #genomics), the removed index routes
-// 308-redirect there (query strings preserved), and the per-biomarker DETAIL
-// route (/biomarkers/view) survives at its own URL. Section visibility mirrors
-// the nav's predicate: none of the three constituent leaves carried a nav gate,
-// so all three sections always render (each with its own empty state) — there is
-// deliberately NO hidden-section case to assert.
+// The Results surface (#1079): the Biomarkers / Imaging / Genomics result stores as
+// route-per-tab (`/results/<tab>`), superseding the #1042 stacked-section page. A
+// `ResultsTabs` underline strip navigates between them; bare `/results` redirects to
+// `/results/biomarkers`; the removed index routes 308-redirect to the tab routes
+// (query preserved); the per-biomarker DETAIL route (/biomarkers/view) survives.
 //
 // Fixture hygiene (#868): read-only against the shared seeded admin profile
-// (profile 1 owns labs, imaging studies, and genomic variants via scripts/
-// seed.ts). Presence-only assertions — never exact counts of shared-seed rows.
+// (profile 1 owns labs, imaging studies, and genomic variants via scripts/seed.ts).
+// Presence-only assertions — never exact counts of shared-seed rows.
 
-test("renders all three anchored sections with the seeded data (#1042)", async ({
+test("bare /results redirects to the Biomarkers tab and renders it (#1079)", async ({
   page,
 }) => {
   await page.goto("/results");
+  await expect(page).toHaveURL(/\/results\/biomarkers$/);
   await expect(
     page.getByRole("heading", { name: "Results", exact: true })
   ).toBeVisible();
-
-  // The anchor jump row links each section.
-  const jump = page.getByTestId("results-jump-links");
-  await expect(jump.getByRole("link", { name: "Biomarkers" })).toBeVisible();
-  await expect(jump.getByRole("link", { name: "Imaging" })).toBeVisible();
-  await expect(jump.getByRole("link", { name: "Genomics" })).toBeVisible();
-
-  // Biomarkers: the analyte browser rendered with seeded rows — the bounded
-  // table always shows its pagination footer (#114).
+  // The bounded biomarkers table always shows its pagination footer (#114).
   const biomarkers = page.getByTestId("results-biomarkers");
-  await expect(
-    biomarkers.getByRole("heading", { name: "Biomarkers", exact: true })
-  ).toBeVisible();
   await expect(biomarkers.getByTestId("biomarkers-pagination")).toContainText(
     "Showing"
   );
+});
 
-  // Imaging: the seeded knee MRI renders in the study list (label:
-  // "MRI Left Left Knee" — modality + laterality + region).
+test("the tab strip navigates route-per-tab to Imaging and Genomics (#1079)", async ({
+  page,
+}) => {
+  await page.goto("/results/biomarkers");
+  const tabs = page.getByTestId("results-tabs");
+  await expect(tabs.getByRole("link", { name: "Biomarkers" })).toBeVisible();
+
+  // Imaging tab → its own route + the seeded knee MRI in the study list.
+  await followLink(
+    page,
+    tabs.getByRole("link", { name: "Imaging" }),
+    /\/results\/imaging$/
+  );
   const imaging = page.getByTestId("results-imaging");
-  await expect(
-    imaging.getByRole("heading", { name: "Imaging", exact: true })
-  ).toBeVisible();
   await expect(
     imaging
       .getByTestId("imaging-study-list")
@@ -50,68 +47,67 @@ test("renders all three anchored sections with the seeded data (#1042)", async (
       .first()
   ).toBeVisible();
 
-  // Genomics: the seeded pharmacogenomic variant renders in the variant list.
-  const genomics = page.getByTestId("results-genomics");
+  // Genomics tab → its own route + the seeded pharmacogenomic variant.
+  await followLink(
+    page,
+    page.getByTestId("results-tabs").getByRole("link", { name: "Genomics" }),
+    /\/results\/genomics$/
+  );
   await expect(
-    genomics.getByRole("heading", { name: "Genomic variants", exact: true })
-  ).toBeVisible();
-  await expect(
-    genomics.getByTestId("genomic-variant-list").getByText("CYP2C19").first()
+    page
+      .getByTestId("results-genomics")
+      .getByTestId("genomic-variant-list")
+      .getByText("CYP2C19")
+      .first()
   ).toBeVisible();
 });
 
-test("the removed index routes 308-redirect to their anchored sections (#1042)", async ({
+test("the removed index routes 308-redirect to their tab routes (#1079)", async ({
   page,
 }) => {
-  // Request-level assertion — no per-route Chromium navigation. Each removed index
-  // route answers a 308 whose Location IS the anchored /results section (Next's
-  // config-level redirect fires before auth; page.request shares the session
-  // cookies anyway). The coverage here is the redirect MAP; the rendered target
-  // sections are asserted by the "renders all three anchored sections" sibling test
-  // above.
+  // Request-level assertion — each removed index route answers a 308 whose Location
+  // IS the tab route (Next's config-level redirect fires before auth; page.request
+  // shares the session cookies anyway).
   const redirects = [
-    { from: "/biomarkers", anchor: "biomarkers" },
-    { from: "/imaging", anchor: "imaging" },
-    { from: "/genomics", anchor: "genomics" },
+    { from: "/biomarkers", to: "/results/biomarkers" },
+    { from: "/imaging", to: "/results/imaging" },
+    { from: "/genomics", to: "/results/genomics" },
   ];
   for (const r of redirects) {
     const res = await page.request.get(r.from, { maxRedirects: 0 });
     expect(res.status(), r.from).toBe(308);
-    expect(res.headers()["location"], r.from).toBe(`/results#${r.anchor}`);
+    expect(res.headers()["location"], r.from).toBe(r.to);
   }
 
   // Query strings ride through the redirect — old biomarker deep links keep their
-  // ?q= filter on the way to the merged section.
+  // ?q= filter on the way to the Biomarkers tab.
   const withQuery = await page.request.get("/biomarkers?q=non-hdl", {
     maxRedirects: 0,
   });
   expect(withQuery.status()).toBe(308);
-  expect(withQuery.headers()["location"]).toBe("/results?q=non-hdl#biomarkers");
+  expect(withQuery.headers()["location"]).toBe("/results/biomarkers?q=non-hdl");
 });
 
-test("the per-biomarker detail route survives at /biomarkers/view (#1042)", async ({
+test("the per-biomarker detail route survives at /biomarkers/view (#1079)", async ({
   page,
 }) => {
-  // Only the INDEX pages folded — the detail/series page keeps its route, and
-  // its back-link points at the merged section.
+  // Only the INDEX pages folded — the detail/series page keeps its route, and its
+  // back-link points at the Biomarkers tab.
   await page.goto("/biomarkers/view?name=" + encodeURIComponent("Glucose"));
   await expect(
     page.getByRole("heading", { name: "Glucose", exact: true })
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: /Back to biomarkers/ })
-  ).toHaveAttribute("href", "/results#biomarkers");
+  ).toHaveAttribute("href", "/results/biomarkers");
 });
 
-test("the Medical nav group shows one Results leaf in place of the three old ones (#1042)", async ({
+test("the Medical nav group shows one Results leaf in place of the three old ones (#1079)", async ({
   page,
 }) => {
-  // Being on /results (a Medical child) force-expands the group — the children
-  // are asserted with zero interaction flake (the nav-consolidation pattern).
-  await page.goto("/results");
+  await page.goto("/results/biomarkers");
   const nav = page.locator("aside nav");
   await expect(nav.getByRole("link", { name: "Results" })).toBeVisible();
-  await expect(nav.getByRole("link", { name: "Biomarkers" })).toHaveCount(0);
   await expect(nav.getByRole("link", { name: "Imaging" })).toHaveCount(0);
   await expect(nav.getByRole("link", { name: "Genomics" })).toHaveCount(0);
 });

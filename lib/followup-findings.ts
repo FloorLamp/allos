@@ -89,7 +89,7 @@ const IMAGING_DOMAIN: FollowUpDomain<ImagingStudy> = {
   loadRecords: getImagingStudies,
   recordId: (s) => s.id,
   sourceIdOf: (c) => c.source_imaging_study_id,
-  hrefFor: () => "/results#imaging",
+  hrefFor: () => "/results/imaging",
 };
 
 // Flagged labs: the follow-up's source flagged reading + its serial trend live on the
@@ -128,7 +128,7 @@ const DENTAL_DOMAIN: FollowUpDomain<DentalProcedure> = {
   loadRecords: getDentalProcedures,
   recordId: (p) => p.id,
   sourceIdOf: (c) => c.source_dental_procedure_id,
-  hrefFor: () => "/records#dental",
+  hrefFor: () => "/records/specialty/dental",
 };
 
 // Skin follow-up (#715 ask 3): a "watch this mole, recheck in 3 months" record on a
@@ -141,7 +141,7 @@ const SKIN_DOMAIN: FollowUpDomain<SkinLesion> = {
   loadRecords: getSkinLesions,
   recordId: (l) => l.id,
   sourceIdOf: (c) => c.source_skin_lesion_id,
-  hrefFor: () => "/records#skin",
+  hrefFor: () => "/records/specialty/skin",
 };
 
 // The follow-up items for ONE domain: every OPEN, linked (source_kind = domain.kind),

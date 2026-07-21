@@ -204,7 +204,7 @@ describe("row shapers", () => {
         onset_date: null,
         code: "I10",
       })
-    ).toMatchObject({ href: "/records#conditions", detail: "active · I10" });
+    ).toMatchObject({ href: "/records/problems", detail: "active · I10" });
     expect(
       allergyItem({
         id: 1,
@@ -213,7 +213,7 @@ describe("row shapers", () => {
         severity: "moderate",
         status: "active",
       })
-    ).toMatchObject({ href: "/records#allergies", title: "Penicillin" });
+    ).toMatchObject({ href: "/records/problems", title: "Penicillin" });
     expect(
       immunizationItem({
         id: 1,
@@ -221,10 +221,13 @@ describe("row shapers", () => {
         vaccine: "MMR",
         dose_label: "1",
       })
-    ).toMatchObject({ href: "/records#immunizations", date: "2020-05-01" });
+    ).toMatchObject({
+      href: "/records/history/immunizations",
+      date: "2020-05-01",
+    });
     expect(
       procedureItem({ id: 1, name: "Appendectomy", code: "44970", date: null })
-    ).toMatchObject({ href: "/records#procedures" });
+    ).toMatchObject({ href: "/records/history/procedures" });
     expect(
       familyHistoryItem({
         id: 1,
@@ -233,7 +236,7 @@ describe("row shapers", () => {
         onset_age: 55,
       })
     ).toMatchObject({
-      href: "/records#family-history",
+      href: "/records/care/overview",
       detail: "Father · onset age 55",
     });
     expect(
@@ -244,7 +247,7 @@ describe("row shapers", () => {
         planned_date: "2026-09-01",
         status: "planned",
       })
-    ).toMatchObject({ href: "/records#care-plan", date: "2026-09-01" });
+    ).toMatchObject({ href: "/records/care/overview", date: "2026-09-01" });
     expect(
       careGoalItem({
         id: 1,
@@ -252,7 +255,7 @@ describe("row shapers", () => {
         target_date: null,
         status: "active",
       })
-    ).toMatchObject({ href: "/records#health-goals" });
+    ).toMatchObject({ href: "/records/care/overview" });
     expect(
       medicationItem({ id: 1, name: "Lisinopril", kind: "medication" })
     ).toMatchObject({ href: "/medications", detail: "medication" });
@@ -322,7 +325,7 @@ describe("genomic variants (#709)", () => {
     // Detail is the reported classification only — no metabolizer/risk commentary.
     expect(item.detail).toBe("Pharmacogenomic");
     expect(item.date).toBe("2024-02-01");
-    expect(item.href).toBe("/results#genomics");
+    expect(item.href).toBe("/results/genomics");
   });
 
   it("shows the ACMG significance for a hereditary-risk variant", () => {
@@ -373,7 +376,7 @@ describe("imaging studies (#702)", () => {
       "MRI · Left · with contrast · Small joint effusion. No tear."
     );
     expect(item.date).toBe("2024-03-01");
-    expect(item.href).toBe("/results#imaging");
+    expect(item.href).toBe("/results/imaging");
   });
 
   it("shapes a non-contrast study with 'na' laterality omitted from label + detail", () => {

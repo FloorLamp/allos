@@ -47,7 +47,7 @@ export function conditionSuggestionsFor(
 // The review destination the suggestion links to (the problem list). The inline
 // "Add to conditions" confirm lives on the item; the title/CTA link points here so a
 // user can review the full list in context.
-const CONDITIONS_HREF: AppRoute = "/records#conditions";
+const CONDITIONS_HREF: AppRoute = "/records/problems";
 
 // The condition-suggestion review items for the Upcoming/hero surface. Banded "today"
 // (care tier → the act-now slice of the attention model), suppressible through the

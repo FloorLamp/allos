@@ -25,7 +25,7 @@ test.describe("record ↔ visit / episode ↔ visit linking (#1050/#1053)", () =
   });
 
   async function openTheVisit() {
-    await page.goto("/records#visits");
+    await page.goto("/records/history/visits");
     await followLink(
       page,
       page.getByRole("link", { name: /Office Visit/ }).first(), // first-ok: dedicated VISITLINKS fixture profile — the only Office Visit rows are this spec's own

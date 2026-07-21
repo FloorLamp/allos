@@ -40,7 +40,7 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
   test("stores a structured study and shows it factually", async ({ page }) => {
     test.slow();
 
-    await page.goto("/results#imaging");
+    await page.goto("/results/imaging");
     const form = page.getByTestId("imaging-study-form");
     await expect(form).toBeVisible();
 
@@ -104,7 +104,7 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
   }) => {
     test.slow();
 
-    await page.goto("/results#imaging");
+    await page.goto("/results/imaging");
     const form = page.getByTestId("imaging-study-form");
     await expect(form).toBeVisible();
 

@@ -113,7 +113,7 @@ test.describe("Household visit + illness history (issue #1009)", () => {
     await expect(page.getByTestId("household-history-promo")).toBeVisible();
 
     // Widen-to-household links on the per-person history surfaces.
-    await page.goto("/records#visits");
+    await page.goto("/records/history/visits");
     await expect(page.getByTestId("household-view-link")).toBeVisible();
     await page.goto("/medical/episodes");
     await expect(page.getByTestId("household-view-link")).toBeVisible();
@@ -150,7 +150,7 @@ test.describe("Household visit + illness history (issue #1009)", () => {
     // E2E_LOGIN_CHILD's sole profile is Riley → no household.
     const { page, close } = await loginAs(browser, E2E_LOGIN_CHILD);
 
-    await page.goto("/records#visits");
+    await page.goto("/records/history/visits");
     await expect(page.getByTestId("household-view-link")).toHaveCount(0);
     await page.goto("/medical/episodes");
     await expect(page.getByTestId("household-view-link")).toHaveCount(0);

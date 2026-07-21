@@ -314,7 +314,7 @@ test("temporary appointment absence never becomes a saved hidden preference", as
 
     // Once data exists, the same preference makes the widget reappear. This is
     // the regression: the old save path persisted an absent appointment as hidden.
-    await page.goto("/records#visits");
+    await page.goto("/records/history/visits");
     const upcoming = page.getByTestId("visits-upcoming");
     await upcoming.getByLabel("Reason / title").fill(AVAILABILITY_APPOINTMENT);
     await upcoming.getByRole("button", { name: "Add", exact: true }).click();

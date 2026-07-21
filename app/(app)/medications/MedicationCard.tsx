@@ -697,13 +697,13 @@ export default function MedicationCard({
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                 <Link
-                  href={`/results?q=${encodeURIComponent(monitoringLabs[0])}#biomarkers`}
+                  href={`/results/biomarkers?q=${encodeURIComponent(monitoringLabs[0])}`}
                   className="font-medium text-brand-600 hover:underline dark:text-brand-400"
                 >
                   View results
                 </Link>
                 <Link
-                  href={`/results?name=${encodeURIComponent(monitoringLabs[0])}#add-result`}
+                  href={`/results/biomarkers?new=1&name=${encodeURIComponent(monitoringLabs[0])}#add-result`}
                   className="font-medium text-brand-600 hover:underline dark:text-brand-400"
                 >
                   Add {monitoringLabs[0]} result

@@ -41,7 +41,7 @@ const CHECKLIST_TASKS: Record<OnboardingChecklistSuggestion, ChecklistItem> = {
   "preventive-care": {
     label: "Add your next appointment",
     benefit: "Keep the visit date and preparation details easy to find.",
-    href: "/records#visits",
+    href: "/records/history/visits",
   },
   caregiving: {
     label: "Review profiles and access",
@@ -52,7 +52,7 @@ const CHECKLIST_TASKS: Record<OnboardingChecklistSuggestion, ChecklistItem> = {
   explore: {
     label: "Add emergency details",
     benefit: "Keep essential information ready when you need it, even offline.",
-    href: "/records#emergency-card",
+    href: "/records/care/overview#emergency-card",
     mobileOnly: true,
   },
   notifications: {

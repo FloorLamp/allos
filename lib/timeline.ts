@@ -655,7 +655,7 @@ function collectEvents(
         title: c.name,
         subtitle: resolved ? "Resolved condition" : `${c.status} condition`,
         detail: c.notes,
-        href: "/records#conditions",
+        href: "/records/problems",
         sortTime: timeFromCreatedAt(c.created_at, tz),
         tone: resolved ? "good" : "default",
       },
@@ -702,7 +702,7 @@ function collectEvents(
           3
         ),
         detail: a.notes,
-        href: "/records#allergies",
+        href: "/records/problems",
         sortTime: timeFromCreatedAt(a.created_at, tz),
         tone: a.status === "active" ? "warn" : "default",
       },
@@ -811,7 +811,7 @@ function collectEvents(
         title: studyDisplayLabel(s),
         subtitle: compactList(meta, 4),
         detail: s.impression,
-        href: "/results#imaging",
+        href: "/results/imaging",
         sortTime: timeFromCreatedAt(s.created_at, tz),
       },
       options

@@ -9,7 +9,7 @@ import { test, expect } from "@playwright/test";
 test("recorded-allergies manager collapses cross-document twins (#384)", async ({
   page,
 }) => {
-  await page.goto("/records#allergies");
+  await page.goto("/records/problems");
   await expect(
     page.getByRole("cell", { name: "E2E Ragweed", exact: true })
   ).toHaveCount(1);

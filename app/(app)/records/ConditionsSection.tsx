@@ -42,8 +42,8 @@ export default function ConditionsSection({
             const isActive = active === f.key;
             const href: AppRoute =
               f.key === "all"
-                ? "/records#conditions"
-                : `/records?cond=${f.key}#conditions`;
+                ? "/records/problems"
+                : `/records/problems?cond=${f.key}`;
             return (
               <Link
                 key={f.key}

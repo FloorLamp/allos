@@ -18,7 +18,7 @@ const THERAPY_TITLE = "E2E therapy visit (crisis-spec)";
 const PHYSICAL_TITLE = "E2E cardiology check (crisis-spec)";
 
 async function bookVisit(page: Page, title: string, kind: string) {
-  await page.goto("/records#visits");
+  await page.goto("/records/history/visits");
   const upcoming = page.getByTestId("visits-upcoming");
   await expect(upcoming).toBeVisible();
   await upcoming.getByLabel("Reason / title").fill(title);

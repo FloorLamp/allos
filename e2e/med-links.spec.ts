@@ -32,7 +32,7 @@ test("medication detail shows the linked prescriber and 'For:' indication", asyn
 test("condition list shows 'Treated with:' the linked medication", async ({
   page,
 }) => {
-  await page.goto("/records#conditions");
+  await page.goto("/records/problems");
   const treated = page
     .getByTestId("condition-treated-with")
     .filter({ hasText: "Sertraline" });

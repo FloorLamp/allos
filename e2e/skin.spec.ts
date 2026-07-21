@@ -52,7 +52,7 @@ test.describe("Skin lesions — add → view → track recheck → photo → fil
   }) => {
     test.slow();
 
-    await page.goto("/records#skin");
+    await page.goto("/records/specialty/skin");
     const form = page.getByTestId("skin-lesion-form");
     await expect(form).toBeVisible();
 

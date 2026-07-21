@@ -59,7 +59,7 @@ test.describe("Providers registry", () => {
   test("index lists providers, searches, and links to a detail page", async ({
     page,
   }) => {
-    await page.goto("/records#providers");
+    await page.goto("/records/care/providers");
     // The grouped directory (#1055): the index may render grouped (org cards +
     // nested people) OR the flat `provider-list` fallback depending on whether the
     // active profile has affiliation edges. Assert the seeded providers appear at

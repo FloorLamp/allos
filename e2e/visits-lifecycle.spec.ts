@@ -31,7 +31,7 @@ test.describe("Visits lifecycle — book → complete → log visit → detail (
   }) => {
     test.slow();
 
-    await page.goto("/records#visits");
+    await page.goto("/records/history/visits");
     const upcoming = page.getByTestId("visits-upcoming");
     await expect(upcoming).toBeVisible();
 

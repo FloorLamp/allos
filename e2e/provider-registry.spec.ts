@@ -31,7 +31,7 @@ test.describe("Provider registry closeout", () => {
   test("grouped directory nests an affiliated individual with a specialty chip (#1055/#1056)", async ({
     page,
   }) => {
-    await page.goto("/records#providers");
+    await page.goto("/records/care/providers");
     // The org card for the affiliated practice, with its nested clinician.
     const orgCard = page
       .getByTestId("provider-org-card")
@@ -92,7 +92,7 @@ test.describe("Provider registry closeout", () => {
     await expect(page.getByTestId("provider-archived-badge")).toHaveCount(0);
 
     // Now it appears in the default directory (search reaches the flat list).
-    await page.goto("/records#providers");
+    await page.goto("/records/care/providers");
     await page.getByTestId("provider-search").fill("Retired Clinic (e2e)");
     await expect(
       page.getByTestId("provider-list").getByText("Retired Clinic (e2e)")
@@ -107,7 +107,7 @@ test.describe("Provider registry closeout", () => {
   test("a vision Rx can set a provider that then shows in its directory activity (#1088)", async ({
     page,
   }) => {
-    await page.goto("/records#vision");
+    await page.goto("/records/specialty/vision");
     const form = page.getByTestId("optical-prescription-form");
     await form.getByLabel("Prescriber").fill("Dr. Vision E2E");
     await settledClick(page, form.getByRole("button", { name: "Add" }));

@@ -215,7 +215,7 @@ test("a new profile reaches a useful dashboard through the metrics path", async 
       [
         "Stay ahead of appointments and preventive care",
         /Add an appointment/,
-        "/records#visits",
+        "/records/history/visits",
       ],
       ["Help care for a family member", /View the household/, "/household"],
       [
@@ -358,7 +358,7 @@ test("a new profile reaches a useful dashboard through the metrics path", async 
     await expect(checklist).toContainText("Add emergency details");
     await expect(
       checklist.getByRole("link", { name: /Add emergency details/ })
-    ).toHaveAttribute("href", "/records#emergency-card");
+    ).toHaveAttribute("href", "/records/care/overview#emergency-card");
     await page.setViewportSize({ width: 1280, height: 720 });
     await expect(checklist).toBeHidden();
     await page.setViewportSize({ width: 390, height: 844 });

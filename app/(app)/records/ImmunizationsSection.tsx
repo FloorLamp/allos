@@ -340,7 +340,7 @@ export default function ImmunizationsSection({
                 No antibody/titer results yet. They appear here automatically
                 when a lab report with immunity markers (e.g. Hepatitis B
                 Surface Antibody, Measles IgG) is added under{" "}
-                <Link href="/results#biomarkers" className="underline">
+                <Link href="/results/biomarkers" className="underline">
                   Biomarkers
                 </Link>
                 .

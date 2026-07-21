@@ -52,12 +52,12 @@ describe("biomarkerHitActions", () => {
     expect(action.label).toBe("Add result");
     expect(action.entityId).toBe(0);
     expect(action.href).toBe(
-      "/results?new=1&name=LDL%20Cholesterol#biomarkers"
+      "/results/biomarkers?new=1&name=LDL%20Cholesterol"
     );
   });
 
   it("URL-encodes a name with reserved characters", () => {
     const [action] = biomarkerHitActions("TG/HDL Ratio");
-    expect(action.href).toBe("/results?new=1&name=TG%2FHDL%20Ratio#biomarkers");
+    expect(action.href).toBe("/results/biomarkers?new=1&name=TG%2FHDL%20Ratio");
   });
 });

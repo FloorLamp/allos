@@ -82,7 +82,7 @@ describe("recentLabHighlights", () => {
       rec({ name: "Glucose", canonical_name: null }),
     ]);
     expect(row.name).toBe("Glucose");
-    expect(row.href).toBe("/results#biomarkers");
+    expect(row.href).toBe("/results/biomarkers");
   });
 
   it("does not mutate the input array order", () => {

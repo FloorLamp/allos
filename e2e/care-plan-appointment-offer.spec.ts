@@ -33,7 +33,7 @@ test.describe("Care-plan close-the-loop on appointment completion (#658)", () =>
 
     // Add an OPEN care-plan item (undated intentions still match — the matcher
     // only date-gates DATED items).
-    await page.goto("/records#care-plan");
+    await page.goto("/records/care/overview");
     await page.locator("#cp-desc-new").fill(ITEM);
     await page.locator("#cp-status-new").fill("planned");
     // Scope the "Add" to the Care plan section — the merged Health record page
@@ -45,7 +45,7 @@ test.describe("Care-plan close-the-loop on appointment completion (#658)", () =>
     await expect(page.getByText("Care-plan item saved")).toBeVisible();
 
     // Book a matching colonoscopy appointment (defaults to today → scheduled).
-    await page.goto("/records#visits");
+    await page.goto("/records/history/visits");
     const upcoming = page.getByTestId("visits-upcoming");
     await upcoming.getByLabel("Reason / title").fill(APPT);
     await upcoming.getByLabel("Kind (optional)").selectOption("screening");
@@ -75,7 +75,7 @@ test.describe("Care-plan close-the-loop on appointment completion (#658)", () =>
     await expect(page.getByText("Care-plan item marked done")).toBeVisible();
 
     // The item is now closed on the care-plan page.
-    await page.goto("/records#care-plan");
+    await page.goto("/records/care/overview");
     await expect(page.locator("tr").filter({ hasText: ITEM })).toContainText(
       "Completed"
     );

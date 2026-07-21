@@ -38,9 +38,9 @@ export default function MedicalFilters({
       else sp.delete(k);
     }
     const s = sp.toString();
-    // The browser lives in the #biomarkers section of /results (#1042 phase 5);
-    // keep the anchor so a filter change lands back on the section.
-    return s ? `/results?${s}#biomarkers` : "/results#biomarkers";
+    // The browser lives on the /results/biomarkers tab (#1079); a filter change
+    // rewrites its searchparams and lands back on the same tab.
+    return s ? `/results/biomarkers?${s}` : "/results/biomarkers";
   }
 
   return (

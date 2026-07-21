@@ -351,9 +351,9 @@ function pgxItems(profileId: number): UpcomingItem[] {
 
 // Where a contrast-safety note links, by the planned study's source row.
 const CONTRAST_SOURCE_HREF: Record<ContrastStudySource, AppRoute> = {
-  careplan: "/records#care-plan",
-  appointment: "/records#visits",
-  imaging: "/results#imaging",
+  careplan: "/records/care/overview",
+  appointment: "/records/history/visits",
+  imaging: "/results/imaging",
 };
 
 // Contrast-safety cross-check (issue #701): a PLANNED contrast imaging study (an
@@ -399,7 +399,7 @@ function dentalSafetyItems(profileId: number): UpcomingItem[] {
     domain: "dental-safety" as const,
     title: dentalSafetyTitle(hit),
     detail: dentalSafetyDetail(hit),
-    href: "/records#dental" as AppRoute,
+    href: "/records/specialty/dental" as AppRoute,
     dueDate: null,
     band: "today" as const,
     dueText: "Review",
@@ -574,7 +574,7 @@ function immunizationItems(profileId: number, today: string): UpcomingItem[] {
         domain: "immunization" as const,
         title: a.name,
         detail: a.nextLabel ?? a.detail,
-        href: "/records#immunizations",
+        href: "/records/history/immunizations",
         dueDate: null,
         band:
           a.status === "overdue" ? ("overdue" as const) : ("today" as const),
@@ -831,7 +831,7 @@ function appointmentItems(
         domain: "appointment" as const,
         title: "Medical appointment",
         detail: "Scheduled visit",
-        href: "/records#visits",
+        href: "/records/history/visits",
         dueDate,
       };
     }
@@ -841,7 +841,7 @@ function appointmentItems(
       domain: "appointment" as const,
       title: a.title?.trim() || a.provider_name || "Appointment",
       detail: parts.length ? parts.join(" · ") : "Scheduled visit",
-      href: "/records#visits",
+      href: "/records/history/visits",
       dueDate,
     };
   });

@@ -37,7 +37,7 @@ test.describe("Optical prescriptions — add → view → edit → delete (#697)
   }) => {
     test.slow();
 
-    await page.goto("/records#vision");
+    await page.goto("/records/specialty/vision");
     const form = page.getByTestId("optical-prescription-form");
     await expect(form).toBeVisible();
 
@@ -99,7 +99,7 @@ test.describe("Optical prescriptions — add → view → edit → delete (#697)
       }
     }
 
-    await page.goto("/records#vision");
+    await page.goto("/records/specialty/vision");
     const form = page.getByTestId("optical-prescription-form");
     await expect(form).toBeVisible();
 

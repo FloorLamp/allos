@@ -1,132 +1,232 @@
 import { test, expect } from "@playwright/test";
 import Database from "better-sqlite3";
+import { followLink } from "./helpers";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_NAV_MALE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
-// The merged Health record page (#1042 phase 6): the ten core Medical index
-// pages (Conditions, Allergies, Procedures, Immunizations, Family history,
-// Visits, Providers, Background, Care plan, Health goals) fold into
-// ONE stacked-section page at real anchors (/records#conditions, #visits, …), the
-// removed index routes 308-redirect there (query strings preserved), and the
-// DETAIL routes (/providers/[id], /encounters/[id], /immunizations/[vaccine])
-// survive at their own URLs. Section visibility mirrors the nav's predicate: none
-// of the ten constituent leaves carried a nav gate, so all ten sections
-// always render (each with its own empty state) — there is deliberately NO
-// hidden-section case to assert here. (Coverage gaps was briefly the #coverage
-// section here through #1042 phase 6; #1086 moved it to Data → Coverage — its
-// e2e lives in coverage-gaps.spec.ts now.)
+// The Health record surface (#1079): the 14 medical sections as two-level tabs —
+// group tab → section sub-tab → one pane — superseding the #1042 stacked-section
+// page. Grouping (FINALIZED): History (Visits · Procedures · Immunizations),
+// Problems (one stacked pane: Conditions + Allergies), Care (Overview stacked:
+// Background + Family history + Care plan + Health goals · Providers solo),
+// Specialty (Vision · Dental · Skin · Mental health; Vision/Dental data-gated). The
+// core rule: a pane renders ONE section, except a curated set of LIGHT sections may
+// share a stacked pane; heavy sections (the Immunizations chart, the Visits list,
+// the Providers directory) are NEVER stacked. Bare `/records` → `/records/history/
+// visits`. Removed index routes 308-redirect to the owning pane; DETAIL routes
+// survive.
 //
 // Fixture hygiene (#868): read-only against the shared seeded admin profile
-// (profile 1 owns conditions/allergies/immunizations/providers/… via
+// (profile 1 owns conditions/allergies/immunizations/providers/optical/dental via
 // scripts/seed.ts). Presence-only assertions — never exact counts of shared-seed
 // rows.
 
 const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
 
-// The ten sections in render order: their jump-link label, the section testid,
-// and the section-header heading text.
-const SECTIONS = [
-  { label: "Conditions", id: "conditions", heading: "Conditions" },
-  { label: "Allergies", id: "allergies", heading: "Allergies" },
-  { label: "Procedures", id: "procedures", heading: "Procedures" },
-  { label: "Immunizations", id: "immunizations", heading: "Immunizations" },
-  { label: "Family history", id: "family-history", heading: "Family history" },
-  { label: "Visits", id: "visits", heading: "Visits" },
-  { label: "Providers", id: "providers", heading: "Providers" },
-  { label: "Background", id: "background", heading: "Background" },
-  { label: "Care plan", id: "care-plan", heading: "Care plan" },
-  { label: "Health goals", id: "health-goals", heading: "Health goals" },
-] as const;
-
-// The removed index routes and the anchor each 308-redirects to. The anchor
-// differs from the route name for three: /encounters→#visits, /care-goals→
-// #health-goals, /medical/background→#background.
-const REDIRECTS = [
-  { from: "/conditions", anchor: "conditions" },
-  { from: "/allergies", anchor: "allergies" },
-  { from: "/procedures", anchor: "procedures" },
-  { from: "/immunizations", anchor: "immunizations" },
-  { from: "/family-history", anchor: "family-history" },
-  { from: "/encounters", anchor: "visits" },
-  { from: "/providers", anchor: "providers" },
-  { from: "/care-plan", anchor: "care-plan" },
-  { from: "/care-goals", anchor: "health-goals" },
-  { from: "/medical/background", anchor: "background" },
-] as const;
-
-test("renders all ten anchored sections with the seeded data (#1042)", async ({
+test("bare /records redirects to History › Visits and renders the Visits list (#1079)", async ({
   page,
 }) => {
   await page.goto("/records");
+  await expect(page).toHaveURL(/\/records\/history\/visits$/);
   await expect(
     page.getByRole("heading", { name: "Health record", exact: true })
   ).toBeVisible();
+  // A solo heavy pane renders alone — the Visits list, not stacked with others.
+  await expect(page.getByTestId("records-visits")).toBeVisible();
+  await expect(page.getByTestId("visits-past")).toBeVisible();
+  await expect(page.getByTestId("records-conditions")).toHaveCount(0);
+});
 
-  const jump = page.getByTestId("records-jump-links");
-  for (const s of SECTIONS) {
-    // Each section is linked in the sticky jump row …
-    await expect(jump.getByRole("link", { name: s.label })).toBeVisible();
-    // … and renders with its own section-header heading (scoped to the section so
-    // the heading name is unambiguous across the ten).
-    const section = page.getByTestId(`records-${s.id}`);
+test("two-level tabs navigate group → sub-tab across the panes (#1079)", async ({
+  page,
+}) => {
+  await page.goto("/records/history/visits");
+  const groups = page.getByTestId("records-group-tabs");
+  const subs = page.getByTestId("records-sub-tabs");
+
+  // History secondary strip: Visits · Procedures · Immunizations.
+  await followLink(
+    page,
+    subs.getByRole("link", { name: "Procedures" }),
+    /\/records\/history\/procedures$/
+  );
+  await expect(page.getByTestId("records-procedures")).toBeVisible();
+
+  // Immunizations — a solo heavy pane (its schedule chart) rendered alone.
+  await followLink(
+    page,
+    page.getByTestId("records-sub-tabs").getByRole("link", {
+      name: "Immunizations",
+    }),
+    /\/records\/history\/immunizations$/
+  );
+  await expect(page.getByTestId("records-immunizations")).toBeVisible();
+  await expect(page.getByTestId("records-procedures")).toHaveCount(0);
+
+  // Care group tab → its Overview pane.
+  await followLink(
+    page,
+    page.getByTestId("records-group-tabs").getByRole("link", { name: "Care" }),
+    /\/records\/care\/overview$/
+  );
+  // Care › Overview is a STACKED pane — all four light sections render together.
+  await expect(page.getByTestId("records-background")).toBeVisible();
+  await expect(page.getByTestId("records-family-history")).toBeVisible();
+  await expect(page.getByTestId("records-care-plan")).toBeVisible();
+  await expect(page.getByTestId("records-health-goals")).toBeVisible();
+
+  // Care › Providers — the heavy directory, a solo pane.
+  await followLink(
+    page,
+    page
+      .getByTestId("records-sub-tabs")
+      .getByRole("link", { name: "Providers" }),
+    /\/records\/care\/providers$/
+  );
+  await expect(page.getByTestId("records-providers")).toBeVisible();
+  await expect(page.getByTestId("records-background")).toHaveCount(0);
+
+  // Problems is a single stacked pane (no secondary strip): Conditions + Allergies.
+  await followLink(
+    page,
+    groups.getByRole("link", { name: "Problems" }),
+    /\/records\/problems$/
+  );
+  await expect(page.getByTestId("records-conditions")).toBeVisible();
+  await expect(page.getByTestId("records-allergies")).toBeVisible();
+  // A single-pane group shows no secondary strip.
+  await expect(page.getByTestId("records-sub-tabs")).toHaveCount(0);
+});
+
+test("the four specialty sub-tabs render for the seeded profile, with their forms + crisis line (#1079)", async ({
+  page,
+}) => {
+  test.slow();
+  // Profile 1 owns optical + dental rows, so Vision/Dental are relevant → all four
+  // specialty sub-tabs show.
+  await page.goto("/records/specialty/vision");
+  const subs = page.getByTestId("records-sub-tabs");
+  for (const label of ["Vision", "Dental", "Skin", "Mental health"]) {
+    await expect(subs.getByRole("link", { name: label })).toBeVisible();
+  }
+
+  await expect(
+    page.getByTestId("records-vision").getByTestId("optical-prescription-form")
+  ).toBeVisible();
+
+  await followLink(
+    page,
+    page.getByTestId("records-sub-tabs").getByRole("link", { name: "Dental" }),
+    /\/records\/specialty\/dental$/
+  );
+  await expect(
+    page.getByTestId("records-dental").getByTestId("dental-procedure-form")
+  ).toBeVisible();
+
+  await followLink(
+    page,
+    page.getByTestId("records-sub-tabs").getByRole("link", { name: "Skin" }),
+    /\/records\/specialty\/skin$/
+  );
+  await expect(
+    page.getByTestId("records-skin").getByTestId("skin-lesion-form")
+  ).toBeVisible();
+
+  // Mental health — its crisis line travels WITH the route (the safety contract is
+  // content, not route, #716/#1079).
+  await followLink(
+    page,
+    page.getByTestId("records-sub-tabs").getByRole("link", {
+      name: "Mental health",
+    }),
+    /\/records\/specialty\/mental-health$/
+  );
+  await expect(
+    page.getByTestId("records-mental-health").getByTestId("instruments-form")
+  ).toBeVisible();
+  await expect(
+    page
+      .getByTestId("records-mental-health")
+      .getByTestId("instrument-crisis-support-link")
+  ).toBeVisible();
+});
+
+test("a no-data profile hides the Vision/Dental sub-tabs AND its route re-gates (#1079)", async ({
+  browser,
+}) => {
+  // The male nav fixture owns no optical/dental rows (e2e/fixture-logins.ts), so the
+  // data-gated specialty sub-tabs drop while Skin/Mental health stay, and a direct
+  // hit on the gated route re-gates server-side (the SettingsTabs admin-tab
+  // discipline: a hidden tab is an unreachable route).
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_NAV_MALE,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    // Specialty group tab lands on the first VISIBLE pane (Skin) for this profile.
+    await page.goto("/records/specialty/skin");
+    const subs = page.getByTestId("records-sub-tabs");
+    await expect(subs.getByRole("link", { name: "Skin" })).toBeVisible();
     await expect(
-      section.getByRole("heading", { name: s.heading, exact: true })
+      subs.getByRole("link", { name: "Mental health" })
     ).toBeVisible();
+    await expect(subs.getByRole("link", { name: "Vision" })).toHaveCount(0);
+    await expect(subs.getByRole("link", { name: "Dental" })).toHaveCount(0);
+
+    // The gated route re-gates: a direct hit redirects to the first visible pane.
+    await page.goto("/records/specialty/vision");
+    await expect(page).toHaveURL(/\/records\/specialty\/skin$/);
+    await page.goto("/records/specialty/dental");
+    await expect(page).toHaveURL(/\/records\/specialty\/skin$/);
+  } finally {
+    await page.context().close();
   }
 });
 
-test("the sticky jump links scroll to their sections (#1042)", async ({
+test("the removed index routes 308-redirect to their owning panes (#1079)", async ({
   page,
 }) => {
-  await page.goto("/records");
-  // A jump link is a plain in-page hash anchor — a native click sets the hash and
-  // scrolls the (far-down) Providers section near the top.
-  await page
-    .getByTestId("records-jump-links")
-    .getByRole("link", { name: "Providers" })
-    .click();
-  await expect(page).toHaveURL(/#providers$/);
-  await expect
-    .poll(async () =>
-      page.evaluate(() => {
-        const el = document.getElementById("providers");
-        return el ? el.getBoundingClientRect().top : Number.POSITIVE_INFINITY;
-      })
-    )
-    .toBeLessThan(200);
-});
-
-test("the ten removed index routes 308-redirect to their anchored sections (#1042)", async ({
-  page,
-}) => {
-  // Request-level assertion — no per-route Chromium navigation. Each removed index
-  // route answers a 308 whose Location IS the anchored /records section (Next's
-  // config-level redirect fires before auth, and page.request shares the session
-  // context's cookies anyway). The coverage here is the redirect MAP; the rendered
-  // target sections are asserted by the "renders all ten anchored sections"
-  // sibling test above.
-  for (const r of REDIRECTS) {
+  // Request-level assertion — no per-route Chromium navigation. Each old route points
+  // at the pane that now owns its section.
+  const redirects = [
+    { from: "/conditions", to: "/records/problems" },
+    { from: "/allergies", to: "/records/problems" },
+    { from: "/procedures", to: "/records/history/procedures" },
+    { from: "/immunizations", to: "/records/history/immunizations" },
+    { from: "/family-history", to: "/records/care/overview" },
+    { from: "/encounters", to: "/records/history/visits" },
+    { from: "/providers", to: "/records/care/providers" },
+    { from: "/care-plan", to: "/records/care/overview" },
+    { from: "/care-goals", to: "/records/care/overview" },
+    { from: "/medical/background", to: "/records/care/overview" },
+    { from: "/vision", to: "/records/specialty/vision" },
+    { from: "/dental", to: "/records/specialty/dental" },
+    { from: "/skin", to: "/records/specialty/skin" },
+    { from: "/medical/instruments", to: "/records/specialty/mental-health" },
+    // Coverage gaps relocated to Data → Coverage (#1086).
+    { from: "/coverage", to: "/data?section=coverage" },
+  ];
+  for (const r of redirects) {
     const res = await page.request.get(r.from, { maxRedirects: 0 });
     expect(res.status(), r.from).toBe(308);
-    expect(res.headers()["location"], r.from).toBe(`/records#${r.anchor}`);
+    expect(res.headers()["location"], r.from).toBe(r.to);
   }
 
-  // Query strings ride through the redirect — the Visits Book-CTA deep link
-  // (?new=1&title=…) keeps its query on the way to the merged booking form.
+  // Query strings ride through — the Visits Book-CTA deep link keeps its prefill.
   const withQuery = await page.request.get("/encounters?new=1&title=Physical", {
     maxRedirects: 0,
   });
   expect(withQuery.status()).toBe(308);
   expect(withQuery.headers()["location"]).toBe(
-    "/records?new=1&title=Physical#visits"
+    "/records/history/visits?new=1&title=Physical"
   );
 });
 
-test("a detail route survives and its back-link points at the merged section (#1042)", async ({
+test("detail routes survive and their back-links point at the owning panes (#1079)", async ({
   page,
 }) => {
-  // Only the INDEX pages folded — the provider detail page keeps its route, and
-  // its back-link points at the merged Providers section.
+  // Only the INDEX pages folded — the provider detail page keeps its route, and its
+  // back-link points at the Providers pane.
   const db = new Database(DB_PATH, { readonly: true });
   let providerId: number;
   try {
@@ -142,111 +242,18 @@ test("a detail route survives and its back-link points at the merged section (#1
   await page.goto(`/providers/${providerId}`);
   await expect(
     page.getByRole("link", { name: /Back to providers/ })
-  ).toHaveAttribute("href", "/records#providers");
+  ).toHaveAttribute("href", "/records/care/providers");
 
-  // The per-vaccine detail page likewise survives with a repointed back-link.
   await page.goto("/immunizations/tdap");
   await expect(
     page.getByRole("link", { name: /Back to immunizations/ }).first()
-  ).toHaveAttribute("href", "/records#immunizations");
+  ).toHaveAttribute("href", "/records/history/immunizations");
 });
 
-// ── Specialty sections (#1042 final tail) ────────────────────────────────────
-// Vision/Dental/Skin/Mental health fold in AFTER the ten core sections. Section
-// visibility mirrors the nav predicate: Vision/Dental are DATA-GATED (present only
-// when the profile has rows — the same computation their former data-gated nav leaves
-// used), while Skin/Mental health render UNCONDITIONALLY (their in-page forms are the
-// only creation path). The shared seeded profile (profile 1) owns
-// optical_prescriptions + dental_procedures + skin_lesions, so all four render for it.
-
-test("the four specialty sections render for the seeded profile, with their forms (#1042)", async ({
+test("the Medical nav group shows one Health record leaf in place of the old ones (#1079)", async ({
   page,
 }) => {
-  test.slow();
-  await page.goto("/records");
-  const jump = page.getByTestId("records-jump-links");
-  for (const label of ["Vision", "Dental", "Skin", "Mental health"]) {
-    await expect(jump.getByRole("link", { name: label })).toBeVisible();
-  }
-  // Each section renders with its own former-page form testid, proving the moved
-  // content component is wired.
-  await expect(
-    page.getByTestId("records-vision").getByTestId("optical-prescription-form")
-  ).toBeVisible();
-  await expect(
-    page.getByTestId("records-dental").getByTestId("dental-procedure-form")
-  ).toBeVisible();
-  await expect(
-    page.getByTestId("records-skin").getByTestId("skin-lesion-form")
-  ).toBeVisible();
-  await expect(
-    page.getByTestId("records-mental-health").getByTestId("instruments-form")
-  ).toBeVisible();
-  // Mental health's crisis line travels with the section (the safety contract is
-  // content, not route, #1042) — its always-present support link is here.
-  await expect(
-    page
-      .getByTestId("records-mental-health")
-      .getByTestId("instrument-crisis-support-link")
-  ).toBeVisible();
-});
-
-test("Vision/Dental sections hide for a no-data profile; Skin/Mental health still render (#1042)", async ({
-  browser,
-}) => {
-  // The male nav fixture owns no optical/dental rows (e2e/fixture-logins.ts), so the
-  // data-gated sections + their jump-links drop while the always-rendered ones stay.
-  const page = await loginAs(browser, {
-    username: E2E_LOGIN_NAV_MALE,
-    password: E2E_MEMBER_PASSWORD,
-  });
-  try {
-    await page.goto("/records");
-    await expect(
-      page.getByRole("heading", { name: "Health record", exact: true })
-    ).toBeVisible();
-    const jump = page.getByTestId("records-jump-links");
-    // Data-gated: absent (no rows) — both the section and its jump-link.
-    await expect(page.getByTestId("records-vision")).toHaveCount(0);
-    await expect(page.getByTestId("records-dental")).toHaveCount(0);
-    await expect(jump.getByRole("link", { name: "Vision" })).toHaveCount(0);
-    await expect(jump.getByRole("link", { name: "Dental" })).toHaveCount(0);
-    // Ungated: always render (their forms are the only creation path).
-    await expect(page.getByTestId("records-skin")).toBeVisible();
-    await expect(page.getByTestId("records-mental-health")).toBeVisible();
-    await expect(jump.getByRole("link", { name: "Skin" })).toBeVisible();
-    await expect(
-      jump.getByRole("link", { name: "Mental health" })
-    ).toBeVisible();
-  } finally {
-    await page.context().close();
-  }
-});
-
-test("the four specialty index routes 308-redirect to their anchored sections (#1042)", async ({
-  page,
-}) => {
-  // Request-level assertion — no per-route Chromium navigation (the target sections'
-  // render is covered by the "four specialty sections render" sibling test above).
-  const redirects = [
-    { from: "/vision", anchor: "vision" },
-    { from: "/dental", anchor: "dental" },
-    { from: "/skin", anchor: "skin" },
-    { from: "/medical/instruments", anchor: "mental-health" },
-  ];
-  for (const r of redirects) {
-    const res = await page.request.get(r.from, { maxRedirects: 0 });
-    expect(res.status(), r.from).toBe(308);
-    expect(res.headers()["location"], r.from).toBe(`/records#${r.anchor}`);
-  }
-});
-
-test("the Medical nav group shows one Health record leaf in place of the ten (#1042)", async ({
-  page,
-}) => {
-  // Being on /records (a Medical child) force-expands the group — the children are
-  // asserted with zero interaction flake (the nav-consolidation pattern).
-  await page.goto("/records");
+  await page.goto("/records/history/visits");
   const nav = page.locator("aside nav");
   await expect(nav.getByRole("link", { name: "Health record" })).toBeVisible();
   for (const gone of [

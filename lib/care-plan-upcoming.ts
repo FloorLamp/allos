@@ -71,7 +71,7 @@ export function carePlanItemToUpcomingItem(
     domain: "careplan",
     title: item.description,
     detail,
-    href: "/records#care-plan",
+    href: "/records/care/overview",
     dueDate: item.planned_date,
     carePlanItemId: item.id,
   };

@@ -39,7 +39,7 @@ async function addStudy(
   page: import("@playwright/test").Page,
   opts: { date: string; impression: string }
 ) {
-  await page.goto("/results#imaging");
+  await page.goto("/results/imaging");
   const form = page.getByTestId("imaging-study-form");
   await expect(form).toBeVisible();
   await form.getByLabel("Modality").selectOption("ct");
@@ -114,7 +114,7 @@ test.describe("Finding follow-up loop — track → legible upcoming → resolve
     ).toHaveCount(0);
 
     // 6) The source study now shows the recorded resolution.
-    await page.goto("/results#imaging");
+    await page.goto("/results/imaging");
     await expect(
       page
         .getByTestId("imaging-study-list")

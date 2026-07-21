@@ -441,7 +441,7 @@ describe("risk-gated rules", () => {
     });
     const a = statusOf("lung_cancer_ldct", s)!;
     expect(a.status).toBe("due");
-    expect(a.href).toBe("/records#background");
+    expect(a.href).toBe("/records/care/overview");
     expect(a.detail).toMatch(/pack-years/i);
   });
 

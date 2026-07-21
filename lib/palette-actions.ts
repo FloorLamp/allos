@@ -82,7 +82,10 @@ export const PALETTE_ACTIONS: PaletteAction[] = [
     label: "Add appointment",
     keywords: ["visit", "doctor", "schedule", "clinic", "booking"],
     icon: "calendar",
-    target: { kind: "navigate", href: `/records?${FOCUS_PARAM}=1#visits` },
+    target: {
+      kind: "navigate",
+      href: `/records/history/visits?${FOCUS_PARAM}=1`,
+    },
   },
   {
     id: "add-biomarker",
@@ -91,7 +94,7 @@ export const PALETTE_ACTIONS: PaletteAction[] = [
     icon: "chart",
     target: {
       kind: "navigate",
-      href: `/results?${FOCUS_PARAM}=1#biomarkers`,
+      href: `/results/biomarkers?${FOCUS_PARAM}=1`,
     },
   },
 ];

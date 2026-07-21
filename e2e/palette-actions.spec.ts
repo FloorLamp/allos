@@ -47,7 +47,9 @@ test.describe("command palette — per-hit actions (#662)", () => {
     // The chip drives a client navigation (router.push) — retry the URL assertion
     // past the pre-hydration window rather than a networkidle gate.
     await addResult.click();
-    await expect(page).toHaveURL(/\/results\?.*name=LDL(\+|%20)Cholesterol/);
+    await expect(page).toHaveURL(
+      /\/results\/biomarkers\?.*name=LDL(\+|%20)Cholesterol/
+    );
 
     // The add form's Name field is prefilled with the analyte the user searched.
     await expect(page.locator("#rec-new-name")).toHaveValue("LDL Cholesterol");
@@ -87,7 +89,7 @@ test.describe("command palette — per-hit actions (#662)", () => {
       test.slow();
 
       // Book a scheduled appointment we own (date defaults to today → scheduled).
-      await page.goto("/records#visits");
+      await page.goto("/records/history/visits");
       const upcoming = page.getByTestId("visits-upcoming");
       await expect(upcoming).toBeVisible();
       await upcoming.getByLabel("Reason / title").fill(APPT_MARKER);
@@ -110,7 +112,7 @@ test.describe("command palette — per-hit actions (#662)", () => {
 
       // It settled to completed: back on the Visits page it no longer carries the
       // scheduled-only Cancel control in the Upcoming feed.
-      await page.goto("/records#visits");
+      await page.goto("/records/history/visits");
       const scheduledRow = page
         .getByTestId("visits-upcoming")
         .getByTestId("appointment-row")
