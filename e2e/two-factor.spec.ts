@@ -45,19 +45,42 @@ test("2FA: enroll, then second-factor login with code and recovery code (#23)", 
   const pass = "member-pass-1234"; // passes the strength gate; no username inside
 
   // As admin (shared session): create the member login + grant it a profile so it
-  // has a usable session.
-  await page.goto("/settings/family");
-  await page.getByPlaceholder("Username").fill(user);
-  await page.getByPlaceholder("Password").fill(pass);
-  // settledClick, not a raw click: a click in the hydration window is silently
-  // swallowed (#830), and this exact step failed that way in a full-suite run —
-  // the same hardening view-only-access.spec.ts carries for its create-login.
-  await settledClick(page, page.getByRole("button", { name: "Create login" }));
+  // has a usable session. Mirror view-only-access.spec.ts's createMember (#830):
+  // a bare settledClick is NOT enough here — the create click can be swallowed in
+  // the hydration window (no POST fires at all), AND the settings shell's
+  // background toasters poll via Server Action POSTs to the current route that are
+  // indistinguishable from the create action's POST, so settledClick's one-POST
+  // wait can FALSE-SETTLE on a bystander poll while the create never lands. That
+  // is exactly the retries=0 failure this hardens (2026-07-21, PR #1111 run
+  // 88649549701: grant-row-<user> never appeared). Retry the whole
+  // goto→fill→click→verify cycle against the DURABLE grant row; idempotent because
+  // the NOCASE-unique username rejects a duplicate submit with a friendly error
+  // while the fresh goto still finds the row, and the goto sidesteps a stale-RSC
+  // matrix a bare router.refresh() can leave under CI load.
+  await expect(async () => {
+    await page.goto("/settings/family");
+    await page.getByPlaceholder("Username").fill(user);
+    await page.getByPlaceholder("Password").fill(pass);
+    await page.getByRole("button", { name: "Create login" }).click();
+    await expect(page.getByTestId(`grant-row-${user}`)).toBeVisible({
+      timeout: 5000,
+    });
+  }).toPass({ timeout: 45_000 });
+
   const grantRow = page.getByTestId(`grant-row-${user}`);
-  await expect(grantRow).toBeVisible({ timeout: 15_000 });
   await grantRow.locator('input[type="checkbox"]').first().check();
-  await grantRow.getByRole("button", { name: "Save access" }).click();
-  await expect(grantRow.getByText("Access updated.")).toBeVisible();
+  // settledClick + a widened banner timeout: the raw Save-access click raced the
+  // save action's POST under full-suite load (the same #830 class), and "Access
+  // updated." only renders once the action lands. 15s, not the 5s default,
+  // because settledClick can return on a toaster poll's POST (see the create loop
+  // above) while the save action is still in flight.
+  await settledClick(
+    page,
+    grantRow.getByRole("button", { name: "Save access" })
+  );
+  await expect(grantRow.getByText("Access updated.")).toBeVisible({
+    timeout: 15_000,
+  });
 
   // As the member (fresh context): enroll in 2FA on Settings → Preferences.
   const enrollCtx = await browser.newContext({
