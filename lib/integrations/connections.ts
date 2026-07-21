@@ -14,6 +14,7 @@ import {
   type TokenExpiryChoice,
 } from "@/lib/token-lifecycle";
 import { daysAgoModifier, SYNC_EVENTS_RETENTION_DAYS } from "@/lib/retention";
+import { boundSyncDetailsJson } from "./sync-details";
 
 // Generic per-provider connection state, backed by integration_connections. Holds
 // the push token for Health Connect and OAuth tokens for Strava (Garmin later).
@@ -183,6 +184,9 @@ export interface SyncEventInput {
   // failure event or a legacy caller.
   edited?: number | null;
   skipped?: number | null;
+  // Structured, non-secret diagnostics surfaced with a successful sync in Data →
+  // Review (exporter-shape warnings and origin reconciliation for Health Connect).
+  details?: string | null;
   // Bare filename of the raw provider payload captured for this sync (issue #9),
   // written by lib/integrations/raw-log.ts. Null when capture was off/failed.
   raw_ref?: string | null;
@@ -206,8 +210,9 @@ export function recordSyncEvent(
     db.prepare(
       `INSERT INTO integration_sync_events
          (profile_id, provider, at, ok, window_start, window_end,
-          received, written, inserted, updated, unchanged, suppressed, edited, skipped, raw_ref, error)
-       VALUES (?, ?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          received, written, inserted, updated, unchanged, suppressed, edited, skipped,
+          details, raw_ref, error)
+       VALUES (?, ?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       profileId,
       provider,
@@ -222,6 +227,7 @@ export function recordSyncEvent(
       ev.suppressed ?? null,
       ev.edited ?? null,
       ev.skipped ?? null,
+      boundSyncDetailsJson(ev.details),
       ev.raw_ref ?? null,
       ev.error ? ev.error.slice(0, 500) : null
     );

@@ -21,6 +21,7 @@ describe("parseHealthConnectPayload — guards", () => {
       activities: [],
       vitals: [],
       skipped: 0,
+      details: { warnings: [], origins: [] },
     };
     expect(parse(null)).toEqual(empty);
     expect(parse("nope")).toEqual(empty);
@@ -306,6 +307,92 @@ describe("parseHealthConnectPayload — heart rate bucketing", () => {
     expect(first.bpm_min).toBe(60);
     expect(first.bpm_max).toBe(80);
     expect(first.n).toBe(2);
+  });
+
+  it("accepts the exporter v1.9 minute avg/min/max and rmssd_millis shapes (#1100)", () => {
+    const out = parse({
+      heart_rate: [
+        {
+          time: "2026-06-15T08:00:00Z",
+          avg: 84,
+          min: 83,
+          max: 85,
+          metadata: { data_origin: "com.fitbit.FitbitMobile" },
+        },
+      ],
+      heart_rate_variability: [
+        {
+          time: "2026-06-15T09:05:00Z",
+          rmssd_millis: 62.6,
+          metadata: { data_origin: "com.fitbit.FitbitMobile" },
+        },
+        { time: "2026-06-15T10:05:00Z", milliseconds: 48 },
+      ],
+    });
+    expect(out.hrMinutes).toEqual([
+      { ts: "2026-06-15T08:00", bpm: 84, bpm_min: 83, bpm_max: 85, n: 1 },
+    ]);
+    expect(out.samples).toContainEqual(
+      expect.objectContaining({
+        metric: "hrv_ms",
+        value: 62.6,
+        origin: "com.fitbit.FitbitMobile",
+      })
+    );
+    expect(out.samples).toContainEqual(
+      expect.objectContaining({ metric: "hrv_ms", value: 48, origin: null })
+    );
+    expect(out.skipped).toBe(0);
+  });
+
+  it("diagnoses a known record type whose whole batch has an unknown shape", () => {
+    const out = parse({
+      heart_rate: [{ time: "2026-06-15T08:00:00Z", renamed_average: 84 }],
+    });
+    expect(out.skipped).toBe(1);
+    expect(out.details.warnings).toEqual([
+      "heart_rate records were all skipped — exporter shape not recognized",
+    ]);
+  });
+});
+
+describe("parseHealthConnectPayload — Health Connect origins", () => {
+  it("carries metadata.data_origin and reports the largest additive origin", () => {
+    const out = parse({
+      total_calories: [
+        {
+          start_time: "2026-06-15T00:00:00Z",
+          end_time: "2026-06-15T12:00:00Z",
+          calories: 470,
+          metadata: { data_origin: "com.garmin.android.apps.connectmobile" },
+        },
+        {
+          start_time: "2026-06-15T08:00:00Z",
+          end_time: "2026-06-15T08:15:00Z",
+          calories: 19.5,
+          metadata: { data_origin: "com.fitbit.FitbitMobile" },
+        },
+        {
+          start_time: "2026-06-15T08:15:00Z",
+          end_time: "2026-06-15T08:30:00Z",
+          calories: 12.9,
+          metadata: { data_origin: "com.fitbit.FitbitMobile" },
+        },
+      ],
+    });
+    expect(out.samples.map((sample) => sample.origin)).toEqual([
+      "com.garmin.android.apps.connectmobile",
+      "com.fitbit.FitbitMobile",
+      "com.fitbit.FitbitMobile",
+    ]);
+    expect(out.details.origins).toEqual([
+      {
+        date: "2026-06-15",
+        metric: "total_kcal",
+        chosen: "com.garmin.android.apps.connectmobile",
+        ignored: ["com.fitbit.FitbitMobile"],
+      },
+    ]);
   });
 });
 

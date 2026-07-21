@@ -73,6 +73,10 @@ describe("migrate() — fresh boot", () => {
     expect(columnNames(db, "metric_samples").has("activity_external_id")).toBe(
       true
     );
+    expect(columnNames(db, "metric_samples").has("origin")).toBe(true);
+    expect(columnNames(db, "integration_sync_events").has("details")).toBe(
+      true
+    );
     // The final intake_item_logs shape keys logs on the dose, and migration 011
     // renamed its (and intake_item_doses') supplement_id link to item_id.
     expect(columnNames(db, "intake_item_logs").has("dose_id")).toBe(true);

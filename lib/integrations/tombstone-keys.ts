@@ -11,7 +11,7 @@
 // The tables whose keyed upserts consult the tombstone. Each maps to a natural key the
 // upsert dedups on (see lib/integrations/normalize.ts): activities/medical_records by
 // external_id, body_metrics by (date, source), metric_samples by
-// (metric, source, start_time, end_time).
+// (metric, source, origin, start_time).
 //
 // `hr_minutes` was covered on the READ side historically but never had a tombstone
 // WRITER (#653): its dataset is browse/export-only (`deletable: false` in lib/export.ts)
@@ -49,14 +49,15 @@ export function bodyMetricTombstoneKey(date: string, source: string): string {
   return `${date}${SEP}${source}`;
 }
 
-// metric_samples dedups on (metric, source, start_time, end_time).
+// metric_samples dedups on (metric, source, origin, start_time). A null origin is
+// encoded as an empty component, matching the DB unique index's COALESCE.
 export function metricSampleTombstoneKey(
   metric: string,
   source: string,
-  startTime: string,
-  endTime: string
+  origin: string | null,
+  startTime: string
 ): string {
-  return [metric, source, startTime, endTime].join(SEP);
+  return [metric, source, origin ?? "", startTime].join(SEP);
 }
 
 // hr_minutes dedups on (ts, source). Retained as pure key math for a POSSIBLE future
@@ -99,24 +100,22 @@ export function importTombstoneForRow(
         : null;
     }
     case "metric_samples": {
-      // metric_samples dedups on (metric, source, start_time, end_time) — all four
-      // must be present for a stable, sync-matching key. A row missing any of them
+      // metric_samples dedups on (metric, source, origin, start_time). Origin may
+      // legitimately be null; the other three fields must be present. A row missing them
       // isn't a source-owned re-import target, so no tombstone.
       const metric = row.metric;
       const src = row.source;
       const start = row.start_time;
-      const end = row.end_time;
+      const origin = typeof row.origin === "string" ? row.origin : null;
       return typeof metric === "string" &&
         metric &&
         typeof src === "string" &&
         src &&
         typeof start === "string" &&
-        start &&
-        typeof end === "string" &&
-        end
+        start
         ? {
             table: "metric_samples",
-            key: metricSampleTombstoneKey(metric, src, start, end),
+            key: metricSampleTombstoneKey(metric, src, origin, start),
           }
         : null;
     }

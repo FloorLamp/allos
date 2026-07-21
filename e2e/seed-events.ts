@@ -293,6 +293,25 @@ ins.run(
   hcRawRef, // raw_ref → drives the admin "View raw" affordance (#9)
   null
 );
+db.prepare(
+  `UPDATE integration_sync_events
+      SET details = ?
+    WHERE profile_id = ? AND provider = 'health-connect' AND at = ?`
+).run(
+  JSON.stringify({
+    warnings: [],
+    origins: [
+      {
+        date: "2026-07-08",
+        metric: "total_kcal",
+        chosen: "com.garmin.android.apps.connectmobile",
+        ignored: ["com.fitbit.FitbitMobile"],
+      },
+    ],
+  }),
+  PROFILE_ID,
+  "2026-07-08 07:00:00"
+);
 // Four consecutive hourly Strava no-op re-scans (05:00–08:00) → one collapsed line.
 for (const hour of ["05", "06", "07", "08"]) {
   ins.run(

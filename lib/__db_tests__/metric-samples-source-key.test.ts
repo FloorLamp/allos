@@ -89,6 +89,72 @@ describe("metric_samples: source is part of the unique key", () => {
       .all(profileId) as { value: number }[];
     expect(rows).toEqual([{ value: 55 }]); // one row, updated in place
   });
+
+  it("updates a moving-end snapshot in place and keeps separate origins", () => {
+    const start = "2024-01-02T00:00:00Z";
+    const first: NormMetricSample = {
+      metric: "steps",
+      date: "2024-01-02",
+      start_time: start,
+      end_time: "2024-01-02T12:00:00Z",
+      value: 4000,
+      origin: "com.fitbit.FitbitMobile",
+    };
+    expect(
+      upsertMetricSamples(profileId, [first], "health-connect")
+    ).toMatchObject({ inserted: 1 });
+    expect(
+      upsertMetricSamples(
+        profileId,
+        [
+          { ...first, end_time: "2024-01-02T20:00:00Z", value: 8000 },
+          {
+            ...first,
+            end_time: "2024-01-02T20:00:00Z",
+            value: 7000,
+            origin: "com.garmin.android.apps.connectmobile",
+          },
+        ],
+        "health-connect"
+      )
+    ).toMatchObject({ inserted: 1, updated: 1 });
+
+    const rows = db
+      .prepare(
+        `SELECT origin, end_time, value FROM metric_samples
+          WHERE profile_id = ? AND metric = 'steps' AND start_time = ?
+          ORDER BY origin`
+      )
+      .all(profileId, start);
+    expect(rows).toEqual([
+      {
+        origin: "com.fitbit.FitbitMobile",
+        end_time: "2024-01-02T20:00:00Z",
+        value: 8000,
+      },
+      {
+        origin: "com.garmin.android.apps.connectmobile",
+        end_time: "2024-01-02T20:00:00Z",
+        value: 7000,
+      },
+    ]);
+
+    const stale = upsertMetricSamples(
+      profileId,
+      [{ ...first, end_time: "2024-01-02T12:00:00Z", value: 4000 }],
+      "health-connect"
+    );
+    expect(stale).toMatchObject({ updated: 0, unchanged: 1 });
+    expect(
+      db
+        .prepare(
+          `SELECT end_time, value FROM metric_samples
+            WHERE profile_id = ? AND metric = 'steps' AND start_time = ?
+              AND origin = 'com.fitbit.FitbitMobile'`
+        )
+        .get(profileId, start)
+    ).toEqual({ end_time: "2024-01-02T20:00:00Z", value: 8000 });
+  });
 });
 
 describe("metric_samples: body-metric measures never land here", () => {

@@ -19,6 +19,7 @@ import {
   bodyMetricTombstoneKey,
   metricSampleTombstoneKey,
 } from "./tombstone-keys";
+import { isStaleMetricSnapshot } from "@/lib/metric-snapshot";
 
 // Provider-agnostic record shapes. Every integration parses its own payload into
 // these, then calls the shared upserts below — so a new provider (Strava, Garmin)
@@ -50,6 +51,10 @@ export interface NormMetricSample {
   start_time: string; // absolute ISO instant; point records set start == end
   end_time: string;
   value: number;
+  // Provider-within-provider provenance. Health Connect can carry records from
+  // several origin apps (for example Fitbit and Garmin) under the single
+  // `health-connect` integration source. Other integrations omit it.
+  origin?: string | null;
   // Stable identity of the imported activity this sample describes. Unlike the
   // sample window, this survives user edits to the activity's date/clock fields.
   // Null/omitted for standalone metrics (steps, sleep, daily energy, etc.).
@@ -276,10 +281,11 @@ export const BODY_METRIC_SAMPLE_MEASURES = [
   "resting_hr",
 ] as const;
 
-// Idempotent on (profile_id, metric, source, start_time, end_time): a resent
+// Idempotent on (profile_id, metric, source, origin, start_time): a resent
 // record from the SAME source overwrites itself, but two DIFFERENT sources
-// reporting the same metric for the same window each keep their own row —
-// `source` is part of the unique key, so they no longer clobber each other.
+// (or two origins inside Health Connect) each keep their own row. `end_time` is
+// deliberately mutable: daily cumulative exporter snapshots keep a stable start
+// while their end advances to the push moment (#1101).
 //
 // Guard: body fat % and resting HR belong in body_metrics, not
 // here — see BODY_METRIC_SAMPLE_MEASURES. A row whose metric is one of those is a
@@ -295,15 +301,16 @@ export function upsertMetricSamples(
   // the rolling window that lands the same value/date is counted unchanged rather
   // than a write (info.changes can't see that the values matched).
   const find = db.prepare(
-    "SELECT value, date, activity_external_id FROM metric_samples WHERE profile_id = ? AND metric = ? AND source = ? AND start_time = ? AND end_time = ?"
+    "SELECT value, date, end_time, activity_external_id FROM metric_samples WHERE profile_id = ? AND metric = ? AND source = ? AND origin IS ? AND start_time = ?"
   );
   const stmt = db.prepare(
     `INSERT INTO metric_samples
-       (profile_id, source, metric, date, start_time, end_time, value, activity_external_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(profile_id, metric, source, start_time, end_time) DO UPDATE SET
+       (profile_id, source, origin, metric, date, start_time, end_time, value, activity_external_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT DO UPDATE SET
        value = excluded.value,
        date = excluded.date,
+       end_time = excluded.end_time,
        activity_external_id = COALESCE(
          excluded.activity_external_id,
          metric_samples.activity_external_id
@@ -323,24 +330,42 @@ export function upsertMetricSamples(
       profileId,
       r.metric,
       source,
-      r.start_time,
-      r.end_time
+      r.origin ?? null,
+      r.start_time
     ) as
-      | { value: number; date: string; activity_external_id: string | null }
+      | {
+          value: number;
+          date: string;
+          end_time: string;
+          activity_external_id: string | null;
+        }
       | undefined;
     // No live row AND a tombstone for this natural key: skip the resurrecting insert.
     if (
       !found &&
       tombstoned.has(
-        metricSampleTombstoneKey(r.metric, source, r.start_time, r.end_time)
+        metricSampleTombstoneKey(
+          r.metric,
+          source,
+          r.origin ?? null,
+          r.start_time
+        )
       )
     ) {
       counts.suppressed++;
       continue;
     }
+    // A delayed retry of an older cumulative snapshot must never roll a newer
+    // day-so-far value backward. The natural key intentionally omits end_time, so
+    // freshness is an explicit part of the runtime merge rule (#1101 review).
+    if (found && isStaleMetricSnapshot(found.end_time, r.end_time)) {
+      tallyUpsert(counts, classifyUpsert(true, true));
+      continue;
+    }
     stmt.run(
       profileId,
       source,
+      r.origin ?? null,
       r.metric,
       r.date,
       r.start_time,
@@ -352,6 +377,7 @@ export function upsertMetricSamples(
       !!found &&
       found.value === r.value &&
       found.date === r.date &&
+      found.end_time === r.end_time &&
       (r.activity_external_id == null ||
         found.activity_external_id === r.activity_external_id);
     tallyUpsert(counts, classifyUpsert(!!found, equal));

@@ -9,6 +9,10 @@ import type { IntegrationId } from "@/lib/types/integrations";
 import { integrationDetailHref } from "@/lib/hrefs";
 import type { ConnectedSource } from "@/lib/queries/integrations";
 import { formatSplitLabel, formatWindow } from "@/lib/integrations/sync-log";
+import {
+  originChoiceLabel,
+  parseHealthConnectSyncDetails,
+} from "@/lib/integrations/sync-details";
 import RelativeTime from "@/components/RelativeTime";
 import RawPayloadViewer from "@/components/RawPayloadViewer";
 import SyncNowButton from "@/components/SyncNowButton";
@@ -51,6 +55,26 @@ function StateLine({ ev }: { ev: IntegrationSyncEvent }) {
         </span>
       )}
     </span>
+  );
+}
+
+function SyncDetails({ ev }: { ev: IntegrationSyncEvent }) {
+  const details = parseHealthConnectSyncDetails(ev.details ?? null);
+  if (!details) return null;
+  return (
+    <div
+      className="mt-1 space-y-0.5 text-xs text-amber-700 dark:text-amber-300"
+      data-testid={`sync-details-${ev.id}`}
+    >
+      {details.warnings.map((warning) => (
+        <p key={warning}>{warning}</p>
+      ))}
+      {details.origins.map((choice) => (
+        <p key={`${choice.date}:${choice.metric}`}>
+          {originChoiceLabel(choice)}
+        </p>
+      ))}
+    </div>
   );
 }
 
@@ -118,6 +142,7 @@ function SourceCard({
           {latest.error}
         </p>
       )}
+      {latest && <SyncDetails ev={latest} />}
 
       <div className="mt-3 flex flex-wrap items-center gap-3">
         {source.canSyncNow ? (
@@ -175,6 +200,7 @@ function SourceCard({
                   )}
                 </div>
                 {isAdmin && ev.raw_ref && <RawPayloadViewer id={ev.id} />}
+                <SyncDetails ev={ev} />
               </li>
             ))}
           </ul>

@@ -1,9 +1,71 @@
 import { describe, expect, it } from "vitest";
 import {
   pickOneProviderPerDay,
+  pickRowsOneOriginPerSourceDay,
   pickRowsOneSourcePerDay,
   PROVIDER_PREFERENCE,
 } from "@/lib/metric-providers";
+
+describe("pickRowsOneOriginPerSourceDay", () => {
+  const pick = (
+    rows: {
+      date: string;
+      source: string;
+      origin: string | null;
+      value: number;
+    }[]
+  ) =>
+    pickRowsOneOriginPerSourceDay(
+      rows,
+      (row) => row.date,
+      (row) => row.source,
+      (row) => row.origin,
+      (row) => row.value
+    );
+
+  it("keeps the largest origin subtotal within one source/day", () => {
+    const rows = [
+      {
+        date: "2026-07-20",
+        source: "health-connect",
+        origin: "garmin",
+        value: 470,
+      },
+      {
+        date: "2026-07-20",
+        source: "health-connect",
+        origin: "fitbit",
+        value: 32.4,
+      },
+    ];
+    expect(pick(rows)).toEqual([rows[0]]);
+  });
+
+  it("keeps independent days/sources and treats null origin as a normal group", () => {
+    const rows = [
+      {
+        date: "2026-07-20",
+        source: "health-connect",
+        origin: null,
+        value: 100,
+      },
+      {
+        date: "2026-07-20",
+        source: "health-connect",
+        origin: "fitbit",
+        value: 90,
+      },
+      {
+        date: "2026-07-21",
+        source: "health-connect",
+        origin: "fitbit",
+        value: 50,
+      },
+      { date: "2026-07-20", source: "strava", origin: null, value: 25 },
+    ];
+    expect(pick(rows)).toEqual([rows[0], rows[2], rows[3]]);
+  });
+});
 
 describe("pickOneProviderPerDay", () => {
   it("keeps a single provider per day instead of summing across sources", () => {
