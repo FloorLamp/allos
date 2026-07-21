@@ -3,6 +3,8 @@ import {
   computeSleepRegularity,
   sriTrend,
   regularityTravelInsight,
+  mainSleepSession,
+  mainSleepNights,
   type SleepSession,
 } from "../sleep-regularity";
 
@@ -233,5 +235,153 @@ describe("regularityTravelInsight", () => {
         { date: "2026-06-10", situation: "Travel", change: "start" },
       ])
     ).toBeNull();
+  });
+});
+
+// ── Main overnight sleep vs naps (issue #1118) ───────────────────────────────
+
+describe("mainSleepSession — picks the main overnight session", () => {
+  it("returns null for an empty day", () => {
+    expect(mainSleepSession([])).toBeNull();
+  });
+
+  it("returns the only session on an overnight-only day", () => {
+    const night: SleepSession = {
+      start: "2026-01-01T23:00:00Z",
+      end: "2026-01-02T07:00:00Z",
+    };
+    expect(mainSleepSession([night])).toBe(night);
+  });
+
+  it("picks the overnight over a shorter same-day afternoon nap", () => {
+    const overnight: SleepSession = {
+      start: "2026-01-01T23:00:00Z",
+      end: "2026-01-02T07:00:00Z", // 8h
+    };
+    const nap: SleepSession = {
+      start: "2026-01-02T14:00:00Z",
+      end: "2026-01-02T15:30:00Z", // 1.5h
+    };
+    expect(mainSleepSession([nap, overnight])).toBe(overnight);
+  });
+
+  it("picks the LONGER of two fragmented night pieces", () => {
+    const shortPiece: SleepSession = {
+      start: "2026-01-01T23:00:00Z",
+      end: "2026-01-02T01:00:00Z", // 2h
+    };
+    const longPiece: SleepSession = {
+      start: "2026-01-02T01:30:00Z",
+      end: "2026-01-02T07:00:00Z", // 5.5h
+    };
+    expect(mainSleepSession([shortPiece, longPiece])).toBe(longPiece);
+  });
+
+  it("on an equal-duration tie, prefers the session ending earlier (the morning window)", () => {
+    // Same wake-day (both END 2026-01-02), both exactly 90 minutes.
+    const nightFragment: SleepSession = {
+      start: "2026-01-01T23:00:00Z",
+      end: "2026-01-02T00:30:00Z", // ends in the small hours (morning window)
+    };
+    const afternoonNap: SleepSession = {
+      start: "2026-01-02T13:00:00Z",
+      end: "2026-01-02T14:30:00Z", // ends in the afternoon
+    };
+    // Order-independent: the morning-ending fragment wins either way.
+    expect(mainSleepSession([afternoonNap, nightFragment])).toBe(nightFragment);
+    expect(mainSleepSession([nightFragment, afternoonNap])).toBe(nightFragment);
+  });
+
+  it("honors a provider `type`: a LONGER labeled nap never outranks a labeled main sleep", () => {
+    const mainSleep: SleepSession = {
+      start: "2026-01-01T23:00:00Z",
+      end: "2026-01-02T04:00:00Z", // 5h, labeled main
+      type: "long_sleep",
+    };
+    const longNap: SleepSession = {
+      start: "2026-01-02T12:00:00Z",
+      end: "2026-01-02T20:00:00Z", // 8h, but provider labeled a nap
+      type: "late_nap",
+    };
+    expect(mainSleepSession([mainSleep, longNap])).toBe(mainSleep);
+  });
+
+  it("returns null when every session is a provider-labeled nap", () => {
+    const napA: SleepSession = {
+      start: "2026-01-02T13:00:00Z",
+      end: "2026-01-02T14:00:00Z",
+      type: "rest",
+    };
+    const napB: SleepSession = {
+      start: "2026-01-02T16:00:00Z",
+      end: "2026-01-02T17:00:00Z",
+      type: "early_nap",
+    };
+    expect(mainSleepSession([napA, napB])).toBeNull();
+  });
+
+  it("ignores zero-length / reversed windows", () => {
+    const bad: SleepSession = {
+      start: "2026-01-02T07:00:00Z",
+      end: "2026-01-02T07:00:00Z", // zero length
+    };
+    const good: SleepSession = {
+      start: "2026-01-01T23:00:00Z",
+      end: "2026-01-02T07:00:00Z",
+    };
+    expect(mainSleepSession([bad, good])).toBe(good);
+    expect(mainSleepSession([bad])).toBeNull();
+  });
+});
+
+describe("mainSleepNights — one main session per wake-day, naps dropped", () => {
+  it("groups by local wake-day and keeps only the overnight per day", () => {
+    const sessions: SleepSession[] = [
+      // Wake-day 2026-01-02: overnight (8h) + afternoon nap (1.5h).
+      { start: "2026-01-01T23:00:00Z", end: "2026-01-02T07:00:00Z" },
+      { start: "2026-01-02T14:00:00Z", end: "2026-01-02T15:30:00Z" },
+      // Wake-day 2026-01-03: overnight only (7h).
+      { start: "2026-01-02T23:30:00Z", end: "2026-01-03T06:30:00Z" },
+    ];
+    const nights = mainSleepNights(sessions, "UTC");
+    expect(
+      nights.map((n) => ({ wakeDay: n.wakeDay, durationMin: n.durationMin }))
+    ).toEqual([
+      { wakeDay: "2026-01-02", durationMin: 480 }, // the overnight, NOT 480+90
+      { wakeDay: "2026-01-03", durationMin: 420 },
+    ]);
+  });
+
+  it("drops a day that holds only naps", () => {
+    const sessions: SleepSession[] = [
+      {
+        start: "2026-01-02T13:00:00Z",
+        end: "2026-01-02T14:00:00Z",
+        type: "rest",
+      },
+    ];
+    expect(mainSleepNights(sessions, "UTC")).toEqual([]);
+  });
+});
+
+describe("SRI keeps naps — computeSleepRegularity does NOT use the classifier (#1118)", () => {
+  it("adding a nap on some nights lowers SRI (the nap's asleep epochs ARE counted)", () => {
+    // 16 identical overnight nights → SRI = 100.
+    const days = consecutiveWakeDays("2026-01-02", 16);
+    const overnightOnly: SleepSession[] = days.map((d) => utcNight(d));
+    expect(computeSleepRegularity(overnightOnly, "UTC")!.sri).toBe(100);
+
+    // Same nights, but a 14:00–15:00 nap added on EVEN-indexed days only. If SRI
+    // ignored naps it would still be 100; because the nap's asleep minutes land in
+    // the epoch grid, the nap-vs-no-nap clock minutes now mismatch between
+    // consecutive days, so SRI drops below 100. This is the guard that nobody
+    // "fixes" SRI to route through mainSleepSession.
+    const withNaps: SleepSession[] = [...overnightOnly];
+    days.forEach((d, i) => {
+      if (i % 2 === 0)
+        withNaps.push({ start: `${d}T14:00:00Z`, end: `${d}T15:00:00Z` });
+    });
+    const sri = computeSleepRegularity(withNaps, "UTC")!.sri;
+    expect(sri).toBeLessThan(100);
   });
 });
