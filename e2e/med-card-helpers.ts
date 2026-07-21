@@ -35,15 +35,82 @@ import { followLink } from "./helpers";
 
 const MED_DETAIL_HREF = /\/medications\/\d+/;
 
+// The shared, scannable Current-medications list (`medication-list`) and the collapsed
+// Past-medications disclosure (`past-medications`) that hold the medication rows.
+export function medicationList(scope: Locator | Page): Locator {
+  return scope.getByTestId("medication-list");
+}
+export function pastMedications(scope: Locator | Page): Locator {
+  return scope.getByTestId("past-medications");
+}
+
 // A medication's scannable row on the /medications list, filtered to its name. Seeded med
-// names are unique, so the filter yields exactly one row.
-export function medicationRow(page: Page, name: string): Locator {
-  return page.getByTestId("medication-row").filter({ hasText: name });
+// names are unique, so the filter yields exactly one row. `scope` is the Page or a narrower
+// container (the `medication-list`, the `past-medications` disclosure) when a spec wants to
+// assert the row lives in a specific section.
+export function medicationRow(scope: Locator | Page, name: string): Locator {
+  return scope.getByTestId("medication-row").filter({ hasText: name });
+}
+
+// The named-link inside a medication row that navigates to its clinical-record detail
+// (`medication-row-link`). Specs assert it is visible or read its href; the nav helpers
+// below drive it.
+export function medicationRowLink(scope: Locator | Page, name: string): Locator {
+  return medicationRow(scope, name).getByTestId("medication-row-link");
+}
+
+// The compact dose-summary line on a medication row (`medication-dose-summary`, e.g.
+// "1 tablet · Morning").
+export function medicationDoseSummary(row: Locator): Locator {
+  return row.getByTestId("medication-dose-summary");
+}
+
+// The medication name element on a row (`medication-name`) — a Past row dims it, so specs
+// assert its class/decoration.
+export function medicationName(row: Locator): Locator {
+  return row.getByTestId("medication-name");
 }
 
 // The /medications/[id] clinical-record detail container.
-export function medicationDetail(page: Page): Locator {
-  return page.getByTestId("medication-detail");
+export function medicationDetail(scope: Locator | Page): Locator {
+  return scope.getByTestId("medication-detail");
+}
+
+// The detail card's Overview / Details (guidance) peers (`medication-overview` /
+// `medication-guidance`) — equal-width first-row columns the layout tests measure.
+export function medicationOverview(scope: Locator | Page): Locator {
+  return scope.getByTestId("medication-overview");
+}
+export function medicationGuidance(scope: Locator | Page): Locator {
+  return scope.getByTestId("medication-guidance");
+}
+
+// The Medications page "Today" panel (`medications-today`) — the daily-use surface that
+// leads with due scheduled doses + PRN administration rows.
+export function medicationsToday(scope: Locator | Page): Locator {
+  return scope.getByTestId("medications-today");
+}
+
+// A scheduled, currently-due medication's tri-state dose-check-off row in the Today panel
+// (`today-scheduled-med`), filtered to its name.
+export function scheduledTodayItem(scope: Locator | Page, name: string): Locator {
+  return scope.getByTestId("today-scheduled-med").filter({ hasText: name });
+}
+
+// A PRN (as-needed) medication's one-tap administration row (`quick-log-prn-item`),
+// filtered to its name. Shared by the Today panel AND the dashboard quick-log widget
+// (the #797 one-computation control), so `scope` is whichever container the caller reads.
+export function prnTodayItem(scope: Locator | Page, name: string): Locator {
+  return scope.getByTestId("quick-log-prn-item").filter({ hasText: name });
+}
+
+// The PRN administration ledger on the detail card (`prn-administrations`) and its rows
+// (`prn-administration-row`, each with a `prn-administration-remove` control).
+export function prnAdministrations(scope: Locator | Page): Locator {
+  return scope.getByTestId("prn-administrations");
+}
+export function prnAdministrationRows(scope: Locator | Page): Locator {
+  return scope.getByTestId("prn-administration-row");
 }
 
 // The shared refill badge (RefillBadge, testid `refill-days-left`) — identical on a

@@ -1,6 +1,11 @@
 import { test, expect } from "@playwright/test";
 import Database from "better-sqlite3";
 import path from "node:path";
+import {
+  expandIntakeWarnings,
+  pgxWarnings,
+  pgxWarningRows,
+} from "./intake-warnings-helpers";
 
 // Pharmacogenomics cross-check (issue #710): a stored PGx result (a genomic_variants
 // row, result_type='pharmacogenomic') affecting a medication in the active stack must
@@ -84,14 +89,12 @@ test.describe("Pharmacogenomics cross-check (#710)", () => {
   }) => {
     await page.goto("/medications");
     const main = page.getByRole("main");
-    await main.getByTestId("intake-warnings").locator("summary").click();
+    await expandIntakeWarnings(main);
 
-    const warnings = main.getByTestId("pgx-warnings");
+    const warnings = pgxWarnings(main);
     await expect(warnings).toBeVisible();
 
-    const row = warnings
-      .locator('[data-testid^="pgx-warning-pgx:"]')
-      .filter({ hasText: ABACAVIR });
+    const row = pgxWarningRows(warnings).filter({ hasText: ABACAVIR });
     await expect(row).toBeVisible();
     await expect(row).toContainText("HLA-B");
     await expect(row).toContainText("CONTRAINDICATED", { ignoreCase: true });

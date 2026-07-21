@@ -2,6 +2,20 @@ import { test, expect } from "@playwright/test";
 import Database from "better-sqlite3";
 import path from "node:path";
 import { followLink } from "./helpers";
+import {
+  medicationList,
+  pastMedications,
+  medicationRow,
+  medicationRowLink,
+  medicationDoseSummary,
+  medicationName,
+  medicationOverview,
+  medicationGuidance,
+  medicationsToday,
+  scheduledTodayItem,
+  prnTodayItem,
+  openMedDetailViaLink,
+} from "./med-card-helpers";
 
 // #817 Medications page redesign: the Today panel (scheduled dose check-off + PRN
 // administration row), the /medications/[id] clinical-record detail page, and the
@@ -49,22 +63,16 @@ test("Today panel leads with a due scheduled dose and a PRN administration row",
 }) => {
   await page.goto("/medications");
 
-  const today = page.getByTestId("medications-today");
+  const today = medicationsToday(page);
   await expect(today).toBeVisible();
 
   // A scheduled, currently-due med shows its tri-state dose check-off inline.
-  const scheduled = today
-    .getByTestId("today-scheduled-med")
-    .filter({ hasText: "Adherence Refill Med (e2e)" });
+  const scheduled = scheduledTodayItem(today, "Adherence Refill Med (e2e)");
   await expect(scheduled).toBeVisible();
   await expect(scheduled.getByTestId("dose-status").first()).toBeVisible();
 
   // A PRN med shows a one-tap administration row (not a scheduled pill).
-  await expect(
-    today
-      .getByTestId("quick-log-prn-item")
-      .filter({ hasText: "PRN Quicklog Med (e2e)" })
-  ).toBeVisible();
+  await expect(prnTodayItem(today, "PRN Quicklog Med (e2e)")).toBeVisible();
 
   // The amount aligns beside the medication name, matching an as-needed row. The
   // scheduled time and overdue status sit in the metadata column; the action cluster
@@ -108,44 +116,38 @@ test("the page clearly separates current and past medications", async ({
 }) => {
   await page.goto("/medications");
 
-  const list = page.getByTestId("medication-list");
+  const list = medicationList(page);
   await expect(list).toBeVisible();
   await expect(
     list.getByRole("heading", { name: "Current medications" })
   ).toBeVisible();
 
-  const row = list
-    .getByTestId("medication-row")
-    .filter({ hasText: "Adherence Refill Med (e2e)" });
+  const row = medicationRow(list, "Adherence Refill Med (e2e)");
   await expect(row).toBeVisible();
-  await expect(row.getByTestId("medication-dose-summary")).toContainText(
-    "1 tablet · Morning"
-  );
+  await expect(medicationDoseSummary(row)).toContainText("1 tablet · Morning");
   // Rows are divided within the shared list surface, not inset as cards.
   await expect(row).not.toHaveClass(/\bcard\b/);
-  await expect(row.getByTestId("medication-row-link")).toHaveClass(
-    /hover:bg-slate-50/
-  );
+  await expect(
+    medicationRowLink(list, "Adherence Refill Med (e2e)")
+  ).toHaveClass(/hover:bg-slate-50/);
 
-  const past = page.getByTestId("past-medications");
+  const past = pastMedications(page);
   await expect(past).toBeVisible();
   await expect(past).not.toHaveAttribute("open", "");
   await expect(past).toContainText("completed or stopped");
   await expect(past.locator("summary")).toHaveClass(/hover:bg-slate-50/);
   await past.locator("summary").click();
-  const pastRow = past
-    .getByTestId("medication-row")
-    .filter({ hasText: "Amoxicillin" });
+  const pastRow = medicationRow(past, "Amoxicillin");
   await expect(pastRow).toBeVisible();
   await expect(pastRow).toContainText("Completed course");
-  const pastName = pastRow.getByTestId("medication-name");
+  const pastName = medicationName(pastRow);
   await expect(pastName).toHaveClass(/text-slate-600/);
 
   // The outer disclosure is also a Tailwind group. Its hover must not activate
   // every nested medication link; only the directly-hovered named link underlines.
   await past.locator("summary").hover();
   await expect(pastName).toHaveCSS("text-decoration-line", "none");
-  await pastRow.getByTestId("medication-row-link").hover();
+  await medicationRowLink(past, "Amoxicillin").hover();
   await expect(pastName).toHaveCSS("text-decoration-line", "underline");
 
   await expect(
@@ -171,9 +173,7 @@ test("medication row actions open the requested detail workflow", async ({
   page,
 }) => {
   await page.goto("/medications");
-  const row = page
-    .getByTestId("medication-row")
-    .filter({ hasText: "Adherence Refill Med (e2e)" });
+  const row = medicationRow(page, "Adherence Refill Med (e2e)");
 
   await row.getByRole("button", { name: "Medication actions" }).click();
   await followLink(
@@ -185,9 +185,7 @@ test("medication row actions open the requested detail workflow", async ({
   await page.getByRole("button", { name: "Cancel" }).click();
 
   await page.goto("/medications");
-  const refreshedRow = page
-    .getByTestId("medication-row")
-    .filter({ hasText: "Adherence Refill Med (e2e)" });
+  const refreshedRow = medicationRow(page, "Adherence Refill Med (e2e)");
   await refreshedRow
     .getByRole("button", { name: "Medication actions" })
     .click();
@@ -276,10 +274,8 @@ test("the medication workspace stays usable without horizontal overflow on mobil
   await page.goto("/medications");
 
   await expect(page.getByTestId("medication-add-toggle")).toBeVisible();
-  await expect(page.getByTestId("medication-list")).toBeVisible();
-  const scheduled = page
-    .getByTestId("today-scheduled-med")
-    .filter({ hasText: "Adherence Refill Med (e2e)" });
+  await expect(medicationList(page)).toBeVisible();
+  const scheduled = scheduledTodayItem(page, "Adherence Refill Med (e2e)");
   const [scheduledLinkBox, scheduledActionBox] = await Promise.all([
     scheduled.getByRole("link").boundingBox(),
     scheduled.getByTestId("dose-take").boundingBox(),
@@ -310,14 +306,9 @@ test("a medication row links to its clinical-record detail page", async ({
   await page.setViewportSize({ width: 1024, height: 1000 });
   await page.goto("/medications");
 
-  const link = page
-    .getByTestId("medication-row")
-    .filter({ hasText: "Adherence Refill Med (e2e)" })
-    .getByTestId("medication-row-link");
-  await expect(link).toBeVisible();
-  const detail = page.getByTestId("medication-detail");
-  // Navigate past the pre-hydration swallow (#730/#500) with the blessed followLink (#868).
-  await followLink(page, link, /\/medications\/\d+/);
+  // Navigate past the pre-hydration swallow (#730/#500) via the shared driver's blessed
+  // followLink strategy (#868); it returns the (unasserted) detail Locator.
+  const detail = await openMedDetailViaLink(page, "Adherence Refill Med (e2e)");
   await expect(detail).toBeVisible();
   await expect(detail).toContainText("Adherence Refill Med (e2e)");
   // The detail page is the clinical-record home: its History disclosure (courses +
@@ -326,8 +317,8 @@ test("a medication row links to its clinical-record detail page", async ({
 
   // Scheduled and PRN details share the same first-row structure: Overview and
   // Details are equal-width peers. Scheduled-only adherence follows full-width.
-  const overview = detail.getByTestId("medication-overview");
-  const guidance = detail.getByTestId("medication-guidance");
+  const overview = medicationOverview(detail);
+  const guidance = medicationGuidance(detail);
   const adherence = detail.getByTestId("medication-adherence-month");
   const [overviewBox, guidanceBox, adherenceBox] = await Promise.all([
     overview.boundingBox(),
@@ -418,9 +409,7 @@ test("records bridge tracks an imported prescription that has no tracked med", a
 
   // The tracked med now appears as a current medication row.
   await expect(
-    page
-      .getByTestId("medication-row")
-      .filter({ hasText: "E2E Bridge Track Med" })
+    medicationRow(page, "E2E Bridge Track Med")
   ).toBeVisible();
 });
 

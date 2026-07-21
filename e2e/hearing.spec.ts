@@ -1,6 +1,11 @@
 import { test, expect } from "@playwright/test";
 import Database from "better-sqlite3";
 import path from "node:path";
+import {
+  expandIntakeWarnings,
+  ototoxicWarnings,
+  ototoxicWarningRows,
+} from "./intake-warnings-helpers";
 
 // Hearing / audiology domain (#713 + #717). Two user-visible surfaces the build/
 // typecheck/unit tiers can't prove render:
@@ -87,13 +92,11 @@ test.describe("Hearing / audiology (#713, #717)", () => {
 
     // Safety notices use the shared disclosure; open it before inspecting the
     // individual hearing-safety finding.
-    await main.getByTestId("intake-warnings").locator("summary").click();
-    const warnings = main.getByTestId("ototoxic-warnings");
+    await expandIntakeWarnings(main);
+    const warnings = ototoxicWarnings(main);
     await expect(warnings).toBeVisible();
 
-    const row = warnings
-      .locator('[data-testid^="ototoxic-warning-ototoxic:"]')
-      .filter({ hasText: MED });
+    const row = ototoxicWarningRows(warnings).filter({ hasText: MED });
     await expect(row).toBeVisible();
     await expect(row).toContainText(/inner ear|hearing/i);
     // Informational, cited, never prescriptive.

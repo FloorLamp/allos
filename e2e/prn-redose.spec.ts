@@ -1,6 +1,11 @@
 import { test, expect } from "@playwright/test";
 import Database from "better-sqlite3";
 import path from "node:path";
+import {
+  medicationsToday,
+  prnTodayItem,
+  medicationRow,
+} from "./med-card-helpers";
 
 // #798 PRN redose notice + confirm flow. The seed (e2e/seed-events.ts) ships
 // "PRN Redose Med (e2e)" — a PRN med with a CONFIRMED redose notice (6h interval,
@@ -48,10 +53,7 @@ test("Today panel PRN row surfaces the redose window status line (#798/#817)", a
 
   // The redose status line rides the Today panel's PRN administration row in the
   // #817 redesign (same QuickLogPrnControl the dashboard renders, one computation).
-  const prnRow = page
-    .getByTestId("medications-today")
-    .getByTestId("quick-log-prn-item")
-    .filter({ hasText: REDOSE_MED });
+  const prnRow = prnTodayItem(medicationsToday(page), REDOSE_MED);
   await expect(prnRow).toBeVisible();
   // The window is open (last dose ~7h ago > 6h interval), 1 of 4 today.
   const line = prnRow.getByTestId("prn-redose-line");
@@ -73,9 +75,7 @@ test("dashboard PRN widget mirrors the redose status line (#798)", async ({
   await page.goto("/");
   const widget = page.getByTestId("quick-log-prn");
   await expect(widget).toBeVisible();
-  const item = widget
-    .getByTestId("quick-log-prn-item")
-    .filter({ hasText: REDOSE_MED });
+  const item = prnTodayItem(widget, REDOSE_MED);
   if (!(await item.isVisible())) {
     await widget.getByTestId("quick-log-prn-more").locator("summary").click();
   }
@@ -120,7 +120,5 @@ test("med form: confirm flow pre-fills OTC label defaults and opts in (#798)", a
   await addCard.getByRole("button", { name: "Add", exact: true }).click();
 
   // The new PRN med appears as a current medication row (#817).
-  await expect(
-    page.getByTestId("medication-row").filter({ hasText: name })
-  ).toBeVisible();
+  await expect(medicationRow(page, name)).toBeVisible();
 });

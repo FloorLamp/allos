@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { loginAs, followLink } from "./nav";
 import { settledClick } from "./helpers";
+import { medicationDetail, medicationOverview } from "./med-card-helpers";
 
 // Illness-episode view (issue #801). The seed makes profile 1 currently sick — an
 // ongoing "Illness" situation with day-by-day symptoms, a fever curve (#800), and PRN
@@ -220,12 +221,12 @@ test.describe("Illness-episode view (#801)", () => {
       .first();
     await expect(medicationLink).toBeVisible();
     await followLink(member, medicationLink, /\/medications\/\d+/);
-    await expect(member.getByTestId("medication-detail")).toBeVisible();
+    await expect(medicationDetail(member)).toBeVisible();
     await expect(member.getByTestId("medication-subject-name")).toHaveText(
       "admin"
     );
     await expect(member.getByTestId("medication-switch-profile")).toBeVisible();
-    await expect(member.getByTestId("medication-overview")).toBeVisible();
+    await expect(medicationOverview(member)).toBeVisible();
     // Cross-profile medication detail stays read-only until the explicit profile switch.
     await expect(
       member.getByRole("button", { name: "Medication actions" })

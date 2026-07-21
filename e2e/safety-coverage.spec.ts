@@ -1,6 +1,12 @@
 import { test, expect } from "@playwright/test";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_COVERAGE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import {
+  intakeWarnings,
+  safetyScopeFooter,
+  safetyScopeSummary,
+  safetyScopeLine,
+} from "./intake-warnings-helpers";
 
 // Safety-check coverage legibility (issue #1032). The dedicated fixture profile
 // tracks two name-only meds that yield NO warnings (loratadine — off the curated
@@ -20,8 +26,8 @@ test("the Medications page keeps empty screening context in the footer", async (
   await page.goto("/medications");
   const main = page.getByRole("main");
 
-  await expect(main.getByTestId("intake-warnings")).toHaveCount(0);
-  const footer = main.getByTestId("safety-scope-footer");
+  await expect(intakeWarnings(main)).toHaveCount(0);
+  const footer = safetyScopeFooter(main);
   await expect(footer).toBeVisible();
   expect(
     await footer.evaluate((node) => {
@@ -35,11 +41,11 @@ test("the Medications page keeps empty screening context in the footer", async (
       );
     })
   ).toBe(true);
-  const summary = main.getByTestId("safety-scope-summary");
+  const summary = safetyScopeSummary(main);
   await expect(summary).toHaveText("Curated safety screen · no flags found");
   await summary.click();
 
-  const scope = main.getByTestId("safety-scope-line");
+  const scope = safetyScopeLine(main);
   await expect(scope).toBeVisible();
   await expect(scope).toContainText("curated set");
   await expect(scope).toContainText("1 of 2 active items");
@@ -63,8 +69,8 @@ test("the Supplements tab renders the same scope line (one computation, both sur
   await page.goto("/nutrition?tab=supplements");
   const main = page.getByRole("main");
 
-  await expect(main.getByTestId("intake-warnings")).toHaveCount(0);
-  const footer = main.getByTestId("safety-scope-footer");
+  await expect(intakeWarnings(main)).toHaveCount(0);
+  const footer = safetyScopeFooter(main);
   await expect(footer).toBeVisible();
   expect(
     await footer.evaluate((node) => {
@@ -77,11 +83,11 @@ test("the Supplements tab renders the same scope line (one computation, both sur
       );
     })
   ).toBe(true);
-  const summary = main.getByTestId("safety-scope-summary");
+  const summary = safetyScopeSummary(main);
   await expect(summary).toHaveText("Curated safety screen · no flags found");
   await summary.click();
 
-  const scope = main.getByTestId("safety-scope-line");
+  const scope = safetyScopeLine(main);
   await expect(scope).toBeVisible();
   await expect(scope).toContainText("1 of 2 active items");
   await expect(scope).toContainText("No flags found");

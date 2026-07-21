@@ -2,6 +2,12 @@ import { test, expect, type Page, type Locator } from "@playwright/test";
 import Database from "better-sqlite3";
 import path from "node:path";
 import { followLink } from "./nav";
+import {
+  medicationRow,
+  medicationList,
+  pastMedications,
+  prnTodayItem,
+} from "./med-card-helpers";
 
 // Episode-end medication reconciliation + the dormant-PRN sweep (issue #880).
 //   1. The full arc: on a FRESH sick profile, quick-add ibuprofen during the illness, log
@@ -106,10 +112,10 @@ test.describe("Episode-end medication reconciliation (#880)", () => {
 
     // 3) Log a dose from the dashboard PRN quick-log widget.
     await page.goto("/");
-    const prnItem = page
-      .getByTestId("quick-log-prn")
-      .getByTestId("quick-log-prn-item")
-      .filter({ hasText: "Ibuprofen" });
+    const prnItem = prnTodayItem(
+      page.getByTestId("quick-log-prn"),
+      "Ibuprofen"
+    );
     await expect(prnItem).toBeVisible();
     await prnItem.getByTestId("prn-log-now").click();
     await expect(page.getByText(/Logged Ibuprofen/i)).toBeVisible();
@@ -132,15 +138,13 @@ test.describe("Episode-end medication reconciliation (#880)", () => {
     // 6) The ibuprofen has left Current for Past — the med list that IS the doctor-visit
     // artifact no longer misrepresents it as a standing med.
     await page.goto("/medications");
-    const past = page.getByTestId("past-medications");
+    const past = pastMedications(page);
     await expect(past).toBeVisible();
     await past.locator("summary").click();
-    await expect(
-      page.getByTestId("medication-row").filter({ hasText: "Ibuprofen" })
-    ).toBeVisible();
+    await expect(medicationRow(page, "Ibuprofen")).toBeVisible();
     // It is no longer a Current med (a fresh profile has only this med).
     await expect(
-      page.getByTestId("medication-list").getByTestId("medication-row")
+      medicationList(page).getByTestId("medication-row")
     ).toHaveCount(0);
   });
 
@@ -202,9 +206,7 @@ test.describe("Episode-end medication reconciliation (#880)", () => {
     await expect(
       sweep.getByTestId("dormant-prn-item").filter({ hasText: medName })
     ).toHaveCount(0);
-    await page.getByTestId("past-medications").locator("summary").click();
-    await expect(
-      page.getByTestId("medication-row").filter({ hasText: medName })
-    ).toBeVisible();
+    await pastMedications(page).locator("summary").click();
+    await expect(medicationRow(page, medName)).toBeVisible();
   });
 });
