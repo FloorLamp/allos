@@ -45,6 +45,22 @@ function seedSession(
   }
 }
 
+// A session with NO HR data but a subjective intensity rating (#1115 Fix A′). `dur`
+// lets a caller make it long (would clear the duration floor) or short (would miss it),
+// so the rating — not duration — decides.
+function seedRated(
+  profileId: number,
+  date: string,
+  type: "strength" | "cardio",
+  intensity: "easy" | "moderate" | "hard",
+  dur: number
+): void {
+  db.prepare(
+    `INSERT INTO activities (profile_id, date, type, title, duration_min, intensity)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(profileId, date, type, `${type} session`, dur, intensity);
+}
+
 const HARD_BPM = 150; // Zone 4 at maxHr 180 → a loading day
 const EASY_BPM = 110; // Zone 2 at maxHr 180 → a recovery day
 
@@ -90,5 +106,45 @@ describe("loading-days gather (#754)", () => {
     const recs = recommendCoaching(input);
     expect(recs[0].id).toBe("rest-overtraining");
     expect(recs[0].detail).toContain("4 days in a row");
+  });
+
+  // #1115 Fix A′: the subjective session rating populates the plannedIntent seam, so a
+  // self-rated easy day drops from loadingDates even when it's long and un-zoned (no HR),
+  // and a self-rated hard day counts even under the duration floor.
+  it("drops a long un-zoned self-rated EASY day, keeps hard lifting days", () => {
+    const p = newProfile("Rated Easy");
+    const td = today(p);
+    // 3 hard lifting days (HR) + a LONG easy-rated ride TODAY with no HR.
+    seedSession(p, shiftDateStr(td, -3), "strength", HARD_BPM);
+    seedSession(p, shiftDateStr(td, -2), "strength", HARD_BPM);
+    seedSession(p, shiftDateStr(td, -1), "strength", HARD_BPM);
+    seedRated(p, td, "cardio", "easy", 120); // long, would clear the duration floor
+
+    const input = gatherCoachingInput(p, "kg", "km");
+    expect(new Set(input.trainingDates).size).toBe(4); // all movement
+    expect(new Set(input.loadingDates)).toEqual(
+      new Set([
+        shiftDateStr(td, -3),
+        shiftDateStr(td, -2),
+        shiftDateStr(td, -1),
+      ])
+    );
+    // 3-day loading streak < 4 → the easy day breaks the fatigue nudge.
+    expect(recommendCoaching(input).some((r) => r.kind === "rest")).toBe(false);
+  });
+
+  it("counts a SHORT un-zoned self-rated HARD day as loading (below the duration floor)", () => {
+    const p = newProfile("Rated Hard");
+    const td = today(p);
+    // 3 hard lifting days + a SHORT hard-rated session today (12 min < 30-min floor).
+    seedSession(p, shiftDateStr(td, -3), "strength", HARD_BPM);
+    seedSession(p, shiftDateStr(td, -2), "strength", HARD_BPM);
+    seedSession(p, shiftDateStr(td, -1), "strength", HARD_BPM);
+    seedRated(p, td, "strength", "hard", 12);
+
+    const input = gatherCoachingInput(p, "kg", "km");
+    // Today's short hard session still loads → 4 consecutive loading days → overtraining.
+    expect(new Set(input.loadingDates).size).toBe(4);
+    expect(recommendCoaching(input)[0].id).toBe("rest-overtraining");
   });
 });

@@ -1639,3 +1639,86 @@ describe("recommendCoaching rest continuity", () => {
     expect(top.title).toBe("Rest or take it easy today");
   });
 });
+
+// #1115 Fix A — the schedule-based rest triggers compose with the active routine's
+// prescribed loading cadence, so a legitimate 6-day PPL isn't nagged to rest on days
+// 4/5/6 every week (only DEVIATION from the plan warrants a schedule-based rest nudge).
+// The physiological triggers (sleep, RHR) keep firing regardless — real under-recovery
+// is routine-independent.
+describe("restRecommendation — routine cadence (#1115 Fix A)", () => {
+  const th = DEFAULT_COACHING_THRESHOLDS;
+
+  // A 6-day all-strength routine (each day a MuscleRegion focus → a loading day).
+  const routine6 = {
+    id: 1,
+    position: 0,
+    days: Array.from({ length: 6 }, (_, i) => ({
+      id: i + 1,
+      label: "S",
+      focus: ["Chest"] as "Chest"[],
+      slots: [],
+    })),
+  };
+
+  it("does NOT fire overtraining on six consecutive loading days under a 6-day routine", () => {
+    const loading = consecutiveDates(TODAY, 6);
+    expect(
+      restRecommendation(
+        input({
+          trainingDates: loading,
+          loadingDates: loading,
+          activeRoutine: routine6,
+        }),
+        th
+      )
+    ).toBeNull();
+  });
+
+  it("WOULD fire the same six days without a routine (the generic 4-day rule)", () => {
+    const loading = consecutiveDates(TODAY, 6);
+    expect(
+      restRecommendation(
+        input({ trainingDates: loading, loadingDates: loading }),
+        th
+      )?.id
+    ).toBe("rest-overtraining");
+  });
+
+  it("still fires on a genuine sleep deficit regardless of the routine", () => {
+    expect(
+      restRecommendation(
+        input({
+          sleep: { lastNightMin: 300, baselineMin: 300 }, // below the floor
+          activeRoutine: routine6,
+        }),
+        th
+      )?.id
+    ).toBe("rest-sleep");
+  });
+
+  it("still fires on elevated resting HR regardless of the routine", () => {
+    expect(
+      restRecommendation(
+        input({
+          restingHr: { recent: 62, baseline: 55 },
+          activeRoutine: routine6,
+        }),
+        th
+      )?.id
+    ).toBe("rest-rhr");
+  });
+
+  it("fires when the user DEVIATES past the plan (a 7th consecutive loading day)", () => {
+    const loading = consecutiveDates(TODAY, 7);
+    expect(
+      restRecommendation(
+        input({
+          trainingDates: loading,
+          loadingDates: loading,
+          activeRoutine: routine6,
+        }),
+        th
+      )?.id
+    ).toBe("rest-overtraining");
+  });
+});

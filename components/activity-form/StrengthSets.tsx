@@ -25,7 +25,7 @@ import {
 } from "@/lib/journal-format";
 import {
   suggestNextSet,
-  deloadFormSuggestion,
+  contextualNextSet,
   sessionBestSet,
   sessionWorkSets,
   sideSets,
@@ -316,9 +316,11 @@ export default function StrengthSets({
       units.weightUnit
     );
     // On a deload week for a routine lift, replace the progression with the deload-
-    // adjusted load (#923) — carried by the Use button, the set-1 ghost + focus-fill, and
-    // the plate-builder seed alike, since they all read this one `suggestion`.
-    return deloadFormSuggestion(base, p.name, deload);
+    // adjusted load — carried by the Use button, the set-1 ghost + focus-fill, and the
+    // plate-builder seed alike, since they all read this one `suggestion`. Routes through
+    // the ONE shared contextualNextSet (#1115 Fix B) so the form, the session card, the
+    // detail panel, and the coaching card can't disagree (#221/#923/#741).
+    return contextualNextSet(base, p.name, { deloadWeek: deload });
   };
   // Bilateral parts get one suggestion; per-side parts get an independent
   // suggestion per side (#335) — sessionBestSet already treats each side as its

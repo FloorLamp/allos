@@ -18,6 +18,7 @@ import {
 import {
   activityWindows,
   buildZoneModel,
+  dayPlannedIntent,
   fillZoneWeeks,
   polarizedSplit,
   scopeBucketsToWindows,
@@ -167,31 +168,41 @@ export function getZone2MinutesInWindow(
 }
 
 // Per-day load inputs (issue #754) over a trailing window: for each day with a
-// logged activity, its easy/hard HR split (when window-scoped HR covers it) and its
-// total session minutes, ready for the pure isLoadingDay classifier. The coaching
-// gather runs these through loadingDates() so the overtraining/load rest triggers
-// key on hard sessions, not every activity. No planned-intent yet (#740/#741 will
-// supply routine day-type / deload; the classifier already accepts it).
+// logged activity, its easy/hard HR split (when window-scoped HR covers it), its total
+// session minutes, and its SUBJECTIVE planned-intent (from `activities.intensity`, the
+// #1115 Fix A′ seam), ready for the pure isLoadingDay classifier. The coaching gather
+// runs these through loadingDates() so the overtraining/load rest triggers key on hard
+// sessions, not every activity: a self-rated easy day breaks the streak even long/
+// un-zoned, a self-rated hard day counts even under the duration floor.
 export function getDayLoadInputs(profileId: number, days = 42): DayLoadInput[] {
   const td = today(profileId);
   const since = shiftDateStr(td, -(days - 1));
 
-  // Total session minutes per day from all activities (the duration fallback).
-  // duration_min is stored regardless of a start time, so this also covers days with
-  // no bounded HR window.
+  // Total session minutes per day from all activities (the duration fallback), plus the
+  // day's subjective intensity ratings collapsed to a planned intent. duration_min is
+  // stored regardless of a start time, so this also covers days with no bounded HR
+  // window. GROUP_CONCAT drops NULL ratings, so an unrated day yields no intent.
   const durRows = db
     .prepare(
-      `SELECT date, COALESCE(SUM(duration_min), 0) AS dur
+      `SELECT date, COALESCE(SUM(duration_min), 0) AS dur,
+              GROUP_CONCAT(intensity) AS intensities
          FROM activities
         WHERE profile_id = ? AND date >= ?
         GROUP BY date`
     )
-    .all(profileId, since) as { date: string; dur: number }[];
+    .all(profileId, since) as {
+    date: string;
+    dur: number;
+    intensities: string | null;
+  }[];
   const byDate = new Map<string, DayLoadInput>();
   for (const r of durRows) {
     byDate.set(r.date, {
       date: r.date,
       durationMin: r.dur > 0 ? r.dur : null,
+      plannedIntent: dayPlannedIntent(
+        r.intensities ? r.intensities.split(",") : []
+      ),
     });
   }
 

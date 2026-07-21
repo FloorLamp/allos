@@ -13,7 +13,11 @@ import {
   type SportStat,
 } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
-import { exerciseHistoryKey } from "@/lib/lifts";
+import { exerciseHistoryKey, regionForExercise } from "@/lib/lifts";
+import { getFormDeloadContext } from "@/lib/routines";
+import { getInjuryConstraints } from "@/lib/injuries";
+import { temperedRegions, RECOVERING_LOAD_FACTOR } from "@/lib/injury-model";
+import type { NextSetContext } from "@/lib/coaching";
 import { chartSeries } from "@/lib/chart-colors";
 import {
   getUnitPrefs,
@@ -332,6 +336,22 @@ function strengthView({
   sex: Sex | null;
 }): AnalyzeView {
   const activeMetric = coerceStrengthMetric(metric);
+  // Routine context for the next-set target (#1115 Fix B): the Analyze panel is exactly
+  // where the "Today's workout" nudge's "How to" button deep-links, so it must seed the
+  // SAME shaved/tempered load the nudge frames — not the full progression. Deload when
+  // the routine places today in its deload week AND this lift resolves to a routine
+  // slot (mirroring the live form, #923); recovering when a RECOVERING injury covers the
+  // lift's region (#838). Both flow through the shared contextualNextSet in the panel.
+  const deloadCtx = getFormDeloadContext(profileId, today(profileId));
+  const recovering = temperedRegions(getInjuryConstraints(profileId));
+  const statRegion = regionForExercise(stat.exercise);
+  const nextSetContext: NextSetContext = {
+    deloadWeek:
+      deloadCtx.isDeloadWeek &&
+      deloadCtx.routineKeys.includes(exerciseHistoryKey(stat.exercise)),
+    recoveringRegion: statRegion != null && recovering.has(statRegion),
+    recoveringFactor: RECOVERING_LOAD_FACTOR,
+  };
   const sessions = rangeFilter(
     getExerciseComparison(profileId, stat.exercise, units.weightUnit),
     fromDate
@@ -381,6 +401,7 @@ function strengthView({
             showRecent={false}
             showLevel={false}
             sex={sex}
+            nextSetContext={nextSetContext}
           />
         </div>
         {benchmark && (

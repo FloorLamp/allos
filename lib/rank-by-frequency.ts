@@ -24,6 +24,36 @@ export function rankByFrequency(
     .map((it) => it.name);
 }
 
+// Float a routine's prescribed exercises to the FRONT of an already-frequency-ranked
+// picker list (#1115 Fix C), so opening the logger on "Push day" surfaces today's
+// prescribed lifts first instead of your globally-most-frequent ones. `priority` is the
+// resolved routine session's slot exercises (base-collapsed to match the picker's base
+// names) in slot order; each is moved ahead of the rest, preserving their given order,
+// and every other option keeps its frequency order. Case-insensitive match; a priority
+// name not present in `ranked` is skipped (a custom slot exercise the catalog doesn't
+// list). Empty `priority` (off a routine) returns `ranked` byte-for-byte — the default.
+export function prioritizeRoutineSlots(
+  ranked: string[],
+  priority: string[]
+): string[] {
+  if (priority.length === 0) return ranked;
+  const wanted = new Set(priority.map((p) => p.toLowerCase()));
+  const front: string[] = [];
+  const seen = new Set<string>();
+  // Take priority names in the picker's own casing, in slot order, de-duplicated.
+  for (const p of priority) {
+    const key = p.toLowerCase();
+    if (seen.has(key)) continue;
+    const match = ranked.find((r) => r.toLowerCase() === key);
+    if (match) {
+      front.push(match);
+      seen.add(key);
+    }
+  }
+  const rest = ranked.filter((r) => !wanted.has(r.toLowerCase()));
+  return [...front, ...rest];
+}
+
 // Rank a curated catalog by a profile's RECENT usage: each occurrence is weighted by
 // `weight × decayedWeight(date)` (recency half-life, lib/decay.ts) so a recent habit
 // outranks a stale one, then `rankByFrequency` orders the catalog + any previously-used

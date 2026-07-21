@@ -8,6 +8,7 @@ import {
   recommendNextWorkout,
   resolveRoutineSession,
   resolveTodayRoutineDayIndex,
+  routineLoadingCadence,
   sessionCreditsDay,
   type ActiveRoutineInput,
   type NextWorkoutInput,
@@ -345,5 +346,65 @@ describe("buildRoutineSessionPrefill — Log this session slate", () => {
     const prefill = buildRoutineSessionPrefill(session, TODAY);
     expect(prefill.type).toBe("cardio");
     expect(prefill.sets).toHaveLength(0);
+  });
+});
+
+// #1115 Fix A — the active routine's prescribed loading cadence, the input that lifts
+// the schedule-based rest thresholds so a plan can't trip a generic 4-day rule.
+describe("routineLoadingCadence", () => {
+  // A strength day with a MuscleRegion focus; a cardio day has an empty focus.
+  function day(
+    id: number,
+    focus: string[]
+  ): ActiveRoutineInput["days"][number] {
+    return {
+      id,
+      label: focus.length ? "S" : "Cardio",
+      focus: focus as ActiveRoutineInput["days"][number]["focus"],
+      slots: [],
+    };
+  }
+  function routine(days: ActiveRoutineInput["days"]): ActiveRoutineInput {
+    return { id: 1, position: 0, days };
+  }
+
+  it("returns null with no routine / no days / no loading days", () => {
+    expect(routineLoadingCadence(null)).toBeNull();
+    expect(routineLoadingCadence(undefined)).toBeNull();
+    expect(routineLoadingCadence(routine([]))).toBeNull();
+    // A cardio-only plan has no loading days.
+    expect(routineLoadingCadence(routine([day(1, []), day(2, [])]))).toBeNull();
+  });
+
+  it("counts a 6-day all-strength PPL as 6 consecutive loading days per cycle", () => {
+    const six = routine([
+      day(1, ["Chest"]),
+      day(2, ["Back"]),
+      day(3, ["Legs"]),
+      day(4, ["Chest"]),
+      day(5, ["Back"]),
+      day(6, ["Legs"]),
+    ]);
+    expect(routineLoadingCadence(six)).toEqual({
+      maxConsecutiveLoadingDays: 6,
+      loadingDaysPerCycle: 6,
+    });
+  });
+
+  it("treats a routine cardio day as active recovery that breaks the run (circular)", () => {
+    // Upper/Lower/Cardio/Upper/Lower — the cardio day splits the run; the longest
+    // circular run wraps the boundary (Upper-Lower at the end + Upper-Lower at the
+    // start = 4), and there are 4 loading days per cycle.
+    const r = routine([
+      day(1, ["Chest"]),
+      day(2, ["Legs"]),
+      day(3, []), // cardio → recovery
+      day(4, ["Chest"]),
+      day(5, ["Legs"]),
+    ]);
+    expect(routineLoadingCadence(r)).toEqual({
+      maxConsecutiveLoadingDays: 4,
+      loadingDaysPerCycle: 4,
+    });
   });
 });

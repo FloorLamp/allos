@@ -18,7 +18,13 @@ import { formatLongDate, formatRelativeDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { dateStrInTz } from "@/lib/date";
-import { suggestNextSet, lastSessionPR, nextSetText } from "@/lib/coaching";
+import {
+  suggestNextSet,
+  contextualNextSet,
+  lastSessionPR,
+  nextSetText,
+  type NextSetContext,
+} from "@/lib/coaching";
 import LineChartCard from "@/components/LineChartCard";
 import { chartSeries } from "@/lib/chart-colors";
 import LevelBadge from "@/components/LevelBadge";
@@ -71,6 +77,7 @@ export default function ExerciseDetailPanel({
   showRecent = true,
   showLevel = true,
   sex,
+  nextSetContext,
 }: {
   stat: ExerciseStat;
   bodyweightKg: number | null;
@@ -100,6 +107,12 @@ export default function ExerciseDetailPanel({
   showRecent?: boolean;
   // Analyze shows the benchmark progression in a dedicated card.
   showLevel?: boolean;
+  // Routine context modifiers for the next-set target (#1115 Fix B): a deload week and/
+  // or a recovering-injury region. When set, the panel routes its next-set through the
+  // SAME contextualNextSet every other surface uses — so the "How to" deep-link from the
+  // "Deload week" nudge seeds the shaved load, not the full progression. Absent ⇒ the
+  // plain progression (this panel's prior behavior on the non-Analyze surfaces).
+  nextSetContext?: NextSetContext;
 }) {
   const formatPrefs = useFormatPrefs();
   const todayStr = dateStrInTz(useTimezone());
@@ -129,7 +142,11 @@ export default function ExerciseDetailPanel({
   const matchedGoals = goals
     ? goalsForExercise(goals, stat.exercise).filter((g) => !g.archived)
     : [];
-  const nextSet = suggestNextSet(stat, wu);
+  const nextSet = contextualNextSet(
+    suggestNextSet(stat, wu),
+    stat.exercise,
+    nextSetContext ?? {}
+  );
   const pr = lastSessionPR(stat);
 
   // When bodyweight is unknown the trend is total reps per session (a raw count);

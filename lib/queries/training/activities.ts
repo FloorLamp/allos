@@ -8,7 +8,12 @@ import { shiftDateStr, weekdayOfDateStr } from "../../date";
 import { db, today } from "../../db";
 import { decayedWeight } from "../../decay";
 import { LIFT_OPTIONS, baseLiftName } from "../../lifts";
-import { rankByFrequency } from "../../rank-by-frequency";
+import {
+  rankByFrequency,
+  prioritizeRoutineSlots,
+} from "../../rank-by-frequency";
+import { getActiveRoutine } from "../../routines";
+import { resolveTodayRoutineDayIndex } from "../../workout-recommendation";
 import { currentStreak } from "../../streak";
 import type { ActivityEditData } from "../../activity-form-model";
 import { pickImportedActivityMetrics } from "../../activity-import-details";
@@ -28,6 +33,36 @@ export interface ActivitySuggestions {
   // Per-lift co-occurrence: base-name (lowercased) -> top co-logged lifts, used
   // to bias the combobox toward companions of the draft's exercises (issue #195).
   liftCompanions: CompanionMap;
+}
+
+// The base-collapsed exercise names prescribed by TODAY'S resolved routine day (#1115
+// Fix C): every candidate of every slot on the day the rotation cursor points at,
+// de-duplicated in slot order. Base-collapsed (baseLiftName) so they line up with the
+// picker's grouped base names. Empty when there's no active routine / no days — the
+// picker then keeps its plain frequency order. Reuses the SAME resolveTodayRoutineDayIndex
+// the recommendation core and crediting path share (#831), so "today's day" can't fork.
+function todayRoutineSlotNames(profileId: number): string[] {
+  const routine = getActiveRoutine(profileId);
+  if (!routine) return [];
+  const idx = resolveTodayRoutineDayIndex({
+    position: routine.position,
+    days: routine.days,
+  });
+  if (idx === null) return [];
+  const day = routine.days[idx];
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const slot of day.slots) {
+    for (const cand of slot.candidates) {
+      const base = baseLiftName(cand);
+      const key = base.toLowerCase();
+      if (base && !seen.has(key)) {
+        seen.add(key);
+        names.push(base);
+      }
+    }
+  }
+  return names;
 }
 
 // cache(): the app layout resolves suggestions on every navigation, and a request
@@ -80,11 +115,22 @@ export const getActivitySuggestions = cache(function getActivitySuggestions(
     )
     .all(profileId, since) as CompanionRow[];
 
+  // Routine-aware picker order (#1115 Fix C): when an active routine resolves a day for
+  // today, its prescribed slot exercises (+ their candidates) float to the FRONT of the
+  // frequency-ranked lift list, so logging the session you're actually doing is a tap,
+  // not a scroll. Off a routine, `routineSlotNames` is empty and the order is
+  // byte-for-byte the frequency ranking. Names are base-collapsed to match the picker's
+  // grouped base names. One more consumer of the already-resolved routine.
+  const routineSlotNames = todayRoutineSlotNames(profileId);
+
   // Cardio/sport names come from the structured component names ("Running"), not
   // the freeform activity title ("Morning run"), so the picker suggests real
   // activity names rather than one-off session labels.
   return {
-    lifts: rankByFrequency(LIFT_OPTIONS, liftRows),
+    lifts: prioritizeRoutineSlots(
+      rankByFrequency(LIFT_OPTIONS, liftRows),
+      routineSlotNames
+    ),
     cardio: rankByFrequency(
       CARDIO_ACTIVITIES,
       effortNameCounts(profileId, "cardio")

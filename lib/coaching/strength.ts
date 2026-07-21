@@ -486,21 +486,48 @@ export function deloadAdjust(slot: {
   return { sets, nextSet: deloadNextSet(slot.exercise, slot.nextSet) };
 }
 
-// The activity form's next-set suggestion, deload-aware (#923). The free-form logger
-// has no routine/slot context and no slot set-count, so on a deload week — for a lift
-// that resolves (variant-collapsed) to a slot in the active routine — it consumes ONLY
-// the LOAD half of the shared deloadAdjust by passing `sets: 0`, exactly as the engine's
-// compact card does (lib/coaching/engine.ts). Every surface that renders a deload week
-// (the Training-overview session card, the recommendation copy, and now the form) reads
-// the ONE deloadAdjust, so the shaved load can never drift (#221/#741). Off a deload
-// week, or for a non-routine accessory, the plain progression is returned unchanged.
-export function deloadFormSuggestion(
+// ---- Contextual next-set: the ONE modifier composition (#1115 Fix B) ----
+
+// Every context modifier that can adjust a base next-set target, applied in ONE place
+// so EVERY next-set-rendering surface — the free logger, the routine "Today's session"
+// card, the exercise-detail / Analyze panel, and the coaching card — shares the SAME
+// math and a new modifier reaches all surfaces or none (the "one question, one
+// computation" rule at the next-set layer, #221). This generalizes #923's deload→form
+// wiring: before, `deloadAdjust` was applied per-surface for the deload week (#741)
+// while `temperRecoveringNextSet` for a recovering injury (#838) lived only in the
+// coaching engine, so the today's-session card, the live logger, and the detail panel
+// all seeded the un-tempered weight. Now they all call THIS. `deloadFormSuggestion`
+// collapsed into it (the deload-only case is `{ deloadWeek }`).
+export interface NextSetContext {
+  // The active routine places TODAY in its deload week AND this lift resolves to a
+  // routine slot (#741/#923). Shaves ~10% off the load via the shared deloadAdjust.
+  deloadWeek?: boolean;
+  // This lift's region is returning from a RECOVERING injury (#838) — back the load
+  // off to `recoveringFactor` of the ordinary target.
+  recoveringRegion?: boolean;
+  // The recovering-injury load factor (RECOVERING_LOAD_FACTOR). Passed in by the
+  // caller so this module stays decoupled from the injury model; when omitted, a set
+  // `recoveringRegion` is a no-op (fail-safe: never silently shave without a factor).
+  recoveringFactor?: number | null;
+}
+
+// Apply every active modifier to a base next-set, sequenced temper-THEN-deload so a
+// lift that is BOTH recovering AND in a deload week gets the lighter stacked result
+// (matching the engine's prior composition), with the deload rationale winning. A
+// null/bodyweight/loadless base flows through unchanged (each internal is load-only).
+export function contextualNextSet(
   base: NextSet | null,
   exercise: string,
-  deload: boolean
+  ctx: NextSetContext
 ): NextSet | null {
-  if (!base || !deload) return base;
-  return deloadAdjust({ exercise, sets: 0, nextSet: base }).nextSet;
+  let ns = base;
+  if (ctx.recoveringRegion && ctx.recoveringFactor != null) {
+    ns = temperRecoveringNextSet(ns, exercise, ctx.recoveringFactor);
+  }
+  if (ctx.deloadWeek) {
+    ns = deloadAdjust({ exercise, sets: 0, nextSet: ns }).nextSet;
+  }
+  return ns;
 }
 
 // The recovering-injury tempered next-set (#838): a region returning from a RECOVERING

@@ -117,6 +117,33 @@ test("deload week shaves the routine lift's next-set suggestion (#923)", async (
   }
 });
 
+// #1115 Fix B — the exercise-detail / Analyze panel is exactly where the "Today's
+// workout" nudge's "How to" button deep-links, so on a deload week it must seed the
+// SAME shaved load the nudge frames — not the full progression (the "clearest bug" the
+// issue calls out). The panel now routes its next-set through the shared
+// contextualNextSet, so the FORM_DELOAD fixture's Bench shows the deload load here too.
+test("the Analyze detail panel seeds the deload-shaved next-set (#1115 Fix B)", async ({
+  browser,
+}) => {
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_FORM_DELOAD,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    await page.goto(
+      "/training?tab=analyze&kind=strength&item=Barbell%20Bench%20Press"
+    );
+    // The panel's Next-set block carries the shared deload rationale + shaved load (90),
+    // not the full 100 kg progression the un-tempered panel used to seed.
+    const nextSet = page.getByText("Next set", { exact: true }).locator("..");
+    await expect(nextSet).toBeVisible();
+    await expect(nextSet).toContainText("90");
+    await expect(nextSet).toContainText(/deload/i);
+  } finally {
+    await page.close();
+  }
+});
+
 test("each Recent row repeats that session into the set editor (#923)", async ({
   browser,
 }) => {
