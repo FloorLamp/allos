@@ -50,16 +50,22 @@ const DEMO_DB_PATH =
 // the SAME instant in the fixtures and in the app. A run can then never cross local
 // midnight out from under its "today"-seeded fixtures, and the early-morning
 // now-minus-hours window can't flip a relative-time assertion. Computed ONCE here, at
-// config load, as a fixed mid-day instant TODAY (12:00 local), so the whole run shares
-// it. An externally-supplied ALLOS_TEST_NOW wins — used to stress a boundary hour
-// (e.g. 00:10 local) on demand without waiting for real midnight.
-const FROZEN_NOW =
-  process.env.ALLOS_TEST_NOW ??
-  (() => {
-    const d = new Date();
-    d.setHours(12, 0, 0, 0);
-    return d.toISOString();
-  })();
+// config load, so the whole run shares it. An externally-supplied ALLOS_TEST_NOW wins —
+// used to stress a boundary hour (e.g. 00:10 local) on demand without waiting for real
+// midnight.
+//
+// The frozen instant is the run's REAL start (issue #1048), NOT a fixed mid-day. Fixing
+// it at 12:00 opened the "morning-UTC band": rows the suite writes at runtime keep real
+// wall-time (SQL `datetime('now')` defaults), so from ~00:00–11:00 local — when real
+// time lags a frozen noon by hours — every liveness/recency window (workout presence,
+// temp red-flag, "ongoing" ranges, redose labels) read a just-written row as stale and
+// ~10 specs failed deterministically. Freezing at real start keeps |real − frozen| ≤ the
+// suite's own duration (~25 min), which every window (≥45 min) tolerates, in EVERY hour.
+// Date-boundary determinism is preserved: `today()` derives from this same instant, so a
+// run only risks a real-midnight CROSS when it starts within its own duration of midnight
+// (a ~25-min window), where SQL-stamped rows roll a day ahead of the frozen date — the
+// narrow, bounded residual the fixed-noon design traded a genuine all-morning band for.
+const FROZEN_NOW = process.env.ALLOS_TEST_NOW ?? new Date().toISOString();
 
 // The persisted AI activity log (lib/ai-log.ts) is `<cwd>/data/logs/ai.jsonl` —
 // NOT under e2e/.data and NOT affected by ALLOS_DB_PATH, so the DB reset above
