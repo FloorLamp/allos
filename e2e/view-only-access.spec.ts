@@ -23,33 +23,45 @@ async function createMember(
   const username = `${access}er${Date.now()}${Math.floor(Math.random() * 1000)}`;
   const password = "member-pass-1234";
 
-  await adminPage.goto("/settings/family");
-  await adminPage.getByPlaceholder("Username").fill(username);
-  await adminPage.getByPlaceholder("Password").fill(password);
-  // settledClick, not a raw click: a click in the hydration window is silently
-  // swallowed (#830 class — this create raced exactly so under full-suite load),
-  // and the grant row only exists after the create action + revalidation land.
-  await settledClick(
-    adminPage,
-    adminPage.getByRole("button", { name: "Create login" })
-  );
-  await expect(
-    adminPage.getByText(`Created “${username}”. Grant it a profile below.`)
-  ).toBeVisible();
-
-  // The login is durable once the action returns, but the client-side
-  // router.refresh() can leave the access matrix on its previous RSC payload
-  // under CI load. Reload from the server before locating the new grant row.
-  await adminPage.reload();
+  // toPass, because neither a single expect nor settledClick can express this
+  // reliably: the create click can be swallowed in the hydration window (#830),
+  // AND settledClick's one-POST wait can false-settle here — the app-shell
+  // toasters poll via Server Action POSTs to the current route that are
+  // indistinguishable from the create action's POST (the profile-switch-toasts
+  // precedent). So retry the whole fill→click→verify cycle against the DURABLE
+  // outcome — the new grant row in the matrix — which is idempotent: once the
+  // create has landed, a retry's duplicate submit is rejected by the
+  // NOCASE-unique username with a friendly error while the fresh goto still
+  // finds the row, and the goto also sidesteps the stale-RSC matrix a bare
+  // router.refresh() can leave under CI load.
+  await expect(async () => {
+    await adminPage.goto("/settings/family");
+    await adminPage.getByPlaceholder("Username").fill(username);
+    await adminPage.getByPlaceholder("Password").fill(password);
+    await adminPage.getByRole("button", { name: "Create login" }).click();
+    await expect(adminPage.getByTestId(`grant-row-${username}`)).toBeVisible({
+      timeout: 5000,
+    });
+  }).toPass({ timeout: 45_000 });
 
   const grantRow = adminPage.getByTestId(`grant-row-${username}`);
-  await expect(grantRow).toBeVisible({ timeout: 15_000 });
   // Grant the seeded profile (id 1, which carries the full sample record).
   await grantRow.locator('input[type="checkbox"]').first().check();
   // Set the access LEVEL via the per-cell select (write is the default).
   await grantRow.getByTestId(`grant-access-${username}-1`).selectOption(access);
-  await grantRow.getByRole("button", { name: "Save access" }).click();
-  await expect(grantRow.getByText("Access updated.")).toBeVisible();
+  // settledClick here too: same #830 class as the create above — the raw click
+  // raced the save action's POST under full-suite load, and "Access updated."
+  // only renders after the action lands (seen once at retries=0, 2026-07-21).
+  await settledClick(
+    adminPage,
+    grantRow.getByRole("button", { name: "Save access" })
+  );
+  // 15s, not the 5s default: settledClick can return on a toaster poll's POST
+  // (see the create loop above) while the save action is still in flight under
+  // full-suite load — the banner renders only once the action itself lands.
+  await expect(grantRow.getByText("Access updated.")).toBeVisible({
+    timeout: 15_000,
+  });
 
   return { username, password };
 }

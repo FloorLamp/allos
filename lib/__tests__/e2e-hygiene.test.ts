@@ -205,7 +205,6 @@ const FIRST_ALLOW: Record<string, number> = {
   "unit-mislabel-review.spec.ts": 1,
   "view-only-access.spec.ts": 1,
   "vision.spec.ts": 3,
-  "visit-links.spec.ts": 3,
   "visits-lifecycle.spec.ts": 3,
   "weekly-recap.spec.ts": 2,
   "weight-quick-add.spec.ts": 1,
