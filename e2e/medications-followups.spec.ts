@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { settledClick } from "./helpers";
+import { openMedDetailViaHref } from "./med-card-helpers";
 
 // #851 Medications follow-ups: the OTC-first add form (Rx/OTC flag with an on-demand
 // prescription-fields disclosure, the "Generic"-led brand picker, the amount-only PRN
@@ -160,16 +161,9 @@ test("PRN administration removes with an Undo toast that restores it (#851 item 
   // can be interrupted/reverted under load, detaching the administration chips mid-click
   // (the settle race the coordinator flagged). A full navigation lands on a settled page.
   await page.goto("/medications");
-  const link = page
-    .getByTestId("medication-row")
-    .filter({ hasText: PRN_MED })
-    .getByTestId("medication-row-link");
-  await expect(link).toBeVisible();
-  const href = await link.getAttribute("href");
-  expect(href).toMatch(/\/medications\/\d+/);
-  await page.goto(href!);
-
-  const detail = page.getByTestId("medication-detail");
+  // The row→detail href nav (the #852 settle-race fix) is owned by the shared med-card
+  // driver (#868 class-2).
+  const detail = await openMedDetailViaHref(page, PRN_MED);
   await expect(detail).toBeVisible();
   const rows = detail.getByTestId("prn-administration-row");
   await expect(rows.first()).toBeVisible();
@@ -193,15 +187,8 @@ test("detail page shows past-administration history (#851 item 13)", async ({
 }) => {
   await page.goto("/medications");
 
-  const link = page
-    .getByTestId("medication-row")
-    .filter({ hasText: PRN_MED })
-    .getByTestId("medication-row-link");
-  await expect(link).toBeVisible();
-  const href = await link.getAttribute("href");
-  expect(href).toMatch(/\/medications\/\d+/);
-  await page.goto(href!);
-  const detail = page.getByTestId("medication-detail");
+  // Row→detail href nav owned by the shared med-card driver (#868 class-2).
+  const detail = await openMedDetailViaHref(page, PRN_MED);
   await expect(detail).toBeVisible();
 
   // The seeded PRN med has administrations logged today, so the History section
@@ -217,11 +204,8 @@ test("logs, edits, and deletes a historical medication dose", async ({
   const loggedAmount = `${225 + testInfo.repeatEachIndex} mg`;
   const updatedAmount = `${250 + testInfo.repeatEachIndex} mg`;
   await page.goto("/medications");
-  const link = page
-    .getByTestId("medication-row")
-    .filter({ hasText: PRN_MED })
-    .getByTestId("medication-row-link");
-  await page.goto((await link.getAttribute("href"))!);
+  // Row→detail href nav owned by the shared med-card driver (#868 class-2).
+  await openMedDetailViaHref(page, PRN_MED);
 
   const history = page.getByTestId("dose-history");
   await history.getByRole("button", { name: "Log past dose" }).click();
