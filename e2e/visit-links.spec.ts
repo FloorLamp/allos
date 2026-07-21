@@ -28,6 +28,7 @@ test.describe("record ↔ visit / episode ↔ visit linking (#1050/#1053)", () =
     await page.goto("/records#visits");
     await followLink(
       page,
+      // first-ok: dedicated VISITLINKS fixture profile — the only Office Visit rows are this spec's own
       page.getByRole("link", { name: /Office Visit/ }).first(),
       /\/encounters\/\d+/
     );
@@ -60,6 +61,7 @@ test.describe("record ↔ visit / episode ↔ visit linking (#1050/#1053)", () =
     await page.goto("/medications");
     await followLink(
       page,
+      // first-ok: dedicated VISITLINKS fixture profile — Amoxicillin (e2e) exists only in this spec's seed
       page.getByRole("link", { name: /Amoxicillin \(e2e\)/ }).first(),
       /\/medications\/\d+/
     );
@@ -73,6 +75,7 @@ test.describe("record ↔ visit / episode ↔ visit linking (#1050/#1053)", () =
     await page.goto("/medical/episodes");
     await followLink(
       page,
+      // first-ok: dedicated VISITLINKS fixture profile — the sinus-infection episode is this spec's own fixture
       page.getByRole("link", { name: /sinus infection/i }).first(),
       /\/medical\/episodes\/\d+/
     );
