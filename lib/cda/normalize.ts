@@ -1,4 +1,5 @@
 import { isRealIsoDate } from "../date";
+import { nuccLabel } from "../nucc-taxonomy";
 import type { ImportedProvider } from "../health-import";
 import type { CodedValue } from "../social-history";
 import { XMLParser } from "fast-xml-parser";
@@ -10,6 +11,7 @@ import {
   ICD9CM_OID,
   LOINC_OID,
   NPI_OID,
+  NUCC_OID,
   RXNORM_OID,
   SNOMED_OID,
   STATUS_OBS_TEMPLATE,
@@ -157,6 +159,24 @@ function representedOrgName(entity: any): string | null {
   return s || null;
 }
 
+// The NUCC provider-taxonomy specialty off an assignedEntity's <code> (issue
+// #1056): { code, display } when the entity's <code codeSystem="…6.101"> carries a
+// taxonomy code, else null. The <code> may be a single element or an array; take the
+// first NUCC-coded one. displayName is the source's own label (fallback for a code
+// we don't curate). Returns the code verbatim (uppercased on clean).
+function specialtyFrom(
+  entity: any
+): { code: string; display: string | null } | null {
+  for (const c of asArray(entity?.code)) {
+    if (String(c?.["@_codeSystem"] ?? "") !== NUCC_OID) continue;
+    const code = String(c?.["@_code"] ?? "").trim();
+    if (!code) continue;
+    const display = String(c?.["@_displayName"] ?? "").trim() || null;
+    return { code, display };
+  }
+  return null;
+}
+
 // Turn an <assignedEntity> into a provider candidate. `prefer` decides which face
 // of a dual entity (an org + a named person, e.g. a lab performer) becomes the
 // provider: labs/immunizations prefer the ORGANIZATION the user recognizes
@@ -173,6 +193,12 @@ export function providerFromAssignedEntity(
   const identifier = npi ? null : otherIdentifier(entity);
   const phone = telecomOf(entity);
   const address = addressOf(entity);
+  // NUCC taxonomy specialty off the entity's <code> (issue #1056). It describes the
+  // clinician; carry it on the person face, and also on an org face (a specialty
+  // clinic — "Cardiology") when that's what the source states.
+  const spec = specialtyFrom(entity);
+  const specialtyCode = spec?.code ?? null;
+  const specialty = spec ? nuccLabel(spec.code, spec.display) : null;
 
   const asOrg = (): ImportedProvider | null =>
     orgName
@@ -185,6 +211,8 @@ export function providerFromAssignedEntity(
           identifier: npi ? null : identifier,
           phone,
           address,
+          specialtyCode,
+          specialty,
         }
       : null;
   const asPerson = (): ImportedProvider | null =>
@@ -196,6 +224,8 @@ export function providerFromAssignedEntity(
           identifier,
           phone,
           address,
+          specialtyCode,
+          specialty,
         }
       : null;
 

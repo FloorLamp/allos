@@ -106,3 +106,42 @@ describe("CCD provider identifier namespacing", () => {
     expect(p?.identifier).toBe("1.2.840.99999:100");
   });
 });
+
+// Specialty capture (issue #1056): the assignedEntity's NUCC-coded <code> carries the
+// clinician's taxonomy code. A curated code resolves to its display label; an
+// uncurated one keeps the document's own displayName verbatim (code always retained).
+const CCD_SPECIALTY = `<?xml version="1.0"?>
+<ClinicalDocument xmlns="urn:hl7-org:v3">
+  <component><structuredBody>
+    <component><section>
+      <code code="85847-2" codeSystem="2.16.840.1.113883.6.1"/>
+      <entry><organizer><component><act><performer><assignedEntity>
+        <id root="2.16.840.1.113883.4.6" extension="1000000010"/>
+        <code code="207RC0000X" codeSystem="2.16.840.1.113883.6.101" displayName="Cardiovascular Disease"/>
+        <assignedPerson><name><given>Alan</given><family>Turing</family></name></assignedPerson>
+      </assignedEntity></performer></act></component>
+      <component><act><performer><assignedEntity>
+        <id root="2.16.840.1.113883.4.6" extension="1000000011"/>
+        <code code="999ZZ9999X" codeSystem="2.16.840.1.113883.6.101" displayName="Hyperbaric Medicine"/>
+        <assignedPerson><name><given>Grace</given><family>Hopper</family></name></assignedPerson>
+      </assignedEntity></performer></act></component></organizer></entry>
+    </section></component>
+  </structuredBody></component>
+</ClinicalDocument>`;
+
+describe("CCD provider specialty capture (#1056)", () => {
+  const r = parseCcda(CCD_SPECIALTY);
+  const team = r.providers ?? [];
+
+  it("captures a curated NUCC code and resolves its display label", () => {
+    const p = team.find((x) => x.name === "Alan Turing");
+    expect(p?.specialtyCode).toBe("207RC0000X");
+    expect(p?.specialty).toBe("Cardiology");
+  });
+
+  it("keeps the document displayName verbatim for an uncurated code", () => {
+    const p = team.find((x) => x.name === "Grace Hopper");
+    expect(p?.specialtyCode).toBe("999ZZ9999X");
+    expect(p?.specialty).toBe("Hyperbaric Medicine");
+  });
+});

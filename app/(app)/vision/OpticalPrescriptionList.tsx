@@ -8,6 +8,7 @@ import {
 } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
+import ProviderName from "@/components/ProviderName";
 import { formatRecordDate } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
@@ -72,6 +73,21 @@ function buildColumns(
       cellClassName:
         "hidden whitespace-nowrap text-slate-500 sm:table-cell dark:text-slate-400",
       cell: (rx) => formatRecordDate(rx.expiry_date, "—", fmt),
+    },
+    {
+      header: "Prescriber",
+      headerClassName: "hidden md:table-cell",
+      cellClassName: "hidden md:table-cell",
+      cell: (rx) =>
+        rx.provider_id ? (
+          <ProviderName
+            name={rx.provider_name ?? "Provider"}
+            providerId={rx.provider_id}
+            size="sm"
+          />
+        ) : (
+          "—"
+        ),
     },
     {
       header: "Source",

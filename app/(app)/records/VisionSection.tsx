@@ -1,5 +1,6 @@
 import { getDisplayFormatPrefs } from "@/lib/settings";
-import { getOpticalPrescriptions } from "@/lib/queries";
+import { getOpticalPrescriptions, getProviderNames } from "@/lib/queries";
+import ProviderDatalist from "@/components/ProviderDatalist";
 import { today } from "@/lib/db";
 import OpticalPrescriptionForm from "@/app/(app)/vision/OpticalPrescriptionForm";
 import OpticalPrescriptionList from "@/app/(app)/vision/OpticalPrescriptionList";
@@ -26,6 +27,8 @@ export default function VisionSection({
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
+      {/* Shared provider picker options for the add + edit forms (#1088). */}
+      <ProviderDatalist names={getProviderNames()} />
       <div className="min-w-0 space-y-4 lg:col-span-2">
         <OpticalProgression
           items={prescriptions}

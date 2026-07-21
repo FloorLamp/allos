@@ -76,7 +76,15 @@ function reflectProviderLinks(): Set<string> {
 // merge/delete re-point set. Empty today (every link is centralized); each entry
 // MUST carry a justification comment when added.
 const MERGE_DELETE_EXCEPTIONS = new Set<string>([
-  // (none)
+  // provider_affiliations (issue #1055) is a provider↔provider JOIN table with a
+  // UNIQUE(individual_id, organization_id) pair. mergeProviders re-keys BOTH columns
+  // explicitly (UPDATE OR IGNORE + dedupe + drop self-edges) rather than through the
+  // generic PROVIDER_LINK_COLUMNS re-point UPDATE — a plain `SET col = survivor` would
+  // trip the UNIQUE pair or coin a survivor↔survivor self-edge. So the special-cased
+  // re-key lives in mergeProviders and these two links are excused from the generic
+  // set (covered instead by the affiliation re-key assertions in provider-merge.test).
+  "provider_affiliations.individual_id",
+  "provider_affiliations.organization_id",
 ]);
 
 // A provider link on a captured table that INTENTIONALLY needs no undo externalRef

@@ -18,6 +18,11 @@ export interface ProviderInput {
   identifier?: string | null;
   phone?: string | null;
   address?: string | null;
+  // Specialty (issue #1056), captured from a source document or typed by hand. NOT
+  // part of the dedup key — specialty is descriptive, not identity — so two rows that
+  // differ only in specialty still converge; the resolver refreshes it in place.
+  specialtyCode?: string | null;
+  specialty?: string | null;
 }
 
 // Collapse internal whitespace and lowercase for a stable comparison key.
@@ -66,6 +71,10 @@ export function cleanProviderInput(
     return s || null;
   };
   const npi = normalizeNpi(p.npi) || null;
+  const code = (p.specialtyCode ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
   return {
     name: p.name.replace(/\s+/g, " ").trim(),
     type: p.type === "individual" ? "individual" : "organization",
@@ -73,6 +82,8 @@ export function cleanProviderInput(
     identifier: clean(p.identifier),
     phone: clean(p.phone),
     address: clean(p.address),
+    specialtyCode: code || null,
+    specialty: clean(p.specialty),
   };
 }
 

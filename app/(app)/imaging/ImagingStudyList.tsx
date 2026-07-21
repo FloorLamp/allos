@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import ImagingStudyForm from "./ImagingStudyForm";
 import TrackFollowUpControl from "./TrackFollowUpControl";
 import { updateImagingStudy, deleteImagingStudy } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
+import ProviderName from "@/components/ProviderName";
 import { formatRecordDate } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
@@ -76,6 +77,40 @@ const baseColumns = (fmt: DisplayFormatPrefs): RecordColumn<ImagingStudy>[] => [
     header: "Date",
     cellClassName: "whitespace-nowrap text-slate-600 dark:text-slate-300",
     cell: (s) => formatRecordDate(s.study_date, "—", fmt),
+  },
+  {
+    header: "Provider",
+    headerClassName: "hidden md:table-cell",
+    cellClassName: "hidden md:table-cell text-xs",
+    cell: (s) => {
+      const parts: ReactNode[] = [];
+      if (s.ordering_provider_id)
+        parts.push(
+          <ProviderName
+            key="ord"
+            name={s.ordering_provider_name ?? "Ordering"}
+            providerId={s.ordering_provider_id}
+            size="sm"
+          />
+        );
+      if (
+        s.reading_provider_id &&
+        s.reading_provider_id !== s.ordering_provider_id
+      )
+        parts.push(
+          <ProviderName
+            key="read"
+            name={s.reading_provider_name ?? "Reading"}
+            providerId={s.reading_provider_id}
+            size="sm"
+          />
+        );
+      return parts.length ? (
+        <span className="flex flex-col gap-0.5">{parts}</span>
+      ) : (
+        "—"
+      );
+    },
   },
   {
     header: "Source",

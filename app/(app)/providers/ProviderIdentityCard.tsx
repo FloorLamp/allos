@@ -2,12 +2,21 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { IconPhone, IconMapPin, IconId, IconPencil } from "@tabler/icons-react";
+import {
+  IconPhone,
+  IconMapPin,
+  IconId,
+  IconPencil,
+  IconStethoscope,
+  IconArchive,
+  IconArchiveOff,
+} from "@tabler/icons-react";
 import SubmitButton from "@/components/SubmitButton";
 import OpenInMaps from "@/components/OpenInMaps";
 import { useToast } from "@/components/Toast";
+import { NUCC_LABEL_OPTIONS } from "@/lib/nucc-taxonomy";
 import type { Provider } from "@/lib/types";
-import { updateProviderAction } from "./actions";
+import { updateProviderAction, setProviderArchivedAction } from "./actions";
 
 // The GLOBAL identity card for a provider (issue #275): name, kind, NPI/identifier,
 // phone (tap-to-call), address. Read-only for everyone; an admin gets an inline
@@ -96,6 +105,31 @@ export default function ProviderIdentityCard({
           </div>
         </div>
         <div>
+          <label className="label" htmlFor="prov-specialty">
+            Specialty
+          </label>
+          {/* Free text + a datalist of curated NUCC labels (#1056). */}
+          <input
+            id="prov-specialty"
+            name="specialty"
+            className="input"
+            list="nucc-specialty-labels"
+            defaultValue={provider.specialty ?? ""}
+            placeholder="e.g. Cardiology"
+          />
+          <datalist id="nucc-specialty-labels">
+            {NUCC_LABEL_OPTIONS.map((l) => (
+              <option key={l} value={l} />
+            ))}
+          </datalist>
+          {/* Round-trip the imported NUCC code so an untouched edit keeps it. */}
+          <input
+            type="hidden"
+            name="specialty_code"
+            value={provider.specialty_code ?? ""}
+          />
+        </div>
+        <div>
           <label className="label" htmlFor="prov-phone">
             Phone
           </label>
@@ -138,12 +172,50 @@ export default function ProviderIdentityCard({
   }
 
   const hasDetails =
-    provider.npi || provider.identifier || provider.phone || provider.address;
+    provider.specialty ||
+    provider.npi ||
+    provider.identifier ||
+    provider.phone ||
+    provider.address;
+
+  async function toggleArchive() {
+    const fd = new FormData();
+    fd.set("id", String(provider.id));
+    fd.set("archived", provider.archived ? "0" : "1");
+    const res = await setProviderArchivedAction(fd);
+    if (res?.error) {
+      toast(res.error);
+      return;
+    }
+    toast(provider.archived ? "Provider unarchived" : "Provider archived");
+    router.refresh();
+  }
 
   return (
     <div className="card" data-testid="provider-identity">
+      {provider.archived ? (
+        <div
+          className="mb-3 inline-flex items-center gap-1.5 rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+          data-testid="provider-archived-badge"
+        >
+          <IconArchive className="h-3.5 w-3.5" stroke={1.75} />
+          Archived
+        </div>
+      ) : null}
       <div className="flex items-start justify-between gap-3">
         <dl className="min-w-0 flex-1 space-y-2 text-sm">
+          {provider.specialty ? (
+            <div
+              className="flex items-center gap-2 text-slate-600 dark:text-slate-300"
+              data-testid="provider-specialty"
+            >
+              <IconStethoscope
+                className="h-4 w-4 shrink-0 text-slate-400"
+                stroke={1.75}
+              />
+              <span>{provider.specialty}</span>
+            </div>
+          ) : null}
           {provider.npi ? (
             <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
               <IconId
@@ -198,15 +270,35 @@ export default function ProviderIdentityCard({
           ) : null}
         </dl>
         {canEdit ? (
-          <button
-            type="button"
-            className="btn-ghost inline-flex items-center gap-1.5 text-sm"
-            onClick={() => setEditing(true)}
-            data-testid="provider-edit-button"
-          >
-            <IconPencil className="h-4 w-4" stroke={1.75} />
-            Edit
-          </button>
+          <div className="flex shrink-0 flex-col items-end gap-1.5">
+            <button
+              type="button"
+              className="btn-ghost inline-flex items-center gap-1.5 text-sm"
+              onClick={() => setEditing(true)}
+              data-testid="provider-edit-button"
+            >
+              <IconPencil className="h-4 w-4" stroke={1.75} />
+              Edit
+            </button>
+            <button
+              type="button"
+              className="btn-ghost inline-flex items-center gap-1.5 text-sm"
+              onClick={toggleArchive}
+              data-testid="provider-archive-button"
+            >
+              {provider.archived ? (
+                <>
+                  <IconArchiveOff className="h-4 w-4" stroke={1.75} />
+                  Unarchive
+                </>
+              ) : (
+                <>
+                  <IconArchive className="h-4 w-4" stroke={1.75} />
+                  Archive
+                </>
+              )}
+            </button>
+          </div>
         ) : null}
       </div>
     </div>

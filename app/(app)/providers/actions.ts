@@ -8,6 +8,11 @@ import {
   updateProviderIdentity,
   mergeProviders,
   getProviderMergeImpact,
+  setProviderArchived,
+  linkAffiliation,
+  declineAffiliation,
+  unlinkAffiliation,
+  resolveProviderIdByName,
 } from "@/lib/queries";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
@@ -49,6 +54,8 @@ export async function updateProviderAction(
       identifier: str(formData.get("identifier")) || null,
       phone: str(formData.get("phone")) || null,
       address: str(formData.get("address")) || null,
+      specialtyCode: str(formData.get("specialty_code")) || null,
+      specialty: str(formData.get("specialty")) || null,
     });
   } catch (err) {
     // updateProviderIdentity throws a FRIENDLY domain error the user needs to see
@@ -114,4 +121,98 @@ export async function mergeProviderAction(
   revalidatePath("/records");
   revalidatePath(`/providers/${survivorId}`);
   redirect(`/providers/${survivorId}?merged=1`);
+}
+
+// ── Lifecycle: archive / un-archive (issue #1057) ─────────────────────────────
+// GLOBAL, instance-level flag — admin-gated like the identity edit. Archiving never
+// touches history (FK'd records keep their link); it only hides the provider from the
+// default directory + picker suggestions.
+export async function setProviderArchivedAction(
+  formData: FormData
+): Promise<{ error?: string }> {
+  await requireAdmin();
+  const id = Number(formData.get("id"));
+  if (!id) return { error: "Missing provider." };
+  const archived = String(formData.get("archived")) === "1";
+  setProviderArchived(id, archived);
+  revalidatePath(`/providers/${id}`);
+  revalidatePath("/records");
+  return {};
+}
+
+// ── Affiliations (issue #1055) ────────────────────────────────────────────────
+// GLOBAL registry edges between an individual and an organization — admin-gated. The
+// picker on a provider's card resolves the OTHER end by name (create-on-type over the
+// opposite type), then links the pair; the suggestion accept/decline carry ids.
+
+// Manual "Affiliated with…" link. `id` is the card's provider; `name` is the typed
+// counterpart, resolved under `counterpart_type` (the opposite kind).
+export async function linkAffiliationAction(
+  formData: FormData
+): Promise<{ error?: string }> {
+  await requireAdmin();
+  const id = Number(formData.get("id"));
+  const name = String(formData.get("name") ?? "").trim();
+  const counterpartType =
+    String(formData.get("counterpart_type")) === "individual"
+      ? "individual"
+      : "organization";
+  if (!id) return { error: "Missing provider." };
+  if (!name) return { error: "Enter a provider to affiliate with." };
+  const otherId = resolveProviderIdByName(name, counterpartType);
+  if (!otherId || otherId === id)
+    return { error: "Pick a different provider to affiliate with." };
+  if (!linkAffiliation(id, otherId, "manual"))
+    return {
+      error: "Affiliations link an individual clinician to an organization.",
+    };
+  revalidatePath(`/providers/${id}`);
+  revalidatePath(`/providers/${otherId}`);
+  revalidatePath("/records");
+  return {};
+}
+
+// Accept a suggested affiliation (both ids known).
+export async function acceptAffiliationAction(
+  formData: FormData
+): Promise<{ error?: string }> {
+  await requireAdmin();
+  const individualId = Number(formData.get("individual_id"));
+  const organizationId = Number(formData.get("organization_id"));
+  if (!individualId || !organizationId) return { error: "Missing provider." };
+  linkAffiliation(individualId, organizationId, "suggested");
+  revalidatePath(`/providers/${individualId}`);
+  revalidatePath(`/providers/${organizationId}`);
+  revalidatePath("/records");
+  return {};
+}
+
+// Decline a suggested affiliation — remembered so it never re-suggests.
+export async function declineAffiliationAction(
+  formData: FormData
+): Promise<{ error?: string }> {
+  await requireAdmin();
+  const individualId = Number(formData.get("individual_id"));
+  const organizationId = Number(formData.get("organization_id"));
+  if (!individualId || !organizationId) return { error: "Missing provider." };
+  declineAffiliation(individualId, organizationId);
+  revalidatePath(`/providers/${individualId}`);
+  revalidatePath(`/providers/${organizationId}`);
+  revalidatePath("/records");
+  return {};
+}
+
+// Remove an existing affiliation edge (un-link).
+export async function unlinkAffiliationAction(
+  formData: FormData
+): Promise<{ error?: string }> {
+  await requireAdmin();
+  const id = Number(formData.get("id"));
+  const otherId = Number(formData.get("other_id"));
+  if (!id || !otherId) return { error: "Missing provider." };
+  unlinkAffiliation(id, otherId);
+  revalidatePath(`/providers/${id}`);
+  revalidatePath(`/providers/${otherId}`);
+  revalidatePath("/records");
+  return {};
 }

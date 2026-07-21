@@ -6,6 +6,7 @@ import TrackDentalFollowUpControl from "./TrackDentalFollowUpControl";
 import { updateDentalProcedure, deleteDentalProcedure } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
+import ProviderName from "@/components/ProviderName";
 import { formatRecordDate } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
@@ -74,6 +75,21 @@ const baseColumns = (
     header: "Date",
     cellClassName: "whitespace-nowrap text-slate-600 dark:text-slate-300",
     cell: (d) => formatRecordDate(d.procedure_date, "—", fmt),
+  },
+  {
+    header: "Provider",
+    headerClassName: "hidden md:table-cell",
+    cellClassName: "hidden md:table-cell",
+    cell: (d) =>
+      d.provider_id ? (
+        <ProviderName
+          name={d.provider_name ?? "Provider"}
+          providerId={d.provider_id}
+          size="sm"
+        />
+      ) : (
+        "—"
+      ),
   },
   {
     header: "Source",

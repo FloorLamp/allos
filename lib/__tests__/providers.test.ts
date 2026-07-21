@@ -110,7 +110,23 @@ describe("isUsableProvider / cleanProviderInput", () => {
       identifier: null,
       phone: "+1-555-010-0001",
       address: "123 Example Ave",
+      specialtyCode: null,
+      specialty: null,
     });
+  });
+
+  it("uppercases a specialty code and trims the display, blanking to null", () => {
+    expect(
+      cleanProviderInput({
+        name: "Dr. Chen",
+        type: "individual",
+        specialtyCode: " 207rc0000x ",
+        specialty: "  Cardiology  ",
+      })
+    ).toMatchObject({ specialtyCode: "207RC0000X", specialty: "Cardiology" });
+    expect(
+      cleanProviderInput({ name: "Dr. Chen", type: "individual" })
+    ).toMatchObject({ specialtyCode: null, specialty: null });
   });
 });
 

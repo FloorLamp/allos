@@ -60,27 +60,19 @@ test.describe("Providers registry", () => {
     page,
   }) => {
     await page.goto("/records#providers");
-    // ProvidersIndex is a client component (search + type filter). Clicking a
-    // row's <Link> pre-hydration swallows the client navigation (the URL never
-    // changes) — handled below by followLink, which retries the click until the
-    // router commits (the blessed replacement for the old networkidle gate).
-    const list = page.getByTestId("provider-list");
-    await expect(list).toBeVisible();
-    await expect(
-      list.getByText("Dr. Anita Patel", { exact: true })
-    ).toBeVisible();
-    await expect(list.getByText("Quest Diagnostics")).toBeVisible();
+    // The grouped directory (#1055): the index may render grouped (org cards +
+    // nested people) OR the flat `provider-list` fallback depending on whether the
+    // active profile has affiliation edges. Assert the seeded providers appear at
+    // the PAGE level (mode-agnostic), then SEARCH — which always renders the flat
+    // `provider-list` — before following the detail link.
+    const patel = page.getByText("Dr. Anita Patel", { exact: true }).first(); // first-ok: shared #275 seed, mode-agnostic presence check only
+    await expect(patel).toBeVisible();
+    const quest = page.getByText("Quest Diagnostics").first(); // first-ok: shared #275 seed, presence check only
+    await expect(quest).toBeVisible();
 
-    // Type filter → organizations only drops the individual clinicians.
-    await page.getByTestId("provider-type-filter").selectOption("organization");
-    await expect(list.getByText("Quest Diagnostics")).toBeVisible();
-    await expect(
-      list.getByText("Dr. Anita Patel", { exact: true })
-    ).toHaveCount(0);
-
-    // Search narrows to a single provider and its detail link works.
-    await page.getByTestId("provider-type-filter").selectOption("all");
+    // Search narrows to a single provider (flat list) and its detail link works.
     await page.getByTestId("provider-search").fill("Quest");
+    const list = page.getByTestId("provider-list");
     await expect(
       list.getByText("Dr. Anita Patel", { exact: true })
     ).toHaveCount(0);

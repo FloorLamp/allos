@@ -40,6 +40,11 @@ export interface ImportedProvider {
   identifier: string | null;
   phone: string | null;
   address: string | null;
+  // Specialty captured from the source (issue #1056): the NUCC taxonomy code
+  // (CCDA assignedEntity <code>, FHIR PractitionerRole.specialty / qualification)
+  // and its resolved display label. Both optional/null when the source omits them.
+  specialtyCode?: string | null;
+  specialty?: string | null;
 }
 
 // Shared shapes for records pulled out of a portal export (MyChart CCD/XDM or a

@@ -298,6 +298,11 @@ const GOAL_OBS_TEMPLATE = "2.16.840.1.113883.10.20.22.4.121";
 // root carries a provider's NPI (authoritative for the global provider dedup).
 export const NPI_OID = "2.16.840.1.113883.4.6";
 
+// The NUCC provider-taxonomy code system OID (issue #1056). An assignedEntity's
+// <code codeSystem="2.16.840.1.113883.6.101"> carries the clinician's specialty
+// (e.g. 207RC0000X = Cardiology) — the standard companion to the NPI above.
+export const NUCC_OID = "2.16.840.1.113883.6.101";
+
 // Social History observation LOINCs. The section entries are identified by
 // these codes on the observation's <code>, not by templateId (see SECTIONS note).
 export const SMOKING_STATUS_LOINC = "72166-2"; // Tobacco smoking status (NHIS)

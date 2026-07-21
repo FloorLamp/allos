@@ -214,6 +214,34 @@ export default function SkinLesionForm({
         />
       </div>
       <div>
+        <label className="label" htmlFor={`sl-provider-${uid}`}>
+          Provider
+        </label>
+        {/* Create-on-type from the shared registry via <datalist id="provider-names">. */}
+        <input
+          id={`sl-provider-${uid}`}
+          name="provider"
+          list="provider-names"
+          className="input"
+          defaultValue={record?.provider_name ?? ""}
+          placeholder="e.g. Dr. Okafor (dermatologist)"
+        />
+        {editing && (
+          <>
+            <input
+              type="hidden"
+              name="provider_id"
+              value={record?.provider_id ?? ""}
+            />
+            <input
+              type="hidden"
+              name="provider_loaded"
+              value={record?.provider_name ?? ""}
+            />
+          </>
+        )}
+      </div>
+      <div>
         <label className="label" htmlFor={`sl-notes-${uid}`}>
           Notes
         </label>
