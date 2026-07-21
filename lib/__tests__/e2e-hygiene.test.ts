@@ -38,13 +38,26 @@ import { fileURLToPath } from "node:url";
 //         marker text the spec planted) or a dedicated fixture login
 //         (e2e/fixture-logins.ts) over "whichever row is first".
 //
+// A FOURTH frozen pattern (the "commented last resort", now with teeth):
+//
+//   (iv) .toPass(...) — a retrying block that re-runs arbitrary steps until they
+//        stick. It HIDES the same interaction races settledClick/followLink close
+//        properly (the retry masks WHICH step raced), slows the suite when the
+//        first attempt fails, and — like CI retries writ small — proves "passes
+//        within N attempts", not "works". The doc always called it a commented
+//        last resort; this freeze enforces that. A reviewed, genuinely-necessary
+//        use (e.g. a reload-until-rendered loop over a navigation, where no
+//        single awaitable event exists) carries a same-line `topass-ok: <why>`
+//        comment and is excluded from the count. Everything else is frozen at
+//        today's per-file count; new unmarked occurrences fail.
+//
 // NOT mechanically enforced here (documented rule only — see
 // docs/internals/e2e-hygiene.md): exact-count assertions against SHARED-SEED
 // fixture rows ("2 today", "≥ 2 episode rows"). Detecting those syntactically
 // (a numeric literal inside a toContainText/toHaveCount against a seeded testid)
 // is too clever — it can't tell a shared-seed count from a spec's own
 // self-created fixture, so it would fire on legitimate dedicated-fixture asserts
-// and miss obfuscated ones. The honest scope is the three mechanically-detectable
+// and miss obfuscated ones. The honest scope is the four mechanically-detectable
 // anti-patterns above; the fixture-ownership rule lives in the doc and is a
 // review/convention gate, not a linter.
 
@@ -66,6 +79,11 @@ const FIRST_RE = /\.first\(\)/g;
 // spec-owned-fixture use and is excluded from the count (the same same-line
 // escape-marker shape as phi-scan's `phi-scan-ok`).
 const FIRST_OK_MARKER = "first-ok";
+const TOPASS_RE = /\.toPass\(/g;
+// A `.toPass(` on a line carrying a `topass-ok: <why>` comment is a reviewed
+// last-resort use (same escape-marker shape as first-ok). Note the marker line
+// is wherever `.toPass(` itself appears — usually the closing `}).toPass({...})`.
+const TOPASS_OK_MARKER = "topass-ok";
 
 // Frozen offenders as of #868 (per-file counts). Migrate an entry to
 // e2e/helpers.ts and LOWER its number here in the same PR; a fully-migrated file
@@ -210,6 +228,43 @@ const FIRST_ALLOW: Record<string, number> = {
   "workout-presence.spec.ts": 1,
 };
 
+// Frozen .toPass( offenders (per-file counts, `topass-ok`-marked lines excluded)
+// as of the post-burn-down hardening pass (#1160 follow-up). Same
+// immutable-downward discipline: replace a retry loop with a settled interaction
+// (settledClick/followLink/a plain retrying expect on ONE locator) and LOWER its
+// number in the same PR; a NEW unmarked .toPass( (or a new file) fails. The
+// symptom-helpers.ts entries are the drivers' internal tap-retry loops — already
+// paired with settledTap arming the right wait; migrating them means a driver
+// redesign, so they're grandfathered like any other offender, not blessed.
+const TOPASS_ALLOW: Record<string, number> = {
+  "audit-log.spec.ts": 1,
+  "entry-ergonomics.spec.ts": 1,
+  "episode-med-reconcile.spec.ts": 1,
+  "household-rollup.spec.ts": 1,
+  "illness-episode.spec.ts": 2,
+  "illness-front-door.spec.ts": 1,
+  "illness-hero.spec.ts": 1,
+  "illness-round3.spec.ts": 1,
+  "kids-growth.spec.ts": 1,
+  "medications-page.spec.ts": 2,
+  "medications-ux-r2.spec.ts": 1,
+  "mobility.spec.ts": 1,
+  "nav-consolidation.spec.ts": 1,
+  "nav.ts": 1,
+  "nutrition-trio.spec.ts": 1,
+  "review-inbox.spec.ts": 1,
+  "rpe-logging.spec.ts": 2,
+  "settings-ia.spec.ts": 1,
+  "symptom-helpers.ts": 7,
+  "symptom-log.spec.ts": 1,
+  "two-factor.spec.ts": 3,
+  "unit-mislabel-review.spec.ts": 2,
+  "view-only-access.spec.ts": 1,
+  "wake-aware-mornings.spec.ts": 2,
+  "weight-quick-add.spec.ts": 1,
+  "wellbeing-check.spec.ts": 3,
+};
+
 function specFiles(): { name: string; text: string }[] {
   return fs
     .readdirSync(E2E_DIR)
@@ -304,6 +359,17 @@ describe("e2e suite hygiene guard (issue #868)", () => {
         `via an exact locator (testid / marker text you planted / e2e/fixture-logins.ts), ` +
         `or add a same-line \`first-ok: <why>\` comment for a reviewed, ` +
         `owned-fixture use; see docs/internals/e2e-hygiene.md.`,
+    });
+  });
+
+  it("no NEW unmarked .toPass( in an e2e/*.ts (use a settled interaction, or mark topass-ok)", () => {
+    checkPattern(".toPass(", TOPASS_RE, TOPASS_ALLOW, {
+      excludeLineMarker: TOPASS_OK_MARKER,
+      hint:
+        `New .toPass( retry blocks are banned — await the actual signal instead ` +
+        `(settledClick / followLink / a plain retrying expect on one locator), or ` +
+        `add a same-line \`topass-ok: <why>\` comment for a reviewed last-resort ` +
+        `use; see docs/internals/e2e-hygiene.md.`,
     });
   });
 
