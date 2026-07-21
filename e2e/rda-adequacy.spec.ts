@@ -5,6 +5,11 @@ import { test, expect } from "@playwright/test";
 // stating the SHARE the supplements provide, with the load-bearing framing "supplements
 // alone provide X% of the RDA" and never "deficient" (food intake is unknown). Uses the
 // shared authenticated storageState.
+//
+// Value->presence (one-question-one-computation): the RDA reference values — and thus
+// the computed "% of the RDA" share — are pinned by lib/__tests__/dri.test.ts. This
+// spec asserts the % framing + the load-bearing safety wording (never "deficient",
+// "not medical advice"), never the exact computed percentage.
 
 test("Supplements tab shows the RDA-adequacy share for an under-RDA stack nutrient (#578)", async ({
   page,
