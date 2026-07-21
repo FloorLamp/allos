@@ -68,6 +68,8 @@ function supp(overrides: Partial<Supplement> = {}): Supplement {
     document_id: null,
     source: null,
     provider_id: null,
+    source_record_id: null,
+    indication_condition_id: null,
     ...overrides,
   };
 }

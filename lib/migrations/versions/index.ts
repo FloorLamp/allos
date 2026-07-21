@@ -84,6 +84,9 @@ import { migration as m082 } from "./082-episode-visit-link";
 import { migration as m083 } from "./083-metric-sample-origin";
 import { migration as m084 } from "./084-provider-registry-lifecycle";
 import { migration as m085 } from "./085-provider-affiliations";
+import { migration as m086 } from "./086-medication-links";
+import { migration as m087 } from "./087-medication-link-decisions";
+import { migration as m088 } from "./088-backfill-prescriber-links";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -177,4 +180,7 @@ export const MIGRATIONS: Migration[] = [
   m083,
   m084,
   m085,
+  m086,
+  m087,
+  m088,
 ];

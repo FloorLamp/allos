@@ -127,6 +127,15 @@ export function captureDelete(
     // returns, its follow-up linkage stays honestly gone.
     if (spec.ownedTable === "medical_records") {
       unlinkFollowUpsForMedicalRecord(profileId, rootId);
+      // A projected medication (#1051) may link this prescription record as its
+      // source_record_id (a REFERENCES FK, no ON DELETE). NULL it first so the
+      // medical_records DELETE below can't trip the FK; the med survives, its
+      // provenance link honestly gone (not restored on undo, like the follow-up
+      // links above).
+      db.prepare(
+        `UPDATE intake_items SET source_record_id = NULL
+          WHERE source_record_id = ? AND profile_id = ?`
+      ).run(rootId, profileId);
     }
 
     // Delete the root; children cascade. Profile-scoped for defense in depth.

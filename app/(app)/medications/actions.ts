@@ -20,6 +20,10 @@ import {
   dismissFinding,
   restoreFinding,
   refillSupply,
+  linkMedPrescriber,
+  declineMedPrescriber,
+  linkMedIndication,
+  declineMedIndication,
 } from "@/lib/queries";
 import { MED_BRIDGE_PREFIX } from "@/lib/medication-record-match";
 import { DORMANT_PRN_PREFIX } from "@/lib/dormant-prn";
@@ -545,5 +549,72 @@ export async function promoteSideEffectToIntolerance(
   revalidatePath("/medications");
   revalidatePath("/records");
   revalidatePath("/");
+  return formOk();
+}
+
+// ── Medication-link suggest-and-accept (#1051 med↔prescriber, #1052 med↔indication) ──
+// Each accepts/declines ONE proposed link the read-time engines surfaced. The write
+// cores (lib/queries/med-links) verify ownership + entity type and remember the
+// decision in med_link_decisions so a decline stops re-proposing and an accept
+// survives a reprocess. Never unconditionally confirms — the cores return a boolean.
+
+// Accept a prescriber near-miss suggestion: link the med to the existing INDIVIDUAL
+// provider (#1051). No-op (friendly) when the med/provider aren't valid.
+export async function acceptPrescriberLink(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const medId = Number(formData.get("med_id"));
+  const providerId = Number(formData.get("provider_id"));
+  if (!medId || !providerId) return formError("Couldn't read that suggestion.");
+  const ok = linkMedPrescriber(profile.id, medId, providerId);
+  if (!ok) return formError("Couldn't link that prescriber.");
+  revalidatePath("/medications");
+  revalidatePath("/");
+  return formOk();
+}
+
+// Decline a prescriber suggestion: remembered so the gap detector stops proposing it.
+export async function declinePrescriberLink(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const medId = Number(formData.get("med_id"));
+  const providerId = Number(formData.get("provider_id"));
+  if (!medId || !providerId) return formError("Couldn't read that suggestion.");
+  declineMedPrescriber(profile.id, medId, providerId);
+  revalidatePath("/medications");
+  return formOk();
+}
+
+// Accept an indication suggestion (or a manual pick): link the med to the condition
+// (#1052). No-op (friendly) when the med/condition aren't valid.
+export async function acceptIndicationLink(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const medId = Number(formData.get("med_id"));
+  const conditionId = Number(formData.get("condition_id"));
+  if (!medId || !conditionId)
+    return formError("Couldn't read that suggestion.");
+  const ok = linkMedIndication(profile.id, medId, conditionId);
+  if (!ok) return formError("Couldn't link that condition.");
+  revalidatePath("/medications");
+  revalidatePath("/records");
+  revalidatePath("/");
+  return formOk();
+}
+
+// Decline an indication suggestion: remembered so it's never re-suggested.
+export async function declineIndicationLink(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const medId = Number(formData.get("med_id"));
+  const conditionId = Number(formData.get("condition_id"));
+  if (!medId || !conditionId)
+    return formError("Couldn't read that suggestion.");
+  declineMedIndication(profile.id, medId, conditionId);
+  revalidatePath("/medications");
   return formOk();
 }

@@ -11,7 +11,10 @@ import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
 import type { Condition } from "@/lib/types";
 
-function buildColumns(fmt: DisplayFormatPrefs): RecordColumn<Condition>[] {
+function buildColumns(
+  fmt: DisplayFormatPrefs,
+  treatedWith: Record<number, string[]>
+): RecordColumn<Condition>[] {
   return [
     {
       header: "Condition",
@@ -23,6 +26,16 @@ function buildColumns(fmt: DisplayFormatPrefs): RecordColumn<Condition>[] {
             notes={c.notes}
             className="ml-2 text-xs font-normal text-slate-400"
           />
+          {/* Med → indication inverse view (#1052): the medications recorded as
+              treating this condition. A formatter over the ONE link, no inference. */}
+          {treatedWith[c.id]?.length ? (
+            <div
+              className="mt-0.5 text-xs font-normal text-slate-500 dark:text-slate-400"
+              data-testid="condition-treated-with"
+            >
+              Treated with: {treatedWith[c.id].join(", ")}
+            </div>
+          ) : null}
         </>
       ),
     },
@@ -66,8 +79,16 @@ function buildColumns(fmt: DisplayFormatPrefs): RecordColumn<Condition>[] {
 }
 
 // Manage stored condition rows: edit in place or delete, on the shared RecordTable.
-export default function ConditionList({ items }: { items: Condition[] }) {
-  const columns = buildColumns(useFormatPrefs());
+// `treatedWith` maps a condition id → the medications treating it (#1052), rendered as
+// a "Treated with:" sub-line; empty/absent for conditions with no linked med.
+export default function ConditionList({
+  items,
+  treatedWith = {},
+}: {
+  items: Condition[];
+  treatedWith?: Record<number, string[]>;
+}) {
+  const columns = buildColumns(useFormatPrefs(), treatedWith);
   return (
     <RecordTable
       items={items}

@@ -105,6 +105,12 @@ export const OWNED_TABLES = [
   // Directly owned; deleteProfile clears it by profile_id. NOT an import-footprint
   // table (written by the accept/dismiss actions, not the document import).
   "visit_link_decisions",
+  // Medication-link accept/decline decisions (#1051/#1052): durable, stable-key
+  // choices for the prescriber near-miss (med↔provider) and indication tier-2
+  // (med↔condition) suggest-and-accept flows, mirroring visit_link_decisions.
+  // Directly owned; deleteProfile clears it by profile_id. NOT an import-footprint
+  // table (written by the accept/dismiss actions, not the document import).
+  "med_link_decisions",
   "import_tombstones",
   "ai_usage_counters",
   "deleted_rows",

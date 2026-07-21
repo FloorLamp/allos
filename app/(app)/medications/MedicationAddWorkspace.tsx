@@ -22,6 +22,7 @@ export default function MedicationAddWorkspace({
   pediatric,
   age,
   todayStr,
+  conditions,
 }: {
   subtitle: string;
   action: (formData: FormData) => Promise<FormResult>;
@@ -32,6 +33,7 @@ export default function MedicationAddWorkspace({
   pediatric?: PediatricFormContext;
   age: number | null;
   todayStr: string;
+  conditions: { id: number; name: string }[];
 }) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<AddMode>("quick");
@@ -138,6 +140,7 @@ export default function MedicationAddWorkspace({
                   pediatric={pediatric}
                   age={age}
                   todayStr={todayStr}
+                  conditions={conditions}
                   onDone={close}
                 />
               </>
