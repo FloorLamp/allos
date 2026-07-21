@@ -129,18 +129,27 @@ test.describe("preventive care in Upcoming (issues #82 + #86 + #85)", () => {
     const main = page.getByRole("main");
 
     // Anchor on a rendered preventive row first so the absence assertions below
-    // check a fully-loaded list, not an unrendered page. The eye-exam visit is
-    // used because no seeded record can satisfy it AND no other spec mutates it
-    // (tests in this file may run in parallel workers locally).
-    await expect(
-      main.getByTestId("upcoming-item-visit:vision_exam")
-    ).toBeVisible();
+    // check a fully-loaded list, not an unrendered page. The depression screening
+    // is used because no seeded record satisfies it (it stays due for the ~40yo)
+    // and this serial group's FIRST test never mutates it (the decline happens in a
+    // LATER test). It was formerly the eye-exam visit, but the seeded current
+    // optical prescription (#1098, ~90 days ago) now infer-satisfies vision_exam —
+    // asserted absent just below.
+    await expect(main.getByTestId(DEPRESSION_KEY)).toBeVisible();
 
     // The seeded completed "Annual physical" appointment (~35 days ago) satisfies
     // the adult check-up; the seeded blood-pressure readings (~30 days ago)
     // satisfy the BP screening — neither needs a manual mark-done.
     await expect(main.getByTestId(INFERRED_VISIT_KEY)).toHaveCount(0);
     await expect(main.getByTestId(INFERRED_SCREENING_KEY)).toHaveCount(0);
+
+    // The seeded current eyeglass prescription (scripts/seed.ts, issued ~90 days
+    // ago) infer-satisfies the eye-exam visit as of its issued date (#1098) — a
+    // dated optical Rx is proof an exam happened — so vision_exam does NOT nag,
+    // exactly like the appointment- and code-satisfied rules above.
+    await expect(
+      main.getByTestId("upcoming-item-visit:vision_exam")
+    ).toHaveCount(0);
 
     // The baked USPSTF depression screening (issue #149) surfaces for the seeded
     // ~40yo — no PHQ/depression record is seeded, so it stays actionable and
