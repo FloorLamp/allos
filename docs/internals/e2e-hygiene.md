@@ -154,12 +154,13 @@ await and it times out — that's what `followLink`/`expect` are for.
 
 ## Fix (c) — the changed-spec CI lane at retries=0
 
-The full suite keeps retries for now (revisit once (a)+(b) reduce the flake
-surface). A dedicated CI step computes the changed `e2e/*.spec.ts` versus the PR
-base and, if any, runs just those at `--repeat-each=3 --retries=0` **before** the
-full suite. A spec that is even 50%-flaky fails three-in-a-row-at-zero-retries, so
+A dedicated CI step computes the changed `e2e/*.spec.ts` versus the PR base and,
+if any, runs just those at `--repeat-each=3 --retries=0` **before** the full
+suite. A spec that is even 50%-flaky fails three-in-a-row-at-zero-retries, so
 retry-masking can no longer ship a flaky spec. No changed specs → the step is a
-cheap no-op.
+cheap no-op. The full suite now runs at zero retries too (see the retries-drop
+note below), so this lane's strict verdict is the whole suite's standard, not a
+special case.
 
 ## Fix (d) — the frozen app clock (#990)
 
@@ -243,14 +244,18 @@ pain they replace):
   the ultimate authority" — use it in place of a local full-suite run before a
   migration PR or big UI merge, and skip the local degradation-vs-regression
   triage entirely.
-- **Pass-on-retry flake telemetry.** The full suite still runs `retries: 1`, and
-  a pass-on-retry ships a GREEN run — previously a confirmed flake detection
-  thrown away. The CI config now adds a `json` reporter
-  (`test-results/e2e-results.json`), and every full-suite shard runs
-  `scripts/e2e-flake-report.mjs`, which posts the run's `status: "flaky"` tests
-  to the job summary. Telemetry only (always exit 0): it measures the flake
-  backlog — file or fix what it surfaces — and is the precondition for the
-  retries-drop decision below.
+- **Pass-on-retry flake telemetry → the retries drop.** The telemetry ran the
+  full suite at `retries: 1` and posted every `status: "flaky"` (pass-on-retry)
+  test to the job summary via a `json` reporter (`test-results/e2e-results.json`)
+  - `scripts/e2e-flake-report.mjs`, so the flake backlog was measured instead of
+    masked. That backlog was the precondition for dropping retries — and once it
+    read clean (the family-calendar flake, the last item, closed by #1159), the
+    sharded CI matrix moved to **`retries: 0`** (`playwright.config.ts`). The suite
+    now runs at zero retries end-to-end — changed-spec lane, shared-infra fallback,
+    and full matrix — so a flake fails the run loudly instead of shipping green on a
+    retry. The telemetry step stays wired: an on-demand `e2e-full.yml` census
+    dispatched at `--retries=1` still surfaces pass-on-retry tests through the same
+    script, and at the default `retries: 0` it reports an accurate empty.
 
 ## Follow-up (out of scope for the infra PR)
 
@@ -258,5 +263,10 @@ Migrate the grandfathered offenders incrementally, one spec per PR (the #860
 Track-B incremental-migration discipline), lowering the allowlists (`networkidle`
 / `waitForTimeout` / `.first()`) each time until they are empty; then migrate the
 cross-ownership anatomy assertions (class 2) onto shared per-component driver
-helpers (the `e2e/symptom-helpers.ts` extraction pattern); then revisit dropping
-full-suite retries once the flake reports (fix e) read consistently clean.
+helpers (the `e2e/symptom-helpers.ts` extraction pattern).
+
+Dropping full-suite retries — the last item on this list — is **done**: the flake
+reports (fix e) read clean once #1159 closed the family-calendar flake, and the
+sharded CI matrix moved to `retries: 0` (see the telemetry note above). Keep it
+that way — a spec that can't hold at zero retries is a flake to fix, not a run to
+retry.

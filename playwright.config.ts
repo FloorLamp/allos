@@ -94,18 +94,26 @@ export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0,
+  // Zero retries EVERYWHERE (#1159 closed the last flake, family-calendar). The
+  // suite runs clean at --retries=0 end-to-end — the changed-spec lane, the
+  // shared-infra fallback, and the sharded full matrix — so retries stay OFF: a
+  // flake fails the run loudly instead of being silently retried into green
+  // (`retries: 1` proves "passes within N attempts", not "works" — a ≤50%-flaky
+  // spec could ship green). The on-demand e2e-full.yml census can still opt INTO
+  // --retries=1 to MEASURE pass-on-retry flakes; that dispatch is the only place a
+  // "flaky" status can appear now.
+  retries: 0,
   workers: process.env.CI ? 1 : undefined,
   // The "github" reporter emits one workflow annotation per failure, so a red CI
   // run names its failing tests in the check-run annotations (readable via API)
   // instead of only inside the job log. The "json" report feeds
-  // scripts/e2e-flake-report.mjs: with `retries: 1`, a test that failed then
-  // passed on retry gets status "flaky" — a confirmed flake detection that
-  // previously evaporated into a green run. CI surfaces those in the job summary
-  // so the flake backlog is measured instead of masked. The json file lives in
-  // test-results/ (wiped by Playwright at run start, written at run end), NOT in
-  // playwright-report/ — the html reporter cleans that folder and ordering
-  // between the two would be fragile.
+  // scripts/e2e-flake-report.mjs: on an e2e-full.yml dispatch run at --retries=1,
+  // a test that failed then passed on retry gets status "flaky" — a confirmed
+  // flake detection surfaced in the job summary. (At the default --retries=0 there
+  // is no "flaky" status, so the report is an accurate empty on the sharded CI
+  // matrix.) The json file lives in test-results/ (wiped by Playwright at run
+  // start, written at run end), NOT in playwright-report/ — the html reporter
+  // cleans that folder and ordering between the two would be fragile.
   reporter: process.env.CI
     ? [
         ["list"],
