@@ -250,8 +250,8 @@ function recordTokenById(
   const c = RECORD_DOMAINS[domain];
   const row = db
     .prepare(
-      `SELECT id, ${c.externalIdExpr} AS external_id
-         FROM ${c.table} WHERE id = ? AND profile_id = ?`
+      `SELECT t.id, ${c.externalIdExpr} AS external_id
+         FROM ${c.table} t WHERE t.id = ? AND t.profile_id = ?`
     )
     .get(id, profileId) as
     { id: number; external_id: string | null } | undefined;

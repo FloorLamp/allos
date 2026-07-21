@@ -267,6 +267,11 @@ describe("read-time suggestion — the late-arrival case", () => {
     expect(recSug?.encounter?.id).toBe(eid);
     const encSug = suggestionsForEncounter(profileId, eid);
     expect(encSug.suggestions.some((s) => s.record.id === recId)).toBe(true);
+
+    // Accept the medical_records ('record' domain) link — exercises the
+    // external_id-carrying token path (distinct from the medication id-only path).
+    expect(linkRecordToEncounter(profileId, "record", recId, eid)).toBe(true);
+    expect(encounterForRecord(profileId, "record", recId)?.id).toBe(eid);
   });
 });
 

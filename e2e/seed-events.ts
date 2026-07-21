@@ -3725,12 +3725,14 @@ console.log(
   const vlProfileId = fixtureProfileId(VISITLINKS_PROFILE);
   const VL_DATE = "2026-05-12";
   // A visit on VL_DATE with an attending provider (also seeds the provider row).
+  // providers carries a NOT NULL UNIQUE dedup_key, so seed it explicitly.
   db.prepare(
-    "INSERT OR IGNORE INTO providers (name, type) VALUES ('Dr. Vera Vasquez (e2e)', 'individual')"
+    `INSERT OR IGNORE INTO providers (name, type, dedup_key)
+     VALUES ('Dr. Vera Vasquez (e2e)', 'individual', 'e2e:vera-vasquez')`
   ).run();
   const vlProviderId = (
     db
-      .prepare("SELECT id FROM providers WHERE name = 'Dr. Vera Vasquez (e2e)'")
+      .prepare("SELECT id FROM providers WHERE dedup_key = 'e2e:vera-vasquez'")
       .get() as { id: number }
   ).id;
   // Idempotent: only seed the visit + med + episode once per profile.
