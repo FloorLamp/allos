@@ -137,6 +137,9 @@ import {
   DQ_CARE_CHILD_PROFILE,
   E2E_LOGIN_VISITLINKS,
   VISITLINKS_PROFILE,
+  E2E_LOGIN_TOASTS,
+  TOAST_SWITCH_A_PROFILE,
+  TOAST_SWITCH_B_PROFILE,
 } from "./fixture-logins";
 import { adoptTemplate, activateRoutine } from "../lib/routines";
 import { getTimezone, setInstanceTimezone, setTimezone } from "../lib/settings";
@@ -3802,5 +3805,62 @@ console.log(
   seedMemberLogin(E2E_LOGIN_VISITLINKS, vlProfileId, "write");
   console.log(
     `e2e: seeded visit-link fixture — profile ${vlProfileId} (${VISITLINKS_PROFILE}) #1050/#1053`
+  );
+}
+
+// ── Profile-switch toaster spec isolation (#296 / PR #1110 shard-3 cascade) ────
+// The profile-switch-toasts spec switches the ACTIVE PROFILE mid-test. Run on the
+// shared admin storageState, a mid-switch failure on a degraded runner stranded the
+// shared session on its fixture profile, and every LATER spec in that worker saw the
+// wrong (empty) profile's data — 17 downstream specs failed as data-gated app shells
+// (PR #1110 run 29829296858 shard 3). The fix moves the spec into its OWN cookie
+// context with its OWN member login, so its switching can never touch the shared
+// session. This dedicated member is granted TWO profiles, each carrying its own
+// pre-existing TERMINAL document/import-job history — a done doc (→ "Extraction
+// complete"), a failed doc (→ "Extraction unsuccessful"), and a ready import job
+// (→ the "Extracted <summary>…" toast) — so switching between them exercises the
+// silent-reseed on BOTH profiles. Seeded FIRST here so profile A sorts to the lower
+// id (the login's default active profile on sign-in). Synthetic filenames/content
+// only — no real PHI. Idempotent: clear this fixture's rows by name/summary first.
+{
+  const seedToasterHistory = (profileId: number, tag: string) => {
+    db.prepare(
+      `DELETE FROM medical_documents WHERE profile_id = ? AND filename IN (?, ?)`
+    ).run(profileId, `${tag}-labs.pdf`, `${tag}-broken.txt`);
+    db.prepare(
+      `DELETE FROM import_jobs WHERE profile_id = ? AND summary = ?`
+    ).run(profileId, `${tag}: readings`);
+    // A successfully-extracted document → the ExtractionToaster success toast.
+    db.prepare(
+      `INSERT INTO medical_documents
+         (profile_id, filename, stored_path, mime_type, size_bytes, doc_type,
+          extraction_status, extracted_count, uploaded_at)
+       VALUES (?, ?, '', 'application/pdf', 4096, 'Lab report',
+               'done', 6, '2026-07-06 09:00:00')`
+    ).run(profileId, `${tag}-labs.pdf`);
+    // A rejected upload in a terminal 'failed' state → the error toast.
+    db.prepare(
+      `INSERT INTO medical_documents
+         (profile_id, filename, stored_path, mime_type, size_bytes,
+          extraction_status, extraction_error, uploaded_at)
+       VALUES (?, ?, '', 'text/plain', 12,
+               'failed', 'Unsupported file type.', '2026-07-06 08:30:00')`
+    ).run(profileId, `${tag}-broken.txt`);
+    // A ready import job → the ImportJobsToaster "Extracted <summary>…" toast.
+    db.prepare(
+      `INSERT INTO import_jobs
+         (profile_id, type, status, summary, created_at, updated_at)
+       VALUES (?, 'biomarkers', 'ready', ?, '2026-07-06 08:00:00', '2026-07-06 08:00:00')`
+    ).run(profileId, `${tag}: readings`);
+  };
+
+  const toastAId = fixtureProfileId(TOAST_SWITCH_A_PROFILE);
+  const toastBId = fixtureProfileId(TOAST_SWITCH_B_PROFILE);
+  seedToasterHistory(toastAId, "e2e-toastA");
+  seedToasterHistory(toastBId, "e2e-toastB");
+  seedMemberLogin(E2E_LOGIN_TOASTS, toastAId, "read");
+  seedMemberLogin(E2E_LOGIN_TOASTS, toastBId, "read");
+  console.log(
+    `e2e: seeded profile-switch toaster fixture — login ${E2E_LOGIN_TOASTS} → profiles ${toastAId} (${TOAST_SWITCH_A_PROFILE}) + ${toastBId} (${TOAST_SWITCH_B_PROFILE}) #296`
   );
 }
