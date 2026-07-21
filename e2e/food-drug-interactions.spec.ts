@@ -1,8 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import {
-  openMedDetailViaLink,
-  foodGuidance,
-} from "./med-card-helpers";
+import { openMedDetailViaLink, foodGuidance } from "./med-card-helpers";
 
 // Food–drug interaction guidance (issue #154). The seed gives profile 1 a synthetic
 // active Simvastatin (rxcui-keyed) — a CYP3A4 statin — so the medication's detail page
