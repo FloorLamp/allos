@@ -139,7 +139,7 @@ const FIRST_ALLOW: Record<string, number> = {
   "home-location.spec.ts": 3,
   "household-history.spec.ts": 4,
   "illness-care.spec.ts": 1,
-  "illness-episode-followups.spec.ts": 29,
+  "illness-episode-followups.spec.ts": 27,
   "illness-episode.spec.ts": 5,
   "illness-front-door.spec.ts": 1,
   "illness-round3.spec.ts": 6,
