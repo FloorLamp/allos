@@ -60,9 +60,11 @@ test("med form is medication-shaped and selection-prefills on pick (#846)", asyn
 
   // The new PRN medication lands as a current medication row that links to its
   // clinical-record detail page (the standard medication row shape).
-  const row = medicationRow(page, "Naproxen");
+  // This test adds a "Naproxen" med with no cleanup, so a --repeat-each run accumulates
+  // same-named rows on the shared profile — narrow to the leading match.
+  const row = medicationRow(page, "Naproxen").first(); // first-ok: accumulating fixture row
   await expect(row).toBeVisible();
-  await expect(medicationRowLink(page, "Naproxen")).toBeVisible();
+  await expect(medicationRowLink(row)).toBeVisible();
   await expect(row.getByText("As Needed", { exact: true })).toBeVisible();
   await expect(medicationDoseSummary(row)).toHaveText("220 mg");
 });
@@ -93,7 +95,8 @@ test("a newly catalogued med (#881) is pickable and prefills with zero code chan
 
   await addCard.getByRole("button", { name: "Add", exact: true }).click();
 
-  const row = medicationRow(page, "Dextromethorphan");
+  // Added with no cleanup, so --repeat-each accumulates same-named rows.
+  const row = medicationRow(page, "Dextromethorphan").first(); // first-ok: accumulating fixture row
   await expect(row).toBeVisible();
 });
 
@@ -231,12 +234,14 @@ test("a pediatric formulation persists from quick add to the medication list", a
     await expect(bands.filter({ hasText: "36–47 lb" })).toContainText("7.5 mL");
     await quickAdd.getByRole("button", { name: "Quick add" }).click();
 
-    const row = medicationRow(page, "Acetaminophen");
+    // The child fixture profile accumulates "Acetaminophen" rows across a --repeat-each
+    // run (no cleanup), so narrow to the leading match on both surfaces.
+    const row = medicationRow(page, "Acetaminophen").first(); // first-ok: accumulating fixture row
     // The shared compact formatter must show the SELECTED band's dose, not replace
     // every band with the product's fixed 160 mg / 5 mL concentration.
-    await expect(prnTodayItem(page, "Acetaminophen")).toContainText(
-      "240 mg / 7.5 mL"
-    );
+    await expect(
+      prnTodayItem(page, "Acetaminophen").first() // first-ok: see the row narrowing above
+    ).toContainText("240 mg / 7.5 mL");
     await expect(row).toContainText("240 mg / 7.5 mL");
   } finally {
     await page.context().close();

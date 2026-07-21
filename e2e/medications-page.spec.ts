@@ -127,9 +127,7 @@ test("the page clearly separates current and past medications", async ({
   await expect(medicationDoseSummary(row)).toContainText("1 tablet · Morning");
   // Rows are divided within the shared list surface, not inset as cards.
   await expect(row).not.toHaveClass(/\bcard\b/);
-  await expect(
-    medicationRowLink(list, "Adherence Refill Med (e2e)")
-  ).toHaveClass(/hover:bg-slate-50/);
+  await expect(medicationRowLink(row)).toHaveClass(/hover:bg-slate-50/);
 
   const past = pastMedications(page);
   await expect(past).toBeVisible();
@@ -147,7 +145,7 @@ test("the page clearly separates current and past medications", async ({
   // every nested medication link; only the directly-hovered named link underlines.
   await past.locator("summary").hover();
   await expect(pastName).toHaveCSS("text-decoration-line", "none");
-  await medicationRowLink(past, "Amoxicillin").hover();
+  await medicationRowLink(pastRow).hover();
   await expect(pastName).toHaveCSS("text-decoration-line", "underline");
 
   await expect(

@@ -52,11 +52,12 @@ export function medicationRow(scope: Locator | Page, name: string): Locator {
   return scope.getByTestId("medication-row").filter({ hasText: name });
 }
 
-// The named-link inside a medication row that navigates to its clinical-record detail
-// (`medication-row-link`). Specs assert it is visible or read its href; the nav helpers
-// below drive it.
-export function medicationRowLink(scope: Locator | Page, name: string): Locator {
-  return medicationRow(scope, name).getByTestId("medication-row-link");
+// The named-link inside a medication `row` that navigates to its clinical-record detail
+// (`medication-row-link`). Takes the row Locator so it respects any narrowing the caller
+// applied (e.g. selecting the leading of several accumulating same-named fixture rows).
+// Specs assert it is visible or read its href; the nav helpers below drive it.
+export function medicationRowLink(row: Locator): Locator {
+  return row.getByTestId("medication-row-link");
 }
 
 // The compact dose-summary line on a medication row (`medication-dose-summary`, e.g.
