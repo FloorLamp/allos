@@ -4,12 +4,15 @@ import { taskEndpointInfo } from "@/lib/ai-resolve";
 import { buildCatalogRequest } from "@/lib/coverage-gaps";
 import CoverageGaps from "@/components/CoverageGaps";
 
-// Coverage gaps (issue #550; former /coverage index, #1042 phase 6), now the
-// #coverage section of /records. When a profile has a biomarker/med/condition the
-// curated catalogs don't cover, this surfaces it and offers two fill paths:
-// private/local AI descriptive context, or a de-identified maintainer catalog
-// request the user reviews and files. A tracked gap the catalog later covers
-// shows a "now available" state (computed live against the current catalogs).
+// Coverage gaps (issue #550; former /coverage index, #1042 phase 6, briefly the
+// #coverage section of /records), now the Coverage tab of /data (#1086). Coverage
+// gaps is a catalog / data-management workflow about the APP's coverage of your
+// data — not a clinical record — so it lives under Data, alongside Import/Review.
+// When a profile has a biomarker/med/condition the curated catalogs don't cover,
+// this surfaces it and offers two fill paths: private/local AI descriptive context,
+// or a de-identified maintainer catalog request the user reviews and files. A
+// tracked gap the catalog later covers shows a "now available" state (computed live
+// against the current catalogs).
 export default function CoverageSection({ profileId }: { profileId: number }) {
   const tracked = getCoverageGaps(profileId);
   const candidates = getCoverageGapCandidates(profileId);
@@ -24,7 +27,7 @@ export default function CoverageSection({ profileId }: { profileId: number }) {
   );
 
   return (
-    <div>
+    <div data-testid="data-coverage">
       {tracked.length === 0 && candidates.length === 0 ? (
         <EmptyState message="No coverage gaps — everything you've logged is covered by the curated catalogs." />
       ) : (

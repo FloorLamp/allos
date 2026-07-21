@@ -11,6 +11,7 @@ import ImportClient, { ImportJobList } from "@/components/ImportClient";
 import IntegrationsGrid from "@/components/IntegrationsGrid";
 import DataExport from "@/components/DataExport";
 import ReviewInbox from "@/components/ReviewInbox";
+import CoverageSection from "@/app/(app)/data/CoverageSection";
 import { getImportJobs } from "@/app/(app)/data/actions";
 import {
   getImportDocumentsFeed,
@@ -23,7 +24,7 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const SECTIONS = ["import", "review", "manage"] as const;
+const SECTIONS = ["import", "review", "coverage", "manage"] as const;
 type Section = (typeof SECTIONS)[number];
 
 function parseSection(value: string | string[] | undefined): Section {
@@ -37,8 +38,13 @@ function parseSection(value: string | string[] | undefined): Section {
 // the unified, profile-scoped import log — each entry drilling into a verify +
 // debug view of what it produced. The "Manage & Export" tab (the former
 // standalone Data page content) browses and exports everything you've logged,
-// with per-dataset CSV download and row edit/delete. The active tab is
-// deep-linkable via ?section= (import | manage); /import redirects here.
+// with per-dataset CSV download and row edit/delete. The "Coverage" tab (issue
+// #1086) is the catalog-coverage-gaps workflow (formerly /coverage, then briefly
+// /records#coverage) — biomarkers/meds/conditions the curated catalogs don't cover
+// yet, with the track/enrich/request paths — a data-management workflow about the
+// app's coverage of your data, not a clinical record. The active tab is
+// deep-linkable via ?section= (import | review | coverage | manage); /import and
+// /coverage redirect here.
 export default async function DataPage(
   props: {
     searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -75,6 +81,10 @@ export default async function DataPage(
   let activeSection: React.ReactNode;
   if (section === "manage") {
     activeSection = <DataExport searchParams={searchParams} />;
+  } else if (section === "coverage") {
+    // Coverage gaps (#550/#1086) — built only when active because it runs a
+    // Light-tier AI blurb + a candidate scan across biomarkers/meds/conditions.
+    activeSection = <CoverageSection profileId={profile.id} />;
   } else if (section === "review") {
     activeSection = (
       <ReviewInbox
@@ -170,6 +180,7 @@ export default async function DataPage(
   const tabStrip = [
     { id: "import", label: "Import" },
     { id: "review", label: reviewCount > 0 ? `Review (${reviewCount})` : "Review" },
+    { id: "coverage", label: "Coverage" },
     { id: "manage", label: "Manage & Export" },
   ];
 

@@ -11,7 +11,7 @@ import ProvidersSection from "./ProvidersSection";
 import BackgroundSection from "./BackgroundSection";
 import CarePlanSection from "./CarePlanSection";
 import HealthGoalsSection from "./HealthGoalsSection";
-import CoverageSection from "./CoverageSection";
+import CoverageAnchorRedirect from "./CoverageAnchorRedirect";
 import VisionSection from "./VisionSection";
 import DentalSection from "./DentalSection";
 import SkinSection from "./SkinSection";
@@ -27,8 +27,10 @@ export const dynamic = "force-dynamic";
 // component (moved, not rewritten); Server Actions stayed in their route-independent
 // modules (app/(app)/{conditions,allergies,vision,dental,skin,medical/instruments}/…).
 //
-// Eleven CORE sections (Conditions … Coverage gaps) always render — none of their
-// leaves carried a nav gate — each with its own empty state. The four SPECIALTY
+// Ten CORE sections (Conditions … Health goals) always render — none of their
+// leaves carried a nav gate — each with its own empty state. (Coverage gaps was a
+// core section through #1042 phase 6; #1086 moved it to Data → Coverage as
+// catalog/data-management, not a clinical record.) The four SPECIALTY
 // sections (Vision/Dental/Skin/Mental health — the #1042 "final tail") fold in AFTER
 // them, and section visibility mirrors the nav predicate (#1042 rule: a hidden nav
 // child must never be a visible section):
@@ -117,16 +119,9 @@ const SECTIONS = [
     subtitle:
       "Clinical goals & targets from your health records (Goals section) — e.g. an A1c or blood-pressure target set by a provider. (Distinct from your personal fitness Goals.)",
   },
-  {
-    id: "coverage",
-    label: "Coverage gaps",
-    title: "Coverage gaps",
-    subtitle:
-      "Biomarkers, medications, and conditions the curated catalogs don't cover yet — track one to add context or request it be catalogued.",
-  },
 ] as const;
 
-// The four SPECIALTY sections (#1042 final tail), rendered AFTER the eleven core
+// The four SPECIALTY sections (#1042 final tail), rendered AFTER the ten core
 // sections. Each carries a data/always gate resolved below; a hidden one drops both
 // its <section> and its jump-link.
 const SPECIALTY_SECTIONS = [
@@ -221,9 +216,12 @@ export default async function RecordsPage(props: {
 
   return (
     <div>
+      {/* Bridge a stale /records#coverage bookmark to Data → Coverage (#1086) —
+          a URL fragment never reaches the server, so this client shim handles it. */}
+      <CoverageAnchorRedirect />
       <PageHeader
         title="Health record"
-        subtitle="Your health record in one place — conditions, allergies, procedures, immunizations, family history, visits, providers, background, care plan, health goals, coverage gaps, vision, dental, skin, and mental health."
+        subtitle="Your health record in one place — conditions, allergies, procedures, immunizations, family history, visits, providers, background, care plan, health goals, vision, dental, skin, and mental health."
       />
 
       {/* Sticky jump-link row — the page's primary in-page nav. Horizontally
@@ -383,19 +381,7 @@ export default async function RecordsPage(props: {
           <HealthGoalsSection profileId={profile.id} />
         </section>
 
-        <section
-          id="coverage"
-          data-testid="records-coverage"
-          className="scroll-mt-24"
-        >
-          <SectionHeader
-            title={SECTIONS[10].title}
-            subtitle={SECTIONS[10].subtitle}
-          />
-          <CoverageSection profileId={profile.id} />
-        </section>
-
-        {/* SPECIALTY sections (#1042 final tail), AFTER the eleven core sections.
+        {/* SPECIALTY sections (#1042 final tail), AFTER the ten core sections.
             Vision/Dental gate on data presence; Skin/Mental health always render. */}
         {specialtyVisible.vision ? (
           <section
