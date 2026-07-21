@@ -2672,9 +2672,10 @@ db.prepare(
 // A dedicated, open, FUTURE-dated care-plan item on profile 1 for the care-plan
 // spec's complete→disappears-from-Upcoming check. Distinct from the base seed's
 // care-plan rows (which care-plan-upcoming.spec drives), so the two never collide.
-// The description must match NO preventive concept-map phrase (an earlier "eye
-// exam" wording, once the spec completed it, was inferred as satisfying the
-// vision_exam rule and broke preventive-upcoming's still-due control assertion).
+// The description must match NO preventive concept-map phrase, so completing it
+// can't infer-satisfy any rule and disturb preventive-upcoming's assertions (an
+// earlier "eye exam" wording once satisfied vision_exam when the spec completed it;
+// vision_exam is now also seed-satisfied via profile 1's current optical Rx, #1098).
 db.prepare(
   `DELETE FROM care_plan_items WHERE profile_id = ? AND description IN ('E2E annual eye exam', 'E2E orthotics fitting')`
 ).run(PROFILE_ID);

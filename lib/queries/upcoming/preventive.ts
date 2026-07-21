@@ -21,6 +21,7 @@ import {
   type InferenceRecord,
 } from "../../preventive-inference";
 import { inferScreeningResultSatisfactions } from "../../preventive-screening-result";
+import { inferOpticalRxSatisfactions } from "../../preventive-optical";
 import {
   getUserSex,
   profileAgeMonths,
@@ -39,6 +40,7 @@ import {
   getCarePlanItems,
   getDentalProcedures,
   getProcedures,
+  getOpticalPrescriptions,
 } from "../clinical";
 import { getRiskFactors } from "./risk";
 
@@ -63,7 +65,8 @@ const INFERENCE_RESULT_CATEGORIES = new Set(["lab", "biomarker", "vitals"]);
 
 // INFERRED satisfactions (issue #86): preventive rules a profile's EXISTING
 // records already satisfy — a colonoscopy procedure, a lipid/A1c result, a
-// completed physical/eye/dental visit or encounter, a completed care-plan item —
+// completed physical/eye/dental visit or encounter, a dated optical prescription
+// (#1098), a completed care-plan item —
 // derived deterministically by the pure concept-mapping layer
 // (lib/preventive-inference.ts). These feed the SAME `(ruleKey, date)` stream as
 // the manual "mark done" events and NEVER touch the stored preventive_events rows;
@@ -203,7 +206,21 @@ export function getInferredPreventiveSatisfactions(
     getCurrentQualitativeResults(profileId)
   );
 
-  return [...inferPreventiveSatisfactions(records), ...screeningResults];
+  // Dated optical prescriptions → the vision_exam rule (issue #1098). A new
+  // eyeglass/contact Rx is written AT an eye exam, so the row is intrinsic proof the
+  // exam happened — a DIRECT satisfaction source (the Rx has no CPT/name text to feed
+  // the concept map, unlike the dental-procedure source above). The issued date drives
+  // the satisfaction; the one assessor then applies the normal ~24-month interval. An
+  // old Rx satisfies only as of its old date, so a stale Rx never suppresses a due exam.
+  const opticalRxSatisfactions = inferOpticalRxSatisfactions(
+    getOpticalPrescriptions(profileId)
+  );
+
+  return [
+    ...inferPreventiveSatisfactions(records),
+    ...screeningResults,
+    ...opticalRxSatisfactions,
+  ];
 }
 
 // The manual declined / not-applicable overrides for a profile. Each drops its
