@@ -905,6 +905,37 @@ console.log(
   "e2e: seeded sleep stages (14 nights) + a tz-correct 5h night & nap for profile 1 (#1066)"
 );
 
+// ── Oura vendor daily scores fixture (issue #1069) ──[OURA-SCORES-1069]────────
+// Profile 1's Oura sleep/readiness scores for the last 14 days, so the Sleep
+// page's attributed "From Oura" tiles + trends render (sleep-page.spec). These are
+// DISPLAY-ONLY, engine-inert vendor numbers under the vendor-prefixed kinds — the
+// parser keys each day at UTC midnight, so match that natural key here. Source
+// 'oura'. Synthetic values only (no PHI). Idempotent: clears its own kind/day rows.
+const ouraScoreInsert = db.prepare(
+  `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+   VALUES (?, 'oura', ?, ?, ?, ?, ?)`
+);
+for (let i = 0; i <= 13; i++) {
+  const day = shiftDateStr(COACH_TODAY, -i);
+  const instant = `${day}T00:00:00.000Z`;
+  // Deterministic synthetic 0–100 figures with light jitter; today's = latest.
+  const sleepScore = 78 + ((i * 3) % 12);
+  const readinessScore = 70 + ((i * 5) % 15);
+  for (const [metric, value] of [
+    ["oura_sleep_score", sleepScore],
+    ["oura_readiness_score", readinessScore],
+  ] as [string, number][]) {
+    db.prepare(
+      `DELETE FROM metric_samples
+        WHERE profile_id = ? AND metric = ? AND source = 'oura' AND date = ?`
+    ).run(PROFILE_ID, metric, day);
+    ouraScoreInsert.run(PROFILE_ID, metric, day, instant, instant, value);
+  }
+}
+console.log(
+  "e2e: seeded Oura sleep/readiness daily scores (14 days) for profile 1 (#1069)"
+);
+
 // ── Multi-source metric fixture (issue #14) ───────────────────────────────────
 // The SAME metric (nightly HRV) reported by TWO sources — Health Connect and
 // Oura — over the last five nights, so the Trends → Body "Compare sources"

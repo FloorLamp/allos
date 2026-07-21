@@ -539,6 +539,13 @@ function stubOura(opts: OuraOpts = {}): ReturnType<typeof vi.fn> {
     const u = String(url);
     const start = new URL(u).searchParams.get("start_date");
     if (start) opts.starts?.push(start);
+    // Vendor daily-score endpoints (issue #1069). Checked first and matched
+    // exactly so they never fall through to the looser /sleep branch. Return an
+    // empty page: this orchestrator test pins the sleep+workout row counts, and
+    // the score ingestion is covered by oura-sync.test.ts.
+    if (u.includes("/daily_sleep") || u.includes("/daily_readiness")) {
+      return jsonResponse({ data: [], next_token: null });
+    }
     if (u.includes("/workout")) {
       if (opts.workout429) return new Response(null, { status: 429 });
       return jsonResponse({ data: [OURA_WORKOUT], next_token: null });

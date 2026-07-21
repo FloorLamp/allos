@@ -17,7 +17,13 @@ import {
   dateWindow,
   type UpsertCounts,
 } from "./sync-log";
-import { mapOuraSleep, mapOuraWorkout } from "./oura";
+import {
+  mapOuraSleep,
+  mapOuraWorkout,
+  mapOuraDailyScore,
+  OURA_SLEEP_SCORE_METRIC,
+  OURA_READINESS_SCORE_METRIC,
+} from "./oura";
 import { writeRawPayload } from "./raw-log";
 import {
   upsertActivities,
@@ -251,6 +257,38 @@ export async function runOuraSync(
     acts.push(mapped.activity);
     samples.push(...mapped.samples);
     bumpDay(typeof w.day === "string" ? w.day : null);
+  }
+
+  // ---- vendor daily scores (issue #1069): daily_sleep + daily_readiness ----
+  //
+  // Oura's own 0–100 scores, ingested as DISPLAY-ONLY, engine-inert vendor numbers
+  // (never a synthesis input — see oura.ts / the reverse-allowlist guard). Same
+  // rolling window, same 401→needs_reauth and 429→truncate handling as the pulls
+  // above; each `{day, score}` maps to one idempotent per-day metric_sample.
+  const scoreEndpoints: [string, string][] = [
+    ["/v2/usercollection/daily_sleep", OURA_SLEEP_SCORE_METRIC],
+    ["/v2/usercollection/daily_readiness", OURA_READINESS_SCORE_METRIC],
+  ];
+  for (const [path, metric] of scoreEndpoints) {
+    const daily = await fetchPages(path, token, startDate, endDate);
+    if (daily.error) {
+      if (daily.status != null && isAuthRefreshFailure(daily.status)) {
+        markConnectionNeedsReauth(profileId, OURA_ID);
+      }
+      recordSyncEvent(profileId, OURA_ID, { ok: false, error: daily.error });
+      return { error: daily.error };
+    }
+    if (daily.truncated) truncated = true;
+    for (const d of daily.items) {
+      rawItems.push(d);
+      const sample = mapOuraDailyScore(d, metric);
+      if (!sample) {
+        skipped++;
+        continue;
+      }
+      samples.push(sample);
+      bumpDay(typeof d.day === "string" ? d.day : null);
+    }
   }
 
   let upActivities: UpsertCounts = emptyCounts();

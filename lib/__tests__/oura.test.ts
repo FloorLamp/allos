@@ -2,10 +2,13 @@ import { describe, it, expect } from "vitest";
 import {
   mapOuraSleep,
   mapOuraWorkout,
+  mapOuraDailyScore,
   classifyOuraActivity,
   ouraSportName,
   ouraIntensity,
   titleizeActivity,
+  OURA_SLEEP_SCORE_METRIC,
+  OURA_READINESS_SCORE_METRIC,
 } from "@/lib/integrations/oura";
 
 // Synthetic Oura API v2 fixtures — shapes/units mirror the real API
@@ -218,5 +221,95 @@ describe("ouraIntensity", () => {
     expect(ouraIntensity("")).toBeNull();
     expect(ouraIntensity(null)).toBeNull();
     expect(ouraIntensity(3)).toBeNull();
+  });
+});
+
+describe("mapOuraDailyScore (issue #1069)", () => {
+  it("maps {day, score} to a per-day sample under the vendor-prefixed kind", () => {
+    const s = mapOuraDailyScore(
+      { id: "ds-1", day: "2024-06-02", score: 82 },
+      OURA_SLEEP_SCORE_METRIC
+    );
+    expect(s).toEqual({
+      metric: "oura_sleep_score",
+      date: "2024-06-02",
+      start_time: "2024-06-02T00:00:00.000Z",
+      end_time: "2024-06-02T00:00:00.000Z",
+      value: 82,
+    });
+    // The same parser serves daily_readiness under its own kind.
+    expect(
+      mapOuraDailyScore(
+        { day: "2024-06-02", score: 74 },
+        OURA_READINESS_SCORE_METRIC
+      )?.metric
+    ).toBe("oura_readiness_score");
+  });
+
+  it("keys one row per day at UTC midnight, so a rolling re-fetch dedups", () => {
+    const a = mapOuraDailyScore(
+      { day: "2024-06-03", score: 55 },
+      OURA_SLEEP_SCORE_METRIC
+    );
+    const b = mapOuraDailyScore(
+      { day: "2024-06-03", score: 55 },
+      OURA_SLEEP_SCORE_METRIC
+    );
+    // Identical natural key (metric/start_time) across two parses of the same day.
+    expect(a?.start_time).toBe(b?.start_time);
+    expect(a?.start_time).toBe("2024-06-03T00:00:00.000Z");
+  });
+
+  it("bounds the score to 0–100 and skips junk (null/absent/out-of-range/bad day)", () => {
+    // Oura returns score: null before a day is finalized.
+    expect(
+      mapOuraDailyScore(
+        { day: "2024-06-02", score: null },
+        OURA_SLEEP_SCORE_METRIC
+      )
+    ).toBeNull();
+    // Out of the 0–100 envelope.
+    expect(
+      mapOuraDailyScore(
+        { day: "2024-06-02", score: 150 },
+        OURA_SLEEP_SCORE_METRIC
+      )
+    ).toBeNull();
+    expect(
+      mapOuraDailyScore(
+        { day: "2024-06-02", score: -1 },
+        OURA_READINESS_SCORE_METRIC
+      )
+    ).toBeNull();
+    // Bounds are inclusive at both ends.
+    expect(
+      mapOuraDailyScore(
+        { day: "2024-06-02", score: 0 },
+        OURA_SLEEP_SCORE_METRIC
+      )?.value
+    ).toBe(0);
+    expect(
+      mapOuraDailyScore(
+        { day: "2024-06-02", score: 100 },
+        OURA_SLEEP_SCORE_METRIC
+      )?.value
+    ).toBe(100);
+    // Missing / malformed day, non-numeric score, non-object.
+    expect(
+      mapOuraDailyScore({ score: 80 }, OURA_SLEEP_SCORE_METRIC)
+    ).toBeNull();
+    expect(
+      mapOuraDailyScore(
+        { day: "not-a-date", score: 80 },
+        OURA_SLEEP_SCORE_METRIC
+      )
+    ).toBeNull();
+    expect(
+      mapOuraDailyScore(
+        { day: "2024-06-02", score: "82" },
+        OURA_SLEEP_SCORE_METRIC
+      )
+    ).toBeNull();
+    expect(mapOuraDailyScore(null, OURA_SLEEP_SCORE_METRIC)).toBeNull();
   });
 });

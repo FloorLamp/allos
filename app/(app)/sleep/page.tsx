@@ -8,6 +8,7 @@ import {
   getSleepConsistency,
   getSleepStageComposition,
   getSleepMoodPairing,
+  getOuraScores,
 } from "@/lib/queries";
 import { chartSeries } from "@/lib/chart-colors";
 import { PageHeader } from "@/components/ui";
@@ -16,6 +17,7 @@ import StackedBarCard from "@/components/StackedBarCard";
 import SleepHero from "./SleepHero";
 import ConsistencyStrip from "./ConsistencyStrip";
 import SleepMoodSection from "./SleepMoodSection";
+import OuraScores from "./OuraScores";
 
 export const dynamic = "force-dynamic";
 
@@ -46,12 +48,15 @@ export default async function SleepPage() {
     awake: r.awake / 60,
   }));
   const moodPairing = getSleepMoodPairing(profile.id);
+  const ouraScores = getOuraScores(profile.id);
 
   const hasAny =
     summary != null ||
     sleepReg != null ||
     consistency.length > 0 ||
-    stages.length > 0;
+    stages.length > 0 ||
+    ouraScores.sleep != null ||
+    ouraScores.readiness != null;
 
   return (
     <div>
@@ -61,6 +66,8 @@ export default async function SleepPage() {
       />
 
       {summary && <SleepHero summary={summary} />}
+
+      <OuraScores scores={ouraScores} />
 
       {!hasAny && (
         <p

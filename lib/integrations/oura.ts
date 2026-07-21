@@ -67,6 +67,48 @@ function secToMin(sec: number | null): number | null {
   return sec == null ? null : Math.round(sec / 60);
 }
 
+// ---- vendor daily scores (issue #1069) ----
+//
+// Oura's own 0–100 daily_sleep.score and daily_readiness.score. These are
+// STORE-WHAT-THE-SOURCE-SAID display values — a fact about what Oura reported, like
+// an imported lab flag or a report's impression — NOT synthesis inputs. They render
+// ATTRIBUTED ("Oura sleep score", never a bare "sleep score") and, by design, feed
+// NO engine (not the healthspan pillars, coaching, notifications, or risk): the
+// app's no-composite-score stance forbids the app from *inventing* a score, not from
+// displaying a vendor's own. That inertness is pinned by a reverse-allowlist guard
+// (lib/__tests__/oura-score-engine-inert.test.ts). VENDOR-PREFIXED kinds on purpose,
+// so the namespace states provenance and a future fitbit_/garmin_ score can't
+// collide.
+export const OURA_SLEEP_SCORE_METRIC = "oura_sleep_score";
+export const OURA_READINESS_SCORE_METRIC = "oura_readiness_score";
+
+// Map a single Oura daily_sleep / daily_readiness document to a normalized daily
+// score metric_sample under the given vendor-prefixed metric. Both endpoints share
+// the shape `{ day: "YYYY-MM-DD", score: 0–100 }`, so one parser serves both.
+// The natural key is the wake-day at UTC midnight — one row per day per kind — so a
+// rolling-window re-fetch dedups on (metric, source, start_time) like every other
+// sample. A missing/malformed day or an out-of-bounds/absent score (Oura returns
+// `score: null` before the day is finalized) yields null → the caller counts it
+// skipped, never a bogus 0.
+export function mapOuraDailyScore(
+  rec: unknown,
+  metric: string
+): NormMetricSample | null {
+  if (!rec || typeof rec !== "object") return null;
+  const r = rec as Record<string, unknown>;
+  const date = dayStr(r.day);
+  const score = boundedOrNull(metric, num(r.score));
+  if (!date || score == null) return null;
+  const instant = `${date}T00:00:00.000Z`;
+  return {
+    metric,
+    date,
+    start_time: instant,
+    end_time: instant,
+    value: score,
+  };
+}
+
 // ---- sleep ----
 //
 // A single Oura long-sleep period → nightly metric_samples (total + a

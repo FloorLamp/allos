@@ -89,6 +89,13 @@ export const METRIC_BOUNDS: Record<string, MetricBound> = {
   // Shortest adult on record ≈55 cm, tallest ≈272 cm; 40–280 also admits infants.
   height_cm: { min: 40, max: 280 },
 
+  // ---- metric_samples: vendor daily scores (issue #1069) ----
+  // Oura's own daily_sleep / daily_readiness score is a 0–100 index by definition;
+  // anything outside that is a malformed payload, dropped and counted skipped. These
+  // are display-only, engine-inert vendor numbers (never a synthesis input).
+  oura_sleep_score: { min: 0, max: 100 },
+  oura_readiness_score: { min: 0, max: 100 },
+
   // ---- metric_samples: HRV (point) ----
   // RMSSD is a few ms in severe autonomic dysfunction up to ~200 ms in the very
   // relaxed; 0–2000 stays generous while rejecting a runaway magnitude.
