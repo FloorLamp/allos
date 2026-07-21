@@ -3,6 +3,7 @@
 
 import type { DoseTakenOutcome, EscalationAckOutcome } from "../types";
 import type { FoodLogOutcome } from "../food-log-write";
+import type { ProteinAddOutcome } from "../protein-log-write";
 import { formatRecordDate } from "../record-format";
 import { foodGroupName } from "../food-groups";
 import type { ReminderWindow } from "./supplement-format";
@@ -487,6 +488,62 @@ export function parseFoodLogCallback(data: unknown): FoodLogCallback | null {
   const window = m[2] as FoodNudgeWindow;
   if (!profileId || !FOOD_NUDGE_WINDOWS.includes(window)) return null;
   return { profileId, window, date: m[3], group: m[4] };
+}
+
+// A protein "+Xg" quick-log tap (#1073): "foodprotein:<profileId>:<window>:<date>:<grams>".
+// Same profile cross-check + window/date as a food-log tap; grams is the scoop preset baked
+// in at send time. Distinct prefix so it never collides with a food-log token.
+export interface FoodProteinCallback {
+  profileId: number;
+  window: FoodNudgeWindow;
+  date: string;
+  grams: number;
+}
+
+export function parseFoodProteinCallback(
+  data: unknown
+): FoodProteinCallback | null {
+  if (typeof data !== "string") return null;
+  const m = /^foodprotein:(\d+):([A-Za-z]+):(\d{4}-\d{2}-\d{2}):(\d+)$/.exec(
+    data
+  );
+  if (!m) return null;
+  const profileId = Number(m[1]);
+  const window = m[2] as FoodNudgeWindow;
+  const grams = Number(m[4]);
+  if (!profileId || !FOOD_NUDGE_WINDOWS.includes(window) || !grams) return null;
+  return { profileId, window, date: m[3], grams };
+}
+
+// The Telegram toast for a protein "+Xg" tap, from the typed addProteinGramsCore outcome.
+// A logged add names the grams added + the day's running protein total; an invalid amount
+// (a forged/over-cap token) is answered honestly, never a false confirm (#1073).
+export function foodProteinAnswerText(
+  outcome: ProteinAddOutcome,
+  grams: number
+): string {
+  if (outcome.kind === "invalid") {
+    return "Not logged — that entry is out of date. Open the app.";
+  }
+  return `Logged ✅ ＋${grams} g protein — ${outcome.grams} g today`;
+}
+
+// A "➕ Show more" tap (#1075): "foodmore:<profileId>:<window>:<date>". Carries no count —
+// the handler derives the current visible count from the keyboard and rebuilds at +6.
+export interface FoodMoreCallback {
+  profileId: number;
+  window: FoodNudgeWindow;
+  date: string;
+}
+
+export function parseFoodMoreCallback(data: unknown): FoodMoreCallback | null {
+  if (typeof data !== "string") return null;
+  const m = /^foodmore:(\d+):([A-Za-z]+):(\d{4}-\d{2}-\d{2})$/.exec(data);
+  if (!m) return null;
+  const profileId = Number(m[1]);
+  const window = m[2] as FoodNudgeWindow;
+  if (!profileId || !FOOD_NUDGE_WINDOWS.includes(window)) return null;
+  return { profileId, window, date: m[3] };
 }
 
 export interface FoodOptInCallback {

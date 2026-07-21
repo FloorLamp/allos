@@ -1,18 +1,23 @@
-// PURE TIER — the Telegram food-log nudge renderer + callback tokens (issue #682).
-// DB-free: the gather (lib/notifications/food.ts) hands a ranked group list + today's
-// serving counts here; this pins that the top-N groups become quick-log buttons in
-// ranked order, each token is well-formed, the tally line reflects today's counts,
-// and the "More…" deep link only appears with a configured base URL.
+// PURE TIER — the Telegram food-log nudge renderer + callback tokens (issues #682, #1016,
+// #1073, #1075). DB-free: the gather (lib/notifications/food.ts) hands ranked KEYS + slot-
+// scoped counts + day totals here; this pins that the top-N ranked keys become quick-log
+// buttons in order, the button "(n)" suffix is SLOT-scoped while the tally is the DAY total
+// (labeled "Today:"), the reserved __protein__ key renders the "+Xg protein" button, and the
+// progressive-expansion window + "Show more" behave per visibleCount.
 
 import { describe, it, expect } from "vitest";
 import {
   renderFoodNudge,
   foodLogCallbackData,
+  foodProteinCallbackData,
+  foodMoreCallbackData,
   foodOptInCallbackData,
+  countVisibleFoodButtons,
   FOOD_NUDGE_BUTTON_COUNT,
   FOOD_NUDGE_WINDOWS,
 } from "@/lib/notifications/food-format";
-import { FOOD_GROUPS } from "@/lib/food-groups";
+import { PROTEIN_NUDGE_KEY } from "@/lib/protein-nudge";
+import { FOOD_GROUPS, foodGroupSlugs } from "@/lib/food-groups";
 import {
   proteinTodayNudgeLine,
   proteinIntake,
@@ -22,31 +27,60 @@ import {
 
 const DATE = "2026-07-13";
 // A stable, deliberately non-catalog-order ranking so "ranked order leads" is real.
-const RANKED = FOOD_GROUPS.slice().reverse();
+const RANKED_GROUPS = FOOD_GROUPS.slice().reverse();
+const RANKED = RANKED_GROUPS.map((g) => g.slug);
 
 describe("renderFoodNudge", () => {
-  it("renders the top-N ranked groups as quick-log buttons in order", () => {
-    const msg = renderFoodNudge(1, "Morning", DATE, RANKED, new Map());
-    const logButtons = (msg.actions ?? []).filter((a) => a.data);
+  it("renders the top-N ranked keys as quick-log buttons in order", () => {
+    const msg = renderFoodNudge(
+      1,
+      "Morning",
+      DATE,
+      RANKED,
+      new Map(),
+      new Map()
+    );
+    const logButtons = (msg.actions ?? []).filter((a) =>
+      a.data?.startsWith("food:")
+    );
     expect(logButtons).toHaveLength(FOOD_NUDGE_BUTTON_COUNT);
     // Same groups, same order as the ranked input's head.
     expect(logButtons.map((a) => a.label)).toEqual(
-      RANKED.slice(0, FOOD_NUDGE_BUTTON_COUNT).map((g) => g.name)
+      RANKED_GROUPS.slice(0, FOOD_NUDGE_BUTTON_COUNT).map((g) => g.name)
     );
     expect(logButtons[0].data).toBe(
-      foodLogCallbackData(1, "Morning", DATE, RANKED[0].slug)
+      foodLogCallbackData(1, "Morning", DATE, RANKED[0])
     );
     expect(msg.kind).toBe("food");
     expect(msg.title).toContain("Morning");
   });
 
-  it("shows a per-button running count and a tally line for today's servings", () => {
-    const top = RANKED[0];
-    const servings = new Map<string, number>([[top.slug, 2]]);
-    const msg = renderFoodNudge(1, "Midday", DATE, RANKED, servings);
+  it("button counts are SLOT-scoped while the tally is the DAY total, labeled Today (#1016)", () => {
+    const top = RANKED_GROUPS[0];
+    // Slot: 1 this slot. Day: 3 total (2 from an earlier slot). The button shows the SLOT
+    // count; the tally shows the DAY total.
+    const slot = new Map<string, number>([[top.slug, 1]]);
+    const day = new Map<string, number>([[top.slug, 3]]);
+    const msg = renderFoodNudge(1, "Midday", DATE, RANKED, slot, day);
     const first = (msg.actions ?? [])[0];
-    expect(first.label).toBe(`${top.name} (2)`);
-    expect(msg.body).toContain(`✓ ${top.name} ×2`);
+    expect(first.label).toBe(`${top.name} (1)`); // slot count, not the day's 3
+    expect(msg.body).toContain(`✓ Today: ${top.name} ×3`); // day total, labeled
+  });
+
+  it("a morning-tapped group shows an UNMARKED button on the midday nudge + a day tally (#1016)", () => {
+    const top = RANKED_GROUPS[0];
+    // Logged in the morning → 0 this midday slot, 2 on the day.
+    const msg = renderFoodNudge(
+      1,
+      "Midday",
+      DATE,
+      RANKED,
+      new Map(), // slot count 0
+      new Map([[top.slug, 2]]) // day total 2
+    );
+    const first = (msg.actions ?? [])[0];
+    expect(first.label).toBe(top.name); // no "(n)" — clean at midday
+    expect(msg.body).toContain(`✓ Today: ${top.name} ×2`);
   });
 
   it("appends the #974 protein status line when one is supplied, and equals the gauge figure", () => {
@@ -73,22 +107,37 @@ describe("renderFoodNudge", () => {
       DATE,
       RANKED,
       new Map(),
-      "",
-      line
+      new Map(),
+      {
+        proteinLine: line,
+      }
     );
-    // The nudge carries the SAME today figure the gauge renders (#221) — floor phrasing.
     expect(msg.body).toContain(line);
     expect(msg.body).toContain("at least 55 g");
     expect(String(Math.round(t.todayGrams))).toBe("55");
   });
 
   it("omits the protein line when none is supplied (no bare 0 g nag)", () => {
-    const msg = renderFoodNudge(1, "Morning", DATE, RANKED, new Map());
-    expect(msg.body).not.toMatch(/Protein today/);
+    const msg = renderFoodNudge(
+      1,
+      "Morning",
+      DATE,
+      RANKED,
+      new Map(),
+      new Map()
+    );
+    expect(msg.body).not.toMatch(/Protein/);
   });
 
   it("prompts to tap when nothing is logged yet, with no tally", () => {
-    const msg = renderFoodNudge(1, "Evening", DATE, RANKED, new Map());
+    const msg = renderFoodNudge(
+      1,
+      "Evening",
+      DATE,
+      RANKED,
+      new Map(),
+      new Map()
+    );
     expect(msg.body).toContain("Tap what you've eaten");
     expect(msg.body).not.toContain("✓");
   });
@@ -100,17 +149,204 @@ describe("renderFoodNudge", () => {
       DATE,
       RANKED,
       new Map(),
-      "https://allos.example.com/"
+      new Map(),
+      {
+        deepLinkBase: "https://allos.example.com/",
+      }
     );
     const more = (withBase.actions ?? []).find((a) => a.url);
     expect(more?.url).toBe("https://allos.example.com/nutrition");
 
-    const noBase = renderFoodNudge(1, "Morning", DATE, RANKED, new Map());
+    const noBase = renderFoodNudge(
+      1,
+      "Morning",
+      DATE,
+      RANKED,
+      new Map(),
+      new Map()
+    );
     expect((noBase.actions ?? []).some((a) => a.url)).toBe(false);
   });
 
   it("only exposes the three non-bedtime windows", () => {
     expect(FOOD_NUDGE_WINDOWS).toEqual(["Morning", "Midday", "Evening"]);
+  });
+});
+
+// ---- #1073: reserved __protein__ pseudo-group renders the "+Xg protein" button ----
+describe("renderFoodNudge protein pseudo-group (#1073)", () => {
+  // A ranked list with __protein__ at position 1 (within the default 6-button window).
+  const withProtein = [RANKED[0], PROTEIN_NUDGE_KEY, ...RANKED.slice(1)];
+
+  it("renders the reserved key as a '+Xg protein' button, not a food group", () => {
+    const msg = renderFoodNudge(
+      1,
+      "Evening",
+      DATE,
+      withProtein,
+      new Map(),
+      new Map(),
+      {
+        proteinPresetGrams: 30,
+      }
+    );
+    const proteinBtn = (msg.actions ?? []).find((a) =>
+      a.data?.startsWith("foodprotein:")
+    );
+    expect(proteinBtn?.label).toBe("＋30g protein");
+    expect(proteinBtn?.data).toBe(
+      foodProteinCallbackData(1, "Evening", DATE, 30)
+    );
+  });
+
+  it("the protein button carries NO serving count and never joins the food tally", () => {
+    // Even if a slot/day map somehow held the reserved key, it must not become a serving.
+    const msg = renderFoodNudge(
+      1,
+      "Evening",
+      DATE,
+      withProtein,
+      new Map([[PROTEIN_NUDGE_KEY, 5]]),
+      new Map([[PROTEIN_NUDGE_KEY, 5]]),
+      { proteinPresetGrams: 25 }
+    );
+    const proteinBtn = (msg.actions ?? []).find((a) =>
+      a.data?.startsWith("foodprotein:")
+    );
+    expect(proteinBtn?.label).toBe("＋25g protein"); // never "(5)"
+    // The tally line is empty (no real food group logged) — the reserved key is filtered.
+    expect(msg.body).not.toContain("✓ Today:");
+    expect(msg.body).not.toContain("__protein__");
+  });
+
+  it("falls back to the default preset grams when none is supplied", () => {
+    const msg = renderFoodNudge(
+      1,
+      "Evening",
+      DATE,
+      withProtein,
+      new Map(),
+      new Map()
+    );
+    const proteinBtn = (msg.actions ?? []).find((a) =>
+      a.data?.startsWith("foodprotein:")
+    );
+    expect(proteinBtn?.label).toBe("＋30g protein"); // DEFAULT_PROTEIN_PRESET_GRAMS
+  });
+});
+
+// ---- #1075: progressive expansion (visibleCount + Show more) ----
+describe("renderFoodNudge progressive expansion (#1075)", () => {
+  it("shows exactly visibleCount ranked buttons and a Show more row below the total", () => {
+    for (const vc of [6, 12]) {
+      const msg = renderFoodNudge(
+        1,
+        "Morning",
+        DATE,
+        RANKED,
+        new Map(),
+        new Map(),
+        {
+          visibleCount: vc,
+        }
+      );
+      const logButtons = (msg.actions ?? []).filter((a) =>
+        a.data?.startsWith("food:")
+      );
+      expect(logButtons).toHaveLength(vc);
+      const more = (msg.actions ?? []).find((a) =>
+        a.data?.startsWith("foodmore:")
+      );
+      expect(more?.label).toBe("➕ Show more");
+      expect(more?.data).toBe(foodMoreCallbackData(1, "Morning", DATE));
+    }
+  });
+
+  it("drops the Show more row when visibleCount reaches the total", () => {
+    const msg = renderFoodNudge(
+      1,
+      "Morning",
+      DATE,
+      RANKED,
+      new Map(),
+      new Map(),
+      { visibleCount: RANKED.length }
+    );
+    const logButtons = (msg.actions ?? []).filter((a) =>
+      a.data?.startsWith("food:")
+    );
+    expect(logButtons).toHaveLength(RANKED.length);
+    expect(
+      (msg.actions ?? []).some((a) => a.data?.startsWith("foodmore:"))
+    ).toBe(false);
+  });
+
+  it("drops the Show more row when visibleCount exceeds the total", () => {
+    const msg = renderFoodNudge(
+      1,
+      "Morning",
+      DATE,
+      RANKED,
+      new Map(),
+      new Map(),
+      { visibleCount: RANKED.length + 6 }
+    );
+    expect(
+      (msg.actions ?? []).some((a) => a.data?.startsWith("foodmore:"))
+    ).toBe(false);
+  });
+});
+
+// ---- #1075: stateless count-from-keyboard derivation ----
+describe("countVisibleFoodButtons (#1075)", () => {
+  it("counts food + protein buttons, ignoring the Show more, deep link, and non-buttons", () => {
+    const keyboard = [
+      [
+        {
+          text: "Leafy greens",
+          callback_data: "food:1:Morning:2026-07-13:leafy_greens",
+        },
+        { text: "Berries", callback_data: "food:1:Morning:2026-07-13:berries" },
+      ],
+      [
+        {
+          text: "＋30g protein",
+          callback_data: "foodprotein:1:Morning:2026-07-13:30",
+        },
+      ],
+      [
+        {
+          text: "➕ Show more",
+          callback_data: "foodmore:1:Morning:2026-07-13",
+        },
+      ],
+      [{ text: "＋ More…", url: "https://allos.example.com/nutrition" }],
+    ];
+    // 2 food buttons + 1 protein button = 3; the show-more, deep-link (no callback_data) ignored.
+    expect(countVisibleFoodButtons(keyboard)).toBe(3);
+  });
+
+  it("returns 0 for an empty / undefined keyboard", () => {
+    expect(countVisibleFoodButtons([])).toBe(0);
+    expect(countVisibleFoodButtons(undefined)).toBe(0);
+  });
+
+  it("round-trips a rendered nudge's visible count", () => {
+    const msg = renderFoodNudge(
+      1,
+      "Morning",
+      DATE,
+      RANKED,
+      new Map(),
+      new Map(),
+      {
+        visibleCount: 12,
+      }
+    );
+    const keyboard = (msg.actions ?? []).map((a) => [
+      { text: a.label, callback_data: a.data },
+    ]);
+    expect(countVisibleFoodButtons(keyboard)).toBe(12);
   });
 });
 
@@ -120,8 +356,21 @@ describe("token builders", () => {
       `food:7:Evening:${DATE}:leafy_greens`
     );
   });
+  it("foodProteinCallbackData encodes profile/window/date/grams", () => {
+    expect(foodProteinCallbackData(7, "Evening", DATE, 30)).toBe(
+      `foodprotein:7:Evening:${DATE}:30`
+    );
+  });
+  it("foodMoreCallbackData encodes profile/window/date", () => {
+    expect(foodMoreCallbackData(7, "Evening", DATE)).toBe(
+      `foodmore:7:Evening:${DATE}`
+    );
+  });
   it("foodOptInCallbackData encodes the choice", () => {
     expect(foodOptInCallbackData(3, true)).toBe("foodoptin:3:yes");
     expect(foodOptInCallbackData(3, false)).toBe("foodoptin:3:no");
+  });
+  it("the reserved protein key is not a catalog slug", () => {
+    expect(foodGroupSlugs()).not.toContain(PROTEIN_NUDGE_KEY);
   });
 });

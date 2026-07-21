@@ -15,7 +15,9 @@
 // can re-offer it next time.
 
 import { db, writeTx } from "./db";
+import { now as clockNow } from "./clock";
 import { setProfileSetting } from "./settings";
+import { PROTEIN_NUDGE_KEY } from "./protein-nudge";
 
 // The per-profile settings key holding the most recent add amount, so the quick-add
 // pre-fills the last scoop size. A settings-tier value (not profile-owned data), so
@@ -52,7 +54,13 @@ function validGrams(grams: number): boolean {
 export function addProteinGramsCore(
   profileId: number,
   date: string,
-  grams: number
+  grams: number,
+  // The tap instant (ISO-8601 UTC), appended to the food_log_events ledger under the
+  // reserved __protein__ key (#1073) so the protein "+Xg" nudge button self-surfaces in the
+  // slots the profile logs protein. Defaults to NOW — logged_at is the TAP time, never
+  // backfilled (ranking predicts the next tap), the same discipline as logFoodServingCore.
+  // Injectable so tests can seed a specific slot; production passes the default.
+  loggedAt: string = clockNow().toISOString()
 ): ProteinAddOutcome {
   if (!validGrams(grams)) return { kind: "invalid" };
   return writeTx(() => {
@@ -64,6 +72,14 @@ export function addProteinGramsCore(
     ).run(profileId, date, grams);
     // Remember this scoop size as the profile's last-used preset.
     setProfileSetting(profileId, PROTEIN_QUICKADD_LAST_KEY, String(grams));
+    // Append the per-tap ranking event under the reserved __protein__ pseudo-group (#1073),
+    // in the SAME tx. It rides food_log_events purely for blendFoodOrder's slot frecency —
+    // reserved-key discipline (lib/protein-nudge.ts) keeps __protein__ out of the food_log
+    // day counter and every food-GROUP path, so it never becomes a serving.
+    db.prepare(
+      `INSERT INTO food_log_events (profile_id, group_key, date, logged_at)
+       VALUES (?, ?, ?, ?)`
+    ).run(profileId, PROTEIN_NUDGE_KEY, date, loggedAt);
     const row = db
       .prepare(
         `SELECT grams FROM protein_log WHERE profile_id = ? AND date = ?`
@@ -94,6 +110,18 @@ export function undoProteinGramsCore(
       `DELETE FROM protein_log
         WHERE profile_id = ? AND date = ? AND grams <= 0`
     ).run(profileId, date);
+    // Pop the NEWEST __protein__ ranking event for the day alongside the grams decrement
+    // (#1073), one tx — so an undo doesn't leave a phantom event inflating the protein
+    // slot frecency. A day with grams but no event (pre-#1073 history) has nothing to pop:
+    // the subquery finds nothing and the DELETE is a tolerated no-op.
+    db.prepare(
+      `DELETE FROM food_log_events
+        WHERE id = (
+          SELECT id FROM food_log_events
+           WHERE profile_id = ? AND date = ? AND group_key = ?
+           ORDER BY logged_at DESC, id DESC LIMIT 1
+        )`
+    ).run(profileId, date, PROTEIN_NUDGE_KEY);
     const row = db
       .prepare(
         `SELECT grams FROM protein_log WHERE profile_id = ? AND date = ?`
