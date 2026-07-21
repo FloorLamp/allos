@@ -263,7 +263,10 @@ export default function ExerciseDetailPanel({
       )}
 
       {nextSet && (
-        <div className="mt-4 rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 dark:border-brand-900 dark:bg-brand-950/40">
+        <div
+          data-testid="next-set-card"
+          className="mt-4 rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2 dark:border-brand-900 dark:bg-brand-950/40"
+        >
           <div className="flex items-baseline justify-between gap-2">
             <span className="text-sm font-medium text-brand-600 dark:text-brand-400">
               Next set

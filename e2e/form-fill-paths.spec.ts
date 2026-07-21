@@ -133,12 +133,15 @@ test("the Analyze detail panel seeds the deload-shaved next-set (#1115 Fix B)", 
     await page.goto(
       "/training?tab=analyze&kind=strength&item=Barbell%20Bench%20Press"
     );
-    // The panel's Next-set block carries the shared deload rationale + shaved load (90),
-    // not the full 100 kg progression the un-tempered panel used to seed.
-    const nextSet = page.getByText("Next set", { exact: true }).locator("..");
-    await expect(nextSet).toBeVisible();
-    await expect(nextSet).toContainText("90");
-    await expect(nextSet).toContainText(/deload/i);
+    // The panel's Next-set card carries the SHARED deload rationale + shaved load (90),
+    // not the full 100 kg progression the un-tempered panel used to seed — the same card
+    // (testid next-set-card) the live logger renders, so the reason is visible on both
+    // surfaces (#221 parity: a deload the user can see the number for but not the reason
+    // would be its own mini-gap).
+    const card = page.getByTestId("next-set-card");
+    await expect(card).toBeVisible();
+    await expect(card).toContainText("90");
+    await expect(card).toContainText(/deload/i);
   } finally {
     await page.close();
   }
