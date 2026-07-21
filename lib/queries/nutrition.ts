@@ -36,6 +36,12 @@ import {
   type FoodSlotBoundaries,
 } from "../food-slot";
 import { blendFoodOrder } from "../food-rank";
+import {
+  foodEventsInWindow,
+  slotServingCounts,
+  type FoodLedgerEvent,
+} from "../food-slot-count";
+import { PROTEIN_NUDGE_KEY } from "../protein-nudge";
 import { PROTEIN_QUICKADD_LAST_KEY } from "../protein-log-write";
 import { bodyweightAsOf } from "../bodyweight";
 import {
@@ -259,45 +265,7 @@ export function getFoodGroupLogOrder(
   profileId: number,
   window?: FoodSlot
 ): FoodGroup[] {
-  const t = today(profileId);
-  const since = recentWindowStart(profileId);
-  const overall = (
-    db
-      .prepare(
-        `SELECT group_key AS name, date, servings FROM food_log
-          WHERE profile_id = ? AND date >= ? AND servings > 0`
-      )
-      .all(profileId, since) as {
-      name: string;
-      date: string;
-      servings: number;
-    }[]
-  ).map((r) => ({ name: r.name, date: r.date, weight: r.servings }));
-
-  // Slot signal: the per-tap ledger, each event's window DERIVED at read time from its
-  // logged_at (so a schedule edit re-derives all history for free). Only when a window
-  // is requested — otherwise the blend degrades to pure overall frecency.
-  const slot: { name: string; date: string }[] = [];
-  if (window) {
-    const boundaries = profileFoodSlotBoundaries(profileId);
-    const tz = getTimezone(profileId);
-    const events = db
-      .prepare(
-        `SELECT group_key AS name, date, logged_at FROM food_log_events
-          WHERE profile_id = ? AND date >= ?`
-      )
-      .all(profileId, since) as {
-      name: string;
-      date: string;
-      logged_at: string;
-    }[];
-    for (const e of events) {
-      const { hhmm } = zonedDateParts(tz, new Date(e.logged_at));
-      if (foodSlotForHhmm(hhmm, boundaries) === window)
-        slot.push({ name: e.name, date: e.date });
-    }
-  }
-
+  const { t, overall, slot } = gatherFoodRankingSignals(profileId, window);
   // Dietary preferences (#975): demote excluded groups to the TAIL after the frecency
   // blend (composes with slot ranking, #950) but keep them reachable — you can always log
   // what you actually ate. Presentation-only; never gates what can be logged (#559).
@@ -317,6 +285,124 @@ export function getFoodGroupLogOrder(
     for (const g of FOOD_GROUPS) if (!seen.has(g.slug)) out.push(g);
   }
   return out;
+}
+
+// The overall (food_log daily counter) + slot (food_log_events ledger) frecency inputs
+// blendFoodOrder consumes for a window — gathered ONCE so getFoodGroupLogOrder (web bar +
+// nudge food-group order) and getFoodNudgeRankedKeys (nudge, with the protein pseudo-group)
+// rank identically (#221). The slot signal derives each event's window at read time from
+// its logged_at through the SHARED foodEventsInWindow (the same derivation the #1016 slot
+// counts use), so a schedule edit re-buckets all history for free.
+function gatherFoodRankingSignals(
+  profileId: number,
+  window?: FoodSlot
+): {
+  t: string;
+  overall: { name: string; date: string; weight: number }[];
+  slot: { name: string; date: string }[];
+} {
+  const t = today(profileId);
+  const since = recentWindowStart(profileId);
+  const overall = (
+    db
+      .prepare(
+        `SELECT group_key AS name, date, servings FROM food_log
+          WHERE profile_id = ? AND date >= ? AND servings > 0`
+      )
+      .all(profileId, since) as {
+      name: string;
+      date: string;
+      servings: number;
+    }[]
+  ).map((r) => ({ name: r.name, date: r.date, weight: r.servings }));
+
+  // Slot signal: the per-tap ledger, each event's window derived at read time. Only when a
+  // window is requested — otherwise the blend degrades to pure overall frecency.
+  let slot: { name: string; date: string }[] = [];
+  if (window) {
+    const boundaries = profileFoodSlotBoundaries(profileId);
+    const tz = getTimezone(profileId);
+    const events = db
+      .prepare(
+        `SELECT group_key AS name, date, logged_at FROM food_log_events
+          WHERE profile_id = ? AND date >= ?`
+      )
+      .all(profileId, since) as FoodLedgerEvent[];
+    slot = foodEventsInWindow(events, tz, boundaries, window).map((e) => ({
+      name: e.name,
+      date: e.date,
+    }));
+  }
+  return { t, overall, slot };
+}
+
+// Whether the profile logs protein (has any protein_log history, or a saved quick-add
+// scoop preset) — the gate for the "+Xg protein" nudge button (#1073). A non-tracker never
+// sees the reserved __protein__ pseudo-group in the ranked keys. Reads a profile-scoped
+// owned table (protein_log) + the per-profile settings tier.
+export function profileTracksProtein(profileId: number): boolean {
+  if (getProteinQuickAddPreset(profileId) != null) return true;
+  const row = db
+    .prepare(`SELECT 1 FROM protein_log WHERE profile_id = ? LIMIT 1`)
+    .get(profileId);
+  return !!row;
+}
+
+// The curated key list handed to blendFoodOrder for the nudge (#1073): the food-group
+// catalog slugs with the reserved __protein__ pseudo-group inserted MID-LIST (so at cold
+// start — no __protein__ slot signal yet — it ranks mid-list rather than dominating or
+// vanishing; once it accrues slot events it climbs the slots the profile shakes). The web
+// bar never uses this — its curated stays foodGroupSlugs(), so __protein__ can't leak into
+// a food-group surface.
+function proteinNudgeCurated(): string[] {
+  const slugs = foodGroupSlugs();
+  const mid = Math.floor(slugs.length / 2);
+  return [...slugs.slice(0, mid), PROTEIN_NUDGE_KEY, ...slugs.slice(mid)];
+}
+
+// Ranked pseudo/real KEYS for the Telegram food nudge (#1073): the SAME slot-aware blend
+// the web bar uses (gatherFoodRankingSignals + blendFoodOrder), but the reserved
+// __protein__ pseudo-group joins the curated list for a protein-logging profile so it
+// competes for the ranked buttons. Returns string keys (not FoodGroup[]) because
+// __protein__ is not a catalog group — the nudge renderer resolves each key to a food-group
+// button or the protein "+Xg" button. Excluded-group demotion still applies to the real
+// slugs; __protein__ is never in the excluded set, so it's exempt (#975). Profile-scoped.
+export function getFoodNudgeRankedKeys(
+  profileId: number,
+  window?: FoodSlot
+): string[] {
+  const { t, overall, slot } = gatherFoodRankingSignals(profileId, window);
+  const curated = profileTracksProtein(profileId)
+    ? proteinNudgeCurated()
+    : foodGroupSlugs();
+  return demoteExcludedGroups(
+    blendFoodOrder(curated, overall, slot, t),
+    new Set(getExcludedFoodGroups(profileId))
+  );
+}
+
+// Slot-scoped serving counts for the Telegram nudge's per-button "(n)" suffix (#1016):
+// today's food_log_events taps whose DERIVED window matches, per group. A slot-framed
+// message gets slot-framed button state, while the tally line (getFoodServingsOnDate)
+// stays the day total. Shares the window derivation with the #950 ranking (slotServingCounts
+// → foodEventWindow), so a tap counts for exactly the slot it ranks in (#221). Ledger-only:
+// a serving that exists only in the food_log day counter (pre-ledger history, a manual count
+// edit) has no timestamp and counts toward the day tally only. Profile-scoped via the
+// food_log_events filter.
+export function getFoodSlotServingsOnDate(
+  profileId: number,
+  window: FoodSlot,
+  date: string
+): Map<string, number> {
+  const boundaries = profileFoodSlotBoundaries(profileId);
+  const tz = getTimezone(profileId);
+  const events = db
+    .prepare(
+      `SELECT group_key AS name, date, logged_at FROM food_log_events
+        WHERE profile_id = ? AND date = ?`
+    )
+    .all(profileId, date) as FoodLedgerEvent[];
+  return slotServingCounts(events, tz, boundaries, window, date);
 }
 
 // ---- Food-habit N-week consistency trend (issue #954) ----
