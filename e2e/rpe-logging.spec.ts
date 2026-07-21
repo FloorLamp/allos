@@ -115,13 +115,26 @@ test("RPE selector round-trips through the activity form (#743)", async ({
   const rpeValue = page.getByTestId("set1-rpe-value");
   await expect(rpeValue).toHaveText("RPE");
 
-  // Stepping up from blank seeds the default working rating; a second step nudges
-  // it a half point. Each step fires a debounced autosave (a Server Action POST);
-  // settledClick awaits that POST, so the half-point value is DURABLY persisted
-  // before the reload below — closing the persist-before-reload race that made the
-  // reloaded selector read "RPE" (not set) at retries=0 (PR #1110 run 29837494962).
-  await settledClick(page, rpe.getByRole("button", { name: "Increase RPE" }));
+  // Stepping up from blank seeds the default working rating (8); a second step
+  // nudges it a half point (8.5). Each step fires a debounced (700ms) autosave
+  // Server Action POST. Await the FIRST step's save via its own Next-Action response
+  // (the SAME pattern the half-point step below uses), NOT settledClick: settledClick
+  // can settle on the intervening router.refresh() RSC POST rather than the integer
+  // save, leaving the "8" write in flight — so under load it commits AFTER the "8.5"
+  // write and the reload reads back "8" (the ~50% rpe-logging:68 census flake, e.g.
+  // #1165 e2e(4)). Draining the 8-save before triggering the 8.5-save guarantees no
+  // in-flight integer write can clobber the half point. Armed BEFORE the click so
+  // the response can't be missed.
+  const firstSaved = page.waitForResponse(
+    (r) =>
+      r.request().method() === "POST" &&
+      r.request().headers()["next-action"] != null &&
+      r.ok(),
+    { timeout: 15_000 }
+  );
+  await rpe.getByRole("button", { name: "Increase RPE" }).click();
   await expect(rpeValue).toHaveText("8");
+  await firstSaved;
   // Wait for the HALF-POINT autosave's own Server Action response before moving on,
   // so 8.5 is DURABLY persisted before we navigate. The autosave is debounced
   // (700ms); settledClick alone can settle on the intervening router.refresh() RSC
