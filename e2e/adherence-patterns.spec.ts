@@ -20,10 +20,16 @@ test("Supplements & Meds shows an every-Friday adherence pattern (#45)", async (
   await expect(card).toContainText(/morning/i);
 });
 
-// Clears any adherence dismissal so the finding is guaranteed visible before the
-// dismiss test — regardless of retries or prior runs against the shared seeded DB
-// (a dismissal persists in upcoming_dismissals). Short-lived connection, busy
-// timeout so it never contends with the running server (WAL).
+// Clears any adherence dismissal so the seeded finding is present again — the same
+// row-delete the app's own restore path performs (restoreFinding → DELETE FROM
+// upcoming_dismissals). The dismiss test below writes a PERSISTENT dismissal
+// (dismissAdherencePattern → dismissFinding, keyed "adherence:…") to the shared
+// seeded DB and nothing else resets it, so under --repeat-each (one server, one DB)
+// repeat #2+ of the presence test would otherwise find the finding already
+// dismissed. Resetting before every test makes BOTH the presence and dismiss tests
+// idempotent regardless of order/retries; the afterAll leaves the shared DB clean
+// for neighbors. Short-lived connection, busy timeout so it never contends with the
+// running server (WAL).
 function resetAdherenceDismissals(): void {
   const dbPath =
     process.env.ALLOS_DB_PATH ??
@@ -39,12 +45,14 @@ function resetAdherenceDismissals(): void {
   }
 }
 
+test.beforeEach(() => resetAdherenceDismissals());
+test.afterAll(() => resetAdherenceDismissals());
+
 // Dismissing an adherence-pattern finding hides it via the shared findings-bus
 // store (dismissAdherencePattern → dismissFinding), so it stops rendering.
 test("an adherence-pattern finding can be dismissed (#45)", async ({
   page,
 }) => {
-  resetAdherenceDismissals();
   await page.goto("/nutrition?tab=supplements");
   const main = page.getByRole("main");
   const finding = main

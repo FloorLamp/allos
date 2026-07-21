@@ -1,4 +1,37 @@
 import { test, expect } from "@playwright/test";
+import Database from "better-sqlite3";
+import path from "node:path";
+
+// Clears the seeded eGFR trajectory dismissal so the finding is present again — the
+// same row-delete the app's own restore path performs (restoreFinding → DELETE FROM
+// upcoming_dismissals). The dismiss test below writes a PERSISTENT acknowledgment
+// (dismissTrajectory → dismissFinding) under the analyte-level flag key
+// `biomarker-flag:egfr` (eGFR is not part of a biomarker family, so
+// biomarkerFlagDismissalKey("eGFR") lowercases to that exact key) to the shared
+// seeded DB, and nothing else resets it. Under --repeat-each (one server, one DB)
+// repeat #2+ of both the presence AND dismiss tests would otherwise find the finding
+// already acknowledged and fail on the initial toBeVisible. Resetting before every
+// test makes both idempotent regardless of order/retries; the afterAll leaves the
+// shared DB clean for neighbors. The delete targets ONLY the eGFR key, so a sibling
+// spec's `biomarker-flag:ldl cholesterol` dismissal is untouched. Short-lived
+// connection, busy timeout so it never contends with the running server (WAL).
+function resetEgfrTrajectoryDismissal(): void {
+  const dbPath =
+    process.env.ALLOS_DB_PATH ??
+    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const db = new Database(dbPath);
+  try {
+    db.pragma("busy_timeout = 5000");
+    db.prepare(
+      "DELETE FROM upcoming_dismissals WHERE signal_key = 'biomarker-flag:egfr'"
+    ).run();
+  } finally {
+    db.close();
+  }
+}
+
+test.beforeEach(() => resetEgfrTrajectoryDismissal());
+test.afterAll(() => resetEgfrTrajectoryDismissal());
 
 // Issue #41 (biomarker trajectory rules): the Trends → Biomarkers area surfaces a
 // "Trajectory watch" card listing forward-looking findings — an in-range value
