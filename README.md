@@ -189,7 +189,7 @@ Connect devices and services under **Data → Import**:
 
 - **Google Health Connect** — push-based: an authenticated ingest endpoint here, fed by a phone exporter app on a rolling 48-hour window (weight, body composition, steps, sleep + stages, continuous HR, HRV, exercise sessions, vitals, nutrition, and more — feeding the dedicated **Sleep** page, including a **Sleep Regularity Index** once enough nights accumulate)
 - **Strava** — OAuth; runs/rides with HR, pace, elevation, power, and a GPS route thumbnail rendered locally from the stored polyline (no map tiles, no external requests)
-- **Oura Ring** — a pasted personal access token; sleep + stages, nightly HRV, resting HR, workouts
+- **Oura Ring** — a pasted personal access token; sleep + stages, nightly HRV, resting HR, workouts, and Oura's own **sleep score** and **readiness score** (its proprietary 0–100 daily numbers, shown attributed on the **Sleep** page — display-only, never fed into the app's own metrics or coaching)
 - **Withings** — your own OAuth app; scale and BP-cuff measurements, body composition, SpO₂, temperature, sleep
 - **Calendar feed** — an outbound `.ics` subscription per profile (choose which categories it carries and how much PHI each event shows), plus a consolidated per-login **family calendar**
 - **Garmin** — planned

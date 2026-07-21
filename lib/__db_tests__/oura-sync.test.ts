@@ -8,7 +8,14 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { db } from "@/lib/db";
-import { mapOuraSleep, mapOuraWorkout, OURA_ID } from "@/lib/integrations/oura";
+import {
+  mapOuraSleep,
+  mapOuraWorkout,
+  mapOuraDailyScore,
+  OURA_ID,
+  OURA_SLEEP_SCORE_METRIC,
+  OURA_READINESS_SCORE_METRIC,
+} from "@/lib/integrations/oura";
 import {
   upsertActivities,
   upsertBodyMetrics,
@@ -17,6 +24,7 @@ import {
   type NormBodyMetric,
   type NormMetricSample,
 } from "@/lib/integrations/normalize";
+import { getOuraScores } from "@/lib/queries";
 
 let profileId: number;
 
@@ -269,5 +277,117 @@ describe("Oura sync upsert/dedup", () => {
     };
     expect(manual.weight_kg).toBe(80);
     expect(manual.resting_hr).toBeNull();
+  });
+});
+
+// Vendor daily scores (issue #1069): daily_sleep / daily_readiness `{day, score}`
+// → per-day metric_samples, idempotent on re-push, and a day present in ONE
+// endpoint but not the other stores only that endpoint's row. Own profile so the
+// counts are isolated from the sleep/workout suite above.
+describe("Oura vendor daily scores upsert/dedup (#1069)", () => {
+  let scoreProfile: number;
+  beforeAll(() => {
+    scoreProfile = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('OURA-SCORES')").run()
+        .lastInsertRowid
+    );
+  });
+
+  // A rolling window: three days of sleep scores, but readiness only for the
+  // middle day (Oura returns the endpoints independently).
+  function scoreBatch(): NormMetricSample[] {
+    const out: NormMetricSample[] = [];
+    for (const [day, s] of [
+      ["2024-06-01", 71],
+      ["2024-06-02", 83],
+      ["2024-06-03", 66],
+    ] as [string, number][]) {
+      const m = mapOuraDailyScore({ day, score: s }, OURA_SLEEP_SCORE_METRIC);
+      if (m) out.push(m);
+    }
+    const r = mapOuraDailyScore(
+      { day: "2024-06-02", score: 78 },
+      OURA_READINESS_SCORE_METRIC
+    );
+    if (r) out.push(r);
+    return out;
+  }
+
+  function applyScores() {
+    return db.transaction(() =>
+      upsertMetricSamples(scoreProfile, scoreBatch(), OURA_ID)
+    )();
+  }
+
+  it("first push inserts every score; an identical re-push is all-unchanged", () => {
+    const first = applyScores();
+    expect(first).toEqual({
+      inserted: 4, // 3 sleep + 1 readiness
+      updated: 0,
+      unchanged: 0,
+      suppressed: 0,
+      edited: 0,
+    });
+    const second = applyScores();
+    expect(second).toEqual({
+      inserted: 0,
+      updated: 0,
+      unchanged: 4,
+      suppressed: 0,
+      edited: 0,
+    });
+  });
+
+  it("stores one row per (kind, day); a day in only one endpoint has only that row", () => {
+    applyScores();
+    const sleepDays = db
+      .prepare(
+        "SELECT date, value FROM metric_samples WHERE profile_id = ? AND metric = ? ORDER BY date"
+      )
+      .all(scoreProfile, OURA_SLEEP_SCORE_METRIC) as {
+      date: string;
+      value: number;
+    }[];
+    expect(sleepDays.map((r) => r.date)).toEqual([
+      "2024-06-01",
+      "2024-06-02",
+      "2024-06-03",
+    ]);
+    const readinessDays = db
+      .prepare(
+        "SELECT date FROM metric_samples WHERE profile_id = ? AND metric = ? ORDER BY date"
+      )
+      .all(scoreProfile, OURA_READINESS_SCORE_METRIC) as { date: string }[];
+    // Only the middle day carried a readiness score.
+    expect(readinessDays.map((r) => r.date)).toEqual(["2024-06-02"]);
+  });
+
+  it("the display query surfaces the latest score + trend, attributed", () => {
+    applyScores();
+    const scores = getOuraScores(scoreProfile);
+    expect(scores.sleep?.latest).toBe(66); // newest day (2024-06-03)
+    expect(scores.sleep?.date).toBe("2024-06-03");
+    expect(scores.sleep?.trend.length).toBe(3);
+    expect(scores.readiness?.latest).toBe(78);
+    expect(scores.readiness?.date).toBe("2024-06-02");
+  });
+
+  it("a finalized (changed) score flips that day to updated, others unchanged", () => {
+    applyScores();
+    const revised = mapOuraDailyScore(
+      { day: "2024-06-03", score: 70 }, // Oura re-finalized 66 → 70
+      OURA_SLEEP_SCORE_METRIC
+    )!;
+    const res = db.transaction(() =>
+      upsertMetricSamples(scoreProfile, [revised], OURA_ID)
+    )();
+    expect(res).toEqual({
+      inserted: 0,
+      updated: 1,
+      unchanged: 0,
+      suppressed: 0,
+      edited: 0,
+    });
+    expect(getOuraScores(scoreProfile).sleep?.latest).toBe(70);
   });
 });

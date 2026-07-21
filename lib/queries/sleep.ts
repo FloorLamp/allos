@@ -6,7 +6,16 @@
 // session read goes through the already profile-scoped getSleepSessions — so the
 // scoping guard is unaffected.
 
-import { getSleepSessions, getSleepStageDailyTotals } from "./metrics";
+import {
+  getSleepSessions,
+  getSleepStageDailyTotals,
+  getLatestMetricSample,
+  getMetricDailyTotals,
+} from "./metrics";
+import {
+  OURA_SLEEP_SCORE_METRIC,
+  OURA_READINESS_SCORE_METRIC,
+} from "../integrations/oura";
 import { getMoodLogs } from "./mood";
 import { getTimezone, getSituationEvents } from "../settings";
 import {
@@ -135,6 +144,45 @@ export function getSleepMoodPairing(
   }));
   if (moods.length === 0) return [];
   return pairSleepMood(nights, moods);
+}
+
+// The latest ingested Oura vendor scores + their recent trends (issue #1069) —
+// DISPLAY-ONLY, ATTRIBUTED, engine-inert. These are STORE-WHAT-THE-SOURCE-SAID
+// numbers (a fact about what Oura reported), never a synthesis input: this is the
+// SOLE read path, and the reverse-allowlist guard
+// (lib/__tests__/oura-score-engine-inert.test.ts) fails CI if any engine references
+// the kinds. Delegates to the generic profile-scoped sample readers (no new
+// `.prepare`, so the scoping guard is unaffected); an absent score renders nothing.
+export interface OuraScore {
+  latest: number;
+  date: string;
+  trend: { date: string; value: number }[];
+}
+
+export interface OuraScores {
+  sleep: OuraScore | null;
+  readiness: OuraScore | null;
+}
+
+function readOuraScore(
+  profileId: number,
+  metric: string,
+  limitDays: number
+): OuraScore | null {
+  const latest = getLatestMetricSample(profileId, metric);
+  if (!latest) return null;
+  return {
+    latest: latest.value,
+    date: latest.date,
+    trend: getMetricDailyTotals(profileId, metric, limitDays),
+  };
+}
+
+export function getOuraScores(profileId: number, limitDays = 60): OuraScores {
+  return {
+    sleep: readOuraScore(profileId, OURA_SLEEP_SCORE_METRIC, limitDays),
+    readiness: readOuraScore(profileId, OURA_READINESS_SCORE_METRIC, limitDays),
+  };
 }
 
 // The current rolling-window SRI + companions for a profile, or null when there

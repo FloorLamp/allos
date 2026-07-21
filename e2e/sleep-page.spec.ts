@@ -47,6 +47,35 @@ test.describe("Sleep page (#1066)", () => {
     await expect(main.getByTestId("sleep-stages")).toBeVisible();
   });
 
+  test("renders the attributed Oura vendor scores, never as the app's own (#1069)", async ({
+    page,
+  }) => {
+    await page.goto("/sleep");
+    const main = page.getByRole("main");
+
+    // The "From Oura" section is present, labeled by the vendor (attribution, not
+    // assessment) — a display-only value that feeds no engine.
+    const scores = main.getByTestId("oura-scores");
+    await expect(scores).toBeVisible();
+
+    const sleepTile = scores.getByTestId("oura-sleep-score");
+    await expect(sleepTile).toBeVisible();
+    // Copy names the vendor — never a bare "sleep score".
+    await expect(sleepTile).toContainText("Oura sleep score");
+    // Latest = today's seeded score (78), out of 100.
+    await expect(scores.getByTestId("oura-sleep-score-value")).toHaveText("78");
+
+    const readinessTile = scores.getByTestId("oura-readiness-score");
+    await expect(readinessTile).toBeVisible();
+    await expect(readinessTile).toContainText("Oura readiness");
+    await expect(scores.getByTestId("oura-readiness-score-value")).toHaveText(
+      "70"
+    );
+
+    // Attribution footnote: Oura's proprietary score, not the app's own.
+    await expect(scores).toContainText("proprietary");
+  });
+
   test("the Sleep nav entry is present for a sleep-tracking profile", async ({
     page,
   }) => {
@@ -95,6 +124,13 @@ test.describe("Sleep page (#1066)", () => {
       await expect(timeline).toBeVisible();
       // …and the Sleep leaf is absent for this sleep-less profile (both navs).
       await expect(page.locator('nav a[href="/sleep"]')).toHaveCount(0);
+
+      // The Sleep page renders no Oura scores for a profile without Oura data —
+      // absence renders nothing (#1069, the absent-value rule).
+      await page.goto("/sleep");
+      await expect(
+        page.getByRole("main").getByTestId("oura-scores")
+      ).toHaveCount(0);
     } finally {
       await page.context().close();
     }
