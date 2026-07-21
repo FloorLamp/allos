@@ -88,6 +88,8 @@ describe("undo-delete registry", () => {
         onMissing: "null",
         global: true,
       },
+      // #1050: the visit link nulls on restore when its encounter is gone.
+      { column: "encounter_id", table: "encounters", onMissing: "null" },
     ]);
 
     // #455: intake_items.provider_id is the SAME real enforced FK (migration 006),
@@ -108,6 +110,9 @@ describe("undo-delete registry", () => {
       },
       { column: "document_id", table: "medical_documents", onMissing: "null" },
       { column: "situation_id", table: "situations", onMissing: "null" },
+      // #1050: the "prescribed at" visit link nulls on restore when its encounter
+      // is gone.
+      { column: "encounter_id", table: "encounters", onMissing: "null" },
     ]);
 
     // Every externalRef target is a real table name and its onMissing is one of the
