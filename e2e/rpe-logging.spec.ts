@@ -127,17 +127,25 @@ test("RPE selector round-trips through the activity form (#743)", async ({
 
   // Close the editor and RELOAD — the persisted rating must survive a fresh load.
   await page.keyboard.press("Escape");
-  await page.goto("/training");
 
-  const card = cardsByTitle(page, title);
-  await expect(card).toBeVisible();
-
-  // Reopen the stored session for edit by clicking its title.
-  await card.getByRole("button", { name: title }).click();
-  await expect(page.getByRole("heading", { name: title })).toBeVisible();
-
-  // The RPE selector reloaded the persisted half-point value — the round-trip.
-  await expect(page.getByTestId("set1-rpe-value")).toHaveText("8.5");
+  // Retry the reload→reopen→read against the DURABLE persisted value. The
+  // half-point autosave is DEBOUNCED (700ms) and coalesces the two rapid Increase
+  // clicks, so a single settledClick can return on the FIRST increment's save POST
+  // (persisting 8) while the 8.5-carrying save is still in flight — under
+  // full-suite load the reloaded editor then reads back the integer "8" (the
+  // deterministic 3/3 census failure this fixes). A second reload lands after the
+  // debounce has flushed, so retrying the whole reopen picks up the durable 8.5.
+  // The last successful iteration leaves the editor open for the cleanup below.
+  await expect(async () => {
+    await page.goto("/training");
+    const card = cardsByTitle(page, title);
+    await expect(card).toBeVisible();
+    // Reopen the stored session for edit by clicking its title.
+    await card.getByRole("button", { name: title }).click();
+    await expect(page.getByRole("heading", { name: title })).toBeVisible();
+    // The RPE selector reloaded the persisted half-point value — the round-trip.
+    await expect(page.getByTestId("set1-rpe-value")).toHaveText("8.5");
+  }).toPass({ timeout: 20_000 });
 
   // Cleanup: delete the probe row from the still-open editor (dialog-scoped
   // confirm), restoring the seed state for order-independent sibling specs. The
