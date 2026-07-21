@@ -176,7 +176,7 @@ const FIRST_ALLOW: Record<string, number> = {
   "prn-family.spec.ts": 1,
   "prn-quicklog.spec.ts": 3,
   "records-page.spec.ts": 1,
-  "results-page.spec.ts": 3,
+  "results-page.spec.ts": 2,
   "review-inbox.spec.ts": 3,
   "risk-factors.spec.ts": 2,
   "routine-builder.spec.ts": 1,

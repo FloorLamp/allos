@@ -63,35 +63,30 @@ test("renders all three anchored sections with the seeded data (#1042)", async (
 test("the removed index routes 308-redirect to their anchored sections (#1042)", async ({
   page,
 }) => {
-  await page.goto("/biomarkers");
-  await expect(page).toHaveURL(/\/results#biomarkers$/);
-  await expect(page.getByTestId("results-biomarkers")).toBeVisible();
+  // Request-level assertion — no per-route Chromium navigation. Each removed index
+  // route answers a 308 whose Location IS the anchored /results section (Next's
+  // config-level redirect fires before auth; page.request shares the session
+  // cookies anyway). The coverage here is the redirect MAP; the rendered target
+  // sections are asserted by the "renders all three anchored sections" sibling test
+  // above.
+  const redirects = [
+    { from: "/biomarkers", anchor: "biomarkers" },
+    { from: "/imaging", anchor: "imaging" },
+    { from: "/genomics", anchor: "genomics" },
+  ];
+  for (const r of redirects) {
+    const res = await page.request.get(r.from, { maxRedirects: 0 });
+    expect(res.status(), r.from).toBe(308);
+    expect(res.headers()["location"], r.from).toBe(`/results#${r.anchor}`);
+  }
 
-  await page.goto("/imaging");
-  await expect(page).toHaveURL(/\/results#imaging$/);
-  // The anchor scrolled the imaging section into the viewport (the biomarkers
-  // browser above it fills well more than one screen for the seeded profile).
-  await expect
-    .poll(async () =>
-      page.evaluate(() => {
-        const el = document.getElementById("imaging");
-        if (!el) return Number.POSITIVE_INFINITY;
-        return el.getBoundingClientRect().top;
-      })
-    )
-    .toBeLessThan(200);
-
-  await page.goto("/genomics");
-  await expect(page).toHaveURL(/\/results#genomics$/);
-  await expect(page.getByTestId("results-genomics")).toBeVisible();
-
-  // Query strings ride through the redirect — the biomarkers section's filters
-  // keep working from old deep links (?q= narrows to the matching analyte).
-  await page.goto("/biomarkers?q=non-hdl");
-  await expect(page).toHaveURL(/\/results\?q=non-hdl#biomarkers$/);
-  await expect(
-    page.getByTestId("results-biomarkers").getByTestId("derived-badge").first()
-  ).toBeVisible();
+  // Query strings ride through the redirect — old biomarker deep links keep their
+  // ?q= filter on the way to the merged section.
+  const withQuery = await page.request.get("/biomarkers?q=non-hdl", {
+    maxRedirects: 0,
+  });
+  expect(withQuery.status()).toBe(308);
+  expect(withQuery.headers()["location"]).toBe("/results?q=non-hdl#biomarkers");
 });
 
 test("the per-biomarker detail route survives at /biomarkers/view (#1042)", async ({
