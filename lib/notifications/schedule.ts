@@ -44,6 +44,36 @@ export const DEFAULT_INTAKE_REMINDER_HOURS = {
   Bedtime: 22,
 } as const;
 
+// The auto-hour sentinel stored in profile_settings (issue #1117) for a slot that
+// should follow the profile's wake time. It is a KV VALUE, distinct from the three
+// states the raw string already encodes — absent, "" (off), a number "N" (manual)
+// — so "auto" is a fourth, explicit state the user chose. Kept here in the pure
+// scheduling layer so the reader (getNotifySchedule) and the settings form agree.
+export const AUTO_HOUR = "auto";
+
+// Resolve a stored notify-hour value to a concrete 0-23 hour or null (off),
+// mapping the wake-aware states (issue #1117). This is the ONE place the four raw
+// states collapse, so the read side can't drift from the write side:
+//   • undefined (absent, never configured) → `absentFallback`
+//   • ""        (explicitly off)           → null
+//   • "auto"    (follow wake time)         → `autoValue`
+//   • "N" 0-23  (a specific hour the user picked, manual — always wins)
+//   • anything else (corrupt)              → `absentFallback`
+// `autoValue` defaults to `absentFallback`, so a slot whose default IS the
+// wake-derived hour needs to pass it only once. A manual "N" is never overwritten
+// by seeding — that's "seed the default, never move a time you've set."
+export function parseNotifyHour(
+  raw: string | undefined,
+  absentFallback: number | null,
+  autoValue: number | null = absentFallback
+): number | null {
+  if (raw === undefined) return absentFallback; // unset → default
+  if (raw === "") return null; // explicitly off
+  if (raw === AUTO_HOUR) return autoValue; // follow wake time
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 && n <= 23 ? n : absentFallback;
+}
+
 // Whether the given profile-local hour (0-23) is inside the waking window (issue
 // #378, made per-profile in #450). Inclusive on both bounds. A window that WRAPS
 // past midnight (startHour > endHour, e.g. a night-shift 20→8 waking window) is

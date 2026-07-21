@@ -3,6 +3,7 @@ import {
   getProfileFoodTelegram,
   getProfileMoodCheckin,
   getProfileMoodRecap,
+  getProfileSleepDigest,
   getProfileHomeAssistant,
   getTelegramBotConfig,
   getNotifySchedule,
@@ -11,7 +12,7 @@ import {
   getLoginPushDisabledKinds,
   getPublicUrl,
 } from "@/lib/settings";
-import { inferWorkoutSchedule } from "@/lib/queries";
+import { inferWorkoutSchedule, typicalWakeTime } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
 import { isFoodLoggingRelevant } from "@/lib/life-stage";
@@ -109,6 +110,13 @@ export default async function NotificationsSettingsPage() {
             foodLoggingRelevant={isFoodLoggingRelevant(getUserAge(profile.id))}
             moodCheckinEnabled={getProfileMoodCheckin(profile.id)}
             moodRecapEnabled={getProfileMoodRecap(profile.id)}
+            sleepDigestEnabled={getProfileSleepDigest(profile.id)}
+            wakeHour={(() => {
+              // What "Auto" resolves to (#1117): the profile's typical wake hour,
+              // or null when there isn't enough sleep data yet.
+              const m = typicalWakeTime(profile.id);
+              return m == null ? null : Math.min(23, Math.round(m / 60));
+            })()}
           />
           <HomeAssistantNotificationSettings config={ha} />
         </>

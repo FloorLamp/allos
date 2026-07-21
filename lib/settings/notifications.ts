@@ -22,7 +22,10 @@ import {
   DEFAULT_INTAKE_REMINDER_HOURS,
   WAKING_START_HOUR,
   WAKING_END_HOUR,
+  AUTO_HOUR,
+  parseNotifyHour,
 } from "../notifications/schedule";
+import { typicalWakeTime } from "../queries/sleep";
 
 // How inbound Telegram button taps reach the app: "poll" long-polls getUpdates
 // (works without a public URL), "webhook" has Telegram POST to /api/telegram/webhook.
@@ -129,6 +132,24 @@ export function getProfileMoodRecap(profileId: number): boolean {
 
 export function setProfileMoodRecap(profileId: number, enabled: boolean): void {
   setProfileSetting(profileId, "mood_recap_enabled", enabled ? "1" : "0");
+}
+
+// ---- Morning-digest sleep summary (issue #1117) — per-profile opt-in ----
+// Whether the morning digest includes a calm "how'd I sleep" section (last night's
+// MAIN overnight session vs baseline, stage breakdown, an SRI note, any nap on its
+// own line). OFF by default (opt-in, the #992 non-judgmental posture), so an
+// existing digest never sprouts a sleep line unasked. A `digest_sleep_enabled`
+// "1"/"0" flag in profile_settings, mirroring mood_checkin_enabled. The section
+// still collapses when there's no fresh sleep data even when enabled.
+export function getProfileSleepDigest(profileId: number): boolean {
+  return getProfileSetting(profileId, "digest_sleep_enabled") === "1";
+}
+
+export function setProfileSleepDigest(
+  profileId: number,
+  enabled: boolean
+): void {
+  setProfileSetting(profileId, "digest_sleep_enabled", enabled ? "1" : "0");
 }
 
 export function getFoodTelegramPrompted(profileId: number): boolean {
@@ -346,9 +367,21 @@ export interface NotifySchedule {
     Bedtime: number | null;
   };
   workoutEnabled: boolean;
+  // Whether the Morning intake slot follows the profile's wake time (issue #1117).
+  // When true, `supplementHours.Morning` above already holds the RESOLVED wake hour
+  // (typicalWakeTime, or the hardcoded default when there's no sleep data yet); this
+  // flag is what the settings form and the write path key on to persist the "auto"
+  // sentinel instead of round-tripping the resolved number as a manual choice. A
+  // manual hour or "off" leaves this false.
+  morningAuto: boolean;
   // Morning digest: the hour (0-23, this profile's timezone) to send
-  // the once-a-day summary, or null = off. Off by default.
+  // the once-a-day summary, or null = off. Off by default. When `digestAuto` is
+  // true this holds the resolved wake hour and the digest is ON at that hour.
   digestHour: number | null;
+  // Whether the morning digest follows the wake time (issue #1117). Unlike the
+  // Morning slot, an ABSENT digest stays off (opt-in) — only an explicit "auto"
+  // turns it on at the wake hour, so this is true solely for the stored sentinel.
+  digestAuto: boolean;
   // Weekly recap (issue #32): the weekday (0=Sun … 6=Sat, this profile's timezone)
   // to send the seven-day summary, or null = off. Off by default. The recap fires
   // at weeklyRecapHour on that weekday.
@@ -380,49 +413,66 @@ const SUPP_HOUR_KEYS = {
   Evening: "notify_supp_evening_hour",
   Bedtime: "notify_supp_bedtime_hour",
 } as const;
-function parseHour(
-  raw: string | undefined,
-  fallback: number | null
-): number | null {
-  if (raw === undefined) return fallback; // unset → default
-  if (raw === "") return null; // explicitly off
-  const n = Number(raw);
-  return Number.isInteger(n) && n >= 0 && n <= 23 ? n : fallback;
+// Convert a typical-wake clock MINUTE (0..1439) to the notify HOUR (0-23),
+// rounding to the nearest hour so a 6:50 wake seeds 7:00, not 6:00. Clamped so a
+// late-evening median can't wrap to hour 0. Null minute → null (no sleep data).
+function wakeMinuteToHour(min: number | null): number | null {
+  if (min == null) return null;
+  return Math.min(23, Math.round(min / 60));
 }
 
 export function getNotifySchedule(profileId: number): NotifySchedule {
+  const morningRaw = getProfileSetting(profileId, SUPP_HOUR_KEYS.Morning);
+  const digestRaw = getProfileSetting(profileId, "notify_digest_hour");
+
+  // The wake-derived Morning hour (issue #1117), computed only when a slot actually
+  // needs it — an absent/auto Morning, or an "auto" digest. A profile with an
+  // explicit manual Morning hour and a non-auto digest never pays the sleep read.
+  const needsWake =
+    morningRaw === undefined ||
+    morningRaw === AUTO_HOUR ||
+    digestRaw === AUTO_HOUR;
+  const wakeHour = needsWake
+    ? wakeMinuteToHour(typicalWakeTime(profileId))
+    : null;
+  // Auto/absent Morning resolves to the wake hour, or the hardcoded default when no
+  // sleep data yet — graceful degradation.
+  const morningAutoValue = wakeHour ?? DEFAULT_INTAKE_REMINDER_HOURS.Morning;
+
   return {
     supplementHours: {
-      Morning: parseHour(
-        getProfileSetting(profileId, SUPP_HOUR_KEYS.Morning),
-        DEFAULT_INTAKE_REMINDER_HOURS.Morning
-      ),
-      Midday: parseHour(
+      // Morning: absent OR "auto" → wake-derived; "N" → manual (wins); "" → off.
+      Morning: parseNotifyHour(morningRaw, morningAutoValue, morningAutoValue),
+      Midday: parseNotifyHour(
         getProfileSetting(profileId, SUPP_HOUR_KEYS.Midday),
         DEFAULT_INTAKE_REMINDER_HOURS.Midday
       ),
-      Evening: parseHour(
+      Evening: parseNotifyHour(
         getProfileSetting(profileId, SUPP_HOUR_KEYS.Evening),
         DEFAULT_INTAKE_REMINDER_HOURS.Evening
       ),
-      Bedtime: parseHour(
+      Bedtime: parseNotifyHour(
         getProfileSetting(profileId, SUPP_HOUR_KEYS.Bedtime),
         DEFAULT_INTAKE_REMINDER_HOURS.Bedtime
       ),
     },
+    // The Morning slot is in auto mode when the stored value is the sentinel OR
+    // absent (never configured) — both resolve to the wake hour. A manual "N" or an
+    // explicit "" (off) is not auto.
+    morningAuto: morningRaw === undefined || morningRaw === AUTO_HOUR,
     workoutEnabled:
       (getProfileSetting(profileId, "notify_workout_enabled") ?? "1") === "1",
-    // Off by default (fallback null) — the digest is opt-in.
-    digestHour: parseHour(
-      getProfileSetting(profileId, "notify_digest_hour"),
-      null
-    ),
+    // Digest is opt-in: absent → off (null). Only an explicit "auto" turns it on at
+    // the wake hour; "N" → manual.
+    digestHour: parseNotifyHour(digestRaw, null, morningAutoValue),
+    digestAuto: digestRaw === AUTO_HOUR,
     // Weekly recap — off by default (opt-in). Weekday 0-6, else null.
     weeklyRecapDay: parseWeekday(
       getProfileSetting(profileId, "notify_recap_day")
     ),
     weeklyRecapHour:
-      parseHour(getProfileSetting(profileId, "notify_recap_hour"), 9) ?? 9,
+      parseNotifyHour(getProfileSetting(profileId, "notify_recap_hour"), 9) ??
+      9,
     // Milestone alerts on unless explicitly disabled.
     milestonesEnabled:
       (getProfileSetting(profileId, "notify_milestones") ?? "1") === "1",
@@ -430,14 +480,14 @@ export function getNotifySchedule(profileId: number): NotifySchedule {
     preventiveEnabled:
       (getProfileSetting(profileId, "notify_preventive") ?? "1") === "1",
     // Quiet hours (#450): waking-window bounds, defaulting to the #378 constant when
-    // unset/invalid. parseHour clamps to 0-23; anything else falls back to the default.
+    // unset/invalid. parseNotifyHour clamps to 0-23; anything else falls back.
     wakingStartHour:
-      parseHour(
+      parseNotifyHour(
         getProfileSetting(profileId, "notify_waking_start"),
         WAKING_START_HOUR
       ) ?? WAKING_START_HOUR,
     wakingEndHour:
-      parseHour(
+      parseNotifyHour(
         getProfileSetting(profileId, "notify_waking_end"),
         WAKING_END_HOUR
       ) ?? WAKING_END_HOUR,
@@ -457,17 +507,33 @@ export function setNotifySchedule(
 ): void {
   for (const k of ["Morning", "Midday", "Evening", "Bedtime"] as const) {
     const h = sched.supplementHours[k];
-    setProfileSetting(profileId, SUPP_HOUR_KEYS[k], h == null ? "" : String(h));
+    // The Morning slot persists the "auto" sentinel when it's following the wake
+    // time (issue #1117), so re-saving an unchanged form NEVER freezes the resolved
+    // wake hour into a manual choice — the blind-write pollution the read-resolution
+    // depends on avoiding. All other slots (and Morning when manual/off) write a
+    // number or "" as before. Auto wins over the resolved number carried alongside.
+    const value =
+      k === "Morning" && sched.morningAuto
+        ? AUTO_HOUR
+        : h == null
+          ? ""
+          : String(h);
+    setProfileSetting(profileId, SUPP_HOUR_KEYS[k], value);
   }
   setProfileSetting(
     profileId,
     "notify_workout_enabled",
     sched.workoutEnabled ? "1" : "0"
   );
+  // Digest: "auto" sentinel when following the wake time, else the hour or "" (off).
   setProfileSetting(
     profileId,
     "notify_digest_hour",
-    sched.digestHour == null ? "" : String(sched.digestHour)
+    sched.digestAuto
+      ? AUTO_HOUR
+      : sched.digestHour == null
+        ? ""
+        : String(sched.digestHour)
   );
   setProfileSetting(
     profileId,

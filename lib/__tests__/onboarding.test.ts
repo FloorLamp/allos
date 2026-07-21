@@ -222,8 +222,10 @@ describe("onboarding wizard steps", () => {
 describe("onboarding notification schedule", () => {
   const schedule = {
     supplementHours: { Morning: 8, Midday: 13, Evening: 20, Bedtime: 22 },
+    morningAuto: false,
     workoutEnabled: true,
     digestHour: null,
+    digestAuto: false,
     weeklyRecapDay: null,
     weeklyRecapHour: 9,
     milestonesEnabled: true,

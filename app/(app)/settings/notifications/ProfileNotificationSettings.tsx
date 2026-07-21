@@ -24,6 +24,8 @@ export default function ProfileNotificationSettings({
   foodLoggingRelevant,
   moodCheckinEnabled,
   moodRecapEnabled,
+  sleepDigestEnabled,
+  wakeHour,
 }: {
   telegram: ProfileTelegram;
   botConfigured: boolean;
@@ -33,6 +35,11 @@ export default function ProfileNotificationSettings({
   foodLoggingRelevant: boolean;
   moodCheckinEnabled: boolean;
   moodRecapEnabled: boolean;
+  sleepDigestEnabled: boolean;
+  // The profile's typical wake hour (0-23) that "Auto" resolves to, or null when
+  // there isn't enough sleep data yet (issue #1117) — shown as a hint on the Auto
+  // options.
+  wakeHour: number | null;
 }) {
   const router = useRouter();
   const [enabled, setEnabled] = useState(telegram.telegramEnabled);
@@ -41,8 +48,11 @@ export default function ProfileNotificationSettings({
   const [moodEnabled, setMoodEnabled] = useState(moodCheckinEnabled);
   const [moodRecap, setMoodRecap] = useState(moodRecapEnabled);
   const [suppHours, setSuppHours] = useState(schedule.supplementHours);
+  const [morningAuto, setMorningAuto] = useState(schedule.morningAuto);
   const [workoutEnabled, setWorkoutEnabled] = useState(schedule.workoutEnabled);
   const [digestHour, setDigestHour] = useState(schedule.digestHour);
+  const [digestAuto, setDigestAuto] = useState(schedule.digestAuto);
+  const [sleepDigest, setSleepDigest] = useState(sleepDigestEnabled);
   const [recapDay, setRecapDay] = useState(schedule.weeklyRecapDay);
   const [recapHour, setRecapHour] = useState(schedule.weeklyRecapHour ?? 9);
   const [milestonesEnabled, setMilestonesEnabled] = useState(
@@ -62,6 +72,12 @@ export default function ProfileNotificationSettings({
   );
   const busy = pending || testing;
 
+  // The label for the wake-aware "Auto" option (#1117), naming the hour it resolves
+  // to when there's enough sleep data.
+  const autoLabel = `Auto — from your wake time${
+    wakeHour == null ? "" : ` (~${String(wakeHour).padStart(2, "0")}:00)`
+  }`;
+
   function buildFormData() {
     const fd = new FormData();
     fd.set("telegram_enabled", enabled ? "1" : "0");
@@ -69,9 +85,16 @@ export default function ProfileNotificationSettings({
     fd.set("food_telegram_enabled", foodEnabled ? "1" : "0");
     fd.set("mood_checkin_enabled", moodEnabled ? "1" : "0");
     fd.set("mood_recap_enabled", moodRecap ? "1" : "0");
+    fd.set("digest_sleep_enabled", sleepDigest ? "1" : "0");
+    // Morning intake follows the wake time when Auto is selected (#1117): send the
+    // "auto" sentinel, NOT the resolved hour, so the write path records intent.
     fd.set(
       "supp_morning_hour",
-      suppHours.Morning == null ? "" : String(suppHours.Morning)
+      morningAuto
+        ? "auto"
+        : suppHours.Morning == null
+          ? ""
+          : String(suppHours.Morning)
     );
     fd.set(
       "supp_midday_hour",
@@ -86,7 +109,10 @@ export default function ProfileNotificationSettings({
       suppHours.Bedtime == null ? "" : String(suppHours.Bedtime)
     );
     fd.set("workout_enabled", workoutEnabled ? "1" : "0");
-    fd.set("digest_hour", digestHour == null ? "" : String(digestHour));
+    fd.set(
+      "digest_hour",
+      digestAuto ? "auto" : digestHour == null ? "" : String(digestHour)
+    );
     fd.set("recap_day", recapDay == null ? "" : String(recapDay));
     fd.set("recap_hour", String(recapHour));
     fd.set("milestones_enabled", milestonesEnabled ? "1" : "0");
@@ -245,17 +271,39 @@ export default function ProfileNotificationSettings({
                     {w} supps
                   </span>
                   <select
-                    value={suppHours[w] == null ? "" : String(suppHours[w])}
-                    onChange={(e) =>
-                      setSuppHours((h) => ({
-                        ...h,
-                        [w]:
-                          e.target.value === "" ? null : Number(e.target.value),
-                      }))
+                    value={
+                      w === "Morning" && morningAuto
+                        ? "auto"
+                        : suppHours[w] == null
+                          ? ""
+                          : String(suppHours[w])
                     }
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (w === "Morning") {
+                        setMorningAuto(v === "auto");
+                        if (v !== "auto")
+                          setSuppHours((h) => ({
+                            ...h,
+                            Morning: v === "" ? null : Number(v),
+                          }));
+                      } else {
+                        setSuppHours((h) => ({
+                          ...h,
+                          [w]: v === "" ? null : Number(v),
+                        }));
+                      }
+                    }}
                     className="input mt-1"
+                    data-testid={
+                      w === "Morning" ? "supp-morning-hour" : undefined
+                    }
                   >
                     <option value="">Off</option>
+                    {/* The Morning slot can follow the profile's wake time (#1117). */}
+                    {w === "Morning" && (
+                      <option value="auto">{autoLabel}</option>
+                    )}
                     {Array.from({ length: 24 }, (_, i) => (
                       <option key={i} value={i}>
                         {String(i).padStart(2, "0")}:00
@@ -287,25 +335,58 @@ export default function ProfileNotificationSettings({
             <label className="label">Morning digest</label>
             <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
               A once-a-day summary at the hour below (this profile’s timezone).
-              Skips sections with nothing to report.
+              Skips sections with nothing to report. Pick <em>Auto</em> to have
+              it arrive around when you usually wake.
             </p>
             <select
-              value={digestHour == null ? "" : String(digestHour)}
-              onChange={(e) =>
-                setDigestHour(
-                  e.target.value === "" ? null : Number(e.target.value)
-                )
+              value={
+                digestAuto
+                  ? "auto"
+                  : digestHour == null
+                    ? ""
+                    : String(digestHour)
               }
-              className="input sm:w-40"
+              onChange={(e) => {
+                const v = e.target.value;
+                setDigestAuto(v === "auto");
+                if (v !== "auto") setDigestHour(v === "" ? null : Number(v));
+              }}
+              className="input sm:w-64"
               aria-label="Morning digest hour"
+              data-testid="digest-hour"
             >
               <option value="">Off</option>
+              {/* Follow the wake time — the digest lands when you wake (#1117). */}
+              <option value="auto">{autoLabel}</option>
               {Array.from({ length: 24 }, (_, i) => (
                 <option key={i} value={i}>
                   {String(i).padStart(2, "0")}:00
                 </option>
               ))}
             </select>
+
+            {/* Sleep summary (#1117) — opt-in, off by default. Adds a calm
+                "how'd I sleep" section (last night vs baseline, stages, an SRI
+                note, any nap on its own line) to the morning digest. Best around
+                the wake-derived hour; the hourly tick means "the hour you usually
+                wake", not to-the-minute. */}
+            <label className="mt-3 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+              <input
+                type="checkbox"
+                checked={sleepDigest}
+                onChange={(e) => setSleepDigest(e.target.checked)}
+                className="h-4 w-4 accent-brand-600"
+                data-testid="digest-sleep-enabled"
+              />
+              Include a sleep summary
+            </label>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              A gentle recap of last night’s sleep vs your baseline — never a
+              score to beat. Needs a sleep integration; it’s skipped when
+              there’s no recent sleep data. Arrives around your usual wake hour
+              (the reminder tick is hourly, so it’s that hour, not to the
+              minute).
+            </p>
           </div>
 
           {/* Weekly recap — a once-a-week summary of the last seven days

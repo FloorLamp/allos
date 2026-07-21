@@ -61,6 +61,19 @@ export function dedupeFlaggedByAnalyte(
   return out;
 }
 
+// Last night's sleep facts for the calm "how'd I sleep" digest section (#1117),
+// all derived from the SAME main-overnight-session (#1118) and SRI (#160)
+// computations the rest trigger and Trends use — one computation (#221). Minutes
+// throughout. The nap is kept SEPARATE from the overnight figure (never folded in).
+export interface DigestSleep {
+  lastNightMin: number; // main overnight session, last recorded night
+  baselineMin: number; // recent-nights baseline (mean)
+  deepMin?: number | null; // deep-stage minutes when the source reports stages
+  remMin?: number | null; // REM-stage minutes when reported
+  napMin?: number | null; // same-day nap total, shown on its own line when > 0
+  sri?: number | null; // Sleep Regularity Index when the signal is meaningful
+}
+
 export interface DigestInput {
   profileName: string;
   // An OPEN illness episode's one-line headline (issue #859 item 5), preformatted from
@@ -92,6 +105,9 @@ export interface DigestInput {
   // New since the last digest
   newFlaggedBiomarkers: DigestFlaggedBiomarker[];
   newDocumentLabels: string[];
+  // Last night's sleep (issue #1117), or null when the sleep summary is off or
+  // there's no fresh sleep data. When present the digest gets a calm Sleep section.
+  sleep?: DigestSleep | null;
 }
 
 export interface DigestSection {
@@ -102,6 +118,16 @@ export interface DigestSection {
 export interface DigestModel {
   title: string;
   sections: DigestSection[];
+}
+
+// Human sleep duration: "7h 20m", "8h", "45m". Minutes in, rounded.
+function fmtSleepDuration(min: number): string {
+  const total = Math.round(min);
+  const h = Math.floor(total / 60);
+  const m = total - h * 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
 }
 
 // Short key stat for an activity line: distance for cardio, else duration.
@@ -179,6 +205,34 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     yLines.push(`⚖️ Weight: ${fmtWeight(input.weightKg, "kg")}`);
   }
   if (yLines.length) sections.push({ heading: "Yesterday", lines: yLines });
+
+  // Sleep: a calm "how'd I sleep" (issue #1117) — last night's MAIN overnight
+  // session vs baseline, stages when present, an SRI note, and any nap on its OWN
+  // line (never folded into the overnight figure). Non-judgmental by design (#992):
+  // it states the numbers, never "you slept badly".
+  if (input.sleep) {
+    const s = input.sleep;
+    const sleepLines: string[] = [];
+    const stages: string[] = [];
+    if (s.deepMin != null && s.deepMin > 0)
+      stages.push(`deep ${fmtSleepDuration(s.deepMin)}`);
+    if (s.remMin != null && s.remMin > 0)
+      stages.push(`REM ${fmtSleepDuration(s.remMin)}`);
+    const stageNote = stages.length ? ` · ${stages.join(", ")}` : "";
+    sleepLines.push(
+      `😴 Last night: ${fmtSleepDuration(s.lastNightMin)} (typical ~${fmtSleepDuration(
+        s.baselineMin
+      )})${stageNote}`
+    );
+    // A same-day nap on its own line — kept apart from the overnight total.
+    if (s.napMin != null && s.napMin > 0) {
+      sleepLines.push(`💤 + ${fmtSleepDuration(s.napMin)} nap`);
+    }
+    if (s.sri != null) {
+      sleepLines.push(`📈 Sleep regularity ${s.sri}`);
+    }
+    sections.push({ heading: "Sleep", lines: sleepLines });
+  }
 
   // New since the last digest: things to look at.
   const newLines: string[] = [];

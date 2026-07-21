@@ -240,3 +240,58 @@ describe("digest renders bounded-precision numbers (issue #1109)", () => {
     expect(msg.title).not.toMatch(/\d+\.\d{3,}/);
   });
 });
+
+describe("buildDigest — Sleep section (issue #1117)", () => {
+  it("renders last night vs baseline, stages, nap, and SRI", () => {
+    const model = buildDigest({
+      ...empty,
+      sleep: {
+        lastNightMin: 440, // 7h 20m
+        baselineMin: 425, // ~7h 5m
+        deepMin: 65,
+        remMin: 95,
+        napMin: 45,
+        sri: 82,
+      },
+    });
+    const sleep = model?.sections.find((s) => s.heading === "Sleep");
+    expect(sleep).toBeTruthy();
+    expect(sleep?.lines[0]).toBe(
+      "😴 Last night: 7h 20m (typical ~7h 5m) · deep 1h 5m, REM 1h 35m"
+    );
+    // The nap is a SEPARATE line, never folded into the overnight figure.
+    expect(sleep?.lines).toContain("💤 + 45m nap");
+    expect(sleep?.lines).toContain("📈 Sleep regularity 82");
+  });
+
+  it("omits stages, nap, and SRI when absent (calm, minimal)", () => {
+    const model = buildDigest({
+      ...empty,
+      sleep: { lastNightMin: 480, baselineMin: 470 },
+    });
+    const sleep = model?.sections.find((s) => s.heading === "Sleep");
+    expect(sleep?.lines).toEqual(["😴 Last night: 8h (typical ~7h 50m)"]);
+  });
+
+  it("collapses entirely when there is no sleep data", () => {
+    expect(buildDigest({ ...empty, sleep: null })).toBeNull();
+    expect(buildDigest({ ...empty })).toBeNull();
+  });
+
+  it("sends a sleep-only digest (the section counts as content)", () => {
+    const model = buildDigest({
+      ...empty,
+      sleep: { lastNightMin: 400, baselineMin: 400 },
+    });
+    expect(model?.sections.map((s) => s.heading)).toEqual(["Sleep"]);
+  });
+
+  it("does not show a zero-minute nap line", () => {
+    const model = buildDigest({
+      ...empty,
+      sleep: { lastNightMin: 400, baselineMin: 400, napMin: 0 },
+    });
+    const sleep = model?.sections.find((s) => s.heading === "Sleep");
+    expect(sleep?.lines.some((l) => l.includes("nap"))).toBe(false);
+  });
+});

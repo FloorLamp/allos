@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   slotDue,
   inWakingWindow,
+  parseNotifyHour,
+  AUTO_HOUR,
   WAKING_START_HOUR,
   WAKING_END_HOUR,
 } from "@/lib/notifications/schedule";
@@ -74,5 +76,49 @@ describe("inWakingWindow", () => {
   it("treats a same start/end as a literal one-hour window", () => {
     expect(inWakingWindow(9, 9, 9)).toBe(true);
     expect(inWakingWindow(10, 9, 9)).toBe(false);
+  });
+});
+
+describe("parseNotifyHour — wake-aware resolution (issue #1117)", () => {
+  // The Morning slot: default IS the wake-derived hour, so absent AND "auto" both
+  // resolve to it; a manual number wins; "" is off.
+  const morning = (raw: string | undefined) => parseNotifyHour(raw, 7, 7);
+
+  it("resolves absent → the (wake-derived) default for the Morning slot", () => {
+    expect(morning(undefined)).toBe(7);
+  });
+
+  it("resolves the AUTO sentinel → the wake-derived value", () => {
+    expect(morning(AUTO_HOUR)).toBe(7);
+  });
+
+  it("honors a manual hour — it always wins over seeding", () => {
+    expect(morning("9")).toBe(9);
+    expect(morning("0")).toBe(0);
+    expect(morning("23")).toBe(23);
+  });
+
+  it("treats an empty string as explicitly off (null)", () => {
+    expect(morning("")).toBeNull();
+  });
+
+  it("falls back for a corrupt / out-of-range value", () => {
+    expect(morning("99")).toBe(7);
+    expect(morning("-1")).toBe(7);
+    expect(morning("nonsense")).toBe(7);
+  });
+
+  it("digest: absent → off (opt-in preserved), but AUTO → wake-derived", () => {
+    // Digest's absentFallback is null (off), autoValue the wake hour.
+    expect(parseNotifyHour(undefined, null, 6)).toBeNull();
+    expect(parseNotifyHour(AUTO_HOUR, null, 6)).toBe(6);
+    expect(parseNotifyHour("", null, 6)).toBeNull();
+    expect(parseNotifyHour("8", null, 6)).toBe(8);
+  });
+
+  it("autoValue defaults to absentFallback for slots without a wake mode", () => {
+    // Two-arg form: "auto" maps to the same fallback (harmless for Midday etc.).
+    expect(parseNotifyHour(AUTO_HOUR, 13)).toBe(13);
+    expect(parseNotifyHour(undefined, 13)).toBe(13);
   });
 });
