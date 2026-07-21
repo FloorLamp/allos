@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import Database from "better-sqlite3";
 import path from "node:path";
 import { followLink, openCommandPalette } from "./nav";
+import { openMedDetailViaLink, refillBadge } from "./med-card-helpers";
 
 // Clear the coaching "Not today" snooze so the #39 test starts UNSNOOZED on every
 // repeat (#868 fixture ownership). `snoozeCoaching` writes a persistent
@@ -229,7 +230,10 @@ test("supplements page shows a refill days-left estimate with its basis (#38)", 
   page,
 }) => {
   await page.goto("/nutrition?tab=supplements");
-  const badge = page.getByTestId("refill-days-left").first();
+  // The supplements list is a shared surface, so take the first refill badge (whichever
+  // supplement leads); the `refill-days-left` anatomy is owned by the shared med-card
+  // driver (#868 class-2). The assertions below stay in the spec.
+  const badge = refillBadge(page).first();
   await expect(badge).toContainText(/days?\s+left/);
   await expect(badge).toContainText(/based on (your last 30 days|schedule)/);
 });
@@ -244,16 +248,9 @@ test("percent-strength medication resolves its 'What is this?' explainer (#272)"
   page,
 }) => {
   await page.goto("/medications");
-  const link = page
-    .getByTestId("medication-row")
-    .filter({ hasText: "Hydrocortisone 2.5% Cream" })
-    .first()
-    .getByTestId("medication-row-link");
-  await expect(link).toBeVisible();
-  const detail = page.getByTestId("medication-detail");
-  // Navigate past the pre-hydration swallow (#730/#500) with the blessed followLink
-  // (#868) instead of a hand-rolled click-until-detail-shows toPass loop.
-  await followLink(page, link, /\/medications\/\d+/);
+  // Navigate past the pre-hydration swallow (#730/#500) with the shared med-card driver's
+  // followLink-based row→detail nav (#868 class-2) instead of a hand-rolled click loop.
+  const detail = await openMedDetailViaLink(page, "Hydrocortisone 2.5% Cream");
   await expect(detail).toBeVisible();
   // Generic + drug class from lib/medication-descriptions.json — only rendered
   // when the normalized lookup lands on the hydrocortisone entry. The redesigned
