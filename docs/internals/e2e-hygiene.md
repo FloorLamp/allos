@@ -184,12 +184,19 @@ The fix freezes the app's notion of "now" for the run via a single env-gated sea
   workout-presence / recommend / redose / food-slot / dose-log read+write cores, and
   the seed math that anchors fixtures — so the fixtures and the app agree on "today"
   by construction. Durations, log/audit timestamps, and cache TTLs stay real.
-- `playwright.config.ts` computes `FROZEN_NOW` ONCE at config load (a fixed mid-day
-  instant TODAY, 12:00 local) and sets `ALLOS_TEST_NOW` in BOTH webServer `env`
-  blocks (default + demo). The webServer `env` applies to the whole
-  `seed && start` shell command, so `scripts/seed.ts`, `e2e/seed-events.ts`, and
-  `next start` all read the same instant. An externally-supplied `ALLOS_TEST_NOW`
-  wins, so a boundary hour (e.g. `00:10` local) can be stress-tested on demand:
+- `playwright.config.ts` computes `FROZEN_NOW` ONCE at config load — the run's
+  **real start instant** (#1048, PR #1103; originally a fixed 12:00 local, which
+  opened the "morning-UTC band": runtime-written rows keep real SQL
+  `datetime('now')` wall-time, so whenever real time lagged the frozen noon by
+  hours, every liveness/recency window read a just-written row as stale and ~10
+  specs failed deterministically. Freezing at real start keeps |real − frozen|
+  bounded by the run's own duration, which every recency window tolerates, at
+  every hour; the residual is only a run that STARTS within its own duration of
+  real midnight) — and sets `ALLOS_TEST_NOW` in BOTH webServer `env` blocks
+  (default + demo). The webServer `env` applies to the whole `seed && start`
+  shell command, so `scripts/seed.ts`, `e2e/seed-events.ts`, and `next start`
+  all read the same instant. An externally-supplied `ALLOS_TEST_NOW` wins, so a
+  boundary hour (e.g. `00:10` local) can be stress-tested on demand:
   `ALLOS_TEST_NOW="<today>T00:10:00" npm run test:e2e -- illness-hero workout-presence`.
 
 `ALLOS_TEST_NOW` is a **test hook, not an operator knob** — it is deliberately
