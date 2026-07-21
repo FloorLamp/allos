@@ -31,7 +31,8 @@ export default function SymptomLogCard({
 }) {
   const date = today(profileId);
   const yesterday = shiftDateStr(date, -1);
-  const temperatureUnit = getUnitPrefs(loginId).temperatureUnit;
+  const units = getUnitPrefs(loginId);
+  const temperatureUnit = units.temperatureUnit;
   // While an episode is open, the card doubles as its summary header (#801): the
   // headline ("Illness · day 4 · fever trending down · …") and a link to the full
   // story, both over the SAME assembly the timeline/share surfaces use.
@@ -70,7 +71,9 @@ export default function SymptomLogCard({
         textIntakeEnabled={isTaskConfigured("symptom-map")}
       />
       {/* Door C (#843): reach for an OTC med right where you're logging symptoms. */}
-      <SymptomMedQuickAdd pediatric={getPediatricFormContext(profileId)} />
+      <SymptomMedQuickAdd
+        pediatric={getPediatricFormContext(profileId, units.weightUnit)}
+      />
     </div>
   );
 }

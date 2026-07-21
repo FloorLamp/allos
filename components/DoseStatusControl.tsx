@@ -7,6 +7,15 @@ import { useToast } from "@/components/Toast";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { setDoseStatus } from "@/app/(app)/nutrition/supplement-actions";
 import { localDate, shouldQueueOffline } from "@/lib/offline/queue";
+import {
+  DOSE_ACTION_AMBER,
+  DOSE_ACTION_BRAND,
+  DOSE_ACTION_ICON,
+  DOSE_ACTION_LABEL,
+  DOSE_ACTION_MUTED,
+  DOSE_ACTION_NEUTRAL,
+  DOSE_ACTION_RESOLVED,
+} from "@/components/medications/dose-action-styles";
 
 // Tri-state dose check-off (issue #232): one dose is taken, deliberately skipped,
 // or clear. Shared by MedicationCard and EditableSupplementRow so BOTH surfaces
@@ -28,12 +37,14 @@ export default function DoseStatusControl({
   skipped,
   variant,
   label,
+  compact = false,
 }: {
   doseId: number;
   taken: boolean;
   skipped: boolean;
   variant: DoseVariant;
   label?: string;
+  compact?: boolean;
 }) {
   // null = follow the server-provided props; a value = optimistic override held
   // after an offline queue (there's no revalidate to refresh it).
@@ -109,26 +120,34 @@ export default function DoseStatusControl({
     variant === "circle"
       ? `flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 text-sm transition ${
           isTaken
-            ? "border-brand-600 bg-brand-600 text-white"
-            : "border-black/10 text-transparent hover:border-brand-400 dark:border-white/10"
+            ? "cursor-default border-brand-600 bg-brand-600 text-white"
+            : isSkipped
+              ? "border-black/5 bg-slate-50 text-transparent dark:border-white/5 dark:bg-ink-900/60"
+              : "border-black/10 text-transparent hover:border-brand-400 dark:border-white/10"
         }`
-      : `flex items-center gap-2 rounded-full border px-3 py-1 text-sm transition ${
+      : `${compact ? DOSE_ACTION_ICON : DOSE_ACTION_LABEL} ${
           isTaken
-            ? "border-brand-600 bg-brand-600 text-white"
-            : "border-black/10 text-slate-600 hover:border-brand-400 dark:border-white/10 dark:text-slate-300"
+            ? DOSE_ACTION_RESOLVED
+            : isSkipped
+              ? DOSE_ACTION_MUTED
+              : DOSE_ACTION_BRAND
         }`;
 
   const skipClass =
     variant === "circle"
       ? `flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 text-sm transition ${
           isSkipped
-            ? "border-amber-500 bg-amber-500 text-white"
-            : "border-black/10 text-slate-500 hover:border-amber-400 dark:border-white/10 dark:text-slate-400"
+            ? "cursor-default border-amber-300 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300"
+            : isTaken
+              ? "border-black/5 bg-slate-50 text-slate-300 hover:text-slate-500 dark:border-white/5 dark:bg-ink-900/60 dark:text-slate-600 dark:hover:text-slate-400"
+              : "border-black/10 text-slate-500 hover:border-amber-400 dark:border-white/10 dark:text-slate-400"
         }`
-      : `flex items-center rounded-full border px-2.5 py-1 text-sm transition ${
+      : `${compact ? DOSE_ACTION_ICON : DOSE_ACTION_LABEL} ${
           isSkipped
-            ? "border-amber-500 bg-amber-500 text-white"
-            : "border-black/10 text-slate-500 hover:border-amber-400 dark:border-white/10 dark:text-slate-400"
+            ? DOSE_ACTION_AMBER
+            : isTaken
+              ? DOSE_ACTION_MUTED
+              : DOSE_ACTION_NEUTRAL
         }`;
 
   return (
@@ -149,13 +168,16 @@ export default function DoseStatusControl({
         className={takeClass}
         aria-pressed={isTaken}
         aria-label={isTaken ? "Mark not taken" : "Mark taken"}
+        title={isTaken ? "Taken — click to undo" : "Mark taken"}
         data-testid="dose-take"
       >
         <IconCheck
           className={variant === "circle" ? "h-4 w-4" : "h-3.5 w-3.5"}
           stroke={2.5}
         />
-        {label ? <span>{label}</span> : null}
+        {label ? (
+          <span className={compact ? "sr-only" : undefined}>{label}</span>
+        ) : null}
       </button>
       <button
         type="button"
@@ -171,6 +193,11 @@ export default function DoseStatusControl({
           className={variant === "circle" ? "h-4 w-4" : "h-3.5 w-3.5"}
           stroke={2.5}
         />
+        {variant === "pill" ? (
+          <span className={compact ? "sr-only" : undefined}>
+            {isSkipped ? "Skipped" : "Skip"}
+          </span>
+        ) : null}
       </button>
     </div>
   );

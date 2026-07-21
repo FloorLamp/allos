@@ -34,6 +34,8 @@ import {
   getSupplements,
   getSupplementDoses,
   getTakenDoseIds,
+  getTakenDoseTimes,
+  resolveMedicationAcrossProfiles,
   getEncounters,
   getProviders,
   getConditions,
@@ -191,6 +193,9 @@ describe("intake / supplement reads", () => {
     expect(doses.length).toBe(2); // one per intake item
     const taken = getTakenDoseIds(fx.profileId, fx.todayStr);
     expect(taken.has(fx.supplementDoseId)).toBe(true);
+    expect(
+      getTakenDoseTimes(fx.profileId, fx.todayStr).get(fx.supplementDoseId)
+    ).toBeTruthy();
   });
 
   it("refill read: the tracked supplement reports low days-of-supply", () => {
@@ -207,6 +212,29 @@ describe("intake / supplement reads", () => {
     );
     expect(daysLeft).toBe(8); // 8 on hand / 1 per dose / 1 dose per day
     expect(isLowSupply(daysLeft)).toBe(true);
+  });
+
+  it("resolves medication detail only across the supplied accessible profiles", () => {
+    const household = seedProfile("QMEDOWNER");
+
+    const resolved = resolveMedicationAcrossProfiles(
+      [fx.profileId, household.profileId],
+      household.medicationId
+    );
+    expect(resolved?.profileId).toBe(household.profileId);
+    expect(resolved?.medication.id).toBe(household.medicationId);
+
+    // Omitting the owner from the grants-filtered input keeps the medication hidden;
+    // an accessible supplement id is rejected too because this route is medication-only.
+    expect(
+      resolveMedicationAcrossProfiles([fx.profileId], household.medicationId)
+    ).toBeNull();
+    expect(
+      resolveMedicationAcrossProfiles(
+        [fx.profileId, household.profileId],
+        household.supplementId
+      )
+    ).toBeNull();
   });
 });
 

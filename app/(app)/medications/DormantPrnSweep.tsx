@@ -101,11 +101,12 @@ export default function DormantPrnSweep({
     <section data-testid="dormant-prn-sweep">
       {suggestions.length > 0 && (
         <>
-          <h2 className="mb-2 section-label">Not used in a while</h2>
-          <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
-            As-needed meds you haven’t logged in 90+ days. Move one to Past to
-            keep your current list — and interaction checks — accurate. You can
-            restart it any time.
+          <h3 className="mb-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
+            May be out of date
+          </h3>
+          <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
+            No doses have been logged for these as-needed medications in 90+
+            days. Move unused items to Past to keep safety checks accurate.
           </p>
           <div className="space-y-2">
             {suggestions.map((s) => (
@@ -127,7 +128,7 @@ export default function DormantPrnSweep({
                     type="button"
                     onClick={() => moveToPast(s)}
                     disabled={busyId != null}
-                    className="btn btn-sm"
+                    className="btn-ghost btn-sm"
                     data-testid="dormant-prn-move"
                   >
                     <IconArchive className="h-3.5 w-3.5" stroke={2} />
@@ -140,7 +141,7 @@ export default function DormantPrnSweep({
                     aria-label={`Dismiss ${s.name}`}
                     title="Dismiss"
                     data-testid="dormant-prn-dismiss"
-                    className="tap-target flex h-8 w-8 items-center justify-center rounded text-slate-500 hover:text-rose-500 dark:text-slate-400 dark:hover:text-rose-400"
+                    className="tap-target flex h-8 w-8 items-center justify-center rounded text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-ink-750 dark:hover:text-slate-200"
                   >
                     <IconX className="h-4 w-4" />
                   </button>
@@ -153,7 +154,7 @@ export default function DormantPrnSweep({
 
       {dismissed.length > 0 && (
         <details className="mt-2" data-testid="dormant-prn-dismissed">
-          <summary className="cursor-pointer text-xs font-medium text-slate-500 hover:underline dark:text-slate-400">
+          <summary className="cursor-pointer section-label hover:underline">
             Dismissed ({dismissed.length})
           </summary>
           <div className="mt-2 space-y-2">
@@ -176,7 +177,7 @@ export default function DormantPrnSweep({
                   onClick={() => restore(s)}
                   disabled={busyId != null}
                   data-testid="dormant-prn-restore"
-                  className="btn btn-sm"
+                  className="btn-ghost btn-sm"
                 >
                   <IconArrowBackUp className="h-3.5 w-3.5" stroke={2} />
                   <span>Restore</span>

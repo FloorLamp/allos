@@ -57,6 +57,21 @@ describe("addBodyMetric", () => {
     expect(bodyMetricRows(profile.id)[0].weight_kg).toBeCloseTo(80, 6);
   });
 
+  it("honors the unit captured when the form rendered", async () => {
+    const login = createLogin({ weightUnit: "kg" });
+    const profile = createProfile("captured-lb-user", login.id);
+    actAs(login, profile);
+
+    await addBodyMetric(
+      fd({ date: "2026-02-02", weight: 44, weight_unit: "lb" })
+    );
+
+    expect(bodyMetricRows(profile.id)[0].weight_kg).toBeCloseTo(
+      44 / LB_PER_KG,
+      6
+    );
+  });
+
   it("rejects an impossible date (no row written)", async () => {
     const login = createLogin({ weightUnit: "kg" });
     const profile = createProfile("bad-date", login.id);

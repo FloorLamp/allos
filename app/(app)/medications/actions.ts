@@ -13,6 +13,8 @@ import {
   deleteMedicationSideEffect,
   promoteMedicationSideEffect,
   logAdministration,
+  logHistoricalMedicationDose,
+  updateHistoricalMedicationDose,
   deleteAdministrationLog,
   createMedicationFromRecord,
   dismissFinding,
@@ -26,7 +28,7 @@ import { expiresAtFor } from "@/lib/share-links";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { getTimezone } from "@/lib/settings";
-import { zonedWallTimeToUtc } from "@/lib/date";
+import { isRealIsoDate, zonedWallTimeToUtc } from "@/lib/date";
 import {
   normalizeStopReason,
   normalizeSeverity,
@@ -34,7 +36,9 @@ import {
 import { leftRefillTrackedSet, refillMarkerKey } from "@/lib/refill-nudge";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import { strOrNull } from "@/lib/parse";
-import { isRealIsoDate } from "@/lib/date";
+
+export type MedicationAdministrationResult =
+  { ok: true; outcome: "logged" | "duplicate" } | { ok: false; error: string };
 
 // Medication-lifecycle write paths (#746): stop / restart / side effects for the
 // standalone Medications page. Split out of the former combined /medicine action
@@ -199,11 +203,12 @@ function resolveGivenAt(
 // Log one PRN (as-needed) administration from the dashboard quick-log widget (#797).
 // The auth gate + offset parsing live here; the write core (logAdministration) is
 // auth-blind and shared with the Telegram /dose path, so "gave it now / 30m ago /
-// 1h ago / at 4:02pm" is one computation. The updated count/last-time surfaces via
-// revalidation rather than the FormResult (which carries no success payload).
+// 1h ago / at 4:02pm" is one computation. The result preserves whether the write was
+// fresh or deduplicated so every caller can give honest feedback; the updated
+// count/last-time still surface through revalidation.
 export async function logMedicationAdministration(
   formData: FormData
-): Promise<FormResult> {
+): Promise<MedicationAdministrationResult> {
   // Cross-profile gating (issue #858): the illness-hero cockpit logs a PRN dose for a
   // household member without switching — an explicit `profileId` gates on the TARGET via
   // requireProfileWriteAccess (the #31 cross-profile gate); absent, the active profile is
@@ -231,7 +236,7 @@ export async function logMedicationAdministration(
   switch (outcome.kind) {
     case "logged":
     case "duplicate":
-      return formOk();
+      return { ok: true, outcome: outcome.kind };
     case "invalid-time":
       return formError("That time is out of range — pick a time today.");
     case "inactive":
@@ -242,7 +247,119 @@ export async function logMedicationAdministration(
   }
 }
 
-// Remove one PRN administration with undo (#851 item 11). A mis-tapped Log otherwise
+// Deliberately backfill one medication dose from its detail-page history. The
+// profile-local wall time is converted at the action boundary; the auth-blind core
+// owns course/date validation, duplicate semantics, amount snapshotting, and the
+// optional supply adjustment.
+export async function logHistoricalDose(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const itemId = Number(formData.get("id"));
+  const doseId = Number(formData.get("dose_id"));
+  const date = String(formData.get("date") ?? "");
+  const time = String(formData.get("time") ?? "");
+  if (
+    !itemId ||
+    !doseId ||
+    !isRealIsoDate(date) ||
+    !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)
+  ) {
+    return formError("Enter a valid dose date and time.");
+  }
+
+  const outcome = logHistoricalMedicationDose(
+    profile.id,
+    itemId,
+    doseId,
+    zonedWallTimeToUtc(getTimezone(profile.id), date, time),
+    strOrNull(formData.get("amount")),
+    formData.get("adjust_supply") === "1"
+  );
+  if (outcome.kind === "logged") {
+    revalidatePath("/medications");
+    revalidatePath(`/medications/${itemId}`);
+    revalidatePath("/nutrition");
+    revalidatePath("/");
+    return formOk();
+  }
+  switch (outcome.kind) {
+    case "already-taken":
+      return formError(
+        "That scheduled dose is already recorded for this date."
+      );
+    case "already-skipped":
+      return formError("That scheduled dose is marked skipped for this date.");
+    case "duplicate":
+      return formError("A dose is already recorded at about this time.");
+    case "outside-course":
+      return formError("This medication was not active on that date.");
+    case "invalid-time":
+      return formError("Choose a date and time that are not in the future.");
+    case "stale-dose":
+    default:
+      return formError(
+        "That dose is no longer available. Refresh and try again."
+      );
+  }
+}
+
+// Correct an existing history row without changing its original supply effect. The
+// auth-blind core owns row/profile scoping, course correction, and scheduled/PRN
+// uniqueness; this boundary only validates and converts the profile-local wall time.
+export async function updateHistoricalDose(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const itemId = Number(formData.get("id"));
+  const logId = Number(formData.get("log_id"));
+  const date = String(formData.get("date") ?? "");
+  const time = String(formData.get("time") ?? "");
+  if (
+    !itemId ||
+    !logId ||
+    !isRealIsoDate(date) ||
+    !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)
+  ) {
+    return formError("Enter a valid dose date and time.");
+  }
+
+  const outcome = updateHistoricalMedicationDose(
+    profile.id,
+    itemId,
+    logId,
+    zonedWallTimeToUtc(getTimezone(profile.id), date, time),
+    strOrNull(formData.get("amount"))
+  );
+  if (outcome.kind === "logged") {
+    revalidatePath("/medications");
+    revalidatePath(`/medications/${itemId}`);
+    revalidatePath("/nutrition");
+    revalidatePath("/");
+    return formOk();
+  }
+  switch (outcome.kind) {
+    case "already-taken":
+      return formError(
+        "That scheduled dose is already recorded for this date."
+      );
+    case "already-skipped":
+      return formError("That scheduled dose is marked skipped for this date.");
+    case "duplicate":
+      return formError("A dose is already recorded at about this time.");
+    case "outside-course":
+      return formError("This medication was not active on that date.");
+    case "invalid-time":
+      return formError("Choose a date and time that are not in the future.");
+    case "stale-dose":
+    default:
+      return formError(
+        "That dose is no longer available. Refresh and try again."
+      );
+  }
+}
+
+// Remove one taken medication ledger row with undo (#851 item 11). A mis-tapped Log otherwise
 // permanently decrements supply, advances the redose window, and counts toward the
 // daily max — so the removal (and its Undo) inverts all three (supply directly, the
 // window/count via the ledger row being gone). Returns the { undoId } the shared

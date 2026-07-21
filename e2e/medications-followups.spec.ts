@@ -1,4 +1,5 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+import { settledClick } from "./helpers";
 
 // #851 Medications follow-ups: the OTC-first add form (Rx/OTC flag with an on-demand
 // prescription-fields disclosure, the "Generic"-led brand picker, the amount-only PRN
@@ -6,20 +7,26 @@ import { test, expect } from "@playwright/test";
 // + PRN rows, and PRN administration remove-with-undo + past-day history on the
 // clinical-record detail page. Fixtures come from e2e/seed-events.ts:
 // "Adherence Refill Med (e2e)" (scheduled, due) and "PRN Quicklog Med (e2e)" (PRN with
-// two administrations logged today). The add-medication form is the "Add medication"
+// two administrations logged today), plus history add/edit/delete with undo. The
+// add-medication form is the "Add medication"
 // card's MedicationForm; its name combobox picks the collapsed catalog option.
 const PRN_MED = "PRN Quicklog Med (e2e)";
+
+async function openFullAdd(page: Page) {
+  await page.getByTestId("medication-add-toggle").click();
+  await page.getByTestId("medication-add-full").click();
+  const panel = page.getByTestId("medication-add-panel");
+  await expect(panel).toBeVisible();
+  return panel;
+}
 
 test("add a generic OTC ibuprofen end-to-end (#851 acceptance)", async ({
   page,
 }) => {
   await page.goto("/medications");
 
-  // The full med-specific form (the long-tail path); the OTC quick-add card is above it.
-  const addCard = page
-    .locator("div.card")
-    .filter({ hasText: "Add medication" });
-  await expect(addCard).toBeVisible();
+  // Open the long-tail full-details path from the single inline add workspace.
+  const addCard = await openFullAdd(page);
 
   // Pick the collapsed catalog option (#851 item 14): "Ibuprofen (Advil, Motrin)".
   // Typing keeps a free-text "Use 'Ibuprofen'" row too, so target the catalog option
@@ -84,10 +91,7 @@ test("Rx toggle reveals and hides the prescription fields (#851 items 1–2)", a
   page,
 }) => {
   await page.goto("/medications");
-  const addCard = page
-    .locator("div.card")
-    .filter({ hasText: "Add medication" });
-  await expect(addCard).toBeVisible();
+  const addCard = await openFullAdd(page);
 
   const rxToggle = addCard.getByTestId("rx-toggle");
   const fields = addCard.getByTestId("prescription-fields");
@@ -115,6 +119,37 @@ test("scheduled and PRN rows share the one Today-row primitive (#851 item 10)", 
   await expect(
     page.locator('[data-testid="quick-log-prn-item"][data-today-row="1"]')
   ).not.toHaveCount(0);
+
+  // The administration summary belongs directly under the PRN medication name;
+  // the right-side actions must not reserve an empty row between them.
+  const prnRow = page
+    .locator('[data-testid="quick-log-prn-item"][data-today-row="1"]')
+    .first();
+  const [nameBox, summaryBox] = await Promise.all([
+    prnRow.getByRole("link").boundingBox(),
+    prnRow.getByTestId("prn-day-label").boundingBox(),
+  ]);
+  expect(nameBox).not.toBeNull();
+  expect(summaryBox).not.toBeNull();
+  expect(summaryBox!.y - (nameBox!.y + nameBox!.height)).toBeLessThanOrEqual(4);
+
+  const scheduledRow = page.getByTestId("today-scheduled-med").first();
+  const actionButtons = [
+    scheduledRow.getByTestId("dose-take"),
+    scheduledRow.getByTestId("dose-skip"),
+    prnRow.getByTestId("prn-log-now"),
+    prnRow.getByTestId("prn-log-more"),
+  ];
+  const actionWidths = await Promise.all(
+    actionButtons.map(async (button) => (await button.boundingBox())!.width)
+  );
+  expect(
+    Math.max(...actionWidths) - Math.min(...actionWidths)
+  ).toBeLessThanOrEqual(1);
+  expect(Math.max(...actionWidths)).toBeLessThanOrEqual(36);
+  for (const button of actionButtons) {
+    await expect(button).toHaveAttribute("title", /\S+/);
+  }
 });
 
 test("PRN administration removes with an Undo toast that restores it (#851 item 11)", async ({
@@ -136,21 +171,21 @@ test("PRN administration removes with an Undo toast that restores it (#851 item 
 
   const detail = page.getByTestId("medication-detail");
   await expect(detail).toBeVisible();
-  const chips = detail.getByTestId("prn-administration-chip");
-  await expect(chips.first()).toBeVisible();
+  const rows = detail.getByTestId("prn-administration-row");
+  await expect(rows.first()).toBeVisible();
   // Capture the count dynamically so a CI retry (persisted DB) still balances.
-  const before = await chips.count();
+  const before = await rows.count();
   expect(before).toBeGreaterThanOrEqual(1);
 
   // Remove the first administration → "Dose removed." toast + Undo, count drops by one.
-  await chips.first().getByTestId("prn-administration-remove").click();
+  await rows.first().getByTestId("prn-administration-remove").click();
   await expect(page.getByText("Dose removed.")).toBeVisible();
-  await expect(chips).toHaveCount(before - 1);
+  await expect(rows).toHaveCount(before - 1);
 
   // Undo → "Restored." toast, the chip comes back.
   await page.getByRole("button", { name: "Undo" }).click();
   await expect(page.getByText("Restored.")).toBeVisible();
-  await expect(chips).toHaveCount(before);
+  await expect(rows).toHaveCount(before);
 });
 
 test("detail page shows past-administration history (#851 item 13)", async ({
@@ -169,9 +204,89 @@ test("detail page shows past-administration history (#851 item 13)", async ({
   const detail = page.getByTestId("medication-detail");
   await expect(detail).toBeVisible();
 
-  // The seeded PRN med has administrations logged today, so the "Recent doses" roll-up
-  // renders inside the (detail-open) History disclosure.
-  const history = detail.getByTestId("prn-history");
+  // The seeded PRN med has administrations logged today, so the History section
+  // renders its complete dose-history roll-up.
+  const history = detail.getByTestId("dose-history");
   await expect(history).toBeVisible();
-  await expect(history.getByText("Recent doses")).toBeVisible();
+  await expect(history.getByText("Dose history")).toBeVisible();
+});
+
+test("logs, edits, and deletes a historical medication dose", async ({
+  page,
+}, testInfo) => {
+  const loggedAmount = `${225 + testInfo.repeatEachIndex} mg`;
+  const updatedAmount = `${250 + testInfo.repeatEachIndex} mg`;
+  await page.goto("/medications");
+  const link = page
+    .getByTestId("medication-row")
+    .filter({ hasText: PRN_MED })
+    .getByTestId("medication-row-link");
+  await page.goto((await link.getAttribute("href"))!);
+
+  const history = page.getByTestId("dose-history");
+  await history.getByRole("button", { name: "Log past dose" }).click();
+  const form = history.getByTestId("historical-dose-form");
+  await expect(form).toContainText(
+    "records a separate administration in dose history"
+  );
+  await expect(form).toContainText("start date will move back to match");
+  const maxDate = await form
+    .locator('input[type="hidden"][name="date"]')
+    .inputValue();
+  const date = new Date(`${maxDate}T00:00:00Z`);
+  // The fixture starts five days ago. Logging 45 days ago proves the former 30-day
+  // cap is gone and moves the PRN course start backward atomically.
+  date.setUTCDate(date.getUTCDate() - 45);
+  const beforeStart = date.toISOString().slice(0, 10);
+  await form.getByTestId("historical-dose-date").fill(beforeStart);
+  await form.getByTestId("historical-dose-time").fill("03:17");
+  await form.getByLabel("Amount").fill(loggedAmount);
+  await settledClick(page, form.getByRole("button", { name: "Save dose" }));
+
+  await expect(page.getByText(`Logged past dose of ${PRN_MED}.`)).toBeVisible();
+  await expect(history).toContainText(loggedAmount);
+  await expect(history).toContainText(/(?:3:17am|03:17)/);
+
+  const loggedRow = history
+    .getByTestId("dose-history-row")
+    .filter({ hasText: loggedAmount });
+  await loggedRow.getByRole("button", { name: "Dose actions" }).click();
+  await page.getByRole("menuitem", { name: "Edit" }).click();
+  const editForm = loggedRow.getByTestId("historical-dose-form");
+  await editForm.getByLabel("Amount").fill(updatedAmount);
+  await editForm.getByTestId("historical-dose-time").fill("04:18");
+  await settledClick(
+    page,
+    editForm.getByRole("button", { name: "Save changes" })
+  );
+  await expect(page.getByText(`Updated dose of ${PRN_MED}.`)).toBeVisible();
+
+  const updatedRow = history
+    .getByTestId("dose-history-row")
+    .filter({ hasText: updatedAmount });
+  await expect(updatedRow).toContainText(/(?:4:18am|04:18)/);
+  await updatedRow.getByRole("button", { name: "Dose actions" }).click();
+  await settledClick(page, page.getByRole("menuitem", { name: "Delete" }));
+  await expect(page.getByText("Dose deleted.")).toBeVisible();
+  await expect(updatedRow).toHaveCount(0);
+  await settledClick(page, page.getByRole("button", { name: "Undo" }));
+  const restoredRow = history
+    .getByTestId("dose-history-row")
+    .filter({ hasText: updatedAmount });
+  await expect(restoredRow).toBeVisible();
+
+  // Undo is part of the behavior under test; remove the restored fixture again
+  // so --repeat-each starts from the same dose history instead of accumulating
+  // duplicate rows with identical timestamps.
+  await restoredRow.getByRole("button", { name: "Dose actions" }).click();
+  await settledClick(page, page.getByRole("menuitem", { name: "Delete" }));
+  await expect(restoredRow).toHaveCount(0);
+
+  // The administration and course correction are one write: editing immediately
+  // afterward must show the selected dose date as the new PRN start.
+  await page.getByRole("button", { name: "Medication actions" }).click();
+  await page.getByRole("menuitem", { name: "Edit" }).click();
+  await expect(
+    page.locator('input[type="hidden"][name="started_on"]')
+  ).toHaveValue(beforeStart);
 });

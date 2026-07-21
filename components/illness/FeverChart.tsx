@@ -10,6 +10,7 @@ import {
   formatDateShape,
   type DisplayFormatPrefs,
 } from "@/lib/format-date";
+import { formatMedicationDoseProduct } from "@/lib/medication-dose-format";
 
 // Compact episode chart with readable axes: temperature values, date ticks, a labeled
 // normal-range band, and dose markers share the same time scale. Colors stay on the
@@ -62,6 +63,7 @@ export default function FeverChart({
     medication.administrations.map((administration) => ({
       ...administration,
       name: medication.name,
+      product: administration.product ?? medication.product,
     }))
   );
   if (pts.length === 0 && doses.length === 0) return null;
@@ -204,7 +206,7 @@ export default function FeverChart({
             const x = xFor(dose.date, dose.time24 ?? null);
             return (
               <g key={dose.id ?? `${dose.name}:${dose.date}:${index}`}>
-                <title>{`${dose.name}${dose.amount ? ` · ${dose.amount}` : ""}${dose.time ? ` · ${formatClockValue(dose.time, formatPrefs.timeFormat)}` : ""}`}</title>
+                <title>{`${dose.name}${formatMedicationDoseProduct(dose.amount, dose.product) ? ` · ${formatMedicationDoseProduct(dose.amount, dose.product)}` : ""}${dose.time ? ` · ${formatClockValue(dose.time, formatPrefs.timeFormat)}` : ""}`}</title>
                 <path
                   d={`M ${x} ${DOSE_Y - 5} l 5 5 l -5 5 l -5 -5 z`}
                   fill={chartSeries.violet}

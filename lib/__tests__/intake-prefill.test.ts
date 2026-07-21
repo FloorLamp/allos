@@ -78,6 +78,7 @@ describe("resolveIntakePrefill", () => {
       ageMonths: 24,
       weightKg: 11, // ≈ 24.3 lb → the 24 lb band
       weightDate: "2026-07-10",
+      weightUnit: "lb",
       today: "2026-07-16",
     };
     const pf = resolveIntakePrefill({ info: ibuInfo, prn: ibuPrn, pediatric });
@@ -93,6 +94,7 @@ describe("resolveIntakePrefill", () => {
       ageMonths: 24,
       weightKg: null,
       weightDate: null,
+      weightUnit: "lb",
       today: "2026-07-16",
     };
     const pf = resolveIntakePrefill({ info: ibuInfo, prn: ibuPrn, pediatric });

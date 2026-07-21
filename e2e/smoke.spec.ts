@@ -255,14 +255,13 @@ test("percent-strength medication resolves its 'What is this?' explainer (#272)"
   // (#868) instead of a hand-rolled click-until-detail-shows toPass loop.
   await followLink(page, link, /\/medications\/\d+/);
   await expect(detail).toBeVisible();
-  // The explainer disclosure is a client toggle — retry the expand to ride out the
-  // hydration window (#730), then assert the description landed.
-  await expect(async () => {
-    await detail.getByText("What is this?").click();
-    // Generic + drug class from lib/medication-descriptions.json — only rendered
-    // when the normalized lookup lands on the hydrocortisone entry.
-    await expect(detail).toContainText("Corticosteroid");
-  }).toPass();
+  // Generic + drug class from lib/medication-descriptions.json — only rendered
+  // when the normalized lookup lands on the hydrocortisone entry. The redesigned
+  // detail page keeps this information visible under "About this medication".
+  await expect(
+    detail.getByText("About this medication", { exact: true })
+  ).toBeVisible();
+  await expect(detail).toContainText("Corticosteroid");
   await expect(detail).toContainText(
     /corticosteroid used to reduce inflammation/i
   );

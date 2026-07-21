@@ -3,6 +3,7 @@ import { requireWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
 import { db, today, writeTx } from "@/lib/db";
+import { isRealIsoDate } from "@/lib/date";
 import { captureDelete } from "@/lib/undo-delete-db";
 import {
   getActiveSituations,
@@ -300,6 +301,22 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return formError("Enter a name.");
   const f = fields(formData);
+  const todayStr = today(profile.id);
+  const hasStartedOn = formData.has("started_on");
+  const startedOnRaw = String(formData.get("started_on") ?? "").trim();
+  if (
+    f.kind === "medication" &&
+    hasStartedOn &&
+    ((!f.asNeeded && !startedOnRaw) ||
+      (!!startedOnRaw &&
+        (!isRealIsoDate(startedOnRaw) || startedOnRaw > todayStr)))
+  ) {
+    return formError(
+      f.asNeeded
+        ? "Enter a valid start date that isn't in the future."
+        : "Enter a start date that isn't in the future."
+    );
+  }
   const doses = collapsePrnDoses(parseDoses(formData), f.asNeeded === 1);
   const pairs = parsePairs(formData);
   // Prescribing provider: medications only, resolved into the shared
@@ -359,9 +376,15 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
     insertDoses(suppId, doses);
     reconcilePairs(suppId, pairs, profile.id);
     // Ensure-course-on-create: a new medication opens an initial course
-    // dated today. A no-op for supplements (kind guard inside the helper).
+    // on the chosen date (today for quick-add). A no-op for supplements (kind
+    // guard inside the helper).
     if (f.kind === "medication") {
-      ensureMedicationCourse(profile.id, suppId, today(profile.id));
+      ensureMedicationCourse(
+        profile.id,
+        suppId,
+        hasStartedOn ? startedOnRaw || null : f.asNeeded ? null : todayStr,
+        !!f.asNeeded && (!hasStartedOn || !startedOnRaw)
+      );
     }
   });
   revalidateIntake();
@@ -377,6 +400,27 @@ export async function updateSupplement(
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return formError("Enter a name.");
   const f = fields(formData);
+  const todayStr = today(profile.id);
+  const hasStartedOn = formData.has("started_on");
+  const startedOnRaw = String(formData.get("started_on") ?? "").trim();
+  if (
+    f.kind === "medication" &&
+    hasStartedOn &&
+    ((!f.asNeeded && !startedOnRaw) ||
+      (!!startedOnRaw &&
+        (!isRealIsoDate(startedOnRaw) || startedOnRaw > todayStr)))
+  ) {
+    return formError(
+      f.asNeeded
+        ? "Enter a valid start date that isn't in the future."
+        : "Enter a start date that isn't in the future."
+    );
+  }
+  const hasCourseId = formData.has("course_id");
+  const courseId = Number(formData.get("course_id"));
+  if (hasCourseId && (!Number.isInteger(courseId) || courseId <= 0)) {
+    return formError("Couldn't find that medication course.");
+  }
   const doses = collapsePrnDoses(parseDoses(formData), f.asNeeded === 1);
   const pairs = parsePairs(formData);
   // The on-hand value the form was LOADED with (issue #467): quantity_on_hand is a
@@ -397,7 +441,7 @@ export async function updateSupplement(
           String(formData.get("provider") ?? "")
         )
       : null;
-  const ok = writeTx(() => {
+  const result = writeTx(() => {
     // Verify ownership before touching the supplement or its child rows — the
     // form id is untrusted. Bail (no-op) when it isn't owned. Also snapshot the
     // prior refill-tracked state (active + quantity_on_hand) so an edit that turns
@@ -409,6 +453,30 @@ export async function updateSupplement(
       .get(id, profile.id) as
       { active: number; quantity_on_hand: number | null } | undefined;
     if (!owned) return false;
+    // A medication can have several historical courses. The edit form submits the
+    // specific current/latest course it displayed, and this scoped lookup prevents a
+    // forged id from changing another medication or profile. Validate before any row
+    // is mutated so a start date can never land after that course's stop date.
+    if (f.kind === "medication" && hasStartedOn && hasCourseId) {
+      const course = db
+        .prepare(
+          `SELECT c.stopped_on
+             FROM medication_courses c
+             JOIN intake_items ii ON ii.id = c.item_id
+            WHERE c.id = ? AND c.item_id = ? AND ii.profile_id = ?
+              AND ii.kind = 'medication'`
+        )
+        .get(courseId, id, profile.id) as
+        { stopped_on: string | null } | undefined;
+      if (!course) return "course-not-found" as const;
+      if (
+        startedOnRaw &&
+        course.stopped_on &&
+        startedOnRaw > course.stopped_on
+      ) {
+        return "start-after-stop" as const;
+      }
+    }
     // Compare-and-set the refill counter (issue #467): only honor the submitted
     // on-hand value when the user actually changed the field; otherwise keep the
     // current value (re-read here under the IMMEDIATE write lock), so a concurrent
@@ -536,11 +604,34 @@ export async function updateSupplement(
     // one or is a supplement. Uses the created_at-date fallback (no explicit start
     // date on an edit).
     if (f.kind === "medication") {
-      ensureMedicationCourse(profile.id, id, null);
+      ensureMedicationCourse(
+        profile.id,
+        id,
+        hasStartedOn ? startedOnRaw || null : null,
+        !!f.asNeeded && hasStartedOn && !startedOnRaw
+      );
+      if (hasStartedOn && hasCourseId) {
+        db.prepare(
+          `UPDATE medication_courses
+              SET started_on = ?
+            WHERE id = ? AND item_id = ?
+              AND EXISTS (
+                SELECT 1 FROM intake_items ii
+                 WHERE ii.id = medication_courses.item_id
+                   AND ii.profile_id = ? AND ii.kind = 'medication'
+              )`
+        ).run(startedOnRaw || null, courseId, id, profile.id);
+      }
     }
     return true;
   });
-  if (!ok) return formError("Couldn't find that supplement.");
+  if (result === "course-not-found") {
+    return formError("Couldn't find that medication course.");
+  }
+  if (result === "start-after-stop") {
+    return formError("The start date must be on or before the stop date.");
+  }
+  if (!result) return formError("Couldn't find that supplement.");
   revalidateIntake();
   return formOk();
 }

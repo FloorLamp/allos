@@ -1,6 +1,6 @@
 "use client";
 
-import { IconAlertTriangle, IconX } from "@tabler/icons-react";
+import { IconX } from "@tabler/icons-react";
 import {
   matchFoodInteractions,
   foodGuidanceLine,
@@ -30,6 +30,9 @@ export default function FoodGuidance({
   rxcuiIngredients = null,
   suppressedFoodKeys = [],
   age = null,
+  heading,
+  className,
+  canDismiss = true,
 }: {
   // The parent intake item's id — the first segment of each line's dedupeKey.
   itemId: number;
@@ -45,6 +48,12 @@ export default function FoodGuidance({
   // The profile's age in whole years (issue #851 item 4), so an age-gated food note
   // (alcohol → adult) is hidden for a child. Null/unknown shows every rule.
   age?: number | null;
+  // Detail cards can name this group; compact row hosts omit the heading.
+  heading?: string;
+  className?: string;
+  // Cross-profile detail views are deliberately read-only until the caregiver
+  // explicitly acts as that profile, so they render guidance without mutation controls.
+  canDismiss?: boolean;
 }) {
   const suppressed = new Set(suppressedFoodKeys);
   const hits = matchFoodInteractions(
@@ -57,41 +66,46 @@ export default function FoodGuidance({
   ).filter((hit) => !suppressed.has(foodTimingSignalKey(itemId, hit.key)));
   if (hits.length === 0) return null;
   return (
-    <div data-testid="food-guidance" className="mt-1 space-y-0.5">
+    <div
+      data-testid="food-guidance"
+      className={`space-y-0.5 ${className ?? "mt-1"}`}
+    >
+      {heading ? <div className="mb-1 section-label">{heading}</div> : null}
       {hits.map((hit) => (
         // A <div>, not a <p>: the dismiss <form> may not nest inside a <p> —
         // invalid HTML that React rejects at hydration, crashing the whole
         // intake surface tree (dose cards included).
         <div
           key={hit.key}
-          className="flex items-start gap-1 text-xs text-amber-700 dark:text-amber-300"
+          className="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-300"
         >
-          <IconAlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span className="min-w-0 flex-1">
             <span className="font-medium">{hit.food}:</span>{" "}
             {foodGuidanceLine(hit)}
           </span>
           {/* Dismiss through the shared findings-bus suppression store (#435). */}
-          <form
-            action={async (fd) => {
-              await dismissIntakeFinding(fd);
-            }}
-          >
-            <input
-              type="hidden"
-              name="dedupe_key"
-              value={foodTimingSignalKey(itemId, hit.key)}
-            />
-            <button
-              type="submit"
-              data-testid="food-guidance-dismiss"
-              aria-label={`Dismiss ${hit.food} guidance for ${name}`}
-              title="Dismiss"
-              className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-amber-500 transition hover:bg-amber-100 hover:text-amber-700 dark:text-amber-400 dark:hover:bg-amber-900/40"
+          {canDismiss ? (
+            <form
+              action={async (fd) => {
+                await dismissIntakeFinding(fd);
+              }}
             >
-              <IconX className="h-3 w-3" stroke={2} />
-            </button>
-          </form>
+              <input
+                type="hidden"
+                name="dedupe_key"
+                value={foodTimingSignalKey(itemId, hit.key)}
+              />
+              <button
+                type="submit"
+                data-testid="food-guidance-dismiss"
+                aria-label={`Dismiss ${hit.food} guidance for ${name}`}
+                title="Dismiss"
+                className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-amber-500 transition hover:bg-amber-100 hover:text-amber-700 dark:text-amber-400 dark:hover:bg-amber-900/40"
+              >
+                <IconX className="h-3 w-3" stroke={2} />
+              </button>
+            </form>
+          ) : null}
         </div>
       ))}
     </div>

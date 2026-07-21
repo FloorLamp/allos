@@ -10,6 +10,36 @@
   color-scheme: dark;
 }
 
+/* Checkbox rows are whole-label click targets throughout the app. Keep the native
+   control and every common associated-label shape honest about that interaction;
+   disabled controls use the non-interactive cursor instead. :where() keeps this
+   global convention low-specificity so an exceptional component can still override
+   it deliberately. */
+:where(
+  input[type="checkbox"]:not(:disabled),
+  label:has(input[type="checkbox"]:not(:disabled)),
+  input[type="checkbox"]:not(:disabled) + label,
+  label:has(+ input[type="checkbox"]:not(:disabled))
+) {
+  cursor: pointer;
+}
+
+:where(
+  input[type="checkbox"]:disabled,
+  label:has(input[type="checkbox"]:disabled),
+  input[type="checkbox"]:disabled + label,
+  label:has(+ input[type="checkbox"]:disabled)
+) {
+  cursor: not-allowed;
+}
+
+/* Tailwind's form reset gives disabled controls `cursor: default` with higher
+   specificity than the low-specificity convention above. Pin the checkbox itself
+   after that reset while leaving the associated-label rules easy to override. */
+input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+}
+
 body {
   @apply text-slate-800 antialiased dark:text-slate-200;
   /* Suppress the gray flash mobile browsers paint on tap; interactive elements

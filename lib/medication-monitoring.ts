@@ -250,20 +250,27 @@ export function monitoringNotesForMed(med: {
   }));
 }
 
-// The single-line row note text for a med, or null when it isn't monitored. Joins every
-// matched entry's labs into one "Requires monitoring: …" phrase (deduped, order-stable).
-export function monitoringRowNoteText(med: {
+export function monitoringSummaryForMed(med: {
   name: string;
   rxcui: string | null;
   rxcuiIngredients?: string[] | null;
-}): string | null {
+}): { labels: string[]; text: string } | null {
   const notes = monitoringNotesForMed(med);
   if (notes.length === 0) return null;
   const labels: string[] = [];
   for (const n of notes) {
     for (const l of n.labels) if (!labels.includes(l)) labels.push(l);
   }
-  return `Requires monitoring: ${labels.join(", ")}`;
+  return { labels, text: `Requires monitoring: ${labels.join(", ")}` };
+}
+
+// The single-line list-row note for a med, or null when it isn't monitored.
+export function monitoringRowNoteText(med: {
+  name: string;
+  rxcui: string | null;
+  rxcuiIngredients?: string[] | null;
+}): string | null {
+  return monitoringSummaryForMed(med)?.text ?? null;
 }
 
 // ---- Formatting (shared by every surface) ----------------------------------

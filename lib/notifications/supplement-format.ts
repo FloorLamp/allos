@@ -15,6 +15,7 @@ import { FOOD_TIMING_LABELS, PRIORITY_ORDER } from "../supplement-schedule";
 import { parseRxcuiIngredients } from "../rxnorm";
 import type { Supplement, SupplementDose, SupplementKind } from "../types";
 import type { NotificationMessage, NotificationAction } from "./types";
+import { formatMedicationDoseProduct } from "../medication-dose-format";
 
 export type ReminderWindow = "Morning" | "Midday" | "Evening" | "Bedtime";
 
@@ -94,7 +95,11 @@ function doseLine(
   showFood: boolean,
   age: number | null
 ): string {
-  const amt = e.dose.amount ? ` — ${e.dose.amount}` : "";
+  const doseDetail =
+    e.supp.kind === "medication"
+      ? formatMedicationDoseProduct(e.dose.amount, e.supp.product)
+      : e.dose.amount;
+  const amt = doseDetail ? ` — ${doseDetail}` : "";
   const mark = e.taken
     ? "✅ "
     : e.skipped

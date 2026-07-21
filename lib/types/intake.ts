@@ -195,6 +195,19 @@ export type AdministrationOutcome =
   | { kind: "stale-item" }
   | { kind: "inactive" };
 
+// Outcome of the explicit medication-history backfill. Unlike the quick-log path,
+// this accepts a user-picked date/time in the history-correction window and may log
+// against a stopped medication when that date falls inside one of its courses.
+// PRN doses keep their per-administration ledger semantics.
+export type HistoricalDoseOutcome =
+  | { kind: "logged"; date: string }
+  | { kind: "already-taken" }
+  | { kind: "already-skipped" }
+  | { kind: "duplicate" }
+  | { kind: "invalid-time" }
+  | { kind: "outside-course" }
+  | { kind: "stale-dose" };
+
 // Outcome of a caregiver's "👍 I'm on it" acknowledgement on a missed-dose
 // escalation (issue #233). Unlike "✅ Confirmed taken" (which routes through
 // markDoseTaken and logs the dose), an ack NEVER claims the dose was taken — it

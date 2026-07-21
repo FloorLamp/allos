@@ -31,3 +31,23 @@ export function isGivenAtAccepted(
   const diff = daysBetweenDateStr(todayStr, dateStrInTz(tz, givenAt));
   return diff != null && Math.abs(diff) <= DOSE_LOG_DATE_WINDOW_DAYS;
 }
+
+// Explicit history entry has a different trust boundary from a stale reminder tap:
+// the authenticated user deliberately chooses the date in the medication record,
+// and the write core separately requires scheduled doses to fall inside a medication
+// course. A PRN dose may move the applicable course start backward because the dose
+// itself establishes use by that date. It may therefore reach any distance into the
+// past; the detail page supplies the deliberate-entry UI and the write core enforces
+// medication-course boundaries. A historical dose still cannot be created in the
+// future.
+export function isHistoricalDoseTimeAccepted(
+  tz: string,
+  todayStr: string,
+  givenAt: Date,
+  now: Date = new Date()
+): boolean {
+  if (Number.isNaN(givenAt.getTime())) return false;
+  if (givenAt.getTime() > now.getTime() + GIVEN_AT_FUTURE_SKEW_MS) return false;
+  const diff = daysBetweenDateStr(todayStr, dateStrInTz(tz, givenAt));
+  return diff != null && diff <= 0;
+}

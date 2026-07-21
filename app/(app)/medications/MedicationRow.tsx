@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { IconChevronRight } from "@tabler/icons-react";
 import type {
   MedicationCourse,
   MedicationSideEffect,
@@ -12,11 +11,6 @@ import type {
 import type { AdherenceDot } from "@/lib/supplement-adherence";
 import { daysOfSupplyForItem, isLowSupply, type DoseRate } from "@/lib/refill";
 import {
-  isCoverageLimited,
-  COVERAGE_LIMITED_CHIP,
-  COVERAGE_LIMITED_HINT,
-} from "@/lib/safety-coverage";
-import {
   sortCourses,
   isMedicationCurrent,
   stopReasonLabel,
@@ -24,6 +18,7 @@ import {
   medicationMetaLine,
 } from "@/lib/medication-history";
 import { medicationHref } from "@/lib/hrefs";
+import { formatMedicationDoseLine } from "@/lib/medication-dose-format";
 import {
   RefillBadge,
   AdherenceSummaryLine,
@@ -37,12 +32,13 @@ import OverflowMenu, {
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
 import { deleteSupplement } from "@/app/(app)/nutrition/supplement-actions";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 
 // One medication as a SCANNABLE ROW on the /medications list (#817) — not the old
 // lifecycle card. Name/dose · adherence + refill (#747 parity) · course status ·
 // PRN/critical badges · next-window chip. The whole row links to the
 // /medications/[id] detail page (the clinical-record home); a compact overflow menu
-// keeps the delete affordance without opening the row.
+// deep-links to the detail page's edit/stop workflows and keeps delete available.
 export default function MedicationRow({
   med,
   doses,
@@ -71,11 +67,12 @@ export default function MedicationRow({
   const [menuOpen, setMenuOpen] = useState(false);
   const confirm = useConfirm();
   const undoable = useUndoableDelete();
+  const formatPrefs = useFormatPrefs();
 
   const current = isMedicationCurrent(med);
   const ordered = sortCourses(courses);
   const unresolved = unresolvedCount(sideEffects);
-  const subline = [med.brand, med.product].filter(Boolean).join(" · ");
+  const subline = med.brand?.trim() || null;
   const medMeta = medicationMetaLine(med);
   const lowSupply = isLowSupply(
     daysOfSupplyForItem(
@@ -85,26 +82,36 @@ export default function MedicationRow({
       doses.length
     )
   );
+  const doseLines = doses.map((dose) =>
+    formatMedicationDoseLine({
+      amount: dose.amount,
+      product: med.product,
+      timeOfDay: dose.time_of_day,
+      asNeeded: med.as_needed === 1,
+      timeFormat: formatPrefs.timeFormat,
+    })
+  );
 
   return (
     <div
       data-testid="medication-row"
-      className={`card !py-3 ${current ? "" : "opacity-70"} ${
-        menuOpen ? "relative z-20" : ""
-      } border-l-4 ${
-        current
-          ? "border-l-rose-400 dark:border-l-rose-500"
-          : "border-l-slate-300 dark:border-l-ink-700"
-      }`}
+      className={`py-4 first:pt-0 last:pb-0 ${menuOpen ? "relative z-20" : ""}`}
     >
       <div className="flex items-start justify-between gap-3">
         <Link
           href={medicationHref(med.id)}
-          className="group min-w-0 flex-1"
+          className="group/med-link -mx-2 -my-1 min-w-0 flex-1 rounded-lg px-2 py-1 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:hover:bg-ink-850 dark:focus-visible:ring-offset-ink-950"
           data-testid="medication-row-link"
         >
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-            <span className="font-medium text-slate-800 group-hover:underline dark:text-slate-100">
+            <span
+              className={`text-base font-semibold group-hover/med-link:underline ${
+                current
+                  ? "text-brand-700 dark:text-brand-400"
+                  : "text-slate-600 group-hover/med-link:text-slate-800 dark:text-slate-300 dark:group-hover/med-link:text-slate-100"
+              }`}
+              data-testid="medication-name"
+            >
               {med.name}
             </span>
             {subline && (
@@ -115,7 +122,7 @@ export default function MedicationRow({
             <RxOtcBadge rx={med.rx} />
             {med.as_needed === 1 && (
               <span className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300">
-                PRN
+                As Needed
               </span>
             )}
             {med.critical === 1 && (
@@ -123,11 +130,7 @@ export default function MedicationRow({
                 Critical
               </span>
             )}
-            {current ? (
-              <span className="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-                Current
-              </span>
-            ) : (
+            {!current && (
               <span className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300">
                 {stopReasonLabel(ordered[ordered.length - 1]?.stop_reason)}
               </span>
@@ -144,22 +147,31 @@ export default function MedicationRow({
               doseCount={doses.length}
               todayStr={todayStr}
             />
-            {/* Screening-coverage chip (#1032): a name-only item (no confirmed
-                RxNorm code) is less likely to match a code-keyed safety rule — say
-                so QUIETLY, pointing at the existing #851 confirm flow (the edit
-                form). Informational styling, never a warning. */}
-            {current && isCoverageLimited(med) && (
-              <span
-                className="badge bg-slate-100 text-slate-500 dark:bg-ink-800 dark:text-slate-400"
-                data-testid="coverage-limited-chip"
-                title={COVERAGE_LIMITED_HINT}
-              >
-                {COVERAGE_LIMITED_CHIP}
+          </div>
+          <div
+            data-testid="medication-dose-summary"
+            className={`mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-sm ${
+              current
+                ? "text-slate-700 dark:text-slate-200"
+                : "text-slate-500 dark:text-slate-400"
+            }`}
+          >
+            {doseLines.length > 0 && doseLines.some(Boolean) ? (
+              doseLines.map((line, index) => (
+                <span key={doses[index]?.id ?? index}>
+                  {line || "Dose not set"}
+                </span>
+              ))
+            ) : med.product ? (
+              <span>{med.product}</span>
+            ) : (
+              <span className="font-normal text-slate-500 dark:text-slate-400">
+                Dose not set
               </span>
             )}
           </div>
           {medMeta && (
-            <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+            <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
               {medMeta}
             </div>
           )}
@@ -174,7 +186,7 @@ export default function MedicationRow({
           {monitoringNote && (
             <div
               data-testid="medication-monitoring-note"
-              className="mt-0.5 text-xs text-sky-700 dark:text-sky-300"
+              className="mt-0.5 text-xs text-slate-500 dark:text-slate-400"
             >
               {monitoringNote}
             </div>
@@ -197,13 +209,23 @@ export default function MedicationRow({
             {({ close }) => (
               <>
                 <Link
-                  href={medicationHref(med.id)}
+                  href={`${medicationHref(med.id)}?action=edit`}
                   role="menuitem"
                   className={MENU_ITEM}
                   onClick={close}
                 >
-                  View details
+                  Edit
                 </Link>
+                {current && (
+                  <Link
+                    href={`${medicationHref(med.id)}?action=stop`}
+                    role="menuitem"
+                    className={MENU_ITEM}
+                    onClick={close}
+                  >
+                    Stop medication
+                  </Link>
+                )}
                 <button
                   type="button"
                   role="menuitem"
@@ -229,13 +251,6 @@ export default function MedicationRow({
               </>
             )}
           </OverflowMenu>
-          <Link
-            href={medicationHref(med.id)}
-            aria-label={`Open ${med.name}`}
-            className="tap-target flex h-8 w-8 items-center justify-center rounded text-slate-500 hover:text-brand-600 dark:text-slate-400 dark:hover:text-brand-400"
-          >
-            <IconChevronRight className="h-4 w-4" />
-          </Link>
         </div>
       </div>
     </div>

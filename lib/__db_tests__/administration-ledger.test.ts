@@ -198,8 +198,8 @@ function seedPrnMed(quantityOnHand: number | null = 10): {
     db
       .prepare(
         `INSERT INTO intake_items
-           (profile_id, name, active, kind, condition, priority, as_needed, quantity_on_hand, qty_per_dose)
-         VALUES (?, 'Ibuprofen', 1, 'medication', 'daily', 'high', 1, ?, 1)`
+           (profile_id, name, product, active, kind, condition, priority, as_needed, quantity_on_hand, qty_per_dose)
+         VALUES (?, 'Ibuprofen', 'Children''s oral suspension (100 mg / 5 mL)', 1, 'medication', 'daily', 'high', 1, ?, 1)`
       )
       .run(profileId, quantityOnHand).lastInsertRowid
   );
@@ -341,11 +341,44 @@ describe("logAdministration — PRN multiples, per-dose supply, dedup, window gu
     const mine = meds.find((m) => m.id === itemId);
     expect(mine).toBeTruthy();
     expect(mine!.amount).toBe("400 mg");
+    expect(mine!.product).toBe("Children's oral suspension (100 mg / 5 mL)");
     expect(mine!.count).toBe(1);
     expect(mine!.lastGivenAt).toBeTruthy();
     const admins = getAdministrationsForItemOnDate(profileId, itemId, date);
     expect(admins).toHaveLength(1);
     expect(admins[0].given_at).toBeTruthy();
+    expect(admins[0].product).toBe(
+      "Children's oral suspension (100 mg / 5 mL)"
+    );
+  });
+
+  it("snapshots formulation so earlier doses survive a product change", () => {
+    const { profileId, itemId } = seedPrnMed(10);
+    const first = logAdministration(
+      profileId,
+      itemId,
+      new Date(Date.now() - 60 * 60_000)
+    );
+    expect(first.kind).toBe("logged");
+
+    db.prepare("UPDATE intake_items SET product = ? WHERE id = ?").run(
+      "Chewable tablet (100 mg)",
+      itemId
+    );
+    const second = logAdministration(profileId, itemId);
+    expect(second.kind).toBe("logged");
+
+    const products = db
+      .prepare(
+        `SELECT product FROM intake_item_logs
+          WHERE item_id = ? AND status = 'taken'
+          ORDER BY COALESCE(given_at, taken_at), id`
+      )
+      .all(itemId) as { product: string | null }[];
+    expect(products.map((row) => row.product)).toEqual([
+      "Children's oral suspension (100 mg / 5 mL)",
+      "Chewable tablet (100 mg)",
+    ]);
   });
 });
 

@@ -13,6 +13,7 @@ export default function SupplementCombobox(props: {
   options: string[];
   placeholder?: string;
   name?: string;
+  id?: string;
   ariaLabel?: string;
 }) {
   return <Combobox {...props} allowFreeText />;

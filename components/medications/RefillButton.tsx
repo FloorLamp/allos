@@ -67,19 +67,29 @@ export default function RefillButton({
         Refilled
       </button>
       {asking && (
-        <span className="inline-flex items-center gap-1">
+        <span className="inline-flex flex-wrap items-center gap-1.5">
+          <label
+            htmlFor={`refill-size-${itemId}`}
+            className="text-xs font-medium text-slate-600 dark:text-slate-300"
+          >
+            Fill size
+          </label>
           <input
+            id={`refill-size-${itemId}`}
             type="number"
             min="1"
             step="any"
             inputMode="decimal"
             value={size}
             onChange={(e) => setSize(e.target.value)}
-            placeholder="units"
+            placeholder="e.g. 90"
             aria-label="Fill size (units)"
             data-testid="refill-size"
-            className="w-16 rounded-md border border-black/10 bg-transparent px-2 py-1 text-xs dark:border-white/10"
+            className="w-20 rounded-md border border-black/10 bg-transparent px-2 py-1 text-xs dark:border-white/10"
           />
+          <span className="text-xs text-slate-500 dark:text-slate-400">
+            units
+          </span>
           <button
             type="button"
             data-testid="refill-confirm"
@@ -87,7 +97,7 @@ export default function RefillButton({
             onClick={() => size && submit(size)}
             className="rounded-full border border-emerald-600 px-2.5 py-1 text-xs font-medium text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-40 dark:text-emerald-300 dark:hover:bg-emerald-950"
           >
-            Add
+            Save
           </button>
         </span>
       )}

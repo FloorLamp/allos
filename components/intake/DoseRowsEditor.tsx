@@ -1,7 +1,7 @@
 "use client";
 
 import type { Dispatch, SetStateAction } from "react";
-import { IconX } from "@tabler/icons-react";
+import { IconPlus, IconX } from "@tabler/icons-react";
 import {
   TIME_BUCKETS,
   FOOD_TIMINGS,
@@ -56,13 +56,13 @@ export default function DoseRowsEditor({
     const d = doses[0] ?? emptyDose();
     return (
       <div className="sm:col-span-2" data-testid="prn-dose-row">
-        <label className="label">Dose</label>
+        <div className="mb-2 section-label">Dose</div>
         <datalist id={datalistId}>
           {dosageOptions.map((o) => (
             <option key={o} value={o} />
           ))}
         </datalist>
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+        <div className="grid gap-2 sm:grid-cols-2">
           <input
             list={datalistId}
             value={d.amount}
@@ -72,7 +72,7 @@ export default function DoseRowsEditor({
                 return [{ ...first, amount: e.target.value, time_of_day: "" }];
               })
             }
-            className="input sm:w-28"
+            className="input"
             placeholder={amountPlaceholder}
             aria-label="Amount"
           />
@@ -90,7 +90,7 @@ export default function DoseRowsEditor({
                 ];
               })
             }
-            className="input col-span-2 sm:col-auto sm:w-40"
+            className="input"
             aria-label="Food timing"
           >
             {FOOD_TIMINGS.map((ft) => (
@@ -109,7 +109,7 @@ export default function DoseRowsEditor({
 
   return (
     <div className="sm:col-span-2">
-      <label className="label">Doses</label>
+      <div className="mb-2 section-label">Doses</div>
       <datalist id={datalistId}>
         {dosageOptions.map((d) => (
           <option key={d} value={d} />
@@ -119,20 +119,24 @@ export default function DoseRowsEditor({
         {doses.map((d, i) => (
           <div
             key={i}
-            className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center"
+            className={`grid gap-2 sm:items-center ${
+              doses.length > 1
+                ? "sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.25fr)_2.5rem]"
+                : "sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.25fr)]"
+            }`}
           >
             <input
               list={datalistId}
               value={d.amount}
               onChange={(e) => setDose(i, { amount: e.target.value })}
-              className="input sm:w-28"
+              className="input"
               placeholder={amountPlaceholder}
               aria-label="Amount"
             />
             <select
               value={d.time_of_day || "Anytime"}
               onChange={(e) => setDose(i, { time_of_day: e.target.value })}
-              className="input sm:w-32"
+              className="input"
               aria-label="Time of day"
             >
               {TIME_BUCKETS.map((t) => (
@@ -146,7 +150,7 @@ export default function DoseRowsEditor({
               onChange={(e) =>
                 setDose(i, { food_timing: e.target.value as FoodTiming })
               }
-              className="input col-span-2 sm:col-auto sm:w-40"
+              className="input"
               aria-label="Food timing"
             >
               {FOOD_TIMINGS.map((ft) => (
@@ -159,7 +163,7 @@ export default function DoseRowsEditor({
               <button
                 type="button"
                 onClick={() => setDoses((ds) => ds.filter((_, j) => j !== i))}
-                className="tap-target col-span-2 flex h-8 w-8 items-center justify-center justify-self-end rounded text-slate-300 hover:text-rose-500 sm:col-auto dark:text-slate-600 dark:hover:text-rose-400"
+                className="tap-target flex h-10 w-10 items-center justify-center justify-self-end rounded-lg text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 dark:text-slate-400 dark:hover:bg-rose-950 dark:hover:text-rose-400"
                 aria-label="Remove dose"
               >
                 <IconX className="h-4 w-4" />
@@ -171,9 +175,10 @@ export default function DoseRowsEditor({
       <button
         type="button"
         onClick={() => setDoses((ds) => [...ds, emptyDose()])}
-        className="mt-2 text-xs font-medium text-brand-700 hover:underline dark:text-brand-400"
+        className="btn-ghost btn-sm mt-2"
       >
-        + Add dose (split across times)
+        <IconPlus className="h-4 w-4" stroke={2} aria-hidden="true" />
+        Add dose
       </button>
     </div>
   );

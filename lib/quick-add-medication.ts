@@ -18,6 +18,9 @@ export interface QuickAddMedicationInput {
   name: string;
   // A brand ("Advil"), optional — split out of a brand pick by the #817 combobox.
   brand?: string | null;
+  // The selected formulation label (for example "Children's oral suspension
+  // (160 mg / 5 mL)"). Stored in intake_items.product so it survives quick add.
+  product?: string | null;
   // The single dose strength ("200 mg"), optional — the one dose row's amount.
   amount?: string | null;
   // Whether it's an as-needed (PRN) med. OTC quick-adds are PRN by design, but kept a
@@ -53,6 +56,7 @@ export function quickAddMedicationFields(
   // A quick-add med is a plain daily-context PRN — no workout/situation gating.
   push("condition", "daily");
   push("brand", input.brand?.trim() || null);
+  push("product", input.product?.trim() || null);
 
   if (input.asNeeded) {
     out.push(["as_needed", "1"]);

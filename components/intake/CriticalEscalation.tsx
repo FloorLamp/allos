@@ -34,7 +34,7 @@ export default function CriticalEscalation({
         />
         Critical — escalate a missed dose
       </label>
-      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+      <p className="mt-1 pl-6 text-xs text-slate-500 dark:text-slate-400">
         If a reminder for this dose goes unconfirmed, send a follow-up nudge
         (optionally to a second chat, e.g. a caregiver).
       </p>

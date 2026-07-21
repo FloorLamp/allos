@@ -14,14 +14,12 @@ import {
   getDietaryLimitWarnings,
   getDietaryAdequacy,
   getInteractionWarnings,
-  getPgxWarnings,
-  getOtotoxicWarnings,
-  getDrugAllergyWarnings,
   getSafetyScreeningCoverage,
   getGenomicVariants,
   getFindingSuppressions,
 } from "@/lib/queries";
 import { activeByKey } from "@/lib/findings";
+import { intakeWarningsForSurface } from "@/lib/intake-warning-surface";
 import { isSuppressed } from "@/lib/upcoming-suppress";
 import {
   ulWarningTitle,
@@ -39,7 +37,7 @@ import { type InteractionItem } from "@/lib/drug-interactions";
 import { type PgxVariantInput } from "@/lib/pgx";
 import { FindingCard, DismissFindingButton } from "@/components/FindingCard";
 import { Notice } from "@/components/Notice";
-import IntakeWarnings from "@/components/IntakeWarnings";
+import IntakeWarnings, { IntakeSafetyScope } from "@/components/IntakeWarnings";
 import { today } from "@/lib/db";
 import { parseRxcuiIngredients } from "@/lib/rxnorm";
 import { requireSession } from "@/lib/auth";
@@ -333,48 +331,21 @@ export default async function SupplementsTab() {
   // dismissible Upcoming finding format over the SAME detectInteractions. Routed
   // through the findings bus (#435) — the /medicine list used to render UNFILTERED,
   // so an Upcoming dismissal left its identical twin standing here; now they agree.
-  const interactionWarnings = activeByKey(
+  const allInteractionWarnings = activeByKey(
     getInteractionWarnings(profile.id),
     (hit) => hit.dedupeKey,
     suppressions,
     todayStr
   );
 
-  // Pharmacogenomics cross-check (issue #710): a stored PGx result (a
-  // genomic_variants row, result_type='pharmacogenomic') affecting a medication in
-  // the active stack, with CPIC's guidance direction as INFORMATION. Same pure
-  // crossCheckPgx the create/edit inline notice + the dismissible Upcoming finding
-  // format over. Care-tier (per #449 — the safety cross-check twin of drug–drug
-  // interactions), routed through the findings bus (#435) keyed by the identical
-  // dedupeKey the Upcoming twin carries, so a dismiss on either surface silences the
-  // other. Informational, never prescriptive; the app never auto-changes a med.
-  const pgxWarnings = activeByKey(
-    getPgxWarnings(profile.id),
-    (hit) => hit.dedupeKey,
-    suppressions,
-    todayStr
+  // PGx findings always target a medication, so they have no Supplements twin.
+  const { interactionWarnings, pgxWarnings } = intakeWarningsForSurface(
+    "supplement",
+    supplements,
+    allInteractionWarnings,
+    []
   );
-  // Ototoxic-medication awareness (issue #717): an active ototoxic medication → a calm,
-  // cited hearing-safety note. Rendered here AND on the Medications page over the SAME
-  // getOtotoxicWarnings gather + dedupeKey, so a dismiss on either silences both
-  // (#435/#746). A supplement is never kind='medication', so this is normally empty on
-  // the Supplements tab — but the shared component keeps the two surfaces from drifting.
-  const ototoxicWarnings = activeByKey(
-    getOtotoxicWarnings(profile.id),
-    (hit) => hit.dedupeKey,
-    suppressions,
-    todayStr
-  );
-  // Drug-allergy × med cross-check (issue #1029): an active medication meeting a
-  // recorded non-resolved allergy. Rendered here AND on the Medications page over the
-  // SAME getDrugAllergyWarnings gather + dedupeKey, so a dismiss on either silences
-  // both (#435/#746) — the shared component keeps the two surfaces from drifting.
-  const allergyWarnings = activeByKey(
-    getDrugAllergyWarnings(profile.id),
-    (hit) => hit.dedupeKey,
-    suppressions,
-    todayStr
-  );
+  const safetyCoverage = getSafetyScreeningCoverage(profile.id);
   // The profile's stored PGx variants, threaded to every form for the client-side
   // create/edit PGx notice (a lean projection — enough for phenotype resolution + the
   // marker match, no report prose beyond interpretation/notes the page already holds).
@@ -586,15 +557,13 @@ export default async function SupplementsTab() {
         </div>
       )}
 
-      {/* Cross-kind interaction (#144) + pharmacogenomics (#710) warnings —
-          rendered here AND on the Medications page over the same gathers +
-          dedupeKeys, so a dismiss on either silences both (#435/#746). */}
+      {/* Supplement-related interaction warnings. Cross-kind findings also render on
+          Medications with the same dedupeKey, so dismissing either twin silences both.
+          Medication-only interaction and PGx findings stay on Medications. */}
       <IntakeWarnings
         interactionWarnings={interactionWarnings}
         pgxWarnings={pgxWarnings}
-        ototoxicWarnings={ototoxicWarnings}
-        allergyWarnings={allergyWarnings}
-        coverage={getSafetyScreeningCoverage(profile.id)}
+        coverage={safetyCoverage}
       />
 
       {/* Adherence-pattern observations (issue #45, domain 3) */}
@@ -735,7 +704,7 @@ export default async function SupplementsTab() {
 
       {/* Add supplement — always expanded, like the other "Add entry" forms
           (e.g. Body Metrics). Medications are added on the Medications page. */}
-      <div className="card mt-6">
+      <div className="card mt-6" data-testid="add-supplement-card">
         <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
           Add supplement
         </h2>
@@ -747,6 +716,10 @@ export default async function SupplementsTab() {
           trainingRestricted={trainingRestricted}
         />
       </div>
+
+      {interactionWarnings.length === 0 && pgxWarnings.length === 0 ? (
+        <IntakeSafetyScope coverage={safetyCoverage} className="mt-6" />
+      ) : null}
     </div>
   );
 }

@@ -100,6 +100,7 @@ export default function BodyQuickAdd({
 
   return (
     <form ref={formRef} action={handle} className="card space-y-3">
+      <input type="hidden" name="weight_unit" value={weightUnit} />
       <h2 className="font-semibold text-slate-800 dark:text-slate-100">
         Log body metrics
       </h2>
