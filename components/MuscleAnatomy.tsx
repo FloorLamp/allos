@@ -17,9 +17,9 @@ import {
 //
 // Accessibility (never color-only): every muscle group carries a `<title>` (the
 // native hover tooltip, the pattern the app already uses for e.g. the cardio
-// intensity mix) plus an aria-label, and the HOSTING surface's text list always
-// accompanies the figure — the figure layers on top of the permanent list-first
-// rendering (#736), it never replaces it.
+// intensity mix) plus an aria-label. Larger hosting surfaces also provide their
+// permanent list-first rendering (#736); compact hosts can omit captions because
+// the SVG and every muscle remain named to assistive technology.
 //
 // No hooks/handlers, so it renders in both Server Component hosts (Training →
 // Overview) and client trees (ExerciseDetailPanel's guide section).
@@ -38,26 +38,30 @@ export interface AnatomyCoverageEntry {
   color?: string | null;
 }
 
-export type MuscleAnatomyProps =
+interface AnatomyDisplayProps {
+  className?: string;
+  showCaptions?: boolean;
+}
+
+type MuscleAnatomyModeProps =
   | {
       /** Per-exercise: primary saturated, secondary muted (pure LiftDef lookup). */
       mode: "exercise";
       primary: MuscleId[];
       secondary: MuscleId[];
-      className?: string;
     }
   | {
       /** Per-session: the union of muscles a logged session's sets worked (#736 musclesWorked). */
       mode: "session";
       worked: MuscleId[];
-      className?: string;
     }
   | {
       /** Weekly coverage: heat per muscle from #736 coverageFromSets; absent muscles render the neutral empty tint. */
       mode: "coverage";
       coverage: AnatomyCoverageEntry[];
-      className?: string;
     };
+
+export type MuscleAnatomyProps = AnatomyDisplayProps & MuscleAnatomyModeProps;
 
 // Default coverage ramp color — emerald-500, the same hue as the coverage
 // list's bars, readable on both themes.
@@ -206,6 +210,7 @@ function BodyView({
 export default function MuscleAnatomy(props: MuscleAnatomyProps) {
   const plan = renderPlan(props);
   const width = 2 * VIEW_W + VIEW_GAP;
+  const showCaptions = props.showCaptions ?? true;
   const modeLabel =
     props.mode === "exercise"
       ? "muscles this exercise works"
@@ -214,7 +219,7 @@ export default function MuscleAnatomy(props: MuscleAnatomyProps) {
         : "weekly muscle coverage";
   return (
     <svg
-      viewBox={`0 0 ${width} ${VIEW_H + CAPTION_H}`}
+      viewBox={`0 0 ${width} ${VIEW_H + (showCaptions ? CAPTION_H : 0)}`}
       role="img"
       aria-label={`Muscle diagram (front and back): ${modeLabel}`}
       data-testid="muscle-anatomy"
@@ -227,24 +232,28 @@ export default function MuscleAnatomy(props: MuscleAnatomyProps) {
       <g transform={`translate(${VIEW_W + VIEW_GAP},0)`}>
         <BodyView view="back" plan={plan} />
       </g>
-      <text
-        x={VIEW_W / 2}
-        y={VIEW_H + 10}
-        textAnchor="middle"
-        fontSize={7}
-        className="fill-slate-400 dark:fill-slate-500"
-      >
-        Front
-      </text>
-      <text
-        x={VIEW_W + VIEW_GAP + VIEW_W / 2}
-        y={VIEW_H + 10}
-        textAnchor="middle"
-        fontSize={7}
-        className="fill-slate-400 dark:fill-slate-500"
-      >
-        Back
-      </text>
+      {showCaptions && (
+        <>
+          <text
+            x={VIEW_W / 2}
+            y={VIEW_H + 10}
+            textAnchor="middle"
+            fontSize={7}
+            className="fill-slate-400 dark:fill-slate-500"
+          >
+            Front
+          </text>
+          <text
+            x={VIEW_W + VIEW_GAP + VIEW_W / 2}
+            y={VIEW_H + 10}
+            textAnchor="middle"
+            fontSize={7}
+            className="fill-slate-400 dark:fill-slate-500"
+          >
+            Back
+          </text>
+        </>
+      )}
     </svg>
   );
 }

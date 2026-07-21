@@ -123,6 +123,9 @@ test("an imported ride with a route shows a tile-free SVG route thumbnail (#569)
   await expect(stravaCard).toBeVisible();
   const routeMap = stravaCard.getByTestId("route-map");
   await expect(routeMap).toBeVisible();
+  const visualBox = stravaCard.getByTestId("activity-visuals");
+  await expect(visualBox).toBeVisible();
+  await expect(visualBox.getByTestId("route-map")).toBeVisible();
   // It's an inline <svg> tracing a <path> — not an <img> (nothing is fetched).
   await expect(routeMap).toHaveJSProperty("tagName", "svg");
   await expect(routeMap.locator("path")).toHaveCount(1);
@@ -226,28 +229,52 @@ test("journal cards prioritize a summary and progressively disclose details", as
   );
   await expect(notes).not.toHaveClass(/line-clamp-2/);
 
-  // Desktop places the compact route beside the complete supporting-detail block,
-  // so the activity row uses the space beneath short metric text instead of leaving
-  // a map-height empty pocket.
-  const desktopMetrics = await metrics.boundingBox();
+  // Route and muscle diagrams use the same compact box at the right of the card.
+  // A hybrid activity can put both visuals inside this one container.
+  const visuals = ride.getByTestId("activity-visuals");
+  await expect(visuals).toHaveClass(/rounded-lg/);
+  await expect(visuals).toHaveClass(/border/);
+  const desktopVisuals = await visuals.boundingBox();
   const desktopRoute = await ride.getByTestId("route-map").boundingBox();
+  const desktopDetails = await ride
+    .getByTestId("activity-details")
+    .boundingBox();
   const desktopParts = await ride.getByTestId("activity-parts").boundingBox();
-  expect(desktopMetrics).not.toBeNull();
+  expect(desktopVisuals).not.toBeNull();
   expect(desktopRoute).not.toBeNull();
+  expect(desktopDetails).not.toBeNull();
   expect(desktopParts).not.toBeNull();
-  expect(desktopRoute!.x).toBeGreaterThan(desktopMetrics!.x);
-  expect(desktopParts!.y).toBeLessThan(desktopRoute!.y + desktopRoute!.height);
+  expect(desktopVisuals!.x).toBeGreaterThan(desktopParts!.x);
+  expect(desktopVisuals!.width).toBeGreaterThan(90);
+  expect(desktopVisuals!.width).toBeLessThan(desktopParts!.width);
+  expect(desktopVisuals!.height).toBeCloseTo(128, 0);
+  expect(desktopRoute!.width).toBeLessThanOrEqual(desktopVisuals!.width);
+  expect(desktopRoute!.height).toBeLessThanOrEqual(desktopVisuals!.height);
+  // Details begin beside the visual instead of waiting for the visual's fixed
+  // height to finish and artificially enlarging the header section.
+  expect(desktopDetails!.y).toBeLessThan(
+    desktopVisuals!.y + desktopVisuals!.height
+  );
 
-  // On a phone the same shared route surface follows all details as a shallow,
-  // full-width strip.
+  // The visual column gains room only at the largest breakpoint, once the
+  // two-column journal cards are themselves wide enough to preserve detail rows.
+  await page.setViewportSize({ width: 1536, height: 900 });
+  const largestVisuals = await visuals.boundingBox();
+  expect(largestVisuals).not.toBeNull();
+  expect(largestVisuals!.width).toBeGreaterThan(175);
+
+  // On a phone the same box follows the details as a shallow, full-width strip.
   await page.setViewportSize({ width: 390, height: 844 });
-  const mobileMetrics = await metrics.boundingBox();
+  const mobileVisuals = await visuals.boundingBox();
   const mobileRoute = await ride.getByTestId("route-map").boundingBox();
   const mobileParts = await ride.getByTestId("activity-parts").boundingBox();
-  expect(mobileMetrics).not.toBeNull();
+  expect(mobileVisuals).not.toBeNull();
   expect(mobileRoute).not.toBeNull();
   expect(mobileParts).not.toBeNull();
-  expect(mobileRoute!.y).toBeGreaterThan(mobileParts!.y + mobileParts!.height);
+  expect(mobileVisuals!.height).toBeCloseTo(128, 0);
+  expect(mobileVisuals!.y).toBeGreaterThan(
+    mobileParts!.y + mobileParts!.height
+  );
   expect(mobileRoute!.width).toBeGreaterThan(mobileRoute!.height * 2);
 });
 
