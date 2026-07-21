@@ -183,6 +183,45 @@ export function mainSleepNights(
   return out.sort((a, b) => (a.wakeDay < b.wakeDay ? -1 : 1));
 }
 
+// Median of a numeric array (population median; even length averages the two
+// middle values). Callers pass a non-empty array.
+function median(values: number[]): number {
+  const s = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
+// ── Typical wake time (issue #1117) ──────────────────────────────────────────
+// Median wake clock-minute-of-day (0..1439, profile-local) of the MAIN overnight
+// session (#1118 — same-day naps excluded) over the SRI rolling window, or null
+// below the minimum-nights gate. It reuses the SAME noon-anchored epoch and window
+// gate as computeSleepRegularity (one computation, #221): noon-relative keeps a
+// very-early or past-midnight wake contiguous instead of wrapping at midnight, and
+// the wall-clock bucketing (localParts) handles DST/travel exactly as SRI does. A
+// nap's wake time would otherwise poison the median, which is why this routes
+// through mainSleepNights rather than every session. This ONE derivation seeds the
+// wake-aware morning notification hour and backs the digest's typical-wake line.
+export function typicalWakeTime(
+  sessions: SleepSession[],
+  tz: string,
+  opts: SleepRegularityOptions = {}
+): number | null {
+  const windowDays = opts.windowDays ?? 28;
+  const minNights = opts.minNights ?? 14;
+  const nights = mainSleepNights(sessions, tz); // main overnight per wake-day, oldest→newest
+  if (nights.length === 0) return null;
+  const asOf = opts.asOf ?? nights[nights.length - 1].wakeDay;
+  const windowStart = shiftDateStr(asOf, -(windowDays - 1));
+  const inWindow = nights.filter(
+    (n) => n.wakeDay >= windowStart && n.wakeDay <= asOf
+  );
+  if (inWindow.length < minNights) return null;
+  // Wake clock-minute per night, noon-anchored so the median is well-defined even
+  // when wakes straddle midnight; convert the median back to a clock minute-of-day.
+  const wakeRel = inWindow.map((n) => noonRelative(localParts(n.end, tz).min));
+  return (Math.round(median(wakeRel)) + NOON) % EPOCHS_PER_DAY;
+}
+
 export interface SleepRegularityOptions {
   // Anchor date (YYYY-MM-DD, profile-local). The rolling window ends here
   // (inclusive). Defaults to the latest recorded wake-day in the data.

@@ -13,6 +13,7 @@ import {
   sriTrend,
   regularityTravelInsight,
   mainSleepNights,
+  typicalWakeTime as computeTypicalWakeTime,
   type SleepRegularity,
   type SleepRegularityOptions,
 } from "../sleep-regularity";
@@ -35,6 +36,22 @@ export function getMainSleepNightlyMinutes(
   return nights
     .slice(-limitDays)
     .map((n) => ({ date: n.wakeDay, value: n.durationMin }));
+}
+
+// The profile's typical wake time as a clock minute-of-day (0..1439, profile
+// timezone), or null below the minimum-nights gate (issue #1117). Delegates the
+// profile-scoped read to getSleepSessions and the math to the pure
+// typicalWakeTime, so it stays the ONE derivation the wake-aware morning hour and
+// the digest both key on. No new `.prepare`, so the scoping guard is unaffected.
+export function typicalWakeTime(
+  profileId: number,
+  opts?: SleepRegularityOptions
+): number | null {
+  return computeTypicalWakeTime(
+    getSleepSessions(profileId),
+    getTimezone(profileId),
+    opts
+  );
 }
 
 // The current rolling-window SRI + companions for a profile, or null when there

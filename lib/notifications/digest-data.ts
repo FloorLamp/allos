@@ -5,7 +5,7 @@
 // profile from the notify tick; hard-deduped to one send per profile per day.
 
 import { db, today } from "../db";
-import { shiftDateStr } from "../date";
+import { shiftDateStr, zonedDateParts } from "../date";
 import {
   getSupplements,
   getSupplementDoses,
@@ -15,13 +15,20 @@ import {
   isPredictedWorkoutDay,
   getFrequencyTargetProgress,
   getCurrentFlaggedBiomarkers,
+  getSleepSignal,
+  getSleepRegularity,
+  getSleepSessions,
+  getMetricDailyTotals,
 } from "../queries";
+import { mainSleepNights } from "../sleep-regularity";
 import { countSituationalDue, isDueOn } from "../supplement-schedule";
 import {
   getActiveSituations,
   getSituationEvents,
   getProfileSetting,
   setProfileSetting,
+  getProfileSleepDigest,
+  getTimezone,
 } from "../settings";
 import { situationHistoryResolver } from "../trend-annotations";
 import { currentEpisodeForProfile } from "../illness-episode";
@@ -35,6 +42,7 @@ import {
   type DigestFlaggedBiomarker,
   type DigestGoalDue,
   type DigestInput,
+  type DigestSleep,
 } from "./digest";
 import { createLogger } from "../log";
 
@@ -96,6 +104,58 @@ export function getNewlyFlaggedBiomarkers(
       })
     )
   ).slice(0, limit);
+}
+
+// Last night's sleep for the morning digest's Sleep section (issue #1117), or null
+// when the summary is off (opt-in) or there's no FRESH sleep data. It composes the
+// SAME computations other surfaces use — getSleepSignal (the rest trigger's main-
+// overnight last-night + baseline, #1118/#221) and getSleepRegularity (the #160 SRI
+// Trends renders) — so the digest can't disagree with them. Freshness gate: the
+// most recent main-sleep night must be today or yesterday (you actually woke
+// recently); a stale night isn't "how'd I sleep". The nap total is the wake-day's
+// non-main sleep, kept apart from the overnight figure.
+export function gatherDigestSleep(profileId: number): DigestSleep | null {
+  if (!getProfileSleepDigest(profileId)) return null;
+  const signal = getSleepSignal(profileId);
+  if (!signal) return null;
+
+  const tz = getTimezone(profileId);
+  const sessions = getSleepSessions(profileId);
+  const nights = mainSleepNights(sessions, tz);
+  if (nights.length === 0) return null;
+  const last = nights[nights.length - 1];
+
+  const td = today(profileId);
+  const yd = shiftDateStr(td, -1);
+  if (last.wakeDay !== td && last.wakeDay !== yd) return null; // stale — skip
+
+  // Nap = all sleep on the wake-day minus the main overnight session (never folded
+  // into the overnight figure). Uses the same session windows as mainSleepNights.
+  let dayTotalMin = 0;
+  for (const s of sessions) {
+    if (zonedDateParts(tz, new Date(s.end)).date !== last.wakeDay) continue;
+    const ms = new Date(s.end).getTime() - new Date(s.start).getTime();
+    if (ms > 0) dayTotalMin += ms / 60000;
+  }
+  const napMin = Math.max(0, Math.round(dayTotalMin) - last.durationMin);
+
+  // Stage breakdown for the wake-day when the source reports it (HC/Oura/Withings).
+  const stageFor = (metric: string): number | null => {
+    const row = getMetricDailyTotals(profileId, metric, 14).find(
+      (r) => r.date === last.wakeDay
+    );
+    return row ? Math.round(row.value) : null;
+  };
+
+  const reg = getSleepRegularity(profileId);
+  return {
+    lastNightMin: signal.lastNightMin,
+    baselineMin: Math.round(signal.baselineMin),
+    deepMin: stageFor("sleep_deep_min"),
+    remMin: stageFor("sleep_rem_min"),
+    napMin,
+    sri: reg ? reg.sri : null,
+  };
 }
 
 // Gather the digest facts for one profile. `since` bounds the "new since last
@@ -253,6 +313,9 @@ export function gatherDigestInput(
     weightKg: weightRow?.weight_kg ?? null,
     newFlaggedBiomarkers,
     newDocumentLabels,
+    // Last night's sleep (issue #1117) — null unless the opt-in is on and the data
+    // is fresh; buildDigest renders a Sleep section only when present.
+    sleep: gatherDigestSleep(profileId),
   };
 }
 

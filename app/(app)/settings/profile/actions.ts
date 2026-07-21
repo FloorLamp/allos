@@ -28,6 +28,7 @@ import {
   setProfileMoodCheckin,
   setProfileMoodRecap,
   resetMoodCheckinIgnored,
+  setProfileSleepDigest,
   setNotifySchedule,
   getProfileHomeAssistant,
   setProfileHomeAssistant,
@@ -302,6 +303,13 @@ export async function saveNotificationPrefs(formData: FormData) {
     setProfileMoodRecap(profile.id, v === "on" || v === "1");
   }
 
+  // Morning-digest sleep summary (#1117): per-profile opt-in, presence-gated like
+  // the mood toggle so a form that omits it can't wipe the setting.
+  if (formData.has("digest_sleep_enabled")) {
+    const v = formData.get("digest_sleep_enabled");
+    setProfileSleepDigest(profile.id, v === "on" || v === "1");
+  }
+
   // First-connection prompt: the first time this profile becomes fully connectable
   // (enabled + chat id + a bot token exists) and we haven't asked before, send a
   // one-time "want to log food too?" message with Enable/No-thanks buttons, and mark
@@ -342,18 +350,27 @@ export async function saveNotificationPrefs(formData: FormData) {
       ? n
       : fallback;
   };
+  // Wake-aware "auto" state (#1117): the Morning intake slot and the digest can
+  // follow the profile's wake time. "auto" is a distinct field value the reader
+  // (getNotifySchedule) resolves — the write path just records the intent so an
+  // unchanged re-save never freezes the resolved hour as a manual pick.
+  const morningAuto =
+    String(formData.get("supp_morning_hour") ?? "") === "auto";
+  const digestAuto = String(formData.get("digest_hour") ?? "") === "auto";
   setNotifySchedule(profile.id, {
     supplementHours: {
-      Morning: hour("supp_morning_hour"),
+      Morning: morningAuto ? null : hour("supp_morning_hour"),
       Midday: hour("supp_midday_hour"),
       Evening: hour("supp_evening_hour"),
       Bedtime: hour("supp_bedtime_hour"),
     },
+    morningAuto,
     workoutEnabled:
       formData.get("workout_enabled") === "on" ||
       formData.get("workout_enabled") === "1",
-    // Morning digest: "" / "off" → off.
-    digestHour: hour("digest_hour"),
+    // Morning digest: "auto" → follow wake time; "" / "off" → off; else the hour.
+    digestHour: digestAuto ? null : hour("digest_hour"),
+    digestAuto,
     // Weekly recap (#32): weekday 0-6, "" / "off" → off.
     weeklyRecapDay: (() => {
       const raw = String(formData.get("recap_day") ?? "").trim();

@@ -398,6 +398,8 @@ export function onboardingNotificationSchedule(
 
   const noSummary = {
     digestHour: null,
+    // Digest off, not wake-auto (issue #1117).
+    digestAuto: false,
     weeklyRecapDay: null,
     weeklyRecapHour: current.weeklyRecapHour,
   };
@@ -410,6 +412,8 @@ export function onboardingNotificationSchedule(
         Evening: null,
         Bedtime: null,
       },
+      // Every window off — the Morning slot is off, not wake-auto (issue #1117).
+      morningAuto: false,
       workoutEnabled: false,
       ...noSummary,
       milestonesEnabled: false,
