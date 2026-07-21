@@ -1,5 +1,10 @@
 import { test, expect, type Page, type Locator } from "@playwright/test";
 import { followLink } from "./helpers";
+import {
+  medicationRow,
+  refillRunOut,
+  openMedDetailViaHref,
+} from "./med-card-helpers";
 
 // #852 Medications UX round 2: the time-aware Today panel (item 1), PRN→detail links in
 // both hosts (item 2), the one-tap "Refilled" action + run-out date (item 3), the
@@ -68,11 +73,11 @@ test("item 3: low-supply med shows the run-out date and one-tap Refilled increas
 }) => {
   const MED = "Low Supply Med (e2e)";
   await page.goto("/medications");
-  const row = page.getByTestId("medication-row").filter({ hasText: MED });
+  const row = medicationRow(page, MED);
   await expect(row).toBeVisible();
 
   // The refill badge projects a run-out DATE ("runs out ~<Mon Day>"), not just days-left.
-  await expect(row.getByTestId("refill-run-out")).toContainText(/runs out ~/);
+  await expect(refillRunOut(row)).toContainText(/runs out ~/);
 
   // One-tap "Refilled" reuses the remembered fill size and records the refill. The
   // success toast is the repeat-safe signal (the fixture stays low across runs, so the
@@ -128,17 +133,10 @@ test("item 5: the detail page shows a month adherence calendar over the existing
   page,
 }) => {
   await page.goto("/medications");
-  const rowLink = page
-    .getByTestId("medication-row")
-    .filter({ hasText: "Adherence Refill Med (e2e)" })
-    .getByTestId("medication-row-link");
-  await expect(rowLink).toBeVisible();
   // Direct goto to the row's href (not a Link click): a client-side transition to the
   // detail can be interrupted/reverted under a heavy list page (the #852 settle-race fix).
-  const href = await rowLink.getAttribute("href");
-  expect(href).toMatch(/\/medications\/\d+/);
-  await page.goto(href!);
-  const detail = page.getByTestId("medication-detail");
+  // The row→detail href nav is owned by the shared med-card driver (#868 class-2).
+  const detail = await openMedDetailViaHref(page, "Adherence Refill Med (e2e)");
   await expect(detail).toBeVisible();
   const month = detail.getByTestId("medication-adherence-month");
   await expect(month).toBeVisible();
