@@ -248,6 +248,19 @@ it later from the issue number is guesswork.
   infinite-loop poison is deterministic — it fails the same shard every time,
   including a `--max-failures=1` probe; degradation passes on a settled re-run).
   This cost hours on the #1047-#1062 train before the pattern was clear.
+- **The #1 cause of "degradation" is YOUR OWN concurrent poll loops — never run a
+  background CI-poll while a local e2e gate runs (2026-07-21).** A whole night's
+  worth of "container degradation" (90s server-death timeouts, 11-min 6-spec
+  runs) turned out to be self-inflicted: a `for i in seq…; do sleep 30; curl…;
+python… ; done` CI-poll loop running in the background was starving the
+  `next start` servers of CPU. The box was never exhausted — `ps` showed zero
+  leaked processes and 14 GB free RAM the whole time. Kill the polls (or don't
+  start them) and the SAME specs run clean in ~48 s. Discipline: while a local
+  e2e run is in flight, run NOTHING else — no CI polls, no second gate, no agent
+  build. Check `ps -eo comm | grep -cE 'next-server|chromium|curl'` and
+  `free -g` before blaming the container; leaked-process-count 0 + free RAM ⇒
+  it's contention (yours) or the single-process heavy-shard limit, not exhaustion.
+  A container restart doesn't fix contention — stopping the competing work does.
 - **Don't chain full gates — an exhausted container makes even the "re-run
   fresh" remedy lie (2026-07-20, #1045).** After ~65 min of continuous e2e (two
   back-to-back full 4-shard gates + an isolation re-run) the box degraded so far
