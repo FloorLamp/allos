@@ -46,7 +46,7 @@ async function switchToProfile(page: Page, name: string): Promise<void> {
 // "Name"); the delete-confirm field isn't rendered in the resting card. Reading
 // the value PROPERTY via evaluateAll (React doesn't reflect a controlled input's
 // value to the DOM attribute, so a `[value="…"]` selector wouldn't match) also
-// sidesteps strict-mode without a `.first()`.
+// sidesteps strict-mode without a first-match locator.
 async function profileRowExists(page: Page, name: string): Promise<boolean> {
   return page
     .locator("div.card")
