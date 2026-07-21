@@ -1188,6 +1188,29 @@ export default function ActivityForm({
         : analysis.saveBlocker
       : null;
 
+  // Durably commit the latest edit BEFORE the form closes. The 700ms debounced
+  // auto-save and the unmount-time flush (both above) are fire-and-forget, so a
+  // navigation that immediately follows the close — Escape/close then a route
+  // change, or a card switch — can abort the in-flight save and silently drop the
+  // last change. Awaiting the save on the close path closes that race: a change
+  // the user made is persisted before we relinquish the form. (Surfaced by the
+  // full-suite e2e census: an RPE half-point nudged just before close+navigate
+  // was lost because the flush never landed.) The remaining fire-and-forget
+  // unmount flush still covers an unmount with NO preceding close (e.g. the tab
+  // being torn down), where there is nothing to await against.
+  async function flushBeforeClose() {
+    // Bounded: await an in-flight save to settle, then persist the latest, until
+    // the saved signature matches the current form (or we give up after ~0.5s so
+    // a wedged save never blocks the close).
+    for (let i = 0; i < 20 && canSave && formSig !== savedSigRef.current; i++) {
+      if (inFlightRef.current) {
+        await new Promise((r) => setTimeout(r, 25));
+        continue;
+      }
+      await persistRef.current();
+    }
+  }
+
   // Auto-save can't persist a blocked form, so closing one with unsaved edits
   // to a real row would silently drop them — confirm first. A blocked blank
   // create is exempt: discarding it is the natural "cancel".
@@ -1202,6 +1225,7 @@ export default function ActivityForm({
       });
       if (!ok) return;
     }
+    await flushBeforeClose();
     onClose();
   }
   requestCloseRef.current = requestClose;
