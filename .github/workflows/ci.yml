@@ -99,10 +99,11 @@ jobs:
 
   # Changed-spec scrutiny lane (#868, fix c; #889), as its OWN job so its
   # zero-retry verdict lands fast and short-circuits before the sharded full
-  # suite below finishes. The full suite's `retries: 1` proves "passes within N
-  # attempts", not "works" — a ≤50%-flaky spec can ship green. Zero retries ×
-  # three repeats fails a spec that isn't reliably green, so retry-masking can't
-  # land a flaky/changed spec.
+  # suite below finishes. This lane's `--repeat-each=3 --retries=0` fails a spec
+  # that isn't reliably green (three-in-a-row at zero retries catches a ≤50%-flaky
+  # spec), so retry-masking can't land a flaky/changed spec. The sharded full
+  # suite now runs at zero retries too (playwright.config.ts, #1159), so a flake
+  # fails loudly everywhere rather than being retried into green.
   #   • base ref: under pull_request the checkout is the MERGE commit, so HEAD^1
   #     is the PR base parent (fetch-depth:2 guarantees it's present). We prefer
   #     the event's base.sha when it happens to be in history, else fall back to
@@ -231,11 +232,12 @@ jobs:
         if: steps.changes.outputs.code == 'true'
         run: npm run test:e2e -- --shard=${{ matrix.shard }}/4
 
-      # Flake telemetry: with `retries: 1`, a test that failed then passed on
-      # retry ships a GREEN run — this surfaces those pass-on-retry tests in the
-      # job summary so every flake detection is recorded instead of thrown away
-      # (the measured backlog that gates ever dropping full-suite retries).
-      # Telemetry only — always exits 0; the suite step above gates.
+      # Flake telemetry (retained). The sharded matrix now runs at zero retries
+      # (playwright.config.ts, #1159), so there is no "flaky" status here and this
+      # reports an accurate empty — the flake backlog it once measured is cleared,
+      # which is what let full-suite retries drop. Kept because it's the same step
+      # e2e-full.yml relies on: an on-demand census at --retries=1 still surfaces
+      # pass-on-retry tests through this script. Telemetry only — always exits 0.
       - name: Flake report
         if: ${{ !cancelled() && steps.changes.outputs.code == 'true' }}
         run: node scripts/e2e-flake-report.mjs test-results/e2e-results.json | tee -a "$GITHUB_STEP_SUMMARY"
