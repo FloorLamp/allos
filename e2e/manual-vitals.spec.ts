@@ -36,11 +36,10 @@ test("logging vitals persists and renders alongside synced readings (#16)", asyn
     page.getByRole("link", { name: "Oxygen Saturation" })
   ).toBeVisible();
 
-  // The sleep sample surfaces in the Body tab's "Sleep per night" chart card.
+  // The sleep sample surfaces in the Body tab's compact Sleep summary tile (the
+  // detailed per-night chart moved to the dedicated /sleep page, #1066).
   await page.goto("/trends?tab=body");
-  await expect(
-    page.getByRole("heading", { name: "Sleep per night" })
-  ).toBeVisible();
+  await expect(page.getByTestId("sleep-summary-tile")).toBeVisible();
 
   // #114: the biomarkers browser (/results#biomarkers) ships only one bounded page of rows, so its
   // table always renders the pagination footer ("Showing N of M") — a cheap proof

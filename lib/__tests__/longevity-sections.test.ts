@@ -73,11 +73,17 @@ describe("longevitySections is a pure regrouping of the widget's pillar model", 
 });
 
 describe("widget deep-links land on the page section that expands the pillar", () => {
-  it("every pillar href is /longevity#<its section anchor>", () => {
+  it("every pillar href is /longevity#<its section anchor> (except sleep → /sleep, #1066)", () => {
     const pillars = buildPillars(FULL_INPUTS);
     expect(pillars.length).toBeGreaterThan(0);
     for (const p of pillars) {
-      expect(p.href).toBe(`/longevity#${PILLAR_ANCHOR[p.key]}`);
+      // Sleep regularity's expanded home moved to the dedicated /sleep page
+      // (#1066); every other pillar still deep-links to its Longevity section.
+      if (p.key === "sleep-regularity") {
+        expect(p.href).toBe("/sleep");
+      } else {
+        expect(p.href).toBe(`/longevity#${PILLAR_ANCHOR[p.key]}`);
+      }
       expect(p.href).toBe(pillarHref(p.key));
     }
   });

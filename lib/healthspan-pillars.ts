@@ -137,8 +137,13 @@ export const PILLAR_ANCHOR: Record<PillarKey, string> = {
   "optimal-biomarkers": "biomarkers",
 };
 
-// The widget deep-link for a pillar: the Longevity page section that expands it.
+// The widget deep-link for a pillar: the Longevity page section that expands it —
+// EXCEPT sleep-regularity, whose expanded home moved to the dedicated /sleep page
+// (issue #1066). PILLAR_ANCHOR still maps sleep-regularity → "sleep" so the
+// Longevity page keeps grouping the pillar into its own (compact) section; only
+// the pillar CARD's deep-link repoints to /sleep.
 export function pillarHref(key: PillarKey): AppRoute {
+  if (key === "sleep-regularity") return "/sleep";
   return `/longevity#${PILLAR_ANCHOR[key]}`;
 }
 

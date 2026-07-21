@@ -150,9 +150,15 @@ describe("isNavLeafVisible", () => {
   it("hides relevanceKey leaves when their relevance bit is false (#1042)", () => {
     const cycle = { href: "/medical/cycles", relevanceKey: "cycle" as const };
     const vision = { href: "/vision", relevanceKey: "vision" as const };
-    const off = { cycle: false, vision: false, dental: false };
+    const sleep = { href: "/sleep", relevanceKey: "sleep" as const };
+    const off = { cycle: false, vision: false, dental: false, sleep: false };
     expect(isNavLeafVisible(cycle, ctx({ relevance: off }))).toBe(false);
     expect(isNavLeafVisible(vision, ctx({ relevance: off }))).toBe(false);
+    // The #1066 Sleep gate: hidden when the sleep bit is false, shown when true.
+    expect(isNavLeafVisible(sleep, ctx({ relevance: off }))).toBe(false);
+    expect(
+      isNavLeafVisible(sleep, ctx({ relevance: { ...off, sleep: true } }))
+    ).toBe(true);
     // Each key gates only its own leaf.
     expect(
       isNavLeafVisible(cycle, ctx({ relevance: { ...off, cycle: true } }))

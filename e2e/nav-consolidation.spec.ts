@@ -31,6 +31,7 @@ const TOP_LEVEL_ORDER = [
   "Nutrition",
   "Timeline",
   "Trends",
+  "Sleep",
   "Upcoming",
   "Household",
   "Longevity",
