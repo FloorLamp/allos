@@ -169,8 +169,10 @@ const nextConfig = {
         permanent: true,
       },
       {
+        // Coverage gaps moved off /records to Data → Coverage (#1086) — it's a
+        // catalog/data-management workflow, not a clinical record.
         source: "/coverage",
-        destination: "/records#coverage",
+        destination: "/data?section=coverage",
         permanent: true,
       },
       {

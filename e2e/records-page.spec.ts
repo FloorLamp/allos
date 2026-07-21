@@ -3,16 +3,18 @@ import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_NAV_MALE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
-// The merged Health record page (#1042 phase 6): the eleven core Medical index
+// The merged Health record page (#1042 phase 6): the ten core Medical index
 // pages (Conditions, Allergies, Procedures, Immunizations, Family history,
-// Visits, Providers, Background, Care plan, Health goals, Coverage gaps) fold into
+// Visits, Providers, Background, Care plan, Health goals) fold into
 // ONE stacked-section page at real anchors (/records#conditions, #visits, …), the
 // removed index routes 308-redirect there (query strings preserved), and the
 // DETAIL routes (/providers/[id], /encounters/[id], /immunizations/[vaccine])
 // survive at their own URLs. Section visibility mirrors the nav's predicate: none
-// of the eleven constituent leaves carried a nav gate, so all eleven sections
+// of the ten constituent leaves carried a nav gate, so all ten sections
 // always render (each with its own empty state) — there is deliberately NO
-// hidden-section case to assert here.
+// hidden-section case to assert here. (Coverage gaps was briefly the #coverage
+// section here through #1042 phase 6; #1086 moved it to Data → Coverage — its
+// e2e lives in coverage-gaps.spec.ts now.)
 //
 // Fixture hygiene (#868): read-only against the shared seeded admin profile
 // (profile 1 owns conditions/allergies/immunizations/providers/… via
@@ -21,7 +23,7 @@ import { E2E_LOGIN_NAV_MALE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
 
-// The eleven sections in render order: their jump-link label, the section testid,
+// The ten sections in render order: their jump-link label, the section testid,
 // and the section-header heading text.
 const SECTIONS = [
   { label: "Conditions", id: "conditions", heading: "Conditions" },
@@ -34,7 +36,6 @@ const SECTIONS = [
   { label: "Background", id: "background", heading: "Background" },
   { label: "Care plan", id: "care-plan", heading: "Care plan" },
   { label: "Health goals", id: "health-goals", heading: "Health goals" },
-  { label: "Coverage gaps", id: "coverage", heading: "Coverage gaps" },
 ] as const;
 
 // The removed index routes and the anchor each 308-redirects to. The anchor
@@ -50,11 +51,10 @@ const REDIRECTS = [
   { from: "/providers", anchor: "providers" },
   { from: "/care-plan", anchor: "care-plan" },
   { from: "/care-goals", anchor: "health-goals" },
-  { from: "/coverage", anchor: "coverage" },
   { from: "/medical/background", anchor: "background" },
 ] as const;
 
-test("renders all eleven anchored sections with the seeded data (#1042)", async ({
+test("renders all ten anchored sections with the seeded data (#1042)", async ({
   page,
 }) => {
   await page.goto("/records");
@@ -67,7 +67,7 @@ test("renders all eleven anchored sections with the seeded data (#1042)", async 
     // Each section is linked in the sticky jump row …
     await expect(jump.getByRole("link", { name: s.label })).toBeVisible();
     // … and renders with its own section-header heading (scoped to the section so
-    // the heading name is unambiguous across the eleven).
+    // the heading name is unambiguous across the ten).
     const section = page.getByTestId(`records-${s.id}`);
     await expect(
       section.getByRole("heading", { name: s.heading, exact: true })
@@ -96,14 +96,14 @@ test("the sticky jump links scroll to their sections (#1042)", async ({
     .toBeLessThan(200);
 });
 
-test("the eleven removed index routes 308-redirect to their anchored sections (#1042)", async ({
+test("the ten removed index routes 308-redirect to their anchored sections (#1042)", async ({
   page,
 }) => {
   // Request-level assertion — no per-route Chromium navigation. Each removed index
   // route answers a 308 whose Location IS the anchored /records section (Next's
   // config-level redirect fires before auth, and page.request shares the session
   // context's cookies anyway). The coverage here is the redirect MAP; the rendered
-  // target sections are asserted by the "renders all eleven anchored sections"
+  // target sections are asserted by the "renders all ten anchored sections"
   // sibling test above.
   for (const r of REDIRECTS) {
     const res = await page.request.get(r.from, { maxRedirects: 0 });
@@ -152,7 +152,7 @@ test("a detail route survives and its back-link points at the merged section (#1
 });
 
 // ── Specialty sections (#1042 final tail) ────────────────────────────────────
-// Vision/Dental/Skin/Mental health fold in AFTER the eleven core sections. Section
+// Vision/Dental/Skin/Mental health fold in AFTER the ten core sections. Section
 // visibility mirrors the nav predicate: Vision/Dental are DATA-GATED (present only
 // when the profile has rows — the same computation their former data-gated nav leaves
 // used), while Skin/Mental health render UNCONDITIONALLY (their in-page forms are the
@@ -241,7 +241,7 @@ test("the four specialty index routes 308-redirect to their anchored sections (#
   }
 });
 
-test("the Medical nav group shows one Health record leaf in place of the eleven (#1042)", async ({
+test("the Medical nav group shows one Health record leaf in place of the ten (#1042)", async ({
   page,
 }) => {
   // Being on /records (a Medical child) force-expands the group — the children are
@@ -259,7 +259,6 @@ test("the Medical nav group shows one Health record leaf in place of the eleven 
     "Providers",
     "Care Plan",
     "Health Goals",
-    "Coverage gaps",
     "Background",
   ]) {
     await expect(nav.getByRole("link", { name: gone })).toHaveCount(0);
