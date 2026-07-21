@@ -52,11 +52,135 @@ import { shiftDateStr, weekdayOfDateStr, zonedDateParts } from "./date";
 // One recorded sleep session. `start`/`end` are absolute ISO instants (the same
 // zone-independent anchors stored in metric_samples.start_time/end_time). `source`
 // carries provenance so a future multi-source world (Oura, #140) can be made
-// source-aware (#14) without changing this signature.
+// source-aware (#14) without changing this signature. `type` is an OPTIONAL
+// provider-supplied session label (Oura's `long_sleep` / `late_nap` / `rest`);
+// when present the main-sleep classifier (#1118) honors it, else the heuristic
+// decides. Nothing stores `type` today (no schema change — #1118), so DB reads
+// leave it undefined and the heuristic covers Health Connect.
 export interface SleepSession {
   start: string;
   end: string;
   source?: string | null;
+  type?: string | null;
+}
+
+// ── Main overnight sleep vs naps (issue #1118) ───────────────────────────────
+// A wake-day can hold several recorded sleep sessions: one MAIN overnight sleep
+// plus optional naps. The two sources disagree — Oura ingests only `long_sleep`
+// (naps dropped at ingest), while Health Connect ingests EVERY session unlabeled
+// and the daily `sleep_min` total SUMS them (sleep_min is additive — see
+// metric-buckets), so an overnight + an afternoon nap read as one inflated night.
+// That masks overnight deprivation in the poor-sleep rest trigger and poisons any
+// wake-time / last-night figure. This PURE classifier picks the ONE main overnight
+// session per wake-day from the session windows already stored — no new column, no
+// ingest change, no migration (consistent with the storage stance). Consumers that
+// mean "the night" (the rest trigger; a wake-time median; a last-night hero) read
+// the main session; SRI (#160) DELIBERATELY does NOT route through this — a nap
+// genuinely IS asleep-state at that clock minute, which is what the published SRI
+// measures, so computeSleepRegularity keeps every session's epochs (see the guard
+// test). Do not "fix" SRI to exclude naps.
+
+// Classify a provider-supplied session `type` (Oura's `long_sleep` / `late_nap` /
+// `early_nap` / `rest`) as the MAIN overnight sleep, a nap, or unknown (in which
+// case the heuristic decides). Unknown labels fall through to the heuristic too.
+function sessionKind(type: string | null | undefined): "main" | "nap" | null {
+  if (type == null) return null;
+  const t = type.trim().toLowerCase();
+  if (t === "long_sleep" || t === "main" || t === "main_sleep" || t === "sleep")
+    return "main";
+  if (t === "rest" || t.includes("nap")) return "nap";
+  return null;
+}
+
+// Milliseconds a session spans. Callers pass only validated start<end sessions.
+function sessionMs(s: SleepSession): number {
+  return new Date(s.end).getTime() - new Date(s.start).getTime();
+}
+
+// Pick the MAIN overnight sleep session from ONE wake-day's sessions, or null when
+// the day holds no main sleep (empty input, all-invalid windows, or every session
+// provider-labeled a nap). Everything else that day is a nap.
+//
+// When a source pre-labels type (Oura), HONOR it: the main session is the longest
+// session the source calls a main sleep, and provider-labeled naps are excluded
+// outright. Otherwise (Health Connect, unlabeled) the heuristic picks the LONGEST
+// session, tie-broken toward the one ending EARLIEST — the morning window, i.e. the
+// session that follows the long daytime awake gap — so a same-duration afternoon
+// nap never outranks the overnight fragment that ends at dawn.
+export function mainSleepSession<T extends SleepSession>(
+  sessionsForWakeDay: T[]
+): T | null {
+  const valid = sessionsForWakeDay.filter((s) => {
+    const a = new Date(s.start).getTime();
+    const b = new Date(s.end).getTime();
+    return Number.isFinite(a) && Number.isFinite(b) && b > a;
+  });
+  if (valid.length === 0) return null;
+
+  const mains = valid.filter((s) => sessionKind(s.type) === "main");
+  const candidates =
+    mains.length > 0
+      ? mains
+      : valid.filter((s) => sessionKind(s.type) !== "nap");
+  if (candidates.length === 0) return null; // every session is a labeled nap
+
+  return candidates.reduce((best, s) => {
+    const bd = sessionMs(best);
+    const sd = sessionMs(s);
+    if (sd !== bd) return sd > bd ? s : best;
+    // Tie on duration → prefer the session ending earlier (the morning window).
+    const be = new Date(best.end).getTime();
+    const se = new Date(s.end).getTime();
+    if (se !== be) return se < be ? s : best;
+    // Fully tied → keep the earlier-starting session for a deterministic result.
+    return new Date(s.start).getTime() < new Date(best.start).getTime()
+      ? s
+      : best;
+  });
+}
+
+// Group sessions by profile-local wake-day (calendar date of the session END, the
+// same anchor buildNights uses) and return the MAIN overnight session per day
+// (mainSleepSession), naps dropped, oldest→newest. This is the "one night per day"
+// series the poor-sleep rest trigger and any last-night / wake-time reader consume
+// so a same-day nap can't mask overnight deprivation — WITHOUT touching SRI, which
+// still sees every session.
+export function mainSleepNights(
+  sessions: SleepSession[],
+  tz: string
+): { wakeDay: string; start: string; end: string; durationMin: number }[] {
+  const byDay = new Map<string, SleepSession[]>();
+  for (const s of sessions) {
+    const startMs = new Date(s.start).getTime();
+    const endMs = new Date(s.end).getTime();
+    if (
+      !Number.isFinite(startMs) ||
+      !Number.isFinite(endMs) ||
+      endMs <= startMs
+    )
+      continue;
+    const wakeDay = zonedDateParts(tz, new Date(s.end)).date;
+    const arr = byDay.get(wakeDay);
+    if (arr) arr.push(s);
+    else byDay.set(wakeDay, [s]);
+  }
+  const out: {
+    wakeDay: string;
+    start: string;
+    end: string;
+    durationMin: number;
+  }[] = [];
+  for (const [wakeDay, group] of byDay) {
+    const main = mainSleepSession(group);
+    if (!main) continue;
+    out.push({
+      wakeDay,
+      start: main.start,
+      end: main.end,
+      durationMin: Math.round(sessionMs(main) / 60000),
+    });
+  }
+  return out.sort((a, b) => (a.wakeDay < b.wakeDay ? -1 : 1));
 }
 
 export interface SleepRegularityOptions {

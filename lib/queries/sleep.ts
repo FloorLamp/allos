@@ -12,9 +12,30 @@ import {
   computeSleepRegularity,
   sriTrend,
   regularityTravelInsight,
+  mainSleepNights,
   type SleepRegularity,
   type SleepRegularityOptions,
 } from "../sleep-regularity";
+
+// The per-night MAIN overnight sleep duration (minutes), oldest→newest, one row
+// per wake-day — the overnight session picked by mainSleepSession() (#1118), naps
+// dropped. This is the deprivation series the poor-sleep rest trigger reads instead
+// of the raw daily `sleep_min` total (which SUMS a same-day nap into the night on
+// Health Connect and would mask a deficient overnight). Capped at `limitDays` most-
+// recent nights. Delegates the profile-scoped read to getSleepSessions, so no new
+// `.prepare` and the scoping guard is unaffected.
+export function getMainSleepNightlyMinutes(
+  profileId: number,
+  limitDays = 180
+): { date: string; value: number }[] {
+  const nights = mainSleepNights(
+    getSleepSessions(profileId),
+    getTimezone(profileId)
+  );
+  return nights
+    .slice(-limitDays)
+    .map((n) => ({ date: n.wakeDay, value: n.durationMin }));
+}
 
 // The current rolling-window SRI + companions for a profile, or null when there
 // isn't enough sleep data (below the minimum-nights gate).

@@ -1,5 +1,5 @@
 import { db, today } from "../db";
-import { getMetricDailyTotals } from "./metrics";
+import { getMainSleepNightlyMinutes } from "./sleep";
 import {
   getActivityDates,
   getCardioByActivity,
@@ -60,16 +60,14 @@ function spread(values: number[]): number | undefined {
   return Math.sqrt(mean(values.map((v) => (v - m) ** 2)));
 }
 
-// Last night's total sleep (minutes) and the recent baseline, or null when no
-// sleep has been synced. Reads the per-night `sleep_min` totals from
-// metric_samples (profile-scoped in getMetricDailyTotals). Baseline is the mean
-// of the prior nights in the window (falls back to all nights when only one).
+// Last night's MAIN overnight sleep (minutes) and the recent baseline, or null
+// when no sleep has been synced. Reads the per-night MAIN-session durations
+// (mainSleepSession, #1118) — NOT the raw daily `sleep_min` total, which SUMS a
+// same-day nap into the night on Health Connect and would mask an overnight
+// deficit. Baseline is the mean of the prior nights in the window (falls back to
+// all nights when only one).
 export function getSleepSignal(profileId: number): SleepSignal | null {
-  const nights = getMetricDailyTotals(
-    profileId,
-    "sleep_min",
-    RECOVERY_BASELINE_DAYS
-  ); // oldest → newest
+  const nights = getMainSleepNightlyMinutes(profileId, RECOVERY_BASELINE_DAYS); // oldest → newest, main overnight session per night
   if (nights.length === 0) return null;
   const lastNightMin = nights[nights.length - 1].value;
   const prior = nights.slice(0, -1);
