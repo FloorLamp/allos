@@ -1,0 +1,69 @@
+# Shared setup for every Playwright job: Node + node_modules + Chromium + the
+# production Next build. Extracted so ci.yml's sharded e2e matrix, its
+# changed-spec lane, and the on-demand full-suite workflow (e2e-full.yml) can't
+# drift apart. Checkout stays in the calling job (fetch-depth differs per job).
+name: E2E setup
+description: Node, dependencies, Playwright Chromium, and the Next production build
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v7
+      with:
+        node-version-file: .nvmrc
+        cache: npm
+
+    # Whole-node_modules cache: the single biggest step is `npm ci` (~2 min,
+    # dominated by better-sqlite3's native compile). The key pins the exact
+    # lockfile AND .nvmrc (native modules are built per node ABI), so a hit is
+    # byte-identical to what npm ci would produce and the install is skipped
+    # entirely. No restore-keys on purpose: a stale node_modules under a changed
+    # lockfile must never be reused.
+    - name: Cache node_modules
+      id: modules
+      uses: actions/cache@v6
+      with:
+        path: node_modules
+        key: modules-${{ runner.os }}-${{ hashFiles('.nvmrc') }}-${{ hashFiles('package-lock.json') }}
+
+    - run: npm ci
+      if: steps.modules.outputs.cache-hit != 'true'
+      shell: bash
+
+    # Chromium binary cache, keyed on the lockfile (which pins the
+    # @playwright/test version and with it the browser build). On a hit the
+    # ~25s download is skipped and only the OS dependencies are (re)applied —
+    # apt is a near-no-op when they're already present on the runner image.
+    - name: Cache Playwright Chromium
+      id: playwright
+      uses: actions/cache@v6
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+    - name: Install Playwright Chromium
+      if: steps.playwright.outputs.cache-hit != 'true'
+      run: npx playwright install --with-deps chromium
+      shell: bash
+
+    - name: Install Playwright OS deps
+      if: steps.playwright.outputs.cache-hit == 'true'
+      run: npx playwright install-deps chromium
+      shell: bash
+
+    # Next's incremental compile cache, shared ACROSS RUNS (#61): keyed on the
+    # lockfile + source hash, with a lockfile-only restore key so a source-only
+    # change still warms from the previous build instead of compiling cold.
+    - name: Restore Next.js build cache
+      uses: actions/cache@v6
+      with:
+        path: .next/cache
+        key: nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('app/**', 'components/**', 'lib/**', 'public/**', 'next.config.*') }}
+        restore-keys: |
+          nextjs-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+
+    # CI runs production-like: build once, then the Playwright webServer boots
+    # `next start` against the built app (see playwright.config.ts).
+    - name: Build
+      run: npm run build
+      shell: bash

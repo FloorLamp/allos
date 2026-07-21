@@ -40,7 +40,7 @@ What that means in practice:
 | Local e2e        | Assign each WORKTREE a fixed port PAIR (`E2E_PORT`/`E2E_DEMO_PORT`: 5400/5401, 5600/5601, 5800/5801, …) at dispatch — zero collisions since adopting pairs. `ALLOS_DB_PATH` isolation is handled by the Playwright config. In some containers local `next dev` boot TIMES OUT — run CI-parity instead: `rm -rf .next && npm run build` once, then `CI=1 ANTHROPIC_API_KEY= E2E_PORT=<p> E2E_DEMO_PORT=<p+1> npx playwright test e2e/auth.setup.ts <specs> --repeat-each=3 --retries=0 --reporter=list`, with `rm -rf e2e/.data` + `lsof -ti :<p> -ti :<p+1> \| xargs -r kill` first. **FULL suites: always CI-mode** (see e2e discipline — dev-mode full suites swap the box and mass-fail). |
 | Raw Playwright   | A hand-rolled debug script (`chromium.launch()` outside the test runner) may want a headless-shell version the container doesn't have — launch with `executablePath: "/opt/pw-browsers/chromium-<ver>/chrome-linux/chrome"` (check `ls /opt/pw-browsers`). Kill any manually-booted `next dev` before a suite run: it holds the `.next` dev-server lock for that worktree AND its memory counts against the suite (see below).                                                                                                                                                                                                                                                               |
 | REST merge       | `PUT /pulls/N/merge` can 403 through the agent proxy — merge ONLY via `mcp__github__merge_pull_request` (squash).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| CI shape         | Two jobs per PR: `check` (~4 min) and `e2e` (~10–12 min, Playwright against `next start`). Every push costs a full round — batch fixes before pushing.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| CI shape         | Per PR (since 2026-07-21): `check` (~4 min), `e2e-changed` (the PR's changed specs/infra at retries=0), and a 4-way sharded `e2e` matrix (full suite at retries=1, fresh runner + fresh servers per shard). Every push costs a full round — batch fixes before pushing. On-demand full-suite gate for ANY branch: dispatch `.github/workflows/e2e-full.yml` (fresh runners, defaults retries=0; `repeat_each` up to 3). Each full-suite shard posts a pass-on-retry flake report to its job summary — read it after green runs; those are confirmed flakes to file.                                                                                                                          |
 | Issue auto-close | GitHub only parses `Fixes #N` **one keyword per line** in the PR body. Slash-separated lists silently don't close anything. Verify closure after every merge.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 ## Container-restart resilience (the dominant failure mode)
@@ -192,6 +192,17 @@ it later from the issue number is guesswork.
 
 ## E2e discipline (the part that most needs an owner)
 
+> **2026-07-21 update — full-suite gates moved to GitHub runners.** The sharded
+> `e2e` matrix in PR CI now runs the FULL suite on every push (fresh runner +
+> fresh servers per shard), and `.github/workflows/e2e-full.yml`
+> (workflow_dispatch) runs the whole suite against any branch at `--retries=0`
+> on demand. Use the dispatch workflow where this section previously required a
+> LOCAL CI-parity full-suite run (migration PRs, big UI merges) — it is the
+> "CI on a fresh runner is the ultimate authority" conclusion below,
+> institutionalized. The local-run guidance that follows (memory bounds,
+> sharding, degradation triage) is retained for the rare case a local full run
+> is still needed (e.g. no pushable branch yet).
+
 - **Split ownership: agents verify their own changed specs (CI-parity,
   `--repeat-each=3 --retries=0`, their assigned port pair); only the
   orchestrator runs FULL suites.** The repeat-each lane keeps catching real
@@ -204,12 +215,11 @@ it later from the issue number is guesswork.
   diffs (owner-approved 2026-07-20):** a low-blast-radius PR (a lib fix, a
   bug cluster that changed a handful of specs) merges on CI green + typecheck
   - pure + db + the PR's OWN changed-spec lane — SKIP the full local suite.
-    The full local suite is reserved for MIGRATION PRs and BIG UI merges (a nav
-    consolidation, a multi-page feature). CI never runs the full e2e suite for a
-    normal PR (only the changed specs at `--repeat-each=3`, plus a whole-suite
-    fallback ONLY when a shared `e2e/*.ts` infra file changed) — so for a big UI
-    merge, the local full suite is the ONLY full-suite signal and stays
-    mandatory. **Rebase waiver:** when a
+    The full-suite gate is reserved for MIGRATION PRs and BIG UI merges (a nav
+    consolidation, a multi-page feature) — and since 2026-07-21 it is a dispatch
+    of `e2e-full.yml` against the branch (fresh runners, retries=0), not a local
+    run; PR CI's sharded `e2e` matrix already gives every push a full-suite pass
+    at retries=1 on top of that. **Rebase waiver:** when a
     rebase's delta is text-only (README/docs conflict resolution), CI's full e2e
   * changed-specs lane on the exact rebased tip, plus the pre-rebase local full
     suite, is sufficient — don't burn a second local full run.
