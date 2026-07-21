@@ -113,10 +113,9 @@ test("the eleven removed index routes 308-redirect to their anchored sections (#
 
   // Query strings ride through the redirect — the Visits Book-CTA deep link
   // (?new=1&title=…) keeps its query on the way to the merged booking form.
-  const withQuery = await page.request.get(
-    "/encounters?new=1&title=Physical",
-    { maxRedirects: 0 }
-  );
+  const withQuery = await page.request.get("/encounters?new=1&title=Physical", {
+    maxRedirects: 0,
+  });
   expect(withQuery.status()).toBe(308);
   expect(withQuery.headers()["location"]).toBe(
     "/records?new=1&title=Physical#visits"
