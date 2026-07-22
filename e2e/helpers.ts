@@ -179,6 +179,43 @@ export async function settledFill(
   }).toPass({ timeout });
 }
 
+// Toggle a checkbox so the change durably lands in React STATE — the checkbox analog
+// of settledFill.
+//
+// Root cause (same family as settledFill): a `.check()`/`.uncheck()` dispatched before
+// React hydrates a CONTROLLED checkbox (`checked={…} onChange={…}`) clicks the box but
+// no `onChange` is wired, so state never flips and hydration REVERTS the box. Playwright
+// then reports `check: Clicking the checkbox did not change its state` (the click didn't
+// stick) — or, worse, the click sticks in the DOM but not state and a later save reads
+// the stale value. It was the `food-telegram` line-26 `enableTelegram.check()` flake.
+//
+// Wait until React has hydrated THIS element (the `__reactFiber$…`/`__reactProps$…`
+// markers, as settledFill/followLink do) BEFORE toggling, so the click fires `onChange`
+// and the state flips; then confirm it holds. `setChecked(checked)` is idempotent (a
+// no-op when already in the target state), so this also replaces a
+// `if (!await box.isChecked()) await box.check()` guard.
+export async function settledCheck(
+  page: Page,
+  box: Locator,
+  checked: boolean,
+  opts: { timeout?: number } = {}
+): Promise<void> {
+  const timeout = opts.timeout ?? 10_000;
+  await expect(box).toBeVisible();
+  await expect(async () => {
+    const hydrated = await box.evaluate((el) =>
+      Object.keys(el).some(
+        (k) => k.startsWith("__reactFiber$") || k.startsWith("__reactProps$")
+      )
+    );
+    // Not hydrated yet → toPass retries (the toggle would be reverted). Once React has
+    // attached, the click fires onChange and the state sticks.
+    expect(hydrated, "checkbox not hydrated yet").toBe(true);
+    await box.setChecked(checked);
+    await expect(box).toBeChecked({ checked, timeout: 2_000 });
+  }).toPass({ timeout });
+}
+
 // Follow a Next.js <Link> reliably, retrying the click until the client router
 // actually commits the navigation.
 //

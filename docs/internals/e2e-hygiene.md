@@ -146,13 +146,14 @@ a **convention gate, not a linter**:
 ONE home for settled interactions. The file header carries the authoritative
 decision tree; the summary:
 
-| Situation                                                                                                            | Use                                                                                                                  |
-| -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Click fires a **Server Action** (form submit, dose confirm, create/delete) and you assert the result                 | `settledClick(page, locator)` — awaits the action's same-origin POST response before returning                       |
-| Click is a **navigation** to another route (Next `<Link>` / tab `<a href>`) that flakes on the pre-hydration swallow | `followLink(page, locator, /destination/)` — retries the click until the router commits (and holds) the URL          |
-| **Fill** a controlled input whose Save reads component STATE (Settings' save-from-state cards, autosave-on-blur)     | `settledFill(page, field, value)` — waits for React to hydrate the field before filling, so the value lands in state |
-| A **pure client** toggle / value settles in place / a toast appears                                                  | a plain auto-retrying `expect(...)` — Playwright's retry IS the wait; no helper                                      |
-| A genuinely non-atomic condition none of the above expresses                                                         | `toPass()` — LAST resort, and every use MUST carry a comment saying why a single `expect` can't express it           |
+| Situation                                                                                                            | Use                                                                                                                              |
+| -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Click fires a **Server Action** (form submit, dose confirm, create/delete) and you assert the result                 | `settledClick(page, locator)` — awaits the action's same-origin POST response before returning                                   |
+| Click is a **navigation** to another route (Next `<Link>` / tab `<a href>`) that flakes on the pre-hydration swallow | `followLink(page, locator, /destination/)` — retries the click until the router commits (and holds) the URL                      |
+| **Fill** a controlled input whose Save reads component STATE (Settings' save-from-state cards, autosave-on-blur)     | `settledFill(page, field, value)` — waits for React to hydrate the field before filling, so the value lands in state             |
+| **Toggle** a controlled checkbox (`.check()`/`.uncheck()`) whose state feeds a save or a later assertion             | `settledCheck(page, box, checked)` — waits for hydration before toggling; idempotent, so it also replaces an `isChecked()` guard |
+| A **pure client** toggle / value settles in place / a toast appears                                                  | a plain auto-retrying `expect(...)` — Playwright's retry IS the wait; no helper                                                  |
+| A genuinely non-atomic condition none of the above expresses                                                         | `toPass()` — LAST resort, and every use MUST carry a comment saying why a single `expect` can't express it                       |
 
 Why not networkidle: it waits for network SILENCE, not "my interaction landed" —
 it settles falsely on a page with a long-poll/SSE/streaming request and adds
@@ -185,6 +186,15 @@ component state — Settings save-from-state cards and autosave-on-blur fields a
 canonical victims. `settledFill` guarantees the value reached state, NOT that a
 later save kept it; when the save's success is silent (empty is valid), also
 reload-and-assert the persisted effect (the email-auth precedent).
+
+The **checkbox** analog is `settledCheck(page, box, checked)`. A
+`.check()`/`.uncheck()` before hydration clicks a controlled checkbox
+(`checked={…} onChange={…}`) but no `onChange` is wired, so state never flips and
+hydration reverts the box — Playwright then reports `check: Clicking the checkbox
+did not change its state` (the `food-telegram` line-26 flake). `settledCheck` waits
+for the same hydration markers, then `setChecked(checked)` (idempotent — a no-op
+when already in the target state, so it subsumes a `if (!await box.isChecked())`
+guard) and confirms it holds. Its text-input sibling stays `settledFill`.
 
 ## Fix (c) — the changed-spec CI lane at retries=0
 

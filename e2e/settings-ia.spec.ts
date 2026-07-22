@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { loginAs, followLink } from "./nav";
-import { settledClick } from "./helpers";
+import { settledClick, settledCheck, settledFill } from "./helpers";
 import { E2E_LOGIN_NOTIF, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // Settings IA overhaul (#928): the new tab strip, the anchor-nav Profile tab, the
@@ -204,10 +204,14 @@ test.describe("Settings IA (#928) — member + matrix", () => {
       // row warns (warn, never block).
       const ha = member.getByTestId("ha-settings");
       const haEnable = member.getByTestId("ha-enable");
-      if (!(await haEnable.isChecked())) await haEnable.check();
-      await member
-        .getByTestId("ha-webhook-url")
-        .fill("http://homeassistant.local:8123/api/webhook/allos-notif");
+      // settledCheck waits for hydration (a pre-hydration toggle reverts — #1188) and
+      // is idempotent, so it subsumes the isChecked() guard.
+      await settledCheck(member, haEnable, true);
+      await settledFill(
+        member,
+        member.getByTestId("ha-webhook-url"),
+        "http://homeassistant.local:8123/api/webhook/allos-notif"
+      );
       // Saving the HA card resets its per-kind grid to all-on, so dose starts ON.
       await settledClick(member, member.getByTestId("ha-save"));
       await member.reload();
