@@ -8,7 +8,10 @@ import {
   usesSeniorBattery,
   VO2_METHODS,
 } from "@/lib/fitness-battery";
-import { getFitnessAssessments } from "@/lib/fitness-assessment";
+import {
+  getFitnessAssessments,
+  getAmbientFitnessReadings,
+} from "@/lib/fitness-assessment";
 import { getFitnessRetestCadenceDays } from "@/lib/settings";
 import { buildFitnessCheckModel } from "@/lib/fitness-check-model";
 import FitnessCheckView from "./FitnessCheckView";
@@ -30,17 +33,18 @@ export default async function FitnessCheckSection() {
   const battery = batteryForAge(age);
   const senior = usesSeniorBattery(age);
   const sessions = getFitnessAssessments(profile.id, 12);
-  const latest = sessions[0] ?? null;
-  const prior = sessions[1] ?? null;
+  const ambient = getAmbientFitnessReadings(profile.id, battery);
+  const cadenceDays = getFitnessRetestCadenceDays(profile.id);
   const model = buildFitnessCheckModel(
     battery,
-    latest,
-    prior,
+    sessions,
+    ambient,
     sex,
     age,
-    bodyweightKg
+    bodyweightKg,
+    dateISO,
+    cadenceDays
   );
-  const cadenceDays = getFitnessRetestCadenceDays(profile.id);
   const equipmentNames = getEquipment(profile.id).map((e) =>
     e.name.toLowerCase()
   );

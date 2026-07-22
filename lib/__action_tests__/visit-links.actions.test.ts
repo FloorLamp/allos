@@ -14,9 +14,15 @@ import {
   unlinkRecordVisitAction,
   linkEpisodeVisitAction,
   declineEpisodeVisitAction,
+  unlinkEpisodeVisitAction,
 } from "@/app/(app)/visit-links/actions";
+import { encountersForEpisode } from "@/lib/queries";
 import { deleteEncounter } from "@/app/(app)/encounters/actions";
 import { seedActor, fd } from "./harness";
+
+function episodeVisitIds(profileId: number, episodeId: number): number[] {
+  return encountersForEpisode(profileId, episodeId).map((e) => e.id);
+}
 
 const revalidate = vi.mocked(revalidatePath);
 beforeEach(() => revalidate.mockClear());
@@ -109,20 +115,15 @@ describe("record ↔ visit actions", () => {
     const episodeId = Number(
       db
         .prepare(
-          `INSERT INTO illness_episodes (profile_id, situation, started_at, encounter_id)
-           VALUES (?, 'cold', '2026-03-01', ?)`
+          `INSERT INTO illness_episodes (profile_id, situation, started_at)
+           VALUES (?, 'cold', '2026-03-01')`
         )
-        .run(profile.id, enc).lastInsertRowid
+        .run(profile.id).lastInsertRowid
     );
+    await linkEpisodeVisitAction(fd({ episodeId, encounterId: enc }));
     await deleteEncounter(fd({ id: enc }));
     expect(medEncounterId(med)).toBeNull();
-    expect(
-      (
-        db
-          .prepare(`SELECT encounter_id FROM illness_episodes WHERE id = ?`)
-          .get(episodeId) as { encounter_id: number | null }
-      ).encounter_id
-    ).toBeNull();
+    expect(episodeVisitIds(profile.id, episodeId)).toEqual([]);
   });
 });
 
@@ -139,13 +140,7 @@ describe("episode ↔ visit actions", () => {
         .run(profile.id).lastInsertRowid
     );
     await linkEpisodeVisitAction(fd({ episodeId, encounterId: enc }));
-    expect(
-      (
-        db
-          .prepare(`SELECT encounter_id FROM illness_episodes WHERE id = ?`)
-          .get(episodeId) as { encounter_id: number | null }
-      ).encounter_id
-    ).toBe(enc);
+    expect(episodeVisitIds(profile.id, episodeId)).toEqual([enc]);
 
     const enc2 = newEncounter(profile.id, "2026-03-05");
     await declineEpisodeVisitAction(fd({ episodeId, encounterId: enc2 }));
@@ -156,5 +151,49 @@ describe("episode ↔ visit actions", () => {
       )
       .get(profile.id) as { n: number };
     expect(declined.n).toBe(1);
+  });
+
+  it("linkEpisodeVisitAction twice ADDS (never overwrites); per-visit unlink clears only that link + its decision (#1198)", async () => {
+    const { profile } = seedActor();
+    const a = newEncounter(profile.id, "2026-03-04");
+    const b = newEncounter(profile.id, "2026-03-06");
+    const episodeId = Number(
+      db
+        .prepare(
+          `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+           VALUES (?, 'flu', '2026-03-01', '2026-03-10')`
+        )
+        .run(profile.id).lastInsertRowid
+    );
+    await linkEpisodeVisitAction(fd({ episodeId, encounterId: a }));
+    await linkEpisodeVisitAction(fd({ episodeId, encounterId: b }));
+    // Both linked — the second did NOT overwrite the first (the old 1:1 bug).
+    expect(episodeVisitIds(profile.id, episodeId).sort()).toEqual(
+      [a, b].sort()
+    );
+    // Two 'linked' decisions, one per encounter.
+    expect(
+      (
+        db
+          .prepare(
+            `SELECT COUNT(*) AS n FROM visit_link_decisions
+              WHERE profile_id = ? AND domain = 'episode' AND decision = 'linked'`
+          )
+          .get(profile.id) as { n: number }
+      ).n
+    ).toBe(2);
+    // Unlink one → the other survives, and only its decision is cleared.
+    await unlinkEpisodeVisitAction(fd({ episodeId, encounterId: a }));
+    expect(episodeVisitIds(profile.id, episodeId)).toEqual([b]);
+    expect(
+      (
+        db
+          .prepare(
+            `SELECT COUNT(*) AS n FROM visit_link_decisions
+              WHERE profile_id = ? AND domain = 'episode' AND decision = 'linked'`
+          )
+          .get(profile.id) as { n: number }
+      ).n
+    ).toBe(1);
   });
 });

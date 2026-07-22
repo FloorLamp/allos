@@ -1,13 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { IconMoodCheck, IconRestore } from "@tabler/icons-react";
-import { useConfirm } from "@/components/ConfirmDialog";
+import { IconMoodCheck } from "@tabler/icons-react";
 import EndEpisodeReconcile from "@/components/illness/EndEpisodeReconcile";
-import { useToast } from "@/components/Toast";
+import ReopenEpisodeReconcile, {
+  type ReopenRestoreMed,
+} from "@/components/illness/ReopenEpisodeReconcile";
 import type { EpisodeMedSuggestion } from "@/lib/episode-med-reconcile";
-import { reopenEpisodeAction } from "@/app/(app)/medical/episodes/actions";
 
 // The episode's lifecycle transition closes the timeline card after logging, History,
 // and progress photos. It is deliberately separate from the timeline header's
@@ -18,44 +16,18 @@ export default function EpisodeLifecycleControl({
   canReopen,
   profileId,
   medReconciliation,
+  reopenRestoreMeds = [],
 }: {
   episodeId: number;
   ongoing: boolean;
   canReopen: boolean;
   profileId?: number;
   medReconciliation: EpisodeMedSuggestion[];
+  // The meds this episode's end stopped that are still restart-eligible (#1140 Part B) —
+  // the reopen checklist's suggest-only set. Empty ⇒ reopen uses the plain confirm.
+  reopenRestoreMeds?: ReopenRestoreMed[];
 }) {
-  const [reopening, setReopening] = useState(false);
-  const confirm = useConfirm();
-  const router = useRouter();
-  const toast = useToast();
-
   if (!ongoing && !canReopen) return null;
-
-  function stateFormData() {
-    const fd = new FormData();
-    fd.set("episodeId", String(episodeId));
-    if (profileId != null) fd.set("profileId", String(profileId));
-    return fd;
-  }
-
-  async function onReopen() {
-    const ok = await confirm({
-      title: "Reopen this episode?",
-      message:
-        "The illness will be active again, and new symptoms, temperatures, and doses will stay on this timeline.",
-      confirmLabel: "Reopen episode",
-    });
-    if (!ok) return;
-    setReopening(true);
-    try {
-      const result = await reopenEpisodeAction(stateFormData());
-      if (!result.ok) toast(result.error);
-      else router.refresh();
-    } finally {
-      setReopening(false);
-    }
-  }
 
   return (
     <div
@@ -84,16 +56,11 @@ export default function EpisodeLifecycleControl({
           icon={<IconMoodCheck className="h-4 w-4" stroke={1.75} />}
         />
       ) : (
-        <button
-          type="button"
-          className="btn-ghost"
-          data-testid="episode-reopen-action"
-          onClick={() => void onReopen()}
-          disabled={reopening}
-        >
-          <IconRestore className="h-4 w-4" stroke={1.75} />
-          {reopening ? "Reopening…" : "Reopen episode"}
-        </button>
+        <ReopenEpisodeReconcile
+          episodeId={episodeId}
+          profileId={profileId}
+          meds={reopenRestoreMeds}
+        />
       )}
     </div>
   );

@@ -116,6 +116,15 @@ export function captureDelete(
         `UPDATE protocols SET intake_item_id = NULL
           WHERE intake_item_id = ? AND profile_id = ?`
       ).run(rootId, profileId);
+      // An episode's stopped-med reversal record (#1140 Part B) may reference THIS med
+      // (item_id) and its just-closed course (course_id) — both REFERENCES FKs with no
+      // ON DELETE (migration 095). Delete those link rows first (id-keyed, #203) so the
+      // intake_items DELETE below can't trip the FK; not restored on undo (like the
+      // protocol/supply side effects) — the reopen-restore link is honestly gone.
+      db.prepare(
+        `DELETE FROM episode_stopped_meds
+          WHERE item_id = ? AND profile_id = ?`
+      ).run(rootId, profileId);
     }
 
     // A flagged-lab follow-up (#700) may link this reading as its SOURCE finding, or a

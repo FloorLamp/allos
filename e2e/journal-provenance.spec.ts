@@ -50,7 +50,7 @@ test("journal cards show a source provenance chip and 'added' timestamp (#11)", 
   // A hand-logged session reads "Manual" — provenance distinguishes the two.
   const manualCard = page
     .locator(".card", { hasText: "Basketball pickup" })
-    .first();
+    .first(); // first-ok: the manual "Basketball pickup" activity THIS spec created (unique name)
   await expect(manualCard).toBeVisible();
   await expect(manualCard.getByTestId("activity-provenance-source")).toHaveText(
     "Manual"
@@ -133,7 +133,7 @@ test("an imported ride with a route shows a tile-free SVG route thumbnail (#569)
   // A hand-logged session has no route → no thumbnail.
   const manualCard = page
     .locator(".card", { hasText: "Basketball pickup" })
-    .first();
+    .first(); // first-ok: the manual "Basketball pickup" activity THIS spec created (unique name)
   await expect(manualCard).toBeVisible();
   await expect(manualCard.getByTestId("route-map")).toHaveCount(0);
 });
@@ -167,7 +167,7 @@ test("journal cards prioritize a summary and progressively disclose details", as
   const hardActivity = page
     .locator('[id^="activity-"]')
     .filter({ hasText: "Intervals" })
-    .first();
+    .first(); // first-ok: the "Intervals" activity THIS spec created (filtered by its name)
   const intensity = hardActivity.getByTestId("activity-intensity");
   await expect(intensity).toContainText("Hard");
   await expect(intensity.getByTestId("activity-intensity-dot")).toHaveClass(
@@ -283,7 +283,7 @@ test("strength target status is named and muscle filters are quiet text", async 
 }) => {
   await page.goto("/training");
 
-  const push = page.locator(".card", { hasText: "Push day" }).first();
+  const push = page.locator(".card", { hasText: "Push day" }).first(); // first-ok: the seeded Push day routine card — order-agnostic
   await expect(push).toBeVisible();
   await expect(push.getByTestId("activity-summary")).toContainText("kcal");
   await expect(push.getByTestId("activity-metrics")).toHaveCount(0);
@@ -298,7 +298,7 @@ test("strength target status is named and muscle filters are quiet text", async 
 
   const muscleFilter = push
     .getByRole("button", { name: "Chest", exact: true })
-    .first();
+    .first(); // first-ok: the Chest muscle filter within the scoped Push day card
   await expect(muscleFilter).toBeVisible();
   await expect(muscleFilter).not.toHaveClass(/badge/);
 
@@ -307,7 +307,7 @@ test("strength target status is named and muscle filters are quiet text", async 
   const benchRow = push
     .getByTestId("journal-strength-row")
     .filter({ hasText: "Barbell Bench Press" })
-    .first();
+    .first(); // first-ok: filtered to the Barbell Bench Press strength row — one match
   const exerciseName = benchRow.getByRole("button", {
     name: "Barbell Bench Press",
     exact: true,
@@ -456,7 +456,7 @@ test("the Log feed pages older days in via 'Load more' (#451)", async ({
   await page.goto("/training");
 
   const days = page.locator('section[id^="day-"]');
-  await expect(days.first()).toBeVisible();
+  await expect(days.first()).toBeVisible(); // first-ok: asserts a day section renders — order-agnostic presence
   const before = await days.count();
 
   const loadMore = page.getByTestId("journal-load-more");

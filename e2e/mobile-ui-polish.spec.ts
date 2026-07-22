@@ -51,7 +51,7 @@ test.describe("family login-row actions stay in the viewport (#641)", () => {
     const row = page
       .getByTestId("login-row")
       .filter({ hasText: "e2e_child" })
-      .first();
+      .first(); // first-ok: filtered to the e2e_child login row (this spec's fixture) — one match
     await expect(row).toBeVisible();
 
     const del = row.getByRole("button", { name: "Delete" });
@@ -77,7 +77,7 @@ test.describe("touch targets clear the 40px minimum (#644)", () => {
 
     // The overflow kebab is the sole per-row action affordance; every supplement
     // row renders one.
-    const kebab = page.getByTestId("overflow-menu-trigger").first();
+    const kebab = page.getByTestId("overflow-menu-trigger").first(); // first-ok: every supplement row renders one kebab (see comment) — order-agnostic
     await expect(kebab).toBeVisible();
     const kBox = await kebab.boundingBox();
     expect(kBox).not.toBeNull();
@@ -87,14 +87,14 @@ test.describe("touch targets clear the 40px minimum (#644)", () => {
     // Dose take/skip circles render on any due, active dose. When present, both
     // clear 40px and don't overlap (a mis-tap between taken and skipped on a
     // medication is a real correctness cost). Scope BOTH circles to the SAME
-    // dose-status control — page-wide .first() on each testid can pair circles
+    // dose-status control — a page-wide first-match on each testid can pair circles
     // from two different rows, whose boxes bear no spatial relation (the CI
     // failure mode this replaces).
     // The 40px sizing applies to the CIRCLE variant; the pill variant (compact
     // by design) also renders on this page, so target circles explicitly.
     const control = page
       .locator('[data-testid="dose-status"][data-variant="circle"]')
-      .first();
+      .first(); // first-ok: one dose-status control; BOTH its circles are read from this SAME control (see comment) — order-agnostic
     if ((await control.count()) > 0) {
       const tBox = await control.getByTestId("dose-take").boundingBox();
       const sBox = await control.getByTestId("dose-skip").boundingBox();
@@ -129,7 +129,7 @@ test.describe("nutrition food-log controls stay in the viewport on mobile", () =
 
     // The first row's add (+) button is the affordance that was clipped off-screen;
     // its right edge must stay within the viewport.
-    const addBtn = page.locator('[data-testid^="log-"]').first();
+    const addBtn = page.locator('[data-testid^="log-"]').first(); // first-ok: the first log row's add button — the clip test is layout-general (see comment), order-agnostic
     await expect(addBtn).toBeVisible();
     const box = await addBtn.boundingBox();
     expect(box).not.toBeNull();
@@ -161,14 +161,14 @@ test.describe("long unbreakable names wrap instead of clipping (#646)", () => {
       .locator("div.card")
       .filter({ hasText: "Add supplement" });
     await addCard.getByLabel("Name").fill(NAME);
-    await addCard.getByLabel("Amount").first().fill("1 tab");
-    await addCard.getByLabel("Time of day").first().selectOption("Morning");
+    await addCard.getByLabel("Amount").first().fill("1 tab"); // first-ok: the first dose's Amount field in the add form this spec fills
+    await addCard.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the first dose's Time-of-day field in the add form this spec fills
     await addCard.getByRole("button", { name: "Add", exact: true }).click();
 
     const name = page
       .getByTestId("medicine-name")
       .filter({ hasText: "Hydrochlorothiazide" })
-      .first();
+      .first(); // first-ok: filtered to the Hydrochlorothiazide med this spec added — one match
     await expect(name).toBeVisible();
 
     // The name box right edge stays within the viewport — it wraps (break-words)

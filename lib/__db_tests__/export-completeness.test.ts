@@ -92,6 +92,14 @@ const EXPORT_ALLOWLIST: { table: string; why: string }[] = [
     why: "med↔prescriber / med↔indication accept-decline bookkeeping (#1051/#1052); provenance/navigation decisions keyed on stable tokens, not health data — the resulting provider_id / indication_condition_id live on the exported intake_items rows",
   },
   {
+    table: "episode_encounters",
+    why: "episode↔visit link rows (#1198); navigation join between an exported illness_episodes row and its exported encounters rows — no independent clinical payload, exactly like visit_link_decisions whose 'linked' rows it mirrors as the canonical set",
+  },
+  {
+    table: "episode_stopped_meds",
+    why: "reopen-restore reversal records (#1140 Part B); operational bookkeeping of which med courses an episode's end closed so a reopen can restart them — the med/course state itself round-trips through intake_items/medication_courses, this holds only the transient episode→course link consumed on reopen",
+  },
+  {
     table: "import_tombstones",
     why: "re-import suppression bookkeeping (merged/deleted source-owned natural keys); operational dedup state, not health data",
   },

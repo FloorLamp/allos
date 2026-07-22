@@ -277,8 +277,9 @@ export async function unlinkEpisodeVisitAction(
     profileId = (await requireWriteAccess()).profile.id;
   }
   const episodeId = Number(formData.get("episodeId"));
-  if (episodeId) {
-    unlinkEpisodeFromEncounter(profileId, episodeId);
+  const encounterId = Number(formData.get("encounterId"));
+  if (episodeId && encounterId) {
+    unlinkEpisodeFromEncounter(profileId, episodeId, encounterId);
     revalidateVisitLinks();
   }
 }

@@ -35,6 +35,10 @@ import {
 } from "./drug-interactions";
 import { fitnessNormsDataset, fitnessNormNameStrategy } from "./fitness-norms";
 import {
+  fitnessHoldNormsDataset,
+  fitnessHoldNormNameStrategy,
+} from "./fitness-hold-norms";
+import {
   foodDrugInteractionsDataset,
   foodDrugKeyStrategy,
 } from "./food-drug-interactions";
@@ -165,6 +169,13 @@ export const DATASETS: RegisteredDataset[] = [
       unknown
     >,
     strategy: fitnessNormNameStrategy,
+  },
+  {
+    dataset: fitnessHoldNormsDataset as unknown as LoadedDataset<
+      Record<string, unknown>,
+      unknown
+    >,
+    strategy: fitnessHoldNormNameStrategy,
   },
   {
     dataset: foodDrugInteractionsDataset as unknown as LoadedDataset<

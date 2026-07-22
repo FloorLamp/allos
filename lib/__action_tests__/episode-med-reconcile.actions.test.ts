@@ -9,7 +9,11 @@
 
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
-import { endEpisodeWithMedsAction } from "@/app/(app)/medical/episodes/actions";
+import {
+  endEpisodeWithMedsAction,
+  reopenEpisodeAction,
+} from "@/app/(app)/medical/episodes/actions";
+import { restartMedication } from "@/app/(app)/medications/actions";
 import {
   dismissDormantPrn,
   restoreDormantPrn,
@@ -159,6 +163,96 @@ describe("endEpisodeWithMedsAction — confirm closes selected courses (#880)", 
     );
     expect(res.ok).toBe(true);
     expect(medState(amox).stop_reason).toBe("illness_resolved");
+  });
+});
+
+// #1140 Part B — reopen restores the meds the episode's end stopped (the symmetric
+// inverse of end-with-meds). The end persists the stopped set; reopen restarts the
+// selected, still-eligible ones (suggest-only), guarded against an intervening manual
+// decision, and consumes the link.
+describe("reopenEpisodeAction restarts the meds the end stopped (#1140 Part B)", () => {
+  function stoppedMedRows(profileId: number, episodeId: number): number {
+    return (
+      db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM episode_stopped_meds WHERE profile_id = ? AND episode_id = ?"
+        )
+        .get(profileId, episodeId) as { n: number }
+    ).n;
+  }
+
+  it("end-with-meds persists the stopped set; reopen restarts the selected one and consumes the link", async () => {
+    const { profile } = seedActor();
+    const episodeId = makeSick(profile.id);
+    const ibuprofen = seedOtcPrnMed(profile.id, "Ibuprofen");
+
+    await endEpisodeWithMedsAction(
+      fd({ episodeId, medItemIds: String(ibuprofen) })
+    );
+    expect(medState(ibuprofen).active).toBe(0);
+    expect(stoppedMedRows(profile.id, episodeId)).toBe(1);
+
+    const res = await reopenEpisodeAction(
+      fd({ episodeId, medItemIds: String(ibuprofen) })
+    );
+    expect(res.ok).toBe(true);
+    // The med is active again with a fresh open course…
+    const s = medState(ibuprofen);
+    expect(s.active).toBe(1);
+    expect(s.stopped_on).toBeNull();
+    // …and the reversal record was consumed.
+    expect(stoppedMedRows(profile.id, episodeId)).toBe(0);
+  });
+
+  it("suggest-only: an empty selection reopens the illness and restarts nothing", async () => {
+    const { profile } = seedActor();
+    const episodeId = makeSick(profile.id);
+    const ibuprofen = seedOtcPrnMed(profile.id, "Ibuprofen");
+    await endEpisodeWithMedsAction(
+      fd({ episodeId, medItemIds: String(ibuprofen) })
+    );
+
+    const res = await reopenEpisodeAction(fd({ episodeId })); // no medItemIds
+    expect(res.ok).toBe(true);
+    expect(getOpenEpisodeRow(profile.id, "Illness")).not.toBeNull(); // reopened
+    expect(medState(ibuprofen).active).toBe(0); // still Past — nothing restarted
+    // The link survives for a later decision.
+    expect(stoppedMedRows(profile.id, episodeId)).toBe(1);
+  });
+
+  it("skips a med the user manually restarted between end and reopen (#202 guard)", async () => {
+    const { profile } = seedActor();
+    const episodeId = makeSick(profile.id);
+    const ibuprofen = seedOtcPrnMed(profile.id, "Ibuprofen");
+    await endEpisodeWithMedsAction(
+      fd({ episodeId, medItemIds: String(ibuprofen) })
+    );
+    // The user manually restarts it — its latest course is no longer the illness_resolved
+    // close, so a reopen auto-restart must skip it and not double-open a course.
+    await restartMedication(fd({ id: ibuprofen }));
+    const coursesBefore = (
+      db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM medication_courses WHERE item_id = ?"
+        )
+        .get(ibuprofen) as { n: number }
+    ).n;
+
+    const res = await reopenEpisodeAction(
+      fd({ episodeId, medItemIds: String(ibuprofen) })
+    );
+    expect(res.ok).toBe(true);
+    // No extra course minted; the med stays as the manual restart left it (active).
+    expect(
+      (
+        db
+          .prepare(
+            "SELECT COUNT(*) AS n FROM medication_courses WHERE item_id = ?"
+          )
+          .get(ibuprofen) as { n: number }
+      ).n
+    ).toBe(coursesBefore);
+    expect(medState(ibuprofen).active).toBe(1);
   });
 });
 

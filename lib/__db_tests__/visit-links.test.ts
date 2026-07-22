@@ -16,7 +16,9 @@ import {
   linkedRowsForEncounter,
   suggestionForEpisode,
   linkEpisodeToEncounter,
-  encounterForEpisode,
+  unlinkEpisodeFromEncounter,
+  encountersForEpisode,
+  episodeForLinkedEncounter,
   reapplyVisitLinkDecisions,
   nullEncounterLinks,
 } from "@/lib/queries";
@@ -359,18 +361,19 @@ describe("encounter delete NULLs the links (row-ops)", () => {
       )
       .get(profileId) as { id: number };
 
-    // A linked episode too.
+    // A linked episode too (many-model link table, #1198).
     const episodeId = Number(
       db
         .prepare(
-          `INSERT INTO illness_episodes (profile_id, situation, started_at, encounter_id)
-           VALUES (?, 'cold', ?, ?)`
+          `INSERT INTO illness_episodes (profile_id, situation, started_at)
+           VALUES (?, 'cold', ?)`
         )
-        .run(profileId, DATE, eid).lastInsertRowid
+        .run(profileId, DATE).lastInsertRowid
     );
+    expect(linkEpisodeToEncounter(profileId, episodeId, eid)).toBe(true);
 
     // The unlink core, then the delete (mirrors deleteEncounter's order); with the
-    // links NULLed first the FK no longer blocks the delete.
+    // links removed first the FK no longer blocks the delete.
     nullEncounterLinks(profileId, eid);
     db.prepare(`DELETE FROM encounters WHERE id = ? AND profile_id = ?`).run(
       eid,
@@ -387,13 +390,95 @@ describe("encounter delete NULLs the links (row-ops)", () => {
           .get(medRow.id) as { encounter_id: number | null }
       ).encounter_id
     ).toBeNull();
+    // The episode's link row for that encounter is gone, and its 'linked' decision
+    // was swept (the #203 side-state fix).
+    expect(encountersForEpisode(profileId, episodeId)).toHaveLength(0);
     expect(
-      (
-        db
-          .prepare(`SELECT encounter_id FROM illness_episodes WHERE id = ?`)
-          .get(episodeId) as { encounter_id: number | null }
-      ).encounter_id
-    ).toBeNull();
+      db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM visit_link_decisions
+            WHERE profile_id = ? AND domain = 'episode' AND decision = 'linked'`
+        )
+        .get(profileId)
+    ).toEqual({ n: 0 });
+  });
+});
+
+describe("episode ↔ visit MANY model (#1198)", () => {
+  function episode(situation: string): number {
+    return Number(
+      db
+        .prepare(
+          `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+           VALUES (?, ?, '2026-03-01', '2026-03-15')`
+        )
+        .run(profileId, situation).lastInsertRowid
+    );
+  }
+  function encounter(date: string, extId: string): number {
+    return Number(
+      db
+        .prepare(
+          `INSERT INTO encounters (profile_id, date, type, external_id)
+           VALUES (?, ?, 'Office Visit', ?)`
+        )
+        .run(profileId, date, extId).lastInsertRowid
+    );
+  }
+
+  it("links two visits, lists them date-ordered, and unlink removes just one", () => {
+    const epId = episode("flu");
+    const a = encounter("2026-03-10", "enc:a");
+    const b = encounter("2026-03-04", "enc:b");
+    expect(linkEpisodeToEncounter(profileId, epId, a)).toBe(true);
+    expect(linkEpisodeToEncounter(profileId, epId, b)).toBe(true);
+    // Both present, ordered by date ascending (the care trail).
+    expect(encountersForEpisode(profileId, epId).map((e) => e.id)).toEqual([
+      b,
+      a,
+    ]);
+    // Idempotent: re-linking the same visit adds no duplicate.
+    linkEpisodeToEncounter(profileId, epId, a);
+    expect(encountersForEpisode(profileId, epId)).toHaveLength(2);
+    // Unlink one → the other remains, and only its 'linked' decision is cleared.
+    expect(unlinkEpisodeFromEncounter(profileId, epId, a)).toBe(true);
+    expect(encountersForEpisode(profileId, epId).map((e) => e.id)).toEqual([b]);
+    expect(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM visit_link_decisions
+            WHERE profile_id = ? AND domain = 'episode' AND decision = 'linked'`
+        )
+        .get(profileId)
+    ).toEqual({ n: 1 });
+  });
+
+  it("the reverse back-link lists an episode an encounter is linked to", () => {
+    const epId = episode("cold");
+    const e = encounter("2026-03-06", "enc:back");
+    linkEpisodeToEncounter(profileId, epId, e);
+    expect(episodeForLinkedEncounter(profileId, e)?.id).toBe(epId);
+  });
+
+  it("a relink never leaves the previous encounter's 'linked' decision (the #203 leak)", () => {
+    const epId = episode("sinus");
+    const first = encounter("2026-03-05", "enc:first");
+    const second = encounter("2026-03-09", "enc:second");
+    linkEpisodeToEncounter(profileId, epId, first);
+    unlinkEpisodeFromEncounter(profileId, epId, first);
+    linkEpisodeToEncounter(profileId, epId, second);
+    // Exactly one 'linked' decision (the second) — the first's was cleared on unlink,
+    // so the link table and the decisions ledger agree.
+    const linked = db
+      .prepare(
+        `SELECT encounter_key FROM visit_link_decisions
+          WHERE profile_id = ? AND domain = 'episode' AND decision = 'linked'`
+      )
+      .all(profileId) as { encounter_key: string }[];
+    expect(linked).toHaveLength(1);
+    expect(encountersForEpisode(profileId, epId).map((e) => e.id)).toEqual([
+      second,
+    ]);
   });
 });
 
@@ -450,6 +535,17 @@ describe("episode ↔ visit late-import (#1053)", () => {
 
     // Accept it → the cockpit Care line resolves.
     expect(linkEpisodeToEncounter(profileId, episodeId, eid)).toBe(true);
-    expect(encounterForEpisode(profileId, episodeId)?.id).toBe(eid);
+    expect(encountersForEpisode(profileId, episodeId).map((e) => e.id)).toEqual(
+      [eid]
+    );
+    // With the many-model the in-range suggestion goes silent only because the sole
+    // in-range visit is now linked (it's excluded), not because "any link exists".
+    expect(
+      suggestionForEpisode(profileId, {
+        id: episodeId,
+        start: "2026-03-01",
+        lastActiveDay: "2026-03-07",
+      })
+    ).toBeNull();
   });
 });

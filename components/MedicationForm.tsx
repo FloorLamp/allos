@@ -164,6 +164,10 @@ export default function MedicationForm({
     course?.started_on ?? (s?.as_needed === 1 ? "" : (todayStr ?? ""))
   );
   const [startedOnTouched, setStartedOnTouched] = useState(false);
+  // End date (#1140 Part D): the current course's stopped_on. Editing an existing med only
+  // — a date ends the med as of that day; clearing it reactivates. Routed server-side
+  // through the shared stop/restart cores (never a raw stopped_on write).
+  const [endDate, setEndDate] = useState(course?.stopped_on ?? "");
   const [minIntervalHours, setMinIntervalHours] = useState(
     s?.min_interval_hours != null ? String(s.min_interval_hours) : ""
   );
@@ -567,6 +571,30 @@ export default function MedicationForm({
               <input type="hidden" name="course_id" value={course.id} />
             )}
           </div>
+
+          {s && (
+            <div>
+              <label className="label" htmlFor={`med-ended-on-${fid}`}>
+                End date
+                <span className="ml-1 font-normal text-slate-500 dark:text-slate-400">
+                  (optional)
+                </span>
+              </label>
+              <DateField
+                id={`med-ended-on-${fid}`}
+                name="end_date"
+                value={endDate}
+                onChange={setEndDate}
+                min={startedOn || undefined}
+                max={todayStr}
+                data-testid="med-end-date"
+              />
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Set the day you stopped taking it to move it to Past. Clear it
+                to mark the medication active again.
+              </p>
+            </div>
+          )}
 
           {condition === "situational" && (
             <div>
