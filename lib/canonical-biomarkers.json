@@ -3676,6 +3676,79 @@
       "optimal_high": null,
       "direction": "lower_better",
       "note": "Drug Abuse Screening Test (DAST-10) total score (0–10) for non-alcohol drug use in the past 12 months. Bands (Skinner): 0 none reported, 1–2 low, 3–5 moderate, 6–8 substantial, 9–10 severe. Screening only, NOT a diagnosis. Recorded as an outside-administered total (item text not reproduced in-app; © H. A. Skinner / CAMH)."
+    },
+    {
+      "name": "Vitamin D2, 25-Hydroxy",
+      "category": "lab",
+      "unit": "ng/mL",
+      "ref_low": null,
+      "ref_high": null,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "conversions": {
+        "nmol/L": 0.4006
+      },
+      "note": "25-hydroxyvitamin D2 (ergocalciferol) fraction — its OWN trendable series, distinct from the total. No sufficiency band: a low D2 is normal for anyone not taking ergocalciferol, so vitamin-D status is assessed on the TOTAL 25-OH, never this fraction alone.",
+      "retest_days": 180
+    },
+    {
+      "name": "Vitamin D3, 25-Hydroxy",
+      "category": "lab",
+      "unit": "ng/mL",
+      "ref_low": null,
+      "ref_high": null,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "conversions": {
+        "nmol/L": 0.4006
+      },
+      "note": "25-hydroxyvitamin D3 (cholecalciferol) fraction — its OWN trendable series, distinct from the total. No sufficiency band: vitamin-D status is assessed on the TOTAL 25-OH, never this fraction alone.",
+      "retest_days": 180
+    },
+    {
+      "name": "Vitamin D, 1,25-Dihydroxy",
+      "category": "lab",
+      "unit": "pg/mL",
+      "ref_low": 18,
+      "ref_high": 72,
+      "optimal_low": null,
+      "optimal_high": null,
+      "direction": "in_range",
+      "conversions": {
+        "pmol/L": 0.417
+      },
+      "note": "1,25-dihydroxyvitamin D (calcitriol) — the ACTIVE hormone, distinct from the 25-OH storage form. Adult ~18–72 pg/mL. Used in hypercalcemia / sarcoidosis / CKD workups, NOT for routine vitamin-D status (which is the 25-OH total)."
+    },
+    {
+      "name": "C-Reactive Protein",
+      "category": "lab",
+      "unit": "mg/L",
+      "ref_low": null,
+      "ref_high": 10,
+      "optimal_low": null,
+      "optimal_high": 3,
+      "direction": "lower_better",
+      "conversions": {
+        "mg/dL": 10
+      },
+      "note": "Standard-sensitivity CRP (acute inflammation/infection), mg/L — a DIFFERENT assay than hs-CRP (the CV-risk high-sensitivity test). ~<3 low, >10 suggests acute inflammation."
+    },
+    {
+      "name": "Glucose, Fasting",
+      "category": "lab",
+      "unit": "mg/dL",
+      "ref_low": 70,
+      "ref_high": 99,
+      "optimal_low": 70,
+      "optimal_high": 90,
+      "direction": "in_range",
+      "conversions": {
+        "mmol/L": 18.02
+      },
+      "note": "Fasting plasma glucose. ADA thresholds: 70–99 normal, 100–125 prediabetes, ≥126 diabetes (confirmed). Distinct from a random Glucose and from the A1c/eAG family.",
+      "retest_days": 180
     }
   ]
 }

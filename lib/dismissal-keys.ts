@@ -12,37 +12,42 @@
 // arithmetic lives here so it's unit-testable without a DB.
 
 import { expandToComponents } from "./immunization-catalog";
-import { biomarkerFamily } from "./canonical-name";
+import { biomarkerFamily, biomarkerRetestIdentity } from "./canonical-name";
 import { preventiveRuleByKey } from "./preventive-catalog";
 import { preventiveSignalKey } from "./preventive-upcoming";
 
-// The Upcoming retest nudge keys a biomarker on `biomarker:<family identity>`
-// (lib/queries/upcoming). The identity is the reading's #482 biomarker FAMILY
-// (biomarkerFamily over the canonical name, falling back to the raw name), so a
-// dismiss/snooze on ANY family member silences the whole family's retest nudge —
-// and the key is stable no matter which member happens to be the newest reading
-// (before #482 it keyed the bare representative name, which drifted as readings
-// were added). A non-family analyte's family key is just its own lowercased name,
-// so its dismissal key is unchanged. Centralized so the dismissal cleanup / re-key
-// derive the exact same key the nudge does.
+// The Upcoming retest nudge keys a biomarker on `biomarker:<retest identity>`
+// (lib/queries/upcoming). The identity is the reading's RETEST-clock grouping
+// (biomarkerRetestIdentity — the #482 biomarker FAMILY for every analyte, WIDENED
+// to the broad total+D2+D3 vitamin-D key for the 25-OH storage form, #1193), so a
+// dismiss/snooze on ANY family member silences the whole family's retest nudge — and
+// the key is stable no matter which member happens to be the newest reading (before
+// #482 it keyed the bare representative name, which drifted as readings were added).
+// The vitamin-D fractions share the total's retest clock (a fresh total supersedes an
+// old D2/D3 breakdown), so they MUST resolve to the same retest key even though they
+// now flag independently — that's why this uses the RETEST identity, not the (now
+// narrowed) plain biomarkerFamily. A non-family analyte's key is just its own
+// lowercased name, unchanged. Centralized so the dismissal cleanup / re-key derive
+// the exact same key the nudge does.
 export function biomarkerDismissalKey(name: string): string {
-  return `biomarker:${biomarkerFamily(name).toLowerCase()}`;
+  return `biomarker:${biomarkerRetestIdentity(name).toLowerCase()}`;
 }
 
 // The dashboard hero keys a newly-flagged biomarker on `biomarker-flag:<family>`,
-// on the SAME #482 biomarker FAMILY identity the retest key uses (biomarkerFamily
-// over the canonical/raw name) — so a flag dismiss follows the whole analyte family
-// (a dismiss on "Vitamin D3" covers "Vitamin D2 / Total 25-OH", the D2/D3/total the
-// way retest already does) and the key doesn't drift as which member is the newest
-// reading. This is ALSO the shared flag+trajectory acknowledgment key (#564): the
-// trajectory finding carries it as `supersedes` and `dismissTrajectory` writes it,
-// so dismissing EITHER the flag or the analyte's trajectory silences both ("dismiss
-// once, silence everywhere"). A non-family analyte's family key is just its own
-// lowercased name, so its flag key is byte-identical to the pre-#482/#564 form (no
-// stored dismissal breaks); only family members (vitamin D, A1c) re-key, following
-// the same resurface-then-re-key lifecycle #482 gave the retest key. The #203
-// cleanup/re-key seams (cleanupOrphanBiomarkerDismissals — now family-aware for this
-// key too) cover it (issue #283).
+// on the #482 biomarker FAMILY identity (biomarkerFamily over the canonical/raw
+// name) — so a flag dismiss follows the analyte's IDENTITY family and the key doesn't
+// drift as which member is the newest reading. This is the IDENTITY scope, NOT the
+// retest scope: the vitamin-D D2/D3 fractions now flag INDEPENDENTLY (#1193), each on
+// its OWN key, so dismissing a flagged D3 fraction does NOT silence a flagged total
+// (they are distinct measurements). The A1c ↔ eAG family and the vitamin-D TOTAL
+// spellings still share one flag key. This is ALSO the shared flag+trajectory
+// acknowledgment key (#564): the trajectory finding carries it as `supersedes` and
+// `dismissTrajectory` writes it, so dismissing EITHER the flag or the analyte's
+// trajectory silences both ("dismiss once, silence everywhere"). A non-family
+// analyte's family key is just its own lowercased name, so its flag key is
+// byte-identical to the pre-#482/#564 form (no stored dismissal breaks). The #203
+// cleanup/re-key seams (cleanupOrphanBiomarkerDismissals — family-aware for this key
+// too) cover it (issue #283).
 export function biomarkerFlagDismissalKey(name: string): string {
   return `biomarker-flag:${biomarkerFamily(name).toLowerCase()}`;
 }

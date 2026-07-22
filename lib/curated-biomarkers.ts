@@ -1830,6 +1830,107 @@ export const CURATED_LABS: Biomarker[] = [
     direction: "lower_better",
     note: "Drug Abuse Screening Test (DAST-10) total score (0–10) for non-alcohol drug use in the past 12 months. Bands (Skinner): 0 none reported, 1–2 low, 3–5 moderate, 6–8 substantial, 9–10 severe. Screening only, NOT a diagnosis. Recorded as an outside-administered total (item text not reproduced in-app; © H. A. Skinner / CAMH).",
   },
+  // ── Vitamin D fractions + active metabolite (issue #1193) ─────────────────
+  // The circulating 25-OH storage form is measured as two metabolites — D2
+  // (ergocalciferol, dietary/supplemental) and D3 (cholecalciferol, made in skin) —
+  // and a panel that breaks them out is reporting TWO distinct analytes on top of the
+  // total. Each fraction is its OWN trendable series (biomarkerFamily gives it its own
+  // identity, #1193) and must NOT inherit the total "Vitamin D, 25-Hydroxy" 30–100
+  // sufficiency band: a low D2 is NORMAL for anyone not taking ergocalciferol and must
+  // never flag "deficient". So the fractions carry NULL reference bands (informational
+  // only — sufficiency is judged on the TOTAL 25-OH), while sharing the total's redraw
+  // clock via biomarkerRetestIdentity. Same nmol/L conversion as the total.
+  // Sources: Endocrine Society & IOM vitamin-D guidance (sufficiency assessed on total
+  // 25-OH-D, not the individual fractions). INFORMATIONAL, NOT MEDICAL ADVICE.
+  {
+    name: "Vitamin D2, 25-Hydroxy",
+    category: "lab",
+    unit: "ng/mL",
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    conversions: {
+      "nmol/L": 0.4006,
+    },
+    note: "25-hydroxyvitamin D2 (ergocalciferol) fraction — its OWN trendable series, distinct from the total. No sufficiency band: a low D2 is normal for anyone not taking ergocalciferol, so vitamin-D status is assessed on the TOTAL 25-OH, never this fraction alone.",
+  },
+  {
+    name: "Vitamin D3, 25-Hydroxy",
+    category: "lab",
+    unit: "ng/mL",
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    conversions: {
+      "nmol/L": 0.4006,
+    },
+    note: "25-hydroxyvitamin D3 (cholecalciferol) fraction — its OWN trendable series, distinct from the total. No sufficiency band: vitamin-D status is assessed on the TOTAL 25-OH, never this fraction alone.",
+  },
+  {
+    // The ACTIVE hormone (calcitriol), a genuinely distinct analyte from the 25-OH
+    // storage form (different metabolite, different unit, different indication —
+    // hypercalcemia / sarcoidosis / CKD workups), so it keeps its OWN identity and is
+    // excluded from both 25-OH families (vitaminDRetestFamily's 1,25/dihydroxy/
+    // calcitriol exclusion regex). Adult reference ~18–72 pg/mL.
+    // Source: Mayo/ARUP 1,25-dihydroxyvitamin D reference interval (adult, pg/mL).
+    name: "Vitamin D, 1,25-Dihydroxy",
+    category: "lab",
+    unit: "pg/mL",
+    ref_low: 18,
+    ref_high: 72,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    conversions: {
+      "pmol/L": 0.417,
+    },
+    note: "1,25-dihydroxyvitamin D (calcitriol) — the ACTIVE hormone, distinct from the 25-OH storage form. Adult ~18–72 pg/mL. Used in hypercalcemia / sarcoidosis / CKD workups, NOT for routine vitamin-D status (which is the 25-OH total).",
+  },
+  // ── Plain C-Reactive Protein (issue #1195) ────────────────────────────────
+  // The standard-sensitivity CRP assay — a DIFFERENT test than hs-CRP (which is the
+  // high-sensitivity CV-risk assay, its own entry). Plain CRP tracks acute
+  // inflammation/infection with a higher measuring range and conventional cutoffs, so
+  // it carries its OWN identity and is never folded onto hs-CRP. mg/L, ~<3 low / >10
+  // suggests acute inflammation. conversions map a mg/dL reading onto the canonical.
+  // Source: conventional clinical CRP reference (<10 mg/L normal; >10 acute-phase).
+  {
+    name: "C-Reactive Protein",
+    category: "lab",
+    unit: "mg/L",
+    ref_low: null,
+    ref_high: 10,
+    optimal_low: null,
+    optimal_high: 3,
+    direction: "lower_better",
+    conversions: {
+      "mg/dL": 10,
+    },
+    note: "Standard-sensitivity CRP (acute inflammation/infection), mg/L — a DIFFERENT assay than hs-CRP (the CV-risk high-sensitivity test). ~<3 low, >10 suggests acute inflammation.",
+  },
+  // ── Fasting glucose (issue #1195) ─────────────────────────────────────────
+  // Fasting glucose has its OWN diagnostic thresholds (70–99 normal / 100–125 pre-DM /
+  // ≥126 DM) distinct from a random "Glucose", so it is a distinct entry (LOINC 1558-6
+  // maps to it in lib/biomarker-loinc). Its own identity — NOT the A1c/eAG family and
+  // NOT the random-glucose series. Source: ADA Standards of Care fasting-glucose
+  // diagnostic thresholds. INFORMATIONAL, NOT MEDICAL ADVICE.
+  {
+    name: "Glucose, Fasting",
+    category: "lab",
+    unit: "mg/dL",
+    ref_low: 70,
+    ref_high: 99,
+    optimal_low: 70,
+    optimal_high: 90,
+    direction: "in_range",
+    conversions: {
+      "mmol/L": 18.02,
+    },
+    note: "Fasting plasma glucose. ADA thresholds: 70–99 normal, 100–125 prediabetes, ≥126 diabetes (confirmed). Distinct from a random Glucose and from the A1c/eAG family.",
+  },
 ];
 
 // Curated per-analyte retest cadences, in DAYS, keyed by exact canonical name
@@ -1853,6 +1954,7 @@ export const CURATED_LABS: Biomarker[] = [
 export const RETEST_DAYS: Record<string, number> = {
   "Hemoglobin A1c": 90,
   Glucose: 180,
+  "Glucose, Fasting": 180,
   Insulin: 180,
   "HOMA-IR": 180,
   "C-Peptide": 180,
@@ -1860,6 +1962,11 @@ export const RETEST_DAYS: Record<string, number> = {
   "Free T4": 180,
   "Free T3": 180,
   "Vitamin D, 25-Hydroxy": 180,
+  // The D2/D3 fractions share the total's redraw clock (biomarkerRetestIdentity), so
+  // when a fraction is the newest family member it reads on the same 180d cadence
+  // rather than the flat 365 fallback (#1193).
+  "Vitamin D2, 25-Hydroxy": 180,
+  "Vitamin D3, 25-Hydroxy": 180,
   "hs-CRP": 180,
   "Total Cholesterol": 365,
   "LDL Cholesterol": 365,
@@ -1941,6 +2048,7 @@ export const RETEST_WORTHY: string[] = [
   // Glycemic
   "Hemoglobin A1c",
   "Glucose",
+  "Glucose, Fasting",
   "Insulin",
   "HOMA-IR",
   "C-Peptide",
