@@ -329,14 +329,18 @@ export default function ProfileNotificationSettings({
             </p>
           </div>
 
-          {/* Morning digest — one daily summary (today's doses + goals due,
-              yesterday's activities/adherence/weight, anything new to look at). */}
+          {/* Morning digest — one daily summary at digest hour: anything new
+              about an open illness, today's what's-due list (doses, refills,
+              appointments, retests, goals & more — the same list your Upcoming
+              page shows, so a snooze/dismiss there quiets it here), yesterday's
+              activities/adherence/weight, and anything new to look at (#1108). */}
           <div className="border-t border-black/5 pt-5 dark:border-white/5">
             <label className="label">Morning digest</label>
             <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
-              A once-a-day summary at the hour below (this profile’s timezone).
-              Skips sections with nothing to report. Pick <em>Auto</em> to have
-              it arrive around when you usually wake.
+              A once-a-day summary at the hour below (this profile’s timezone),
+              including today’s what’s-due list. Skips sections with nothing to
+              report. Pick <em>Auto</em> to have it arrive around when you
+              usually wake.
             </p>
             <select
               value={

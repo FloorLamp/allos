@@ -1,15 +1,15 @@
-// Per-profile "what's due" digest — PURE assembly +
-// rendering, no DB/network, so both are unit-tested in lib/__tests__. The DB
-// gather lives in ./upcoming-digest-data, which reuses collectUpcoming (so a
-// snooze/dismiss from the Upcoming page applies to this push automatically) and
-// the pure groupUpcoming banding. buildUpcomingDigest turns the banded set into a
-// compact count-by-domain summary and returns null when nothing is due;
-// renderUpcomingDigestMessage turns that model into the Telegram message. The
-// title always names the profile — a chat may be shared by several profiles.
+// The "what's due" Today-section formatter — PURE assembly, no DB/network, so it's
+// unit-tested in lib/__tests__. Since issue #1108 there is no second "what's due"
+// message: the morning digest (./digest) EMBEDS this banded summary as its Today
+// section, so snooze/dismiss (the findings bus, applied by collectUpcoming) and the
+// #221 one-computation rule govern the whole morning message. buildUpcomingDigest
+// turns the ALREADY-BANDED collectUpcoming set (groupUpcoming) into a compact
+// count-by-domain summary + the high-priority "why" highlights (#656), returning
+// null when nothing is due. It takes an optional `excludeDomains` (the digest drops
+// `dose`, summarized separately by the dose-count headline).
 
 import type { BandGroup, UpcomingDomain, UpcomingItem } from "../upcoming";
 import { primaryReason } from "../reasons";
-import type { NotificationMessage } from "./types";
 
 // Singular noun per domain; the summary pluralizes with a trailing "s". "lab"
 // reads naturally as the retest signal ("1 lab, 2 labs"); "training target" and
@@ -147,10 +147,17 @@ function pluralize(noun: string, count: number): string {
 }
 
 // "2 doses, 1 appointment" for a band: count items by domain, then render in the
-// fixed domain sequence so the phrase is deterministic.
-export function summarizeBand(group: BandGroup): string {
+// fixed domain sequence so the phrase is deterministic. `exclude` drops whole
+// domains from the count (issue #1108 — the morning digest excludes `dose`, which
+// its dose-count headline already summarizes); an empty result string means every
+// counted item was excluded, so the caller can drop the band's line entirely.
+export function summarizeBand(
+  group: BandGroup,
+  exclude?: ReadonlySet<UpcomingDomain>
+): string {
   const counts = new Map<UpcomingDomain, number>();
   for (const item of group.items) {
+    if (exclude?.has(item.domain)) continue;
     counts.set(item.domain, (counts.get(item.domain) ?? 0) + 1);
   }
   return DOMAIN_SEQ.filter((d) => counts.has(d))
@@ -158,17 +165,28 @@ export function summarizeBand(group: BandGroup): string {
     .join(", ");
 }
 
-// Build the digest model from the ALREADY-BANDED set (groupUpcoming output), or
-// null when there's nothing due (so the tick sends nothing rather than a hollow
-// "all clear"). Empty bands are already dropped by groupUpcoming.
+// Build the Today-section model from the ALREADY-BANDED set (groupUpcoming output),
+// or null when there's nothing to summarize (so the digest's Today section stays
+// empty rather than rendering a hollow "all clear"). Empty bands are already dropped
+// by groupUpcoming; a band whose only items are in `excludeDomains` yields an empty
+// summary and its line is dropped here too, so excluding every due domain returns
+// null. `total` counts every banded item (regardless of exclusion) — the exclusion
+// only affects the rendered per-band lines.
 export function buildUpcomingDigest(
   profileName: string,
-  groups: BandGroup[]
+  groups: BandGroup[],
+  opts: { excludeDomains?: readonly UpcomingDomain[] } = {}
 ): UpcomingDigestModel | null {
+  const exclude = opts.excludeDomains?.length
+    ? new Set<UpcomingDomain>(opts.excludeDomains)
+    : undefined;
   const nonEmpty = groups.filter((g) => g.items.length > 0);
-  if (nonEmpty.length === 0) return null;
+  const lines = nonEmpty
+    .map((g) => ({ label: g.label, summary: summarizeBand(g, exclude) }))
+    .filter((b) => b.summary.length > 0)
+    .map((b) => `${b.label}: ${b.summary}`);
+  if (lines.length === 0) return null;
   const total = nonEmpty.reduce((n, g) => n + g.items.length, 0);
-  const lines = nonEmpty.map((g) => `${g.label}: ${summarizeBand(g)}`);
   const who = profileName ? ` — ${profileName}` : "";
   return {
     title: `🔔 Due soon${who}`,
@@ -176,19 +194,4 @@ export function buildUpcomingDigest(
     highlights: digestHighlights(nonEmpty),
     total,
   };
-}
-
-// Render the model to a channel-agnostic NotificationMessage. The band count lines
-// first, then (issue #656) a blank line + the high-priority "why" lines so the push
-// explains WHY the important items matter, not only how many are due.
-export function renderUpcomingDigestMessage(
-  model: UpcomingDigestModel
-): NotificationMessage {
-  const parts = [model.lines.join("\n")];
-  if (model.highlights.length) {
-    parts.push(
-      model.highlights.map((h) => `⚑ ${h.title} — ${h.reason}`).join("\n")
-    );
-  }
-  return { title: model.title, body: parts.join("\n\n"), kind: "upcoming" };
 }

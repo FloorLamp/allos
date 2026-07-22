@@ -29,11 +29,8 @@ import {
   getCurrentFlaggedBiomarkers,
   getInferredPreventiveSatisfactions,
 } from "@/lib/queries";
-import { groupUpcoming } from "@/lib/upcoming";
-import {
-  buildUpcomingDigest,
-  renderUpcomingDigestMessage,
-} from "@/lib/notifications/upcoming-digest";
+import { buildDigest, renderDigestMessage } from "@/lib/notifications/digest";
+import { gatherDigestInput } from "@/lib/notifications/digest-data";
 import { gatherMilestoneInput } from "@/lib/milestones-db";
 import {
   dedupeKeyHasKnownPrefix,
@@ -186,13 +183,20 @@ describe("mental-health crisis builder — care tier, non-dismissible, never pus
 
   it("the crisis line never reaches the Telegram digest (no crisis content on any channel)", () => {
     const p = newProfile("MH nopush");
-    const td = today(p);
-    recordInstrumentScore(p, { instrument: "PHQ-9", date: td, total: 25 });
-    const groups = groupUpcoming(collectUpcoming(p, td), td);
-    const model = buildUpcomingDigest("MH nopush", groups);
+    recordInstrumentScore(p, {
+      instrument: "PHQ-9",
+      date: today(p),
+      total: 25,
+    });
+    // The merged morning digest (#1108) embeds the what's-due list as its Today
+    // section, so the no-leak guard runs against the ACTUAL sent message. A crisis
+    // mental-health finding is care-tier on the page/hero but is excluded from the
+    // digest's domain sequence, so it's never counted, and its title/reason never
+    // reach the push (the decided harm case: crisis content on a shared device).
+    const model = buildDigest(gatherDigestInput(p, "MH nopush"));
     if (model) {
-      const msg = renderUpcomingDigestMessage(model);
-      const text = `${msg.title} ${msg.body ?? ""} ${JSON.stringify(msg)}`;
+      const msg = renderDigestMessage(model);
+      const text = `${msg.title} ${msg.body} ${JSON.stringify(msg)}`;
       expect(text).not.toContain("988");
       expect(text).not.toContain("mental-health");
     }

@@ -91,6 +91,7 @@ import { migration as m089 } from "./089-optical-dental-encounter-link";
 import { migration as m090 } from "./090-medical-record-category-classes";
 import { migration as m091 } from "./091-medication-course-attribution";
 import { migration as m092 } from "./092-consolidate-imported-prescriptions";
+import { migration as m093 } from "./093-retire-notify-last-upcoming";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -191,4 +192,5 @@ export const MIGRATIONS: Migration[] = [
   m090,
   m091,
   m092,
+  m093,
 ];

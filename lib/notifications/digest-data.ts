@@ -12,14 +12,14 @@ import {
   getTakenDoseIds,
   getSkippedDoseIds,
   getActivitiesByDate,
-  isPredictedWorkoutDay,
-  getFrequencyTargetProgress,
+  collectUpcoming,
   getCurrentFlaggedBiomarkers,
   getSleepSignal,
   getSleepRegularity,
   getSleepSessions,
   getMetricDailyTotals,
 } from "../queries";
+import { groupUpcoming } from "../upcoming";
 import {
   mainSleepNights,
   sleepSessionDurationMinutes,
@@ -28,6 +28,7 @@ import { countSituationalDue, isDueOn } from "../supplement-schedule";
 import {
   getActiveSituations,
   getSituationEvents,
+  getNotifySchedule,
   getProfileSetting,
   setProfileSetting,
   getProfileSleepDigest,
@@ -43,7 +44,6 @@ import {
   renderDigestMessage,
   type DigestActivity,
   type DigestFlaggedBiomarker,
-  type DigestGoalDue,
   type DigestInput,
   type DigestSleep,
 } from "./digest";
@@ -183,36 +183,43 @@ export function gatherDigestInput(
     getSituationEvents(profileId)
   );
 
-  // For TODAY, a pre_workout/rest_day item keys on the PREDICTED training day
-  // (issue #558) so the morning digest lists it before the session, not only after
-  // one is logged. Past days (yesterday's adherence) use the logged reality.
-  const dueDoseIds = (date: string, forToday = false): number[] => {
+  // Yesterday's adherence still scores against the LOGGED reality of that day, so
+  // it keeps its own dueness helper (no predicted-training-day guess for the past).
+  const dueDoseIdsOn = (date: string): number[] => {
     const isWorkoutDay = getActivitiesByDate(profileId, date).length > 0;
-    const predictedWorkoutDay = forToday
-      ? isPredictedWorkoutDay(profileId, date)
-      : null;
     return doses
-      .filter((d) => {
-        const supp = suppById.get(d.item_id)!;
-        return isDueOn(supp, {
+      .filter((d) =>
+        isDueOn(suppById.get(d.item_id)!, {
           isWorkoutDay,
           activeSituations: situationsOn(date),
-          predictedWorkoutDay,
-        });
-      })
+          predictedWorkoutDay: null,
+        })
+      )
       .map((d) => d.id);
   };
 
-  // Today: doses on deck + frequency targets not yet met this week.
-  const todayDueIds = dueDoseIds(td, true);
-  const doseCount = todayDueIds.length;
-  const goalsDue: DigestGoalDue[] = getFrequencyTargetProgress(profileId)
-    .filter((p) => !p.met)
-    .map((p) => ({
-      label: p.target.scope_value,
-      count: p.count,
-      perWeek: p.per_week,
-    }));
+  // Today: the MERGED "what's due" list (issue #1108). ONE engine (#221) — the
+  // banded collectUpcoming, which already drops snoozed/dismissed items and
+  // training items for an age-restricted profile, and whose dose items carry the
+  // #558 predicted-training-day dueness. This REPLACES the digest's own dueDoseIds /
+  // frequency-target computation, so the morning message and the Upcoming page/hero
+  // can't disagree, and a page dismissal finally silences the digest too.
+  let upcoming = collectUpcoming(profileId, td);
+  // Preventive-care domain toggle (#87): off ⇒ no preventive visit/screening lines
+  // in the digest (they still appear on the Upcoming page — that's pull, not push),
+  // mirroring the proactive nudge suppression in ./preventive.
+  if (!getNotifySchedule(profileId).preventiveEnabled) {
+    upcoming = upcoming.filter(
+      (i) => i.domain !== "visit" && i.domain !== "screening"
+    );
+  }
+  const todayGroups = groupUpcoming(upcoming, td);
+  // The dose glance headline counts the DUE dose items collectUpcoming surfaced
+  // (bus-honored + #558) — the same items the Today section bands over.
+  const todayDoseIds = upcoming
+    .filter((i) => i.domain === "dose" && i.doseId != null)
+    .map((i) => i.doseId as number);
+  const doseCount = todayDoseIds.length;
 
   // Yesterday: activities, supplement adherence x/y, weight if logged.
   const activities: DigestActivity[] = getActivitiesByDate(profileId, yd).map(
@@ -223,15 +230,15 @@ export function gatherDigestInput(
       distanceKm: a.distance_km,
     })
   );
-  const yDue = dueDoseIds(yd);
+  const yDue = dueDoseIdsOn(yd);
 
-  // Distinct kinds among the doses the digest actually mentions (today's "on deck"
-  // + yesterday's adherence), so the reminder noun reflects a medications-only or
-  // mixed profile rather than always saying "supplements" (#380).
+  // Distinct kinds among the doses the digest actually mentions (today's due list
+  // from collectUpcoming + yesterday's adherence), so the reminder noun reflects a
+  // medications-only or mixed profile rather than always saying "supplements" (#380).
   const doseById = new Map(doses.map((d) => [d.id, d]));
   const intakeKinds = [
     ...new Set(
-      [...todayDueIds, ...yDue]
+      [...todayDoseIds, ...yDue]
         .map((id) => doseById.get(id))
         .filter((d): d is (typeof doses)[number] => d != null)
         .map((d) => suppById.get(d.item_id)!.kind)
@@ -309,7 +316,7 @@ export function gatherDigestInput(
     doseCount,
     situationalActiveCount,
     intakeKinds,
-    goalsDue,
+    todayGroups,
     activities,
     adherence,
     weightKg: weightRow?.weight_kg ?? null,
