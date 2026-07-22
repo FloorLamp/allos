@@ -128,7 +128,7 @@ const FIRST_ALLOW: Record<string, number> = {
   "activity-equipment.spec.ts": 5,
   "ai-settings.spec.ts": 4,
   "allergen-cross-reactivity.spec.ts": 1,
-  "audit-log.spec.ts": 2,
+  "audit-log.spec.ts": 1,
   "care-plan-appointment-offer.spec.ts": 1,
   "condition-suggestion.spec.ts": 1,
   "contrast-safety.spec.ts": 1,
@@ -237,10 +237,8 @@ const FIRST_ALLOW: Record<string, number> = {
 // paired with settledTap arming the right wait; migrating them means a driver
 // redesign, so they're grandfathered like any other offender, not blessed.
 const TOPASS_ALLOW: Record<string, number> = {
-  "audit-log.spec.ts": 1,
   "entry-ergonomics.spec.ts": 1,
   "episode-med-reconcile.spec.ts": 1,
-  "household-rollup.spec.ts": 1,
   "illness-episode.spec.ts": 2,
   "illness-front-door.spec.ts": 1,
   "illness-hero.spec.ts": 1,

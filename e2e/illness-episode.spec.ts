@@ -1,7 +1,11 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 import { loginAs, followLink } from "./nav";
-import { settledClick } from "./helpers";
 import { medicationDetail, medicationOverview } from "./med-card-helpers";
+import {
+  E2E_MEMBER_PASSWORD,
+  E2E_LOGIN_ILLNESS_CAREGIVER,
+  E2E_LOGIN_ILLNESS_RO,
+} from "./fixture-logins";
 
 // Illness-episode view (issue #801). The seed makes profile 1 currently sick — an
 // ongoing "Illness" situation with day-by-day symptoms, a fever curve (#800), and PRN
@@ -107,17 +111,16 @@ test.describe("Illness-episode view (#801)", () => {
   });
 
   test("a granted member sees the sick profile's illness-hero accordion from a NON-sick active profile (#858)", async ({
-    page,
     browser,
   }) => {
     test.slow();
 
-    // Grant a fresh member both profile 1 (sick) and profile 2 (well) via Family.
-    const creds = await createMemberWithGrants(page, [
-      { profileId: 1, access: "write" },
-      { profileId: 2, access: "write" },
-    ]);
-    const member = await loginAs(browser, creds);
+    // Sign in as the SEEDED caregiver fixture granted profile 1 (sick) + profile 2 (well)
+    // — replacing runtime member-creation through Family (the #868 census flake).
+    const member = await loginAs(browser, {
+      username: E2E_LOGIN_ILLNESS_CAREGIVER,
+      password: E2E_MEMBER_PASSWORD,
+    });
 
     // Act as profile 2 ("Riley (child)" — scripts/seed.ts owns id 2; seed-events'
     // "Sam Rivers" insert is a documented no-op) — NOT the sick one — so the illness
@@ -150,19 +153,17 @@ test.describe("Illness-episode view (#801)", () => {
   });
 
   test("a READ-granted caregiver opens a household member's full episode from the hero — banner, no write controls (#879)", async ({
-    page,
     browser,
   }) => {
     test.slow();
 
-    // Grant a fresh member READ on profile 1 (sick) and WRITE on profile 2 (well), then
-    // act as profile 2 — so profile 1's episode is a NON-active, view-only cross-profile
-    // read reached via the hero link.
-    const creds = await createMemberWithGrants(page, [
-      { profileId: 1, access: "read" },
-      { profileId: 2, access: "write" },
-    ]);
-    const member = await loginAs(browser, creds);
+    // Sign in as the SEEDED fixture granted READ on profile 1 (sick) + WRITE on profile 2
+    // (well), then act as profile 2 — so profile 1's episode is a NON-active, view-only
+    // cross-profile read reached via the hero link (#868: no runtime member-creation).
+    const member = await loginAs(browser, {
+      username: E2E_LOGIN_ILLNESS_RO,
+      password: E2E_MEMBER_PASSWORD,
+    });
 
     // Switch the acting profile to Riley (profile 2) via the header switcher (retry
     // through the pre-hydration window — see the sibling test).
@@ -238,37 +239,3 @@ test.describe("Illness-episode view (#801)", () => {
     await member.context().close();
   });
 });
-
-// Create a member login granted the given profiles, driving Settings → Family exactly
-// as an admin would (mirrors the household-rollup helper).
-async function createMemberWithGrants(
-  adminPage: Page,
-  grants: { profileId: number; access: "read" | "write" }[]
-): Promise<{ username: string; password: string }> {
-  const username = `ep${Date.now()}${Math.floor(Math.random() * 1000)}`;
-  const password = "member-pass-1234";
-
-  await adminPage.goto("/settings/family");
-  await adminPage.getByPlaceholder("Username").fill(username);
-  await adminPage.getByPlaceholder("Password").fill(password);
-  // settledClick, not a raw click: a click in the hydration window is silently
-  // swallowed (#830) and this exact step has flaked that way in full-suite runs —
-  // the same hardening the view-only-access and two-factor specs carry.
-  await settledClick(
-    adminPage,
-    adminPage.getByRole("button", { name: "Create login" })
-  );
-
-  const grantRow = adminPage.getByTestId(`grant-row-${username}`);
-  await expect(grantRow).toBeVisible({ timeout: 15_000 });
-  for (const g of grants) {
-    const cell = adminPage.getByTestId(`grant-cell-${username}-${g.profileId}`);
-    await cell.locator('input[type="checkbox"]').check();
-    await adminPage
-      .getByTestId(`grant-access-${username}-${g.profileId}`)
-      .selectOption(g.access);
-  }
-  await grantRow.getByRole("button", { name: "Save access" }).click();
-  await expect(grantRow.getByText("Access updated.")).toBeVisible();
-  return { username, password };
-}
