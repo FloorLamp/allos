@@ -16,7 +16,7 @@ test("Allergies page shows the birch cross-reactivity note (#153)", async ({
   const panel = page.getByTestId("cross-reactivity");
   await expect(panel).toBeVisible();
 
-  const item = page.getByTestId("cross-reactivity-item").first();
+  const item = page.getByTestId("cross-reactivity-item").first(); // first-ok: the curated cross-reactivity dataset renders Birch first (deterministic static order); asserted below
   await expect(item).toContainText("Birch");
   await expect(item).toContainText("commonly cross-reacts with");
   // Well-known oral-allergy-syndrome cross-reactants from the curated dataset.

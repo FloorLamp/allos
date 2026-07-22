@@ -34,7 +34,7 @@ test.describe("Settings IA (#928) — admin", () => {
     await expect(page.getByText("This login", { exact: true })).toBeVisible();
     await expect(page.getByText("This profile", { exact: true })).toBeVisible();
     await expect(
-      page.getByText("Server", { exact: true }).first()
+      page.getByText("Server", { exact: true }).first() // first-ok: asserts the Server tier section renders (label also appears as a nav item) — presence check
     ).toBeVisible();
     await expect(page.getByTestId("push-settings")).toBeVisible();
     await expect(page.getByTestId("notification-matrix")).toBeVisible();

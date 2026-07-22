@@ -87,7 +87,7 @@ test("2FA: enroll, then second-factor login with code and recovery code (#23)", 
     await m
       .getByTestId("twofa-recovery-codes")
       .locator("li")
-      .first()
+      .first() // first-ok: any one of THIS login's freshly-shown recovery codes; the recovery path needs exactly one
       .innerText()
   ).trim();
   await enrollCtx.close();

@@ -99,7 +99,7 @@ test.describe("Equipment registry (#343)", () => {
     const results = page.getByRole("listbox", { name: "Results" });
     const hit = results.getByRole("option", { name: "Equipment", exact: true });
     await expect(hit).toBeVisible();
-    await followLink(page, hit.first(), /\/equipment$/);
+    await followLink(page, hit.first(), /\/equipment$/); // first-ok: the command-palette "sauna" search resolves to the single Equipment page result
     await expect(page).toHaveURL(/\/equipment$/);
     await expect(
       page.getByRole("heading", { name: "Your equipment" })

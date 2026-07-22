@@ -12,7 +12,7 @@ import path from "node:path";
 // stamped with a unique panel marker on profile 1 — seeded via a raw connection and
 // cleaned in beforeAll AND afterAll (idempotent across retries, never touches seeded
 // rows). Every locator is scoped to the specific card by its record id, never
-// .first() on the shared Review surface.
+// a positional first-match on the shared Review surface.
 
 const MARKER = "E2E-MISLABEL-761";
 

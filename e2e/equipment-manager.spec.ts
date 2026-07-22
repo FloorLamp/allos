@@ -71,7 +71,7 @@ test.describe("Equipment manager (#391)", () => {
       page
         .locator('[id^="activity-"]')
         .filter({ hasText: "E2E Equipment Delete Session" })
-        .first()
+        .first() // first-ok: the session THIS spec created (unique name); asserts its set survived the equipment delete
     ).toBeVisible();
   });
 

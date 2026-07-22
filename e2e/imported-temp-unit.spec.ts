@@ -28,7 +28,7 @@ test("a legacy imported Celsius reading renders converted on the episode surface
     const row = page
       .getByTestId("episode-index-row")
       .filter({ hasText: /ongoing/i })
-      .first();
+      .first(); // first-ok: the fixture's own open episode via its episodes index (order-independent route)
     await followLink(page, row, /\/medical\/episodes\/\d+/);
 
     // The latest-reading readout renders the CONVERTED canonical value in the
