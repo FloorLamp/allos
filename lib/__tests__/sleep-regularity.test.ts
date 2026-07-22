@@ -4,6 +4,7 @@ import {
   sriTrend,
   regularityTravelInsight,
   mainSleepSession,
+  mainSleepPeriod,
   mainSleepNights,
   sriPresentation,
   type SleepSession,
@@ -392,6 +393,168 @@ describe("mainSleepNights — one main session per wake-day, naps dropped", () =
       },
     ];
     expect(mainSleepNights(sessions, "UTC")).toEqual([]);
+  });
+});
+
+describe("mainSleepPeriod — merges co-equal segmented night fragments (#1191)", () => {
+  it("a single overnight is unchanged: span = its own edges, duration = its own", () => {
+    const night: SleepSession = {
+      start: "2026-01-01T23:00:00Z",
+      end: "2026-01-02T07:00:00Z", // 8h
+    };
+    const p = mainSleepPeriod([night])!;
+    expect(p.start).toBe(night.start);
+    expect(p.end).toBe(night.end);
+    expect(p.durationMin).toBe(480);
+    expect(p.main).toBe(night);
+    expect(p.members).toEqual([night]);
+  });
+
+  it("two co-equal 4h blocks with a 1h gap merge into one 8h night", () => {
+    // 23:00–03:00 (4h) + 04:00–08:00 (4h): NO single block reaches the 6h floor,
+    // so the old longest-block picker reported 240 and fired a false rest nudge.
+    const first: SleepSession = {
+      start: "2026-01-01T23:00:00Z",
+      end: "2026-01-02T03:00:00Z",
+    };
+    const second: SleepSession = {
+      start: "2026-01-02T04:00:00Z",
+      end: "2026-01-02T08:00:00Z",
+    };
+    const p = mainSleepPeriod([second, first])!;
+    expect(p.durationMin).toBe(480); // 8h asleep, the awake gap excluded
+    expect(p.start).toBe(first.start); // onset of the first fragment
+    expect(p.end).toBe(second.end); // wake of the last fragment
+    expect(new Set(p.members)).toEqual(new Set([first, second]));
+  });
+
+  it("a genuine afternoon nap (long daytime gap) stays a nap — anti-masking (#1118)", () => {
+    // Deficient 3h overnight + a 1h afternoon nap 11h later: the nap must NOT merge,
+    // so a short overnight can never be masked by a distant nap.
+    const overnight: SleepSession = {
+      start: "2026-01-02T01:00:00Z",
+      end: "2026-01-02T04:00:00Z", // 3h
+    };
+    const nap: SleepSession = {
+      start: "2026-01-02T15:00:00Z",
+      end: "2026-01-02T16:00:00Z", // 1h, 11h later
+    };
+    const p = mainSleepPeriod([overnight, nap])!;
+    expect(p.durationMin).toBe(180); // the deficient overnight, unmerged
+    expect(p.members).toEqual([overnight]);
+  });
+
+  it("a ≥6h core keeps its siesta nap separate even when the gap is short", () => {
+    // 6.5h core + a 30-min nap 30 min later: the core is already a full night, so
+    // the nap stays a nap (the siesta guard) rather than inflating to 7h.
+    const core: SleepSession = {
+      start: "2026-01-01T23:00:00Z",
+      end: "2026-01-02T05:30:00Z", // 6.5h ≥ core floor
+    };
+    const nap: SleepSession = {
+      start: "2026-01-02T06:00:00Z",
+      end: "2026-01-02T06:30:00Z", // 30m, only a 30-min gap
+    };
+    const p = mainSleepPeriod([core, nap])!;
+    expect(p.durationMin).toBe(390); // core only, nap not absorbed
+    expect(p.members).toEqual([core]);
+  });
+
+  it("merges only up to the gap bound: a 2h gap merges, a 3h gap does not", () => {
+    const base: SleepSession = {
+      start: "2026-01-01T23:00:00Z",
+      end: "2026-01-02T03:00:00Z", // 4h
+    };
+    const within: SleepSession = {
+      start: "2026-01-02T05:00:00Z", // exactly a 2h gap after 03:00
+      end: "2026-01-02T09:00:00Z", // 4h
+    };
+    expect(mainSleepPeriod([base, within])!.durationMin).toBe(480);
+
+    const beyond: SleepSession = {
+      start: "2026-01-02T06:00:00Z", // a 3h gap after 03:00
+      end: "2026-01-02T10:00:00Z", // 4h — now the LONGEST-ending tie-break seed
+    };
+    const p = mainSleepPeriod([base, beyond])!;
+    // Beyond the bound → separate; the seed alone (the earlier-ending 4h block).
+    expect(p.durationMin).toBe(240);
+    expect(p.members).toEqual([base]);
+  });
+
+  it("chains three adjacent fragments transitively into one night", () => {
+    const a: SleepSession = {
+      start: "2026-01-01T23:00:00Z",
+      end: "2026-01-02T01:00:00Z", // 2h
+    };
+    const b: SleepSession = {
+      start: "2026-01-02T02:00:00Z",
+      end: "2026-01-02T05:00:00Z", // 3h (seed, longest)
+    };
+    const c: SleepSession = {
+      start: "2026-01-02T06:00:00Z",
+      end: "2026-01-02T08:00:00Z", // 2h
+    };
+    const p = mainSleepPeriod([a, b, c])!;
+    expect(p.durationMin).toBe(420); // 2+3+2 h
+    expect(p.start).toBe(a.start);
+    expect(p.end).toBe(c.end);
+  });
+
+  it("returns null when the day holds only provider-labeled naps", () => {
+    expect(
+      mainSleepPeriod([
+        {
+          start: "2026-01-02T13:00:00Z",
+          end: "2026-01-02T14:00:00Z",
+          type: "rest",
+        },
+      ])
+    ).toBeNull();
+  });
+});
+
+describe("mainSleepNights — a segmented night reports the merged duration (#1191)", () => {
+  it("a 4h + 4h segmented night reads as one 8h night, not 4h + a nap", () => {
+    const sessions: SleepSession[] = [
+      { start: "2026-01-01T23:00:00Z", end: "2026-01-02T03:00:00Z" },
+      { start: "2026-01-02T04:00:00Z", end: "2026-01-02T08:00:00Z" },
+    ];
+    expect(
+      mainSleepNights(sessions, "UTC").map((n) => ({
+        wakeDay: n.wakeDay,
+        durationMin: n.durationMin,
+      }))
+    ).toEqual([{ wakeDay: "2026-01-02", durationMin: 480 }]);
+  });
+});
+
+describe("computeSleepRegularity — circular timing companions (#1190)", () => {
+  it("a daytime sleeper whose wakes sit on the noon fold gets a small, stable wake SD", () => {
+    // A same-day daytime sleeper (bed ~04:00, wake ~12:00) whose wake clocks are
+    // tightly clustered on 12:00 — exactly the old noon anchor's seam. The old
+    // noon-anchored SD folded 11:50/12:10 to ~1439 and ~0 and reported a spurious
+    // ~660-min SD; circular stats keep it a few minutes.
+    const days = consecutiveWakeDays("2026-01-02", 16);
+    const beds = ["03:50", "04:00", "04:10"];
+    const wakes = ["11:50", "12:00", "12:10"];
+    const sessions: SleepSession[] = days.map((d, i) => ({
+      start: `${d}T${beds[i % 3]}:00Z`,
+      end: `${d}T${wakes[i % 3]}:00Z`,
+    }));
+    const r = computeSleepRegularity(sessions, "UTC")!;
+    expect(r.waketimeSdMin).toBeLessThan(15);
+    expect(r.bedtimeSdMin).toBeLessThan(15);
+  });
+
+  it("matches a plain SD for a nocturnal schedule (no fold) — no regression", () => {
+    // Wakes 06:30 / 07:00 / 07:30 rotating: population SD of {390,420,450} pattern.
+    const days = consecutiveWakeDays("2026-01-02", 15);
+    const wakes = ["06:30", "07:00", "07:30"];
+    const sessions = days.map((d, i) => utcNight(d, "23:00", wakes[i % 3]));
+    const r = computeSleepRegularity(sessions, "UTC")!;
+    // Five each of 390/420/450 → population SD = sqrt(600) ≈ 24.49 → rounds to 24.
+    expect(r.waketimeSdMin).toBe(24);
+    expect(r.bedtimeSdMin).toBe(0); // constant bedtime
   });
 });
 
