@@ -30,8 +30,14 @@ export type RecordsGroup = {
 
 // Vision/Dental are DATA-GATED (getNavRelevance): a hidden section omits its sub-tab
 // AND its route re-gates server-side. Skin/Mental health always render (their
-// in-page forms are the only creation path). This shapes only the Specialty group.
-export type RecordsRelevance = { vision: boolean; dental: boolean };
+// in-page forms are the only creation path). Substance use is LIFE-STAGE gated
+// (#1174/#1175): shown for adults + unknown age, hidden for a KNOWN minor — its
+// AUDIT/DAST instruments are adult-validated. This shapes only the Specialty group.
+export type RecordsRelevance = {
+  vision: boolean;
+  dental: boolean;
+  substanceUse: boolean;
+};
 
 const HISTORY_PANES: RecordsPane[] = [
   { id: "visits", label: "Visits", href: "/records/history/visits" },
@@ -73,6 +79,14 @@ const SPECIALTY_ALL: (RecordsPane & {
     label: "Mental health",
     href: "/records/specialty/mental-health",
     gated: null,
+  },
+  // Substance use (#1175) sits beside Mental health but gates DIFFERENTLY (#1174):
+  // life-stage, not data — adult-validated instruments, so hidden for a known minor.
+  {
+    id: "substance-use",
+    label: "Substance use",
+    href: "/records/specialty/substance-use",
+    gated: "substanceUse",
   },
 ];
 

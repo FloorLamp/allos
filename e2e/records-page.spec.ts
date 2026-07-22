@@ -9,7 +9,8 @@ import { E2E_LOGIN_NAV_MALE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 // page. Grouping (FINALIZED): History (Visits · Procedures · Immunizations),
 // Problems (one stacked pane: Conditions + Allergies), Care (Overview stacked:
 // Background + Family history + Care plan + Health goals · Providers solo),
-// Specialty (Vision · Dental · Skin · Mental health; Vision/Dental data-gated). The
+// Specialty (Vision · Dental · Skin · Mental health · Substance use; Vision/Dental
+// data-gated, Substance use life-stage-gated to adults — #1174/#1175). The
 // core rule: a pane renders ONE section, except a curated set of LIGHT sections may
 // share a stacked pane; heavy sections (the Immunizations chart, the Visits list,
 // the Providers directory) are NEVER stacked. Bare `/records` → `/records/history/
@@ -98,15 +99,21 @@ test("two-level tabs navigate group → sub-tab across the panes (#1079)", async
   await expect(page.getByTestId("records-sub-tabs")).toHaveCount(0);
 });
 
-test("the four specialty sub-tabs render for the seeded profile, with their forms + crisis line (#1079)", async ({
+test("the five specialty sub-tabs render for the seeded profile, with their forms + crisis line (#1079)", async ({
   page,
 }) => {
   test.slow();
-  // Profile 1 owns optical + dental rows, so Vision/Dental are relevant → all four
-  // specialty sub-tabs show.
+  // Profile 1 owns optical + dental rows (Vision/Dental relevant) and is an adult
+  // (Substance use ungated), so all five specialty sub-tabs show.
   await page.goto("/records/specialty/vision");
   const subs = page.getByTestId("records-sub-tabs");
-  for (const label of ["Vision", "Dental", "Skin", "Mental health"]) {
+  for (const label of [
+    "Vision",
+    "Dental",
+    "Skin",
+    "Mental health",
+    "Substance use",
+  ]) {
     await expect(subs.getByRole("link", { name: label })).toBeVisible();
   }
 
@@ -148,6 +155,21 @@ test("the four specialty sub-tabs render for the seeded profile, with their form
     page
       .getByTestId("records-mental-health")
       .getByTestId("instrument-crisis-support-link")
+  ).toBeVisible();
+
+  // Substance use — the 5th specialty section (#1175), adult-gated (#1174) so it
+  // renders for this adult profile with its in-app screening form.
+  await followLink(
+    page,
+    page.getByTestId("records-sub-tabs").getByRole("link", {
+      name: "Substance use",
+    }),
+    /\/records\/specialty\/substance-use$/
+  );
+  await expect(
+    page
+      .getByTestId("records-substance-use")
+      .getByTestId("substance-instruments-form")
   ).toBeVisible();
 });
 

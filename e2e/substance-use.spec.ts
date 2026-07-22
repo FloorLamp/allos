@@ -1,13 +1,20 @@
 import { test, expect, type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
-import { E2E_LOGIN_SUBSTANCE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import {
+  E2E_LOGIN_SUBSTANCE,
+  E2E_LOGIN_CHILD,
+  E2E_MEMBER_PASSWORD,
+} from "./fixture-logins";
 
-// Substance-use domain (issue #998): the /medical/substance-use surface — an
+// Substance-use domain (issue #998): the Records › Specialty › Substance use
+// section (#1175, formerly the standalone /medical/substance-use page) — an
 // in-app AUDIT-C tap-through (banded score), outside total-only entry for the
 // instruments whose item text isn't shipped (DAST-10/AUDIT), one-tap standard-
 // drink logging on the shared food-log ledger, and the weekly-cap reduction
 // target with its calm progress line. No streaks, no celebration anywhere.
+// LIFE-STAGE gated (#1174): adult-validated instruments, so the section + its
+// jump-link hide for a known minor and the route re-gates a direct URL.
 //
 // Fixture-OWNED per e2e hygiene (#868): runs as E2E_LOGIN_SUBSTANCE in its OWN
 // cookie context on a dedicated, substance-data-free adult profile. Every
@@ -39,8 +46,33 @@ test.describe("substance use (#998)", () => {
     await page.close();
   });
 
+  test("adult: the section renders as a Records › Specialty pane with a jump-link (#1175)", async () => {
+    // Landing on a sibling specialty pane, the sub-tab strip carries the
+    // Substance use jump-link (the section-visibility predicate is true for an
+    // adult), and it points at the folded section route — no standalone page.
+    await page.goto("/records/specialty/skin");
+    const subTab = page
+      .getByTestId("records-sub-tabs")
+      .getByRole("link", { name: "Substance use" });
+    await expect(subTab).toBeVisible();
+    await expect(subTab).toHaveAttribute(
+      "href",
+      "/records/specialty/substance-use"
+    );
+
+    // The section itself renders the screening form.
+    await page.goto("/records/specialty/substance-use");
+    await expect(page.getByTestId("records-substance-use")).toBeVisible();
+    await expect(page.getByTestId("substance-instruments-form")).toBeVisible();
+
+    // The old standalone route is gone with NO redirect (#1175 standing
+    // preference) — a stale bookmark 404s.
+    const res = await page.goto("/medical/substance-use");
+    expect(res?.status()).toBe(404);
+  });
+
   test("in-app AUDIT-C computes a banded total and records a score", async () => {
-    await page.goto("/medical/substance-use");
+    await page.goto("/records/specialty/substance-use");
     await expect(page.getByTestId("substance-instruments-form")).toBeVisible();
 
     const rows = page.getByTestId(/^substance-reading-\d+$/);
@@ -60,7 +92,7 @@ test.describe("substance use (#998)", () => {
   });
 
   test("DAST-10 is total-only (no reproduced items) and records an outside total", async () => {
-    await page.goto("/medical/substance-use");
+    await page.goto("/records/specialty/substance-use");
     const rows = page.getByTestId(/^substance-reading-\d+$/);
     const before = await rows.count();
 
@@ -81,7 +113,7 @@ test.describe("substance use (#998)", () => {
   });
 
   test("one tap logs a standard drink into this week's count", async () => {
-    await page.goto("/medical/substance-use");
+    await page.goto("/records/specialty/substance-use");
     const before = await weekCount(page);
 
     await settledClick(page, page.getByTestId("substance-log-drink"));
@@ -94,7 +126,7 @@ test.describe("substance use (#998)", () => {
   });
 
   test("a weekly cap target shows the calm progress line; removing it clears the line", async () => {
-    await page.goto("/medical/substance-use");
+    await page.goto("/records/specialty/substance-use");
 
     await page.getByTestId("substance-cap-input").fill("7");
     await settledClick(page, page.getByTestId("substance-cap-save"));
@@ -108,4 +140,38 @@ test.describe("substance use (#998)", () => {
     await settledClick(page, page.getByTestId("substance-cap-clear"));
     await expect(progress).toHaveCount(0);
   });
+});
+
+// The #1174 life-stage gate: a KNOWN minor (the seeded "Riley (child)" profile, an
+// infant) never sees the adult-validated substance-use section. Defense in depth —
+// the specialty jump-link is absent AND a direct route hit re-gates to the first
+// visible specialty pane (Skin), never rendering the section. Read-only: reuses the
+// E2E_LOGIN_CHILD fixture (Riley is its sole/active profile), mutates nothing.
+test("known-minor: the substance-use section + its jump-link are absent, and the route re-gates (#1174)", async ({
+  browser,
+}) => {
+  const page = await loginAs(browser, {
+    username: E2E_LOGIN_CHILD,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  try {
+    // On a sibling specialty pane, the sub-tab strip drops the Substance use
+    // jump-link (Mental health stays — it is NOT life-stage gated).
+    await page.goto("/records/specialty/skin");
+    const subTabs = page.getByTestId("records-sub-tabs");
+    await expect(
+      subTabs.getByRole("link", { name: "Substance use" })
+    ).toHaveCount(0);
+    await expect(
+      subTabs.getByRole("link", { name: "Mental health" })
+    ).toBeVisible();
+
+    // A direct URL re-gates server-side to the first visible pane (Skin) — the
+    // section never renders for a minor.
+    await page.goto("/records/specialty/substance-use");
+    await expect(page).toHaveURL(/\/records\/specialty\/skin$/);
+    await expect(page.getByTestId("records-substance-use")).toHaveCount(0);
+  } finally {
+    await page.context().close();
+  }
 });

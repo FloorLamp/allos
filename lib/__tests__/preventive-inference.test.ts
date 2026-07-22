@@ -16,7 +16,7 @@ import {
 } from "@/lib/preventive-inference";
 
 const INSTRUMENT_PAGES: InstrumentPage[] = [
-  "/medical/substance-use",
+  "/records/specialty/substance-use",
   "/records/specialty/mental-health",
 ];
 const ALL_INSTRUMENTS = new Set<string>([

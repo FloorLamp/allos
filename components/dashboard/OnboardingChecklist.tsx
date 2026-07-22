@@ -52,7 +52,7 @@ const CHECKLIST_TASKS: Record<OnboardingChecklistSuggestion, ChecklistItem> = {
   explore: {
     label: "Add emergency details",
     benefit: "Keep essential information ready when you need it, even offline.",
-    href: "/records/care/overview#emergency-card",
+    href: "/profile#emergency",
     mobileOnly: true,
   },
   notifications: {

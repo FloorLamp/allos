@@ -39,23 +39,30 @@ test("emergency card: opt-in, render on the passport page, offline copy, and log
     sidebar.getByRole("link", { name: "Emergency Card" })
   ).toHaveCount(0);
 
-  // 1. Opt in on Medical → Background (off by default). Wait for the autosave
-  //    "Saved" indicator so the write has landed before we read the card.
+  // 0b. Background (Records › Care › Overview) NO LONGER renders the emergency-card
+  //     settings — they moved to the Passport (#1087). Smoking history still does.
   await page.goto("/records/care/overview");
+  await expect(page.getByTestId("records-background")).toBeVisible();
+  await expect(page.getByTestId("emergency-toggle")).toHaveCount(0);
+
+  // 1. Opt in ON THE PASSPORT itself (#1087) — the toggle sits inline with the card
+  //    it configures, no cross-page bounce. Off by default; wait for the autosave
+  //    "Saved" indicator so the write has landed before we read the card.
+  await page.goto("/profile");
   const toggle = page.getByTestId("emergency-toggle");
+  await expect(toggle).toBeVisible();
   // Repeat-each safe: a prior iteration may have left profile 1 opted in (the
   // server flag persists across the shared fixture DB), so reset to the default-off
   // precondition before exercising the opt-in flow.
   if (await toggle.isChecked()) {
     await toggle.uncheck();
-    await expect(page.getByLabel("Saved").first()).toBeVisible();
+    await expect(page.getByLabel("Saved")).toBeVisible();
     await page.reload();
   }
   await expect(toggle).not.toBeChecked();
 
-  // 1a. While the opt-in is OFF, the passport page still renders the emergency
-  //     section — as the opt-in prompt pointing at Medical → Background.
-  await page.goto("/profile");
+  // 1a. While the opt-in is OFF, the passport's emergency section shows the calm
+  //     prompt AND the inline toggle — no "Enable in Medical → Background" bounce.
   await expect(
     page.getByRole("heading", { name: "Health Passport" })
   ).toBeVisible();
@@ -63,12 +70,15 @@ test("emergency card: opt-in, render on the passport page, offline copy, and log
   await expect(section).toContainText("Offline emergency card is off");
   await expect(
     section.getByRole("link", { name: /Enable in Medical/ })
-  ).toBeVisible();
+  ).toHaveCount(0);
+  await expect(page.getByTestId("emergency-card")).toHaveCount(0);
 
-  await page.goto("/records/care/overview");
-  await expect(toggle).not.toBeChecked();
+  // Enable it right here — no navigation away.
   await toggle.check();
-  await expect(page.getByLabel("Saved").first()).toBeVisible();
+  await expect(page.getByLabel("Saved")).toBeVisible();
+  // The card appears inline on the SAME page (the settings' router.refresh) —
+  // enabling is one tap, no bounce (#1087).
+  await expect(page.getByTestId("emergency-card")).toBeVisible();
 
   // 2. The removed /emergency route 308-redirects to the passport page WITH the
   //    #emergency anchor, where the card renders the seeded allergy + active
@@ -133,6 +143,29 @@ test("emergency card: opt-in, render on the passport page, offline copy, and log
     }
   }
 
+  // 4c. Toggling OFF on the Passport hides the card AND clears the offline copy on
+  //     this device — all without leaving the page (#1087). Re-enable afterward so
+  //     the logout-clears-it contract below still starts from a cached copy. Route
+  //     via "/" first: the CI offline block above may leave the document on the
+  //     /profile offline shell, so a bare goto("/profile#emergency") would be a
+  //     hash-only change (no reload) and never fetch the real page + its toggle.
+  await page.goto("/");
+  await page.goto("/profile#emergency");
+  await expect(toggle).toBeChecked();
+  await toggle.uncheck();
+  await expect(page.getByLabel("Saved")).toBeVisible();
+  await expect(page.getByTestId("emergency-card")).toHaveCount(0);
+  await expect
+    .poll(() => page.evaluate((k) => localStorage.getItem(k), LS_KEY))
+    .toBeNull();
+  // Re-enable + re-cache for the logout step.
+  await toggle.check();
+  await expect(page.getByLabel("Saved")).toBeVisible();
+  await expect(page.getByTestId("emergency-card")).toBeVisible();
+  await expect
+    .poll(() => page.evaluate((k) => localStorage.getItem(k), LS_KEY))
+    .toContain("Peanuts");
+
   // 5. Log out. The offline copy is wiped from this device, and the card is locked
   //    behind auth again.
   await page.goto("/");
@@ -168,14 +201,14 @@ test("switching profiles via the household strip wipes the previous profile's em
   test.slow();
   await login(page);
 
-  // Opt in + cache profile 1's card (the admin's default active profile).
-  await page.goto("/records/care/overview");
+  // Opt in + cache profile 1's card (the admin's default active profile) — the
+  // toggle lives on the Passport now (#1087).
+  await page.goto("/profile#emergency");
   const toggle = page.getByTestId("emergency-toggle");
   if (!(await toggle.isChecked())) {
     await toggle.check();
-    await expect(page.getByLabel("Saved").first()).toBeVisible();
+    await expect(page.getByLabel("Saved")).toBeVisible();
   }
-  await page.goto("/profile#emergency");
   await expect(page.getByTestId("emergency-card")).toBeVisible();
   await expect
     .poll(() => page.evaluate((k) => localStorage.getItem(k), LS_KEY))
