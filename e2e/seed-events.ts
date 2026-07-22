@@ -468,7 +468,12 @@ insActivity.run(
 // together — the "duplicate no heuristic catches" case (two manual rows, no clock
 // windows, so detection deliberately ignores them). Distinct date + titles so this
 // fixture never collides with the cross-source dedup pair above. Synthetic only.
-const MERGE_DATE = "2026-07-05";
+// RELATIVE date (#1048 frozen-clock follow-up): the journal feed's first page is the
+// newest JOURNAL_PAGE_DAYS (14) days, and the run-start frozen clock advances daily,
+// so the old FIXED "2026-07-05" aged OFF page 1 — the merge specs couldn't see the
+// keeper card and went red suite-wide. Anchor a few days back like the #659 edit-lock
+// fixture so it stays inside the page-1 window; the three pairs stay on DISTINCT days.
+const MERGE_DATE = shiftDateStr(today(PROFILE_ID), -8);
 db.prepare(
   `DELETE FROM activities WHERE profile_id = ? AND date = ? AND title IN ('Journal merge keeper', 'Journal merge dupe')`
 ).run(PROFILE_ID, MERGE_DATE);
@@ -486,7 +491,7 @@ insMerge.run(PROFILE_ID, MERGE_DATE, "Journal merge dupe", 42, null);
 // merge must therefore raise the per-field conflict preview; the e2e overrides
 // duration to the discarded row's value and asserts the merged keeper carries it.
 // Distinct date + titles so it never collides with the fixtures above. Synthetic.
-const CONFLICT_DATE = "2026-07-06";
+const CONFLICT_DATE = shiftDateStr(today(PROFILE_ID), -9); // relative — see MERGE_DATE (distinct recent day, on page 1)
 db.prepare(
   `DELETE FROM activities WHERE profile_id = ? AND date = ? AND title IN ('Conflict merge keeper', 'Conflict merge dupe')`
 ).run(PROFILE_ID, CONFLICT_DATE);
@@ -499,7 +504,7 @@ insMerge.run(PROFILE_ID, CONFLICT_DATE, "Conflict merge dupe", 51, 5);
 // shows how many logged sets will move (#199). The DROP carries two typed-in sets
 // that a merge must RE-PARENT onto the keeper (never destroy). Distinct date + titles
 // so it never collides with the fixtures above. Synthetic only.
-const SETS_DATE = "2026-07-04";
+const SETS_DATE = shiftDateStr(today(PROFILE_ID), -3); // relative — see MERGE_DATE (distinct recent day, on page 1)
 db.prepare(
   `DELETE FROM activities WHERE profile_id = ? AND date = ? AND title IN ('Set merge keeper', 'Set merge dupe')`
 ).run(PROFILE_ID, SETS_DATE);

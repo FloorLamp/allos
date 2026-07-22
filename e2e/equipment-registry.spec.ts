@@ -49,8 +49,16 @@ test.describe("Equipment registry (#343)", () => {
     await expect(page.getByTestId("equipment-stat-distance")).toBeVisible();
     const sessionsStat = page.getByTestId("equipment-stat-sessions");
     await expect(sessionsStat).toBeVisible();
-    // The seeded ride gives it exactly one session.
-    await expect(sessionsStat).toContainText("1");
+    // A POSITIVE session count proves the index/detail reads the shared usage
+    // computation. Do NOT exact-count "1" (#868): "E2E Registry Bike" is a SHARED
+    // profile-1 fixture, and a neighbor spec that logs a ride and picks a Bike from
+    // the activity-equipment picker adds to its session count — the exact-count-on-a-
+    // shared-row anti-pattern that made this go red suite-wide ("Sessions2" vs "1").
+    await expect(sessionsStat).toContainText(/[1-9]/);
+    // The specific seeded ride is among the counted sessions (the detail's Recent
+    // sessions list) — proof the computation counts THIS bike's own activity, not a
+    // brittle total a neighbor can bump.
+    await expect(page.getByText("E2E Registry Ride")).toBeVisible();
 
     // Back link returns to the index.
     await followLink(
