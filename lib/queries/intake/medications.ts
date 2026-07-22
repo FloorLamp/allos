@@ -6,7 +6,7 @@
 // effects and their promotion to an allergy row.
 import { db, today, writeTx } from "../../db";
 import { normalizeSeverity, SEVERITY_LABELS } from "../../medication-history";
-import { parsePrescription } from "../../prescription-parse";
+import { parsePrescription, strengthFromName } from "../../prescription-parse";
 import { resolveExactPrescriberId } from "../../providers-db";
 import { profileAgeMonths } from "../../settings";
 import { getLatestBodyMetricDated } from "../metrics";
@@ -169,16 +169,20 @@ export function ensureMedicationCourse(
   profileId: number,
   itemId: number,
   startedOn: string | null,
-  preserveUnknownStart = false
+  preserveUnknownStart = false,
+  attribution?: CourseAttribution
 ): void {
   db.prepare(
-    `INSERT INTO medication_courses (item_id, started_on, stopped_on, created_at)
+    `INSERT INTO medication_courses
+       (item_id, started_on, stopped_on, prescriber, provider_id, dose_snapshot,
+        document_id, created_at)
        SELECT ii.id,
               CASE WHEN ? = 1 THEN ? ELSE COALESCE(?, date(ii.created_at)) END,
               CASE WHEN ii.active = 1
                    THEN NULL
                    ELSE CASE WHEN ? = 1 THEN ? ELSE COALESCE(?, date(ii.created_at)) END
               END,
+              ?, ?, ?, ?,
               datetime('now')
          FROM intake_items ii
         WHERE ii.id = ? AND ii.profile_id = ? AND ii.kind = 'medication'
@@ -192,9 +196,166 @@ export function ensureMedicationCourse(
     preserveUnknownStart ? 1 : 0,
     startedOn,
     startedOn,
+    attribution?.prescriber ?? null,
+    attribution?.providerId ?? null,
+    attribution?.doseSnapshot ?? null,
+    attribution?.documentId ?? null,
     itemId,
     profileId
   );
+}
+
+// Per-course attribution (#1204): the prescriber (free text) + resolved individual
+// provider_id, a descriptive dose/sig SNAPSHOT as prescribed at this course, and the
+// source document a course was imported from (so a cross-document re-prescription's
+// courses can be cleared when THAT document reprocesses — the med itself is owned by
+// its FIRST document). Every field optional/null for a manual course.
+export interface CourseAttribution {
+  prescriber?: string | null;
+  providerId?: number | null;
+  doseSnapshot?: string | null;
+  documentId?: number | null;
+}
+
+// The lifecycle + known-strength state of each of a profile's tracked medications —
+// the input the #1204 renewal-vs-separate classifier needs (medication-renewal.ts).
+// `strengths` are parsed off the med NAME plus its dose amounts (mirrors
+// medication-record-match's trackedStrengths). Every read is profile-scoped (direct
+// or through the parent intake_items JOIN).
+export interface MedMatchState {
+  id: number;
+  name: string;
+  brand: string | null;
+  rxcui: string | null;
+  rxcuiIngredients: string[] | null;
+  hasOpenCourse: boolean;
+  strengths: string[];
+}
+
+export function getMedMatchStates(profileId: number): MedMatchState[] {
+  const meds = db
+    .prepare(
+      `SELECT id, name, brand, rxcui, rxcui_ingredients AS rxcuiIngredients
+         FROM intake_items WHERE profile_id = ? AND kind = 'medication'`
+    )
+    .all(profileId) as {
+    id: number;
+    name: string;
+    brand: string | null;
+    rxcui: string | null;
+    rxcuiIngredients: string | null;
+  }[];
+  if (meds.length === 0) return [];
+  const openByItem = new Set(
+    (
+      db
+        .prepare(
+          `SELECT DISTINCT c.item_id AS itemId
+             FROM medication_courses c
+             JOIN intake_items ii ON ii.id = c.item_id
+            WHERE ii.profile_id = ? AND c.stopped_on IS NULL`
+        )
+        .all(profileId) as { itemId: number }[]
+    ).map((r) => r.itemId)
+  );
+  const dosesByItem = new Map<number, string[]>();
+  for (const d of db
+    .prepare(
+      `SELECT d.item_id AS itemId, d.amount AS amount
+         FROM intake_item_doses d
+         JOIN intake_items ii ON ii.id = d.item_id
+        WHERE ii.profile_id = ? AND ii.kind = 'medication'`
+    )
+    .all(profileId) as { itemId: number; amount: string | null }[]) {
+    if (!d.amount) continue;
+    const arr = dosesByItem.get(d.itemId) ?? [];
+    arr.push(d.amount);
+    dosesByItem.set(d.itemId, arr);
+  }
+  return meds.map((m) => {
+    const strengths: string[] = [];
+    for (const raw of [m.name, ...(dosesByItem.get(m.id) ?? [])]) {
+      const s = raw ? strengthFromName(raw) : null;
+      if (s) strengths.push(s);
+    }
+    return {
+      id: m.id,
+      name: m.name,
+      brand: m.brand,
+      rxcui: m.rxcui,
+      rxcuiIngredients: m.rxcuiIngredients
+        ? (JSON.parse(m.rxcuiIngredients) as string[])
+        : null,
+      hasOpenCourse: openByItem.has(m.id),
+      strengths,
+    };
+  });
+}
+
+// Add a new COURSE to an EXISTING medication for a re-prescription / renewal
+// (#1204): a later refill CCD, a second provider's order, or a manual track-of-an-
+// already-tracked drug. Carries the course's period + prescriber + resolved
+// provider_id + a descriptive dose snapshot + its source document. Deduped on
+// (item_id, document_id, started_on) so a REPROCESS of the same renewing document
+// re-adds nothing, while a genuinely distinct renewal (another document/period) does
+// attach. Re-syncs the med's `active` flag to the persisted course state (an open
+// renewal course reactivates a paused med). Ownership (profile + kind='medication')
+// is verified first; a forged / cross-profile id is a no-op. Returns the new course
+// id, or null when nothing was inserted (dedup hit / not owned).
+export function addRenewalCourse(
+  profileId: number,
+  itemId: number,
+  opts: {
+    startedOn: string | null;
+    stoppedOn?: string | null;
+    stopReason?: string | null;
+    notes?: string | null;
+    attribution?: CourseAttribution;
+  }
+): number | null {
+  if (ownedMedicationId(profileId, itemId) == null) return null;
+  return writeTx(() => {
+    const attr = opts.attribution ?? {};
+    const info = db
+      .prepare(
+        `INSERT INTO medication_courses
+           (item_id, started_on, stopped_on, stop_reason, notes,
+            prescriber, provider_id, dose_snapshot, document_id, created_at)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')
+          WHERE NOT EXISTS (
+            SELECT 1 FROM medication_courses c
+             WHERE c.item_id = ?
+               AND c.document_id IS ?
+               AND c.started_on IS ?
+          )`
+      )
+      .run(
+        itemId,
+        opts.startedOn,
+        opts.stoppedOn ?? null,
+        opts.stopReason ?? null,
+        opts.notes ?? null,
+        attr.prescriber ?? null,
+        attr.providerId ?? null,
+        attr.doseSnapshot ?? null,
+        attr.documentId ?? null,
+        itemId,
+        attr.documentId ?? null,
+        opts.startedOn
+      );
+    if (info.changes === 0) return null;
+    // Re-sync active to the persisted course state (an open renewal course
+    // reactivates a paused med; a closed-only set keeps it paused).
+    db.prepare(
+      `UPDATE intake_items SET active =
+         CASE WHEN EXISTS (
+           SELECT 1 FROM medication_courses c
+            WHERE c.item_id = ? AND c.stopped_on IS NULL
+         ) THEN 1 ELSE 0 END
+       WHERE id = ? AND profile_id = ?`
+    ).run(itemId, itemId, profileId);
+    return Number(info.lastInsertRowid);
+  });
 }
 
 // Create the medication COURSES an import DERIVED from the source's effective
@@ -223,14 +384,16 @@ export function createImportedMedicationCourses(
     stopped_on: string | null;
     stop_reason: string | null;
     notes: string | null;
-  }[]
+  }[],
+  attribution?: CourseAttribution
 ): void {
   if (ownedMedicationId(profileId, itemId) == null) return;
   if (courses.length === 0) return;
   const insert = db.prepare(
     `INSERT INTO medication_courses
-       (item_id, started_on, stopped_on, stop_reason, notes, created_at)
-     SELECT ?, ?, ?, ?, ?, datetime('now')
+       (item_id, started_on, stopped_on, stop_reason, notes,
+        prescriber, provider_id, dose_snapshot, document_id, created_at)
+     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')
       WHERE NOT EXISTS (
         SELECT 1 FROM medication_courses c
          WHERE c.item_id = ? AND c.started_on IS ?
@@ -244,6 +407,10 @@ export function createImportedMedicationCourses(
         c.stopped_on,
         c.stop_reason,
         c.notes,
+        attribution?.prescriber ?? null,
+        attribution?.providerId ?? null,
+        attribution?.doseSnapshot ?? null,
+        attribution?.documentId ?? null,
         itemId,
         c.started_on
       );
