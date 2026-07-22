@@ -188,7 +188,11 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
       return code ? `Immunization — ${code}` : "Immunization";
     },
   },
-  { prefix: "careplan:", domain: "Due & scheduled", label: () => "Care plan item" },
+  {
+    prefix: "careplan:",
+    domain: "Due & scheduled",
+    label: () => "Care plan item",
+  },
   { prefix: "goal:", domain: "Due & scheduled", label: () => "Goal check-in" },
   {
     prefix: "training:",
@@ -200,7 +204,11 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
     domain: "Due & scheduled",
     label: () => "Endurance event",
   },
-  { prefix: "med-monitor:", domain: "Due & scheduled", label: () => "Medication monitoring" },
+  {
+    prefix: "med-monitor:",
+    domain: "Due & scheduled",
+    label: () => "Medication monitoring",
+  },
   // ---- Biomarkers ----------------------------------------------------------
   {
     prefix: "biomarker-flag:",
@@ -255,7 +263,11 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
     domain: "Warnings",
     label: () => "Drug-allergy warning",
   },
-  { prefix: "contrast:", domain: "Warnings", label: () => "Contrast safety note" },
+  {
+    prefix: "contrast:",
+    domain: "Warnings",
+    label: () => "Contrast safety note",
+  },
   {
     prefix: "dental-safety:",
     domain: "Warnings",
@@ -312,18 +324,16 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
 // only where prefixes could nest; none of these overlap (pinned by the registry
 // invariants + the coverage guard).
 const RESOLVER_TABLE: ResolverEntry[] = [
-  ...RULE_FINDING_REGISTRY.map(
-    (e): ResolverEntry => ({
-      prefix: e.prefix,
-      domain: registryDomain(e),
-      label:
-        REGISTRY_LABELS[e.prefix] ??
-        // A registry prefix with no explicit template still resolves (the
-        // builder name, humanized) — the coverage guard asserts the explicit
-        // template exists, so this fallback is belt-and-suspenders only.
-        (() => "Coaching finding"),
-    })
-  ),
+  ...RULE_FINDING_REGISTRY.map((e): ResolverEntry => ({
+    prefix: e.prefix,
+    domain: registryDomain(e),
+    label:
+      REGISTRY_LABELS[e.prefix] ??
+      // A registry prefix with no explicit template still resolves (the
+      // builder name, humanized) — the coverage guard asserts the explicit
+      // template exists, so this fallback is belt-and-suspenders only.
+      (() => "Coaching finding"),
+  })),
   ...EXTRA_ENTRIES,
 ];
 

@@ -152,7 +152,13 @@ function gatherWindowDoses(
     const supp = suppById.get(dose.item_id);
     if (!supp) continue;
     if (!isDueOn(supp, ctx)) continue;
-    if (doseSendSlot(supp.condition, timeBucket(dose.time_of_day), workoutTimed) !== slot)
+    if (
+      doseSendSlot(
+        supp.condition,
+        timeBucket(dose.time_of_day),
+        workoutTimed
+      ) !== slot
+    )
       continue;
     // A dose is "due" on a past date when its supplement was due that day
     // (workout/situational logic); situations are only known as of now.
@@ -243,34 +249,6 @@ export function buildSupplementReminder(
   window: IntakeSendSlot
 ): NotificationMessage | null {
   return buildIntakeReminderForSlots(profileId, [window])?.message ?? null;
-}
-
-// Resolve a tapped dose's slot and collect that slot's session in one dose
-// fetch. Null when the dose isn't found for this profile; the returned entries
-// can still be empty (e.g. the supplement was deactivated or is no longer due),
-// which the caller treats as "can't rebuild the session view". Entries are
-// floor-filtered (#1156) — a rebuilt reminder must not resurface doses the send
-// excluded.
-export function windowSessionForDose(
-  profileId: number,
-  doseId: number,
-  date: string
-): { window: IntakeSendSlot; entries: WindowDose[] } | null {
-  const doses = getSupplementDoses(profileId);
-  const tapped = doses.find((d) => d.id === doseId);
-  if (!tapped) return null;
-  const supp = getSupplements(profileId).find((s) => s.id === tapped.item_id);
-  const slot = doseSendSlot(
-    supp?.condition ?? "daily",
-    timeBucket(tapped.time_of_day),
-    preWorkoutTimed(profileId)
-  );
-  return {
-    window: slot,
-    entries: notifiableWindowDoses(
-      gatherWindowDoses(profileId, slot, date, doses)
-    ),
-  };
 }
 
 // The MERGED session view for a set of dose ids + slots harvested from a tapped

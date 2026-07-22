@@ -32,6 +32,7 @@
 // timer don't statically pull the whole notification stack.
 
 import { createLogger } from "../log";
+import { clockOverride } from "../clock";
 
 const log = createLogger("notify");
 
@@ -68,6 +69,13 @@ export function queuePostWorkoutDispatch(
   delayMs: number = POST_WORKOUT_DISPATCH_DELAY_MS,
   runner: DispatchRunner = defaultRunner
 ): void {
+  // A frozen-clock instance (ALLOS_TEST_NOW — the e2e webServer) never arms the
+  // wall-clock timer: a real-time delay is meaningless under a frozen "now", and
+  // a background dispatch firing mid-suite would race the specs' channel-config
+  // fixtures (the delivery-health marker is shared state). The unit/DB/action
+  // tiers don't set the override, so the queue is fully exercised there; in a
+  // frozen e2e app the tick backstop remains the (never-run) delivery path.
+  if (runner === defaultRunner && clockOverride()) return;
   const k = key(profileId, activityId);
   const existing = pending.get(k);
   if (existing) clearTimeout(existing.timer);

@@ -61,9 +61,7 @@ describe("queuePostWorkoutDispatch", () => {
       throw new Error("forced dispatch failure");
     });
     queuePostWorkoutDispatch(1, 42, 60_000, run);
-    await expect(
-      vi.advanceTimersByTimeAsync(60_000)
-    ).resolves.not.toThrow();
+    await expect(vi.advanceTimersByTimeAsync(60_000)).resolves.not.toThrow();
     expect(run).toHaveBeenCalledTimes(1);
   });
 });

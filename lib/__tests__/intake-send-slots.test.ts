@@ -18,13 +18,8 @@ import {
   parseAllCallback,
   keyboardDoseFootprint,
 } from "../notifications/callback-data";
-import {
-  doseReminderNotifies,
-  type TimeBucket,
-} from "../supplement-schedule";
-import {
-  escalationWindowPhrase,
-} from "../notifications/escalation";
+import { doseReminderNotifies, type TimeBucket } from "../supplement-schedule";
+import { escalationWindowPhrase } from "../notifications/escalation";
 import type { AdherenceSummary } from "../supplement-adherence";
 import type {
   Supplement,
@@ -79,7 +74,11 @@ function supp(
   };
 }
 
-function dose(id: number, supplementId: number, amount: string | null): SupplementDose {
+function dose(
+  id: number,
+  supplementId: number,
+  amount: string | null
+): SupplementDose {
   return {
     id,
     item_id: supplementId,
@@ -133,9 +132,12 @@ describe("doseSendSlot", () => {
     ["rest_day", "Anytime", true, "Morning"],
     ["daily", "Before sleep", true, "Bedtime"],
   ];
-  it.each(cases)("%s + %s (workoutTimed=%s) → %s", (cond, bucket, timed, want) => {
-    expect(doseSendSlot(cond, bucket, timed)).toBe(want);
-  });
+  it.each(cases)(
+    "%s + %s (workoutTimed=%s) → %s",
+    (cond, bucket, timed, want) => {
+      expect(doseSendSlot(cond, bucket, timed)).toBe(want);
+    }
+  );
 });
 
 describe("preWorkoutSlotHour", () => {
@@ -173,7 +175,10 @@ describe("notifiableWindowDoses (#1156)", () => {
     const entries = [
       entry(supp(1, "Ashwagandha", "low"), dose(11, 1, "300 mg")),
       entry(supp(2, "Creatine", "high"), dose(12, 2, "5 g")),
-      entry(supp(3, "Levothyroxine", "low", "medication"), dose(13, 3, "50 mcg")),
+      entry(
+        supp(3, "Levothyroxine", "low", "medication"),
+        dose(13, 3, "50 mcg")
+      ),
       entry(supp(4, "Vitamin D", "mandatory"), dose(14, 4, "1000 IU")),
     ];
     expect(notifiableWindowDoses(entries).map((e) => e.supp.name)).toEqual([
@@ -233,7 +238,9 @@ describe("renderMergedIntakeMessage", () => {
     expect(allButtons[0].label).toBe("✅ All Morning (2)");
     expect(allButtons[0].data).toBe("all:7:Morning:2026-07-20");
     // Every pending dose keeps its take/skip pair.
-    const takes = (msg.actions ?? []).filter((a) => a.data?.startsWith("take:"));
+    const takes = (msg.actions ?? []).filter((a) =>
+      a.data?.startsWith("take:")
+    );
     expect(takes).toHaveLength(3);
   });
 
@@ -279,7 +286,12 @@ describe("parseAllCallback with the PreWorkout slot", () => {
 describe("keyboardDoseFootprint", () => {
   it("harvests dose ids from take/skip buttons and slots from All tokens", () => {
     const rows = [
-      [{ text: "✅ All Morning (2)", callback_data: "all:7:Morning:2026-07-20" }],
+      [
+        {
+          text: "✅ All Morning (2)",
+          callback_data: "all:7:Morning:2026-07-20",
+        },
+      ],
       [
         { text: "✅ Vitamin D", callback_data: "take:7:11:1:2026-07-20" },
         { text: "⏭ Skip", callback_data: "skip:7:11:1:2026-07-20" },

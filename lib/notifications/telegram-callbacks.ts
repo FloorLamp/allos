@@ -913,7 +913,12 @@ async function handleDoseTap(
       profileId,
       chatId,
       messageId,
-      renderMergedIntakeMessage(profileId, parts, tap.date, getUserAge(profileId))
+      renderMergedIntakeMessage(
+        profileId,
+        parts,
+        tap.date,
+        getUserAge(profileId)
+      )
     );
     return;
   }

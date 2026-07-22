@@ -169,9 +169,9 @@ describe("#1156 — low-priority supplements: tracked, not nagged", () => {
     });
     // The safety-tier gather (collectWindowDoses) is deliberately unfiltered…
     const gathered = collectWindowDoses(p, "Morning", today(p));
-    expect(gathered.some((e) => e.supp.name === "Critical Low Supp (test)")).toBe(
-      true
-    );
+    expect(
+      gathered.some((e) => e.supp.name === "Critical Low Supp (test)")
+    ).toBe(true);
     // …while the send assembly excludes it.
     expect(buildSupplementReminder(p, "Morning")).toBeNull();
   });

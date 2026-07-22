@@ -6,10 +6,7 @@ import type { FoodLogOutcome } from "../food-log-write";
 import type { ProteinAddOutcome } from "../protein-log-write";
 import { formatRecordDate } from "../record-format";
 import { foodGroupName } from "../food-groups";
-import {
-  INTAKE_SEND_SLOTS,
-  type IntakeSendSlot,
-} from "./supplement-format";
+import { INTAKE_SEND_SLOTS, type IntakeSendSlot } from "./supplement-format";
 import { FOOD_NUDGE_WINDOWS, type FoodNudgeWindow } from "./food-format";
 
 // A keyboard button carries EITHER a callback token or a deep-link url (issue
@@ -62,7 +59,8 @@ export function keyboardDoseFootprint(rows: InlineKeyboard): {
   for (const row of rows) {
     for (const b of row) {
       const tap =
-        parseTakeCallback(b.callback_data) ?? parseSkipCallback(b.callback_data);
+        parseTakeCallback(b.callback_data) ??
+        parseSkipCallback(b.callback_data);
       if (tap) doseIds.add(tap.doseId);
       const all = parseAllCallback(b.callback_data);
       if (all) slots.add(all.window);

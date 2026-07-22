@@ -64,11 +64,7 @@ function seedPreWorkoutSupp(
   return { itemId, doseId };
 }
 
-function seedDaily(
-  profileId: number,
-  name: string,
-  timeOfDay: string
-): number {
+function seedDaily(profileId: number, name: string, timeOfDay: string): number {
   const itemId = Number(
     db
       .prepare(

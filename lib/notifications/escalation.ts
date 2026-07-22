@@ -16,11 +16,7 @@ import { formatMedicationDoseProduct } from "../medication-dose-format";
 // pseudo-slot (#1154) — a critical `anytime` pre_workout dose whose reminder
 // moved to the workout-relative send must keep its missed-dose safety net.
 export type EscalationWindow =
-  | "Morning"
-  | "Midday"
-  | "Evening"
-  | "Bedtime"
-  | "PreWorkout";
+  "Morning" | "Midday" | "Evening" | "Bedtime" | "PreWorkout";
 
 // Human phrase for the message body ("the pre-workout dose of …").
 export function escalationWindowPhrase(w: EscalationWindow): string {
