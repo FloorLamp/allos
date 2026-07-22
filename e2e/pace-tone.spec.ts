@@ -91,7 +91,7 @@ test("Training weekly routine chips are pace-coloured, rose-free, and sky-free (
   // Overview is the default tab; the seed plants 4 weekly frequency targets, so the
   // Weekly routine renders every one (met + partial), not just the open subset.
   const chips = main.getByTestId("weekly-target-chip");
-  await expect(chips.first()).toBeVisible();
+  await expect(chips.first()).toBeVisible(); // first-ok: asserts the weekly-target chips render at all (count asserted next) — order-agnostic
   const n = await chips.count();
   expect(n).toBeGreaterThan(0);
 

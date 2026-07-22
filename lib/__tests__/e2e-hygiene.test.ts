@@ -203,8 +203,6 @@ const FIRST_ALLOW: Record<string, number> = {
   "integrations-health-connect.spec.ts": 3,
   "journal-provenance.spec.ts": 7,
   "kids-growth.spec.ts": 2,
-  "live-workout.spec.ts": 1,
-  "longevity.spec.ts": 1,
   "manual-temperature.spec.ts": 2,
   "maps-links.spec.ts": 1,
   "medication-monitoring.spec.ts": 1,
@@ -219,11 +217,9 @@ const FIRST_ALLOW: Record<string, number> = {
   "mobility.spec.ts": 2,
   "muscle-anatomy.spec.ts": 4,
   "muscle-coverage.spec.ts": 2,
-  "muscle-volume-bands.spec.ts": 1,
   "needs-attention-menu.spec.ts": 2,
   "offsite-backup.spec.ts": 1,
   "onboarding.spec.ts": 2,
-  "pace-tone.spec.ts": 1,
   "palette-actions.spec.ts": 3,
   "pgx-crosscheck.spec.ts": 1,
   "preventive-nudge.spec.ts": 2,
@@ -232,10 +228,7 @@ const FIRST_ALLOW: Record<string, number> = {
   "results-page.spec.ts": 2,
   "review-inbox.spec.ts": 3,
   "risk-factors.spec.ts": 2,
-  "routine-builder.spec.ts": 1,
-  "routine-deload.spec.ts": 1,
   "routine-recommendation.spec.ts": 2,
-  "rpe-logging.spec.ts": 1,
   "session-recap.spec.ts": 6,
   "settings-ia.spec.ts": 1,
   "share-link.spec.ts": 1,
@@ -250,8 +243,6 @@ const FIRST_ALLOW: Record<string, number> = {
   "symptom-text-intake.spec.ts": 1,
   "temperature-unit.spec.ts": 3,
   "timeline-linked-context.spec.ts": 1,
-  "training-restriction.spec.ts": 1,
-  "training-zones.spec.ts": 1,
   "trends-per-tab.spec.ts": 1,
   // two-factor / view-only-access each shed one grant-checkbox .first() when their
   // create+grant dance moved into e2e/family-helpers.ts (which scopes the checkbox by
@@ -261,9 +252,6 @@ const FIRST_ALLOW: Record<string, number> = {
   "vision.spec.ts": 3,
   "visits-lifecycle.spec.ts": 3,
   "weekly-recap.spec.ts": 2,
-  "weight-quick-add.spec.ts": 1,
-  "workout-heatmap.spec.ts": 1,
-  "workout-presence.spec.ts": 1,
 };
 
 // Frozen .toPass( offenders (per-file counts, `topass-ok`-marked lines excluded)

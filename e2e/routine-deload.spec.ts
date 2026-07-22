@@ -37,6 +37,6 @@ test("Today's session card shows deload copy in the deload week (#741)", async (
   await expect(card.getByTestId("deload-badge")).toBeVisible();
   // The slate is deload-adjusted: one fewer working set (the PPL Push slate is
   // 4 × 5–8 at full volume, so 3 × 5–8 during the deload).
-  await expect(card.getByText("3 × 5–8").first()).toBeVisible();
+  await expect(card.getByText("3 × 5–8").first()).toBeVisible(); // first-ok: several exercises in this scoped card share the 3×5–8 deload scheme; assert it renders at all
   await expect(card.getByText("4 × 5–8")).toHaveCount(0);
 });
