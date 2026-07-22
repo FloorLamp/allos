@@ -138,8 +138,16 @@ function normalizePeriods(periods: ImportMedPeriod[]): ImportMedPeriod[] {
 //
 // Rules:
 //   - entered-in-error → return null (the caller drops the whole medication).
-//   - No usable period → return [] (the caller falls back to the Phase-1 single
-//     open initial course).
+//   - No usable period, but a status that says the med ENDED
+//     (completed/stopped/on-hold) AND a fallbackStopDate → one CLOSED, undated
+//     course (started_on null, stopped_on = fallbackStopDate). Without this, a
+//     dateless "suspended"/"Not-Taking" med-list entry (the eClinicalWorks shape —
+//     statusCode present, effectiveTime nullFlavor'd) fell through to the open
+//     fallback and imported as an ACTIVE medication, inverting the source's truth.
+//     The stop date is required because `active` syncs to "an open course exists":
+//     a closed course with stopped_on null would read as open.
+//   - No usable period otherwise → return [] (the caller falls back to the
+//     Phase-1 single open initial course).
 //   - Each period → one course: started_on = low, stopped_on = high.
 //   - Earlier (superseded) episodes are always closed; one lacking an explicit
 //     high is closed at the next episode's start (best-effort), else its own start.
@@ -162,10 +170,25 @@ export function coursesFromImportedMedication(
   if (status === "entered-in-error") return null;
 
   const cleaned = normalizePeriods(periods);
-  if (cleaned.length === 0) return [];
-
   const reason = statusStopReason(status);
   const statusNote = status === "on-hold" ? "On hold" : null;
+
+  if (cleaned.length === 0) {
+    // Dateless but ended: close the course at the fallback date so the med
+    // imports inactive. Dateless and active/unknown (or no stop date to anchor
+    // to) keeps the [] fallback.
+    if (reason != null && opts.fallbackStopDate != null) {
+      return [
+        {
+          started_on: null,
+          stopped_on: opts.fallbackStopDate,
+          stop_reason: reason,
+          notes: joinNotes(opts.note, statusNote),
+        },
+      ];
+    }
+    return [];
+  }
 
   return cleaned.map((p, i) => {
     const isLast = i === cleaned.length - 1;

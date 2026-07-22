@@ -35,6 +35,7 @@ import {
   clinicalNotesFromSections,
   encompassingEncounterInfo,
   selectReasonTarget,
+  serviceEventProviders,
   socialHistorySex,
   visitDiagnosesFromSections,
 } from "./extractors";
@@ -148,6 +149,9 @@ export function parseCcdaDocument(xml: string): {
   // pick which encounter the Reason for Visit attaches to when a hospital document
   // carries several Encounter Activities (issue #267). Null when absent.
   encompassingEncounter: EncompassingEncounterInfo | null;
+  // Header-level care team (documentationOf/serviceEvent performers) — e.g. the
+  // patient's PCP on an eCW document. Unioned into the import's providers.
+  serviceEventProviders: ImportedProvider[];
 } {
   // Reject a hostile internal DTD subset (#135 item 5) before parsing — no
   // legitimate C-CDA declares custom entities, so a `<!ENTITY>` is an attack shape.
@@ -183,6 +187,7 @@ export function parseCcdaDocument(xml: string): {
     demographics: mapDemographics(cd),
     documentDate: effTime(cd?.effectiveTime),
     encompassingEncounter: encompassingEncounterInfo(cd),
+    serviceEventProviders: serviceEventProviders(cd),
   };
 }
 
@@ -391,8 +396,13 @@ export function extractFromCcda(
   xml: string,
   extractors: SectionExtractor[] = DEFAULT_EXTRACTORS
 ): ImportResult {
-  const { sections, demographics, documentDate, encompassingEncounter } =
-    parseCcdaDocument(xml);
+  const {
+    sections,
+    demographics,
+    documentDate,
+    encompassingEncounter,
+    serviceEventProviders: headerProviders,
+  } = parseCcdaDocument(xml);
   const immunizations: ImportedImmunization[] = [];
   const records: ImportedRecord[] = [];
   const providers: ImportedProvider[] = [];
@@ -408,11 +418,15 @@ export function extractFromCcda(
   // a real content section that happens to be titled "… Notes" can never be
   // double-processed as a note.
   const claimedSections = new Set<CdaSection>();
+  // The date undated entries anchor to (see SectionExtractor.contextDate): the
+  // header visit's date when present — a per-visit document's effectiveTime is its
+  // GENERATION timestamp, possibly days after the visit — else the document date.
+  const contextDate = encompassingEncounter?.start ?? documentDate;
   for (const section of sections) {
     const ex = extractors.find((e) => e.matches(section));
     if (!ex) continue;
     claimedSections.add(section);
-    const part = ex.extract(section, documentDate);
+    const part = ex.extract(section, contextDate);
     if (part.immunizations) immunizations.push(...part.immunizations);
     if (part.records) records.push(...part.records);
     if (part.providers) providers.push(...part.providers);
@@ -431,6 +445,16 @@ export function extractFromCcda(
   // companion event-type activity — #267) is disambiguated by the document's
   // encompassing visit (selectReasonTarget). Genuinely ambiguous cases still skip.
   const deduped = dedupe(encounters);
+  // A document whose sections yield NO encounter but whose header carries the visit
+  // (componentOf/encompassingEncounter) imports the header visit as THE encounter —
+  // the eClinicalWorks packaging, vs Epic's Encounters-section Encounter Activities.
+  // This keeps the visit's real clinician/facility, and gives the document-level
+  // correlations below (reason for visit, clinical notes, standalone visit
+  // diagnoses) their single encounter to attach to — without it, each note section
+  // fabricates its own note-only encounter and the reason drops as unattributable.
+  if (deduped.length === 0 && encompassingEncounter?.activity) {
+    deduped.push(encompassingEncounter.activity);
+  }
   // Whether the Reason-for-Visit section was actually consumed (correlated). Only
   // true when selectReasonTarget resolves a single reason-less encounter to attach
   // the chief complaint to AND the section carried one — the same condition the
@@ -539,7 +563,7 @@ export function extractFromCcda(
     sections,
     extractors,
     reasonForVisitConsumed,
-    documentDate
+    contextDate
   );
   drops.push(
     ...dedupeDrops(
@@ -630,10 +654,11 @@ export function extractFromCcda(
     carePlanItems: keptCarePlanItems,
     careGoals: keptCareGoals,
     demographics: enrichedDemographics,
-    // Section-level providers (Care Teams). Per-reading performers ride on the
-    // records/immunizations above; import-persist unions all three and dedups
-    // globally when resolving them into the shared registry.
-    providers,
+    // Section-level providers (Care Teams) plus the header's serviceEvent
+    // performers (the stated PCP / appointment provider). Per-reading performers
+    // ride on the records/immunizations above; import-persist unions them all and
+    // dedups globally when resolving them into the shared registry.
+    providers: [...providers, ...headerProviders],
     report,
   };
 }

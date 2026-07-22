@@ -228,6 +228,7 @@ describe("selectReasonTarget / encompassingEncounterInfo pure logic (#267)", () 
         externalId: "ccda:encounter:B",
         start: null,
         end: null,
+        activity: null,
       })
     ).toBe(1);
   });
@@ -242,6 +243,7 @@ describe("selectReasonTarget / encompassingEncounterInfo pure logic (#267)", () 
         externalId: null,
         start: "2026-06-03",
         end: null,
+        activity: null,
       })
     ).toBe(1);
   });
@@ -256,6 +258,7 @@ describe("selectReasonTarget / encompassingEncounterInfo pure logic (#267)", () 
         externalId: null,
         start: "2026-06-03",
         end: null,
+        activity: null,
       })
     ).toBe(-1);
   });
@@ -269,10 +272,14 @@ describe("selectReasonTarget / encompassingEncounterInfo pure logic (#267)", () 
         },
       },
     };
-    expect(encompassingEncounterInfo(cd)).toEqual({
+    expect(encompassingEncounterInfo(cd)).toMatchObject({
       externalId: "ccda:encounter:VISIT-1",
       start: "2026-06-03",
       end: null,
+      activity: {
+        date: "2026-06-03",
+        external_id: "ccda:encounter:VISIT-1",
+      },
     });
     expect(encompassingEncounterInfo({})).toBeNull();
   });
