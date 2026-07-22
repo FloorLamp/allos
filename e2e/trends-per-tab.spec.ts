@@ -12,7 +12,7 @@ import { followLink } from "./helpers";
 // Markers that are data-independent (always rendered by their section's chrome):
 //   Insights → the "Date to analyze" generate form
 //   Fitness  → the "Full Training →" link + nested Strength/Cardio/Sport strip
-//   Biomarkers → the seeded "trajectory-findings" card (eGFR decline fixture)
+// (Biomarkers left the Trends hub in #1164 — merged into Results.)
 const INSIGHTS_MARKER = "Date to analyze";
 const FITNESS_MARKER = "Full Training";
 
@@ -55,15 +55,30 @@ test("direct navigation renders only the requested tab's section (#105)", async 
   await expect(page.getByText(FITNESS_MARKER)).toBeVisible();
   await expect(page.getByRole("tab", { name: "Strength" })).toBeVisible();
   await expect(page.getByText(INSIGHTS_MARKER)).toHaveCount(0);
+});
 
-  // Biomarkers: the seeded trajectory card renders (also proves the tab's own
-  // queries still run when it's the active tab).
+test("the Trends tab strip no longer lists Biomarkers, and a stale ?tab=biomarkers falls back to the default tab (#1164)", async ({
+  page,
+}) => {
+  await page.goto("/trends");
+  // Biomarkers is gone from the strip (merged into Results); the surviving tabs stay.
+  await expect(page.getByRole("tab", { name: "Biomarkers" })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "Nutrition" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Body" })).toBeVisible();
+
+  // A stale external bookmark to the removed tab falls through the hub's unknown-?tab=
+  // fallback to the default (Overview) — no redirect, no 404.
   await page.goto("/trends?tab=biomarkers");
-  await expect(page.getByRole("tab", { name: "Biomarkers" })).toHaveAttribute(
+  await expect(page).toHaveURL(/\/trends\?tab=biomarkers$/);
+  await expect(page.getByRole("tab", { name: "Overview" })).toHaveAttribute(
     "aria-selected",
     "true"
   );
-  await expect(page.getByTestId("trajectory-findings")).toBeVisible();
+  // A live page, not an error: the hub heading renders and no biomarker section shows.
+  await expect(
+    page.getByRole("heading", { name: "Trends", exact: true })
+  ).toBeVisible();
+  await expect(page.getByTestId("trajectory-findings")).toHaveCount(0);
 });
 
 test("clicking a tab switches which section is rendered (#105)", async ({

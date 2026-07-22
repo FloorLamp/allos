@@ -178,13 +178,14 @@ test.describe("tapping a category expands its serving detail on mobile", () => {
   });
 });
 
-test("the Trends → Nutrition tab renders the food-servings rollup (#579)", async ({
+test("the Trends → Nutrition tab is the over-time view, not the duplicate rollup (#1166)", async ({
   page,
 }) => {
   await page.goto("/trends?tab=nutrition");
-  const section = page.getByTestId("nutrition-trends");
-  await expect(section).toBeVisible();
-  // The seed logs leafy greens most days, so its rollup row is present over the range.
-  await expect(page.getByTestId("nutrition-trends-rollup")).toBeVisible();
-  await expect(section.getByTestId("rollup-leafy_greens")).toBeVisible();
+  // #1166 reframed the tab: the duplicate FoodWeeklyRollup left for /nutrition; the
+  // over-time cards (macros+fiber, adherence trend, intake grid) took its place. (The
+  // detailed over-time assertions live in trends-nutrition.spec.ts.)
+  await expect(page.getByTestId("nutrition-macros-chart")).toBeVisible();
+  await expect(page.getByTestId("nutrition-trends-rollup")).toHaveCount(0);
+  await expect(page.getByTestId("food-weekly-rollup")).toHaveCount(0);
 });
