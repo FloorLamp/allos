@@ -828,7 +828,6 @@ export default async function BodySection({
   // Body fat is dropped for a growth-tracked profile (matching the charts/history);
   // every other metric self-gates on presence (buildBodyMetricTile → present=false
   // ⇒ orderBodyMetricTiles drops it). Sleep is a SPECIAL tile linking to /sleep.
-  const todayStr = today(profile.id);
   const tileSeries: Array<[BodyMetricSlug, { date: string; value: number }[]]> =
     [
       ["weight", weightAll],
