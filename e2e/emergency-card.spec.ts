@@ -145,7 +145,11 @@ test("emergency card: opt-in, render on the passport page, offline copy, and log
 
   // 4c. Toggling OFF on the Passport hides the card AND clears the offline copy on
   //     this device — all without leaving the page (#1087). Re-enable afterward so
-  //     the logout-clears-it contract below still starts from a cached copy.
+  //     the logout-clears-it contract below still starts from a cached copy. Route
+  //     via "/" first: the CI offline block above may leave the document on the
+  //     /profile offline shell, so a bare goto("/profile#emergency") would be a
+  //     hash-only change (no reload) and never fetch the real page + its toggle.
+  await page.goto("/");
   await page.goto("/profile#emergency");
   await expect(toggle).toBeChecked();
   await toggle.uncheck();
