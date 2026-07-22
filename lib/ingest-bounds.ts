@@ -243,14 +243,89 @@ export function inTimeWindow(ms: number, nowMs: number = Date.now()): boolean {
   return ms >= MIN_INGEST_TIME_MS && ms <= nowMs + FUTURE_SLACK_MS;
 }
 
+// ---- request byte cap ----
+//
+// The push-ingest endpoint buffers the accepted body (readBodyCapped) before parsing,
+// so a byte cap bounds peak memory as well as abuse. The old 2 MB ceiling was sized
+// to "a rolling-48h export is small" — but a real device reported an 11.3 MB export
+// (issue #1064: a watch writing high-frequency HR, an initial/catch-up sync, or dense
+// nutrition logging), and the rolling window made the rejection permanent. Now that
+// the write path is CHUNKED (bounded per-transaction cost, see `chunk` below), the cap
+// returns to its true job — stopping abuse, not real phones — so the default is 32 MB
+// with headroom over the reported 11.3 MB. Operators with outlier setups can raise it
+// via HEALTH_CONNECT_MAX_INGEST_BYTES. At 32 MB the buffered body is fine for a family
+// box; the streamed byte-cap-then-parse shape is preserved (no req.json()).
+export const DEFAULT_MAX_INGEST_BYTES = 32 * 1024 * 1024;
+
+// Resolve the effective request byte cap: HEALTH_CONNECT_MAX_INGEST_BYTES when it is a
+// positive finite integer, else the 32 MB default. Pure — the env value is passed in
+// (the route reads process.env at request time and forwards it here), so the parse is
+// unit-testable and the default accepts the reported 11.3 MB with room to spare.
+export function resolveMaxIngestBytes(
+  raw: string | undefined = process.env.HEALTH_CONNECT_MAX_INGEST_BYTES
+): number {
+  if (raw == null || raw.trim() === "") return DEFAULT_MAX_INGEST_BYTES;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : DEFAULT_MAX_INGEST_BYTES;
+}
+
+// The actionable Review-feed line for an over-BYTES rejection (issue #1064): unlike
+// the generic 413 body (#478), this is what the operator reads in Data → Review, so it
+// names the remedy and points at the per-type granularity guidance (#1065). The 413
+// response body stays generic; only this stored event carries the advice.
+export function overSizeReviewMessage(bytes: number, cap: number): string {
+  return (
+    `Payload too large (${bytes} bytes > ${cap}). ` +
+    `Reduce the exporter app's sync window or per-type granularity (see the recommended ` +
+    `settings on the Health Connect page), or raise the ingest limit ` +
+    `(HEALTH_CONNECT_MAX_INGEST_BYTES).`
+  );
+}
+
 // ---- payload record-count cap ----
 //
-// A <2 MB payload still has NO record-count cap: every array is looped and upserted
-// in one synchronous transaction, blocking the single better-sqlite3 connection for
-// the whole batch. A rolling-48h export is a few thousand records at most, so 10 000
-// is generous headroom while capping a runaway/hostile client. The ingest route
+// A within-byte-cap payload can still carry a huge number of records. The write path
+// is now CHUNKED (see `chunk` below): each ~1 000-record batch is its own IMMEDIATE
+// writeTx, so the single better-sqlite3 connection is never blocked longer than one
+// chunk and the record cap's real rationale dissolves. The cap therefore rises to
+// 100 000 — comfortably above the ~thousands a legitimate rolling-48h (or catch-up)
+// export carries, while still stopping an abusive/runaway client. The ingest route
 // rejects an over-cap payload with a 400 and a recorded failure event.
-export const MAX_INGEST_RECORDS = 10_000;
+export const MAX_INGEST_RECORDS = 100_000;
+
+// The Review-feed line for an over-RECORD-COUNT rejection (issue #1064): actionable,
+// mirroring overSizeReviewMessage. The 400 response body stays generic (#478).
+export function overRecordReviewMessage(count: number, cap: number): string {
+  return (
+    `Too many records in one payload (${count} > ${cap}). ` +
+    `Reduce the exporter app's sync window or per-type granularity (see the recommended ` +
+    `settings on the Health Connect page).`
+  );
+}
+
+// ---- chunked write path (issue #1064) ----
+//
+// The whole batch used to upsert in ONE synchronous transaction, blocking the single
+// better-sqlite3 connection for its entire duration — the honest reason the caps were
+// tight. The upserts are idempotent on natural keys (the ingest contract), so the
+// batch can be split into bounded transactions: a mid-batch failure leaves the
+// committed chunks in place and the next push of the rolling window re-covers the rest.
+// ~1 000 records per chunk keeps each transaction's cost bounded while amortizing the
+// per-transaction overhead. `chunk` is the pure slicer (order preserved), unit-tested;
+// the impure per-chunk writeTx orchestration lives in health-connect-ingest.ts.
+export const INGEST_CHUNK_SIZE = 1000;
+
+// Split `items` into contiguous slices of at most `size`, preserving order. N items
+// yield ceil(N/size) slices; an empty input yields no slices (so a type with no
+// records opens no transaction). `size` is clamped to >= 1 defensively. Pure.
+export function chunk<T>(items: readonly T[], size: number): T[][] {
+  const n = Math.max(1, Math.floor(size));
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += n) {
+    out.push(items.slice(i, i + n));
+  }
+  return out;
+}
 
 // Count the records a Health Connect payload carries: the sum of the lengths of its
 // top-level arrays, plus nested per-session sleep `stages` (the one nested array the

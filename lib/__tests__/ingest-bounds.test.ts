@@ -10,6 +10,12 @@ import {
   FUTURE_SLACK_MS,
   MAX_INGEST_RECORDS,
   countPayloadRecords,
+  chunk,
+  INGEST_CHUNK_SIZE,
+  DEFAULT_MAX_INGEST_BYTES,
+  resolveMaxIngestBytes,
+  overSizeReviewMessage,
+  overRecordReviewMessage,
 } from "@/lib/ingest-bounds";
 
 // Issue #132: physiological plausibility bounds for integration ingest. These are
@@ -264,5 +270,93 @@ describe("countPayloadRecords", () => {
     expect(countPayloadRecords(realistic)).toBeLessThan(MAX_INGEST_RECORDS);
     const abusive = { heart_rate: new Array(MAX_INGEST_RECORDS + 1).fill({}) };
     expect(countPayloadRecords(abusive)).toBeGreaterThan(MAX_INGEST_RECORDS);
+  });
+});
+
+// ---- chunked write path (issue #1064) ----
+
+describe("chunk", () => {
+  it("splits N items into ceil(N/size) slices, order preserved", () => {
+    const items = [1, 2, 3, 4, 5, 6, 7];
+    const slices = chunk(items, 3);
+    expect(slices).toEqual([[1, 2, 3], [4, 5, 6], [7]]);
+    // Flattening recovers the original order exactly.
+    expect(slices.flat()).toEqual(items);
+  });
+
+  it("returns no slices for an empty input (opens no transaction)", () => {
+    expect(chunk([], 1000)).toEqual([]);
+  });
+
+  it("returns one slice when the input fits in a single chunk", () => {
+    expect(chunk([1, 2], 1000)).toEqual([[1, 2]]);
+    // An exact multiple splits cleanly with no trailing empty slice.
+    expect(chunk([1, 2, 3, 4], 2)).toEqual([
+      [1, 2],
+      [3, 4],
+    ]);
+  });
+
+  it("clamps a non-positive size to 1 defensively", () => {
+    expect(chunk([1, 2], 0)).toEqual([[1], [2]]);
+    expect(chunk([1, 2], -5)).toEqual([[1], [2]]);
+  });
+
+  it("chunks a realistic 2500-record batch into 3 slices at the default size", () => {
+    const items = Array.from({ length: 2500 }, (_, i) => i);
+    const slices = chunk(items, INGEST_CHUNK_SIZE);
+    expect(slices.length).toBe(3);
+    expect(slices.map((s) => s.length)).toEqual([1000, 1000, 500]);
+  });
+});
+
+// ---- byte cap resolution (issue #1064) ----
+
+describe("resolveMaxIngestBytes", () => {
+  it("defaults to 32MB, which accepts the reported 11.3MB device payload", () => {
+    expect(resolveMaxIngestBytes(undefined)).toBe(DEFAULT_MAX_INGEST_BYTES);
+    expect(DEFAULT_MAX_INGEST_BYTES).toBe(32 * 1024 * 1024);
+    expect(11_346_634).toBeLessThan(resolveMaxIngestBytes(undefined));
+  });
+
+  it("honors a positive integer override", () => {
+    expect(resolveMaxIngestBytes("52428800")).toBe(52428800);
+  });
+
+  it("falls back to the default for blank / non-numeric / non-positive values", () => {
+    expect(resolveMaxIngestBytes("")).toBe(DEFAULT_MAX_INGEST_BYTES);
+    expect(resolveMaxIngestBytes("   ")).toBe(DEFAULT_MAX_INGEST_BYTES);
+    expect(resolveMaxIngestBytes("lots")).toBe(DEFAULT_MAX_INGEST_BYTES);
+    expect(resolveMaxIngestBytes("0")).toBe(DEFAULT_MAX_INGEST_BYTES);
+    expect(resolveMaxIngestBytes("-1")).toBe(DEFAULT_MAX_INGEST_BYTES);
+  });
+
+  it("floors a fractional override", () => {
+    expect(resolveMaxIngestBytes("1000.9")).toBe(1000);
+  });
+});
+
+// ---- actionable over-cap Review messages (issue #1064) ----
+
+describe("over-cap Review messages", () => {
+  it("names the bytes, the cap, the remedy, and the env override", () => {
+    const msg = overSizeReviewMessage(11_346_634, DEFAULT_MAX_INGEST_BYTES);
+    expect(msg).toContain("11346634");
+    expect(msg).toContain(String(DEFAULT_MAX_INGEST_BYTES));
+    expect(msg).toMatch(/HEALTH_CONNECT_MAX_INGEST_BYTES/);
+    expect(msg.toLowerCase()).toContain("sync window");
+  });
+
+  it("the record-count message names the count, the cap, and a remedy", () => {
+    const msg = overRecordReviewMessage(200_000, MAX_INGEST_RECORDS);
+    expect(msg).toContain("200000");
+    expect(msg).toContain(String(MAX_INGEST_RECORDS));
+    expect(msg.toLowerCase()).toContain("sync window");
+  });
+});
+
+describe("raised record cap (issue #1064)", () => {
+  it("is 100k so a real catch-up sync is accepted with headroom", () => {
+    expect(MAX_INGEST_RECORDS).toBe(100_000);
   });
 });

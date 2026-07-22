@@ -74,4 +74,31 @@ test.describe("Health Connect integration (#391)", () => {
       await member.context().close();
     }
   });
+
+  // Issue #1065: the setup card renders the per-type "Recommended settings" matrix
+  // (SOURCE_FIDELITY), so the user knows which granularity to pick in the exporter app.
+  test("renders the recommended per-type granularity settings block", async ({
+    browser,
+  }) => {
+    test.slow();
+    const member = await loginAs(browser, {
+      username: E2E_LOGIN_HC,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await member.goto("/integrations/health-connect");
+      const block = member.getByTestId("hc-recommended-settings");
+      await expect(block).toBeVisible();
+      await expect(
+        block.getByRole("heading", { name: "Recommended settings" })
+      ).toBeVisible();
+      // A load-bearing row from the verified matrix: Heart rate → 1m.
+      await expect(
+        block.getByText("Heart rate", { exact: true })
+      ).toBeVisible();
+      await expect(block.getByText("1m", { exact: true })).toBeVisible();
+    } finally {
+      await member.context().close();
+    }
+  });
 });

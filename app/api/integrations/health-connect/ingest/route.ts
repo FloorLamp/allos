@@ -1,5 +1,4 @@
 import { revalidatePath } from "next/cache";
-import { db, writeTx } from "@/lib/db";
 import { getTimezone } from "@/lib/settings";
 import { log } from "@/lib/log";
 import { reconcileFlags, addCanonicalNames } from "@/lib/queries";
@@ -11,7 +10,6 @@ import {
 } from "@/lib/integrations/connections";
 import {
   summarizeSplit,
-  foldCounts,
   dateWindow,
   type UpsertCounts,
 } from "@/lib/integrations/sync-log";
@@ -20,25 +18,20 @@ import {
   parseHealthConnectPayload,
   type ParsedPayload,
 } from "@/lib/integrations/health-connect";
-import {
-  upsertActivities,
-  upsertHrMinutes,
-  upsertMetricSamples,
-  upsertVitals,
-  upsertBodyMetrics,
-  type IngestCounts,
-} from "@/lib/integrations/normalize";
+import type { IngestCounts } from "@/lib/integrations/normalize";
+import { ingestHealthConnectPayload } from "@/lib/integrations/health-connect-ingest";
 import { queueTempRedFlagDispatch } from "@/lib/notifications/temp-red-flag";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { readBodyCapped } from "@/lib/request-body";
 import { writeRawPayload } from "@/lib/integrations/raw-log";
-import { countPayloadRecords, MAX_INGEST_RECORDS } from "@/lib/ingest-bounds";
+import {
+  countPayloadRecords,
+  MAX_INGEST_RECORDS,
+  resolveMaxIngestBytes,
+  overSizeReviewMessage,
+  overRecordReviewMessage,
+} from "@/lib/ingest-bounds";
 import { serializeHealthConnectSyncDetails } from "@/lib/integrations/sync-details";
-
-// A rolling-48h phone export batch is small (a few days of samples/activities as
-// JSON); 2MB is comfortably above any legitimate payload, so a larger body is
-// almost certainly abuse — reject it before buffering the whole request.
-const MAX_INGEST_BYTES = 2 * 1024 * 1024;
 
 // Per-token fixed-window rate limit. A phone exporter pushes every few minutes, so
 // 60 requests / 5 min is generous for legitimate use while capping a runaway or
@@ -115,11 +108,16 @@ export async function POST(req: Request) {
   // Review failure line instead of silently vanishing. The body carries `ok: false`
   // like every other response here (the two 413s were the only ones that omitted it,
   // breaking a client that switches on `body.ok`).
+  // The effective byte cap: 32 MB default, raised via HEALTH_CONNECT_MAX_INGEST_BYTES
+  // for outlier setups (issue #1064). Read per-request so an operator can retune it
+  // without a rebuild.
+  const maxIngestBytes = resolveMaxIngestBytes();
+
   const contentLength = Number(req.headers.get("content-length"));
-  if (Number.isFinite(contentLength) && contentLength > MAX_INGEST_BYTES) {
+  if (Number.isFinite(contentLength) && contentLength > maxIngestBytes) {
     recordSyncEvent(INGEST_PROFILE_ID, HEALTH_CONNECT_ID, {
       ok: false,
-      error: `Payload too large (${contentLength} bytes > ${MAX_INGEST_BYTES}).`,
+      error: overSizeReviewMessage(contentLength, maxIngestBytes),
     });
     return Response.json(
       { ok: false, error: "payload too large" },
@@ -131,14 +129,15 @@ export async function POST(req: Request) {
   // cumulative bytes exceed the cap. This defeats a chunked / absent / lying
   // Content-Length (serverActions.bodySizeLimit does NOT cover Route Handlers, so
   // this is the only real size guard here). Runs before the write transaction.
-  const capped = await readBodyCapped(req.body, MAX_INGEST_BYTES);
+  const capped = await readBodyCapped(req.body, maxIngestBytes);
   if ("overCap" in capped) {
     // Authoritative byte-cap rejection — the profile is resolved, so record an
     // attributable failure event (issue #604) and carry `ok: false` in the body, like
-    // the bad-JSON and over-record-count rejections below do.
+    // the bad-JSON and over-record-count rejections below do. The stream aborted at
+    // the cap so the exact size is unknown; report the cap as the lower bound.
     recordSyncEvent(INGEST_PROFILE_ID, HEALTH_CONNECT_ID, {
       ok: false,
-      error: `Payload too large (exceeded ${MAX_INGEST_BYTES} bytes).`,
+      error: overSizeReviewMessage(maxIngestBytes, maxIngestBytes),
     });
     return Response.json(
       { ok: false, error: "payload too large" },
@@ -180,13 +179,17 @@ export async function POST(req: Request) {
   // 400 and an attributable failure event (mirrors the JSON-body rejection above).
   const recordCount = countPayloadRecords(body);
   if (recordCount > MAX_INGEST_RECORDS) {
-    const error = `Too many records in one payload (${recordCount} > ${MAX_INGEST_RECORDS}).`;
+    // The Review-feed line names the remedy (#1064); the response body stays generic
+    // (#478) — a bearer-token holder never sees the internal counts/thresholds.
     recordSyncEvent(INGEST_PROFILE_ID, HEALTH_CONNECT_ID, {
       ok: false,
       raw_ref: rawRef,
-      error,
+      error: overRecordReviewMessage(recordCount, MAX_INGEST_RECORDS),
     });
-    return Response.json({ ok: false, error }, { status: 400 });
+    return Response.json(
+      { ok: false, error: "too many records" },
+      { status: 400 }
+    );
   }
 
   // Attribute each absolute timestamp to a local day/minute in the app-configured
@@ -198,57 +201,17 @@ export async function POST(req: Request) {
   let counts: IngestCounts;
   let split: UpsertCounts;
   let vitalIds: number[] = [];
-  // The flat per-type total (inserted + updated + unchanged) feeding the legacy
-  // last_sync_summary / log.info, kept alongside the new split accounting.
-  const total = (c: UpsertCounts) => c.inserted + c.updated + c.unchanged;
   try {
-    const txResult = writeTx(
-      (): { counts: IngestCounts; split: UpsertCounts } => {
-        const bodyMetrics = upsertBodyMetrics(
-          INGEST_PROFILE_ID,
-          parsed.bodyMetrics,
-          HEALTH_CONNECT_ID
-        );
-        const samples = upsertMetricSamples(
-          INGEST_PROFILE_ID,
-          parsed.samples,
-          HEALTH_CONNECT_ID
-        );
-        const hrMinutes = upsertHrMinutes(
-          INGEST_PROFILE_ID,
-          parsed.hrMinutes,
-          HEALTH_CONNECT_ID
-        );
-        const activities = upsertActivities(
-          INGEST_PROFILE_ID,
-          parsed.activities,
-          HEALTH_CONNECT_ID
-        );
-        const vitals = upsertVitals(
-          INGEST_PROFILE_ID,
-          parsed.vitals,
-          HEALTH_CONNECT_ID
-        );
-        vitalIds = vitals.ids;
-        return {
-          counts: {
-            bodyMetrics: total(bodyMetrics),
-            samples: total(samples),
-            hrMinutes: total(hrMinutes),
-            activities: total(activities),
-            vitals: total(vitals.counts),
-          },
-          split: foldCounts([
-            bodyMetrics,
-            samples,
-            hrMinutes,
-            activities,
-            vitals.counts,
-          ]),
-        };
-      }
-    );
-    ({ counts, split } = txResult);
+    // Chunked write path (#1064): each record type is upserted in bounded per-chunk
+    // IMMEDIATE transactions, so the connection is never blocked longer than one chunk
+    // and a mid-batch failure leaves the committed chunks in place (the next rolling-
+    // window push re-covers the rest). Every chunk's split still folds into the ONE
+    // recordSyncEvent below (the #14 accounting is per-push, not per-chunk).
+    ({ counts, split, vitalIds } = ingestHealthConnectPayload(
+      INGEST_PROFILE_ID,
+      parsed,
+      HEALTH_CONNECT_ID
+    ));
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     log.error("health-connect ingest failed", { err: String(err) });
