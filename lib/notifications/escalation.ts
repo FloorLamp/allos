@@ -12,7 +12,20 @@ import type { NotificationMessage } from "./types";
 import type { LifecycleSuppressionPolicy } from "../lifecycle";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
 
-export type EscalationWindow = "Morning" | "Midday" | "Evening" | "Bedtime";
+// The send slots escalation chases: the four fixed windows plus the PreWorkout
+// pseudo-slot (#1154) — a critical `anytime` pre_workout dose whose reminder
+// moved to the workout-relative send must keep its missed-dose safety net.
+export type EscalationWindow =
+  | "Morning"
+  | "Midday"
+  | "Evening"
+  | "Bedtime"
+  | "PreWorkout";
+
+// Human phrase for the message body ("the pre-workout dose of …").
+export function escalationWindowPhrase(w: EscalationWindow): string {
+  return w === "PreWorkout" ? "pre-workout" : w.toLowerCase();
+}
 
 // Missed-dose escalation is the FIRST lifecycle tenant (issue #942, #860 Track A): its
 // suppression stage is declared here as the shared "safety-ungated" policy rather than
@@ -143,7 +156,7 @@ export function renderEscalationMessage(
   const suppId = due.supplementId;
   return {
     title: `⚠️ Missed dose: ${who}${due.supplementName}`,
-    body: `The ${due.window.toLowerCase()} dose of ${due.supplementName}${amt} hasn't been confirmed yet. Check in.`,
+    body: `The ${escalationWindowPhrase(due.window)} dose of ${due.supplementName}${amt} hasn't been confirmed yet. Check in.`,
     kind: "escalation",
     actions: [
       {

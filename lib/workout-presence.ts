@@ -98,6 +98,24 @@ export function householdPresenceChip(p: WorkoutPresence): string | null {
   return `mid-workout · ${p.sinceMin} min`;
 }
 
+// Whether an activity row is a COMPLETED session — vs a live/unfinished draft —
+// for the delayed post-workout dispatch's fire-time verification (#1154 §B).
+// Completed = an end is known (end_time, or start + a positive duration), OR the
+// row carries no start_time at all (an untimed retroactive log is inherently
+// finished — there is no live session without a start). The only NON-completed
+// shape is a started-but-unended, duration-less row: the live-draft signature
+// computeWorkoutPresence reads as `active`. Pure, so the fire-time guard (a
+// finish that was undone must not send) is unit-pinnable.
+export function isCompletedSessionRow(row: {
+  start_time: string | null;
+  end_time: string | null;
+  duration_min: number | null;
+}): boolean {
+  if (row.end_time) return true;
+  if (!row.start_time) return true;
+  return row.duration_min != null && row.duration_min > 0;
+}
+
 const IDLE: WorkoutPresence = {
   state: "idle",
   activityId: null,

@@ -71,6 +71,7 @@ import {
   foodProteinAnswerText,
   foodStaleDateAnswerText,
   foodTapDateGuard,
+  keyboardDoseFootprint,
   parseAllCallback,
   parseEscalationCallback,
   parseFoodLogCallback,
@@ -105,8 +106,11 @@ import {
   tapResolved,
   tapSkipAnswerText,
 } from "./callback-data";
-import { collectWindowDoses, windowSessionForDose } from "./supplements";
-import { renderWindowMessage } from "./supplement-format";
+import { collectWindowDoses, slotSessionForKeyboard } from "./supplements";
+import {
+  notifiableWindowDoses,
+  renderMergedIntakeMessage,
+} from "./supplement-format";
 import { buildFoodNudge } from "./food";
 import {
   countVisibleFoodButtons,
@@ -889,9 +893,17 @@ async function handleDoseTap(
 
   // Rebuild the whole message from current state so it reflects what's now been
   // taken/skipped this session; the final tap yields a completion summary (no
-  // buttons).
-  const session = windowSessionForDose(profileId, tap.doseId, tap.date);
-  if (session && session.entries.length > 0) {
+  // buttons). A coalesced reminder (#1154) can span several slots, so the rebuild
+  // re-renders every slot the message's keyboard covered (harvested from the
+  // surviving buttons + the tapped dose), not just the tapped dose's slot.
+  const footprint = keyboardDoseFootprint(rows);
+  const parts = slotSessionForKeyboard(
+    profileId,
+    [...footprint.doseIds, tap.doseId],
+    footprint.slots,
+    tap.date
+  );
+  if (parts.length > 0) {
     // Rebuild through the channel chokepoint, which re-applies the SAME send-time
     // "[Name] " prefix (prefixForProfile — one computation, #377/#454), so a
     // shared-chat rebuild keeps the profile label instead of collapsing to an
@@ -901,13 +913,7 @@ async function handleDoseTap(
       profileId,
       chatId,
       messageId,
-      renderWindowMessage(
-        profileId,
-        session.window,
-        tap.date,
-        session.entries,
-        getUserAge(profileId)
-      )
+      renderMergedIntakeMessage(profileId, parts, tap.date, getUserAge(profileId))
     );
     return;
   }
@@ -952,11 +958,16 @@ async function handleAllTaken(
     return;
   }
 
-  // The window's doses are re-collected from CURRENT state (active, non-retired,
+  // The slot's doses are re-collected from CURRENT state (active, non-retired,
   // due today), so this tolerates schedule edits made after the message was
-  // sent. Count only real inserts; when the whole window has since emptied
-  // (schedule restructured / items paused), say so instead of "Logged ✅".
-  const entries = collectWindowDoses(profileId, all.window, all.date);
+  // sent. Floor-filtered (#1156): "✅ All" marks only the doses the reminder
+  // actually listed — a low-priority supplement the send excluded is never
+  // silently logged by a bulk tap. Count only real inserts; when the whole slot
+  // has since emptied (schedule restructured / items paused), say so instead of
+  // "Logged ✅".
+  const entries = notifiableWindowDoses(
+    collectWindowDoses(profileId, all.window, all.date)
+  );
   let logged = 0;
   for (const e of entries) {
     // A deliberately-skipped dose (#232) is already resolved — "✅ All" marks the
@@ -985,11 +996,20 @@ async function handleAllTaken(
   if (chatId == null || messageId == null) return;
 
   // Rebuild from current state — everything's now taken, so this renders the
-  // completion summary (no buttons). With nothing due in the window anymore
+  // completion summary (no buttons). A coalesced reminder (#1154) can span
+  // several slots, so the rebuild covers every slot the keyboard named (the
+  // tapped All token's slot plus any sibling buttons). With nothing due anymore
   // there is no session to render; replace the stale message (it had buttons —
   // this tap came from one) so it stops advertising doses that no longer exist.
-  const refreshed = collectWindowDoses(profileId, all.window, all.date);
-  if (refreshed.length === 0) {
+  const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
+  const footprint = keyboardDoseFootprint(rows);
+  const parts = slotSessionForKeyboard(
+    profileId,
+    footprint.doseIds,
+    [...footprint.slots, all.window],
+    all.date
+  );
+  if (parts.length === 0) {
     await closeMessage(
       chatId,
       messageId,
@@ -1004,13 +1024,7 @@ async function handleAllTaken(
     profileId,
     chatId,
     messageId,
-    renderWindowMessage(
-      profileId,
-      all.window,
-      all.date,
-      refreshed,
-      getUserAge(profileId)
-    )
+    renderMergedIntakeMessage(profileId, parts, all.date, getUserAge(profileId))
   );
 }
 

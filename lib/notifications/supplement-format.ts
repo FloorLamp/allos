@@ -11,13 +11,91 @@ import {
   matchFoodInteractions,
   foodGuidanceReminderNote,
 } from "../food-drug-interactions";
-import { FOOD_TIMING_LABELS, PRIORITY_ORDER } from "../supplement-schedule";
+import {
+  FOOD_TIMING_LABELS,
+  PRIORITY_ORDER,
+  doseReminderNotifies,
+  type TimeBucket,
+} from "../supplement-schedule";
 import { parseRxcuiIngredients } from "../rxnorm";
-import type { Supplement, SupplementDose, SupplementKind } from "../types";
+import type {
+  Supplement,
+  SupplementCondition,
+  SupplementDose,
+  SupplementKind,
+} from "../types";
 import type { NotificationMessage, NotificationAction } from "./types";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
 
 export type ReminderWindow = "Morning" | "Midday" | "Evening" | "Bedtime";
+
+// A supplement-reminder SEND SLOT (issue #1154): one of the four fixed
+// time-of-day windows, or the workout-relative "PreWorkout" pseudo-slot — the
+// send timed off the inferred training hour rather than a fixed bucket. The
+// pseudo-slot exists only for `anytime` + `pre_workout` doses when a training
+// cadence is inferred (see doseSendSlot); everything else keeps its window.
+export type IntakeSendSlot = ReminderWindow | "PreWorkout";
+
+export const INTAKE_SEND_SLOTS: readonly IntakeSendSlot[] = [
+  "Morning",
+  "Midday",
+  "Evening",
+  "Bedtime",
+  "PreWorkout",
+];
+
+// Human label per slot (the window names are their own labels).
+export const INTAKE_SLOT_LABELS: Record<IntakeSendSlot, string> = {
+  Morning: "Morning",
+  Midday: "Midday",
+  Evening: "Evening",
+  Bedtime: "Bedtime",
+  PreWorkout: "Pre-workout",
+};
+
+// Map a dose's (5-value) time bucket to one of the 4 reminder windows: "Anytime"
+// folds into the morning (so it's reminded once a day); "Before sleep" maps to
+// the dedicated bedtime send.
+export function bucketWindow(b: TimeBucket): ReminderWindow {
+  switch (b) {
+    case "Midday":
+      return "Midday";
+    case "Evening":
+      return "Evening";
+    case "Before sleep":
+      return "Bedtime";
+    case "Morning":
+    case "Anytime":
+    default:
+      return "Morning";
+  }
+}
+
+// The send slot a dose belongs to (issue #1154 Fix A). `pre_workout` is a day
+// CONDITION, not a time anchor — but `anytime` means "app, you pick the time",
+// so an `anytime` pre_workout dose opts into workout-relative timing (the
+// PreWorkout pseudo-slot, ~an hour before the inferred training hour) when a
+// cadence is inferred (`workoutTimed`). An EXPLICIT bucket is honored (the
+// recorded design call: explicit wins; `anytime` opts in), and with no inferred
+// hour the dose keeps today's fold-to-Morning fallback — so a dose is in the
+// PreWorkout slot XOR its bucket window, never both (no double-listing).
+export function doseSendSlot(
+  condition: SupplementCondition,
+  bucket: TimeBucket,
+  workoutTimed: boolean
+): IntakeSendSlot {
+  if (condition === "pre_workout" && bucket === "Anytime" && workoutTimed)
+    return "PreWorkout";
+  return bucketWindow(bucket);
+}
+
+// The notification priority floor (issue #1156) applied to a gathered window:
+// low-priority SUPPLEMENT doses are excluded from every dose-reminder send —
+// body lines AND buttons — while medications are never gated (safety tier).
+// In-app surfaces don't route through this; dueness is untouched.
+export function notifiableWindowDoses(entries: WindowDose[]): WindowDose[] {
+  return entries.filter((e) => doseReminderNotifies(e.supp));
+}
 
 // The noun a reminder/summary uses for its items, chosen from the ACTUAL kinds in
 // the window (#380): a medications-only profile — the archetypal elderly-parent
@@ -148,7 +226,7 @@ function doseLine(
 // and there are no buttons.
 export function renderWindowMessage(
   profileId: number,
-  window: ReminderWindow,
+  window: IntakeSendSlot,
   date: string,
   entries: WindowDose[],
   // The profile's age in whole years (issue #851 item 4), so an age-gated food note
@@ -161,6 +239,7 @@ export function renderWindowMessage(
   // Resolved doses (taken or skipped) list after the pending ones; ⏭ marks a skip.
   const resolved = entries.filter((e) => e.taken || e.skipped).sort(byPriority);
 
+  const label = INTAKE_SLOT_LABELS[window];
   // Name the items by their actual kinds so a medications-only window isn't
   // titled "supplements" (#380). Derived from every entry in the window (taken +
   // pending) so the noun is stable across the session's messages.
@@ -174,8 +253,8 @@ export function renderWindowMessage(
     // else a taken/skipped breakdown so a skip isn't misread as a take.
     const title =
       skippedN === 0
-        ? `💊 ${window} ${noun} — all ${takenN} taken ✅`
-        : `💊 ${window} ${noun} — ${takenN} taken · ${skippedN} skipped`;
+        ? `💊 ${label} ${noun} — all ${takenN} taken ✅`
+        : `💊 ${label} ${noun} — ${takenN} taken · ${skippedN} skipped`;
     return { title, body };
   }
 
@@ -183,17 +262,31 @@ export function renderWindowMessage(
     ...pending.map((e) => doseLine(e, true, age)),
     ...resolved.map((e) => doseLine(e, false, age)),
   ].join("\n");
-  // Each pending dose gets a ✅ take and a ⏭ skip button, side by side (same
-  // `row` group). The dose + supplement id and date are baked into each token so
-  // a late tap still resolves the correct dose to the correct day. There is NO
-  // "skip all" — a blanket skip is a footgun (#232); skip stays per-dose only.
+  const actions = doseSessionActions(profileId, window, date, pending, false);
+  return { title: `💊 ${label} ${noun}`, body, actions, kind: "dose" };
+}
+
+// The button set for one slot's pending doses. Each pending dose gets a ✅ take
+// and a ⏭ skip button, side by side (same `row` group). The dose + supplement id
+// and date are baked into each token so a late tap still resolves the correct
+// dose to the correct day. There is NO "skip all" — a blanket skip is a footgun
+// (#232); skip stays per-dose only. With 2+ doses pending, a single "✅ All" tap
+// marks the whole slot taken (labelled with the slot when the message merges
+// several slots, so two All buttons stay tellable apart — #531).
+function doseSessionActions(
+  profileId: number,
+  slot: IntakeSendSlot,
+  date: string,
+  pending: WindowDose[],
+  labelAll: boolean
+): NotificationAction[] {
   const actions: NotificationAction[] = [];
-  // With more than one dose still pending, offer a single tap that marks the
-  // whole session taken, on its own row above the per-dose buttons.
   if (pending.length >= 2) {
     actions.push({
-      label: `✅ All (${pending.length})`,
-      data: `all:${profileId}:${window}:${date}`,
+      label: labelAll
+        ? `✅ All ${INTAKE_SLOT_LABELS[slot]} (${pending.length})`
+        : `✅ All (${pending.length})`,
+      data: `all:${profileId}:${slot}:${date}`,
     });
   }
   for (const { dose, supp } of pending) {
@@ -209,5 +302,70 @@ export function renderWindowMessage(
       row,
     });
   }
-  return { title: `💊 ${window} ${noun}`, body, actions, kind: "dose" };
+  return actions;
+}
+
+// One slot's gathered entries, as fed to the merged renderer.
+export interface IntakeSlotPart {
+  slot: IntakeSendSlot;
+  entries: WindowDose[];
+}
+
+// Render ONE message covering every slot due this hour (issue #1154: at-most-one
+// supplement dose reminder per hour). A single slot renders EXACTLY the classic
+// window message; two or more slots merge into one send — each slot's section
+// under a slot heading, pending-first within its section, per-dose buttons plus a
+// per-slot "✅ All <slot>" — so two windows configured at the same hour (or the
+// PreWorkout pseudo-slot colliding with a window) can never produce two
+// notifications in one hour. The caller (buildIntakeReminderForSlots) has already
+// applied the #1156 priority floor and the merged-set empty check.
+export function renderMergedIntakeMessage(
+  profileId: number,
+  parts: IntakeSlotPart[],
+  date: string,
+  age: number | null = null
+): NotificationMessage {
+  if (parts.length === 1) {
+    return renderWindowMessage(
+      profileId,
+      parts[0].slot,
+      date,
+      parts[0].entries,
+      age
+    );
+  }
+
+  const all = parts.flatMap((p) => p.entries);
+  const noun = intakeWindowNoun(all.map((e) => e.supp.kind));
+  const labels = parts.map((p) => INTAKE_SLOT_LABELS[p.slot]);
+  const pendingTotal = all.filter((e) => !e.taken && !e.skipped).length;
+
+  const sections: string[] = [];
+  const actions: NotificationAction[] = [];
+  for (const p of parts) {
+    const pending = p.entries
+      .filter((e) => !e.taken && !e.skipped)
+      .sort(byPriority);
+    const resolved = p.entries
+      .filter((e) => e.taken || e.skipped)
+      .sort(byPriority);
+    const lines = [
+      `${INTAKE_SLOT_LABELS[p.slot]}:`,
+      ...pending.map((e) => doseLine(e, true, age)),
+      ...resolved.map((e) => doseLine(e, false, age)),
+    ];
+    sections.push(lines.join("\n"));
+    actions.push(...doseSessionActions(profileId, p.slot, date, pending, true));
+  }
+
+  const title =
+    pendingTotal === 0
+      ? `💊 ${labels.join(" & ")} ${noun} — all done ✅`
+      : `💊 ${labels.join(" & ")} ${noun}`;
+  return {
+    title,
+    body: sections.join("\n\n"),
+    ...(actions.length > 0 ? { actions } : {}),
+    ...(pendingTotal > 0 ? { kind: "dose" as const } : {}),
+  };
 }

@@ -24,7 +24,11 @@ import {
   mainSleepNights,
   sleepSessionDurationMinutes,
 } from "../sleep-regularity";
-import { countSituationalDue, isDueOn } from "../supplement-schedule";
+import {
+  countSituationalDue,
+  doseReminderNotifies,
+  isDueOn,
+} from "../supplement-schedule";
 import {
   getActiveSituations,
   getSituationEvents,
@@ -215,10 +219,19 @@ export function gatherDigestInput(
   }
   const todayGroups = groupUpcoming(upcoming, td);
   // The dose glance headline counts the DUE dose items collectUpcoming surfaced
-  // (bus-honored + #558) — the same items the Today section bands over.
+  // (bus-honored + #558) — the same items the Today section bands over. The
+  // #1156 priority floor applies to this PUSH surface: a low-priority SUPPLEMENT
+  // dose stays on the in-app surfaces (Upcoming, Supplements page) but is
+  // excluded from the digest's actionable dose count — tracked, not nagged.
+  const doseByIdForFloor = new Map(doses.map((d) => [d.id, d]));
   const todayDoseIds = upcoming
     .filter((i) => i.domain === "dose" && i.doseId != null)
-    .map((i) => i.doseId as number);
+    .map((i) => i.doseId as number)
+    .filter((id) => {
+      const d = doseByIdForFloor.get(id);
+      const supp = d ? suppById.get(d.item_id) : undefined;
+      return supp ? doseReminderNotifies(supp) : true;
+    });
   const doseCount = todayDoseIds.length;
 
   // Yesterday: activities, supplement adherence x/y, weight if logged.

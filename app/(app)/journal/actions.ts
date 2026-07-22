@@ -2,7 +2,8 @@
 import { requireSession, requireWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
-import { db, writeTx } from "@/lib/db";
+import { db, today, writeTx } from "@/lib/db";
+import { queuePostWorkoutDispatch } from "@/lib/notifications/post-workout-queue";
 import { buildJournalFeedPage, type JournalFeedPage } from "@/lib/journal-feed";
 import { captureDelete } from "@/lib/undo-delete-db";
 import {
@@ -400,6 +401,18 @@ export async function saveActivity(
     creditRoutineSession(profile.id, date, { regions, hasCardio });
   } catch {
     // Crediting is advisory; swallow so the save still confirms.
+  }
+
+  // Delayed post-workout dose dispatch (#1154 §B): a save landing a session on
+  // TODAY arms (or RE-arms — finish→unfinish→re-finish coalesces to one send)
+  // the ~60s dispatch timer. Covers BOTH the live Finish (end_time just set) and
+  // a retroactive completed log. Non-blocking — the action returns immediately;
+  // the timer's fire-time verification skips a row that isn't a completed
+  // today-session (a still-live draft, an undone finish), and the hourly tick
+  // stays the mandatory backstop if the process restarts inside the window. The
+  // shared one-shot marker keeps the two paths to a single send.
+  if (date === today(profile.id)) {
+    queuePostWorkoutDispatch(profile.id, activityId);
   }
 
   revalidateActivitySurfaces();

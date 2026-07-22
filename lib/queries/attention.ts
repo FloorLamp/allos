@@ -37,8 +37,13 @@ import {
   collectUpcoming,
   collectSuppressedUpcoming,
   getFindingSuppressions,
-  type SuppressedUpcoming,
 } from "./upcoming";
+import {
+  domainForRichKey,
+  resolveSuppressedKeyDisplay,
+  ORPHAN_SUPPRESSION_LABEL,
+  type SuppressionDomain,
+} from "../suppression-display";
 import { getImportIssues, getReviewPairCount } from "./integrations";
 
 // The failing/needs-reauth providers reduced to what the model renders (one entry
@@ -139,31 +144,97 @@ export function attentionCountForProfile(
     .length;
 }
 
-// The items currently snoozed/dismissed for this profile — powers the Upcoming
-// page's "Snoozed & dismissed" restore section. It's the complement of the live
-// model: the suppressed date-scheduled due-signals (collectSuppressedUpcoming) PLUS
-// any suppressed biomarker flags (issue #524 — a flag dismissed on either surface
-// stays restorable, same `biomarker-flag:<name>` store). Structural signals
-// (review/integration) aren't suppressible, so they never appear here.
+// One row of the Upcoming page's "Snoozed & dismissed" section (issue #1151):
+// EVERY currently-active suppression on the findings bus, each resolved to a
+// domain group + a human label. `item` carries the rich reconstructed
+// UpcomingItem when the care tier can still produce one (its icon/title win);
+// resolver-labelled rows (coaching findings, suggestions, warnings) carry null.
+// `orphan` marks a key whose subject is gone / namespace unknown (#203) — its
+// Restore simply clears the dead row.
+export interface SuppressedAttentionEntry {
+  signalKey: string;
+  domain: SuppressionDomain;
+  label: string;
+  snoozeUntil: string | null;
+  dismissedAt: string | null;
+  item: UpcomingItem | null;
+  orphan: boolean;
+}
+
+// Everything currently snoozed/dismissed for this profile — powers the Upcoming
+// page's "Snoozed & dismissed" restore section. As of #1151 it aggregates the
+// WHOLE suppression bus, not just the care tier:
+//   1. the suppressed date-scheduled due-signals (collectSuppressedUpcoming) and
+//      suppressed biomarker flags keep their RICH reconstruction (a live item);
+//   2. every OTHER active suppression row (coaching/observational findings,
+//      per-surface suggestions, intake warnings) resolves through the ONE
+//      prefix-keyed resolver (lib/suppression-display.ts, #221) into a domain +
+//      label;
+//   3. a row that matches nothing — subject deleted, name re-keyed, unknown
+//      namespace — renders as the generic clearable orphan row (#203).
+// A key whose item is LIVE despite its row (a care-persistent item resisting a
+// dismiss, a safety-ungated crisis finding) is skipped — it isn't silenced, so
+// listing it as "dismissed" would lie. Structural signals (review/integration)
+// aren't suppressible, so they never appear here.
 export function collectSuppressedAttention(
   profileId: number,
   today: string,
   units: UpcomingDisplayUnits = CANONICAL_DISPLAY_UNITS
-): SuppressedUpcoming[] {
-  const out = collectSuppressedUpcoming(profileId, today, units);
+): SuppressedAttentionEntry[] {
   const suppressions = getFindingSuppressions(profileId);
   const factors = getRiskFactors(profileId);
+
+  const out: SuppressedAttentionEntry[] = [];
+  const covered = new Set<string>();
+  for (const s of collectSuppressedUpcoming(profileId, today, units)) {
+    covered.add(s.signalKey);
+    out.push({
+      signalKey: s.signalKey,
+      domain: domainForRichKey(s.signalKey),
+      label: s.item.title,
+      snoozeUntil: s.snoozeUntil,
+      dismissedAt: s.dismissedAt,
+      item: s.item,
+      orphan: false,
+    });
+  }
   for (const b of flaggedInWindow(profileId)) {
     const key = biomarkerFlagDismissalKey(b.name);
     const rec = suppressions.get(key);
-    if (rec && isSuppressed(rec, today)) {
+    if (rec && isSuppressed(rec, today) && !covered.has(key)) {
+      covered.add(key);
+      const item = buildFlaggedItem(b, flaggedRiskReasons(b, factors));
       out.push({
-        item: buildFlaggedItem(b, flaggedRiskReasons(b, factors)),
         signalKey: key,
+        domain: domainForRichKey(key),
+        label: item.title,
         snoozeUntil: rec.snooze_until,
         dismissedAt: rec.dismissed_at,
+        item,
+        orphan: false,
       });
     }
+  }
+
+  // The rest of the bus (#1151): keys with an ACTIVE suppression that no rich
+  // reconstruction covered. Skip keys whose item is currently LIVE (the row has
+  // no effect — a resisted dismiss on a care-persistent/safety-ungated item).
+  const liveKeys = new Set(
+    collectUpcoming(profileId, today, units).map((i) => i.key)
+  );
+  for (const [key, rec] of suppressions) {
+    if (covered.has(key) || liveKeys.has(key)) continue;
+    if (!isSuppressed(rec, today)) continue;
+    const display = resolveSuppressedKeyDisplay(key);
+    out.push({
+      signalKey: key,
+      domain: display?.domain ?? "Other",
+      label: display?.label ?? ORPHAN_SUPPRESSION_LABEL,
+      snoozeUntil: rec.snooze_until,
+      dismissedAt: rec.dismissed_at,
+      item: null,
+      orphan: display == null,
+    });
   }
   return out;
 }

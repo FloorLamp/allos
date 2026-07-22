@@ -44,6 +44,15 @@ export const DEFAULT_INTAKE_REMINDER_HOURS = {
   Bedtime: 22,
 } as const;
 
+// The PreWorkout pseudo-slot hour (issue #1154 Fix A): fire the hourly tick's
+// pre-workout reminder one hour BEFORE the inferred training hour, so with the
+// tick's :00 cadence the send lands ~30–60 min ahead of the session (inferred
+// hour 18 → the 17:00 slot). Wraps at midnight defensively (an inferred hour of
+// 0 → 23) — slotDue's no-wrap retry rule still applies to the resulting hour.
+export function preWorkoutSlotHour(inferredWorkoutHour: number): number {
+  return (inferredWorkoutHour + 23) % 24;
+}
+
 // The auto-hour sentinel stored in profile_settings (issue #1117) for a slot that
 // should follow the profile's wake time. It is a KV VALUE, distinct from the three
 // states the raw string already encodes — absent, "" (off), a number "N" (manual)
