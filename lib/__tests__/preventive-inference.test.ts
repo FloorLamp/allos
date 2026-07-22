@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { preventiveRuleByKey } from "@/lib/preventive-catalog";
-import { PREVENTIVE_CONCEPT_MAP } from "@/lib/preventive-concept-map";
+import {
+  PREVENTIVE_CONCEPT_MAP,
+  type InstrumentPage,
+} from "@/lib/preventive-concept-map";
+import { SUBSTANCE_INSTRUMENTS } from "@/lib/substance-use";
+import { INSTRUMENTS } from "@/lib/mental-health";
 import {
   inferPreventiveSatisfactions,
   isCompletedStatus,
@@ -9,6 +14,15 @@ import {
   normalizeMatchText,
   type InferenceRecord,
 } from "@/lib/preventive-inference";
+
+const INSTRUMENT_PAGES: InstrumentPage[] = [
+  "/medical/substance-use",
+  "/records/specialty/mental-health",
+];
+const ALL_INSTRUMENTS = new Set<string>([
+  ...SUBSTANCE_INSTRUMENTS,
+  ...INSTRUMENTS,
+]);
 
 // ---------------------------------------------------------------------------
 // Concept-map integrity
@@ -29,6 +43,69 @@ describe("preventive concept map", () => {
   it("has one matcher per rule key (no split definitions)", () => {
     const keys = PREVENTIVE_CONCEPT_MAP.map((m) => m.ruleKey);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  // Every SCREENING declares a `satisfiedBy` concept driving its per-class deep link
+  // + CTA (#1083); a VISIT keeps the Book path (no satisfiedBy). The shape must match
+  // the rule's evidence: an instrument names a real instrument + page, a vital/lab
+  // primary is a canonical biomarker the rule already lists, a procedure names a noun.
+  describe("satisfiedBy (#1083)", () => {
+    it("every screening matcher declares one; no visit matcher does", () => {
+      for (const m of PREVENTIVE_CONCEPT_MAP) {
+        if (m.kind === "screening") {
+          expect(
+            m.satisfiedBy,
+            `screening ${m.ruleKey} needs satisfiedBy`
+          ).toBeTruthy();
+        } else {
+          expect(
+            m.satisfiedBy,
+            `visit ${m.ruleKey} keeps the Book path`
+          ).toBeUndefined();
+        }
+      }
+    });
+
+    it("each shape matches the rule's codes/entry", () => {
+      for (const m of PREVENTIVE_CONCEPT_MAP) {
+        const sb = m.satisfiedBy;
+        if (!sb) continue;
+        if (sb.kind === "instrument") {
+          expect(
+            ALL_INSTRUMENTS.has(sb.instrument),
+            `${m.ruleKey} instrument`
+          ).toBe(true);
+          expect(INSTRUMENT_PAGES).toContain(sb.page);
+          expect(["in-app", "total-only"]).toContain(sb.entry);
+          // The named instrument must be one the rule actually recognizes as a
+          // satisfying reading (its canonical biomarker).
+          expect(m.canonicalBiomarkers).toContain(sb.instrument);
+        } else if (sb.kind === "lab") {
+          // A prefill primary must be a canonical biomarker the rule lists.
+          if (sb.primary) {
+            expect(m.canonicalBiomarkers, `${m.ruleKey} lab primary`).toContain(
+              sb.primary
+            );
+          }
+        } else if (sb.kind === "vital") {
+          expect(m.canonicalBiomarkers, `${m.ruleKey} vital primary`).toContain(
+            sb.primary
+          );
+        } else {
+          expect(
+            sb.procedure.length,
+            `${m.ruleKey} procedure noun`
+          ).toBeGreaterThan(0);
+        }
+      }
+    });
+
+    it("blood pressure is a VITAL, not a lab (a recorded reading IS the screening, #1076)", () => {
+      const bp = PREVENTIVE_CONCEPT_MAP.find(
+        (m) => m.ruleKey === "blood_pressure"
+      );
+      expect(bp?.satisfiedBy?.kind).toBe("vital");
+    });
   });
 });
 

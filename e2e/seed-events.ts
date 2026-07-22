@@ -39,6 +39,8 @@ import {
   MENTAL_HEALTH_PROFILE,
   E2E_LOGIN_SUBSTANCE,
   SUBSTANCE_PROFILE,
+  E2E_LOGIN_PREVENTIVE,
+  PREVENTIVE_PROFILE,
   E2E_LOGIN_CRISIS,
   CRISIS_PROFILE,
   CRISIS_OVERRIDE_LABEL,
@@ -2453,6 +2455,26 @@ db.prepare(
 seedMemberLogin(E2E_LOGIN_SUBSTANCE, substanceId);
 console.log(
   `e2e: seeded substance-data-free fixture profile ${substanceId} (${SUBSTANCE_PROFILE}) for the substance-use spec (#998)`
+);
+
+// A dedicated OLDER-ADULT (sex=female, ~60yo) profile with NO satisfying records, so
+// EVERY preventive screening class stays due on /upcoming — the preventive-deeplinks
+// spec (#1083) reads its rows to prove each class deep-links to the concrete next
+// action (lab/vital/instrument/procedure). Sex + a fixed birthdate drive the age
+// assessor; nothing satisfies any rule (no labs, vitals, instruments, procedures), so
+// the read-only spec is deterministic year-round. Idempotent for a reused server.
+const preventiveDeeplinksId = fixtureProfileId(PREVENTIVE_PROFILE);
+db.prepare(
+  `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'sex', 'female')
+     ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+).run(preventiveDeeplinksId);
+db.prepare(
+  `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', '1966-01-01')
+     ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+).run(preventiveDeeplinksId);
+seedMemberLogin(E2E_LOGIN_PREVENTIVE, preventiveDeeplinksId);
+console.log(
+  `e2e: seeded record-free preventive fixture profile ${preventiveDeeplinksId} (${PREVENTIVE_PROFILE}) for the deep-links spec (#1083)`
 );
 
 // A dedicated ADULT profile for the mental-health-visit sensitivity + crisis specs

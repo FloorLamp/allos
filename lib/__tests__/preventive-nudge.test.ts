@@ -22,6 +22,8 @@ const item = (
   name: ruleKey,
   status,
   detail: null,
+  href: null,
+  ctaLabel: null,
 });
 
 describe("planPreventiveNudges", () => {

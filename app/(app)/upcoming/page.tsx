@@ -19,6 +19,7 @@ import {
   IconCalendarPlus,
   IconCalendarCheck,
   IconClipboardPlus,
+  IconArrowRight,
   type TablerIcon,
 } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
@@ -358,6 +359,21 @@ function Row({
           <IconCalendarCheck className="h-3.5 w-3.5" stroke={1.75} />
           Scheduled
         </span>
+      )}
+      {/* The concrete next action for a preventive screening (#1083): a deep-link
+          CTA naming exactly what to do — "Complete the AUDIT-C", "Record your LDL
+          Cholesterol result", "Log or schedule a colonoscopy" — pointing at the
+          prefilled form (item.href). Only screening items carry an actionLabel; a
+          visit's action is the "Book" affordance below. */}
+      {item.actionLabel && item.preventiveRuleKey != null && (
+        <Link
+          href={item.href}
+          data-testid={`upcoming-cta-${item.key}`}
+          className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
+        >
+          <IconArrowRight className="h-3.5 w-3.5" stroke={1.75} />
+          {item.actionLabel}
+        </Link>
       )}
       {item.bookHref && (
         <Link

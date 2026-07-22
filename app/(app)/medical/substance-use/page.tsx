@@ -11,6 +11,7 @@ import {
 } from "@/lib/instrument-records";
 import {
   SUBSTANCE_INSTRUMENTS,
+  isSubstanceInstrument,
   shouldSuggestClinicianDiscussion,
   capProgressLine,
 } from "@/lib/substance-use";
@@ -32,9 +33,19 @@ export const dynamic = "force-dynamic";
 // note, NEVER the crisis surface (#996 is explicit/item-9 only) and never a
 // notification. Informational, not medical advice.
 
-export default async function SubstanceUsePage() {
+export default async function SubstanceUsePage(props: {
+  searchParams: Promise<{ screen?: string | string[] }>;
+}) {
   const { profile } = await requireSession();
   const td = today(profile.id);
+  // Deep-link preselect (#1083): a preventive drug/alcohol-screening row/nudge lands
+  // here with `?screen=<INSTRUMENT>`. Validate against the known instruments; an
+  // unknown/absent value falls through to the form's AUDIT-C default.
+  const rawScreen = (await props.searchParams).screen;
+  const screenParam = Array.isArray(rawScreen) ? rawScreen[0] : rawScreen;
+  const initialInstrument = isSubstanceInstrument(screenParam)
+    ? screenParam
+    : undefined;
   const readings = getSubstanceInstrumentReadings(profile.id);
   const week = getSubstanceWeekState(profile.id);
   const trend = getAlcoholWeeklyTrend(profile.id);
@@ -85,7 +96,10 @@ export default async function SubstanceUsePage() {
         <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300">
           Screening
         </h2>
-        <SubstanceInstrumentsForm defaultDate={td} />
+        <SubstanceInstrumentsForm
+          defaultDate={td}
+          initialInstrument={initialInstrument}
+        />
         <div data-testid="substance-history">
           {readings.length === 0 ? (
             <EmptyState message="No screening scores yet. Answer the AUDIT-C above, or enter an AUDIT or DAST-10 total from elsewhere." />

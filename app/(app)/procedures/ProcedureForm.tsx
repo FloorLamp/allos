@@ -14,10 +14,15 @@ export default function ProcedureForm({
   action,
   procedure,
   onDone,
+  prefillName,
 }: {
   action: (formData: FormData) => Promise<FormResult>;
   procedure?: Procedure;
   onDone?: () => void;
+  // Deep-link prefill (#1083, mirrors #662): a preventive procedure-screening row/nudge
+  // lands on the procedures page with `?new=1&name=<procedure>`; the add form seeds the
+  // name field + focuses it. Add mode only (ignored when editing an existing row).
+  prefillName?: string;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -65,7 +70,10 @@ export default function ProcedureForm({
           id={`proc-name-${uid}`}
           name="name"
           className="input"
-          defaultValue={procedure?.name ?? ""}
+          defaultValue={
+            procedure?.name ?? (!editing ? (prefillName ?? "") : "")
+          }
+          autoFocus={!editing && !!prefillName}
           placeholder="e.g. Appendectomy, Colonoscopy"
           required
         />

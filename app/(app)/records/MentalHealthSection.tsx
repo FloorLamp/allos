@@ -9,6 +9,7 @@ import {
   getInstrumentReadings,
   getInstrumentStates,
 } from "@/lib/instrument-records";
+import type { Instrument } from "@/lib/mental-health";
 import InstrumentsView from "@/app/(app)/medical/instruments/InstrumentsView";
 
 // The mental-health instrument surface (issue #716), former /medical/instruments,
@@ -28,9 +29,12 @@ import InstrumentsView from "@/app/(app)/medical/instruments/InstrumentsView";
 export default function MentalHealthSection({
   profileId,
   isAdmin,
+  initialInstrument,
 }: {
   profileId: number;
   isAdmin: boolean;
+  // Deep-link preselect (#1083) forwarded to the instrument form.
+  initialInstrument?: Instrument;
 }) {
   const td = today(profileId);
   const readings = getInstrumentReadings(profileId);
@@ -69,7 +73,7 @@ export default function MentalHealthSection({
         </Link>
       </p>
 
-      <InstrumentsView defaultDate={td} />
+      <InstrumentsView defaultDate={td} initialInstrument={initialInstrument} />
 
       {/* History + trend */}
       <section className="space-y-3" data-testid="instrument-history">

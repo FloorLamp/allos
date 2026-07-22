@@ -99,6 +99,10 @@ const DUE_SIGNAL_SOURCES = [
   // submodule since the #316 barrel split of lib/queries/upcoming.ts.
   ["lib", "queries", "upcoming", "generators.ts"],
   ["lib", "preventive-upcoming.ts"],
+  // The preventive concept map holds the instrument-page deep-link targets
+  // (`satisfiedBy.page`) that preventiveHref builds a `?screen=` link onto (#1083),
+  // so a removed instrument page would fail here, not just in preventive-upcoming.ts.
+  ["lib", "preventive-concept-map.ts"],
   ["lib", "care-plan-upcoming.ts"],
 ].map((parts) => path.join(REPO, ...parts));
 

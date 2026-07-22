@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   INSTRUMENTS,
@@ -22,11 +22,19 @@ function todayISO(): string {
 
 export default function InstrumentsView({
   defaultDate,
+  initialInstrument,
 }: {
   defaultDate: string;
+  // Preselected instrument from a deep link (#1083): the preventive depression/anxiety-
+  // screening row/nudge lands here via `?screen=<INSTRUMENT>`; the page validates the
+  // param and passes it. Absent/unknown ⇒ the PHQ-9 default.
+  initialInstrument?: Instrument;
 }) {
   const router = useRouter();
-  const [instrument, setInstrument] = useState<Instrument>("PHQ-9");
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [instrument, setInstrument] = useState<Instrument>(
+    initialInstrument ?? "PHQ-9"
+  );
   const [mode, setMode] = useState<"administer" | "outside">("administer");
   const [date, setDate] = useState(defaultDate || todayISO());
   const [answers, setAnswers] = useState<Record<number, number>>({});
@@ -51,6 +59,17 @@ export default function InstrumentsView({
   const allAnswered = answeredCount === def.items.length;
   const runningTotal = Object.values(answers).reduce((a, b) => a + b, 0);
   const band = allAnswered ? severityBand(instrument, runningTotal) : null;
+
+  // Arrived via a `?screen=` deep link (#1083): scroll the preselected form into
+  // view + focus it so the next action is front-and-center. Runs once.
+  useEffect(() => {
+    if (!initialInstrument) return;
+    const el = containerRef.current;
+    if (!el) return;
+    el.scrollIntoView({ block: "center" });
+    el.querySelector<HTMLButtonElement>("button")?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -78,6 +97,7 @@ export default function InstrumentsView({
 
   return (
     <div
+      ref={containerRef}
       className="space-y-4 rounded-xl border border-black/10 p-4 dark:border-white/10"
       data-testid="instruments-form"
     >

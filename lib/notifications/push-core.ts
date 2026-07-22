@@ -61,11 +61,22 @@ export function parsePushSubscription(
 // encrypted payloads at 4KB; this is well under it.
 const MAX_BODY = 400;
 
+// The push click-through URL for a message (#1083): Web Push drops `actions`, so a
+// deep-link (`url`) action can't ride a button there — instead it becomes the
+// notification's tap target so the push opens the exact next action (the refill form,
+// a preventive screening's prefilled form…) rather than the app root. The first
+// url-bearing action wins; a message with only callback actions (dose/skip) keeps the
+// default root target. Pure so the channel send and any test agree on one rule.
+export function pushClickThroughUrl(msg: NotificationMessage): string {
+  return msg.actions?.find((a) => a.url)?.url ?? DEFAULT_PUSH_URL;
+}
+
 // Build the JSON string the SW's push handler parses. Title + body (truncated) +
-// a deep-link URL. Pure: no reference to who/where it's sent.
+// a deep-link URL. Pure: no reference to who/where it's sent. When `url` is omitted
+// the click-through is derived from the message's deep-link action (pushClickThroughUrl).
 export function buildPushPayload(
   msg: NotificationMessage,
-  url: string = DEFAULT_PUSH_URL
+  url: string = pushClickThroughUrl(msg)
 ): string {
   const body =
     msg.body.length > MAX_BODY

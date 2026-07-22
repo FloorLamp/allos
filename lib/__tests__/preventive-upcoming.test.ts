@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   preventiveAssessmentToUpcomingItem,
   preventiveHref,
+  preventiveActionLabel,
+  preventiveNudgeAction,
 } from "../preventive-upcoming";
 import { assessCatalog } from "../preventive-status";
 import type { PreventiveAssessment } from "../preventive-status";
@@ -36,8 +38,11 @@ function mkAssessment(
 
 const TODAY = "2026-07-10";
 
-describe("preventiveHref", () => {
-  it("visits always act through the appointments surface", () => {
+// The per-class deep link + CTA, driven by each rule's `satisfiedBy` concept (#1083).
+// Both preventiveHref (title link) and preventiveActionLabel (CTA copy) are pinned so
+// the page, the Upcoming row, and the nudge stay in lockstep (#221).
+describe("preventiveHref — per-class deep link from satisfiedBy (#1083)", () => {
+  it("visits act through the appointments surface (Book is their CTA)", () => {
     expect(preventiveHref("visit", "adult_physical")).toBe(
       "/records/history/visits"
     );
@@ -46,20 +51,54 @@ describe("preventiveHref", () => {
     );
   });
 
-  it("derives a screening's surface from what satisfies it (issue #283)", () => {
-    // Lab-satisfied (the concept map lists canonical biomarkers) → biomarkers.
+  it("lab → the biomarker add-form prefilled with the canonical (#662, NOT #biomarkers)", () => {
     expect(preventiveHref("screening", "lipid_screening")).toBe(
-      "/results/biomarkers"
+      "/results/biomarkers?new=1&name=LDL%20Cholesterol"
     );
     expect(preventiveHref("screening", "diabetes_screening")).toBe(
-      "/results/biomarkers"
+      "/results/biomarkers?new=1&name=Hemoglobin%20A1c"
     );
-    // Procedure/coded-satisfied → procedures.
+  });
+
+  it("lab with no tracked biomarker → the add form, unprefilled", () => {
+    expect(preventiveHref("screening", "hepatitis_c")).toBe(
+      "/results/biomarkers?new=1"
+    );
+  });
+
+  it("vital (blood pressure) → the vitals entry surface, NOT the biomarkers form (#1076)", () => {
+    expect(preventiveHref("screening", "blood_pressure")).toBe(
+      "/trends?tab=vitals&focus=blood-pressure"
+    );
+  });
+
+  it("instrument in-app → the instrument page with ?screen=<INSTRUMENT>", () => {
+    expect(preventiveHref("screening", "depression_screening")).toBe(
+      "/records/specialty/mental-health?screen=PHQ-9"
+    );
+    expect(preventiveHref("screening", "anxiety_screening")).toBe(
+      "/records/specialty/mental-health?screen=GAD-7"
+    );
+    expect(preventiveHref("screening", "alcohol_screening")).toBe(
+      "/medical/substance-use?screen=AUDIT-C"
+    );
+  });
+
+  it("instrument total-only → the SAME ?screen= link (form focuses total entry)", () => {
+    expect(preventiveHref("screening", "drug_use_screening")).toBe(
+      "/medical/substance-use?screen=DAST-10"
+    );
+  });
+
+  it("procedure → the procedures add-form prefilled with the procedure noun", () => {
     expect(preventiveHref("screening", "colorectal_cancer")).toBe(
-      "/records/history/procedures"
+      "/records/history/procedures?new=1&name=Colonoscopy"
     );
     expect(preventiveHref("screening", "osteoporosis")).toBe(
-      "/records/history/procedures"
+      "/records/history/procedures?new=1&name=DEXA%20scan"
+    );
+    expect(preventiveHref("screening", "mammography")).toBe(
+      "/records/history/procedures?new=1&name=Mammogram"
     );
   });
 
@@ -67,6 +106,89 @@ describe("preventiveHref", () => {
     // Manual-only rules (e.g. the risk-gated lung LDCT) have no concept-map
     // entry; their completion is recorded on the passport.
     expect(preventiveHref("screening", "lung_cancer_ldct")).toBe("/profile");
+  });
+});
+
+describe("preventiveActionLabel — named CTA per class (#1083)", () => {
+  it("instrument in-app → Complete the …", () => {
+    expect(preventiveActionLabel("screening", "alcohol_screening")).toBe(
+      "Complete the AUDIT-C"
+    );
+    expect(preventiveActionLabel("screening", "depression_screening")).toBe(
+      "Complete the PHQ-9"
+    );
+  });
+
+  it("instrument total-only → Enter your … score (can't be administered in-app)", () => {
+    expect(preventiveActionLabel("screening", "drug_use_screening")).toBe(
+      "Enter your DAST-10 score"
+    );
+  });
+
+  it("lab → Record your … result", () => {
+    expect(preventiveActionLabel("screening", "lipid_screening")).toBe(
+      "Record your LDL Cholesterol result"
+    );
+    expect(preventiveActionLabel("screening", "hepatitis_c")).toBe(
+      "Record your result"
+    );
+  });
+
+  it("vital → Record a blood pressure reading", () => {
+    expect(preventiveActionLabel("screening", "blood_pressure")).toBe(
+      "Record a blood pressure reading"
+    );
+  });
+
+  it("procedure → Log or schedule a …", () => {
+    expect(preventiveActionLabel("screening", "colorectal_cancer")).toBe(
+      "Log or schedule a Colonoscopy"
+    );
+  });
+
+  it("null for a visit (Book is its CTA) and for an unmapped rule", () => {
+    expect(preventiveActionLabel("visit", "adult_physical")).toBeNull();
+    expect(preventiveActionLabel("screening", "lung_cancer_ldct")).toBeNull();
+  });
+});
+
+// The row builder AND the nudge builder both read the same functions above, so every
+// class emits BOTH a deep link and a named CTA that agree across surfaces (#221).
+describe("preventiveNudgeAction — shared link+CTA for the nudge (#1083/#221)", () => {
+  it("a screening yields its deep link + named CTA (same as the row's href/actionLabel)", () => {
+    const a = mkAssessment({
+      kind: "screening",
+      key: "drug_use_screening",
+      name: "Drug use screening",
+    });
+    const nudge = preventiveNudgeAction(a, TODAY)!;
+    const row = preventiveAssessmentToUpcomingItem(a, { today: TODAY });
+    expect(nudge.href).toBe("/medical/substance-use?screen=DAST-10");
+    expect(nudge.label).toBe("Enter your DAST-10 score");
+    // Row and nudge agree — one computation, no hand-mirroring.
+    expect(nudge.href).toBe(row.href);
+    expect(nudge.label).toBe(row.actionLabel);
+  });
+
+  it("a visit yields the prefilled Book path + Book CTA", () => {
+    const a = mkAssessment({
+      kind: "visit",
+      key: "vision_exam",
+      name: "Eye exam",
+    });
+    const nudge = preventiveNudgeAction(a, TODAY)!;
+    expect(nudge.label).toBe("Book");
+    expect(nudge.href).toContain("/records/history/visits?");
+    expect(nudge.href).toContain("new=1");
+  });
+
+  it("null for an unmapped rule (no concrete next action to link/name)", () => {
+    expect(
+      preventiveNudgeAction(
+        mkAssessment({ kind: "screening", key: "lung_cancer_ldct" }),
+        TODAY
+      )
+    ).toBeNull();
   });
 });
 
@@ -91,10 +213,12 @@ describe("preventiveAssessmentToUpcomingItem", () => {
     expect(item.bookHref).toContain("new=1");
     expect(item.bookHref).toContain("kind=physical");
     expect(item.bookHref).toContain(`date=${TODAY}`);
+    // A visit's action is Book — it carries no separate screening CTA.
+    expect(item.actionLabel).toBeUndefined();
     expect(item.scheduled).toBeUndefined();
   });
 
-  it("maps an overdue SCREENING to the Overdue band with the screening domain", () => {
+  it("maps an overdue SCREENING to a deep link + named CTA (procedure class)", () => {
     const item = preventiveAssessmentToUpcomingItem(
       mkAssessment({
         kind: "screening",
@@ -110,15 +234,52 @@ describe("preventiveAssessmentToUpcomingItem", () => {
     expect(item.key).toBe("screening:colorectal_cancer");
     expect(item.band).toBe("overdue");
     expect(item.dueText).toBe("Overdue");
-    // Satisfaction-derived (issue #283): a colonoscopy-satisfied screening links
-    // to the procedures surface (the removed /medical page was a dead link).
-    expect(item.href).toBe("/records/history/procedures");
+    // Deep link to the concrete action (#1083): the prefilled procedures add form,
+    // NOT a browse list.
+    expect(item.href).toBe(
+      "/records/history/procedures?new=1&name=Colonoscopy"
+    );
+    expect(item.actionLabel).toBe("Log or schedule a Colonoscopy");
     // Falls back to detail when nextLabel is null.
     expect(item.detail).toBe("Recommended, none on record");
     expect(item.bookHref).toContain("kind=screening");
   });
 
-  it("honors a rule-specific href override (the #83 lung prompt → Settings)", () => {
+  it("every screening class emits BOTH a deep link and a named CTA", () => {
+    const cases: Array<[string, string, string]> = [
+      // key, expected href, expected CTA
+      [
+        "lipid_screening",
+        "/results/biomarkers?new=1&name=LDL%20Cholesterol",
+        "Record your LDL Cholesterol result",
+      ],
+      [
+        "blood_pressure",
+        "/trends?tab=vitals&focus=blood-pressure",
+        "Record a blood pressure reading",
+      ],
+      [
+        "alcohol_screening",
+        "/medical/substance-use?screen=AUDIT-C",
+        "Complete the AUDIT-C",
+      ],
+      [
+        "drug_use_screening",
+        "/medical/substance-use?screen=DAST-10",
+        "Enter your DAST-10 score",
+      ],
+    ];
+    for (const [key, href, cta] of cases) {
+      const item = preventiveAssessmentToUpcomingItem(
+        mkAssessment({ kind: "screening", key, name: key }),
+        { today: TODAY }
+      );
+      expect(item.href, `${key} href`).toBe(href);
+      expect(item.actionLabel, `${key} cta`).toBe(cta);
+    }
+  });
+
+  it("honors a rule-specific href override (the #83 lung prompt → Settings), no CTA", () => {
     const item = preventiveAssessmentToUpcomingItem(
       mkAssessment({
         kind: "screening",
@@ -128,6 +289,8 @@ describe("preventiveAssessmentToUpcomingItem", () => {
       { today: TODAY }
     );
     expect(item.href).toBe("/settings/profile");
+    // An overridden href points elsewhere, so the default screening CTA is moot.
+    expect(item.actionLabel).toBeUndefined();
   });
 
   it("uses a future next-due date as the CTA's suggested date", () => {

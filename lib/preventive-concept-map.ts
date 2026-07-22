@@ -24,6 +24,43 @@ import type { PreventiveKind } from "./preventive-catalog";
 //
 // NOT clinical software; codes are curated for personal-tracking inference only.
 
+// The two in-app instrument surfaces a "satisfiedBy: instrument" screening links
+// to (#1083). Literal-typed so the per-class deep link `preventiveHref` builds
+// (`<page>?screen=<INSTRUMENT>`) stays an AppRoute — a page removed in a
+// consolidation fails the build (#285). Substance instruments live on the
+// substance-use page; PHQ-9/GAD-7 on the mental-health page.
+export type InstrumentPage =
+  "/medical/substance-use" | "/records/specialty/mental-health";
+
+// What a SCREENING is actually satisfied by — the explicit concept, driving the
+// per-class deep link + CTA copy on the Upcoming row, the page, AND the nudge so
+// all three say the identical thing (#1083, #221). Only kind:"screening" matchers
+// carry one; kind:"visit" rules keep the existing Book path. Replaces the fragile
+// `canonicalBiomarkers.length > 0` guess (wrong for the instrument/vital classes
+// #1076 moved off the biomarker surface).
+export type ScreeningSatisfiedBy =
+  // A validated screening instrument taken/entered in-app. `instrument` is the
+  // exact `?screen=` token (a canonical instrument name — AUDIT-C/PHQ-9/DAST-10…);
+  // `entry` drives the CTA verb: "in-app" ⇒ "Complete the …", "total-only" ⇒
+  // "Enter your … score" (a copyright-restricted instrument can't be administered
+  // in-app — see lib/substance-use.ts; #1085 flips DAST-10 in-app → verb follows).
+  | {
+      kind: "instrument";
+      instrument: string;
+      page: InstrumentPage;
+      entry: "in-app" | "total-only";
+    }
+  // A lab result. `primary` is the canonical biomarker the add-form deep link
+  // prefills (`/results/biomarkers?new=1&name=<primary>`, #662); absent when no
+  // tracked biomarker exists (e.g. hepatitis C) → the add form opens unprefilled.
+  | { kind: "lab"; primary?: string }
+  // A self-recordable vital — a recorded reading IS the screening. Links to the
+  // vitals entry surface (#1076), NOT the biomarkers form.
+  | { kind: "vital"; primary: string }
+  // A clinician-performed procedure. `procedure` is the display noun the procedures
+  // add-form deep link prefills (`/records/history/procedures?new=1&name=<procedure>`).
+  | { kind: "procedure"; procedure: string };
+
 export interface ConceptMatcher {
   // The catalog rule this evidence satisfies (a stable key in PREVENTIVE_CATALOG).
   ruleKey: string;
@@ -41,6 +78,10 @@ export interface ConceptMatcher {
   // Exact canonical biomarker names (lib/canonical-biomarkers.json) whose presence
   // as a result satisfies a lab-based screening. Empty for non-lab rules.
   canonicalBiomarkers: string[];
+  // What satisfies this screening — drives its deep link + CTA (#1083). REQUIRED for
+  // every kind:"screening" matcher (asserted by preventive-inference.test.ts); absent
+  // on kind:"visit" rules, which keep the existing Book path.
+  satisfiedBy?: ScreeningSatisfiedBy;
 }
 
 // The curated map. One entry per inferable catalog rule; rules absent here are
@@ -70,6 +111,7 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
     ],
     names: ["colonoscopy"],
     canonicalBiomarkers: [],
+    satisfiedBy: { kind: "procedure", procedure: "Colonoscopy" },
   },
   {
     ruleKey: "mammography",
@@ -85,6 +127,7 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
     ],
     names: ["mammogram", "mammography"],
     canonicalBiomarkers: [],
+    satisfiedBy: { kind: "procedure", procedure: "Mammogram" },
   },
   {
     ruleKey: "cervical_cancer",
@@ -125,6 +168,7 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "hpv screening",
     ],
     canonicalBiomarkers: [],
+    satisfiedBy: { kind: "procedure", procedure: "Pap smear" },
   },
   {
     ruleKey: "osteoporosis",
@@ -144,6 +188,7 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "dual energy x ray absorptiometry",
     ],
     canonicalBiomarkers: [],
+    satisfiedBy: { kind: "procedure", procedure: "DEXA scan" },
   },
   {
     ruleKey: "lipid_screening",
@@ -162,6 +207,7 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "HDL Cholesterol",
       "Triglycerides",
     ],
+    satisfiedBy: { kind: "lab", primary: "LDL Cholesterol" },
   },
   {
     ruleKey: "diabetes_screening",
@@ -183,6 +229,7 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "oral glucose tolerance",
     ],
     canonicalBiomarkers: ["Hemoglobin A1c", "Glucose"],
+    satisfiedBy: { kind: "lab", primary: "Hemoglobin A1c" },
   },
   {
     ruleKey: "depression_screening",
@@ -219,6 +266,12 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
     // A recorded PHQ-9 SCORE (the biomarker-shaped instrument reading, #716) is
     // stronger evidence than a bare coded screen, so it satisfies the screening too.
     canonicalBiomarkers: ["PHQ-9"],
+    satisfiedBy: {
+      kind: "instrument",
+      instrument: "PHQ-9",
+      page: "/records/specialty/mental-health",
+      entry: "in-app",
+    },
   },
   {
     // Anxiety screening (#716): a recorded GAD-7 score satisfies it. Matched by the
@@ -244,6 +297,12 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "behavioral health",
     ],
     canonicalBiomarkers: ["GAD-7"],
+    satisfiedBy: {
+      kind: "instrument",
+      instrument: "GAD-7",
+      page: "/records/specialty/mental-health",
+      entry: "in-app",
+    },
   },
   {
     // Alcohol-use screening (#998): a recorded AUDIT-C or AUDIT score (the
@@ -267,6 +326,14 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "alcohol use disorders identification test",
     ],
     canonicalBiomarkers: ["AUDIT-C", "AUDIT"],
+    // Deep-links to the in-app AUDIT-C (the substance-use page's default) — AUDIT is
+    // total-only, so the actionable next step is the administrable AUDIT-C.
+    satisfiedBy: {
+      kind: "instrument",
+      instrument: "AUDIT-C",
+      page: "/medical/substance-use",
+      entry: "in-app",
+    },
   },
   {
     // Drug-use screening (#998): a recorded DAST-10 score satisfies it. Matched by
@@ -284,6 +351,14 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "dast",
     ],
     canonicalBiomarkers: ["DAST-10"],
+    // DAST-10 is total-only (copyright — see lib/substance-use.ts), so the CTA verb
+    // is "Enter your DAST-10 score", not "Complete". #1085 flips it to in-app.
+    satisfiedBy: {
+      kind: "instrument",
+      instrument: "DAST-10",
+      page: "/medical/substance-use",
+      entry: "total-only",
+    },
   },
   {
     ruleKey: "hepatitis_c",
@@ -304,6 +379,8 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "hcv rna",
     ],
     canonicalBiomarkers: [],
+    // A blood test, but no tracked HCV biomarker — the add form opens unprefilled.
+    satisfiedBy: { kind: "lab" },
   },
   {
     ruleKey: "blood_pressure",
@@ -317,6 +394,9 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "Blood Pressure Systolic",
       "Blood Pressure Diastolic",
     ],
+    // A recorded reading IS the screening — a self-recordable VITAL, not a lab.
+    // Links to the vitals entry surface (#1076), never the biomarkers form.
+    satisfiedBy: { kind: "vital", primary: "Blood Pressure Systolic" },
   },
 
   // ---- Recurring visits (satisfied by a completed appointment/encounter) ----
