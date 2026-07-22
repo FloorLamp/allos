@@ -226,8 +226,13 @@ describe("cold-boot lock race is busy-tolerant (issue #581)", () => {
       expect(err).toBeUndefined();
       // It serialized on the sidecar (blocked most of the peer's hold window)…
       expect(result.waitedForLock).toBeGreaterThanOrEqual(300);
-      // …and then wrote with no meaningful contention on the main DB.
-      expect(result.writeMs).toBeLessThan(150);
+      // …and then wrote with no meaningful contention on the main DB. The bound
+      // distinguishes "uncontended" from "burned a lock wait": a contended write
+      // here waits a HOLD-class (700ms) window, an uncontended one is disk-speed
+      // only. 150 was a raw-speed bet a loaded CI runner lost by 6ms (#1192 CI,
+      // 156ms) — 400 keeps slack for slow runners while still proving no
+      // HOLD-class wait happened.
+      expect(result.writeMs).toBeLessThan(400);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
