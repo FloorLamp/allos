@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { loginAs, followLink } from "./nav";
+import { resetOnboardingFixture, withE2eDb } from "./onboarding-reset";
 import {
   E2E_LOGIN_ONBOARDING,
   E2E_LOGIN_ONBOARDING_CAREGIVER,
@@ -10,19 +11,14 @@ import {
 // Onboarding is a stateful, one-way setup WIZARD: the very first step flips the seeded
 // fixture profile's onboarding state not_started→in_progress (later completing it /
 // dismissing the existing-profile orientation), so the dashboard no longer auto-redirects
-// to /onboarding on a SECOND run against the same seeded DB — and there is no per-run
-// reset (a fresh admin-created profile has NULL state, which also doesn't auto-redirect).
-// These tests are deterministic on a fresh fixture but inherently NOT repeat-safe; #814
-// authored them before #868's changed-spec --repeat-each lane existed. Under repeat-each
-// we therefore run each ONCE (repeatEachIndex 0 — the real coverage, matching the full
-// single-run suite) and skip the extra repeats. #858 only re-points one folded-widget
-// assertion (the caregiver dashboard step) below; it changes no onboarding behavior.
-test.beforeEach(({}, testInfo) => {
-  test.skip(
-    testInfo.repeatEachIndex > 0,
-    "onboarding wizard mutates its seeded fixture on the first step; not repeat-safe without a per-run state reset"
-  );
-});
+// to /onboarding on a SECOND run against the same seeded DB — and a fresh admin-created
+// profile has NULL state, which also doesn't auto-redirect, so the fixture can't be
+// re-created through the UI. These tests used to skip repeatEachIndex > 0 for that
+// reason (making them the ONE spec the --repeat-each lanes couldn't amplify); now each
+// test re-runs its fixture's boot-time reset (e2e/onboarding-reset.ts — the same
+// functions seed-events.ts uses, per-role so fullyParallel siblings can't clobber each
+// other) before starting, so every repeat begins from the seeded state. The fixture
+// profiles are spec-OWNED (#868), which is what makes the direct DB reset legitimate.
 
 // Goal-based onboarding (#719): an isolated, empty profile renders every outcome
 // branch, then moves through the metrics path from minimum facts → one real
@@ -32,6 +28,9 @@ test("a new profile reaches a useful dashboard through the metrics path", async 
   browser,
 }) => {
   test.slow();
+  // Repeat-safety: return this test's OWN fixture profile to the wizard's entry
+  // state before logging in, so a repeat starts from not_started like run 1.
+  withE2eDb((db) => resetOnboardingFixture(db, "onboarding"));
   const page = await loginAs(browser, {
     username: E2E_LOGIN_ONBOARDING,
     password: E2E_MEMBER_PASSWORD,
@@ -384,6 +383,7 @@ test("a new profile reaches a useful dashboard through the metrics path", async 
 test("a caregiver profile path ends with household-oriented next steps", async ({
   browser,
 }) => {
+  withE2eDb((db) => resetOnboardingFixture(db, "caregiver"));
   const page = await loginAs(browser, {
     username: E2E_LOGIN_ONBOARDING_CAREGIVER,
     password: E2E_MEMBER_PASSWORD,
@@ -464,6 +464,9 @@ test("a caregiver profile path ends with household-oriented next steps", async (
 test("a granted login receives existing-profile orientation, not empty setup", async ({
   browser,
 }) => {
+  // Repeat-safety: the "Got it" click below writes the per-login dismissal key;
+  // clear it so the orientation card shows again on a repeat.
+  withE2eDb((db) => resetOnboardingFixture(db, "orientation"));
   const page = await loginAs(browser, {
     username: E2E_LOGIN_ORIENTATION,
     password: E2E_MEMBER_PASSWORD,
