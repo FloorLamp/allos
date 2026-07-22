@@ -194,6 +194,17 @@ export function immunizationHref(vaccine: string): AppRoute {
   return href as AppRoute;
 }
 
+// A body-metric detail page (#1067 Phase 2) — the per-metric surface for a Trends →
+// Body sparkline tile (`/trends/metric/weight`, `/trends/metric/steps`, …), the
+// biomarker-view pattern applied to body metrics. The slug is a stable
+// BodyMetricSlug (see lib/trends-body-metrics); a dynamic route needs the widening
+// cast. Typed `string` (not the slug union) to avoid a hrefs ↔ trends-body-metrics
+// import cycle — the page validates the slug against the registry.
+export function bodyMetricHref(kind: string): AppRoute {
+  const href: Route<`/trends/metric/${string}`> = `/trends/metric/${kind}`;
+  return href as AppRoute;
+}
+
 // The illness-episode detail page (issue #856). The slug is the STABLE episode row id
 // — it survives boundary edits (unlike the old date slug), so a bookmark/link never
 // dangles when the start date is corrected. A dynamic route needs the widening cast.
