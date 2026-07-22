@@ -1,0 +1,79 @@
+{
+  "$schema": "allos-dataset/v1",
+  "id": "fitness-hold-norms",
+  "title": "Rough isometric-hold reference bands (dead hang, plank)",
+  "description": "Baked ROUGH population-reference band ladders (weak/fair/good/excellent) for the dead-hang and plank hold tests (issue #1135). DISCLOSED-ROUGH by design: these holds have no standardized percentile norms, so a coarse cited band ladder — NOT a fabricated 1–99 percentile — colors the #1132 grid tiles by favorability while every surface renders the `quality: rough` disclosure. Sex-keyed only (the cited figures don't support age banding). Regenerate with `npm run gen:fitness-hold-norms`.",
+  "citation": [
+    {
+      "source": "Curated rough coaching/clinical rules of thumb for plank and dead-hang holds (McGill, Low Back Disorders; Bianco 2015; Strand 2014; Bohannon 2019 for grip as a marker). Coarse, non-standardized — a DISCLOSED ROUGH GUIDE.",
+      "note": "No standardized percentile norms exist for these holds; every threshold is a coarse, human-reviewable cutoff carrying an explicit `quality: rough` flag. INFORMATIONAL, not measurements or medical/coaching advice."
+    }
+  ],
+  "identity": {
+    "keys": [
+      "name"
+    ]
+  },
+  "entries": [
+    {
+      "name": "deadhang",
+      "unit": "seconds",
+      "quality": "rough",
+      "source": "Rough grip-endurance rules of thumb: ~30s baseline, ~60s good, ~120s excellent. Grip STRENGTH (not hang time) is the mortality-linked measure (Bohannon 2019); hang-time bands are a disclosed rough proxy, not a risk stratifier.",
+      "bands": [
+        "weak",
+        "fair",
+        "good",
+        "excellent"
+      ],
+      "sexes": {
+        "male": {
+          "floors": [
+            0,
+            30,
+            60,
+            120
+          ]
+        },
+        "female": {
+          "floors": [
+            0,
+            20,
+            45,
+            90
+          ]
+        }
+      }
+    },
+    {
+      "name": "plank",
+      "unit": "seconds",
+      "quality": "rough",
+      "source": "Rough coaching/clinical rules of thumb: ~30s minimum, ~60s solid, ~120s strong (McGill trunk-endurance holds; Bianco 2015; Strand 2014). Coarse and non-standardized — a disclosed rough guide, not a validated norm.",
+      "bands": [
+        "weak",
+        "fair",
+        "good",
+        "excellent"
+      ],
+      "sexes": {
+        "male": {
+          "floors": [
+            0,
+            30,
+            60,
+            120
+          ]
+        },
+        "female": {
+          "floors": [
+            0,
+            20,
+            45,
+            90
+          ]
+        }
+      }
+    }
+  ]
+}
