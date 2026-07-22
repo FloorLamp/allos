@@ -38,7 +38,7 @@ test("Today's session card renders the resolved routine day (#740)", async () =>
       .filter({ hasText: "Barbell Bench Press" })
   ).toBeVisible();
   // Cold start (no history): the prescription shows sets × rep range, no load.
-  await expect(card.getByText("4 × 5–8").first()).toBeVisible();
+  await expect(card.getByText("4 × 5–8").first()).toBeVisible(); // first-ok: several exercises in the scoped card share the 4×5–8 scheme — order-agnostic presence
 });
 
 test("'Log this session' pre-fills the activity form in live mode (#740)", async () => {
@@ -51,7 +51,7 @@ test("'Log this session' pre-fills the activity form in live mode (#740)", async
   // The pre-filled slate opens in the live workout layout (#340: the same editor).
   await expect(page.getByTestId("live-workout-panel")).toBeVisible();
   // The resolved day's lead exercise is present in the pre-filled form.
-  await expect(page.getByText("Barbell Bench Press").first()).toBeVisible();
+  await expect(page.getByText("Barbell Bench Press").first()).toBeVisible(); // first-ok: asserts the recommended lift renders — order-agnostic presence
 
   // Clean up: discard the draft so the fixture profile is left untouched. Nothing
   // was completed (no loads entered), so Escape closes without persisting a set;

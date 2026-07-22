@@ -161,7 +161,6 @@ const WAITFORTIMEOUT_ALLOW: Record<string, number> = {
 // two lists above: migrate a spec onto an exact locator / dedicated fixture and
 // LOWER its number in the same PR; a NEW unmarked .first() (or a new file) fails.
 const FIRST_ALLOW: Record<string, number> = {
-  "dashboard.spec.ts": 5,
   "date-time-format-prefs.spec.ts": 10,
   "dose-history.spec.ts": 9,
   // edit-lock-badge carries a latent class-1 flake (a batch sibling mutates
@@ -186,16 +185,12 @@ const FIRST_ALLOW: Record<string, number> = {
   "medications-page.spec.ts": 1,
   "mobile-ui-polish.spec.ts": 8,
   "prn-family.spec.ts": 1,
-  "risk-factors.spec.ts": 2,
-  "routine-recommendation.spec.ts": 2,
   "session-recap.spec.ts": 6,
   "smoke.spec.ts": 7,
-  "symptom-helpers.ts": 2,
   "symptom-log.spec.ts": 6,
   // two-factor / view-only-access each shed one grant-checkbox .first() when their
   // create+grant dance moved into e2e/family-helpers.ts (which scopes the checkbox by
   // the grant-cell testid, no .first()); two-factor keeps its recovery-code li .first().
-  "weekly-recap.spec.ts": 2,
 };
 
 // Frozen .toPass( offenders (per-file counts, `topass-ok`-marked lines excluded)

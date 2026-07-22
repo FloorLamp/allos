@@ -33,8 +33,8 @@ test.describe("Weekly recap + milestones (#32)", () => {
     page,
   }) => {
     await page.goto("/timeline?category=milestone");
-    await expect(page.getByText("50 workouts logged").first()).toBeVisible();
+    await expect(page.getByText("50 workouts logged").first()).toBeVisible(); // first-ok: asserts the milestone line renders — order-agnostic presence
     // The milestone badge labels the category on the card.
-    await expect(page.getByText("Milestone").first()).toBeVisible();
+    await expect(page.getByText("Milestone").first()).toBeVisible(); // first-ok: asserts a Milestone badge renders — order-agnostic presence
   });
 });
