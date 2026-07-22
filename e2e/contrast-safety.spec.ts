@@ -12,7 +12,7 @@ import path from "node:path";
 // prefixed care-plan item + an iodinated-contrast allergy — seeded via a raw
 // connection and cleaned up in beforeAll AND afterAll so it's idempotent across
 // retries and never touches seeded rows. Locators are scoped to the specific note
-// (never .first() on the shared surface).
+// (never a positional first-match on the shared surface).
 
 const PREFIX = "E2E CONTRAST";
 const CARE_ITEM = `${PREFIX} CT abdomen with contrast`;

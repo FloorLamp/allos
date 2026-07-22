@@ -18,7 +18,7 @@ test.describe("Settings → Audit log", () => {
     await expect(page.getByTestId("audit-table")).toBeVisible();
     await page.goto("/settings/audit?action=login");
     await expect(
-      page.getByTestId("audit-table").getByText("login.success").first()
+      page.getByTestId("audit-table").getByText("login.success").first() // first-ok: asserts a login.success audit entry EXISTS at all — order-agnostic presence on a growing log
     ).toBeVisible();
   });
 

@@ -22,7 +22,6 @@ import {
   IconReportMedical,
   IconChevronRight,
   IconSalad,
-  IconGlassOff,
   type TablerIcon,
 } from "@tabler/icons-react";
 import { isRouteActive, isGroupActive, isNavLeafVisible } from "@/lib/nav";
@@ -114,11 +113,11 @@ const RECORDS: Group = {
       icon: IconDroplet,
       relevanceKey: "cycle",
     },
-    {
-      href: "/medical/substance-use",
-      label: "Substance use",
-      icon: IconGlassOff,
-    },
+    // Substance use folded into Health record › Specialty (#1175, beside Mental
+    // health) — the standalone leaf became the /records/specialty/substance-use
+    // section + its jump-link, life-stage-gated to adults (#1174). The old
+    // /medical/substance-use route was removed with NO redirect (standing
+    // preference); typed AppRoute (#285) build-errors any surviving literal.
     // Mental health folded into Health record (#1042 final tail): its crisis line
     // travels WITH the /records/specialty/mental-health pane (the safety contract is
     // content, not route), so the standalone "Crisis support" nav slot was removed

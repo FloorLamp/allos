@@ -30,7 +30,7 @@ test("add-mode form clears the critical flag for the next item (issue #627)", as
 
   // The item lands (confirming the add succeeded and the form reset ran).
   await expect(
-    page.locator("div.card").filter({ hasText: CRITICAL_NAME }).first()
+    page.locator("div.card").filter({ hasText: CRITICAL_NAME }).first() // first-ok: the card for CRITICAL_NAME, a supplement THIS spec created (unique name)
   ).toBeVisible();
 
   // ── The critical checkbox is cleared — a second item won't be silently

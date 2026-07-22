@@ -25,7 +25,7 @@ test("coverage list carries a band verdict chip per muscle (#742)", async ({
   await expect(coverage).toBeVisible();
 
   // The seeded recent Leg day (Back Squat / Leg Press, daysAgo 1) credits quads, so
-  // the Quads row renders — anchor on that specific row, not a positional .first().
+  // the Quads row renders — anchor on that specific row, not a positional first-match.
   const quadsRow = coverage
     .getByTestId("muscle-coverage-row")
     .filter({ hasText: "Quads" });

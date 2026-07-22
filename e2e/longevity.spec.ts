@@ -60,7 +60,7 @@ test("every section renders for the seeded profile (#1042 phase 4)", async ({
     biomarkers.getByTestId("longevity-pillar-optimal-biomarkers")
   ).toBeVisible();
   await expect(
-    biomarkers.getByTestId("longevity-biomarker-row").first()
+    biomarkers.getByTestId("longevity-biomarker-row").first() // first-ok: asserts a biomarker row renders in the scoped longevity section — order-agnostic presence
   ).toBeVisible();
 
   // §5 Protocols — the absorbed hub: templates strip + add form present.

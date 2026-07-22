@@ -52,7 +52,7 @@ async function pickMedication(
     .getByRole("listbox")
     .getByRole("button")
     .filter({ hasText: value })
-    .first();
+    .first(); // first-ok: transient combobox list this spec just opened by typing `value`; the first filtered match is the intended option
   await expect(option).toBeVisible();
   await option.click();
 }

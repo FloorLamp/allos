@@ -54,7 +54,7 @@ test.describe("Type-aware training restriction (#489)", () => {
       // strength/goals domain (the surface-parity gap #489 left behind). The
       // session date defaults to today, so it lands at the top of the feed.
       await member.goto("/timeline");
-      await expect(member.getByText(title).first()).toBeVisible();
+      await expect(member.getByText(title).first()).toBeVisible(); // first-ok: the sport session THIS test created lands at the top of the restricted profile's timeline
     } finally {
       await member.context().close();
     }
