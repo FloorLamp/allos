@@ -47,7 +47,7 @@ What that means in practice:
 | Local e2e        | Assign each WORKTREE a fixed port PAIR (`E2E_PORT`/`E2E_DEMO_PORT`: 5400/5401, 5600/5601, 5800/5801, …) at dispatch — zero collisions since adopting pairs. `ALLOS_DB_PATH` isolation is handled by the Playwright config. In some containers local `next dev` boot TIMES OUT — run CI-parity instead: `rm -rf .next && npm run build` once, then `CI=1 ANTHROPIC_API_KEY= E2E_PORT=<p> E2E_DEMO_PORT=<p+1> npx playwright test e2e/auth.setup.ts <specs> --repeat-each=3 --retries=0 --reporter=list`, with `rm -rf e2e/.data` + `lsof -ti :<p> -ti :<p+1> \| xargs -r kill` first. **FULL suites: always CI-mode** (see e2e discipline — dev-mode full suites swap the box and mass-fail). |
 | Raw Playwright   | A hand-rolled debug script (`chromium.launch()` outside the test runner) may want a headless-shell version the container doesn't have — launch with `executablePath: "/opt/pw-browsers/chromium-<ver>/chrome-linux/chrome"` (check `ls /opt/pw-browsers`). Kill any manually-booted `next dev` before a suite run: it holds the `.next` dev-server lock for that worktree AND its memory counts against the suite (see below).                                                                                                                                                                                                                                                               |
 | REST merge       | `PUT /pulls/N/merge` can 403 through the agent proxy — merge ONLY via `mcp__github__merge_pull_request` (squash).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| CI shape         | Per PR (since 2026-07-21): `check` (~4 min), `e2e-changed` (the PR's changed specs/infra at retries=0), and a 4-way sharded `e2e` matrix (full suite at retries=1, fresh runner + fresh servers per shard). Every push costs a full round — batch fixes before pushing. On-demand full-suite gate for ANY branch: dispatch `.github/workflows/e2e-full.yml` (fresh runners, defaults retries=0; `repeat_each` up to 3). Each full-suite shard posts a pass-on-retry flake report to its job summary — read it after green runs; those are confirmed flakes to file.                                                                                                                          |
+| CI shape         | Per PR (since 2026-07-21): `check` (~4 min), `e2e-changed` (the PR's changed specs/infra at retries=0), and a 4-way sharded `e2e` matrix (full suite at retries=0 since #1160 — the suite is clean enough that the retry safety-net was dropped so a flaky spec can't hide; fresh runner + fresh servers per shard). Every push costs a full round — batch fixes before pushing. On-demand full-suite gate for ANY branch: dispatch `.github/workflows/e2e-full.yml` (fresh runners, defaults retries=0; `repeat_each` up to 3). Each full-suite shard posts a pass-on-retry flake report to its job summary — read it after green runs; those are confirmed flakes to file.                 |
 | Issue auto-close | GitHub only parses `Fixes #N` **one keyword per line** in the PR body. Slash-separated lists silently don't close anything. Verify closure after every merge.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 ## Container-restart resilience (the dominant failure mode)
@@ -170,8 +170,10 @@ Every agent prompt must contain, verbatim where marked:
 - Migrations: announce the number you take (check current max first); collisions
   resolve by whoever lands second renumbering + regenerating manifest.json
 - PR body: closing keywords each ON THEIR OWN LINE (Fixes #N — GitHub parses one per line)
-- Commit trailers EXACTLY:
-    Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+- Commit trailers EXACTLY (use THIS session's configured Co-Authored-By line —
+  the model name varies by session; copy it from your own environment's commit
+  instructions, don't hardcode a model here):
+    Co-Authored-By: Claude <model> <noreply@anthropic.com>
     Claude-Session: <session URL>
 - No model identifiers in commits/PR/code
 - Open the PR READY (not draft) via REST, base main
@@ -242,7 +244,7 @@ it later from the issue number is guesswork.
     consolidation, a multi-page feature) — and since 2026-07-21 it is a dispatch
     of `e2e-full.yml` against the branch (fresh runners, retries=0), not a local
     run; PR CI's sharded `e2e` matrix already gives every push a full-suite pass
-    at retries=1 on top of that. **Rebase waiver:** when a
+    at retries=0 on top of that (dropped from retries=1 in #1160). **Rebase waiver:** when a
     rebase's delta is text-only (README/docs conflict resolution), CI's full e2e
   * changed-specs lane on the exact rebased tip, plus the pre-rebase local full
     suite, is sufficient — don't burn a second local full run.
@@ -333,6 +335,32 @@ python… ; done` CI-poll loop running in the background was starving the
   through `e2e/helpers.ts` (`settledClick`/`followLink`) are the fix for
   pre-hydration clicks. In containers where `next dev` boot times out, run the
   CI-parity form (build + `CI=1`) exclusively — it is the mode that gates.
+- **The `e2e-changed` whole-suite escalation is itself degradation-prone — the
+  SHARDED matrix is the more reliable full-suite signal (2026-07-22).** Any
+  change to shared e2e infra (`seed-events.ts`/`fixture-logins.ts`/`helpers.ts`)
+  makes `e2e-changed` run the WHOLE suite in ONE worker — and that single-worker
+  whole-suite lane hits the same cumulative-starvation wall a local single-process
+  full run does. Its tell: it reds on a ROTATING set of create-member/login specs
+  (`audit-log`, `email-auth`, `episode-med-reconcile`, `household-rollup`,
+  `illness-episode`) that VARIES run-to-run, while `check` AND all four `e2e`
+  shards stay green and the PR's OWN spec passes. A rotating failure set = the
+  single-process degradation, not a regression; re-running rarely clears it
+  (it's cumulative, not random). When only `e2e-changed` reds on that class and
+  the merits are green, two exits: (a) HOLD for the interference-spec hardening
+  (if the owner has claimed those specs); (b) take the PR's new fixture OUT of
+  `seed-events.ts` (spec-owned create-and-clean) so it stops escalating
+  `e2e-changed` to the whole suite — then that lane runs only the changed spec.
+  Never merge over a red required check, but never read a rotating-set
+  `e2e-changed` red as the PR's own bug either.
+- **Adding a NEW spec FILE reshuffles the shard split and surfaces LATENT
+  interference (2026-07-22).** Playwright shards the sorted spec-file list, so a
+  new `.spec.ts` shifts which specs land together — and specs that mutate shared
+  profile-1 state (activity merges, session/equipment counts) that previously
+  happened to shard APART can now collide under one worker. Confirmed
+  pre-existing, not the new PR's fault: reproduce by running the accused specs
+  TOGETHER `--workers=4` on the PR branch AND on a clean main checkout — if both
+  fail together, it's latent shared-seed fragility the shard-reshuffle exposed
+  (harden the fragile specs to own their fixtures), not the new spec's doing.
 
 **Known failure classes** (every one recurred at least once):
 
@@ -436,6 +464,17 @@ python… ; done` CI-poll loop running in the background was starving the
    a PR that adds an event-driven send path must grep the e2e specs for
    persisted channel config on shared profiles; a spec that configures a
    channel gets a dedicated fixture login.
+10. **Conditional-visibility render race (2026-07-22)** — a spec that BRANCHES
+    on `if (await x.isVisible().catch(() => false))` immediately after `goto`
+    races the (server) render under CI load: the un-awaited check returns false
+    before the element paints, the branch is skipped, and a later step that
+    depended on it fails — passing locally (instant render) but red in CI. Wait
+    for a stable section anchor (`await expect(sectionTestid).toBeVisible()`)
+    BEFORE the conditional probe. For an idempotent accept-if-present flow, also
+    assert the element UNMOUNTS after the action (`toHaveCount(0)`) so the
+    mutation has committed before you navigate away to check its effect. (The
+    create-visit-from-record spec flaked exactly this in CI while passing local
+    `--repeat-each`.)
 
 ## Review checklist
 
@@ -475,6 +514,17 @@ fixture files (`seed-events.ts`, `fixture-logins.ts`) by concatenating ours+thei
 can drop a shared boundary line — a `console.log(...` whose closing `);` sat on
 the other side of the `=======` — so ALWAYS `typecheck` after; the error is a
 bare `',' expected` at the seam.
+
+**Rebasing a PR ACROSS a merged route restructure (2026-07-22).** When a
+tabs/route-per-page change (e.g. #1079's `/results#anchor` → `/results/biomarkers`)
+has landed and you rebase a sibling PR onto it, two traps the clean textual
+rebase hides: (1) `typecheck` reds on the NEW routes (`Type '"/records/care/overview"'
+is not assignable to AppRoute`) until `npm run build` regenerates `.next/types` —
+a bare post-rebase `typecheck` LIES; run it AFTER `build`, not before. (2) a spec's
+`page.goto("/old#anchor")` route strings are NOT typed, so `build`'s AppRoute
+sweep (which only catches SOURCE hrefs) will NOT flag them — grep the rebased spec
+for stale route literals and re-run its e2e in CI-parity. A clean rebase + green
+local pure tier is NOT sufficient across a route restructure.
 
 ## Cadence & lifecycle
 
