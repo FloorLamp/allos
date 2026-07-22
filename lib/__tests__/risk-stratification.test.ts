@@ -618,3 +618,175 @@ describe("isAnchoredOneShotReading", () => {
     expect(isAnchoredOneShotReading("LDL Cholesterol", "infant")).toBe(false);
   });
 });
+
+describe("deriveRiskFactors — family site-specific cancer + onset age (#1039)", () => {
+  const base = {
+    activeConditions: [] as string[],
+    attributes: EMPTY_RISK_ATTRIBUTES,
+  };
+
+  it("code-first: a coded colon-cancer row matches regardless of a terse name", () => {
+    // "CRC" carries no colorectal name stem; the C18.9 code lands the factor.
+    const f = deriveRiskFactors({
+      ...base,
+      familyConditions: [
+        { name: "CRC", code: "C18.9", codeSystem: "ICD-10-CM" },
+      ],
+    });
+    expect(f.has("family-colorectal")).toBe(true);
+    // The flat catch-all (malignant "C" family) stays true alongside the site factor.
+    expect(f.has("family-cancer")).toBe(true);
+  });
+
+  it("name fallback: Lynch syndrome and adenomatous polyposis drive family-colorectal", () => {
+    for (const name of [
+      "Lynch syndrome",
+      "Familial adenomatous polyposis",
+      "Adenocarcinoma of colon",
+      "Colorectal carcinoma",
+    ]) {
+      const f = deriveRiskFactors({ ...base, familyConditions: [name] });
+      expect(f.has("family-colorectal"), name).toBe(true);
+    }
+  });
+
+  it("separates site-specific breast from colorectal", () => {
+    const breast = deriveRiskFactors({
+      ...base,
+      familyConditions: [
+        { name: "Breast cancer", code: "C50.9", codeSystem: "ICD-10-CM" },
+      ],
+    });
+    expect(breast.has("family-breast")).toBe(true);
+    expect(breast.has("family-colorectal")).toBe(false);
+
+    const colon = deriveRiskFactors({
+      ...base,
+      familyConditions: [{ name: "Colon cancer", code: "C18", codeSystem: "ICD-10" }],
+    });
+    expect(colon.has("family-colorectal")).toBe(true);
+    expect(colon.has("family-breast")).toBe(false);
+  });
+
+  it("early onset (<60 colorectal) activates the early-onset factor; >=60 and missing do not", () => {
+    const early = deriveRiskFactors({
+      ...base,
+      familyConditions: [
+        { name: "Colon cancer", code: "C18.9", codeSystem: "ICD-10", onsetAge: 45 },
+      ],
+    });
+    expect(early.has("family-colorectal")).toBe(true);
+    expect(early.has("family-colorectal-early-onset")).toBe(true);
+
+    const late = deriveRiskFactors({
+      ...base,
+      familyConditions: [
+        { name: "Colon cancer", code: "C18.9", codeSystem: "ICD-10", onsetAge: 70 },
+      ],
+    });
+    expect(late.has("family-colorectal")).toBe(true);
+    expect(late.has("family-colorectal-early-onset")).toBe(false);
+
+    const noAge = deriveRiskFactors({
+      ...base,
+      familyConditions: [
+        { name: "Colon cancer", code: "C18.9", codeSystem: "ICD-10" },
+      ],
+    });
+    expect(noAge.has("family-colorectal")).toBe(true);
+    expect(noAge.has("family-colorectal-early-onset")).toBe(false);
+  });
+
+  it("breast early-onset threshold is <50", () => {
+    const at45 = deriveRiskFactors({
+      ...base,
+      familyConditions: [{ name: "Breast cancer", onsetAge: 45 }],
+    });
+    expect(at45.has("family-breast-early-onset")).toBe(true);
+    const at55 = deriveRiskFactors({
+      ...base,
+      familyConditions: [{ name: "Breast cancer", onsetAge: 55 }],
+    });
+    expect(at55.has("family-breast-early-onset")).toBe(false);
+  });
+
+  it("early onset on a DISTANT-site row does not lend its age to another row's factor", () => {
+    // A late-onset colorectal row and an early-onset (but non-site) cancer row: no
+    // early-onset colorectal factor should appear (per-row onset scoping).
+    const f = deriveRiskFactors({
+      ...base,
+      familyConditions: [
+        { name: "Colon cancer", code: "C18", codeSystem: "ICD-10", onsetAge: 72 },
+        { name: "Leukemia", onsetAge: 30 },
+      ],
+    });
+    expect(f.has("family-colorectal")).toBe(true);
+    expect(f.has("family-colorectal-early-onset")).toBe(false);
+  });
+
+  it("conservatism: unknown code + unmatched name yields no family factor", () => {
+    const f = deriveRiskFactors({
+      ...base,
+      familyConditions: [
+        { name: "Some ailment", code: "Z99.9", codeSystem: "ICD-10", onsetAge: 40 },
+      ],
+    });
+    expect(f.has("family-colorectal")).toBe(false);
+    expect(f.has("family-breast")).toBe(false);
+    expect(f.has("family-cancer")).toBe(false);
+    expect(f.size).toBe(0);
+  });
+});
+
+describe("family site cancer cadence + priority (#1039)", () => {
+  it("family-colorectal ranks the colorectal screening but does NOT tighten cadence", () => {
+    const factors = new Set<RiskFactor>(["family-colorectal"]);
+    const rank = screeningPriorityFor("colorectal_cancer", factors);
+    expect(rank.priority).toBe(2);
+    expect(rank.reasons).toContain("Family history of colorectal cancer");
+    // Priority-only: catalog cadence untouched.
+    expect(screeningModulationFor("colorectal_cancer", factors)).toEqual(
+      NO_MODULATION
+    );
+  });
+
+  it("early-onset colorectal tightens the colonoscopy cadence and ranks higher", () => {
+    const factors = new Set<RiskFactor>([
+      "family-colorectal",
+      "family-colorectal-early-onset",
+    ]);
+    const mod = screeningModulationFor("colorectal_cancer", factors);
+    expect(mod.multiplier).toBe(0.5);
+    expect(mod.priority).toBe(3);
+    expect(mod.reasons[0]).toContain("early-onset colorectal cancer");
+  });
+
+  it("family-breast ranks mammography; early-onset breast tightens it", () => {
+    expect(
+      screeningPriorityFor(
+        "mammography",
+        new Set<RiskFactor>(["family-breast"])
+      ).priority
+    ).toBe(2);
+    expect(
+      screeningModulationFor(
+        "mammography",
+        new Set<RiskFactor>(["family-breast"])
+      )
+    ).toEqual(NO_MODULATION);
+    expect(
+      screeningModulationFor(
+        "mammography",
+        new Set<RiskFactor>(["family-breast-early-onset"])
+      ).multiplier
+    ).toBe(0.5);
+  });
+
+  it("the flat family-cancer bucket drives no colorectal/mammography cadence (still a catch-all)", () => {
+    const factors = new Set<RiskFactor>(["family-cancer"]);
+    expect(screeningModulationFor("colorectal_cancer", factors)).toEqual(
+      NO_MODULATION
+    );
+    expect(screeningPriorityFor("colorectal_cancer", factors).priority).toBe(0);
+  });
+});
