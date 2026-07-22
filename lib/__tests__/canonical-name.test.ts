@@ -445,7 +445,9 @@ describe("canonical aliases (synonym/abbreviation drift)", () => {
     expect(snapCanonicalName("Glucose, Fasting", index)).toBe(
       "Glucose, Fasting"
     );
-    expect(snapCanonicalName("Fasting Glucose", index)).toBe("Glucose, Fasting");
+    expect(snapCanonicalName("Fasting Glucose", index)).toBe(
+      "Glucose, Fasting"
+    );
     expect(snapCanonicalName("Glucose, Fasting", index)).not.toBe("Glucose");
     // The LDL-C abbreviation + calculated drift snap onto LDL Cholesterol.
     for (const spelling of [

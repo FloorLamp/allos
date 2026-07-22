@@ -242,7 +242,9 @@ describe("shared flag+trajectory acknowledgment (issue #564)", () => {
     expect(f.supersedes).toBe(
       biomarkerFlagDismissalKey("Vitamin D3, 25-Hydroxy")
     );
-    expect(f.supersedes).not.toBe(biomarkerFlagDismissalKey("Vitamin D, Total"));
+    expect(f.supersedes).not.toBe(
+      biomarkerFlagDismissalKey("Vitamin D, Total")
+    );
   });
 });
 

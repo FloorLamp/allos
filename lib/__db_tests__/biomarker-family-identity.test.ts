@@ -79,8 +79,10 @@ describe("vitamin-D fractions keep their OWN identity but share the retest clock
     // DEDUP + is_latest/current: THREE distinct current rows (one per fraction/total),
     // never collapsed onto one — a D3 (45) must not dedup against a total (50) on one
     // date, nor mark the whole group "current" off whichever is newest.
-    const currentVitD = getMedicalRecords(p.profileId, { current: true }).filter(
-      (r) => (r.canonical_name ?? "").toLowerCase().includes("vitamin d")
+    const currentVitD = getMedicalRecords(p.profileId, {
+      current: true,
+    }).filter((r) =>
+      (r.canonical_name ?? "").toLowerCase().includes("vitamin d")
     );
     expect(currentVitD).toHaveLength(3);
     expect(currentVitD.map((r) => r.canonical_name).sort()).toEqual([
@@ -108,7 +110,9 @@ describe("vitamin-D fractions keep their OWN identity but share the retest clock
 
     // BAND: only the TOTAL carries the 30–100 sufficiency band; the fractions carry
     // null bands, so a low D2 (5) never flags "deficient" (adult age).
-    expect(canonicalBiomarkerForName("Vitamin D, 25-Hydroxy")?.ref_low).toBe(30);
+    expect(canonicalBiomarkerForName("Vitamin D, 25-Hydroxy")?.ref_low).toBe(
+      30
+    );
     expect(canonicalBiomarkerForName("Vitamin D2, 25-Hydroxy")?.ref_low).toBe(
       null
     );
@@ -156,8 +160,10 @@ describe("vitamin-D fractions keep their OWN identity but share the retest clock
     addReading("Vitamin D", old, 22);
 
     // Both total spellings collapse to one current row and one series.
-    const currentVitD = getMedicalRecords(p.profileId, { current: true }).filter(
-      (r) => (r.canonical_name ?? "").toLowerCase().includes("vitamin d")
+    const currentVitD = getMedicalRecords(p.profileId, {
+      current: true,
+    }).filter((r) =>
+      (r.canonical_name ?? "").toLowerCase().includes("vitamin d")
     );
     expect(currentVitD).toHaveLength(1);
     expect(currentVitD[0].canonical_name).toBe("Vitamin D, 25-Hydroxy");
