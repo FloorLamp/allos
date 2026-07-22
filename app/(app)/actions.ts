@@ -6,7 +6,12 @@ import { setDashboardLayout, setIllnessHeroUi } from "@/lib/settings";
 import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { snoozeUntil } from "@/lib/upcoming";
-import { snoozeFinding, dismissFinding, markDoseTaken } from "@/lib/queries";
+import {
+  snoozeFinding,
+  dismissFinding,
+  markDoseTaken,
+  acknowledgeRestToday,
+} from "@/lib/queries";
 import { dedupeKeyHasKnownPrefix } from "@/lib/rule-finding-prefixes";
 
 // Persist the active profile's dashboard customization: the widget
@@ -35,16 +40,45 @@ export async function saveIllnessHeroState(
   });
 }
 
-// "Not today" on the dashboard Coaching widget (findings bus, #39): snooze the top
-// recommendation until tomorrow through the shared suppression store, so the
-// next-ranked recommendation surfaces for the rest of the day. Guarded to the
-// coaching namespace so a tampered form can't snooze an arbitrary finding key.
-// Profile-scoped via snoozeFinding.
+// "Snooze" on the dashboard Coaching widget (findings bus, #39; renamed from "Not
+// today" in #1150 so it doesn't read as a "I'll rest" stance next to "Training
+// anyway"): snooze the top recommendation until tomorrow through the shared
+// suppression store, so the next-ranked recommendation surfaces for the rest of the
+// day. Applies to ALL coaching rec types (train/cardio/rest). Guarded to the coaching
+// namespace so a tampered form can't snooze an arbitrary finding key. Profile-scoped
+// via snoozeFinding.
 export async function snoozeCoaching(formData: FormData) {
   const { profile } = await requireWriteAccess();
   const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
   if (!dedupeKey.startsWith("coaching:")) return;
   snoozeFinding(profile.id, dedupeKey, shiftDateStr(today(profile.id), 1));
+  revalidatePath("/");
+}
+
+// The rest-nudge reason ids the "Training anyway" acknowledgment may carry — a tampered
+// form can't inject arbitrary reason strings into the stored marker.
+const REST_REASON_IDS = new Set([
+  "rest-sleep",
+  "rest-rhr",
+  "rest-overtraining",
+  "rest-load",
+]);
+
+// "Training anyway" on the dashboard Coaching rest card (#1150): a DECLARATION OF
+// INTENT ("I'm training despite this"), the opposite of the snooze dismissal — it
+// records a per-day acknowledgment (DISTINCT from the #39 snooze store; it never
+// touches upcoming_dismissals), and the card transforms in place into calm
+// recovery-aware training guidance instead of hiding. Today-only: a still-firing signal
+// returns tomorrow, so it can't bury a persisting signal for good. Profile-scoped via
+// acknowledgeRestToday. The submitted reason ids are the firing signals shown on the
+// card, validated against the known rest ids.
+export async function acknowledgeRest(formData: FormData) {
+  const { profile } = await requireWriteAccess();
+  const reasonIds = String(formData.get("reason_ids") ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => REST_REASON_IDS.has(s));
+  acknowledgeRestToday(profile.id, reasonIds);
   revalidatePath("/");
 }
 

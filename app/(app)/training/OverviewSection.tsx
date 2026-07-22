@@ -8,6 +8,7 @@ import {
   getIllnessCoachingContext,
   getJournalWeekSummary,
   getRecentDatedExercises,
+  getRestAck,
   getRestEpisode,
   getRestingHrSignal,
   getSleepSignal,
@@ -152,6 +153,10 @@ export default async function OverviewSection() {
     sleep: getSleepSignal(profile.id),
     restingHr: getRestingHrSignal(profile.id),
     restEpisode: getRestEpisode(profile.id),
+    // "Training anyway" acknowledgment (#1150): the SAME per-day marker the dashboard
+    // card + Telegram read, so this overview card transforms into calm training guidance
+    // in lockstep (one computation, #221).
+    restAck: getRestAck(profile.id, todayStr),
     // Situation-aware hold (#837): the SAME illness context gatherCoachingInput reads,
     // so this overview card holds the gap nags during an open episode exactly like the
     // dashboard coaching widget — never a second, drifting derivation (#221).

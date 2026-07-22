@@ -1,8 +1,9 @@
 import Link from "next/link";
 import type { CoachingTone, Recommendation } from "@/lib/coaching";
+import { canAcknowledgeRest } from "@/lib/coaching";
 import { coachingDedupeKey } from "@/lib/findings";
 import SubmitButton from "@/components/SubmitButton";
-import { snoozeCoaching } from "@/app/(app)/actions";
+import { snoozeCoaching, acknowledgeRest } from "@/app/(app)/actions";
 import WidgetHeader from "./WidgetHeader";
 
 // Small accent dot color per tone, so the card reads at a glance: caution (ease
@@ -42,6 +43,18 @@ export default function CoachingWidget({ recs }: { recs: Recommendation[] }) {
               <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
                 {top.detail}
               </p>
+              {/* Concurrent under-recovery signals (#1148): every firing reason is
+                  shown BEFORE a snooze can suppress them, so a dismissal is informed
+                  and can't silently bury a signal the user never saw. */}
+              {top.also?.length ? (
+                <p
+                  className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+                  data-testid="coaching-also"
+                >
+                  <span className="font-medium">Also:</span>{" "}
+                  {top.also.join("; ")}.
+                </p>
+              ) : null}
               {top.target && (
                 <p className="mt-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
                   Suggested set: {top.target}
@@ -65,8 +78,28 @@ export default function CoachingWidget({ recs }: { recs: Recommendation[] }) {
                 {top.actionLabel ?? "Open"}
               </Link>
             )}
-            {/* Snooze the top recommendation until tomorrow (findings bus, #39),
-                surfacing the next-ranked one for the rest of the day. */}
+            {/* "Training anyway" (#1150): a declaration of intent on a LIVE rest card
+                — records a per-day acknowledgment (NOT a dismissal) and transforms this
+                card into calm recovery-aware training guidance instead of hiding it. Only
+                on an un-acknowledged rest rec; train/cardio cards show only Snooze. */}
+            {canAcknowledgeRest(top) && (
+              <form action={acknowledgeRest}>
+                <input
+                  type="hidden"
+                  name="reason_ids"
+                  value={(top.firingReasonIds ?? []).join(",")}
+                />
+                <SubmitButton
+                  pendingLabel="…"
+                  data-testid="coaching-training-anyway"
+                  className="btn-ghost text-slate-500 dark:text-slate-400"
+                >
+                  Training anyway
+                </SubmitButton>
+              </form>
+            )}
+            {/* Snooze the top recommendation until tomorrow (findings bus, #39;
+                renamed from "Not today" in #1150). Applies to ALL coaching rec types. */}
             <form action={snoozeCoaching}>
               <input
                 type="hidden"
@@ -75,10 +108,10 @@ export default function CoachingWidget({ recs }: { recs: Recommendation[] }) {
               />
               <SubmitButton
                 pendingLabel="…"
-                data-testid="coaching-not-today"
+                data-testid="coaching-snooze"
                 className="btn-ghost text-slate-500 dark:text-slate-400"
               >
-                Not today
+                Snooze
               </SubmitButton>
             </form>
           </div>
