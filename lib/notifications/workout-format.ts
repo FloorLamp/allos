@@ -77,8 +77,7 @@ export function formatWorkoutReminder(
     const lines: string[] = [rec.rest.detail];
     // Concurrent under-recovery signals (#1148): name the rest so a snooze can't bury
     // a signal the user never saw — the same "Also: …" line the dashboard card shows.
-    if (rec.rest.also?.length)
-      lines.push(`Also: ${rec.rest.also.join("; ")}.`);
+    if (rec.rest.also?.length) lines.push(`Also: ${rec.rest.also.join("; ")}.`);
     if (deloadNote) lines.push(deloadNote);
     if (rec.exercises.length)
       lines.push(`When you're ready: ${rec.exercises.join(", ")}`);

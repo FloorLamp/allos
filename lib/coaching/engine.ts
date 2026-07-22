@@ -598,10 +598,7 @@ export function restReasons(
 // FIRST reason names the recommendation (title/detail byte-for-byte the prior
 // single-reason output); any others ride along as `also` (#1148), rendered as a
 // secondary "Also: …" line so a snooze can't bury an unshown signal.
-function buildRestRec(
-  reasons: RestReason[],
-  tense: RestTense
-): Recommendation {
+function buildRestRec(reasons: RestReason[], tense: RestTense): Recommendation {
   const [primary, ...others] = reasons;
   const rec: Recommendation = {
     id: primary.id,

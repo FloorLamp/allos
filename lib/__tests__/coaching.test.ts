@@ -1630,9 +1630,15 @@ describe("withRestContinuity", () => {
     expect(cont.title).not.toContain("Rest or take it easy");
     // The tense clause already says "make your next session easy", so continuity folds
     // to just the persistence FACT — no doubled "keep it light" guidance.
-    expect(cont.detail).toContain("make your next session an easy one to recover.");
-    expect(cont.detail).toContain("Recovery signals have persisted for 2 days.");
-    expect(cont.detail).not.toContain("keep it light and let recovery catch up");
+    expect(cont.detail).toContain(
+      "make your next session an easy one to recover."
+    );
+    expect(cont.detail).toContain(
+      "Recovery signals have persisted for 2 days."
+    );
+    expect(cont.detail).not.toContain(
+      "keep it light and let recovery catch up"
+    );
     // id/kind/tone preserved.
     expect(cont.id).toBe("rest-sleep");
     expect(cont.kind).toBe("rest");
@@ -1652,8 +1658,12 @@ describe("withRestContinuity", () => {
     expect(cont.title).toBe(
       "Take it easy — make your next session light — 2nd day"
     );
-    expect(cont.detail).toContain("Recovery signals have persisted for 2 days.");
-    expect(cont.detail).not.toContain("keep it light and let recovery catch up");
+    expect(cont.detail).toContain(
+      "Recovery signals have persisted for 2 days."
+    );
+    expect(cont.detail).not.toContain(
+      "keep it light and let recovery catch up"
+    );
   });
 
   it("never overrides the input title's tense stance (#1149/#221)", () => {
@@ -1747,7 +1757,10 @@ describe("restReasons — all firing signals (#1148)", () => {
 
   it("single firing signal returns exactly one reason (no regression)", () => {
     const rs = restReasons(
-      input({ strength: [sRec()], sleep: { lastNightMin: 300, baselineMin: 300 } }),
+      input({
+        strength: [sRec()],
+        sleep: { lastNightMin: 300, baselineMin: 300 },
+      }),
       th
     );
     expect(rs.map((r) => r.id)).toEqual(["rest-sleep"]);
@@ -1776,7 +1789,10 @@ describe("restReasons — all firing signals (#1148)", () => {
 
   it("a single-reason rest rec has no `also` (byte-for-byte prior output)", () => {
     const rec = restRecommendation(
-      input({ strength: [sRec()], sleep: { lastNightMin: 300, baselineMin: 300 } }),
+      input({
+        strength: [sRec()],
+        sleep: { lastNightMin: 300, baselineMin: 300 },
+      }),
       th
     )!;
     expect(rec.also).toBeUndefined();
@@ -1837,7 +1853,10 @@ describe("acknowledgment card (#1150)", () => {
 
   it("a today acknowledgment transforms the rest slot; absent leaves it a rest nudge", () => {
     const acked = recommendCoaching(
-      input({ ...restCtx(), restAck: { date: TODAY, reasonIds: ["rest-sleep"] } })
+      input({
+        ...restCtx(),
+        restAck: { date: TODAY, reasonIds: ["rest-sleep"] },
+      })
     )[0];
     expect(acked.id).toBe(ACKNOWLEDGED_REST_ID);
     expect(acked.title).toBe("Training today — keep it smart");
@@ -1850,7 +1869,10 @@ describe("acknowledgment card (#1150)", () => {
 
   it("a STALE (past-date) acknowledgment is ignored — the rest nudge returns", () => {
     const top = recommendCoaching(
-      input({ ...restCtx(), restAck: { date: YESTERDAY, reasonIds: ["rest-sleep"] } })
+      input({
+        ...restCtx(),
+        restAck: { date: YESTERDAY, reasonIds: ["rest-sleep"] },
+      })
     )[0];
     expect(top.id).toBe("rest-sleep");
   });
@@ -1858,9 +1880,9 @@ describe("acknowledgment card (#1150)", () => {
   it("canAcknowledgeRest is true for a live rest rec, false for the ack card + non-rest", () => {
     const live = restRecommendation(input(restCtx()), th)!;
     expect(canAcknowledgeRest(live)).toBe(true);
-    expect(canAcknowledgeRest(acknowledgedRestRec(restReasons(input(restCtx()), th)))).toBe(
-      false
-    );
+    expect(
+      canAcknowledgeRest(acknowledgedRestRec(restReasons(input(restCtx()), th)))
+    ).toBe(false);
     const strength: Recommendation = {
       id: "strength-x",
       kind: "strength",

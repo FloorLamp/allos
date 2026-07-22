@@ -100,7 +100,9 @@ test.describe("Coaching rest card — multi-reason + Training anyway (#1148/#115
       ).toBeVisible();
       await expect(acked.getByText("keep intensity moderate")).toBeVisible();
       // "Training anyway" is spent (already acknowledged); only Snooze remains.
-      await expect(acked.getByTestId("coaching-training-anyway")).toHaveCount(0);
+      await expect(acked.getByTestId("coaching-training-anyway")).toHaveCount(
+        0
+      );
       await expect(acked.getByTestId("coaching-snooze")).toBeVisible();
     } finally {
       await page.context().close();
