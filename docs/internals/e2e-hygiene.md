@@ -146,12 +146,13 @@ a **convention gate, not a linter**:
 ONE home for settled interactions. The file header carries the authoritative
 decision tree; the summary:
 
-| Situation                                                                                                            | Use                                                                                                         |
-| -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Click fires a **Server Action** (form submit, dose confirm, create/delete) and you assert the result                 | `settledClick(page, locator)` — awaits the action's same-origin POST response before returning              |
-| Click is a **navigation** to another route (Next `<Link>` / tab `<a href>`) that flakes on the pre-hydration swallow | `followLink(page, locator, /destination/)` — retries the click until the router commits (and holds) the URL |
-| A **pure client** toggle / value settles in place / a toast appears                                                  | a plain auto-retrying `expect(...)` — Playwright's retry IS the wait; no helper                             |
-| A genuinely non-atomic condition none of the above expresses                                                         | `toPass()` — LAST resort, and every use MUST carry a comment saying why a single `expect` can't express it  |
+| Situation                                                                                                            | Use                                                                                                                  |
+| -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Click fires a **Server Action** (form submit, dose confirm, create/delete) and you assert the result                 | `settledClick(page, locator)` — awaits the action's same-origin POST response before returning                       |
+| Click is a **navigation** to another route (Next `<Link>` / tab `<a href>`) that flakes on the pre-hydration swallow | `followLink(page, locator, /destination/)` — retries the click until the router commits (and holds) the URL          |
+| **Fill** a controlled input whose Save reads component STATE (Settings' save-from-state cards, autosave-on-blur)     | `settledFill(page, field, value)` — waits for React to hydrate the field before filling, so the value lands in state |
+| A **pure client** toggle / value settles in place / a toast appears                                                  | a plain auto-retrying `expect(...)` — Playwright's retry IS the wait; no helper                                      |
+| A genuinely non-atomic condition none of the above expresses                                                         | `toPass()` — LAST resort, and every use MUST carry a comment saying why a single `expect` can't express it           |
 
 Why not networkidle: it waits for network SILENCE, not "my interaction landed" —
 it settles falsely on a page with a long-poll/SSE/streaming request and adds
@@ -161,6 +162,29 @@ flake) or too long (slow suite) and asserts nothing.
 `settledClick` works only when the click fires exactly one same-origin POST; for a
 click that fires NO action (a client toggle, an `<a href>` nav) there is no POST to
 await and it times out — that's what `followLink`/`expect` are for.
+
+### The pre-hydration fill-revert (`settledFill`, #1188)
+
+A `.fill()` dispatched **before React hydrates** a controlled input sets the DOM
+value (so a plain `toHaveValue` passes) but never fires the input's `onChange`, so
+the component's STATE never updates — and hydration then REVERTS the field to
+state. Anything that reads state afterward loses the value:
+
+- A Save that builds its FormData from component state (Settings'
+  `PublicUrlSettings`/`SmtpSettings`) persists the empty/stale value **silently**
+  (an empty value is a valid save), and no value-assertion catches it because the
+  DOM looked set — this was the ~1/3-under-load `email-auth:58` flake.
+- An autosave-on-blur card (`useSaveStatus`) never sees a change, so no save fires
+  and a later `reload → toHaveValue` mismatch flakes LOUDLY.
+
+`settledFill(page, field, value)` waits until React has attached its
+`__reactFiber$…`/`__reactProps$…` markers to the node (the same hydration signal
+`followLink` waits on for clicks) BEFORE filling, so `onChange` fires and the value
+lands in state. Use it wherever a spec fills a controlled input and then relies on
+component state — Settings save-from-state cards and autosave-on-blur fields are the
+canonical victims. `settledFill` guarantees the value reached state, NOT that a
+later save kept it; when the save's success is silent (empty is valid), also
+reload-and-assert the persisted effect (the email-auth precedent).
 
 ## Fix (c) — the changed-spec CI lane at retries=0
 

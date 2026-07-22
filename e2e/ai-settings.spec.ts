@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { settledClick } from "./helpers";
+import { settledClick, settledFill } from "./helpers";
 
 // The admin Server settings page surfaces the two AI provider tiers (issue #875):
 // Heavy (extraction) and Light (narratives/suggestions), each an editable provider
@@ -35,8 +35,10 @@ test.describe("Settings → Server: AI provider tiers", () => {
   }) => {
     await page.goto("/settings/server");
     const input = page.getByTestId("recommendation-max-runs");
-    await expect(input).toBeVisible();
-    await input.fill("3");
+    // settledFill: wait for React to hydrate before filling, so the value lands in
+    // state (a pre-hydration fill reverts, the autosave never fires, and the reload
+    // below flakes — the #1188 class). It also asserts visibility.
+    await settledFill(page, input, "3");
     await input.blur();
     // Wait for the autosave to COMMIT before reloading — a reload aborts the
     // in-flight server-action POST, silently losing the save (the race that made
@@ -48,7 +50,7 @@ test.describe("Settings → Server: AI provider tiers", () => {
     await expect(page.getByTestId("recommendation-max-runs")).toHaveValue("3");
     // Restore the default so we don't perturb other admin-scoped specs.
     const restore = page.getByTestId("recommendation-max-runs");
-    await restore.fill("1");
+    await settledFill(page, restore, "1");
     await restore.blur();
     await expect(page.getByLabel("Saved").first()).toBeVisible();
     await page.reload();

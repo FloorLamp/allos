@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { settledFill } from "./helpers";
 
 // Issue #159: training intensity distribution (HR zones). The seed profile is
 // ~40y with a resting HR, so the zone model builds via Karvonen. e2e/seed-events
@@ -51,10 +52,12 @@ test("Settings → Profile persists the max-HR override and Zone 2 target (#159)
 
   // Round-trip: set both, blur to save (the autosave check confirms), then reload
   // and confirm they stuck. SaveStatus is icon-only — match its aria-label.
-  await maxHr.fill("185");
+  // settledFill: land the value in React state before the autosave reads it (a
+  // pre-hydration fill of a controlled input reverts, no save fires — #1188).
+  await settledFill(page, maxHr, "185");
   await maxHr.blur();
   await expect(form.getByLabel("Saved")).toBeVisible();
-  await target.fill("180");
+  await settledFill(page, target, "180");
   await target.blur();
   await expect(form.getByLabel("Saved")).toBeVisible();
 
@@ -66,10 +69,10 @@ test("Settings → Profile persists the max-HR override and Zone 2 target (#159)
   // (blank max-HR clears the override; 150 is the default Zone 2 target).
   const maxHr2 = main.getByTestId("max-hr-override");
   const target2 = main.getByTestId("zone2-target-input");
-  await maxHr2.fill("");
+  await settledFill(page, maxHr2, "");
   await maxHr2.blur();
   await expect(main.getByLabel("Saved")).toBeVisible();
-  await target2.fill("150");
+  await settledFill(page, target2, "150");
   await target2.blur();
   await expect(main.getByLabel("Saved")).toBeVisible();
 });

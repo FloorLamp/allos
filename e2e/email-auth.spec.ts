@@ -1,6 +1,6 @@
 import { test, expect, type Browser } from "@playwright/test";
 import fs from "node:fs";
-import { settledClick, followLink } from "./helpers";
+import { settledClick, settledFill, followLink } from "./helpers";
 import { loginAs } from "./nav";
 
 // Outbound email — SMTP foundation + login-lifecycle flows (issue #985). One
@@ -36,22 +36,68 @@ async function cookielessPage(browser: Browser) {
   return ctx.newPage();
 }
 
-// Configure/clear the global SMTP + public URL via Settings → Server (admin).
+// Configure/clear the global SMTP + public URL via Settings → Server (admin). These
+// are CONTROLLED React inputs whose Save builds its FormData from component STATE
+// (PublicUrlSettings/SmtpSettings), so a pre-hydration `.fill()` that never fired
+// onChange persists the empty/stale value (a VALID save — normalizePublicUrl("") is
+// ok), the ~1/3-under-load email-auth:58 flake. Two guards, belt-and-suspenders:
+// settledFill waits for React to hydrate the field before filling (value lands in
+// state), AND setSettingAndConfirm retries the whole navigate→fill→save and CONFIRMS
+// it durably persisted by reloading — the reload also settles the DERIVED
+// smtp-needs-public-url warning, which a single apply→revalidate render can still
+// race. settledFill alone got 10/12; the retry+confirm closes the last 2.
+async function setSettingAndConfirm(
+  page: import("@playwright/test").Page,
+  fill: () => Promise<void>,
+  saveButton: () => import("@playwright/test").Locator,
+  confirm: () => Promise<void>
+) {
+  await expect(async () => {
+    await page.goto("/settings/server");
+    await fill();
+    await settledClick(page, saveButton());
+    await page.goto("/settings/server"); // fresh render reads the persisted setting
+    await confirm();
+  }).toPass({ timeout: 30_000 }); // topass-ok: retry the controlled-input fill+save until it durably persists (pre-hydration fill-revert); reload confirms
+}
+
 async function setSmtp(page: import("@playwright/test").Page, host: string) {
-  await page.goto("/settings/server");
-  await page.getByTestId("smtp-host").fill(host);
-  await page.getByTestId("smtp-port").fill("587");
-  await page.getByTestId("smtp-from").fill(host ? "allos@example.com" : "");
-  await settledClick(page, page.getByTestId("smtp-apply"));
+  const hostField = () => page.getByTestId("smtp-host");
+  await setSettingAndConfirm(
+    page,
+    async () => {
+      await settledFill(page, hostField(), host);
+      await settledFill(page, page.getByTestId("smtp-port"), "587");
+      await settledFill(
+        page,
+        page.getByTestId("smtp-from"),
+        host ? "allos@example.com" : ""
+      );
+    },
+    () => page.getByTestId("smtp-apply"),
+    async () => {
+      await expect(hostField()).toHaveValue(host);
+    }
+  );
 }
 async function setPublicUrl(
   page: import("@playwright/test").Page,
   url: string
 ) {
-  await page.goto("/settings/server");
-  const card = page.locator(".card", { hasText: "Public app URL" });
-  await card.getByPlaceholder("https://your-app.example.com").fill(url);
-  await settledClick(page, card.getByRole("button", { name: "Save" }));
+  const card = () => page.locator(".card", { hasText: "Public app URL" });
+  const field = () => card().getByPlaceholder("https://your-app.example.com");
+  await setSettingAndConfirm(
+    page,
+    async () => {
+      await settledFill(page, field(), url);
+    },
+    () => card().getByRole("button", { name: "Save" }),
+    async () => {
+      // A non-empty URL persists (normalized); empty stays empty.
+      if (url) await expect(field()).not.toHaveValue("");
+      else await expect(field()).toHaveValue("");
+    }
+  );
 }
 
 test.describe("outbound email — login lifecycle (#985)", () => {
@@ -81,9 +127,9 @@ test.describe("outbound email — login lifecycle (#985)", () => {
     await expect(anon.getByTestId("forgot-password-link")).toHaveCount(0);
     await anon.context().close();
 
-    // Set the public URL — now email is fully configured.
+    // Set the public URL — now email is fully configured. setPublicUrl confirmed the
+    // URL durably persisted (reload-verified), so the derived warning is gone.
     await setPublicUrl(page, "app.example.com");
-    await page.goto("/settings/server");
     await expect(page.getByTestId("smtp-needs-public-url")).toHaveCount(0);
 
     // ── (2) Invite flow from Family settings ────────────────────────────────
