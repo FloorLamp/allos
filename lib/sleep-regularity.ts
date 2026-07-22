@@ -115,6 +115,45 @@ export function sleepSessionDurationMinutes(s: SleepSession): number {
     : Math.round(sessionMs(s) / 60000);
 }
 
+// ── Fragment merge rule (issue #1191) ────────────────────────────────────────
+// The longest-block classifier below has no concept of two co-equal blocks forming
+// ONE night: a segmented 4h+4h night (historical first-/second-sleep, dorveille, a
+// split rhythm) reads as a 4h night + a "nap", firing a daily false poor-sleep
+// nudge (240 < the 360-min floor) and understating every duration surface. #1118's
+// spec anticipated the missing branch ("two fragmented night pieces → the longer,
+// OR merged per the rule"); mainSleepPeriod is that branch. The discriminator is the
+// AWAKE GAP the longest-block picker ignored: co-equal pieces separated by only a
+// short gap are one fragmented night; a block separated by a long daytime gap is a
+// genuine nap and stays apart — so an afternoon nap can NEVER mask a deficient
+// overnight (the exact #1118 anti-masking concern), because a masking nap is by
+// definition hours away from the night, never adjacent to it.
+const FRAGMENT_MERGE_GAP_MAX_MIN = 120; // ≤2h awake gap between blocks → one night
+// A single block already reaching a full core night is a complete night on its own;
+// nothing else that day merges into it (the siesta guard — a ≥6h core keeps its nap
+// classification, and a well-behaved single overnight is byte-for-byte unchanged).
+const MERGE_CORE_MINUTES = 360; // 6h
+
+// Whether a session's window is usable (finite, positive-length).
+function isValidWindow(s: SleepSession): boolean {
+  const a = new Date(s.start).getTime();
+  const b = new Date(s.end).getTime();
+  return Number.isFinite(a) && Number.isFinite(b) && b > a;
+}
+
+// The main-sleep candidate pool for one wake-day: valid windows, minus provider-
+// labeled naps. When a source pre-labels a main sleep (Oura), only those qualify;
+// otherwise every non-nap window is a candidate. Shared by the single-session picker
+// and the fragment-merge period so the two can't drift on what counts as a nap.
+function candidateSessions<T extends SleepSession>(
+  sessionsForWakeDay: T[]
+): T[] {
+  const valid = sessionsForWakeDay.filter(isValidWindow);
+  const mains = valid.filter((s) => sessionKind(s.type) === "main");
+  return mains.length > 0
+    ? mains
+    : valid.filter((s) => sessionKind(s.type) !== "nap");
+}
+
 // Pick the MAIN overnight sleep session from ONE wake-day's sessions, or null when
 // the day holds no main sleep (empty input, all-invalid windows, or every session
 // provider-labeled a nap). Everything else that day is a nap.
@@ -124,22 +163,12 @@ export function sleepSessionDurationMinutes(s: SleepSession): number {
 // outright. Otherwise (Health Connect, unlabeled) the heuristic picks the LONGEST
 // session, tie-broken toward the one ending EARLIEST — the morning window, i.e. the
 // session that follows the long daytime awake gap — so a same-duration afternoon
-// nap never outranks the overnight fragment that ends at dawn.
+// nap never outranks the overnight fragment that ends at dawn. This returns the ONE
+// representative session; mainSleepPeriod merges co-equal fragments for duration.
 export function mainSleepSession<T extends SleepSession>(
   sessionsForWakeDay: T[]
 ): T | null {
-  const valid = sessionsForWakeDay.filter((s) => {
-    const a = new Date(s.start).getTime();
-    const b = new Date(s.end).getTime();
-    return Number.isFinite(a) && Number.isFinite(b) && b > a;
-  });
-  if (valid.length === 0) return null;
-
-  const mains = valid.filter((s) => sessionKind(s.type) === "main");
-  const candidates =
-    mains.length > 0
-      ? mains
-      : valid.filter((s) => sessionKind(s.type) !== "nap");
+  const candidates = candidateSessions(sessionsForWakeDay);
   if (candidates.length === 0) return null; // every session is a labeled nap
 
   return candidates.reduce((best, s) => {
@@ -157,9 +186,90 @@ export function mainSleepSession<T extends SleepSession>(
   });
 }
 
+// The MAIN sleep for one wake-day as a MERGED period (issue #1191): the longest
+// block plus any co-equal fragments separated from it by only a short awake gap,
+// spanning the outer edges (onset of the first piece → wake of the last) with
+// duration = the SUM of the members' asleep minutes (the awake gaps excluded). A
+// long-gap block stays out and remains a nap. Null when the day has no main sleep.
+export interface MainSleepPeriod<T extends SleepSession = SleepSession> {
+  start: string; // earliest merged-member onset
+  end: string; // latest merged-member wake
+  durationMin: number; // SUM of member asleep-minutes (never the span)
+  main: T; // representative single session (longest member) — source/type/provenance
+  members: T[]; // the merged night's sessions, chronological
+}
+
+export function mainSleepPeriod<T extends SleepSession>(
+  sessionsForWakeDay: T[]
+): MainSleepPeriod<T> | null {
+  const seed = mainSleepSession(sessionsForWakeDay);
+  if (!seed) return null;
+
+  const startMs = (s: SleepSession) => new Date(s.start).getTime();
+  const endMs = (s: SleepSession) => new Date(s.end).getTime();
+
+  const buildPeriod = (members: T[]): MainSleepPeriod<T> => {
+    const ordered = [...members].sort((a, b) => startMs(a) - startMs(b));
+    const main = ordered.reduce((best, s) =>
+      sessionMs(s) > sessionMs(best) ? s : best
+    );
+    return {
+      start: ordered[0].start,
+      end: ordered[ordered.length - 1].end,
+      durationMin: ordered.reduce(
+        (t, s) => t + sleepSessionDurationMinutes(s),
+        0
+      ),
+      main,
+      members: ordered,
+    };
+  };
+
+  // A block that already reaches a full core night is a complete night on its own;
+  // any other session that day is a genuine nap (the siesta guard). This keeps
+  // #1118's anti-masking intact and a well-behaved single overnight unchanged.
+  if (sleepSessionDurationMinutes(seed) >= MERGE_CORE_MINUTES) {
+    return buildPeriod([seed]);
+  }
+
+  // Fragmented case: the longest block is short of a full night, so grow the seed's
+  // cluster over the candidate pool, absorbing any block whose awake gap to the
+  // current span is within the bound. A long daytime gap leaves the block out (it
+  // stays a nap), so an afternoon nap can't merge into a deficient overnight.
+  const pool = candidateSessions(sessionsForWakeDay);
+  const gapMs = FRAGMENT_MERGE_GAP_MAX_MIN * 60000;
+  const members: T[] = [seed];
+  let spanStart = startMs(seed);
+  let spanEnd = endMs(seed);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const s of pool) {
+      if (members.includes(s)) continue;
+      const sStart = startMs(s);
+      const sEnd = endMs(s);
+      // Awake gap between this block and the current span; negative when they
+      // overlap. Adjacent within the bound on either edge merges.
+      const gap =
+        sStart >= spanEnd
+          ? sStart - spanEnd
+          : sEnd <= spanStart
+            ? spanStart - sEnd
+            : -1;
+      if (gap <= gapMs) {
+        members.push(s);
+        spanStart = Math.min(spanStart, sStart);
+        spanEnd = Math.max(spanEnd, sEnd);
+        grew = true;
+      }
+    }
+  }
+  return buildPeriod(members);
+}
+
 // Group sessions by profile-local wake-day (calendar date of the session END, the
 // same anchor buildNights uses) and return the MAIN overnight session per day
-// (mainSleepSession), naps dropped, oldest→newest. This is the "one night per day"
+// (mainSleepPeriod — co-equal fragments merged, naps dropped), oldest→newest. This is the "one night per day"
 // series the poor-sleep rest trigger and any last-night / wake-time reader consume
 // so a same-day nap can't mask overnight deprivation — WITHOUT touching SRI, which
 // still sees every session.
@@ -189,13 +299,13 @@ export function mainSleepNights(
     durationMin: number;
   }[] = [];
   for (const [wakeDay, group] of byDay) {
-    const main = mainSleepSession(group);
-    if (!main) continue;
+    const period = mainSleepPeriod(group);
+    if (!period) continue;
     out.push({
       wakeDay,
-      start: main.start,
-      end: main.end,
-      durationMin: sleepSessionDurationMinutes(main),
+      start: period.start,
+      end: period.end,
+      durationMin: period.durationMin,
     });
   }
   return out.sort((a, b) => (a.wakeDay < b.wakeDay ? -1 : 1));
@@ -329,12 +439,42 @@ function noonRelative(minOfDay: number): number {
   return (minOfDay - NOON + EPOCHS_PER_DAY) % EPOCHS_PER_DAY;
 }
 
-// Population standard deviation. Callers only reach it with ≥ 2 values (the
-// minimum-nights gate guarantees it); returns 0 for < 2.
-function stdDev(values: number[]): number {
+// Circular (period-1440) mean of clock minutes, as a minute-of-day in [0,1440).
+// Averaging the unit vectors keeps a cluster that straddles midnight OR noon from
+// folding, so the "center" is honest for ANY sleep phase — a nocturnal, a late-
+// riser, or a daytime sleeper whose mid-sleep sits on the old noon anchor (#1190).
+// Callers pass a non-empty array.
+function circularMeanMinutes(values: number[]): number {
+  let x = 0;
+  let y = 0;
+  for (const v of values) {
+    const a = (v / EPOCHS_PER_DAY) * 2 * Math.PI;
+    x += Math.cos(a);
+    y += Math.sin(a);
+  }
+  const ang = Math.atan2(y, x);
+  const norm = ang < 0 ? ang + 2 * Math.PI : ang;
+  return (norm / (2 * Math.PI)) * EPOCHS_PER_DAY;
+}
+
+// Signed shortest clock distance a→b in minutes, in (−720, 720].
+function signedDeltaMinutes(a: number, b: number): number {
+  const d = (((a - b) % EPOCHS_PER_DAY) + EPOCHS_PER_DAY) % EPOCHS_PER_DAY;
+  return d > EPOCHS_PER_DAY / 2 ? d - EPOCHS_PER_DAY : d;
+}
+
+// Population SD of clock minutes about their CIRCULAR mean (#1190): each value's
+// signed distance to that mean is taken before a plain SD. For a schedule that does
+// not straddle a fold this equals the old fixed-anchor SD exactly (SD is
+// translation-invariant, and no value wraps), so nocturnal figures are unchanged —
+// but a sleeper phased near midnight/noon no longer gets a spurious SD jump from the
+// anchor seam. Callers reach it with ≥ 2 values (the minimum-nights gate); 0 for < 2.
+function circularSdMinutes(values: number[]): number {
   if (values.length < 2) return 0;
-  const m = values.reduce((a, b) => a + b, 0) / values.length;
-  const variance = values.reduce((a, b) => a + (b - m) ** 2, 0) / values.length;
+  const mu = circularMeanMinutes(values);
+  const dev = values.map((v) => signedDeltaMinutes(v, mu));
+  const m = dev.reduce((a, b) => a + b, 0) / dev.length;
+  const variance = dev.reduce((a, b) => a + (b - m) ** 2, 0) / dev.length;
   return Math.sqrt(variance);
 }
 
@@ -489,28 +629,38 @@ export function computeSleepRegularity(
   if (pairs === 0) return null;
   const sri = -100 + 200 * (matches / (pairs * EPOCHS_PER_DAY));
 
-  // Companions over the SAME observed nights.
+  // Companions over the SAME observed nights, computed with circular statistics so
+  // they stay stable for a sleeper phased anywhere in the day, not just a nocturnal
+  // one (#1190). bedtime/waketime SD are dispersions about each series' circular
+  // mean; a nocturnal schedule (no value near a fold) yields the identical figure
+  // the old noon-anchored SD did.
   const nights = observed.map((d) => nightsByDay.get(d)!);
-  const bedNoonRel = nights.map((n) => noonRelative(n.bedMin));
-  const wakeNoonRel = nights.map((n) => noonRelative(n.wakeMin));
-  const bedtimeSdMin = stdDev(bedNoonRel);
-  const waketimeSdMin = stdDev(wakeNoonRel);
+  const bedtimeSdMin = circularSdMinutes(nights.map((n) => n.bedMin));
+  const waketimeSdMin = circularSdMinutes(nights.map((n) => n.wakeMin));
 
-  // Social jetlag: |mean weekend mid-sleep − mean weekday mid-sleep|. A night is
-  // "weekend" when its wake-day is Saturday or Sunday (free-day mornings). Mid-
-  // sleep is bedtime + half the sleep duration, in noon-relative minutes so it
-  // stays contiguous across midnight.
+  // Social jetlag: the circular distance between the weekend and weekday mean mid-
+  // sleep clock. A night is "weekend" when its wake-day is Saturday or Sunday
+  // (free-day mornings). Mid-sleep is bedtime + half the sleep duration reduced to a
+  // clock minute; circular means/distance keep it well-defined for a daytime sleeper
+  // whose mid-sleep sits near noon (the old fixed anchor's fold — #1190).
   const weekendMid: number[] = [];
   const weekdayMid: number[] = [];
   for (const n of nights) {
-    const mid = noonRelative(n.bedMin) + n.durationMin / 2;
+    const mid =
+      (((n.bedMin + n.durationMin / 2) % EPOCHS_PER_DAY) + EPOCHS_PER_DAY) %
+      EPOCHS_PER_DAY;
     const dow = weekdayOfDateStr(n.wakeDay); // 0=Sun … 6=Sat
     if (dow === 0 || dow === 6) weekendMid.push(mid);
     else weekdayMid.push(mid);
   }
   const socialJetlagMin =
     weekendMid.length > 0 && weekdayMid.length > 0
-      ? Math.abs(mean(weekendMid) - mean(weekdayMid))
+      ? Math.abs(
+          signedDeltaMinutes(
+            circularMeanMinutes(weekendMid),
+            circularMeanMinutes(weekdayMid)
+          )
+        )
       : null;
 
   return {

@@ -26,7 +26,9 @@ import {
   getMetricDailyTotals,
   getSleepMoodData,
   getSleepRegularity,
+  gatherCoachingInput,
 } from "@/lib/queries";
+import { recommendCoaching } from "@/lib/coaching";
 import { setTimezone } from "@/lib/settings";
 
 let profileId: number;
@@ -167,6 +169,135 @@ describe("getSleepSignal — main overnight session, not the nap-summed total (#
     expect(summary.durationMin).toBe(270); // 4h30 asleep, not the 5h window
     expect(summary.bedMinutes).toBe(23 * 60);
     expect(summary.wakeMinutes).toBe(4 * 60);
+  });
+});
+
+// Issue #1191 — a segmented / biphasic night (two co-equal blocks, NO single block
+// reaching the 6h floor) must read as ONE merged night, not a short block + a nap.
+// Otherwise getSleepSignal.lastNightMin sits below the floor and the coaching engine
+// fires a daily false `rest-sleep` nudge for someone who slept a healthy 8h. This is
+// the builder-input-layer test (#448): the bug lives where the pure engine can't see.
+describe("segmented night merge — no false rest-sleep nudge (#1191)", () => {
+  it("a 4h + 4h segmented night reports 480 and emits NO rest-sleep", () => {
+    const segId = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('SegmentedSleep')").run()
+        .lastInsertRowid
+    );
+    setTimezone(segId, "UTC");
+
+    // 15 consecutive segmented nights: 23:00–03:00 (4h) + 04:00–08:00 (4h), a 1h
+    // awake gap between the co-equal blocks. Both sessions END on the wake-day.
+    const samples: NormMetricSample[] = [];
+    for (let offset = 15; offset >= 1; offset--) {
+      const wakeDay = shiftDateStr("2026-03-16", -offset);
+      const bedDay = shiftDateStr(wakeDay, -1);
+      samples.push(
+        session(
+          "sleep_min",
+          wakeDay,
+          240,
+          `${bedDay}T23:00:00Z`,
+          `${wakeDay}T03:00:00Z`
+        ),
+        session(
+          "sleep_min",
+          wakeDay,
+          240,
+          `${wakeDay}T04:00:00Z`,
+          `${wakeDay}T08:00:00Z`
+        )
+      );
+    }
+    upsertMetricSamples(segId, samples, "health-connect");
+
+    // The merged main sleep is 8h, not the longest 4h block.
+    const signal = getSleepSignal(segId)!;
+    expect(signal.lastNightMin).toBe(480);
+    expect(Math.round(signal.baselineMin)).toBe(480);
+
+    // getMainSleepNightlyMinutes is one merged 480 per wake-day (not 240 + a nap).
+    const nights = getMainSleepNightlyMinutes(segId);
+    expect(nights.every((n) => n.value === 480)).toBe(true);
+
+    // The hero/tile summary shows the merged 8h with NO same-day nap.
+    const summary = getLastNightSummary(segId)!;
+    expect(summary.durationMin).toBe(480);
+    expect(summary.napMin).toBe(0);
+
+    // The coaching engine fires no rest-sleep signal (480 ≥ the 360 floor, and no
+    // deficit vs the 480 baseline) — the daily false nudge is gone.
+    const recs = recommendCoaching(gatherCoachingInput(segId, "kg", "km"));
+    expect(
+      recs.some((r) => (r.firingReasonIds ?? []).includes("rest-sleep"))
+    ).toBe(false);
+  });
+
+  it("SRI still counts every asleep epoch for the segmented fixture (#160 unchanged)", () => {
+    // Regularity is computed over ALL epochs, so a REGULAR segmented schedule reads
+    // as high regularity — the merge must not have routed SRI through the classifier.
+    const segId = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('SegmentedSri')").run()
+        .lastInsertRowid
+    );
+    setTimezone(segId, "UTC");
+    const samples: NormMetricSample[] = [];
+    for (let offset = 20; offset >= 1; offset--) {
+      const wakeDay = shiftDateStr("2026-03-21", -offset);
+      const bedDay = shiftDateStr(wakeDay, -1);
+      samples.push(
+        session(
+          "sleep_min",
+          wakeDay,
+          240,
+          `${bedDay}T23:00:00Z`,
+          `${wakeDay}T03:00:00Z`
+        ),
+        session(
+          "sleep_min",
+          wakeDay,
+          240,
+          `${wakeDay}T04:00:00Z`,
+          `${wakeDay}T08:00:00Z`
+        )
+      );
+    }
+    upsertMetricSamples(segId, samples, "health-connect");
+    const reg = getSleepRegularity(segId)!;
+    expect(reg).not.toBeNull();
+    // A perfectly reproducible segmented schedule → SRI at the top of the band.
+    expect(reg.sri).toBeGreaterThan(95);
+  });
+
+  it("a deficient overnight + a genuine afternoon nap stays main-only (anti-masking, #1118)", () => {
+    const napId = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('SegNapMask')").run()
+        .lastInsertRowid
+    );
+    setTimezone(napId, "UTC");
+    // 3h overnight (deficient) + a 1h afternoon nap 11h later. The nap must NOT
+    // merge, so the deficit is still seen.
+    upsertMetricSamples(
+      napId,
+      [
+        session(
+          "sleep_min",
+          "2026-03-25",
+          180,
+          "2026-03-25T01:00:00Z",
+          "2026-03-25T04:00:00Z"
+        ),
+        session(
+          "sleep_min",
+          "2026-03-25",
+          60,
+          "2026-03-25T15:00:00Z",
+          "2026-03-25T16:00:00Z"
+        ),
+      ],
+      "health-connect"
+    );
+    expect(getSleepSignal(napId)!.lastNightMin).toBe(180);
+    expect(getLastNightSummary(napId)!.napMin).toBe(60);
   });
 });
 
