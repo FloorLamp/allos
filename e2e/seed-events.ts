@@ -105,6 +105,11 @@ import {
   E2E_LOGIN_HHHIST_RO,
   HH_HISTORY_PARENT_PROFILE,
   HH_HISTORY_CHILD_PROFILE,
+  E2E_LOGIN_HH_CAREGIVER,
+  E2E_LOGIN_HH_SOLO,
+  E2E_LOGIN_HH_VIEWER,
+  E2E_LOGIN_ILLNESS_CAREGIVER,
+  E2E_LOGIN_ILLNESS_RO,
   E2E_LOGIN_CONDREV,
   CONDITION_REVIEW_PROFILE,
   E2E_LOGIN_REASON,
@@ -3258,6 +3263,37 @@ grantProfile(coCareLoginId, sickKidAId);
 console.log(
   `e2e: seeded illness-hero fixtures — sick self ${sickSelfId}, sick kids ${sickKidAId}/${sickKidBId}, caregivers ${careLoginId}/${coCareLoginId} (#858)`
 );
+
+// ── Household-rollup + illness-episode caregiver fixtures (#868 census hardening) ──
+// Five member logins granted the SHARED seeded profiles — profile 1 ("admin") + profile 2
+// ("Riley (child)", = rileyId) — so household-rollup / illness-episode stop creating
+// members at runtime through Settings → Family (a router.refresh() render path that went
+// stale under CI load — the create-member census flake). Grant sets are STATIC; the specs
+// never mutate them, and profile 1 (lowest id) is the caregiver's default active profile.
+if (rileyId) {
+  // household-rollup: 1w+2w (confirm), 1w only (solo/redirect), 1r+2r (view-only).
+  const hhCaregiverLoginId = seedMemberLogin(
+    E2E_LOGIN_HH_CAREGIVER,
+    1,
+    "write"
+  );
+  grantProfile(hhCaregiverLoginId, rileyId, "write");
+  seedMemberLogin(E2E_LOGIN_HH_SOLO, 1, "write");
+  const hhViewerLoginId = seedMemberLogin(E2E_LOGIN_HH_VIEWER, 1, "read");
+  grantProfile(hhViewerLoginId, rileyId, "read");
+  // illness-episode: 1w+2w (cross-profile hero, #858), 1r+2w (view-only episode, #879).
+  const illnessCaregiverLoginId = seedMemberLogin(
+    E2E_LOGIN_ILLNESS_CAREGIVER,
+    1,
+    "write"
+  );
+  grantProfile(illnessCaregiverLoginId, rileyId, "write");
+  const illnessRoLoginId = seedMemberLogin(E2E_LOGIN_ILLNESS_RO, 1, "read");
+  grantProfile(illnessRoLoginId, rileyId, "write");
+  console.log(
+    "e2e: seeded household-rollup + illness-episode caregiver fixtures (#868)"
+  );
+}
 
 // ── Household visit + illness history fixtures (#1009) ────────────────────────
 // A caregiver granted a well parent + a currently-sick child, each carrying PAST

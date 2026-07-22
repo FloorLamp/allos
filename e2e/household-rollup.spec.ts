@@ -2,6 +2,12 @@ import { test, expect, type Browser, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import path from "node:path";
 import { settledClick } from "./helpers";
+import {
+  E2E_MEMBER_PASSWORD,
+  E2E_LOGIN_HH_CAREGIVER,
+  E2E_LOGIN_HH_SOLO,
+  E2E_LOGIN_HH_VIEWER,
+} from "./fixture-logins";
 
 // Household view for members + actionable rollup (issue #31). The Household screen
 // used to be admin-only; it's now open to ANY login that can reach 2+ profiles (a
@@ -13,8 +19,10 @@ import { settledClick } from "./helpers";
 //      profile's dose from its card (active profile stays put);
 //   2. a single-profile member has no Household nav and is redirected off the URL;
 //   3. a read-only member sees the cards but gets NO confirm buttons.
-// The default specs run authenticated as admin (storageState); here we create the
-// member logins through the real Family UI, then sign in as them in fresh contexts.
+// The default specs run authenticated as admin (storageState); here we sign in as the
+// SEEDED caregiver fixtures (e2e/fixture-logins.ts) in fresh contexts — replacing the
+// former runtime member-creation through Settings → Family, whose router.refresh() grant
+// rows went stale under CI load (the #868 create-member census flake).
 
 const SEEDED_PROFILE_2 = "2"; // "Sam Rivers"
 const HOUSEHOLD_DUE_DOSE = "Household Vitamin D";
@@ -48,55 +56,6 @@ function resetHouseholdDose(): void {
   }
 }
 
-// Create a member login and grant it the given profiles at the given access
-// levels, driving Settings → Family exactly as an admin would. Returns creds.
-async function createMemberWithGrants(
-  adminPage: Page,
-  grants: { profileId: number; access: "read" | "write" }[]
-): Promise<{ username: string; password: string }> {
-  // Unique per run so a CI retry against the same persistent DB can't collide on
-  // the NOCASE-unique username.
-  const username = `hh${Date.now()}${Math.floor(Math.random() * 1000)}`;
-  const password = "member-pass-1234";
-
-  await adminPage.goto("/settings/family");
-  await adminPage.getByPlaceholder("Username").fill(username);
-  await adminPage.getByPlaceholder("Password").fill(password);
-  // Create login posts the createLogin Server Action — settle on its POST so the
-  // grant row below can't be asserted against a pre-revalidation render (#868).
-  await settledClick(
-    adminPage,
-    adminPage.getByRole("button", { name: "Create login" })
-  );
-
-  const grantRow = adminPage.getByTestId(`grant-row-${username}`);
-  // toPass reload-retry — the sanctioned last resort (#999): the settled create
-  // POST can still be followed by a client render that misses the just-created
-  // row (observed only on loaded local runs; the login IS committed — a reload
-  // re-reads it). The underlying post-revalidation render race is tracked in
-  // #999; this keeps the helper deterministic without weakening what it asserts.
-  await expect(async () => {
-    if (!(await grantRow.isVisible())) await adminPage.reload();
-    await expect(grantRow).toBeVisible({ timeout: 3000 });
-  }).toPass({ timeout: 20_000, intervals: [500, 1000, 2000] });
-  for (const g of grants) {
-    const cell = adminPage.getByTestId(`grant-cell-${username}-${g.profileId}`);
-    await cell.locator('input[type="checkbox"]').check();
-    await adminPage
-      .getByTestId(`grant-access-${username}-${g.profileId}`)
-      .selectOption(g.access);
-  }
-  // Save access posts the setGrants Server Action — settle on its POST before
-  // asserting the "Access updated." confirmation (#868).
-  await settledClick(
-    adminPage,
-    grantRow.getByRole("button", { name: "Save access" })
-  );
-  await expect(grantRow.getByText("Access updated.")).toBeVisible();
-
-  return { username, password };
-}
-
 // Sign in as the given credentials in a brand-new, explicitly cookie-less context
 // (so it does NOT inherit the admin storageState). Returns the member's page.
 async function loginAs(
@@ -119,7 +78,6 @@ async function loginAs(
 
 test.describe("Household view for members (issue #31)", () => {
   test("a member with two grants sees both cards and confirms a dose for the non-active profile", async ({
-    page,
     browser,
   }) => {
     // Un-confirm the shared-seed due dose so this test owns its fixture state and is
@@ -129,11 +87,10 @@ test.describe("Household view for members (issue #31)", () => {
     // Local `next dev` compiles the family/household routes on first hit.
     test.slow();
 
-    const caregiver = await createMemberWithGrants(page, [
-      { profileId: 1, access: "write" },
-      { profileId: 2, access: "write" },
-    ]);
-    const memberPage = await loginAs(browser, caregiver);
+    const memberPage = await loginAs(browser, {
+      username: E2E_LOGIN_HH_CAREGIVER,
+      password: E2E_MEMBER_PASSWORD,
+    });
 
     // The Household nav entry is now visible for a multi-profile member. Exact:
     // the #1009 dashboard promotion link ("See the household's visit & illness
@@ -187,15 +144,14 @@ test.describe("Household view for members (issue #31)", () => {
   });
 
   test("a single-profile member has no Household nav and is redirected from the URL", async ({
-    page,
     browser,
   }) => {
     test.slow();
 
-    const solo = await createMemberWithGrants(page, [
-      { profileId: 1, access: "write" },
-    ]);
-    const memberPage = await loginAs(browser, solo);
+    const memberPage = await loginAs(browser, {
+      username: E2E_LOGIN_HH_SOLO,
+      password: E2E_MEMBER_PASSWORD,
+    });
 
     // Nav link hidden for a single-profile login…
     await expect(
@@ -210,16 +166,14 @@ test.describe("Household view for members (issue #31)", () => {
   });
 
   test("a read-only member sees the cards but gets no confirm buttons", async ({
-    page,
     browser,
   }) => {
     test.slow();
 
-    const viewer = await createMemberWithGrants(page, [
-      { profileId: 1, access: "read" },
-      { profileId: 2, access: "read" },
-    ]);
-    const memberPage = await loginAs(browser, viewer);
+    const memberPage = await loginAs(browser, {
+      username: E2E_LOGIN_HH_VIEWER,
+      password: E2E_MEMBER_PASSWORD,
+    });
 
     await memberPage.goto("/household");
     await expect(memberPage.getByTestId("household-card")).toHaveCount(2);

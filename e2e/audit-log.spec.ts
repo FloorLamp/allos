@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
-import { settledClick } from "./helpers";
+import { loginAs } from "./nav";
+import { E2E_MEMBER_PASSWORD, E2E_LOGIN_CHILD } from "./fixture-logins";
 
 // Settings → Audit (issue #22): the admin-only access/modification trail. The
 // admin (the seed + auth.setup log in as admin, which writes a `login.success`
@@ -22,53 +23,19 @@ test.describe("Settings → Audit log", () => {
   });
 
   test("a member is redirected away from the audit URL", async ({
-    page,
     browser,
   }) => {
-    // Drives several routes (family, a fresh login, the audit page); in local
-    // `next dev` each compiles on first hit, so give it the extended budget.
+    // Drives a fresh member login + the audit page; in local `next dev` each
+    // compiles on first hit, so give it the extended budget.
     test.slow();
-    // Unique per run so a CI retry (same persistent DB) doesn't collide on the
-    // NOCASE-unique username.
-    const memberUser = `member${Date.now()}`;
-    const memberPass = "member-pass-1234";
 
-    // As admin: create a member login and grant it a profile (so it has a usable
-    // session — otherwise it can't sign in at all, and we want to prove the
-    // ADMIN gate specifically bounces a logged-in member).
-    await page.goto("/settings/family");
-    await page.getByPlaceholder("Username").fill(memberUser);
-    await page.getByPlaceholder("Password").fill(memberPass);
-    await settledClick(
-      page,
-      page.getByRole("button", { name: "Create login" })
-    );
-
-    // The fresh grant row can lag the post-action RSC reconciliation (#999) —
-    // the row is durably committed (settledClick awaited the action POST), so a
-    // reload-retry converges. Same hardening as household-rollup's
-    // createMemberWithGrants (PR #1004).
-    const grantRow = page.getByTestId(`grant-row-${memberUser}`);
-    await expect(async () => {
-      if (!(await grantRow.isVisible())) await page.reload();
-      await expect(grantRow).toBeVisible({ timeout: 3000 });
-    }).toPass({ timeout: 20_000, intervals: [500, 1000, 2000] });
-    await grantRow.locator('input[type="checkbox"]').first().check();
-    await grantRow.getByRole("button", { name: "Save access" }).click();
-    await expect(grantRow.getByText("Access updated.")).toBeVisible();
-
-    // In a fresh, explicitly cookie-less context (empty storageState, so it does
-    // NOT inherit the admin session), sign in as the member.
-    const memberCtx = await browser.newContext({
-      storageState: { cookies: [], origins: [] },
-    });
-    const memberPage = await memberCtx.newPage();
-    await memberPage.goto("/login");
-    await memberPage.fill('input[name="username"]', memberUser);
-    await memberPage.fill('input[name="password"]', memberPass);
-    await memberPage.click('button[type="submit"]');
-    await memberPage.waitForURL((u) => !u.pathname.startsWith("/login"), {
-      timeout: 20_000,
+    // Sign in as an EXISTING seeded non-admin member (e2e/fixture-logins.ts) in a fresh,
+    // cookie-less context — replacing the former runtime create-a-member-through-Family
+    // flow, whose router.refresh() grant row went stale under CI load (#868). This proves
+    // the ADMIN gate specifically bounces a logged-in member.
+    const memberPage = await loginAs(browser, {
+      username: E2E_LOGIN_CHILD,
+      password: E2E_MEMBER_PASSWORD,
     });
 
     // requireAdmin() redirects a member off the admin-only audit page to the app
@@ -77,6 +44,6 @@ test.describe("Settings → Audit log", () => {
     await expect(memberPage).toHaveURL(/\/$|\/\?/);
     await expect(memberPage.getByTestId("audit-table")).toHaveCount(0);
 
-    await memberCtx.close();
+    await memberPage.context().close();
   });
 });
