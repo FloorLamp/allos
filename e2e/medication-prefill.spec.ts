@@ -43,14 +43,14 @@ test("med form is medication-shaped and selection-prefills on pick (#846)", asyn
     .getByRole("listbox")
     .getByRole("button")
     .filter({ hasText: "Naproxen" })
-    .first()
+    .first() // first-ok: transient combobox list this spec just opened (Naproxen suggestion); first match is intended
     .click();
 
   // Prefill: PRN on (reveals the redose block), interval 8h / max 3, dose 220 mg —
   // each marked "from label defaults".
   const asNeeded = addCard.getByRole("checkbox", { name: /As needed/ });
   await expect(asNeeded).toBeChecked();
-  await expect(addCard.getByTestId("prefill-badge").first()).toBeVisible();
+  await expect(addCard.getByTestId("prefill-badge").first()).toBeVisible(); // first-ok: asserts a prefill badge renders on the add card — order-agnostic presence
   await expect(addCard.getByTestId("redose-interval")).toHaveValue("8");
   await expect(addCard.getByTestId("redose-max")).toHaveValue("3");
   await expect(addCard.getByLabel("Amount")).toHaveValue("220 mg");
@@ -84,14 +84,14 @@ test("a newly catalogued med (#881) is pickable and prefills with zero code chan
     .getByRole("listbox")
     .getByRole("button")
     .filter({ hasText: "Dextromethorphan" })
-    .first()
+    .first() // first-ok: transient combobox list this spec just opened (Dextromethorphan suggestion); first match is intended
     .click();
 
   // The curated `typical` PRN convention prefills the As-needed toggle (marked).
   await expect(
     addCard.getByRole("checkbox", { name: /As needed/ })
   ).toBeChecked();
-  await expect(addCard.getByTestId("prefill-badge").first()).toBeVisible();
+  await expect(addCard.getByTestId("prefill-badge").first()).toBeVisible(); // first-ok: asserts a prefill badge renders on the add card — order-agnostic presence
 
   await addCard.getByRole("button", { name: "Add", exact: true }).click();
 
@@ -115,7 +115,7 @@ test("a user edit is never clobbered by a later pick (#846)", async ({
     .getByRole("listbox")
     .getByRole("button")
     .filter({ hasText: "Naproxen" })
-    .first()
+    .first() // first-ok: transient combobox list this spec just opened (Naproxen suggestion); first match is intended
     .click();
 
   // Still checked (the user's own choice), and NOT marked "from label defaults" — the
@@ -155,7 +155,7 @@ test("a pediatric formulation persists from quick add to the medication list", a
       .getByRole("listbox")
       .getByRole("button")
       .filter({ hasText: "Acetaminophen" })
-      .first()
+      .first() // first-ok: transient combobox list this spec just opened (Acetaminophen suggestion); first match is intended
       .click();
 
     // The label lookup can record a fresh measurement in place. It writes through
@@ -195,8 +195,8 @@ test("a pediatric formulation persists from quick add to the medication list", a
       belowBandPicker.getByRole("radio", { checked: true })
     ).toHaveCount(0);
     await expect(quickAdd.getByTestId("quick-add-amount")).toHaveValue("");
-    await belowBandPicker.getByRole("radio").first().check();
-    await expect(belowBandPicker.getByRole("radio").first()).toBeChecked();
+    await belowBandPicker.getByRole("radio").first().check(); // first-ok: the first option in this spec's own below-band picker
+    await expect(belowBandPicker.getByRole("radio").first()).toBeChecked(); // first-ok: the same first below-band-picker option, asserted checked
     await expect(quickAdd.getByTestId("quick-add-amount")).toHaveValue(
       "160 mg"
     );
