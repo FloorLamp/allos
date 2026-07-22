@@ -25,8 +25,21 @@ import {
 } from "@/lib/canonical-name";
 import { reconciledFlag } from "@/lib/reference-range";
 import { canonicalBiomarkerForName } from "@/lib/datasets/canonical-biomarkers";
+import type { CanonicalBiomarker } from "@/lib/types";
 import canonicalSeed from "@/lib/canonical-biomarkers.json";
 import { seedProfile, type SeededProfile } from "./fixtures";
+
+// The committed JSON is the seed for CanonicalBiomarker rows; treat it as such for the
+// reconciledFlag() calls below, which take the full CanonicalRanges shape (the same
+// cast the sibling biomarker-loinc test uses — the dataset's CanonicalBiomarkerEntry
+// omits the sex-specific optimal_* fields CanonicalRanges now Picks).
+const CB_ROWS = (canonicalSeed as { biomarkers: unknown[] })
+  .biomarkers as CanonicalBiomarker[];
+const cbByName = new Map<string, CanonicalBiomarker>(
+  CB_ROWS.map((b) => [b.name.toLowerCase(), b])
+);
+const cbRanges = (name: string): CanonicalBiomarker | null =>
+  cbByName.get(name.toLowerCase()) ?? null;
 
 const VOCAB = (
   canonicalSeed as { biomarkers: { name: string }[] }
@@ -119,8 +132,8 @@ describe("vitamin-D fractions keep their OWN identity but share the retest clock
     expect(canonicalBiomarkerForName("Vitamin D3, 25-Hydroxy")?.ref_low).toBe(
       null
     );
-    const totalEntry = canonicalBiomarkerForName("Vitamin D, 25-Hydroxy");
-    const d2Entry = canonicalBiomarkerForName("Vitamin D2, 25-Hydroxy");
+    const totalEntry = cbRanges("Vitamin D, 25-Hydroxy");
+    const d2Entry = cbRanges("Vitamin D2, 25-Hydroxy");
     // A total of 20 flags low (below 30); a D2 of 4 does NOT flag deficient (no band).
     expect(reconciledFlag(null, 20, "ng/mL", totalEntry, null, 40)).toBe("low");
     expect(reconciledFlag(null, 4, "ng/mL", d2Entry, null, 40)).not.toBe("low");
@@ -141,7 +154,7 @@ describe("vitamin-D fractions keep their OWN identity but share the retest clock
     expect(snapCanonicalName("1,25-Dihydroxyvitamin D", INDEX)).toBe(
       "Vitamin D, 1,25-Dihydroxy"
     );
-    const calcitriol = canonicalBiomarkerForName("Vitamin D, 1,25-Dihydroxy");
+    const calcitriol = cbRanges("Vitamin D, 1,25-Dihydroxy");
     expect(calcitriol?.unit).toBe("pg/mL");
     expect(calcitriol?.ref_low).toBe(18);
     expect(calcitriol?.ref_high).toBe(72);
