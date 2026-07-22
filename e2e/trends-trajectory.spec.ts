@@ -33,18 +33,18 @@ function resetEgfrTrajectoryDismissal(): void {
 test.beforeEach(() => resetEgfrTrajectoryDismissal());
 test.afterAll(() => resetEgfrTrajectoryDismissal());
 
-// Issue #41 (biomarker trajectory rules): the Trends → Biomarkers area surfaces a
+// Issue #41 (biomarker trajectory rules): the Results → Biomarkers section surfaces a
 // "Trajectory watch" card listing forward-looking findings — an in-range value
 // projected to cross a boundary, a persistent non-optimal pattern, or a concerning
-// velocity — BEFORE a single-value flag would catch them. The seed ships a slow
-// eGFR decline that stays above the CKD floor the whole time, so it never trips a
-// range flag but DOES fire the velocity + persistent + approaching rules. This
-// proves the pure engine, the profile-scoped server assembly, and the rendered
-// card all work end-to-end against the seeded DB.
-test("Trends → Biomarkers shows a trajectory finding for the seeded eGFR decline (#41)", async ({
+// velocity — BEFORE a single-value flag would catch them. (#1164 moved this card here
+// from the deleted Trends → Biomarkers tab.) The seed ships a slow eGFR decline that
+// stays above the CKD floor the whole time, so it never trips a range flag but DOES
+// fire the velocity + persistent + approaching rules. This proves the pure engine, the
+// profile-scoped server assembly, and the rendered card all work end-to-end.
+test("Results → Biomarkers shows a trajectory finding for the seeded eGFR decline (#41)", async ({
   page,
 }) => {
-  await page.goto("/trends?tab=biomarkers");
+  await page.goto("/results/biomarkers");
 
   const card = page.getByTestId("trajectory-findings");
   await expect(card).toBeVisible();
@@ -62,7 +62,7 @@ test("Trends → Biomarkers shows a trajectory finding for the seeded eGFR decli
 test("dismissing a trajectory finding silences the analyte's trajectory watch (#41/#564)", async ({
   page,
 }) => {
-  await page.goto("/trends?tab=biomarkers");
+  await page.goto("/results/biomarkers");
 
   const finding = page
     .getByTestId("trajectory-finding")

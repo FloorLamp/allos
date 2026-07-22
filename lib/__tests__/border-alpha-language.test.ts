@@ -37,8 +37,8 @@ const ALLOWLIST = new Map<string, string>([
     "neutral trend-chip tone — sibling to the rose/emerald tinted tones in the same tone map",
   ],
   [
-    "app/(app)/trends/TrajectoryFindings.tsx",
-    "'info' finding tone — sibling to the amber 'warning' tone in the same ternary",
+    "app/(app)/results/TrajectoryFindings.tsx",
+    "'info' finding tone — sibling to the amber 'warning' tone in the same ternary (moved from Trends → Biomarkers to Results, #1164)",
   ],
   [
     "components/FindingsList.tsx",

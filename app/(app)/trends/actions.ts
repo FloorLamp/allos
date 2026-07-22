@@ -19,10 +19,7 @@ import {
   type TrendViewParams,
 } from "@/lib/trend-views";
 import { generateInsight, saveInsight } from "@/lib/ai";
-import {
-  generateRecapNarrative,
-  generateLabTrendInterpretation,
-} from "@/lib/ai-narrative";
+import { generateRecapNarrative } from "@/lib/ai-narrative";
 import { withAiLogContext } from "@/lib/ai-log";
 import { dismissFinding, saveNarrative } from "@/lib/queries";
 import type { NarrativePeriod } from "@/lib/recap-narrative";
@@ -81,27 +78,6 @@ export async function generateRecap(formData: FormData) {
   revalidatePath("/");
 }
 
-// Generate (or regenerate) the AI lab-trend interpretation and store it for the
-// active profile (issue #20). Surfaced on the Biomarkers tab, which is NOT age-
-// gated (unlike Insights), so no age check here — but still a write path, so
-// requireWriteAccess. The read is grounded in the biomarker trajectory findings +
-// medication timeline + conditions; degrades to the offline composition.
-export async function generateLabTrend() {
-  const { login, profile } = await requireWriteAccess();
-  const result = await withAiLogContext(
-    { loginId: login.id, profileId: profile.id },
-    () => generateLabTrendInterpretation(profile.id)
-  );
-  saveNarrative(profile.id, {
-    kind: result.kind,
-    periodStart: result.periodStart,
-    periodEnd: result.periodEnd,
-    summary: result.summary,
-    model: result.model,
-  });
-  revalidatePath("/trends");
-}
-
 // Dismiss a "What's trending" digest chip (findings bus, #39): hide it through the
 // shared suppression store keyed by "digest:<series-key>:<direction>", so it stays
 // dismissed only while the SAME-direction trend persists (a reversal is a new key
@@ -114,26 +90,6 @@ export async function dismissDigest(formData: FormData): Promise<FormResult> {
     return formError("Couldn't dismiss that trend.");
   dismissFinding(profile.id, dedupeKey);
   revalidatePath("/trends");
-  return formOk();
-}
-
-// Dismiss a biomarker trajectory finding (issues #41/#564). The flag and the
-// trajectory are two views of one concern about one analyte, so this writes the
-// SHARED analyte-level acknowledgment key ("biomarker-flag:<family>") the finding
-// carries as `supersedes` — silencing BOTH the trajectory watch and the analyte's
-// dashboard flag ("dismiss once, silence everywhere"), at the #482 family level so
-// it covers D2/D3/total. Guarded to the flag namespace so this action can only ever
-// write a biomarker acknowledgment key; profile-scoped via dismissFinding.
-export async function dismissTrajectory(
-  formData: FormData
-): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
-  const ackKey = String(formData.get("ack_key") ?? "").trim();
-  if (!ackKey.startsWith("biomarker-flag:"))
-    return formError("Couldn't dismiss that finding.");
-  dismissFinding(profile.id, ackKey);
-  revalidatePath("/trends");
-  revalidatePath("/");
   return formOk();
 }
 

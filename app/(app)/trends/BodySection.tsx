@@ -59,7 +59,6 @@ import type { DateRange } from "@/lib/timeline-format";
 import { EmptyState } from "@/components/ui";
 import LineChartCard from "@/components/LineChartCard";
 import NotesText from "@/components/NotesText";
-import StackedBarCard from "@/components/StackedBarCard";
 import ScrollFade from "@/components/ScrollFade";
 import BodyTrendCharts, {
   type BodyChartSpec,
@@ -392,24 +391,8 @@ export default async function BodySection({
   const caloriesChart = getMetricDailyTotals(profile.id, "nutrition_kcal").map(
     (r) => ({ date: r.date, value: Math.round(r.value) })
   );
-  const protein = new Map(
-    getMetricDailyTotals(profile.id, "protein_g").map((r) => [r.date, r.value])
-  );
-  const carbs = new Map(
-    getMetricDailyTotals(profile.id, "carbs_g").map((r) => [r.date, r.value])
-  );
-  const fat = new Map(
-    getMetricDailyTotals(profile.id, "fat_g").map((r) => [r.date, r.value])
-  );
-  const macroDates = [
-    ...new Set([...protein.keys(), ...carbs.keys(), ...fat.keys()]),
-  ].sort();
-  const macrosChart = macroDates.map((d) => ({
-    date: d.slice(5),
-    protein: round(protein.get(d) ?? 0, 0),
-    carbs: round(carbs.get(d) ?? 0, 0),
-    fat: round(fat.get(d) ?? 0, 0),
-  }));
+  // Macros (protein/carbs/fat) + fiber moved to Trends → Nutrition (#1166) — macros are
+  // nutrition, not body-composition (the #1076 "category names the surface" principle).
   // BMI over the weight series, pairing each weigh-in with the height in effect
   // ON OR BEFORE that date — the SAME date-paired derivation the growth card uses
   // (bmiSeriesDatePaired), so the two BMI charts on a child's Body tab can't
@@ -453,7 +436,6 @@ export default async function BodySection({
     bmrChart.length > 0 ||
     hydrationChart.length > 0 ||
     caloriesChart.length > 0 ||
-    macrosChart.length > 0 ||
     bmiChart.length > 0;
 
   // #1067 Phase 1: order the synced daily charts by relevance (present + recent
@@ -726,40 +708,6 @@ export default async function BodySection({
             label="Calories"
             color={chartSeries.amber}
             unit=" kcal"
-          />
-        </div>
-      ),
-    },
-    {
-      id: "macros",
-      label: "Macros",
-      present: macrosChart.length > 0,
-      // macrosChart's `date` is sliced to MM-DD for display; use the full-date
-      // macroDates for recency so the sort stays correct across year boundaries.
-      latestDate:
-        macroDates.length > 0 ? macroDates[macroDates.length - 1] : null,
-      order: 10,
-      node: (
-        <div
-          id="macros"
-          className={`${anchorClass} lg:col-span-2`}
-          key="macros"
-        >
-          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-            Macros (protein / carbs / fat)
-          </h2>
-          <StackedBarCard
-            data={macrosChart}
-            unit=" g"
-            series={[
-              {
-                key: "protein",
-                label: "Protein",
-                color: chartSeries.violet,
-              },
-              { key: "carbs", label: "Carbs", color: chartSeries.amber },
-              { key: "fat", label: "Fat", color: chartSeries.rose },
-            ]}
           />
         </div>
       ),
