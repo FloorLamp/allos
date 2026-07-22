@@ -16,6 +16,7 @@ import {
 } from "@/lib/queries";
 import { chartSeries } from "@/lib/chart-colors";
 import { sleepRecordPresentation } from "@/lib/sleep-summary";
+import { sriPresentation } from "@/lib/sleep-regularity";
 import { PageHeader } from "@/components/ui";
 import LineChartCard from "@/components/LineChartCard";
 import SleepHero from "./SleepHero";
@@ -49,6 +50,7 @@ export default async function SleepPage() {
     value: r.value / 60,
   }));
   const sleepReg = getSleepRegularity(profile.id);
+  const sleepRegDisplay = sleepReg ? sriPresentation(sleepReg.sri) : null;
   const sleepRegTrend = getSleepRegularityTrend(profile.id).map((r) => ({
     date: r.date,
     value: r.sri,
@@ -135,7 +137,7 @@ export default async function SleepPage() {
         stages={stages}
         endDate={todayStr}
         regularityCard={
-          sleepReg != null ? (
+          sleepReg != null && sleepRegDisplay != null ? (
             <div className="card" data-testid="sleep-regularity">
               <div className="mb-3 flex items-baseline justify-between gap-2">
                 <h2 className="font-semibold text-slate-800 dark:text-slate-100">
@@ -145,21 +147,15 @@ export default async function SleepPage() {
                   SRI · last {sleepReg.nights} nights
                 </span>
               </div>
-              <div className="flex items-baseline gap-2">
-                <span
-                  className="text-3xl font-bold text-indigo-600 dark:text-indigo-300"
-                  data-testid="sri-value"
-                >
-                  {Math.round(sleepReg.sri)}
-                </span>
-                <span className="text-sm text-slate-500 dark:text-slate-400">
-                  / 100
-                </span>
+              <div
+                className="text-3xl font-bold text-indigo-600 dark:text-indigo-300"
+                data-testid="sri-value"
+              >
+                {sleepRegDisplay.text}
               </div>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Consistency of your sleep/wake timing (higher is steadier).
-                Bedtime ±{sleepReg.bedtimeSdMin} min, wake ±
-                {sleepReg.waketimeSdMin} min
+                SRI ranges from −100 to 100; higher is steadier. Bedtime ±
+                {sleepReg.bedtimeSdMin} min, wake ±{sleepReg.waketimeSdMin} min
                 {sleepReg.socialJetlagMin != null
                   ? `, ${(sleepReg.socialJetlagMin / 60).toFixed(1)} h weekend shift`
                   : ""}

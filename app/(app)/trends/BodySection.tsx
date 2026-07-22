@@ -4,6 +4,7 @@ import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { chartSeries } from "@/lib/chart-colors";
 import { formatHm, sleepRecordPresentation } from "@/lib/sleep-summary";
+import { sriPresentation } from "@/lib/sleep-regularity";
 import {
   getUnitPrefs,
   getDisplayFormatPrefs,
@@ -549,10 +550,10 @@ export default async function BodySection({
                   className="text-3xl font-bold text-indigo-600 dark:text-indigo-300"
                   data-testid="sri-value"
                 >
-                  {Math.round(sleepReg.sri)}
+                  {sriPresentation(sleepReg.sri).text}
                 </div>
                 <div className="text-xs text-slate-500 dark:text-slate-400">
-                  Regularity (SRI / 100)
+                  Regularity
                 </div>
               </div>
             )}

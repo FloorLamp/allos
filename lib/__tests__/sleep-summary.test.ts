@@ -6,6 +6,7 @@ import {
   baselineDeltaPhrase,
   formatHm,
   consistencyNights,
+  consistencyPlot,
   markOffSchedule,
   buildSleepMoodHistory,
   attachEditableManualSleep,
@@ -291,7 +292,7 @@ describe("baselineDeltaPhrase", () => {
 });
 
 describe("consistencyNights", () => {
-  it("re-expresses main nights in noon-anchored clock hours + weekend flag", () => {
+  it("keeps each sleep window forward-going across midnight + weekend flag", () => {
     const sessions = [
       // 2026-03-14 is a Saturday (weekend wake).
       night("2026-03-13", "23:00", "2026-03-14", "07:00"),
@@ -303,11 +304,47 @@ describe("consistencyNights", () => {
     const mon = rows.find((r) => r.date === "2026-03-16")!;
     expect(sat.weekend).toBe(true);
     expect(mon.weekend).toBe(false);
-    // 23:00 → noon-anchored 23.0; 07:00 → 31.0 (contiguous across midnight).
+    // Wake is unwrapped after bedtime, so the midnight crossing stays contiguous.
     expect(sat.bedHour).toBeCloseTo(23);
     expect(sat.wakeHour).toBeCloseTo(31);
     expect(mon.bedHour).toBeCloseTo(22.5);
     expect(mon.wakeHour).toBeCloseTo(30.5);
+  });
+
+  it.each([
+    ["late riser", "04:00", "13:00"],
+    ["daytime sleeper", "08:00", "16:00"],
+  ])(
+    "plots a positive in-bounds bar for a %s who wakes after noon (#1190)",
+    (_label, bed, wake) => {
+      const rows = consistencyNights(
+        mainSleepNights([night("2026-03-13", bed, "2026-03-13", wake)], TZ),
+        TZ
+      );
+      const plot = consistencyPlot(rows);
+      expect(plot.nights).toHaveLength(1);
+      expect(plot.nights[0].leftPct).toBeGreaterThanOrEqual(0);
+      expect(plot.nights[0].widthPct).toBeGreaterThan(0);
+      expect(
+        plot.nights[0].leftPct + plot.nights[0].widthPct
+      ).toBeLessThanOrEqual(100);
+    }
+  );
+
+  it("aligns schedules that straddle midnight on one compact phase axis", () => {
+    const rows = consistencyNights(
+      mainSleepNights(
+        [
+          night("2026-03-13", "23:30", "2026-03-14", "07:30"),
+          night("2026-03-15", "00:30", "2026-03-15", "08:30"),
+        ],
+        TZ
+      ),
+      TZ
+    );
+    const plot = consistencyPlot(rows);
+    expect(plot.axisEndHour - plot.axisStartHour).toBeLessThan(12);
+    expect(plot.nights.every((row) => row.widthPct > 0)).toBe(true);
   });
 
   it("flags nights more than one hour from the canonical typical schedule", () => {
@@ -339,6 +376,28 @@ describe("consistencyNights", () => {
       bedDeviationMin: 90,
       wakeDeviationMin: 90,
       offSchedule: true,
+    });
+  });
+
+  it("compares daytime schedules circularly instead of flagging their phase", () => {
+    const [row] = markOffSchedule(
+      [
+        {
+          date: "2026-03-08",
+          bedHour: 8,
+          wakeHour: 16,
+          weekend: false,
+          bedDeviationMin: null,
+          wakeDeviationMin: null,
+          offSchedule: false,
+        },
+      ],
+      { typicalBedMinute: 8 * 60, typicalWakeMinute: 16 * 60 }
+    );
+    expect(row).toMatchObject({
+      bedDeviationMin: 0,
+      wakeDeviationMin: 0,
+      offSchedule: false,
     });
   });
 
@@ -473,18 +532,9 @@ describe("pairSleepMood", () => {
       ],
       [{ date: "2026-03-19", valence: 4 }]
     );
-    const attached = attachEditableManualSleep(
-      history,
-      [
-        { date: "2026-03-17", value: 465 },
-        { date: "2026-03-18", value: 360 },
-      ],
-      [
-        { date: "2026-03-17", source: "manual" },
-        { date: "2026-03-18", source: "manual" },
-        { date: "2026-03-18", source: "oura" },
-      ]
-    );
+    const attached = attachEditableManualSleep(history, [
+      { date: "2026-03-17", value: 465 },
+    ]);
     expect(
       attached.map((row) => ({
         date: row.date,
@@ -508,5 +558,17 @@ describe("pairSleepMood", () => {
         sleepEditHours: null,
       },
     ]);
+  });
+
+  it("keeps an existing duration read-only unless the query vetted its manual row", () => {
+    const history = buildSleepMoodHistory(
+      [{ date: "2026-03-17", value: 420 }],
+      []
+    );
+    expect(attachEditableManualSleep(history, [])[0]).toMatchObject({
+      sleepHours: 7,
+      sleepEditable: false,
+      sleepEditHours: null,
+    });
   });
 });

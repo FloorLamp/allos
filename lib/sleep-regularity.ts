@@ -105,6 +105,16 @@ function sessionMs(s: SleepSession): number {
   return new Date(s.end).getTime() - new Date(s.start).getTime();
 }
 
+// Duration-facing minutes for one session. Wearables may report time asleep in
+// `value`, shorter than the bedtime window; every summary/nap computation must use
+// this same choice so awake-in-bed minutes are never mislabeled as sleep or a nap.
+export function sleepSessionDurationMinutes(s: SleepSession): number {
+  const reportedMin = Number(s.value);
+  return Number.isFinite(reportedMin) && reportedMin > 0
+    ? Math.round(reportedMin)
+    : Math.round(sessionMs(s) / 60000);
+}
+
 // Pick the MAIN overnight sleep session from ONE wake-day's sessions, or null when
 // the day holds no main sleep (empty input, all-invalid windows, or every session
 // provider-labeled a nap). Everything else that day is a nap.
@@ -181,16 +191,11 @@ export function mainSleepNights(
   for (const [wakeDay, group] of byDay) {
     const main = mainSleepSession(group);
     if (!main) continue;
-    const windowMin = Math.round(sessionMs(main) / 60000);
-    const reportedMin = Number(main.value);
     out.push({
       wakeDay,
       start: main.start,
       end: main.end,
-      durationMin:
-        Number.isFinite(reportedMin) && reportedMin > 0
-          ? Math.round(reportedMin)
-          : windowMin,
+      durationMin: sleepSessionDurationMinutes(main),
     });
   }
   return out.sort((a, b) => (a.wakeDay < b.wakeDay ? -1 : 1));
@@ -284,6 +289,27 @@ export interface SleepRegularity {
   // Social jetlag: absolute weekend-vs-weekday mid-sleep shift (minutes), or null
   // when the window lacks at least one weekday AND one weekend night.
   socialJetlagMin: number | null;
+}
+
+export type SriTone = "good" | "warn" | "bad";
+
+export interface SriPresentation {
+  text: string;
+  tone: SriTone;
+}
+
+// One honest presentation for the published SRI domain (−100..100). Surfaces use
+// the named value instead of a "/ 100" suffix, which otherwise implies a 0..100
+// score. The tone is deliberately total over the real domain: the established
+// high-regularity bands remain ≥80 / ≥60, and every lower value (including all
+// negatives) has an explicit low-regularity tone.
+export function sriPresentation(sri: number): SriPresentation {
+  const rounded = Math.round(sri);
+  const value = rounded < 0 ? `−${Math.abs(rounded)}` : String(rounded);
+  return {
+    text: `SRI ${value}`,
+    tone: rounded >= 80 ? "good" : rounded >= 60 ? "warn" : "bad",
+  };
 }
 
 const EPOCHS_PER_DAY = 1440; // one epoch per clock minute

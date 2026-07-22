@@ -22,7 +22,7 @@ export default function PaginationControls({
 
   return (
     <div
-      className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-3 py-2 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400"
+      className="flex flex-wrap items-center justify-between gap-3 border-t border-black/10 px-3 py-2 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400"
       data-testid={testId}
     >
       <span>

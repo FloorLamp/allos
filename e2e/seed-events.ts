@@ -39,6 +39,7 @@ import {
   E2E_LOGIN_DUP,
   E2E_LOGIN_EMPTY_TRAINING,
   E2E_LOGIN_SLEEP_EDIT,
+  E2E_LOGIN_SLEEP_PHASE,
   E2E_LOGIN_MENTAL,
   MENTAL_HEALTH_PROFILE,
   E2E_LOGIN_SUBSTANCE,
@@ -79,6 +80,7 @@ import {
   DUP_REVIEW_PROFILE,
   EMPTY_TRAINING_PROFILE,
   SLEEP_EDIT_PROFILE,
+  SLEEP_PHASE_PROFILE,
   HEALTH_CONNECT_PROFILE,
   NO_GEAR_PROFILE,
   FITNESS_PROFILE,
@@ -2540,6 +2542,40 @@ db.prepare(`DELETE FROM metric_samples WHERE profile_id = ?`).run(sleepEditId);
 seedMemberLogin(E2E_LOGIN_SLEEP_EDIT, sleepEditId);
 console.log(
   `e2e: seeded isolated historical sleep/mood editor profile ${sleepEditId} (${SLEEP_EDIT_PROFILE})`
+);
+
+// Dedicated, read-only post-noon-wake fixture (#1190). Pin UTC so the intended
+// wall-clock labels are explicit and independent of the suite's run-hour timezone
+// pin. Rebuild its tiny observation set on every seed; no browser test writes or
+// cleans this profile, so fully-parallel and --repeat-each runs cannot contend.
+const sleepPhaseId = fixtureProfileId(SLEEP_PHASE_PROFILE);
+setTimezone(sleepPhaseId, "UTC");
+db.prepare(`DELETE FROM metric_samples WHERE profile_id = ?`).run(sleepPhaseId);
+const sleepPhaseToday = today(sleepPhaseId);
+const lateRiserDate = shiftDateStr(sleepPhaseToday, -1);
+const daytimeSleepDate = shiftDateStr(sleepPhaseToday, -2);
+const insertSleepPhase = db.prepare(
+  `INSERT INTO metric_samples
+     (profile_id, source, metric, date, start_time, end_time, value)
+   VALUES (?, 'oura', 'sleep_min', ?, ?, ?, ?)`
+);
+insertSleepPhase.run(
+  sleepPhaseId,
+  lateRiserDate,
+  iso(zonedWallTimeToUtc("UTC", lateRiserDate, "04:00")),
+  iso(zonedWallTimeToUtc("UTC", lateRiserDate, "13:00")),
+  540
+);
+insertSleepPhase.run(
+  sleepPhaseId,
+  daytimeSleepDate,
+  iso(zonedWallTimeToUtc("UTC", daytimeSleepDate, "08:00")),
+  iso(zonedWallTimeToUtc("UTC", daytimeSleepDate, "16:00")),
+  480
+);
+seedMemberLogin(E2E_LOGIN_SLEEP_PHASE, sleepPhaseId, "read");
+console.log(
+  `e2e: seeded read-only late/daytime sleep-phase profile ${sleepPhaseId} (${SLEEP_PHASE_PROFILE}, #1190)`
 );
 
 // A dedicated, score-free ADULT profile for the mental-health-instruments spec (#716).

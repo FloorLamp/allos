@@ -179,7 +179,7 @@ export default function SleepHero({
       {summary.stages && <StageBar stages={summary.stages} />}
 
       <p
-        className="mt-4 text-[11px] text-slate-400 dark:text-slate-500"
+        className="mt-4 text-xs text-slate-500 dark:text-slate-400"
         data-testid="sleep-hero-source"
       >
         {source === "Manual" ? "Logged manually" : `Source: ${source}`}

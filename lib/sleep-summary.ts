@@ -15,7 +15,11 @@ import {
   formatRelativeDate,
   type DisplayFormatPrefs,
 } from "./format-date";
-import { mainSleepSession, type SleepSession } from "./sleep-regularity";
+import {
+  mainSleepSession,
+  sleepSessionDurationMinutes,
+  type SleepSession,
+} from "./sleep-regularity";
 import type { BedtimeSupplementSummary } from "./sleep-bedtime-supplements";
 
 // A night's stage breakdown (minutes), as stored per wake-day in metric_samples
@@ -59,14 +63,6 @@ export interface LastNightSummary {
   source: string | null;
 }
 
-function sessionMinutes(s: SleepSession): number {
-  const reported = Number(s.value);
-  if (Number.isFinite(reported) && reported > 0) return Math.round(reported);
-  return Math.round(
-    (new Date(s.end).getTime() - new Date(s.start).getTime()) / 60000
-  );
-}
-
 // Group valid sessions by profile-local wake-day (calendar date of the END), the
 // same anchor mainSleepNights / buildNights use.
 function groupByWakeDay(
@@ -104,10 +100,10 @@ export function lastNightSummary(
   const main = mainSleepSession(group);
   if (!main) return null; // every session that day was a labeled nap
 
-  const durationMin = sessionMinutes(main);
+  const durationMin = sleepSessionDurationMinutes(main);
   const napMin = group
     .filter((s) => s !== main)
-    .reduce((t, s) => t + sessionMinutes(s), 0);
+    .reduce((t, s) => t + sleepSessionDurationMinutes(s), 0);
 
   // Baseline: the mean MAIN-session duration over the prior wake-days that fall in
   // [latest − baselineDays, latest − 1]. Uses the SAME main-vs-nap classification
@@ -117,7 +113,7 @@ export function lastNightSummary(
   for (const d of days) {
     if (d >= latest || d < lower) continue;
     const m = mainSleepSession(byDay.get(d)!);
-    if (m) priorMains.push(sessionMinutes(m));
+    if (m) priorMains.push(sleepSessionDurationMinutes(m));
   }
   const baselineNights = priorMains.length;
   const baselineAvgMin =
@@ -285,8 +281,8 @@ export function sleepTrendRangeWindows<
 // midnight) — the input to the consistency strip. `weekend` flags Sat/Sun wake.
 export interface ConsistencyNight {
   date: string; // wake-day (YYYY-MM-DD)
-  bedHour: number; // noon-relative decimal hour of onset (12.0 = noon .. 36.0)
-  wakeHour: number; // noon-relative decimal hour of wake
+  bedHour: number; // decimal wall-clock hour of onset
+  wakeHour: number; // forward-going wake hour (strictly after bedHour; may exceed 24)
   weekend: boolean;
   // Difference from the canonical typical schedule. Null until there are enough
   // nights for a meaningful baseline; "off schedule" means either boundary is
@@ -303,18 +299,15 @@ function hhmmToMinutes(hhmm: string): number {
   return h * 60 + m;
 }
 
-// Noon-anchored decimal clock hour of a local "HH:MM": 12:00→12.0, 23:30→23.5,
-// 00:00→24.0, 07:00→31.0. Anchoring at noon keeps a normal night contiguous (no
-// midnight wrap) so bedtime and wake plot on one monotone axis.
-function noonHour(hhmm: string): number {
+function clockHour(hhmm: string): number {
   const [h, m] = hhmm.split(":").map(Number);
-  const raw = h + m / 60;
-  return raw < 12 ? raw + 24 : raw;
+  return h + m / 60;
 }
 
 // The main overnight bed/wake per night for the consistency strip. Takes the
 // classifier's per-night sessions (mainSleepNights output) so nap sessions are
-// already dropped, and re-expresses each in noon-anchored clock hours in `tz`.
+// already dropped. Each wake is unwrapped relative to its own bedtime, so every
+// interval is forward-going before the phase-aware plot aligns nights together.
 export function consistencyNights(
   mainNights: { wakeDay: string; start: string; end: string }[],
   tz: string,
@@ -326,11 +319,14 @@ export function consistencyNights(
   const rows = mainNights.map((n) => {
     const bed = zonedDateParts(tz, new Date(n.start)).hhmm;
     const wake = zonedDateParts(tz, new Date(n.end)).hhmm;
+    const bedHour = clockHour(bed);
+    const rawWakeHour = clockHour(wake);
+    const wakeHour = rawWakeHour <= bedHour ? rawWakeHour + 24 : rawWakeHour;
     const dow = new Date(`${n.wakeDay}T00:00:00Z`).getUTCDay(); // 0=Sun..6=Sat
     return {
       date: n.wakeDay,
-      bedHour: noonHour(bed),
-      wakeHour: noonHour(wake),
+      bedHour,
+      wakeHour,
       weekend: dow === 0 || dow === 6,
       bedDeviationMin: null,
       wakeDeviationMin: null,
@@ -340,8 +336,8 @@ export function consistencyNights(
   return markOffSchedule(rows, schedule);
 }
 
-function noonRelativeMinute(clockMinute: number): number {
-  return clockMinute < 12 * 60 ? clockMinute + 24 * 60 : clockMinute;
+function signedClockDeltaMinutes(actual: number, typical: number): number {
+  return ((((actual - typical + 720) % 1440) + 1440) % 1440) - 720;
 }
 
 // Compare each night with the canonical typical schedule from sleep-regularity.
@@ -357,25 +353,21 @@ export function markOffSchedule(
   } = {}
 ): ConsistencyNight[] {
   const thresholdMin = opts.thresholdMin ?? 60;
-  const typicalBedNoonMinute =
-    opts.typicalBedMinute == null
-      ? null
-      : noonRelativeMinute(opts.typicalBedMinute);
-  const typicalWakeNoonMinute =
-    opts.typicalWakeMinute == null
-      ? null
-      : noonRelativeMinute(opts.typicalWakeMinute);
-  if (typicalBedNoonMinute == null && typicalWakeNoonMinute == null)
+  if (opts.typicalBedMinute == null && opts.typicalWakeMinute == null)
     return nights;
   return nights.map((night) => {
     const bedDeviationMin =
-      typicalBedNoonMinute == null
+      opts.typicalBedMinute == null
         ? null
-        : Math.round(night.bedHour * 60 - typicalBedNoonMinute);
+        : Math.round(
+            signedClockDeltaMinutes(night.bedHour * 60, opts.typicalBedMinute)
+          );
     const wakeDeviationMin =
-      typicalWakeNoonMinute == null
+      opts.typicalWakeMinute == null
         ? null
-        : Math.round(night.wakeHour * 60 - typicalWakeNoonMinute);
+        : Math.round(
+            signedClockDeltaMinutes(night.wakeHour * 60, opts.typicalWakeMinute)
+          );
     return {
       ...night,
       bedDeviationMin,
@@ -385,6 +377,94 @@ export function markOffSchedule(
         (wakeDeviationMin != null && Math.abs(wakeDeviationMin) > thresholdMin),
     };
   });
+}
+
+export interface ConsistencyPlotNight extends ConsistencyNight {
+  leftPct: number;
+  widthPct: number;
+}
+
+export interface ConsistencyPlot {
+  axisStartHour: number;
+  axisEndHour: number;
+  nights: ConsistencyPlotNight[];
+}
+
+function clockDistanceHours(a: number, b: number): number {
+  const delta = Math.abs(a - b) % 24;
+  return Math.min(delta, 24 - delta);
+}
+
+// Put every sleep window on one phase-aware linear axis. A fixed noon→noon axis
+// cannot represent a 04:00→13:00 or 08:00→16:00 sleep because its wake falls on
+// the previous side of noon. Instead, choose the observed mid-sleep clock nearest
+// all other midpoints (a circular medoid), shift each whole interval by 24-hour
+// turns around that phase, and then derive a padded axis from the actual extent.
+// The returned percentages are always positive and contained in [0, 100].
+export function consistencyPlot(nights: ConsistencyNight[]): ConsistencyPlot {
+  if (nights.length === 0) {
+    return { axisStartHour: 0, axisEndHour: 24, nights: [] };
+  }
+
+  const intervals = nights.map((night) => {
+    const duration =
+      night.wakeHour > night.bedHour
+        ? night.wakeHour - night.bedHour
+        : (((night.wakeHour - night.bedHour) % 24) + 24) % 24 || 24;
+    const wakeHour = night.bedHour + duration;
+    return {
+      night,
+      bedHour: night.bedHour,
+      wakeHour,
+      midHour: (night.bedHour + wakeHour) / 2,
+    };
+  });
+  const midClocks = intervals.map(({ midHour }) => ((midHour % 24) + 24) % 24);
+  const referenceMid = midClocks.reduce((best, candidate) => {
+    const candidateDistance = midClocks.reduce(
+      (sum, value) => sum + clockDistanceHours(candidate, value),
+      0
+    );
+    const bestDistance = midClocks.reduce(
+      (sum, value) => sum + clockDistanceHours(best, value),
+      0
+    );
+    return candidateDistance < bestDistance ? candidate : best;
+  });
+  const aligned = intervals.map((interval) => {
+    const turns = Math.round((referenceMid - interval.midHour) / 24);
+    return {
+      ...interval,
+      plotBedHour: interval.bedHour + turns * 24,
+      plotWakeHour: interval.wakeHour + turns * 24,
+    };
+  });
+  const minimum = Math.min(...aligned.map((row) => row.plotBedHour));
+  const maximum = Math.max(...aligned.map((row) => row.plotWakeHour));
+  const contentSpan = Math.max(1, maximum - minimum);
+  const padding = Math.max(0.5, Math.min(2, contentSpan * 0.08));
+  const axisStartHour = minimum - padding;
+  const axisEndHour = maximum + padding;
+  const axisSpan = axisEndHour - axisStartHour;
+  const clampPct = (value: number) => Math.max(0, Math.min(100, value));
+
+  return {
+    axisStartHour,
+    axisEndHour,
+    nights: aligned.map(({ night, plotBedHour, plotWakeHour }) => {
+      const leftPct = clampPct(
+        ((plotBedHour - axisStartHour) / axisSpan) * 100
+      );
+      const rightPct = clampPct(
+        ((plotWakeHour - axisStartHour) / axisSpan) * 100
+      );
+      return {
+        ...night,
+        leftPct,
+        widthPct: Math.max(0, rightPct - leftPct),
+      };
+    }),
+  };
 }
 
 // A dated {sleep, mood} pair for the sleep↔mood section — only nights that have
@@ -489,21 +569,12 @@ export function buildSleepMoodHistory(
 // make the displayed value disagree with the value being edited.
 export function attachEditableManualSleep(
   history: SleepMoodHistoryRow[],
-  manualRows: { date: string; value: number }[],
-  sourceRows: { date: string; source: string }[]
+  manualRows: { date: string; value: number }[]
 ): SleepMoodHistoryRow[] {
   const manualByDate = new Map(manualRows.map((row) => [row.date, row.value]));
-  const sourcesByDate = new Map<string, Set<string>>();
-  for (const row of sourceRows) {
-    const sources = sourcesByDate.get(row.date) ?? new Set<string>();
-    sources.add(row.source);
-    sourcesByDate.set(row.date, sources);
-  }
   return history.map((row) => {
     const manualMinutes = manualByDate.get(row.date);
-    const sources = sourcesByDate.get(row.date);
-    const existingIsEditable =
-      manualMinutes != null && sources?.size === 1 && sources.has("manual");
+    const existingIsEditable = manualMinutes != null;
     return {
       ...row,
       sleepEditable: row.sleepHours == null || existingIsEditable,

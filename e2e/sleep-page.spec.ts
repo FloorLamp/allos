@@ -1,9 +1,10 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page, type TestInfo } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import {
   E2E_LOGIN_CHILD,
   E2E_LOGIN_SLEEP_EDIT,
+  E2E_LOGIN_SLEEP_PHASE,
   E2E_MEMBER_PASSWORD,
   SLEEP_EDIT_PROFILE,
 } from "./fixture-logins";
@@ -11,83 +12,137 @@ import { settledClick } from "./helpers";
 
 const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
 
-function sleepEditProfileId(handle: Database.Database): number {
-  return (
-    handle
-      .prepare("SELECT id FROM profiles WHERE name = ?")
-      .get(SLEEP_EDIT_PROFILE) as { id: number }
-  ).id;
+interface SleepEditFixture {
+  username: string;
+  loginId: number;
+  profileId: number;
+  manualDate: string;
+  importedDate: string;
 }
 
-function clearSleepEditFixture(): void {
+// Each write test gets a fresh login/profile. In particular, --repeat-each groups
+// may run concurrently even inside a serial describe, so a single resettable profile
+// is not isolated enough. The template login is read only; only its password hash is
+// copied into the per-test login.
+function createSleepEditFixture(
+  testInfo: TestInfo,
+  purpose: "edit" | "add"
+): SleepEditFixture {
   const handle = new Database(DB_PATH);
+  handle.pragma("busy_timeout = 5000");
   try {
-    const profileId = sleepEditProfileId(handle);
-    handle.prepare("DELETE FROM mood_logs WHERE profile_id = ?").run(profileId);
-    handle
-      .prepare("DELETE FROM metric_samples WHERE profile_id = ?")
-      .run(profileId);
-    handle
-      .prepare(
-        "DELETE FROM profile_settings WHERE profile_id = ? AND key = 'metric_source_priority'"
-      )
-      .run(profileId);
-  } finally {
-    handle.close();
-  }
-}
-
-function resetSleepEditFixture(): void {
-  clearSleepEditFixture();
-  const handle = new Database(DB_PATH);
-  try {
-    const profileId = sleepEditProfileId(handle);
     const manualDate = new Date(Date.now() - 3 * 86_400_000)
       .toISOString()
       .slice(0, 10);
     const importedDate = new Date(Date.now() - 4 * 86_400_000)
       .toISOString()
       .slice(0, 10);
+    const suffix = `${purpose}-${process.pid}-${testInfo.repeatEachIndex}`;
+    const username = `${E2E_LOGIN_SLEEP_EDIT}_${suffix}`;
+    let loginId = 0;
+    let profileId = 0;
     handle
-      .prepare(
-        `INSERT INTO metric_samples
+      .transaction(() => {
+        const passwordHash = (
+          handle
+            .prepare("SELECT password_hash FROM logins WHERE username = ?")
+            .get(E2E_LOGIN_SLEEP_EDIT) as { password_hash: string }
+        ).password_hash;
+        profileId = Number(
+          handle
+            .prepare("INSERT INTO profiles (name) VALUES (?)")
+            .run(`${SLEEP_EDIT_PROFILE} ${suffix}`).lastInsertRowid
+        );
+        loginId = Number(
+          handle
+            .prepare(
+              "INSERT INTO logins (username, password_hash, role) VALUES (?, ?, 'member')"
+            )
+            .run(username, passwordHash).lastInsertRowid
+        );
+        handle
+          .prepare(
+            `INSERT INTO login_profiles (login_id, profile_id, access)
+             VALUES (?, ?, 'write')`
+          )
+          .run(loginId, profileId);
+        handle
+          .prepare(
+            `INSERT INTO metric_samples
            (profile_id, source, metric, date, start_time, end_time, value)
          VALUES (?, 'manual', 'sleep_min', ?, ?, ?, 420)`
-      )
-      .run(
-        profileId,
-        manualDate,
-        `${manualDate}T00:00:00`,
-        `${manualDate}T00:00:00`
-      );
-    handle
-      .prepare(
-        `INSERT INTO metric_samples
+          )
+          .run(
+            profileId,
+            manualDate,
+            `${manualDate}T00:00:00`,
+            `${manualDate}T00:00:00`
+          );
+        handle
+          .prepare(
+            `INSERT INTO metric_samples
            (profile_id, source, metric, date, start_time, end_time, value)
          VALUES (?, 'oura', 'sleep_min', ?, ?, ?, 390)`
-      )
-      .run(
-        profileId,
-        importedDate,
-        `${importedDate}T00:00:00`,
-        `${importedDate}T06:30:00`
-      );
-    handle
-      .prepare(
-        `INSERT INTO mood_logs
+          )
+          .run(
+            profileId,
+            importedDate,
+            `${importedDate}T00:00:00`,
+            `${importedDate}T06:30:00`
+          );
+        handle
+          .prepare(
+            `INSERT INTO mood_logs
            (profile_id, date, valence, energy, anxiety, factors, notes)
          VALUES (?, ?, 2, 3, 4, '["work"]', 'keep this detail')`
-      )
-      .run(profileId, manualDate);
-    // Keep the timed Oura stream authoritative for sleep timing. The manual row
-    // remains in the history editor, while this one timed night renders
-    // consistency without crossing the 14-night SRI gate.
-    handle
-      .prepare(
-        `INSERT INTO profile_settings (profile_id, key, value)
+          )
+          .run(profileId, manualDate);
+        // Keep the timed Oura stream authoritative for sleep timing. The manual
+        // row remains in history while this timed night renders consistency.
+        handle
+          .prepare(
+            `INSERT INTO profile_settings (profile_id, key, value)
          VALUES (?, 'metric_source_priority', '{"sleep_min":"oura"}')`
-      )
-      .run(profileId);
+          )
+          .run(profileId);
+      })
+      .immediate();
+    return { username, loginId, profileId, manualDate, importedDate };
+  } finally {
+    handle.close();
+  }
+}
+
+function destroySleepEditFixture(fixture: SleepEditFixture): void {
+  const handle = new Database(DB_PATH);
+  handle.pragma("busy_timeout = 5000");
+  try {
+    handle
+      .transaction(() => {
+        handle
+          .prepare("DELETE FROM sessions WHERE login_id = ?")
+          .run(fixture.loginId);
+        handle
+          .prepare("DELETE FROM login_profiles WHERE login_id = ?")
+          .run(fixture.loginId);
+        handle
+          .prepare("DELETE FROM login_settings WHERE login_id = ?")
+          .run(fixture.loginId);
+        handle.prepare("DELETE FROM logins WHERE id = ?").run(fixture.loginId);
+        handle
+          .prepare("DELETE FROM mood_logs WHERE profile_id = ?")
+          .run(fixture.profileId);
+        handle
+          .prepare("DELETE FROM metric_samples WHERE profile_id = ?")
+          .run(fixture.profileId);
+        handle
+          .prepare("DELETE FROM profile_settings WHERE profile_id = ?")
+          .run(fixture.profileId);
+        handle
+          .prepare("DELETE FROM profiles WHERE id = ?")
+          .run(fixture.profileId);
+      })
+      .immediate();
   } finally {
     handle.close();
   }
@@ -141,7 +196,7 @@ test.describe("Sleep page (#1066)", () => {
     await expect(nap).toHaveText("+ 45m nap (counted separately)");
     const source = hero.getByTestId("sleep-hero-source");
     await expect(source).toHaveText("Logged manually");
-    await expect(source).toHaveClass(/text-\[11px\]/);
+    await expect(source).toHaveClass(/text-xs/);
     const bedtimeSupplements = hero.getByTestId(
       "sleep-hero-bedtime-supplements"
     );
@@ -158,8 +213,10 @@ test.describe("Sleep page (#1066)", () => {
     // Regularity (SRI) card — the same computation the healthspan pillar reads.
     const sri = main.getByTestId("sri-value");
     await expect(sri).toBeVisible();
-    const sriValue = Number((await sri.innerText()).trim());
-    expect(Number.isFinite(sriValue)).toBe(true);
+    await expect(sri).toHaveText(/^SRI (?:−)?\d+$/);
+    await expect(main.getByTestId("sleep-regularity")).not.toContainText(
+      "/ 100"
+    );
 
     // Consistency strip + stage composition render on the seeded fixture.
     const consistency = main.getByTestId("sleep-consistency");
@@ -632,18 +689,59 @@ test.describe("Sleep page (#1066)", () => {
   });
 });
 
-test.describe("Sleep and Mood Log historical editing", () => {
-  test.beforeEach(resetSleepEditFixture);
-  test.afterAll(clearSleepEditFixture);
-
-  test("edits historical mood + duration-only sleep while imported sleep stays read-only", async ({
+test.describe("Sleep phase consistency (#1190)", () => {
+  test("keeps late-riser and daytime bars positive and on-axis", async ({
     browser,
   }) => {
     const page = await loginAs(browser, {
-      username: E2E_LOGIN_SLEEP_EDIT,
+      username: E2E_LOGIN_SLEEP_PHASE,
       password: E2E_MEMBER_PASSWORD,
     });
     try {
+      await page.goto("/sleep");
+      const consistency = page.getByTestId("sleep-consistency");
+      await expect(consistency).toBeVisible();
+      await expect(
+        consistency.getByText("04:00 → 13:00", { exact: true })
+      ).toBeVisible();
+      await expect(
+        consistency.getByText("08:00 → 16:00", { exact: true })
+      ).toBeVisible();
+
+      const positions = await consistency
+        .getByTestId("sleep-consistency-bar")
+        .evaluateAll((bars) =>
+          bars.map((element) => {
+            const style = (element as HTMLElement).style;
+            return {
+              left: Number.parseFloat(style.left),
+              width: Number.parseFloat(style.width),
+            };
+          })
+        );
+      expect(positions).toHaveLength(2);
+      for (const position of positions) {
+        expect(position.left).toBeGreaterThanOrEqual(0);
+        expect(position.width).toBeGreaterThan(0);
+        expect(position.left + position.width).toBeLessThanOrEqual(100);
+      }
+    } finally {
+      await page.context().close();
+    }
+  });
+});
+
+test.describe("Sleep and Mood Log historical editing", () => {
+  test("edits historical mood + duration-only sleep while imported sleep stays read-only", async ({
+    browser,
+  }, testInfo) => {
+    const fixture = createSleepEditFixture(testInfo, "edit");
+    let page: Page | null = null;
+    try {
+      page = await loginAs(browser, {
+        username: fixture.username,
+        password: E2E_MEMBER_PASSWORD,
+      });
       await page.goto("/sleep");
       const main = page.getByRole("main");
       await expect(main.getByTestId("sleep-regularity")).toHaveCount(0);
@@ -668,6 +766,7 @@ test.describe("Sleep and Mood Log historical editing", () => {
 
       const log = page.getByTestId("sleep-mood-log");
       const history = log.getByTestId("sleep-mood-history");
+      const { manualDate, importedDate } = fixture;
       await expect(
         history.getByRole("columnheader", {
           name: "Supplements",
@@ -675,13 +774,15 @@ test.describe("Sleep and Mood Log historical editing", () => {
         })
       ).toHaveCount(0);
       const manualRow = history.locator(
-        '[data-testid="sleep-mood-history-row"][data-sleep-editable="true"]'
+        `[data-testid="sleep-mood-history-row"][data-date="${manualDate}"]`
       );
       const importedRow = history.locator(
-        '[data-testid="sleep-mood-history-row"][data-sleep-editable="false"]'
+        `[data-testid="sleep-mood-history-row"][data-date="${importedDate}"]`
       );
       await expect(manualRow).toHaveCount(1);
       await expect(importedRow).toHaveCount(1);
+      await expect(manualRow).toHaveAttribute("data-sleep-editable", "true");
+      await expect(importedRow).toHaveAttribute("data-sleep-editable", "false");
       await expect(manualRow).toContainText("7h");
       await expect(importedRow).toContainText("6h 30m");
 
@@ -712,14 +813,13 @@ test.describe("Sleep and Mood Log historical editing", () => {
 
       const handle = new Database(DB_PATH, { readonly: true });
       try {
-        const profileId = sleepEditProfileId(handle);
         expect(
           handle
             .prepare(
               `SELECT valence, energy, anxiety, factors, notes
                  FROM mood_logs WHERE profile_id = ?`
             )
-            .get(profileId)
+            .get(fixture.profileId)
         ).toEqual({
           valence: 4,
           energy: 3,
@@ -734,25 +834,31 @@ test.describe("Sleep and Mood Log historical editing", () => {
                 WHERE profile_id = ? AND metric = 'sleep_min'
                   AND source = 'manual' AND start_time = end_time`
             )
-            .get(profileId)
+            .get(fixture.profileId)
         ).toEqual({ value: 525 });
       } finally {
         handle.close();
       }
     } finally {
-      await page.context().close();
+      if (page) await page.context().close();
+      destroySleepEditFixture(fixture);
     }
   });
 
   test("adds sleep and mood together for a date in the visible log", async ({
     browser,
-  }) => {
-    const page = await loginAs(browser, {
-      username: E2E_LOGIN_SLEEP_EDIT,
-      password: E2E_MEMBER_PASSWORD,
-    });
+  }, testInfo) => {
+    const fixture = createSleepEditFixture(testInfo, "add");
+    let page: Page | null = null;
     try {
-      const entryDate = new Date(Date.now() - 2 * 86_400_000)
+      page = await loginAs(browser, {
+        username: fixture.username,
+        password: E2E_MEMBER_PASSWORD,
+      });
+      const { manualDate } = fixture;
+      const entryDate = new Date(
+        new Date(`${manualDate}T00:00:00Z`).getTime() + 86_400_000
+      )
         .toISOString()
         .slice(0, 10);
       await page.goto("/sleep");
@@ -773,7 +879,6 @@ test.describe("Sleep and Mood Log historical editing", () => {
 
       const handle = new Database(DB_PATH, { readonly: true });
       try {
-        const profileId = sleepEditProfileId(handle);
         expect(
           handle
             .prepare(
@@ -781,7 +886,7 @@ test.describe("Sleep and Mood Log historical editing", () => {
                 WHERE profile_id = ? AND metric = 'sleep_min' AND date = ?
                   AND source = 'manual' AND start_time = end_time`
             )
-            .get(profileId, entryDate)
+            .get(fixture.profileId, entryDate)
         ).toEqual({ value: 455 });
         expect(
           handle
@@ -789,13 +894,14 @@ test.describe("Sleep and Mood Log historical editing", () => {
               `SELECT valence FROM mood_logs
                 WHERE profile_id = ? AND date = ?`
             )
-            .get(profileId, entryDate)
+            .get(fixture.profileId, entryDate)
         ).toEqual({ valence: 5 });
       } finally {
         handle.close();
       }
     } finally {
-      await page.context().close();
+      if (page) await page.context().close();
+      destroySleepEditFixture(fixture);
     }
   });
 });

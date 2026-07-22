@@ -40,7 +40,7 @@ export default function BedtimeSupplementStatus({
   if (detailsMode === "taken-inline") {
     return (
       <span
-        className={`inline-flex items-center gap-1 font-medium ${compact ? "text-[11px]" : "text-xs"} ${TONE[summary.state]}`}
+        className={`inline-flex items-center gap-1 font-medium text-xs ${TONE[summary.state]}`}
         data-testid="bedtime-supplement-status"
         data-state={summary.state}
         aria-label={`${summaryText}${takenNames.length > 0 ? `. Taken: ${takenNames.join(", ")}` : ""}`}
@@ -59,7 +59,7 @@ export default function BedtimeSupplementStatus({
 
   return (
     <details
-      className={`group ${compact ? "text-[11px]" : "text-xs"}`}
+      className="group text-xs"
       data-testid="bedtime-supplement-status"
       data-state={summary.state}
     >

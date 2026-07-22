@@ -456,16 +456,20 @@ describe("sleep — stages and sessions keep one source per night", () => {
     );
 
     const sessions = getSleepSessions(profileId);
-    expect(sessions).toContainEqual({
-      start: "2024-02-08T23:00",
-      end: "2024-02-09T07:00",
-      source: "health-connect",
-    });
-    expect(sessions).not.toContainEqual({
-      start: "2024-02-09T00:00",
-      end: "2024-02-09T07:00",
-      source: "health-connect",
-    });
+    expect(sessions).toContainEqual(
+      expect.objectContaining({
+        start: "2024-02-08T23:00",
+        end: "2024-02-09T07:00",
+        source: "health-connect",
+      })
+    );
+    expect(sessions).not.toContainEqual(
+      expect.objectContaining({
+        start: "2024-02-09T00:00",
+        end: "2024-02-09T07:00",
+        source: "health-connect",
+      })
+    );
   });
 });
 

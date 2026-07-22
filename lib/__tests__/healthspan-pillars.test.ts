@@ -113,6 +113,12 @@ describe("buildPillars value equals its source computation (#224)", () => {
     expect(pillar.tone).toBe("good"); // ≥80
   });
 
+  it("renders and tones the negative half of the real SRI domain (#1217)", () => {
+    const [pillar] = buildPillars({ sleep: { sri: -30.4 } });
+    expect(pillar.value).toBe("SRI −30");
+    expect(pillar.tone).toBe("bad");
+  });
+
   it("strength pillar value is the label of the source level", () => {
     const [pillar] = buildPillars({
       strength: { level: "intermediate", lift: "Deadlift" },

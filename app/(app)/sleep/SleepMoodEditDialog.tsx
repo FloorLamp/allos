@@ -5,8 +5,7 @@ import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import ModalShell from "@/components/ModalShell";
 import MoodValencePicker from "@/components/MoodValencePicker";
-import { addVitals } from "@/app/(app)/trends/vitals-actions";
-import { logMood } from "@/app/(app)/mood/actions";
+import { saveSleepMoodEntry } from "./actions";
 import { isRealIsoDate } from "@/lib/date";
 import { moodLabel } from "@/lib/mood";
 import type { SleepMoodHistoryRow } from "@/lib/sleep-summary";
@@ -123,28 +122,26 @@ export default function SleepMoodEditDialog(
     setPending(true);
     setError(null);
     try {
+      const entryData = new FormData();
+      entryData.set("date", date);
       if (sleepChanged && sleepTotalMinutes != null) {
-        const sleepData = new FormData();
-        sleepData.set("date", date);
-        sleepData.set("sleep_hours", String(sleepTotalMinutes / 60));
-        await addVitals(sleepData);
+        entryData.set("sleep_hours", String(sleepTotalMinutes / 60));
       }
       if (moodChanged && valence != null) {
-        const moodData = new FormData();
-        moodData.set("date", date);
-        moodData.set("valence", String(valence));
+        entryData.set("valence", String(valence));
         if (row.moodDetails?.energy != null)
-          moodData.set("energy", String(row.moodDetails.energy));
+          entryData.set("energy", String(row.moodDetails.energy));
         if (row.moodDetails?.anxiety != null)
-          moodData.set("anxiety", String(row.moodDetails.anxiety));
+          entryData.set("anxiety", String(row.moodDetails.anxiety));
         for (const factor of row.moodDetails?.factors ?? [])
-          moodData.append("factors", factor);
-        if (row.moodDetails?.notes) moodData.set("note", row.moodDetails.notes);
-        const result = await logMood(moodData);
-        if (!result.ok) {
-          setError(result.error);
-          return;
-        }
+          entryData.append("factors", factor);
+        if (row.moodDetails?.notes)
+          entryData.set("note", row.moodDetails.notes);
+      }
+      const result = await saveSleepMoodEntry(entryData);
+      if (!result.ok) {
+        setError(result.error);
+        return;
       }
       onClose();
       router.refresh();

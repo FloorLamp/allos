@@ -8,6 +8,7 @@
 
 import {
   getSleepSessions,
+  getSleepSessionsSince,
   getSleepStageDailyTotals,
   getLatestMetricSample,
   getMetricDailyTotals,
@@ -20,7 +21,10 @@ import {
 } from "../integrations/oura";
 import { getMoodLogs } from "./mood";
 import { getActivityDates } from "./training/activities";
-import { getSupplementDoses, getSupplements } from "./intake/schedule";
+import {
+  getSupplementDosesForHistory,
+  getSupplements,
+} from "./intake/schedule";
 import { getSupplementLogsInRange } from "./intake/adherence";
 import { today } from "../db";
 import { shiftDateStr, zonedDateParts } from "../date";
@@ -120,7 +124,7 @@ export function typicalWakeTime(
 // /sleep nav entry (issue #1066). Cheap: one bounded session read (delegates to
 // the already profile-scoped getSleepSessions, so no new `.prepare`).
 export function hasSleepData(profileId: number): boolean {
-  return getSleepSessions(profileId, 1).length > 0;
+  return getMetricDailyTotals(profileId, "sleep_min", 1).length > 0;
 }
 
 // The "last night" summary — the MAIN overnight session (#1118) reduced to the
@@ -146,19 +150,28 @@ export function getLastNightSummary(
     getTimezone(profileId),
     stagesByDay
   );
-  const totals = getMetricDailyTotals(profileId, "sleep_min", 180);
-  const latestTotal = totals.at(-1);
+  const durationTrend = getSleepDurationTrend(profileId, 180);
+  const latestTotal = durationTrend.at(-1);
   // A later duration-only row (normally manual quick-add) should not disappear
   // behind the older imported session merely because it has no fabricated clock.
   if (
     latestTotal &&
     (windowSummary == null || latestTotal.date > windowSummary.wakeDay)
   ) {
+    const sourceSeries = getMetricSeriesBySource(
+      profileId,
+      "sleep_min",
+      180
+    ).filter((series) =>
+      series.data.some((row) => row.date === latestTotal.date)
+    );
     const source =
-      sessions.find((s) => s.date === latestTotal.date)?.source ?? null;
-    return latestDailySleepSummary(totals, source);
+      sourceSeries.find((series) => series.source === "manual")?.source ??
+      sourceSeries[0]?.source ??
+      null;
+    return latestDailySleepSummary(durationTrend, source);
   }
-  return windowSummary ?? latestDailySleepSummary(totals);
+  return windowSummary ?? latestDailySleepSummary(durationTrend);
 }
 
 // The main-session bed/wake per night for the consistency strip (issue #1066),
@@ -209,8 +222,12 @@ function bedtimeSupplementsByWakeDay(
   if (wanted.size === 0) return new Map();
 
   const timezone = getTimezone(profileId);
+  const earliestWakeDay = [...wanted].sort()[0];
   const sleepDateByWakeDay = new Map(
-    mainSleepNights(getSleepSessions(profileId, windowDays + 1), timezone)
+    mainSleepNights(
+      getSleepSessionsSince(profileId, shiftDateStr(earliestWakeDay, -1)),
+      timezone
+    )
       .filter((night) => wanted.has(night.wakeDay))
       .map((night) => [
         night.wakeDay,
@@ -220,16 +237,13 @@ function bedtimeSupplementsByWakeDay(
   if (sleepDateByWakeDay.size === 0) return new Map();
 
   const supplements = getSupplements(profileId).filter(
-    (item) =>
-      item.kind === "supplement" && item.active === 1 && item.as_needed !== 1
+    (item) => item.kind === "supplement" && item.as_needed !== 1
   );
   const supplementById = new Map(supplements.map((item) => [item.id, item]));
-  const bedtimeDoses = getSupplementDoses(profileId).filter(
-    (dose) =>
-      supplementById.has(dose.item_id) &&
-      timeBucket(dose.time_of_day) === "Before sleep"
+  const supplementDoses = getSupplementDosesForHistory(profileId).filter(
+    (dose) => supplementById.has(dose.item_id)
   );
-  if (bedtimeDoses.length === 0) return new Map();
+  if (supplementDoses.length === 0) return new Map();
 
   const statusByDose = indexTakenByDose(
     getSupplementLogsInRange(profileId, windowDays + 1)
@@ -242,15 +256,33 @@ function bedtimeSupplementsByWakeDay(
   const summaries = new Map<string, BedtimeSupplementSummary>();
 
   for (const [wakeDay, sleepDate] of sleepDateByWakeDay) {
-    const dueDoses = bedtimeDoses.flatMap((dose) => {
+    const dueDoses = supplementDoses.flatMap((dose) => {
       const item = supplementById.get(dose.item_id)!;
+      const status = statusByDose.get(dose.id);
+      const taken = status?.taken.has(sleepDate) ?? false;
+      const skipped = status?.skipped.has(sleepDate) ?? false;
+      const resolved = taken || skipped;
+      const isBedtimeDose = timeBucket(dose.time_of_day) === "Before sleep";
+      const isCurrentBedtimeDose =
+        item.active === 1 && dose.retired === 0 && isBedtimeDose;
+      // Resolved logs preserve factual taken/skipped state for a paused or
+      // retired bedtime dose. A later dose edit does not preserve the previous
+      // slot, however, so either direction of a possible re-time is excluded
+      // rather than attributing an old log to bedtime without evidence.
+      const changedAfterNight =
+        dose.updated_at != null && dose.updated_at.slice(0, 10) > sleepDate;
+      const historicalResolved =
+        resolved && isBedtimeDose && !changedAfterNight;
+      if (resolved ? !historicalResolved : !isCurrentBedtimeDose) return [];
+
       const since = doseAdherenceSince(
         item.created_at,
         dose.created_at,
         dose.updated_at
       );
-      if (since != null && sleepDate < since) return [];
+      if (!resolved && since != null && sleepDate < since) return [];
       if (
+        !resolved &&
         !isDueOn(item, {
           isWorkoutDay: workoutDays.has(sleepDate),
           activeSituations: situationsOn(sleepDate),
@@ -258,14 +290,13 @@ function bedtimeSupplementsByWakeDay(
       ) {
         return [];
       }
-      const status = statusByDose.get(dose.id);
       return [
         {
           itemId: item.id,
           name: item.name,
-          status: status?.taken.has(sleepDate)
+          status: taken
             ? ("taken" as const)
-            : status?.skipped.has(sleepDate)
+            : skipped
               ? ("skipped" as const)
               : null,
         },
@@ -299,23 +330,8 @@ export function getSleepMoodData(
     (row) => row.date >= since && row.date <= end
   );
   const baseHistory = buildSleepMoodHistory(nights, moods, stageRows);
-  const manualRows = getEditableManualSleepDurations(profileId, since).filter(
-    (row) => row.date <= end
-  );
-  const sourceRows = getMetricSeriesBySource(
-    profileId,
-    "sleep_min",
-    boundedDays
-  ).flatMap((series) =>
-    series.data
-      .filter((row) => row.date >= since && row.date <= end)
-      .map((row) => ({ date: row.date, source: series.source }))
-  );
-  const editableHistory = attachEditableManualSleep(
-    baseHistory,
-    manualRows,
-    sourceRows
-  );
+  const manualRows = getEditableManualSleepDurations(profileId, since, end);
+  const editableHistory = attachEditableManualSleep(baseHistory, manualRows);
   const bedtimeByWakeDay = bedtimeSupplementsByWakeDay(
     profileId,
     editableHistory.map((row) => row.date),

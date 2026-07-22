@@ -179,7 +179,7 @@ export default function SleepMoodSection({
                       scope="col"
                       className={`hidden px-3 py-2 font-medium sm:table-cell ${
                         column.key === "deep"
-                          ? "sm:border-l sm:border-slate-200 dark:sm:border-slate-700"
+                          ? "sm:border-l sm:border-black/10 dark:sm:border-white/10"
                           : ""
                       }`}
                     >
@@ -285,7 +285,7 @@ export default function SleepMoodSection({
                           key={column.key}
                           className={`hidden whitespace-nowrap px-3 py-2 text-slate-700 sm:table-cell dark:text-slate-200 ${
                             column.key === "deep"
-                              ? "sm:border-l sm:border-slate-200 dark:sm:border-slate-700"
+                              ? "sm:border-l sm:border-black/10 dark:sm:border-white/10"
                               : ""
                           }`}
                           data-testid={`sleep-stage-${column.key}`}

@@ -7,6 +7,7 @@ import {
   type SleepRecordPresentation,
 } from "@/lib/sleep-summary";
 import { formatClockMinutes, type TimeFormat } from "@/lib/format-date";
+import { sriPresentation } from "@/lib/sleep-regularity";
 
 // Dashboard "last night" sleep tile (issue #1066): the morning-ritual promotion
 // that ships WITH the /sleep page (the illness-hero / weight-quick-add principle —
@@ -62,7 +63,7 @@ export default function SleepLastNightWidget({
           </div>
           {sri != null && (
             <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Regularity SRI {Math.round(sri)} / 100
+              Regularity · {sriPresentation(sri).text}
             </div>
           )}
         </div>

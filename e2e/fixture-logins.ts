@@ -133,6 +133,13 @@ export const EMPTY_TRAINING_PROFILE = "Empty Training (e2e)";
 export const E2E_LOGIN_SLEEP_EDIT = "e2e_sleep_edit";
 export const SLEEP_EDIT_PROFILE = "Sleep Edit (e2e)";
 
+// A dedicated READ-ONLY sleep-phase fixture with one 04:00→13:00 late-riser
+// window and one 08:00→16:00 daytime-sleeper window (#1190). Seeded once before
+// the suite; the browser spec never mutates or cleans it, so parallel/repeat runs
+// cannot race another test's state.
+export const E2E_LOGIN_SLEEP_PHASE = "e2e_sleep_phase";
+export const SLEEP_PHASE_PROFILE = "Sleep Phase (e2e)";
+
 // A dedicated, write-granted ADULT profile with NO instrument scores logged (#716):
 // the mental-health-instruments spec OWNS every write here (it administers a PHQ-9 /
 // GAD-7 in-app), so it never touches — or counts rows on — a shared-seed profile. Its

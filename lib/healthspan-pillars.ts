@@ -23,6 +23,7 @@ import {
   strengthTone,
   type StrengthLevel,
 } from "./strength-standards";
+import { sriPresentation } from "./sleep-regularity";
 import { rangeBadge, type RangeBadge } from "./reference-range";
 import { convertToCanonical } from "./unit-conversions";
 import type { CanonicalBiomarker, Sex } from "./types";
@@ -194,12 +195,6 @@ function vo2Tone(p: number): PillarTone {
   return "bad";
 }
 
-function sriTone(sri: number): PillarTone {
-  if (sri >= 80) return "good";
-  if (sri >= 60) return "warn";
-  return "bad";
-}
-
 function optimalTone(rate: OptimalHitRate): PillarTone {
   if (rate.total === 0) return "neutral";
   const frac = rate.optimal / rate.total;
@@ -253,12 +248,13 @@ export function buildPillars(inputs: PillarInputs): Pillar[] {
   }
 
   if (inputs.sleep) {
+    const sri = sriPresentation(inputs.sleep.sri);
     pillars.push({
       key: "sleep-regularity",
       label: "Sleep regularity",
-      value: `SRI ${inputs.sleep.sri.toFixed(0)}`,
+      value: sri.text,
       detail: "Consistency of your sleep–wake timing",
-      tone: sriTone(inputs.sleep.sri),
+      tone: sri.tone,
       trend: inputs.sleep.trend ?? null,
       href: pillarHref("sleep-regularity"),
     });

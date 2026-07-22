@@ -110,6 +110,22 @@ export function getSupplementDoses(profileId: number): SupplementDose[] {
     .all(profileId) as SupplementDose[];
 }
 
+// Every dose row, including retired doses retained for adherence history. This is
+// deliberately separate from getSupplementDoses: current-schedule consumers must
+// never accidentally surface or make a retired dose actionable.
+export function getSupplementDosesForHistory(
+  profileId: number
+): SupplementDose[] {
+  return db
+    .prepare(
+      `SELECT d.* FROM intake_item_doses d
+         JOIN intake_items s ON s.id = d.item_id
+        WHERE s.profile_id = ?
+        ORDER BY d.item_id, d.sort, d.id`
+    )
+    .all(profileId) as SupplementDose[];
+}
+
 // AI suggestions still awaiting review, newest first.
 export function getPendingSuggestions(
   profileId: number

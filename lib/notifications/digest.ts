@@ -11,6 +11,7 @@ import type { ActivityType, SupplementKind } from "../types";
 import { fmtWeight, fmtDistance } from "../units";
 import { intakeWindowNoun, intakeItemNoun } from "./supplement-format";
 import { situationActivationLine } from "../situations";
+import { sriPresentation } from "../sleep-regularity";
 
 // Capitalize the first letter of a noun for use at the start of a line
 // ("medications" → "Medications").
@@ -229,7 +230,7 @@ export function buildDigest(input: DigestInput): DigestModel | null {
       sleepLines.push(`💤 + ${fmtSleepDuration(s.napMin)} nap`);
     }
     if (s.sri != null) {
-      sleepLines.push(`📈 Sleep regularity ${s.sri}`);
+      sleepLines.push(`📈 Sleep regularity · ${sriPresentation(s.sri).text}`);
     }
     sections.push({ heading: "Sleep", lines: sleepLines });
   }
