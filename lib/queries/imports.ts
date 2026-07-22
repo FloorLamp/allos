@@ -19,6 +19,7 @@ import type {
   ImagingLaterality,
   OpticalKind,
   DentalStatus,
+  Provider,
 } from "../types/medical";
 import {
   interleaveImportLog,
@@ -610,6 +611,55 @@ export function getDocumentBodyRows(profileId: number, docId: number) {
     )
     .all(profileId, source) as { id: number; date: string; value: number }[];
   return { bodyMetrics, heights, headCircs };
+}
+
+// The distinct providers referenced by THIS document's rows (#1182): the listing
+// behind the import-detail Providers tab, promoted from the bare count chip now
+// that /providers/[id] exists (#275). The provider set is the SAME distinct-
+// provider_id union getDocumentProduced counts — every SELECT names a profile-
+// owned table filtered by profile_id + the document link, so the tab count and
+// the listing can't disagree — but here it joins the shared global `providers`
+// row for display (id/name/type + the disambiguation fields #531/#534 needs).
+// Providers stay EXCLUDED from extracted_count (they're global-registry rows, not
+// this profile's owned records — the #212 invariant); this is a separate read.
+export function getDocumentProviders(
+  profileId: number,
+  docId: number
+): Provider[] {
+  const source = documentSource(docId);
+  return db
+    .prepare(
+      `SELECT p.* FROM providers p
+        WHERE p.id IN (
+            SELECT provider_id FROM medical_records
+              WHERE profile_id = ? AND document_id = ? AND provider_id IS NOT NULL
+            UNION
+            SELECT provider_id FROM immunizations
+              WHERE profile_id = ? AND source = ? AND provider_id IS NOT NULL
+            UNION
+            SELECT provider_id FROM encounters
+              WHERE profile_id = ? AND document_id = ? AND provider_id IS NOT NULL
+            UNION
+            SELECT location_provider_id FROM encounters
+              WHERE profile_id = ? AND document_id = ? AND location_provider_id IS NOT NULL
+            UNION
+            SELECT provider_id FROM optical_prescriptions
+              WHERE profile_id = ? AND document_id = ? AND provider_id IS NOT NULL
+         )
+        ORDER BY p.name COLLATE NOCASE, p.id`
+    )
+    .all(
+      profileId,
+      docId,
+      profileId,
+      source,
+      profileId,
+      docId,
+      profileId,
+      docId,
+      profileId,
+      docId
+    ) as Provider[];
 }
 
 // The currently-persisted rows a document produced, reduced to the neutral

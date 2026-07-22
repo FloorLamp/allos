@@ -173,6 +173,14 @@ export function encounterHref(id: number): AppRoute {
   return href as AppRoute;
 }
 
+// A provider's registry detail page (#275). Used by the import-detail Providers
+// listing (#1182) to deep-link each referenced provider from its produced-rows
+// panel; a dynamic route needs the widening cast.
+export function providerHref(id: number): AppRoute {
+  const href: Route<`/providers/${number}`> = `/providers/${id}`;
+  return href as AppRoute;
+}
+
 // A medication's clinical-record detail page (issue #817). The list page
 // (MEDICATIONS_HREF) stays the kind-level target for every deep-linker via
 // intakeHref — Upcoming/Timeline/dose reminders point at the daily list where the

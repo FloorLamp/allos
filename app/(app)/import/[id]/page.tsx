@@ -22,6 +22,7 @@ import {
   getDocumentAppointments,
   getDocumentMedications,
   getDocumentBodyRows,
+  getDocumentProviders,
   createVisitOffers,
 } from "@/lib/queries";
 import { getUserFullName, getUnitPrefs } from "@/lib/settings";
@@ -35,6 +36,7 @@ import ExtractedRecords from "@/components/ExtractedRecords";
 import CreateVisitFromRecord from "@/components/visit-links/CreateVisitFromRecord";
 import ImportTabStrip from "@/components/ImportTabStrip";
 import ProducedListing from "@/components/ProducedListing";
+import ProducedProviders from "@/components/ProducedProviders";
 import ProviderDatalist from "@/components/ProviderDatalist";
 import {
   documentFormatLabel,
@@ -60,6 +62,8 @@ import {
   appointmentItem,
   medicationItem,
   bodyItems,
+  providerItems,
+  isAnalyteCategory,
   type ImportTab,
   type ProducedItem,
 } from "@/lib/import-browser";
@@ -131,7 +135,9 @@ function listingItems(
     case "body":
       return bodyItems(getDocumentBodyRows(profileId, docId), weightUnit);
     case "records":
-      return []; // records tabs render the editable table, not a listing
+      return []; // records tabs render the records table, not a listing
+    case "providers":
+      return []; // providers render ProducedProviders (needs the whole set to disambiguate)
   }
 }
 
@@ -241,15 +247,25 @@ export default async function ImportDetailPage(props: {
         })
       : [];
   // The active non-records tab's read-only rows, shaped for display (weight in
-  // the login's display unit).
+  // the login's display unit). Providers are shaped separately below — they need
+  // the whole set to disambiguate same-named rows (#531/#534).
   const items =
-    activeTab && activeTab.kind !== "records"
+    activeTab &&
+    activeTab.kind !== "records" &&
+    activeTab.kind !== "providers"
       ? listingItems(
           activeTab,
           profile.id,
           id,
           getUnitPrefs(login.id).weightUnit
         )
+      : [];
+  // The Providers tab (#1182): the distinct global-registry providers this
+  // document's rows reference, disambiguated for display. Excluded from
+  // extracted_count (#212) — a separate provider-scoped read.
+  const providerItemsList =
+    activeTab?.kind === "providers"
+      ? providerItems(getDocumentProviders(profile.id, id))
       : [];
   const canonicalOptions = getCanonicalAutocomplete(profile.id);
   // "Create a visit from this record?" (#1099), scoped to the records THIS document
@@ -344,20 +360,21 @@ export default async function ImportDetailPage(props: {
               docId={id}
               tabs={strip.tabs}
               activeKey={activeTab?.key}
-              providers={strip.providers}
             />
           )}
         </div>
 
-        {/* The active tab's panel: the editable records table for a
-            medical_records category tab, a read-only deep-linking listing for
-            every other produced type. */}
+        {/* The active tab's panel: the records table for a medical_records
+            category tab (the analyte grid for lab/biomarker/genomics, a read-only
+            value/date table for the rest — #1182), the per-document Providers
+            listing, or a read-only deep-linking listing for every other type. */}
         {activeTab &&
           (activeTab.kind === "records" ? (
             <ExtractedRecords
               docId={id}
               filename={doc.filename}
               title={activeTab.label}
+              analyte={isAnalyteCategory(activeTab.category)}
               processing={doc.extraction_status === "processing"}
               records={records}
               q={q}
@@ -370,6 +387,11 @@ export default async function ImportDetailPage(props: {
                     ? "Extraction is still running…"
                     : "No records were extracted from this document."
               }
+            />
+          ) : activeTab.kind === "providers" ? (
+            <ProducedProviders
+              title={activeTab.label}
+              providers={providerItemsList}
             />
           ) : (
             <ProducedListing title={activeTab.label} items={items} />
