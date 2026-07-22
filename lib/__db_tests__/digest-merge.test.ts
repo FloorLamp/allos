@@ -196,9 +196,9 @@ describe("merged morning digest — one message, one computation (#1108)", () =>
     const after = buildDigest(gatherDigestInput(p, "MergeBus"));
     expect(gatherDigestInput(p, "MergeBus").doseCount).toBe(0);
     const todayAfter = after?.sections.find((s) => s.heading === "Today");
-    expect(todayAfter?.lines.some((l) => l.includes("scheduled")) ?? false).toBe(
-      false
-    );
+    expect(
+      todayAfter?.lines.some((l) => l.includes("scheduled")) ?? false
+    ).toBe(false);
   });
 
   it("preserves the #558 predicted-training-day dose through collectUpcoming", () => {
@@ -207,14 +207,20 @@ describe("merged morning digest — one message, one computation (#1108)", () =>
     // A habitual training pattern on today's weekday (≥4 distinct dates in 8 weeks),
     // with NO session logged today — so dueness must come from the PREDICTED day.
     for (const w of [1, 2, 3, 4, 5]) seedActivity(p, shiftDateStr(td, -7 * w));
-    expect(db.prepare(
-      "SELECT COUNT(*) AS c FROM activities WHERE profile_id = ? AND date = ?"
-    ).get(p, td)).toEqual({ c: 0 });
+    expect(
+      db
+        .prepare(
+          "SELECT COUNT(*) AS c FROM activities WHERE profile_id = ? AND date = ?"
+        )
+        .get(p, td)
+    ).toEqual({ c: 0 });
     seedPreWorkoutDose(p, "Creatine");
 
     // The pre_workout dose is due on the predicted day and flows through
     // collectUpcoming's dose items into the digest's dose count (#558 not lost).
-    expect(gatherDigestInput(p, "Merge558").doseCount).toBeGreaterThanOrEqual(1);
+    expect(gatherDigestInput(p, "Merge558").doseCount).toBeGreaterThanOrEqual(
+      1
+    );
     const model = buildDigest(gatherDigestInput(p, "Merge558"));
     const todaySection = model?.sections.find((s) => s.heading === "Today");
     expect(todaySection?.lines.some((l) => l.includes("scheduled"))).toBe(true);

@@ -56,7 +56,9 @@ describe("buildDigest", () => {
     const model = buildDigest({
       ...empty,
       doseCount: 3,
-      todayGroups: [band("week", "This week", [item("goal", { title: "Legs" })])],
+      todayGroups: [
+        band("week", "This week", [item("goal", { title: "Legs" })]),
+      ],
     });
     expect(model?.sections.map((s) => s.heading)).toEqual(["Today"]);
     // The dose glance headline, then the banded "what's due" summary (goals now

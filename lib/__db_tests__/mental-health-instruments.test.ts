@@ -183,7 +183,11 @@ describe("mental-health crisis builder — care tier, non-dismissible, never pus
 
   it("the crisis line never reaches the Telegram digest (no crisis content on any channel)", () => {
     const p = newProfile("MH nopush");
-    recordInstrumentScore(p, { instrument: "PHQ-9", date: today(p), total: 25 });
+    recordInstrumentScore(p, {
+      instrument: "PHQ-9",
+      date: today(p),
+      total: 25,
+    });
     // The merged morning digest (#1108) embeds the what's-due list as its Today
     // section, so the no-leak guard runs against the ACTUAL sent message. A crisis
     // mental-health finding is care-tier on the page/hero but is excluded from the
