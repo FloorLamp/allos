@@ -26,7 +26,7 @@ test.describe("create a visit from a record (#1099)", () => {
   });
 
   test("the Rx card prompts to create a visit; accept surfaces it with the Rx linked", async () => {
-    await page.goto("/records#vision");
+    await page.goto("/records/specialty/vision");
 
     // The prompt shows for the Rx dated a day with no encounter. Accept if present
     // (first run); a later run finds the Rx already linked and the prompt gone.
@@ -37,7 +37,7 @@ test.describe("create a visit from a record (#1099)", () => {
 
     // End-state: the derived "Eye exam" visit exists in Visits, and its detail lists
     // the Rx under "From this visit".
-    await page.goto("/records#visits");
+    await page.goto("/records/history/visits");
     await followLink(
       page,
       page.getByRole("link", { name: /Eye exam/ }).first(), // first-ok: dedicated CREATEVISIT fixture profile — the only Eye exam visit is the one this spec created
