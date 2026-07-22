@@ -161,7 +161,6 @@ const WAITFORTIMEOUT_ALLOW: Record<string, number> = {
 // two lists above: migrate a spec onto an exact locator / dedicated fixture and
 // LOWER its number in the same PR; a NEW unmarked .first() (or a new file) fails.
 const FIRST_ALLOW: Record<string, number> = {
-  "date-time-format-prefs.spec.ts": 10,
   "dose-history.spec.ts": 9,
   // edit-lock-badge carries a latent class-1 flake (a batch sibling mutates
   // profile 1's body metrics that /trends?tab=body reads; exposed only when
@@ -176,7 +175,6 @@ const FIRST_ALLOW: Record<string, number> = {
   "illness-episode.spec.ts": 5,
   "illness-round3.spec.ts": 6,
   "import-dedup.spec.ts": 3,
-  "journal-provenance.spec.ts": 7,
   "medication-prefill.spec.ts": 8,
   // dose-history-row .first() (newest seeded dose) deferred to a dedicated-fixture
   // pass — its safety rests on every OTHER spec only backdating writes to this
