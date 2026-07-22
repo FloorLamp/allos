@@ -12,7 +12,8 @@ import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { isRealIsoDate, zonedWallTimeToUtc } from "@/lib/date";
 import { db } from "@/lib/db";
-import { getTimezone } from "@/lib/settings";
+import { getTimezone, deleteProfileSetting } from "@/lib/settings";
+import { refillMarkerKey } from "@/lib/refill-nudge";
 import { updateTemperatureCore } from "@/lib/temperature-log";
 import {
   deleteAdministrationLog,
@@ -499,7 +500,10 @@ export async function endEpisodeAction(
 
 // Reopen a recently resolved episode when symptoms return. The core owns the short
 // relapse window and reactivates the matching illness situation atomically, preserving
-// the stable episode row and any promoted Condition.
+// the stable episode row and any promoted Condition. #1140 Part B: an OPTIONAL
+// `medItemIds` selection restarts the meds this episode's end stopped — SUGGEST-ONLY,
+// intersected in the core with the still-eligible persisted set, so an empty selection
+// (the dashboard one-tap reopen, Part A) reopens the illness and restarts nothing.
 export async function reopenEpisodeAction(
   formData: FormData
 ): Promise<EpisodeActionResult> {
@@ -513,7 +517,14 @@ export async function reopenEpisodeAction(
   }
   const id = parseEpisodeId(formData);
   if (!id) return { ok: false, error: "That episode is no longer available." };
-  const outcome = reopenEpisodeCore(profileId, id);
+  const restartItemIds = parseMedItemIds(formData.get("medItemIds"));
+  const outcome = reopenEpisodeCore(profileId, id, restartItemIds);
+  // A restarted med re-enters the refill-nudge tracked set (#325): drop any lingering
+  // low-supply marker so a still-low med re-fires a fresh nudge (the same clear the
+  // single-med Restart does).
+  for (const itemId of outcome.restartedItemIds) {
+    deleteProfileSetting(profileId, refillMarkerKey(itemId));
+  }
   if (outcome.kind === "missing") {
     return { ok: false, error: "That episode is no longer available." };
   }

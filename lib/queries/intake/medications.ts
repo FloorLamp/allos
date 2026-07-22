@@ -513,6 +513,58 @@ export function restartMedicationCourse(
   });
 }
 
+// Set (or clear) a medication's END DATE from the edit form (#1140 Part D). The end date
+// IS the current course's `stopped_on` under the active=1 ⇔ open-course invariant. This is
+// the ONE place the edit-form date path lives, so it and the Stop/Restart buttons can't
+// diverge (#221) and the invariant always holds. Routes the two real transitions through
+// the SHARED cores:
+//   - endDate = null → REACTIVATE via restartMedicationCourse (opens a course, active=1).
+//   - endDate set, an OPEN course exists → STOP as of that date via stopMedicationCourses
+//     (closes it, active=0) — so you can log the real "finished last Tuesday", not only today.
+//   - endDate set, latest course already CLOSED → CORRECT that course's stopped_on in place
+//     (active stays 0; the invariant is unaffected) rather than manufacturing spurious
+//     course history. This is the sole in-place stopped_on write, kept here so no other
+//     path hand-writes the column. Ownership is verified; a forged id is a no-op.
+export function setMedicationEndDate(
+  profileId: number,
+  itemId: number,
+  endDate: string | null
+): void {
+  if (ownedMedicationId(profileId, itemId) == null) return;
+  writeTx(() => {
+    if (endDate == null) {
+      restartMedicationCourse(profileId, itemId, today(profileId));
+      return;
+    }
+    const openCourse = db
+      .prepare(
+        "SELECT id FROM medication_courses WHERE item_id = ? AND stopped_on IS NULL ORDER BY started_on, id LIMIT 1"
+      )
+      .get(itemId) as { id: number } | undefined;
+    if (openCourse) {
+      // Close the open course as of the given date (active → 0), through the shared stop
+      // core so the active-flag sync + course close stay identical to the Stop button.
+      stopMedicationCourses(profileId, itemId, {
+        date: endDate,
+        reason: "course_finished",
+      });
+      return;
+    }
+    // No open course — correct the LATEST closed course's end date in place. Active is
+    // already 0, so the invariant holds without touching it; no new course row is minted.
+    const latest = db
+      .prepare(
+        "SELECT id FROM medication_courses WHERE item_id = ? ORDER BY started_on DESC, id DESC LIMIT 1"
+      )
+      .get(itemId) as { id: number } | undefined;
+    if (latest) {
+      db.prepare(
+        "UPDATE medication_courses SET stopped_on = ? WHERE id = ? AND item_id = ?"
+      ).run(endDate, latest.id, itemId);
+    }
+  });
+}
+
 // Keep a medication's course history in sync with a plain active-flag toggle
 // (the Pause/Resume control). Pausing closes the open course (no reason);
 // resuming opens a fresh one when none is open. Ownership is verified first

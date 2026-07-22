@@ -58,6 +58,7 @@ import { schoolReturnCompactClause } from "@/lib/school-return";
 import CardGroup, { CardGroupSection } from "@/components/CardGroup";
 import PageContainer from "@/components/PageContainer";
 import { episodeReopenEligibility } from "@/lib/illness-episode-reopen";
+import { getEpisodeReopenMedRestore } from "@/lib/illness-episode-write";
 import { IconCamera } from "@tabler/icons-react";
 
 export const dynamic = "force-dynamic";
@@ -179,6 +180,18 @@ export default async function EpisodePage(props: {
   const medReconciliation =
     assembled.ongoing && canWrite
       ? getEpisodeMedReconciliation(profileId, episodeId)
+      : [];
+
+  // The reopen-restore checklist (#1140 Part B): the meds this episode's end stopped that
+  // are STILL restart-eligible — offered on reopen (suggest-only), the symmetric inverse
+  // of the end-with-meds checklist. Only for a closed, reopen-eligible episode a writer
+  // can act on.
+  const reopenRestoreMeds =
+    !assembled.ongoing && canReopen && canWrite
+      ? getEpisodeReopenMedRestore(profileId, episodeId).map((m) => ({
+          itemId: m.itemId,
+          name: m.name,
+        }))
       : [];
 
   // The logging bar anchors to today for an open episode; for a closed one it anchors to
@@ -393,6 +406,7 @@ export default async function EpisodePage(props: {
                   canReopen={canReopen}
                   profileId={target}
                   medReconciliation={medReconciliation}
+                  reopenRestoreMeds={reopenRestoreMeds}
                 />
               )}
             </>

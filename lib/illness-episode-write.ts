@@ -19,7 +19,10 @@ import {
   updateEpisodeBoundaries,
   type IllnessEpisodeRow,
 } from "./illness-episode-store";
-import { stopMedicationCourses } from "./queries/intake/medications";
+import {
+  stopMedicationCourses,
+  restartMedicationCourse,
+} from "./queries/intake/medications";
 import { getActiveSituations, setActiveSituations } from "./settings";
 import { normalizeSituationName } from "./situations";
 
@@ -160,33 +163,45 @@ export function endEpisodeCore(
   });
 }
 
-export type ReopenEpisodeOutcome =
-  | { kind: "reopened" }
-  | { kind: "already" }
-  | { kind: "expired" }
-  | { kind: "conflict" }
-  | { kind: "missing" };
+export interface ReopenEpisodeOutcome {
+  kind: "reopened" | "already" | "expired" | "conflict" | "missing";
+  // The meds RESTARTED by this reopen (#1140 Part B) — for the "restarted N meds" toast
+  // and the action's refill-marker clear (#325). Empty on a no-meds reopen.
+  restartedItemIds: number[];
+}
 
 // Reopen a recently resolved episode when symptoms rebound. The row is reopened before
 // the situation toggle runs, so syncOpenIllnessEpisode sees the stable existing row and
 // does not create a second episode. The seven-day rule is checked inside the IMMEDIATE
 // transaction as well as in the page UI; stale clients cannot reopen an old illness.
+//
+// #1140 Part B — the symmetric inverse of end-with-meds: `restartItemIds` is the
+// caller's SUGGEST-ONLY selection (#560) of meds to restart. It is intersected here with
+// the still-eligible persisted stopped set (getEpisodeReopenMedRestore), so a forged /
+// stale id can never restart an unrelated med; each restart opens a new course + flips
+// active on via the SHARED `restartMedicationCourse` primitive (#221, the same one the
+// single-med Restart uses). Every consumed link row is cleaned up (#203); the reopen
+// leaves the rest of the episode's stopped-med records in place for a later re-decision.
 export function reopenEpisodeCore(
   profileId: number,
-  episodeId: number
+  episodeId: number,
+  restartItemIds: number[] = []
 ): ReopenEpisodeOutcome {
   return writeTx(() => {
     const row = getEpisodeRow(profileId, episodeId);
-    if (!row) return { kind: "missing" };
+    if (!row) return { kind: "missing", restartedItemIds: [] };
     const eligibility = episodeReopenEligibility(
       row.ended_at,
       today(profileId)
     );
-    if (eligibility.kind === "ongoing") return { kind: "already" };
-    if (eligibility.kind !== "eligible") return { kind: "expired" };
+    if (eligibility.kind === "ongoing")
+      return { kind: "already", restartedItemIds: [] };
+    if (eligibility.kind !== "eligible")
+      return { kind: "expired", restartedItemIds: [] };
 
     const open = getOpenEpisodeRow(profileId, row.situation);
-    if (open && open.id !== row.id) return { kind: "conflict" };
+    if (open && open.id !== row.id)
+      return { kind: "conflict", restartedItemIds: [] };
 
     db.prepare(
       `UPDATE illness_episodes SET ended_at = NULL
@@ -204,7 +219,29 @@ export function reopenEpisodeCore(
     }
     const reopened = getEpisodeRow(profileId, row.id);
     if (reopened) syncPromotedCondition(profileId, reopened);
-    return { kind: "reopened" };
+
+    // Restart the still-eligible selected meds (the suggest-only inverse of #880). Re-derive
+    // the eligible set server-side and intersect the selection with it — the same safety
+    // line end-with-meds uses.
+    const eligible = getEpisodeReopenMedRestore(profileId, episodeId);
+    const eligibleIds = new Set(eligible.map((m) => m.itemId));
+    const selected = new Set(
+      restartItemIds.filter((id) => eligibleIds.has(id))
+    );
+    const restartedItemIds: number[] = [];
+    const reopenDay = today(profileId);
+    for (const m of eligible) {
+      if (!selected.has(m.itemId)) continue;
+      restartMedicationCourse(profileId, m.itemId, reopenDay);
+      restartedItemIds.push(m.itemId);
+      // The reversal record is consumed for a restarted med (#203) — its course is now
+      // reopened, so the stopped-med link no longer applies.
+      db.prepare(
+        `DELETE FROM episode_stopped_meds
+          WHERE profile_id = ? AND episode_id = ? AND item_id = ?`
+      ).run(profileId, episodeId, m.itemId);
+    }
+    return { kind: "reopened", restartedItemIds };
   });
 }
 
@@ -311,15 +348,69 @@ export function endEpisodeWithMedReconciliation(
     // backdated end, else today — the day it stopped being taken for the illness).
     const stopDate = lastActiveDay ?? today(profileId);
     const stopped: number[] = [];
+    const linkStmt = db.prepare(
+      `INSERT OR IGNORE INTO episode_stopped_meds
+         (profile_id, episode_id, item_id, course_id)
+       VALUES (?, ?, ?, ?)`
+    );
     for (const itemId of medItemIds) {
+      // The open course we're about to close (active=1 ⇒ exactly one). Capture its id
+      // FIRST so we can persist the exact course this episode closed — the reversal
+      // record reopen inverts (#1140 Part B / #203 "row operations carry their
+      // side-state").
+      const openCourse = db
+        .prepare(
+          `SELECT c.id FROM medication_courses c
+             JOIN intake_items ii ON ii.id = c.item_id
+            WHERE c.item_id = ? AND ii.profile_id = ? AND ii.kind = 'medication'
+              AND c.stopped_on IS NULL
+            ORDER BY c.started_on, c.id LIMIT 1`
+        )
+        .get(itemId, profileId) as { id: number } | undefined;
       stopMedicationCourses(profileId, itemId, {
         date: stopDate,
         reason: "illness_resolved",
       });
+      if (openCourse) linkStmt.run(profileId, episodeId, itemId, openCourse.id);
       stopped.push(itemId);
     }
     return { kind: "ended", stoppedItemIds: stopped };
   });
+}
+
+export interface EpisodeReopenMedRestore {
+  itemId: number;
+  name: string;
+  courseId: number;
+}
+
+// The meds this episode's end stopped that are STILL restart-eligible (#1140 Part B) —
+// the reopen checklist's suggest-only set. Eligible iff the persisted stopped course is
+// still the item's LATEST course AND still closed with the `illness_resolved` reason: a
+// manual restart / re-stop / delete / Part-D edit-form clear between end and reopen moves
+// the latest course off it, and is skipped (#202 "links that may have died"). Every read
+// is profile-scoped (direct or via the intake_items JOIN).
+export function getEpisodeReopenMedRestore(
+  profileId: number,
+  episodeId: number
+): EpisodeReopenMedRestore[] {
+  return db
+    .prepare(
+      `SELECT esm.item_id AS itemId, ii.name AS name, esm.course_id AS courseId
+         FROM episode_stopped_meds esm
+         JOIN intake_items ii ON ii.id = esm.item_id AND ii.profile_id = esm.profile_id
+         JOIN medication_courses c ON c.id = esm.course_id AND c.item_id = esm.item_id
+        WHERE esm.profile_id = ? AND esm.episode_id = ?
+          AND ii.kind = 'medication'
+          AND c.stopped_on IS NOT NULL
+          AND c.stop_reason = 'illness_resolved'
+          AND NOT EXISTS (
+            SELECT 1 FROM medication_courses c2
+             WHERE c2.item_id = esm.item_id AND c2.id > esm.course_id
+          )
+        ORDER BY ii.name`
+    )
+    .all(profileId, episodeId) as EpisodeReopenMedRestore[];
 }
 
 // Undo a promotion: delete ONLY the episode-sourced condition this created (matched by

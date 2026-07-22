@@ -19,6 +19,7 @@ import {
   incrementSupply,
   ensureMedicationCourse,
   setMedicationActive,
+  setMedicationEndDate,
 } from "@/lib/queries";
 import {
   resolveProviderIdByName,
@@ -460,6 +461,18 @@ export async function updateSupplement(
   if (hasCourseId && (!Number.isInteger(courseId) || courseId <= 0)) {
     return formError("Couldn't find that medication course.");
   }
+  // End date (#1140 Part D): the current course's `stopped_on`. Empty ⇒ active (no end);
+  // a date ⇒ ended as of that date. Medications only; validated not-future here, routed
+  // through the shared stop/restart cores below (never a raw stopped_on write).
+  const hasEndDate = f.kind === "medication" && formData.has("end_date");
+  const endDateRaw = String(formData.get("end_date") ?? "").trim();
+  if (
+    hasEndDate &&
+    endDateRaw &&
+    (!isRealIsoDate(endDateRaw) || endDateRaw > todayStr)
+  ) {
+    return formError("Enter an end date that isn't in the future.");
+  }
   const doses = collapsePrnDoses(parseDoses(formData), f.asNeeded === 1);
   const pairs = parsePairs(formData);
   // The on-hand value the form was LOADED with (issue #467): quantity_on_hand is a
@@ -673,6 +686,25 @@ export async function updateSupplement(
                    AND ii.profile_id = ? AND ii.kind = 'medication'
               )`
         ).run(startedOnRaw || null, courseId, id, profile.id);
+      }
+      // End date (#1140 Part D): apply only when it actually changed vs the current
+      // latest-course state (re-read under the write lock, the #467 lifecycle-field
+      // posture) — a no-op edit never churns course history. Setting stops as of that
+      // date; clearing reactivates; both go through the shared cores (setMedicationEndDate),
+      // never a raw column write, so the invariant holds and a Restart-after re-fires a
+      // fresh refill nudge (#325).
+      if (hasEndDate) {
+        const endDateNorm = endDateRaw || null;
+        const cur = db
+          .prepare(
+            `SELECT stopped_on FROM medication_courses
+              WHERE item_id = ? ORDER BY started_on DESC, id DESC LIMIT 1`
+          )
+          .get(id) as { stopped_on: string | null } | undefined;
+        if ((cur?.stopped_on ?? null) !== endDateNorm) {
+          setMedicationEndDate(profile.id, id, endDateNorm);
+          deleteProfileSetting(profile.id, refillMarkerKey(id));
+        }
       }
     }
     return true;
