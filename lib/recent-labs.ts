@@ -9,9 +9,11 @@ import type { MedicalCategory, MedicalFlag, MedicalRecord } from "./types";
 import { biomarkerViewHref, type AppRoute } from "./hrefs";
 
 // Which medical-record categories count as "labs" for the recent-labs surfaces:
-// numeric lab panels and canonical biomarkers, not vitals/scans/prescriptions.
+// `lab` ONLY (#1076). Vitals, screening instruments, derived composites, and
+// immutable facts each have their own home and must not appear in a recent-labs
+// list; the legacy `biomarker` bucket is emptied of real labs (Glucose is now `lab`).
 export const LAB_CATEGORIES: ReadonlySet<MedicalCategory> =
-  new Set<MedicalCategory>(["lab", "biomarker"]);
+  new Set<MedicalCategory>(["lab"]);
 
 // One latest lab/biomarker reading, flattened for display by a surface.
 export interface RecentLabRow {

@@ -137,7 +137,16 @@ const TOOL: Anthropic.Tool = {
             },
             category: {
               type: "string",
-              enum: ["lab", "vitals", "scan", "genomics", "biomarker"],
+              enum: [
+                "lab",
+                "vitals",
+                "scan",
+                "genomics",
+                "biomarker",
+                "instrument",
+                "derived",
+                "reference",
+              ],
             },
             unit: {
               type: ["string", "null"],

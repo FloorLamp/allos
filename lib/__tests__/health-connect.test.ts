@@ -286,7 +286,8 @@ describe("parseHealthConnectPayload — vitals & conversions", () => {
     const glucose = out.vitals.find((v) => v.canonical === "Glucose")!;
     expect(glucose.value_num).toBeCloseTo(99.1, 1);
     expect(glucose.unit).toBe("mg/dL");
-    expect(glucose.category).toBe("biomarker");
+    // #1076: Glucose is a lab, not a vital sign — stays on the lab list.
+    expect(glucose.category).toBe("lab");
     const temp = out.vitals.find((v) => v.canonical === "Body Temperature")!;
     expect(temp.value_num).toBeCloseTo(98.6, 1);
   });

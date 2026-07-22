@@ -328,6 +328,13 @@ export interface CurrentFlaggedReading {
 // digest/hero read raw SQL (`created_at > since AND flag NOT IN ...`) with no
 // current-reading filter, so any historical flagged row leaked through.
 //
+// Category scope (#1076): `category = 'lab'` ONLY. This is the care-tier hero +
+// digest source, so a non-lab flagged reading — a fever ('vitals'), a high BP
+// ('vitals'), a severe PHQ-9 ('instrument') — must NEVER surface here; each is
+// owned by its domain engine (temp-red-flag #859, BP percentiles #150, instrument
+// severity bands #716/#998). The mental-health/substance sensitivity is load-
+// bearing: a depression/alcohol score can never leak into the general health hero.
+//
 // Flag set: the digest denylist (`flag NOT IN ('normal','immune')`) — equivalent
 // to range:"nonoptimal" over the known flag set, and it keeps #544's "immune" (a
 // good durable-immunity status) off the care-tier surface.
@@ -363,6 +370,7 @@ export function getCurrentFlaggedBiomarkers(
               value, flag, date
          FROM medical_records
         WHERE profile_id = ? AND ${LATEST_IN_GROUP}
+          AND category = 'lab'
           AND flag IS NOT NULL AND flag NOT IN ('normal', 'immune')
           ${windowClause}
         ORDER BY date DESC, id ASC`

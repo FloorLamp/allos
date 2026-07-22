@@ -8,6 +8,7 @@ import {
   humanizeAge,
 } from "@/lib/reference-range";
 import { groupContiguous } from "@/lib/table-sort";
+import { NON_BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
 import { filterSeriesByRange } from "@/lib/trends";
 import { formatLongDate } from "@/lib/format-date";
 import type { DateRange } from "@/lib/timeline-format";
@@ -53,8 +54,19 @@ export default async function BiomarkersSection({
   // Sex for the age/sex fitness-percentile inline (#158); age is resolved per row
   // from the reading's date. Null sex hides every percentile (adult-context gate).
   const sex = getUserSex(profile.id);
+  // #1076: the Trends Biomarkers tab is the LAB TRAJECTORY view (years-axis grammar),
+  // so it scopes to labs — the physiologic vitals (BP/SpO2/temperature/resting HR)
+  // re-home to Trends → Vitals, screening instruments to the mental-health/substance
+  // surfaces, derived bio-age to the Longevity hero, immutable facts to the passport.
+  // (The flat /results/biomarkers catalog keeps vitals browsable — see
+  // NON_BIOMARKER_CATEGORIES — but trajectory grammar is lab-only here.)
   const records = filterSeriesByRange(
-    getMedicalRecords(profile.id, { range: flag, panel, sort: "name" }),
+    getMedicalRecords(profile.id, {
+      range: flag,
+      panel,
+      sort: "name",
+      excludeCategories: [...NON_BIOMARKER_CATEGORIES, "vitals"],
+    }),
     range
   );
   // The latest stored AI lab-trend interpretation (issue #20), if any. Not date-

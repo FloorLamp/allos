@@ -11,6 +11,7 @@ import {
   isGarbageCanonical,
 } from "../canonical-name";
 import { unitAwareCanonical } from "../canonical-unit-guard";
+import { canonicalBiomarkerForName } from "../datasets/canonical-biomarkers";
 import { CATEGORIES, FLAGS } from "./constants";
 import type {
   ExtractedPrescription,
@@ -183,7 +184,7 @@ export function normalizeResults(
   for (const r of arr) {
     const name = typeof r?.name === "string" ? r.name.trim() : "";
     if (!name) continue;
-    const category: MedicalCategory = CATEGORIES.includes(r?.category)
+    const modelCategory: MedicalCategory = CATEGORIES.includes(r?.category)
       ? r.category
       : "lab";
     const flag: MedicalFlag | null = FLAGS.includes(r?.flag) ? r.flag : null;
@@ -215,6 +216,20 @@ export function normalizeResults(
       str(r?.unit),
       canonicalIndex
     );
+    // #1076: the canonical dataset owns the classification. When the resolved
+    // canonical name is in the controlled vocabulary, its category WINS over the
+    // model's guess — so an extracted PHQ-9 joins the instrument series (never
+    // /results/biomarkers), a Blood Type files as `reference`, a temperature as
+    // `vitals`, etc. A name outside the vocabulary keeps the model's category.
+    // Prescriptions are never a canonical biomarker, so the rx branch is unaffected.
+    const canonicalEntry = canonicalName
+      ? canonicalBiomarkerForName(canonicalName)
+      : null;
+    const category: MedicalCategory =
+      canonicalEntry &&
+      CATEGORIES.includes(canonicalEntry.category as MedicalCategory)
+        ? (canonicalEntry.category as MedicalCategory)
+        : modelCategory;
     out.push({
       category,
       panel: str(r?.panel),

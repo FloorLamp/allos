@@ -480,8 +480,11 @@ export const CURATED_LABS: Biomarker[] = [
   // "An epigenetic biomarker of aging for lifespan and healthspan," Aging 2018;
   // 10(4):573-591. INFORMATIONAL, NOT MEDICAL ADVICE.
   {
+    // #1076: a computed composite, not a measured lab — categorized `derived` so it
+    // routes to the Longevity bio-age hero and never onto the lab list / retest clock.
+    // Unified with "Biological Age" (its display name), also `derived`.
     name: "PhenoAge",
-    category: "lab",
+    category: "derived",
     unit: "years",
     ref_low: null,
     ref_high: null,
@@ -1126,8 +1129,10 @@ export const CURATED_LABS: Biomarker[] = [
   // "never abnormal, never stale" verdict reachable by name as well as by LOINC.
   // No retest cadence on purpose — a blood group cannot change.
   {
+    // #1076: immutable identity fact — `reference` so it displays on the passport
+    // but never joins the lab list / retest clock (shares the genomics never-stale rule).
     name: "ABO Blood Group",
-    category: "lab",
+    category: "reference",
     unit: null,
     ref_low: null,
     ref_high: null,
@@ -1137,8 +1142,9 @@ export const CURATED_LABS: Biomarker[] = [
     note: "ABO group (A, B, AB, or O). An immutable identity attribute — never flagged, never retested.",
   },
   {
+    // #1076: immutable identity fact — `reference` (see ABO Blood Group).
     name: "Rh Type",
-    category: "lab",
+    category: "reference",
     unit: null,
     ref_low: null,
     ref_high: null,
@@ -1148,8 +1154,9 @@ export const CURATED_LABS: Biomarker[] = [
     note: "Rh(D) factor (positive or negative). An immutable identity attribute — never flagged, never retested.",
   },
   {
+    // #1076: immutable identity fact — `reference` (see ABO Blood Group).
     name: "Blood Type",
-    category: "lab",
+    category: "reference",
     unit: null,
     ref_low: null,
     ref_high: null,
@@ -1760,7 +1767,7 @@ export const CURATED_LABS: Biomarker[] = [
   // A DIAGNOSIS — a screening instrument, not a diagnostic. Public domain (PHQ/GAD).
   {
     name: "PHQ-9",
-    category: "biomarker",
+    category: "instrument",
     unit: null,
     ref_low: null,
     ref_high: null,
@@ -1771,7 +1778,7 @@ export const CURATED_LABS: Biomarker[] = [
   },
   {
     name: "GAD-7",
-    category: "biomarker",
+    category: "instrument",
     unit: null,
     ref_low: null,
     ref_high: null,
@@ -1792,7 +1799,7 @@ export const CURATED_LABS: Biomarker[] = [
   // item text is NOT reproduced anywhere in the app (see lib/substance-use.ts).
   {
     name: "AUDIT-C",
-    category: "biomarker",
+    category: "instrument",
     unit: null,
     ref_low: null,
     ref_high: null,
@@ -1803,7 +1810,7 @@ export const CURATED_LABS: Biomarker[] = [
   },
   {
     name: "AUDIT",
-    category: "biomarker",
+    category: "instrument",
     unit: null,
     ref_low: null,
     ref_high: null,
@@ -1814,7 +1821,7 @@ export const CURATED_LABS: Biomarker[] = [
   },
   {
     name: "DAST-10",
-    category: "biomarker",
+    category: "instrument",
     unit: null,
     ref_low: null,
     ref_high: null,
@@ -1998,13 +2005,27 @@ export const RETEST_WORTHY: string[] = [
   "PSA",
 ];
 
+// Category corrections for AI-GENERATED rows not in CURATED_LABS (#1076). The
+// curated entries carry their corrected `category` inline; this table fixes the
+// handful of model-emitted rows whose category the generator got wrong. Keyed by
+// exact canonical name (case-insensitive), applied last in curateBiomarkers so the
+// committed JSON re-derives categories from ONE source without a model re-run. The
+// #482 principle: category is the surface-selector every consumer reads.
+//   • "Biological Age" — the display name of PhenoAge (both computed composites) →
+//     `derived`, unifying them onto the Longevity bio-age hero. PhenoAge itself is
+//     a CURATED_LABS entry already corrected inline.
+export const CATEGORY_OVERRIDES: Record<string, string> = {
+  "Biological Age": "derived",
+};
+
 // Pure transform: return a copy of `biomarkers` with every CURATED_LABS entry
 // present (its canonical definition replacing any same-named row, so edits here
-// propagate), every AGE_BANDS override applied, and every RETEST_DAYS cadence
-// attached. Deterministic and side-effect free — the committed JSON is a FIXED
-// POINT of this (guarded by a unit test), so the generator and the committed
-// dataset can't silently desync. Existing (non-curated) rows are cloned and keep
-// their order; curated rows are appended in CURATED_LABS order.
+// propagate), every AGE_BANDS override applied, every RETEST_DAYS cadence
+// attached, and every CATEGORY_OVERRIDES correction applied. Deterministic and
+// side-effect free — the committed JSON is a FIXED POINT of this (guarded by a unit
+// test), so the generator and the committed dataset can't silently desync. Existing
+// (non-curated) rows are cloned and keep their order; curated rows are appended in
+// CURATED_LABS order.
 export function curateBiomarkers(biomarkers: Biomarker[]): Biomarker[] {
   const curatedNames = new Set(CURATED_LABS.map((l) => l.name.toLowerCase()));
   const kept = biomarkers
@@ -2031,6 +2052,12 @@ export function curateBiomarkers(biomarkers: Biomarker[]): Biomarker[] {
   for (const name of ENZYME_IU_INTERCHANGEABLE) {
     const row = byName.get(name.toLowerCase());
     if (row) row.conversions = { ...(row.conversions ?? {}), "IU/L": 1 };
+  }
+  // #1076: fix the category of AI-generated rows not in CURATED_LABS (curated rows
+  // already carry their corrected category inline, so this is idempotent for them).
+  for (const [name, category] of Object.entries(CATEGORY_OVERRIDES)) {
+    const row = byName.get(name.toLowerCase());
+    if (row) row.category = category;
   }
   return out;
 }

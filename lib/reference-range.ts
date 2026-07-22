@@ -1376,6 +1376,20 @@ export function isBiomarkerStale(
 ): boolean {
   if (!latestDate) return false;
   if (category === "genomics") return false; // genetics don't change
+  // The retest clock is a LAB grammar (#1076). The non-lab analyte classes never
+  // carry one: immutable facts ('reference') can't change; physiologic vitals
+  // ('vitals' — BP/SpO2/temperature/resting HR) are monitored, not redrawn on a
+  // yearly cadence ("you don't schedule a temperature retest"); screening
+  // instruments ('instrument') and derived composites ('derived') re-administer /
+  // recompute on their own domain logic, never a lab retest nudge. A `lab` reading —
+  // or a legacy null category — keeps the cadence below.
+  if (
+    category === "reference" ||
+    category === "vitals" ||
+    category === "instrument" ||
+    category === "derived"
+  )
+    return false;
   if (immunity) {
     if (isDurableImmunePositive(immunity)) return false; // durable immunity (#516)
     const c = classifyQualitativeResult(

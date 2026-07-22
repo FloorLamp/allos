@@ -58,10 +58,17 @@ export function getPreventiveSatisfactions(
     .all(profileId) as PreventiveSatisfaction[];
 }
 
-// Medical-record categories whose results can satisfy a lab-based screening
-// (cholesterol/A1c/glucose labs; blood-pressure vitals). Genomics/scans/
-// prescriptions are never screening RESULTS in this sense.
-const INFERENCE_RESULT_CATEGORIES = new Set(["lab", "biomarker", "vitals"]);
+// Medical-record categories whose results can satisfy a screening: cholesterol/
+// A1c/glucose labs, blood-pressure vitals, and screening INSTRUMENT scores (#1076
+// — a PHQ-9 satisfies depression screening, an AUDIT-C alcohol screening). The
+// legacy `biomarker` bucket is retained for un-backfilled rows. Genomics/scans/
+// prescriptions/derived/reference are never screening RESULTS in this sense.
+const INFERENCE_RESULT_CATEGORIES = new Set([
+  "lab",
+  "biomarker",
+  "vitals",
+  "instrument",
+]);
 
 // INFERRED satisfactions (issue #86): preventive rules a profile's EXISTING
 // records already satisfy — a colonoscopy procedure, a lipid/A1c result, a

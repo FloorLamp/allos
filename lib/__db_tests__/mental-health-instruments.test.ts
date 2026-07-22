@@ -80,7 +80,8 @@ describe("recordInstrumentScore — the score is a biomarker reading, no flag", 
       value_num: number;
       flag: string | null;
     };
-    expect(row.category).toBe("biomarker");
+    // #1076: the score files as `instrument`, not the general lab bucket.
+    expect(row.category).toBe("instrument");
     expect(row.value_num).toBe(8);
     // No MedicalFlag — the severity band is the on-screen signal, so the score never
     // enters the flagged-biomarker digest push (the #716 no-notification law).

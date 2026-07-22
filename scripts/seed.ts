@@ -2151,17 +2151,19 @@ db.prepare(
 ).run(`${daysAgo(63)} 09:00:00`);
 
 // ── Substance use (#998): a screening score + a reduction target ─────────────
-// One synthetic, lower-risk AUDIT-C reading (a biomarker-shaped instrument score
-// with its three 0..4 item answers) plus an "≤ 7 drinks/week" reduction target
-// (scope_kind 'substance' — CAP semantics, read by lib/queries/substance.ts, never
-// the floor rollup). The alcohol servings the food log above already records are
-// the consumption ledger — a standard drink IS one `alcohol` food-group serving.
+// One synthetic, lower-risk AUDIT-C reading (a screening-instrument score with its
+// three 0..4 item answers) plus an "≤ 7 drinks/week" reduction target (scope_kind
+// 'substance' — CAP semantics, read by lib/queries/substance.ts, never the floor
+// rollup). The alcohol servings the food log above already records are the
+// consumption ledger — a standard drink IS one `alcohol` food-group serving.
+// category 'instrument' (#1076): a screening score files on its own class, off the
+// general lab/biomarker surfaces (and the flagged hero).
 {
   const suScore = db
     .prepare(
       `INSERT INTO medical_records
         (date, category, name, value, value_num, unit, canonical_name, profile_id)
-       VALUES (?, 'biomarker', 'AUDIT-C', '3', 3, NULL, 'AUDIT-C', 1)`
+       VALUES (?, 'instrument', 'AUDIT-C', '3', 3, NULL, 'AUDIT-C', 1)`
     )
     .run(daysAgo(20));
   const suAnswers = db.prepare(

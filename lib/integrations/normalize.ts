@@ -150,7 +150,7 @@ function activityMetricValues(r: NormActivity): (number | string | null)[] {
 export interface NormVital {
   external_id: string; // 'health-connect:<canonical>:<time>'
   date: string; // YYYY-MM-DD (local)
-  category: "vitals" | "biomarker";
+  category: "vitals" | "lab" | "biomarker";
   name: string;
   canonical: string;
   value_num: number;
