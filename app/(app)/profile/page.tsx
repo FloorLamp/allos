@@ -126,9 +126,10 @@ export default async function ProfilePage() {
               Offline emergency card is off
             </h3>
             <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-              Turn it on below to keep an offline-readable copy of {profile.name}
-              &rsquo;s allergies, active medications, conditions, blood type, and
-              emergency contact on this device — so it&rsquo;s available the
+              Turn it on below to keep an offline-readable copy of{" "}
+              {profile.name}
+              &rsquo;s allergies, active medications, conditions, blood type,
+              and emergency contact on this device — so it&rsquo;s available the
               moment it&rsquo;s needed, even with no signal. It&rsquo;s off by
               default: the copy is readable on this device without logging in
               (that&rsquo;s the point in an emergency, but also the trade-off if
