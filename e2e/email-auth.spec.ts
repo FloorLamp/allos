@@ -1,6 +1,6 @@
 import { test, expect, type Browser } from "@playwright/test";
 import fs from "node:fs";
-import { settledClick, followLink } from "./helpers";
+import { settledClick, settledFill, followLink } from "./helpers";
 import { loginAs } from "./nav";
 
 // Outbound email — SMTP foundation + login-lifecycle flows (issue #985). One
@@ -36,16 +36,16 @@ async function cookielessPage(browser: Browser) {
   return ctx.newPage();
 }
 
-// These Settings inputs are CONTROLLED React inputs whose Save reads component
-// STATE, not the DOM (PublicUrlSettings/SmtpSettings build the FormData from `url`
-// state). A `.fill()` BEFORE the client hydrates sets the DOM value (so a naive
-// toHaveValue passes) but never fires onChange, so state stays empty; hydration then
-// re-renders the controlled input back to state and REVERTS the fill — and Save
-// persists the empty value (a valid save: normalizePublicUrl("") is ok). That was
-// the ~1/3 email-auth:58 flake — the value was never in state, NOT a lost write.
-// A toHaveValue check can't catch it (it passes on the pre-hydration DOM value,
-// before the revert), so retry the WHOLE navigate→fill→save and CONFIRM it persisted
-// by reloading: a retry lands post-hydration, where the fill updates state and sticks.
+// Configure/clear the global SMTP + public URL via Settings → Server (admin). These
+// are CONTROLLED React inputs whose Save builds its FormData from component STATE
+// (PublicUrlSettings/SmtpSettings), so a pre-hydration `.fill()` that never fired
+// onChange persists the empty/stale value (a VALID save — normalizePublicUrl("") is
+// ok), the ~1/3-under-load email-auth:58 flake. Two guards, belt-and-suspenders:
+// settledFill waits for React to hydrate the field before filling (value lands in
+// state), AND setSettingAndConfirm retries the whole navigate→fill→save and CONFIRMS
+// it durably persisted by reloading — the reload also settles the DERIVED
+// smtp-needs-public-url warning, which a single apply→revalidate render can still
+// race. settledFill alone got 10/12; the retry+confirm closes the last 2.
 async function setSettingAndConfirm(
   page: import("@playwright/test").Page,
   fill: () => Promise<void>,
@@ -61,20 +61,22 @@ async function setSettingAndConfirm(
   }).toPass({ timeout: 30_000 }); // topass-ok: retry the controlled-input fill+save until it durably persists (pre-hydration fill-revert); reload confirms
 }
 
-// Configure/clear the global SMTP + public URL via Settings → Server (admin).
 async function setSmtp(page: import("@playwright/test").Page, host: string) {
   const hostField = () => page.getByTestId("smtp-host");
   await setSettingAndConfirm(
     page,
     async () => {
-      await hostField().fill(host);
-      await page.getByTestId("smtp-port").fill("587");
-      await page.getByTestId("smtp-from").fill(host ? "allos@example.com" : "");
+      await settledFill(page, hostField(), host);
+      await settledFill(page, page.getByTestId("smtp-port"), "587");
+      await settledFill(
+        page,
+        page.getByTestId("smtp-from"),
+        host ? "allos@example.com" : ""
+      );
     },
     () => page.getByTestId("smtp-apply"),
     async () => {
-      if (host) await expect(hostField()).toHaveValue(host);
-      else await expect(hostField()).toHaveValue("");
+      await expect(hostField()).toHaveValue(host);
     }
   );
 }
@@ -87,7 +89,7 @@ async function setPublicUrl(
   await setSettingAndConfirm(
     page,
     async () => {
-      await field().fill(url);
+      await settledFill(page, field(), url);
     },
     () => card().getByRole("button", { name: "Save" }),
     async () => {

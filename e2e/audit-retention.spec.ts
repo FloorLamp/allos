@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { settledFill } from "./helpers";
 
 // The admin Server settings page exposes the configurable audit-log retention
 // window (issue #98): a generous 24-month default the hourly notify tick prunes
@@ -17,7 +18,9 @@ test.describe("Settings → Server: audit-log retention", () => {
     // Default is the generous 24-month window (no setting stored in the e2e DB).
     await expect(input).toHaveValue("24");
 
-    await input.fill("36");
+    // settledFill: land the value in state before the Save reads it (a pre-hydration
+    // fill of a controlled input reverts → Save persists the stale value — #1188).
+    await settledFill(page, input, "36");
     await page.getByTestId("audit-retention-save").click();
     // Wait for the save to actually land before reloading — the server action is
     // async, so reloading straight after the click races it (the reload can fetch
@@ -30,7 +33,7 @@ test.describe("Settings → Server: audit-log retention", () => {
     await expect(page.getByTestId("audit-retention-months")).toHaveValue("36");
 
     // Restore the default so this global setting doesn't leak into other specs.
-    await page.getByTestId("audit-retention-months").fill("24");
+    await settledFill(page, page.getByTestId("audit-retention-months"), "24");
     await page.getByTestId("audit-retention-save").click();
     await expect(card.getByLabel("Saved")).toBeVisible();
     await page.reload();

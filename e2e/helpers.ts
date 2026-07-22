@@ -135,6 +135,50 @@ export async function settledUpload(
   ]);
 }
 
+// Fill a form field so its value durably lands in React STATE, not just the DOM —
+// the input analog of followLink's pre-hydration guard.
+//
+// Root cause: a `.fill()` dispatched before React hydrates the input sets the DOM
+// value (a plain `toHaveValue` then passes) but never fires the input's `onChange`,
+// so a CONTROLLED input's state stays unchanged and hydration REVERTS the field to
+// state. Anything that then reads STATE — a Save that builds its payload from
+// component state (Settings' `PublicUrlSettings`/`SmtpSettings`) — persists the
+// empty/stale value, SILENTLY (an empty value is often a valid save), and no
+// value-assertion catches it because the DOM looked set. That widened hydration
+// window under `--workers>1`/CI load is the same one followLink handles for clicks;
+// it was the ~1/3-under-load email-auth:58 flake.
+//
+// Wait until React has hydrated THIS element (on hydration React attaches
+// `__reactFiber$…`/`__reactProps$…` own-properties to the DOM node) BEFORE filling,
+// so `.fill()`'s input event fires `onChange` and the value lands in state; then
+// confirm it holds. WORKS for text/number inputs and textareas.
+//
+// NOTE: settledFill guarantees the value reached React state — NOT that a later save
+// or navigation kept it. When the fill feeds a save whose success is SILENT (empty
+// is valid), also confirm the PERSISTED effect after saving (reload + assert), the
+// email-auth precedent.
+export async function settledFill(
+  page: Page,
+  field: Locator,
+  value: string,
+  opts: { timeout?: number } = {}
+): Promise<void> {
+  const timeout = opts.timeout ?? 10_000;
+  await expect(field).toBeVisible();
+  await expect(async () => {
+    const hydrated = await field.evaluate((el) =>
+      Object.keys(el).some(
+        (k) => k.startsWith("__reactFiber$") || k.startsWith("__reactProps$")
+      )
+    );
+    // Not hydrated yet → toPass retries (the fill would be reverted). Once React has
+    // attached, the fill fires onChange and the value sticks in state.
+    expect(hydrated, "input not hydrated yet").toBe(true);
+    await field.fill(value);
+    await expect(field).toHaveValue(value, { timeout: 2_000 });
+  }).toPass({ timeout });
+}
+
 // Follow a Next.js <Link> reliably, retrying the click until the client router
 // actually commits the navigation.
 //
