@@ -3,6 +3,7 @@ import {
   formatLongDate,
   formatMonthDay,
   formatClock,
+  formatClockMinutes,
   formatClockValue,
   formatDateShape,
   formatRelativeDate,
@@ -95,6 +96,29 @@ describe("formatClock", () => {
   it("supports the compact lower-case meridiem style", () => {
     expect(formatClock("12h", 16, 2, "lower-nospace")).toBe("4:02pm");
     expect(formatClock("12h", 0, 0, "lower-nospace")).toBe("12:00am");
+  });
+});
+
+describe("formatClockMinutes", () => {
+  it("formats a minute-of-day through the clock pref (#1163)", () => {
+    // 23:30 = 1410 minutes; 07:02 = 422 minutes.
+    expect(formatClockMinutes("24h", 1410)).toBe("23:30");
+    expect(formatClockMinutes("12h", 1410)).toBe("11:30 PM");
+    expect(formatClockMinutes("24h", 422)).toBe("07:02");
+    expect(formatClockMinutes("12h", 422)).toBe("7:02 AM");
+  });
+
+  it("wraps modulo the day so a noon-anchored hour maps cleanly", () => {
+    // Midnight can arrive as 1440 (24.0h noon-anchored → 1440m) — folds to 00:00.
+    expect(formatClockMinutes("24h", 1440)).toBe("00:00");
+    expect(formatClockMinutes("12h", 1440)).toBe("12:00 AM");
+    // And a negative wraps into range too.
+    expect(formatClockMinutes("24h", -30)).toBe("23:30");
+  });
+
+  it("rounds a fractional minute (decimal-hour × 60) to the nearest minute", () => {
+    // 22.5h noon-anchored → 1350m exactly → 22:30.
+    expect(formatClockMinutes("24h", Math.round(22.5 * 60))).toBe("22:30");
   });
 });
 

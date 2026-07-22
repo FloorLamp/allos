@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/auth";
+import { getDisplayFormatPrefs } from "@/lib/settings";
 import {
   getLastNightSummary,
   getSleepRegularity,
@@ -30,7 +31,8 @@ export const dynamic = "force-dynamic";
 // engine — every section is a thin formatter (the #221 rule). Factual and calm:
 // no sleep score, no gamification (the pillars-not-a-composite stance).
 export default async function SleepPage() {
-  const { profile } = await requireSession();
+  const { login, profile } = await requireSession();
+  const { timeFormat } = getDisplayFormatPrefs(login.id);
 
   const summary = getLastNightSummary(profile.id);
   const sleepReg = getSleepRegularity(profile.id);
@@ -65,7 +67,7 @@ export default async function SleepPage() {
         subtitle="How you slept — last night, your regularity, and how it's trending. Factual signals, never a single score."
       />
 
-      {summary && <SleepHero summary={summary} />}
+      {summary && <SleepHero summary={summary} timeFormat={timeFormat} />}
 
       <OuraScores scores={ouraScores} />
 
@@ -132,13 +134,16 @@ export default async function SleepPage() {
                   data={sleepRegTrend}
                   label="SRI"
                   color={chartSeries.violet}
+                  decimals={0}
                 />
               </div>
             )}
           </div>
         )}
 
-        {consistency.length > 0 && <ConsistencyStrip nights={consistency} />}
+        {consistency.length > 0 && (
+          <ConsistencyStrip nights={consistency} timeFormat={timeFormat} />
+        )}
 
         {stages.length > 0 && (
           <div className="card lg:col-span-2" data-testid="sleep-stages">
@@ -148,6 +153,7 @@ export default async function SleepPage() {
             <StackedBarCard
               data={stages}
               unit=" h"
+              decimals={1}
               series={[
                 { key: "deep", label: "Deep", color: chartSeries.violet },
                 { key: "rem", label: "REM", color: chartSeries.rose },

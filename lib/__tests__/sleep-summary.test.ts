@@ -58,8 +58,11 @@ describe("lastNightSummary", () => {
     const s = lastNightSummary(sessions, TZ)!;
     expect(s.wakeDay).toBe("2026-03-19");
     expect(s.durationMin).toBe(360);
-    expect(s.bedLocal).toBe("23:30");
-    expect(s.wakeLocal).toBe("05:30");
+    // Bed/wake are emitted as minute-of-day NUMBERS (#1163), never baked strings —
+    // the render layer formats them through the login's clock pref. 23:30 = 1410m,
+    // 05:30 = 330m.
+    expect(s.bedMinutes).toBe(23 * 60 + 30);
+    expect(s.wakeMinutes).toBe(5 * 60 + 30);
     expect(s.napMin).toBe(0);
   });
 
@@ -120,8 +123,8 @@ describe("baselineDeltaPhrase", () => {
   const base = {
     wakeDay: "2026-03-19",
     durationMin: 360,
-    bedLocal: "23:00",
-    wakeLocal: "05:00",
+    bedMinutes: 23 * 60,
+    wakeMinutes: 5 * 60,
     napMin: 0,
     baselineAvgMin: 480,
     baselineNights: 7,

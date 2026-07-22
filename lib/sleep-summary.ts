@@ -32,9 +32,11 @@ export interface LastNightSummary {
   wakeDay: string;
   // Main overnight session duration, minutes.
   durationMin: number;
-  // Local wall-clock "HH:MM" of sleep onset and wake for the main session.
-  bedLocal: string;
-  wakeLocal: string;
+  // Local minute-of-day (0..1439) of sleep onset and wake for the main session.
+  // A NUMBER, not a baked clock string, so the render layer formats it through the
+  // login's 12h/24h pref (formatClockMinutes) — issue #1163.
+  bedMinutes: number;
+  wakeMinutes: number;
   // Sum of any OTHER (nap) sessions that wake-day, minutes; 0 when there were none.
   napMin: number;
   // Trailing-baseline mean of MAIN-session durations over the prior `baselineDays`
@@ -116,8 +118,8 @@ export function lastNightSummary(
   return {
     wakeDay: latest,
     durationMin,
-    bedLocal: zonedDateParts(tz, new Date(main.start)).hhmm,
-    wakeLocal: zonedDateParts(tz, new Date(main.end)).hhmm,
+    bedMinutes: hhmmToMinutes(zonedDateParts(tz, new Date(main.start)).hhmm),
+    wakeMinutes: hhmmToMinutes(zonedDateParts(tz, new Date(main.end)).hhmm),
     napMin,
     baselineAvgMin,
     deltaMin,
@@ -159,6 +161,13 @@ export interface ConsistencyNight {
   bedHour: number; // noon-relative decimal hour of onset (12.0 = noon .. 36.0)
   wakeHour: number; // noon-relative decimal hour of wake
   weekend: boolean;
+}
+
+// Minute-of-day (0..1439) of a local "HH:MM". The model emits this NUMBER so the
+// render layer formats the clock through the login's 12h/24h pref (#1163).
+function hhmmToMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
 }
 
 // Noon-anchored decimal clock hour of a local "HH:MM": 12:00→12.0, 23:30→23.5,

@@ -5,6 +5,7 @@ import {
   formatHm,
   type LastNightSummary,
 } from "@/lib/sleep-summary";
+import { formatClockMinutes, type TimeFormat } from "@/lib/format-date";
 import { timelineDayHref } from "@/lib/hrefs";
 import { chartSeries } from "@/lib/chart-colors";
 
@@ -66,7 +67,13 @@ function StageBar({
   );
 }
 
-export default function SleepHero({ summary }: { summary: LastNightSummary }) {
+export default function SleepHero({
+  summary,
+  timeFormat,
+}: {
+  summary: LastNightSummary;
+  timeFormat: TimeFormat;
+}) {
   const delta = baselineDeltaPhrase(summary);
   return (
     <section className="card mb-6" data-testid="sleep-hero">
@@ -103,7 +110,8 @@ export default function SleepHero({ summary }: { summary: LastNightSummary }) {
       </div>
 
       <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-        Asleep {summary.bedLocal} → {summary.wakeLocal}
+        Asleep {formatClockMinutes(timeFormat, summary.bedMinutes)} →{" "}
+        {formatClockMinutes(timeFormat, summary.wakeMinutes)}
         {summary.baselineAvgMin != null && (
           <>
             {" "}

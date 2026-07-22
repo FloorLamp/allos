@@ -43,7 +43,7 @@ import {
   buildProtocolTrendWindows,
 } from "@/lib/trends-series";
 import { projectGoal, describeEta } from "@/lib/trend-projection";
-import { formatLongDate } from "@/lib/format-date";
+import { formatLongDate, formatClockMinutes } from "@/lib/format-date";
 import { isGoalLive } from "@/lib/goals";
 import type { BodyMetricKind, Goal } from "@/lib/types";
 import type { DateRange } from "@/lib/timeline-format";
@@ -538,7 +538,16 @@ export default async function BodySection({ range }: { range: DateRange }) {
                         {formatHm(lastNight.durationMin)}
                       </div>
                       <div className="text-xs text-slate-500 dark:text-slate-400">
-                        Last night · {lastNight.bedLocal}–{lastNight.wakeLocal}
+                        Last night ·{" "}
+                        {formatClockMinutes(
+                          formatPrefs.timeFormat,
+                          lastNight.bedMinutes
+                        )}
+                        –
+                        {formatClockMinutes(
+                          formatPrefs.timeFormat,
+                          lastNight.wakeMinutes
+                        )}
                       </div>
                     </div>
                   )}
