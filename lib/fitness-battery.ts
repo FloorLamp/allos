@@ -36,12 +36,7 @@ import {
 // The scoring tiers (see the header). `self-norm` (#1135) is the rough-band ladder for the
 // two isometric holds; `self-trend` is the reference-less residue (currently unused).
 export type FitnessTier =
-  | "norms"
-  | "standard"
-  | "evidence"
-  | "body"
-  | "self-norm"
-  | "self-trend";
+  "norms" | "standard" | "evidence" | "body" | "self-norm" | "self-trend";
 
 // The per-domain profile the check feeds (per-domain FitnessPercentile bars; NO new
 // aggregate — fitness age stays the only headline).

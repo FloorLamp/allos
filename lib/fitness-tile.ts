@@ -79,11 +79,7 @@ function evidenceState(heat: number): string {
 // tier-specific detail) — the reference lookups already ran in the model.
 export function buildFitnessTile(r: FitnessTestResult): FitnessTile {
   const deltaArrow: "up" | "down" | null =
-    r.delta == null || r.delta === 0
-      ? null
-      : r.improved
-        ? "up"
-        : "down";
+    r.delta == null || r.delta === 0 ? null : r.improved ? "up" : "down";
 
   if (!r.measured) {
     return {
@@ -126,7 +122,8 @@ export function buildFitnessTile(r: FitnessTestResult): FitnessTile {
       break;
     case "body":
       basis = "body";
-      overlay = heat != null && heat >= 100 ? "in healthy range" : "outside range";
+      overlay =
+        heat != null && heat >= 100 ? "in healthy range" : "outside range";
       break;
     case "evidence":
       basis = "evidence";
@@ -135,7 +132,9 @@ export function buildFitnessTile(r: FitnessTestResult): FitnessTile {
     case "self-norm":
       basis = "self-norm";
       roughGuide = true;
-      overlay = r.selfNorm ? `${r.selfNorm.bandLabel} · rough guide` : "rough guide";
+      overlay = r.selfNorm
+        ? `${r.selfNorm.bandLabel} · rough guide`
+        : "rough guide";
       break;
     default:
       basis = "self-trend";

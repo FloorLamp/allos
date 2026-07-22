@@ -50,7 +50,9 @@ export default function FitnessCheckView({
   const tiles = buildFitnessTiles(model.results);
   const [openKey, setOpenKey] = useState<string | null>(null);
   const openDef = openKey ? byKey.get(openKey) : null;
-  const openTile = openKey ? tiles.find((t) => t.key === openKey) ?? null : null;
+  const openTile = openKey
+    ? (tiles.find((t) => t.key === openKey) ?? null)
+    : null;
 
   return (
     <PageContainer width="full" data-testid="fitness-check">
@@ -69,8 +71,9 @@ export default function FitnessCheckView({
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
             An at-a-glance board of your whole battery — green is favorable, red
             wants attention, grey isn&apos;t measured yet. Tiles auto-count a
-            recent value you synced or logged; tap any square to record or update
-            it. Scores feed your existing fitness age and healthspan pillars.
+            recent value you synced or logged; tap any square to record or
+            update it. Scores feed your existing fitness age and healthspan
+            pillars.
             {senior ? " Showing the older-adult variant." : ""}
           </p>
           {model.headlineFitnessAge && (
@@ -255,7 +258,10 @@ function Tile({
             )}
           </>
         ) : (
-          <div className="text-xs opacity-70" data-testid={`fitness-unmeasured-${tile.key}`}>
+          <div
+            className="text-xs opacity-70"
+            data-testid={`fitness-unmeasured-${tile.key}`}
+          >
             {missingEquipment ? "no equipment" : "not measured"}
           </div>
         )}

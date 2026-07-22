@@ -160,7 +160,9 @@ export function buildFitnessHoldNorms(): HoldNormsDataset {
 function writeDataset(): void {
   const dataset = buildFitnessHoldNorms();
   fs.writeFileSync(OUT, JSON.stringify(dataset, null, 2) + "\n");
-  console.log(`Wrote ${dataset.entries.length} rough hold-norm ladders to ${OUT}`);
+  console.log(
+    `Wrote ${dataset.entries.length} rough hold-norm ladders to ${OUT}`
+  );
   console.log("Review the coarse cutoffs for plausibility before committing.");
 }
 

@@ -372,8 +372,7 @@ function latestBodyReading(
         ORDER BY date DESC, id DESC LIMIT 1`
     )
     .get(profileId) as
-    | { value: number; date: string; source: string | null }
-    | undefined;
+    { value: number; date: string; source: string | null } | undefined;
   return row ?? null;
 }
 
@@ -414,12 +413,18 @@ export function getAmbientFitnessReadings(
       if (def.key === "biglift") {
         // The big lift is user-chosen; scan the standard barbell lifts for the newest heavy
         // set and reduce to e1RM (tie on date → the stronger e1RM).
-        let pick:
-          | { value: number; date: string; source: string | null; lift: string }
-          | null = null;
+        let pick: {
+          value: number;
+          date: string;
+          source: string | null;
+          lift: string;
+        } | null = null;
         for (const lift of BIG_LIFT_OPTIONS) {
           const stat = newestSetStat(latestSetRows(profileId, lift), (r) =>
-            r.weight_kg != null && r.reps != null && r.weight_kg > 0 && r.reps > 0
+            r.weight_kg != null &&
+            r.reps != null &&
+            r.weight_kg > 0 &&
+            r.reps > 0
               ? estimate1RM(r.weight_kg, r.reps)
               : null
           );
@@ -446,7 +451,10 @@ export function getAmbientFitnessReadings(
           store.timed === true
             ? (r: SetRow) => r.duration_sec
             : (r: SetRow) => r.reps;
-        const stat = newestSetStat(latestSetRows(profileId, store.lift), reduce);
+        const stat = newestSetStat(
+          latestSetRows(profileId, store.lift),
+          reduce
+        );
         if (stat) {
           out.push({
             testKey: def.key,

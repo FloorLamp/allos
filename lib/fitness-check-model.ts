@@ -193,9 +193,17 @@ function classifyAmbient(
   }
   // manual / null / journal — logged, not synced.
   if (storeKind === "set") {
-    return { kind: "logged", sourceName: "your journal", label: "from a logged set" };
+    return {
+      kind: "logged",
+      sourceName: "your journal",
+      label: "from a logged set",
+    };
   }
-  return { kind: "logged", sourceName: "your journal", label: "from your data" };
+  return {
+    kind: "logged",
+    sourceName: "your journal",
+    label: "from your data",
+  };
 }
 
 function entryFor(a: AssessmentLike | null, key: string) {
@@ -374,7 +382,11 @@ export function buildFitnessCheckModel(
     let delta: number | null = null;
     let improved: boolean | null = null;
     if (current) {
-      const prev = newestSessionEntryOnOrBefore(sessions, def.key, current.date);
+      const prev = newestSessionEntryOnOrBefore(
+        sessions,
+        def.key,
+        current.date
+      );
       if (prev) {
         delta = Math.round((value! - prev.value) * 100) / 100;
         if (delta === 0) improved = null;
