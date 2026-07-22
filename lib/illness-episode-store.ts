@@ -16,10 +16,11 @@
 // INSIDE the same writeTx that flips situations.active (lib/settings/profile-attrs.ts),
 // so the active-situation set and the open row never disagree ("never two truths").
 
-import { db, writeTx } from "./db";
+import { db, today, writeTx } from "./db";
 import { shiftDateStr } from "./date";
 import { rangeContainsDate, EXCLUSIVE_END } from "./date-range";
 import { episodeConditionExternalId } from "./illness-episode-format";
+import { episodeReopenEligibility } from "./illness-episode-reopen";
 import {
   clearEpisodeVisitLinks,
   reparentEpisodeVisitLinks,
@@ -145,6 +146,30 @@ export function mostRecentClosedEpisodeRow(
       )
       .get(profileId) as IllnessEpisodeRow | undefined) ?? null
   );
+}
+
+// The profile's most-recently resolved episode that is STILL within its 7-day reopen
+// window (#1140 Part A) — the dashboard "Recently resolved — reopen?" affordance's
+// subject. Uses the SAME episodeReopenEligibility rule as the detail page (one
+// computation, #221). Returns null when there's no closed episode, it has expired, or the
+// same situation is currently OPEN again (that's a hero cockpit, not a reopen prompt).
+export interface ReopenEligibleEpisode {
+  id: number;
+  situation: string;
+  endedAt: string;
+}
+
+export function reopenEligibleEpisodeForProfile(
+  profileId: number
+): ReopenEligibleEpisode | null {
+  const row = mostRecentClosedEpisodeRow(profileId);
+  if (!row || !row.ended_at) return null;
+  if (
+    episodeReopenEligibility(row.ended_at, today(profileId)).kind !== "eligible"
+  )
+    return null;
+  if (getOpenEpisodeRow(profileId, row.situation)) return null;
+  return { id: row.id, situation: row.situation, endedAt: row.ended_at };
 }
 
 // The count of DISTINCT days within [start, end] (inclusive) that fell inside a
