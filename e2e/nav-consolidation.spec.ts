@@ -92,8 +92,8 @@ test("Cycle entry shows for a female premenopausal profile; the folded Medical g
     await expect(nav.getByRole("link", { name: "Cycle" })).toBeVisible();
     // The #1042 target Medical group — Health record · Results · Medications ·
     // Illness episodes · Cycle · Passport — is present. (Substance use, a #998
-    // surface that post-dates the #1042 design, also lives here and is untouched by
-    // this PR.)
+    // surface, folded into Health record › Specialty as an adult-gated section in
+    // #1175, so it is no longer a Medical nav leaf.)
     for (const present of [
       "Health record",
       "Results",
@@ -108,14 +108,16 @@ test("Cycle entry shows for a female premenopausal profile; the folded Medical g
     for (const gone of ["Conditions", "Providers", "Coverage gaps", "Visits"]) {
       await expect(nav.getByRole("link", { name: gone })).toHaveCount(0);
     }
-    // … and the four specialty leaves + the standalone Crisis support leaf are gone
-    // too (all folded into Health record; /crisis-resources stays a route, only its
-    // nav slot was removed).
+    // … and the specialty leaves (incl. Substance use, folded into Records ›
+    // Specialty in #1175) + the standalone Crisis support leaf are gone too (all
+    // folded into Health record; /crisis-resources stays a route, only its nav slot
+    // was removed).
     for (const gone of [
       "Vision",
       "Dental",
       "Skin",
       "Mental health",
+      "Substance use",
       "Crisis support",
     ]) {
       await expect(nav.getByRole("link", { name: gone })).toHaveCount(0);

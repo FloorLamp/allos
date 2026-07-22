@@ -141,7 +141,8 @@ const FIRST_ALLOW: Record<string, number> = {
   "drug-allergy.spec.ts": 3,
   "drug-interactions.spec.ts": 4,
   "edit-lock-badge.spec.ts": 2,
-  "emergency-card.spec.ts": 3,
+  // emergency-card.spec.ts dropped to 0 .first() in #1087 (its Saved-indicator
+  // checks moved to the Passport, which has a single SaveStatus — no .first() needed).
   "encounters.spec.ts": 2,
   "endurance-plans.spec.ts": 2,
   "entry-ergonomics.spec.ts": 24,

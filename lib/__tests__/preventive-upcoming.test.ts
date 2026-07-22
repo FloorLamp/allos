@@ -80,13 +80,13 @@ describe("preventiveHref — per-class deep link from satisfiedBy (#1083)", () =
       "/records/specialty/mental-health?screen=GAD-7"
     );
     expect(preventiveHref("screening", "alcohol_screening")).toBe(
-      "/medical/substance-use?screen=AUDIT-C"
+      "/records/specialty/substance-use?screen=AUDIT-C"
     );
   });
 
   it("instrument total-only → the SAME ?screen= link (form focuses total entry)", () => {
     expect(preventiveHref("screening", "drug_use_screening")).toBe(
-      "/medical/substance-use?screen=DAST-10"
+      "/records/specialty/substance-use?screen=DAST-10"
     );
   });
 
@@ -163,7 +163,7 @@ describe("preventiveNudgeAction — shared link+CTA for the nudge (#1083/#221)",
     });
     const nudge = preventiveNudgeAction(a, TODAY)!;
     const row = preventiveAssessmentToUpcomingItem(a, { today: TODAY });
-    expect(nudge.href).toBe("/medical/substance-use?screen=DAST-10");
+    expect(nudge.href).toBe("/records/specialty/substance-use?screen=DAST-10");
     expect(nudge.label).toBe("Enter your DAST-10 score");
     // Row and nudge agree — one computation, no hand-mirroring.
     expect(nudge.href).toBe(row.href);
@@ -260,12 +260,12 @@ describe("preventiveAssessmentToUpcomingItem", () => {
       ],
       [
         "alcohol_screening",
-        "/medical/substance-use?screen=AUDIT-C",
+        "/records/specialty/substance-use?screen=AUDIT-C",
         "Complete the AUDIT-C",
       ],
       [
         "drug_use_screening",
-        "/medical/substance-use?screen=DAST-10",
+        "/records/specialty/substance-use?screen=DAST-10",
         "Enter your DAST-10 score",
       ],
     ];

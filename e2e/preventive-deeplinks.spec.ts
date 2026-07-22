@@ -49,7 +49,7 @@ test.describe("preventive deep-links per class (#1083)", () => {
     await expect(page).toHaveURL(destination);
   }
 
-  test("instrument total-only → substance-use page with DAST-10 preselected (Enter your score)", async () => {
+  test("instrument total-only → substance-use section with DAST-10 preselected (Enter your score)", async () => {
     test.slow();
     // The CTA names the total-only verb (can't be administered in-app).
     const cta = page
@@ -58,9 +58,11 @@ test.describe("preventive deep-links per class (#1083)", () => {
     await page.goto("/upcoming");
     await expect(cta).toHaveText(/Enter your DAST-10 score/);
 
+    // #1175: substance-use is now the Records › Specialty section (an adult-gated
+    // route), so the preventive deep link lands on /records/specialty/substance-use.
     await followCta(
       "drug_use_screening",
-      /\/medical\/substance-use\?screen=DAST-10/
+      /\/records\/specialty\/substance-use\?screen=DAST-10/
     );
     // DAST-10 preselected ⇒ the total-only note (its item text isn't shipped) shows.
     await expect(

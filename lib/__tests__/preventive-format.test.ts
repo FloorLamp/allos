@@ -118,7 +118,7 @@ describe("renderPreventiveMessage", () => {
         item({
           ruleKey: "drug_use_screening",
           name: "Drug use screening",
-          href: "/medical/substance-use?screen=DAST-10",
+          href: "/records/specialty/substance-use?screen=DAST-10",
           ctaLabel: "Enter your DAST-10 score",
         }),
         3,
@@ -126,7 +126,7 @@ describe("renderPreventiveMessage", () => {
       );
       expect(msg.actions![0].label).toBe("Enter your DAST-10 score");
       expect(msg.actions![0].url).toBe(
-        "https://allos.example/medical/substance-use?screen=DAST-10"
+        "https://allos.example/records/specialty/substance-use?screen=DAST-10"
       );
     });
 
