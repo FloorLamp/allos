@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page, type Locator } from "@playwright/test";
 import Database from "better-sqlite3";
 import path from "node:path";
 import { followLink } from "./helpers";
@@ -16,6 +16,33 @@ import {
   prnTodayItem,
   openMedDetailViaLink,
 } from "./med-card-helpers";
+
+// Open a medication row's portaled "⋯" actions menu and navigate via one of its
+// item links. Two hydration races stack here (the #1139 portaled-"Stop medication"
+// flake, deterministic once CI dropped to retries=0 under full-suite load): (1) a
+// click on the trigger during the post-navigation hydration window is swallowed so
+// the portal never opens, and (2) a pre-hydration click on the item link dismisses
+// the menu WITHOUT navigating, so a plain followLink then retries a click on a
+// menuitem that no longer exists. The menu is CLIENT-SIDE (no Server-Action POST to
+// settle on), so the honest fix is ONE retry loop that (re)opens the menu if it
+// closed, clicks the item, and waits for the URL to commit — every step retried
+// together, so a closed menu is simply reopened on the next attempt.
+async function openRowMenuItemAndFollow(
+  page: Page,
+  row: Locator,
+  itemName: string,
+  destination: RegExp
+): Promise<void> {
+  const item = page.getByRole("menuitem", { name: itemName });
+  await expect(async () => {
+    if (!(await item.isVisible().catch(() => false))) {
+      await row.getByRole("button", { name: "Medication actions" }).click();
+      await expect(item).toBeVisible({ timeout: 2_000 });
+    }
+    await item.click();
+    await page.waitForURL(destination, { timeout: 3_000 });
+  }).toPass({ timeout: 20_000 }); // topass-ok: reopen-if-closed + click + await-URL for a client-side portaled menu-nav past post-nav hydration — no awaitable POST to settle on
+}
 
 // #817 Medications page redesign: the Today panel (scheduled dose check-off + PRN
 // administration row), the /medications/[id] clinical-record detail page, and the
@@ -173,10 +200,10 @@ test("medication row actions open the requested detail workflow", async ({
   await page.goto("/medications");
   const row = medicationRow(page, "Adherence Refill Med (e2e)");
 
-  await row.getByRole("button", { name: "Medication actions" }).click();
-  await followLink(
+  await openRowMenuItemAndFollow(
     page,
-    page.getByRole("menuitem", { name: "Edit" }),
+    row,
+    "Edit",
     /\/medications\/\d+\?action=edit$/
   );
   await expect(page.getByRole("combobox", { name: "Name" })).toBeVisible();
@@ -184,12 +211,10 @@ test("medication row actions open the requested detail workflow", async ({
 
   await page.goto("/medications");
   const refreshedRow = medicationRow(page, "Adherence Refill Med (e2e)");
-  await refreshedRow
-    .getByRole("button", { name: "Medication actions" })
-    .click();
-  await followLink(
+  await openRowMenuItemAndFollow(
     page,
-    page.getByRole("menuitem", { name: "Stop medication" }),
+    refreshedRow,
+    "Stop medication",
     /\/medications\/\d+\?action=stop$/
   );
   await expect(page.getByTestId("stop-medication-form")).toBeVisible();
