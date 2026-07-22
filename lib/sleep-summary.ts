@@ -16,7 +16,7 @@ import {
   type DisplayFormatPrefs,
 } from "./format-date";
 import {
-  mainSleepSession,
+  mainSleepPeriod,
   sleepSessionDurationMinutes,
   type SleepSession,
 } from "./sleep-regularity";
@@ -97,12 +97,16 @@ export function lastNightSummary(
   const days = [...byDay.keys()].sort();
   const latest = days[days.length - 1];
   const group = byDay.get(latest)!;
-  const main = mainSleepSession(group);
-  if (!main) return null; // every session that day was a labeled nap
+  const period = mainSleepPeriod(group);
+  if (!period) return null; // every session that day was a labeled nap
 
-  const durationMin = sleepSessionDurationMinutes(main);
+  // A merged segmented night (#1191) is ONE main sleep spanning its fragments: its
+  // duration is the summed asleep minutes, and only sessions OUTSIDE the merged
+  // members count as a same-day nap (a deliberate second sleep is no longer a nap).
+  const durationMin = period.durationMin;
+  const members = new Set<SleepSession>(period.members);
   const napMin = group
-    .filter((s) => s !== main)
+    .filter((s) => !members.has(s))
     .reduce((t, s) => t + sleepSessionDurationMinutes(s), 0);
 
   // Baseline: the mean MAIN-session duration over the prior wake-days that fall in
@@ -112,8 +116,8 @@ export function lastNightSummary(
   const priorMains: number[] = [];
   for (const d of days) {
     if (d >= latest || d < lower) continue;
-    const m = mainSleepSession(byDay.get(d)!);
-    if (m) priorMains.push(sleepSessionDurationMinutes(m));
+    const m = mainSleepPeriod(byDay.get(d)!);
+    if (m) priorMains.push(m.durationMin);
   }
   const baselineNights = priorMains.length;
   const baselineAvgMin =
@@ -125,8 +129,10 @@ export function lastNightSummary(
   return {
     wakeDay: latest,
     durationMin,
-    bedMinutes: hhmmToMinutes(zonedDateParts(tz, new Date(main.start)).hhmm),
-    wakeMinutes: hhmmToMinutes(zonedDateParts(tz, new Date(main.end)).hhmm),
+    // Merged night spans the outer edges: onset of the first fragment → wake of the
+    // last (#1191). For a single overnight these are its own bed/wake, unchanged.
+    bedMinutes: hhmmToMinutes(zonedDateParts(tz, new Date(period.start)).hhmm),
+    wakeMinutes: hhmmToMinutes(zonedDateParts(tz, new Date(period.end)).hhmm),
     napMin,
     baselineAvgMin,
     deltaMin,
@@ -135,7 +141,7 @@ export function lastNightSummary(
     // a hero explicitly describing the MAIN overnight session; the full stage
     // chart below remains an honest wake-day total.
     stages: napMin > 0 ? null : (stagesByDay.get(latest) ?? null),
-    source: main.source ?? null,
+    source: period.main.source ?? null,
   };
 }
 
