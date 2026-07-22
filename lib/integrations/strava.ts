@@ -264,6 +264,12 @@ export function mapStravaActivity(
     avg_speed_kmh: boundedOrNull("speed_kmh", mps(rec.average_speed)),
     max_speed_kmh: boundedOrNull("speed_kmh", mps(rec.max_speed)),
     relative_effort: roundOrNull(num(rec.suffer_score)),
+    // Strava's MANUAL 1–10 RPE (subjective session effort) → activities.intensity,
+    // the subjective effort seam (issue #1125). Distinct from relative_effort above,
+    // which stays the HR-derived suffer_score — the two effort signals never cross.
+    // Null perceived_exertion leaves intensity NULL (no invented rating); the shared
+    // upsert's edit-lock (#133) then lets a later in-app/#1122 rating win on re-sync.
+    intensity: rpeToIntensity(num(rec.perceived_exertion)),
     avg_power_w: isCycling
       ? boundedOrNull("power_w", roundOrNull(num(rec.average_watts)))
       : null,
@@ -349,4 +355,24 @@ export function mapStravaActivity(
 
 function roundOrNull(v: number | null): number | null {
   return v == null ? null : Math.round(v);
+}
+
+// Map Strava's `perceived_exertion` — the athlete's MANUAL 1–10 RPE ("how hard it
+// FELT", the subjective half of Strava's Relative Effort) — onto the app's
+// manual-entry intensity scale ('easy' | 'moderate' | 'hard'), the one column an
+// integration may fill in activities.intensity (issue #1125). This is a
+// subjective→subjective map only: it is the same NATURE of signal a hand-entered
+// session-effort rating is, so an imported ride carries the same label a self-rated
+// one would. Strava's OTHER effort number, `suffer_score` (HR-derived load), stays
+// on relative_effort and is DELIBERATELY never crossed into intensity — mapping an
+// objective load score into the subjective column would double-count (it already
+// feeds the HR-derived loading split) and launder two distinct identities into one
+// (#482). Banding matches the app's own RPE anchors (INTENSITIES hints in
+// lib/activity-form-model): 1–3 easy, 4–6 moderate, 7+ hard. Absent/out-of-scale
+// (<= 0 / non-finite / null) → null, so an import never invents a rating.
+export function rpeToIntensity(rpe: number | null | undefined): string | null {
+  if (rpe == null || !Number.isFinite(rpe) || rpe <= 0) return null;
+  if (rpe <= 3) return "easy";
+  if (rpe <= 6) return "moderate";
+  return "hard";
 }

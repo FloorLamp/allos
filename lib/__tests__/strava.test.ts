@@ -3,6 +3,7 @@ import {
   mapStravaActivity,
   stravaSportName,
   splitCamelCase,
+  rpeToIntensity,
 } from "@/lib/integrations/strava";
 
 // A minimal Strava summary-activity record; override per test.
@@ -237,5 +238,50 @@ describe("mapStravaActivity — route capture (#569)", () => {
   it("returns a null route for an activity with no map (e.g. a trainer ride)", () => {
     const res = mapStravaActivity(stravaRec({ trainer: true }));
     expect(res!.route).toBeNull();
+  });
+});
+
+describe("rpeToIntensity — subjective 1–10 RPE → intensity band (#1125)", () => {
+  it("bands the boundary values 3/4/6/7 into easy/moderate/hard", () => {
+    // 1–3 easy, 4–6 moderate, 7+ hard — pinned at the 3/4 and 6/7 seams.
+    expect(rpeToIntensity(1)).toBe("easy");
+    expect(rpeToIntensity(3)).toBe("easy");
+    expect(rpeToIntensity(4)).toBe("moderate");
+    expect(rpeToIntensity(6)).toBe("moderate");
+    expect(rpeToIntensity(7)).toBe("hard");
+    expect(rpeToIntensity(10)).toBe("hard");
+  });
+
+  it("absent / out-of-scale / non-finite → null (no invented rating)", () => {
+    expect(rpeToIntensity(null)).toBeNull();
+    expect(rpeToIntensity(undefined)).toBeNull();
+    expect(rpeToIntensity(0)).toBeNull();
+    expect(rpeToIntensity(-2)).toBeNull();
+    expect(rpeToIntensity(NaN)).toBeNull();
+  });
+});
+
+describe("mapStravaActivity — perceived_exertion → intensity (#1125)", () => {
+  it("maps the manual RPE onto activities.intensity while suffer_score stays on relative_effort", () => {
+    const res = mapStravaActivity(
+      stravaRec({ perceived_exertion: 8, suffer_score: 142 })
+    );
+    const a = res!.activity;
+    // Subjective RPE → intensity (the subjective seam)...
+    expect(a.intensity).toBe("hard");
+    // ...and the objective HR-derived load stays exactly where it was (never crossed).
+    expect(a.relative_effort).toBe(142);
+  });
+
+  it("moderate-band RPE maps to 'moderate'", () => {
+    const res = mapStravaActivity(stravaRec({ perceived_exertion: 5 }));
+    expect(res!.activity.intensity).toBe("moderate");
+  });
+
+  it("no perceived_exertion → intensity NULL (unchanged from today), suffer_score untouched", () => {
+    const res = mapStravaActivity(stravaRec({ suffer_score: 90 }));
+    const a = res!.activity;
+    expect(a.intensity ?? null).toBeNull();
+    expect(a.relative_effort).toBe(90);
   });
 });
