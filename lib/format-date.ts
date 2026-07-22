@@ -60,6 +60,20 @@ export function formatClock(
   return `${h12}:${pad2(m)}${sep}${ap}`;
 }
 
+// Render a minute-of-day (0..1439) as a wall clock through the SAME pref seam as
+// `formatClock`, so a pure model can emit a time NUMBER and let the render layer
+// pick the clock convention (issue #1163 — models emit time numbers, one formatter
+// produces the string). Values are normalized modulo the day, so a noon-anchored
+// hour (12..36) mapped to minutes wraps correctly (1440 → 00:00). Pure.
+export function formatClockMinutes(
+  timeFormat: TimeFormat,
+  minutesOfDay: number,
+  meridiem: "upper-space" | "lower-nospace" = "upper-space"
+): string {
+  const total = (((Math.round(minutesOfDay) % 1440) + 1440) % 1440) | 0;
+  return formatClock(timeFormat, Math.floor(total / 60), total % 60, meridiem);
+}
+
 // Format stored/read-only clock text through the same login preference seam as
 // `formatClock`. Accepts canonical HH:MM[:SS] and legacy 12-hour display strings;
 // unknown imported text is preserved rather than silently disappearing.

@@ -13,6 +13,7 @@ import {
 import { useChartColors } from "./useChartColors";
 import { formatLongDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import { roundChartValue } from "@/lib/chart-format";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -29,12 +30,18 @@ export default function StackedBarCard({
   series,
   unit = "",
   labelPrefix = "",
+  decimals,
 }: {
   data: Record<string, number | string>[];
   series: StackedSeries[];
   unit?: string;
   // Prefix for the tooltip's date label, e.g. "Week of " → "Week of June 8".
   labelPrefix?: string;
+  // Display precision for the tooltip value so it reads a ROUNDED number, never a
+  // raw unit conversion like "1.5333333 h" (issue #403/#1162). Omitted → cap at 2
+  // decimals, matching LineChartCardInner. The full-precision value stays the bar's
+  // domain input; only the tooltip text is rounded.
+  decimals?: number;
 }) {
   const formatPrefs = useFormatPrefs();
   const c = useChartColors();
@@ -74,7 +81,10 @@ export default function StackedBarCard({
           />
           <Tooltip
             cursor={{ fill: c.grid, fillOpacity: 0.5 }}
-            formatter={(v, name) => [`${v}${unit}`, name]}
+            formatter={(v, name) => [
+              `${roundChartValue(Number(v), decimals)}${unit}`,
+              name,
+            ]}
             labelFormatter={labelFmt ? (v) => labelFmt(String(v)) : undefined}
             contentStyle={{
               fontSize: 12,

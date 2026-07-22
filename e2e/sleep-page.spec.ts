@@ -1,6 +1,18 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_CHILD, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+
+// Flip a Settings → Preferences select and wait for the autosave to LAND. The card
+// shows a "Saved" check only after the Server Action's write commits, so gating on
+// it can't race an uncommitted write (mirrors date-time-format-prefs.spec's helper).
+async function selectAndSave(
+  page: Page,
+  testId: string,
+  value: string
+): Promise<void> {
+  await page.getByTestId(testId).selectOption(value);
+  await expect(page.getByLabel("Saved")).toBeVisible();
+}
 
 // The dedicated Sleep page (issue #1066). Profile 1 (the seeded admin) has the
 // #160 SRI nights + the #1066 stage/nap fixture (e2e/seed-events.ts), so the page
@@ -133,6 +145,86 @@ test.describe("Sleep page (#1066)", () => {
       ).toHaveCount(0);
     } finally {
       await page.context().close();
+    }
+  });
+
+  test("chart tooltips render ROUNDED values, never raw unit-converted floats (#1162)", async ({
+    page,
+  }) => {
+    await page.goto("/sleep");
+    const main = page.getByRole("main");
+
+    // Stage composition stacked bar: the page feeds bare minute→hour conversions
+    // (r.deep / 60), so a 92-min stage is 1.5333… h. With decimals=1 the tooltip
+    // reads a SHORT rounded number ("1.5 h"), never the raw float — the StackedBar
+    // twin of the #403 LineChart fix (StackedBarCardInner used to skip it).
+    const stagesCard = main.getByTestId("sleep-stages");
+    await expect(stagesCard).toBeVisible();
+    // Hover a bar directly: a recharts BarChart opens its tooltip only when the
+    // pointer is over a bar element (not the plot area), so drive it with the
+    // element's own .hover() and re-hover per attempt until the tooltip renders.
+    const stageBar = stagesCard.locator(".recharts-bar-rectangle").first(); // first-ok: the first (deep) bar in the spec-owned stage chart; hovering any bar opens the same stacked tooltip
+    await stageBar.waitFor({ state: "attached", timeout: 15_000 });
+    const stageTip = stagesCard.locator(".recharts-tooltip-wrapper");
+    await expect(async () => {
+      await page.mouse.move(5, 5); // leave the chart so the next hover re-enters
+      await stageBar.hover();
+      const txt = (await stageTip.innerText()).trim();
+      expect(txt).toContain("h");
+      // No raw unit conversion: nowhere a number with 2+ decimals (e.g. 1.5333333).
+      expect(txt).not.toMatch(/\d\.\d{2,}/);
+    }).toPass({ timeout: 15_000 }); // topass-ok: recharts opens the tooltip only after a hover mousemove — re-hover per attempt, no single awaitable render event
+
+    // SRI trend line: decimals=0 so the tooltip is an INTEGER — like the headline
+    // (which is Math.round(sri)), never the raw "87 vs 87.34" mismatch #403 named.
+    const sriCard = main.getByTestId("sleep-regularity");
+    const sriDot = sriCard.locator(".recharts-dot").first(); // first-ok: any point on the spec-owned SRI trend line opens the same tooltip
+    await sriDot.waitFor({ state: "attached", timeout: 15_000 });
+    const sriTip = sriCard.locator(".recharts-tooltip-wrapper");
+    await expect(async () => {
+      await page.mouse.move(5, 5);
+      await sriDot.hover();
+      const txt = (await sriTip.innerText()).trim();
+      expect(txt).toContain("SRI");
+      // Integer only — never a fractional SRI in the tooltip.
+      expect(txt).not.toMatch(/\d\.\d/);
+    }).toPass({ timeout: 15_000 }); // topass-ok: recharts opens the tooltip only after a hover mousemove — re-hover per attempt, no single awaitable render event
+  });
+
+  test("clock times follow the login's 12h/24h pref on the hero + consistency strip (#1163)", async ({
+    page,
+  }) => {
+    try {
+      // Default (24h): the seeded main session (23:00 → 04:00 local) renders as a
+      // 24-hour clock, and the consistency strip carries no AM/PM.
+      await page.goto("/sleep");
+      const main = page.getByRole("main");
+      const hero = main.getByTestId("sleep-hero");
+      await expect(hero).toContainText("23:00");
+      await expect(hero).toContainText("04:00");
+      const strip = main.getByTestId("sleep-consistency");
+      await expect(strip).toBeVisible();
+      await expect(strip).not.toContainText("PM");
+
+      // Flip the login's clock to 12h on Settings → Preferences (autosave on change).
+      await page.goto("/settings");
+      await selectAndSave(page, "time-format-select", "12h");
+      await expect(page.getByTestId("time-format-select")).toHaveValue("12h");
+
+      // The SAME values now render 12-hour on BOTH surfaces — the pure model emits
+      // time numbers, formatClock at the render layer picks the convention (#1163).
+      await page.goto("/sleep");
+      const hero12 = page.getByRole("main").getByTestId("sleep-hero");
+      await expect(hero12).toContainText("11:00 PM");
+      await expect(hero12).toContainText("4:00 AM");
+      await expect(
+        page.getByRole("main").getByTestId("sleep-consistency")
+      ).toContainText("PM");
+    } finally {
+      // Restore the default so the shared admin login preference doesn't leak.
+      await page.goto("/settings");
+      await selectAndSave(page, "time-format-select", "24h");
+      await expect(page.getByTestId("time-format-select")).toHaveValue("24h");
     }
   });
 

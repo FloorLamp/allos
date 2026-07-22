@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ConsistencyNight } from "@/lib/sleep-summary";
+import { formatClockMinutes, type TimeFormat } from "@/lib/format-date";
 import { timelineDayHref } from "@/lib/hrefs";
 import { chartSeries } from "@/lib/chart-colors";
 
@@ -17,17 +18,19 @@ function pct(hour: number): number {
   return ((hour - AXIS_START) / AXIS_SPAN) * 100;
 }
 
-// Compact "HH:MM" from a noon-anchored decimal hour (12→36) → wall clock.
-function clock(hour: number): string {
-  const h = Math.floor(hour) % 24;
-  const m = Math.round((hour - Math.floor(hour)) * 60) % 60;
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+// Pref-aware wall clock from a noon-anchored decimal hour (12→36). The hour is a
+// NUMBER; the render layer picks the 12h/24h convention via formatClockMinutes
+// (#1163) — no hand-rolled padStart clock string.
+function clock(hour: number, timeFormat: TimeFormat): string {
+  return formatClockMinutes(timeFormat, Math.round(hour * 60));
 }
 
 export default function ConsistencyStrip({
   nights,
+  timeFormat,
 }: {
   nights: ConsistencyNight[];
+  timeFormat: TimeFormat;
 }) {
   // Newest first so the most recent night is at the top.
   const rows = [...nights].reverse();
@@ -61,11 +64,14 @@ export default function ConsistencyStrip({
                     ? chartSeries.amber
                     : chartSeries.violet,
                 }}
-                title={`${clock(n.bedHour)} → ${clock(n.wakeHour)}`}
+                title={`${clock(n.bedHour, timeFormat)} → ${clock(
+                  n.wakeHour,
+                  timeFormat
+                )}`}
               />
             </span>
             <span className="w-24 shrink-0 text-right text-xs tabular-nums text-slate-500 dark:text-slate-400">
-              {clock(n.bedHour)}–{clock(n.wakeHour)}
+              {clock(n.bedHour, timeFormat)}–{clock(n.wakeHour, timeFormat)}
             </span>
           </Link>
         ))}

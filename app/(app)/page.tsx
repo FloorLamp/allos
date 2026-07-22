@@ -567,7 +567,11 @@ export default async function Dashboard() {
         return <HealthspanPillarsWidget pillars={pillars} />;
       case "sleep-last-night":
         return sleepSummary ? (
-          <SleepLastNightWidget summary={sleepSummary} sri={sleepSri} />
+          <SleepLastNightWidget
+            summary={sleepSummary}
+            sri={sleepSri}
+            timeFormat={formatPrefs.timeFormat}
+          />
         ) : null;
       case "weight-trend":
         return (
