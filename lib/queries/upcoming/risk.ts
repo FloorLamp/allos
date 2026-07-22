@@ -28,11 +28,15 @@ export const getRiskFactors = cache(function getRiskFactors(
   return deriveRiskFactors({
     // Coded refs, not bare labels (#1030): both tables store code/code_system,
     // so the recognizers run code-first with the stem fallback — a coded-terse
-    // row ("DM2" as E11.9) tightens cadence like its verbose twin.
+    // row ("DM2" as E11.9) tightens cadence like its verbose twin. Family rows also
+    // carry onset_age (early-onset cadence tightening, #1039 path 4) and relation
+    // (threaded for a future degree-gating pass, #1039 Ask 5 — not consumed today).
     familyConditions: getFamilyHistory(profileId).map((f) => ({
       name: f.condition,
       code: f.code,
       codeSystem: f.code_system,
+      relation: f.relation,
+      onsetAge: f.onset_age,
     })),
     activeConditions: getConditions(profileId, { status: "active" }).map(
       (c) => ({ name: c.name, code: c.code, codeSystem: c.code_system })

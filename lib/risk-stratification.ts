@@ -24,6 +24,7 @@
 import {
   conditionCodeConcepts,
   conditionInputName,
+  type CodedConditionRef,
   type ConditionConcept,
   type ConditionInput,
 } from "./condition-codes";
@@ -37,6 +38,16 @@ import type { GenomicResultType, GenomicSignificance } from "./types/medical";
 export type RiskFactor =
   | "family-cardiovascular"
   | "family-cancer"
+  // Site-specific family-cancer factors (#1039). Family history reaches the
+  // screening cadence engine site-specifically now, not as the flat (inert)
+  // family-cancer bucket: a family colorectal / breast cancer row RANKS + explains
+  // the matching screening (standard cadence), and its EARLY-ONSET twin — activated
+  // only when a family row's onset_age is below the site's guideline threshold —
+  // TIGHTENS the screening's cadence (the highest-value family signal, #1039 path 4).
+  | "family-colorectal"
+  | "family-colorectal-early-onset"
+  | "family-breast"
+  | "family-breast-early-onset"
   | "family-diabetes"
   | "family-glaucoma"
   // Hereditary-risk genomic factors (#711 / #707 Phase 2). Each is activated ONLY
@@ -86,9 +97,14 @@ export const EMPTY_RISK_ATTRIBUTES: RiskAttributes = {
 // The already-gathered inputs the classifier reads. The query layer fills these
 // from profile-scoped reads; this module never touches the DB.
 export interface RiskInputs {
-  // family_history.condition labels (any relation) — bare strings, or coded refs
-  // carrying the row's code/code_system so the code table counts too (#1030).
-  familyConditions: ConditionInput[];
+  // family_history rows — bare condition strings (legacy/manual callers + tests),
+  // or the structured ref carrying the row's code/code_system (so the code table
+  // counts too, #1030) PLUS the two family-specific signals: onset_age (feeds the
+  // early-onset cadence tightening, #1039 path 4) and relation. "Any relation" is
+  // deliberate (#1039 Ask 5 — first-degree gating is deferred as a product call);
+  // `relation` is threaded on the shape so that future pass needs no re-gather, not
+  // consumed by the classifier today.
+  familyConditions: FamilyConditionInput[];
   // The profile's ACTIVE conditions — bare names or coded refs (#1030).
   activeConditions: ConditionInput[];
   attributes: RiskAttributes;
@@ -113,6 +129,19 @@ export interface RiskInputs {
   // predating it keep working (absence → no factor).
   ototoxicMedication?: boolean;
 }
+
+// A family_history row as the classifier sees it (#1039): the coded condition ref
+// (name + optional code/code_system — a CodedConditionRef, so conditionCodeConcepts
+// and conditionInputName accept it directly) PLUS the two family-specific signals.
+// `onsetAge` is the relative's age at diagnosis (family_history.onset_age) and feeds
+// the early-onset cadence tightening; `relation` is the free-text relation label,
+// threaded for a future degree-gating pass (#1039 Ask 5) but NOT consumed today. A
+// bare string is still accepted for legacy/manual callers (FamilyInput below).
+export interface FamilyConditionRef extends CodedConditionRef {
+  relation?: string | null;
+  onsetAge?: number | null;
+}
+export type FamilyConditionInput = string | FamilyConditionRef;
 
 // The variant fields the hereditary-risk classifier reads — a structural subset of
 // GenomicVariant (gene + the two ROUTING discriminators). Keyed on the GENE (the
@@ -154,6 +183,24 @@ const FAMILY_KEYWORDS: { factor: RiskFactor; stems: string[] }[] = [
     factor: "family-cancer",
     stems: ["cancer", "carcinoma", "melanoma", "lymphoma", "leukemia"],
   },
+  // Site-specific family-cancer stems (#1039) — the NAME fallback for the coded
+  // site concepts (colorectal-cancer / breast-cancer). A colorectal/breast row
+  // fires the site factor AND the family-cancer catch-all above (both stems match),
+  // so the flat bucket stays true while the site cadence gets its own signal. The
+  // colorectal stems cover the issue's named cases the code table can't (Lynch
+  // syndrome, FAP/polyposis, "colonic polyps", "adenocarcinoma of colon").
+  {
+    factor: "family-colorectal",
+    stems: [
+      "colorectal",
+      "colon",
+      "rectal cancer",
+      "rectal carcinoma",
+      "lynch",
+      "polyposis",
+    ],
+  },
+  { factor: "family-breast", stems: ["breast cancer", "breast carcinoma"] },
   { factor: "family-diabetes", stems: ["diabetes", "diabetic"] },
   // Family history of glaucoma → earlier / more frequent comprehensive eye exams
   // (AAO). Drives the vision_exam visit cadence (#699). "glaucoma" is specific
@@ -198,8 +245,38 @@ const FAMILY_CONCEPT_FACTORS: {
 }[] = [
   { factor: "family-cardiovascular", concepts: ["cardiovascular-disease"] },
   { factor: "family-cancer", concepts: ["malignant-neoplasm"] },
+  // Site-specific family-cancer concepts (#1039) — consulted alongside the flat
+  // malignant-neoplasm catch-all, so a coded colon-cancer row ("CRC" + C18.9)
+  // activates BOTH family-colorectal and family-cancer regardless of its name.
+  { factor: "family-colorectal", concepts: ["colorectal-cancer"] },
+  { factor: "family-breast", concepts: ["breast-cancer"] },
   { factor: "family-diabetes", concepts: ["diabetes"] },
   { factor: "family-glaucoma", concepts: ["glaucoma"] },
+];
+
+// Site-specific family-cancer EARLY-ONSET rules (#1039 path 4). A family row that
+// matched the `base` site factor AND carries an onset_age BELOW `maxOnsetAge`
+// (years) additionally activates the `early` factor, which tightens the site's
+// screening cadence (RISK_RULES below). A MISSING onset age → base factor only
+// (conservative: never fabricates an early onset). Thresholds are the guideline
+// early-onset ages: first-degree colorectal cancer < 60 (ACS/USMSTF earlier +
+// 5-yearly colonoscopy), breast cancer < 50 (premenopausal; NCCN/ACS earlier
+// mammography). Curated + cited, mirroring the other risk tables' discipline.
+const FAMILY_EARLY_ONSET: {
+  base: RiskFactor;
+  early: RiskFactor;
+  maxOnsetAge: number;
+}[] = [
+  {
+    base: "family-colorectal",
+    early: "family-colorectal-early-onset",
+    maxOnsetAge: 60,
+  },
+  {
+    base: "family-breast",
+    early: "family-breast-early-onset",
+    maxOnsetAge: 50,
+  },
 ];
 
 // The curated GENE → hereditary-risk factor table (#711). EXCLUSION-DISCIPLINED:
@@ -280,14 +357,30 @@ export function deriveRiskFactors(inputs: RiskInputs): Set<RiskFactor> {
   for (const raw of inputs.familyConditions) {
     // Code table first (family_history rows carry code/code_system too, #1030),
     // stem match as the name fallback — unioned, same shape as the personal-
-    // condition recognizer above.
+    // condition recognizer above. Collected PER ROW so the onset-age rule below can
+    // key on what THIS row matched (a distant relative's late-onset colorectal row
+    // must not lend its onset age to a first-degree row's factor).
+    const rowFactors = new Set<RiskFactor>();
     const concepts = conditionCodeConcepts(raw);
     for (const { factor, concepts: keys } of FAMILY_CONCEPT_FACTORS) {
-      if (keys.some((k) => concepts.has(k))) factors.add(factor);
+      if (keys.some((k) => concepts.has(k))) rowFactors.add(factor);
     }
     const n = norm(conditionInputName(raw));
     for (const { factor, stems } of FAMILY_KEYWORDS) {
-      if (stems.some((s) => n.includes(s))) factors.add(factor);
+      if (stems.some((s) => n.includes(s))) rowFactors.add(factor);
+    }
+    for (const f of rowFactors) factors.add(f);
+
+    // Early-onset cadence tightening (#1039 path 4): a site row whose onset_age is
+    // below the site's guideline threshold additionally activates the early-onset
+    // factor. A missing/unknown onset age → base factor only (conservative fallback;
+    // never a fabricated early onset). relation is intentionally NOT consulted here
+    // ("any relation" simplification, #1039 Ask 5).
+    const onsetAge = typeof raw === "string" ? null : (raw.onsetAge ?? null);
+    if (onsetAge != null) {
+      for (const { base, early, maxOnsetAge } of FAMILY_EARLY_ONSET) {
+        if (rowFactors.has(base) && onsetAge < maxOnsetAge) factors.add(early);
+      }
     }
   }
   for (const f of conditionsToRiskFactors(inputs.activeConditions)) {
@@ -393,6 +486,53 @@ export const RISK_RULES: RiskRule[] = [
     priority: 2,
     reason: "Family history of heart disease",
     source: "ACC/AHA (informational)",
+  },
+  // ---- Family-history site-specific cancer screening (#1039) -------------------
+  // Family history reaches the screening cadence engine SITE-specifically now, not
+  // as the flat (inert) family-cancer bucket (#1039 paths 2 & 3). A family colorectal
+  // / breast cancer row RANKS the matching screening and explains WHY — priority-only
+  // via `screeningRules` (screeningPriorityFor), so the catalog cadence is unchanged =
+  // the "standard family cadence." When the row carries an EARLY onset_age (below the
+  // site's guideline threshold — FAMILY_EARLY_ONSET), the early-onset twin factor also
+  // TIGHTENS the screening's cadence via `screeningCadenceRules` (screeningModulationFor),
+  // the highest-value family signal (#1039 path 4). A missing onset age keeps the
+  // standard cadence — never fabricated. Deliberately relation-blind ("any relation",
+  // #1039 Ask 5). The flat family-cancer bucket stays a catch-all with no cadence rule
+  // (still true for any cancer, drives nothing on its own) — a site row activates it
+  // AND the site factor, no conflict.
+  {
+    factor: "family-colorectal",
+    screeningRules: ["colorectal_cancer"],
+    cadenceMultiplier: 1,
+    priority: 2,
+    reason: "Family history of colorectal cancer",
+    source: "ACS / USMSTF (informational)",
+  },
+  {
+    factor: "family-colorectal-early-onset",
+    screeningCadenceRules: ["colorectal_cancer"],
+    cadenceMultiplier: 0.5,
+    priority: 3,
+    reason:
+      "Family history of early-onset colorectal cancer — earlier, more frequent colonoscopy recommended (ACS/USMSTF)",
+    source: "ACS / USMSTF (informational)",
+  },
+  {
+    factor: "family-breast",
+    screeningRules: ["mammography"],
+    cadenceMultiplier: 1,
+    priority: 2,
+    reason: "Family history of breast cancer",
+    source: "ACS / NCCN (informational)",
+  },
+  {
+    factor: "family-breast-early-onset",
+    screeningCadenceRules: ["mammography"],
+    cadenceMultiplier: 0.5,
+    priority: 3,
+    reason:
+      "Family history of early-onset breast cancer — earlier, more frequent mammography recommended (NCCN / ACS)",
+    source: "NCCN / ACS (informational)",
   },
   // Managing diabetes → HbA1c on a tighter (≈ quarterly-of-its-base) clock and
   // ranked up. (An in-range A1c still curates to ~90d; this keeps a flagged/at-risk
