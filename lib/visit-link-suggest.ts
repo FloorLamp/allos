@@ -1,7 +1,5 @@
 // Record ↔ visit and episode ↔ visit link SUGGESTION engine (issues #1050/#1053).
 //
-import { daysBetweenDateStr } from "./date";
-//
 // PURE — no DB, no network. Every function takes already-loaded rows and returns
 // plain data, so the whole file is exhaustively unit-testable (the confidence
 // matrix, the ≥2-encounter picker rule, the episode-containment rule, the
@@ -30,6 +28,8 @@ import { daysBetweenDateStr } from "./date";
 // medical_records category='prescription' row (its own candidate domain) — it is the
 // SINGLE `medication` (intake_items) entity, so a prescription is ONE candidate and
 // the cross-domain double-listing symptom is gone at the root.
+import { daysBetweenDateStr } from "./date";
+
 export type VisitLinkDomain =
   | "condition"
   | "procedure"
@@ -253,8 +253,7 @@ export function distanceToWindow(
   if (date >= firstDay && date <= lastActiveDay) return 0;
   const before = daysBetweenDateStr(date, firstDay); // >0 when date is before window
   const after = daysBetweenDateStr(lastActiveDay, date); // >0 when date is after window
-  const gap =
-    date < firstDay ? (before ?? 0) : after ?? 0;
+  const gap = date < firstDay ? (before ?? 0) : (after ?? 0);
   return Math.abs(gap);
 }
 
@@ -283,7 +282,9 @@ export function orderEpisodeManualCandidates<T extends EpisodeManualCandidate>(
     !!firstDay && !!lastActiveDay && d >= firstDay && d <= lastActiveDay;
   return candidates
     .filter(
-      (c) => inRange(c.date) || distanceToWindow(c.date, firstDay, lastActiveDay) <= maxGap
+      (c) =>
+        inRange(c.date) ||
+        distanceToWindow(c.date, firstDay, lastActiveDay) <= maxGap
     )
     .sort((a, b) => {
       const ar = inRange(a.date) ? 1 : 0;

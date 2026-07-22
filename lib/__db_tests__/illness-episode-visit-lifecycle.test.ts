@@ -9,10 +9,7 @@ import Database from "better-sqlite3";
 import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { up as up094 } from "@/lib/migrations/versions/094-episode-encounters";
-import {
-  linkEpisodeToEncounter,
-  encountersForEpisode,
-} from "@/lib/queries";
+import { linkEpisodeToEncounter, encountersForEpisode } from "@/lib/queries";
 import {
   createEpisodeRow,
   deleteEpisodeRow,
@@ -81,7 +78,9 @@ describe("migration 094 data move (single FK → link rows)", () => {
       "CREATE INDEX idx_illness_episodes_encounter ON illness_episodes(profile_id, encounter_id);"
     );
     mem.exec("INSERT INTO profiles(id) VALUES (1);");
-    mem.exec("INSERT INTO encounters(id,profile_id,date) VALUES (7,1,'2024-01-01');");
+    mem.exec(
+      "INSERT INTO encounters(id,profile_id,date) VALUES (7,1,'2024-01-01');"
+    );
     mem.exec(
       "INSERT INTO illness_episodes(profile_id,situation,started_at,encounter_id) VALUES (1,'Flu','2024-01-01',7);"
     );
@@ -150,9 +149,11 @@ describe("episode delete + merge carry the visit-link side-state (#1198/#203)", 
 
     expect(mergeEpisodeRows(p, keep, drop)).toBe(keep);
     // Keeper now holds the union (shared collapses to one).
-    expect(encountersForEpisode(p, keep).map((e) => e.id).sort()).toEqual(
-      [shared, only].sort()
-    );
+    expect(
+      encountersForEpisode(p, keep)
+        .map((e) => e.id)
+        .sort()
+    ).toEqual([shared, only].sort());
     // Loser has no residual links, and its stopped-med record moved to the keeper.
     expect(
       db
@@ -178,13 +179,23 @@ describe("recently-resolved reopen eligibility (#1140 Part A)", () => {
 
     const q = newProfile("Expired");
     // Resolved 8 days ago: last active = today-8 ⇒ ended_at = today-7 (> 7-day window).
-    createEpisodeRow(q, "Cold", shiftDateStr(today(q), -12), shiftDateStr(today(q), -7));
+    createEpisodeRow(
+      q,
+      "Cold",
+      shiftDateStr(today(q), -12),
+      shiftDateStr(today(q), -7)
+    );
     expect(reopenEligibleEpisodeForProfile(q)).toBeNull();
   });
 
   it("hides the affordance when the same situation is open again (a hero cockpit)", () => {
     const p = newProfile("Relapse");
-    createEpisodeRow(p, "Flu", shiftDateStr(today(p), -8), shiftDateStr(today(p), -2));
+    createEpisodeRow(
+      p,
+      "Flu",
+      shiftDateStr(today(p), -8),
+      shiftDateStr(today(p), -2)
+    );
     // A currently-open Flu episode → not a reopen prompt.
     createEpisodeRow(p, "Flu", shiftDateStr(today(p), -1), null);
     expect(reopenEligibleEpisodeForProfile(p)).toBeNull();

@@ -25,8 +25,11 @@ beforeEach(() => seedActor());
 
 function lastItemId(): number {
   return Number(
-    (db.prepare("SELECT MAX(id) AS id FROM intake_items").get() as { id: number })
-      .id
+    (
+      db.prepare("SELECT MAX(id) AS id FROM intake_items").get() as {
+        id: number;
+      }
+    ).id
   );
 }
 function latestCourse(itemId: number): {
@@ -48,9 +51,7 @@ function latestCourse(itemId: number): {
 function courseCount(itemId: number): number {
   return (
     db
-      .prepare(
-        "SELECT COUNT(*) AS n FROM medication_courses WHERE item_id = ?"
-      )
+      .prepare("SELECT COUNT(*) AS n FROM medication_courses WHERE item_id = ?")
       .get(itemId) as { n: number }
   ).n;
 }
