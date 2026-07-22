@@ -165,7 +165,6 @@ const FIRST_ALLOW: Record<string, number> = {
   // profile 1's body metrics that /trends?tab=body reads; exposed only when
   // co-located at --repeat-each). Its two .first() stay frozen until a focused fix.
   "edit-lock-badge.spec.ts": 2,
-  "entry-ergonomics.spec.ts": 24,
   // illness-care carries a latent class-1 flake (a sibling mutates profile 1's
   // seeded illness state; exposed only when co-located at --repeat-each). Its lone
   // .first() stays frozen here until that flake is fixed in a focused follow-up.
