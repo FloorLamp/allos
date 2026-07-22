@@ -38,7 +38,7 @@ test("the attention item menu opens an opaque popover and light-dismisses", asyn
 
   const trigger = hero
     .getByRole("button", { name: "Snooze or dismiss" })
-    .first();
+    .first(); // first-ok: any attention item's snooze/dismiss menu — asserts the menu structure, order-agnostic
   await expect(trigger).toBeVisible();
 
   // Open → the portaled panel renders with the snooze/dismiss options and a
@@ -79,7 +79,7 @@ test("snoozing from the menu runs the action, closes the menu, and hides the ite
   const item = hero
     .locator('[data-testid^="attention-item-"]')
     .filter({ has: page.getByRole("button", { name: "Snooze or dismiss" }) })
-    .first();
+    .first(); // first-ok: the first dismissible attention item; its suppression is dropped again afterward (order-agnostic, self-cleaning)
   await expect(item).toBeVisible();
   const testId = await item.getAttribute("data-testid");
   const signalKey = testId!.replace("attention-item-", "");

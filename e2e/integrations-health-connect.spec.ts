@@ -14,11 +14,11 @@ import { E2E_LOGIN_HC, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 // again each read.
 async function readToken(page: Page): Promise<string> {
   const reveal = page.getByRole("button", { name: "Reveal" });
-  if (await reveal.count()) await reveal.first().click();
+  if (await reveal.count()) await reveal.first().click(); // first-ok: reveals the token (guarded by count; this integration has one token) — order-agnostic
   const tokenCode = page
     .locator("code.font-mono")
     .filter({ hasNotText: "http" });
-  const text = await tokenCode.first().textContent();
+  const text = await tokenCode.first().textContent(); // first-ok: this integration's single token code — order-agnostic
   return (text ?? "").trim();
 }
 
@@ -64,10 +64,9 @@ test.describe("Health Connect integration (#391)", () => {
       const tokenCode = member
         .locator("code.font-mono")
         .filter({ hasNotText: "http" });
+      const code = tokenCode.first(); // first-ok: this integration's single token code, asserted changed after rotate — order-agnostic
       await member.getByTestId("health-connect-rotate").click();
-      await expect(tokenCode.first()).not.toHaveText(first, {
-        timeout: 15_000,
-      });
+      await expect(code).not.toHaveText(first, { timeout: 15_000 });
       const second = await readToken(member);
       expect(second.length).toBeGreaterThan(10);
       expect(second).not.toBe(first);
