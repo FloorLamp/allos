@@ -45,6 +45,9 @@ describe("saveHomeAssistantPrefs", () => {
     expect(cfg.enabled).toBe(true);
     expect(cfg.webhookUrl).toBe(URL);
     expect(cfg.secret).toBe("s3cr3t");
+    // The disabled set is every toggleable kind NOT checked. Since #1108 there is no
+    // separate `upcoming` row (the "what's due" list is the morning digest's Today
+    // section — one `digest` kind), so it isn't among the derived disabled kinds.
     expect(new Set(cfg.disabledKinds)).toEqual(
       new Set([
         "escalation",
@@ -54,7 +57,6 @@ describe("saveHomeAssistantPrefs", () => {
         "food",
         "mood",
         "digest",
-        "upcoming",
         "weekly-recap",
         "milestone",
       ])

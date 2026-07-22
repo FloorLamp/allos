@@ -73,4 +73,12 @@ describe("shared toggleable-kind registry", () => {
     expect(kinds).not.toContain("test");
     expect(kinds).not.toContain("other");
   });
+
+  it("has ONE morning-digest toggle, not a separate `upcoming` row (#1108)", () => {
+    // The "what's due" digest is now the morning digest's Today section — one
+    // message of kind `digest` — so there's no second `upcoming` send to toggle.
+    const kinds = TOGGLEABLE_NOTIFICATION_KINDS.map((k) => k.kind);
+    expect(kinds).toContain("digest");
+    expect(kinds).not.toContain("upcoming");
+  });
 });

@@ -39,6 +39,12 @@ test.describe("Settings IA (#928) — admin", () => {
     await expect(page.getByTestId("push-settings")).toBeVisible();
     await expect(page.getByTestId("notification-matrix")).toBeVisible();
 
+    // One consolidated morning-digest row since #1108 — the "what's due" list is now
+    // the digest's Today section (one message), so the old separate `upcoming` matrix
+    // row is gone while the `digest` row remains.
+    await expect(page.getByTestId("matrix-row-digest")).toBeVisible();
+    await expect(page.getByTestId("matrix-row-upcoming")).toHaveCount(0);
+
     // Guard (moved from home-assistant-notify.spec.ts when that spec went to its
     // own fixture profile): the HA card's submit button is deliberately NOT named
     // "Save" — role name matching is substring-based, and pre-existing specs (e.g.
