@@ -85,9 +85,8 @@ test("dashboard coaching 'Snooze' snoozes the top recommendation (#39)", async (
     has: page.getByTestId("coaching-snooze"),
   });
   await expect(card).toBeVisible();
-  const original = (
-    await card.locator("p.font-semibold").first().textContent()
-  )?.trim();
+  const original = (await card.locator("p.font-semibold").first().textContent()) // first-ok: the scoped coaching card's title text — order-agnostic
+    ?.trim();
   expect(original).toBeTruthy();
 
   await card.getByTestId("coaching-snooze").click();
@@ -108,10 +107,9 @@ test("biomarkers page surfaces a derived clinical index (#40)", async ({
   // "derived indices render", not about pagination order.
   await page.goto("/results?q=non-hdl");
   // The derived index renders its Derived badge.
-  await expect(page.getByTestId("derived-badge").first()).toBeVisible();
-
+  await expect(page.getByTestId("derived-badge").first()).toBeVisible(); // first-ok: asserts a Derived badge renders — order-agnostic presence
   // Non-HDL Cholesterol is derived from the seeded Total + HDL readings.
-  const link = page.getByRole("link", { name: "Non-HDL Cholesterol" }).first();
+  const link = page.getByRole("link", { name: "Non-HDL Cholesterol" }).first(); // first-ok: the seeded Non-HDL Cholesterol result link — order-agnostic
   await followLink(page, link, /\/biomarkers\/view/);
 
   const note = page.getByTestId("derived-note");
@@ -130,9 +128,9 @@ test("biomarkers page surfaces the derived PhenoAge biological age (#157)", asyn
 }) => {
   await page.goto("/results?q=phenoage");
   // Renders with the shared "Derived" badge.
-  await expect(page.getByTestId("derived-badge").first()).toBeVisible();
+  await expect(page.getByTestId("derived-badge").first()).toBeVisible(); // first-ok: asserts a Derived badge renders — order-agnostic presence
 
-  const link = page.getByRole("link", { name: "PhenoAge" }).first();
+  const link = page.getByRole("link", { name: "PhenoAge" }).first(); // first-ok: the seeded PhenoAge result link — order-agnostic
   await followLink(page, link, /\/biomarkers\/view/);
 
   const note = page.getByTestId("derived-note");
@@ -219,7 +217,7 @@ test("command palette surfaces a seeded allergy for 'penicillin' (#19)", async (
   await expect(results.getByText("Allergies", { exact: true })).toBeVisible();
   const hit = results.getByRole("option", { name: /Penicillin/i });
   // Selecting it navigates to the Problems pane (Conditions + Allergies).
-  await followLink(page, hit.first(), /\/records\/problems$/);
+  await followLink(page, hit.first(), /\/records\/problems$/); // first-ok: the command-palette Penicillin allergy result — order-agnostic
   await expect(page).toHaveURL(/\/records\/problems$/);
 });
 
@@ -234,7 +232,7 @@ test("supplements page shows a refill days-left estimate with its basis (#38)", 
   // The supplements list is a shared surface, so take the first refill badge (whichever
   // supplement leads); the `refill-days-left` anatomy is owned by the shared med-card
   // driver (#868 class-2). The assertions below stay in the spec.
-  const badge = refillBadge(page).first();
+  const badge = refillBadge(page).first(); // first-ok: shared list — asserts the days-left FORMAT on whichever refill badge leads (see comment above), not a specific supplement
   await expect(badge).toContainText(/days?\s+left/);
   await expect(badge).toContainText(/based on (your last 30 days|schedule)/);
 });

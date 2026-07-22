@@ -19,7 +19,7 @@ async function pickActivity(page: Page, name: string) {
     .getByRole("listbox")
     .getByRole("button")
     .filter({ hasText: name })
-    .first()
+    .first() // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
     .click();
 }
 
@@ -105,11 +105,11 @@ test("the recap-step effort rating round-trips into activities.intensity (#924)"
   const card = page
     .locator('[id^="activity-"]')
     .filter({ hasText: title })
-    .first();
+    .first(); // first-ok: the activity card THIS spec created (filtered by its unique title)
   await expect(card).toBeVisible();
   await card
     .getByRole("button", { name: new RegExp(title) })
-    .first()
+    .first() // first-ok: the title button in the scoped card
     .click();
   await expect(page.getByRole("button", { name: "Hard" })).toHaveAttribute(
     "aria-pressed",
@@ -126,9 +126,9 @@ test("editing an existing activity never shows the recap step (live-only, #924)"
   // Open any seeded activity card for editing — a retro/edit surface.
   await page
     .locator('[id^="activity-"]')
-    .first()
+    .first() // first-ok: any seeded activity card (opening a retro/edit surface) — order-agnostic
     .getByRole("button")
-    .first()
+    .first() // first-ok: that card's first action button
     .click();
   await expect(page.getByTestId("activity-form")).toBeVisible();
   // No live control strip, no finish button, no recap step on an edit.
@@ -155,7 +155,7 @@ test("the finished-window dashboard shows the session recap card (#924)", async 
     await expect(cardEl.getByTestId("recap-exercise")).toContainText(
       "Bench Press"
     );
-    await expect(cardEl.getByTestId("recap-pr").first()).toBeVisible();
+    await expect(cardEl.getByTestId("recap-pr").first()).toBeVisible(); // first-ok: asserts a PR line renders in the scoped recap card — order-agnostic presence
     await expect(cardEl.getByTestId("recap-rollup")).toContainText(
       "All targets hit"
     );
