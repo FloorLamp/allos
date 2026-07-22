@@ -178,15 +178,12 @@ const FIRST_ALLOW: Record<string, number> = {
   "import-dedup.spec.ts": 3,
   "journal-provenance.spec.ts": 7,
   "medication-prefill.spec.ts": 8,
-  "medications-followups.spec.ts": 6,
   // dose-history-row .first() (newest seeded dose) deferred to a dedicated-fixture
   // pass — its safety rests on every OTHER spec only backdating writes to this
   // SHARED med, which is too fragile to bless with a marker.
   "medications-page.spec.ts": 1,
   "mobile-ui-polish.spec.ts": 8,
   "prn-family.spec.ts": 1,
-  "session-recap.spec.ts": 6,
-  "smoke.spec.ts": 7,
   "symptom-log.spec.ts": 6,
   // two-factor / view-only-access each shed one grant-checkbox .first() when their
   // create+grant dance moved into e2e/family-helpers.ts (which scopes the checkbox by

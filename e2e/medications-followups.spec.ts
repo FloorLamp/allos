@@ -37,7 +37,7 @@ test("add a generic OTC ibuprofen end-to-end (#851 acceptance)", async ({
   await nameInput.fill("Ibuprofen");
   await addCard
     .locator('ul[role="listbox"] button', { hasText: "Advil" })
-    .first()
+    .first() // first-ok: transient combobox list this spec just opened (Advil suggestion); first match is intended
     .click();
   await expect(nameInput).toHaveValue("Ibuprofen");
 
@@ -82,7 +82,7 @@ test("add a generic OTC ibuprofen end-to-end (#851 acceptance)", async ({
   const row = page
     .getByTestId("medication-row")
     .filter({ hasText: "Ibuprofen" })
-    .first();
+    .first(); // first-ok: filtered to the Ibuprofen med this spec just added — one match
   await expect(row).toBeVisible();
   await expect(row.getByTestId("otc-badge")).toBeVisible();
   await expect(row.getByTestId("rx-badge")).toHaveCount(0);
@@ -125,7 +125,7 @@ test("scheduled and PRN rows share the one Today-row primitive (#851 item 10)", 
   // the right-side actions must not reserve an empty row between them.
   const prnRow = page
     .locator('[data-testid="quick-log-prn-item"][data-today-row="1"]')
-    .first();
+    .first(); // first-ok: a today-PRN row — asserts the name/summary layout, order-agnostic
   const [nameBox, summaryBox] = await Promise.all([
     prnRow.getByRole("link").boundingBox(),
     prnRow.getByTestId("prn-day-label").boundingBox(),
@@ -134,7 +134,7 @@ test("scheduled and PRN rows share the one Today-row primitive (#851 item 10)", 
   expect(summaryBox).not.toBeNull();
   expect(summaryBox!.y - (nameBox!.y + nameBox!.height)).toBeLessThanOrEqual(4);
 
-  const scheduledRow = page.getByTestId("today-scheduled-med").first();
+  const scheduledRow = page.getByTestId("today-scheduled-med").first(); // first-ok: asserts a scheduled-med row renders today — order-agnostic presence
   const actionButtons = [
     scheduledRow.getByTestId("dose-take"),
     scheduledRow.getByTestId("dose-skip"),
@@ -166,13 +166,13 @@ test("PRN administration removes with an Undo toast that restores it (#851 item 
   const detail = await openMedDetailViaHref(page, PRN_MED);
   await expect(detail).toBeVisible();
   const rows = detail.getByTestId("prn-administration-row");
-  await expect(rows.first()).toBeVisible();
+  await expect(rows.first()).toBeVisible(); // first-ok: the administration rows this spec logged on its own med — order-agnostic
   // Capture the count dynamically so a CI retry (persisted DB) still balances.
   const before = await rows.count();
   expect(before).toBeGreaterThanOrEqual(1);
 
   // Remove the first administration → "Dose removed." toast + Undo, count drops by one.
-  await rows.first().getByTestId("prn-administration-remove").click();
+  await rows.first().getByTestId("prn-administration-remove").click(); // first-ok: removes an administration row this spec logged — order-agnostic
   await expect(page.getByText("Dose removed.")).toBeVisible();
   await expect(rows).toHaveCount(before - 1);
 
