@@ -858,7 +858,7 @@ export default async function BodySection({
   const sleepGridTile = hasSleep
     ? {
         present: true,
-        latestDate: lastNight?.wakeDay ?? null,
+        latestDate: visibleLastNight?.wakeDay ?? null,
         node: (
           <Link
             href="/sleep"
@@ -875,17 +875,22 @@ export default async function BodySection({
                 aria-hidden
               />
             </div>
-            {lastNight && (
-              <div className="text-2xl font-bold tabular-nums text-slate-800 dark:text-slate-100">
-                {formatHm(lastNight.durationMin)}
-              </div>
+            {visibleLastNight && lastNightPresentation && (
+              <>
+                <div className="text-2xl font-bold tabular-nums text-slate-800 dark:text-slate-100">
+                  {formatHm(visibleLastNight.durationMin)}
+                </div>
+                <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                  {lastNightPresentation.label}
+                </div>
+              </>
             )}
             {sleepReg != null && (
               <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                Regularity {Math.round(sleepReg.sri)}/100
+                Regularity · {sriPresentation(sleepReg.sri).text}
               </div>
             )}
-            {!lastNight && sleepReg == null && (
+            {!visibleLastNight && sleepReg == null && (
               <div className="text-sm text-slate-500 dark:text-slate-400">
                 Open Sleep
               </div>
