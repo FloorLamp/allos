@@ -1344,6 +1344,33 @@
       "name": "Hearing Threshold, Left Ear 8 kHz",
       "full_name": "Hearing Threshold, Left Ear 8 kHz",
       "description": "The softest 8 kHz tone the left ear can hear, in decibels hearing level (dB HL), from an audiogram. Normal hearing is about 25 dB HL or less; a higher number means a louder tone is needed. Lower is better; informational, not a diagnosis."
+    },
+    {
+      "name": "Vitamin D2, 25-Hydroxy",
+      "full_name": "25-Hydroxyvitamin D2 (Ergocalciferol)",
+      "description": "The D2 (ergocalciferol) fraction of stored vitamin D, from dietary or supplemental sources. It is one component of total 25-hydroxyvitamin D, which is what overall vitamin D status is judged on; a low D2 fraction alone is normal for anyone not taking ergocalciferol. Informational, not a diagnosis."
+    },
+    {
+      "name": "Vitamin D3, 25-Hydroxy",
+      "full_name": "25-Hydroxyvitamin D3 (Cholecalciferol)",
+      "description": "The D3 (cholecalciferol) fraction of stored vitamin D, made in skin from sunlight and the most common supplemental form. It is one component of total 25-hydroxyvitamin D, which is what overall vitamin D status is judged on. Informational, not a diagnosis."
+    },
+    {
+      "name": "Vitamin D, 1,25-Dihydroxy",
+      "abbreviation": "Calcitriol",
+      "full_name": "1,25-Dihydroxyvitamin D (Calcitriol)",
+      "description": "The active hormone form of vitamin D, converted mainly in the kidneys from the storage form. It is not used to check routine vitamin D status; it is ordered in specific workups such as hypercalcemia, sarcoidosis, or kidney disease. Informational, not a diagnosis."
+    },
+    {
+      "name": "C-Reactive Protein",
+      "abbreviation": "CRP",
+      "full_name": "C-Reactive Protein",
+      "description": "C-reactive protein is a marker the liver makes in response to inflammation or infection, measured with the standard assay. Higher levels point to active inflammation; it is a different test from the high-sensitivity hs-CRP used to gauge cardiovascular risk. Informational, not a diagnosis."
+    },
+    {
+      "name": "Glucose, Fasting",
+      "full_name": "Fasting Plasma Glucose",
+      "description": "Blood sugar measured after not eating for several hours, used to screen for and monitor prediabetes and diabetes. Normal is roughly 70-99 mg/dL, 100-125 indicates prediabetes, and 126 or higher (confirmed) indicates diabetes. Informational, not a diagnosis."
     }
   ]
 }

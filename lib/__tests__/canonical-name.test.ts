@@ -10,6 +10,7 @@ import {
   HEMOGLOBIN_A1C_FAMILY,
   BIOMARKER_FAMILIES,
   biomarkerFamily,
+  biomarkerRetestIdentity,
   canonicalAliases,
   isGarbageCanonical,
 } from "../canonical-name";
@@ -193,19 +194,45 @@ describe("biomarkerFamily (unified identity — #482)", () => {
   const VITD_KEY = `family:${VITAMIN_D_25OH_FAMILY}`;
   const A1C_KEY = `family:${HEMOGLOBIN_A1C_FAMILY}`;
 
-  it("collapses every 25-hydroxy vitamin-D variant onto ONE identity", () => {
+  it("collapses the TOTAL 25-hydroxy vitamin-D spellings onto ONE identity", () => {
+    // The TOTAL storage-marker spellings share the family identity…
     for (const name of [
       "Vitamin D, 25-Hydroxy",
       "Vitamin D, Total",
       "Vitamin D",
       "25-OH Vitamin D",
+    ]) {
+      expect(biomarkerFamily(name)).toBe(VITD_KEY);
+    }
+  });
+
+  it("gives each D2/D3 fraction its OWN identity, apart from the total (#1193)", () => {
+    // …but the D2/D3 fractions are DISTINCT analytes — each its own trendable series
+    // that flags independently and must NOT dedup/is_latest against the total (the
+    // #482 over-collapse #1193 fixes). biomarkerFamily returns each fraction's own
+    // singleton identity, never the family key.
+    for (const name of [
       "Vitamin D2, 25-Hydroxy",
       "Vitamin D3, 25-Hydroxy",
       "Vit D2",
       "Ergocalciferol",
       "25-OH Vitamin D3 (Cholecalciferol)",
     ]) {
-      expect(biomarkerFamily(name)).toBe(VITD_KEY);
+      expect(biomarkerFamily(name)).not.toBe(VITD_KEY);
+    }
+    // They stay distinct from each other and from the total too.
+    expect(biomarkerFamily("Vitamin D2, 25-Hydroxy")).not.toBe(
+      biomarkerFamily("Vitamin D3, 25-Hydroxy")
+    );
+    // But the BROAD retest clock still binds total + D2 + D3 into one family, so a
+    // fresh total supersedes an old fraction's redraw (biomarkerRetestIdentity).
+    for (const name of [
+      "Vitamin D, 25-Hydroxy",
+      "Vitamin D2, 25-Hydroxy",
+      "Vitamin D3, 25-Hydroxy",
+      "Ergocalciferol",
+    ]) {
+      expect(biomarkerRetestIdentity(name)).toBe(VITD_KEY);
     }
   });
 
@@ -227,6 +254,16 @@ describe("biomarkerFamily (unified identity — #482)", () => {
     // Active metabolite vs the 25-OH storage form.
     expect(biomarkerFamily("1,25-Dihydroxy Vitamin D")).not.toBe(VITD_KEY);
     expect(biomarkerFamily("Calcitriol")).not.toBe(VITD_KEY);
+    expect(biomarkerFamily("Vitamin D, 1,25-Dihydroxy")).not.toBe(VITD_KEY);
+    // The active metabolite is excluded even from the BROAD retest family (#1193).
+    expect(biomarkerRetestIdentity("Vitamin D, 1,25-Dihydroxy")).not.toBe(
+      VITD_KEY
+    );
+    expect(biomarkerRetestIdentity("Calcitriol")).not.toBe(VITD_KEY);
+    // The D2/D3 FRACTIONS keep their own identity — never folded onto the total —
+    // so a flagged D3 can't be masked by a normal total (#1193).
+    expect(biomarkerFamily("Vitamin D2, 25-Hydroxy")).not.toBe(VITD_KEY);
+    expect(biomarkerFamily("Vitamin D3, 25-Hydroxy")).not.toBe(VITD_KEY);
     // Binding protein / receptor are not the status measurement.
     expect(biomarkerFamily("Vitamin D Binding Protein")).not.toBe(VITD_KEY);
     // A plain fasting/random Glucose is NOT the A1c/eAG family — over-collapsing it
@@ -305,7 +342,15 @@ describe("canonical aliases (synonym/abbreviation drift)", () => {
       ["Thyroid Stimulating Hormone (TSH)", "TSH"],
       ["Prostate Specific Antigen (PSA)", "PSA"],
       ["Micronutrient, Vitamin B12", "Vitamin B12"],
-      ["25-OH Vitamin D3", "Vitamin D, 25-Hydroxy"],
+      // The D2/D3 print forms now route to their OWN fraction entries (#1193),
+      // never folded onto the total.
+      ["25-OH Vitamin D3", "Vitamin D3, 25-Hydroxy"],
+      ["25-Hydroxyvitamin D2", "Vitamin D2, 25-Hydroxy"],
+      // Plain CRP resolves to its own entry; LDL-C and the Absolute Lymphocyte
+      // Count spelling snap onto the real entries (#1195).
+      ["CRP", "C-Reactive Protein"],
+      ["LDL-C", "LDL Cholesterol"],
+      ["Absolute Lymphocyte Count", "Lymphocytes, Absolute"],
     ];
     for (const [spelling, canonical] of expectations) {
       expect(snapCanonicalName(spelling, index)).toBe(canonical);
@@ -344,14 +389,78 @@ describe("canonical aliases (synonym/abbreviation drift)", () => {
     }
   });
 
-  it("routes 25-OH vitamin D3 to the metabolite but leaves the parent vitamin alone", () => {
+  it("routes each 25-OH vitamin-D fraction to its OWN entry, apart from the total and the parent (#1193)", () => {
+    // The isoform-suffixed print forms resolve to their OWN fraction entry, never
+    // folded onto the total (a low D2 must not inherit the total's sufficiency band).
     expect(snapCanonicalName("25-OH Vitamin D3", index)).toBe(
+      "Vitamin D3, 25-Hydroxy"
+    );
+    expect(snapCanonicalName("25-Hydroxyvitamin D3", index)).toBe(
+      "Vitamin D3, 25-Hydroxy"
+    );
+    expect(snapCanonicalName("25-OH Vitamin D2", index)).toBe(
+      "Vitamin D2, 25-Hydroxy"
+    );
+    expect(snapCanonicalName("25-Hydroxyvitamin D2", index)).toBe(
+      "Vitamin D2, 25-Hydroxy"
+    );
+    // …and stay APART from the total 25-OH entry.
+    expect(snapCanonicalName("25-OH Vitamin D3", index)).not.toBe(
       "Vitamin D, 25-Hydroxy"
     );
     // Bare "Vitamin D3" is cholecalciferol (the parent) — a distinct analyte that
     // must NOT be merged into its 25-hydroxy metabolite.
     expect(snapCanonicalName("Vitamin D3", index)).not.toBe(
+      "Vitamin D3, 25-Hydroxy"
+    );
+    expect(snapCanonicalName("Vitamin D3", index)).not.toBe(
       "Vitamin D, 25-Hydroxy"
+    );
+  });
+
+  it("resolves the calcitriol (1,25-dihydroxy) spellings to the new active-metabolite entry (#1193)", () => {
+    for (const spelling of [
+      "1,25-OH Vitamin D",
+      "1,25-Dihydroxyvitamin D",
+      "Calcitriol",
+    ]) {
+      expect(snapCanonicalName(spelling, index)).toBe(
+        "Vitamin D, 1,25-Dihydroxy"
+      );
+    }
+    // The active hormone is NEVER the 25-OH storage form.
+    expect(snapCanonicalName("Calcitriol", index)).not.toBe(
+      "Vitamin D, 25-Hydroxy"
+    );
+  });
+
+  it("adds the plain-CRP / fasting-glucose / LDL-C / lymphocyte gap routes (#1195)", () => {
+    // Plain CRP → its OWN entry, never hs-CRP.
+    expect(snapCanonicalName("CRP", index)).toBe("C-Reactive Protein");
+    expect(snapCanonicalName("C-Reactive Protein", index)).toBe(
+      "C-Reactive Protein"
+    );
+    expect(snapCanonicalName("CRP", index)).not.toBe("hs-CRP");
+    // Fasting glucose keeps its own identity, apart from a random Glucose.
+    expect(snapCanonicalName("Glucose, Fasting", index)).toBe(
+      "Glucose, Fasting"
+    );
+    expect(snapCanonicalName("Fasting Glucose", index)).toBe("Glucose, Fasting");
+    expect(snapCanonicalName("Glucose, Fasting", index)).not.toBe("Glucose");
+    // The LDL-C abbreviation + calculated drift snap onto LDL Cholesterol.
+    for (const spelling of [
+      "LDL-C",
+      "LDL Calculated",
+      "LDL Cholesterol, Calculated",
+    ]) {
+      expect(snapCanonicalName(spelling, index)).toBe("LDL Cholesterol");
+    }
+    // Absolute Lymphocyte Count now resolves like its neutrophil sibling.
+    expect(snapCanonicalName("Absolute Lymphocyte Count", index)).toBe(
+      "Lymphocytes, Absolute"
+    );
+    expect(snapCanonicalName("Absolute Lymphocytes", index)).toBe(
+      "Lymphocytes, Absolute"
     );
   });
 

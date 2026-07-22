@@ -221,14 +221,28 @@ describe("shared flag+trajectory acknowledgment (issue #564)", () => {
     expect(f.dedupeKey).toBe("trajectory:eGFR:approaching");
   });
 
-  it("uses the FAMILY key for a family analyte so the flag/trajectory align on D2/D3/total", () => {
+  it("uses the FAMILY flag key for the TOTAL vitamin D so flag/trajectory align", () => {
+    const f = analyteTrajectoryFindings({
+      ...base,
+      analyte: "Vitamin D, 25-Hydroxy",
+      points: line([0, 60, 120], 69, -3),
+    }).find((x) => x.rule === "approaching")!;
+    expect(f.supersedes).toBe("biomarker-flag:family:vitamin-d-25-hydroxy");
+    expect(f.supersedes).toBe(biomarkerFlagDismissalKey("Vitamin D, Total"));
+  });
+
+  it("uses the FRACTION's OWN flag key for a D2/D3 trajectory — fractions flag independently (#1193)", () => {
+    // A D3 fraction's trajectory ack must align with the D3 fraction's OWN flag key,
+    // NOT the total's — the fraction flags independently now.
     const f = analyteTrajectoryFindings({
       ...base,
       analyte: "Vitamin D3, 25-Hydroxy",
       points: line([0, 60, 120], 69, -3),
     }).find((x) => x.rule === "approaching")!;
-    expect(f.supersedes).toBe("biomarker-flag:family:vitamin-d-25-hydroxy");
-    expect(f.supersedes).toBe(biomarkerFlagDismissalKey("Vitamin D, Total"));
+    expect(f.supersedes).toBe(
+      biomarkerFlagDismissalKey("Vitamin D3, 25-Hydroxy")
+    );
+    expect(f.supersedes).not.toBe(biomarkerFlagDismissalKey("Vitamin D, Total"));
   });
 });
 
