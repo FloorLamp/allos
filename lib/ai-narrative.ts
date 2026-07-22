@@ -1,15 +1,15 @@
-// AI narrative layer (issue #20): the AI-powered weekly/monthly period recap and
-// the lab-trend interpretation. Both narrate over ALREADY-GATHERED, structured
-// facts — the rule-based WeeklyRecap and the biomarker trajectory findings — so
-// the AI read is grounded and the prompt is compact. Both reuse the existing
+// AI narrative layer (issue #20): the AI-powered weekly/monthly period recap.
+// It narrates over ALREADY-GATHERED, structured facts — the rule-based WeeklyRecap —
+// so the AI read is grounded and the prompt is compact. It reuses the existing
 // guardrails: the shared model config (lib/ai-client), the ai.jsonl audit log
 // (feature "narrative"), the per-profile daily usage cap (kind "narrative"), and
 // graceful degradation to a deterministic offline composer whenever AI is
 // unavailable (no key / disabled endpoint / rate-limited / failed / truncated).
 //
 // This module holds the IMPURE half (profile-scoped gather + the network call);
-// the PURE prompt-assembly + offline composition live in lib/recap-narrative.ts
-// and lib/lab-trend-narrative.ts, where they're unit-tested with no network.
+// the PURE prompt-assembly + offline composition live in lib/recap-narrative.ts,
+// where they're unit-tested with no network. (The lab-trend interpretation, #20's
+// second narrative, was removed with the Trends → Biomarkers tab — #1164.)
 
 import Anthropic from "@anthropic-ai/sdk";
 import { today } from "./db";
@@ -26,20 +26,6 @@ import {
   RECAP_NARRATIVE_SYSTEM,
   type NarrativePeriod,
 } from "./recap-narrative";
-import { buildTrajectoryFindings } from "./trajectory-series";
-import {
-  getConditions,
-  getMedicalRecords,
-  getMedicationCourses,
-  getSupplements,
-} from "./queries";
-import {
-  buildLabTrendPrompt,
-  composeLabTrendOffline,
-  hasLabTrendSignal,
-  LAB_TREND_SYSTEM,
-  type LabTrendInput,
-} from "./lab-trend-narrative";
 
 // The saved shape a generator returns: the narrative text + its anchor, ready to
 // hand to saveNarrative(profileId, …).
@@ -205,102 +191,3 @@ export async function generateRecapNarrative(
   };
 }
 
-// Gather the structured lab-trend context: the rule-engine trajectory findings,
-// recent non-optimal readings, the medication course timeline (names + dates),
-// and active conditions. All reads are profile-scoped via the query layer.
-export function gatherLabTrendInput(profileId: number): LabTrendInput {
-  const td = today(profileId);
-
-  const findings = buildTrajectoryFindings(profileId, td).map((f) => ({
-    label: f.title,
-    detail: (f.detail ?? f.evidence ?? "").trim(),
-    tone: f.tone ?? null,
-  }));
-
-  // Recent notable readings: non-optimal biomarker rows, newest first (the query
-  // defaults to date DESC), capped so the prompt stays compact.
-  const readings = getMedicalRecords(profileId, { range: "nonoptimal" })
-    .slice(0, 10)
-    .map((r) => ({
-      name: r.canonical_name || r.name,
-      date: r.date,
-      value: r.value ?? "",
-      unit: r.unit,
-      reference: r.reference_range,
-      flag: r.flag,
-    }));
-
-  // Intake timeline: name + kind (from the intake item) + start/stop dates (from
-  // its courses), most-recently-started first, capped. Includes BOTH medications
-  // and supplements (#421) — a supplement started months ago (vitamin D, iron) is
-  // often the best explanation for a moving 25-OH-D or ferritin trend, so it must
-  // reach the interpretation; each row is kind-tagged so the model can tell an OTC
-  // supplement from a prescription.
-  const intakeById = new Map(
-    getSupplements(profileId).map((s) => [
-      s.id,
-      {
-        name: s.name,
-        kind: s.kind === "medication" ? "medication" : "supplement",
-      },
-    ])
-  );
-  const medications = getMedicationCourses(profileId)
-    .filter((c) => intakeById.has(c.item_id))
-    .sort((a, b) => (b.started_on ?? "").localeCompare(a.started_on ?? ""))
-    .slice(0, 10)
-    .map((c) => {
-      const item = intakeById.get(c.item_id)!;
-      return {
-        name: item.name,
-        kind: item.kind as "medication" | "supplement",
-        startedOn: c.started_on,
-        stoppedOn: c.stopped_on,
-      };
-    });
-
-  const conditions = getConditions(profileId, { status: "active" })
-    .slice(0, 8)
-    .map((c) => ({
-      name: c.name,
-      status: c.status,
-      onsetDate: c.onset_date,
-    }));
-
-  return { today: td, findings, readings, medications, conditions };
-}
-
-// Generate (or fall back to) the AI lab-trend interpretation for a profile. The
-// anchor (period_end) is the latest notable reading's date, else today, so a
-// regenerate after new labs land upserts a fresh read at the new anchor.
-export async function generateLabTrendInterpretation(
-  profileId: number
-): Promise<NarrativeResult> {
-  const input = gatherLabTrendInput(profileId);
-  const periodEnd = input.readings[0]?.date ?? input.today;
-  const offline = () => composeLabTrendOffline(input);
-  // No trajectory findings and no notable readings — there's no trend to read, so
-  // skip the API call and store the deterministic "nothing to interpret" line.
-  if (!hasLabTrendSignal(input)) {
-    recordAiEvent({
-      feature: "narrative",
-      status: "skipped",
-      detail: `lab-trend ${periodEnd} — nothing to interpret`,
-    });
-    return {
-      kind: "labs",
-      periodStart: null,
-      periodEnd,
-      summary: offline(),
-      model: "offline-fallback",
-    };
-  }
-  const { summary, model } = await narrate({
-    profileId,
-    system: LAB_TREND_SYSTEM,
-    userContent: buildLabTrendPrompt(input),
-    detailKey: `lab-trend ${periodEnd}`,
-    offline,
-  });
-  return { kind: "labs", periodStart: null, periodEnd, summary, model };
-}

@@ -14,9 +14,6 @@ import DateRangeControl from "@/components/DateRangeControl";
 import SavedViewsBar from "@/components/SavedViewsBar";
 import OverviewSection from "./OverviewSection";
 import CompareSection from "./CompareSection";
-import BiomarkersSection, {
-  type BiomarkerFlagFilter,
-} from "./BiomarkersSection";
 import BodySection from "./BodySection";
 import { parseBodyView } from "./body-view";
 import VitalsSection from "./VitalsSection";
@@ -30,7 +27,6 @@ export const dynamic = "force-dynamic";
 const TABS = [
   "overview",
   "compare",
-  "biomarkers",
   "vitals",
   "body",
   "nutrition",
@@ -50,13 +46,6 @@ function parseTab(value: string | string[] | undefined): TrendsTab {
   return TABS.includes(first as TrendsTab) ? (first as TrendsTab) : "overview";
 }
 
-function parseFlag(
-  value: string | string[] | undefined
-): BiomarkerFlagFilter | undefined {
-  const first = Array.isArray(value) ? value[0] : value;
-  return first === "oor" || first === "nonoptimal" ? first : undefined;
-}
-
 // The Trends hub: the analytics lens — a sibling to the
 // Timeline — that aggregates the app's existing trend charts into one place under
 // a SHARED date-range control. Every section reuses existing components/queries;
@@ -68,8 +57,6 @@ export default async function TrendsPage(props: {
     ftab?: string | string[];
     from?: string | string[];
     to?: string | string[];
-    bflag?: string | string[];
-    bpanel?: string | string[];
     cmpA?: string | string[];
     cmpB?: string | string[];
     cmpn?: string | string[];
@@ -93,12 +80,6 @@ export default async function TrendsPage(props: {
     restricted && (requestedTab === "fitness" || requestedTab === "insights")
       ? "overview"
       : requestedTab;
-  const bflag = parseFlag(searchParams.bflag);
-  const bpanel =
-    (Array.isArray(searchParams.bpanel)
-      ? searchParams.bpanel[0]
-      : searchParams.bpanel
-    )?.trim() || undefined;
   const cmpA = firstParam(searchParams.cmpA);
   const cmpB = firstParam(searchParams.cmpB);
   const cmpNormalized = firstParam(searchParams.cmpn) === "1";
@@ -117,8 +98,6 @@ export default async function TrendsPage(props: {
     tab?: TrendsTab;
     from?: string;
     to?: string;
-    bflag?: BiomarkerFlagFilter;
-    bpanel?: string;
     cmpA?: string;
     cmpB?: string;
     cmpn?: boolean;
@@ -128,8 +107,6 @@ export default async function TrendsPage(props: {
     if (params.tab && params.tab !== "overview") sp.set("tab", params.tab);
     if (params.from) sp.set("from", params.from);
     if (params.to) sp.set("to", params.to);
-    if (params.bflag) sp.set("bflag", params.bflag);
-    if (params.bpanel) sp.set("bpanel", params.bpanel);
     if (params.cmpA) sp.set("cmpA", params.cmpA);
     if (params.cmpB) sp.set("cmpB", params.cmpB);
     if (params.cmpn) sp.set("cmpn", "1");
@@ -143,24 +120,10 @@ export default async function TrendsPage(props: {
       tab: activeTab,
       from: r.from,
       to: r.to,
-      bflag,
-      bpanel,
       cmpA,
       cmpB,
       cmpn: cmpNormalized,
       view: activeTab === "body" ? bodyView : undefined,
-    });
-
-  const biomarkerHrefFor = (opts: {
-    flag?: BiomarkerFlagFilter;
-    panel?: string;
-  }) =>
-    trendsHref({
-      tab: "biomarkers",
-      from: range.from,
-      to: range.to,
-      bflag: opts.flag,
-      bpanel: opts.panel,
     });
 
   // Tab-strip spec: labels only. Fitness + Insights are age-gated surfaces —
@@ -171,7 +134,6 @@ export default async function TrendsPage(props: {
   const tabStrip: { id: TrendsTab; label: string }[] = [
     { id: "overview", label: "Overview" },
     { id: "compare", label: "Compare" },
-    { id: "biomarkers", label: "Biomarkers" },
     { id: "vitals", label: "Vitals" },
     { id: "body", label: "Body" },
     { id: "nutrition", label: "Nutrition" },
@@ -197,15 +159,6 @@ export default async function TrendsPage(props: {
             a={cmpA}
             b={cmpB}
             normalized={cmpNormalized}
-          />
-        );
-      case "biomarkers":
-        return (
-          <BiomarkersSection
-            range={range}
-            flag={bflag}
-            panel={bpanel}
-            hrefFor={biomarkerHrefFor}
           />
         );
       case "vitals":
@@ -245,7 +198,7 @@ export default async function TrendsPage(props: {
     <div>
       <PageHeader
         title="Trends"
-        subtitle="Your analytics lens — biomarkers, body, fitness, and insights under one date range."
+        subtitle="Your analytics lens — body, nutrition, fitness, and insights under one date range."
       />
 
       <div className="mb-6 space-y-2 sm:space-y-4">
@@ -255,8 +208,6 @@ export default async function TrendsPage(props: {
           todayStr={todayStr}
           hiddenParams={{
             tab: activeTab === "overview" ? undefined : activeTab,
-            bflag,
-            bpanel,
             cmpA,
             cmpB,
             cmpn: cmpNormalized ? "1" : undefined,

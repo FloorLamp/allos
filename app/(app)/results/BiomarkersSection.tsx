@@ -15,6 +15,7 @@ import {
 } from "@/lib/derived-table";
 import StarredBiomarkers from "@/components/StarredBiomarkers";
 import BioAgeHero from "@/components/BioAgeHero";
+import TrajectoryFindings from "./TrajectoryFindings";
 import BiomarkersTable from "@/components/BiomarkersTable";
 import RecordForm from "@/components/RecordForm";
 import ProviderDatalist from "@/components/ProviderDatalist";
@@ -120,6 +121,12 @@ export default function BiomarkersSection({
         ))}
       </datalist>
       <ProviderDatalist names={getProviderNames()} />
+
+      {/* Forward-looking trajectory rules (#41), the ONE thing #1164 moved from the
+          deleted Trends → Biomarkers tab: a "what's changing" area that warns BEFORE a
+          single-value flag catches a range crossing. A full-history standing read, so
+          it ignores the browser's filters. Renders nothing when no trajectory fires. */}
+      <TrajectoryFindings />
 
       {/* Biological-age hero (#209): the derived PhenoAge index (#157) surfaced as a
           headline "how am I aging" result, pinned above the analyte table. Adult-

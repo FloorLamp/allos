@@ -2,14 +2,14 @@
 //
 // generateRecap (Trends "Insights" tab) writes a weekly/monthly AI recap
 // narrative for the active profile; like the daily insight it's age-gated, so the
-// action re-checks isTrainingRestricted() and bounces BEFORE any AI work.
-// generateLabTrend (Biomarkers tab) writes a lab-trend interpretation and is NOT
-// age-gated. With no ANTHROPIC_API_KEY these store the deterministic OFFLINE
-// composition (model "offline-fallback"), so the tests run without network.
+// action re-checks isTrainingRestricted() and bounces BEFORE any AI work. With no
+// ANTHROPIC_API_KEY it stores the deterministic OFFLINE composition (model
+// "offline-fallback"), so the tests run without network. (The lab-trend generator
+// was removed with the Trends → Biomarkers tab — #1164.)
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
-import { generateRecap, generateLabTrend } from "@/app/(app)/trends/actions";
+import { generateRecap } from "@/app/(app)/trends/actions";
 import { getRecentNarratives } from "@/lib/queries";
 import { setMinTrainingAge } from "@/lib/age-gate";
 import { setStoredAge } from "@/lib/settings";
@@ -55,22 +55,5 @@ describe("generateRecap age-gate guard", () => {
     await generateRecap(fd({ period: "quarterly" }));
     expect(getRecentNarratives(profile.id, ["week"], 5)).toHaveLength(1);
     expect(getRecentNarratives(profile.id, ["month"], 5)).toHaveLength(0);
-  });
-});
-
-describe("generateLabTrend", () => {
-  it("stores a lab-trend interpretation (not age-gated, offline fallback)", async () => {
-    const { profile } = seedActor();
-    // Even an age-restricted profile can read lab trends (Biomarkers is not gated).
-    setMinTrainingAge(18);
-    setStoredAge(profile.id, 10);
-
-    await generateLabTrend();
-
-    const [narrative] = getRecentNarratives(profile.id, ["labs"], 5);
-    expect(narrative).toBeDefined();
-    expect(narrative.kind).toBe("labs");
-    expect(narrative.model).toBe("offline-fallback");
-    expect(revalidate).toHaveBeenCalledWith("/trends");
   });
 });

@@ -277,7 +277,7 @@ function SetupCard({ callbackUrl }: { callbackUrl: string }) {
           </Link>{" "}
           charts; blood pressure, SpO₂, and temperature land as{" "}
           <Link
-            href="/trends?tab=biomarkers"
+            href="/trends?tab=vitals"
             className="text-brand-700 underline dark:text-brand-400"
           >
             vitals
