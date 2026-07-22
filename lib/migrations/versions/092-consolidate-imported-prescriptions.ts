@@ -118,8 +118,8 @@ export function up(db: Database.Database): void {
     );
     const insCourse = db.prepare(
       `INSERT INTO medication_courses
-         (item_id, started_on, document_id, created_at)
-       VALUES (?, ?, ?, datetime('now'))`
+         (item_id, started_on, created_at)
+       VALUES (?, ?, datetime('now'))`
     );
     const isIndividual = db.prepare(
       `SELECT 1 FROM providers WHERE id = ? AND type = 'individual'`
@@ -143,7 +143,7 @@ export function up(db: Database.Database): void {
         r.profile_id
       );
       const medId = Number(info.lastInsertRowid);
-      insCourse.run(medId, r.date, r.document_id);
+      insCourse.run(medId, r.date);
       reKeyDecisions(db, [
         { medId, importKey, recId: r.id, recExt: r.external_id },
       ]);

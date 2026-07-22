@@ -16,11 +16,13 @@ import type { Migration } from "../runner";
 //         SNAPSHOT as prescribed at THIS renewal (Model X, #1204): the live reminder
 //         schedule stays item-keyed on intake_item_doses; the course records what was
 //         prescribed so a renewal at a new strength is preserved in history.
-//     - document_id  INTEGER REFERENCES medical_documents(id) — the source document a
-//         course was imported from, so a reprocess/delete of a CROSS-DOCUMENT
-//         re-prescription can clear the courses it contributed to an existing med
-//         (the med itself is owned by its FIRST document; a later refill CCD only adds
-//         a course). No ON DELETE: the import clear NULLs / deletes these explicitly.
+//
+//   (A course is NOT document-keyed: medication_courses has no profile_id and is not an
+//   import-footprint table, so binding a document_id would be a footprint blind spot
+//   — import-single-entry.test.ts forbids it. A course is cleaned via its parent med's
+//   ON DELETE CASCADE, which is #1204's stated cleanup model — a renewal course is
+//   cleaned on med delete/merge, not on the contributing document's fate; a reprocess
+//   re-derives it, deduped on (item_id, started_on).)
 //
 //   intake_items gains (#1178):
 //     - import_key   TEXT — a STABLE within-document key for an imported medication
@@ -58,16 +60,6 @@ export function up(db: Database.Database): void {
   if (!courseCols.has("dose_snapshot")) {
     db.exec(`ALTER TABLE medication_courses ADD COLUMN dose_snapshot TEXT`);
   }
-  if (!courseCols.has("document_id")) {
-    db.exec(
-      `ALTER TABLE medication_courses
-         ADD COLUMN document_id INTEGER REFERENCES medical_documents(id)`
-    );
-  }
-  db.exec(
-    `CREATE INDEX IF NOT EXISTS idx_med_courses_document
-       ON medication_courses(document_id)`
-  );
 
   const itemCols = columnNames(db, "intake_items");
   if (!itemCols.has("import_key")) {

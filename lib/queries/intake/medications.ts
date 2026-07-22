@@ -180,14 +180,14 @@ export function ensureMedicationCourse(
   db.prepare(
     `INSERT INTO medication_courses
        (item_id, started_on, stopped_on, prescriber, provider_id, dose_snapshot,
-        document_id, created_at)
+        created_at)
        SELECT ii.id,
               CASE WHEN ? = 1 THEN ? ELSE COALESCE(?, date(ii.created_at)) END,
               CASE WHEN ii.active = 1
                    THEN NULL
                    ELSE CASE WHEN ? = 1 THEN ? ELSE COALESCE(?, date(ii.created_at)) END
               END,
-              ?, ?, ?, ?,
+              ?, ?, ?,
               datetime('now')
          FROM intake_items ii
         WHERE ii.id = ? AND ii.profile_id = ? AND ii.kind = 'medication'
@@ -204,22 +204,21 @@ export function ensureMedicationCourse(
     attribution?.prescriber ?? null,
     attribution?.providerId ?? null,
     attribution?.doseSnapshot ?? null,
-    attribution?.documentId ?? null,
     itemId,
     profileId
   );
 }
 
 // Per-course attribution (#1204): the prescriber (free text) + resolved individual
-// provider_id, a descriptive dose/sig SNAPSHOT as prescribed at this course, and the
-// source document a course was imported from (so a cross-document re-prescription's
-// courses can be cleared when THAT document reprocesses — the med itself is owned by
-// its FIRST document). Every field optional/null for a manual course.
+// provider_id, and a descriptive dose/sig SNAPSHOT as prescribed at this course. Every
+// field optional/null for a manual course. (A course is NOT document-keyed — it is
+// cleaned via its parent med's CASCADE, #1204's med-lifecycle cleanup model — so there
+// is no document_id here, which also keeps it out of the import-footprint blind-spot
+// guard, since medication_courses is not a footprint table.)
 export interface CourseAttribution {
   prescriber?: string | null;
   providerId?: number | null;
   doseSnapshot?: string | null;
-  documentId?: number | null;
 }
 
 // The lifecycle + known-strength state of each of a profile's tracked medications —
@@ -300,13 +299,13 @@ export function getMedMatchStates(profileId: number): MedMatchState[] {
 // Add a new COURSE to an EXISTING medication for a re-prescription / renewal
 // (#1204): a later refill CCD, a second provider's order, or a manual track-of-an-
 // already-tracked drug. Carries the course's period + prescriber + resolved
-// provider_id + a descriptive dose snapshot + its source document. Deduped on
-// (item_id, document_id, started_on) so a REPROCESS of the same renewing document
-// re-adds nothing, while a genuinely distinct renewal (another document/period) does
-// attach. Re-syncs the med's `active` flag to the persisted course state (an open
-// renewal course reactivates a paused med). Ownership (profile + kind='medication')
-// is verified first; a forged / cross-profile id is a no-op. Returns the new course
-// id, or null when nothing was inserted (dedup hit / not owned).
+// provider_id + a descriptive dose snapshot. Deduped on (item_id, started_on) so a
+// REPROCESS of the same renewing document re-adds nothing (the started_on is stable),
+// while a genuinely distinct renewal at a NEW period does attach. Re-syncs the med's
+// `active` flag to the persisted course state (an open renewal course reactivates a
+// paused med). Ownership (profile + kind='medication') is verified first; a forged /
+// cross-profile id is a no-op. Returns the new course id, or null when nothing was
+// inserted (dedup hit / not owned).
 export function addRenewalCourse(
   profileId: number,
   itemId: number,
@@ -325,13 +324,11 @@ export function addRenewalCourse(
       .prepare(
         `INSERT INTO medication_courses
            (item_id, started_on, stopped_on, stop_reason, notes,
-            prescriber, provider_id, dose_snapshot, document_id, created_at)
-         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')
+            prescriber, provider_id, dose_snapshot, created_at)
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')
           WHERE NOT EXISTS (
             SELECT 1 FROM medication_courses c
-             WHERE c.item_id = ?
-               AND c.document_id IS ?
-               AND c.started_on IS ?
+             WHERE c.item_id = ? AND c.started_on IS ?
           )`
       )
       .run(
@@ -343,9 +340,7 @@ export function addRenewalCourse(
         attr.prescriber ?? null,
         attr.providerId ?? null,
         attr.doseSnapshot ?? null,
-        attr.documentId ?? null,
         itemId,
-        attr.documentId ?? null,
         opts.startedOn
       );
     if (info.changes === 0) return null;
@@ -397,8 +392,8 @@ export function createImportedMedicationCourses(
   const insert = db.prepare(
     `INSERT INTO medication_courses
        (item_id, started_on, stopped_on, stop_reason, notes,
-        prescriber, provider_id, dose_snapshot, document_id, created_at)
-     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')
+        prescriber, provider_id, dose_snapshot, created_at)
+     SELECT ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')
       WHERE NOT EXISTS (
         SELECT 1 FROM medication_courses c
          WHERE c.item_id = ? AND c.started_on IS ?
@@ -415,7 +410,6 @@ export function createImportedMedicationCourses(
         attribution?.prescriber ?? null,
         attribution?.providerId ?? null,
         attribution?.doseSnapshot ?? null,
-        attribution?.documentId ?? null,
         itemId,
         c.started_on
       );
@@ -733,7 +727,6 @@ export function createMedicationFromRecord(
     doseSnapshot:
       [med.strength, med.sig].filter((p): p is string => !!p).join(" — ") ||
       null,
-    documentId: rec.document_id,
   };
 
   return writeTx(() => {

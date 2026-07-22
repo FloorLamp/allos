@@ -221,44 +221,15 @@ export function clearImportedDocumentRows(
            SELECT id FROM conditions WHERE profile_id = ? AND document_id = ?
          )`
   ).run(profileId, profileId, docId);
-  // Row-ops side-state (#1204): a CROSS-DOCUMENT re-prescription attaches a course to a
-  // med owned by ANOTHER document (or a manual med). Those courses carry THIS document's
-  // document_id but hang off a med the footprint delete below won't touch, so clear them
-  // here and re-sync the affected meds' `active` flag. A course on a med THIS document
-  // owns is cascade-deleted with the med in the footprint loop, so this only removes the
-  // renewal courses this document contributed elsewhere.
-  const affectedMedIds = (
-    db
-      .prepare(
-        `SELECT DISTINCT c.item_id AS itemId
-           FROM medication_courses c
-           JOIN intake_items ii ON ii.id = c.item_id
-          WHERE ii.profile_id = ? AND c.document_id = ?`
-      )
-      .all(profileId, docId) as { itemId: number }[]
-  ).map((r) => r.itemId);
-  db.prepare(
-    `DELETE FROM medication_courses
-       WHERE document_id = ?
-         AND item_id IN (SELECT id FROM intake_items WHERE profile_id = ?)`
-  ).run(docId, profileId);
+  // (#1204 note: a CROSS-DOCUMENT renewal course this document contributed to a med
+  // owned by ANOTHER document is NOT cleared here — a course is not document-keyed. It
+  // is deduped on (item_id, started_on), so a reprocess re-adds nothing, and it is
+  // cleaned via its parent med's CASCADE on med delete/merge — #1204's stated cleanup
+  // model. A course on a med THIS document OWNS is cascade-deleted with the med below.)
   for (const t of IMPORT_FOOTPRINT_TABLES) {
     db.prepare(
       `DELETE FROM ${t.table} WHERE ${t.key} = ? AND ${footprintScope(t)}`
     ).run(footprintKeyValue(t, docId, source), profileId);
-  }
-  // Re-sync `active` for any med that survived but lost a renewal course above (a
-  // med still owned by another document — the footprint delete removed only THIS
-  // document's own meds). A med the loop deleted is gone, so the UPDATE no-ops it.
-  for (const itemId of affectedMedIds) {
-    db.prepare(
-      `UPDATE intake_items SET active =
-         CASE WHEN EXISTS (
-           SELECT 1 FROM medication_courses c
-            WHERE c.item_id = ? AND c.stopped_on IS NULL
-         ) THEN 1 ELSE 0 END
-       WHERE id = ? AND profile_id = ?`
-    ).run(itemId, itemId, profileId);
   }
 }
 
@@ -1579,7 +1550,6 @@ function persistExtractedMedications(
       prescriber: med.prescriber,
       providerId,
       doseSnapshot: doseSnapshotOf(med),
-      documentId: docId,
     };
 
     // Cross-document / cross-provider re-prescription (#1204): does this drug match a

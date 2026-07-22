@@ -194,6 +194,11 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
       "UPDATE medical_records SET category = ? WHERE canonical_name = ? COLLATE NOCASE AND category != ?",
     why: "migration 090 (#1076) one-shot category converge: re-derives category from canonical name for a fixed set of known analytes (Glucose→lab, PHQ-9…→instrument, PhenoAge/Biological Age→derived, Blood Type…→reference) across ALL profiles — a vocabulary-level classification fix, never reading one profile's data into another's",
   },
+  {
+    file: "lib/migrations/versions/092-consolidate-imported-prescriptions.ts",
+    includes: "JOIN medical_records r ON r.id = ii.source_record_id",
+    why: "migration 092 (#1178) one-shot consolidation: enumerates each PAIRED (med, prescription-record) twin BY the source_record_id back-link the import wrote — the join key itself is the med↔record identity, and both rows share the same profile_id by construction (a med is projected within one profile's import). The per-row re-key/UPDATE it drives all carry the row's own profile_id; this SELECT never reads one profile's data into another's.",
+  },
 ];
 
 // `.prepare(sql)` sites whose argument is a runtime expression (not a string
