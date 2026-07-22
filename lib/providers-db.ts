@@ -284,9 +284,16 @@ export function getProviderMergeImpact(
       .get(...args) as { n: number };
     perTable.push({ table, count: row.n });
     total += row.n;
-    const pids = db
-      .prepare(`SELECT DISTINCT profile_id AS pid FROM ${table} WHERE ${pred}`)
-      .all(...args) as { pid: number }[];
+    // medication_courses is a CHILD of intake_items (no own profile_id, #1204's
+    // per-course prescriber link), so its touched profiles resolve through the parent;
+    // every other provider-linked table carries profile_id directly.
+    const predT = columns.map((c) => `t.${c} = ?`).join(" OR ");
+    const profileSql =
+      table === "medication_courses"
+        ? `SELECT DISTINCT ii.profile_id AS pid FROM ${table} t
+             JOIN intake_items ii ON ii.id = t.item_id WHERE ${predT}`
+        : `SELECT DISTINCT profile_id AS pid FROM ${table} WHERE ${pred}`;
+    const pids = db.prepare(profileSql).all(...args) as { pid: number }[];
     for (const { pid } of pids) profiles.add(pid);
   }
   return { perTable, profiles: profiles.size, total };

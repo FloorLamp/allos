@@ -60,10 +60,14 @@ function linkAllTables(profileId: number, providerId: number): number {
     `INSERT INTO immunizations (profile_id, date, vaccine, provider_id)
      VALUES (?, '2020-01-01', 'mmr', ?)`
   ).run(profileId, providerId);
-  db.prepare(
-    `INSERT INTO intake_items (profile_id, name, active, kind, provider_id)
-     VALUES (?, 'Vit D', 1, 'supplement', ?)`
-  ).run(profileId, providerId);
+  const itemId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items (profile_id, name, active, kind, provider_id)
+         VALUES (?, 'Vit D', 1, 'supplement', ?)`
+      )
+      .run(profileId, providerId).lastInsertRowid
+  );
   db.prepare(
     `INSERT INTO encounters (profile_id, date, provider_id) VALUES (?, '2020-01-02', ?)`
   ).run(profileId, providerId);
@@ -104,6 +108,11 @@ function linkAllTables(profileId: number, providerId: number): number {
     `INSERT INTO skin_lesions (profile_id, label, provider_id)
      VALUES (?, 'Left forearm mole', ?)`
   ).run(profileId, providerId);
+  // Medication courses link the prescriber of that course (#1204). A child of
+  // intake_items (no own profile_id) — attach to the item inserted above.
+  db.prepare(
+    `INSERT INTO medication_courses (item_id, provider_id) VALUES (?, ?)`
+  ).run(itemId, providerId);
   return PROVIDER_LINK_COLUMNS.length;
 }
 
