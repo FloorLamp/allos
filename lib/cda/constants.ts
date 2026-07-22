@@ -324,12 +324,17 @@ export interface CdaSection {
 export interface SectionExtractor {
   key: string; // e.g. 'immunizations', 'medications'
   matches: (section: CdaSection) => boolean;
-  // `documentDate` is the ClinicalDocument's effectiveTime — the medications
-  // extractor uses it as the fallback date for an undated med-list entry (#Fix 2).
-  // Other extractors ignore it.
+  // `contextDate` is the date undated entries anchor to: the document's
+  // encompassing VISIT date when the header carries one, else the
+  // ClinicalDocument's effectiveTime. Only the medications extractors consume it,
+  // as the fallback date for an undated med-list entry (#Fix 2). The visit date is
+  // preferred because a per-visit document (the eCW shape) is generated — and
+  // effectiveTime-stamped — possibly days after the visit it describes; anchoring
+  // to the visit keeps the med's record date/stop date clinically honest and its
+  // date-keyed rx external_id stable across re-downloads of the same visit.
   extract: (
     section: CdaSection,
-    documentDate?: string | null
+    contextDate?: string | null
   ) => Partial<ImportResult>;
 }
 

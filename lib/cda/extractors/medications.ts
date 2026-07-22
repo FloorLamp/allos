@@ -94,13 +94,13 @@ export function narrativeDrugName(
 //     Medications — meds given during the stay), not an ongoing regimen. An
 //     active/unstated lifecycle status is capped to `completed` so a one-off
 //     administration never opens an open (current) course, and an undated entry's
-//     course is anchored to the document date instead of staying open-undated.
+//     course is anchored to the context (visit/document) date instead of staying open-undated.
 //   - `courseNote`: a short provenance note put on the derived course(s) (e.g.
 //     "At hospital discharge"), so the course's origin survives into the app.
 export function mapMedication(
   sa: any,
   narrativeIds: Record<string, string> = {},
-  documentDate: string | null = null,
+  contextDate: string | null = null,
   opts: { snapshot?: boolean; courseNote?: string | null } = {}
 ): ImportedRecord | null {
   if (!sa || truthyNegation(sa["@_negationInd"])) return null;
@@ -118,11 +118,12 @@ export function mapMedication(
     textOf(sa?.text);
   const date = effTime(sa.effectiveTime);
   // A med-list entry commonly carries a name but NO effectiveTime (#Fix 2). Rather
-  // than drop the whole medication, fall back to the DOCUMENT date for the record
+  // than drop the whole medication, fall back to the CONTEXT date (the document's
+  // visit date when the header carries one, else the document date) for the record
   // date — the course still opens UNDATED (started_on null) because we only build a
-  // period from the med's OWN effectiveTime, never fabricating a start from the doc
-  // date. Only a med with neither a name nor any date still drops.
-  const recordDate = date ?? documentDate;
+  // period from the med's OWN effectiveTime, never fabricating a start from the
+  // fallback. Only a med with neither a name nor any date still drops.
+  const recordDate = date ?? contextDate;
   if (!name || !recordDate) return null;
   const rxnorm =
     mat?.code?.["@_codeSystem"] === "2.16.840.1.113883.6.88"
@@ -164,15 +165,15 @@ export function mapMedication(
     // open-undated behavior (#Fix 2 — never fabricate a start from the doc date).
     periods.length
       ? periods
-      : [{ low: date ?? (opts.snapshot ? documentDate : null), high: null }],
+      : [{ low: date ?? (opts.snapshot ? contextDate : null), high: null }],
     status,
     {
-      // The doc-date fallback matters for a dateless entry whose status says the
-      // med ENDED (eClinicalWorks "suspended" with a nullFlavor effectiveTime):
-      // the derived course closes at the document date — "as of this document,
+      // The context-date fallback matters for a dateless entry whose status says
+      // the med ENDED (eClinicalWorks "suspended" with a nullFlavor effectiveTime):
+      // the derived course closes at the visit/document date — "as of this visit,
       // not taking" — instead of importing as an open (active) course. A dated
-      // entry never reaches the fallback's documentDate half.
-      fallbackStopDate: date ?? documentDate,
+      // entry never reaches the fallback's contextDate half.
+      fallbackStopDate: date ?? contextDate,
       note: opts.courseNote ?? null,
     }
   );
@@ -213,7 +214,7 @@ function supplyRxNumber(supply: any): string | null {
 export const medicationsExtractor: SectionExtractor = {
   key: "medications",
   matches: (s) => sectionIs(s, SECTIONS.medications),
-  extract: (s, documentDate) => {
+  extract: (s, contextDate) => {
     // The section's <text> id→text index, so a medication whose name lives in the
     // narrative table (referenced from the structured code's originalText) resolves
     // — same pattern as the lab/vital observation extractors.
@@ -221,7 +222,7 @@ export const medicationsExtractor: SectionExtractor = {
     return {
       records: s.entries
         .map((e) =>
-          mapMedication(e?.substanceAdministration, narrativeIds, documentDate)
+          mapMedication(e?.substanceAdministration, narrativeIds, contextDate)
         )
         .filter((x): x is ImportedRecord => x != null),
     };
@@ -236,19 +237,14 @@ export const medicationsExtractor: SectionExtractor = {
 export const dischargeMedicationsExtractor: SectionExtractor = {
   key: "dischargeMedications",
   matches: (s) => sectionIs(s, SECTIONS.dischargeMedications),
-  extract: (s, documentDate) => {
+  extract: (s, contextDate) => {
     const narrativeIds = buildNarrativeIdMap(s.raw?.text);
     return {
       records: s.entries
         .map((e) =>
-          mapMedication(
-            e?.substanceAdministration,
-            narrativeIds,
-            documentDate,
-            {
-              courseNote: "At hospital discharge",
-            }
-          )
+          mapMedication(e?.substanceAdministration, narrativeIds, contextDate, {
+            courseNote: "At hospital discharge",
+          })
         )
         .filter((x): x is ImportedRecord => x != null),
     };
@@ -262,20 +258,15 @@ export const dischargeMedicationsExtractor: SectionExtractor = {
 export const administeredMedicationsExtractor: SectionExtractor = {
   key: "administeredMedications",
   matches: (s) => sectionIs(s, SECTIONS.administeredMedications),
-  extract: (s, documentDate) => {
+  extract: (s, contextDate) => {
     const narrativeIds = buildNarrativeIdMap(s.raw?.text);
     return {
       records: s.entries
         .map((e) =>
-          mapMedication(
-            e?.substanceAdministration,
-            narrativeIds,
-            documentDate,
-            {
-              snapshot: true,
-              courseNote: "Administered during encounter",
-            }
-          )
+          mapMedication(e?.substanceAdministration, narrativeIds, contextDate, {
+            snapshot: true,
+            courseNote: "Administered during encounter",
+          })
         )
         .filter((x): x is ImportedRecord => x != null),
     };
@@ -294,20 +285,15 @@ export const administeredMedicationsExtractor: SectionExtractor = {
 export const orderedPrescriptionsExtractor: SectionExtractor = {
   key: "orderedPrescriptions",
   matches: (s) => sectionIs(s, SECTIONS.orderedPrescriptions),
-  extract: (s, documentDate) => {
+  extract: (s, contextDate) => {
     const narrativeIds = buildNarrativeIdMap(s.raw?.text);
     return {
       records: s.entries
         .map((e) =>
-          mapMedication(
-            e?.substanceAdministration,
-            narrativeIds,
-            documentDate,
-            {
-              snapshot: true,
-              courseNote: "Ordered at visit",
-            }
-          )
+          mapMedication(e?.substanceAdministration, narrativeIds, contextDate, {
+            snapshot: true,
+            courseNote: "Ordered at visit",
+          })
         )
         .filter((x): x is ImportedRecord => x != null),
     };

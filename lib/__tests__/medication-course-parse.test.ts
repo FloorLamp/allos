@@ -193,6 +193,35 @@ describe("CCD dateless suspended medication → closed course (eClinicalWorks sh
       },
     ]);
   });
+
+  it("anchors to the VISIT date over the document date when the header carries one", () => {
+    // A per-visit eCW document is generated (and effectiveTime-stamped) days after
+    // the visit it describes — the visit date is the clinically honest anchor for
+    // the record date, the stop date, AND the date-keyed external_id (which must
+    // stay stable across re-downloads of the same visit).
+    const withVisit = CCD_SUSPENDED_MED.replace(
+      "</ClinicalDocument>",
+      `<componentOf><encompassingEncounter>
+        <id root="1.2.3" extension="VISIT-9"/>
+        <effectiveTime><low value="20260627"/></effectiveTime>
+      </encompassingEncounter></componentOf></ClinicalDocument>`
+    );
+    const r = parseCcda(withVisit);
+    const rx = r.records.filter((x) => x.category === "prescription");
+    expect(rx).toHaveLength(1);
+    expect(rx[0].date).toBe("2026-06-27");
+    expect(rx[0].external_id).toBe(
+      "ccda:rx:ibuprofen 100 mg/5 ml suspension:2026-06-27"
+    );
+    expect(rx[0].courses).toEqual([
+      {
+        started_on: null,
+        stopped_on: "2026-06-27",
+        stop_reason: "other",
+        notes: "On hold",
+      },
+    ]);
+  });
 });
 
 describe("FHIR medications → courses", () => {

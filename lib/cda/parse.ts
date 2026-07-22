@@ -418,11 +418,15 @@ export function extractFromCcda(
   // a real content section that happens to be titled "… Notes" can never be
   // double-processed as a note.
   const claimedSections = new Set<CdaSection>();
+  // The date undated entries anchor to (see SectionExtractor.contextDate): the
+  // header visit's date when present — a per-visit document's effectiveTime is its
+  // GENERATION timestamp, possibly days after the visit — else the document date.
+  const contextDate = encompassingEncounter?.start ?? documentDate;
   for (const section of sections) {
     const ex = extractors.find((e) => e.matches(section));
     if (!ex) continue;
     claimedSections.add(section);
-    const part = ex.extract(section, documentDate);
+    const part = ex.extract(section, contextDate);
     if (part.immunizations) immunizations.push(...part.immunizations);
     if (part.records) records.push(...part.records);
     if (part.providers) providers.push(...part.providers);
@@ -559,7 +563,7 @@ export function extractFromCcda(
     sections,
     extractors,
     reasonForVisitConsumed,
-    documentDate
+    contextDate
   );
   drops.push(
     ...dedupeDrops(

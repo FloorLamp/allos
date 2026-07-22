@@ -231,7 +231,7 @@ function collectSectionDrops(
   section: CdaSection,
   key: string,
   drops: ImportDrop[],
-  documentDate: string | null
+  contextDate: string | null
 ): void {
   const ids = buildNarrativeIdMap(section.raw?.text);
   const title = sectionTitle(section);
@@ -259,11 +259,11 @@ function collectSectionDrops(
   ) {
     for (const e of section.entries) {
       const sa = e?.substanceAdministration;
-      // Re-run the SAME mapper the kept-path uses (same narrative ids + doc-date
+      // Re-run the SAME mapper the kept-path uses (same narrative ids + context-date
       // fallback) so a now-imported undated med isn't miscounted as a drop (#Fix 2).
       // The #266 snapshot/note opts don't change whether a med maps (only its
       // course status), so the plain call is a faithful kept/dropped signal.
-      if (!sa || mapMedication(sa, ids, documentDate)) continue;
+      if (!sa || mapMedication(sa, ids, contextDate)) continue;
       drops.push(classifyMedicationDrop(sa, ids, title));
     }
   } else if (key === "allergies") {
@@ -352,7 +352,7 @@ export function buildCcdaCoverage(
   sections: CdaSection[],
   extractors: SectionExtractor[],
   reasonForVisitConsumed: boolean,
-  documentDate: string | null
+  contextDate: string | null
 ): { coverage: CoverageEntry[]; drops: ImportDrop[] } {
   const coverage: CoverageEntry[] = [];
   const drops: ImportDrop[] = [];
@@ -421,7 +421,7 @@ export function buildCcdaCoverage(
       }
       continue;
     }
-    if (ex) collectSectionDrops(section, ex.key, drops, documentDate);
+    if (ex) collectSectionDrops(section, ex.key, drops, contextDate);
   }
   return { coverage, drops };
 }
