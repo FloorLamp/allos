@@ -291,9 +291,9 @@ function RecommendedSettings() {
         Recommended settings
       </h2>
       <p className="text-xs text-slate-500 dark:text-slate-400">
-        The exporter app lets you set each data type&rsquo;s granularity
-        (daily / full / 1m / 5m / 15m). Pick these so Allos gets the resolution
-        it stores at — too fine bloats the payload (and risks rejection), too
+        The exporter app lets you set each data type&rsquo;s granularity (daily
+        / full / 1m / 5m / 15m). Pick these so Allos gets the resolution it
+        stores at — too fine bloats the payload (and risks rejection), too
         coarse starves the charts.
       </p>
       <div className="overflow-x-auto">

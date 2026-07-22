@@ -266,9 +266,7 @@ export function resolveMaxIngestBytes(
 ): number {
   if (raw == null || raw.trim() === "") return DEFAULT_MAX_INGEST_BYTES;
   const n = Number(raw);
-  return Number.isFinite(n) && n > 0
-    ? Math.floor(n)
-    : DEFAULT_MAX_INGEST_BYTES;
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : DEFAULT_MAX_INGEST_BYTES;
 }
 
 // The actionable Review-feed line for an over-BYTES rejection (issue #1064): unlike

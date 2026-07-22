@@ -109,7 +109,8 @@ export const SOURCE_FIDELITY: SourceFidelityRow[] = [
     why: "folded to a per-day aggregate in Body Metrics",
   },
   {
-    label: "Blood pressure, Glucose, SpO₂, Temperature, Respiratory rate, VO₂max, HRV",
+    label:
+      "Blood pressure, Glucose, SpO₂, Temperature, Respiratory rate, VO₂max, HRV",
     keys: [
       "blood_pressure",
       "blood_glucose",

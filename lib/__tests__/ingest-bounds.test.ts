@@ -279,11 +279,7 @@ describe("chunk", () => {
   it("splits N items into ceil(N/size) slices, order preserved", () => {
     const items = [1, 2, 3, 4, 5, 6, 7];
     const slices = chunk(items, 3);
-    expect(slices).toEqual([
-      [1, 2, 3],
-      [4, 5, 6],
-      [7],
-    ]);
+    expect(slices).toEqual([[1, 2, 3], [4, 5, 6], [7]]);
     // Flattening recovers the original order exactly.
     expect(slices.flat()).toEqual(items);
   });

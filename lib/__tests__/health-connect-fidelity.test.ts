@@ -40,7 +40,9 @@ describe("SOURCE_FIDELITY registry completeness (#1065)", () => {
   });
 
   it("keeps skin temperature as an explicit 'off' row with no parser home", () => {
-    const skin = SOURCE_FIDELITY.find((r) => r.keys.includes("skin_temperature"));
+    const skin = SOURCE_FIDELITY.find((r) =>
+      r.keys.includes("skin_temperature")
+    );
     expect(skin?.setting).toBe("off");
     expect(KNOWN_HEALTH_CONNECT_KEYS.has("skin_temperature")).toBe(false);
   });
@@ -67,9 +69,7 @@ describe("payload-shape day counters", () => {
     ];
     expect(maxRecordsPerDay(recs)).toBe(2);
     // Point records use `time`.
-    expect(
-      maxRecordsPerDay([{ time: "2026-06-01T01:00:00Z" }])
-    ).toBe(1);
+    expect(maxRecordsPerDay([{ time: "2026-06-01T01:00:00Z" }])).toBe(1);
   });
 
   it("ignores records with no usable timestamp", () => {
@@ -124,8 +124,16 @@ describe("detectGranularityHints (#1065)", () => {
     // fine-grained threshold, so no false positive.
     const hints = detectGranularityHints({
       distance: [
-        { start_time: "2026-06-01T00:00:00Z", end_time: "2026-06-01T23:59:00Z", meters: 5000 },
-        { start_time: "2026-06-01T00:00:00Z", end_time: "2026-06-01T23:59:00Z", meters: 4000 },
+        {
+          start_time: "2026-06-01T00:00:00Z",
+          end_time: "2026-06-01T23:59:00Z",
+          meters: 5000,
+        },
+        {
+          start_time: "2026-06-01T00:00:00Z",
+          end_time: "2026-06-01T23:59:00Z",
+          meters: 4000,
+        },
       ],
     });
     expect(hints).toEqual([]);
@@ -139,9 +147,9 @@ describe("detectGranularityHints (#1065)", () => {
         { time: "2026-06-03T12:00:00Z", bpm: 61 },
       ],
     });
-    expect(
-      hints.some((h) => /Heart rate/.test(h) && /`1m`/.test(h))
-    ).toBe(true);
+    expect(hints.some((h) => /Heart rate/.test(h) && /`1m`/.test(h))).toBe(
+      true
+    );
   });
 
   it("does NOT hint on minute-resolution heart rate", () => {

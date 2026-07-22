@@ -38,7 +38,8 @@ const TZ = "UTC";
 
 function newProfile(name: string): number {
   const id = Number(
-    db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name).lastInsertRowid
+    db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
+      .lastInsertRowid
   );
   setTimezone(id, TZ);
   return id;
@@ -105,9 +106,9 @@ describe("HC chunked ingest — orchestration (#1064)", () => {
   });
 
   it("skips a row hand-edited mid-window even when it lands in a later chunk", () => {
-    // metric_samples carries the edit lock via medical_records? No — the lock lives on
-    // body_metrics/activities/medical_records. Use activities: an imported workout the
-    // user edits mid-window must survive a re-push whichever chunk it falls in.
+    // The edit lock lives on body_metrics/activities/medical_records. Use activities:
+    // an imported workout the user edits mid-window must survive a re-push whichever
+    // chunk it falls in (the lock is re-read per chunk, never cached across the batch).
     const profileId = newProfile("HC-CHUNK-C");
     // Two exercises far enough apart to land in different chunks at size 1.
     const payload = {
@@ -135,7 +136,12 @@ describe("HC chunked ingest — orchestration (#1064)", () => {
     ).run(profileId);
 
     // Re-push the rolling window with a size-1 chunker (each activity is its own tx).
-    const re = ingestHealthConnectPayload(profileId, parsed, "health-connect", 1);
+    const re = ingestHealthConnectPayload(
+      profileId,
+      parsed,
+      "health-connect",
+      1
+    );
     // The edited row is counted in the `edited` split and left untouched...
     expect(re.split.edited).toBe(1);
     const edited = db
@@ -246,7 +252,9 @@ describe("HC chunked ingest — one sync event per push through the route (#1064
   }
 
   it("records exactly ONE event for a multi-chunk push, not one per chunk", async () => {
-    const res = await post({ heart_rate: hrSamples("2026-06-05T00:00:00Z", 2500) });
+    const res = await post({
+      heart_rate: hrSamples("2026-06-05T00:00:00Z", 2500),
+    });
     expect(res.status).toBe(200);
 
     const events = getIntegrationSyncEvents(profileId, "health-connect");
@@ -258,7 +266,9 @@ describe("HC chunked ingest — one sync event per push through the route (#1064
     expect(events[0].unchanged ?? 0).toBe(0);
 
     // A second identical push adds exactly one MORE event, all unchanged.
-    const res2 = await post({ heart_rate: hrSamples("2026-06-05T00:00:00Z", 2500) });
+    const res2 = await post({
+      heart_rate: hrSamples("2026-06-05T00:00:00Z", 2500),
+    });
     expect(res2.status).toBe(200);
     const events2 = getIntegrationSyncEvents(profileId, "health-connect");
     expect(events2.length).toBe(2);

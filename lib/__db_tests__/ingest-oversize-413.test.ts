@@ -32,7 +32,8 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-  if (savedCap === undefined) delete process.env.HEALTH_CONNECT_MAX_INGEST_BYTES;
+  if (savedCap === undefined)
+    delete process.env.HEALTH_CONNECT_MAX_INGEST_BYTES;
   else process.env.HEALTH_CONNECT_MAX_INGEST_BYTES = savedCap;
 });
 
