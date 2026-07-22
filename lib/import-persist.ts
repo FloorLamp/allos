@@ -310,7 +310,6 @@ export function moveImportedDocumentRows(
       "immunizations",
       "optical_prescriptions",
       "dental_procedures",
-      "illness_episodes",
     ]) {
       db.prepare(
         `UPDATE ${table} SET encounter_id = NULL
@@ -318,6 +317,13 @@ export function moveImportedDocumentRows(
              AND encounter_id NOT IN (SELECT id FROM encounters WHERE profile_id = ?)`
       ).run(pid, pid);
     }
+    // Episode ↔ visit is a link table now (#1198): drop any link row whose encounter no
+    // longer lives in that row's profile (a cross-profile link a reassign would strand).
+    db.prepare(
+      `DELETE FROM episode_encounters
+         WHERE profile_id = ?
+           AND encounter_id NOT IN (SELECT id FROM encounters WHERE profile_id = ?)`
+    ).run(pid, pid);
   }
   // Row-ops side-state (#1052): a med's indication_condition_id (→ conditions) must
   // never cross profiles. A reassign can move a med but not a tier-2-linked condition
