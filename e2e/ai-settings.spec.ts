@@ -44,7 +44,7 @@ test.describe("Settings → Server: AI provider tiers", () => {
     // in-flight server-action POST, silently losing the save (the race that made
     // this spec chronically flaky). SaveStatus renders aria-label="Saved" on
     // success (the audit-retention / risk-factors pattern).
-    await expect(page.getByLabel("Saved").first()).toBeVisible();
+    await expect(page.getByLabel("Saved").first()).toBeVisible(); // first-ok: asserts a Saved autosave indicator appears (several fields save) — order-agnostic
     // Reload and confirm it stuck.
     await page.reload();
     await expect(page.getByTestId("recommendation-max-runs")).toHaveValue("3");
@@ -52,7 +52,7 @@ test.describe("Settings → Server: AI provider tiers", () => {
     const restore = page.getByTestId("recommendation-max-runs");
     await settledFill(page, restore, "1");
     await restore.blur();
-    await expect(page.getByLabel("Saved").first()).toBeVisible();
+    await expect(page.getByLabel("Saved").first()).toBeVisible(); // first-ok: asserts a Saved autosave indicator appears (several fields save) — order-agnostic
     await page.reload();
     await expect(page.getByTestId("recommendation-max-runs")).toHaveValue("1");
   });
@@ -72,7 +72,7 @@ test.describe("Settings → Profile: recommendation cadence", () => {
     await expect(select).toBeEnabled();
     await select.selectOption("weekly");
     // Same save-commit wait as above: never reload across an in-flight autosave.
-    await expect(page.getByLabel("Saved").first()).toBeVisible();
+    await expect(page.getByLabel("Saved").first()).toBeVisible(); // first-ok: asserts a Saved autosave indicator appears (several fields save) — order-agnostic
     await page.reload();
     await expect(page.getByTestId("recommendation-cadence")).toHaveValue(
       "weekly"
@@ -81,7 +81,7 @@ test.describe("Settings → Profile: recommendation cadence", () => {
     await page
       .getByTestId("recommendation-cadence")
       .selectOption("on-upload-only");
-    await expect(page.getByLabel("Saved").first()).toBeVisible();
+    await expect(page.getByLabel("Saved").first()).toBeVisible(); // first-ok: asserts a Saved autosave indicator appears (several fields save) — order-agnostic
     await page.reload();
     await expect(page.getByTestId("recommendation-cadence")).toHaveValue(
       "on-upload-only"

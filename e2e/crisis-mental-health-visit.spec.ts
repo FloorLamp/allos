@@ -63,13 +63,13 @@ test.describe("mental-health visit sensitivity + crisis resources (#997/#996)", 
     await bookVisit(page, THERAPY_TITLE, "mental_health");
     const upcoming = page.getByTestId("visits-upcoming");
     // The profile's OWN view always shows full detail — the real title, never
-    // minimized. `.first()` (not an exact count): the spec re-books under
+    // minimized. First-match (not an exact count): the spec re-books under
     // --repeat-each, so its own rows accumulate on the reused profile (#868).
     await expect(
       upcoming
         .getByTestId("appointment-row")
         .filter({ hasText: THERAPY_TITLE })
-        .first()
+        .first() // first-ok: filtered to this spec's therapy appointment; .first() because rows accumulate under --repeat-each (see comment above)
     ).toBeVisible();
   });
 
@@ -81,8 +81,8 @@ test.describe("mental-health visit sensitivity + crisis resources (#997/#996)", 
     await page.goto("/integrations/calendar-feed");
     const list = page.getByTestId("calendar-preview-list");
     await expect(list).toBeVisible();
-    await expect(list.getByText(PHYSICAL_TITLE).first()).toBeVisible();
+    await expect(list.getByText(PHYSICAL_TITLE).first()).toBeVisible(); // first-ok: this spec's booked physical visit (accumulates under --repeat-each) — order-agnostic
     await expect(list.getByText(THERAPY_TITLE)).toHaveCount(0);
-    await expect(list.getByText("Medical appointment").first()).toBeVisible();
+    await expect(list.getByText("Medical appointment").first()).toBeVisible(); // first-ok: the minimized mental_health visit label (this spec's booked visit) — order-agnostic
   });
 });

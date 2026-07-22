@@ -69,12 +69,12 @@ test("the interaction surfaces on Upcoming and stays hidden once dismissed", asy
 
   // The finding is keyed on the item-id pair (`interaction:<lo>-<hi>`); the seed
   // yields several interacting pairs, so select the warfarin+ibuprofen one by text
-  // rather than .first() (severity ordering puts other pairs first on Upcoming).
+  // rather than a positional first-match (severity ordering puts other pairs first).
   const finding = main
     .locator('[data-testid^="upcoming-item-interaction:"]')
     .filter({ hasText: "Warfarin" })
     .filter({ hasText: "Ibuprofen" })
-    .first();
+    .first(); // first-ok: filtered to the Warfarin+Ibuprofen pair — one match
   await expect(finding).toBeVisible();
   const findingTestId = await finding.getAttribute("data-testid");
   expect(findingTestId).toMatch(/^upcoming-item-interaction:/);
@@ -112,7 +112,7 @@ test("flags the seeded combination-medication pair (Hyzaar + Klor-Con) on /medic
   const row = interactionWarningRows(warnings)
     .filter({ hasText: "Hyzaar" })
     .filter({ hasText: "Klor-Con" })
-    .first();
+    .first(); // first-ok: filtered to the Hyzaar+Klor-Con pair — one match
   await expect(row).toBeVisible();
   await expect(row).toContainText("MODERATE", { ignoreCase: true });
   await expect(row).toContainText("potassium", { ignoreCase: true });
@@ -132,7 +132,7 @@ test("scopes intake warnings to the items represented on each surface", async ({
     interactionWarningRows(notices)
       .filter({ hasText: "Sertraline" })
       .filter({ hasText: "Ibuprofen" })
-      .first()
+      .first() // first-ok: filtered to the Sertraline+Ibuprofen pair — one match
   ).toBeVisible();
 
   await page.goto("/nutrition?tab=supplements");

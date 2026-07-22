@@ -13,12 +13,13 @@ test("a cardio session shows its gear chip and preloads the equipment picker (#3
 
   const card = page
     .locator('[id^="activity-"]')
-    .filter({ hasText: "Zone 2 bike" });
-  await expect(card.first()).toBeVisible();
+    .filter({ hasText: "Zone 2 bike" })
+    .first(); // first-ok: the seeded "Zone 2 bike" activity card (filtered by its unique title)
+  await expect(card).toBeVisible();
 
   // Session gear is quiet metadata in the card's third row, not a standalone
   // prominent chip/link between the activity and its provenance.
-  const gear = card.first().getByTestId("activity-gear");
+  const gear = card.getByTestId("activity-gear");
   await expect(gear).toBeVisible();
   await expect(gear).toContainText("Road Bike");
   await expect(gear).not.toHaveClass(/font-medium|text-brand/);
@@ -30,7 +31,7 @@ test("a cardio session shows its gear chip and preloads the equipment picker (#3
 
   // Opening the editor (via the card title) preloads the activity-level picker with
   // the linked gear — a real equipment id is selected, labelled "Road Bike".
-  await card.first().getByRole("button", { name: "Zone 2 bike" }).click();
+  await card.getByRole("button", { name: "Zone 2 bike" }).click();
   const select = page.getByTestId("activity-equipment-select");
   await expect(select).toBeVisible();
   await expect(select).toHaveValue(/\d+/);
@@ -53,10 +54,13 @@ test("a run offers shoes (not the bike) in the equipment picker (#339)", async (
 }) => {
   await page.goto("/training");
 
-  const card = page.locator('[id^="activity-"]').filter({ hasText: "5k run" });
-  await expect(card.first()).toBeVisible();
+  const card = page
+    .locator('[id^="activity-"]')
+    .filter({ hasText: "5k run" })
+    .first(); // first-ok: the seeded "5k run" activity card (filtered by its unique title)
+  await expect(card).toBeVisible();
 
-  await card.first().getByRole("button", { name: "5k run" }).click();
+  await card.getByRole("button", { name: "5k run" }).click();
   const select = page.getByTestId("activity-equipment-select");
   await expect(select).toBeVisible();
   // Shoes present, bike absent — the run narrows to footwear.

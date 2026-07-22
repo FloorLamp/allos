@@ -20,7 +20,7 @@ async function pickActivity(page: Page, name: string) {
     .getByRole("listbox")
     .getByRole("button")
     .filter({ hasText: name })
-    .first()
+    .first() // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
     .click();
 }
 
@@ -36,7 +36,7 @@ test("the exercise detail panel shows a How-to guide for a catalog lift, and non
   // A COVERED catalog lift → the panel carries the "How to" section with setup
   // steps and the medical disclaimer.
   await main.getByRole("cell", { name: /Back Squat/ }).click();
-  const guide = main.getByTestId("exercise-guide").first();
+  const guide = main.getByTestId("exercise-guide").first(); // first-ok: asserts an exercise guide renders — order-agnostic presence
   await expect(guide).toBeVisible();
   await expect(guide).toContainText("How to");
   await expect(guide).toContainText("Form reference, not medical advice");
@@ -48,7 +48,7 @@ test("the exercise detail panel shows a How-to guide for a catalog lift, and non
   await main.getByRole("cell", { name: /E2E Dismiss Press/ }).click();
   // The panel itself still renders (the est-1RM stat proves it swapped); the
   // guide section is simply absent.
-  await expect(main.getByText("Est. 1RM").first()).toBeVisible();
+  await expect(main.getByText("Est. 1RM").first()).toBeVisible(); // first-ok: asserts an Est. 1RM readout renders — order-agnostic presence
   await expect(main.getByTestId("exercise-guide")).toHaveCount(0);
 });
 
@@ -69,7 +69,7 @@ test("the strength set editor's ⓘ opens the shared guide overlay for a catalog
   await pickActivity(page, "Barbell Bench Press");
 
   // The ⓘ "How to" affordance renders for a catalog lift; open the overlay.
-  const openGuide = page.getByTestId("exercise-guide-open").first();
+  const openGuide = page.getByTestId("exercise-guide-open").first(); // first-ok: the How-to affordance for the lift this spec picked — order-agnostic
   await expect(openGuide).toBeVisible();
   await openGuide.click();
 
