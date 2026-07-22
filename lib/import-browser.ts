@@ -11,10 +11,13 @@
 
 import type { DocumentProducedCounts } from "./import-log";
 import type { WeightUnit } from "./settings";
+import type { Provider, ProviderType } from "./types/medical";
+import { providerDisambigLabel } from "./provider-merge";
 import { fmtWeight } from "./units";
 import {
   biomarkerViewHref,
   encounterHref,
+  providerHref,
   MEDICATIONS_HREF,
   type AppRoute,
 } from "./hrefs";
@@ -44,9 +47,10 @@ import type {
 } from "./types/medical";
 
 // The non-record tab kinds, in display order (after the record-category tabs).
-// "records" tabs are data-driven from recordsByCategory. Providers are NOT a tab
-// — they're a global registry, not this document's owned rows — so they stay a
-// count chip that links to /providers (#275); see ImportTabStrip.providers.
+// "records" tabs are data-driven from recordsByCategory. "providers" is a tab
+// since #275 gave providers a page (#1182 promotes the old count chip to a real
+// listing); its rows are the GLOBAL registry providers this document references,
+// so they stay excluded from extracted_count (#212).
 export type ImportTabKind =
   | "records"
   | "visits"
@@ -63,7 +67,31 @@ export type ImportTabKind =
   | "dental-procedures"
   | "appointments"
   | "medications"
-  | "body";
+  | "body"
+  | "providers";
+
+// The medical_records categories that DON'T carry the lab analyte grammar (value
+// + unit + reference band), so they get the read-only value/date presentation on
+// the import-detail records browser instead of the editable analyte grid (#1182):
+// a vitals BP pair, a scan's modality, a PHQ-9 instrument score, a derived bio-
+// age, an immutable reference fact (blood type) — added by #1076 and kept in
+// medical_records storage. For them the "Panel" and "Reference" columns mean
+// nothing and the editable affordance exposes fields that don't apply. Every
+// OTHER category keeps the analyte grid AS-IS: lab/biomarker/genomics (which
+// legitimately have a value/unit/reference band) AND prescription (whose story
+// #1178 owns — deliberately not re-litigated here) AND any unknown category.
+// Pure so the page and its tests agree.
+const NON_ANALYTE_CATEGORIES = new Set([
+  "vitals",
+  "scan",
+  "instrument",
+  "derived",
+  "reference",
+]);
+
+export function usesAnalyteGrid(category: string | undefined | null): boolean {
+  return category == null || !NON_ANALYTE_CATEGORIES.has(category);
+}
 
 export interface ImportTab {
   // The ?tab= SearchParam value; unique within a strip.
@@ -77,9 +105,10 @@ export interface ImportTab {
 
 export interface ImportTabStrip {
   tabs: ImportTab[];
-  // Distinct providers this document's rows reference (global registry). A count
-  // chip (linking to /providers, #275), not a tab, since providers aren't this
-  // document's owned rows. Excluded from extracted_count by design.
+  // Distinct providers this document's rows reference (global registry). Now a
+  // real tab (kind "providers") appended after the owned-row tabs (#1182), since
+  // #275 gave providers a page — the count is carried on that tab. Kept here too
+  // as a convenience scalar. Excluded from extracted_count by design (#212).
   providers: number;
 }
 
@@ -139,6 +168,7 @@ const DOMAIN_TAB_KEYS = new Set<string>([
   "appointments",
   "medications",
   "body",
+  "providers",
 ]);
 
 // Build the tab strip from the produced counts: one tab per NON-EMPTY produced
@@ -193,6 +223,9 @@ export function buildImportTabs(
     "Body metrics",
     counts.bodyMetrics + counts.heightSamples + counts.headCircSamples
   );
+  // Providers last: a global-registry tab (#1182), never before the owned-row
+  // tabs, so resolveImportTab's first-tab default never lands on it.
+  add("providers", "Providers", counts.providers);
   return { tabs, providers: counts.providers };
 }
 
@@ -571,4 +604,31 @@ export function bodyItems(
   return items.sort((a, b) =>
     a.date && b.date ? b.date.localeCompare(a.date) : 0
   );
+}
+
+// ---- Providers listing (the promoted count chip, #1182) ----
+
+// One row of the import-detail Providers panel: the global-registry provider a
+// document's rows reference, deep-linking to its /providers/[id] page (#275).
+// `label` is disambiguated per #531/#534 (provider names recycle, so a bare name
+// renders two "Quest Diagnostics" rows byte-identically); `type` drives the
+// individual-vs-organization icon so the distinction reads at a glance (#1176).
+export interface ProducedProvider {
+  id: number;
+  label: string;
+  type: ProviderType;
+  href: AppRoute;
+}
+
+// Shape the distinct providers this document references into display rows. The
+// whole set is passed to providerDisambigLabel so a same-named pair separates on
+// the FIRST field that differs (type/NPI/address/…) — the label can't be built
+// row-at-a-time, so this maps over the full list.
+export function providerItems(providers: Provider[]): ProducedProvider[] {
+  return providers.map((p) => ({
+    id: p.id,
+    label: providerDisambigLabel(p, providers),
+    type: p.type,
+    href: providerHref(p.id),
+  }));
 }

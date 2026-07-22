@@ -1593,6 +1593,74 @@ console.log(
   `e2e: seeded import document ${BROWSER_DOC_ID} with labs + prescription + visit + condition + immunization for the records browser (#271)`
 );
 
+// ── Import-detail type-appropriate panels fixture (issue #1182) ──────────────
+// A 'done' document that produced BOTH an analyte category (a lab, with a value/
+// unit/reference band → the editable analyte grid) AND a non-analyte category (a
+// vitals BP row → the read-only value/date table, no "Panel"/"Reference"
+// columns), plus one referenced provider (an organization → the promoted
+// Providers listing linking to /providers/[id], no longer a bare count chip).
+// Dedicated id 909 so the #1182 presentation spec owns its own fixture and never
+// perturbs 908's default-tab/count assertions. All content synthetic — no PHI.
+const PANELS_DOC_ID = 909;
+db.prepare(`DELETE FROM medical_records WHERE document_id = ?`).run(
+  PANELS_DOC_ID
+);
+db.prepare(`DELETE FROM medical_documents WHERE id = ?`).run(PANELS_DOC_ID);
+db.prepare(
+  `INSERT INTO medical_documents
+     (id, profile_id, filename, stored_path, mime_type, size_bytes, doc_type,
+      source, extraction_status, extracted_count, uploaded_at)
+   VALUES (?, ?, 'e2e-produced-panels.xml', '', 'application/xml', 4096,
+           'MyChart export (CCD/XDM)', 'ccda', 'done', 2, '2026-07-09 09:50:00')`
+).run(PANELS_DOC_ID, PROFILE_ID);
+db.prepare(`DELETE FROM providers WHERE dedup_key = 'e2e-panels-lab'`).run();
+const panelsProviderId = Number(
+  db
+    .prepare(
+      `INSERT INTO providers (name, type, dedup_key)
+       VALUES ('E2E Panels Lab', 'organization', 'e2e-panels-lab')`
+    )
+    .run().lastInsertRowid
+);
+const insPanelsRecord = db.prepare(
+  `INSERT INTO medical_records
+     (profile_id, date, category, name, value, value_num, unit, panel,
+      reference_range, canonical_name, document_id, provider_id, source)
+   VALUES (?, '2026-06-21', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ccda')`
+);
+// Analyte category → keeps the editable analyte grid (Panel + Reference columns).
+insPanelsRecord.run(
+  PROFILE_ID,
+  "lab",
+  "E2E Sodium",
+  "140",
+  140,
+  "mmol/L",
+  "E2E Basic Metabolic Panel",
+  "135–145",
+  "Sodium",
+  PANELS_DOC_ID,
+  panelsProviderId
+);
+// Vitals (non-analyte) → the read-only value/date table: no Panel, no Reference
+// band. A BP pair recorded as one row (systolic/diastolic).
+insPanelsRecord.run(
+  PROFILE_ID,
+  "vitals",
+  "E2E Blood Pressure",
+  "128/82",
+  null,
+  "mmHg",
+  null,
+  null,
+  null,
+  PANELS_DOC_ID,
+  null
+);
+console.log(
+  `e2e: seeded import document ${PANELS_DOC_ID} with a lab + a vitals row + a provider for the type-appropriate panels (#1182)`
+);
+
 // ── Records bridge fixture (#817) ────────────────────────────────────────────
 // Two imported prescription records (documentless) with NO matched tracked med, so
 // the /medications "From your records" bridge has deterministic suggest-only rows:
