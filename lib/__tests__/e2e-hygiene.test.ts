@@ -120,7 +120,6 @@ const FIRST_ALLOW: Record<string, number> = {
   "date-time-format-prefs.spec.ts": 10,
   "dental.spec.ts": 2,
   "dose-history.spec.ts": 9,
-  "dose-skip.spec.ts": 2,
   "drug-allergy.spec.ts": 3,
   "drug-interactions.spec.ts": 4,
   "edit-lock-badge.spec.ts": 2,
@@ -157,7 +156,10 @@ const FIRST_ALLOW: Record<string, number> = {
   "medication-monitoring.spec.ts": 1,
   "medication-prefill.spec.ts": 8,
   "medications-followups.spec.ts": 6,
-  "medications-page.spec.ts": 2,
+  // dose-history-row .first() (newest seeded dose) deferred to a dedicated-fixture
+  // pass — its safety rests on every OTHER spec only backdating writes to this
+  // SHARED med, which is too fragile to bless with a marker.
+  "medications-page.spec.ts": 1,
   "medications-ux-r2.spec.ts": 4,
   "mobile-ui-polish.spec.ts": 8,
   "mobility.spec.ts": 2,
@@ -173,7 +175,6 @@ const FIRST_ALLOW: Record<string, number> = {
   "preventive-nudge.spec.ts": 2,
   "preventive-upcoming.spec.ts": 1,
   "prn-family.spec.ts": 1,
-  "prn-quicklog.spec.ts": 3,
   "records-page.spec.ts": 1,
   "results-page.spec.ts": 2,
   "review-inbox.spec.ts": 3,

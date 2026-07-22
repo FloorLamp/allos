@@ -18,8 +18,8 @@ test("dose check-off cycles taken → skipped → clear as a tri-state", async (
     .locator("div.card")
     .filter({ hasText: "Add supplement" });
   await addCard.getByLabel("Name").fill(NAME);
-  await addCard.getByLabel("Amount").first().fill("15 mg");
-  await addCard.getByLabel("Time of day").first().selectOption("Morning");
+  await addCard.getByLabel("Amount").first().fill("15 mg"); // first-ok: the add-supplement form's own first dose-row field (deterministic within one form render, not a seeded list)
+  await addCard.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the add-supplement form's own first dose-row field (deterministic within one form render, not a seeded list)
   await addCard.getByRole("button", { name: "Add", exact: true }).click();
 
   const row = page

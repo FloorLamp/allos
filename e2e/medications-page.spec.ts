@@ -69,7 +69,7 @@ test("Today panel leads with a due scheduled dose and a PRN administration row",
   // A scheduled, currently-due med shows its tri-state dose check-off inline.
   const scheduled = scheduledTodayItem(today, "Adherence Refill Med (e2e)");
   await expect(scheduled).toBeVisible();
-  await expect(scheduled.getByTestId("dose-status").first()).toBeVisible();
+  await expect(scheduled.getByTestId("dose-status").first()).toBeVisible(); // first-ok: scoped to the uniquely-named Adherence Refill Med (e2e) Today card; its own first dose-status pill
 
   // A PRN med shows a one-tap administration row (not a scheduled pill).
   await expect(prnTodayItem(today, "PRN Quicklog Med (e2e)")).toBeVisible();

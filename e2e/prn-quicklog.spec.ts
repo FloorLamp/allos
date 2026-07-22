@@ -54,7 +54,12 @@ test("Today panel shows the PRN med's administrations, detail shows the ledger (
   await expect(admin).toContainText(
     /last \d{1,2}:\d{2}(?:am|pm)? \((?:just now|\d+ (?:mins?|hrs?) ago)\)/
   );
-  await expect(prnAdministrationRows(admin).first()).toContainText(
+  // The ledger renders newest-first, and this assertion checks a PROPERTY of the
+  // newest row (it carries a relative-time label) — true of ANY recent administration,
+  // not an exact-row identity — so "first" here is just "newest", not "whichever row
+  // a neighbor left on a shared list".
+  const newestAdmin = prnAdministrationRows(admin).first(); // first-ok: newest row on a newest-first ledger; the assertion is a property of "most recent", not a row identity
+  await expect(newestAdmin).toContainText(
     /\d{1,2}:\d{2}(?:am|pm)? \((?:just now|\d+ (?:mins?|hrs?) ago)\)/
   );
 
@@ -127,11 +132,13 @@ test("dashboard quick-log widget logs an administration and updates the count (#
   const detail = await openMedDetailViaLink(page, MED);
   const admin = prnAdministrations(detail);
   const rows = prnAdministrationRows(admin);
-  await expect(rows.first()).toBeVisible();
-  await settledClick(
-    page,
-    rows.first().getByTestId("prn-administration-remove")
-  );
+  // The ledger is newest-first and this spec just logged an administration "now"
+  // (settledClick-awaited above); CI runs workers=1 (sequential), so no neighbor can
+  // interleave a newer row between the log and here — the newest row is deterministically
+  // this spec's own just-logged one, so removing it undoes exactly this spec's write.
+  const newestRow = rows.first(); // first-ok: newest row this spec just logged "now" on a newest-first ledger, under CI's sequential workers=1
+  await expect(newestRow).toBeVisible();
+  await settledClick(page, newestRow.getByTestId("prn-administration-remove"));
   // Back to the seeded count (the "Dose removed." undo toast is left to expire — the
   // removal must persist for cleanup, so we do NOT click Undo).
   await expect(admin).toContainText(`${before} today`);
