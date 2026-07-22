@@ -254,6 +254,17 @@ function schemaProviderLinks(dbSrc: string): Set<string> {
     let c: RegExpExecArray | null;
     while ((c = colRe.exec(body))) out.add(`${name}.${c[1]}`);
   }
+  // A provider link can ALSO be ALTER-added to an existing table (e.g.
+  // medication_courses.provider_id, the #1204 per-course prescriber link, added by
+  // migration 091 to a baseline table). Scan `ALTER TABLE <t> ADD COLUMN <…provider_id>
+  // INTEGER` too so those links are reflected the same as CREATE TABLE ones.
+  const alterRe =
+    /ALTER TABLE\s+(\w+)\s+ADD COLUMN\s+(\w*provider_id)\s+INTEGER\b/g;
+  let a: RegExpExecArray | null;
+  while ((a = alterRe.exec(dbSrc))) {
+    if (a[1].endsWith("_new")) continue;
+    out.add(`${a[1]}.${a[2]}`);
+  }
   return out;
 }
 

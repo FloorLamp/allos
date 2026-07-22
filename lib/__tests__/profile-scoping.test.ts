@@ -220,6 +220,11 @@ const ALLOW_NON_LITERAL: { file: string; expr: string; why: string }[] = [
     expr: "sql",
     why: "q(sql) helper: every DATASETS query string filters the acting profile — directly (WHERE profile_id = ?) or, for the intake dose/log child tables, through the parent JOIN (WHERE ii.profile_id = ?)",
   },
+  {
+    file: "lib/providers-db.ts",
+    expr: "profileSql",
+    why: "getProviderMergeImpact profiles-touched aggregate (#275): a GLOBAL, deliberately profile-AGNOSTIC count across every profile (the admin-only merge shows 'N across M profiles'). `profileSql` is one of two hand-authored strings over the bound PROVIDER_LINK_COLUMNS — the plain SELECT DISTINCT profile_id, or, for the child medication_courses (no own profile_id, #1204), a JOIN to intake_items resolving the parent's profile_id. Neither reads one profile's data into another's — it is the count itself that spans profiles by design.",
+  },
 ];
 
 function walk(dir: string, out: string[]) {
