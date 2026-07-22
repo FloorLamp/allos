@@ -1386,7 +1386,6 @@ export function makeConditionResolver(
   };
 }
 
-
 // Stamp encounter_id on each row of `rows` (a table whose stored external_id is the
 // scoped `<docSource>|<raw>`) whose `encounter_external_id` resolves to a local
 // encounter. Only sets a currently-null link (a manual re-link is never clobbered).
@@ -1414,7 +1413,9 @@ function linkRowsByExternalId(
 // neither. The live reminder schedule stays item-keyed on intake_item_doses; this is
 // the historical record of what was prescribed, so a renewal at a new strength is
 // preserved even though the live schedule is not silently overwritten.
-function doseSnapshotOf(med: ReturnType<typeof parsePrescription>): string | null {
+function doseSnapshotOf(
+  med: ReturnType<typeof parsePrescription>
+): string | null {
   const parts = [med.strength, med.sig].filter((p): p is string => !!p);
   return parts.length ? parts.join(" — ") : null;
 }
@@ -1423,8 +1424,13 @@ function doseSnapshotOf(med: ReturnType<typeof parsePrescription>): string | nul
 // reprocess deletes-and-reinserts the med under a new id but the SAME import_key, so
 // its accepted tier-2 visit-link decision re-applies. NULL for a documentless (paste)
 // med, whose stable id suffices. Mirrors migration 092's backfill expression.
-function medImportKey(docId: number | null, cleanedName: string): string | null {
-  return docId != null ? `medimport:${docId}|${cleanedName.toLowerCase()}` : null;
+function medImportKey(
+  docId: number | null,
+  cleanedName: string
+): string | null {
+  return docId != null
+    ? `medimport:${docId}|${cleanedName.toLowerCase()}`
+    : null;
 }
 
 // Project an import's prescriptions into the SINGLE medication entity (#1178):

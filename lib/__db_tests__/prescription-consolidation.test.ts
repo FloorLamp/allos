@@ -72,7 +72,8 @@ function prescription(over: Partial<PersistRecord>): PersistRecord {
 
 function newProfile(name: string): number {
   return Number(
-    db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name).lastInsertRowid
+    db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
+      .lastInsertRowid
   );
 }
 function newDocument(profileId: number): number {
@@ -138,7 +139,10 @@ describe("#1178 a CCD prescription imports as the single medication entity", () 
            JOIN intake_items ii ON ii.id = c.item_id
           WHERE ii.profile_id = ?`
       )
-      .get(profileId) as { prescriber: string | null; dose_snapshot: string | null };
+      .get(profileId) as {
+      prescriber: string | null;
+      dose_snapshot: string | null;
+    };
     expect(course.prescriber).toBe("Dr. Alice Green");
     expect(course.dose_snapshot).not.toBeNull();
   });
@@ -207,7 +211,10 @@ describe("#1204 cross-document re-prescription attaches a course", () => {
         `SELECT prescriber, dose_snapshot FROM medication_courses
           WHERE item_id = ? ORDER BY id`
       )
-      .all(meds[0].id) as { prescriber: string | null; dose_snapshot: string | null }[];
+      .all(meds[0].id) as {
+      prescriber: string | null;
+      dose_snapshot: string | null;
+    }[];
     expect(courses).toHaveLength(2); // initial + the renewal course
     // The renewal course carries the second prescriber + a dose snapshot.
     expect(courses.some((c) => c.prescriber === "Dr. Bob Stone")).toBe(true);
@@ -295,7 +302,9 @@ describe("#1178 reprocess re-applies an accepted visit link to the medication", 
         .get(profileId) as { id: number }
     ).id;
     // Accept the medication↔visit link (records a durable decision on import_key).
-    expect(linkRecordToEncounter(profileId, "medication", medId, eid)).toBe(true);
+    expect(linkRecordToEncounter(profileId, "medication", medId, eid)).toBe(
+      true
+    );
 
     // Reprocess: the med is deleted-and-reinserted under a NEW id, but the accepted
     // link re-applies via its stable import_key.
@@ -398,9 +407,9 @@ describe("migration 092 consolidates legacy paired + unpaired prescription rows"
       )
       .all(profileId) as { domain: string; target_key: string }[];
     expect(decisions.every((d) => d.domain === "medication")).toBe(true);
-    expect(decisions.some((d) => d.target_key === `ext:${med.import_key}`)).toBe(
-      true
-    );
+    expect(
+      decisions.some((d) => d.target_key === `ext:${med.import_key}`)
+    ).toBe(true);
 
     // The unpaired record was projected into a NEW med.
     const projected = db

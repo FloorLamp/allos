@@ -339,7 +339,9 @@ describe("#1051 records bridge carries provider_id + source_record_id", () => {
     const created = createMedicationFromRecord(profileId, recordId);
     expect(created).not.toBeNull();
     const med = db
-      .prepare(`SELECT provider_id, encounter_id FROM intake_items WHERE id = ?`)
+      .prepare(
+        `SELECT provider_id, encounter_id FROM intake_items WHERE id = ?`
+      )
       .get(created!.id) as {
       provider_id: number | null;
       encounter_id: number | null;
@@ -478,9 +480,7 @@ describe("#1204 manual track-from-record attaches a course on a match", () => {
       .get(profileId) as { n: number };
     expect(items.n).toBe(1);
     const courses = db
-      .prepare(
-        `SELECT COUNT(*) AS n FROM medication_courses WHERE item_id = ?`
-      )
+      .prepare(`SELECT COUNT(*) AS n FROM medication_courses WHERE item_id = ?`)
       .get(first!.id) as { n: number };
     expect(courses.n).toBe(2); // the initial course + the renewal course
   });

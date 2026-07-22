@@ -273,7 +273,9 @@ describe("read-time suggestion — the late-arrival case", () => {
     expect(encSug.suggestions.some((s) => s.record.id === recId)).toBe(true);
 
     // Accept the medication↔visit link (a manual med uses the id-based token path).
-    expect(linkRecordToEncounter(profileId, "medication", recId, eid)).toBe(true);
+    expect(linkRecordToEncounter(profileId, "medication", recId, eid)).toBe(
+      true
+    );
     expect(encounterForRecord(profileId, "medication", recId)?.id).toBe(eid);
   });
 });

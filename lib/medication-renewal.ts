@@ -74,7 +74,9 @@ export function isDoseChange(
   const nu = normalizeStrength(newStrength);
   if (nu == null) return false;
   const live = new Set(
-    [...liveStrengths].map((s) => normalizeStrength(s)).filter((s): s is string => !!s)
+    [...liveStrengths]
+      .map((s) => normalizeStrength(s))
+      .filter((s): s is string => !!s)
   );
   if (live.size === 0) return false;
   return !live.has(nu);
