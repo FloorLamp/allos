@@ -251,7 +251,7 @@ const TOPASS_ALLOW: Record<string, number> = {
   "nav.ts": 1,
   "nutrition-trio.spec.ts": 1,
   "review-inbox.spec.ts": 1,
-  "rpe-logging.spec.ts": 2,
+  "rpe-logging.spec.ts": 1,
   "settings-ia.spec.ts": 1,
   "symptom-helpers.ts": 7,
   "symptom-log.spec.ts": 1,

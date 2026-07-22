@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { settledClick } from "./helpers";
+import { settledClick, settledFill } from "./helpers";
 
 // Issue #743: the optional per-set RPE selector round-trips through the activity
 // form — log a set with a rating, reload the page, reopen the stored session, and
@@ -90,17 +90,13 @@ test("RPE selector round-trips through the activity form (#743)", async ({
   await pickActivity(page, "Barbell Bench Press");
 
   // Fill one complete working set (weight + reps) so the session auto-saves.
-  // Retry the fills to ride out the hydration window: a value typed before the
-  // form hydrates is silently dropped, which would leave the set incomplete and
-  // the session unsaved (the full CI suite is slow enough to hit this).
+  // settledFill waits for the controlled inputs to hydrate before filling (a
+  // pre-hydration fill is reverted and the set stays incomplete — the #1188
+  // class; this block predates the helper and hand-rolled the same wait).
   const weight = page.getByTestId("set1-weight");
   const reps = page.getByTestId("set1-reps-stepper").locator("input");
-  await expect(async () => {
-    await weight.fill("100");
-    await reps.fill("5");
-    await expect(weight).toHaveValue("100");
-    await expect(reps).toHaveValue("5");
-  }).toPass();
+  await settledFill(page, weight, "100");
+  await settledFill(page, reps, "5");
 
   // The complete set auto-saves. Assert the Delete button appears BEFORE touching
   // RPE — a stable signal the row was created (it stays once the row exists, unlike
@@ -117,38 +113,35 @@ test("RPE selector round-trips through the activity form (#743)", async ({
 
   // Stepping up from blank seeds the default working rating (8); a second step
   // nudges it a half point (8.5). Each step fires a debounced (700ms) autosave
-  // Server Action POST. Await the FIRST step's save via its own Next-Action response
-  // (the SAME pattern the half-point step below uses), NOT settledClick: settledClick
-  // can settle on the intervening router.refresh() RSC POST rather than the integer
-  // save, leaving the "8" write in flight — so under load it commits AFTER the "8.5"
-  // write and the reload reads back "8" (the ~50% rpe-logging:68 census flake, e.g.
-  // #1165 e2e(4)). Draining the 8-save before triggering the 8.5-save guarantees no
-  // in-flight integer write can clobber the half point. Armed BEFORE the click so
-  // the response can't be missed.
-  const firstSaved = page.waitForResponse(
-    (r) =>
-      r.request().method() === "POST" &&
-      r.request().headers()["next-action"] != null &&
-      r.ok(),
-    { timeout: 15_000 }
-  );
+  // Server Action POST whose FormData carries the sets JSON — so each waiter
+  // matches the save by its OWN PAYLOAD ("rpe":8 / "rpe":8.5 in the body), never
+  // a bystander. The prior next-action-header-only filter still matched /training's
+  // background action-POST traffic (the ~6s doc/import toaster poll — the exact
+  // bystander hazard settledClick's doc warns about): a poller response resolved
+  // the wait EARLY, the spec navigated during the still-debouncing save, and the
+  // hard goto ABORTED it — the census read back "8" because the 8.5 save never
+  // fired, not because it lost a race (post-#1189 census, run 29925360046). Armed
+  // BEFORE the click so the response can't be missed.
+  const savePostWith = (marker: RegExp) =>
+    page.waitForResponse(
+      (r) => {
+        if (r.request().method() !== "POST") return false;
+        if (r.request().headers()["next-action"] == null) return false;
+        if (!r.ok()) return false;
+        const body = r.request().postData();
+        return body != null && marker.test(body);
+      },
+      { timeout: 15_000 }
+    );
+  // "rpe":8 must not also match "rpe":8.5 — anchor the following delimiter.
+  const firstSaved = savePostWith(/"rpe":8[,}]/);
   await rpe.getByRole("button", { name: "Increase RPE" }).click();
   await expect(rpeValue).toHaveText("8");
   await firstSaved;
-  // Wait for the HALF-POINT autosave's own Server Action response before moving on,
-  // so 8.5 is DURABLY persisted before we navigate. The autosave is debounced
-  // (700ms); settledClick alone can settle on the intervening router.refresh() RSC
-  // POST rather than the 8.5-carrying save, letting the reload read the prior
-  // integer save — the ~50%-under-load census flake (rpe-logging:68 read back "8").
-  // Filtering on the Next-Action header selects the Server Action save specifically,
-  // never the RSC refresh. Armed BEFORE the step so the response can't be missed.
-  const halfPointSaved = page.waitForResponse(
-    (r) =>
-      r.request().method() === "POST" &&
-      r.request().headers()["next-action"] != null &&
-      r.ok(),
-    { timeout: 15_000 }
-  );
+  // The half-point save, matched by its own payload the same way, so 8.5 is
+  // DURABLY persisted (the action response completes server-side) before the
+  // Escape + reload below.
+  const halfPointSaved = savePostWith(/"rpe":8\.5[,}]/);
   await rpe.getByRole("button", { name: "Increase RPE" }).click();
   await expect(rpeValue).toHaveText("8.5");
   await halfPointSaved;
