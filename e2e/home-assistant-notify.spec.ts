@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { loginAs } from "./nav";
+import { settledCheck, settledFill } from "./helpers";
 import { E2E_LOGIN_HA_NOTIFY, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // Home Assistant notification channel config UI (#248). A real webhook POST can't
@@ -36,23 +37,35 @@ test.describe("Home Assistant notification settings", () => {
         card.getByRole("button", { name: "Apply Home Assistant settings" })
       ).toBeVisible();
 
-      // Enable reveals the URL field + per-kind toggles.
-      await member.getByTestId("ha-enable").check();
+      // Enable reveals the URL field + per-kind toggles. settledCheck/settledFill wait
+      // for React to hydrate the controlled inputs before toggling/filling (a
+      // pre-hydration toggle or fill reverts and the save reads stale state — #1188).
+      await settledCheck(member, member.getByTestId("ha-enable"), true);
       await expect(member.getByTestId("ha-webhook-url")).toBeVisible();
       await expect(member.getByTestId("ha-kind-dose")).toBeVisible();
 
       // Saving with an invalid URL is rejected (no silent disable).
-      await member.getByTestId("ha-webhook-url").fill("not-a-url");
+      await settledFill(
+        member,
+        member.getByTestId("ha-webhook-url"),
+        "not-a-url"
+      );
       await member.getByTestId("ha-save").click();
       await expect(member.getByTestId("ha-result")).toContainText("valid");
 
       // A valid webhook URL saves, and a send-test attempts a real POST (which fails
       // at the unreachable host) — proving the row was stored, not "not configured".
-      await member
-        .getByTestId("ha-webhook-url")
-        .fill("http://127.0.0.1:9/api/webhook/allos-e2e");
+      await settledFill(
+        member,
+        member.getByTestId("ha-webhook-url"),
+        "http://127.0.0.1:9/api/webhook/allos-e2e"
+      );
       // Turn off one kind so the disabled-set persistence is exercised.
-      await member.getByTestId("ha-kind-weekly-recap").uncheck();
+      await settledCheck(
+        member,
+        member.getByTestId("ha-kind-weekly-recap"),
+        false
+      );
       await member.getByTestId("ha-save").click();
       await expect(member.getByTestId("ha-status")).toBeVisible();
 

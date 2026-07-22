@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { settledCheck } from "./helpers";
 
 // Per-profile preventive-care reminders toggle on Settings → Profile (issue #87).
 // Runs authenticated as admin acting as the seeded profile 1 (shared storageState).
@@ -17,8 +18,13 @@ test.describe("preventive-care reminders toggle (issue #87)", () => {
     await page.goto("/settings/notifications");
 
     // The schedule (and the preventive toggle) is revealed only when Telegram is
-    // enabled for this profile — turn it on first.
-    await page.getByLabel("Enable Telegram notifications").check();
+    // enabled for this profile — turn it on first. settledCheck waits for React to
+    // hydrate the controlled checkbox (a pre-hydration .check() reverts — #1188).
+    await settledCheck(
+      page,
+      page.getByLabel("Enable Telegram notifications"),
+      true
+    );
 
     const toggle = page.getByTestId("preventive-enabled");
     await expect(toggle).toBeVisible();
@@ -26,7 +32,7 @@ test.describe("preventive-care reminders toggle (issue #87)", () => {
     await expect(toggle).toBeChecked();
 
     // Turn it off and save.
-    await toggle.uncheck();
+    await settledCheck(page, toggle, false);
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page.getByLabel("Saved").first()).toBeVisible();
 
@@ -38,8 +44,12 @@ test.describe("preventive-care reminders toggle (issue #87)", () => {
     // Restore the fixture: preventive back ON, Telegram back OFF, then save. The
     // preventive state persists even while its checkbox is hidden by the Telegram
     // toggle, so the form still submits preventive_enabled=1.
-    await page.getByTestId("preventive-enabled").check();
-    await page.getByLabel("Enable Telegram notifications").uncheck();
+    await settledCheck(page, page.getByTestId("preventive-enabled"), true);
+    await settledCheck(
+      page,
+      page.getByLabel("Enable Telegram notifications"),
+      false
+    );
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page.getByLabel("Saved").first()).toBeVisible();
 

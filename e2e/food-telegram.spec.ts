@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { settledCheck, settledFill } from "./helpers";
 
 // Food logging over Telegram — the per-profile opt-in toggle on Settings → Notifications
 // (issue #682). Runs authenticated as admin acting as the seeded profile 1 (shared
@@ -21,16 +22,24 @@ test.describe("food logging over Telegram (issue #682)", () => {
     await expect(card).toBeVisible();
 
     // The food toggle lives inside the Telegram-enabled block, so turn Telegram on.
+    // settledCheck waits for React to hydrate the controlled checkbox before toggling —
+    // a pre-hydration .check() reverts and Playwright reports "did not change its state"
+    // (the #1188 fill-revert class, checkbox form; was the food-telegram line-26 flake).
     const enableTelegram = card.getByLabel("Enable Telegram notifications");
-    if (!(await enableTelegram.isChecked())) await enableTelegram.check();
+    await settledCheck(page, enableTelegram, true);
 
     const foodToggle = page.getByTestId("food-telegram-enabled");
     await expect(foodToggle).toBeVisible();
     await expect(foodToggle).not.toBeChecked(); // off by default
 
-    // Opt in + a chat id, then save.
-    await foodToggle.check();
-    await card.getByPlaceholder("e.g. 987654321").fill("55501234");
+    // Opt in + a chat id, then save. The chat-id is a controlled input whose Save reads
+    // state, so settledFill it too (a pre-hydration fill persists empty — same class).
+    await settledCheck(page, foodToggle, true);
+    await settledFill(
+      page,
+      card.getByPlaceholder("e.g. 987654321"),
+      "55501234"
+    );
     await card.getByRole("button", { name: "Save" }).click();
     await expect(card.getByLabel("Saved")).toBeVisible();
 
@@ -39,9 +48,13 @@ test.describe("food logging over Telegram (issue #682)", () => {
     await expect(page.getByTestId("food-telegram-enabled")).toBeChecked();
 
     // Reset the shared fixture: food off, chat id cleared, Telegram off.
-    await page.getByTestId("food-telegram-enabled").uncheck();
-    await card.getByPlaceholder("e.g. 987654321").fill("");
-    await card.getByLabel("Enable Telegram notifications").uncheck();
+    await settledCheck(page, page.getByTestId("food-telegram-enabled"), false);
+    await settledFill(page, card.getByPlaceholder("e.g. 987654321"), "");
+    await settledCheck(
+      page,
+      card.getByLabel("Enable Telegram notifications"),
+      false
+    );
     await card.getByRole("button", { name: "Save" }).click();
     await expect(card.getByLabel("Saved")).toBeVisible();
   });
