@@ -119,6 +119,38 @@ preferred fix when migrating an offender is an exact locator (testid, unique
 marker text the spec planted) or a dedicated fixture login
 (`e2e/fixture-logins.ts`), not a marker.
 
+#### The family-create freeze + `e2e/family-helpers.ts` (phase-2 create-member hardening)
+
+The Settings → Family create/grant controls are `onClick`+`router.refresh()`
+handlers, NOT native form submits (`FamilyManager.tsx`), and that shape breeds two
+races: a click dispatched in the hydration window is SWALLOWED (no create POST fires
+at all — #730/#830), and the settings shell's background toasters poll via Server
+Action POSTs to the current route that are indistinguishable from the create action's
+own POST, so a bare `settledClick` FALSE-SETTLES on a bystander poll while a stale
+post-`refresh` matrix never shows the new row (#1111). Nine near-identical copies of
+the compensating goto→fill→click→verify dance had accreted across the dynamic specs.
+
+They now live in ONE blessed home, **`e2e/family-helpers.ts`**, with three drivers:
+
+- `createLoginViaFamily(page, opts?)` — creates a login (member or admin, optional
+  email/invite), retrying the whole cycle against the DURABLE `login-row` (the
+  universal row — an admin renders no `grant-row`, so login-row is the one signal that
+  works for both); idempotent via the NOCASE-unique username. `settledFill`s the
+  username first so the card is hydrated before the controlled role/invite toggles.
+- `createProfileViaFamily(page, label)` — VERIFY-FIRST create (profile names are NOT
+  unique-constrained, so a blind re-click could add a second same-named profile), then
+  switch to it and defer onboarding through the product's own affordance.
+- `setGrantsViaFamily(page, username, { profileId, access })` — grants a profile at an
+  access level, scoping the checkbox by the `grant-cell-<username>-<id>` testid (no
+  `.first()`), then settles on the "Access updated." banner.
+
+The guard freezes the three inline markers — `getByPlaceholder("Username")`,
+`"Add a profile"`, `"Save access"` — at ZERO in every file EXCEPT `family-helpers.ts`
+(which is SKIPPED, not allowlisted — it owns them by design), so a NEW inline
+create/grant sequence fails CI and must route through the helper. A spec that adds a
+second full family navigation this way (create THEN grant is two page loads) may need
+`test.slow()` for the extra budget — the two-factor precedent.
+
 ### Not mechanically enforced — the fixture-ownership rule (class 1)
 
 Detecting an "exact-count assertion against a shared-seed row" syntactically is

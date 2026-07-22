@@ -1,6 +1,7 @@
 import { test, expect, type Browser } from "@playwright/test";
 import fs from "node:fs";
 import { settledClick, settledFill, followLink } from "./helpers";
+import { createLoginViaFamily } from "./family-helpers";
 import { loginAs } from "./nav";
 
 // Outbound email — SMTP foundation + login-lifecycle flows (issue #985). One
@@ -135,18 +136,18 @@ test.describe("outbound email — login lifecycle (#985)", () => {
     // ── (2) Invite flow from Family settings ────────────────────────────────
     const invitee = `invitee-${SUFFIX}`;
     const inviteeEmail = `invitee-${SUFFIX}@example.com`;
-    await page.goto("/settings/family");
-    await page.getByPlaceholder("Username").fill(invitee);
-    await page.getByPlaceholder("Password").fill(TEMP_PW);
-    await page.getByPlaceholder("Email (optional)").fill(inviteeEmail);
     // Admin role so the invited login can see the app (a member with no granted
     // profile has nowhere to land) — this spec is about the email flow, not grants.
-    await page.getByTestId("create-role").selectOption("admin");
-    await page.getByTestId("create-invite").check();
-    await settledClick(
-      page,
-      page.getByRole("button", { name: "Create login" })
-    );
+    // The shared helper hardens the onClick+refresh create against the hydration
+    // swallow / toaster false-settle; sendInviteEmail is awaited before createLogin
+    // returns, so once the durable login-row lands the invite is already captured.
+    await createLoginViaFamily(page, {
+      username: invitee,
+      password: TEMP_PW,
+      email: inviteeEmail,
+      role: "admin",
+      invite: true,
+    });
 
     // Follow the invite link (captured mail) and set a password.
     const invPage = await cookielessPage(browser);
@@ -176,15 +177,12 @@ test.describe("outbound email — login lifecycle (#985)", () => {
     // ── (1) Forgot-password round trip ──────────────────────────────────────
     const resetter = `resetter-${SUFFIX}`;
     const resetterEmail = `resetter-${SUFFIX}@example.com`;
-    await page.goto("/settings/family");
-    await page.getByPlaceholder("Username").fill(resetter);
-    await page.getByPlaceholder("Password").fill(TEMP_PW);
-    await page.getByPlaceholder("Email (optional)").fill(resetterEmail);
-    await page.getByTestId("create-role").selectOption("admin");
-    await settledClick(
-      page,
-      page.getByRole("button", { name: "Create login" })
-    );
+    await createLoginViaFamily(page, {
+      username: resetter,
+      password: TEMP_PW,
+      email: resetterEmail,
+      role: "admin",
+    });
 
     // From /login → Forgot password? → request a reset.
     const reset = await cookielessPage(browser);
