@@ -598,11 +598,14 @@ export const getBiomarkerSeries = cache(function getBiomarkerSeries(
   canonical: string
 ): MedicalRecord[] {
   // Match by the #482 FAMILY identity, not the exact canonical name: a request for
-  // any family member (e.g. "Vitamin D, 25-Hydroxy") returns the WHOLE family's
-  // readings (total + D2 + D3), so the chart/detail page and the starred tile show
-  // one Vitamin D series instead of three — the same collapse the dedup/latest
-  // partitions apply. A non-family analyte's family key is just its own name, so
-  // its series is unchanged from the pre-#482 exact match.
+  // any family member (e.g. the total-25-OH spellings, or A1c ↔ eAG) returns the
+  // WHOLE family's readings, so the chart/detail page and the starred tile show one
+  // series instead of several — the same collapse the dedup/latest partitions apply.
+  // A non-family analyte's family key is just its own name, so its series is
+  // unchanged. NOTE (#1193): the vitamin-D D2/D3 FRACTIONS are NOT in this family
+  // anymore — each is its own trendable series (biomarkerFamily gives it its own
+  // identity), so a request for "Vitamin D3, 25-Hydroxy" returns only the D3
+  // readings, apart from the total; they share only the retest clock.
   return db
     .prepare(
       `WITH ${DEDUP_IDS_CTE}

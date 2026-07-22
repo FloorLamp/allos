@@ -18,8 +18,20 @@ import {
   collectUpcoming,
   biomarkerFamilyKey,
 } from "@/lib/queries";
-import { biomarkerFamily } from "@/lib/canonical-name";
+import {
+  biomarkerFamily,
+  buildCanonicalIndex,
+  snapCanonicalName,
+} from "@/lib/canonical-name";
+import { reconciledFlag } from "@/lib/reference-range";
+import { canonicalBiomarkerForName } from "@/lib/datasets/canonical-biomarkers";
+import canonicalSeed from "@/lib/canonical-biomarkers.json";
 import { seedProfile, type SeededProfile } from "./fixtures";
+
+const VOCAB = (
+  canonicalSeed as { biomarkers: { name: string }[] }
+).biomarkers.map((b) => b.name);
+const INDEX = buildCanonicalIndex(VOCAB);
 
 let p: SeededProfile;
 
@@ -56,58 +68,129 @@ beforeEach(() => {
   clearRows();
 });
 
-describe("vitamin-D family resolves to one group on every surface (#482)", () => {
-  it("dedup/current, series, starred, and retest all agree on the family", () => {
-    const recent = shiftDateStr(p.todayStr, -30);
-    const old = shiftDateStr(p.todayStr, -120);
-    addReading("Vitamin D, 25-Hydroxy", recent, 34);
-    addReading("Vitamin D3, 25-Hydroxy", old, 22);
+describe("vitamin-D fractions keep their OWN identity but share the retest clock (#1193)", () => {
+  it("a same-date D2/D3/total panel is THREE distinct series, none dedup'd, only the total banded", () => {
+    const date = shiftDateStr(p.todayStr, -30);
+    // One panel reporting all three on the same date — the exact over-collapse case.
+    addReading("Vitamin D, 25-Hydroxy", date, 50);
+    addReading("Vitamin D2, 25-Hydroxy", date, 5);
+    addReading("Vitamin D3, 25-Hydroxy", date, 45);
 
-    // DEDUP + is_latest/current: one current row for the whole family (the newest
-    // member, the total), not one per stored name.
-    const currentVitD = getMedicalRecords(p.profileId, {
-      current: true,
-    }).filter((r) =>
-      (r.canonical_name ?? "").toLowerCase().includes("vitamin d")
+    // DEDUP + is_latest/current: THREE distinct current rows (one per fraction/total),
+    // never collapsed onto one — a D3 (45) must not dedup against a total (50) on one
+    // date, nor mark the whole group "current" off whichever is newest.
+    const currentVitD = getMedicalRecords(p.profileId, { current: true }).filter(
+      (r) => (r.canonical_name ?? "").toLowerCase().includes("vitamin d")
     );
-    expect(currentVitD).toHaveLength(1);
-    expect(currentVitD[0].canonical_name).toBe("Vitamin D, 25-Hydroxy");
+    expect(currentVitD).toHaveLength(3);
+    expect(currentVitD.map((r) => r.canonical_name).sort()).toEqual([
+      "Vitamin D, 25-Hydroxy",
+      "Vitamin D2, 25-Hydroxy",
+      "Vitamin D3, 25-Hydroxy",
+    ]);
 
-    // SERIES: a request for ANY member returns the WHOLE family's readings, and
-    // both members resolve to the identical series.
-    const viaTotal = getBiomarkerSeries(p.profileId, "Vitamin D, 25-Hydroxy");
-    const viaD3 = getBiomarkerSeries(p.profileId, "Vitamin D3, 25-Hydroxy");
-    expect(viaTotal.map((r) => r.value_num).sort()).toEqual([22, 34]);
-    expect(viaD3.map((r) => r.id).sort()).toEqual(
-      viaTotal.map((r) => r.id).sort()
+    // SERIES: each member resolves to its OWN series, not a merged family series.
+    expect(
+      getBiomarkerSeries(p.profileId, "Vitamin D, 25-Hydroxy").map(
+        (r) => r.value_num
+      )
+    ).toEqual([50]);
+    expect(
+      getBiomarkerSeries(p.profileId, "Vitamin D2, 25-Hydroxy").map(
+        (r) => r.value_num
+      )
+    ).toEqual([5]);
+    expect(
+      getBiomarkerSeries(p.profileId, "Vitamin D3, 25-Hydroxy").map(
+        (r) => r.value_num
+      )
+    ).toEqual([45]);
+
+    // BAND: only the TOTAL carries the 30–100 sufficiency band; the fractions carry
+    // null bands, so a low D2 (5) never flags "deficient" (adult age).
+    expect(canonicalBiomarkerForName("Vitamin D, 25-Hydroxy")?.ref_low).toBe(30);
+    expect(canonicalBiomarkerForName("Vitamin D2, 25-Hydroxy")?.ref_low).toBe(
+      null
     );
-
-    // STARRED: a star on the total lights the star on the D3 detail page too.
-    db.prepare(
-      "INSERT INTO starred_biomarkers (profile_id, canonical_name) VALUES (?, 'Vitamin D, 25-Hydroxy')"
-    ).run(p.profileId);
-    expect(isBiomarkerStarred(p.profileId, "Vitamin D3, 25-Hydroxy")).toBe(
-      true
+    expect(canonicalBiomarkerForName("Vitamin D3, 25-Hydroxy")?.ref_low).toBe(
+      null
     );
+    const totalEntry = canonicalBiomarkerForName("Vitamin D, 25-Hydroxy");
+    const d2Entry = canonicalBiomarkerForName("Vitamin D2, 25-Hydroxy");
+    // A total of 20 flags low (below 30); a D2 of 4 does NOT flag deficient (no band).
+    expect(reconciledFlag(null, 20, "ng/mL", totalEntry, null, 40)).toBe("low");
+    expect(reconciledFlag(null, 4, "ng/mL", d2Entry, null, 40)).not.toBe("low");
+  });
 
-    // RETEST: a fresh member satisfies the family, so no retest nudge fires.
+  it("a stored D3 breakdown is NOT flagged overdue when a recent total exists (shared retest clock)", () => {
+    // An old D3 fraction alongside a FRESH total — the fractions share the total's
+    // redraw clock (biomarkerRetestIdentity), so the fresh total satisfies the whole
+    // vitamin-D family and no retest nudge fires.
+    addReading("Vitamin D3, 25-Hydroxy", shiftDateStr(p.todayStr, -400), 22);
+    addReading("Vitamin D, 25-Hydroxy", shiftDateStr(p.todayStr, -20), 34);
     expect(retestKeys()).not.toContain("biomarker:family:vitamin-d-25-hydroxy");
   });
 
-  it("a starred member surfaces its newest SIBLING reading on the tile", () => {
+  it("an imported 1,25-dihydroxy (calcitriol) reading resolves to the new pg/mL entry", () => {
+    // A common calcitriol print form snaps onto the new active-metabolite entry,
+    // which carries its OWN pg/mL band and its own identity (never the 25-OH family).
+    expect(snapCanonicalName("1,25-Dihydroxyvitamin D", INDEX)).toBe(
+      "Vitamin D, 1,25-Dihydroxy"
+    );
+    const calcitriol = canonicalBiomarkerForName("Vitamin D, 1,25-Dihydroxy");
+    expect(calcitriol?.unit).toBe("pg/mL");
+    expect(calcitriol?.ref_low).toBe(18);
+    expect(calcitriol?.ref_high).toBe(72);
+    // Its own identity — not folded into the 25-OH storage-form family.
+    expect(biomarkerFamily("Vitamin D, 1,25-Dihydroxy")).not.toBe(
+      "family:vitamin-d-25-hydroxy"
+    );
+    // A low calcitriol flags against its OWN band.
+    expect(reconciledFlag(null, 10, "pg/mL", calcitriol, null, 40)).toBe("low");
+  });
+
+  it("the TOTAL 25-OH spellings still resolve to ONE group (series + starred + retest)", () => {
+    const recent = shiftDateStr(p.todayStr, -30);
     const old = shiftDateStr(p.todayStr, -120);
-    addReading("Vitamin D, 25-Hydroxy", old, 30);
-    // Star the total; then a NEWER D3 sibling arrives.
+    addReading("Vitamin D, 25-Hydroxy", recent, 34);
+    addReading("Vitamin D", old, 22);
+
+    // Both total spellings collapse to one current row and one series.
+    const currentVitD = getMedicalRecords(p.profileId, { current: true }).filter(
+      (r) => (r.canonical_name ?? "").toLowerCase().includes("vitamin d")
+    );
+    expect(currentVitD).toHaveLength(1);
+    expect(currentVitD[0].canonical_name).toBe("Vitamin D, 25-Hydroxy");
+    const viaTotal = getBiomarkerSeries(p.profileId, "Vitamin D, 25-Hydroxy");
+    const viaGeneric = getBiomarkerSeries(p.profileId, "Vitamin D");
+    expect(viaTotal.map((r) => r.value_num).sort()).toEqual([22, 34]);
+    expect(viaGeneric.map((r) => r.id).sort()).toEqual(
+      viaTotal.map((r) => r.id).sort()
+    );
+
+    // A star on one total spelling lights the star on the other total spelling.
     db.prepare(
       "INSERT INTO starred_biomarkers (profile_id, canonical_name) VALUES (?, 'Vitamin D, 25-Hydroxy')"
     ).run(p.profileId);
-    addReading("Vitamin D3, 25-Hydroxy", shiftDateStr(p.todayStr, -5), 41);
+    expect(isBiomarkerStarred(p.profileId, "Vitamin D")).toBe(true);
+
+    // RETEST: a fresh total satisfies the family, so no retest nudge fires.
+    expect(retestKeys()).not.toContain("biomarker:family:vitamin-d-25-hydroxy");
+  });
+
+  it("a starred total member surfaces its newest total SIBLING reading on the tile", () => {
+    const old = shiftDateStr(p.todayStr, -120);
+    addReading("Vitamin D, 25-Hydroxy", old, 30);
+    // Star the total; then a NEWER generic-"Vitamin D" total sibling arrives.
+    db.prepare(
+      "INSERT INTO starred_biomarkers (profile_id, canonical_name) VALUES (?, 'Vitamin D, 25-Hydroxy')"
+    ).run(p.profileId);
+    addReading("Vitamin D", shiftDateStr(p.todayStr, -5), 41);
 
     const star = getStarredBiomarkers(p.profileId).find(
       (s) => s.canonical_name === "Vitamin D, 25-Hydroxy"
     );
-    // The tile shows the family's latest reading — the D3 sibling, not the older
-    // total it was pinned on.
+    // The tile shows the family's latest reading — the newer total sibling.
     expect(star?.latest_value_num).toBe(41);
     expect(star?.latest_date).toBe(shiftDateStr(p.todayStr, -5));
   });
@@ -134,16 +217,17 @@ describe("supplement-suggest 'new reading' count keys on the family (#504)", () 
   }
 
   it("a fresh family member sees the whole family's history, not zero", () => {
-    // Existing history under one member's name, then a fresh reading under a DIFFERENT
-    // member's spelling — the exact divergence scenario from the issue.
-    addReading("Vitamin D2", shiftDateStr(p.todayStr, -60), 40);
+    // Existing history under one TOTAL spelling, then a fresh reading under a DIFFERENT
+    // total spelling — the exact divergence scenario from the issue. (Uses two TOTAL
+    // spellings: the D2/D3 fractions are their OWN identity now, #1193.)
+    addReading("Vitamin D", shiftDateStr(p.todayStr, -60), 40);
     addReading("Vitamin D, 25-Hydroxy", p.todayStr, 30);
 
     // Family-keyed count sees BOTH readings (≥ 2) → NOT new, so the gate correctly
     // declines to treat the fresh member as a first-ever reading. A raw-name count
     // would have returned 1 for that literal string — the pre-#504 bug.
     expect(priorReadingCount("Vitamin D, 25-Hydroxy")).toBe(2);
-    expect(priorReadingCount("Vitamin D2")).toBe(2);
+    expect(priorReadingCount("Vitamin D")).toBe(2);
 
     // An unrelated analyte with a single reading still counts as new (1).
     addReading("Ferritin", p.todayStr, 55, "ng/mL");
