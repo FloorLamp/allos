@@ -36,7 +36,7 @@ test("situations bar toggles the id-keyed situation and gates its supplement", a
     .filter({ hasText: /Not scheduled today/ });
   await expect(notScheduled).toBeVisible();
   await notScheduled.locator("summary").click();
-  await expect(notScheduled.getByText("Zinc").first()).toBeVisible();
+  await expect(notScheduled.getByText("Zinc").first()).toBeVisible(); // first-ok: asserts Zinc appears in the scoped not-scheduled section — order-agnostic presence
 
   // Active state persists across a reload (it's a real row, not request state).
   await page.reload();

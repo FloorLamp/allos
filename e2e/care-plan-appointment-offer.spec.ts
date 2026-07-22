@@ -62,7 +62,7 @@ test.describe("Care-plan close-the-loop on appointment completion (#658)", () =>
     // The care-plan offer lists the matching item; take it. Click the button in
     // OUR item's own row — the offer can also list other matching open items
     // (the seed's "Repeat screening colonoscopy" matches the same needle and
-    // date window), and a bare .first() closed the seeded item instead, breaking
+    // date window), and a bare first-match closed the seeded item instead, breaking
     // care-plan.spec.ts downstream (fixture blast radius).
     const offer = upcoming.getByTestId("care-plan-offer");
     await expect(offer).toBeVisible();

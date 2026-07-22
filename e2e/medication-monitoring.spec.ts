@@ -55,6 +55,6 @@ test("a med-driven monitoring retest surfaces on the Upcoming page", async ({
 
   // The retest clock CREATED by taking warfarin — "Monitoring labs for Warfarin".
   await expect(
-    page.getByText("Monitoring labs for Warfarin", { exact: false }).first()
+    page.getByText("Monitoring labs for Warfarin", { exact: false }).first() // first-ok: asserts the Warfarin monitoring line renders at all — order-agnostic presence
   ).toBeVisible();
 });

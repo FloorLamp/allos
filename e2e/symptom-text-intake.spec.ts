@@ -10,7 +10,7 @@ test("free-text symptom intake is suggest-only and degrades to taps offline", as
   page,
 }) => {
   await page.goto("/");
-  const bar = page.getByTestId("symptom-log-bar").first();
+  const bar = page.getByTestId("symptom-log-bar").first(); // first-ok: the acting profile's own symptom bar (top of the dashboard); asserts picker structure — order-agnostic
   await expect(bar).toBeVisible();
   if ((await bar.getByTestId("symptom-add-picker").count()) === 0) {
     await bar.getByTestId("symptom-add-picker-toggle").click();

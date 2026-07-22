@@ -67,7 +67,7 @@ test.describe("Public passport share links (#391)", () => {
     await page
       .locator("li")
       .filter({ has: page.getByRole("button", { name: "Revoke" }) })
-      .first()
+      .first() // first-ok: newest-first list — the FIRST row is the link THIS test just created (see comment above)
       .getByRole("button", { name: "Revoke" })
       .click();
 

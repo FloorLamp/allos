@@ -96,7 +96,7 @@ test.describe("timeline linked context — visit → document lineage (#662)", (
     // regardless of how much other history exists.
     await page.goto("/timeline?category=visit");
 
-    const card = page.locator(".group").filter({ hasText: VISIT_TYPE }).first();
+    const card = page.locator(".group").filter({ hasText: VISIT_TYPE }).first(); // first-ok: the timeline card for VISIT_TYPE, a visit THIS spec created (unique type)
     await expect(card).toBeVisible();
 
     const refs = card.getByTestId("timeline-linked-refs");

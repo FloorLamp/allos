@@ -246,7 +246,7 @@ test("detail routes survive and their back-links point at the owning panes (#107
 
   await page.goto("/immunizations/tdap");
   await expect(
-    page.getByRole("link", { name: /Back to immunizations/ }).first()
+    page.getByRole("link", { name: /Back to immunizations/ }).first() // first-ok: the single "Back to immunizations" link on the tdap detail page; href asserted
   ).toHaveAttribute("href", "/records/history/immunizations");
 });
 
