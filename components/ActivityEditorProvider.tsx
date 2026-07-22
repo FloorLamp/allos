@@ -14,6 +14,7 @@ import { useHistoryBackClose } from "./useHistoryBackClose";
 import type { UnitPrefs } from "@/lib/settings";
 import type { ActivitySuggestions, ExerciseHistoryMap } from "@/lib/queries";
 import type { FormDeloadContext } from "@/lib/routines";
+import type { FormRecoveringContext } from "@/lib/injuries";
 import type { PlateauFormHint } from "@/lib/rule-findings";
 import type { Equipment } from "@/lib/types";
 import type { WorkoutPresence } from "@/lib/workout-presence";
@@ -82,6 +83,7 @@ export default function ActivityEditorProvider({
   lastActivity = null,
   restricted = false,
   deloadContext,
+  recoveringContext = { temperedRegions: [] },
   plateauHints = [],
   presence,
   liveEditData = null,
@@ -105,6 +107,10 @@ export default function ActivityEditorProvider({
   // Deload/plateau inputs for the strength editor (#923): whether the active routine
   // is in its deload week (+ which lifts to shave), and the active plateau hints.
   deloadContext: FormDeloadContext;
+  // The recovering-injury regions the form tempers by (#1144), gathered server-side from
+  // the SAME temperedRegions the Analyze/detail panel reads — so the live logger and its
+  // deep-link target agree on the injury axis (#221/#1115).
+  recoveringContext?: FormRecoveringContext;
   plateauHints?: PlateauFormHint[];
   // Derived workout presence for the acting profile (#921), gathered server-side —
   // the source that HYDRATES the minimized dock on a fresh load / another device, so
@@ -317,6 +323,7 @@ export default function ActivityEditorProvider({
               prefill={prefill}
               live={live}
               deloadContext={deloadContext}
+              recoveringContext={recoveringContext}
               plateauHints={plateauHints}
               onClose={() => setOpen(false)}
             />,
@@ -335,6 +342,7 @@ export default function ActivityEditorProvider({
             prefill={prefill}
             live={live}
             deloadContext={deloadContext}
+            recoveringContext={recoveringContext}
             plateauHints={plateauHints}
             // While minimized the overlay stays MOUNTED but hidden — the running
             // rest timer + elapsed clock keep ticking; the bar restores it.

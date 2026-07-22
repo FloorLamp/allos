@@ -14,7 +14,9 @@ import {
   composeVariant,
   defaultEquipment,
   exerciseHistoryKey,
+  regionForExercise,
 } from "@/lib/lifts";
+import { RECOVERING_LOAD_FACTOR } from "@/lib/injury-model";
 import { isValidDuration } from "@/lib/duration";
 import { formatLongDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
@@ -35,6 +37,7 @@ import {
   type NextSet,
 } from "@/lib/coaching";
 import type { FormDeloadContext } from "@/lib/routines";
+import type { FormRecoveringContext } from "@/lib/injuries";
 import type { PlateauFormHint } from "@/lib/rule-findings";
 import { dismissTrainingObservation } from "@/app/(app)/training/actions";
 import { pickSeedSessions } from "@/lib/exercise-window";
@@ -179,6 +182,7 @@ export default function StrengthSets({
   isEdit,
   history,
   deloadContext,
+  recoveringContext,
   plateauHints,
   currentActivityId,
   editedDate,
@@ -207,6 +211,10 @@ export default function StrengthSets({
   // Deload/plateau inputs (#923): whether the active routine is in its deload week
   // (+ which lifts to shave), and the active plateau hints keyed by exerciseHistoryKey.
   deloadContext: FormDeloadContext;
+  // The recovering-injury regions (#1144): a lift whose region is returning from a
+  // RECOVERING injury (#838) gets the tempered load — composed with the deload shave
+  // through the ONE shared contextualNextSet, so this form matches the Analyze panel.
+  recoveringContext: FormRecoveringContext;
   plateauHints: PlateauFormHint[];
   // The session the form is saving (edit row id, or the auto-saved create row
   // once it exists, else null) — always excluded from its own "Recent" list.
@@ -296,6 +304,16 @@ export default function StrengthSets({
     deloadContext.isDeloadWeek &&
     p.name.trim() !== "" &&
     deloadContext.routineKeys.includes(exerciseHistoryKey(p.name));
+  // Recovering-injury temper (#1144): a lift whose coarse region (regionForExercise, the
+  // SAME resolver the Analyze panel keys on) is returning from a RECOVERING injury (#838)
+  // gets its next-set LOAD backed off to RECOVERING_LOAD_FACTOR — carried into the ONE
+  // shared contextualNextSet below alongside the deload flag, so the form composes deload
+  // AND the injury temper identically to the server-resolved surfaces (#221/#1115). Off a
+  // recovering injury temperedRegions is empty, so a normal lift is byte-for-byte prior.
+  const injuryRegion = p.name.trim() !== "" ? regionForExercise(p.name) : null;
+  const recovering =
+    injuryRegion != null &&
+    recoveringContext.temperedRegions.includes(injuryRegion);
   // Build a next-set suggestion from a set list (one shared computation, so a
   // per-side left/right suggestion progresses each side by the SAME rule as the
   // bilateral one — #335). A weighted lift whose newest session carries only
@@ -315,19 +333,20 @@ export default function StrengthSets({
       },
       units.weightUnit
     );
-    // On a deload week for a routine lift, replace the progression with the deload-
-    // adjusted load — carried by the Use button, the set-1 ghost + focus-fill, and the
-    // plate-builder seed alike, since they all read this one `suggestion`. Routes through
-    // the ONE shared contextualNextSet (#1115 Fix B) so that ON THE DELOAD AXIS the form,
-    // the session card, the detail panel, and the coaching card can't disagree
-    // (#221/#923/#741). The OTHER modifier — the recovering-injury 0.6× temper (#838) — is
-    // applied on the server-resolved surfaces (coaching card, Training-overview session
-    // card, Analyze/detail panel) but NOT here: the live logger's client tree only receives
-    // `deloadContext` (isDeloadWeek + routineKeys), not the recovering-region set, so a
-    // recovering-injury lift can still seed a heavier load in the form than the Analyze
-    // deep-link recommends. Closing that gap needs the injury context threaded through the
-    // form the way `deloadContext` already is — a deferred follow-up.
-    return contextualNextSet(base, p.name, { deloadWeek: deload });
+    // Replace the raw progression with the context-adjusted load — carried by the Use
+    // button, the set-1 ghost + focus-fill, and the plate-builder seed alike, since they
+    // all read this one `suggestion`. Routes through the ONE shared contextualNextSet
+    // (#1115 Fix B) so the form composes BOTH the deload-week shave (#741, for a routine
+    // lift) AND the recovering-injury temper (#838, for a lift whose region is recovering)
+    // identically to the server-resolved surfaces (coaching card, Training-overview session
+    // card, Analyze/detail panel) — the live logger and its Analyze deep-link target can't
+    // disagree on either axis (#221/#923/#1144). Both flags are false off a deload week /
+    // recovering injury, so an ordinary lift is byte-for-byte the prior progression.
+    return contextualNextSet(base, p.name, {
+      deloadWeek: deload,
+      recoveringRegion: recovering,
+      recoveringFactor: RECOVERING_LOAD_FACTOR,
+    });
   };
   // Bilateral parts get one suggestion; per-side parts get an independent
   // suggestion per side (#335) — sessionBestSet already treats each side as its

@@ -21,6 +21,7 @@ import {
 } from "@/lib/lifts";
 import type { ActivitySuggestions, ExerciseHistoryMap } from "@/lib/queries";
 import type { FormDeloadContext } from "@/lib/routines";
+import type { FormRecoveringContext } from "@/lib/injuries";
 import type { PlateauFormHint } from "@/lib/rule-findings";
 import {
   compositeRollup,
@@ -122,6 +123,7 @@ export default function ActivityForm({
   prefill = null,
   live = false,
   deloadContext,
+  recoveringContext = { temperedRegions: [] },
   plateauHints = [],
   onClose,
   stickyFooter = false,
@@ -150,6 +152,11 @@ export default function ActivityForm({
   // next-set suggestion for a routine lift on a deload week (through the shared
   // deloadAdjust); `plateauHints` renders the calm inline plateau hint.
   deloadContext: FormDeloadContext;
+  // The recovering-injury regions the strength editor tempers by (#1144): a lift whose
+  // region is returning from a RECOVERING injury (#838) gets the SAME 0.6× temper the
+  // Analyze/detail panel seeds, so the live logger and its deep-link target agree on the
+  // injury axis (#221/#1115). Composed with the deload shave through contextualNextSet.
+  recoveringContext?: FormRecoveringContext;
   plateauHints?: PlateauFormHint[];
   onClose: () => void;
   // In the overlay the (often taller-than-viewport) form scrolls, so the action
@@ -1420,6 +1427,7 @@ export default function ActivityForm({
                         isEdit={isEdit}
                         history={history}
                         deloadContext={deloadContext}
+                        recoveringContext={recoveringContext}
                         plateauHints={plateauHints}
                         currentActivityId={editData?.id ?? createdId}
                         editedDate={editData?.date ?? null}

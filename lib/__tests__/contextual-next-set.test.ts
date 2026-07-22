@@ -10,7 +10,12 @@ import {
   type NextSet,
   type NextSetSeed,
 } from "@/lib/coaching";
-import { RECOVERING_LOAD_FACTOR } from "@/lib/injury-model";
+import {
+  RECOVERING_LOAD_FACTOR,
+  temperedRegions,
+  type InjuryConstraint,
+} from "@/lib/injury-model";
+import { regionForExercise } from "@/lib/lifts";
 
 // #1115 Fix B — contextualNextSet is the ONE composition of every next-set context
 // modifier (deload week #741, recovering injury #838), so a new modifier reaches all
@@ -114,6 +119,69 @@ describe("contextualNextSet — one fixture, one answer (#221)", () => {
     // Any surface that passes the same base + ctx gets the same NextSet.
     const again: NextSet = contextualNextSet(base, "Bench Press", ctx)!;
     expect(again).toEqual(result);
+  });
+});
+
+// #1144 — the live logger (StrengthSets) and the Analyze/detail panel must agree on the
+// RECOVERING-INJURY axis too, not just deload. Both resolve the lift's coarse region via
+// the SAME regionForExercise and test it against the SAME temperedRegions set (the panel
+// with `.has`, the form with `.includes` over the serialized-to-array prop), then feed the
+// SAME contextualNextSet. This pins that, OUTSIDE a deload week, both derivations yield the
+// identical tempered load — the #221 "same fixture → same answer everywhere" pin on the
+// injury axis, which regressed because the form's client tree only received deloadContext.
+describe("form ⇄ Analyze-panel agreement on the recovering-injury axis (#1144)", () => {
+  const base = suggestNextSet(seed, "kg")!; // Bench Press → Chest region
+  // A recovering Chest injury: temperedRegions includes Chest (the same gather
+  // getFormRecoveringContext serializes to the form and the Analyze panel reads).
+  const constraints: InjuryConstraint[] = [
+    {
+      id: 1,
+      label: "Left pec strain",
+      status: "recovering",
+      regions: ["Chest"],
+    },
+  ];
+  const tempered = temperedRegions(constraints);
+
+  it("outside a deload week, the form seeds the SAME tempered load as the panel", () => {
+    // The form's derivation: region ∈ the serialized temperedRegions array.
+    const injuryRegion = regionForExercise("Bench Press");
+    const formCtx = {
+      deloadWeek: false,
+      recoveringRegion:
+        injuryRegion != null && [...tempered].includes(injuryRegion),
+      recoveringFactor: RECOVERING_LOAD_FACTOR,
+    };
+    // The Analyze panel's derivation: region ∈ the temperedRegions set.
+    const statRegion = regionForExercise("Bench Press");
+    const panelCtx = {
+      deloadWeek: false,
+      recoveringRegion: statRegion != null && tempered.has(statRegion),
+      recoveringFactor: RECOVERING_LOAD_FACTOR,
+    };
+    // Both resolve Chest as recovering, so both temper.
+    expect(formCtx.recoveringRegion).toBe(true);
+    expect(panelCtx.recoveringRegion).toBe(true);
+    const formNext = contextualNextSet(base, "Bench Press", formCtx);
+    const panelNext = contextualNextSet(base, "Bench Press", panelCtx);
+    // They agree — and both equal the shared temper, NOT the un-tempered progression.
+    expect(formNext).toEqual(panelNext);
+    expect(formNext).toEqual(
+      temperRecoveringNextSet(base, "Bench Press", RECOVERING_LOAD_FACTOR)
+    );
+    expect(formNext!.weightKg).toBeLessThan(base.weightKg);
+  });
+
+  it("a lift OUTSIDE the recovering region is untouched (byte-for-byte prior)", () => {
+    // Squat → Legs, not in the tempered set: the form seeds the plain progression.
+    const region = regionForExercise("Squat");
+    const ctx = {
+      deloadWeek: false,
+      recoveringRegion: region != null && [...tempered].includes(region),
+      recoveringFactor: RECOVERING_LOAD_FACTOR,
+    };
+    expect(ctx.recoveringRegion).toBe(false);
+    expect(contextualNextSet(base, "Squat", ctx)).toBe(base);
   });
 });
 

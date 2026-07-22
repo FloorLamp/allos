@@ -64,6 +64,7 @@ import {
   E2E_LOGIN_ROUTINE_DELOAD,
   E2E_LOGIN_FORM_DELOAD,
   E2E_LOGIN_FORM_PLATEAU,
+  E2E_LOGIN_FORM_INJURY,
   E2E_LOGIN_ONBOARDING,
   E2E_LOGIN_ONBOARDING_CAREGIVER,
   E2E_LOGIN_ORIENTATION,
@@ -79,6 +80,7 @@ import {
   ROUTINE_DELOAD_PROFILE,
   FORM_DELOAD_PROFILE,
   FORM_PLATEAU_PROFILE,
+  FORM_INJURY_PROFILE,
   ROUTINE_PROFILE,
   ONBOARDING_CAREGIVER_PROFILE,
   ONBOARDING_PROFILE,
@@ -2621,8 +2623,45 @@ const insFormPlSet = db.prepare(
   for (let s = 1; s <= 3; s++) insFormPlSet.run(actId, s);
 });
 seedMemberLogin(E2E_LOGIN_FORM_PLATEAU, formPlateauProfileId);
+
+// FORM_INJURY (#1144): an ADULT profile with a RECOVERING "Chest" injury + logged Barbell
+// Bench Press history (a Chest lift) and NO routine, so the strength editor's next-set
+// suggestion is injury-TEMPERED (100 kg progression → 60 kg = 100 × RECOVERING_LOAD_FACTOR
+// 0.6) OUTSIDE any deload week — the axis #1115 left open. The form now threads the same
+// recovering-region context the Analyze/detail panel reads, so both surfaces seed 60 kg.
+// Dedicated so the recovering injury never tempers a shared profile's coaching surfaces.
+const formInjuryProfileId = fixtureProfileId(FORM_INJURY_PROFILE);
+db.prepare(`DELETE FROM injuries WHERE profile_id = ?`).run(
+  formInjuryProfileId
+);
+db.prepare(
+  `INSERT INTO injuries (profile_id, label, regions, status, since)
+     VALUES (?, 'Left pec strain (e2e)', '["Chest"]', 'recovering', ?)`
+).run(formInjuryProfileId, shiftDateStr(today(formInjuryProfileId), -21));
+// One prior Barbell Bench Press session (3 × 100 kg × 6) three days ago: the coached
+// suggestion holds 100 kg + builds a rep, which the recovering-Chest temper backs to 60.
+db.prepare(
+  `DELETE FROM activities WHERE profile_id = ? AND external_id = 'e2e:form-injury-bench'`
+).run(formInjuryProfileId);
+const formInjuryBenchActId = Number(
+  db
+    .prepare(
+      `INSERT INTO activities
+         (profile_id, date, type, title, duration_min, source, external_id, edited)
+       VALUES (?, ?, 'strength', 'Push', 40, 'manual', 'e2e:form-injury-bench', 0)`
+    )
+    .run(formInjuryProfileId, shiftDateStr(today(formInjuryProfileId), -3))
+    .lastInsertRowid
+);
+const insFormInjuryBench = db.prepare(
+  `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps, warmup)
+     VALUES (?, 'Barbell Bench Press', ?, 100, 6, 0)`
+);
+for (let s = 1; s <= 3; s++) insFormInjuryBench.run(formInjuryBenchActId, s);
+seedMemberLogin(E2E_LOGIN_FORM_INJURY, formInjuryProfileId);
+
 console.log(
-  `e2e: seeded activity-form fill-path fixtures — deload profile ${formDeloadProfileId}, plateau profile ${formPlateauProfileId} (#923)`
+  `e2e: seeded activity-form fill-path fixtures — deload profile ${formDeloadProfileId}, plateau profile ${formPlateauProfileId}, injury profile ${formInjuryProfileId} (#923/#1144)`
 );
 
 // A profile-1 equipment row REFERENCED by a logged strength set, so the equipment

@@ -39,6 +39,7 @@ import {
 } from "@/lib/queries";
 import { getTimelineDates } from "@/lib/timeline";
 import { getFormDeloadContext } from "@/lib/routines";
+import { getFormRecoveringContext } from "@/lib/injuries";
 import { buildActivePlateauHints } from "@/lib/rule-findings";
 import { today } from "@/lib/db";
 
@@ -109,6 +110,13 @@ export default async function AppLayout({
   const deloadContext = restricted
     ? { isDeloadWeek: false, routineKeys: [] }
     : getFormDeloadContext(profile.id, now);
+  // The recovering-injury context the form tempers by (#1144): the coarse regions
+  // returning from a RECOVERING injury (#838), read from the SAME temperedRegions gather
+  // the Analyze/detail panel uses so the live logger and its deep-link target agree on
+  // the injury axis (#221/#1115). Skipped (empty) for a restricted profile.
+  const recoveringContext = restricted
+    ? { temperedRegions: [] }
+    : getFormRecoveringContext(profile.id);
   const plateauHints = restricted
     ? []
     : buildActivePlateauHints(profile.id, now);
@@ -177,6 +185,7 @@ export default async function AppLayout({
                 lastActivity={lastActivity}
                 restricted={restricted}
                 deloadContext={deloadContext}
+                recoveringContext={recoveringContext}
                 plateauHints={plateauHints}
                 presence={presence}
                 liveEditData={liveEditData}
