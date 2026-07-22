@@ -15,6 +15,18 @@ name: E2E full suite (on demand)
 #
 # Same 4-way shard shape as ci.yml's e2e job: fresh runner + fresh servers per
 # chunk, no cumulative degradation, full failure picture (fail-fast off).
+#
+# WEEKLY DRIFT CENSUS: the suite runs clean at retries=0 (the flake burn-down,
+# #1159/#1160), but nothing in per-PR CI re-proves that over time — a PR only
+# runs each spec once, so a newly-introduced LOW-RATE timing flake can land
+# green and only start biting weeks later. The schedule below re-runs the whole
+# suite on main weekly at --retries=0 --repeat-each=2 (every spec must pass
+# twice, first try, on every shard), so drift is caught within days instead of
+# when it starts blocking merges. A red weekly run names the offending spec in
+# its check annotations — treat it as a new flake-ledger item and fix it like
+# #1159, don't re-add retries. (Scheduled runs always execute on the default
+# branch; `inputs.*` is EMPTY on a schedule event, so the run step's fallbacks
+# below — not the dispatch defaults above them — are what pick the census form.)
 
 on:
   workflow_dispatch:
@@ -29,9 +41,14 @@ on:
         type: choice
         options: ["1", "2", "3"]
         default: "1"
+  schedule:
+    # Sundays 06:23 UTC — a quiet hour, off the :00 spike GitHub delays worst.
+    - cron: "23 6 * * 0"
 
 concurrency:
-  group: e2e-full-${{ github.ref }}
+  # event_name in the group so the weekly census never cancels (or is cancelled
+  # by) a manually-dispatched run on the same ref.
+  group: e2e-full-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
@@ -46,8 +63,11 @@ jobs:
 
       - uses: ./.github/actions/e2e-setup
 
-      - name: E2E full suite (shard ${{ matrix.shard }}/4, retries=${{ inputs.retries }}, repeat-each=${{ inputs.repeat_each }})
-        run: npm run test:e2e -- --shard=${{ matrix.shard }}/4 --retries=${{ inputs.retries }} --repeat-each=${{ inputs.repeat_each }}
+      # The || fallbacks are the SCHEDULE-event form (inputs.* is empty there):
+      # retries=0, repeat-each=2 — the weekly census bar. Dispatch inputs win
+      # when present.
+      - name: E2E full suite (shard ${{ matrix.shard }}/4, retries=${{ inputs.retries || '0' }}, repeat-each=${{ inputs.repeat_each || '2' }})
+        run: npm run test:e2e -- --shard=${{ matrix.shard }}/4 --retries=${{ inputs.retries || '0' }} --repeat-each=${{ inputs.repeat_each || '2' }}
 
       # Only meaningful when retries > 0 (a retries=0 run has no "flaky" status —
       # a flake IS a failure there); harmless otherwise. See scripts/e2e-flake-report.mjs.

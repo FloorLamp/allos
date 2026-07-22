@@ -1,6 +1,6 @@
 # E2E suite hygiene — fixtures, settled interactions, retries=0 lane
 
-Status: **partial** (infrastructure shipped — helpers module, hygiene guard incl. the `.first()` count-freeze, changed-spec CI lane, the frozen app clock #990, the sharded CI e2e matrix + on-demand full-suite workflow + pass-on-retry flake telemetry; suite-wide migration of grandfathered offenders is a follow-up, per #868)
+Status: **partial** (infrastructure shipped — helpers module, hygiene guard incl. the `.first()` and `.toPass(` count-freezes, changed-spec CI lane, the frozen app clock #990, the sharded CI e2e matrix, retries=0 end-to-end #1160, the on-demand + weekly-census full-suite workflow, pass-on-retry flake telemetry; suite-wide migration of the grandfathered `.first()`/`.toPass(` offenders is the remaining follow-up, per #868)
 
 Maintainer documentation for the Playwright suite's reliability discipline (issue
 #868). The user-facing "how to run e2e" note lives in AGENTS.md's browser-e2e
@@ -48,13 +48,23 @@ AND the shared driver/helper modules they import (`symptom-helpers.ts`, `nav.ts`
 anti-pattern can hide in an imported helper the spec-only scan never read; the
 same pass broadened the networkidle matcher to catch the
 `waitForLoadState("networkidle", { timeout })` options-arg form the old
-`…)`-anchored regex silently missed. It freezes **today's** count of two
+`…)`-anchored regex silently missed. It freezes **today's** count of the
 mechanically-detectable settle anti-patterns per file and fails a NEW one:
 
-- `waitForLoadState("networkidle")` — replace with `e2e/helpers.ts`.
+- `waitForLoadState("networkidle")` — replace with `e2e/helpers.ts`. (Allowlist
+  EMPTY — the suite has zero; any new one fails.)
 - `waitForTimeout(...)` — replace with `settledClick`/`followLink` or a real
   auto-retrying `expect`. (The one legitimate use — the **bounded
   absence-of-effect wait** below — stays, allowlisted.)
+- `.toPass(` — the "commented last resort", now with teeth (added after the
+  flake burn-down): a retrying block hides WHICH step raced — the same disease
+  as CI retries, writ small — so new unmarked uses fail. Await the actual
+  signal instead (`settledClick` / `followLink` / a plain retrying `expect` on
+  ONE locator). A reviewed, genuinely-necessary use (e.g. a
+  reload-until-rendered loop over a navigation, with no single awaitable
+  event) carries a same-line `topass-ok: <why>` comment on the line where
+  `.toPass(` appears (usually the closing `}).toPass({...})`), mirroring
+  `first-ok`. Existing offenders are frozen per-file, immutable-downward.
 
 #### The bounded absence-of-effect wait (the one sanctioned `waitForTimeout`)
 
@@ -237,13 +247,21 @@ pain they replace):
   on the matrix. Shared setup (Node, deps, Chromium, `next build`) lives in the
   composite action `.github/actions/e2e-setup/action.yml` so the jobs can't
   drift.
-- **`.github/workflows/e2e-full.yml` (workflow_dispatch) is the fresh-runner
-  full-suite gate.** Dispatch it against any branch (defaults: `--retries=0`,
-  4-way sharded; `repeat_each` up to 3 for suite-wide hardening). It
+- **`.github/workflows/e2e-full.yml` is the fresh-runner full-suite gate — on
+  demand AND weekly.** Dispatch it against any branch (defaults: `--retries=0`,
+  4-way sharded; `repeat_each` up to 3 for suite-wide hardening) in place of a
+  local full-suite run before a migration PR or big UI merge — it
   institutionalizes the runbook's conclusion that "CI on a fresh GitHub runner is
-  the ultimate authority" — use it in place of a local full-suite run before a
-  migration PR or big UI merge, and skip the local degradation-vs-regression
-  triage entirely.
+  the ultimate authority", skipping the local degradation-vs-regression triage.
+  It ALSO runs on a **weekly `schedule`** (Sundays) as a drift census: the whole
+  suite on main at `--retries=0 --repeat-each=2`. Per-PR CI runs each spec once,
+  so a newly-introduced low-rate timing flake can land green and only bite weeks
+  later; the weekly census re-proves the retries=0 cleanliness and names any
+  drift in its check annotations. A red weekly run is a new flake-ledger item —
+  fix the named spec like #1159; never re-add retries. (On a `schedule` event
+  `inputs.*` is empty, so the run step's `|| '0'` / `|| '2'` fallbacks pick the
+  census form; the `event_name`-scoped concurrency group keeps a manual dispatch
+  and the weekly run from cancelling each other.)
 - **Pass-on-retry flake telemetry → the retries drop.** The telemetry ran the
   full suite at `retries: 1` and posted every `status: "flaky"` (pass-on-retry)
   test to the job summary via a `json` reporter (`test-results/e2e-results.json`)
@@ -260,10 +278,11 @@ pain they replace):
 ## Follow-up (out of scope for the infra PR)
 
 Migrate the grandfathered offenders incrementally, one spec per PR (the #860
-Track-B incremental-migration discipline), lowering the allowlists (`networkidle`
-/ `waitForTimeout` / `.first()`) each time until they are empty; then migrate the
-cross-ownership anatomy assertions (class 2) onto shared per-component driver
-helpers (the `e2e/symptom-helpers.ts` extraction pattern).
+Track-B incremental-migration discipline), lowering the allowlists (`.first()`
+and `.toPass(` are the two with remaining backlog — `networkidle` is empty and
+`waitForTimeout` is down to its irreducible absence-of-effect proofs) each time
+until they are empty; then migrate the cross-ownership anatomy assertions (class 2) onto shared per-component driver helpers (the `e2e/symptom-helpers.ts`
+extraction pattern).
 
 Dropping full-suite retries — the last item on this list — is **done**: the flake
 reports (fix e) read clean once #1159 closed the family-calendar flake, and the
