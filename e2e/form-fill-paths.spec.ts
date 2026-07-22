@@ -30,7 +30,7 @@ async function pickActivity(page: Page, name: string) {
     .getByRole("listbox")
     .getByRole("button")
     .filter({ hasText: name })
-    .first()
+    .first() // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
     .click();
 }
 
@@ -163,7 +163,7 @@ test("each Recent row repeats that session into the set editor (#923)", async ({
     const recent = page.getByTestId("recent-sessions");
     await expect(recent).toBeVisible();
     // Tap the newest row's Fill — the primary "repeat last session" gesture.
-    await recent.getByTestId("recent-session-fill").first().click();
+    await recent.getByTestId("recent-session-fill").first().click(); // first-ok: prefills from the most-recent session (this spec's own logged session) — order-agnostic
 
     // The set editor is filled with the session's LITERAL work (30 kg × 8), distinct
     // from the coached suggestion (which would build a rep to 9).

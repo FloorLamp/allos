@@ -34,7 +34,7 @@ async function setWeightUnit(page: Page, value: "kg" | "lb") {
     .getByRole("main")
     .locator("select")
     .filter({ has: page.locator('option[value="lb"]') })
-    .first();
+    .first(); // first-ok: the weight-unit select, filtered by its lb option — one match
   await select.selectOption(value);
   await expect(page.getByLabel("Saved")).toBeVisible();
 }
@@ -142,7 +142,7 @@ test.describe.serial("kids growth trends", () => {
 
       // Hover the weight chart: the recharts tooltip renders values with the
       // display unit suffix. Re-hover on each retry (recharts needs a mousemove).
-      const surface = card.locator(".recharts-surface").first();
+      const surface = card.locator(".recharts-surface").first(); // first-ok: the scoped weight card's chart surface — one chart per card
       const tooltip = card.locator(".recharts-tooltip-wrapper");
       await expect(async () => {
         const box = await surface.boundingBox();

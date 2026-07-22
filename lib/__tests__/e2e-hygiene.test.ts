@@ -173,11 +173,8 @@ const FIRST_ALLOW: Record<string, number> = {
   // co-located at --repeat-each). Its two .first() stay frozen until a focused fix.
   "edit-lock-badge.spec.ts": 2,
   "entry-ergonomics.spec.ts": 24,
-  "episode-med-reconcile.spec.ts": 2,
   "exercise-guide.spec.ts": 4,
   "food-slot-ranking.spec.ts": 4,
-  "form-fill-paths.spec.ts": 2,
-  "goal-metric-switch.spec.ts": 2,
   "household-history.spec.ts": 4,
   // illness-care carries a latent class-1 flake (a sibling mutates profile 1's
   // seeded illness state; exposed only when co-located at --repeat-each). Its lone
@@ -187,9 +184,7 @@ const FIRST_ALLOW: Record<string, number> = {
   "illness-episode.spec.ts": 5,
   "illness-round3.spec.ts": 6,
   "import-dedup.spec.ts": 3,
-  "integrations-health-connect.spec.ts": 3,
   "journal-provenance.spec.ts": 7,
-  "kids-growth.spec.ts": 2,
   "medication-prefill.spec.ts": 8,
   "medications-followups.spec.ts": 6,
   // dose-history-row .first() (newest seeded dose) deferred to a dedicated-fixture
@@ -199,9 +194,6 @@ const FIRST_ALLOW: Record<string, number> = {
   "medications-ux-r2.spec.ts": 4,
   "mobile-ui-polish.spec.ts": 8,
   "muscle-anatomy.spec.ts": 4,
-  "needs-attention-menu.spec.ts": 2,
-  "onboarding.spec.ts": 2,
-  "palette-actions.spec.ts": 3,
   "prn-family.spec.ts": 1,
   "review-inbox.spec.ts": 3,
   "risk-factors.spec.ts": 2,
