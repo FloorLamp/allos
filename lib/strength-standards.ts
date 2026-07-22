@@ -353,6 +353,42 @@ export function levelFloors(
   };
 }
 
+// A continuous 0–100 FAVORABILITY position for an e1RM on the strength ladder — the
+// input to the #1132 grid tile's green→red fill (higher = stronger standing). The five
+// named floors (beginner…elite) plus the implicit "untrained" below beginner span six
+// rungs; the position places the e1RM by RANK + the fraction toward the next floor, so it
+// rises smoothly across the whole ladder and equal heat ⇔ equal standing with the norms-
+// percentile tiles. Reuses the SAME strengthStanding computation (#152/#221) — no second
+// ladder. Null when the standing is null (no table / missing sex·bodyweight·1RM).
+const LADDER_RUNGS = 5; // untrained→beginner→novice→intermediate→advanced→elite = 5 gaps
+export function strengthStandingPercent(
+  standing: StrengthStanding | null | undefined
+): number | null {
+  if (!standing) return null;
+  const rank = strengthLevelRank(standing.level); // 0 (untrained) … 5 (elite)
+  // Fraction from this rung's floor toward the next (0 at the floor, →1 approaching next).
+  let frac = 0;
+  if (standing.level === "untrained") {
+    // Climbing from 0 toward the beginner floor.
+    if (standing.nextFloorKg && standing.nextFloorKg > 0) {
+      frac = Math.min(1, Math.max(0, standing.e1rmKg / standing.nextFloorKg));
+    }
+  } else if (
+    standing.levelFloorKg != null &&
+    standing.nextFloorKg != null &&
+    standing.nextFloorKg > standing.levelFloorKg
+  ) {
+    frac =
+      (standing.e1rmKg - standing.levelFloorKg) /
+      (standing.nextFloorKg - standing.levelFloorKg);
+    frac = Math.min(1, Math.max(0, frac));
+  } else if (standing.nextLevel == null) {
+    frac = 1; // elite — top of the ladder
+  }
+  const pos = ((rank + frac) / LADDER_RUNGS) * 100;
+  return Math.round(Math.min(100, Math.max(0, pos)));
+}
+
 // Tone bucket for the healthspan pillar / any badge coloring, from a level.
 export type StrengthTone = "good" | "warn" | "bad" | "neutral";
 export function strengthTone(level: StrengthLevel): StrengthTone {

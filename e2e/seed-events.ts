@@ -2303,6 +2303,60 @@ saveFitnessEntry(fitnessId, {
   testKey: "grip",
   value: 44,
 });
+// #1129 ambient auto-count fixtures — natural-store readings the check NEVER recorded, so
+// the grid lights up tiles as measured-with-provenance without a check session: a SYNCED
+// VO2 Max (medical_records, source 'oura'), a scale body-fat/resting-HR + a bodyweight
+// (body_metrics, source 'withings'), a logged heavy Back Squat (exercise_sets), and a
+// logged Plank hold (#1135 self-norm rough band). Idempotent-ish: cleared with the
+// profile's fitness sessions is not enough (these aren't sessions), so clear them first.
+const fitnessRecent = shiftDateStr(today(fitnessId), -3);
+db.prepare(
+  `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = 'VO2 Max' AND source = 'oura'`
+).run(fitnessId);
+db.prepare(
+  `DELETE FROM body_metrics WHERE profile_id = ? AND source = 'withings'`
+).run(fitnessId);
+db.prepare(
+  `DELETE FROM exercise_sets WHERE activity_id IN
+     (SELECT id FROM activities WHERE profile_id = ? AND title = 'Fitness log (e2e)')`
+).run(fitnessId);
+db.prepare(
+  `DELETE FROM activities WHERE profile_id = ? AND title = 'Fitness log (e2e)'`
+).run(fitnessId);
+db.prepare(
+  `INSERT INTO medical_records
+     (profile_id, date, category, name, value, value_num, unit, canonical_name, source)
+   VALUES (?, ?, 'biomarker', 'VO2 Max', '48', 48, 'mL/kg/min', 'VO2 Max', 'oura')`
+).run(fitnessId, fitnessRecent);
+reconcileFlags(fitnessId);
+db.prepare(
+  `INSERT INTO body_metrics (date, weight_kg, body_fat_pct, resting_hr, source, profile_id)
+   VALUES (?, 82, 18, 55, 'withings', ?)`
+).run(fitnessRecent, fitnessId);
+{
+  const squatActivity = Number(
+    db
+      .prepare(
+        "INSERT INTO activities (date, type, title, profile_id) VALUES (?, 'strength', 'Fitness log (e2e)', ?)"
+      )
+      .run(fitnessRecent, fitnessId).lastInsertRowid
+  );
+  db.prepare(
+    `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps, warmup)
+     VALUES (?, 'Back Squat', 1, 140, 3, 0)`
+  ).run(squatActivity);
+  const holdActivity = Number(
+    db
+      .prepare(
+        "INSERT INTO activities (date, type, title, profile_id) VALUES (?, 'strength', 'Fitness log (e2e)', ?)"
+      )
+      .run(fitnessRecent, fitnessId).lastInsertRowid
+  );
+  db.prepare(
+    `INSERT INTO exercise_sets (activity_id, exercise, set_number, duration_sec, warmup)
+     VALUES (?, 'Plank', 1, 90, 0)`
+  ).run(holdActivity);
+}
 seedMemberLogin(E2E_LOGIN_FITNESS, fitnessId);
 
 const fitnessSeniorId = fixtureProfileId(FITNESS_SENIOR_PROFILE);

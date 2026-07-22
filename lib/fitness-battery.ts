@@ -9,12 +9,16 @@
 //     genuine bodyweight/resistance exercise with a training series, #482), a `vital`
 //     medical_records row under a canonical name the fitness-norms engine reads, or a
 //     `body_metrics` column.
-//   • The five TIERS map to scoring: `norms` → fitnessPercentile/fitnessAge over a
+//   • The TIERS map to scoring: `norms` → fitnessPercentile/fitnessAge over a
 //     `normsMarker`; `standard` → strength-standards e1RM bands; `evidence` → a cited
 //     single-test scale (SRT 0-10, HRR bands, STEADI 4-stage) that is NOT a percentile;
-//     `body` → body composition/vitals against canonical ranges; `self-trend` → vs the
-//     user's own prior checks ONLY (published norms are weak, so NO fake percentiles —
-//     the RDA-adequacy honesty discipline applied to scoring).
+//     `body` → body composition/vitals against canonical ranges; `self-norm` → a
+//     DISCLOSED-ROUGH population band ladder (dead hang / plank — weak/fair/good/excellent
+//     via lib/fitness-hold-norms, #1135) PLUS the retained personal delta; `self-trend` →
+//     vs the user's own prior checks ONLY, no reference at all (currently unused —
+//     reserved for a future genuinely reference-less test). The self-norm/self-trend split
+//     keeps the RDA-adequacy honesty discipline: a disclosed rough band is NOT a fabricated
+//     percentile, and a truly reference-less test still gets no invented number.
 //   • AGE-BANDED swap: `batteryForAge(age)` returns the adult OR the senior variant
 //     (Senior Fitness Test / CDC STEADI shapes past OLDER_ADULT_MIN_AGE) so the check
 //     never hands a 78-year-old a Cooper run and a dead hang.
@@ -29,9 +33,10 @@ import {
   type Vo2Estimate,
 } from "@/lib/vo2-field-tests";
 
-// The five scoring tiers (see the header).
+// The scoring tiers (see the header). `self-norm` (#1135) is the rough-band ladder for the
+// two isometric holds; `self-trend` is the reference-less residue (currently unused).
 export type FitnessTier =
-  "norms" | "standard" | "evidence" | "body" | "self-trend";
+  "norms" | "standard" | "evidence" | "body" | "self-norm" | "self-trend";
 
 // The per-domain profile the check feeds (per-domain FitnessPercentile bars; NO new
 // aggregate — fitness age stays the only headline).
@@ -68,8 +73,11 @@ export interface FitnessTestDef {
   inputKind: FitnessInputKind;
   instructions: string[];
   // Norms-tier only: the fitness-norms marker the entered value scores against. MUST be
-  // absent on non-norms tiers (self-trend carries NO percentile path).
+  // absent on non-norms tiers (self-norm/self-trend carry NO percentile path).
   normsMarker?: string;
+  // Self-norm-tier only (#1135): the lib/fitness-hold-norms entry key ("deadhang"/"plank")
+  // whose rough band ladder colors the value. Absent on every other tier.
+  holdNorm?: string;
   // Standard-tier only: uses strength-standards over the chosen lift's e1RM.
   standard?: boolean;
   store: FitnessStore;
@@ -448,14 +456,15 @@ export const FITNESS_BATTERY: FitnessTestDef[] = [
   {
     key: "deadhang",
     label: "Dead hang",
-    tier: "self-trend",
+    tier: "self-norm",
     domain: "strength",
     ageBand: "adult",
     unit: "seconds",
     inputKind: "seconds",
+    holdNorm: "deadhang",
     store: { kind: "set", lift: "Dead Hang", timed: true },
     interpretation:
-      "Tracked against your own prior checks — no published norms.",
+      "Placed on a rough population guide (weak/fair/good/excellent) — no validated norms — and tracked against your own prior checks.",
     instructions: [
       "Hang from a bar with a full grip, arms straight. Time how long you hold before your grip fails.",
       "Enter your best time in seconds.",
@@ -471,14 +480,15 @@ export const FITNESS_BATTERY: FitnessTestDef[] = [
   {
     key: "plank",
     label: "Plank hold",
-    tier: "self-trend",
+    tier: "self-norm",
     domain: "strength",
     ageBand: "adult",
     unit: "seconds",
     inputKind: "seconds",
+    holdNorm: "plank",
     store: { kind: "set", lift: "Plank", timed: true },
     interpretation:
-      "Tracked against your own prior checks — no published norms.",
+      "Placed on a rough population guide (weak/fair/good/excellent) — no validated norms — and tracked against your own prior checks.",
     instructions: [
       "Hold a forearm plank with a straight line from head to heels. Time until form breaks.",
       "Enter your best time in seconds.",
@@ -519,6 +529,17 @@ export const FITNESS_BATTERY: FitnessTestDef[] = [
     max: 150,
   },
 ];
+
+// The core barbell lifts the big-lift (`standard`-tier) test offers — all carry strength
+// standards. ONE source of truth so the entry form, the auto-count read-back (#1129, which
+// scans these for a recent heavy set), and the tests can't drift.
+export const BIG_LIFT_OPTIONS = [
+  "Back Squat",
+  "Front Squat",
+  "Bench Press",
+  "Deadlift",
+  "Overhead Press",
+] as const;
 
 // Fast lookup by key.
 const BY_KEY = new Map(FITNESS_BATTERY.map((t) => [t.key, t]));
