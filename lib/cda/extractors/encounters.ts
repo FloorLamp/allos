@@ -622,11 +622,6 @@ export function isClinicalNoteSection(section: CdaSection): boolean {
   return !!title && /\bnotes?\b/.test(title);
 }
 
-// Collect the free-text notes from every top-level Progress Notes / per-clinician
-// Notes section — the note body is the section narrative (collectText, whitespace-
-// normalized, plain text). Skips a section with no narrative. Read at the document
-// level so the caller can attach the note to the same-document encounter (else store
-// it as a standalone dated note). One entry per note section.
 // The author of the first Note Activity entry (<entry><act><author>, template
 // 4.202) — where eClinicalWorks puts the note's clinician, rather than as a
 // section-level author (4.119). Fallback only; a section-level author wins.
@@ -638,6 +633,11 @@ function firstNoteEntryAuthor(entries: any[]): any {
   return undefined;
 }
 
+// Collect the free-text notes from every top-level Progress Notes / per-clinician
+// Notes section — the note body is the section narrative (collectText, whitespace-
+// normalized, plain text). Skips a section with no narrative. Read at the document
+// level so the caller can attach the note to the same-document encounter (else store
+// it as a standalone dated note). One entry per note section.
 export function clinicalNotesFromSections(
   sections: CdaSection[]
 ): ClinicalNote[] {
