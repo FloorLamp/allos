@@ -361,6 +361,26 @@ python… ; done` CI-poll loop running in the background was starving the
   TOGETHER `--workers=4` on the PR branch AND on a clean main checkout — if both
   fail together, it's latent shared-seed fragility the shard-reshuffle exposed
   (harden the fragile specs to own their fixtures), not the new spec's doing.
+- **Reproduce a GLOBAL/shared-config spec's flake ONLY at `--workers=1`
+  (2026-07-22).** The instinct to amplify a rare flake with a parallel
+  `--repeat-each=N` BACKFIRES on any spec that owns GLOBAL state — the SMTP/public-URL
+  relay, Telegram bot config, audit-retention, AI tiers (`/settings/server`), or the
+  shared seeded profile. Parallel repeats race each other on that one shared row and
+  manufacture FALSE flakes that don't exist in CI (chasing the settledFill fix I saw
+  the SAME email-auth run go 10/12 then 6/13 under default workers, then a clean 10/10
+  once pinned to `--workers=1`). CI runs `--workers=1`, so that's the ONLY honest
+  local signal for these specs; `--repeat-each` is fine, but keep it single-worker.
+  (Parallel `--repeat-each` stays valid for a spec that owns its OWN fixture and
+  touches no global/profile-1 state.)
+- **The controlled-input pre-hydration fill-revert is a silent flake class — use
+  `settledFill` (2026-07-22, #1188).** A `.fill()` before React hydrates a CONTROLLED
+  input sets the DOM (a naive `toHaveValue` passes) but never fires `onChange`, so
+  state stays empty and hydration reverts the field; a Save that reads state then
+  persists the empty/stale value SILENTLY (no error, often a valid save). `e2e/helpers.ts`
+  now has `settledFill` (waits for React's `__reactFiber$`/`__reactProps$` markers
+  before filling) for exactly this — Settings save-from-state cards and autosave-on-blur
+  fields. Its checkbox analog (a pre-hydration `.check()` that reverts) is still
+  unhelpered — a `settledCheck` is the open follow-up (`food-telegram` line-26 flake).
 
 **Known failure classes** (every one recurred at least once):
 
