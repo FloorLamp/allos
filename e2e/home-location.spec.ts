@@ -11,7 +11,7 @@ test("timeline day headers show sunrise/sunset daylight chips", async ({
   page,
 }) => {
   await page.goto("/timeline");
-  const chip = page.getByTestId("daylight-chip").first();
+  const chip = page.getByTestId("daylight-chip").first(); // first-ok: asserts a daylight chip renders — order-agnostic presence
   await expect(chip).toBeVisible();
   // Sunrise/sunset are rendered as HH:MM times.
   await expect(chip).toContainText(/\d{1,2}:\d{2}/);
@@ -42,7 +42,7 @@ test("Settings → Profile shows the coarse home location and can update it", as
   // Wait for the autosave to COMMIT before reloading — a reload aborts the
   // in-flight server-action POST and silently loses the save (the ai-settings
   // race class, PR #586). SaveStatus renders aria-label="Saved" on success.
-  await expect(page.getByLabel("Saved").first()).toBeVisible();
+  await expect(page.getByLabel("Saved").first()).toBeVisible(); // first-ok: asserts a Saved autosave indicator appears — order-agnostic
   // Reload and confirm the coarse value persisted.
   await page.reload();
   await expect(page.getByTestId("home-lat")).toHaveValue("41.9");
@@ -52,7 +52,7 @@ test("Settings → Profile shows the coarse home location and can update it", as
   await settledFill(page, page.getByTestId("home-lat"), "40.7");
   await settledFill(page, page.getByTestId("home-lng"), "-74");
   await page.getByTestId("home-lng").blur();
-  await expect(page.getByLabel("Saved").first()).toBeVisible();
+  await expect(page.getByLabel("Saved").first()).toBeVisible(); // first-ok: asserts a Saved autosave indicator appears — order-agnostic
   await page.reload();
   await expect(page.getByTestId("home-lat")).toHaveValue("40.7");
 });

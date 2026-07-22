@@ -59,12 +59,12 @@ test.describe("menstrual cycle (#714)", () => {
     await expect(page.getByTestId("period-started-button")).toBeVisible();
 
     // Delete the just-created (newest, first) row — restore the starting count.
-    await settledClick(page, page.getByTestId("cycle-delete-button").first());
+    await settledClick(page, page.getByTestId("cycle-delete-button").first()); // first-ok: deletes the cycle THIS spec is exercising (its own fixture data)
     await expect(rows).toHaveCount(before);
   });
 
   test("Timeline day header shows the cycle phase/period chip", async () => {
     await page.goto("/timeline");
-    await expect(page.getByTestId("cycle-phase-chip").first()).toBeVisible();
+    await expect(page.getByTestId("cycle-phase-chip").first()).toBeVisible(); // first-ok: asserts a cycle phase chip renders — order-agnostic presence
   });
 });

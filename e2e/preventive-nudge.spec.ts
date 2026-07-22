@@ -34,7 +34,7 @@ test.describe("preventive-care reminders toggle (issue #87)", () => {
     // Turn it off and save.
     await settledCheck(page, toggle, false);
     await page.getByRole("button", { name: "Save" }).click();
-    await expect(page.getByLabel("Saved").first()).toBeVisible();
+    await expect(page.getByLabel("Saved").first()).toBeVisible(); // first-ok: asserts a Saved autosave indicator appears — order-agnostic
 
     // Reload — Telegram is now enabled (so the block shows) and the preventive
     // toggle persists OFF from profile_settings.
@@ -51,7 +51,7 @@ test.describe("preventive-care reminders toggle (issue #87)", () => {
       false
     );
     await page.getByRole("button", { name: "Save" }).click();
-    await expect(page.getByLabel("Saved").first()).toBeVisible();
+    await expect(page.getByLabel("Saved").first()).toBeVisible(); // first-ok: asserts a Saved autosave indicator appears — order-agnostic
 
     await page.reload();
     await expect(
