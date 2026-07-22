@@ -7,6 +7,14 @@ import {
 } from "./reference-range";
 import type { MedicalCategory, MedicalFlag, MedicalRecord } from "./types";
 import { biomarkerViewHref, type AppRoute } from "./hrefs";
+import { daysBetweenDateStr } from "./date";
+
+// Recency floor (#1216): a reading older than this many days is "stale" — still
+// worth surfacing (a latest-per-marker highlight, and an unresolved abnormal never
+// expires), but it must be visibly age-labeled rather than dressed as recent. A
+// year is the natural window for routine labs; a value beyond it read as "current"
+// on a glance dashboard is the dishonesty this closes.
+export const RECENT_LAB_STALE_DAYS = 365;
 
 // Which medical-record categories count as "labs" for the recent-labs surfaces:
 // `lab` ONLY (#1076). Vitals, screening instruments, derived composites, and
@@ -23,6 +31,10 @@ export interface RecentLabRow {
   flag: MedicalFlag | null;
   date: string;
   href: AppRoute;
+  // True when the reading is older than RECENT_LAB_STALE_DAYS relative to the
+  // caller's `todayStr` — the render layer age-labels it distinctly. False when no
+  // `todayStr` was supplied (a caller that can't compute age gets no false claim).
+  stale: boolean;
 }
 
 // High/low variants carry a directional caret in MedicalValue. These legacy or
@@ -52,7 +64,8 @@ type LabRecord = Pick<
 // weekly recap, or HA "recent labs" read shares the identical policy.
 export function recentLabHighlights(
   records: LabRecord[],
-  limit = 6
+  limit = 6,
+  todayStr?: string
 ): RecentLabRow[] {
   // "Notable" = the canonical notability predicate (issue #544/#551): out-of-range
   // (high/low/abnormal) OR non-optimal. A loose `flag !== "normal"` test would sort
@@ -73,6 +86,7 @@ export function recentLabHighlights(
     .slice(0, limit)
     .map((r) => {
       const name = r.canonical_name?.trim() || r.name;
+      const age = todayStr != null ? daysBetweenDateStr(r.date, todayStr) : null;
       return {
         name,
         value: r.value,
@@ -80,6 +94,7 @@ export function recentLabHighlights(
         flag: r.flag,
         date: r.date,
         href: biomarkerViewHref(r.canonical_name, r.name),
+        stale: age != null && age > RECENT_LAB_STALE_DAYS,
       };
     });
 }

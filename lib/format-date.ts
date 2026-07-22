@@ -207,6 +207,22 @@ export function formatRelativeDate(iso: string, todayStr: string): string {
   return plural(Math.round(days / 365), "year");
 }
 
+// Compact "age" label for dense, always-visible contexts where the full
+// "N weeks ago" form doesn't fit — a lab row's date column at phone width (#1216).
+// Same calendar-based day math as formatRelativeDate against `todayStr` (so it's
+// timezone-independent), abbreviated: "Today" / "5d" / "2w" / "4mo" / "3y". The
+// week/month/year thresholds match formatRelativeDate so the two never disagree on
+// which bucket a date lands in.
+export function formatCompactAge(iso: string, todayStr: string): string {
+  const days = daysBetweenDateStr(iso, todayStr); // today − iso
+  if (days == null) return iso;
+  if (days <= 0) return "Today";
+  if (days < 7) return `${days}d`;
+  if (days < 30) return `${Math.round(days / 7)}w`;
+  if (days < 365) return `${Math.round(days / 30)}mo`;
+  return `${Math.round(days / 365)}y`;
+}
+
 // Fine-grained "time since" for timestamps (not just calendar dates): "just
 // now", "N minutes/hours ago", then day granularity ("Yesterday", "N days ago",
 // weeks/months/years). Accepts an ISO string or a SQLite UTC datetime

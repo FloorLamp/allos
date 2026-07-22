@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   recapWindow,
   resolveRecapWindow,
@@ -377,6 +377,15 @@ describe("buildWeeklyRecap", () => {
 });
 
 describe("renderRecapMessage", () => {
+  // recapRangeLabel formats through formatMonthDay, whose year-omission reads the
+  // process clock; pin it to the recap year (2026) so the compact "Jul 3 – Jul 9"
+  // range is deterministic regardless of when the suite runs (#1218).
+  beforeAll(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 6, 9));
+  });
+  afterAll(() => vi.useRealTimers());
+
   it("returns null for an empty recap (nothing worth interrupting for)", () => {
     const recap = buildWeeklyRecap(baseInput());
     expect(renderRecapMessage(recap, "Ada")).toBeNull();
@@ -391,7 +400,7 @@ describe("renderRecapMessage", () => {
     );
     const msg = renderRecapMessage(recap, "Ada")!;
     expect(msg.title).toBe("📊 Weekly recap — Ada");
-    expect(msg.body).toContain("2026-07-03 – 2026-07-09");
+    expect(msg.body).toContain("Jul 3 – Jul 9");
     expect(msg.body).toContain("• Workouts: 1");
     expect(msg.body).toContain("• Adherence: 100%");
   });
@@ -409,7 +418,7 @@ describe("renderRecapMessage", () => {
       "Ada",
       "A strong week — one lift and perfect adherence."
     )!;
-    expect(msg.body).toContain("2026-07-03 – 2026-07-09");
+    expect(msg.body).toContain("Jul 3 – Jul 9");
     expect(msg.body).toContain("A strong week");
     // The narrative supersedes the bullet lines.
     expect(msg.body).not.toContain("• Workouts:");

@@ -98,6 +98,42 @@ describe("recentLabHighlights", () => {
     recentLabHighlights(input);
     expect(input.map((r) => r.name)).toEqual(["A", "B"]);
   });
+
+  // #1216: the recency floor. Without a `todayStr` no age can be computed, so no
+  // row is claimed stale; with one, a reading older than the year window is flagged
+  // stale (still surfaced — an unresolved abnormal never expires — but labeled).
+  it("flags no row stale when no todayStr is supplied", () => {
+    const rows = recentLabHighlights([
+      rec({ name: "Old", date: "2010-01-01" }),
+    ]);
+    expect(rows[0].stale).toBe(false);
+  });
+
+  it("marks a reading older than the year floor as stale", () => {
+    const today = "2026-07-15";
+    const rows = recentLabHighlights(
+      [
+        rec({ name: "Fresh", date: "2026-07-01" }),
+        rec({ name: "Aged", date: "2024-01-01" }),
+      ],
+      6,
+      today
+    );
+    const byName = Object.fromEntries(rows.map((r) => [r.name, r.stale]));
+    expect(byName["Fresh"]).toBe(false);
+    expect(byName["Aged"]).toBe(true);
+  });
+
+  it("keeps a stale flagged marker in the list, labeled not hidden", () => {
+    const today = "2026-07-15";
+    const rows = recentLabHighlights(
+      [rec({ name: "OldAbnormal", flag: "abnormal", date: "2022-01-01" })],
+      6,
+      today
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].stale).toBe(true);
+  });
 });
 
 describe("recentLabDirectionlessStatus", () => {

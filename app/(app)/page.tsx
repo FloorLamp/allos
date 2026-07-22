@@ -106,7 +106,13 @@ import OnboardingResumeCard from "@/components/dashboard/OnboardingResumeCard";
 import OnboardingChecklist from "@/components/dashboard/OnboardingChecklist";
 import ProfileOrientationCard from "@/components/dashboard/ProfileOrientationCard";
 import { saveDashboardLayout, saveIllnessHeroState } from "./actions";
-import { episodeHref, HOUSEHOLD_HISTORY_HREF } from "@/lib/hrefs";
+import {
+  episodeHref,
+  encounterHref,
+  HOUSEHOLD_HISTORY_HREF,
+  type AppRoute,
+} from "@/lib/hrefs";
+import { formatRecordDateTime } from "@/lib/record-format";
 import { isHouseholdRecentlySick } from "@/lib/household-history";
 
 export const dynamic = "force-dynamic";
@@ -365,7 +371,9 @@ export default async function Dashboard() {
   let labRows: RecentLabRow[] = [];
   if (has("recent-labs")) {
     labRows = recentLabHighlights(
-      getMedicalRecords(profile.id, { current: true })
+      getMedicalRecords(profile.id, { current: true }),
+      undefined,
+      on
     );
   }
 
@@ -390,11 +398,23 @@ export default async function Dashboard() {
       const detailParts = [soonest.provider_name, soonest.location].filter(
         Boolean
       );
+      // Render date AND clock time through the login's prefs (#1215) — a stored
+      // "YYYY-MM-DD HH:MM" shows the wall-clock; a date-only value degrades to the
+      // long date. The card links to the resulting encounter once one exists, else
+      // the visits list (the same target the header uses).
+      const visitsHref: AppRoute = "/records/history/visits";
       nextAppt = {
         title: soonest.title?.trim() || soonest.provider_name || "Appointment",
-        whenLabel: formatLongDate(d, formatPrefs),
+        whenLabel: formatRecordDateTime(
+          soonest.scheduled_at,
+          formatLongDate(d, formatPrefs),
+          formatPrefs
+        ),
         dueText: daysRemainingLabel(d, on) ?? d,
         detail: detailParts.length ? detailParts.join(" · ") : null,
+        href: soonest.encounter_id
+          ? encounterHref(soonest.encounter_id)
+          : visitsHref,
       };
     }
   }
@@ -610,7 +630,9 @@ export default async function Dashboard() {
           <DataQualityWidget findings={dataQualityFindings} />
         ) : null;
       case "weekly-recap":
-        return weeklyRecap ? <WeeklyRecapWidget recap={weeklyRecap} /> : null;
+        return weeklyRecap ? (
+          <WeeklyRecapWidget recap={weeklyRecap} formatPrefs={formatPrefs} />
+        ) : null;
       case "quick-log-prn":
         return (
           <QuickLogPrnWidget

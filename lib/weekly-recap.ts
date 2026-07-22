@@ -19,6 +19,11 @@
 // either mode.
 
 import { shiftDateStr } from "./date";
+import {
+  formatMonthDay,
+  DEFAULT_FORMAT_PREFS,
+  type DisplayFormatPrefs,
+} from "./format-date";
 import { median, robustEndpoints } from "./robust-stats";
 import { fmtWeight, kgTo } from "./units";
 import { weekWindow } from "./week-window";
@@ -472,10 +477,18 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
   return { start: win.start, end: win.end, headline, lines, isEmpty };
 }
 
-// Short "2026-07-03 – 2026-07-09" style label for the window. Dependency-free so
-// the notification (which can't import date-formatting UI helpers) stays pure.
-export function recapRangeLabel(start: string, end: string): string {
-  return `${start} – ${end}`;
+// The window label — "Jul 3 – Jul 9" — rendered through the login's date-format
+// prefs (#1218), so the recap card and the Telegram recap present the range the
+// same way every other dashboard surface presents a date, and never leak raw ISO.
+// ONE presentation for BOTH surfaces (#221): the card passes the login's prefs; the
+// notification path (no per-login context) takes the 24h/mdy default. `formatMonthDay`
+// appends the year only across a year boundary, so a within-year week stays compact.
+export function recapRangeLabel(
+  start: string,
+  end: string,
+  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
+): string {
+  return `${formatMonthDay(start, prefs)} – ${formatMonthDay(end, prefs)}`;
 }
 
 // The minimal shape of a stored recap narrative row this picker needs (a subset
