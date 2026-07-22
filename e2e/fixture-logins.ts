@@ -527,3 +527,13 @@ export const TOAST_SWITCH_B_PROFILE = "Toaster B (e2e)";
 // prompt is still present, then asserts the created-visit end-state.
 export const E2E_LOGIN_CREATEVISIT = "e2e_createvisit";
 export const CREATEVISIT_PROFILE = "Create Visit (e2e)";
+
+// #1067 Phase 1 — Trends → Body mobile overhaul. A dedicated adult profile with a
+// KNOWN, PARTIAL set of synced body metrics so the chart-jump chips + per-chart
+// anchors are deterministic: it has weight + resting HR (the body-composition
+// block), steps, a sleep night, and one day of heart-rate minutes — but NO
+// hydration / BMR / calories / lean-mass / BMI etc., so those metrics' chips must
+// be ABSENT (the "chartless charts hide their chip" assertion). Read-only grant;
+// the spec only navigates + scrolls (no writes), so --repeat-each stays clean.
+export const E2E_LOGIN_TRENDS_BODY = "e2e_trends_body";
+export const TRENDS_BODY_PROFILE = "Trends Body (e2e)";

@@ -38,6 +38,7 @@ import {
   displayWeightGrowth,
 } from "@/lib/growth-series";
 import { ALL_ROWS, filterSeriesByRange } from "@/lib/trends";
+import { orderBodyCharts } from "@/lib/trends-body-order";
 import {
   buildTrendAnnotations,
   buildProtocolTrendWindows,
@@ -61,6 +62,8 @@ import GrowthChartsCard, {
 import BodyQuickAdd from "./BodyQuickAdd";
 import VitalsQuickAdd from "./VitalsQuickAdd";
 import GrowthQuickAdd from "./GrowthQuickAdd";
+import QuickAddPanel, { type QuickAddItem } from "./QuickAddPanel";
+import ChartJumpChips, { type ChartChip } from "./ChartJumpChips";
 import DeleteBodyMetricButton from "./DeleteBodyMetricButton";
 import EditLockNotice from "@/components/EditLockNotice";
 import BodyHygieneFindings from "./BodyHygieneFindings";
@@ -424,25 +427,374 @@ export default async function BodySection({ range }: { range: DateRange }) {
     macrosChart.length > 0 ||
     bmiChart.length > 0;
 
+  // #1067 Phase 1: order the synced daily charts by relevance (present + recent
+  // ahead of the fixed order) and render BOTH the sticky jump chips and the chart
+  // cards from the SAME visible list, so a chip can never point at an absent chart.
+  // `scroll-mt` clears the sticky mobile header + chip row so a `#id` anchor lands
+  // ON the chart, not under the chrome. Each card carries its `id` for the anchor.
+  const lastDateOf = (arr: { date: string }[]): string | null =>
+    arr.length > 0 ? arr[arr.length - 1].date : null;
+  const anchorClass = "card scroll-mt-28";
+
+  // Descriptor list for the synced grid. `order` is the historical base sequence;
+  // `present` is the ONE has-data gate driving chip + chart together.
+  const syncedEntries: (ChartChip & {
+    present: boolean;
+    latestDate: string | null;
+    order: number;
+    node: React.ReactNode;
+  })[] = [
+    {
+      id: "steps",
+      label: "Steps",
+      present: stepsChart.length > 0,
+      latestDate: lastDateOf(stepsChart),
+      order: 0,
+      node: (
+        <div id="steps" className={anchorClass} key="steps">
+          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+            Steps per day
+          </h2>
+          <LineChartCard
+            data={stepsChart}
+            label="Steps"
+            color={chartSeries.emerald}
+          />
+        </div>
+      ),
+    },
+    {
+      id: "sleep",
+      label: "Sleep",
+      present: hasSleep,
+      latestDate: lastNight?.wakeDay ?? null,
+      order: 1,
+      node: (
+        <Link
+          key="sleep"
+          href="/sleep"
+          id="sleep"
+          className="card scroll-mt-28 group flex flex-col transition hover:border-brand-300 dark:hover:border-brand-700"
+          data-testid="sleep-summary-tile"
+        >
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h2 className="font-semibold text-slate-800 dark:text-slate-100">
+              Sleep
+            </h2>
+            <span className="inline-flex items-center gap-1 text-xs text-brand-600 group-hover:underline dark:text-brand-400">
+              Open Sleep
+              <IconArrowRight className="h-4 w-4" stroke={1.75} aria-hidden />
+            </span>
+          </div>
+          <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
+            {lastNight && (
+              <div>
+                <div
+                  className="text-3xl font-bold tabular-nums text-slate-800 dark:text-slate-100"
+                  data-testid="sleep-tile-duration"
+                >
+                  {formatHm(lastNight.durationMin)}
+                </div>
+                <div className="text-xs text-slate-500 dark:text-slate-400">
+                  Last night ·{" "}
+                  {formatClockMinutes(
+                    formatPrefs.timeFormat,
+                    lastNight.bedMinutes
+                  )}
+                  –
+                  {formatClockMinutes(
+                    formatPrefs.timeFormat,
+                    lastNight.wakeMinutes
+                  )}
+                </div>
+              </div>
+            )}
+            {sleepReg != null && (
+              <div data-testid="sleep-regularity">
+                <div
+                  className="text-3xl font-bold text-indigo-600 dark:text-indigo-300"
+                  data-testid="sri-value"
+                >
+                  {Math.round(sleepReg.sri)}
+                </div>
+                <div className="text-xs text-slate-500 dark:text-slate-400">
+                  Regularity (SRI / 100)
+                </div>
+              </div>
+            )}
+          </div>
+          <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+            Your regularity trend, stage composition, and per-night detail moved
+            to the Sleep page.
+          </p>
+        </Link>
+      ),
+    },
+    {
+      id: "hr",
+      label: "HR",
+      present: hrChart.length > 0,
+      latestDate: lastDateOf(hrChart),
+      order: 2,
+      node: (
+        <div id="hr" className={anchorClass} key="hr">
+          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+            Heart rate (daily avg)
+          </h2>
+          <LineChartCard
+            data={hrChart}
+            label="Avg HR"
+            color={chartSeries.rose}
+            unit=" bpm"
+          />
+        </div>
+      ),
+    },
+    {
+      id: "hr-day",
+      label: "HR (day)",
+      present: hrIntraday.length > 0,
+      latestDate: latestHrDay,
+      order: 3,
+      node: (
+        <div
+          id="hr-day"
+          className={`${anchorClass} lg:col-span-2`}
+          key="hr-day"
+        >
+          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+            Heart rate over the day
+            {latestHrDay ? ` — ${latestHrDay}` : ""}
+          </h2>
+          <LineChartCard
+            data={hrIntraday}
+            label="HR"
+            color={chartSeries.rose}
+            unit=" bpm"
+            showDots={false}
+          />
+        </div>
+      ),
+    },
+    {
+      id: "bmi",
+      label: "BMI",
+      present: bmiChart.length > 0,
+      latestDate: lastDateOf(bmiChart),
+      order: 4,
+      node: (
+        <div id="bmi" className={anchorClass} key="bmi">
+          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+            BMI
+          </h2>
+          <LineChartCard
+            data={bmiChart}
+            label="BMI"
+            color={chartSeries.emerald}
+          />
+        </div>
+      ),
+    },
+    {
+      id: "lean-mass",
+      label: "Lean mass",
+      present: leanMassChart.length > 0,
+      latestDate: lastDateOf(leanMassChart),
+      order: 5,
+      node: (
+        <div id="lean-mass" className={anchorClass} key="lean-mass">
+          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+            Lean body mass
+          </h2>
+          <LineChartCard
+            data={leanMassChart}
+            label="Lean mass"
+            color={chartSeries.emerald}
+            unit=" kg"
+          />
+        </div>
+      ),
+    },
+    {
+      id: "bone-mass",
+      label: "Bone mass",
+      present: boneMassChart.length > 0,
+      latestDate: lastDateOf(boneMassChart),
+      order: 6,
+      node: (
+        <div id="bone-mass" className={anchorClass} key="bone-mass">
+          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+            Bone mass
+          </h2>
+          <LineChartCard
+            data={boneMassChart}
+            label="Bone mass"
+            color={chartSeries.slate}
+            unit=" kg"
+          />
+        </div>
+      ),
+    },
+    {
+      id: "bmr",
+      label: "BMR",
+      present: bmrChart.length > 0,
+      latestDate: lastDateOf(bmrChart),
+      order: 7,
+      node: (
+        <div id="bmr" className={anchorClass} key="bmr">
+          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+            Basal metabolic rate
+          </h2>
+          <LineChartCard
+            data={bmrChart}
+            label="BMR"
+            color={chartSeries.rose}
+            unit=" kcal"
+          />
+        </div>
+      ),
+    },
+    {
+      id: "hydration",
+      label: "Hydration",
+      present: hydrationChart.length > 0,
+      latestDate: lastDateOf(hydrationChart),
+      order: 8,
+      node: (
+        <div id="hydration" className={anchorClass} key="hydration">
+          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+            Hydration
+          </h2>
+          <LineChartCard
+            data={hydrationChart}
+            label="Water"
+            color={chartSeries.emerald}
+            unit=" L"
+          />
+        </div>
+      ),
+    },
+    {
+      id: "calories",
+      label: "Calories",
+      present: caloriesChart.length > 0,
+      latestDate: lastDateOf(caloriesChart),
+      order: 9,
+      node: (
+        <div id="calories" className={anchorClass} key="calories">
+          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+            Calories (intake)
+          </h2>
+          <LineChartCard
+            data={caloriesChart}
+            label="Calories"
+            color={chartSeries.amber}
+            unit=" kcal"
+          />
+        </div>
+      ),
+    },
+    {
+      id: "macros",
+      label: "Macros",
+      present: macrosChart.length > 0,
+      // macrosChart's `date` is sliced to MM-DD for display; use the full-date
+      // macroDates for recency so the sort stays correct across year boundaries.
+      latestDate:
+        macroDates.length > 0 ? macroDates[macroDates.length - 1] : null,
+      order: 10,
+      node: (
+        <div
+          id="macros"
+          className={`${anchorClass} lg:col-span-2`}
+          key="macros"
+        >
+          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+            Macros (protein / carbs / fat)
+          </h2>
+          <StackedBarCard
+            data={macrosChart}
+            unit=" g"
+            series={[
+              {
+                key: "protein",
+                label: "Protein",
+                color: chartSeries.violet,
+              },
+              { key: "carbs", label: "Carbs", color: chartSeries.amber },
+              { key: "fat", label: "Fat", color: chartSeries.rose },
+            ]}
+          />
+        </div>
+      ),
+    },
+  ];
+  const orderedSynced = orderBodyCharts(syncedEntries);
+
+  // Two fixed leading sections outside the reorderable synced grid, each with ONE
+  // presence boolean shared by its chip and its render (no duplicated has-data
+  // check): the body-composition block (weight / body-fat / resting-HR) and Mood.
+  const hasBodyComposition = charts.some((c) => c.data.length > 0);
+  const hasMood = moodChart.length > 0;
+
+  // Jump chips in page reading order: body-composition, mood, then the synced
+  // charts in their relevance order. ONE list feeds the sticky chip row.
+  const jumpChips: ChartChip[] = [
+    ...(hasBodyComposition
+      ? [{ id: "body-composition", label: "Weight" }]
+      : []),
+    ...(hasMood ? [{ id: "mood", label: "Mood" }] : []),
+    ...orderedSynced.map((e) => ({ id: e.id, label: e.label })),
+  ];
+
+  // The three entry forms, collapsed to a chip row on mobile (#1067). Authored
+  // once here; QuickAddPanel renders each a single time (no hand-mirrored branch).
+  const quickAddItems: QuickAddItem[] = [
+    {
+      id: "body",
+      label: "Body",
+      node: (
+        <BodyQuickAdd
+          weightUnit={wu}
+          defaultDate={today(profile.id)}
+          showBodyFat={bodyFatShown}
+        />
+      ),
+    },
+    ...(showGrowthQuickAdd(ageYears)
+      ? [
+          {
+            id: "growth" as const,
+            label: "Growth",
+            node: (
+              <GrowthQuickAdd
+                defaultDate={today(profile.id)}
+                showHeadCirc={showHeadCircEntry(ageMonths)}
+              />
+            ),
+          },
+        ]
+      : []),
+    {
+      id: "vitals",
+      label: "Vitals",
+      node: (
+        <VitalsQuickAdd
+          defaultDate={today(profile.id)}
+          temperatureUnit={units.temperatureUnit}
+        />
+      ),
+    },
+  ];
+
   return (
     <div className="space-y-6">
-      <BodyQuickAdd
-        weightUnit={wu}
-        defaultDate={today(profile.id)}
-        showBodyFat={bodyFatShown}
-      />
+      <QuickAddPanel items={quickAddItems} />
 
-      {showGrowthQuickAdd(ageYears) && (
-        <GrowthQuickAdd
-          defaultDate={today(profile.id)}
-          showHeadCirc={showHeadCircEntry(ageMonths)}
-        />
-      )}
-
-      <VitalsQuickAdd
-        defaultDate={today(profile.id)}
-        temperatureUnit={units.temperatureUnit}
-      />
+      {/* Sticky chart-jump chips (#1067) — one row, its own overflow-x-auto
+          container, tapping scrolls to the chart. Only present charts appear. */}
+      <ChartJumpChips chips={jumpChips} />
 
       <p className="text-sm text-slate-500 dark:text-slate-400">
         Body-composition trends over the selected window.
@@ -457,19 +809,21 @@ export default async function BodySection({ range }: { range: DateRange }) {
           it below, unchanged. */}
       {plan.growthCardFirst && growthCard}
 
-      <BodyTrendCharts
-        charts={charts}
-        annotations={annotations}
-        windows={protocolWindows}
-      />
+      <div id="body-composition" className="scroll-mt-28">
+        <BodyTrendCharts
+          charts={charts}
+          annotations={annotations}
+          windows={protocolWindows}
+        />
+      </div>
 
       {!plan.growthCardFirst && growthCard}
 
       {/* Mood trend (#992): the daily wellbeing series. Deliberately no reference
           bands, no flags, no retest hooks — mood is not a lab, so a low day is a
           data point, never an "abnormal". Hidden until a check-in exists. */}
-      {moodChart.length > 0 && (
-        <div className="card" data-testid="mood-trend">
+      {hasMood && (
+        <div id="mood" className="card scroll-mt-28" data-testid="mood-trend">
           <div className="mb-3 flex items-baseline justify-between gap-2">
             <h2 className="font-semibold text-slate-800 dark:text-slate-100">
               Mood
@@ -497,205 +851,7 @@ export default async function BodySection({ range }: { range: DateRange }) {
             date range above).
           </p>
           <div className="grid gap-6 lg:grid-cols-2">
-            {stepsChart.length > 0 && (
-              <div className="card">
-                <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-                  Steps per day
-                </h2>
-                <LineChartCard
-                  data={stepsChart}
-                  label="Steps"
-                  color={chartSeries.emerald}
-                />
-              </div>
-            )}
-            {hasSleep && (
-              <Link
-                href="/sleep"
-                className="card group flex flex-col transition hover:border-brand-300 dark:hover:border-brand-700"
-                data-testid="sleep-summary-tile"
-              >
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-                    Sleep
-                  </h2>
-                  <span className="inline-flex items-center gap-1 text-xs text-brand-600 group-hover:underline dark:text-brand-400">
-                    Open Sleep
-                    <IconArrowRight
-                      className="h-4 w-4"
-                      stroke={1.75}
-                      aria-hidden
-                    />
-                  </span>
-                </div>
-                <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
-                  {lastNight && (
-                    <div>
-                      <div
-                        className="text-3xl font-bold tabular-nums text-slate-800 dark:text-slate-100"
-                        data-testid="sleep-tile-duration"
-                      >
-                        {formatHm(lastNight.durationMin)}
-                      </div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400">
-                        Last night ·{" "}
-                        {formatClockMinutes(
-                          formatPrefs.timeFormat,
-                          lastNight.bedMinutes
-                        )}
-                        –
-                        {formatClockMinutes(
-                          formatPrefs.timeFormat,
-                          lastNight.wakeMinutes
-                        )}
-                      </div>
-                    </div>
-                  )}
-                  {sleepReg != null && (
-                    <div data-testid="sleep-regularity">
-                      <div
-                        className="text-3xl font-bold text-indigo-600 dark:text-indigo-300"
-                        data-testid="sri-value"
-                      >
-                        {Math.round(sleepReg.sri)}
-                      </div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400">
-                        Regularity (SRI / 100)
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-                  Your regularity trend, stage composition, and per-night detail
-                  moved to the Sleep page.
-                </p>
-              </Link>
-            )}
-            {hrChart.length > 0 && (
-              <div className="card">
-                <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-                  Heart rate (daily avg)
-                </h2>
-                <LineChartCard
-                  data={hrChart}
-                  label="Avg HR"
-                  color={chartSeries.rose}
-                  unit=" bpm"
-                />
-              </div>
-            )}
-            {hrIntraday.length > 0 && (
-              <div className="card lg:col-span-2">
-                <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-                  Heart rate over the day
-                  {latestHrDay ? ` — ${latestHrDay}` : ""}
-                </h2>
-                <LineChartCard
-                  data={hrIntraday}
-                  label="HR"
-                  color={chartSeries.rose}
-                  unit=" bpm"
-                  showDots={false}
-                />
-              </div>
-            )}
-            {bmiChart.length > 0 && (
-              <div className="card">
-                <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-                  BMI
-                </h2>
-                <LineChartCard
-                  data={bmiChart}
-                  label="BMI"
-                  color={chartSeries.emerald}
-                />
-              </div>
-            )}
-            {leanMassChart.length > 0 && (
-              <div className="card">
-                <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-                  Lean body mass
-                </h2>
-                <LineChartCard
-                  data={leanMassChart}
-                  label="Lean mass"
-                  color={chartSeries.emerald}
-                  unit=" kg"
-                />
-              </div>
-            )}
-            {boneMassChart.length > 0 && (
-              <div className="card">
-                <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-                  Bone mass
-                </h2>
-                <LineChartCard
-                  data={boneMassChart}
-                  label="Bone mass"
-                  color={chartSeries.slate}
-                  unit=" kg"
-                />
-              </div>
-            )}
-            {bmrChart.length > 0 && (
-              <div className="card">
-                <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-                  Basal metabolic rate
-                </h2>
-                <LineChartCard
-                  data={bmrChart}
-                  label="BMR"
-                  color={chartSeries.rose}
-                  unit=" kcal"
-                />
-              </div>
-            )}
-            {hydrationChart.length > 0 && (
-              <div className="card">
-                <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-                  Hydration
-                </h2>
-                <LineChartCard
-                  data={hydrationChart}
-                  label="Water"
-                  color={chartSeries.emerald}
-                  unit=" L"
-                />
-              </div>
-            )}
-            {caloriesChart.length > 0 && (
-              <div className="card">
-                <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-                  Calories (intake)
-                </h2>
-                <LineChartCard
-                  data={caloriesChart}
-                  label="Calories"
-                  color={chartSeries.amber}
-                  unit=" kcal"
-                />
-              </div>
-            )}
-            {macrosChart.length > 0 && (
-              <div className="card lg:col-span-2">
-                <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-                  Macros (protein / carbs / fat)
-                </h2>
-                <StackedBarCard
-                  data={macrosChart}
-                  unit=" g"
-                  series={[
-                    {
-                      key: "protein",
-                      label: "Protein",
-                      color: chartSeries.violet,
-                    },
-                    { key: "carbs", label: "Carbs", color: chartSeries.amber },
-                    { key: "fat", label: "Fat", color: chartSeries.rose },
-                  ]}
-                />
-              </div>
-            )}
+            {orderedSynced.map((e) => e.node)}
           </div>
         </div>
       )}
