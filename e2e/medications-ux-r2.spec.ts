@@ -19,7 +19,7 @@ import {
 async function topOf(scope: Locator, name: string): Promise<number> {
   const box = await scope
     .getByText(name, { exact: false })
-    .first()
+    .first() // first-ok: the first element matching `name`, read only for a vertical-position comparison — order-agnostic
     .boundingBox();
   if (!box) throw new Error(`not found: ${name}`);
   return box.y;
@@ -43,7 +43,7 @@ test("item 1: Today panel orders scheduled rows by bucket — same order as Upco
 
   // Upcoming derives the SAME order from the shared doseSortKey sortHint.
   await page.goto("/upcoming");
-  await expect(page.getByText(ZETA).first()).toBeVisible();
+  await expect(page.getByText(ZETA).first()).toBeVisible(); // first-ok: ZETA is a unique med marker THIS spec created — order-agnostic
   expect(await topOf(page.getByRole("main"), ZETA)).toBeLessThan(
     await topOf(page.getByRole("main"), ALPHA)
   );
@@ -143,12 +143,12 @@ test("item 5: the detail page shows a month adherence calendar over the existing
   await expect(month.getByTestId("adherence-calendar")).toBeVisible();
   // The seed logged 14 taken days, so at least one "taken" cell renders.
   await expect(
-    month.getByTestId("adherence-cal-day").filter({ hasText: /\d/ }).first()
+    month.getByTestId("adherence-cal-day").filter({ hasText: /\d/ }).first() // first-ok: asserts a day cell renders in the adherence calendar — order-agnostic
   ).toBeVisible();
   await expect(
     month
       .locator('[data-testid="adherence-cal-day"][data-state="taken"]')
-      .first()
+      .first() // first-ok: asserts a "taken" day cell renders (seed logged 14 taken days) — order-agnostic
   ).toBeVisible();
 });
 

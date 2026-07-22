@@ -161,19 +161,14 @@ const WAITFORTIMEOUT_ALLOW: Record<string, number> = {
 // two lists above: migrate a spec onto an exact locator / dedicated fixture and
 // LOWER its number in the same PR; a NEW unmarked .first() (or a new file) fails.
 const FIRST_ALLOW: Record<string, number> = {
-  "activity-equipment.spec.ts": 5,
-  "ai-settings.spec.ts": 4,
-  "crisis-mental-health-visit.spec.ts": 4,
   "dashboard.spec.ts": 5,
   "date-time-format-prefs.spec.ts": 10,
   "dose-history.spec.ts": 9,
-  "drug-interactions.spec.ts": 4,
   // edit-lock-badge carries a latent class-1 flake (a batch sibling mutates
   // profile 1's body metrics that /trends?tab=body reads; exposed only when
   // co-located at --repeat-each). Its two .first() stay frozen until a focused fix.
   "edit-lock-badge.spec.ts": 2,
   "entry-ergonomics.spec.ts": 24,
-  "exercise-guide.spec.ts": 4,
   // illness-care carries a latent class-1 flake (a sibling mutates profile 1's
   // seeded illness state; exposed only when co-located at --repeat-each). Its lone
   // .first() stays frozen here until that flake is fixed in a focused follow-up.
@@ -189,7 +184,6 @@ const FIRST_ALLOW: Record<string, number> = {
   // pass — its safety rests on every OTHER spec only backdating writes to this
   // SHARED med, which is too fragile to bless with a marker.
   "medications-page.spec.ts": 1,
-  "medications-ux-r2.spec.ts": 4,
   "mobile-ui-polish.spec.ts": 8,
   "prn-family.spec.ts": 1,
   "risk-factors.spec.ts": 2,
