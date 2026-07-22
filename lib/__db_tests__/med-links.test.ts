@@ -441,10 +441,11 @@ describe("#1051 provider merge re-keys the prescriber FK; text stays fallback", 
   });
 });
 
-describe("#1051 record delete NULLs source_record_id (row-ops)", () => {
-  it("NULLs a bridged med's source_record_id when the source record is deleted", () => {
+describe("#1204 manual track-from-record attaches a course on a match", () => {
+  it("adds a course to the existing med instead of a duplicate item", () => {
     const doc = newDocument(profileId);
-    const recordId = Number(
+    // Track a first prescription → a new med.
+    const rec1 = Number(
       db
         .prepare(
           `INSERT INTO medical_records (date, category, name, document_id, source, profile_id)
@@ -452,27 +453,36 @@ describe("#1051 record delete NULLs source_record_id (row-ops)", () => {
         )
         .run(DATE, doc, profileId).lastInsertRowid
     );
-    const created = createMedicationFromRecord(profileId, recordId);
-    expect(
-      (
-        db
-          .prepare(`SELECT source_record_id FROM intake_items WHERE id = ?`)
-          .get(created!.id) as {
-          source_record_id: number | null;
-        }
-      ).source_record_id
-    ).toBe(recordId);
-    // Deleting the record (via the capture-delete core) NULLs the med's link first.
-    captureDelete("biomarker-record", profileId, recordId);
-    expect(
-      (
-        db
-          .prepare(`SELECT source_record_id FROM intake_items WHERE id = ?`)
-          .get(created!.id) as {
-          source_record_id: number | null;
-        }
-      ).source_record_id
-    ).toBeNull();
+    const first = createMedicationFromRecord(profileId, rec1);
+    expect(first).not.toBeNull();
+
+    // A second prescription of the SAME drug (a later document) tracked by hand →
+    // attaches a COURSE to the existing med, not a duplicate item.
+    const doc2 = newDocument(profileId);
+    const rec2 = Number(
+      db
+        .prepare(
+          `INSERT INTO medical_records (date, category, name, document_id, source, profile_id)
+           VALUES (?, 'prescription', 'Amoxicillin 500 mg', ?, 'Clinic', ?)`
+        )
+        .run("2026-06-01", doc2, profileId).lastInsertRowid
+    );
+    const second = createMedicationFromRecord(profileId, rec2);
+    expect(second!.id).toBe(first!.id); // SAME item, not a duplicate
+
+    const items = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM intake_items
+          WHERE profile_id = ? AND kind = 'medication' AND lower(name) = 'amoxicillin'`
+      )
+      .get(profileId) as { n: number };
+    expect(items.n).toBe(1);
+    const courses = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM medication_courses WHERE item_id = ?`
+      )
+      .get(first!.id) as { n: number };
+    expect(courses.n).toBe(2); // the initial course + the renewal course
   });
 });
 

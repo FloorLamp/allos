@@ -77,6 +77,9 @@ export const PROVIDER_LINK_COLUMNS: ProviderLink[] = [
   { table: "medical_records", column: "provider_id" },
   { table: "immunizations", column: "provider_id" },
   { table: "intake_items", column: "provider_id" },
+  // Per-course prescriber link (#1204): a renewal course records the individual who
+  // prescribed it. A GLOBAL re-point (no profile scope) like every other link here.
+  { table: "medication_courses", column: "provider_id" },
   { table: "encounters", column: "provider_id" },
   { table: "encounters", column: "location_provider_id" },
   { table: "procedures", column: "provider_id" },

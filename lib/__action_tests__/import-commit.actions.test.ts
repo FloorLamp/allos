@@ -269,7 +269,9 @@ describe("commitImportJob — save a ready paste import", () => {
     }[];
     const names = recs.map((r) => r.name);
     expect(names).toContain("Glucose");
-    expect(names).toContain("Lisinopril 10 mg"); // prescription record kept as fallback
+    // Since #1178 the prescription is the medication (above), NOT a medical_records
+    // row — so it never lands in the records table.
+    expect(names).not.toContain("Lisinopril 10 mg");
     expect(names).not.toContain("Body Weight");
     expect(names).not.toContain("Height");
     // Documentless: every kept record carries a NULL document_id (manual-like).

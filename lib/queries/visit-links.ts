@@ -877,6 +877,14 @@ export function nullEncounterLinks(
         WHERE encounter_id = ? AND profile_id = ?`
     ).run(encounterId, profileId);
   }
+  // medical_records is no longer a visit-link SUGGESTION domain (#1178 removed the
+  // `record` domain), but a lab/vital reading still carries a deterministic tier-1
+  // encounter_id, so its back-link must still be freed before the encounter is
+  // deleted (the FK carries no ON DELETE).
+  db.prepare(
+    `UPDATE medical_records SET encounter_id = NULL
+      WHERE encounter_id = ? AND profile_id = ?`
+  ).run(encounterId, profileId);
   db.prepare(
     `UPDATE illness_episodes SET encounter_id = NULL
       WHERE encounter_id = ? AND profile_id = ?`

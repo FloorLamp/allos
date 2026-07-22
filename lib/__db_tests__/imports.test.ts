@@ -314,7 +314,9 @@ describe("getDocumentProduced", () => {
       p.recordsByCategory.map((r) => [r.category, r.count])
     );
     expect(byCat["lab"]).toBe(2);
-    expect(byCat["prescription"]).toBe(1);
+    // Since #1178 a prescription is the medication (intake_items), not a
+    // medical_records row — so it is counted under `medications`, not a category.
+    expect(byCat["prescription"]).toBeUndefined();
     expect(p.immunizations).toBe(1);
     expect(p.allergies).toBe(1);
     expect(p.conditions).toBe(1);
@@ -380,21 +382,21 @@ describe("getDocumentProduced", () => {
 // total every per-profile row an import writes, not just immunizations + records.
 describe("extracted_count (toast + Review-feed tally)", () => {
   it("stores the full footprint total on the document row, not immCount+recCount", () => {
-    // The cross-domain makeInput() writes: 3 medical_records (2 lab + 1
-    // prescription) + 1 immunization + 1 allergy + 1 condition + 1 encounter +
-    // 1 procedure + 1 family-history + 1 care-plan item + 1 care goal + 1
-    // appointment + 1 structured medication (the prescription projected into
-    // intake_items) + 1 body-metric + 1 height + 1 head-circ = 16.
-    // The old tally (immCount + recCount = 1 + 3 = 4) missed the rest.
+    // The cross-domain makeInput() writes: 2 medical_records (2 lab; the
+    // prescription is NOT a record since #1178) + 1 immunization + 1 allergy +
+    // 1 condition + 1 encounter + 1 procedure + 1 family-history + 1 care-plan
+    // item + 1 care goal + 1 appointment + 1 structured medication (the
+    // prescription projected into intake_items) + 1 body-metric + 1 height +
+    // 1 head-circ = 15.
     const row = db
       .prepare(
         "SELECT extracted_count AS n FROM medical_documents WHERE id = ? AND profile_id = ?"
       )
       .get(docA, profileA) as { n: number };
-    expect(row.n).toBe(16);
+    expect(row.n).toBe(15);
     // And it equals the live footprint count the writer derives off
     // IMPORT_FOOTPRINT_TABLES, so the stored value can't silently drift.
-    expect(countImportedDocumentRows(profileA, docA)).toBe(16);
+    expect(countImportedDocumentRows(profileA, docA)).toBe(15);
   });
 
   it("counts an encounter-only import as 1 item (the reported repro)", () => {

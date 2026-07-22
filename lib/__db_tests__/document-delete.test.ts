@@ -296,7 +296,7 @@ beforeAll(() => {
 describe("document import footprint", () => {
   it("writes a row for every imported kind", () => {
     const c = footprintCounts(profileA, docA);
-    expect(c.records).toBe(2); // Glucose lab + Lisinopril prescription (also projected into intake_items)
+    expect(c.records).toBe(1); // Glucose lab only (the Lisinopril prescription is the med, not a record, since #1178)
     expect(c.meds).toBe(1);
     expect(c.bodyMetrics).toBe(1);
     expect(c.heights).toBe(1);
@@ -350,7 +350,7 @@ describe("clearImportedDocumentRows (the document-delete core)", () => {
 
   it("leaves a second profile's document fully intact (profile scoping)", () => {
     const c = footprintCounts(profileB, docB);
-    expect(c.records).toBe(2); // Glucose lab + Lisinopril prescription (also projected into intake_items)
+    expect(c.records).toBe(1); // Glucose lab only (the Lisinopril prescription is the med, not a record, since #1178)
     expect(c.meds).toBe(1);
     expect(c.bodyMetrics).toBe(1);
     expect(c.heights).toBe(1);
@@ -368,7 +368,7 @@ describe("reprocess stays idempotent through the shared helper", () => {
     // clears the prior set, then the insert loops re-add exactly one of each.
     persistDocumentImport(profileB, docB, makeInput());
     const c = footprintCounts(profileB, docB);
-    expect(c.records).toBe(2); // Glucose lab + Lisinopril prescription (also projected into intake_items)
+    expect(c.records).toBe(1); // Glucose lab only (the Lisinopril prescription is the med, not a record, since #1178)
     expect(c.meds).toBe(1);
     expect(c.bodyMetrics).toBe(1);
     expect(c.heights).toBe(1);
@@ -436,12 +436,12 @@ describe("clearImportedDocumentRows never touches same-profile survivors", () =>
 
     // Both documents fully present before the delete.
     expect(footprintCounts(profile, target)).toMatchObject({
-      records: 2,
+      records: 1, // lab only — the prescription is the med, not a record (#1178)
       conditions: 2,
     });
     const keeperBefore = footprintCounts(profile, keeper);
     expect(keeperBefore).toEqual({
-      records: 2,
+      records: 1, // lab only — the prescription is the med, not a record (#1178)
       meds: 1,
       bodyMetrics: 1,
       heights: 1,
