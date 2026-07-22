@@ -189,8 +189,12 @@ export const TOGGLEABLE_NOTIFICATION_KINDS: readonly {
   { kind: "workout-recap", label: "Post-workout recap" },
   { kind: "food", label: "Food-log nudges" },
   { kind: "mood", label: "Mood check-ins" },
+  // One "Morning digest" toggle since #1108 — the "what's due" list is now the
+  // morning digest's Today section, ONE message of kind `digest`, so there's no
+  // second `upcoming` send to toggle. The `upcoming` kind stays in the type union +
+  // parseDisabledKinds' valid set for back-compat with any stored disabled blob, but
+  // it's no longer a toggleable matrix row.
   { kind: "digest", label: "Morning digest" },
-  { kind: "upcoming", label: "What's due digest" },
   { kind: "weekly-recap", label: "Weekly recap" },
   { kind: "milestone", label: "Milestones" },
 ];

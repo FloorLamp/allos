@@ -37,11 +37,8 @@ import {
   getSubstanceWeekState,
   getAlcoholWeeklyTrend,
 } from "@/lib/queries";
-import { groupUpcoming } from "@/lib/upcoming";
-import {
-  buildUpcomingDigest,
-  renderUpcomingDigestMessage,
-} from "@/lib/notifications/upcoming-digest";
+import { buildDigest, renderDigestMessage } from "@/lib/notifications/digest";
+import { gatherDigestInput } from "@/lib/notifications/digest-data";
 import { gatherMilestoneInput } from "@/lib/milestones-db";
 import {
   buildSubstanceUseFindings,
@@ -235,11 +232,13 @@ describe("cap semantics never leak into floor-semantics surfaces (#998)", () => 
       false
     );
 
-    // …and the Telegram digest never mentions the domain.
-    const model = buildUpcomingDigest("SU no-leak", groupUpcoming(items, td));
+    // …and the merged morning digest (#1108) never mentions the domain — its Today
+    // section formats collectUpcoming, whose substance-use signals are coaching-tier
+    // and reach no push surface, so the sent message stays clean.
+    const model = buildDigest(gatherDigestInput(p, "SU no-leak"));
     if (model) {
-      const msg = renderUpcomingDigestMessage(model);
-      const text = `${msg.title} ${msg.body ?? ""} ${JSON.stringify(msg)}`;
+      const msg = renderDigestMessage(model);
+      const text = `${msg.title} ${msg.body} ${JSON.stringify(msg)}`;
       expect(text.toLowerCase()).not.toContain("alcohol");
       expect(text.toLowerCase()).not.toContain("substance");
     }

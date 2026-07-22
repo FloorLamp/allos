@@ -5,11 +5,36 @@ import {
   renderDigestMessage,
   type DigestInput,
 } from "../notifications/digest";
+import type {
+  BandGroup,
+  UpcomingDomain,
+  UpcomingItem,
+  UrgencyBand,
+} from "../upcoming";
+import type { Reason } from "../reasons";
+
+let n = 0;
+const item = (
+  domain: UpcomingDomain,
+  extra: Partial<UpcomingItem> = {}
+): UpcomingItem => ({
+  key: `${domain}:${n++}`,
+  domain,
+  title: domain,
+  href: "/",
+  dueDate: null,
+  ...extra,
+});
+const band = (
+  b: UrgencyBand,
+  label: string,
+  items: UpcomingItem[]
+): BandGroup => ({ band: b, label, items });
 
 const empty: DigestInput = {
   profileName: "Mom",
   doseCount: 0,
-  goalsDue: [],
+  todayGroups: [],
   activities: [],
   adherence: null,
   weightKg: null,
@@ -27,16 +52,18 @@ describe("buildDigest", () => {
     expect(model?.title).toContain("Mom");
   });
 
-  it("collapses empty sections and keeps only populated ones", () => {
+  it("collapses empty sections and keeps only the populated Today section", () => {
     const model = buildDigest({
       ...empty,
       doseCount: 3,
-      goalsDue: [{ label: "Legs", count: 1, perWeek: 2 }],
+      todayGroups: [band("week", "This week", [item("goal", { title: "Legs" })])],
     });
     expect(model?.sections.map((s) => s.heading)).toEqual(["Today"]);
+    // The dose glance headline, then the banded "what's due" summary (goals now
+    // come from collectUpcoming, not a hand-computed goal line) — issue #1108.
     expect(model?.sections[0].lines).toEqual([
       "💊 3 supplement doses scheduled",
-      "🎯 Legs: 1/2 this week",
+      "This week: 1 goal",
     ]);
   });
 
@@ -143,6 +170,89 @@ describe("buildDigest", () => {
     });
     const y = model?.sections.find((s) => s.heading === "Yesterday");
     expect(y?.lines).toEqual(["💊 Supplements: 2 skipped"]);
+  });
+});
+
+describe("buildDigest — merged Today section (issue #1108)", () => {
+  const risk = (text: string): Reason => ({
+    code: "risk-elevated",
+    text,
+    source: "ACC/AHA (informational)",
+  });
+
+  it("formats the banded what's-due list from collectUpcoming as the Today section", () => {
+    const model = buildDigest({
+      ...empty,
+      todayGroups: [
+        band("overdue", "Overdue", [item("biomarker")]),
+        band("today", "Today", [item("appointment")]),
+        band("week", "This week", [item("goal"), item("training")]),
+      ],
+    });
+    const today = model?.sections.find((s) => s.heading === "Today");
+    expect(today?.lines).toEqual([
+      "Overdue: 1 lab",
+      "Today: 1 appointment",
+      "This week: 1 goal, 1 training target",
+    ]);
+  });
+
+  it("summarizes doses ONLY in the glance headline, never double-counted in the bands", () => {
+    const model = buildDigest({
+      ...empty,
+      doseCount: 3,
+      todayGroups: [
+        band("today", "Today", [
+          item("dose"),
+          item("dose"),
+          item("dose"),
+          item("appointment"),
+        ]),
+      ],
+    });
+    const today = model?.sections.find((s) => s.heading === "Today");
+    // The dose headline counts the doses; the band line lists everything BUT doses.
+    expect(today?.lines).toEqual([
+      "💊 3 supplement doses scheduled",
+      "Today: 1 appointment",
+    ]);
+  });
+
+  it("a day of only doses reads as one clean glance line (no empty band line)", () => {
+    const model = buildDigest({
+      ...empty,
+      doseCount: 2,
+      todayGroups: [band("today", "Today", [item("dose"), item("dose")])],
+    });
+    const today = model?.sections.find((s) => s.heading === "Today");
+    expect(today?.lines).toEqual(["💊 2 supplement doses scheduled"]);
+  });
+
+  it("surfaces the high-priority why lines (#656) under Today", () => {
+    const model = buildDigest({
+      ...empty,
+      todayGroups: [
+        band("overdue", "Overdue", [
+          item("biomarker", {
+            title: "Retest LDL Cholesterol",
+            priority: 2,
+            reasons: [risk("Family history of heart disease")],
+          }),
+        ]),
+      ],
+    });
+    const today = model?.sections.find((s) => s.heading === "Today");
+    expect(today?.lines).toEqual([
+      "Overdue: 1 lab",
+      "⚑ Retest LDL Cholesterol — Family history of heart disease",
+    ]);
+  });
+
+  it("respects the bus: an item absent from todayGroups never reaches Today", () => {
+    // The gather passes the ALREADY-suppressed collectUpcoming set, so a
+    // dismissed/snoozed item simply isn't in todayGroups. With nothing else to
+    // report the whole digest collapses to null (no hollow send).
+    expect(buildDigest({ ...empty, todayGroups: [] })).toBeNull();
   });
 });
 

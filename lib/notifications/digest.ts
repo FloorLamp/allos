@@ -8,9 +8,11 @@
 
 import type { NotificationMessage } from "./types";
 import type { ActivityType, SupplementKind } from "../types";
+import type { BandGroup, UpcomingDomain } from "../upcoming";
 import { fmtWeight, fmtDistance } from "../units";
 import { intakeWindowNoun, intakeItemNoun } from "./supplement-format";
 import { situationActivationLine } from "../situations";
+import { buildUpcomingDigest } from "./upcoming-digest";
 import { sriPresentation } from "../sleep-regularity";
 
 // Capitalize the first letter of a noun for use at the start of a line
@@ -24,12 +26,6 @@ export interface DigestActivity {
   type: ActivityType;
   durationMin: number | null;
   distanceKm: number | null;
-}
-
-export interface DigestGoalDue {
-  label: string;
-  count: number;
-  perWeek: number;
 }
 
 export interface DigestFlaggedBiomarker {
@@ -87,7 +83,14 @@ export interface DigestInput {
   // choosing the reminder noun so a medications-only profile isn't told
   // "supplements" (#380). Optional/empty ⇒ "supplements" (back-compat default).
   intakeKinds?: SupplementKind[];
-  goalsDue: DigestGoalDue[]; // frequency targets not yet met this week
+  // The merged "what's due" list (issue #1108): the ALREADY-BANDED collectUpcoming
+  // output for today (groupUpcoming) — doses, refills, appointments, planned care,
+  // preventive, retests, goals, training, … Replaces the digest's own goals/dose
+  // computation so snooze/dismiss (the findings bus) and training-restriction govern
+  // the whole morning message and the page/push can't disagree (#221). buildDigest
+  // formats it into the Today section (doses summarized by the count line above, so
+  // they're excluded from the banded lines to avoid double-counting).
+  todayGroups: BandGroup[];
   // Count of situational intake items due TODAY because their situation is active
   // (issue #662 item 1) — the optional digest mention of the same "N situational
   // items now active" the situations bar shows. Optional/0 ⇒ the line is omitted.
@@ -143,6 +146,10 @@ function activityStat(a: DigestActivity): string {
   return "";
 }
 
+// Doses are summarized by the Today dose-count headline, so they're dropped from
+// the banded "what's due" lines to avoid double-counting (issue #1108).
+const DOSE_EXCLUDED_FROM_BANDS: readonly UpcomingDomain[] = ["dose"];
+
 // Assemble the digest model, or null when every section is empty (so the tick
 // sends nothing rather than a hollow "nothing to report").
 export function buildDigest(input: DigestInput): DigestModel | null {
@@ -164,8 +171,14 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     });
   }
 
-  // Today: what's on deck.
+  // Today: what's on deck — the MERGED due list (issue #1108). One engine (#221): a
+  // formatter over collectUpcoming (the banded `todayGroups`), so snooze/dismiss and
+  // training-restriction apply to the whole morning message. The dose count is the
+  // glance headline; the banded lines cover everything else; the "why" highlights
+  // (#656) explain the important items.
   const todayLines: string[] = [];
+  // Dose glance headline — the count of DUE doses from collectUpcoming (bus-honored
+  // + #558 predicted-training-day, both applied by collectUpcoming's dose items).
   if (input.doseCount > 0) {
     todayLines.push(
       `💊 ${input.doseCount} ${itemNoun} dose${input.doseCount === 1 ? "" : "s"} scheduled`
@@ -177,8 +190,18 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     input.situationalActiveCount ?? 0
   );
   if (situationLine) todayLines.push(`🧭 ${situationLine}`);
-  for (const g of input.goalsDue) {
-    todayLines.push(`🎯 ${g.label}: ${g.count}/${g.perWeek} this week`);
+  // The banded "what's due" summary + high-priority "why" lines, from the SAME
+  // collectUpcoming formatter the Upcoming page/hero read. Doses are EXCLUDED from
+  // the per-band counts (the glance line above already summarizes them) so a day of
+  // only doses reads as one clean line, not "💊 3 doses" + "Today: 3 doses".
+  const due = buildUpcomingDigest(input.profileName, input.todayGroups, {
+    excludeDomains: DOSE_EXCLUDED_FROM_BANDS,
+  });
+  if (due) {
+    for (const line of due.lines) todayLines.push(line);
+    for (const h of due.highlights) {
+      todayLines.push(`⚑ ${h.title} — ${h.reason}`);
+    }
   }
   if (todayLines.length) sections.push({ heading: "Today", lines: todayLines });
 

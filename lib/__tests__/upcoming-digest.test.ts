@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   buildUpcomingDigest,
   digestHighlights,
-  renderUpcomingDigestMessage,
   summarizeBand,
 } from "../notifications/upcoming-digest";
 import type { BandGroup, UpcomingDomain, UpcomingItem } from "../upcoming";
@@ -57,6 +56,20 @@ describe("summarizeBand", () => {
       summarizeBand(band("week", "This week", ["training", "immunization"]))
     ).toBe("1 vaccine, 1 training target");
   });
+
+  it("drops excluded domains (#1108 — the digest excludes doses)", () => {
+    const g = band("today", "Today", ["dose", "dose", "appointment"]);
+    expect(summarizeBand(g, new Set<UpcomingDomain>(["dose"]))).toBe(
+      "1 appointment"
+    );
+    // Excluding every present domain yields an empty summary (caller drops the line).
+    expect(
+      summarizeBand(
+        band("today", "Today", ["dose"]),
+        new Set<UpcomingDomain>(["dose"])
+      )
+    ).toBe("");
+  });
 });
 
 describe("buildUpcomingDigest", () => {
@@ -86,16 +99,27 @@ describe("buildUpcomingDigest", () => {
     expect(model!.title).toBe("🔔 Due soon");
   });
 
-  it("renders the model to a title + newline-joined body", () => {
-    const model = buildUpcomingDigest("Sam", [
-      band("overdue", "Overdue", ["biomarker"]),
-      band("today", "Today", ["dose"]),
-    ])!;
-    const msg = renderUpcomingDigestMessage(model);
-    expect(msg.title).toBe("🔔 Due soon — Sam");
-    // No structured reasons on the fixture items ⇒ no highlight block, body unchanged.
-    expect(model.highlights).toEqual([]);
-    expect(msg.body).toBe("Overdue: 1 lab\nToday: 1 dose");
+  it("excludeDomains drops those domains from the lines and empty bands (#1108)", () => {
+    const model = buildUpcomingDigest(
+      "Sam",
+      [
+        band("today", "Today", ["dose", "dose", "appointment"]),
+        band("week", "This week", ["dose"]), // all-dose band → dropped
+      ],
+      { excludeDomains: ["dose"] }
+    );
+    // Doses gone from the lines; the all-dose "This week" band produces no line.
+    expect(model!.lines).toEqual(["Today: 1 appointment"]);
+    // `total` still counts every banded item, exclusion only trims the lines.
+    expect(model!.total).toBe(4);
+  });
+
+  it("returns null when every due item is excluded", () => {
+    expect(
+      buildUpcomingDigest("Sam", [band("today", "Today", ["dose", "dose"])], {
+        excludeDomains: ["dose"],
+      })
+    ).toBeNull();
   });
 });
 
@@ -151,7 +175,7 @@ describe("digestHighlights (issue #656)", () => {
     expect(out.map((h) => h.title)).toEqual(["A", "B", "C"]);
   });
 
-  it("renders highlight lines after a blank line in the message body", () => {
+  it("carries the highlight in the built model (rendered by the digest's Today section)", () => {
     const model = buildUpcomingDigest("Sam", [
       {
         band: "overdue",
@@ -163,9 +187,11 @@ describe("digestHighlights (issue #656)", () => {
         ],
       },
     ])!;
-    const msg = renderUpcomingDigestMessage(model);
-    expect(msg.body).toBe(
-      "Overdue: 1 lab\n\n⚑ Retest LDL Cholesterol — Family history of heart disease"
-    );
+    expect(model.highlights).toEqual([
+      {
+        title: "Retest LDL Cholesterol",
+        reason: "Family history of heart disease",
+      },
+    ]);
   });
 });

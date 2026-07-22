@@ -62,7 +62,6 @@ import { runIllnessCare } from "../lib/notifications/illness-care";
 import { runEaseBack } from "../lib/notifications/ease-back";
 import { runTempRedFlag } from "../lib/notifications/temp-red-flag";
 import { runDigest } from "../lib/notifications/digest-data";
-import { runUpcomingDigest } from "../lib/notifications/upcoming-digest-data";
 import { runWeeklyRecap } from "../lib/notifications/weekly-recap-data";
 import { runMilestones } from "../lib/milestones-db";
 import { runScheduledBackup } from "../lib/backup";
@@ -577,8 +576,11 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
     }
   }
 
-  // Morning digest: one summary per profile per day at digest_hour (this
-  // profile's timezone), hard-deduped so a bug can't spam a family chat at 7am.
+  // Morning digest: ONE merged summary per profile per day at digest_hour (this
+  // profile's timezone), hard-deduped so a bug can't spam a family chat at 7am. As
+  // of #1108 the "what's due" list is the digest's Today section — one message, one
+  // due-today computation (collectUpcoming), one per-day marker (notify_last_digest);
+  // the old separate upcoming digest + its notify_last_upcoming marker are retired.
   if (
     sched.digestHour != null &&
     slotDue(sched.digestHour, hour) &&
@@ -589,27 +591,6 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
       if (dg.failed) anyFailed = true;
     } catch (e) {
       log.error("digest failed", {
-        profile: profile.id,
-        err: e instanceof Error ? e : String(e),
-      });
-      anyFailed = true;
-    }
-  }
-
-  // "What's due" upcoming digest: shares the digest_hour slot but
-  // its own per-profile/day dedup key, so it coexists with the morning digest and
-  // can't spam. Reuses collectUpcoming, so snooze/dismiss + training-restriction
-  // apply automatically.
-  if (
-    sched.digestHour != null &&
-    slotDue(sched.digestHour, hour) &&
-    getProfileSetting(profile.id, "notify_last_upcoming") !== date
-  ) {
-    try {
-      const ud = await runUpcomingDigest(profile.id, profile.name, date);
-      if (ud.failed) anyFailed = true;
-    } catch (e) {
-      log.error("upcoming digest failed", {
         profile: profile.id,
         err: e instanceof Error ? e : String(e),
       });
