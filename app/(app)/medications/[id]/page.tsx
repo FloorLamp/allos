@@ -140,16 +140,9 @@ export default async function MedicationDetailPage(props: {
 
   // "Prescribed at: <visit>" (#1050) — the deterministic tier-1 link (a resolved
   // FHIR MedicationRequest.encounter) or a user-accepted suggestion, whichever set
-  // this med's encounter_id. Links back to the visit detail.
-  // "Prescribed at" (#1050 + #1051 transitive chain): the med's OWN visit link, else
-  // — for a med projected from a prescription record (source_record_id) — the visit
-  // that record itself resolved to. So a bridged/imported med inherits its record's
-  // visit without a second stored link.
-  const prescribedAt =
-    encounterForRecord(profileId, "medication", m.med.id) ??
-    (m.med.source_record_id
-      ? encounterForRecord(profileId, "record", m.med.source_record_id)
-      : null);
+  // this med's encounter_id. Since #1178 the medication IS the single prescription
+  // entity, so its own encounter link is the sole source (no source_record_id chain).
+  const prescribedAt = encounterForRecord(profileId, "medication", m.med.id);
   // Conditions for the "For condition…" indication picker (#1052) on the edit form.
   const medConditions = getConditions(profileId).map((c) => ({
     id: c.id,

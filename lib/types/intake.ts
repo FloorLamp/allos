@@ -278,6 +278,12 @@ export interface MedicationCourse {
   stopped_on: string | null;
   stop_reason: MedStopReason | null;
   notes: string | null;
+  // Per-course attribution (#1204): the prescriber of THIS course (free text +
+  // resolved individual provider_id) and a descriptive dose/sig snapshot as
+  // prescribed at this renewal. Null on a manual course / a course with no snapshot.
+  prescriber: string | null;
+  provider_id: number | null;
+  dose_snapshot: string | null;
   created_at: string;
 }
 

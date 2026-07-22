@@ -954,6 +954,19 @@ export default function MedicationCard({
                       Open
                     </span>
                   )}
+                  {/* Per-course attribution (#1204): the prescriber + dose snapshot
+                      as recorded at this course, so a multi-provider / renewal history
+                      reads "Dr. A · Jan–Mar, Dr. B · Apr–". */}
+                  {c.prescriber && (
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      {c.prescriber}
+                    </span>
+                  )}
+                  {c.dose_snapshot && (
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      · {c.dose_snapshot}
+                    </span>
+                  )}
                   <NotesText
                     notes={c.notes}
                     className="text-xs text-slate-500 dark:text-slate-400"

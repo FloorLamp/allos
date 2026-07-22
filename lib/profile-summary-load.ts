@@ -31,7 +31,6 @@ import {
   getFamilyHistory,
 } from "./queries/clinical";
 import { assessSchedule } from "./immunization-status";
-import { cleanMedicationName } from "./prescription-parse";
 import {
   buildProfileSummary,
   buildPassportImmunizations,
@@ -136,11 +135,9 @@ export function getProfileSummary(
     arr.push(c);
     coursesByItem.set(c.item_id, arr);
   }
-  const medSeen = new Set<string>();
   const structuredMeds = allSupps
     .filter((s) => s.active && s.kind === "medication")
     .map((s) => {
-      medSeen.add(cleanMedicationName(s.name).toLowerCase());
       // Shared with the #852 med-list dose column (medicationDoseDetail) so the
       // Emergency Card / passport and the printable list can't drift on dose text.
       const detail = medicationDoseDetail(
@@ -154,23 +151,10 @@ export function getProfileSummary(
         date: medicationStartDate(coursesByItem.get(s.id) ?? [], s.created_at),
       };
     });
-  const extractedMeds = getMedicalRecords(profileId, {
-    category: "prescription",
-    sort: "date",
-    dir: "desc",
-  })
-    .filter((r) => {
-      const key = cleanMedicationName(recordName(r)).toLowerCase();
-      if (medSeen.has(key)) return false;
-      medSeen.add(key);
-      return true;
-    })
-    .map((r) => ({
-      name: recordName(r),
-      detail: [r.value, r.unit].filter(Boolean).join(" ") || null,
-      date: r.date,
-    }));
-  const medications = [...structuredMeds, ...extractedMeds];
+  // #1178 retired the medical_records prescription fallback: an imported prescription
+  // IS the intake_items medication now (structuredMeds above), so there is no separate
+  // records-based projection to fold in.
+  const medications = structuredMeds;
 
   const supplements = allSupps
     .filter((s) => s.active && s.kind !== "medication")

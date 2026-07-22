@@ -30,19 +30,20 @@ import {
 // gate).
 
 // Record-domain → { table, date column, provider column, label expr, extra filter }.
-// `episode` and the bare 'record' family are handled separately. medical_records is
-// tier-2-scoped to prescription category (the "prescribed at this visit" framing,
-// #1050) — labs/vitals still get a deterministic tier-1 link when the FHIR source
-// carried the encounter reference, they're just not heuristically suggested.
+// `episode` is handled separately. The `medication` domain (intake_items) is the
+// SINGLE prescription candidate since #1178 — the "prescribed at this visit" framing
+// links the med via its earliest course start + prescriber. Labs/vitals still get a
+// deterministic tier-1 link when the FHIR source carried the encounter reference,
+// they're just not heuristically suggested.
 interface DomainConfig {
   table: string;
   dateExpr: string;
   providerExpr: string;
   labelExpr: string;
-  // The SQL expression for the row's stable external_id. intake_items has NO
-  // external_id column (meds dedup by document_id + source), so its token is always
-  // id-based; a manual med's id is stable, and an imported med's link is tier-1
-  // re-derived, so it never needs a stable external_id.
+  // The SQL expression for the row's stable token key. intake_items has no
+  // external_id column, so an imported med uses its `import_key` (the stable
+  // `medimport:<docId>|<name>` a reprocess preserves, #1178); a manual med's
+  // import_key is NULL and its stable id suffices.
   externalIdExpr: string;
   extra?: string;
 }
@@ -51,21 +52,13 @@ const RECORD_DOMAINS: Record<
   Exclude<VisitLinkDomain, "episode">,
   DomainConfig
 > = {
-  record: {
-    table: "medical_records",
-    dateExpr: "t.date",
-    providerExpr: "t.provider_id",
-    labelExpr: "t.name",
-    externalIdExpr: "t.external_id",
-    extra: "t.category = 'prescription'",
-  },
   medication: {
     table: "intake_items",
     dateExpr:
       "(SELECT MIN(mc.started_on) FROM medication_courses mc WHERE mc.item_id = t.id)",
     providerExpr: "t.provider_id",
     labelExpr: "t.name",
-    externalIdExpr: "NULL",
+    externalIdExpr: "t.import_key",
     extra: "t.kind = 'medication'",
   },
   condition: {
@@ -237,13 +230,13 @@ function resolveToken(
     return row ? row.id : null;
   }
   if (token.startsWith("ext:")) {
-    // intake_items carries no external_id column, so an ext token can never name a
-    // medication row — guard so the lookup doesn't hit a missing column.
-    if (table === "intake_items") return null;
     const ext = token.slice(4);
+    // intake_items has no external_id column — an imported med's stable token is its
+    // `import_key` (#1178), so an ext token names a medication by that column instead.
+    const keyColumn = table === "intake_items" ? "import_key" : "external_id";
     const row = db
       .prepare(
-        `SELECT id FROM ${table} WHERE external_id = ? AND profile_id = ?`
+        `SELECT id FROM ${table} WHERE ${keyColumn} = ? AND profile_id = ?`
       )
       .get(ext, profileId) as { id: number } | undefined;
     return row ? row.id : null;
@@ -884,6 +877,14 @@ export function nullEncounterLinks(
         WHERE encounter_id = ? AND profile_id = ?`
     ).run(encounterId, profileId);
   }
+  // medical_records is no longer a visit-link SUGGESTION domain (#1178 removed the
+  // `record` domain), but a lab/vital reading still carries a deterministic tier-1
+  // encounter_id, so its back-link must still be freed before the encounter is
+  // deleted (the FK carries no ON DELETE).
+  db.prepare(
+    `UPDATE medical_records SET encounter_id = NULL
+      WHERE encounter_id = ? AND profile_id = ?`
+  ).run(encounterId, profileId);
   db.prepare(
     `UPDATE illness_episodes SET encounter_id = NULL
       WHERE encounter_id = ? AND profile_id = ?`

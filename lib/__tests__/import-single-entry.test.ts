@@ -46,6 +46,12 @@ const ALLOW: { file: string; includes: string; why: string }[] = [
       "INTO intake_items (name, notes, active, condition, priority, kind",
     why: "createMedicationFromRecord (#817 'Track this' bridge) projects ONE prescription record into a footprint-scoped extracted med (source='extracted' + document_id) — the manual single-record twin of persistExtractedMedications. intake_items is a footprint table, so clear/reassign/count already handle the row; the write stays document-footprint-complete.",
   },
+  {
+    file: "lib/migrations/versions/092-consolidate-imported-prescriptions.ts",
+    includes:
+      "INSERT INTO intake_items (name, notes, active, condition, priority, kind, as_needed",
+    why: "migration 092 (#1178) one-shot consolidation: projects each UNPAIRED legacy prescription record into a footprint-scoped extracted med (source='extracted' + document_id) — the exact projection the persist core does, applied once at upgrade time. intake_items is a footprint table, so clear/reassign/count already handle these rows; a migration is a schema/data converge run once behind the user_version gate, not a runtime import bypass.",
+  },
 ];
 
 function walk(dir: string, out: string[]) {
