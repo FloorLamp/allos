@@ -31,7 +31,7 @@ async function clearPlans(page: Page): Promise<void> {
   while (n > 0) {
     await settledClick(
       page,
-      page.getByRole("button", { name: /^Delete / }).first()
+      page.getByRole("button", { name: /^Delete / }).first() // first-ok: deletes the endurance plan THIS spec created
     );
     await expect(cards).toHaveCount(n - 1);
     n--;
@@ -106,7 +106,7 @@ test.describe("endurance event plans (#839)", () => {
       await page.goto("/upcoming");
       const eventItem = page
         .locator('[data-testid^="upcoming-item-endurance-event:"]')
-        .first();
+        .first(); // first-ok: the endurance-event upcoming item from the plan THIS spec created
       await expect(eventItem).toBeVisible();
       await expect(eventItem).toContainText("6.21 mi");
       await expect(eventItem).not.toContainText("10 km");

@@ -22,7 +22,7 @@ test.describe("Visit detail page", () => {
 
     // The most recent visit renders as a clickable entry titled by its type, whose
     // link targets the new per-visit detail route (not the old list page).
-    const visitLink = page.getByRole("link", { name: "Office Visit" }).first();
+    const visitLink = page.getByRole("link", { name: "Office Visit" }).first(); // first-ok: opens an Office Visit encounter detail (asserts the detail's structure, not a specific one) — order-agnostic
     await expect(visitLink).toBeVisible();
     expect(await visitLink.getAttribute("href")).toMatch(/^\/encounters\/\d+$/);
 
@@ -52,7 +52,7 @@ test.describe("Visit detail page", () => {
     // hydrates swallows the client navigation (the URL never changes). followLink
     // retries the click until the router commits the detail URL — no networkidle
     // hydration gate needed (#868).
-    const rowLink = page.getByRole("link", { name: "Office Visit" }).first();
+    const rowLink = page.getByRole("link", { name: "Office Visit" }).first(); // first-ok: opens an Office Visit encounter detail (asserts the detail's structure, not a specific one) — order-agnostic
     await expect(rowLink).toHaveAttribute("href", /\/encounters\/\d+$/);
     await followLink(page, rowLink, /\/encounters\/\d+$/);
     await expect(page.getByTestId("encounter-detail")).toBeVisible();

@@ -71,11 +71,11 @@ test.describe("Dental records — add → view → filter → track recheck → 
     const trackForm = page.getByTestId(/^track-dental-followup-/);
     await trackForm
       .locator("select")
-      .first()
+      .first() // first-ok: the recheck-interval select in the scoped dental-followup form this spec drives
       .selectOption({ label: "6 months" });
     await trackForm
       .getByRole("button", { name: "Track recheck" })
-      .first()
+      .first() // first-ok: the Track-recheck button in the scoped dental-followup form this spec drives
       .click();
     await expect(page.getByTestId(/^dental-followup-state-/)).toContainText(
       "Recheck:",

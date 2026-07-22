@@ -44,7 +44,7 @@ test("the tab strip navigates route-per-tab to Imaging and Genomics (#1079)", as
     imaging
       .getByTestId("imaging-study-list")
       .getByText(/Left Knee/)
-      .first()
+      .first() // first-ok: asserts the seeded Left Knee imaging study renders in the scoped list — order-agnostic
   ).toBeVisible();
 
   // Genomics tab → its own route + the seeded pharmacogenomic variant.
@@ -58,7 +58,7 @@ test("the tab strip navigates route-per-tab to Imaging and Genomics (#1079)", as
       .getByTestId("results-genomics")
       .getByTestId("genomic-variant-list")
       .getByText("CYP2C19")
-      .first()
+      .first() // first-ok: asserts the seeded CYP2C19 variant renders in the scoped list — order-agnostic
   ).toBeVisible();
 });
 

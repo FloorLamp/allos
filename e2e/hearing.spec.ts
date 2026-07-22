@@ -80,8 +80,8 @@ test.describe("Hearing / audiology (#713, #717)", () => {
     const main = page.getByRole("main");
     // The seeded per-ear/per-frequency series show; the recent 4 kHz reading is above
     // the ≤25 dB HL band (visibility, not an exact count over the shared seed).
-    await expect(main.getByText(/Hearing Threshold/).first()).toBeVisible();
-    await expect(main.getByText(/4 kHz/).first()).toBeVisible();
+    await expect(main.getByText(/Hearing Threshold/).first()).toBeVisible(); // first-ok: asserts the Hearing Threshold readout renders — order-agnostic presence
+    await expect(main.getByText(/4 kHz/).first()).toBeVisible(); // first-ok: asserts a 4 kHz frequency label renders — order-agnostic presence
   });
 
   test("an active ototoxic medication shows the hearing-safety note on /medications (#717)", async ({

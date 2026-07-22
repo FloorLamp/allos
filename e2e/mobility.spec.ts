@@ -31,7 +31,7 @@ test.describe("Mobility (#840)", () => {
     await expect(page.getByTestId("mobility-coverage-row")).toHaveCount(7);
 
     // The deficit→habit suggestion renders with a one-tap accept + dismiss (not clicked).
-    await expect(page.getByTestId("mobility-suggestion").first()).toBeVisible();
+    await expect(page.getByTestId("mobility-suggestion").first()).toBeVisible(); // first-ok: asserts a mobility suggestion renders — order-agnostic presence
     await expect(page.getByTestId("mobility-accept-Legs")).toBeVisible();
     await expect(page.getByTestId("mobility-dismiss-Legs")).toBeVisible();
 
@@ -82,7 +82,7 @@ test.describe("Mobility (#840)", () => {
 
     // The recovery session rides the shared journal feed (Training → Log) like any activity.
     await page.goto("/training?tab=log");
-    await expect(page.getByText("Mobility").first()).toBeVisible();
+    await expect(page.getByText("Mobility").first()).toBeVisible(); // first-ok: asserts the Mobility heading renders — order-agnostic presence
 
     // Cleanup: untap so the fixture is clean for the next repeat.
     await page.goto("/training?tab=overview");
