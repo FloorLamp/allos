@@ -167,7 +167,12 @@ export function mapMedication(
       : [{ low: date ?? (opts.snapshot ? documentDate : null), high: null }],
     status,
     {
-      fallbackStopDate: opts.snapshot ? (date ?? documentDate) : date,
+      // The doc-date fallback matters for a dateless entry whose status says the
+      // med ENDED (eClinicalWorks "suspended" with a nullFlavor effectiveTime):
+      // the derived course closes at the document date — "as of this document,
+      // not taking" — instead of importing as an open (active) course. A dated
+      // entry never reaches the fallback's documentDate half.
+      fallbackStopDate: date ?? documentDate,
       note: opts.courseNote ?? null,
     }
   );

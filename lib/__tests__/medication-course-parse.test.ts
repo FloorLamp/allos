@@ -157,6 +157,44 @@ describe("CCD undated medication → document-date fallback (Fix 2)", () => {
   });
 });
 
+describe("CCD dateless suspended medication → closed course (eClinicalWorks shape)", () => {
+  // A med-list entry whose statusCode says the med ended ("suspended" — the
+  // narrative reads "Not-Taking") but whose effectiveTime is nullFlavor'd, so no
+  // period exists. It must import with a CLOSED course anchored to the document
+  // date — not fall through to the open (active) fallback.
+  const CCD_SUSPENDED_MED = `<?xml version="1.0"?>
+  <ClinicalDocument xmlns="urn:hl7-org:v3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <effectiveTime value="20260719"/>
+    <component><structuredBody><component><section>
+      <templateId root="2.16.840.1.113883.10.20.22.2.1.1"/>
+      <code code="10160-0" codeSystem="2.16.840.1.113883.6.1"/>
+      <title>Medications</title>
+      <entry><substanceAdministration classCode="SBADM" moodCode="INT">
+        <statusCode code="suspended"/>
+        <effectiveTime xsi:type="IVL_TS"><low nullFlavor="NI"/><high nullFlavor="NI"/></effectiveTime>
+        <consumable><manufacturedProduct><manufacturedMaterial>
+          <name>Ibuprofen 100 mg/5 mL suspension</name>
+        </manufacturedMaterial></manufacturedProduct></consumable>
+      </substanceAdministration></entry>
+    </section></component></structuredBody></component>
+  </ClinicalDocument>`;
+
+  it("derives one CLOSED course at the document date instead of an open fallback", () => {
+    const r = parseCcda(CCD_SUSPENDED_MED);
+    const rx = r.records.filter((x) => x.category === "prescription");
+    expect(rx).toHaveLength(1);
+    expect(rx[0].name).toBe("Ibuprofen 100 mg/5 mL suspension");
+    expect(rx[0].courses).toEqual([
+      {
+        started_on: null,
+        stopped_on: "2026-07-19",
+        stop_reason: "other",
+        notes: "On hold",
+      },
+    ]);
+  });
+});
+
 describe("FHIR medications → courses", () => {
   const bundle = (resources: object[]) =>
     JSON.stringify({

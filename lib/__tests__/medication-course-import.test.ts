@@ -62,6 +62,57 @@ describe("coursesFromImportedMedication", () => {
     ).toEqual([]);
   });
 
+  it("dateless but ENDED status + fallbackStopDate → one CLOSED undated course", () => {
+    // The eClinicalWorks shape: statusCode says the med ended, effectiveTime is
+    // nullFlavor'd. Falling through to [] would import the med as ACTIVE.
+    expect(
+      coursesFromImportedMedication([period(null, null)], "on-hold", {
+        fallbackStopDate: "2026-07-19",
+      })
+    ).toEqual([
+      {
+        started_on: null,
+        stopped_on: "2026-07-19",
+        stop_reason: "other",
+        notes: "On hold",
+      },
+    ]);
+    expect(
+      coursesFromImportedMedication([], "stopped", {
+        fallbackStopDate: "2026-07-19",
+      })
+    ).toEqual([
+      {
+        started_on: null,
+        stopped_on: "2026-07-19",
+        stop_reason: "provider_discontinued",
+        notes: null,
+      },
+    ]);
+    expect(
+      coursesFromImportedMedication([], "completed", {
+        fallbackStopDate: "2026-07-19",
+        note: "Course of antibiotics",
+      })
+    ).toEqual([
+      {
+        started_on: null,
+        stopped_on: "2026-07-19",
+        stop_reason: "completed_course",
+        notes: "Course of antibiotics",
+      },
+    ]);
+  });
+
+  it("dateless ended status WITHOUT a stop date to anchor to keeps the [] fallback", () => {
+    // A closed course must carry a stop date (active syncs to "an open course
+    // exists"), so with nothing to anchor to the old behavior stands.
+    expect(coursesFromImportedMedication([], "stopped")).toEqual([]);
+    expect(
+      coursesFromImportedMedication([period(null, null)], "on-hold")
+    ).toEqual([]);
+  });
+
   it("active med with an open-ended period → one OPEN course", () => {
     expect(
       coursesFromImportedMedication([period("2025-12-04", null)], "active")
