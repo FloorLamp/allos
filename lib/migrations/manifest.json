@@ -86,5 +86,6 @@
   "085-provider-affiliations.ts": "0ef5fbe3552313d39e770979c9cbdf9e7f2f3813ee827ed852ae783d9aec43de",
   "086-medication-links.ts": "85bd15c5188cc574d6abee63253f3967e9ab188705a6374b856ff780e968a275",
   "087-medication-link-decisions.ts": "b58edcf8a00df25f6af4675d923b4b808bb55a5ee4b9cd019f714e8d056ef87c",
-  "088-backfill-prescriber-links.ts": "8bd4484f1375bdc35892fbb3fdd5354af555acf0a2a86b0136855e79823bb50f"
+  "088-backfill-prescriber-links.ts": "8bd4484f1375bdc35892fbb3fdd5354af555acf0a2a86b0136855e79823bb50f",
+  "089-optical-dental-encounter-link.ts": "e62daa809346f7ad07e638fa580cc3315c06fc5e8d9f74b4fb815791576a4c65"
 }

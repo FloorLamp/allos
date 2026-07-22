@@ -1,6 +1,11 @@
 import { getDisplayFormatPrefs } from "@/lib/settings";
-import { getOpticalPrescriptions, getProviderNames } from "@/lib/queries";
+import {
+  getOpticalPrescriptions,
+  getProviderNames,
+  createVisitOffers,
+} from "@/lib/queries";
 import ProviderDatalist from "@/components/ProviderDatalist";
+import CreateVisitFromRecord from "@/components/visit-links/CreateVisitFromRecord";
 import { today } from "@/lib/db";
 import OpticalPrescriptionForm from "@/app/(app)/vision/OpticalPrescriptionForm";
 import OpticalPrescriptionList from "@/app/(app)/vision/OpticalPrescriptionList";
@@ -24,12 +29,18 @@ export default function VisionSection({
   loginId: number;
 }) {
   const prescriptions = getOpticalPrescriptions(profileId);
+  // "Create a visit from this record?" (#1099): Rx dated D with no encounter that day.
+  const createVisitOffersList = createVisitOffers(profileId, "optical");
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       {/* Shared provider picker options for the add + edit forms (#1088). */}
       <ProviderDatalist names={getProviderNames()} />
       <div className="min-w-0 space-y-4 lg:col-span-2">
+        <CreateVisitFromRecord
+          profileId={profileId}
+          offers={createVisitOffersList}
+        />
         <OpticalProgression
           items={prescriptions}
           formatPrefs={getDisplayFormatPrefs(loginId)}

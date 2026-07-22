@@ -142,6 +142,8 @@ import {
   DQ_CARE_CHILD_PROFILE,
   E2E_LOGIN_VISITLINKS,
   VISITLINKS_PROFILE,
+  E2E_LOGIN_CREATEVISIT,
+  CREATEVISIT_PROFILE,
   E2E_LOGIN_TOASTS,
   TOAST_SWITCH_A_PROFILE,
   TOAST_SWITCH_B_PROFILE,
@@ -3945,6 +3947,43 @@ console.log(
   seedMemberLogin(E2E_LOGIN_VISITLINKS, vlProfileId, "write");
   console.log(
     `e2e: seeded visit-link fixture — profile ${vlProfileId} (${VISITLINKS_PROFILE}) #1050/#1053`
+  );
+}
+
+// ── "Create a visit from this record?" (#1099) ────────────────────────────────
+// A self-contained profile with ONE optical prescription dated a day that has NO
+// encounter — so the Vision record card shows the "Create a visit from this record?"
+// prompt. The spec accepts it and asserts the derived visit appears with the Rx in its
+// "From this visit" section. OWNS the profile (dedicated login), so the accept's writes
+// (a new encounter + the link) never touch shared-seed counts. Idempotent under
+// --repeat-each: seed once, and the spec only accepts when the prompt is still present.
+{
+  const cvProfileId = fixtureProfileId(CREATEVISIT_PROFILE);
+  const CV_DATE = "2026-05-20";
+  db.prepare(
+    `INSERT OR IGNORE INTO providers (name, type, dedup_key)
+     VALUES ('Dr. Iris Optic (e2e)', 'individual', 'e2e:iris-optic')`
+  ).run();
+  const cvProviderId = (
+    db
+      .prepare("SELECT id FROM providers WHERE dedup_key = 'e2e:iris-optic'")
+      .get() as { id: number }
+  ).id;
+  const existingRx = db
+    .prepare(
+      "SELECT id FROM optical_prescriptions WHERE profile_id = ? AND issued_date = ?"
+    )
+    .get(cvProfileId, CV_DATE) as { id: number } | undefined;
+  if (!existingRx) {
+    db.prepare(
+      `INSERT INTO optical_prescriptions
+         (profile_id, kind, od_sphere, os_sphere, issued_date, provider_id, brand)
+       VALUES (?, 'glasses', -1.5, -1.75, ?, ?, 'Rx Slip (e2e)')`
+    ).run(cvProfileId, CV_DATE, cvProviderId);
+  }
+  seedMemberLogin(E2E_LOGIN_CREATEVISIT, cvProfileId, "write");
+  console.log(
+    `e2e: seeded create-visit fixture — profile ${cvProfileId} (${CREATEVISIT_PROFILE}) #1099`
   );
 }
 

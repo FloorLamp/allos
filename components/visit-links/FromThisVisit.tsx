@@ -24,6 +24,8 @@ const DOMAIN_LABEL: Record<Exclude<VisitLinkDomain, "episode">, string> = {
   procedure: "Procedure",
   imaging: "Imaging",
   immunization: "Immunization",
+  optical: "Prescription",
+  dental: "Dental",
 };
 
 function pairsJson(suggestions: EncounterFromVisit["suggestions"]): string {
