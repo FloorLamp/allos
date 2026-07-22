@@ -24,6 +24,8 @@ import {
   type HoldBand,
 } from "@/lib/datasets/fitness-hold-norms";
 
+export type { HoldBand } from "@/lib/datasets/fitness-hold-norms";
+
 const HOLDS: Record<string, HoldNormEntry> = FITNESS_HOLD_NORMS_MAP;
 
 // The test keys that carry a rough hold ladder ("deadhang", "plank").

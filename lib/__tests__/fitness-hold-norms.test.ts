@@ -7,13 +7,7 @@ import {
   fitnessHoldNormsDataset,
   fitnessHoldNormNameStrategy,
 } from "@/lib/datasets/fitness-hold-norms";
-import {
-  citationPresent,
-  identityResolves,
-  refusalGate,
-  noKeyCollisions,
-  runHarness,
-} from "@/lib/datasets";
+import { runHarness } from "@/lib/datasets";
 import { holdBand, hasHoldNorm } from "@/lib/fitness-hold-norms";
 
 // #1135 — the DISCLOSED-ROUGH band ladder for dead hang + plank. Anti-drift + framework
@@ -31,12 +25,10 @@ describe("fitness-hold-norms.json dataset", () => {
   });
 
   it("passes the framework harness (citation / identity / refusal / no-collisions)", () => {
-    const report = runHarness(fitnessHoldNormsDataset, fitnessHoldNormNameStrategy, [
-      citationPresent,
-      identityResolves,
-      refusalGate,
-      noKeyCollisions,
-    ]);
+    const report = runHarness(
+      fitnessHoldNormsDataset,
+      fitnessHoldNormNameStrategy
+    );
     expect(report.ok, JSON.stringify(report, null, 2)).toBe(true);
   });
 

@@ -9,6 +9,7 @@ import {
   SENIOR_BATTERY_MIN_AGE,
 } from "@/lib/fitness-battery";
 import { FITNESS_NORM_MARKERS, hasFitnessNorms } from "@/lib/fitness-norms";
+import { hasHoldNorm } from "@/lib/fitness-hold-norms";
 import { STRENGTH_STANDARD_LIFTS } from "@/lib/strength-standards";
 import { liftInfo } from "@/lib/lifts";
 
@@ -48,15 +49,25 @@ describe("battery ↔ scoring-engine consistency", () => {
     }
   });
 
-  it("the self-trend tier carries NO percentile path (no norms marker, not norms tier)", () => {
-    const selfTrend = FITNESS_BATTERY.filter((t) => t.tier === "self-trend");
-    expect(selfTrend.length).toBeGreaterThan(0);
-    for (const t of selfTrend) {
+  it("the self-norm tier (dead hang / plank) carries a rough hold ladder, NOT a percentile marker (#1135)", () => {
+    const selfNorm = FITNESS_BATTERY.filter((t) => t.tier === "self-norm");
+    expect(selfNorm.length).toBeGreaterThan(0);
+    for (const t of selfNorm) {
       expect(
         t.normsMarker,
-        `${t.key} self-trend must not carry a norms marker`
+        `${t.key} self-norm must not carry a norms (percentile) marker`
       ).toBeUndefined();
+      expect(
+        t.holdNorm,
+        `${t.key} self-norm must reference a rough hold ladder`
+      ).toBeTruthy();
+      expect(hasHoldNorm(t.holdNorm!)).toBe(true);
     }
+    // dead hang + plank moved off self-trend onto self-norm; self-trend is now empty
+    // (reserved for a future genuinely reference-less test).
+    expect(FITNESS_BATTERY.filter((t) => t.tier === "self-trend")).toHaveLength(
+      0
+    );
   });
 
   it("no non-norms tier smuggles a norms marker", () => {

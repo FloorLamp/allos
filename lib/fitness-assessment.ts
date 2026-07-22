@@ -14,8 +14,20 @@
 
 import { db, writeTx } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
-import { fitnessTest, type FitnessTier } from "@/lib/fitness-battery";
-import { addCanonicalNames, reconcileFlags } from "@/lib/queries/medical";
+import {
+  fitnessTest,
+  BIG_LIFT_OPTIONS,
+  type FitnessTier,
+  type FitnessTestDef,
+} from "@/lib/fitness-battery";
+import {
+  addCanonicalNames,
+  reconcileFlags,
+  getBiomarkerSeries,
+} from "@/lib/queries/medical";
+import { exerciseHistoryNames } from "@/lib/lifts";
+import { estimate1RM } from "@/lib/strength";
+import type { AmbientReading } from "@/lib/fitness-check-model";
 
 // The normalized payload the Server Action hands the core. The action has already
 // derived the canonical `value` (e.g. VO2 from a field test, e1RM from weight×reps) and
@@ -288,4 +300,163 @@ function safeParse(s: string): unknown {
   } catch {
     return null;
   }
+}
+
+// ── Ambient natural-store read-back (#1129) ─────────────────────────────────────────
+//
+// The check writes every value THROUGH to its natural store; this reads the LATEST reading
+// back OUT of each store so a synced/logged value auto-counts as measured (the resolver in
+// buildFitnessCheckModel then picks newest-wins across this + the session ledger, tagging
+// provenance). Every query is profile-scoped. Returns one AmbientReading per battery test
+// that has a stored reading; absent tests are simply omitted.
+
+interface SetRow {
+  date: string;
+  source: string | null;
+  weight_kg: number | null;
+  reps: number | null;
+  duration_sec: number | null;
+}
+
+// Non-warmup sets (newest first) for the merged-history preimage of a lift — the finite
+// LOWER(TRIM(exercise)) IN (...) realization of exerciseHistoryKey (#394/#432), scoped by
+// profile through the activities join.
+function latestSetRows(profileId: number, lift: string): SetRow[] {
+  const names = exerciseHistoryNames(lift);
+  if (names.length === 0) return [];
+  const placeholders = names.map(() => "?").join(", ");
+  return db
+    .prepare(
+      `SELECT a.date AS date, a.source AS source,
+              s.weight_kg AS weight_kg, s.reps AS reps, s.duration_sec AS duration_sec
+         FROM exercise_sets s JOIN activities a ON a.id = s.activity_id
+        WHERE a.profile_id = ? AND s.warmup = 0
+          AND LOWER(TRIM(s.exercise)) IN (${placeholders})
+        ORDER BY a.date DESC, a.id DESC`
+    )
+    .all(profileId, ...names) as SetRow[];
+}
+
+// The best value on the NEWEST session date among a lift's recent sets, per reducer. "Best
+// recent" = the max on the most recent day the lift was logged.
+function newestSetStat(
+  rows: SetRow[],
+  reduce: (r: SetRow) => number | null
+): { value: number; date: string; source: string | null } | null {
+  if (rows.length === 0) return null;
+  const newestDate = rows[0].date;
+  let best: number | null = null;
+  let source: string | null = null;
+  for (const r of rows) {
+    if (r.date !== newestDate) break; // rows are date DESC
+    const v = reduce(r);
+    if (v == null || !Number.isFinite(v)) continue;
+    if (best == null || v > best) {
+      best = v;
+      source = r.source;
+    }
+  }
+  if (best == null) return null;
+  return { value: best, date: newestDate, source };
+}
+
+// The latest non-null body_metrics reading for a column, newest-wins, with its source.
+function latestBodyReading(
+  profileId: number,
+  column: "body_fat_pct" | "resting_hr"
+): { value: number; date: string; source: string | null } | null {
+  const row = db
+    .prepare(
+      `SELECT ${column} AS value, date, source FROM body_metrics
+        WHERE profile_id = ? AND ${column} IS NOT NULL
+        ORDER BY date DESC, id DESC LIMIT 1`
+    )
+    .get(profileId) as
+    | { value: number; date: string; source: string | null }
+    | undefined;
+  return row ?? null;
+}
+
+// The latest ambient reading per battery test (see the header). One resolver, three pipes —
+// the exact stores the check writes through.
+export function getAmbientFitnessReadings(
+  profileId: number,
+  battery: FitnessTestDef[]
+): AmbientReading[] {
+  const out: AmbientReading[] = [];
+  for (const def of battery) {
+    const store = def.store;
+    if (store.kind === "vital") {
+      // Newest reading of the marker's #482 FAMILY (getBiomarkerSeries collapses synonyms
+      // + dedups), oldest-first → the last row is newest.
+      const series = getBiomarkerSeries(profileId, store.canonical);
+      const last = series[series.length - 1];
+      if (last && last.value_num != null) {
+        out.push({
+          testKey: def.key,
+          value: last.value_num,
+          date: last.date,
+          source: last.source ?? null,
+        });
+      }
+    } else if (store.kind === "body") {
+      const r = latestBodyReading(profileId, store.column);
+      if (r) {
+        out.push({
+          testKey: def.key,
+          value: r.value,
+          date: r.date,
+          source: r.source,
+        });
+      }
+    } else {
+      // set store.
+      if (def.key === "biglift") {
+        // The big lift is user-chosen; scan the standard barbell lifts for the newest heavy
+        // set and reduce to e1RM (tie on date → the stronger e1RM).
+        let pick:
+          | { value: number; date: string; source: string | null; lift: string }
+          | null = null;
+        for (const lift of BIG_LIFT_OPTIONS) {
+          const stat = newestSetStat(latestSetRows(profileId, lift), (r) =>
+            r.weight_kg != null && r.reps != null && r.weight_kg > 0 && r.reps > 0
+              ? estimate1RM(r.weight_kg, r.reps)
+              : null
+          );
+          if (!stat) continue;
+          if (
+            !pick ||
+            stat.date > pick.date ||
+            (stat.date === pick.date && stat.value > pick.value)
+          ) {
+            pick = { ...stat, lift };
+          }
+        }
+        if (pick) {
+          out.push({
+            testKey: def.key,
+            value: Math.round(pick.value * 100) / 100,
+            date: pick.date,
+            source: pick.source,
+            liftName: pick.lift,
+          });
+        }
+      } else {
+        const reduce =
+          store.timed === true
+            ? (r: SetRow) => r.duration_sec
+            : (r: SetRow) => r.reps;
+        const stat = newestSetStat(latestSetRows(profileId, store.lift), reduce);
+        if (stat) {
+          out.push({
+            testKey: def.key,
+            value: stat.value,
+            date: stat.date,
+            source: stat.source,
+          });
+        }
+      }
+    }
+  }
+  return out;
 }

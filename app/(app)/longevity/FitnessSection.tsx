@@ -1,11 +1,20 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/auth";
-import { getUserSex, getUserAge } from "@/lib/settings";
+import { today } from "@/lib/db";
+import {
+  getUserSex,
+  getUserAge,
+  getFitnessRetestCadenceDays,
+} from "@/lib/settings";
 import { getLatestBodyMetric } from "@/lib/queries";
 import { batteryForAge } from "@/lib/fitness-battery";
-import { getFitnessAssessments } from "@/lib/fitness-assessment";
+import {
+  getFitnessAssessments,
+  getAmbientFitnessReadings,
+} from "@/lib/fitness-assessment";
 import { buildFitnessCheckModel } from "@/lib/fitness-check-model";
 import type { LongevitySection } from "@/lib/longevity";
+import FitnessDomainBars from "@/components/FitnessDomainBars";
 import PillarStat from "./PillarStat";
 
 // Longevity §2 — Fitness-check percentiles (#1042 phase 4): a READ view over
@@ -14,16 +23,9 @@ import PillarStat from "./PillarStat";
 // percentiles from lib/fitness-norms), never a forked engine; recording a check
 // stays on the Training tab, which "Run a fitness check" deep-links into. The
 // section's headline stats are the fitness pillars (vo2max/strength) — the SAME
-// Pillar objects the dashboard widget renders.
-const DOMAIN_LABEL: Record<string, string> = {
-  endurance: "Endurance",
-  strength: "Strength",
-  balance: "Balance",
-  flexibility: "Flexibility",
-  mobility: "Mobility",
-  body: "Body composition",
-};
-
+// Pillar objects the dashboard widget renders. The per-domain bars are the SHARED
+// FitnessDomainBars component (the training grid renders the same one) so the color/label
+// language can't drift between the two surfaces (#1132 / #221 formatter parity).
 export default async function FitnessSection({
   section,
 }: {
@@ -34,14 +36,18 @@ export default async function FitnessSection({
   const age = getUserAge(profile.id);
   const bodyweightKg = getLatestBodyMetric(profile.id, "weight");
 
-  const sessions = getFitnessAssessments(profile.id, 2);
+  const battery = batteryForAge(age);
+  const sessions = getFitnessAssessments(profile.id, 12);
+  const ambient = getAmbientFitnessReadings(profile.id, battery);
   const model = buildFitnessCheckModel(
-    batteryForAge(age),
-    sessions[0] ?? null,
-    sessions[1] ?? null,
+    battery,
+    sessions,
+    ambient,
     sex,
     age,
-    bodyweightKg
+    bodyweightKg,
+    today(profile.id),
+    getFitnessRetestCadenceDays(profile.id)
   );
 
   return (
@@ -76,28 +82,11 @@ export default async function FitnessSection({
             {model.totalCount} tests measured.
           </p>
           {model.domains.some((d) => d.percentile != null) && (
-            <div className="mt-3 space-y-2">
-              {model.domains.map((d) => (
-                <div
-                  key={d.domain}
-                  data-testid={`longevity-fitness-domain-${d.domain}`}
-                >
-                  <div className="flex justify-between text-xs text-slate-600 dark:text-slate-300">
-                    <span>{DOMAIN_LABEL[d.domain] ?? d.domain}</span>
-                    <span>
-                      {d.percentile != null
-                        ? `${d.percentile}th pct`
-                        : `${d.measuredCount}/${d.totalCount}`}
-                    </span>
-                  </div>
-                  <div className="mt-0.5 h-2 rounded-full bg-slate-100 dark:bg-slate-800">
-                    <div
-                      className="h-2 rounded-full bg-brand-500"
-                      style={{ width: `${d.percentile ?? 0}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
+            <div className="mt-3">
+              <FitnessDomainBars
+                domains={model.domains}
+                testIdPrefix="longevity-fitness-domain"
+              />
             </div>
           )}
         </div>
