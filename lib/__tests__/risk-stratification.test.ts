@@ -662,7 +662,9 @@ describe("deriveRiskFactors — family site-specific cancer + onset age (#1039)"
 
     const colon = deriveRiskFactors({
       ...base,
-      familyConditions: [{ name: "Colon cancer", code: "C18", codeSystem: "ICD-10" }],
+      familyConditions: [
+        { name: "Colon cancer", code: "C18", codeSystem: "ICD-10" },
+      ],
     });
     expect(colon.has("family-colorectal")).toBe(true);
     expect(colon.has("family-breast")).toBe(false);
@@ -672,7 +674,12 @@ describe("deriveRiskFactors — family site-specific cancer + onset age (#1039)"
     const early = deriveRiskFactors({
       ...base,
       familyConditions: [
-        { name: "Colon cancer", code: "C18.9", codeSystem: "ICD-10", onsetAge: 45 },
+        {
+          name: "Colon cancer",
+          code: "C18.9",
+          codeSystem: "ICD-10",
+          onsetAge: 45,
+        },
       ],
     });
     expect(early.has("family-colorectal")).toBe(true);
@@ -681,7 +688,12 @@ describe("deriveRiskFactors — family site-specific cancer + onset age (#1039)"
     const late = deriveRiskFactors({
       ...base,
       familyConditions: [
-        { name: "Colon cancer", code: "C18.9", codeSystem: "ICD-10", onsetAge: 70 },
+        {
+          name: "Colon cancer",
+          code: "C18.9",
+          codeSystem: "ICD-10",
+          onsetAge: 70,
+        },
       ],
     });
     expect(late.has("family-colorectal")).toBe(true);
@@ -716,7 +728,12 @@ describe("deriveRiskFactors — family site-specific cancer + onset age (#1039)"
     const f = deriveRiskFactors({
       ...base,
       familyConditions: [
-        { name: "Colon cancer", code: "C18", codeSystem: "ICD-10", onsetAge: 72 },
+        {
+          name: "Colon cancer",
+          code: "C18",
+          codeSystem: "ICD-10",
+          onsetAge: 72,
+        },
         { name: "Leukemia", onsetAge: 30 },
       ],
     });
@@ -728,7 +745,12 @@ describe("deriveRiskFactors — family site-specific cancer + onset age (#1039)"
     const f = deriveRiskFactors({
       ...base,
       familyConditions: [
-        { name: "Some ailment", code: "Z99.9", codeSystem: "ICD-10", onsetAge: 40 },
+        {
+          name: "Some ailment",
+          code: "Z99.9",
+          codeSystem: "ICD-10",
+          onsetAge: 40,
+        },
       ],
     });
     expect(f.has("family-colorectal")).toBe(false);
