@@ -4,6 +4,8 @@ import {
   suggestForEncounter,
   suggestForEpisode,
   encounterInEpisodeRange,
+  distanceToWindow,
+  orderEpisodeManualCandidates,
   stableToken,
   episodeToken,
   visitLinkSignature,
@@ -206,6 +208,56 @@ describe("episode ↔ visit (#1053)", () => {
       visitLinkSignature(stableToken(e), episodeToken(episode)),
     ]);
     expect(suggestForEpisode(episode, [e], declined)).toBeNull();
+  });
+});
+
+describe("manual picker proximity ordering (#1196)", () => {
+  const FIRST = "2026-03-01";
+  const LAST = "2026-03-07";
+
+  it("distanceToWindow: 0 in-range, day-gap to the nearer edge otherwise", () => {
+    expect(distanceToWindow("2026-03-04", FIRST, LAST)).toBe(0); // in range
+    expect(distanceToWindow("2026-03-10", FIRST, LAST)).toBe(3); // 3 days after
+    expect(distanceToWindow("2026-02-15", FIRST, LAST)).toBe(14); // 14 days before
+    expect(distanceToWindow("2025-08-13", FIRST, LAST)).toBe(200); // 200 days before
+    // Unknown window → no proximity to measure.
+    expect(distanceToWindow("2026-03-04", null, null)).toBe(0);
+  });
+
+  it("orders in-range first, then by proximity, and a near follow-up is NOT dropped by a higher-id distant visit", () => {
+    // A near-outside follow-up (id 2, 3 days after the window) vs a distant but higher-id
+    // visit (id 99, a 2026 physical months later) — the old id-desc tie-break would push
+    // the follow-up out; proximity keeps it ahead.
+    const inRange = { id: 5, date: "2026-03-04" };
+    const nearFollowUp = { id: 2, date: "2026-03-10" };
+    const distantRecent = { id: 99, date: "2026-09-01" };
+    const ordered = orderEpisodeManualCandidates(
+      [distantRecent, nearFollowUp, inRange],
+      FIRST,
+      LAST,
+      { cap: 8, maxOutOfRangeGapDays: 400 }
+    );
+    expect(ordered.map((c) => c.id)).toEqual([5, 2, 99]);
+  });
+
+  it("bounds out-of-range candidates to the neighborhood but never drops in-range", () => {
+    const inRange = { id: 1, date: "2026-03-02" };
+    const nearOutside = { id: 2, date: "2026-04-01" }; // ~25 days out
+    const farOutside = { id: 3, date: "2027-01-01" }; // way out
+    const ordered = orderEpisodeManualCandidates(
+      [farOutside, nearOutside, inRange],
+      FIRST,
+      LAST,
+      { maxOutOfRangeGapDays: 60 }
+    );
+    expect(ordered.map((c) => c.id)).toEqual([1, 2]); // far one bounded out
+  });
+
+  it("id descending is the final deterministic tie-break among equal-distance visits", () => {
+    const a = { id: 10, date: "2026-03-10" }; // 3 after
+    const b = { id: 20, date: "2026-02-26" }; // 3 before → same distance
+    const ordered = orderEpisodeManualCandidates([a, b], FIRST, LAST);
+    expect(ordered.map((c) => c.id)).toEqual([20, 10]);
   });
 });
 

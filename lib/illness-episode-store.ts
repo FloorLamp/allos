@@ -20,6 +20,10 @@ import { db, writeTx } from "./db";
 import { shiftDateStr } from "./date";
 import { rangeContainsDate, EXCLUSIVE_END } from "./date-range";
 import { episodeConditionExternalId } from "./illness-episode-format";
+import {
+  clearEpisodeVisitLinks,
+  reparentEpisodeVisitLinks,
+} from "./queries/visit-links";
 import { normalizeSituationName } from "./situations";
 import type { IllnessEpisode } from "./symptom-episode";
 
@@ -276,6 +280,13 @@ export function deleteEpisodeRow(profileId: number, id: number): boolean {
       `UPDATE profile_share_links SET episode_id = NULL
         WHERE episode_id = ? AND profile_id = ?`
     ).run(id, profileId);
+    // Row-op side-state (#203/#1198): clear this episode's visit links + agreed 'linked'
+    // decisions, and its stopped-med reversal records (#1140 Part B), before dropping the
+    // row (their FKs to illness_episodes carry no ON DELETE).
+    clearEpisodeVisitLinks(profileId, id);
+    db.prepare(
+      `DELETE FROM episode_stopped_meds WHERE episode_id = ? AND profile_id = ?`
+    ).run(id, profileId);
     db.prepare(
       `DELETE FROM conditions
         WHERE profile_id = ? AND external_id = ? AND source = 'episode'`
@@ -366,6 +377,17 @@ export function mergeEpisodeRows(
       `UPDATE profile_share_links SET episode_id = ?
         WHERE episode_id = ? AND profile_id = ?`
     ).run(keepId, dropId, profileId);
+    // Row-op side-state (#199/#1198): move the loser's visit links + 'linked' decisions
+    // onto the keeper (de-duping), and re-parent its stopped-med reversal records
+    // (#1140 Part B), before the loser row is dropped.
+    reparentEpisodeVisitLinks(profileId, keepId, dropId);
+    db.prepare(
+      `UPDATE OR IGNORE episode_stopped_meds SET episode_id = ?
+        WHERE episode_id = ? AND profile_id = ?`
+    ).run(keepId, dropId, profileId);
+    db.prepare(
+      `DELETE FROM episode_stopped_meds WHERE episode_id = ? AND profile_id = ?`
+    ).run(dropId, profileId);
     db.prepare(
       `DELETE FROM illness_episodes WHERE id = ? AND profile_id = ?`
     ).run(dropId, profileId);

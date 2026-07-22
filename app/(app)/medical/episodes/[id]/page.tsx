@@ -20,9 +20,11 @@ import {
   getEpisodeMedReconciliation,
   getPediatricFormContext,
   getEncounters,
-  encounterForEpisode,
+  encountersForEpisode,
+  linkedEncounterIdsForEpisode,
   suggestionForEpisode,
 } from "@/lib/queries";
+import { orderEpisodeManualCandidates } from "@/lib/visit-link-suggest";
 import EpisodeCareLine, {
   type CareVisitOption,
 } from "@/components/visit-links/EpisodeCareLine";
@@ -227,35 +229,35 @@ export default async function EpisodePage(props: {
   const householdNames = disambiguateProfileNames(accessible);
   const accessibleById = new Map(accessible.map((p) => [p.id, p]));
 
-  // Episode ↔ visit link (#1053): the "Care" line. `care` is the accepted resulting
-  // visit; `episodeVisitSuggestion` is the read-time in-range containment suggestion;
-  // `careManualOptions` is the "Link a visit…" picker (in-range visits first).
-  const care = encounterForEpisode(profileId, episodeId);
-  const episodeVisitSuggestion = care
-    ? null
-    : suggestionForEpisode(profileId, {
-        id: episodeId,
-        start: assembled.firstDay,
-        lastActiveDay: assembled.lastActiveDay,
-      });
-  const careManualOptions: CareVisitOption[] =
-    care || !canWrite
-      ? []
-      : getEncounters(profileId)
-          .map((e) => ({
-            id: e.id,
-            label: `${e.type || "Visit"} · ${e.date}`,
-            inRange:
-              assembled.firstDay != null &&
-              assembled.lastActiveDay != null &&
-              e.date >= assembled.firstDay &&
-              e.date <= assembled.lastActiveDay,
-          }))
-          .sort(
-            (a, b) =>
-              Number(b.inRange) - Number(a.inRange) || (a.id < b.id ? 1 : -1)
-          )
-          .slice(0, 8);
+  // Episode ↔ visit links (#1198): the "Care" line now lists the SET of linked visits
+  // (date-ordered). `episodeVisitSuggestion` keeps suggesting the in-range visits NOT
+  // yet linked (so it doesn't go silent once one is linked); `careManualOptions` is the
+  // "Link a visit…" picker to ADD more, excluding already-linked encounters and ordered
+  // by DATE PROXIMITY to the episode window (#1196), in-range first.
+  const careVisits = encountersForEpisode(profileId, episodeId);
+  const linkedEncounterIds = new Set(
+    linkedEncounterIdsForEpisode(profileId, episodeId)
+  );
+  const episodeVisitSuggestion = suggestionForEpisode(profileId, {
+    id: episodeId,
+    start: assembled.firstDay,
+    lastActiveDay: assembled.lastActiveDay,
+  });
+  const careManualOptions: CareVisitOption[] = !canWrite
+    ? []
+    : orderEpisodeManualCandidates(
+        getEncounters(profileId).filter((e) => !linkedEncounterIds.has(e.id)),
+        assembled.firstDay,
+        assembled.lastActiveDay
+      ).map((e) => ({
+        id: e.id,
+        label: `${e.type || "Visit"} · ${e.date}`,
+        inRange:
+          assembled.firstDay != null &&
+          assembled.lastActiveDay != null &&
+          e.date >= assembled.firstDay &&
+          e.date <= assembled.lastActiveDay,
+      }));
 
   return (
     <PageContainer width="reading" className="mx-auto space-y-5">
@@ -401,7 +403,7 @@ export default async function EpisodePage(props: {
       <EpisodeCareLine
         profileId={target ?? profileId}
         episodeId={episodeId}
-        care={care}
+        careVisits={careVisits}
         suggestion={episodeVisitSuggestion}
         manualOptions={careManualOptions}
         canWrite={canWrite}
