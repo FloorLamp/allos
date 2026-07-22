@@ -166,6 +166,9 @@ test.describe("Episode-end medication reconciliation (#880)", () => {
     await expect(restoreList).toBeVisible();
     await expect(restoreList).toContainText("Ibuprofen");
     await page.getByTestId("episode-reopen-confirm").click();
+    // Wait for the reopen+restart to complete before navigating (the toast confirms the
+    // server action returned).
+    await expect(page.getByText(/Episode reopened\. Restarted/i)).toBeVisible();
 
     // Ibuprofen is a Current medication again — the reopen inverted the stop.
     await page.goto("/medications");
