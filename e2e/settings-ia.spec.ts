@@ -115,7 +115,10 @@ test.describe("Settings IA (#928) — admin", () => {
     ).toBeVisible();
     await expect(page.getByTestId("smoking-history")).toBeVisible();
     await expect(page.getByTestId("risk-factors")).toBeVisible();
-    await expect(page.getByTestId("emergency-toggle")).toBeVisible();
+    // The Emergency Card settings left Background for the Passport (#1087) —
+    // emergency-card.spec.ts covers their new home; Background must not render
+    // the toggle anymore.
+    await expect(page.getByTestId("emergency-toggle")).toHaveCount(0);
   });
 });
 
