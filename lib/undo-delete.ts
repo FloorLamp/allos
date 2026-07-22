@@ -339,6 +339,19 @@ export const UNDO_KINDS: Record<string, KindSpec> = {
         entity: "courses",
         table: "medication_courses",
         fks: [{ column: "item_id", ref: "item" }],
+        // Per-course prescriber link (#1204): provider_id → providers is a REAL
+        // enforced FK pointing OUTSIDE this capture. Merging/deleting the prescriber
+        // AFTER the med was captured leaves the captured course holding a dead id, so
+        // null the now-dangling link on restore (the same #375/#598 treatment the
+        // item's own provider_id gets). `providers` is GLOBAL, probed by id alone.
+        externalRefs: [
+          {
+            column: "provider_id",
+            table: "providers",
+            onMissing: "null",
+            global: true,
+          },
+        ],
         childWhere: "item_id = ?",
         childBinds: 1,
       },

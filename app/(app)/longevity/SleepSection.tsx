@@ -59,7 +59,7 @@ export default async function SleepSection({
         {sleepReg.socialJetlagMin != null
           ? `, with a ${(sleepReg.socialJetlagMin / 60).toFixed(1)} h weekend shift`
           : ""}
-        . Higher SRI (0–100) means steadier sleep–wake timing.
+        . SRI ranges from −100 to 100; higher means steadier sleep–wake timing.
       </p>
       {insight && (
         <p

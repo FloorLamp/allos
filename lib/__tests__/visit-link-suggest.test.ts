@@ -20,7 +20,7 @@ const NONE = new Set<string>();
 
 function rec(over: Partial<LinkableRecord> = {}): LinkableRecord {
   return {
-    domain: "record",
+    domain: "medication",
     id: 1,
     external_id: null,
     date: "2026-03-03",

@@ -261,7 +261,7 @@ describe("buildDigest — Sleep section (issue #1117)", () => {
     );
     // The nap is a SEPARATE line, never folded into the overnight figure.
     expect(sleep?.lines).toContain("💤 + 45m nap");
-    expect(sleep?.lines).toContain("📈 Sleep regularity 82");
+    expect(sleep?.lines).toContain("📈 Sleep regularity · SRI 82");
   });
 
   it("omits stages, nap, and SRI when absent (calm, minimal)", () => {

@@ -180,8 +180,10 @@ describe("gatherDigestSleep — opt-in + freshness (#1117)", () => {
     setProfileSleepDigest(wakeProfile, true);
     const s = gatherDigestSleep(wakeProfile);
     expect(s).not.toBeNull();
-    expect(s!.lastNightMin).toBe(480); // 8h main overnight (23:00→07:00), nap excluded
-    expect(s!.baselineMin).toBe(480);
+    // The source reports 7h asleep inside the 8h bedtime window; duration-facing
+    // summaries use that reported value while timing still uses 23:00→07:00.
+    expect(s!.lastNightMin).toBe(420);
+    expect(s!.baselineMin).toBe(420);
     expect(s!.napMin).toBe(45); // the afternoon nap, on its own
     expect(s!.deepMin).toBe(65);
     expect(s!.remMin).toBe(95);

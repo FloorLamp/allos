@@ -315,7 +315,7 @@ describe("#1052 tier-2 suggest-and-accept + decline memory", () => {
 });
 
 describe("#1051 records bridge carries provider_id + source_record_id", () => {
-  it("carries the record's individual provider + source record, with the transitive visit chain", () => {
+  it("carries the record's individual provider + its OWN visit link (no source_record_id since #1178)", () => {
     const providerId = individualProvider("Dr. Rivera");
     const doc = newDocument(profileId);
     // A prescription record linked to an encounter + the individual prescriber.
@@ -340,17 +340,17 @@ describe("#1051 records bridge carries provider_id + source_record_id", () => {
     expect(created).not.toBeNull();
     const med = db
       .prepare(
-        `SELECT provider_id, source_record_id FROM intake_items WHERE id = ?`
+        `SELECT provider_id, encounter_id FROM intake_items WHERE id = ?`
       )
       .get(created!.id) as {
       provider_id: number | null;
-      source_record_id: number | null;
+      encounter_id: number | null;
     };
     expect(med.provider_id).toBe(providerId);
-    expect(med.source_record_id).toBe(recordId);
-    // Transitive "Prescribed at": the med has no own visit link, but its source record
-    // resolves to the encounter.
-    const via = encounterForRecord(profileId, "record", med.source_record_id!);
+    // Since #1178 the med carries the record's OWN encounter link directly — no
+    // source_record_id chain — so "Prescribed at" resolves off the med itself.
+    expect(med.encounter_id).toBe(encounterId);
+    const via = encounterForRecord(profileId, "medication", created!.id);
     expect(via?.id).toBe(encounterId);
   });
 
@@ -443,10 +443,11 @@ describe("#1051 provider merge re-keys the prescriber FK; text stays fallback", 
   });
 });
 
-describe("#1051 record delete NULLs source_record_id (row-ops)", () => {
-  it("NULLs a bridged med's source_record_id when the source record is deleted", () => {
+describe("#1204 manual track-from-record attaches a course on a match", () => {
+  it("adds a course to the existing med instead of a duplicate item", () => {
     const doc = newDocument(profileId);
-    const recordId = Number(
+    // Track a first prescription → a new med.
+    const rec1 = Number(
       db
         .prepare(
           `INSERT INTO medical_records (date, category, name, document_id, source, profile_id)
@@ -454,27 +455,34 @@ describe("#1051 record delete NULLs source_record_id (row-ops)", () => {
         )
         .run(DATE, doc, profileId).lastInsertRowid
     );
-    const created = createMedicationFromRecord(profileId, recordId);
-    expect(
-      (
-        db
-          .prepare(`SELECT source_record_id FROM intake_items WHERE id = ?`)
-          .get(created!.id) as {
-          source_record_id: number | null;
-        }
-      ).source_record_id
-    ).toBe(recordId);
-    // Deleting the record (via the capture-delete core) NULLs the med's link first.
-    captureDelete("biomarker-record", profileId, recordId);
-    expect(
-      (
-        db
-          .prepare(`SELECT source_record_id FROM intake_items WHERE id = ?`)
-          .get(created!.id) as {
-          source_record_id: number | null;
-        }
-      ).source_record_id
-    ).toBeNull();
+    const first = createMedicationFromRecord(profileId, rec1);
+    expect(first).not.toBeNull();
+
+    // A second prescription of the SAME drug (a later document) tracked by hand →
+    // attaches a COURSE to the existing med, not a duplicate item.
+    const doc2 = newDocument(profileId);
+    const rec2 = Number(
+      db
+        .prepare(
+          `INSERT INTO medical_records (date, category, name, document_id, source, profile_id)
+           VALUES (?, 'prescription', 'Amoxicillin 500 mg', ?, 'Clinic', ?)`
+        )
+        .run("2026-06-01", doc2, profileId).lastInsertRowid
+    );
+    const second = createMedicationFromRecord(profileId, rec2);
+    expect(second!.id).toBe(first!.id); // SAME item, not a duplicate
+
+    const items = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM intake_items
+          WHERE profile_id = ? AND kind = 'medication' AND lower(name) = 'amoxicillin'`
+      )
+      .get(profileId) as { n: number };
+    expect(items.n).toBe(1);
+    const courses = db
+      .prepare(`SELECT COUNT(*) AS n FROM medication_courses WHERE item_id = ?`)
+      .get(first!.id) as { n: number };
+    expect(courses.n).toBe(2); // the initial course + the renewal course
   });
 });
 

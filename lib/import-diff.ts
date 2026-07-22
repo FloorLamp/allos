@@ -369,22 +369,27 @@ function medicationsFromRecords(records: PersistRecord[]): DiffRow[] {
 
 export function snapshotFromPersistInput(input: PersistInput): ImportSnapshot {
   return {
-    records: input.records.map((r) =>
-      recordRow({
-        date: r.date,
-        category: r.category,
-        name: r.name,
-        value: r.value,
-        value_num: r.value_num,
-        unit: r.unit,
-        reference_range: r.reference_range,
-        panel: r.panel,
-        flag: r.flag,
-        canonical: r.canonical,
-        notes: r.notes,
-        external_id: r.external_id, // raw on this side
-      })
-    ),
+    // Since #1178 a prescription is NOT a medical_records row — it persists ONLY as
+    // the medications projection (below) — so it is excluded here to match the DB-side
+    // snapshot (getReprocessSnapshot reads medical_records, which no longer holds it).
+    records: input.records
+      .filter((r) => r.category !== "prescription")
+      .map((r) =>
+        recordRow({
+          date: r.date,
+          category: r.category,
+          name: r.name,
+          value: r.value,
+          value_num: r.value_num,
+          unit: r.unit,
+          reference_range: r.reference_range,
+          panel: r.panel,
+          flag: r.flag,
+          canonical: r.canonical,
+          notes: r.notes,
+          external_id: r.external_id, // raw on this side
+        })
+      ),
     immunizations: input.immunizations.map((im) =>
       immunizationRow({
         date: im.date,

@@ -13,13 +13,22 @@ import {
   reconcileFlags,
   ensureMedicationCourse,
   createImportedMedicationCourses,
+  addRenewalCourse,
+  getMedMatchStates,
   recordPreventiveDone,
   sweepImmunizationDismissals,
   reapplyVisitLinkDecisions,
+  type CourseAttribution,
+  type MedMatchState,
 } from "./queries";
 import { matchAppointmentForEncounter } from "./appointment-encounter-match";
 import { satisfiedRuleForCompletedKind } from "./preventive-appointment";
-import { parsePrescription, cleanMedicationName } from "./prescription-parse";
+import { parsePrescription, strengthFromName } from "./prescription-parse";
+import { medNameKey } from "./medication-record-match";
+import {
+  classifyReprescription,
+  normalizeStrength,
+} from "./medication-renewal";
 import { resolveProviderId, resolveExactPrescriberId } from "./providers-db";
 import { cleanProviderInput, providerDedupKey } from "./providers";
 import type {
@@ -199,18 +208,12 @@ export function clearImportedDocumentRows(
     ).run(profileId, profileId, docId);
   }
   // Row-ops side-state (#1051/#1052): a medication (possibly from ANOTHER document, or
-  // manual) may link a prescription medical_records row (source_record_id) or a
-  // condition (indication_condition_id) THIS document produced — both REFERENCES FKs
-  // with no ON DELETE. NULL those back-links FIRST so deleting the record/condition (in
-  // the footprint loop) can't trip the FK. The med survives, its provenance/indication
-  // link honestly gone (a tier-1 link re-derives when its own document reprocesses).
-  db.prepare(
-    `UPDATE intake_items SET source_record_id = NULL
-       WHERE profile_id = ?
-         AND source_record_id IN (
-           SELECT id FROM medical_records WHERE profile_id = ? AND document_id = ?
-         )`
-  ).run(profileId, profileId, docId);
+  // manual) may link a condition (indication_condition_id) THIS document produced — a
+  // REFERENCES FK with no ON DELETE. NULL those back-links FIRST so deleting the
+  // condition (in the footprint loop) can't trip the FK. The med survives, its
+  // indication link honestly gone (a tier-1 link re-derives on its own reprocess).
+  // (source_record_id was retired in #1178 — an imported prescription IS the med now,
+  // never a paired medical_records row, so there is no prescription→med back-link.)
   db.prepare(
     `UPDATE intake_items SET indication_condition_id = NULL
        WHERE profile_id = ?
@@ -218,6 +221,11 @@ export function clearImportedDocumentRows(
            SELECT id FROM conditions WHERE profile_id = ? AND document_id = ?
          )`
   ).run(profileId, profileId, docId);
+  // (#1204 note: a CROSS-DOCUMENT renewal course this document contributed to a med
+  // owned by ANOTHER document is NOT cleared here — a course is not document-keyed. It
+  // is deduped on (item_id, started_on), so a reprocess re-adds nothing, and it is
+  // cleaned via its parent med's CASCADE on med delete/merge — #1204's stated cleanup
+  // model. A course on a med THIS document OWNS is cascade-deleted with the med below.)
   for (const t of IMPORT_FOOTPRINT_TABLES) {
     db.prepare(
       `DELETE FROM ${t.table} WHERE ${t.key} = ? AND ${footprintScope(t)}`
@@ -301,20 +309,13 @@ export function moveImportedDocumentRows(
       ).run(pid, pid);
     }
   }
-  // Row-ops side-state (#1051/#1052): a med's source_record_id (→ medical_records) and
-  // indication_condition_id (→ conditions) must never cross profiles either. A reassign
-  // can move a med but not a tier-2-linked condition from another document (or
-  // vice-versa) — re-enforce same-profile on BOTH affected profiles: NULL any link
-  // whose target no longer lives in that med's profile (a link whose both ends moved
-  // together stays intact, since the target now lives alongside the med).
+  // Row-ops side-state (#1052): a med's indication_condition_id (→ conditions) must
+  // never cross profiles. A reassign can move a med but not a tier-2-linked condition
+  // from another document (or vice-versa) — re-enforce same-profile on BOTH affected
+  // profiles: NULL any link whose target no longer lives in that med's profile (a link
+  // whose both ends moved together stays intact). (source_record_id was retired in
+  // #1178 — an imported prescription IS the med now, no prescription→med back-link.)
   for (const pid of [srcProfileId, destProfileId]) {
-    db.prepare(
-      `UPDATE intake_items SET source_record_id = NULL
-         WHERE profile_id = ? AND source_record_id IS NOT NULL
-           AND source_record_id NOT IN (
-             SELECT id FROM medical_records WHERE profile_id = ?
-           )`
-    ).run(pid, pid);
     db.prepare(
       `UPDATE intake_items SET indication_condition_id = NULL
          WHERE profile_id = ? AND indication_condition_id IS NOT NULL
@@ -912,23 +913,24 @@ function insertImportRows(
      VALUES (?,?,?,?,?,?,?,?,?,?,?)`
   );
 
-  // Structured medications: a prescription record is ALSO projected
-  // into a kind='medication' intake_items row (source='extracted', document_id),
-  // so the passport reads it as a real medication rather than only via the
-  // medical_records fallback. These statements back that projection.
+  // Structured medications (#1178): an imported prescription is the SINGLE
+  // medication entity — a kind='medication' intake_items row (source='extracted',
+  // document_id), never a paired medical_records prescription. `import_key` is the
+  // stable within-document reprocess key (`medimport:<docId>|<lower(name)>`) the
+  // med's visit-link decisions anchor on. A cross-document re-prescription of an
+  // existing med attaches as a new COURSE instead (#1204), not a duplicate item.
   //
-  // Existing medications (manual OR from another document) the profile already
-  // has — read AFTER this document's own extracted meds are cleared, so a
-  // reprocess doesn't see its own prior rows and a manual med of the same name
-  // blocks the auto-structured duplicate. Compared on the cleaned/grouping name.
-  const existingMeds = db.prepare(
-    "SELECT name FROM intake_items WHERE profile_id = ? AND kind = 'medication'"
-  );
+  // Existing medications (manual OR from another document) the profile already has,
+  // with their lifecycle + known-strength state — read AFTER this document's own
+  // extracted meds are cleared, so a reprocess doesn't see its own prior rows. A
+  // matching drug renews (course) or, for the #1027 concurrent-different-strength
+  // case, spawns a separate item. Matched on the cleaned/grouping name (RxCUI-first
+  // when both carry a code, #482/#1026).
   const insMed = db.prepare(
     `INSERT INTO intake_items
        (name, notes, active, condition, priority, kind,
         prescriber, pharmacy, rx_number, as_needed,
-        document_id, source, provider_id, source_record_id, profile_id)
+        document_id, source, provider_id, import_key, profile_id)
      VALUES (?,?,1,'daily','high','medication',?,?,?,?,?,'extracted',?,?,?)`
   );
   const insMedDose = db.prepare(
@@ -1012,6 +1014,11 @@ function insertImportRows(
     if (info.changes > 0) headCircCount++;
   }
   for (const r of input.records) {
+    // #1178: a prescription is the SINGLE medication entity (projected into
+    // intake_items by persistExtractedMedications below), never a paired
+    // medical_records row — so it is NOT inserted here. Every other category (lab /
+    // vital / scan / …) is a medical_records reading as before.
+    if (r.category === "prescription") continue;
     const info = insRec.run(
       r.date,
       r.category,
@@ -1264,7 +1271,6 @@ function insertImportRows(
   // encounter references (the paste/AI path leaves them null), so guard on docSource.
   const resolveEnc = makeEncounterResolver(profileId, docSource);
   const resolveCondition = makeConditionResolver(profileId, docSource);
-  const resolveSourceRecord = makeSourceRecordResolver(profileId, docSource);
   if (docSource) {
     linkRowsByExternalId(
       profileId,
@@ -1296,18 +1302,18 @@ function insertImportRows(
     );
   }
 
-  // Project each prescription record into a structured medication row. The
-  // name-dedup set starts from the meds that survived the delete-set (manual +
-  // other documents') and grows as we insert, so neither a manual med nor a
-  // repeated prescription within this import produces a duplicate. Skipped
-  // rows still live on in medical_records (inserted above); the passport's
-  // name-based fallback shows them until/unless they're structured.
+  // Project each prescription into the SINGLE medication entity (#1178). A group
+  // whose cleaned/grouping name matches an existing med (manual or another
+  // document's) attaches as a new COURSE (#1204 renewal) rather than a duplicate
+  // item — except the #1027 concurrent-different-strength case, which stays a
+  // separate item. A repeated prescription within one document collapses into one
+  // med carrying the union of its courses.
   const medCount = persistExtractedMedications(
     profileId,
     docId,
     input.records,
     {
-      existing: existingMeds.all(profileId) as { name: string }[],
+      existing: getMedMatchStates(profileId),
       insMed,
       insMedDose,
       // Tier-1: the med projected from a prescription that named an encounter is
@@ -1316,8 +1322,6 @@ function insertImportRows(
       // Tier-1 indication (#1052): a prescription that named a reason Condition
       // stamps the projected med's indication_condition_id.
       resolveCondition: docSource ? resolveCondition : undefined,
-      // Provenance (#1051): source_record_id back to the prescription record.
-      resolveSourceRecord: docSource ? resolveSourceRecord : undefined,
     }
   );
 
@@ -1382,29 +1386,6 @@ export function makeConditionResolver(
   };
 }
 
-// Provenance link (#1051): resolve a prescription record's RAW external_id to the local
-// medical_records row id just inserted (stored scoped `<docSource>|<raw>`), so a
-// projected medication can carry source_record_id back to the record it came from —
-// buying the transitive "Prescribed at" chain through the record's own visit link.
-export function makeSourceRecordResolver(
-  profileId: number,
-  docSource: string | null
-): (raw: string | null | undefined) => number | null {
-  const cache = new Map<string, number | null>();
-  return (raw) => {
-    if (!raw || !docSource) return null;
-    if (cache.has(raw)) return cache.get(raw)!;
-    const row = db
-      .prepare(
-        `SELECT id FROM medical_records WHERE profile_id = ? AND external_id = ?`
-      )
-      .get(profileId, `${docSource}|${raw}`) as { id: number } | undefined;
-    const id = row ? row.id : null;
-    cache.set(raw, id);
-    return id;
-  };
-}
-
 // Stamp encounter_id on each row of `rows` (a table whose stored external_id is the
 // scoped `<docSource>|<raw>`) whose `encounter_external_id` resolves to a local
 // encounter. Only sets a currently-null link (a manual re-link is never clobbered).
@@ -1427,25 +1408,57 @@ function linkRowsByExternalId(
   }
 }
 
-// Project an import's prescription records into structured kind='medication'
-// intake_items rows (+ their dose rows). Runs inside insertImportRows' caller
-// transaction; for a document import, after this document's prior extracted meds
-// were cleared. `docId` is null for a documentless (paste) import — the med row
-// then carries a NULL document_id, manual-like. Returns the count of meds created.
+// A descriptive dose/sig SNAPSHOT for a course (#1204 Model X): the strength + the
+// parsed directions as prescribed at this course. Null when the source carried
+// neither. The live reminder schedule stays item-keyed on intake_item_doses; this is
+// the historical record of what was prescribed, so a renewal at a new strength is
+// preserved even though the live schedule is not silently overwritten.
+function doseSnapshotOf(
+  med: ReturnType<typeof parsePrescription>
+): string | null {
+  const parts = [med.strength, med.sig].filter((p): p is string => !!p);
+  return parts.length ? parts.join(" — ") : null;
+}
+
+// The stable within-document import key a projected medication carries (#1178): a
+// reprocess deletes-and-reinserts the med under a new id but the SAME import_key, so
+// its accepted tier-2 visit-link decision re-applies. NULL for a documentless (paste)
+// med, whose stable id suffices. Mirrors migration 092's backfill expression.
+function medImportKey(
+  docId: number | null,
+  cleanedName: string
+): string | null {
+  return docId != null
+    ? `medimport:${docId}|${cleanedName.toLowerCase()}`
+    : null;
+}
+
+// Project an import's prescriptions into the SINGLE medication entity (#1178):
+// kind='medication' intake_items rows (+ dose rows + courses), never a paired
+// medical_records prescription. Runs inside insertImportRows' caller transaction;
+// for a document import, after this document's prior extracted meds were cleared.
+// `docId` is null for a documentless (paste) import. Returns the count of NEW
+// medication ITEMS created (a renewal course on an existing med is not a new item).
 //
-// Dedup: an extracted med whose cleaned/grouping name already belongs to an
-// existing medication (manual or from another document) is SKIPPED — it stays a
-// medical_records prescription and shows via the passport fallback, so the same
-// medication is never listed twice. Repeated prescriptions within one document
-// collapse the same way. Scheduling is conservative (see prescription-parse): a
-// clear sig becomes scheduled doses; an unparseable one becomes an as-needed med
-// (never scheduled-due) rather than a fabricated daily reminder.
+// Cross-document / repeat handling (#1204):
+//   - A repeat of the SAME drug WITHIN this document collapses into ONE med carrying
+//     the union of its derived courses (the first occurrence's parse wins).
+//   - A drug whose cleaned/grouping name MATCHES an existing med (manual or another
+//     document's) attaches as a new COURSE on that med (renewal semantics) — its
+//     period + prescriber + dose snapshot — INSTEAD of the old skip-to-records-
+//     fallback. The one exception is the #1027 concurrent-different-strength case
+//     (the existing med has an OPEN course at a PROVABLY DIFFERENT strength), which
+//     stays a SEPARATE item.
+//
+// Scheduling is conservative (see prescription-parse): a clear sig becomes scheduled
+// doses; an unparseable one becomes an as-needed med (never scheduled-due) rather
+// than a fabricated daily reminder.
 function persistExtractedMedications(
   profileId: number,
   docId: number | null,
   records: PersistRecord[],
   ctx: {
-    existing: { name: string }[];
+    existing: MedMatchState[];
     insMed: Stmt;
     insMedDose: Stmt;
     // Tier-1 (#1050): resolve the prescription's encounter reference to a local
@@ -1454,38 +1467,26 @@ function persistExtractedMedications(
     // Tier-1 indication (#1052): resolve the prescription's reason (condition)
     // reference to a local condition row id, stamped onto the projected med.
     resolveCondition?: (raw: string | null | undefined) => number | null;
-    // Provenance (#1051): resolve the source prescription record's external_id to
-    // its local medical_records row id, stamped as the med's source_record_id.
-    resolveSourceRecord?: (raw: string | null | undefined) => number | null;
   }
 ): number {
   const prescriptions = records.filter((r) => r.category === "prescription");
   if (prescriptions.length === 0) return 0;
 
-  const seen = new Set(
-    ctx.existing.map((m) => cleanMedicationName(m.name).toLowerCase())
-  );
-
-  // Group NEW (not already-present) prescriptions by cleaned drug name so
-  // repeated prescriptions — or several MedicationStatements for one drug at
-  // different periods — collapse into ONE medication carrying the UNION of their
-  // derived courses. The FIRST occurrence's parse (sig / strength /
-  // schedule) wins; later ones only contribute courses. A manual / other-document
-  // med of the same name blocks the whole group (it stays a records fallback).
+  // Group prescriptions by cleaned drug name so repeated prescriptions — or several
+  // MedicationStatements for one drug at different periods — collapse into ONE unit
+  // carrying the UNION of their derived courses. The FIRST occurrence's parse (sig /
+  // strength / schedule) wins; later ones only contribute courses + the earliest
+  // prescribed date.
   const groups = new Map<
     string,
     {
       med: ReturnType<typeof parsePrescription>;
       courses: ImportedMedicationCourse[];
-      // Tier-1 (#1050): the encounter this med was prescribed at, from the first
-      // grouped prescription record that named one.
       encExt: string | null;
-      // Tier-1 indication (#1052): the reason condition, from the first grouped
-      // prescription record that named one.
       indExt: string | null;
-      // Provenance (#1051): the external_id of the FIRST source prescription record,
-      // resolved to source_record_id at insert (the group's representative record).
-      srcExt: string | null;
+      // The earliest prescribed date across the grouped records — the fallback
+      // course start when the source carried no explicit effective period.
+      presDate: string | null;
     }
   >();
   const order: string[] = [];
@@ -1504,7 +1505,6 @@ function persistExtractedMedications(
       rxNumber: r.rxNumber ?? null,
     });
     const key = med.name.toLowerCase();
-    if (seen.has(key)) continue; // already a manual/other-doc med — don't duplicate
     let g = groups.get(key);
     if (!g) {
       g = {
@@ -1512,7 +1512,7 @@ function persistExtractedMedications(
         courses: [],
         encExt: r.encounter_external_id ?? null,
         indExt: r.indication_condition_external_id ?? null,
-        srcExt: r.external_id ?? null,
+        presDate: r.date ?? null,
       };
       groups.set(key, g);
       order.push(key);
@@ -1521,22 +1521,84 @@ function persistExtractedMedications(
       g.encExt = r.encounter_external_id;
     if (!g.indExt && r.indication_condition_external_id)
       g.indExt = r.indication_condition_external_id;
-    if (!g.srcExt && r.external_id) g.srcExt = r.external_id;
+    if (r.date && (!g.presDate || r.date < g.presDate)) g.presDate = r.date;
     if (r.courses && r.courses.length) g.courses.push(...r.courses);
   }
 
+  // Find an existing tracked med this parsed prescription matches — the SAME
+  // cleaned/grouping-name identity the #1027 duplication family + the records bridge
+  // key on (medNameKey), RxCUI-first when both sides carry a code (#482/#1026).
+  const matchExisting = (
+    med: ReturnType<typeof parsePrescription>
+  ): MedMatchState | null => {
+    const key = medNameKey(med.name);
+    for (const ex of ctx.existing) {
+      const exKeys = new Set([medNameKey(ex.name)]);
+      if (ex.brand) exKeys.add(medNameKey(ex.brand));
+      if (key && exKeys.has(key)) return ex;
+    }
+    // The RxCUI-first path stays open for a future import that captures a code on the
+    // prescription (records carry none today), so the cleaned name is the working
+    // signal — the SAME grouping medNameKey the #1027 duplication family + the records
+    // bridge use, so the identity can't diverge across surfaces (#482).
+    return null;
+  };
+
+  let newItems = 0;
   for (const key of order) {
-    const { med, courses, encExt, indExt, srcExt } = groups.get(key)!;
-    // Prescriber link (#1051 semantics decision (a)): resolve the parsed prescriber
-    // TEXT into an EXISTING individual registry row (exact only — never an org, never
-    // a near-miss/ambiguous). source_record_id links back to the source prescription
-    // record (provenance / the transitive "Prescribed at" chain).
+    const { med, courses, encExt, indExt, presDate } = groups.get(key)!;
+    // Prescriber link (#1051 semantics (a)): resolve the parsed prescriber TEXT into
+    // an EXISTING individual registry row (exact only — never an org / near-miss).
     const providerId = med.prescriber
       ? resolveExactPrescriberId(med.prescriber)
       : null;
-    const sourceRecordId = ctx.resolveSourceRecord
-      ? ctx.resolveSourceRecord(srcExt)
-      : null;
+    const attribution: CourseAttribution = {
+      prescriber: med.prescriber,
+      providerId,
+      doseSnapshot: doseSnapshotOf(med),
+    };
+
+    // Cross-document / cross-provider re-prescription (#1204): does this drug match a
+    // med the profile already tracks? If so, renew (course) unless the #1027
+    // concurrent-different-strength case dictates a separate item.
+    const existing = matchExisting(med);
+    if (existing) {
+      const newStrength = med.strength ?? strengthFromName(med.name);
+      const relationship = classifyReprescription({
+        existingHasOpenCourse: existing.hasOpenCourse,
+        existingStrengths: new Set(
+          existing.strengths
+            .map((s) => normalizeStrength(s))
+            .filter((s): s is string => !!s)
+        ),
+        newStrength,
+      });
+      if (relationship === "renewal") {
+        // Attach the renewal's course(s) to the existing med. Explicit source
+        // period(s) win; otherwise a single course dated the prescribed date. The
+        // dose snapshot rides the attribution so a dose change is preserved in
+        // history (the live schedule is not overwritten — Model X, #1204).
+        if (courses.length > 0) {
+          for (const c of courses) {
+            addRenewalCourse(profileId, existing.id, {
+              startedOn: c.started_on,
+              stoppedOn: c.stopped_on,
+              stopReason: c.stop_reason,
+              notes: c.notes,
+              attribution,
+            });
+          }
+        } else {
+          addRenewalCourse(profileId, existing.id, {
+            startedOn: presDate,
+            attribution,
+          });
+        }
+        continue; // no new item — the existing med carries this prescription
+      }
+      // "separate" falls through: project a distinct item (#1027 concurrent).
+    }
+
     const info = ctx.insMed.run(
       med.name,
       med.sig, // directions kept as the row's notes (may be null)
@@ -1544,14 +1606,15 @@ function persistExtractedMedications(
       med.pharmacy,
       med.rxNumber,
       med.asNeeded ? 1 : 0,
-      // document_id — traces the row back to its source document for the
-      // delete-set; profile_id closes the insert.
+      // document_id — traces the row back to its source document for the delete-set.
       docId,
       providerId,
-      sourceRecordId,
+      // import_key — the stable within-doc reprocess anchor for visit-link decisions.
+      medImportKey(docId, med.name),
       profileId
     );
     const medId = Number(info.lastInsertRowid);
+    newItems++;
 
     // Tier-1 visit link (#1050): stamp the resolved encounter id onto the med.
     if (ctx.resolveEnc && encExt) {
@@ -1573,16 +1636,13 @@ function persistExtractedMedications(
       }
     }
 
-    // Courses: when the source carried effective period(s), create
-    // one medication_courses row per DERIVED course (open/closed synced to
-    // `active`, deduped by (item_id, started_on)). Otherwise fall back to the
-    // Phase-1 single open initial course (started on the med's created_at). Both
-    // paths are idempotent — a reprocess first deletes the med, cascading its
-    // courses, then re-creates from the import.
+    // Courses: explicit source period(s) → one course per DERIVED course; otherwise
+    // a single open initial course. Both carry the prescriber + dose snapshot + source
+    // document. Idempotent — a reprocess first deletes the med, cascading its courses.
     if (courses.length > 0) {
-      createImportedMedicationCourses(profileId, medId, courses);
+      createImportedMedicationCourses(profileId, medId, courses, attribution);
     } else {
-      ensureMedicationCourse(profileId, medId, null);
+      ensureMedicationCourse(profileId, medId, null, false, attribution);
     }
 
     // Dose rows: a scheduled med gets one row per inferred time bucket; an
@@ -1596,7 +1656,7 @@ function persistExtractedMedications(
       ctx.insMedDose.run(medId, med.strength, null, 0);
     }
   }
-  return order.length;
+  return newItems;
 }
 
 // The best-effort follow-ups every import runs after its rows are committed:

@@ -194,6 +194,11 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
       "UPDATE medical_records SET category = ? WHERE canonical_name = ? COLLATE NOCASE AND category != ?",
     why: "migration 090 (#1076) one-shot category converge: re-derives category from canonical name for a fixed set of known analytes (Glucose→lab, PHQ-9…→instrument, PhenoAge/Biological Age→derived, Blood Type…→reference) across ALL profiles — a vocabulary-level classification fix, never reading one profile's data into another's",
   },
+  {
+    file: "lib/migrations/versions/092-consolidate-imported-prescriptions.ts",
+    includes: "JOIN medical_records r ON r.id = ii.source_record_id",
+    why: "migration 092 (#1178) one-shot consolidation: enumerates each PAIRED (med, prescription-record) twin BY the source_record_id back-link the import wrote — the join key itself is the med↔record identity, and both rows share the same profile_id by construction (a med is projected within one profile's import). The per-row re-key/UPDATE it drives all carry the row's own profile_id; this SELECT never reads one profile's data into another's.",
+  },
 ];
 
 // `.prepare(sql)` sites whose argument is a runtime expression (not a string
@@ -214,6 +219,11 @@ const ALLOW_NON_LITERAL: { file: string; expr: string; why: string }[] = [
     file: "lib/export.ts",
     expr: "sql",
     why: "q(sql) helper: every DATASETS query string filters the acting profile — directly (WHERE profile_id = ?) or, for the intake dose/log child tables, through the parent JOIN (WHERE ii.profile_id = ?)",
+  },
+  {
+    file: "lib/providers-db.ts",
+    expr: "profileSql",
+    why: "getProviderMergeImpact profiles-touched aggregate (#275): a GLOBAL, deliberately profile-AGNOSTIC count across every profile (the admin-only merge shows 'N across M profiles'). `profileSql` is one of two hand-authored strings over the bound PROVIDER_LINK_COLUMNS — the plain SELECT DISTINCT profile_id, or, for the child medication_courses (no own profile_id, #1204), a JOIN to intake_items resolving the parent's profile_id. Neither reads one profile's data into another's — it is the count itself that spans profiles by design.",
   },
 ];
 

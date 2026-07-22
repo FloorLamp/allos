@@ -36,6 +36,7 @@ describe("logMood — one-tap + expanded save", () => {
     });
     expect(revalidate).toHaveBeenCalledWith("/");
     expect(revalidate).toHaveBeenCalledWith("/trends");
+    expect(revalidate).toHaveBeenCalledWith("/sleep");
   });
 
   it("a same-day re-log UPDATES the one row (idempotent per profile+date)", async () => {
