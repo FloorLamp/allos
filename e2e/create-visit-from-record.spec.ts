@@ -28,11 +28,20 @@ test.describe("create a visit from a record (#1099)", () => {
   test("the Rx card prompts to create a visit; accept surfaces it with the Rx linked", async () => {
     await page.goto("/records/specialty/vision");
 
+    // Wait for the (server-rendered) Vision section to load before probing the
+    // prompt: its presence/absence is settled in the SAME render, so an un-awaited
+    // isVisible() check races the load under CI load and skips the accept — leaving
+    // no visit for the end-state assertion below (the CI-only failure this closes).
+    await expect(page.getByTestId("records-vision")).toBeVisible();
+
     // The prompt shows for the Rx dated a day with no encounter. Accept if present
     // (first run); a later run finds the Rx already linked and the prompt gone.
     const prompt = page.getByTestId("create-visit-from-record");
     if (await prompt.isVisible().catch(() => false)) {
       await settledClick(page, page.getByTestId("create-visit-accept"));
+      // Accept links the Rx → the offer empties → the prompt unmounts. Waiting for
+      // that confirms the create committed and re-rendered before we navigate away.
+      await expect(prompt).toHaveCount(0);
     }
 
     // End-state: the derived "Eye exam" visit exists in Visits, and its detail lists
