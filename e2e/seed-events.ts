@@ -903,15 +903,26 @@ const sleepSessionInsert = db.prepare(
   `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
    VALUES (?, 'manual', 'sleep_min', ?, ?, ?, ?)`
 );
+// Own wake-day `today` entirely: clear ALL of today's manual sleep_min sessions —
+// crucially the NAIVE-timestamp overnight the coaching block above seeded for
+// COACH_TODAY (23:00→04:00 as bare, non-tz strings → fixed 23:00Z→04:00Z). Its
+// old per-start_time DELETE only matched THIS block's own tz-correct start, so the
+// coaching duplicate survived: two 300-min overnights on today, and mainSleepSession's
+// duration-tie → earliest-END tiebreak flipped to the coaching row whenever the
+// pinned tz is west of UTC (ALLOS_TEST_NOW hour ≥ 14:00 UTC — utcHour drives the
+// Etc/GMT offset), rendering "22:00 → 03:00" and lumping the real overnight into a
+// 345-min "nap" (sleep-page:194 time-window flake). The coaching REST signal is
+// preserved: the tz-correct overnight is also 300 min (5h), so getSleepSignal still
+// trips the absolute floor.
+db.prepare(
+  `DELETE FROM metric_samples
+    WHERE profile_id = ? AND metric = 'sleep_min' AND source = 'manual'
+      AND date = ?`
+).run(PROFILE_ID, COACH_TODAY);
 for (const [start, end, value] of [
   [overnightStart, overnightEnd, 300],
   [napStart, napEnd, 45],
 ] as [string, string, number][]) {
-  db.prepare(
-    `DELETE FROM metric_samples
-      WHERE profile_id = ? AND metric = 'sleep_min' AND source = 'manual'
-        AND start_time = ?`
-  ).run(PROFILE_ID, start);
   sleepSessionInsert.run(PROFILE_ID, COACH_TODAY, start, end, value);
 }
 console.log(
