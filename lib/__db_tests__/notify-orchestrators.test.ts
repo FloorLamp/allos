@@ -38,6 +38,7 @@ import {
   getWeeklyRecap,
 } from "@/lib/notifications/weekly-recap-data";
 import { weekWindow } from "@/lib/week-window";
+import { recapRangeLabel } from "@/lib/weekly-recap";
 import { runRefills } from "@/lib/notifications/refill";
 import { runPreventive } from "@/lib/notifications/preventive";
 import { runEscalations } from "@/lib/notifications/escalate";
@@ -621,7 +622,8 @@ describe("runWeeklyRecap calendar-mode completed week (#1021)", () => {
     // window ending today — and counts the completed week's workout.
     const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
     const text = String(body.text);
-    expect(text).toContain(`${w.prevStart} – ${w.prevEnd}`);
+    // The range renders through the shared pref-aware label (#1218), never raw ISO.
+    expect(text).toContain(recapRangeLabel(w.prevStart, w.prevEnd));
     expect(text).not.toContain(`– ${td}`);
     expect(text).toContain("Workouts: 1");
 
@@ -660,7 +662,7 @@ describe("runWeeklyRecap calendar-mode completed week (#1021)", () => {
     // read "Workouts: 1 (1 last week)" — today's session as the subject with the
     // completed week demoted to the comparison slot; now the comparison is the
     // week BEFORE the completed one (empty).
-    expect(text).toContain(`${w.prevStart} – ${w.prevEnd}`);
+    expect(text).toContain(recapRangeLabel(w.prevStart, w.prevEnd));
     expect(text).toContain("Workouts: 1 (strength 1) (0 last week)");
   });
 });

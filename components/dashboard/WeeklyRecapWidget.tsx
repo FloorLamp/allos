@@ -1,7 +1,10 @@
 import { IconChartBar } from "@tabler/icons-react";
 import WidgetHeader from "./WidgetHeader";
 import { recapRangeLabel, type WeeklyRecap } from "@/lib/weekly-recap";
-import { DEFAULT_FORMAT_PREFS, type DisplayFormatPrefs } from "@/lib/format-date";
+import {
+  DEFAULT_FORMAT_PREFS,
+  type DisplayFormatPrefs,
+} from "@/lib/format-date";
 
 // Weekly recap (NEW, issue #32, fitness). A quiet, factual summary of the last
 // seven days — workouts + volume, PRs, adherence, a robust weight trend, and streak

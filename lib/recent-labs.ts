@@ -86,7 +86,8 @@ export function recentLabHighlights(
     .slice(0, limit)
     .map((r) => {
       const name = r.canonical_name?.trim() || r.name;
-      const age = todayStr != null ? daysBetweenDateStr(r.date, todayStr) : null;
+      const age =
+        todayStr != null ? daysBetweenDateStr(r.date, todayStr) : null;
       return {
         name,
         value: r.value,

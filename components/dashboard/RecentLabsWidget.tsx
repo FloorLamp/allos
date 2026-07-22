@@ -67,7 +67,11 @@ export default function RecentLabsWidget({
                 <span
                   data-testid="recent-lab-date"
                   data-stale={r.stale ? "true" : undefined}
-                  title={r.stale ? "Older than a year — not a recent result" : undefined}
+                  title={
+                    r.stale
+                      ? "Older than a year — not a recent result"
+                      : undefined
+                  }
                   className={`w-12 shrink-0 whitespace-nowrap text-right text-xs sm:w-14 ${
                     r.stale
                       ? "font-medium text-amber-600 dark:text-amber-400"
