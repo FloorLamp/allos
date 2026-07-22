@@ -174,8 +174,6 @@ const FIRST_ALLOW: Record<string, number> = {
   "edit-lock-badge.spec.ts": 2,
   "entry-ergonomics.spec.ts": 24,
   "exercise-guide.spec.ts": 4,
-  "food-slot-ranking.spec.ts": 4,
-  "household-history.spec.ts": 4,
   // illness-care carries a latent class-1 flake (a sibling mutates profile 1's
   // seeded illness state; exposed only when co-located at --repeat-each). Its lone
   // .first() stays frozen here until that flake is fixed in a focused follow-up.
@@ -193,24 +191,16 @@ const FIRST_ALLOW: Record<string, number> = {
   "medications-page.spec.ts": 1,
   "medications-ux-r2.spec.ts": 4,
   "mobile-ui-polish.spec.ts": 8,
-  "muscle-anatomy.spec.ts": 4,
   "prn-family.spec.ts": 1,
-  "review-inbox.spec.ts": 3,
   "risk-factors.spec.ts": 2,
   "routine-recommendation.spec.ts": 2,
   "session-recap.spec.ts": 6,
-  "skin.spec.ts": 4,
   "smoke.spec.ts": 7,
-  "smoking-history.spec.ts": 4,
-  "strength-standards.spec.ts": 3,
   "symptom-helpers.ts": 2,
   "symptom-log.spec.ts": 6,
-  "temperature-unit.spec.ts": 3,
   // two-factor / view-only-access each shed one grant-checkbox .first() when their
   // create+grant dance moved into e2e/family-helpers.ts (which scopes the checkbox by
   // the grant-cell testid, no .first()); two-factor keeps its recovery-code li .first().
-  "vision.spec.ts": 3,
-  "visits-lifecycle.spec.ts": 3,
   "weekly-recap.spec.ts": 2,
 };
 

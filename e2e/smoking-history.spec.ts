@@ -25,17 +25,17 @@ test.describe("smoking history (issue #83)", () => {
 
     // Choose "Former smoker" → the quantitative fields appear.
     await page.getByTestId("smoking-status").selectOption("former");
-    await expect(page.getByLabel("Saved").first()).toBeVisible();
+    await expect(page.getByLabel("Saved").first()).toBeVisible(); // first-ok: asserts a Saved autosave indicator appears (several fields save) — order-agnostic
     await expect(page.getByTestId("smoking-pack-years")).toBeVisible();
     await expect(page.getByTestId("smoking-quit-year")).toBeVisible();
 
     // Enter pack-years and a quit year; blur autosaves each.
     await page.getByTestId("smoking-pack-years").fill("22");
     await page.getByTestId("smoking-pack-years").blur();
-    await expect(page.getByLabel("Saved").first()).toBeVisible();
+    await expect(page.getByLabel("Saved").first()).toBeVisible(); // first-ok: asserts a Saved autosave indicator appears (several fields save) — order-agnostic
     await page.getByTestId("smoking-quit-year").fill("2016");
     await page.getByTestId("smoking-quit-year").blur();
-    await expect(page.getByLabel("Saved").first()).toBeVisible();
+    await expect(page.getByLabel("Saved").first()).toBeVisible(); // first-ok: asserts a Saved autosave indicator appears (several fields save) — order-agnostic
 
     // Reload — the structured record round-trips from profile_settings.
     await page.reload();
@@ -46,7 +46,7 @@ test.describe("smoking history (issue #83)", () => {
     // Reset to "Not recorded" — clears the record and hides the fields, leaving the
     // shared fixture as we found it.
     await page.getByTestId("smoking-status").selectOption("");
-    await expect(page.getByLabel("Saved").first()).toBeVisible();
+    await expect(page.getByLabel("Saved").first()).toBeVisible(); // first-ok: asserts a Saved autosave indicator appears (several fields save) — order-agnostic
     await expect(page.getByTestId("smoking-pack-years")).toHaveCount(0);
 
     await page.reload();

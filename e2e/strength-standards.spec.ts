@@ -23,7 +23,7 @@ test("exercise detail shows the bodyweight-band strength standard line (#152)", 
   // carries no barbell standard — so click the Back Squat row (a dataset lift) to
   // surface the standard line.
   await main.getByRole("cell", { name: /Back Squat/ }).click();
-  const standard = main.getByTestId("strength-standard").first();
+  const standard = main.getByTestId("strength-standard").first(); // first-ok: asserts a strength-standard row renders — order-agnostic presence
   await expect(standard).toBeVisible();
   await expect(standard).toContainText("Strength standard");
   // The coaching copy names a standard for the lifter's bodyweight.
@@ -43,7 +43,7 @@ test("the Analyze Benchmarks card renders the unified bodyweight-band tiers (#15
   await expect(main.getByText("Benchmarks", { exact: true })).toBeVisible();
   // The ladder is bodyweight-adjusted (× BW rungs) and labeled as such.
   await expect(
-    main.getByText("for your bodyweight & sex").first()
+    main.getByText("for your bodyweight & sex").first() // first-ok: asserts the bodyweight-adjusted label renders — order-agnostic presence
   ).toBeVisible();
-  await expect(main.getByText(/× BW/).first()).toBeVisible();
+  await expect(main.getByText(/× BW/).first()).toBeVisible(); // first-ok: asserts a × BW rung renders — order-agnostic presence
 });
