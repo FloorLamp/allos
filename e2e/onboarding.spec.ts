@@ -1,6 +1,10 @@
 import { test, expect } from "@playwright/test";
 import { loginAs, followLink } from "./nav";
-import { resetOnboardingFixture, withE2eDb } from "./onboarding-reset";
+import {
+  resetOnboardingFixture,
+  withE2eDb,
+  type OnboardingFixtureRole,
+} from "./onboarding-reset";
 import {
   E2E_LOGIN_ONBOARDING,
   E2E_LOGIN_ONBOARDING_CAREGIVER,
@@ -20,6 +24,14 @@ import {
 // other) before starting, so every repeat begins from the seeded state. The fixture
 // profiles are spec-OWNED (#868), which is what makes the direct DB reset legitimate.
 
+// This spec (a Playwright-runner file — env is loaded for it) owns the DB-path
+// resolution; it mirrors playwright.config.ts's DB_PATH fallback because workers
+// don't inherit the webServer env block.
+function resetFixture(role: OnboardingFixtureRole): void {
+  const dbPath = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+  withE2eDb(dbPath, (db) => resetOnboardingFixture(db, role));
+}
+
 // Goal-based onboarding (#719): an isolated, empty profile renders every outcome
 // branch, then moves through the metrics path from minimum facts → one real
 // baseline record → a personalized dashboard. The profile/login fixture is dedicated
@@ -30,7 +42,7 @@ test("a new profile reaches a useful dashboard through the metrics path", async 
   test.slow();
   // Repeat-safety: return this test's OWN fixture profile to the wizard's entry
   // state before logging in, so a repeat starts from not_started like run 1.
-  withE2eDb((db) => resetOnboardingFixture(db, "onboarding"));
+  resetFixture("onboarding");
   const page = await loginAs(browser, {
     username: E2E_LOGIN_ONBOARDING,
     password: E2E_MEMBER_PASSWORD,
@@ -383,7 +395,7 @@ test("a new profile reaches a useful dashboard through the metrics path", async 
 test("a caregiver profile path ends with household-oriented next steps", async ({
   browser,
 }) => {
-  withE2eDb((db) => resetOnboardingFixture(db, "caregiver"));
+  resetFixture("caregiver");
   const page = await loginAs(browser, {
     username: E2E_LOGIN_ONBOARDING_CAREGIVER,
     password: E2E_MEMBER_PASSWORD,
@@ -466,7 +478,7 @@ test("a granted login receives existing-profile orientation, not empty setup", a
 }) => {
   // Repeat-safety: the "Got it" click below writes the per-login dismissal key;
   // clear it so the orientation card shows again on a repeat.
-  withE2eDb((db) => resetOnboardingFixture(db, "orientation"));
+  resetFixture("orientation");
   const page = await loginAs(browser, {
     username: E2E_LOGIN_ORIENTATION,
     password: E2E_MEMBER_PASSWORD,

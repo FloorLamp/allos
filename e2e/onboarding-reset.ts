@@ -23,6 +23,13 @@
 // app background work — touches them, so a reset between repeats can't race
 // anything. Do NOT reach for this module to mutate shared/profile-1 state from a
 // spec; fixture ownership is what makes direct DB writes legitimate here.
+//
+// load-env first: lib/onboarding's (type-only) settings import textually reaches
+// lib/db, so the standalone-script env-bootstrap guard requires the env loader
+// to be this file's first import. It's idempotent — the seed-events host has
+// already loaded it, and in a Playwright worker it just loads the same .env the
+// config layer uses.
+import "../scripts/load-env";
 import Database from "better-sqlite3";
 import path from "node:path";
 import {
@@ -148,16 +155,18 @@ export function resetOnboardingFixture(
   writeWizardEntryState(db, profile.id);
 }
 
-// Open the e2e DB from the Playwright worker, run `fn`, close. The path mirrors
-// playwright.config.ts's DB_PATH fallback (workers don't inherit the webServer
-// env block). fileMustExist fails loud if the suite isn't running against the
+// Open the e2e DB at `dbPath` from the Playwright worker, run `fn`, close. The
+// CALLER (a spec — the Playwright runner loads env for it) resolves the path;
+// this module deliberately reads no environment variables so it stays exempt
+// from the standalone-script env-bootstrap guard
+// (lib/__tests__/script-env-bootstrap.test.ts) — it is a library for two hosts
+// (seed-events at boot, specs mid-suite), not an entrypoint. (That guard's scan
+// is textual, so even naming the env API here would re-flag the file.)
+// fileMustExist fails loud if the suite isn't running against the
 // expected isolated DB — this must never silently create (or touch) a dev
 // data/allos.db.
-export function withE2eDb<T>(fn: (db: DbHandle) => T): T {
-  const dbPath = path.resolve(
-    process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db"
-  );
-  const db = new Database(dbPath, { fileMustExist: true });
+export function withE2eDb<T>(dbPath: string, fn: (db: DbHandle) => T): T {
+  const db = new Database(path.resolve(dbPath), { fileMustExist: true });
   try {
     // The app is live and writing; wait out its write locks like every other
     // writer in the 3-process topology does.
