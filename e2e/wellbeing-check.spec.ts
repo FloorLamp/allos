@@ -1,4 +1,5 @@
 import { test, expect, type Page, type Locator } from "@playwright/test";
+import { createProfileViaFamily, switchToProfile } from "./family-helpers";
 
 // The unified "How are you today?" daily check-in card (issue #992): the one-tap
 // mood log composed with the illness front door in ONE shell. Covered states:
@@ -23,80 +24,7 @@ import { test, expect, type Page, type Locator } from "@playwright/test";
 // Family and switches to it — every mutation lands on a profile this spec owns.
 // afterEach switches the shared session back to the admin profile.
 
-let profileSeq = 0;
 const ADMIN_PROFILE = "admin";
-
-async function switchToProfile(page: Page, name: string): Promise<void> {
-  const target = page
-    .getByTestId("user-menu-popover")
-    .getByRole("button", { name });
-  await expect(async () => {
-    await page.getByTestId("user-menu-trigger").click();
-    await expect(target).toBeVisible({ timeout: 2_000 });
-  }).toPass();
-  await target.click();
-  await expect(page.getByTestId("user-menu-trigger")).toContainText(name);
-}
-
-// A profile ROW renders its name only in a rename `<input value={name}>` — the
-// `getByText(name)` the create used to settle on was the transient success banner
-// (`Added profile "<name>"`), which a reload/goto wipes. So the DURABLE "did the
-// create land" signal is a profile-row input carrying this exact value.
-// `input:not([placeholder])` excludes the "Add a profile" field (placeholder
-// "Name"); the delete-confirm field isn't rendered in the resting card. Reading
-// the value PROPERTY via evaluateAll (React doesn't reflect a controlled input's
-// value to the DOM attribute, so a `[value="…"]` selector wouldn't match) also
-// sidesteps strict-mode without a first-match locator.
-async function profileRowExists(page: Page, name: string): Promise<boolean> {
-  return page
-    .locator("div.card")
-    .filter({ hasText: "Add a profile" })
-    .locator("input:not([placeholder])")
-    .evaluateAll(
-      (els, n) => els.some((e) => (e as HTMLInputElement).value === n),
-      name
-    );
-}
-
-async function freshProfile(page: Page, label: string): Promise<string> {
-  const name = `${label}-${Date.now()}-${++profileSeq}`;
-  // toPass, mirroring view-only-access.spec.ts's createMember (#830): the Add
-  // button is an onClick Server Action (not a native form submit), so a click in
-  // the hydration window is silently swallowed and no create POST fires; under
-  // full-suite load the old raw click + transient-banner assert timed out (the
-  // retries=0 failure this hardens). Retry the whole goto→fill→click→verify cycle
-  // against the DURABLE profile row. Idempotency matters here because profile
-  // names are NOT unique-constrained (createProfile does a bare INSERT — unlike
-  // the NOCASE-unique login username), so a blind re-click could add a SECOND
-  // same-named profile; the loop is therefore VERIFY-FIRST — it re-reads the card
-  // after each goto and only clicks Add when the row is absent, so a retry after a
-  // landed-but-slow create never duplicates.
-  await expect(async () => {
-    await page.goto("/settings/family");
-    if (await profileRowExists(page, name)) return;
-    const profilesCard = page
-      .locator("div.card")
-      .filter({ hasText: "Add a profile" });
-    await profilesCard.getByPlaceholder("Name", { exact: true }).fill(name);
-    await profilesCard
-      .getByRole("button", { name: "Add", exact: true })
-      .click();
-    // Settle on the durable row, not the transient banner; give the action a
-    // moment to land before forcing a full re-goto retry.
-    await expect
-      .poll(() => profileRowExists(page, name), { timeout: 8000 })
-      .toBe(true);
-  }).toPass({ timeout: 45_000 });
-  await switchToProfile(page, name);
-  await page.goto("/");
-  if (page.url().includes("/onboarding")) {
-    await page
-      .getByRole("button", { name: "Set up later, take me to my dashboard" })
-      .click();
-    await expect(page).toHaveURL(/\/$|\/\?/);
-  }
-  return name;
-}
 
 // Tap one mood face and wait until the SERVER acknowledges the write (the marker
 // re-renders from the refreshed server prop). toPass retries the tap through the
@@ -131,7 +59,7 @@ test.describe("Daily wellbeing check (#992)", () => {
     page,
   }) => {
     test.slow();
-    await freshProfile(page, "moodwell");
+    await createProfileViaFamily(page, "moodwell");
     await page.goto("/");
 
     // State 1 — the unified shell: mood row + the quiet illness branch.
@@ -176,7 +104,7 @@ test.describe("Daily wellbeing check (#992)", () => {
     page,
   }) => {
     test.slow();
-    await freshProfile(page, "moodmore");
+    await createProfileViaFamily(page, "moodmore");
     await page.goto("/");
 
     const card = page.getByTestId("how-are-you-card");
@@ -232,7 +160,7 @@ test.describe("Daily wellbeing check (#992)", () => {
     page,
   }) => {
     test.slow();
-    await freshProfile(page, "moodsick");
+    await createProfileViaFamily(page, "moodsick");
     await page.goto("/");
 
     const card = page.getByTestId("how-are-you-card");
