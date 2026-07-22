@@ -60,24 +60,43 @@ describe("biomarkerFlagDismissalKey", () => {
     );
   });
 
-  it("keys a family member on its #482 family, matching the retest key's family portion (issue #564)", () => {
-    // The flag key now uses biomarkerFamily (was raw name — the false-parity #482
-    // gap), so a dismiss on "Vitamin D3" covers "Vitamin D2 / Total 25-OH".
-    expect(biomarkerFlagDismissalKey("Vitamin D3")).toBe(
+  it("keys the TOTAL vitamin-D spellings + A1c/eAG on their #482 family (issue #564)", () => {
+    // The flag key uses the IDENTITY family (biomarkerFamily). The TOTAL 25-OH
+    // spellings still share one flag key…
+    expect(biomarkerFlagDismissalKey("Vitamin D, 25-Hydroxy")).toBe(
       "biomarker-flag:family:vitamin-d-25-hydroxy"
     );
-    expect(biomarkerFlagDismissalKey("Vitamin D3, 25-Hydroxy")).toBe(
+    expect(biomarkerFlagDismissalKey("Vitamin D")).toBe(
       biomarkerFlagDismissalKey("Vitamin D, Total")
     );
-    // The flag key and the retest key resolve to the SAME family portion — the
-    // shared acknowledgment (#564) lines up with the retest key that only differs
-    // by prefix ("biomarker-flag:" vs "biomarker:").
+    // The flag key and the retest key resolve to the SAME family portion for the
+    // total — the shared acknowledgment (#564) lines up with the retest key that
+    // only differs by prefix ("biomarker-flag:" vs "biomarker:").
     expect(
       biomarkerFlagDismissalKey("HbA1c").slice("biomarker-flag:".length)
     ).toBe(
       biomarkerDismissalKey("Estimated Average Glucose").slice(
         "biomarker:".length
       )
+    );
+  });
+
+  it("keys each D2/D3 fraction on its OWN flag key so fractions flag independently (#1193)", () => {
+    // The fractions are distinct measurements — a flagged D3 must not be masked by a
+    // normal total, so the flag dismissal narrows to the fraction's own identity and
+    // does NOT collapse onto the total's family key.
+    expect(biomarkerFlagDismissalKey("Vitamin D3, 25-Hydroxy")).not.toBe(
+      biomarkerFlagDismissalKey("Vitamin D, Total")
+    );
+    expect(biomarkerFlagDismissalKey("Vitamin D2, 25-Hydroxy")).not.toBe(
+      biomarkerFlagDismissalKey("Vitamin D3, 25-Hydroxy")
+    );
+    expect(biomarkerFlagDismissalKey("Vitamin D3, 25-Hydroxy")).toBe(
+      "biomarker-flag:vitamin d3, 25-hydroxy"
+    );
+    // But their RETEST dismissal still binds to the broad family (shared redraw).
+    expect(biomarkerDismissalKey("Vitamin D3, 25-Hydroxy")).toBe(
+      biomarkerDismissalKey("Vitamin D, Total")
     );
   });
 

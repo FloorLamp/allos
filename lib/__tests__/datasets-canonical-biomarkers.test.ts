@@ -63,9 +63,15 @@ import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 // whose flags were never derived become judgeable; the dataset rows are unchanged, but
 // the version bump legitimately changes the signature so the boot reconcile runs once
 // (also re-flagging the Body Temperature rows migration 074 converted to °F).
+// Updated for #1193/#1195: five new curated entries — the vitamin-D D2/D3 fractions
+// (null bands, so no fraction re-flags) and calcitriol (1,25-dihydroxy, 18–72 pg/mL),
+// plus plain C-Reactive Protein (mg/L, ≤10) and Glucose, Fasting (70–99 mg/dL) — add
+// flag-relevant rows, so the signature legitimately changes and the boot reconcile
+// re-flags stored orphaned readings (a fasting glucose / plain CRP that had no band)
+// against the new bands on the next boot.
 const FLAG_SIGNATURE_GOLDEN =
   // A SHA-256 content hash of the canonical dataset; provably synthetic.
-  "57ae89646d2be89cf8e0f5bafb5944b22a0a7af35e67e76cafda601c1fc81d8f"; // phi-scan-ok
+  "a5a3b9293c623f5e8a74ebfa9fa0255b96e349f0902c521e677cc55b422f3a4d"; // phi-scan-ok
 
 describe("canonical-biomarkers dataset on the curated-dataset framework", () => {
   it("passes the whole framework harness (citation + identity + refusal + no collisions)", () => {

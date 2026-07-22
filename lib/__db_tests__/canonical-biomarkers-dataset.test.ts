@@ -86,6 +86,11 @@ describe("canonical-biomarkers seed parity (fresh boot === framework read layer)
 describe("canonical-biomarkers flag-version gate still recomputes on a range change", () => {
   let profileId: number;
   let recId: number;
+  // A previously-ORPHANED analyte (#1195): before its catalog entry existed, a
+  // "Glucose, Fasting" reading had no reference band and so carried no flag. Now that
+  // it has an entry (70–99), the reconcile keyed on the changed signature must derive
+  // its flag for the already-stored row — the end-to-end propagation the issue asks for.
+  let fastingRecId: number;
 
   const flagOf = (id: number): string | null => {
     const r = db
@@ -113,6 +118,17 @@ describe("canonical-biomarkers flag-version gate still recomputes on a range cha
         )
         .run(profileId, today(profileId)).lastInsertRowid
     );
+    // A stored fasting glucose of 130 (above the new 70–99 band) with NO flag — as it
+    // would sit after having been imported before the entry existed (#1195).
+    fastingRecId = Number(
+      db
+        .prepare(
+          `INSERT INTO medical_records
+             (profile_id, date, category, name, value, unit, canonical_name, value_num, flag)
+           VALUES (?, ?, 'lab', 'Glucose, Fasting', '130', 'mg/dL', 'Glucose, Fasting', 130, NULL)`
+        )
+        .run(profileId, today(profileId)).lastInsertRowid
+    );
   });
 
   it("re-derives a stored record's flag when the signature moved (simulated range edit)", () => {
@@ -124,6 +140,8 @@ describe("canonical-biomarkers flag-version gate still recomputes on a range cha
     reconcileFlagsIfCanonicalChanged(db);
 
     expect(flagOf(recId)).toBe("high");
+    // The formerly-orphaned fasting glucose gains its "high" flag from the new band.
+    expect(flagOf(fastingRecId)).toBe("high");
     // …and the gate recorded the current signature, so it runs once per change.
     const stored = db
       .prepare("SELECT value FROM settings WHERE key = 'canonical_flags_sig'")

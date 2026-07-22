@@ -62,7 +62,7 @@ import {
 } from "../../risk-stratification";
 import { lifeStage } from "../../life-stage";
 import { getRiskFactors } from "./risk";
-import { biomarkerFamily } from "../../canonical-name";
+import { biomarkerRetestIdentity } from "../../canonical-name";
 import { biomarkerDismissalKey } from "../../dismissal-keys";
 import { derivedInputCanonicalNamesFor } from "../../derived-biomarkers";
 import { frequencyScopeLabel, isGoalLive } from "../../goals";
@@ -673,15 +673,18 @@ function monthsApprox(days: number): number {
 // interval, so a quarterly HbA1c reads as overdue far sooner than an annual lipid
 // panel; uncurated analytes keep the flat 365-day fallback.
 //
-// Readings are grouped by the ONE #482 biomarker FAMILY identity (biomarkerFamily),
-// the same grouping the dedup/series/starred surfaces use — so almost every analyte
-// is its own family (keyed by canonical name), but the interchangeable-name families
-// (the 25-hydroxy vitamin-D variants total/generic/D2/D3, and A1c ↔ eAG) collapse
-// into one: a recent reading of ANY member supersedes an old sibling, so the stale
-// variants don't each nag as overdue when a fresh family reading exists. Per family
-// we keep the NEWEST reading; its name → the stable family `biomarker:<family>`
-// dismissal key (via biomarkerDismissalKey), so a dismiss on any member silences the
-// family and the key doesn't drift as which member is newest changes.
+// Readings are grouped by the RETEST-clock identity (biomarkerRetestIdentity) — the
+// #482 family for every analyte, WIDENED for vitamin D to the broad total+D2+D3 25-OH
+// scope (#1193). Almost every analyte is its own family (keyed by canonical name), but
+// the interchangeable-clock families (the 25-hydroxy vitamin-D variants
+// total/generic/D2/D3, and A1c ↔ eAG) collapse into one: a recent reading of ANY
+// member supersedes an old sibling, so the stale variants don't each nag as overdue
+// when a fresh family reading exists — even though the D2/D3 fractions now keep their
+// OWN identity on the series/dedup/star surfaces (they share only the redraw clock).
+// Per family we keep the NEWEST reading; its name → the stable family
+// `biomarker:<family>` dismissal key (via biomarkerDismissalKey, which routes through
+// the SAME retest identity), so a dismiss on any member silences the family and the
+// key doesn't drift as which member is newest changes.
 //
 // DERIVED-analyte freshness (#482 scope 2): a stored derived index (Non-HDL, eGFR…)
 // inherits its INPUTS' freshness — re-drawing Total + HDL re-derives Non-HDL — so we
@@ -693,14 +696,14 @@ function biomarkerItems(profileId: number, today: string): UpcomingItem[] {
   // freshness lookup below reads an input analyte's family date from here.
   const latestDateByFamily = new Map<string, string>();
   for (const r of latest) {
-    const fam = biomarkerFamily(r.canonical_name?.trim() || r.name);
+    const fam = biomarkerRetestIdentity(r.canonical_name?.trim() || r.name);
     const prev = latestDateByFamily.get(fam);
     if (!prev || r.date > prev) latestDateByFamily.set(fam, r.date);
   }
   const byFamily = new Map<string, MedicalRecord>();
   for (const r of latest) {
     if (!RETEST_CATEGORIES.has(r.category ?? "")) continue;
-    const famKey = biomarkerFamily(r.canonical_name?.trim() || r.name);
+    const famKey = biomarkerRetestIdentity(r.canonical_name?.trim() || r.name);
     const prev = byFamily.get(famKey);
     // Newest wins; tie-break on higher id (later-entered), matching
     // getMedicalRecords' "date DESC, id DESC" current-reading ranking.
@@ -720,7 +723,7 @@ function biomarkerItems(profileId: number, today: string): UpcomingItem[] {
     for (const input of derivedInputCanonicalNamesFor(
       r.canonical_name?.trim() || ""
     )) {
-      const inputDate = latestDateByFamily.get(biomarkerFamily(input));
+      const inputDate = latestDateByFamily.get(biomarkerRetestIdentity(input));
       if (inputDate && inputDate > effectiveDate) effectiveDate = inputDate;
     }
     // Anchored one-shot (issue #517): a newborn analyte (bilirubin / metabolic

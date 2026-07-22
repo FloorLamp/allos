@@ -65,6 +65,9 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "2345-7": "Glucose", // Glucose [Mass/volume] in Serum/Plasma (mg/dL). The
   // whole-blood form (2339-0) is intentionally NOT mapped: whole blood runs ~10%
   // below plasma, so mapping it to the serum range would false-flag normals low.
+  "1558-6": "Glucose, Fasting", // Fasting glucose [Mass/volume] in Serum/Plasma
+  // (mg/dL). Distinct from a random Glucose (2345-7): fasting has its own 70–99
+  // diagnostic band, so it routes to the dedicated "Glucose, Fasting" entry (#1195).
   "3094-0": "BUN", // Urea nitrogen [Mass/volume] in Serum/Plasma (mg/dL)
   "2160-0": "Creatinine", // Creatinine [Mass/volume] in Serum/Plasma (mg/dL)
   "2951-2": "Sodium", // Sodium [Moles/volume] in Serum/Plasma (mmol/L)
@@ -92,6 +95,9 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "2085-9": "HDL Cholesterol", // Cholesterol in HDL [Mass/volume] in Serum/Plasma
   "13457-7": "LDL Cholesterol", // Cholesterol in LDL [Mass/volume], by calculation
   "18262-6": "LDL Cholesterol", // Cholesterol in LDL [Mass/volume], by Direct assay
+  "2089-1": "LDL Cholesterol", // Cholesterol in LDL [Mass/volume] in Serum/Plasma
+  // (the generic LDL-C code — a CCD carrying only this LOINC + a nonstandard display
+  // name would otherwise miss the name path, #1195).
   "2571-8": "Triglycerides", // Triglyceride [Mass/volume] in Serum/Plasma
   "43396-1": "Non-HDL Cholesterol", // Cholesterol non HDL [Mass/volume] in Serum/Plasma
   "13458-5": "VLDL Cholesterol", // Cholesterol in VLDL [Mass/volume], by calculation

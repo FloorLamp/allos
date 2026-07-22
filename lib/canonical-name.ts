@@ -91,6 +91,12 @@ const CANONICAL_ALIASES: [string, string][] = [
   ["High-Sensitivity C-Reactive Protein", "hs-CRP"],
   ["C-Reactive Protein, High Sensitivity", "hs-CRP"],
   ["Cardio CRP", "hs-CRP"],
+  // Plain (standard-sensitivity) CRP — a DIFFERENT assay than hs-CRP (mg/L, acute
+  // inflammation/infection cutoffs, not the CV-risk hs range), so the bare "CRP"
+  // abbreviation routes to its OWN "C-Reactive Protein" entry (#1195), NEVER folded
+  // onto hs-CRP. The spelled-out "C-Reactive Protein" normalizes onto that entry
+  // directly; the abbreviation needs the explicit route.
+  ["CRP", "C-Reactive Protein"],
   // Prostate (unqualified PSA = total; the Free % entry stays distinct)
   ["Prostate Specific Antigen", "PSA"],
   ["Prostate-Specific Antigen", "PSA"],
@@ -109,6 +115,13 @@ const CANONICAL_ALIASES: [string, string][] = [
   ["Apolipoprotein B", "ApoB"],
   ["Apo B", "ApoB"],
   ["Apolipoprotein B-100", "ApoB"],
+  // LDL cholesterol: the near-universal "LDL-C" print form and the calculated-method
+  // drift the token set misses ({c, ldl} / {calculated, ldl} ≠ {cholesterol, ldl}),
+  // so they orphan into their own band-less series (#1195). Route them onto the real
+  // "LDL Cholesterol" entry so a report's abbreviation joins the right series.
+  ["LDL-C", "LDL Cholesterol"],
+  ["LDL Calculated", "LDL Cholesterol"],
+  ["LDL Cholesterol, Calculated", "LDL Cholesterol"],
   // Iron
   ["Total Iron Binding Capacity", "TIBC"],
   // CBC differential — ABSOLUTE counts (cells/uL). The model prefixes "Absolute"
@@ -119,6 +132,11 @@ const CANONICAL_ALIASES: [string, string][] = [
   // "Absolute Neutrophil Count", which missed in three separate extractions.
   ["Absolute Neutrophil Count", "Neutrophils, Absolute"],
   ["Absolute Neutrophils", "Neutrophils, Absolute"],
+  // Lymphocytes were the ONE cell line the curated "Absolute X Count" set skipped
+  // (#1195) — the ", Absolute" entry exists but the prefixed print form orphaned.
+  // Route it to the cells/uL entry like its neutrophil sibling above.
+  ["Absolute Lymphocyte Count", "Lymphocytes, Absolute"],
+  ["Absolute Lymphocytes", "Lymphocytes, Absolute"],
   ["Absolute Monocyte Count", "Monocytes"],
   ["Absolute Monocytes", "Monocytes"],
   ["Absolute Eosinophil Count", "Eosinophils"],
@@ -135,13 +153,26 @@ const CANONICAL_ALIASES: [string, string][] = [
   ["Vitamin B9", "Folate"],
   ["Retinol", "Vitamin A (Retinol)"],
   ["Vitamin A", "Vitamin A (Retinol)"],
-  // 25-OH vitamin D. normalizeCanonicalKey already folds "25-OH Vitamin D" onto the
-  // entry via the 25-OH->25-hydroxy synonym; only the "D3" suffix breaks it. The app
-  // models a single 25-hydroxy storage marker (no D2/D3 fractionation), so the D3
-  // print form routes there too. NOT bare "Vitamin D3" — that is the parent vitamin
-  // (cholecalciferol), a distinct thing from its 25-hydroxy metabolite.
-  ["25-OH Vitamin D3", "Vitamin D, 25-Hydroxy"],
-  ["25-Hydroxyvitamin D3", "Vitamin D, 25-Hydroxy"],
+  // 25-OH vitamin D. normalizeCanonicalKey folds "25-OH Vitamin D" onto the TOTAL
+  // storage-marker entry via the 25-OH->25-hydroxy synonym. The D2/D3 fractions are
+  // DISTINCT analytes (#1193) — each has its OWN catalog entry and its own trendable
+  // series that flags independently — so an isoform-suffixed print form routes to its
+  // OWN fraction entry, NEVER folded onto the total (a low D2 is normal for anyone not
+  // on ergocalciferol and must not inherit the total's 30-100 sufficiency band). The
+  // exact "25-OH Vitamin Dn" forms already normalize onto "Vitamin Dn, 25-Hydroxy"
+  // directly; the concatenated "25-Hydroxyvitamin Dn" form needs the explicit route.
+  // NOT bare "Vitamin D2/D3" — that is the parent vitamin (ergo-/cholecalciferol), a
+  // distinct thing from its 25-hydroxy metabolite.
+  ["25-OH Vitamin D2", "Vitamin D2, 25-Hydroxy"],
+  ["25-Hydroxyvitamin D2", "Vitamin D2, 25-Hydroxy"],
+  ["25-OH Vitamin D3", "Vitamin D3, 25-Hydroxy"],
+  ["25-Hydroxyvitamin D3", "Vitamin D3, 25-Hydroxy"],
+  // Active hormone (calcitriol) — the 1,25-dihydroxy metabolite is its OWN pg/mL
+  // analyte (hypercalcemia / sarcoidosis / CKD workups), never the 25-OH storage
+  // form (#1193). "1,25-OH Vitamin D" already normalizes onto the entry via the
+  // 1,25-diOH synonym; the concatenated/eponymous forms need the explicit route.
+  ["1,25-Dihydroxyvitamin D", "Vitamin D, 1,25-Dihydroxy"],
+  ["Calcitriol", "Vitamin D, 1,25-Dihydroxy"],
   // Electrolytes (the BMP CO2/bicarbonate line)
   ["CO2", "Carbon Dioxide"],
   ["Total CO2", "Carbon Dioxide"],
@@ -461,19 +492,32 @@ export const HEMOGLOBIN_A1C_FAMILY = "hemoglobin-a1c";
 export const BIOMARKER_FAMILIES: readonly BiomarkerFamily[] = [
   {
     key: VITAMIN_D_25OH_FAMILY,
+    // IDENTITY scope (#1193): the TOTAL 25-OH storage marker's spellings ONLY. The
+    // D2/D3 fractions are DELIBERATELY EXCLUDED here (they were folded in by #482 —
+    // an over-collapse: the family key drives the cross-source dedup partition, the
+    // is_latest/current marker, the chart series, and the star, so folding a D3
+    // fraction into the total's identity would dedup a D3 (45) against a total (50)
+    // on one date and mark the whole group current off whichever is newest — the
+    // exact FIT-vs-colonoscopy failure mode the exclusion discipline warns against).
+    // Each fraction now keeps its OWN trendable identity and flags independently (a
+    // low D2 must never inherit the total's 30-100 sufficiency band). The BROADER
+    // total+D2+D3 RETEST clock (#481) lives apart in biomarkerRetestIdentity, the
+    // audiogram #713 pattern: each real series keeps its own identity, a broader key
+    // carries only the shared "one clock" role.
     members: [
       "vitamin d, 25-hydroxy",
       "vitamin d, total",
       "vitamin d",
-      "vitamin d2, 25-hydroxy",
-      "vitamin d3, 25-hydroxy",
-      "vitamin d2",
-      "vitamin d3",
       "25-oh vitamin d",
       "25-hydroxy vitamin d",
       "25-hydroxyvitamin d",
     ],
-    match: (s) => vitaminDRetestFamily(s) === VITAMIN_D_25OH_FAMILY,
+    // The total 25-OH spellings the SQL preimage can't enumerate — but NOT the D2/D3
+    // isoforms (vitaminDIsoform pins those out) and NOT the 1,25/binding/receptor
+    // analytes (vitaminDRetestFamily already excludes them).
+    match: (s) =>
+      vitaminDRetestFamily(s) === VITAMIN_D_25OH_FAMILY &&
+      vitaminDIsoform(s) === null,
   },
   {
     key: HEMOGLOBIN_A1C_FAMILY,
@@ -509,4 +553,25 @@ export function biomarkerFamily(name: string | null | undefined): string {
     }
   }
   return trimmed;
+}
+
+// The RETEST-clock grouping key (#1193). BROADER than biomarkerFamily's identity
+// scope for vitamin D ONLY: the 25-OH storage-form metabolites (total + D2 + D3)
+// share ONE retest clock — a fresh reading of ANY member satisfies the redraw for
+// all, so an old D2/D3 breakdown isn't flagged overdue when a recent total exists
+// (the #481 behavior #482 subsumed and #1193 restores). Every OTHER analyte uses
+// its biomarkerFamily identity unchanged (A1c ↔ eAG still share one clock; every
+// singleton stays its own). This is the ONLY place vitamin D's retest breadth
+// diverges from its narrowed series/dedup/star identity — the retest generator, the
+// retest-worthiness gate, and the retest dismissal key all route through here, while
+// the identity surfaces route through biomarkerFamily. Returns the SAME
+// `family:vitamin-d-25-hydroxy` string biomarkerFamily gives the total, so a retest
+// key stays byte-stable across which member is newest.
+export function biomarkerRetestIdentity(
+  name: string | null | undefined
+): string {
+  if (vitaminDRetestFamily(name) === VITAMIN_D_25OH_FAMILY) {
+    return `family:${VITAMIN_D_25OH_FAMILY}`;
+  }
+  return biomarkerFamily(name);
 }
