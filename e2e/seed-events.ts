@@ -161,6 +161,8 @@ import {
   TOAST_SWITCH_B_PROFILE,
   E2E_LOGIN_TRENDS_BODY,
   TRENDS_BODY_PROFILE,
+  E2E_LOGIN_REST,
+  REST_CARD_PROFILE,
 } from "./fixture-logins";
 import { adoptTemplate, activateRoutine } from "../lib/routines";
 import { getTimezone, setInstanceTimezone, setTimezone } from "../lib/settings";
@@ -4257,5 +4259,52 @@ console.log(
   seedMemberLogin(E2E_LOGIN_TRENDS_BODY, tbId, "read");
   console.log(
     `e2e: seeded Trends → Body mobile fixture — profile ${tbId} (${TRENDS_BODY_PROFILE}) (#1067)`
+  );
+}
+
+// ── Coaching rest card: multi-signal + "Training anyway" (#1148 / #1150) ──────────
+// A dedicated adult profile tripping TWO concurrent under-recovery signals so the
+// dashboard coaching card leads with the salience-ordered primary (rest-sleep) AND
+// shows the "Also: …" secondary line (rest-rhr, #1148), and the "Training anyway"
+// acknowledgment (#1150) has a real rest rec to transform. Isolated from profile 1 so
+// this spec's ack/snooze writes never race the neighbor coaching specs. Idempotent —
+// clears its own fixture rows first. Synthetic values only; relative dates never stale.
+{
+  const rcId = fixtureProfileId(REST_CARD_PROFILE);
+  const rcToday = today(rcId);
+  const rcPrevNight = shiftDateStr(rcToday, -1);
+  db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(rcId);
+  db.prepare(
+    `DELETE FROM metric_samples WHERE profile_id = ? AND metric = 'sleep_min'`
+  ).run(rcId);
+  db.prepare(
+    `DELETE FROM activities WHERE profile_id = ? AND external_id = 'e2e:rest-card-context'`
+  ).run(rcId);
+
+  // Signal 1 — a short overnight (300 min < the 6h floor) → rest-sleep fires.
+  db.prepare(
+    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+     VALUES (?, 'manual', 'sleep_min', ?, ?, ?, 300)`
+  ).run(rcId, rcToday, `${rcPrevNight}T23:00:00Z`, `${rcToday}T04:00:00Z`);
+
+  // Signal 2 — resting HR elevated today (62) over a ~54 baseline (prior days) →
+  // rest-rhr fires with a fixed threshold (a flat baseline has zero spread).
+  const insRcHr = db.prepare(
+    `INSERT INTO body_metrics (profile_id, date, resting_hr, notes)
+     VALUES (?, ?, ?, 'e2e:rest-card')`
+  );
+  insRcHr.run(rcId, rcToday, 62);
+  for (let d = 1; d <= 5; d++) insRcHr.run(rcId, shiftDateStr(rcToday, -d), 54);
+
+  // Training context (one old strength day, well outside any streak/load window) so
+  // the engine evaluates recovery at all — rest presupposes a training context.
+  db.prepare(
+    `INSERT INTO activities (profile_id, date, type, title, duration_min, intensity, source, external_id)
+     VALUES (?, ?, 'strength', 'Rest Card context lift', 40, 'hard', 'manual', 'e2e:rest-card-context')`
+  ).run(rcId, shiftDateStr(rcToday, -10));
+
+  seedMemberLogin(E2E_LOGIN_REST, rcId, "write");
+  console.log(
+    `e2e: seeded coaching rest-card fixture — profile ${rcId} (${REST_CARD_PROFILE}) (#1148/#1150)`
   );
 }

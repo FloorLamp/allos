@@ -562,3 +562,15 @@ export const E2E_LOGIN_ILLNESS_RO = "e2e_illness_ro";
 // the spec only navigates + scrolls (no writes), so --repeat-each stays clean.
 export const E2E_LOGIN_TRENDS_BODY = "e2e_trends_body";
 export const TRENDS_BODY_PROFILE = "Trends Body (e2e)";
+
+// #1148/#1150 — the coaching rest card. A dedicated adult profile tripping TWO
+// concurrent under-recovery signals at once: a short night (below the 6h floor →
+// rest-sleep) AND an elevated resting HR (62 vs a ~54 baseline → rest-rhr), plus one
+// old strength activity for training context. So the dashboard coaching card leads with
+// the salience-ordered primary AND shows the "Also: …" line (#1148), and the
+// "Training anyway" acknowledgment (#1150) has a real multi-signal rest rec to
+// transform. Isolated on purpose: the ack/snooze writes here would race the coaching
+// specs' reads on profile 1; its own profile means --repeat-each stays clean (the spec
+// resets its ack/snooze rows itself).
+export const E2E_LOGIN_REST = "e2e_rest";
+export const REST_CARD_PROFILE = "Rest Card (e2e)";
