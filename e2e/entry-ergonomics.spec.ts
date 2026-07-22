@@ -15,7 +15,7 @@ async function pickActivity(page: Page, name: string) {
     .getByRole("listbox")
     .getByRole("button")
     .filter({ hasText: name })
-    .first()
+    .first() // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
     .click();
 }
 
@@ -53,9 +53,8 @@ test("command palette 'weight 84.3' logs a body metric (#29)", async ({
   // so today's just-logged entry is the first one — rather than free text, which
   // also matches the (visually hidden) chart axis/point labels.
   await page.goto("/trends?tab=body");
-  await expect(page.getByTestId("body-weight-cell").first()).toContainText(
-    "84.3"
-  );
+  const weightCell = page.getByTestId("body-weight-cell").first(); // first-ok: the most-recent body-weight cell (newest-first) — order-agnostic
+  await expect(weightCell).toContainText("84.3");
 });
 
 test("'Log again' pre-fills a create form that saves a new activity (#29)", async ({
@@ -67,12 +66,12 @@ test("'Log again' pre-fills a create form that saves a new activity (#29)", asyn
   const titleCards = page
     .locator('[id^="activity-"]')
     .filter({ hasText: "Journal merge keeper" });
-  await expect(titleCards.first()).toBeVisible();
+  await expect(titleCards.first()).toBeVisible(); // first-ok: the "Journal merge keeper" card THIS spec created (filtered) — one match
   const before = await titleCards.count();
 
   // Open the first matching card's overflow (⋯) menu → "Log again".
   await titleCards
-    .first()
+    .first() // first-ok: the "Journal merge keeper" card THIS spec created (filtered) — one match
     .getByRole("button", { name: "Activity actions" })
     .click();
   await page.getByTestId("log-again").click();
@@ -124,7 +123,8 @@ test("Journal actions share the search toolbar and stay outside the editor scrol
   await expect(
     cadence.locator('[aria-label$="— no workouts"], a[aria-label*="session"]')
   ).toHaveCount(21);
-  await expect(cadence.getByTestId("active-day").first()).toHaveAttribute(
+  const activeDay = cadence.getByTestId("active-day").first(); // first-ok: an active-day cell in the cadence strip (count asserted above) — order-agnostic
+  await expect(activeDay).toHaveAttribute(
     "href",
     /\/training\?tab=log#day-\d{4}-\d{2}-\d{2}/
   );
@@ -249,7 +249,7 @@ test("edit mode surfaces the exercise's previous sessions (#188)", async ({
   const pushCard = main
     .locator('[id^="activity-"]')
     .filter({ hasText: "Push day" })
-    .first();
+    .first(); // first-ok: the seeded Push day session card (filtered by its title) — order-agnostic
   await expect(pushCard).toBeVisible();
 
   // Click the card's title to open the editor in EDIT mode (openEdit).
@@ -265,11 +265,11 @@ test("edit mode surfaces the exercise's previous sessions (#188)", async ({
   // falls back to the overlay (a timing the spec must not depend on). The
   // testid cannot double-render — there is exactly one editor instance — so
   // the #206 main-scoping rule doesn't apply here.
-  const panel = page.getByTestId("recent-sessions").first();
+  const panel = page.getByTestId("recent-sessions").first(); // first-ok: the recent-sessions panel (see comment on scoping) — order-agnostic
   await expect(panel).toBeVisible();
   // …and it lists at least one prior session row (self-excluded: the session
   // being edited never appears in its own Recent list).
-  await expect(panel.getByRole("listitem").first()).toBeVisible();
+  await expect(panel.getByRole("listitem").first()).toBeVisible(); // first-ok: asserts a session renders in the scoped Recent panel — order-agnostic presence
 
   // Seeded strength rows store a 60-minute duration without start/end times.
   // It remains an editable top-level session field and feeds the same estimate
@@ -322,21 +322,21 @@ test("editing cardio duration updates the parent session total", async ({
   const card = page
     .locator('[id^="activity-"]')
     .filter({ hasText: "Intervals" })
-    .first();
+    .first(); // first-ok: the "Intervals" activity card (filtered by its title) — order-agnostic
   await expect(card).toBeVisible();
   await card.getByRole("button", { name: "Intervals" }).click();
 
   const duration = page.getByTestId("cardio-duration");
   await expect(duration).toHaveValue("28");
   await duration.fill("35");
-  await expect(page.getByLabel("Saved").first()).toBeVisible();
+  await expect(page.getByLabel("Saved").first()).toBeVisible(); // first-ok: asserts a Saved autosave indicator appears — order-agnostic
   await page.getByRole("button", { name: "Close" }).click();
   await expect(card.getByTestId("activity-summary")).toContainText("35 min");
 
   // Restore the shared seed row so other specs remain order-independent.
   await card.getByRole("button", { name: "Intervals" }).click();
   await page.getByTestId("cardio-duration").fill("28");
-  await expect(page.getByLabel("Saved").first()).toBeVisible();
+  await expect(page.getByLabel("Saved").first()).toBeVisible(); // first-ok: asserts a Saved autosave indicator appears — order-agnostic
   await page.getByRole("button", { name: "Close" }).click();
   await expect(card.getByTestId("activity-summary")).toContainText("28 min");
 });
@@ -438,7 +438,7 @@ test("the activity form keeps workout entry primary and context visible across b
     .getByRole("main")
     .locator('[id^="activity-"]')
     .filter({ hasText: "Push day" })
-    .first();
+    .first(); // first-ok: the seeded Push day session card (filtered by its title) — order-agnostic
 
   // This test targets the DOCKED editor variant, and docked-vs-overlay is
   // CAPTURED at open time and held for the session (the anti-yank design in
@@ -499,7 +499,7 @@ test("the activity form keeps workout entry primary and context visible across b
   await expect(
     page.getByRole("heading", { name: "Workout", exact: true })
   ).toHaveClass("sr-only");
-  const part = page.getByTestId("activity-part").first();
+  const part = page.getByTestId("activity-part").first(); // first-ok: asserts an activity-part renders — order-agnostic presence
   await expect(part).not.toHaveClass(/rounded/);
   await page.evaluate(() => window.scrollTo(0, 0));
   const formBox = await page.getByTestId("activity-form").boundingBox();
@@ -515,7 +515,7 @@ test("the activity form keeps workout entry primary and context visible across b
   const firstJournalCardBox = await page
     .getByRole("main")
     .locator('[id^="activity-"]')
-    .first()
+    .first() // first-ok: any activity card, measured only for its header bounding box — order-agnostic
     .boundingBox();
   expect(headerBox).not.toBeNull();
   expect(dockBox).not.toBeNull();
@@ -547,7 +547,7 @@ test("the activity form keeps workout entry primary and context visible across b
     node.scrollTop = 0;
   });
   const standardInputs = [
-    page.getByRole("combobox", { name: "Activity" }).first(),
+    page.getByRole("combobox", { name: "Activity" }).first(), // first-ok: the Activity combobox on the log form — order-agnostic
     page.locator("#activity-date"),
     page.locator("#activity-start-time"),
     page.locator("#activity-end-time"),
@@ -571,7 +571,7 @@ test("the activity form keeps workout entry primary and context visible across b
   await expect(page.locator('label[for="activity-end-time"]')).toHaveText(
     "End"
   );
-  await expect(page.getByTestId("per-side-control").first()).toBeVisible();
+  await expect(page.getByTestId("per-side-control").first()).toBeVisible(); // first-ok: asserts a per-side control renders — order-agnostic presence
   const sessionDetails = page.getByTestId("session-details");
   await expect(sessionDetails).toBeVisible();
   await expect(sessionDetails).toHaveCSS("border-top-width", "0px");
@@ -619,15 +619,13 @@ test("the activity form keeps workout entry primary and context visible across b
   // same activity in the overlay and pin the exercise/set schema while logging.
   await page.setViewportSize({ width: 390, height: 844 });
   await pushCard.getByRole("button", { name: "Push day" }).click();
-  const headings = page.getByTestId("set-column-headings").first();
+  const headings = page.getByTestId("set-column-headings").first(); // first-ok: the set-column headings of the card just opened — order-agnostic
   await expect(headings).toBeVisible();
   expect(
     await headings.evaluate((node) => getComputedStyle(node).position)
   ).toBe("sticky");
-  await expect(page.getByTestId("set1-weight").first()).toHaveAttribute(
-    "inputmode",
-    "decimal"
-  );
+  const set1Weight = page.getByTestId("set1-weight").first(); // first-ok: the first set's weight input of the opened card — order-agnostic
+  await expect(set1Weight).toHaveAttribute("inputmode", "decimal");
   await expect(page.getByTestId("activity-form-footer")).toHaveCSS(
     "position",
     "sticky"
@@ -743,7 +741,7 @@ test("a lone sport logged with Start/End auto-fills its Duration and shows real 
   // THIS log, not the fixture.
   await page.goto("/training?tab=analyze&kind=sport&item=Tennis");
   await expect(
-    page.getByRole("cell", { name: "55 min", exact: true }).first()
+    page.getByRole("cell", { name: "55 min", exact: true }).first() // first-ok: the 55-min cardio cell THIS spec logged — order-agnostic
   ).toBeVisible();
 
   // Clean up the row this test created so the shared seed DB is left untouched:
@@ -753,11 +751,11 @@ test("a lone sport logged with Start/End auto-fills its Duration and shows real 
     .locator('[id^="activity-"]')
     .filter({ hasText: "Tennis" })
     .filter({ hasText: "55 min" })
-    .first();
+    .first(); // first-ok: the Tennis/55-min card THIS spec just logged (filtered) — one match
   await expect(newCard).toBeVisible();
   await newCard
     .getByRole("button", { name: /Tennis/ })
-    .first()
+    .first() // first-ok: the Tennis title button in the scoped card this spec created
     .click();
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await page
@@ -873,7 +871,7 @@ test("weight steppers bump a set's load by the lift-appropriate increment (#337)
 
   // The + stepper bumps the (empty) weight by one increment → 2.5. Only weight is
   // set, so the set stays half-filled and nothing auto-saves — no cleanup needed.
-  await page.getByLabel("Increase weight").first().click();
+  await page.getByLabel("Increase weight").first().click(); // first-ok: the first set's increase-weight control on the opened card — order-agnostic
   await expect(page.getByTestId("set1-weight")).toHaveValue("2.5");
 
   await page.keyboard.press("Escape");
@@ -969,7 +967,7 @@ test("bulk-delete rows in Data → Manage, then Undo restores them (#29)", async
   await expect(card).toBeVisible();
   // Remember the "(N)" count in the heading to prove a full restore later.
   const countText = async () =>
-    (await card.locator("h2 span").first().textContent())?.trim();
+    (await card.locator("h2 span").first().textContent())?.trim(); // first-ok: the count span in the scoped card's heading — order-agnostic
   const original = await countText();
   expect(original).toBeTruthy();
 
@@ -990,5 +988,5 @@ test("bulk-delete rows in Data → Manage, then Undo restores them (#29)", async
   // and after a fresh render the dataset count matches where it started.
   await expect(page.getByText(/Restored \d+ rows?\./)).toBeVisible();
   await page.goto("/data?section=manage");
-  await expect(card.locator("h2 span").first()).toHaveText(original!);
+  await expect(card.locator("h2 span").first()).toHaveText(original!); // first-ok: the same count span in the scoped card's heading — order-agnostic
 });
