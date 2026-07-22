@@ -431,6 +431,16 @@ export function extractFromCcda(
   // companion event-type activity — #267) is disambiguated by the document's
   // encompassing visit (selectReasonTarget). Genuinely ambiguous cases still skip.
   const deduped = dedupe(encounters);
+  // A document whose sections yield NO encounter but whose header carries the visit
+  // (componentOf/encompassingEncounter) imports the header visit as THE encounter —
+  // the eClinicalWorks packaging, vs Epic's Encounters-section Encounter Activities.
+  // This keeps the visit's real clinician/facility, and gives the document-level
+  // correlations below (reason for visit, clinical notes, standalone visit
+  // diagnoses) their single encounter to attach to — without it, each note section
+  // fabricates its own note-only encounter and the reason drops as unattributable.
+  if (deduped.length === 0 && encompassingEncounter?.activity) {
+    deduped.push(encompassingEncounter.activity);
+  }
   // Whether the Reason-for-Visit section was actually consumed (correlated). Only
   // true when selectReasonTarget resolves a single reason-less encounter to attach
   // the chief complaint to AND the section carried one — the same condition the

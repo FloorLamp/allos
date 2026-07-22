@@ -291,6 +291,67 @@ export interface EncompassingEncounterInfo {
   externalId: string | null; // "ccda:encounter:<id>" — comparable to an ImportedEncounter
   start: string | null;
   end: string | null;
+  // The header visit as a full encounter row. Some systems (eClinicalWorks) put the
+  // visit ONLY here — their Encounters section is empty — so when the section
+  // extractors yield no encounter, extractFromCcda imports this one instead of
+  // leaving the visit (and its responsible clinician + facility) behind.
+  activity: ImportedEncounter | null;
+}
+
+// The visit facility from the encompassing encounter's
+// location/healthCareFacility/serviceProviderOrganization, as an organization
+// provider. Unlike an Encounter Activity's LOC participant, the org node carries its
+// name/telecom/addr directly.
+function encompassingLocation(ee: any): ImportedProvider | null {
+  const org = ee?.location?.healthCareFacility?.serviceProviderOrganization;
+  const nm = Array.isArray(org?.name) ? org.name[0] : org?.name;
+  const name = textOf(nm)?.trim();
+  if (!name) return null;
+  return {
+    name,
+    type: "organization",
+    npi: null,
+    identifier: otherIdentifier(org),
+    phone: telecomOf(org),
+    address: addressOf(org),
+  };
+}
+
+// Map the encompassing encounter to an ImportedEncounter, or null when it carries
+// no usable date. The header shape differs from an Encounter Activity: the clinician
+// is the responsibleParty's assignedEntity (not a performer) and the facility is the
+// serviceProviderOrganization (not a LOC participant). The <code> is typically the
+// bare ActEncounterCode class (AMB/IMP/EMER), so class_code usually resolves while
+// the type code stays null and the type display falls back to the class displayName
+// ("ambulatory"). The external_id reuses the visit's source id in the SAME
+// "ccda:encounter:<id>" namespace as an Encounter Activity, so a companion document
+// that DOES list the visit in its Encounters section collapses to one row in the
+// XDM merge.
+function mapEncompassingEncounter(ee: any): ImportedEncounter | null {
+  const { start, end } = hl7Period(ee?.effectiveTime);
+  const date = start ?? effTime(ee?.effectiveTime);
+  if (!date) return null;
+  const { code, system } = encounterTypeCode(ee?.code);
+  const idExt = firstEncounterId(ee);
+  return {
+    date,
+    end_date: end,
+    type: codedDisplayName(ee?.code, {}),
+    code,
+    code_system: system,
+    class_code: encounterClassCode(ee?.code),
+    reason: null,
+    diagnoses: [],
+    provider: providerFromAssignedEntity(
+      ee?.responsibleParty?.assignedEntity,
+      "individual"
+    ),
+    location: encompassingLocation(ee),
+    notes: null,
+    external_id: idExt
+      ? `ccda:encounter:${idExt}`
+      : `ccda:encounter:${date}:encompassing`,
+  };
 }
 
 export function encompassingEncounterInfo(
@@ -306,6 +367,7 @@ export function encompassingEncounterInfo(
     externalId: idExt ? `ccda:encounter:${idExt}` : null,
     start: start ?? effTime(ee?.effectiveTime),
     end,
+    activity: mapEncompassingEncounter(ee),
   };
 }
 
