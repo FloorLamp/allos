@@ -46,7 +46,7 @@ test.describe("Trends → Body metric pages (#1067 Phase 2)", () => {
     const stepsLink = page.getByTestId("body-tile-steps").getByRole("link");
     await followLink(page, stepsLink, /\/trends\/metric\/steps/);
     await expect(
-      page.getByRole("heading", { name: "Steps per day" })
+      page.getByRole("heading", { level: 1, name: "Steps per day" })
     ).toBeVisible();
     await expect(page.getByTestId("metric-period-stats")).toBeVisible();
 
@@ -101,7 +101,7 @@ test.describe("Trends → Body metric pages (#1067 Phase 2)", () => {
     await page.goto("/trends/metric/steps");
 
     await expect(
-      page.getByRole("heading", { name: "Steps per day" })
+      page.getByRole("heading", { level: 1, name: "Steps per day" })
     ).toBeVisible();
     await expect(page.getByTestId("metric-detail-chart")).toBeVisible();
     await expect(page.getByTestId("metric-period-stats")).toBeVisible();
