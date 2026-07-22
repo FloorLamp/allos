@@ -525,3 +525,89 @@ describe("issue #1030 — coded-terse conditions drive cadence via collectUpcomi
     ).toBe(false);
   });
 });
+
+// Issue #1039 — family_history reaches the SITE-specific screening cadence. A
+// coded early-onset first-degree colorectal row tightens the colonoscopy cadence
+// end-to-end (the structured gather threads code + onset_age, the pure tier can't
+// see the family_history read). Synthetic ICD-10 codes + obviously-fictional names.
+describe("issue #1039 — family site cancer + onset age via collectUpcoming", () => {
+  function familyRow(
+    profileId: number,
+    condition: string,
+    opts: {
+      relation?: string;
+      code?: string;
+      system?: string;
+      onsetAge?: number;
+    } = {}
+  ): void {
+    db.prepare(
+      `INSERT INTO family_history
+         (profile_id, relation, condition, code, code_system, onset_age)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(
+      profileId,
+      opts.relation ?? null,
+      condition,
+      opts.code ?? null,
+      opts.system ?? null,
+      opts.onsetAge ?? null
+    );
+  }
+
+  it("a coded early-onset colorectal family row brings colonoscopy due sooner + explains it", () => {
+    const pid = makeProfile("Family CRC early", shiftDateStr(now, -55 * 365));
+    // Base colorectal cadence 120mo → a ~64mo-old colonoscopy is up-to-date.
+    recordVisit(pid, "colorectal_cancer", shiftDateStr(now, -1950));
+    expect(
+      collectUpcoming(pid, now).some(
+        (i) => i.key === "screening:colorectal_cancer"
+      )
+    ).toBe(false);
+
+    // Mother, colon cancer at 45 — coded terse ("CRC"), early onset (<60).
+    familyRow(pid, "CRC", {
+      relation: "Mother",
+      code: "C18.9",
+      system: "ICD-10-CM",
+      onsetAge: 45,
+    });
+
+    const item = collectUpcoming(pid, now).find(
+      (i) => i.key === "screening:colorectal_cancer"
+    );
+    expect(item, "colorectal screening now due").toBeTruthy();
+    expect(item!.priority).toBe(3);
+    expect(item!.detail).toContain("early-onset colorectal cancer");
+  });
+
+  it("a LATE-onset colorectal family row ranks but does NOT tighten cadence", () => {
+    const pid = makeProfile("Family CRC late", shiftDateStr(now, -55 * 365));
+    // Same ~64mo-old colonoscopy — up-to-date under the 120mo base.
+    recordVisit(pid, "colorectal_cancer", shiftDateStr(now, -1950));
+    familyRow(pid, "Colon cancer", {
+      relation: "Father",
+      code: "C18.9",
+      system: "ICD-10-CM",
+      onsetAge: 72,
+    });
+    // Standard family cadence: no tightening, so the screening stays up-to-date
+    // and doesn't surface as due.
+    expect(
+      collectUpcoming(pid, now).some(
+        (i) => i.key === "screening:colorectal_cancer"
+      )
+    ).toBe(false);
+  });
+
+  it("a name-only 'Lynch syndrome' family row drives the colorectal factor", () => {
+    const pid = makeProfile("Family Lynch", shiftDateStr(now, -55 * 365));
+    recordVisit(pid, "colorectal_cancer", shiftDateStr(now, -1950));
+    familyRow(pid, "Lynch syndrome", { relation: "Mother", onsetAge: 40 });
+    const item = collectUpcoming(pid, now).find(
+      (i) => i.key === "screening:colorectal_cancer"
+    );
+    expect(item, "colorectal screening due via Lynch name match").toBeTruthy();
+    expect(item!.detail).toContain("early-onset colorectal cancer");
+  });
+});

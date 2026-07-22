@@ -61,6 +61,13 @@ export type ConditionConcept =
   | "advanced-kidney-disease"
   | "cardiovascular-disease"
   | "malignant-neoplasm"
+  // Site-specific family-cancer targets (#1039). A subset of malignant-neoplasm,
+  // kept separate so family history can drive a SITE-specific screening cadence
+  // (colorectal → colonoscopy, breast → mammography) instead of the flat, inert
+  // family-cancer bucket. A coded colon-cancer row activates BOTH the site concept
+  // and the malignant-neoplasm catch-all (unioned).
+  | "colorectal-cancer"
+  | "breast-cancer"
   | "glaucoma"
   // The dental antibiotic-prophylaxis (AHA high-risk cardiac) gates.
   | "prosthetic-heart-valve"
@@ -149,6 +156,28 @@ const CONDITION_CODE_FAMILIES: ConditionCodeFamily[] = [
     concept: "malignant-neoplasm",
     icd10Prefixes: ["C"],
     snomed: ["363346000"],
+  },
+  // Colorectal cancer (#1039) — ICD-10 C18 (colon), C19 (rectosigmoid junction),
+  // C20 (rectum); SNOMED malignant tumor of colon. Drives the family-colorectal
+  // history factor → colonoscopy cadence (ACS/USMSTF). Anus (C21) and small
+  // intestine (C17) are deliberately EXCLUDED — a different screening site; the
+  // exclusion discipline keeps a non-colorectal GI neoplasm out of the colorectal
+  // cadence. A subset of the malignant-neoplasm "C" family above, so a colon-cancer
+  // row activates the site factor AND the family-cancer catch-all (unioned). Rectal-
+  // only SNOMED ids are not curated here (no single unambiguous concept), so a
+  // SNOMED-coded rectal row falls through to the name/stem match.
+  {
+    concept: "colorectal-cancer",
+    icd10Prefixes: ["C18", "C19", "C20"],
+    snomed: ["363406005"],
+  },
+  // Breast cancer (#1039) — ICD-10 C50; SNOMED malignant tumor of breast. Drives the
+  // family-breast history factor → mammography cadence (NCCN/ACS). In-situ (D05) is
+  // excluded, mirroring the malignant-neoplasm discipline (C codes only).
+  {
+    concept: "breast-cancer",
+    icd10Prefixes: ["C50"],
+    snomed: ["254837009"],
   },
   // Glaucoma — ICD-10 H40; SNOMED glaucoma. Drives the family-glaucoma factor
   // (AAO earlier/more-frequent eye exams). H40.0 ("glaucoma suspect") is

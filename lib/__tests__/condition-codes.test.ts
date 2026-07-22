@@ -385,3 +385,56 @@ describe("condition→nutrient rules — coded conditions (#1030)", () => {
     expect(hit!.condition).toBe("High K");
   });
 });
+
+describe("conditionCodeConcepts — site-specific family-cancer concepts (#1039)", () => {
+  it("maps colon/rectal ICD-10 to colorectal-cancer AND the malignant catch-all", () => {
+    for (const code of ["C18.9", "C19", "C20"]) {
+      const c = conditionCodeConcepts({
+        name: "GI tumor",
+        code,
+        codeSystem: "ICD-10-CM",
+      });
+      expect(c.has("colorectal-cancer"), code).toBe(true);
+      expect(c.has("malignant-neoplasm"), code).toBe(true);
+    }
+  });
+
+  it("maps breast ICD-10 (C50) to breast-cancer, not colorectal", () => {
+    const c = conditionCodeConcepts({
+      name: "Breast tumor",
+      code: "C50.911",
+      codeSystem: "ICD-10-CM",
+    });
+    expect(c.has("breast-cancer")).toBe(true);
+    expect(c.has("colorectal-cancer")).toBe(false);
+    expect(c.has("malignant-neoplasm")).toBe(true);
+  });
+
+  it("excludes anus (C21) and small intestine (C17) from colorectal", () => {
+    for (const code of ["C21.0", "C17.9"]) {
+      const c = conditionCodeConcepts({
+        name: "GI tumor",
+        code,
+        codeSystem: "ICD-10-CM",
+      });
+      expect(c.has("colorectal-cancer"), code).toBe(false);
+      // Still a malignant neoplasm (the "C" catch-all).
+      expect(c.has("malignant-neoplasm"), code).toBe(true);
+    }
+  });
+
+  it("matches SNOMED malignant tumor of colon / breast", () => {
+    expect(
+      conditionCodeMatches(
+        { name: "Colon Ca", code: "363406005", codeSystem: "SNOMED CT" },
+        "colorectal-cancer"
+      )
+    ).toBe(true);
+    expect(
+      conditionCodeMatches(
+        { name: "Breast Ca", code: "254837009", codeSystem: "SNOMED CT" },
+        "breast-cancer"
+      )
+    ).toBe(true);
+  });
+});
