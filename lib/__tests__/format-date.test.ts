@@ -7,6 +7,7 @@ import {
   formatClockValue,
   formatDateShape,
   formatRelativeDate,
+  formatCompactAge,
   formatRelativeTime,
   formatCompactRelativeTime,
   daysUntil,
@@ -189,6 +190,30 @@ describe("formatRelativeDate", () => {
 
   it("returns the input unchanged when unparseable", () => {
     expect(formatRelativeDate("nonsense", TODAY)).toBe("nonsense");
+  });
+});
+
+describe("formatCompactAge", () => {
+  it("labels today and future dates as 'Today'", () => {
+    expect(formatCompactAge("2026-06-30", TODAY)).toBe("Today");
+    expect(formatCompactAge("2026-07-05", TODAY)).toBe("Today");
+  });
+
+  it("abbreviates days, weeks, months, and years", () => {
+    expect(formatCompactAge("2026-06-27", TODAY)).toBe("3d");
+    expect(formatCompactAge("2026-06-16", TODAY)).toBe("2w");
+    expect(formatCompactAge("2026-05-15", TODAY)).toBe("2mo");
+    expect(formatCompactAge("2023-06-30", TODAY)).toBe("3y");
+  });
+
+  it("shares bucket thresholds with formatRelativeDate", () => {
+    // 1 week ago in both forms; the compact form just abbreviates the unit.
+    expect(formatCompactAge("2026-06-23", TODAY)).toBe("1w");
+    expect(formatRelativeDate("2026-06-23", TODAY)).toBe("1 week ago");
+  });
+
+  it("returns the input unchanged when unparseable", () => {
+    expect(formatCompactAge("nonsense", TODAY)).toBe("nonsense");
   });
 });
 

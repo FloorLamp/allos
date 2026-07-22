@@ -5,7 +5,7 @@ import {
   recentLabDirectionlessStatus,
   type RecentLabRow,
 } from "@/lib/recent-labs";
-import { formatRelativeDate } from "@/lib/format-date";
+import { formatCompactAge } from "@/lib/format-date";
 import type { FlagTone } from "@/lib/reference-range";
 
 function directionlessStatusClass(tone: FlagTone): string {
@@ -66,9 +66,19 @@ export default function RecentLabsWidget({
                 </span>
                 <span
                   data-testid="recent-lab-date"
-                  className="hidden w-24 shrink-0 whitespace-nowrap text-right text-xs text-slate-500 dark:text-slate-400 sm:block"
+                  data-stale={r.stale ? "true" : undefined}
+                  title={
+                    r.stale
+                      ? "Older than a year — not a recent result"
+                      : undefined
+                  }
+                  className={`w-12 shrink-0 whitespace-nowrap text-right text-xs sm:w-14 ${
+                    r.stale
+                      ? "font-medium text-amber-600 dark:text-amber-400"
+                      : "text-slate-500 dark:text-slate-400"
+                  }`}
                 >
-                  {formatRelativeDate(r.date, today)}
+                  {formatCompactAge(r.date, today)}
                 </span>
               </li>
             );

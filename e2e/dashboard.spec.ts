@@ -4,6 +4,26 @@ import { followLink } from "./nav";
 
 const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
 const AVAILABILITY_APPOINTMENT = "E2E dashboard availability visit";
+const TIMED_APPOINTMENT = "E2E timed clinic visit";
+
+// #1215: plant/clean a profile-2 appointment carrying an explicit wall-clock time,
+// so the Next appointment card has a deterministic time to render. Profile 2
+// (Riley) owns no other appointments, so this one is unambiguously the pick.
+function cleanupTimedAppointmentFixture() {
+  const handle = new Database(DB_PATH);
+  try {
+    handle
+      .prepare("DELETE FROM appointments WHERE title = ? AND profile_id = 2")
+      .run(TIMED_APPOINTMENT);
+    handle
+      .prepare(
+        "DELETE FROM profile_settings WHERE profile_id = 2 AND key = 'dashboard_layout'"
+      )
+      .run();
+  } finally {
+    handle.close();
+  }
+}
 
 function cleanupAvailabilityFixture() {
   const handle = new Database(DB_PATH);
@@ -117,6 +137,14 @@ test("recent labs keeps dates intact and makes every result direction explicit",
   expect(
     await firstDate.evaluate((element) => getComputedStyle(element).whiteSpace)
   ).toBe("nowrap");
+  // #1216: the age column must stay visible at phone width — the mobile viewport
+  // is exactly where a years-old lab reading as "current" is the honesty risk. Its
+  // compact form ("2w"/"3y") fits where the full date column doesn't. Reuse the
+  // existing single-row locator (re-queried after the reload) rather than a new one.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await expect(firstDate).toBeVisible();
+  await page.setViewportSize({ width: 1280, height: 800 });
   await expect(
     page.getByRole("main").getByTestId("dashboard-widget-healthspan-pillars")
   ).toHaveClass(/lg:col-span-3/);
@@ -248,6 +276,65 @@ test("a goal deadline item links to the Training → Goals tab, not the removed 
   await expect(
     page.getByRole("main").getByText("Reach 74 kg").first()
   ).toBeVisible();
+});
+
+test("the next-appointment card renders the visit's clock time and links to the visit surface (#1215)", async ({
+  browser,
+}) => {
+  // Fresh, cookie-less context + its own admin session so switching the active
+  // profile here can't disturb the shared storageState session other specs use —
+  // the same isolation the availability spec uses.
+  const ctx = await browser.newContext({
+    storageState: { cookies: [], origins: [] },
+  });
+  const page = await ctx.newPage();
+  cleanupTimedAppointmentFixture();
+  const handle = new Database(DB_PATH);
+  try {
+    handle
+      .prepare(
+        `INSERT INTO appointments (profile_id, scheduled_at, title, location, status)
+         VALUES (2, '2026-12-15 14:30', ?, 'Downtown Clinic', 'scheduled')`
+      )
+      .run(TIMED_APPOINTMENT);
+    handle.close();
+
+    await page.goto("/login");
+    await page.fill('input[name="username"]', "admin");
+    await page.fill('input[name="password"]', "e2e-admin-pass");
+    await page.click('button[type="submit"]');
+    await page.waitForURL((u) => !u.pathname.startsWith("/login"), {
+      timeout: 20_000,
+    });
+
+    // Switch to profile 2 (Riley) — it now owns exactly one scheduled visit, so it
+    // is the pick. Wait on the user-menu naming the new profile (the definitive
+    // switch signal — we're already on "/").
+    await page.goto("/");
+    await page.getByRole("main").getByTestId("household-chip-2").click();
+    await expect(page.getByTestId("user-menu-trigger")).toContainText(
+      "Riley (child)"
+    );
+
+    const widget = page
+      .getByRole("main")
+      .getByTestId("dashboard-widget-next-appointment");
+    await expect(widget).toBeVisible();
+    await expect(widget).toContainText(TIMED_APPOINTMENT);
+    // The clock time renders (default 24h prefs → "14:30") — a 9am and a 4pm visit
+    // are no longer indistinguishable. Regression: the page used to slice to a date.
+    await expect(widget).toContainText("14:30");
+
+    // The content links to the visit surface (no encounter yet → the visits list),
+    // matching the every-row-links convention of the sibling widgets.
+    const link = widget.getByTestId("next-appointment-link");
+    await expect(link).toHaveAttribute("href", "/records/history/visits");
+    await followLink(page, link, /\/records\/history\/visits/);
+    await expect(page).toHaveURL(/\/records\/history\/visits/);
+  } finally {
+    await ctx.close();
+    cleanupTimedAppointmentFixture();
+  }
 });
 
 test("the household strip shows the caregiver's other profiles", async ({

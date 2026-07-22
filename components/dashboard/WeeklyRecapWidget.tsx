@@ -1,12 +1,22 @@
 import { IconChartBar } from "@tabler/icons-react";
 import WidgetHeader from "./WidgetHeader";
-import type { WeeklyRecap } from "@/lib/weekly-recap";
+import { recapRangeLabel, type WeeklyRecap } from "@/lib/weekly-recap";
+import {
+  DEFAULT_FORMAT_PREFS,
+  type DisplayFormatPrefs,
+} from "@/lib/format-date";
 
 // Weekly recap (NEW, issue #32, fitness). A quiet, factual summary of the last
 // seven days — workouts + volume, PRs, adherence, a robust weight trend, and streak
 // status — computed rule-based (no AI) in lib/weekly-recap. Off by default; when the
 // week had nothing to report it shows a gentle nudge rather than an empty card.
-export default function WeeklyRecapWidget({ recap }: { recap: WeeklyRecap }) {
+export default function WeeklyRecapWidget({
+  recap,
+  formatPrefs = DEFAULT_FORMAT_PREFS,
+}: {
+  recap: WeeklyRecap;
+  formatPrefs?: DisplayFormatPrefs;
+}) {
   return (
     <div className="card" data-testid="weekly-recap">
       <WidgetHeader title="Weekly recap" href="/timeline" />
@@ -19,8 +29,8 @@ export default function WeeklyRecapWidget({ recap }: { recap: WeeklyRecap }) {
         <>
           <div className="mb-3 flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
             <IconChartBar className="h-4 w-4 text-brand-500" />
-            <span>
-              {recap.start} – {recap.end}
+            <span data-testid="weekly-recap-range">
+              {recapRangeLabel(recap.start, recap.end, formatPrefs)}
             </span>
           </div>
           <dl className="space-y-2">

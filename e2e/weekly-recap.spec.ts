@@ -18,6 +18,15 @@ test.describe("Weekly recap + milestones (#32)", () => {
     // (not the empty-state nudge) — Workouts is always present when any workout
     // fell in the window.
     await expect(recap.getByText("Workouts")).toBeVisible();
+
+    // #1218: the range renders through the login's date-format prefs
+    // (recapRangeLabel → "Jul 3 – Jul 9"), never raw ISO ("2026-07-03 – …").
+    const range = recap.getByTestId("weekly-recap-range");
+    await expect(range).toBeVisible();
+    await expect(range).toHaveText(
+      /[A-Z][a-z]{2,} \d{1,2}(, \d{4})? – [A-Z][a-z]{2,} \d{1,2}(, \d{4})?/
+    );
+    await expect(range).not.toHaveText(/\d{4}-\d{2}-\d{2}/);
   });
 
   test("timeline surfaces the milestone entry under the Milestone filter", async ({
