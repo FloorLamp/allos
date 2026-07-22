@@ -18,10 +18,6 @@ import { recordSubstanceInstrumentAction } from "./actions";
 // no milestones, no "improve your score" copy — a screening tool, not a diagnosis,
 // and never gamified.
 
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 export default function SubstanceInstrumentsForm({
   defaultDate,
   initialInstrument,
@@ -38,7 +34,7 @@ export default function SubstanceInstrumentsForm({
     initialInstrument ?? "AUDIT-C"
   );
   const [mode, setMode] = useState<"administer" | "outside">("administer");
-  const [date, setDate] = useState(defaultDate || todayISO());
+  const [date, setDate] = useState(defaultDate);
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [outsideTotal, setOutsideTotal] = useState("");
   const [pending, setPending] = useState(false);

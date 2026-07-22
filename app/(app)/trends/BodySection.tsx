@@ -3,7 +3,8 @@ import { IconArrowRight } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { chartSeries } from "@/lib/chart-colors";
-import { formatHm } from "@/lib/sleep-summary";
+import { formatHm, sleepRecordPresentation } from "@/lib/sleep-summary";
+import { sriPresentation } from "@/lib/sleep-regularity";
 import {
   getUnitPrefs,
   getDisplayFormatPrefs,
@@ -108,6 +109,7 @@ export default async function BodySection({
   const { login, profile } = await requireSession();
   const units = getUnitPrefs(login.id);
   const formatPrefs = getDisplayFormatPrefs(login.id);
+  const todayStr = today(profile.id);
   const wu = units.weightUnit;
 
   // Read the whole series (ALL_ROWS overrides the default 365-row cap) so an
@@ -367,8 +369,13 @@ export default async function BodySection({
   // deleted) — last night's main-session duration + the SRI — linking to /sleep.
   // Both figures come from the SAME computations the Sleep page reads.
   const lastNight = getLastNightSummary(profile.id);
+  const lastNightPresentation = lastNight
+    ? sleepRecordPresentation(lastNight.wakeDay, todayStr, formatPrefs)
+    : null;
+  const visibleLastNight =
+    lastNightPresentation?.freshness === "stale" ? null : lastNight;
   const sleepReg = getSleepRegularity(profile.id);
-  const hasSleep = lastNight != null || sleepReg != null;
+  const hasSleep = visibleLastNight != null || sleepReg != null;
   const leanMassChart = getMetricDailyTotals(profile.id, "lean_mass_kg").map(
     (r) => ({ date: r.date, value: round(r.value, 1) })
   );
@@ -489,7 +496,7 @@ export default async function BodySection({
       id: "sleep",
       label: "Sleep",
       present: hasSleep,
-      latestDate: lastNight?.wakeDay ?? null,
+      latestDate: visibleLastNight?.wakeDay ?? null,
       order: 1,
       node: (
         <Link
@@ -509,25 +516,31 @@ export default async function BodySection({
             </span>
           </div>
           <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
-            {lastNight && (
+            {visibleLastNight && lastNightPresentation && (
               <div>
                 <div
                   className="text-3xl font-bold tabular-nums text-slate-800 dark:text-slate-100"
                   data-testid="sleep-tile-duration"
                 >
-                  {formatHm(lastNight.durationMin)}
+                  {formatHm(visibleLastNight.durationMin)}
                 </div>
                 <div className="text-xs text-slate-500 dark:text-slate-400">
-                  Last night ·{" "}
-                  {formatClockMinutes(
-                    formatPrefs.timeFormat,
-                    lastNight.bedMinutes
-                  )}
-                  –
-                  {formatClockMinutes(
-                    formatPrefs.timeFormat,
-                    lastNight.wakeMinutes
-                  )}
+                  {lastNightPresentation.label}
+                  {visibleLastNight.bedMinutes != null &&
+                    visibleLastNight.wakeMinutes != null && (
+                      <>
+                        {" · "}
+                        {formatClockMinutes(
+                          formatPrefs.timeFormat,
+                          visibleLastNight.bedMinutes
+                        )}
+                        –
+                        {formatClockMinutes(
+                          formatPrefs.timeFormat,
+                          visibleLastNight.wakeMinutes
+                        )}
+                      </>
+                    )}
                 </div>
               </div>
             )}
@@ -537,10 +550,10 @@ export default async function BodySection({
                   className="text-3xl font-bold text-indigo-600 dark:text-indigo-300"
                   data-testid="sri-value"
                 >
-                  {Math.round(sleepReg.sri)}
+                  {sriPresentation(sleepReg.sri).text}
                 </div>
                 <div className="text-xs text-slate-500 dark:text-slate-400">
-                  Regularity (SRI / 100)
+                  Regularity
                 </div>
               </div>
             )}
@@ -815,7 +828,6 @@ export default async function BodySection({
   // Body fat is dropped for a growth-tracked profile (matching the charts/history);
   // every other metric self-gates on presence (buildBodyMetricTile → present=false
   // ⇒ orderBodyMetricTiles drops it). Sleep is a SPECIAL tile linking to /sleep.
-  const todayStr = today(profile.id);
   const tileSeries: Array<[BodyMetricSlug, { date: string; value: number }[]]> =
     [
       ["weight", weightAll],
@@ -846,7 +858,7 @@ export default async function BodySection({
   const sleepGridTile = hasSleep
     ? {
         present: true,
-        latestDate: lastNight?.wakeDay ?? null,
+        latestDate: visibleLastNight?.wakeDay ?? null,
         node: (
           <Link
             href="/sleep"
@@ -863,17 +875,22 @@ export default async function BodySection({
                 aria-hidden
               />
             </div>
-            {lastNight && (
-              <div className="text-2xl font-bold tabular-nums text-slate-800 dark:text-slate-100">
-                {formatHm(lastNight.durationMin)}
-              </div>
+            {visibleLastNight && lastNightPresentation && (
+              <>
+                <div className="text-2xl font-bold tabular-nums text-slate-800 dark:text-slate-100">
+                  {formatHm(visibleLastNight.durationMin)}
+                </div>
+                <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                  {lastNightPresentation.label}
+                </div>
+              </>
             )}
             {sleepReg != null && (
               <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                Regularity {Math.round(sleepReg.sri)}/100
+                Regularity · {sriPresentation(sleepReg.sri).text}
               </div>
             )}
-            {!lastNight && sleepReg == null && (
+            {!visibleLastNight && sleepReg == null && (
               <div className="text-sm text-slate-500 dark:text-slate-400">
                 Open Sleep
               </div>

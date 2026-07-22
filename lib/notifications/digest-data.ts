@@ -20,7 +20,10 @@ import {
   getSleepSessions,
   getMetricDailyTotals,
 } from "../queries";
-import { mainSleepNights } from "../sleep-regularity";
+import {
+  mainSleepNights,
+  sleepSessionDurationMinutes,
+} from "../sleep-regularity";
 import { countSituationalDue, isDueOn } from "../supplement-schedule";
 import {
   getActiveSituations,
@@ -134,8 +137,7 @@ export function gatherDigestSleep(profileId: number): DigestSleep | null {
   let dayTotalMin = 0;
   for (const s of sessions) {
     if (zonedDateParts(tz, new Date(s.end)).date !== last.wakeDay) continue;
-    const ms = new Date(s.end).getTime() - new Date(s.start).getTime();
-    if (ms > 0) dayTotalMin += ms / 60000;
+    dayTotalMin += sleepSessionDurationMinutes(s);
   }
   const napMin = Math.max(0, Math.round(dayTotalMin) - last.durationMin);
 

@@ -22,6 +22,7 @@ import { shiftDateStr } from "./date";
 import { median, robustEndpoints } from "./robust-stats";
 import { fmtWeight, kgTo } from "./units";
 import { weekWindow } from "./week-window";
+import { sriPresentation } from "./sleep-regularity";
 import type { WeekMode, WeekStart, WeightUnit } from "./settings";
 import type { NotificationMessage } from "./notifications/types";
 
@@ -413,7 +414,7 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
     lines.push({
       key: "sleepRegularity",
       label: "Sleep regularity",
-      value: `${Math.round(input.sri)}/100`,
+      value: sriPresentation(input.sri).text,
       delta: shiftH,
     });
   }

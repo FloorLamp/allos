@@ -16,10 +16,6 @@ import { recordInstrumentAction } from "./actions";
 // total-only entry. DELIBERATELY calm: no streaks, no milestones, no "improve your score"
 // copy — a screening instrument, not a diagnosis, and never gamified.
 
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 export default function InstrumentsView({
   defaultDate,
   initialInstrument,
@@ -36,7 +32,7 @@ export default function InstrumentsView({
     initialInstrument ?? "PHQ-9"
   );
   const [mode, setMode] = useState<"administer" | "outside">("administer");
-  const [date, setDate] = useState(defaultDate || todayISO());
+  const [date, setDate] = useState(defaultDate);
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [outsideTotal, setOutsideTotal] = useState("");
   const [pending, setPending] = useState(false);

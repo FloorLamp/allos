@@ -41,5 +41,6 @@ export async function addVitals(formData: FormData) {
   if (!wrote) return;
   revalidatePath("/trends");
   revalidatePath("/results");
+  revalidatePath("/sleep");
   revalidatePath("/");
 }

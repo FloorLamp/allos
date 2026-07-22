@@ -38,6 +38,8 @@ import {
   E2E_LOGIN_COMPARE,
   E2E_LOGIN_DUP,
   E2E_LOGIN_EMPTY_TRAINING,
+  E2E_LOGIN_SLEEP_EDIT,
+  E2E_LOGIN_SLEEP_PHASE,
   E2E_LOGIN_MENTAL,
   MENTAL_HEALTH_PROFILE,
   E2E_LOGIN_SUBSTANCE,
@@ -77,6 +79,8 @@ import {
   E2E_MEMBER_PASSWORD,
   DUP_REVIEW_PROFILE,
   EMPTY_TRAINING_PROFILE,
+  SLEEP_EDIT_PROFILE,
+  SLEEP_PHASE_PROFILE,
   HEALTH_CONNECT_PROFILE,
   NO_GEAR_PROFILE,
   FITNESS_PROFILE,
@@ -937,6 +941,64 @@ for (const [start, end, value] of [
 }
 console.log(
   "e2e: seeded sleep stages (14 nights) + a tz-correct 5h night & nap for profile 1 (#1066)"
+);
+
+// Bedtime-supplement context for the same two most-recent overnight sessions.
+// Reuse the base seed's real Before-sleep supplement instead of minting a second
+// schedule. Last night's start-day is taken; the preceding night's is deliberately
+// unlogged so the hero/log exercise both factual states. Move the synthetic dose's
+// lifetime before the fixture window so the shared #430 lifetime guard correctly
+// considers both nights applicable.
+const bedtimeDose = db
+  .prepare(
+    `SELECT d.id AS dose_id, d.item_id AS item_id
+       FROM intake_item_doses d
+       JOIN intake_items i ON i.id = d.item_id
+      WHERE i.profile_id = ? AND i.name = 'Magnesium Glycinate'
+        AND d.retired = 0
+      ORDER BY d.id LIMIT 1`
+  )
+  .get(PROFILE_ID) as { dose_id: number; item_id: number } | undefined;
+if (bedtimeDose) {
+  const bedtimeFixtureStart = `${shiftDateStr(COACH_TODAY, -30)} 00:00:00`;
+  db.prepare(
+    `UPDATE intake_items SET created_at = ? WHERE id = ? AND profile_id = ?`
+  ).run(bedtimeFixtureStart, bedtimeDose.item_id, PROFILE_ID);
+  db.prepare(
+    `UPDATE intake_item_doses SET created_at = ?, updated_at = NULL
+      WHERE id = ? AND item_id = ?
+        AND EXISTS (
+          SELECT 1 FROM intake_items i
+           WHERE i.id = intake_item_doses.item_id AND i.profile_id = ?
+        )`
+  ).run(
+    bedtimeFixtureStart,
+    bedtimeDose.dose_id,
+    bedtimeDose.item_id,
+    PROFILE_ID
+  );
+  const priorSleepDate = shiftDateStr(COACH_YESTERDAY, -1);
+  db.prepare(
+    `DELETE FROM intake_item_logs
+      WHERE dose_id = ? AND item_id = ? AND date IN (?, ?)
+        AND EXISTS (
+          SELECT 1 FROM intake_items i
+           WHERE i.id = intake_item_logs.item_id AND i.profile_id = ?
+        )`
+  ).run(
+    bedtimeDose.dose_id,
+    bedtimeDose.item_id,
+    COACH_YESTERDAY,
+    priorSleepDate,
+    PROFILE_ID
+  );
+  db.prepare(
+    `INSERT INTO intake_item_logs (dose_id, item_id, date, status)
+     VALUES (?, ?, ?, 'taken')`
+  ).run(bedtimeDose.dose_id, bedtimeDose.item_id, COACH_YESTERDAY);
+}
+console.log(
+  "e2e: seeded taken + unlogged bedtime-supplement nights for profile 1"
 );
 
 // ── Oura vendor daily scores fixture (issue #1069) ──[OURA-SCORES-1069]────────
@@ -2469,6 +2531,51 @@ db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(emptyTrainingId);
 seedMemberLogin(E2E_LOGIN_EMPTY_TRAINING, emptyTrainingId);
 console.log(
   `e2e: seeded activity-free first-run fixture profile ${emptyTrainingId} (${EMPTY_TRAINING_PROFILE}) for the Training Log empty state (#809)`
+);
+
+// Dedicated write surface for historical sleep/mood editing. The spec seeds and
+// clears its own observation rows around the test; boot only guarantees the
+// isolated write-granted login/profile exists.
+const sleepEditId = fixtureProfileId(SLEEP_EDIT_PROFILE);
+db.prepare(`DELETE FROM mood_logs WHERE profile_id = ?`).run(sleepEditId);
+db.prepare(`DELETE FROM metric_samples WHERE profile_id = ?`).run(sleepEditId);
+seedMemberLogin(E2E_LOGIN_SLEEP_EDIT, sleepEditId);
+console.log(
+  `e2e: seeded isolated historical sleep/mood editor profile ${sleepEditId} (${SLEEP_EDIT_PROFILE})`
+);
+
+// Dedicated, read-only post-noon-wake fixture (#1190). Pin UTC so the intended
+// wall-clock labels are explicit and independent of the suite's run-hour timezone
+// pin. Rebuild its tiny observation set on every seed; no browser test writes or
+// cleans this profile, so fully-parallel and --repeat-each runs cannot contend.
+const sleepPhaseId = fixtureProfileId(SLEEP_PHASE_PROFILE);
+setTimezone(sleepPhaseId, "UTC");
+db.prepare(`DELETE FROM metric_samples WHERE profile_id = ?`).run(sleepPhaseId);
+const sleepPhaseToday = today(sleepPhaseId);
+const lateRiserDate = shiftDateStr(sleepPhaseToday, -1);
+const daytimeSleepDate = shiftDateStr(sleepPhaseToday, -2);
+const insertSleepPhase = db.prepare(
+  `INSERT INTO metric_samples
+     (profile_id, source, metric, date, start_time, end_time, value)
+   VALUES (?, 'oura', 'sleep_min', ?, ?, ?, ?)`
+);
+insertSleepPhase.run(
+  sleepPhaseId,
+  lateRiserDate,
+  iso(zonedWallTimeToUtc("UTC", lateRiserDate, "04:00")),
+  iso(zonedWallTimeToUtc("UTC", lateRiserDate, "13:00")),
+  540
+);
+insertSleepPhase.run(
+  sleepPhaseId,
+  daytimeSleepDate,
+  iso(zonedWallTimeToUtc("UTC", daytimeSleepDate, "08:00")),
+  iso(zonedWallTimeToUtc("UTC", daytimeSleepDate, "16:00")),
+  480
+);
+seedMemberLogin(E2E_LOGIN_SLEEP_PHASE, sleepPhaseId, "read");
+console.log(
+  `e2e: seeded read-only late/daytime sleep-phase profile ${sleepPhaseId} (${SLEEP_PHASE_PROFILE}, #1190)`
 );
 
 // A dedicated, score-free ADULT profile for the mental-health-instruments spec (#716).

@@ -192,11 +192,9 @@ export function formatMonthDay(
 
 // A human "time since" label: Today / Yesterday / N days|weeks|months|years ago.
 // Day math is calendar-based against `todayStr` (the app's configured today), so
-// it's timezone-independent; defaults to the process-local date for compatibility.
-export function formatRelativeDate(
-  iso: string,
-  todayStr: string = localTodayStr()
-): string {
+// it's timezone-independent. `todayStr` is required so a caller can never
+// accidentally use the server's local day for profile-scoped data (#1186).
+export function formatRelativeDate(iso: string, todayStr: string): string {
   const days = daysBetweenDateStr(iso, todayStr); // today − iso
   if (days == null) return iso;
   if (days <= 0) return "Today";

@@ -327,15 +327,24 @@ export function getSleepStageDailyTotals(
 // 'sleep_min' primary source wins; unset (or a chosen source with no sessions)
 // falls back to the source of the most recent session (the most-recently-synced
 // stream). A single-source profile is passthrough, as before.
-export function getSleepSessions(
+export interface SleepSessionRow {
+  date: string;
+  start: string;
+  end: string;
+  value: number;
+  source: string | null;
+}
+
+function readSleepSessions(
   profileId: number,
-  limit = 800
-): { start: string; end: string; source: string | null }[] {
+  opts: { limit?: number; since?: string }
+): SleepSessionRow[] {
+  const validWindow = " AND julianday(end_time) > julianday(start_time)";
   const sources = (
     db
       .prepare(
         `SELECT DISTINCT source FROM metric_samples
-          WHERE profile_id = ? AND metric = 'sleep_min'`
+          WHERE profile_id = ? AND metric = 'sleep_min'${validWindow}`
       )
       .all(profileId) as { source: string | null }[]
   ).map((r) => r.source);
@@ -352,6 +361,7 @@ export function getSleepSessions(
         .prepare(
           `SELECT source FROM metric_samples
             WHERE profile_id = ? AND metric = 'sleep_min'
+              ${validWindow}
             ORDER BY end_time DESC LIMIT 1`
         )
         .get(profileId) as { source: string | null } | undefined;
@@ -360,21 +370,25 @@ export function getSleepSessions(
     sourceFilter = " AND source = ?";
     selectedSource = picked;
   }
-  // Bound the read by recent wake dates before origin selection. Applying LIMIT to
-  // raw rows would let duplicate origins consume the cap and drop valid older
-  // nights; the final slice happens only after one origin remains per source/day.
-  const dateParams: (number | string)[] = [profileId];
-  if (selectedSource != null) dateParams.push(selectedSource);
-  dateParams.push(limit);
-  const recentDates = db
-    .prepare(
-      `SELECT date FROM metric_samples
-        WHERE profile_id = ? AND metric = 'sleep_min'${sourceFilter}
-        GROUP BY date ORDER BY date DESC LIMIT ?`
-    )
-    .all(...dateParams) as { date: string }[];
-  if (recentDates.length === 0) return [];
-  const cutoff = recentDates[recentDates.length - 1].date;
+  let cutoff = opts.since;
+  if (cutoff == null) {
+    // Bound the read by recent wake dates before origin selection. Applying LIMIT
+    // to raw rows would let duplicate origins consume the cap and drop valid older
+    // nights; the final slice happens only after one origin remains per source/day.
+    const dateParams: (number | string)[] = [profileId];
+    if (selectedSource != null) dateParams.push(selectedSource);
+    dateParams.push(opts.limit ?? 800);
+    const recentDates = db
+      .prepare(
+        `SELECT date FROM metric_samples
+          WHERE profile_id = ? AND metric = 'sleep_min'${sourceFilter}
+            ${validWindow}
+          GROUP BY date ORDER BY date DESC LIMIT ?`
+      )
+      .all(...dateParams) as { date: string }[];
+    if (recentDates.length === 0) return [];
+    cutoff = recentDates[recentDates.length - 1].date;
+  }
 
   const rowParams: (number | string)[] = [profileId];
   if (selectedSource != null) rowParams.push(selectedSource);
@@ -382,8 +396,9 @@ export function getSleepSessions(
   const rows = db
     .prepare(
       `SELECT date, start_time AS start, end_time AS end, source, origin, value
-         FROM metric_samples
+       FROM metric_samples
         WHERE profile_id = ? AND metric = 'sleep_min'${sourceFilter}
+          ${validWindow}
           AND date >= ?
         ORDER BY end_time DESC`
     )
@@ -402,8 +417,92 @@ export function getSleepSessions(
     (r) => r.origin,
     (r) => r.value
   )
-    .slice(0, limit)
-    .map(({ start, end, source }) => ({ start, end, source }));
+    .slice(0, opts.limit)
+    .map(({ date, start, end, value, source }) => ({
+      date,
+      start,
+      end,
+      value,
+      source,
+    }));
+}
+
+export function getSleepSessions(
+  profileId: number,
+  limit = 800
+): SleepSessionRow[] {
+  return readSleepSessions(profileId, { limit });
+}
+
+// All valid session windows on or after a calendar cutoff. Unlike the row-capped
+// SRI reader, this cannot lose older wake-days when one day contains several naps.
+export function getSleepSessionsSince(
+  profileId: number,
+  since: string
+): SleepSessionRow[] {
+  return readSleepSessions(profileId, { since });
+}
+
+// Duration-only manual sleep entries written by VitalsQuickAdd. Their equal
+// start/end midnight timestamps are the stable natural key upsertManualSample
+// uses, so these (and only these) are safe for the Sleep log's inline editor to
+// update. Windowed/imported sessions remain read-only.
+interface ManualSleepEditabilityRow {
+  date: string;
+  value: number | null;
+  editable: number;
+}
+
+function getManualSleepEditability(
+  profileId: number,
+  since: string,
+  through: string
+): ManualSleepEditabilityRow[] {
+  return db
+    .prepare(
+      `SELECT date,
+              MAX(CASE WHEN source = 'manual' AND origin IS NULL
+                            AND start_time = date || 'T00:00:00'
+                            AND end_time = date || 'T00:00:00'
+                       THEN value END) AS value,
+              CASE WHEN COUNT(*) = 1
+                         AND SUM(CASE WHEN source = 'manual' AND origin IS NULL
+                                           AND start_time = date || 'T00:00:00'
+                                           AND end_time = date || 'T00:00:00'
+                                      THEN 1 ELSE 0 END) = 1
+                   THEN 1 ELSE 0 END AS editable
+         FROM metric_samples
+        WHERE profile_id = ? AND metric = 'sleep_min'
+          AND date >= ? AND date <= ?
+        GROUP BY date ORDER BY date`
+    )
+    .all(profileId, since, through) as ManualSleepEditabilityRow[];
+}
+
+export function getEditableManualSleepDurations(
+  profileId: number,
+  since: string,
+  through = "9999-12-31"
+): { date: string; value: number }[] {
+  return getManualSleepEditability(profileId, since, through).flatMap((row) =>
+    row.editable === 1 && row.value != null
+      ? [{ date: row.date, value: row.value }]
+      : []
+  );
+}
+
+// Re-check the Sleep log's edit invariant at the write boundary. A missing day
+// may receive a duration-only manual row; an existing day is editable only when
+// its sole sleep sample is the exact natural key written by upsertManualSample.
+// Reading this inside the caller's IMMEDIATE transaction closes the render→save
+// race with an integration sync and prevents a crafted action request from
+// layering manual sleep over imported or windowed data.
+export function canEditManualSleepOnDate(
+  profileId: number,
+  date: string
+): boolean {
+  const row = getManualSleepEditability(profileId, date, date)[0];
+  return row == null || row.editable === 1;
 }
 
 // The date (YYYY-MM-DD) of the `limitDays`-th most-recent distinct HR day, or null

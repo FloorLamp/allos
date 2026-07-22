@@ -60,6 +60,14 @@ import { shiftDateStr, weekdayOfDateStr, zonedDateParts } from "./date";
 export interface SleepSession {
   start: string;
   end: string;
+  // Provider-reported minutes asleep. This can be shorter than the bedtime
+  // window (Oura/Withings include awake time between start/end). SRI still uses
+  // the window to reconstruct asleep-state epochs; duration-facing consumers use
+  // this value when available so "asleep" never silently means "in bed".
+  value?: number;
+  // Stored wake-day. Duration-only manual rows have a date/value but no usable
+  // window, so the Sleep summary can still present them without inventing clocks.
+  date?: string;
   source?: string | null;
   type?: string | null;
 }
@@ -95,6 +103,16 @@ function sessionKind(type: string | null | undefined): "main" | "nap" | null {
 // Milliseconds a session spans. Callers pass only validated start<end sessions.
 function sessionMs(s: SleepSession): number {
   return new Date(s.end).getTime() - new Date(s.start).getTime();
+}
+
+// Duration-facing minutes for one session. Wearables may report time asleep in
+// `value`, shorter than the bedtime window; every summary/nap computation must use
+// this same choice so awake-in-bed minutes are never mislabeled as sleep or a nap.
+export function sleepSessionDurationMinutes(s: SleepSession): number {
+  const reportedMin = Number(s.value);
+  return Number.isFinite(reportedMin) && reportedMin > 0
+    ? Math.round(reportedMin)
+    : Math.round(sessionMs(s) / 60000);
 }
 
 // Pick the MAIN overnight sleep session from ONE wake-day's sessions, or null when
@@ -177,7 +195,7 @@ export function mainSleepNights(
       wakeDay,
       start: main.start,
       end: main.end,
-      durationMin: Math.round(sessionMs(main) / 60000),
+      durationMin: sleepSessionDurationMinutes(main),
     });
   }
   return out.sort((a, b) => (a.wakeDay < b.wakeDay ? -1 : 1));
@@ -201,9 +219,10 @@ function median(values: number[]): number {
 // nap's wake time would otherwise poison the median, which is why this routes
 // through mainSleepNights rather than every session. This ONE derivation seeds the
 // wake-aware morning notification hour and backs the digest's typical-wake line.
-export function typicalWakeTime(
+function typicalSleepClockTime(
   sessions: SleepSession[],
   tz: string,
+  boundary: "start" | "end",
   opts: SleepRegularityOptions = {}
 ): number | null {
   const windowDays = opts.windowDays ?? 28;
@@ -216,10 +235,31 @@ export function typicalWakeTime(
     (n) => n.wakeDay >= windowStart && n.wakeDay <= asOf
   );
   if (inWindow.length < minNights) return null;
-  // Wake clock-minute per night, noon-anchored so the median is well-defined even
-  // when wakes straddle midnight; convert the median back to a clock minute-of-day.
-  const wakeRel = inWindow.map((n) => noonRelative(localParts(n.end, tz).min));
-  return (Math.round(median(wakeRel)) + NOON) % EPOCHS_PER_DAY;
+  // Clock-minute per night, noon-anchored so the median is well-defined across
+  // midnight; convert the median back to a familiar clock minute-of-day.
+  const relativeMinutes = inWindow.map((night) =>
+    noonRelative(localParts(night[boundary], tz).min)
+  );
+  return (Math.round(median(relativeMinutes)) + NOON) % EPOCHS_PER_DAY;
+}
+
+export function typicalWakeTime(
+  sessions: SleepSession[],
+  tz: string,
+  opts: SleepRegularityOptions = {}
+): number | null {
+  return typicalSleepClockTime(sessions, tz, "end", opts);
+}
+
+// The matching canonical bedtime derivation used when assessing whole-schedule
+// consistency. It deliberately shares typicalWakeTime's classifier, rolling
+// window, minimum-night gate, timezone math, and robust median.
+export function typicalBedTime(
+  sessions: SleepSession[],
+  tz: string,
+  opts: SleepRegularityOptions = {}
+): number | null {
+  return typicalSleepClockTime(sessions, tz, "start", opts);
 }
 
 export interface SleepRegularityOptions {
@@ -249,6 +289,27 @@ export interface SleepRegularity {
   // Social jetlag: absolute weekend-vs-weekday mid-sleep shift (minutes), or null
   // when the window lacks at least one weekday AND one weekend night.
   socialJetlagMin: number | null;
+}
+
+export type SriTone = "good" | "warn" | "bad";
+
+export interface SriPresentation {
+  text: string;
+  tone: SriTone;
+}
+
+// One honest presentation for the published SRI domain (−100..100). Surfaces use
+// the named value instead of a "/ 100" suffix, which otherwise implies a 0..100
+// score. The tone is deliberately total over the real domain: the established
+// high-regularity bands remain ≥80 / ≥60, and every lower value (including all
+// negatives) has an explicit low-regularity tone.
+export function sriPresentation(sri: number): SriPresentation {
+  const rounded = Math.round(sri);
+  const value = rounded < 0 ? `−${Math.abs(rounded)}` : String(rounded);
+  return {
+    text: `SRI ${value}`,
+    tone: rounded >= 80 ? "good" : rounded >= 60 ? "warn" : "bad",
+  };
 }
 
 const EPOCHS_PER_DAY = 1440; // one epoch per clock minute
