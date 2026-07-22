@@ -12,7 +12,8 @@
 // at a throwaway per-file temp DB by lib/__db_tests__/setup.ts.
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { db } from "@/lib/db";
+import { db, today } from "@/lib/db";
+import { shiftDateStr } from "@/lib/date";
 import {
   upsertMetricSamples,
   type NormMetricSample,
@@ -23,6 +24,7 @@ import {
   getMainSleepNightlyMinutes,
   getLastNightSummary,
   getMetricDailyTotals,
+  getSleepMoodData,
 } from "@/lib/queries";
 import { setTimezone } from "@/lib/settings";
 
@@ -144,5 +146,139 @@ describe("getSleepSignal — main overnight session, not the nap-summed total (#
           s.start === "2026-02-03T14:00:00Z" && s.end === "2026-02-03T15:30:00Z"
       )
     ).toBe(true);
+  });
+
+  it("uses reported asleep minutes when they are shorter than the bedtime window", () => {
+    upsertMetricSamples(
+      profileId,
+      [
+        session(
+          "sleep_min",
+          "2026-02-04",
+          270,
+          "2026-02-03T23:00:00Z",
+          "2026-02-04T04:00:00Z"
+        ),
+      ],
+      "health-connect"
+    );
+    const summary = getLastNightSummary(profileId)!;
+    expect(summary.durationMin).toBe(270); // 4h30 asleep, not the 5h window
+    expect(summary.bedMinutes).toBe(23 * 60);
+    expect(summary.wakeMinutes).toBe(4 * 60);
+  });
+});
+
+describe("duration-only manual sleep", () => {
+  it("surfaces a manual daily amount without inventing bed/wake clocks", () => {
+    const manualProfileId = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('ManualSleep')").run()
+        .lastInsertRowid
+    );
+    setTimezone(manualProfileId, "UTC");
+    db.prepare(
+      `INSERT INTO metric_samples
+         (profile_id, source, metric, date, start_time, end_time, value)
+       VALUES (?, 'manual', 'sleep_min', '2026-02-03',
+               '2026-02-03T00:00:00', '2026-02-03T00:00:00', 450)`
+    ).run(manualProfileId);
+
+    expect(getLastNightSummary(manualProfileId)).toMatchObject({
+      wakeDay: "2026-02-03",
+      durationMin: 450,
+      bedMinutes: null,
+      wakeMinutes: null,
+      source: "manual",
+    });
+  });
+});
+
+describe("bedtime supplements on the Sleep page", () => {
+  it("joins due supplement doses to the actual sleep-start day", () => {
+    const bedtimeProfileId = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES ('BedtimeSleep')").run()
+        .lastInsertRowid
+    );
+    setTimezone(bedtimeProfileId, "UTC");
+    const wakeDay = today(bedtimeProfileId);
+    const sleepDate = shiftDateStr(wakeDay, -1);
+    upsertMetricSamples(
+      bedtimeProfileId,
+      [
+        session(
+          "sleep_min",
+          wakeDay,
+          420,
+          `${sleepDate}T23:00:00Z`,
+          `${wakeDay}T06:00:00Z`
+        ),
+      ],
+      "health-connect"
+    );
+
+    const insertItem = db.prepare(
+      `INSERT INTO intake_items
+         (profile_id, name, active, kind, condition, priority, as_needed, created_at)
+       VALUES (?, ?, 1, ?, 'daily', 'high', 0, ?)`
+    );
+    const createdAt = `${shiftDateStr(sleepDate, -7)} 00:00:00`;
+    const magnesiumId = Number(
+      insertItem.run(bedtimeProfileId, "Magnesium", "supplement", createdAt)
+        .lastInsertRowid
+    );
+    const glycineId = Number(
+      insertItem.run(bedtimeProfileId, "Glycine", "supplement", createdAt)
+        .lastInsertRowid
+    );
+    const morningId = Number(
+      insertItem.run(bedtimeProfileId, "Vitamin D", "supplement", createdAt)
+        .lastInsertRowid
+    );
+    const medicationId = Number(
+      insertItem.run(
+        bedtimeProfileId,
+        "Prescription sleep aid",
+        "medication",
+        createdAt
+      ).lastInsertRowid
+    );
+    const insertDose = db.prepare(
+      `INSERT INTO intake_item_doses
+         (item_id, amount, time_of_day, food_timing, sort, created_at)
+       VALUES (?, '1 cap', ?, 'any', 0, ?)`
+    );
+    const magnesiumDoseId = Number(
+      insertDose.run(magnesiumId, "Before sleep", createdAt).lastInsertRowid
+    );
+    const glycineDoseId = Number(
+      insertDose.run(glycineId, "bedtime", createdAt).lastInsertRowid
+    );
+    insertDose.run(morningId, "Morning", createdAt);
+    insertDose.run(medicationId, "Before sleep", createdAt);
+
+    const insertLog = db.prepare(
+      `INSERT INTO intake_item_logs (dose_id, item_id, date, status)
+       VALUES (?, ?, ?, 'taken')`
+    );
+    // Magnesium was taken before the session. Glycine has a misleading wake-day
+    // log: it must remain missing for this night because the session began on the
+    // prior profile-local date.
+    insertLog.run(magnesiumDoseId, magnesiumId, sleepDate);
+    insertLog.run(glycineDoseId, glycineId, wakeDay);
+
+    const row = getSleepMoodData(bedtimeProfileId, 7).history.find(
+      (entry) => entry.date === wakeDay
+    );
+    expect(row?.bedtimeSupplements).toMatchObject({
+      sleepDate,
+      due: 2,
+      taken: 1,
+      skipped: 0,
+      state: "partial",
+      items: [
+        { name: "Magnesium", state: "taken" },
+        { name: "Glycine", state: "missed" },
+      ],
+    });
   });
 });

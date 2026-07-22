@@ -330,7 +330,13 @@ export function getSleepStageDailyTotals(
 export function getSleepSessions(
   profileId: number,
   limit = 800
-): { start: string; end: string; source: string | null }[] {
+): {
+  date: string;
+  start: string;
+  end: string;
+  value: number;
+  source: string | null;
+}[] {
   const sources = (
     db
       .prepare(
@@ -403,7 +409,31 @@ export function getSleepSessions(
     (r) => r.value
   )
     .slice(0, limit)
-    .map(({ start, end, source }) => ({ start, end, source }));
+    .map(({ date, start, end, value, source }) => ({
+      date,
+      start,
+      end,
+      value,
+      source,
+    }));
+}
+
+// Duration-only manual sleep entries written by VitalsQuickAdd. Their equal
+// start/end midnight timestamps are the stable natural key upsertManualSample
+// uses, so these (and only these) are safe for the Sleep log's inline editor to
+// update. Windowed/imported sessions remain read-only.
+export function getEditableManualSleepDurations(
+  profileId: number,
+  since: string
+): { date: string; value: number }[] {
+  return db
+    .prepare(
+      `SELECT date, value FROM metric_samples
+        WHERE profile_id = ? AND metric = 'sleep_min' AND source = 'manual'
+          AND start_time = end_time AND date >= ?
+        ORDER BY date`
+    )
+    .all(profileId, since) as { date: string; value: number }[];
 }
 
 // The date (YYYY-MM-DD) of the `limitDays`-th most-recent distinct HR day, or null

@@ -60,6 +60,14 @@ import { shiftDateStr, weekdayOfDateStr, zonedDateParts } from "./date";
 export interface SleepSession {
   start: string;
   end: string;
+  // Provider-reported minutes asleep. This can be shorter than the bedtime
+  // window (Oura/Withings include awake time between start/end). SRI still uses
+  // the window to reconstruct asleep-state epochs; duration-facing consumers use
+  // this value when available so "asleep" never silently means "in bed".
+  value?: number;
+  // Stored wake-day. Duration-only manual rows have a date/value but no usable
+  // window, so the Sleep summary can still present them without inventing clocks.
+  date?: string;
   source?: string | null;
   type?: string | null;
 }
@@ -173,11 +181,16 @@ export function mainSleepNights(
   for (const [wakeDay, group] of byDay) {
     const main = mainSleepSession(group);
     if (!main) continue;
+    const windowMin = Math.round(sessionMs(main) / 60000);
+    const reportedMin = Number(main.value);
     out.push({
       wakeDay,
       start: main.start,
       end: main.end,
-      durationMin: Math.round(sessionMs(main) / 60000),
+      durationMin:
+        Number.isFinite(reportedMin) && reportedMin > 0
+          ? Math.round(reportedMin)
+          : windowMin,
     });
   }
   return out.sort((a, b) => (a.wakeDay < b.wakeDay ? -1 : 1));
@@ -201,9 +214,10 @@ function median(values: number[]): number {
 // nap's wake time would otherwise poison the median, which is why this routes
 // through mainSleepNights rather than every session. This ONE derivation seeds the
 // wake-aware morning notification hour and backs the digest's typical-wake line.
-export function typicalWakeTime(
+function typicalSleepClockTime(
   sessions: SleepSession[],
   tz: string,
+  boundary: "start" | "end",
   opts: SleepRegularityOptions = {}
 ): number | null {
   const windowDays = opts.windowDays ?? 28;
@@ -216,10 +230,31 @@ export function typicalWakeTime(
     (n) => n.wakeDay >= windowStart && n.wakeDay <= asOf
   );
   if (inWindow.length < minNights) return null;
-  // Wake clock-minute per night, noon-anchored so the median is well-defined even
-  // when wakes straddle midnight; convert the median back to a clock minute-of-day.
-  const wakeRel = inWindow.map((n) => noonRelative(localParts(n.end, tz).min));
-  return (Math.round(median(wakeRel)) + NOON) % EPOCHS_PER_DAY;
+  // Clock-minute per night, noon-anchored so the median is well-defined across
+  // midnight; convert the median back to a familiar clock minute-of-day.
+  const relativeMinutes = inWindow.map((night) =>
+    noonRelative(localParts(night[boundary], tz).min)
+  );
+  return (Math.round(median(relativeMinutes)) + NOON) % EPOCHS_PER_DAY;
+}
+
+export function typicalWakeTime(
+  sessions: SleepSession[],
+  tz: string,
+  opts: SleepRegularityOptions = {}
+): number | null {
+  return typicalSleepClockTime(sessions, tz, "end", opts);
+}
+
+// The matching canonical bedtime derivation used when assessing whole-schedule
+// consistency. It deliberately shares typicalWakeTime's classifier, rolling
+// window, minimum-night gate, timezone math, and robust median.
+export function typicalBedTime(
+  sessions: SleepSession[],
+  tz: string,
+  opts: SleepRegularityOptions = {}
+): number | null {
+  return typicalSleepClockTime(sessions, tz, "start", opts);
 }
 
 export interface SleepRegularityOptions {

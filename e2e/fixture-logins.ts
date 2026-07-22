@@ -127,6 +127,12 @@ export const FORM_INJURY_PROFILE = "Form Injury (e2e)";
 export const E2E_LOGIN_EMPTY_TRAINING = "e2e_empty_training";
 export const EMPTY_TRAINING_PROFILE = "Empty Training (e2e)";
 
+// A dedicated ADULT profile for the Sleep and Mood Log's historical editor.
+// The browser spec owns and resets its mood + manual sleep rows, so editing can
+// never race the shared admin sleep fixture or the child profile's empty-state gate.
+export const E2E_LOGIN_SLEEP_EDIT = "e2e_sleep_edit";
+export const SLEEP_EDIT_PROFILE = "Sleep Edit (e2e)";
+
 // A dedicated, write-granted ADULT profile with NO instrument scores logged (#716):
 // the mental-health-instruments spec OWNS every write here (it administers a PHQ-9 /
 // GAD-7 in-app), so it never touches — or counts rows on — a shared-seed profile. Its

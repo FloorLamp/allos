@@ -1,24 +1,29 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/auth";
+import { today } from "@/lib/db";
+import { shiftDateStr } from "@/lib/date";
 import { getDisplayFormatPrefs } from "@/lib/settings";
 import {
   getLastNightSummary,
+  getSleepDurationTrend,
   getSleepRegularity,
   getSleepRegularityTrend,
   getSleepRegularityInsight,
   getSleepConsistency,
   getSleepStageComposition,
-  getSleepMoodPairing,
+  getSleepMoodData,
   getOuraScores,
 } from "@/lib/queries";
 import { chartSeries } from "@/lib/chart-colors";
+import { sleepRecordPresentation } from "@/lib/sleep-summary";
 import { PageHeader } from "@/components/ui";
 import LineChartCard from "@/components/LineChartCard";
-import StackedBarCard from "@/components/StackedBarCard";
 import SleepHero from "./SleepHero";
 import ConsistencyStrip from "./ConsistencyStrip";
 import SleepMoodSection from "./SleepMoodSection";
+import SleepLogAction from "./SleepLogAction";
 import OuraScores from "./OuraScores";
+import SleepTrendsSection from "./SleepTrendsSection";
 
 export const dynamic = "force-dynamic";
 
@@ -32,9 +37,17 @@ export const dynamic = "force-dynamic";
 // no sleep score, no gamification (the pillars-not-a-composite stance).
 export default async function SleepPage() {
   const { login, profile } = await requireSession();
-  const { timeFormat } = getDisplayFormatPrefs(login.id);
+  const formatPrefs = getDisplayFormatPrefs(login.id);
+  const todayStr = today(profile.id);
 
   const summary = getLastNightSummary(profile.id);
+  const summaryPresentation = summary
+    ? sleepRecordPresentation(summary.wakeDay, todayStr, formatPrefs)
+    : null;
+  const duration = getSleepDurationTrend(profile.id, 90).map((r) => ({
+    date: r.date,
+    value: r.value / 60,
+  }));
   const sleepReg = getSleepRegularity(profile.id);
   const sleepRegTrend = getSleepRegularityTrend(profile.id).map((r) => ({
     date: r.date,
@@ -42,18 +55,24 @@ export default async function SleepPage() {
   }));
   const sleepRegInsight = getSleepRegularityInsight(profile.id);
   const consistency = getSleepConsistency(profile.id);
-  const stages = getSleepStageComposition(profile.id).map((r) => ({
+  const stages = getSleepStageComposition(profile.id, 90).map((r) => ({
     date: r.date,
     deep: r.deep / 60,
     rem: r.rem / 60,
     light: r.light / 60,
     awake: r.awake / 60,
   }));
-  const moodPairing = getSleepMoodPairing(profile.id);
+  const sleepMood = getSleepMoodData(profile.id);
+  const sleepMoodMinDate = shiftDateStr(todayStr, -(sleepMood.windowDays - 1));
   const ouraScores = getOuraScores(profile.id);
+  const lastNightBedtimeSupplements = summary
+    ? (sleepMood.history.find((row) => row.date === summary.wakeDay)
+        ?.bedtimeSupplements ?? null)
+    : null;
 
   const hasAny =
     summary != null ||
+    duration.length > 0 ||
     sleepReg != null ||
     consistency.length > 0 ||
     stages.length > 0 ||
@@ -61,114 +80,174 @@ export default async function SleepPage() {
     ouraScores.readiness != null;
 
   return (
-    <div>
+    <div className="mx-auto w-full max-w-6xl" data-testid="sleep-page">
       <PageHeader
         title="Sleep"
-        subtitle="How you slept — last night, your regularity, and how it's trending. Factual signals, never a single score."
+        subtitle="Duration, timing, stages, and how sleep relates to mood."
+        action={
+          <SleepLogAction
+            history={sleepMood.history}
+            today={todayStr}
+            minDate={sleepMoodMinDate}
+            testId="sleep-add-entry-header"
+          />
+        }
       />
 
-      {summary && <SleepHero summary={summary} timeFormat={timeFormat} />}
+      {summary &&
+        summaryPresentation &&
+        summaryPresentation.freshness !== "stale" && (
+          <SleepHero
+            summary={summary}
+            timeFormat={formatPrefs.timeFormat}
+            presentation={summaryPresentation}
+            bedtimeSupplements={lastNightBedtimeSupplements}
+          />
+        )}
 
-      <OuraScores scores={ouraScores} />
+      {summaryPresentation?.freshness === "stale" && (
+        <div className="card mb-6" data-testid="sleep-stale">
+          <h2 className="font-semibold text-slate-800 dark:text-slate-100">
+            No sleep recorded last night
+          </h2>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            Your latest sleep record is too old to present as current. Sync a
+            connected source or log the duration manually.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-3">
+            <Link href="/data" className="btn btn-sm">
+              Sync a source
+            </Link>
+            <SleepLogAction
+              history={sleepMood.history}
+              today={todayStr}
+              minDate={sleepMoodMinDate}
+              label="Add entry →"
+              className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+              testId="sleep-add-entry-stale"
+            />
+          </div>
+        </div>
+      )}
+
+      <SleepTrendsSection
+        duration={duration}
+        stages={stages}
+        endDate={todayStr}
+        regularityCard={
+          sleepReg != null ? (
+            <div className="card" data-testid="sleep-regularity">
+              <div className="mb-3 flex items-baseline justify-between gap-2">
+                <h2 className="font-semibold text-slate-800 dark:text-slate-100">
+                  Sleep regularity
+                </h2>
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  SRI · last {sleepReg.nights} nights
+                </span>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span
+                  className="text-3xl font-bold text-indigo-600 dark:text-indigo-300"
+                  data-testid="sri-value"
+                >
+                  {Math.round(sleepReg.sri)}
+                </span>
+                <span className="text-sm text-slate-500 dark:text-slate-400">
+                  / 100
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Consistency of your sleep/wake timing (higher is steadier).
+                Bedtime ±{sleepReg.bedtimeSdMin} min, wake ±
+                {sleepReg.waketimeSdMin} min
+                {sleepReg.socialJetlagMin != null
+                  ? `, ${(sleepReg.socialJetlagMin / 60).toFixed(1)} h weekend shift`
+                  : ""}
+                .
+              </p>
+              {sleepRegInsight && (
+                <p
+                  className="mt-2 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+                  data-testid="sri-insight"
+                >
+                  {sleepRegInsight}
+                </p>
+              )}
+              {sleepRegTrend.length > 1 && (
+                <div className="mt-3">
+                  <LineChartCard
+                    data={sleepRegTrend}
+                    label="SRI"
+                    color={chartSeries.violet}
+                    decimals={0}
+                    yDomain={[
+                      Math.min(
+                        60,
+                        Math.floor(
+                          Math.min(
+                            ...sleepRegTrend.map((point) => point.value)
+                          ) / 10
+                        ) * 10
+                      ),
+                      100,
+                    ]}
+                  />
+                </div>
+              )}
+            </div>
+          ) : null
+        }
+        consistencyCard={
+          consistency.length > 0 ? (
+            <ConsistencyStrip
+              nights={consistency}
+              timeFormat={formatPrefs.timeFormat}
+            />
+          ) : null
+        }
+      />
 
       {!hasAny && (
         <p
           className="text-sm text-slate-500 dark:text-slate-400"
           data-testid="sleep-empty"
         >
-          No sleep data yet. Connect a source that syncs sleep (Health Connect,
-          Oura, Withings) and your nights will show up here — the hero, your
-          regularity trend, and stage composition.{" "}
+          No sleep data yet. Log a duration manually or connect Health Connect,
+          Oura, or Withings for bed/wake timing and stage detail.{" "}
+          <SleepLogAction
+            history={sleepMood.history}
+            today={todayStr}
+            minDate={sleepMoodMinDate}
+            label="Add entry"
+            className="font-medium text-brand-600 hover:underline dark:text-brand-400"
+            testId="sleep-add-entry-empty"
+          />{" "}
+          or{" "}
           <Link
             href="/data"
             className="font-medium text-brand-600 hover:underline dark:text-brand-400"
           >
-            Connect a source
+            connect a source
           </Link>
           .
         </p>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        {sleepReg != null && (
-          <div className="card" data-testid="sleep-regularity">
-            <div className="mb-3 flex items-baseline justify-between gap-2">
-              <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-                Sleep regularity
-              </h2>
-              <span className="text-xs text-slate-500 dark:text-slate-400">
-                SRI · last {sleepReg.nights} nights
-              </span>
-            </div>
-            <div className="flex items-baseline gap-2">
-              <span
-                className="text-3xl font-bold text-indigo-600 dark:text-indigo-300"
-                data-testid="sri-value"
-              >
-                {Math.round(sleepReg.sri)}
-              </span>
-              <span className="text-sm text-slate-500 dark:text-slate-400">
-                / 100
-              </span>
-            </div>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Consistency of your sleep/wake timing (higher is steadier).
-              Bedtime ±{sleepReg.bedtimeSdMin} min, wake ±
-              {sleepReg.waketimeSdMin} min
-              {sleepReg.socialJetlagMin != null
-                ? `, ${(sleepReg.socialJetlagMin / 60).toFixed(1)} h weekend shift`
-                : ""}
-              .
-            </p>
-            {sleepRegInsight && (
-              <p
-                className="mt-2 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
-                data-testid="sri-insight"
-              >
-                {sleepRegInsight}
-              </p>
-            )}
-            {sleepRegTrend.length > 1 && (
-              <div className="mt-3">
-                <LineChartCard
-                  data={sleepRegTrend}
-                  label="SRI"
-                  color={chartSeries.violet}
-                  decimals={0}
-                />
-              </div>
-            )}
+      <div className="min-w-0 space-y-6">
+        {(ouraScores.sleep || ouraScores.readiness) && (
+          <div className="min-w-0">
+            <OuraScores scores={ouraScores} />
           </div>
         )}
 
-        {consistency.length > 0 && (
-          <ConsistencyStrip nights={consistency} timeFormat={timeFormat} />
-        )}
-
-        {stages.length > 0 && (
-          <div className="card lg:col-span-2" data-testid="sleep-stages">
-            <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-              Stage composition
-            </h2>
-            <StackedBarCard
-              data={stages}
-              unit=" h"
-              decimals={1}
-              series={[
-                { key: "deep", label: "Deep", color: chartSeries.violet },
-                { key: "rem", label: "REM", color: chartSeries.rose },
-                { key: "light", label: "Light", color: chartSeries.emerald },
-                { key: "awake", label: "Awake", color: chartSeries.amber },
-              ]}
-            />
-          </div>
-        )}
-
-        {moodPairing.length >= 2 && (
-          <div className="lg:col-span-2">
-            <SleepMoodSection points={moodPairing} />
-          </div>
-        )}
+        <div className="min-w-0">
+          <SleepMoodSection
+            points={sleepMood.points}
+            history={sleepMood.history}
+            windowDays={sleepMood.windowDays}
+            formatPrefs={formatPrefs}
+          />
+        </div>
       </div>
     </div>
   );

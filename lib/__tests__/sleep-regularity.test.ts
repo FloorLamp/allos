@@ -352,6 +352,20 @@ describe("mainSleepNights — one main session per wake-day, naps dropped", () =
     ]);
   });
 
+  it("uses provider-reported sleep minutes for duration-facing consumers", () => {
+    const nights = mainSleepNights(
+      [
+        {
+          start: "2026-01-01T23:00:00Z",
+          end: "2026-01-02T07:00:00Z",
+          value: 425,
+        },
+      ],
+      "UTC"
+    );
+    expect(nights[0].durationMin).toBe(425);
+  });
+
   it("drops a day that holds only naps", () => {
     const sessions: SleepSession[] = [
       {
