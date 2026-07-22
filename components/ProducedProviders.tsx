@@ -34,7 +34,8 @@ export default function ProducedProviders({
       ) : (
         <ul className="text-sm text-slate-600 dark:text-slate-300">
           {providers.map((p) => {
-            const Icon = p.type === "individual" ? IconUser : IconBuildingHospital;
+            const Icon =
+              p.type === "individual" ? IconUser : IconBuildingHospital;
             return (
               <li
                 key={p.id}
@@ -46,7 +47,7 @@ export default function ProducedProviders({
                   className="group flex items-center gap-2 py-2 hover:text-brand-700 dark:hover:text-brand-400"
                 >
                   <Icon
-                    className="h-4 w-4 shrink-0 text-slate-400 group-hover:text-brand-600 dark:text-slate-500 dark:group-hover:text-brand-400"
+                    className="h-4 w-4 shrink-0 text-slate-500 group-hover:text-brand-600 dark:text-slate-400 dark:group-hover:text-brand-400"
                     aria-label={
                       p.type === "individual" ? "Individual" : "Organization"
                     }

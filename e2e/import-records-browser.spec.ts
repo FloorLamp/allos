@@ -7,7 +7,8 @@ import { followLink, settledClick } from "./helpers";
 // immunization, and one referenced provider. The browser must expose EVERY
 // produced type as a browsable tab (visits & co. used to be invisible), keep the
 // counts as the tab labels, link rows category-correctly (the prescription →
-// biomarker-page regression), and keep providers a non-link count chip pre-#275.
+// biomarker-page regression), and expose providers as their own tab (#1182 —
+// the per-document Providers listing is covered by import-produced-panels.spec).
 test.describe("Import detail: tabbed records browser", () => {
   test("tab strip lists every produced type with counts; default = first tab", async ({
     page,
@@ -26,12 +27,12 @@ test.describe("Import detail: tabbed records browser", () => {
     await expect(strip.getByTestId("import-tab-immunizations")).toHaveText(
       "Immunizations 1"
     );
-    // Providers are a COUNT CHIP, not a tab (they're the global registry, not this
-    // document's owned rows). Post-#275 the chip links to the /providers index.
-    const chip = page.getByTestId("import-providers-chip");
-    await expect(chip).toHaveText("Providers 1");
-    expect(await chip.evaluate((el) => el.tagName)).toBe("A");
-    await expect(chip).toHaveAttribute("href", "/records/care/providers");
+    // Providers are now a real tab (#1182) — #275 gave them a page, so the old
+    // count-chip-into-the-global-registry placeholder is gone; its ?tab= selects a
+    // per-document Providers listing (asserted in import-produced-panels.spec).
+    await expect(strip.getByTestId("import-tab-providers")).toHaveText(
+      "Providers 1"
+    );
 
     // Default tab (no ?tab=) is the FIRST non-empty tab — Labs — marked current,
     // and its editable table renders the lab rows.

@@ -4,6 +4,8 @@ import {
   resolveImportTab,
   recordCategoryLabel,
   recordNameLink,
+  usesAnalyteGrid,
+  providerItems,
   visitItem,
   conditionItem,
   allergyItem,
@@ -66,6 +68,9 @@ describe("buildImportTabs", () => {
       "care-goals",
       "medications",
       "body",
+      // Providers come LAST — a global-registry tab (#1182), never before the
+      // owned-row tabs (so the first-tab default never lands on it).
+      "providers",
     ]);
     const byKey = Object.fromEntries(strip.tabs.map((t) => [t.key, t]));
     expect(byKey["lab"]).toMatchObject({
@@ -81,10 +86,22 @@ describe("buildImportTabs", () => {
     });
     // The Body tab merges body-metric rows + height + head-circ samples.
     expect(byKey["body"].count).toBe(3);
-    // Providers are a chip, NOT a tab (nothing to link to pre-#275) — and never
-    // part of the tab list.
-    expect(byKey["providers"]).toBeUndefined();
+    // Providers are now a real tab (post-#275, #1182), carrying the count that
+    // was the old chip; still mirrored on strip.providers.
+    expect(byKey["providers"]).toMatchObject({
+      label: "Providers",
+      count: 4,
+      kind: "providers",
+    });
     expect(strip.providers).toBe(4);
+  });
+
+  it("omits the Providers tab when the import references no providers", () => {
+    const strip = buildImportTabs(
+      counts({ recordsByCategory: [{ category: "lab", count: 1 }] })
+    );
+    expect(strip.tabs.map((t) => t.key)).toEqual(["lab"]);
+    expect(strip.providers).toBe(0);
   });
 
   it("drops zero-count kinds and zero-count categories", () => {
@@ -393,5 +410,69 @@ describe("imaging studies (#702)", () => {
     expect(item.title).toBe("X-ray Chest");
     expect(item.detail).toBe("X-ray");
     expect(item.date).toBeNull();
+  });
+});
+
+describe("usesAnalyteGrid (#1182)", () => {
+  it("keeps the analyte grid for lab/biomarker/genomics", () => {
+    expect(usesAnalyteGrid("lab")).toBe(true);
+    expect(usesAnalyteGrid("biomarker")).toBe(true);
+    expect(usesAnalyteGrid("genomics")).toBe(true);
+  });
+  it("routes vitals/scan/instrument/derived/reference to the value/date table", () => {
+    for (const c of ["vitals", "scan", "instrument", "derived", "reference"]) {
+      expect(usesAnalyteGrid(c)).toBe(false);
+    }
+  });
+  it("leaves prescription (owned by #1178) and unknown categories on the analyte grid", () => {
+    // This issue owns vitals/scan/instrument/derived/reference only — prescription
+    // behavior stays AS-IS, so it must not fall through to the read-only table.
+    expect(usesAnalyteGrid("prescription")).toBe(true);
+    expect(usesAnalyteGrid("weird")).toBe(true);
+    expect(usesAnalyteGrid(undefined)).toBe(true);
+    expect(usesAnalyteGrid(null)).toBe(true);
+  });
+});
+
+describe("providerItems (#1182)", () => {
+  const base = {
+    npi: null,
+    identifier: null,
+    phone: null,
+    address: null,
+    specialty_code: null,
+    specialty: null,
+    archived: 0 as const,
+    contact_edited: 0 as const,
+    created_at: "2024-01-01",
+  };
+  it("shapes each provider to a /providers/[id] row carrying its type", () => {
+    const items = providerItems([
+      { ...base, id: 7, name: "Quest Diagnostics", type: "organization" },
+      { ...base, id: 8, name: "Dr. Ada Lovelace", type: "individual" },
+    ]);
+    expect(items).toEqual([
+      {
+        id: 7,
+        label: "Quest Diagnostics",
+        type: "organization",
+        href: "/providers/7",
+      },
+      {
+        id: 8,
+        label: "Dr. Ada Lovelace",
+        type: "individual",
+        href: "/providers/8",
+      },
+    ]);
+  });
+  it("disambiguates same-named providers on the first differing field (#531/#534)", () => {
+    const items = providerItems([
+      { ...base, id: 1, name: "City Clinic", type: "organization", npi: "111" },
+      { ...base, id: 2, name: "City Clinic", type: "organization", npi: "222" },
+    ]);
+    // A bare name renders both rows identically; the NPI separates them.
+    expect(items[0].label).toBe("City Clinic · NPI 111");
+    expect(items[1].label).toBe("City Clinic · NPI 222");
   });
 });

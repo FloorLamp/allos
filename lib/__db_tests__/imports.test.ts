@@ -23,6 +23,7 @@ import {
   getDocumentCareGoals,
   getDocumentMedications,
   getDocumentBodyRows,
+  getDocumentProviders,
 } from "@/lib/queries";
 import {
   persistDocumentImport,
@@ -526,9 +527,49 @@ describe("per-tab document listings", () => {
     expect(getDocumentCarePlanItems(profileA, docB)).toEqual([]);
     expect(getDocumentCareGoals(profileA, docB)).toEqual([]);
     expect(getDocumentMedications(profileA, docB)).toEqual([]);
+    expect(getDocumentProviders(profileA, docB)).toEqual([]);
     const body = getDocumentBodyRows(profileA, docB);
     expect(body.bodyMetrics).toEqual([]);
     expect(body.heights).toEqual([]);
     expect(body.headCircs).toEqual([]);
+  });
+});
+
+// #1182: the Providers listing that promotes the old count chip. The set must be
+// the SAME distinct providers getDocumentProduced counted (so the tab count and
+// the listing agree), joined to the global registry row for display, and stay
+// EXCLUDED from extracted_count (the #212 invariant).
+describe("getDocumentProviders (#1182)", () => {
+  it("returns the distinct providers this document's rows reference, with display fields", () => {
+    const providers = getDocumentProviders(profileA, docA);
+    // The fixture stamped exactly one provider (Quest, organization) onto A's
+    // Glucose record — the same one getDocumentProduced.providers counts.
+    expect(providers).toHaveLength(1);
+    expect(providers[0]).toMatchObject({
+      name: "Quest",
+      type: "organization",
+    });
+    expect(providers[0].id).toBeGreaterThan(0);
+    // The listing agrees with the count (one source, can't drift).
+    expect(providers).toHaveLength(
+      getDocumentProduced(profileA, docA).providers
+    );
+  });
+
+  it("is profile-scoped: A sees no providers on B's document", () => {
+    expect(getDocumentProviders(profileA, docB)).toEqual([]);
+  });
+
+  it("stays excluded from extracted_count (#212): providers don't inflate the total", () => {
+    // extracted_count is the owned-row footprint; providers are global-registry
+    // references. The stored total must equal the live footprint with no provider
+    // contribution — even though this document references a provider.
+    const row = db
+      .prepare(
+        "SELECT extracted_count AS n FROM medical_documents WHERE id = ? AND profile_id = ?"
+      )
+      .get(docA, profileA) as { n: number };
+    expect(row.n).toBe(countImportedDocumentRows(profileA, docA));
+    expect(getDocumentProviders(profileA, docA).length).toBeGreaterThan(0);
   });
 });

@@ -70,17 +70,27 @@ export type ImportTabKind =
   | "body"
   | "providers";
 
-// The medical_records categories that legitimately carry the analyte grammar —
-// a value, a unit, and a reference band — so they keep the editable analyte grid
-// on the import-detail records browser (ExtractedRecords). Every OTHER category
-// (vitals/scan/instrument/derived/reference, #1076) gets a read-only value/date
-// presentation instead: a BP pair, a scan's modality, a PHQ-9 score, a bio-age,
-// or a blood type has no "Panel" and no lab reference band, so the analyte
-// columns mean nothing for them (#1182). Pure so the page and its tests agree.
-const ANALYTE_CATEGORIES = new Set(["lab", "biomarker", "genomics"]);
+// The medical_records categories that DON'T carry the lab analyte grammar (value
+// + unit + reference band), so they get the read-only value/date presentation on
+// the import-detail records browser instead of the editable analyte grid (#1182):
+// a vitals BP pair, a scan's modality, a PHQ-9 instrument score, a derived bio-
+// age, an immutable reference fact (blood type) — added by #1076 and kept in
+// medical_records storage. For them the "Panel" and "Reference" columns mean
+// nothing and the editable affordance exposes fields that don't apply. Every
+// OTHER category keeps the analyte grid AS-IS: lab/biomarker/genomics (which
+// legitimately have a value/unit/reference band) AND prescription (whose story
+// #1178 owns — deliberately not re-litigated here) AND any unknown category.
+// Pure so the page and its tests agree.
+const NON_ANALYTE_CATEGORIES = new Set([
+  "vitals",
+  "scan",
+  "instrument",
+  "derived",
+  "reference",
+]);
 
-export function isAnalyteCategory(category: string | undefined | null): boolean {
-  return category != null && ANALYTE_CATEGORIES.has(category);
+export function usesAnalyteGrid(category: string | undefined | null): boolean {
+  return category == null || !NON_ANALYTE_CATEGORIES.has(category);
 }
 
 export interface ImportTab {

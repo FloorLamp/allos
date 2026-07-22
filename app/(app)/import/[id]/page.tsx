@@ -63,7 +63,7 @@ import {
   medicationItem,
   bodyItems,
   providerItems,
-  isAnalyteCategory,
+  usesAnalyteGrid,
   type ImportTab,
   type ProducedItem,
 } from "@/lib/import-browser";
@@ -154,8 +154,10 @@ function ProvenanceRow({ label, value }: { label: string; value: string }) {
 
 // Import detail: for one uploaded document — provenance, a tabbed per-category
 // records browser (#271: one tab per produced type, ?tab=-selected; record tabs
-// are the editable table, the rest read-only deep-linking listings, providers a
-// count chip until #275), basic debug (error + raw extraction), reprocess/delete.
+// render the analyte grid for lab/biomarker/genomics and a read-only value/date
+// table for vitals/scan/instrument/derived/reference (#1182), the rest read-only
+// deep-linking listings, providers their own per-document listing (#1182/#275)),
+// basic debug (error + raw extraction), reprocess/delete.
 export default async function ImportDetailPage(props: {
   params: Promise<{ id: string }>;
   searchParams: Promise<{
@@ -250,9 +252,7 @@ export default async function ImportDetailPage(props: {
   // the login's display unit). Providers are shaped separately below — they need
   // the whole set to disambiguate same-named rows (#531/#534).
   const items =
-    activeTab &&
-    activeTab.kind !== "records" &&
-    activeTab.kind !== "providers"
+    activeTab && activeTab.kind !== "records" && activeTab.kind !== "providers"
       ? listingItems(
           activeTab,
           profile.id,
@@ -374,7 +374,7 @@ export default async function ImportDetailPage(props: {
               docId={id}
               filename={doc.filename}
               title={activeTab.label}
-              analyte={isAnalyteCategory(activeTab.category)}
+              analyte={usesAnalyteGrid(activeTab.category)}
               processing={doc.extraction_status === "processing"}
               records={records}
               q={q}
