@@ -33,6 +33,9 @@ function course(
     stopped_on: null,
     stop_reason: null,
     notes: null,
+    prescriber: null,
+    provider_id: null,
+    dose_snapshot: null,
     created_at: "2025-01-01 00:00:00",
     ...p,
   };
