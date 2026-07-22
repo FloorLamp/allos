@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
@@ -34,8 +34,20 @@ export default function VitalsQuickAdd({
   const toast = useToast();
   const { enqueue } = useOfflineQueue();
   const formRef = useRef<HTMLFormElement>(null);
+  const systolicRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const tempUnitDetection = useTemperatureUnitDetection(temperatureUnit);
+  // Deep-link focus (#1083): the preventive blood-pressure (vital) screening row/nudge
+  // lands on `/trends?tab=vitals&focus=blood-pressure`. Scroll the quick-add into view
+  // and focus the systolic field so a BP reading is one tap away. A STABLE route +
+  // param (not a Trends-section internal), to stay clear of the parallel #1067 overhaul.
+  const focusParam = useSearchParams().get("focus");
+  useEffect(() => {
+    if (focusParam !== "blood-pressure") return;
+    formRef.current?.scrollIntoView({ block: "center" });
+    systolicRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handle(formData: FormData) {
     setError(null);
@@ -129,6 +141,7 @@ export default function VitalsQuickAdd({
             Systolic (mmHg)
           </label>
           <input
+            ref={systolicRef}
             id="v-systolic"
             type="number"
             step="1"

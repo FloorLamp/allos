@@ -12,8 +12,11 @@ import { addProcedure } from "@/app/(app)/procedures/actions";
 // the shared registry).
 export default function ProceduresSection({
   profileId,
+  prefillName,
 }: {
   profileId: number;
+  // Deep-link add-form prefill (#1083) forwarded to the add form.
+  prefillName?: string;
 }) {
   const procedures = getProcedures(profileId);
   const providerNames = getProviderNames();
@@ -28,7 +31,7 @@ export default function ProceduresSection({
         </div>
 
         <div className="min-w-0 space-y-4">
-          <ProcedureForm action={addProcedure} />
+          <ProcedureForm action={addProcedure} prefillName={prefillName} />
           <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
             Informational only, not medical advice. Imported procedures come
             from uploaded health records (CCD Procedures section).

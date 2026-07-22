@@ -24,7 +24,10 @@ import {
 } from "../queries/upcoming";
 import { kindedScheduled } from "../queries/appointments";
 import { scheduledMatchForRule } from "../preventive-appointment";
-import { preventiveSignalKey } from "../preventive-upcoming";
+import {
+  preventiveSignalKey,
+  preventiveNudgeAction,
+} from "../preventive-upcoming";
 import { isSuppressed } from "../upcoming-suppress";
 import {
   planPreventiveNudges,
@@ -35,6 +38,7 @@ import {
   getProfileSettingKeysWithPrefix,
   setProfileSetting,
   deleteProfileSetting,
+  getPublicUrl,
 } from "../settings";
 import { dispatch } from "./index";
 import { renderPreventiveMessage } from "./preventive-format";
@@ -63,13 +67,20 @@ export async function runPreventive(
 
   const td = today(profileId);
   const assessments = assessProfilePreventive(profileId, td).actionable;
-  const actionable: PreventiveNudgeItem[] = assessments.map((a) => ({
-    ruleKey: a.key,
-    name: a.name,
-    // actionable is exactly the due/overdue slice, so the status narrows cleanly.
-    status: a.status === "overdue" ? "overdue" : "due",
-    detail: a.nextLabel ?? a.detail ?? null,
-  }));
+  const actionable: PreventiveNudgeItem[] = assessments.map((a) => {
+    // The concrete-action deep link + CTA (#1083) — the SAME per-class link + label
+    // the Upcoming row derives (#221), so page and push agree on the next step.
+    const action = preventiveNudgeAction(a, td);
+    return {
+      ruleKey: a.key,
+      name: a.name,
+      // actionable is exactly the due/overdue slice, so the status narrows cleanly.
+      status: a.status === "overdue" ? "overdue" : "due",
+      detail: a.nextLabel ?? a.detail ?? null,
+      href: action?.href ?? null,
+      ctaLabel: action?.label ?? null,
+    };
+  });
 
   const markedRuleKeys = getProfileSettingKeysWithPrefix(
     profileId,
@@ -122,11 +133,14 @@ export async function runPreventive(
   // One message PER screening (see preventive-format.ts): the buttons attach to
   // the named item. Each item's episode marker is set on ITS OWN delivery, so a
   // mid-loop failure re-attempts only the items that never went out.
+  // Absolute deep-link base for the nudge's "go do it" button (#1083) — same pattern
+  // the refill/food/workout nudges use; empty ⇒ the button degrades to omitted.
+  const deepLinkBase = getPublicUrl();
   let failed = false;
   for (const it of toSend) {
     const results = await dispatch(
       profileId,
-      renderPreventiveMessage(profileName, it, profileId)
+      renderPreventiveMessage(profileName, it, profileId, deepLinkBase)
     );
     if (results.length === 0) {
       // No channel configured — leave markers unset so it can send once

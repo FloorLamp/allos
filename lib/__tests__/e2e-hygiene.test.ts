@@ -191,7 +191,6 @@ const FIRST_ALLOW: Record<string, number> = {
   "palette-actions.spec.ts": 3,
   "pgx-crosscheck.spec.ts": 1,
   "preventive-nudge.spec.ts": 2,
-  "preventive-upcoming.spec.ts": 1,
   "prn-family.spec.ts": 1,
   "records-page.spec.ts": 1,
   "results-page.spec.ts": 2,

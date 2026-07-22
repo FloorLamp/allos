@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   SUBSTANCE_INSTRUMENTS,
@@ -24,11 +24,19 @@ function todayISO(): string {
 
 export default function SubstanceInstrumentsForm({
   defaultDate,
+  initialInstrument,
 }: {
   defaultDate: string;
+  // Preselected instrument from a deep link (#1083): the preventive drug/alcohol-
+  // screening row/nudge lands here via `?screen=<INSTRUMENT>`; the page validates the
+  // param and passes it. Absent/unknown ⇒ the AUDIT-C default.
+  initialInstrument?: SubstanceInstrument;
 }) {
   const router = useRouter();
-  const [instrument, setInstrument] = useState<SubstanceInstrument>("AUDIT-C");
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [instrument, setInstrument] = useState<SubstanceInstrument>(
+    initialInstrument ?? "AUDIT-C"
+  );
   const [mode, setMode] = useState<"administer" | "outside">("administer");
   const [date, setDate] = useState(defaultDate || todayISO());
   const [answers, setAnswers] = useState<Record<number, number>>({});
@@ -39,6 +47,17 @@ export default function SubstanceInstrumentsForm({
   const def = substanceInstrumentDef(instrument);
   const inApp = def.entry === "in-app";
   const effectiveMode = inApp ? mode : "outside";
+
+  // Arrived via a `?screen=` deep link (#1083): scroll the preselected Screening
+  // form into view + focus it so the next action is front-and-center. Runs once.
+  useEffect(() => {
+    if (!initialInstrument) return;
+    const el = containerRef.current;
+    if (!el) return;
+    el.scrollIntoView({ block: "center" });
+    el.querySelector<HTMLButtonElement>("button")?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function reset() {
     setAnswers({});
@@ -85,6 +104,7 @@ export default function SubstanceInstrumentsForm({
 
   return (
     <div
+      ref={containerRef}
       className="space-y-4 rounded-xl border border-black/10 p-4 dark:border-white/10"
       data-testid="substance-instruments-form"
     >

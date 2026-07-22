@@ -157,7 +157,7 @@ test.describe("preventive care in Upcoming (issues #82 + #86 + #85)", () => {
     await expect(main.getByTestId(DEPRESSION_KEY)).toBeVisible();
   });
 
-  test("a screening item links to a real satisfying surface, never the removed /medical (issue #283)", async ({
+  test("a screening item deep-links to its concrete next action, never the removed /medical (issues #283 + #1083)", async ({
     page,
   }) => {
     test.slow();
@@ -165,13 +165,11 @@ test.describe("preventive care in Upcoming (issues #82 + #86 + #85)", () => {
     await page.goto("/upcoming");
     const main = page.getByRole("main");
 
-    // The depression screening's concept-map entry carries a satisfying canonical
-    // biomarker (a recorded PHQ-9 score, #716), so its satisfaction-derived link is
-    // the biomarkers surface — the same derivation as lipids/A1c. (Before #716 it was
-    // procedure-coded only and linked to /procedures.) The #283 pin is unchanged:
-    // the link must land on a REAL surface, never the removed /medical. Read-only
-    // (a click), so it runs BEFORE the later test in this serial group declines
-    // the rule.
+    // Depression screening is satisfied by an in-app PHQ-9 instrument (#716), so its
+    // deep link (#1083) is the mental-health instrument page with PHQ-9 preselected —
+    // the concrete next action, NOT a browse list. The #283 pin holds: a REAL surface,
+    // never the removed /medical. Read-only (a click), so it runs BEFORE the later test
+    // in this serial group declines the rule.
     const depression = main.getByTestId(DEPRESSION_KEY);
     await expect(depression).toBeVisible();
     await followLink(
@@ -180,12 +178,16 @@ test.describe("preventive care in Upcoming (issues #82 + #86 + #85)", () => {
         name: "Depression screening",
         exact: true,
       }),
-      /\/results/
+      /\/records\/specialty\/mental-health\?screen=PHQ-9/
     );
 
-    await expect(page).toHaveURL(/\/results/);
+    await expect(page).toHaveURL(
+      /\/records\/specialty\/mental-health\?screen=PHQ-9/
+    );
+    // The form landed preselected on PHQ-9 (the deep-link's ?screen= honored): only
+    // PHQ-9 has a 9th item (index 8); GAD-7 has 7, so this proves the selection.
     await expect(
-      page.getByRole("main").getByText("Biomarkers").first()
+      page.getByRole("main").getByTestId("instrument-item-8")
     ).toBeVisible();
   });
 

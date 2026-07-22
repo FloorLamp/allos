@@ -115,6 +115,34 @@ describe("push-core: buildPushPayload", () => {
     expect(Object.keys(parsed).sort()).toEqual(["body", "title", "url"]);
     expect(json).not.toContain("take:9:3");
   });
+
+  it("uses a deep-link (url) action as the click-through target (#1083)", () => {
+    // Push ignores `actions`, but a url action becomes the tap target so the push
+    // opens the exact next action rather than the app root.
+    const json = buildPushPayload({
+      title: "🩺 Preventive care: DAST-10",
+      body: "Due",
+      actions: [
+        {
+          label: "Enter your DAST-10 score",
+          url: "https://a.example/medical/substance-use?screen=DAST-10",
+        },
+        { label: "✅ Done", data: "pvdone:3:drug_use_screening" },
+      ],
+    });
+    expect(JSON.parse(json).url).toBe(
+      "https://a.example/medical/substance-use?screen=DAST-10"
+    );
+  });
+
+  it("keeps the default root target when only callback actions are present", () => {
+    const json = buildPushPayload({
+      title: "T",
+      body: "B",
+      actions: [{ label: "✅ Done", data: "pvdone:3:x" }],
+    });
+    expect(JSON.parse(json).url).toBe(DEFAULT_PUSH_URL);
+  });
 });
 
 describe("push-core: isPushDeliverableKind (#692)", () => {

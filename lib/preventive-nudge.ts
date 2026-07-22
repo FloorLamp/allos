@@ -35,6 +35,8 @@
 // normal lifecycle — a never-nudged rule fires, a mid-episode marked rule does not
 // re-nudge the same episode. Covered and suppressed are the two "frozen" sources.
 
+import type { AppRoute } from "./hrefs";
+
 // One due/overdue preventive item the nudge can announce. Derived from the pure
 // assessor's actionable slice (lib/preventive-status.ts): `ruleKey` is the catalog
 // key, used both for the message and as the per-item dedup marker suffix.
@@ -43,6 +45,12 @@ export interface PreventiveNudgeItem {
   name: string;
   status: "due" | "overdue";
   detail: string | null;
+  // The concrete-action deep link + its named CTA (#1083), from preventiveNudgeAction
+  // — the SAME per-class link + label the Upcoming row carries (#221). Relative href
+  // (the message absolute-izes it via getPublicUrl); both null for an unmapped rule
+  // with no concrete action to link.
+  href: AppRoute | null;
+  ctaLabel: string | null;
 }
 
 export interface PreventiveNudgePlan {

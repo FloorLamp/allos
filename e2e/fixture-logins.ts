@@ -143,6 +143,16 @@ export const MENTAL_HEALTH_PROFILE = "Mental Health (e2e)";
 export const E2E_LOGIN_SUBSTANCE = "e2e_substance";
 export const SUBSTANCE_PROFILE = "Substance Use (e2e)";
 
+// A dedicated OLDER-ADULT profile (sex=female, ~60yo) with NO satisfying records, so
+// EVERY preventive screening class stays due — used by preventive-deeplinks.spec.ts
+// (#1083) to prove a due row deep-links to the concrete next action per class
+// (lab → prefilled biomarker add form, vital → vitals quick-add, instrument →
+// `?screen=` preselect, procedure → prefilled procedures add form). The spec only
+// READS its Upcoming + follows links (no writes), and its isolated session means
+// concurrent workers can't contend — it never counts a shared-seed row.
+export const E2E_LOGIN_PREVENTIVE = "e2e_preventive";
+export const PREVENTIVE_PROFILE = "Preventive Deeplinks (e2e)";
+
 // A dedicated ADULT profile for the mental-health-visit sensitivity + crisis-
 // resources specs (#997/#996). Seeded with its calendar feed set to FULL detail and
 // a per-profile crisis-resources override; the spec OWNS every appointment it books
