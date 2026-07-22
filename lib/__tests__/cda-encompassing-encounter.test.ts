@@ -9,13 +9,18 @@ import { extractFromCcda } from "../cda";
 // fabricated. All fixtures are SYNTHETIC — obviously-fictional patients/clinicians,
 // invented dates, 555-01xx phones, and a sequential (scanner-safe) NPI.
 
-function doc(opts: { sections?: string[]; componentOf?: string }): string {
+function doc(opts: {
+  sections?: string[];
+  componentOf?: string;
+  documentationOf?: string;
+}): string {
   return `<?xml version="1.0"?>
 <ClinicalDocument xmlns="urn:hl7-org:v3">
   <effectiveTime value="20260603"/>
   <recordTarget><patientRole><patient>
     <name><given>Test</given><family>Patient</family></name>
   </patient></patientRole></recordTarget>
+  ${opts.documentationOf ?? ""}
   <component><structuredBody>
     ${(opts.sections ?? []).map((s) => `<component>${s}</component>`).join("")}
   </structuredBody></component>
@@ -95,6 +100,9 @@ describe("encompassing-encounter materialization (empty Encounters section)", ()
     expect(e.date).toBe("2026-06-03");
     expect(e.end_date).toBe("2026-06-03");
     expect(e.class_code).toBe("AMB");
+    // Class-only <code> → the canonical class label, not the source's
+    // lowercase "ambulatory" displayName.
+    expect(e.type).toBe("Ambulatory");
     expect(e.provider).toMatchObject({
       name: "Pat Example",
       type: "individual",
@@ -158,6 +166,74 @@ describe("encompassing-encounter materialization (empty Encounters section)", ()
     expect(r.encounters).toHaveLength(1);
     expect(r.encounters![0].external_id).toBe(
       "ccda:encounter:2026-06-03:encompassing"
+    );
+  });
+
+  it("collects the header serviceEvent performers as document providers", () => {
+    const r = extractFromCcda(
+      doc({
+        documentationOf: `<documentationOf><serviceEvent classCode="PCPR">
+          <performer typeCode="PRF">
+            <functionCode code="PCP" codeSystem="2.16.840.1.113883.5.88" displayName="Primary Care Provider"/>
+            <assignedEntity>
+              <id root="2.16.840.1.113883.4.6" extension="1234567890"/>
+              <assignedPerson><name><given>Alex</given><family>Fixture</family></name></assignedPerson>
+            </assignedEntity>
+          </performer>
+          <performer typeCode="PRF">
+            <assignedEntity>
+              <id root="2.16.840.1.113883.4.6" extension="0123456789"/>
+              <telecom value="tel:+1(555)-555-0144"/>
+              <assignedPerson><name><given>Pat</given><family>Example</family><suffix>DO</suffix></name></assignedPerson>
+            </assignedEntity>
+          </performer>
+        </serviceEvent></documentationOf>`,
+      })
+    );
+    expect(r.providers).toEqual([
+      expect.objectContaining({
+        name: "Alex Fixture",
+        type: "individual",
+        npi: "1234567890",
+      }),
+      expect.objectContaining({
+        name: "Pat Example",
+        type: "individual",
+        npi: "0123456789",
+      }),
+    ]);
+  });
+
+  it("reads the entry-level Note Activity author (eCW) for a standalone note", () => {
+    const noteWithEntryAuthor = `<section>
+      <code code="11506-3" codeSystem="2.16.840.1.113883.6.1"/>
+      <title>Progress Notes</title>
+      <text>Exam unremarkable, lungs clear.</text>
+      <entry><act classCode="ACT" moodCode="EVN">
+        <templateId root="2.16.840.1.113883.10.20.22.4.202" extension="2016-11-01"/>
+        <code code="34109-9" codeSystem="2.16.840.1.113883.6.1"/>
+        <author><time value="20260604"/><assignedAuthor>
+          <assignedPerson><name><given>Sam</given><family>Fixture</family></name></assignedPerson>
+        </assignedAuthor></author>
+      </act></entry>
+    </section>`;
+    // Standalone (no encompassing visit): the note-only encounter carries the
+    // entry author as its provider and the author time as its date.
+    const standalone = extractFromCcda(
+      doc({ sections: [noteWithEntryAuthor] })
+    );
+    expect(standalone.encounters).toHaveLength(1);
+    expect(standalone.encounters![0].provider).toMatchObject({
+      name: "Sam Fixture",
+    });
+    expect(standalone.encounters![0].date).toBe("2026-06-04");
+    // Merged into the materialized visit: the note line is author-prefixed.
+    const merged = extractFromCcda(
+      doc({ sections: [noteWithEntryAuthor], componentOf: ENCOMPASSING_FULL })
+    );
+    expect(merged.encounters).toHaveLength(1);
+    expect(merged.encounters![0].notes).toBe(
+      "Sam Fixture: Exam unremarkable, lungs clear."
     );
   });
 

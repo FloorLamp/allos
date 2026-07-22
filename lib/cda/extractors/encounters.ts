@@ -298,6 +298,41 @@ export interface EncompassingEncounterInfo {
   activity: ImportedEncounter | null;
 }
 
+// Friendly labels for the HL7 ActEncounterCode classes. There is no canonical
+// encounter-type vocabulary in the app — `type` is display text from the source —
+// so when the header visit's <code> carries ONLY the class (eClinicalWorks emits
+// a bare AMB with displayName "ambulatory"), the class label supplies a readable
+// type instead of that lowercase code-system text.
+const ENCOUNTER_CLASS_LABELS: Record<string, string> = {
+  AMB: "Ambulatory",
+  IMP: "Inpatient",
+  ACUTE: "Inpatient acute",
+  NONAC: "Inpatient non-acute",
+  EMER: "Emergency",
+  FLD: "Field",
+  HH: "Home health",
+  OBSENC: "Observation",
+  PRENC: "Pre-admission",
+  SS: "Short stay",
+  VR: "Virtual",
+};
+
+// The document-level care team from the header's documentationOf/serviceEvent
+// performers — where an eCW document states the patient's PCP (functionCode PCP)
+// and the appointment provider. These ride on no section, so they're surfaced as
+// document-level providers; import-persist unions them into the shared registry
+// with the Care Teams / per-reading ones and dedups globally.
+export function serviceEventProviders(cd: any): ImportedProvider[] {
+  const out: ImportedProvider[] = [];
+  for (const d of asArray(cd?.documentationOf)) {
+    for (const p of asArray(d?.serviceEvent?.performer)) {
+      const prov = providerFromAssignedEntity(p?.assignedEntity, "individual");
+      if (prov) out.push(prov);
+    }
+  }
+  return out;
+}
+
 // The visit facility from the encompassing encounter's
 // location/healthCareFacility/serviceProviderOrganization, as an organization
 // provider. Unlike an Encounter Activity's LOC participant, the org node carries its
@@ -332,14 +367,22 @@ function mapEncompassingEncounter(ee: any): ImportedEncounter | null {
   const date = start ?? effTime(ee?.effectiveTime);
   if (!date) return null;
   const { code, system } = encounterTypeCode(ee?.code);
+  const classCode = encounterClassCode(ee?.code);
+  const display = codedDisplayName(ee?.code, {});
+  const classLabel = classCode
+    ? (ENCOUNTER_CLASS_LABELS[classCode] ?? null)
+    : null;
+  // With no real type coding, the display is just the class's own lowercase
+  // displayName — prefer the canonical class label.
+  const type = code == null ? (classLabel ?? display) : (display ?? classLabel);
   const idExt = firstEncounterId(ee);
   return {
     date,
     end_date: end,
-    type: codedDisplayName(ee?.code, {}),
+    type,
     code,
     code_system: system,
-    class_code: encounterClassCode(ee?.code),
+    class_code: classCode,
     reason: null,
     diagnoses: [],
     provider: providerFromAssignedEntity(
@@ -584,6 +627,17 @@ export function isClinicalNoteSection(section: CdaSection): boolean {
 // normalized, plain text). Skips a section with no narrative. Read at the document
 // level so the caller can attach the note to the same-document encounter (else store
 // it as a standalone dated note). One entry per note section.
+// The author of the first Note Activity entry (<entry><act><author>, template
+// 4.202) — where eClinicalWorks puts the note's clinician, rather than as a
+// section-level author (4.119). Fallback only; a section-level author wins.
+function firstNoteEntryAuthor(entries: any[]): any {
+  for (const e of asArray(entries)) {
+    const a = asArray(e?.act?.author)[0];
+    if (a) return a;
+  }
+  return undefined;
+}
+
 export function clinicalNotesFromSections(
   sections: CdaSection[]
 ): ClinicalNote[] {
@@ -592,7 +646,8 @@ export function clinicalNotesFromSections(
     if (!isClinicalNoteSection(s)) continue;
     const text = collectText(s.raw?.text).replace(/\s+/g, " ").trim();
     if (!text) continue;
-    const authorNode = asArray(s.raw?.author)[0];
+    const authorNode =
+      asArray(s.raw?.author)[0] ?? firstNoteEntryAuthor(s.entries);
     out.push({
       text,
       author: providerFromAssignedEntity(

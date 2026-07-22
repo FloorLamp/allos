@@ -35,6 +35,7 @@ import {
   clinicalNotesFromSections,
   encompassingEncounterInfo,
   selectReasonTarget,
+  serviceEventProviders,
   socialHistorySex,
   visitDiagnosesFromSections,
 } from "./extractors";
@@ -148,6 +149,9 @@ export function parseCcdaDocument(xml: string): {
   // pick which encounter the Reason for Visit attaches to when a hospital document
   // carries several Encounter Activities (issue #267). Null when absent.
   encompassingEncounter: EncompassingEncounterInfo | null;
+  // Header-level care team (documentationOf/serviceEvent performers) — e.g. the
+  // patient's PCP on an eCW document. Unioned into the import's providers.
+  serviceEventProviders: ImportedProvider[];
 } {
   // Reject a hostile internal DTD subset (#135 item 5) before parsing — no
   // legitimate C-CDA declares custom entities, so a `<!ENTITY>` is an attack shape.
@@ -183,6 +187,7 @@ export function parseCcdaDocument(xml: string): {
     demographics: mapDemographics(cd),
     documentDate: effTime(cd?.effectiveTime),
     encompassingEncounter: encompassingEncounterInfo(cd),
+    serviceEventProviders: serviceEventProviders(cd),
   };
 }
 
@@ -391,8 +396,13 @@ export function extractFromCcda(
   xml: string,
   extractors: SectionExtractor[] = DEFAULT_EXTRACTORS
 ): ImportResult {
-  const { sections, demographics, documentDate, encompassingEncounter } =
-    parseCcdaDocument(xml);
+  const {
+    sections,
+    demographics,
+    documentDate,
+    encompassingEncounter,
+    serviceEventProviders: headerProviders,
+  } = parseCcdaDocument(xml);
   const immunizations: ImportedImmunization[] = [];
   const records: ImportedRecord[] = [];
   const providers: ImportedProvider[] = [];
@@ -640,10 +650,11 @@ export function extractFromCcda(
     carePlanItems: keptCarePlanItems,
     careGoals: keptCareGoals,
     demographics: enrichedDemographics,
-    // Section-level providers (Care Teams). Per-reading performers ride on the
-    // records/immunizations above; import-persist unions all three and dedups
-    // globally when resolving them into the shared registry.
-    providers,
+    // Section-level providers (Care Teams) plus the header's serviceEvent
+    // performers (the stated PCP / appointment provider). Per-reading performers
+    // ride on the records/immunizations above; import-persist unions them all and
+    // dedups globally when resolving them into the shared registry.
+    providers: [...providers, ...headerProviders],
     report,
   };
 }
