@@ -685,7 +685,7 @@ export function buildSubstanceUseFindings(profileId: number): Finding[] {
       tone: "info",
       evidence:
         "Your own weekly reduction target. Informational, not medical advice.",
-      actionHref: "/medical/substance-use",
+      actionHref: "/records/specialty/substance-use",
       actionLabel: "View intake",
     },
   ];
