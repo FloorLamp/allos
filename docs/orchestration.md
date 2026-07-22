@@ -47,7 +47,7 @@ What that means in practice:
 | Local e2e        | Assign each WORKTREE a fixed port PAIR (`E2E_PORT`/`E2E_DEMO_PORT`: 5400/5401, 5600/5601, 5800/5801, …) at dispatch — zero collisions since adopting pairs. `ALLOS_DB_PATH` isolation is handled by the Playwright config. In some containers local `next dev` boot TIMES OUT — run CI-parity instead: `rm -rf .next && npm run build` once, then `CI=1 ANTHROPIC_API_KEY= E2E_PORT=<p> E2E_DEMO_PORT=<p+1> npx playwright test e2e/auth.setup.ts <specs> --repeat-each=3 --retries=0 --reporter=list`, with `rm -rf e2e/.data` + `lsof -ti :<p> -ti :<p+1> \| xargs -r kill` first. **FULL suites: always CI-mode** (see e2e discipline — dev-mode full suites swap the box and mass-fail). |
 | Raw Playwright   | A hand-rolled debug script (`chromium.launch()` outside the test runner) may want a headless-shell version the container doesn't have — launch with `executablePath: "/opt/pw-browsers/chromium-<ver>/chrome-linux/chrome"` (check `ls /opt/pw-browsers`). Kill any manually-booted `next dev` before a suite run: it holds the `.next` dev-server lock for that worktree AND its memory counts against the suite (see below).                                                                                                                                                                                                                                                               |
 | REST merge       | `PUT /pulls/N/merge` can 403 through the agent proxy — merge ONLY via `mcp__github__merge_pull_request` (squash).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| CI shape         | Per PR (since 2026-07-21): `check` (~4 min), `e2e-changed` (the PR's changed specs/infra at retries=0), and a 4-way sharded `e2e` matrix (full suite at retries=1, fresh runner + fresh servers per shard). Every push costs a full round — batch fixes before pushing. On-demand full-suite gate for ANY branch: dispatch `.github/workflows/e2e-full.yml` (fresh runners, defaults retries=0; `repeat_each` up to 3). Each full-suite shard posts a pass-on-retry flake report to its job summary — read it after green runs; those are confirmed flakes to file.                                                                                                                          |
+| CI shape         | Per PR (since 2026-07-21): `check` (~4 min), `e2e-changed` (the PR's changed specs/infra at retries=0), and a 4-way sharded `e2e` matrix (full suite at retries=0 since #1160 — the suite is clean enough that the retry safety-net was dropped so a flaky spec can't hide; fresh runner + fresh servers per shard). Every push costs a full round — batch fixes before pushing. On-demand full-suite gate for ANY branch: dispatch `.github/workflows/e2e-full.yml` (fresh runners, defaults retries=0; `repeat_each` up to 3). Each full-suite shard posts a pass-on-retry flake report to its job summary — read it after green runs; those are confirmed flakes to file.                 |
 | Issue auto-close | GitHub only parses `Fixes #N` **one keyword per line** in the PR body. Slash-separated lists silently don't close anything. Verify closure after every merge.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 ## Container-restart resilience (the dominant failure mode)
@@ -170,8 +170,10 @@ Every agent prompt must contain, verbatim where marked:
 - Migrations: announce the number you take (check current max first); collisions
   resolve by whoever lands second renumbering + regenerating manifest.json
 - PR body: closing keywords each ON THEIR OWN LINE (Fixes #N — GitHub parses one per line)
-- Commit trailers EXACTLY:
-    Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+- Commit trailers EXACTLY (use THIS session's configured Co-Authored-By line —
+  the model name varies by session; copy it from your own environment's commit
+  instructions, don't hardcode a model here):
+    Co-Authored-By: Claude <model> <noreply@anthropic.com>
     Claude-Session: <session URL>
 - No model identifiers in commits/PR/code
 - Open the PR READY (not draft) via REST, base main
@@ -242,7 +244,7 @@ it later from the issue number is guesswork.
     consolidation, a multi-page feature) — and since 2026-07-21 it is a dispatch
     of `e2e-full.yml` against the branch (fresh runners, retries=0), not a local
     run; PR CI's sharded `e2e` matrix already gives every push a full-suite pass
-    at retries=1 on top of that. **Rebase waiver:** when a
+    at retries=0 on top of that (dropped from retries=1 in #1160). **Rebase waiver:** when a
     rebase's delta is text-only (README/docs conflict resolution), CI's full e2e
   * changed-specs lane on the exact rebased tip, plus the pre-rebase local full
     suite, is sufficient — don't burn a second local full run.
@@ -333,6 +335,52 @@ python… ; done` CI-poll loop running in the background was starving the
   through `e2e/helpers.ts` (`settledClick`/`followLink`) are the fix for
   pre-hydration clicks. In containers where `next dev` boot times out, run the
   CI-parity form (build + `CI=1`) exclusively — it is the mode that gates.
+- **The `e2e-changed` whole-suite escalation is itself degradation-prone — the
+  SHARDED matrix is the more reliable full-suite signal (2026-07-22).** Any
+  change to shared e2e infra (`seed-events.ts`/`fixture-logins.ts`/`helpers.ts`)
+  makes `e2e-changed` run the WHOLE suite in ONE worker — and that single-worker
+  whole-suite lane hits the same cumulative-starvation wall a local single-process
+  full run does. Its tell: it reds on a ROTATING set of create-member/login specs
+  (`audit-log`, `email-auth`, `episode-med-reconcile`, `household-rollup`,
+  `illness-episode`) that VARIES run-to-run, while `check` AND all four `e2e`
+  shards stay green and the PR's OWN spec passes. A rotating failure set = the
+  single-process degradation, not a regression; re-running rarely clears it
+  (it's cumulative, not random). When only `e2e-changed` reds on that class and
+  the merits are green, two exits: (a) HOLD for the interference-spec hardening
+  (if the owner has claimed those specs); (b) take the PR's new fixture OUT of
+  `seed-events.ts` (spec-owned create-and-clean) so it stops escalating
+  `e2e-changed` to the whole suite — then that lane runs only the changed spec.
+  Never merge over a red required check, but never read a rotating-set
+  `e2e-changed` red as the PR's own bug either.
+- **Adding a NEW spec FILE reshuffles the shard split and surfaces LATENT
+  interference (2026-07-22).** Playwright shards the sorted spec-file list, so a
+  new `.spec.ts` shifts which specs land together — and specs that mutate shared
+  profile-1 state (activity merges, session/equipment counts) that previously
+  happened to shard APART can now collide under one worker. Confirmed
+  pre-existing, not the new PR's fault: reproduce by running the accused specs
+  TOGETHER `--workers=4` on the PR branch AND on a clean main checkout — if both
+  fail together, it's latent shared-seed fragility the shard-reshuffle exposed
+  (harden the fragile specs to own their fixtures), not the new spec's doing.
+- **Reproduce a GLOBAL/shared-config spec's flake ONLY at `--workers=1`
+  (2026-07-22).** The instinct to amplify a rare flake with a parallel
+  `--repeat-each=N` BACKFIRES on any spec that owns GLOBAL state — the SMTP/public-URL
+  relay, Telegram bot config, audit-retention, AI tiers (`/settings/server`), or the
+  shared seeded profile. Parallel repeats race each other on that one shared row and
+  manufacture FALSE flakes that don't exist in CI (chasing the settledFill fix I saw
+  the SAME email-auth run go 10/12 then 6/13 under default workers, then a clean 10/10
+  once pinned to `--workers=1`). CI runs `--workers=1`, so that's the ONLY honest
+  local signal for these specs; `--repeat-each` is fine, but keep it single-worker.
+  (Parallel `--repeat-each` stays valid for a spec that owns its OWN fixture and
+  touches no global/profile-1 state.)
+- **The controlled-input pre-hydration fill-revert is a silent flake class — use
+  `settledFill` (2026-07-22, #1188).** A `.fill()` before React hydrates a CONTROLLED
+  input sets the DOM (a naive `toHaveValue` passes) but never fires `onChange`, so
+  state stays empty and hydration reverts the field; a Save that reads state then
+  persists the empty/stale value SILENTLY (no error, often a valid save). `e2e/helpers.ts`
+  now has `settledFill` (waits for React's `__reactFiber$`/`__reactProps$` markers
+  before filling) for exactly this — Settings save-from-state cards and autosave-on-blur
+  fields. Its checkbox analog (a pre-hydration `.check()` that reverts) is still
+  unhelpered — a `settledCheck` is the open follow-up (`food-telegram` line-26 flake).
 
 **Known failure classes** (every one recurred at least once):
 
@@ -372,57 +420,28 @@ python… ; done` CI-poll loop running in the background was starving the
    seed still wrote `notify_last_error*` settings keys the reader no longer
    consulted.) Reviewers: a PR that relocates state must grep
    `e2e/seed-events.ts` and `scripts/seed.ts` for the old mechanism.
-8. **The midnight-UTC window (~23:30–00:15 UTC)** — a gate that fails only in
-   this window is almost never the PR. Before blaming the diff, read the run's
-   wall-clock timestamps. Two subclasses, both hit on the #1047 gates:
-   (a) a CLIENT component computing a relative age ("2 hrs ago") from the
-   browser's real clock, which cannot see `ALLOS_TEST_NOW` — a fixture reading
-   stamped 00:05 flips to "(Yesterday)" as real time nears midnight. The pure
-   formatters (`formatRelativeTime`, `readingClockWithRelativeAge`) already
-   take an injectable `now`; the fix is always the #1028 pattern — thread a
-   server-computed `nowIso` prop across the "use client" boundary, never a
-   client-side `new Date()`. (b) a DB-tier fixture pairing `today(profileId)`
-   with a wall clock derived from a SHIFTED real instant (`now - 20min` →
-   `getUTCHours`): just after UTC midnight the hh:mm belongs to yesterday, so
-   date+time reconstructs an instant ~24h in the FUTURE (workout-presence-gate
-   failed exactly so at 00:14 UTC). Discipline: derive a fixture row's date
-   AND time from ONE instant. Sweep hook: `grep getUTCHours lib/__db_tests__`.
-   The GENERAL form is the **morning-UTC band** (issue #1048): rows the suite
-   writes at runtime get REAL timestamps (SQL `datetime('now')` defaults),
-   while assertions run on the frozen `ALLOS_TEST_NOW` = today 12:00 — from
-   00:00 to ~11:00 UTC real time LAGS frozen time by hours, and every
-   liveness/recency window reads a just-written row as stale (afternoon runs
-   survive only because future-instant tolerance is built in; morning runs
-   had simply never happened before 2026-07-20). Triage drill for ANY gate
-   failure in that band: reproduce the failed specs on plain MAIN at the same
-   hour — an identical failure proves the band, not the PR; then rerun the
-   gate after ~12:05 UTC (real ≥ frozen, the proven regime) and merge on that
-   green. Do not patch specs to tolerate the band; the structural fix is
-   #1048's design pass. **RESOLVED 2026-07-21 (PR #1103):** the frozen instant
-   is now the run's REAL start, not a fixed noon, so real time can no longer lag
-   frozen time by hours at any hour — the band and its night-gate discipline
-   below are history, kept for the triage pattern. The one residual: a run that
-   STARTS within its own duration (~25 min) of real midnight can still roll
-   SQL-stamped rows a day ahead of the frozen date.
-   **The band is BROAD, not two specs (2026-07-21, ~03:00 UTC).** It was first
-   seen as `workout-presence` + `temperature-unit`, but a night gate showed
-   ~10 recency/liveness-gated specs failing identically on plain main:
-   `protocol-reach` (×4 — the "ongoing protocol" annotations + biomarker
-   outcome options), `protein-adequacy`, `profile-switch-toasts` ("no ghost
-   toasts on first poll"), `qualitative-chart` (×3), plus the original two —
-   all rendering only the app shell (main content data-gated-out), no server
-   error logged, seed clean. So a night full-suite gate ALWAYS carries ~10
-   rotating false-failures, which is indistinguishable at a glance from
-   (a) a real regression or (b) single-process whole-suite degradation — and
-   tonight all three got confused on one gate. Discipline: (1) at night, the
-   ONLY authoritative full green is a post-12:05-UTC rerun; (2) to clear a
-   specific PR before then, the bisect is decisive — run the SAME failing
-   specs on the PR's BASE commit (pre-change main) at the SAME hour; identical
-   failures ⇒ band, and the PR's own changed spec passing + a green check job
-   is enough to merge on the carve-out (this is how food-nudge #1097 merged).
-   (3) A `BUILD=1` when checking out an OLDER commit in a reused worktree is
-   usually the downgrade guard (`user_version` newer than the old code's max
-   migration) — `rm data/allos.db*` and rebuild, it is NOT a real build break.
+8. **UTC time-band false-failures (RESOLVED 2026-07-21, PR #1103; kept for the
+   triage pattern).** A gate that fails only in a wall-clock window is almost
+   never the PR — read the run's timestamps before blaming the diff. Original
+   band: real time lagged the frozen `ALLOS_TEST_NOW` (a fixed noon) for hours
+   after 00:00 UTC, so runtime-stamped rows (`datetime('now')`) read stale
+   against every liveness/recency window, spraying ~10 rotating false-failures
+   across a night full-suite gate. #1103 froze the instant to the run's REAL
+   start, so real can no longer lag frozen at any hour. **Residual:** a run that
+   STARTS within its own duration (~25 min) of real midnight can still roll a
+   SQL-stamped row a day ahead of the frozen date. **Triage drill (still the
+   move for any suspected time artifact):** run the SAME failing specs on the
+   PR's BASE commit at the SAME hour — identical failures ⇒ time-band, not the
+   PR, and the PR's own changed spec passing + a green `check` merges on the
+   carve-out. Two root causes to grep for: (a) a CLIENT relative-age
+   (`"2 hrs ago"`) off the browser clock, which can't see `ALLOS_TEST_NOW` — fix
+   is the #1028 pattern (thread a server `nowIso` across the "use client"
+   boundary, never client `new Date()`); (b) a DB fixture pairing
+   `today(profileId)` with a wall clock off a SHIFTED instant → an instant ~24h
+   in the FUTURE (`grep getUTCHours lib/__db_tests__`; derive a row's date AND
+   time from ONE instant). (A `BUILD=1` when checking out an OLDER commit in a
+   reused worktree is the downgrade guard, not a build break — `rm data/allos.db*`
+   and rebuild.)
 9. **Persisted channel config turns event-driven dispatches into marker
    pollution** — the delivery-health marker is GLOBAL (one `notify_lifecycle`
    row), and `notify-delivery-error.spec.ts` asserts the seeded fixture
@@ -436,6 +455,17 @@ python… ; done` CI-poll loop running in the background was starving the
    a PR that adds an event-driven send path must grep the e2e specs for
    persisted channel config on shared profiles; a spec that configures a
    channel gets a dedicated fixture login.
+10. **Conditional-visibility render race (2026-07-22)** — a spec that BRANCHES
+    on `if (await x.isVisible().catch(() => false))` immediately after `goto`
+    races the (server) render under CI load: the un-awaited check returns false
+    before the element paints, the branch is skipped, and a later step that
+    depended on it fails — passing locally (instant render) but red in CI. Wait
+    for a stable section anchor (`await expect(sectionTestid).toBeVisible()`)
+    BEFORE the conditional probe. For an idempotent accept-if-present flow, also
+    assert the element UNMOUNTS after the action (`toHaveCount(0)`) so the
+    mutation has committed before you navigate away to check its effect. (The
+    create-visit-from-record spec flaked exactly this in CI while passing local
+    `--repeat-each`.)
 
 ## Review checklist
 
@@ -475,6 +505,17 @@ fixture files (`seed-events.ts`, `fixture-logins.ts`) by concatenating ours+thei
 can drop a shared boundary line — a `console.log(...` whose closing `);` sat on
 the other side of the `=======` — so ALWAYS `typecheck` after; the error is a
 bare `',' expected` at the seam.
+
+**Rebasing a PR ACROSS a merged route restructure (2026-07-22).** When a
+tabs/route-per-page change (e.g. #1079's `/results#anchor` → `/results/biomarkers`)
+has landed and you rebase a sibling PR onto it, two traps the clean textual
+rebase hides: (1) `typecheck` reds on the NEW routes (`Type '"/records/care/overview"'
+is not assignable to AppRoute`) until `npm run build` regenerates `.next/types` —
+a bare post-rebase `typecheck` LIES; run it AFTER `build`, not before. (2) a spec's
+`page.goto("/old#anchor")` route strings are NOT typed, so `build`'s AppRoute
+sweep (which only catches SOURCE hrefs) will NOT flag them — grep the rebased spec
+for stale route literals and re-run its e2e in CI-parity. A clean rebase + green
+local pure tier is NOT sufficient across a route restructure.
 
 ## Cadence & lifecycle
 
