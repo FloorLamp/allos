@@ -19,7 +19,6 @@ import type {
 
 const DOMAIN_LABEL: Record<Exclude<VisitLinkDomain, "episode">, string> = {
   medication: "Medication started",
-  record: "Result",
   condition: "Diagnosis",
   procedure: "Procedure",
   imaging: "Imaging",

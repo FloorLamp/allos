@@ -1043,6 +1043,11 @@ function insertImportRows(
     if (info.changes > 0) headCircCount++;
   }
   for (const r of input.records) {
+    // #1178: a prescription is the SINGLE medication entity (projected into
+    // intake_items by persistExtractedMedications below), never a paired
+    // medical_records row — so it is NOT inserted here. Every other category (lab /
+    // vital / scan / …) is a medical_records reading as before.
+    if (r.category === "prescription") continue;
     const info = insRec.run(
       r.date,
       r.category,

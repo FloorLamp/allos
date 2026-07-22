@@ -24,8 +24,11 @@
 //     exactly one candidate (corroboration is a match, not a guess). No suggestion at
 //     all when dates don't match exactly (no fuzzy windows in v1).
 
+// #1178 removed the `record` domain: an imported prescription is no longer a
+// medical_records category='prescription' row (its own candidate domain) — it is the
+// SINGLE `medication` (intake_items) entity, so a prescription is ONE candidate and
+// the cross-domain double-listing symptom is gone at the root.
 export type VisitLinkDomain =
-  | "record"
   | "condition"
   | "procedure"
   | "imaging"

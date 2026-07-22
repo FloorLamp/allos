@@ -223,18 +223,22 @@ describe("tier-1 FHIR self-heal", () => {
 });
 
 describe("read-time suggestion — the late-arrival case", () => {
-  it("a record predating a LATER-imported visit gets suggested at read time (no backfill)", () => {
-    // A manually-entered prescription record on DATE, no visit yet.
+  it("a medication predating a LATER-imported visit gets suggested at read time (no backfill)", () => {
+    // A manually-entered medication with a course dated DATE, no visit yet. (Since
+    // #1178 a prescription is the `medication` entity, not a `record` — this is the
+    // late-arrival case for the single medication domain.)
     const recId = Number(
       db
         .prepare(
-          `INSERT INTO medical_records (profile_id, date, category, name)
-           VALUES (?, ?, 'prescription', 'Ibuprofen 200 mg')`
+          `INSERT INTO intake_items (profile_id, name, kind) VALUES (?, 'Ibuprofen', 'medication')`
         )
-        .run(profileId, DATE).lastInsertRowid
+        .run(profileId).lastInsertRowid
     );
+    db.prepare(
+      `INSERT INTO medication_courses (item_id, started_on) VALUES (?, ?)`
+    ).run(recId, DATE);
     // No suggestion — there is no encounter yet.
-    expect(suggestionForRecord(profileId, "record", recId)).toBeNull();
+    expect(suggestionForRecord(profileId, "medication", recId)).toBeNull();
 
     // The CCD containing the originating visit imports LATER.
     const doc = newDocument(profileId);
@@ -263,15 +267,14 @@ describe("read-time suggestion — the late-arrival case", () => {
     const eid = encId(profileId);
 
     // Now the read-time engine pairs them — in BOTH directions.
-    const recSug = suggestionForRecord(profileId, "record", recId);
+    const recSug = suggestionForRecord(profileId, "medication", recId);
     expect(recSug?.encounter?.id).toBe(eid);
     const encSug = suggestionsForEncounter(profileId, eid);
     expect(encSug.suggestions.some((s) => s.record.id === recId)).toBe(true);
 
-    // Accept the medical_records ('record' domain) link — exercises the
-    // external_id-carrying token path (distinct from the medication id-only path).
-    expect(linkRecordToEncounter(profileId, "record", recId, eid)).toBe(true);
-    expect(encounterForRecord(profileId, "record", recId)?.id).toBe(eid);
+    // Accept the medication↔visit link (a manual med uses the id-based token path).
+    expect(linkRecordToEncounter(profileId, "medication", recId, eid)).toBe(true);
+    expect(encounterForRecord(profileId, "medication", recId)?.id).toBe(eid);
   });
 });
 

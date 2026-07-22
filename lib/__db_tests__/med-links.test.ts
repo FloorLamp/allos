@@ -315,7 +315,7 @@ describe("#1052 tier-2 suggest-and-accept + decline memory", () => {
 });
 
 describe("#1051 records bridge carries provider_id + source_record_id", () => {
-  it("carries the record's individual provider + source record, with the transitive visit chain", () => {
+  it("carries the record's individual provider + its OWN visit link (no source_record_id since #1178)", () => {
     const providerId = individualProvider("Dr. Rivera");
     const doc = newDocument(profileId);
     // A prescription record linked to an encounter + the individual prescriber.
@@ -339,18 +339,16 @@ describe("#1051 records bridge carries provider_id + source_record_id", () => {
     const created = createMedicationFromRecord(profileId, recordId);
     expect(created).not.toBeNull();
     const med = db
-      .prepare(
-        `SELECT provider_id, source_record_id FROM intake_items WHERE id = ?`
-      )
+      .prepare(`SELECT provider_id, encounter_id FROM intake_items WHERE id = ?`)
       .get(created!.id) as {
       provider_id: number | null;
-      source_record_id: number | null;
+      encounter_id: number | null;
     };
     expect(med.provider_id).toBe(providerId);
-    expect(med.source_record_id).toBe(recordId);
-    // Transitive "Prescribed at": the med has no own visit link, but its source record
-    // resolves to the encounter.
-    const via = encounterForRecord(profileId, "record", med.source_record_id!);
+    // Since #1178 the med carries the record's OWN encounter link directly — no
+    // source_record_id chain — so "Prescribed at" resolves off the med itself.
+    expect(med.encounter_id).toBe(encounterId);
+    const via = encounterForRecord(profileId, "medication", created!.id);
     expect(via?.id).toBe(encounterId);
   });
 

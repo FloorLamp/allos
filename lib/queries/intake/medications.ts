@@ -7,6 +7,11 @@
 import { db, today, writeTx } from "../../db";
 import { normalizeSeverity, SEVERITY_LABELS } from "../../medication-history";
 import { parsePrescription, strengthFromName } from "../../prescription-parse";
+import { medNameKey } from "../../medication-record-match";
+import {
+  classifyReprescription,
+  normalizeStrength,
+} from "../../medication-renewal";
 import { resolveExactPrescriberId } from "../../providers-db";
 import { profileAgeMonths } from "../../settings";
 import { getLatestBodyMetricDated } from "../metrics";
@@ -679,7 +684,7 @@ export function createMedicationFromRecord(
 ): { id: number; name: string } | null {
   const rec = db
     .prepare(
-      `SELECT id, name, value, unit, notes, document_id, provider_id
+      `SELECT id, name, value, unit, notes, date, document_id, provider_id, encounter_id
          FROM medical_records
         WHERE id = ? AND profile_id = ? AND category = 'prescription'`
     )
@@ -690,8 +695,10 @@ export function createMedicationFromRecord(
         value: string | null;
         unit: string | null;
         notes: string | null;
+        date: string | null;
         document_id: number | null;
         provider_id: number | null;
+        encounter_id: number | null;
       }
     | undefined;
   if (!rec || !rec.name?.trim()) return null;
@@ -720,14 +727,52 @@ export function createMedicationFromRecord(
     providerId = resolveExactPrescriberId(med.prescriber);
   }
 
+  const attribution: CourseAttribution = {
+    prescriber: med.prescriber,
+    providerId,
+    doseSnapshot:
+      [med.strength, med.sig].filter((p): p is string => !!p).join(" — ") ||
+      null,
+    documentId: rec.document_id,
+  };
+
   return writeTx(() => {
+    // #1204: does this drug already match a tracked med? Renew (course) unless the
+    // #1027 concurrent-different-strength case dictates a separate item.
+    const key = medNameKey(med.name);
+    const existing = getMedMatchStates(profileId).find((ex) => {
+      const exKeys = new Set([medNameKey(ex.name)]);
+      if (ex.brand) exKeys.add(medNameKey(ex.brand));
+      return key !== "" && exKeys.has(key);
+    });
+    if (existing) {
+      const newStrength = med.strength ?? strengthFromName(med.name);
+      const relationship = classifyReprescription({
+        existingHasOpenCourse: existing.hasOpenCourse,
+        existingStrengths: new Set(
+          existing.strengths
+            .map((s) => normalizeStrength(s))
+            .filter((s): s is string => !!s)
+        ),
+        newStrength,
+      });
+      if (relationship === "renewal") {
+        addRenewalCourse(profileId, existing.id, {
+          startedOn: rec.date,
+          attribution,
+        });
+        return { id: existing.id, name: existing.name };
+      }
+      // "separate" falls through to a distinct item (#1027 concurrent).
+    }
+
     const info = db
       .prepare(
         `INSERT INTO intake_items
            (name, notes, active, condition, priority, kind,
             prescriber, pharmacy, rx_number, as_needed,
-            document_id, source, provider_id, source_record_id, profile_id)
-         VALUES (?,?,1,'daily','high','medication',?,?,?,?,?,'extracted',?,?,?)`
+            document_id, source, provider_id, encounter_id, import_key, profile_id)
+         VALUES (?,?,1,'daily','high','medication',?,?,?,?,?,'extracted',?,?,?,?)`
       )
       .run(
         med.name,
@@ -738,11 +783,16 @@ export function createMedicationFromRecord(
         med.asNeeded ? 1 : 0,
         rec.document_id,
         providerId,
-        rec.id,
+        rec.encounter_id,
+        rec.document_id != null
+          ? `medimport:${rec.document_id}|${med.name.toLowerCase()}`
+          : null,
         profileId
       );
     const medId = Number(info.lastInsertRowid);
-    ensureMedicationCourse(profileId, medId, null);
+    // The med carries the record's OWN prescribed date as its initial course start
+    // (no source_record_id chain since #1178), plus the prescriber + dose snapshot.
+    ensureMedicationCourse(profileId, medId, rec.date, false, attribution);
     const insDose = db.prepare(
       `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
        VALUES (?,?,?, 'any', ?)`
