@@ -89,6 +89,18 @@ export interface Recommendation {
   // the recommendation itself is unchanged. Absent when there's no injury/condition
   // context.
   notes?: string[];
+  // Additional concurrently-firing rest reasons (#1148), as compact noun phrases
+  // ("resting HR 62 bpm (up from ~54)"), rendered as a secondary "Also: …" line on the
+  // rest card + the Telegram rest nudge so a single snooze can never bury an
+  // under-recovery signal the user never saw. Set ONLY on a rest recommendation when
+  // more than one signal fires; the salience-ordered primary stays in title/detail.
+  // Absent when a single reason fires (byte-for-byte the prior single-reason output).
+  also?: string[];
+  // The ids of ALL firing under-recovery signals behind a rest recommendation (#1148),
+  // in salience order — carried so the "Training anyway" action (#1150) can record the
+  // exact set of signals the user acknowledged. Set only on a LIVE rest rec; absent on
+  // the acknowledgment card and every non-rest rec.
+  firingReasonIds?: string[];
 }
 
 // The weekly frequency-target progress slice the engine reads.
@@ -180,6 +192,19 @@ export interface RestEpisode {
   reasonId: string; // the rest rec id that last (re)marked the episode
 }
 
+// The "Training anyway" acknowledgment (#1150): a per-day declaration of intent —
+// "I've decided to train despite this rest recommendation" — DISTINCT from the #39
+// snooze (an acknowledgment is not a dismissal, so it never reuses the snooze key).
+// When its `date` matches today the rest slot transforms IN PLACE into calm,
+// recovery-aware training guidance naming every firing signal, instead of hiding.
+// Today-only: a stale (past-date) marker is ignored, so a still-firing physiological
+// signal re-evaluates fresh tomorrow and can never be silenced for good. Stored
+// per-profile (JSON in profile_settings), the way the rest episode marker is.
+export interface RestAck {
+  date: string; // the day the user acknowledged training-anyway (YYYY-MM-DD)
+  reasonIds: string[]; // firing rest reason ids at ack time — the signals acknowledged
+}
+
 export interface CoachingInput {
   today: string; // profile-tz YYYY-MM-DD
   routine: RoutineTargetProgress[];
@@ -222,6 +247,10 @@ export interface CoachingInput {
   // fires, only how it reads. Absent ⇒ every rest nudge is phrased fresh (prior
   // behavior).
   restEpisode?: RestEpisode | null;
+  // The "Training anyway" acknowledgment for TODAY (#1150), read from the per-profile
+  // marker. When its date === today the rest slot renders calm training guidance rather
+  // than a rest nudge. Absent/null (or a past-date marker) ⇒ a rest nudge as usual.
+  restAck?: RestAck | null;
   // The easy/hard training-intensity split over a trailing window (issue #159),
   // or null when there's no HR zone model / no windowed HR. Drives the hard-heavy
   // "add easy Zone 2" nudge — the classic self-coached polarization failure.
@@ -362,9 +391,6 @@ function hoursText(min: number): string {
   return `${(min / 60).toFixed(1)}h`;
 }
 
-// The rest/light recommendation when a strong recovery signal fires, else null.
-// Reasons are checked in salience order (sleep → resting HR → overtraining); the
-// first hit names the recommendation, so it always states an actual reason.
 // The rest recommendation's TENSE (#921): saying "rest today" is stale advice once
 // today's session already happened (or is happening). Phrasing only — the trigger
 // logic/thresholds/episode continuity are untouched, and "today" stays byte-for-byte
@@ -373,6 +399,17 @@ function hoursText(min: number): string {
 //   • "next"   — today's session already happened: frame the NEXT session.
 //   • "active" — a session is live right now: don't contradict it; frame the next.
 type RestTense = "today" | "next" | "active";
+
+// Tense selection (#921): a live session wins (active), else a session already logged
+// today reframes to the next session, else the original "today" advice. An active
+// session has been auto-saved, so it's also in trainingDates — check active FIRST.
+function restTenseFor(input: CoachingInput): RestTense {
+  return input.workoutActive
+    ? "active"
+    : input.trainingDates.includes(input.today)
+      ? "next"
+      : "today";
+}
 
 function restTitle(tense: RestTense): string {
   switch (tense) {
@@ -385,38 +422,45 @@ function restTitle(tense: RestTense): string {
   }
 }
 
+// One firing under-recovery signal behind a rest recommendation (#1148). The engine
+// checks every trigger (sleep → resting HR → overtraining/load) and collects ALL
+// firing ones — not just the first — so the card/nudge can NAME concurrent signals
+// and a single snooze can't silently bury one the user never saw. `reasonCore` +
+// `todayTail` compose the primary detail (the salience-ordered first reason); `also`
+// is the compact noun phrase for the secondary "Also: …" line and the "Training
+// anyway" acknowledgment listing.
+export interface RestReason {
+  id: string; // "rest-sleep" | "rest-rhr" | "rest-overtraining" | "rest-load"
+  reasonCore: string;
+  todayTail: string;
+  also: string;
+}
+
 // Compose a rest rec's detail from its reason core and the tense. `todayTail` is the
 // exact prior trailing clause, preserved verbatim for the "today" tense; the other
 // tenses swap in next-session framing.
-function restRec(
-  id: string,
+function restDetail(
   reasonCore: string,
   todayTail: string,
   tense: RestTense
-): Recommendation {
-  const detail =
-    tense === "today"
-      ? `${reasonCore}${todayTail}`
-      : tense === "next"
-        ? `${reasonCore} — make your next session an easy one to recover.`
-        : `${reasonCore} — you're training now; make your next session a light one.`;
-  return { id, kind: "rest", title: restTitle(tense), detail, tone: "caution" };
+): string {
+  return tense === "today"
+    ? `${reasonCore}${todayTail}`
+    : tense === "next"
+      ? `${reasonCore} — make your next session an easy one to recover.`
+      : `${reasonCore} — you're training now; make your next session a light one.`;
 }
 
-export function restRecommendation(
+// Every firing rest reason in salience order (sleep → resting HR → overtraining, then
+// weekly load only if the streak didn't already fire — the two schedule-derived
+// triggers stay mutually exclusive as before, so "trained N days in a row" and
+// "trained N of the last 7" never double up). Empty ⇒ no rest recommendation. Pure;
+// the caller picks the salience-ordered primary and renders the rest as "Also: …".
+export function restReasons(
   input: CoachingInput,
   th: CoachingThresholds
-): Recommendation | null {
+): RestReason[] {
   const { sleep, restingHr, trainingDates, today } = input;
-  // Tense selection (#921): a live session wins (active), else a session already
-  // logged today reframes to the next session, else the original "today" advice.
-  // An active session has been auto-saved, so it's also in trainingDates — check
-  // active FIRST.
-  const restTense: RestTense = input.workoutActive
-    ? "active"
-    : trainingDates.includes(today)
-      ? "next"
-      : "today";
   // The two schedule-derived triggers (overtraining streak, weekly load) key on
   // LOADING days — hard sessions that accumulate fatigue — not every logged
   // activity, so a light recovery day breaks the streak instead of extending it
@@ -428,8 +472,8 @@ export function restRecommendation(
   // schedules many consecutive strength days (a 6-day PPL) can't trip a generic 4-day
   // rule — only DEVIATION from the plan (one more consecutive loading day, or a fuller
   // week than prescribed) warrants a schedule-based rest nudge. The physiological
-  // triggers above (sleep, RHR) are routine-independent and already returned. Off a
-  // routine, the generic thresholds stand unchanged.
+  // triggers (sleep, RHR) are routine-independent. Off a routine, the generic
+  // thresholds stand unchanged.
   const cadence = routineLoadingCadence(input.activeRoutine);
   const effConsecutive = cadence
     ? Math.max(
@@ -443,6 +487,8 @@ export function restRecommendation(
         Math.min(cadence.loadingDaysPerCycle + 1, th.overtrainingWindowDays + 1)
       )
     : th.overtrainingWindowActiveDays;
+
+  const reasons: RestReason[] = [];
 
   // Poor sleep — only when sleep data exists. When a personal night-to-night
   // spread is known, the deficit that counts as "poor" widens to at least
@@ -462,21 +508,25 @@ export function restRecommendation(
       sleep.lastNightMin <= sleep.baselineMin - effDeficit;
     const belowFloor = sleep.lastNightMin < th.sleepFloorMin;
     if (belowBaseline || belowFloor) {
-      return belowBaseline
-        ? restRec(
-            "rest-sleep",
-            `You slept ${hoursText(sleep.lastNightMin)} last night, below your ~${hoursText(
-              sleep.baselineMin
-            )} average`,
-            " — consider a rest or light day.",
-            restTense
-          )
-        : restRec(
-            "rest-sleep",
-            `You slept ${hoursText(sleep.lastNightMin)} last night`,
-            " — consider a rest or light day to recover.",
-            restTense
-          );
+      reasons.push(
+        belowBaseline
+          ? {
+              id: "rest-sleep",
+              reasonCore: `You slept ${hoursText(sleep.lastNightMin)} last night, below your ~${hoursText(
+                sleep.baselineMin
+              )} average`,
+              todayTail: " — consider a rest or light day.",
+              also: `slept ${hoursText(sleep.lastNightMin)} (below your ~${hoursText(
+                sleep.baselineMin
+              )} average)`,
+            }
+          : {
+              id: "rest-sleep",
+              reasonCore: `You slept ${hoursText(sleep.lastNightMin)} last night`,
+              todayTail: " — consider a rest or light day to recover.",
+              also: `slept ${hoursText(sleep.lastNightMin)} last night`,
+            }
+      );
     }
   }
 
@@ -497,45 +547,118 @@ export function restRecommendation(
     restingHr.baseline > 0 &&
     restingHr.recent >= restingHr.baseline + effRhrJump
   ) {
-    return restRec(
-      "rest-rhr",
-      `Your resting heart rate is ${Math.round(
+    reasons.push({
+      id: "rest-rhr",
+      reasonCore: `Your resting heart rate is ${Math.round(
         restingHr.recent
       )} bpm, up from your ~${Math.round(restingHr.baseline)} bpm baseline`,
-      " — an easier day will help you recover.",
-      restTense
-    );
+      todayTail: " — an easier day will help you recover.",
+      also: `resting HR ${Math.round(restingHr.recent)} bpm (up from ~${Math.round(
+        restingHr.baseline
+      )})`,
+    });
   }
 
-  // Overtraining — consecutive LOADING days, or a heavy trailing window of them.
-  // currentStreak counts the consecutive-day run; both triggers key on loadDates
-  // (hard sessions) so a logged easy recovery day breaks the streak instead of
-  // extending it (#754), making the nudge's "a rest or light day" advice actually
-  // satisfiable. (The dashboard StreakWidget that #222 pinned this against has since
-  // been removed; the weekly recap's movement-based streak is a separate signal.)
+  // Overtraining — consecutive LOADING days, or (mutually exclusive) a heavy trailing
+  // window of them. currentStreak counts the consecutive-day run; both triggers key on
+  // loadDates (hard sessions) so a logged easy recovery day breaks the streak instead
+  // of extending it (#754), making the nudge's "a rest or light day" advice actually
+  // satisfiable. A streak of N days in a row already implies a full week, so we surface
+  // AT MOST one schedule-derived reason (streak takes precedence) — never both, which
+  // would double up ("trained 5 days in a row; trained 5 of the last 7 days").
   const streak = currentStreak(today, loadDates);
   if (streak >= effConsecutive) {
-    return restRec(
-      "rest-overtraining",
-      `You've trained ${streak} days in a row`,
-      " — a rest or light day will help you recover and keep progressing.",
-      restTense
+    reasons.push({
+      id: "rest-overtraining",
+      reasonCore: `You've trained ${streak} days in a row`,
+      todayTail:
+        " — a rest or light day will help you recover and keep progressing.",
+      also: `trained ${streak} days in a row`,
+    });
+  } else {
+    const active = activeDaysInWindow(
+      loadDates,
+      today,
+      th.overtrainingWindowDays
     );
+    if (active >= effWindowActive) {
+      reasons.push({
+        id: "rest-load",
+        reasonCore: `You've trained ${active} of the last ${th.overtrainingWindowDays} days`,
+        todayTail: " — consider a rest or light day.",
+        also: `trained ${active} of the last ${th.overtrainingWindowDays} days`,
+      });
+    }
   }
-  const active = activeDaysInWindow(
-    loadDates,
-    today,
-    th.overtrainingWindowDays
-  );
-  if (active >= effWindowActive) {
-    return restRec(
-      "rest-load",
-      `You've trained ${active} of the last ${th.overtrainingWindowDays} days`,
-      " — consider a rest or light day.",
-      restTense
-    );
-  }
-  return null;
+
+  return reasons;
+}
+
+// Build the rest recommendation from the firing reasons + tense. The salience-ordered
+// FIRST reason names the recommendation (title/detail byte-for-byte the prior
+// single-reason output); any others ride along as `also` (#1148), rendered as a
+// secondary "Also: …" line so a snooze can't bury an unshown signal.
+function buildRestRec(reasons: RestReason[], tense: RestTense): Recommendation {
+  const [primary, ...others] = reasons;
+  const rec: Recommendation = {
+    id: primary.id,
+    kind: "rest",
+    title: restTitle(tense),
+    detail: restDetail(primary.reasonCore, primary.todayTail, tense),
+    tone: "caution",
+    firingReasonIds: reasons.map((r) => r.id),
+  };
+  return others.length ? { ...rec, also: others.map((r) => r.also) } : rec;
+}
+
+// The rest/light recommendation when a strong recovery signal fires, else null. A thin
+// wrapper over restReasons (#1148): it emits the salience-ordered primary as the
+// headline and carries any concurrent signals on `also`. When exactly one signal fires
+// the output is byte-for-byte the prior single-reason recommendation.
+export function restRecommendation(
+  input: CoachingInput,
+  th: CoachingThresholds
+): Recommendation | null {
+  const reasons = restReasons(input, th);
+  if (reasons.length === 0) return null;
+  return buildRestRec(reasons, restTenseFor(input));
+}
+
+// The stable id of the "Training anyway" acknowledgment card (#1150). Distinct from
+// the rest-nudge ids so the card can tell an acknowledged rest slot from a live one
+// (and only offer "Training anyway" on the latter).
+export const ACKNOWLEDGED_REST_ID = "rest-acknowledged";
+
+// Whether a recommendation is a LIVE rest nudge the user can still acknowledge with
+// "Training anyway" (#1150) — a rest rec that isn't already the acknowledgment card.
+export function canAcknowledgeRest(rec: Recommendation): boolean {
+  return rec.kind === "rest" && rec.id !== ACKNOWLEDGED_REST_ID;
+}
+
+// Sentence-case the first letter (the `also` phrases lead lowercase — "slept …",
+// "resting HR …", "trained …" — so a listing that opens a sentence reads right).
+function capitalizeFirst(s: string): string {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+// The "Training anyway" acknowledgment card (#1150): once the user declares intent to
+// train despite the rest recommendation, the rest slot transforms IN PLACE from a
+// caution nudge into calm, recovery-aware TRAINING guidance — naming EVERY firing
+// signal (#1148), not pressing to reverse the choice (tone caution → neutral/calm).
+// Today-only; a still-firing physiological signal re-evaluates fresh tomorrow.
+export function acknowledgedRestRec(reasons: RestReason[]): Recommendation {
+  const signals = reasons.map((r) => r.also).join("; ");
+  return {
+    id: ACKNOWLEDGED_REST_ID,
+    kind: "rest",
+    title: "Training today — keep it smart",
+    detail: signals
+      ? `${capitalizeFirst(
+          signals
+        )} — keep intensity moderate, trim volume a bit, and prioritize sleep and hydration tonight.`
+      : "Keep intensity moderate, trim volume a bit, and prioritize sleep and hydration tonight.",
+    tone: "neutral",
+  };
 }
 
 // ---- Rest-episode continuity (#44 item 3b) ----
@@ -592,21 +715,37 @@ function ordinalNumeral(n: number): string {
 }
 
 // Re-phrase a rest recommendation as day N (N ≥ 2) of a persisting recommendation.
-// The title STAYS an imperative recommendation and carries the day count ("Rest or
-// take it easy — 2nd day") rather than flipping to a status headline, and the
-// detail describes what is actually known — that the recovery SIGNALS have
+// The day count is a SUFFIX on whatever tense-aware stance #921 already set on the
+// title (#1149) — continuity appends the count, it never re-stances (#221: the tense
+// is the single source of the title stance). So a user who trained through yesterday's
+// nudge keeps the "Make your next session an easy one — 2nd day" framing instead of
+// being told "Rest or take it easy" after deliberately training. The "today" title's
+// trailing " today" is tidied off so it reads "…easy — 2nd day", not "…easy today —
+// 2nd day"; that path stays byte-for-byte the prior copy.
+//
+// The detail describes what is actually known — that the recovery SIGNALS have
 // persisted — never that the user rested (the episode counts days the nudge fired,
-// not days the user complied, and the common day-2 case is a user who trained
-// through yesterday's nudge and is still under-recovered) (#752). id/kind/tone are
-// preserved, so snooze dedup and the caution styling are unchanged.
+// not days the user complied) (#752). When the tense clause already carries the "keep
+// it light"/"make your next session easy" guidance (next/active tense), the continuity
+// clause folds to just the persistence FACT so the advice isn't doubled (#1149); the
+// "today" tense keeps the full clause unchanged. id/kind/tone/also are preserved, so
+// snooze dedup, the caution styling, and the concurrent-reason list are unchanged.
 export function withRestContinuity(
   rec: Recommendation,
   day: number
 ): Recommendation {
+  // The "today" tense is the only title ending in " today" (#921 restTitle); the
+  // next/active stances read as future-session framing already. Only the "today"
+  // path keeps the full "keep it light" continuity clause (byte-for-byte prior copy).
+  const isToday = rec.title.endsWith(" today");
+  const baseTitle = isToday ? rec.title.slice(0, -" today".length) : rec.title;
+  const persistence = `Recovery signals have persisted for ${day} days`;
   return {
     ...rec,
-    title: `Rest or take it easy — ${ordinalNumeral(day)} day`,
-    detail: `${rec.detail} Recovery signals have persisted for ${day} days — keep it light and let recovery catch up.`,
+    title: `${baseTitle} — ${ordinalNumeral(day)} day`,
+    detail: isToday
+      ? `${rec.detail} ${persistence} — keep it light and let recovery catch up.`
+      : `${rec.detail} ${persistence}.`,
   };
 }
 
@@ -690,6 +829,29 @@ export function intensityRecommendation(
   };
 }
 
+// Resolve the rest slot's card for today from the live rest recommendation. Two
+// day-scoped transforms sit in front of the raw nudge, both keyed to `input.today`:
+//   1. "Training anyway" acknowledgment (#1150) — when the user declared intent to
+//      train despite the rest rec, the slot becomes calm recovery-aware TRAINING
+//      guidance naming every firing signal (#1148), NOT a rest imperative. Wins over
+//      continuity: an acknowledged day isn't phrased as "day N of resting".
+//   2. Episode continuity (#44 3b) — day 2+ of a persisting rest run reads as
+//      "… — 2nd day" with tense-aware phrasing (#1149), derived from the persisted
+//      marker + today.
+// Pure over the input; the same decision the dashboard card and the Telegram nudge run.
+function restCard(
+  input: CoachingInput,
+  th: CoachingThresholds,
+  rest: Recommendation
+): Recommendation {
+  if ((input.restAck?.date ?? null) === input.today) {
+    return acknowledgedRestRec(restReasons(input, th));
+  }
+  const episode = nextRestEpisode(input.restEpisode ?? null, rest, input.today);
+  const day = episode ? restEpisodeDay(episode, input.today) : 1;
+  return day >= 2 ? withRestContinuity(rest, day) : rest;
+}
+
 // Rank a day's recommendations, highest-priority first. The first element is the
 // "one clear thing"; any remainder are secondary context.
 export function recommendCoaching(input: CoachingInput): Recommendation[] {
@@ -717,15 +879,7 @@ export function recommendCoaching(input: CoachingInput): Recommendation[] {
   const illness = illnessCoachingMode(input.illness, input.today);
   if (illness.mode !== "normal") {
     const ranked: Recommendation[] = [];
-    if (rest) {
-      const episode = nextRestEpisode(
-        input.restEpisode ?? null,
-        rest,
-        input.today
-      );
-      const day = episode ? restEpisodeDay(episode, input.today) : 1;
-      ranked.push(day >= 2 ? withRestContinuity(rest, day) : rest);
-    }
+    if (rest) ranked.push(restCard(input, th, rest));
     // Ease-back replaces the resumed gap nags for the ramp window; during the open
     // episode a calm held note explains the quiet (carrying the #656 reason).
     ranked.push(
@@ -746,17 +900,11 @@ export function recommendCoaching(input: CoachingInput): Recommendation[] {
 
   const ranked: Recommendation[] = [];
   if (rest) {
-    // Episode continuity (#44 item 3b): if this rest run continues a prior one,
-    // phrase it as "second/third easy day" rather than a fresh alert. Derived
-    // purely from the persisted marker + today, so it's robust even if the marker
-    // hasn't been advanced yet today (the notify tick owns the write).
-    const episode = nextRestEpisode(
-      input.restEpisode ?? null,
-      rest,
-      input.today
-    );
-    const day = episode ? restEpisodeDay(episode, input.today) : 1;
-    ranked.push(day >= 2 ? withRestContinuity(rest, day) : rest);
+    // Episode continuity (#44 3b) / "Training anyway" acknowledgment (#1150), both
+    // day-scoped transforms in front of the raw nudge — see restCard. Continuity is
+    // derived purely from the persisted marker + today, so it's robust even if the
+    // marker hasn't been advanced yet today (the notify tick owns the write).
+    ranked.push(restCard(input, th, rest));
     // Keep the "what to do once recovered" nudge as secondary context, but drop
     // a redundant on-track note (rest already implies rest is fine).
     for (const r of training) if (r.kind !== "ontrack") ranked.push(r);

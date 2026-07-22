@@ -4,7 +4,7 @@ import path from "node:path";
 import { followLink, openCommandPalette } from "./nav";
 import { openMedDetailViaLink, refillBadge } from "./med-card-helpers";
 
-// Clear the coaching "Not today" snooze so the #39 test starts UNSNOOZED on every
+// Clear the coaching "Snooze" snooze so the #39 test starts UNSNOOZED on every
 // repeat (#868 fixture ownership). `snoozeCoaching` writes a persistent
 // upcoming_dismissals row keyed by the coaching finding's dedupeKey; without this
 // reset a second --repeat-each run finds the top recommendation already snoozed and
@@ -70,19 +70,19 @@ for (const route of ROUTES) {
   });
 }
 
-// #39 (findings bus): the dashboard Coaching widget's "Not today" snoozes the top
+// #39 (findings bus): the dashboard Coaching widget's "Snooze" snoozes the top
 // recommendation through the shared suppression store, so it's no longer the
 // widget's top suggestion after the click (the next-ranked one surfaces, or the
 // empty fallback shows). Exercises a coaching Recommendation → Finding adapter, the
 // generalized snoozeFinding writer, and the round-trip re-render end-to-end.
-test("dashboard coaching 'Not today' snoozes the top recommendation (#39)", async ({
+test("dashboard coaching 'Snooze' snoozes the top recommendation (#39)", async ({
   page,
 }) => {
   // Own the fixture (#868): start unsnoozed so the card is present on every repeat.
   resetCoachingSnooze();
   await page.goto("/");
   const card = page.locator(".card", {
-    has: page.getByTestId("coaching-not-today"),
+    has: page.getByTestId("coaching-snooze"),
   });
   await expect(card).toBeVisible();
   const original = (
@@ -90,7 +90,7 @@ test("dashboard coaching 'Not today' snoozes the top recommendation (#39)", asyn
   )?.trim();
   expect(original).toBeTruthy();
 
-  await card.getByTestId("coaching-not-today").click();
+  await card.getByTestId("coaching-snooze").click();
   // The snoozed recommendation is no longer shown as the widget's suggestion.
   await expect(card.getByText(original!, { exact: true })).toHaveCount(0);
 });

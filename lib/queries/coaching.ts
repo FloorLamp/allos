@@ -16,6 +16,7 @@ import {
   type CoachingInput,
   type IllnessCoachingContext,
   type Recommendation,
+  type RestAck,
   type RestEpisode,
   type RestingHrSignal,
   type SleepSignal,
@@ -173,6 +174,10 @@ export function gatherCoachingInput(
     sleep: getSleepSignal(profileId),
     restingHr: getRestingHrSignal(profileId),
     restEpisode: getRestEpisode(profileId),
+    // "Training anyway" acknowledgment (#1150): when set for today, the rest slot
+    // renders calm training guidance instead of a rest nudge. Read here so every
+    // surface (dashboard card, overview, Telegram) reflects the choice (one computation).
+    restAck: getRestAck(profileId, todayStr),
     intensity: getIntensitySignal(profileId),
     // Derived workout presence (#921) → the rest card's TENSE only. `active` softens
     // "rest today" to next-session framing so the advice never contradicts a session
@@ -257,4 +262,53 @@ export function runCoachingEpisode(
     input ?? gatherCoachingInput(profileId, "kg", "km")
   );
   return reconcileRestEpisode(profileId, recs, today(profileId));
+}
+
+// ---- "Training anyway" acknowledgment persistence (#1150) ----
+//
+// A per-day declaration of intent — DISTINCT from the #39 snooze store (an
+// acknowledgment is not a dismissal, so it never touches upcoming_dismissals). Stored
+// in ONE per-profile profile_settings row (JSON), the way the rest episode marker is;
+// profile_settings is a settings tier (not profile-owned data), so no migration /
+// owned-tables entry is needed. Today-only by construction: getRestAck returns the
+// marker ONLY when its date matches the caller's `today`, so a stale (yesterday's)
+// marker is ignored and a still-firing signal re-evaluates fresh — the ack can never
+// silence a persisting signal for good.
+const REST_ACK_KEY = "coaching_rest_ack";
+
+// The stored acknowledgment for `todayStr`, or null when there's none for today (a
+// past-date or unparseable marker reads as absent). Profile-scoped via profile_settings.
+export function getRestAck(
+  profileId: number,
+  todayStr: string
+): RestAck | null {
+  const raw = getProfileSetting(profileId, REST_ACK_KEY);
+  if (!raw) return null;
+  try {
+    const p = JSON.parse(raw) as Partial<RestAck>;
+    if (
+      p &&
+      typeof p.date === "string" &&
+      p.date === todayStr &&
+      Array.isArray(p.reasonIds) &&
+      p.reasonIds.every((r) => typeof r === "string")
+    ) {
+      return { date: p.date, reasonIds: p.reasonIds };
+    }
+  } catch {
+    // Corrupt marker → treat as no acknowledgment; the next write overwrites it.
+  }
+  return null;
+}
+
+// Record the "Training anyway" acknowledgment for TODAY with the firing reason ids
+// (the signals the user acknowledged). Overwrites any prior same-day marker; a new day
+// makes the prior one stale (getRestAck ignores it). Auth-blind write core (#319):
+// the Server Action owns the auth gate. Single-statement write via setProfileSetting.
+export function acknowledgeRestToday(
+  profileId: number,
+  reasonIds: string[]
+): void {
+  const ack: RestAck = { date: today(profileId), reasonIds };
+  setProfileSetting(profileId, REST_ACK_KEY, JSON.stringify(ack));
 }

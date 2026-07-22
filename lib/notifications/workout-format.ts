@@ -13,7 +13,9 @@ export interface WorkoutRecommendation {
   // Recovery/celebration awareness carried from the unified coaching engine (#221),
   // so the reminder can note a rest day or an on-track week instead of blindly
   // pushing a workout. Null when the top-line recommendation isn't rest/on-track.
-  rest: { title: string; detail: string } | null;
+  // `also` carries any CONCURRENT under-recovery signals (#1148) — the same set the
+  // dashboard card shows — so the nudge names every firing reason, not just the top.
+  rest: { title: string; detail: string; also?: string[] } | null;
   onTrack: { title: string; detail: string } | null;
   // Today's routine day label (#740), when an active routine resolved a session
   // ("Push", "Pull", …). Titles the nudge ("🏋️ Push day: …") so the reminder names
@@ -73,6 +75,9 @@ export function formatWorkoutReminder(
   // any, becomes a "when you're ready" footnote rather than the headline.
   if (rec.rest) {
     const lines: string[] = [rec.rest.detail];
+    // Concurrent under-recovery signals (#1148): name the rest so a snooze can't bury
+    // a signal the user never saw — the same "Also: …" line the dashboard card shows.
+    if (rec.rest.also?.length) lines.push(`Also: ${rec.rest.also.join("; ")}.`);
     if (deloadNote) lines.push(deloadNote);
     if (rec.exercises.length)
       lines.push(`When you're ready: ${rec.exercises.join(", ")}`);

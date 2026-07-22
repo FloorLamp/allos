@@ -13,6 +13,10 @@ import {
   recentCardioPRs,
   recommendCoaching,
   restRecommendation,
+  restReasons,
+  acknowledgedRestRec,
+  canAcknowledgeRest,
+  ACKNOWLEDGED_REST_ID,
   activeDaysInWindow,
   nextRestEpisode,
   restEpisodeDay,
@@ -1597,6 +1601,87 @@ describe("withRestContinuity", () => {
       "Rest or take it easy — 21st day"
     );
   });
+
+  // #1149: continuity appends the day count to the #921 TENSE-aware title, never
+  // re-stances it. Fixtures for the three tenses come straight from restRecommendation.
+  const th = DEFAULT_COACHING_THRESHOLDS;
+  const poorSleepForTense = { lastNightMin: 300, baselineMin: 300 };
+
+  it("no-session day-2 keeps today's copy byte-for-byte (#1149)", () => {
+    const today = restRecommendation(
+      input({ sleep: poorSleepForTense, trainingDates: [] }),
+      th
+    )!;
+    const cont = withRestContinuity(today, 2);
+    expect(cont.title).toBe("Rest or take it easy — 2nd day");
+    // Full "keep it light" continuity clause preserved for the today tense.
+    expect(cont.detail).toBe(
+      "You slept 5.0h last night — consider a rest or light day to recover. Recovery signals have persisted for 2 days — keep it light and let recovery catch up."
+    );
+  });
+
+  it("trained-today day-2 carries the NEXT-tense stance + day count, not 'Rest or take it easy' (#1149)", () => {
+    const next = restRecommendation(
+      input({ sleep: poorSleepForTense, trainingDates: [TODAY] }),
+      th
+    )!;
+    const cont = withRestContinuity(next, 2);
+    expect(cont.title).toBe("Make your next session an easy one — 2nd day");
+    expect(cont.title).not.toContain("Rest or take it easy");
+    // The tense clause already says "make your next session easy", so continuity folds
+    // to just the persistence FACT — no doubled "keep it light" guidance.
+    expect(cont.detail).toContain(
+      "make your next session an easy one to recover."
+    );
+    expect(cont.detail).toContain(
+      "Recovery signals have persisted for 2 days."
+    );
+    expect(cont.detail).not.toContain(
+      "keep it light and let recovery catch up"
+    );
+    // id/kind/tone preserved.
+    expect(cont.id).toBe("rest-sleep");
+    expect(cont.kind).toBe("rest");
+    expect(cont.tone).toBe("caution");
+  });
+
+  it("live-session day-2 carries the ACTIVE-tense stance + day count (#1149)", () => {
+    const active = restRecommendation(
+      input({
+        sleep: poorSleepForTense,
+        trainingDates: [TODAY],
+        workoutActive: true,
+      }),
+      th
+    )!;
+    const cont = withRestContinuity(active, 2);
+    expect(cont.title).toBe(
+      "Take it easy — make your next session light — 2nd day"
+    );
+    expect(cont.detail).toContain(
+      "Recovery signals have persisted for 2 days."
+    );
+    expect(cont.detail).not.toContain(
+      "keep it light and let recovery catch up"
+    );
+  });
+
+  it("never overrides the input title's tense stance (#1149/#221)", () => {
+    // Whatever stance the input title carries, continuity only appends the count.
+    const next: Recommendation = {
+      id: "rest-rhr",
+      kind: "rest",
+      title: "Make your next session an easy one",
+      detail: "core — make your next session an easy one to recover.",
+      tone: "caution",
+    };
+    expect(withRestContinuity(next, 3).title).toBe(
+      "Make your next session an easy one — 3rd day"
+    );
+    // `also` (concurrent reasons #1148) survives continuity untouched.
+    const withAlso: Recommendation = { ...next, also: ["resting HR 62 bpm"] };
+    expect(withRestContinuity(withAlso, 2).also).toEqual(["resting HR 62 bpm"]);
+  });
 });
 
 describe("recommendCoaching rest continuity", () => {
@@ -1639,6 +1724,180 @@ describe("recommendCoaching rest continuity", () => {
     expect(top.title).toBe("Rest or take it easy today");
   });
 });
+
+// #1148: name ALL concurrent under-recovery signals, not just the first firing one.
+describe("restReasons — all firing signals (#1148)", () => {
+  const th = DEFAULT_COACHING_THRESHOLDS;
+  // Sleep below the floor + elevated RHR + a 4-day loading streak, all at once. The
+  // streak ends YESTERDAY (not today) so the tense stays "today" (no session logged
+  // today) while the consecutive-day trigger still fires (ending today/yesterday).
+  const multi = () =>
+    input({
+      strength: [sRec()],
+      sleep: { lastNightMin: 300, baselineMin: 300 },
+      restingHr: { recent: 62, baseline: 54 },
+      loadingDates: consecutiveDates(YESTERDAY, 4),
+      trainingDates: consecutiveDates(YESTERDAY, 4),
+    });
+
+  it("collects every firing reason in salience order", () => {
+    const rs = restReasons(multi(), th);
+    expect(rs.map((r) => r.id)).toEqual([
+      "rest-sleep",
+      "rest-rhr",
+      "rest-overtraining",
+    ]);
+  });
+
+  it("keeps streak and weekly load mutually exclusive (no double schedule reason)", () => {
+    const rs = restReasons(multi(), th);
+    // A streak already implies a full week — only rest-overtraining, never also rest-load.
+    expect(rs.filter((r) => r.id === "rest-load")).toHaveLength(0);
+  });
+
+  it("single firing signal returns exactly one reason (no regression)", () => {
+    const rs = restReasons(
+      input({
+        strength: [sRec()],
+        sleep: { lastNightMin: 300, baselineMin: 300 },
+      }),
+      th
+    );
+    expect(rs.map((r) => r.id)).toEqual(["rest-sleep"]);
+  });
+
+  it("restRecommendation carries the salience primary + the rest as `also` (#1148)", () => {
+    const rec = restRecommendation(multi(), th)!;
+    // Headline stays the salience-ordered primary (byte-for-byte the single-reason copy).
+    expect(rec.id).toBe("rest-sleep");
+    expect(rec.title).toBe("Rest or take it easy today");
+    expect(rec.detail).toBe(
+      "You slept 5.0h last night — consider a rest or light day to recover."
+    );
+    // The other firing reasons ride along as compact "Also: …" phrases.
+    expect(rec.also).toEqual([
+      "resting HR 62 bpm (up from ~54)",
+      "trained 4 days in a row",
+    ]);
+    // The action can record the exact firing set the card showed.
+    expect(rec.firingReasonIds).toEqual([
+      "rest-sleep",
+      "rest-rhr",
+      "rest-overtraining",
+    ]);
+  });
+
+  it("a single-reason rest rec has no `also` (byte-for-byte prior output)", () => {
+    const rec = restRecommendation(
+      input({
+        strength: [sRec()],
+        sleep: { lastNightMin: 300, baselineMin: 300 },
+      }),
+      th
+    )!;
+    expect(rec.also).toBeUndefined();
+  });
+
+  // Snooze scoping (#1148 harm #2): the card SHOWS every firing reason before a single
+  // snooze can suppress the rest signal — informed dismissal, no silent collapse.
+  it("the dashboard rec exposes every firing reason before a snooze (#1148)", () => {
+    const [top] = recommendCoaching(multi());
+    expect(top.kind).toBe("rest");
+    expect(top.also).toEqual([
+      "resting HR 62 bpm (up from ~54)",
+      "trained 4 days in a row",
+    ]);
+  });
+});
+
+// #221 parity: the dashboard card and the Telegram rest nudge format the SAME
+// multi-reason result — same reason SET on both surfaces. The nudge copies
+// {title, detail, also} straight off recommendCoaching()[0] (lib/notifications/recommend),
+// so the reason set can't diverge by construction; this pins the shared source.
+describe("rest multi-reason parity (#221)", () => {
+  const th = DEFAULT_COACHING_THRESHOLDS;
+  it("the card rec's also-set is exactly the non-primary firing reasons", () => {
+    const inp = input({
+      strength: [sRec()],
+      sleep: { lastNightMin: 300, baselineMin: 300 },
+      restingHr: { recent: 62, baseline: 54 },
+    });
+    const cardTop = recommendCoaching(inp)[0];
+    const reasons = restReasons(inp, th);
+    // Both derive from the same restReasons; the nudge's rest.also = cardTop.also.
+    expect(cardTop.also).toEqual(reasons.slice(1).map((r) => r.also));
+  });
+});
+
+// #1150: the "Training anyway" acknowledgment transforms the rest slot in place.
+describe("acknowledgment card (#1150)", () => {
+  const th = DEFAULT_COACHING_THRESHOLDS;
+  const multi = () =>
+    input({
+      strength: [sRec()],
+      sleep: { lastNightMin: 300, baselineMin: 300 },
+      restingHr: { recent: 62, baseline: 54 },
+    });
+
+  it("acknowledgedRestRec is calm training guidance naming ALL firing signals", () => {
+    const rec = acknowledgedRestRec(restReasons(multi(), th));
+    expect(rec.id).toBe(ACKNOWLEDGED_REST_ID);
+    expect(rec.kind).toBe("rest");
+    expect(rec.title).toBe("Training today — keep it smart");
+    expect(rec.tone).toBe("neutral"); // caution → calm
+    // Names every firing signal (#1148), sentence-cased.
+    expect(rec.detail).toContain("Slept 5.0h last night");
+    expect(rec.detail).toContain("resting HR 62 bpm (up from ~54)");
+    expect(rec.detail).toContain("keep intensity moderate");
+  });
+
+  it("a today acknowledgment transforms the rest slot; absent leaves it a rest nudge", () => {
+    const acked = recommendCoaching(
+      input({
+        ...restCtx(),
+        restAck: { date: TODAY, reasonIds: ["rest-sleep"] },
+      })
+    )[0];
+    expect(acked.id).toBe(ACKNOWLEDGED_REST_ID);
+    expect(acked.title).toBe("Training today — keep it smart");
+    expect(acked.tone).toBe("neutral");
+
+    const notAcked = recommendCoaching(input(restCtx()))[0];
+    expect(notAcked.id).toBe("rest-sleep");
+    expect(notAcked.title).toBe("Rest or take it easy today");
+  });
+
+  it("a STALE (past-date) acknowledgment is ignored — the rest nudge returns", () => {
+    const top = recommendCoaching(
+      input({
+        ...restCtx(),
+        restAck: { date: YESTERDAY, reasonIds: ["rest-sleep"] },
+      })
+    )[0];
+    expect(top.id).toBe("rest-sleep");
+  });
+
+  it("canAcknowledgeRest is true for a live rest rec, false for the ack card + non-rest", () => {
+    const live = restRecommendation(input(restCtx()), th)!;
+    expect(canAcknowledgeRest(live)).toBe(true);
+    expect(
+      canAcknowledgeRest(acknowledgedRestRec(restReasons(input(restCtx()), th)))
+    ).toBe(false);
+    const strength: Recommendation = {
+      id: "strength-x",
+      kind: "strength",
+      title: "Train X",
+      detail: "",
+      tone: "action",
+    };
+    expect(canAcknowledgeRest(strength)).toBe(false);
+  });
+});
+
+// Minimal training context tripping a rest-sleep signal, for the #1150 blocks.
+function restCtx(): Partial<CoachingInput> {
+  return { strength: [sRec()], sleep: { lastNightMin: 300, baselineMin: 300 } };
+}
 
 // #1115 Fix A — the schedule-based rest triggers compose with the active routine's
 // prescribed loading cadence, so a legitimate 6-day PPL isn't nagged to rest on days

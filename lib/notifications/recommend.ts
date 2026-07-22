@@ -97,7 +97,15 @@ export function recommendWorkout(
 
   const top = recs[0];
   const rest =
-    top?.kind === "rest" ? { title: top.title, detail: top.detail } : null;
+    top?.kind === "rest"
+      ? {
+          title: top.title,
+          detail: top.detail,
+          // Carry the concurrent-signal list (#1148) so the nudge names every firing
+          // reason exactly as the dashboard card does (one computation, #221).
+          ...(top.also?.length ? { also: top.also } : {}),
+        }
+      : null;
   const onTrack =
     top?.kind === "ontrack" ? { title: top.title, detail: top.detail } : null;
 
