@@ -86,13 +86,13 @@ export const SOURCE_FIDELITY: SourceFidelityRow[] = [
     label: "Steps, Distance, Active/Total calories",
     keys: ["steps", "distance", "active_calories", "total_calories"],
     setting: "daily",
-    why: "stored as daily totals; `daily` also lets Health Connect apply its own cross-app origin dedup, so the number matches the phone's Health Connect screen",
+    why: "stored as daily totals; daily also lets Health Connect apply its own cross-app origin dedup, so the number matches the phone's Health Connect screen",
   },
   {
     label: "Heart rate",
     keys: ["heart_rate"],
     setting: "1m",
-    why: "stored as minute buckets (min/max per minute); `full`/per-second is discarded ~60:1 and `5m`/`15m`/`daily` starves the minute store that feeds HR charts",
+    why: "stored as minute buckets (min/max per minute); full/per-second is discarded ~60:1 and 5m/15m/daily starves the minute store that feeds HR charts",
   },
   {
     label: "Weight, Body fat, Resting HR, Height, Lean/Bone mass, BMR",
