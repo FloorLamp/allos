@@ -32,7 +32,7 @@ test("a °C login: the Settings select persists and the dashboard temp entry + f
 
     // On the dashboard symptom card, the temp entry unit now defaults to °C.
     await page.goto("/");
-    const bar = page.getByTestId("symptom-log-bar").first();
+    const bar = page.getByTestId("symptom-log-bar").first(); // first-ok: the acting profile's own symptom bar (top of the dashboard) — order-agnostic
     await expect(bar).toBeVisible();
     await bar.getByTestId("temp-quick-toggle").click();
     await expect(bar.getByTestId("temp-quick-unit")).toHaveValue("C");
@@ -50,12 +50,12 @@ test("a °C login: the Settings select persists and the dashboard temp entry + f
     await bar.getByTestId("temp-quick-input").fill("40.3");
     await bar.getByTestId("temp-quick-save").click();
     await expect(
-      page.getByText(/Temperature logged: 40\.3 °C/).first()
+      page.getByText(/Temperature logged: 40\.3 °C/).first() // first-ok: the confirmation for the temperature THIS spec just logged — order-agnostic
     ).toBeVisible();
     await page.goto("/upcoming");
     const redFlagItem = page
       .locator('[data-testid^="upcoming-item-temp-red-flag:"]')
-      .first();
+      .first(); // first-ok: the red-flag item for the 40.3 °C reading THIS spec logged — order-agnostic
     await expect(redFlagItem).toBeVisible();
     await expect(redFlagItem).toContainText("Temperature 40.3 °C");
     await expect(redFlagItem).not.toContainText("104.5 °F");

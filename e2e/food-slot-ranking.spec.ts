@@ -43,7 +43,7 @@ test("the one-tap bar leads with the current slot's group, and the chip matches 
     const firstRow = page
       .getByTestId("food-log-bar")
       .locator('[data-testid^="food-group-"]')
-      .first();
+      .first(); // first-ok: the TOP-ranked food-group row IS the assertion (deterministic seeded ranking for this spec's own profile)
     await expect(firstRow).toHaveAttribute(
       "data-testid",
       `food-group-${expectedLead}`
@@ -73,7 +73,7 @@ test("a tracked habit shows the N-week consistency trend; a fresh one shows a sh
     const fishCells = fishTrend.locator("span[data-verdict]");
     await expect(fishCells).toHaveCount(8);
     // A cell carries the week/count tooltip ("… – … · N of 2").
-    await expect(fishCells.first()).toHaveAttribute("title", /·\s\d+ of 2$/);
+    await expect(fishCells.first()).toHaveAttribute("title", /·\s\d+ of 2$/); // first-ok: a week-cell of the deterministic 8-cell strip (count asserted above); tooltip format check
     // A backdated habit has NO not-applicable cells (it existed for the whole window).
     await expect(fishTrend.locator('span[data-verdict="na"]')).toHaveCount(0);
 
@@ -82,11 +82,11 @@ test("a tracked habit shows the N-week consistency trend; a fresh one shows a sh
     const greensTrend = page.getByTestId("habit-trend-leafy_greens");
     await expect(greensTrend).toBeVisible();
     await expect(
-      greensTrend.locator('span[data-verdict="na"]').first()
+      greensTrend.locator('span[data-verdict="na"]').first() // first-ok: a not-applicable cold-start cell of the freshly-created greens habit — order-agnostic
     ).toBeVisible();
     // Its na cell tooltip says so.
     await expect(
-      greensTrend.locator('span[data-verdict="na"]').first()
+      greensTrend.locator('span[data-verdict="na"]').first() // first-ok: a not-applicable cold-start cell of the freshly-created greens habit — order-agnostic
     ).toHaveAttribute("title", /not tracked yet$/);
   } finally {
     await page.context().close();

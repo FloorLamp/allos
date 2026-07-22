@@ -56,13 +56,13 @@ test.describe("Data → Review import inbox", () => {
     ).toBeVisible();
     // "Sync failed" appears in both the collapsed latest-state line and the
     // recent-history list of the same card — assert the first (latest-state).
-    await expect(stravaCard.getByText("Sync failed").first()).toBeVisible();
+    await expect(stravaCard.getByText("Sync failed").first()).toBeVisible(); // first-ok: asserts the Strava card shows Sync failed — order-agnostic presence
 
     // Admin-only raw payload viewer (#9): the seeded Health Connect sync carries a
     // raw_ref, so the admin (the seed logs in as admin) sees a "View raw"
     // affordance on the source card. Expanding it lazily fetches the admin-gated,
     // profile-scoped raw route, which returns the captured provider JSON.
-    const viewRaw = hcCard.getByText("View raw").first();
+    const viewRaw = hcCard.getByText("View raw").first(); // first-ok: asserts the source card's View raw affordance — order-agnostic presence
     await expect(viewRaw).toBeVisible();
     // The click can land while the page is still hydrating (all the assertions
     // above are satisfied by the SSR HTML alone): the native <details> may open
@@ -196,7 +196,7 @@ test.describe("Data → Review import inbox", () => {
 
   test("shows a review count on the profile badge", async ({ page }) => {
     await page.goto("/");
-    const badge = page.getByTestId("review-badge").first();
+    const badge = page.getByTestId("review-badge").first(); // first-ok: asserts the badge is present (>= 1 via the always-failing Strava); the exact count is import-dedup's (see comment)
     await expect(badge).toBeVisible();
     // The badge sums currently-failing integrations (Strava, always present) and
     // any unresolved detected duplicate pairs (issue #10). The exact count depends

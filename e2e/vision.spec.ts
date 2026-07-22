@@ -43,7 +43,7 @@ test.describe("Optical prescriptions — add → view → edit → delete (#697)
 
     // Add a glasses Rx with the marker OD sphere.
     await form.getByLabel("Type").selectOption("glasses");
-    await form.getByLabel("Sphere").first().fill(String(MARKER));
+    await form.getByLabel("Sphere").first().fill(String(MARKER)); // first-ok: the right-eye Sphere field in the prescription form this spec fills — order-agnostic
     await form.getByLabel("PD (mm)").fill("64");
     await form.getByRole("button", { name: "Add", exact: true }).click();
     await expect(page.getByText("Prescription saved")).toBeVisible();
@@ -127,7 +127,7 @@ test.describe("Optical prescriptions — add → view → edit → delete (#697)
       page,
       form.getByRole("button", { name: "Add", exact: true })
     );
-    await expect(page.getByText("Prescription saved").first()).toBeVisible();
+    await expect(page.getByText("Prescription saved").first()).toBeVisible(); // first-ok: asserts the save confirmation appears — order-agnostic presence
     // The save resets the form AND fires router.refresh(), whose RSC apply can
     // re-render the page mid-fill and wipe values typed in the gap. Wait for the
     // SERVER-rendered marker of the completed refresh — the first Rx appearing in
@@ -137,7 +137,7 @@ test.describe("Optical prescriptions — add → view → edit → delete (#697)
     await expect(
       list.getByRole("row").filter({ hasText: "OD -7.25" })
     ).toHaveCount(1);
-    await expect(form.getByLabel("Sphere").first()).toHaveValue("");
+    await expect(form.getByLabel("Sphere").first()).toHaveValue(""); // first-ok: the right-eye Sphere field reset after save — order-agnostic
 
     // Rx 2 — the SAME refraction in plus-cyl (ophthalmology) notation, dated
     // NEWER than every seeded Rx so it is the progression's last point:

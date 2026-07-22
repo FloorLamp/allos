@@ -58,15 +58,14 @@ test.describe("Visits lifecycle — book → complete → log visit → detail (
     // The linked visit now appears in the Past section with the kind mapped to its
     // encounter type, and deep-links to its detail page.
     const past = page.getByTestId("visits-past");
-    const visitLink = past.getByRole("link", { name: "Physical / check-up" });
-    await expect(visitLink.first()).toBeVisible();
-    await expect(visitLink.first()).toHaveAttribute(
-      "href",
-      /\/encounters\/\d+$/
-    );
+    const visitLink = past
+      .getByRole("link", { name: "Physical / check-up" })
+      .first(); // first-ok: the visit THIS spec just logged, in its own Past section — order-agnostic
+    await expect(visitLink).toBeVisible();
+    await expect(visitLink).toHaveAttribute("href", /\/encounters\/\d+$/);
 
     // Nav anchor → followLink rides out the pre-hydration swallow (#889 sweep).
-    await followLink(page, visitLink.first(), /\/encounters\/\d+$/);
+    await followLink(page, visitLink, /\/encounters\/\d+$/);
     const detail = page.getByTestId("encounter-detail");
     await expect(detail).toBeVisible();
     // The visit is prefilled from the appointment: the title became the reason.

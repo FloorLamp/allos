@@ -18,7 +18,7 @@ test("per-exercise anatomy renders in the detail panel guide section (#737)", as
   const main = page.getByRole("main");
   await main.getByRole("cell", { name: /Back Squat/ }).click();
 
-  const guide = main.getByTestId("exercise-guide").first();
+  const guide = main.getByTestId("exercise-guide").first(); // first-ok: asserts an exercise guide renders — order-agnostic presence
   await expect(guide).toBeVisible();
 
   // The accompanying TEXT list (never color-only): primary/secondary muscles.
@@ -57,7 +57,7 @@ test("per-session anatomy renders on a strength session's journal card, absent f
   // carries the per-session figure. Multiple weeks exist; the newest is on page one.
   await page.goto("/training");
 
-  const pushCard = page.locator(".card", { hasText: "Push day" }).first();
+  const pushCard = page.locator(".card", { hasText: "Push day" }).first(); // first-ok: the seeded Push day routine card — order-agnostic
   await expect(pushCard).toBeVisible();
 
   const visualBox = pushCard.getByTestId("activity-visuals");
@@ -125,7 +125,7 @@ test("per-session anatomy renders on a strength session's journal card, absent f
   // the gate degrades to nothing rather than an empty diagram.
   const customCard = page
     .locator(".card", { hasText: "Custom-only lift day (e2e)" })
-    .first();
+    .first(); // first-ok: the session card THIS spec created (unique name)
   await expect(customCard).toBeVisible();
   await expect(customCard.getByTestId("session-muscles")).toHaveCount(0);
 });
@@ -139,7 +139,7 @@ test("coverage anatomy renders beside the list on Training → Overview (#737)",
 
   // The #736 list-first rendering is permanent — still present with the figure.
   await expect(
-    coverage.getByTestId("muscle-coverage-row").first()
+    coverage.getByTestId("muscle-coverage-row").first() // first-ok: asserts a muscle-coverage row renders — order-agnostic presence
   ).toBeVisible();
 
   const figure = coverage.getByTestId("muscle-anatomy");

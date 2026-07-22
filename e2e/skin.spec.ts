@@ -79,11 +79,11 @@ test.describe("Skin lesions — add → view → track recheck → photo → fil
     const trackForm = card.getByTestId(/^track-skin-followup-/);
     await trackForm
       .locator("select")
-      .first()
+      .first() // first-ok: the recheck-interval select in the scoped skin-followup form this spec drives
       .selectOption({ label: "3 months" });
     await settledClick(
       page,
-      trackForm.getByRole("button", { name: "Track recheck" }).first()
+      trackForm.getByRole("button", { name: "Track recheck" }).first() // first-ok: the Track-recheck button in the scoped skin-followup form this spec drives
     );
     await expect(card.getByTestId(/^skin-followup-state-/)).toContainText(
       "Recheck:",
@@ -118,7 +118,7 @@ test.describe("Skin lesions — add → view → track recheck → photo → fil
     ).toBeVisible();
 
     // Edit the observation record: change the finding note.
-    await card.getByRole("button", { name: "Edit" }).first().click();
+    await card.getByRole("button", { name: "Edit" }).first().click(); // first-ok: the Edit button on the scoped lesion card this spec created
     const editForm = card.getByTestId("skin-lesion-form");
     await editForm
       .getByLabel("Finding / note")
@@ -135,7 +135,7 @@ test.describe("Skin lesions — add → view → track recheck → photo → fil
     // exact:true scopes it off the photo strip's "Delete photo" remove control.
     await card
       .getByRole("button", { name: "Delete", exact: true })
-      .first()
+      .first() // first-ok: the scoped card's row-Delete (exact, off the photo strip's "Delete photo")
       .click();
     await settledClick(
       page,

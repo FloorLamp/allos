@@ -96,15 +96,15 @@ test.describe("Household visit + illness history (issue #1009)", () => {
     const rows = page.getByTestId("household-history-row");
     const parentRows = rows.filter({ hasText: HH_HISTORY_PARENT_PROFILE });
     const childRows = rows.filter({ hasText: HH_HISTORY_CHILD_PROFILE });
-    await expect(parentRows.first()).toBeVisible();
-    await expect(childRows.first()).toBeVisible();
+    await expect(parentRows.first()).toBeVisible(); // first-ok: filtered to the parent profile's rows (this spec's own household member) — order-agnostic
+    await expect(childRows.first()).toBeVisible(); // first-ok: filtered to the child profile's rows (this spec's own household member) — order-agnostic
 
     // Per-person toggle: filter to the child → only the child's rows remain.
     const childChip = page
       .getByTestId("household-history-filter")
       .getByRole("button", { name: HH_HISTORY_CHILD_PROFILE });
     await childChip.click();
-    await expect(childRows.first()).toBeVisible();
+    await expect(childRows.first()).toBeVisible(); // first-ok: filtered to the child profile's rows after the per-person toggle — order-agnostic
     await expect(parentRows).toHaveCount(0);
 
     // Dashboard promotion: the household is currently sick (the child's open Cold), so
@@ -171,7 +171,7 @@ test.describe("Household visit + illness history (issue #1009)", () => {
     await page.goto("/household/history");
     await expect(page.getByTestId("household-history-list")).toBeVisible();
     await expect(
-      page.getByTestId("household-history-row").first()
+      page.getByTestId("household-history-row").first() // first-ok: asserts a household-history row renders — order-agnostic presence
     ).toBeVisible();
 
     await close();
