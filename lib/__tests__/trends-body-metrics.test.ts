@@ -98,10 +98,38 @@ describe("buildBodyMetricTile", () => {
 describe("orderBodyMetricTiles", () => {
   it("drops absent tiles and sorts present ones most-recent-first, ties by order", () => {
     const tiles: OrderableTile[] = [
-      { slug: "bmi", id: "bmi", label: "BMI", present: false, latestDate: null, order: 7 },
-      { slug: "weight", id: "weight", label: "Weight", present: true, latestDate: "2026-07-01", order: 0 },
-      { slug: "steps", id: "steps", label: "Steps", present: true, latestDate: "2026-07-20", order: 5 },
-      { slug: "sleep", id: "sleep", label: "Sleep", present: true, latestDate: "2026-07-20", order: 1 },
+      {
+        slug: "bmi",
+        id: "bmi",
+        label: "BMI",
+        present: false,
+        latestDate: null,
+        order: 7,
+      },
+      {
+        slug: "weight",
+        id: "weight",
+        label: "Weight",
+        present: true,
+        latestDate: "2026-07-01",
+        order: 0,
+      },
+      {
+        slug: "steps",
+        id: "steps",
+        label: "Steps",
+        present: true,
+        latestDate: "2026-07-20",
+        order: 5,
+      },
+      {
+        slug: "sleep",
+        id: "sleep",
+        label: "Sleep",
+        present: true,
+        latestDate: "2026-07-20",
+        order: 1,
+      },
     ];
     const ordered = orderBodyMetricTiles(tiles);
     // Absent BMI dropped; the two 2026-07-20 entries tie and break by base order
