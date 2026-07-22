@@ -36,22 +36,66 @@ async function cookielessPage(browser: Browser) {
   return ctx.newPage();
 }
 
+// These Settings inputs are CONTROLLED React inputs whose Save reads component
+// STATE, not the DOM (PublicUrlSettings/SmtpSettings build the FormData from `url`
+// state). A `.fill()` BEFORE the client hydrates sets the DOM value (so a naive
+// toHaveValue passes) but never fires onChange, so state stays empty; hydration then
+// re-renders the controlled input back to state and REVERTS the fill — and Save
+// persists the empty value (a valid save: normalizePublicUrl("") is ok). That was
+// the ~1/3 email-auth:58 flake — the value was never in state, NOT a lost write.
+// A toHaveValue check can't catch it (it passes on the pre-hydration DOM value,
+// before the revert), so retry the WHOLE navigate→fill→save and CONFIRM it persisted
+// by reloading: a retry lands post-hydration, where the fill updates state and sticks.
+async function setSettingAndConfirm(
+  page: import("@playwright/test").Page,
+  fill: () => Promise<void>,
+  saveButton: () => import("@playwright/test").Locator,
+  confirm: () => Promise<void>
+) {
+  await expect(async () => {
+    await page.goto("/settings/server");
+    await fill();
+    await settledClick(page, saveButton());
+    await page.goto("/settings/server"); // fresh render reads the persisted setting
+    await confirm();
+  }).toPass({ timeout: 30_000 }); // topass-ok: retry the controlled-input fill+save until it durably persists (pre-hydration fill-revert); reload confirms
+}
+
 // Configure/clear the global SMTP + public URL via Settings → Server (admin).
 async function setSmtp(page: import("@playwright/test").Page, host: string) {
-  await page.goto("/settings/server");
-  await page.getByTestId("smtp-host").fill(host);
-  await page.getByTestId("smtp-port").fill("587");
-  await page.getByTestId("smtp-from").fill(host ? "allos@example.com" : "");
-  await settledClick(page, page.getByTestId("smtp-apply"));
+  const hostField = () => page.getByTestId("smtp-host");
+  await setSettingAndConfirm(
+    page,
+    async () => {
+      await hostField().fill(host);
+      await page.getByTestId("smtp-port").fill("587");
+      await page.getByTestId("smtp-from").fill(host ? "allos@example.com" : "");
+    },
+    () => page.getByTestId("smtp-apply"),
+    async () => {
+      if (host) await expect(hostField()).toHaveValue(host);
+      else await expect(hostField()).toHaveValue("");
+    }
+  );
 }
 async function setPublicUrl(
   page: import("@playwright/test").Page,
   url: string
 ) {
-  await page.goto("/settings/server");
-  const card = page.locator(".card", { hasText: "Public app URL" });
-  await card.getByPlaceholder("https://your-app.example.com").fill(url);
-  await settledClick(page, card.getByRole("button", { name: "Save" }));
+  const card = () => page.locator(".card", { hasText: "Public app URL" });
+  const field = () => card().getByPlaceholder("https://your-app.example.com");
+  await setSettingAndConfirm(
+    page,
+    async () => {
+      await field().fill(url);
+    },
+    () => card().getByRole("button", { name: "Save" }),
+    async () => {
+      // A non-empty URL persists (normalized); empty stays empty.
+      if (url) await expect(field()).not.toHaveValue("");
+      else await expect(field()).toHaveValue("");
+    }
+  );
 }
 
 test.describe("outbound email — login lifecycle (#985)", () => {
@@ -81,9 +125,9 @@ test.describe("outbound email — login lifecycle (#985)", () => {
     await expect(anon.getByTestId("forgot-password-link")).toHaveCount(0);
     await anon.context().close();
 
-    // Set the public URL — now email is fully configured.
+    // Set the public URL — now email is fully configured. setPublicUrl confirmed the
+    // URL durably persisted (reload-verified), so the derived warning is gone.
     await setPublicUrl(page, "app.example.com");
-    await page.goto("/settings/server");
     await expect(page.getByTestId("smtp-needs-public-url")).toHaveCount(0);
 
     // ── (2) Invite flow from Family settings ────────────────────────────────
