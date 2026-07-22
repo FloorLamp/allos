@@ -85,8 +85,14 @@ test("dashboard weight quick-add logs a weigh-in that persists into the trend (#
     // And it appears in the same series on Trends → Body (the widget's link
     // target) — the one-computation check across both surfaces.
     await page.goto("/trends?tab=body");
+    // Scope to the classic chart stack (the desktop-default layout): the #1067
+    // Phase 2 tile grid renders FIRST in the DOM but is md:hidden at this
+    // viewport, so an unscoped .first() would match an invisible tile value.
     await expect(
-      page.getByText("71.4", { exact: false }).first()
+      page
+        .getByTestId("body-charts-all")
+        .getByText("71.4", { exact: false })
+        .first()
     ).toBeVisible();
   } finally {
     await page.context().close();
