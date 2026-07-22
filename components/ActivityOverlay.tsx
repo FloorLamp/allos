@@ -5,6 +5,7 @@ import { IconChevronDown } from "@tabler/icons-react";
 import type { UnitPrefs } from "@/lib/settings";
 import type { ActivitySuggestions, ExerciseHistoryMap } from "@/lib/queries";
 import type { FormDeloadContext } from "@/lib/routines";
+import type { FormRecoveringContext } from "@/lib/injuries";
 import type { PlateauFormHint } from "@/lib/rule-findings";
 import type { Equipment } from "@/lib/types";
 import ActivityForm, { type ActivityEditData } from "./ActivityForm";
@@ -24,6 +25,7 @@ export default function ActivityOverlay({
   prefill = null,
   live = false,
   deloadContext,
+  recoveringContext = { temperedRegions: [] },
   plateauHints = [],
   hidden = false,
   onMinimize,
@@ -39,6 +41,7 @@ export default function ActivityOverlay({
   prefill?: ActivityEditData | null;
   live?: boolean;
   deloadContext: FormDeloadContext;
+  recoveringContext?: FormRecoveringContext;
   plateauHints?: PlateauFormHint[];
   // Minimized to the app-wide dock (#921): the overlay stays MOUNTED (so the form's
   // rest timer / elapsed clock keep running) but is display:none, and the page
@@ -94,6 +97,7 @@ export default function ActivityOverlay({
           prefill={prefill}
           live={live}
           deloadContext={deloadContext}
+          recoveringContext={recoveringContext}
           plateauHints={plateauHints}
           onClose={onClose}
           stickyFooter

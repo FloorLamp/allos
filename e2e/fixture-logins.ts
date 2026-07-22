@@ -101,6 +101,19 @@ export const FORM_DELOAD_PROFILE = "Form Deload (e2e)";
 export const E2E_LOGIN_FORM_PLATEAU = "e2e_form_plateau";
 export const FORM_PLATEAU_PROFILE = "Form Plateau (e2e)";
 
+// A dedicated ADULT profile for the #1144 recovering-injury cross-surface parity spec:
+//   • a RECOVERING "Chest" injury (so the Chest region is tempered), and
+//   • logged Barbell Bench Press history (3 × 100 kg × 6), a Chest lift,
+//   • NO routine (so today is NOT a deload week — the injury temper is the ONLY modifier).
+// So the strength editor's next-set suggestion is injury-TEMPERED to 60 kg (100 × 0.6),
+// matching the Analyze/detail panel's deep-link recommendation — the exact divergence
+// #1115 left open on the injury axis. Dedicated on purpose (#868): a recovering injury on
+// a SHARED profile would temper its coaching/overview surfaces and race neighbor specs.
+// The spec's only write is a create-and-clean draft (fill a set, then delete it, mirroring
+// the FORM_DELOAD spec), so the fixture is left untouched and it stays repeat-safe.
+export const E2E_LOGIN_FORM_INJURY = "e2e_form_injury";
+export const FORM_INJURY_PROFILE = "Form Injury (e2e)";
+
 // A dedicated ADULT profile with NOTHING logged — no activities at all (#809), the
 // brand-new/post-onboarding state. Dedicated on purpose: the shared seeded profiles
 // (and every other fixture profile above, incl. No Gear which seeds one activity

@@ -11,6 +11,7 @@ import {
   isValidMuscleId,
   parseMuscles,
   parseRegions,
+  temperedRegions,
   INJURY_STATUSES,
   type Injury,
   type InjuryConstraint,
@@ -76,6 +77,25 @@ export function getInjuryConstraints(profileId: number): InjuryConstraint[] {
   return injuryConstraints(
     getInjuries(profileId).filter((i) => i.status !== "resolved")
   );
+}
+
+// The recovering-injury context the activity form reads (#1144): the coarse regions
+// returning from a RECOVERING injury (#838), so the live logger tempers a lift whose
+// region is one of them — reading the SAME temperedRegions gather the Analyze/detail
+// panel and coaching card already use, so the form and its deep-link target can't
+// disagree on the injury axis (#221/#1115). Parallels getFormDeloadContext: empty when
+// no recovering injury applies (byte-for-byte the prior form behavior). Membership is
+// what the form reads (region ∈ set), so serialization order is immaterial.
+export interface FormRecoveringContext {
+  temperedRegions: MuscleRegion[];
+}
+
+export function getFormRecoveringContext(
+  profileId: number
+): FormRecoveringContext {
+  return {
+    temperedRegions: [...temperedRegions(getInjuryConstraints(profileId))],
+  };
 }
 
 // Validated input for a create/update. Regions/muscles are already the parsed, valid
