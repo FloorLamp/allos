@@ -34,7 +34,7 @@ test.describe("Settings IA (#928) — admin", () => {
     await expect(page.getByText("This login", { exact: true })).toBeVisible();
     await expect(page.getByText("This profile", { exact: true })).toBeVisible();
     await expect(
-      page.getByText("Server", { exact: true }).first()
+      page.getByText("Server", { exact: true }).first() // first-ok: asserts the Server tier section renders (label also appears as a nav item) — presence check
     ).toBeVisible();
     await expect(page.getByTestId("push-settings")).toBeVisible();
     await expect(page.getByTestId("notification-matrix")).toBeVisible();
@@ -115,7 +115,10 @@ test.describe("Settings IA (#928) — admin", () => {
     ).toBeVisible();
     await expect(page.getByTestId("smoking-history")).toBeVisible();
     await expect(page.getByTestId("risk-factors")).toBeVisible();
-    await expect(page.getByTestId("emergency-toggle")).toBeVisible();
+    // The Emergency Card settings left Background for the Passport (#1087) —
+    // emergency-card.spec.ts covers their new home; Background must not render
+    // the toggle anymore.
+    await expect(page.getByTestId("emergency-toggle")).toHaveCount(0);
   });
 });
 

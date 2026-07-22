@@ -30,7 +30,7 @@ import type { PreventiveKind } from "./preventive-catalog";
 // consolidation fails the build (#285). Substance instruments live on the
 // substance-use page; PHQ-9/GAD-7 on the mental-health page.
 export type InstrumentPage =
-  "/medical/substance-use" | "/records/specialty/mental-health";
+  "/records/specialty/substance-use" | "/records/specialty/mental-health";
 
 // What a SCREENING is actually satisfied by — the explicit concept, driving the
 // per-class deep link + CTA copy on the Upcoming row, the page, AND the nudge so
@@ -331,7 +331,7 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
     satisfiedBy: {
       kind: "instrument",
       instrument: "AUDIT-C",
-      page: "/medical/substance-use",
+      page: "/records/specialty/substance-use",
       entry: "in-app",
     },
   },
@@ -356,7 +356,7 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
     satisfiedBy: {
       kind: "instrument",
       instrument: "DAST-10",
-      page: "/medical/substance-use",
+      page: "/records/specialty/substance-use",
       entry: "total-only",
     },
   },

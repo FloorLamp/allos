@@ -2,6 +2,7 @@ import { test, expect, type Page, type Locator } from "@playwright/test";
 import Database from "better-sqlite3";
 import path from "node:path";
 import { followLink } from "./nav";
+import { createProfileViaFamily, switchToProfile } from "./family-helpers";
 import {
   medicationRow,
   medicationList,
@@ -27,42 +28,6 @@ function e2eDbPath(): string {
     process.env.ALLOS_DB_PATH ??
     path.join(process.cwd(), "e2e", ".data", "e2e.db")
   );
-}
-
-// Switch the shared session's active profile via the sidebar UserMenu, retry-clicking
-// through the hydration window (#730), as the household/front-door specs do.
-async function switchToProfile(page: Page, name: string): Promise<void> {
-  const target = page
-    .getByTestId("user-menu-popover")
-    .getByRole("button", { name });
-  await expect(async () => {
-    await page.getByTestId("user-menu-trigger").click();
-    await expect(target).toBeVisible({ timeout: 2_000 });
-  }).toPass();
-  await target.click();
-  await expect(page.getByTestId("user-menu-trigger")).toContainText(name);
-}
-
-// A fresh healthy (adult) profile via Settings → Family; switch to it. Mirrors the
-// illness-front-door helper (defers onboarding through the product's own affordance).
-async function freshProfile(page: Page, label: string): Promise<string> {
-  const name = `${label}-${Date.now()}-${++profileSeq}`;
-  await page.goto("/settings/family");
-  const profilesCard = page
-    .locator("div.card")
-    .filter({ hasText: "Add a profile" });
-  await profilesCard.getByPlaceholder("Name", { exact: true }).fill(name);
-  await profilesCard.getByRole("button", { name: "Add", exact: true }).click();
-  await expect(profilesCard.getByText(name)).toBeVisible();
-  await switchToProfile(page, name);
-  await page.goto("/");
-  if (page.url().includes("/onboarding")) {
-    await page
-      .getByRole("button", { name: "Set up later, take me to my dashboard" })
-      .click();
-    await expect(page).toHaveURL(/\/$|\/\?/);
-  }
-  return name;
 }
 
 // Pick a medication from the quick-add combobox (click the option so the resolver
@@ -95,7 +60,7 @@ test.describe("Episode-end medication reconciliation (#880)", () => {
     page,
   }) => {
     test.slow();
-    await freshProfile(page, "recon");
+    await createProfileViaFamily(page, "recon");
 
     // 1) Feeling sick — one tap opens the illness (and the full cockpit).
     await page.goto("/");

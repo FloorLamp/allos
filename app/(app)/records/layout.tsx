@@ -1,5 +1,5 @@
 import { requireSession } from "@/lib/auth";
-import { getNavRelevance } from "@/lib/queries/nav-relevance";
+import { getRecordsSpecialtyRelevance } from "@/lib/queries/nav-relevance";
 import { PageHeader } from "@/components/ui";
 import type { AppRoute } from "@/lib/hrefs";
 import AnchorRedirect from "@/components/AnchorRedirect";
@@ -19,8 +19,9 @@ export const dynamic = "force-dynamic";
 
 // Old `/records#<section>` bookmarks land on a route-per-tab page whose hash no
 // longer names a section — bridge them client-side (a fragment never reaches the
-// server, so next.config can't). Background keeps its `#emergency-card` deep link
-// within the Care › Overview pane. `#coverage` still bridges to Data (#1086).
+// server, so next.config can't). `#emergency-card` now bridges to the Passport,
+// where the Emergency Card settings moved (#1087). `#coverage` still bridges to
+// Data (#1086).
 const ANCHOR_MAP: Record<string, AppRoute> = {
   conditions: "/records/problems",
   allergies: "/records/problems",
@@ -29,7 +30,7 @@ const ANCHOR_MAP: Record<string, AppRoute> = {
   visits: "/records/history/visits",
   providers: "/records/care/providers",
   background: "/records/care/overview",
-  "emergency-card": "/records/care/overview#emergency-card",
+  "emergency-card": "/profile#emergency",
   "family-history": "/records/care/overview",
   "care-plan": "/records/care/overview",
   "health-goals": "/records/care/overview",
@@ -37,6 +38,7 @@ const ANCHOR_MAP: Record<string, AppRoute> = {
   dental: "/records/specialty/dental",
   skin: "/records/specialty/skin",
   "mental-health": "/records/specialty/mental-health",
+  "substance-use": "/records/specialty/substance-use",
   coverage: "/data?section=coverage",
 };
 
@@ -46,11 +48,7 @@ export default async function RecordsLayout({
   children: React.ReactNode;
 }) {
   const { profile } = await requireSession();
-  const relevance = getNavRelevance(profile.id);
-  const groups = recordsGroups({
-    vision: relevance.vision,
-    dental: relevance.dental,
-  });
+  const groups = recordsGroups(getRecordsSpecialtyRelevance(profile.id));
   return (
     <div>
       <AnchorRedirect map={ANCHOR_MAP} />

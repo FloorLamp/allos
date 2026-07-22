@@ -12,7 +12,10 @@ test("Trends → Body history table scrolls horizontally at phone width (#794)",
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/trends?tab=body");
+  // #1067 Phase 2 made TILES the phone default; the history table lives in the
+  // classic chart stack, so open it explicitly (view=all) — the table's
+  // scroll-not-clip contract at phone width is unchanged.
+  await page.goto("/trends?tab=body&view=all");
 
   const table = page.getByTestId("body-history-table");
   await expect(table).toBeVisible();

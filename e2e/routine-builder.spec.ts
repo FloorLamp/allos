@@ -91,7 +91,7 @@ test.afterAll(async () => {
   await page.context().close();
 });
 
-// A routine card in the list, located by its name (never .first() on the shared list).
+// A routine card in the list, located by its name (never a positional first-match on the shared list).
 function cardByName(name: string) {
   return page
     .getByRole("main")

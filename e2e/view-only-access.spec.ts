@@ -1,5 +1,5 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
-import { settledClick } from "./helpers";
+import { createLoginViaFamily, setGrantsViaFamily } from "./family-helpers";
 
 // View-only access (issue #33). A profile grant now carries an access LEVEL:
 // 'write' (read + edit — the historical behavior) or 'read' (view-only). These
@@ -12,58 +12,23 @@ import { settledClick } from "./helpers";
 // member logins through the real Family UI, then sign in as them in fresh,
 // cookie-less contexts.
 
-// Create a member login granted profile 1 at the given access level, driving the
-// Settings → Family screen exactly as an admin would. Returns the credentials.
+// Create a member login granted the seeded profile (id 1, which carries the full
+// sample record) at the given access level, driving the Settings → Family screen
+// through the shared family helpers (which harden the onClick+router.refresh()
+// create/grant against the hydration swallow and toaster-poll false-settle —
+// #830/#1111). Returns the credentials.
 async function createMember(
   adminPage: Page,
   access: "read" | "write"
 ): Promise<{ username: string; password: string }> {
-  // Unique per run so a CI retry against the same persistent DB can't collide on
-  // the NOCASE-unique username.
-  const username = `${access}er${Date.now()}${Math.floor(Math.random() * 1000)}`;
-  const password = "member-pass-1234";
-
-  // toPass, because neither a single expect nor settledClick can express this
-  // reliably: the create click can be swallowed in the hydration window (#830),
-  // AND settledClick's one-POST wait can false-settle here — the app-shell
-  // toasters poll via Server Action POSTs to the current route that are
-  // indistinguishable from the create action's POST (the profile-switch-toasts
-  // precedent). So retry the whole fill→click→verify cycle against the DURABLE
-  // outcome — the new grant row in the matrix — which is idempotent: once the
-  // create has landed, a retry's duplicate submit is rejected by the
-  // NOCASE-unique username with a friendly error while the fresh goto still
-  // finds the row, and the goto also sidesteps the stale-RSC matrix a bare
-  // router.refresh() can leave under CI load.
-  await expect(async () => {
-    await adminPage.goto("/settings/family");
-    await adminPage.getByPlaceholder("Username").fill(username);
-    await adminPage.getByPlaceholder("Password").fill(password);
-    await adminPage.getByRole("button", { name: "Create login" }).click();
-    await expect(adminPage.getByTestId(`grant-row-${username}`)).toBeVisible({
-      timeout: 5000,
-    });
-  }).toPass({ timeout: 45_000 });
-
-  const grantRow = adminPage.getByTestId(`grant-row-${username}`);
-  // Grant the seeded profile (id 1, which carries the full sample record).
-  await grantRow.locator('input[type="checkbox"]').first().check();
-  // Set the access LEVEL via the per-cell select (write is the default).
-  await grantRow.getByTestId(`grant-access-${username}-1`).selectOption(access);
-  // settledClick here too: same #830 class as the create above — the raw click
-  // raced the save action's POST under full-suite load, and "Access updated."
-  // only renders after the action lands (seen once at retries=0, 2026-07-21).
-  await settledClick(
-    adminPage,
-    grantRow.getByRole("button", { name: "Save access" })
-  );
-  // 15s, not the 5s default: settledClick can return on a toaster poll's POST
-  // (see the create loop above) while the save action is still in flight under
-  // full-suite load — the banner renders only once the action itself lands.
-  await expect(grantRow.getByText("Access updated.")).toBeVisible({
-    timeout: 15_000,
+  const creds = await createLoginViaFamily(adminPage, {
+    username: `${access}er${Date.now()}${Math.floor(Math.random() * 1000)}`,
   });
-
-  return { username, password };
+  await setGrantsViaFamily(adminPage, creds.username, {
+    profileId: 1,
+    access,
+  });
+  return creds;
 }
 
 // Sign in as the given credentials in a brand-new, explicitly cookie-less context

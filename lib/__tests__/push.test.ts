@@ -125,13 +125,13 @@ describe("push-core: buildPushPayload", () => {
       actions: [
         {
           label: "Enter your DAST-10 score",
-          url: "https://a.example/medical/substance-use?screen=DAST-10",
+          url: "https://a.example/records/specialty/substance-use?screen=DAST-10",
         },
         { label: "✅ Done", data: "pvdone:3:drug_use_screening" },
       ],
     });
     expect(JSON.parse(json).url).toBe(
-      "https://a.example/medical/substance-use?screen=DAST-10"
+      "https://a.example/records/specialty/substance-use?screen=DAST-10"
     );
   });
 

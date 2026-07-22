@@ -40,6 +40,12 @@ import {
 import { ALL_ROWS, filterSeriesByRange } from "@/lib/trends";
 import { orderBodyCharts } from "@/lib/trends-body-order";
 import {
+  BODY_METRIC_META,
+  buildBodyMetricTile,
+  type BodyMetricSlug,
+  type BodyMetricTile,
+} from "@/lib/trends-body-metrics";
+import {
   buildTrendAnnotations,
   buildProtocolTrendWindows,
 } from "@/lib/trends-series";
@@ -47,6 +53,7 @@ import { projectGoal, describeEta } from "@/lib/trend-projection";
 import { formatLongDate, formatClockMinutes } from "@/lib/format-date";
 import { isGoalLive } from "@/lib/goals";
 import type { BodyMetricKind, Goal } from "@/lib/types";
+import type { AppRoute } from "@/lib/hrefs";
 import type { DateRange } from "@/lib/timeline-format";
 import { EmptyState } from "@/components/ui";
 import LineChartCard from "@/components/LineChartCard";
@@ -64,6 +71,13 @@ import VitalsQuickAdd from "./VitalsQuickAdd";
 import GrowthQuickAdd from "./GrowthQuickAdd";
 import QuickAddPanel, { type QuickAddItem } from "./QuickAddPanel";
 import ChartJumpChips, { type ChartChip } from "./ChartJumpChips";
+import BodyMetricTiles from "./BodyMetricTiles";
+import BodyViewToggle from "./BodyViewToggle";
+import {
+  tilesContainerClass,
+  stackContainerClass,
+  type BodyView,
+} from "./body-view";
 import DeleteBodyMetricButton from "./DeleteBodyMetricButton";
 import EditLockNotice from "@/components/EditLockNotice";
 import BodyHygieneFindings from "./BodyHygieneFindings";
@@ -78,7 +92,19 @@ import SourceComparison from "./SourceComparison";
 // delete. Weight respects the login's unit preference (dispWeight). Reuses the
 // body-metrics queries/actions and the existing chart components; this tab is NOT
 // age-gated, so every profile reaches it (matching the old page).
-export default async function BodySection({ range }: { range: DateRange }) {
+export default async function BodySection({
+  range,
+  view,
+  tilesHref,
+  allHref,
+}: {
+  range: DateRange;
+  // #1067 Phase 2: the overview layout mode (undefined → tiles on mobile, the
+  // classic stack on desktop; "tiles"/"all" pin one on every viewport).
+  view: BodyView;
+  tilesHref: AppRoute;
+  allHref: AppRoute;
+}) {
   const { login, profile } = await requireSession();
   const units = getUnitPrefs(login.id);
   const formatPrefs = getDisplayFormatPrefs(login.id);
@@ -93,24 +119,26 @@ export default async function BodySection({ range }: { range: DateRange }) {
   const weightSeries = getBodyMetricDailySeries(profile.id, "weight", ALL_ROWS);
   const bodyMetrics = getBodyMetricsWithSource(profile.id, ALL_ROWS);
 
-  const weightChart = filterSeriesByRange(
-    weightSeries.map((w) => ({ date: w.date, value: dispWeight(w.value, wu) })),
-    range
-  );
-  const bodyFatChart = filterSeriesByRange(
-    getBodyMetricDailySeries(profile.id, "body_fat", ALL_ROWS).map((w) => ({
-      date: w.date,
-      value: round(w.value, 1),
-    })),
-    range
-  );
-  const restingHrChart = filterSeriesByRange(
-    getBodyMetricDailySeries(profile.id, "resting_hr", ALL_ROWS).map((w) => ({
-      date: w.date,
-      value: Math.round(w.value),
-    })),
-    range
-  );
+  // #1067 Phase 2: keep the UNWINDOWED display-unit series named (…All) so the
+  // overview tiles read their 30-day tail from the SAME arrays the windowed charts
+  // draw — one gather feeds both (#221). The chart applies the shared range on top.
+  const weightAll = weightSeries.map((w) => ({
+    date: w.date,
+    value: dispWeight(w.value, wu),
+  }));
+  const weightChart = filterSeriesByRange(weightAll, range);
+  const bodyFatAll = getBodyMetricDailySeries(
+    profile.id,
+    "body_fat",
+    ALL_ROWS
+  ).map((w) => ({ date: w.date, value: round(w.value, 1) }));
+  const bodyFatChart = filterSeriesByRange(bodyFatAll, range);
+  const restingHrAll = getBodyMetricDailySeries(
+    profile.id,
+    "resting_hr",
+    ALL_ROWS
+  ).map((w) => ({ date: w.date, value: Math.round(w.value) }));
+  const restingHrChart = filterSeriesByRange(restingHrAll, range);
 
   // Age drives an age-aware Body-tab layout (kids growth trends): for a child,
   // HEIGHT is the priority datapoint and body fat % is not tracked, so the tab
@@ -138,22 +166,16 @@ export default async function BodySection({ range }: { range: DateRange }) {
   // 180-row cap in getMetricDailyTotals hides an older window entirely — Health
   // Connect syncs height on every export, so ~daily samples fill 180 rows in ~6
   // months and last year's window rendered an empty "no data" chart that lied.
-  const heightChart = filterSeriesByRange(
-    getMetricDailyTotals(profile.id, "height_cm", ALL_ROWS).map((r) => ({
-      date: r.date,
-      value: round(r.value, 1),
-    })),
-    range
+  const heightAll = getMetricDailyTotals(profile.id, "height_cm", ALL_ROWS).map(
+    (r) => ({ date: r.date, value: round(r.value, 1) })
   );
-  const headCircChart = filterSeriesByRange(
-    getMetricDailyTotals(profile.id, "head_circumference_cm", ALL_ROWS).map(
-      (r) => ({
-        date: r.date,
-        value: round(r.value, 1),
-      })
-    ),
-    range
-  );
+  const heightChart = filterSeriesByRange(heightAll, range);
+  const headCircAll = getMetricDailyTotals(
+    profile.id,
+    "head_circumference_cm",
+    ALL_ROWS
+  ).map((r) => ({ date: r.date, value: round(r.value, 1) }));
+  const headCircChart = filterSeriesByRange(headCircAll, range);
 
   // Event annotations (medication start/stop, appointments, situation changes)
   // windowed to the shared range — the same set drives all three charts via the
@@ -788,161 +810,254 @@ export default async function BodySection({ range }: { range: DateRange }) {
     },
   ];
 
+  // #1067 Phase 2: the sparkline-tile overview. Each tile is the 30-day tail of the
+  // SAME display-unit series its classic chart draws above (one gather feeds both).
+  // Body fat is dropped for a growth-tracked profile (matching the charts/history);
+  // every other metric self-gates on presence (buildBodyMetricTile → present=false
+  // ⇒ orderBodyMetricTiles drops it). Sleep is a SPECIAL tile linking to /sleep.
+  const todayStr = today(profile.id);
+  const tileSeries: Array<[BodyMetricSlug, { date: string; value: number }[]]> =
+    [
+      ["weight", weightAll],
+      ["body-fat", bodyFatAll],
+      ["resting-hr", restingHrAll],
+      ["height", heightAll],
+      ["head-circ", headCircAll],
+      ["steps", stepsChart],
+      ["hr", hrChart],
+      ["bmi", bmiChart],
+      ["lean-mass", leanMassChart],
+      ["bone-mass", boneMassChart],
+      ["bmr", bmrChart],
+      ["hydration", hydrationChart],
+      ["calories", caloriesChart],
+      ["mood", moodChart],
+    ];
+  const metricTiles: BodyMetricTile[] = tileSeries
+    .filter(([slug]) => slug !== "body-fat" || bodyFatShown)
+    .map(([slug, arr]) =>
+      buildBodyMetricTile(BODY_METRIC_META[slug], arr, wu, todayStr)
+    )
+    .filter((t) => t.present);
+
+  // The bespoke Sleep tile for the grid — links to /sleep (strong topic keeps its
+  // own surface, #1042), NOT a metric page. A distinct node from the stack's sleep
+  // card so there's no duplicate `#sleep` anchor id across the two layouts.
+  const sleepGridTile = hasSleep
+    ? {
+        present: true,
+        latestDate: lastNight?.wakeDay ?? null,
+        node: (
+          <Link
+            href="/sleep"
+            data-testid="body-tile-sleep"
+            className="card group flex h-full flex-col transition hover:border-brand-300 dark:hover:border-brand-700"
+          >
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="font-semibold text-slate-800 dark:text-slate-100">
+                Sleep
+              </span>
+              <IconArrowRight
+                className="h-4 w-4 text-brand-600 dark:text-brand-400"
+                stroke={1.75}
+                aria-hidden
+              />
+            </div>
+            {lastNight && (
+              <div className="text-2xl font-bold tabular-nums text-slate-800 dark:text-slate-100">
+                {formatHm(lastNight.durationMin)}
+              </div>
+            )}
+            {sleepReg != null && (
+              <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                Regularity {Math.round(sleepReg.sri)}/100
+              </div>
+            )}
+            {!lastNight && sleepReg == null && (
+              <div className="text-sm text-slate-500 dark:text-slate-400">
+                Open Sleep
+              </div>
+            )}
+          </Link>
+        ),
+      }
+    : null;
+
   return (
     <div className="space-y-6">
       <QuickAddPanel items={quickAddItems} />
 
-      {/* Sticky chart-jump chips (#1067) — one row, its own overflow-x-auto
-          container, tapping scrolls to the chart. Only present charts appear. */}
-      <ChartJumpChips chips={jumpChips} />
-
-      <p className="text-sm text-slate-500 dark:text-slate-400">
-        Body-composition trends over the selected window.
-      </p>
-
       {/* Body-metric data-hygiene findings (issue #45, domain 5): probable-error
-          day-over-day weight jumps, before they skew the charts below. */}
+          day-over-day weight jumps — a safety-ish signal, so shown above the toggle
+          in both layouts. */}
       <BodyHygieneFindings />
 
-      {/* For a child the growth-percentile card is the headline, so it floats
-          above the body-composition charts (plan.growthCardFirst); adults keep
-          it below, unchanged. */}
-      {plan.growthCardFirst && growthCard}
-
-      <div id="body-composition" className="scroll-mt-28">
-        <BodyTrendCharts
-          charts={charts}
-          annotations={annotations}
-          windows={protocolWindows}
-        />
+      {/* #1067 Phase 2: tiles ⇄ classic-stack toggle. Default is responsive (tiles on
+          mobile, stack on desktop); the toggle pins either explicitly. */}
+      <div className="flex justify-end">
+        <BodyViewToggle view={view} tilesHref={tilesHref} allHref={allHref} />
       </div>
 
-      {!plan.growthCardFirst && growthCard}
+      {/* Sparkline-tile overview — the default view on mobile. */}
+      <div className={tilesContainerClass(view)} data-testid="body-tiles-view">
+        <BodyMetricTiles tiles={metricTiles} sleep={sleepGridTile} />
+      </div>
 
-      {/* Mood trend (#992): the daily wellbeing series. Deliberately no reference
+      {/* The classic full-chart stack — the default view on desktop, and the
+          `view=all` layout on every viewport. Carries the sticky jump chips + the
+          per-chart `#id` anchors (#1067 Phase 1). */}
+      <div
+        className={`${stackContainerClass(view)} space-y-6`}
+        data-testid="body-charts-all"
+      >
+        {/* Sticky chart-jump chips (#1067) — one row, its own overflow-x-auto
+            container, tapping scrolls to the chart. Only present charts appear. */}
+        <ChartJumpChips chips={jumpChips} />
+
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          Body-composition trends over the selected window.
+        </p>
+
+        {/* For a child the growth-percentile card is the headline, so it floats
+            above the body-composition charts (plan.growthCardFirst); adults keep
+            it below, unchanged. */}
+        {plan.growthCardFirst && growthCard}
+
+        <div id="body-composition" className="scroll-mt-28">
+          <BodyTrendCharts
+            charts={charts}
+            annotations={annotations}
+            windows={protocolWindows}
+          />
+        </div>
+
+        {!plan.growthCardFirst && growthCard}
+
+        {/* Mood trend (#992): the daily wellbeing series. Deliberately no reference
           bands, no flags, no retest hooks — mood is not a lab, so a low day is a
           data point, never an "abnormal". Hidden until a check-in exists. */}
-      {hasMood && (
-        <div id="mood" className="card scroll-mt-28" data-testid="mood-trend">
-          <div className="mb-3 flex items-baseline justify-between gap-2">
-            <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-              Mood
-            </h2>
-            <span className="text-xs text-slate-500 dark:text-slate-400">
-              1–5 daily check-ins · most recent ~6 months
-            </span>
+        {hasMood && (
+          <div id="mood" className="card scroll-mt-28" data-testid="mood-trend">
+            <div className="mb-3 flex items-baseline justify-between gap-2">
+              <h2 className="font-semibold text-slate-800 dark:text-slate-100">
+                Mood
+              </h2>
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                1–5 daily check-ins · most recent ~6 months
+              </span>
+            </div>
+            <LineChartCard
+              data={moodChart}
+              label="Mood"
+              color={chartSeries.amber}
+            />
+            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              A subjective self-rating from your daily check-ins — informational
+              only, never range-checked.
+            </p>
           </div>
-          <LineChartCard
-            data={moodChart}
-            label="Mood"
-            color={chartSeries.amber}
-          />
-          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-            A subjective self-rating from your daily check-ins — informational
-            only, never range-checked.
-          </p>
-        </div>
-      )}
+        )}
 
-      {hasSynced && (
-        <div className="space-y-3">
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Synced daily metrics — most recent ~6 months (not filtered by the
-            date range above).
-          </p>
-          <div className="grid gap-6 lg:grid-cols-2">
-            {orderedSynced.map((e) => e.node)}
+        {hasSynced && (
+          <div className="space-y-3">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Synced daily metrics — most recent ~6 months (not filtered by the
+              date range above).
+            </p>
+            <div className="grid gap-6 lg:grid-cols-2">
+              {orderedSynced.map((e) => e.node)}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Per-source comparison + primary-source pickers (issue #14). Renders
+        {/* Per-source comparison + primary-source pickers (issue #14). Renders
           nothing unless at least one metric is reported by 2+ sources. */}
-      <SourceComparison profileId={profile.id} weightUnit={wu} />
+        <SourceComparison profileId={profile.id} weightUnit={wu} />
 
-      <div className="card">
-        <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-          History
-        </h2>
-        {bodyMetrics.length === 0 ? (
-          <EmptyState message="No body metrics yet. Log one above to see the trend." />
-        ) : (
-          <ScrollFade>
-            <table className="w-full" data-testid="body-history-table">
-              <thead>
-                <tr className="border-b border-black/5 dark:border-white/10">
-                  <th className="th">Date</th>
-                  <th className="th">Weight</th>
-                  {bodyFatShown && <th className="th">Body fat</th>}
-                  <th className="th">Resting HR</th>
-                  <th className="th">Source</th>
-                  <th className="th">Notes</th>
-                  <th className="th"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {bodyMetrics.map((w) => (
-                  <tr
-                    key={w.id}
-                    className="border-b border-black/5 dark:border-white/10"
-                  >
-                    <td className="td whitespace-nowrap">
-                      {formatLongDate(w.date, formatPrefs)}
-                    </td>
-                    <td
-                      className="td font-medium"
-                      data-testid="body-weight-cell"
+        <div className="card">
+          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+            History
+          </h2>
+          {bodyMetrics.length === 0 ? (
+            <EmptyState message="No body metrics yet. Log one above to see the trend." />
+          ) : (
+            <ScrollFade>
+              <table className="w-full" data-testid="body-history-table">
+                <thead>
+                  <tr className="border-b border-black/5 dark:border-white/10">
+                    <th className="th">Date</th>
+                    <th className="th">Weight</th>
+                    {bodyFatShown && <th className="th">Body fat</th>}
+                    <th className="th">Resting HR</th>
+                    <th className="th">Source</th>
+                    <th className="th">Notes</th>
+                    <th className="th"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bodyMetrics.map((w) => (
+                    <tr
+                      key={w.id}
+                      className="border-b border-black/5 dark:border-white/10"
                     >
-                      {fmtWeight(w.weight_kg, wu)}
-                    </td>
-                    {bodyFatShown && (
-                      <td className="td">
-                        {w.body_fat_pct != null ? `${w.body_fat_pct}%` : "—"}
+                      <td className="td whitespace-nowrap">
+                        {formatLongDate(w.date, formatPrefs)}
                       </td>
-                    )}
-                    <td className="td">{w.resting_hr ?? "—"}</td>
-                    <td className="td whitespace-nowrap">
-                      {w.document_id != null ? (
-                        <Link
-                          href={`/import/${w.document_id}`}
-                          className="text-brand-700 hover:underline dark:text-brand-400"
-                        >
-                          {w.source_label}
-                        </Link>
-                      ) : (
-                        <span className="text-slate-500 dark:text-slate-400">
-                          {w.source_label}
-                        </span>
+                      <td
+                        className="td font-medium"
+                        data-testid="body-weight-cell"
+                      >
+                        {fmtWeight(w.weight_kg, wu)}
+                      </td>
+                      {bodyFatShown && (
+                        <td className="td">
+                          {w.body_fat_pct != null ? `${w.body_fat_pct}%` : "—"}
+                        </td>
                       )}
-                      {/* Edit-lock badge + resume affordance for a hand-edited
+                      <td className="td">{w.resting_hr ?? "—"}</td>
+                      <td className="td whitespace-nowrap">
+                        {w.document_id != null ? (
+                          <Link
+                            href={`/import/${w.document_id}`}
+                            className="text-brand-700 hover:underline dark:text-brand-400"
+                          >
+                            {w.source_label}
+                          </Link>
+                        ) : (
+                          <span className="text-slate-500 dark:text-slate-400">
+                            {w.source_label}
+                          </span>
+                        )}
+                        {/* Edit-lock badge + resume affordance for a hand-edited
                           integration row (#659): only integration-owned rows carry
                           the lock (manual/document rows can't be re-synced). */}
-                      {!!w.edited &&
-                        w.document_id == null &&
-                        !!w.source &&
-                        w.source !== "manual" && (
-                          <EditLockNotice
-                            table="body_metrics"
-                            id={w.id}
-                            className="mt-1"
-                          />
-                        )}
-                    </td>
-                    <td className="td text-slate-500 dark:text-slate-400">
-                      <NotesText notes={w.notes} />
-                    </td>
-                    <td className="td text-right">
-                      <DeleteBodyMetricButton
-                        id={w.id}
-                        label={formatLongDate(w.date, formatPrefs)}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </ScrollFade>
-        )}
+                        {!!w.edited &&
+                          w.document_id == null &&
+                          !!w.source &&
+                          w.source !== "manual" && (
+                            <EditLockNotice
+                              table="body_metrics"
+                              id={w.id}
+                              className="mt-1"
+                            />
+                          )}
+                      </td>
+                      <td className="td text-slate-500 dark:text-slate-400">
+                        <NotesText notes={w.notes} />
+                      </td>
+                      <td className="td text-right">
+                        <DeleteBodyMetricButton
+                          id={w.id}
+                          label={formatLongDate(w.date, formatPrefs)}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </ScrollFade>
+          )}
+        </div>
       </div>
     </div>
   );

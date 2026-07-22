@@ -19,7 +19,7 @@ import {
 // for the inline-notice test — tagged by a unique source lab / name prefix, seeded
 // via a raw connection and cleaned up in beforeAll AND afterAll so it's idempotent
 // across retries and never touches seeded rows. Locators are scoped to the specific
-// row (never .first() on the shared warnings surface).
+// row (never a positional first-match on the shared warnings surface).
 
 const LAB = "E2E PGX Lab";
 const ABACAVIR = "E2E PGX Abacavir"; // normalizes to contain the "abacavir" synonym

@@ -47,7 +47,7 @@ test.describe("Import detail: tabbed records browser", () => {
       page.getByRole("link", { name: "Ferritin", exact: true })
     ).toHaveAttribute("href", "/biomarkers/view?name=Ferritin");
     // The lab table keeps its editing affordances inside the tab.
-    await page.getByRole("button", { name: "Record actions" }).first().click();
+    await page.getByRole("button", { name: "Record actions" }).first().click(); // first-ok: any lab row's Record actions menu carries Edit — order-agnostic (asserted next)
     await expect(page.getByRole("menuitem", { name: "Edit" })).toBeVisible();
     await page.keyboard.press("Escape");
   });

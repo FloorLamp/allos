@@ -9,9 +9,9 @@ export const dynamic = "force-dynamic";
 
 // Health record › Care › Overview (#1079): a single STACKED pane of four LIGHT
 // sections — Background, Family history, Care plan, Health goals — each a short
-// form/list. Providers (the #1055 directory) is heavy and stays a solo pane.
-// Background keeps its `#emergency-card` anchor for the Passport/onboarding deep
-// link.
+// form/list. Providers (the #1055 directory) is heavy and stays a solo pane. The
+// Emergency Card settings moved to the Passport (#1087), so Background is just
+// Smoking + Risk factors and no longer carries the `#emergency-card` anchor.
 export default async function RecordsCareOverviewPage() {
   const { profile } = await requireSession();
   return (
@@ -20,7 +20,7 @@ export default async function RecordsCareOverviewPage() {
         <SectionHeader
           id="background"
           title="Background"
-          subtitle="Smoking history, health risk factors, and emergency card — person-level context that tailors screening reminders and the offline emergency summary."
+          subtitle="Smoking history and health risk factors — person-level context that tailors screening reminders."
         />
         <BackgroundSection profileId={profile.id} />
       </section>

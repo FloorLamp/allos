@@ -14,7 +14,7 @@ test.describe("Settings → Server: off-volume backup status", () => {
     await expect(offsite.getByText("Off-volume copy:")).toBeVisible();
     // No BACKUP_DEST_DIR in the e2e env → the not-configured guidance is shown.
     await expect(offsite.getByText(/not configured/)).toBeVisible();
-    await expect(offsite.getByText(/BACKUP_DEST_DIR/).first()).toBeVisible();
+    await expect(offsite.getByText(/BACKUP_DEST_DIR/).first()).toBeVisible(); // first-ok: asserts the BACKUP_DEST_DIR hint renders in the scoped offsite card — order-agnostic presence
   });
 });
 

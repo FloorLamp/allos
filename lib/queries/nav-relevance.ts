@@ -12,6 +12,7 @@ import {
   getUserSex,
 } from "../settings/profile-attrs";
 import { cycleTrackingRelevant, type NavRelevance } from "../nav-relevance";
+import { isMinor } from "../life-stage";
 import { hasSleepData } from "./sleep";
 
 // The relevance bitset for the active profile. Key policy (documented on
@@ -48,5 +49,26 @@ export function getNavRelevance(profileId: number): NavRelevance {
     dental: hasDentalRows,
     // Data presence only (any recorded sleep session) — the #1066 Sleep nav gate.
     sleep: hasSleepData(profileId),
+  };
+}
+
+// The Records › Specialty section-visibility bitset (#1079 + #1174/#1175). Vision
+// and Dental gate on data presence (from getNavRelevance); Substance use gates on
+// LIFE STAGE — its AUDIT/DAST instruments are adult-validated, so it hides for a
+// KNOWN minor (adult OR unknown age → shown, matching isMinor's positive-match-only
+// policy). Computed ONCE here so the shared records shell (tab strip), the bare
+// Specialty redirect, and the substance-use route re-gate all read the SAME predicate
+// (#221 — one question, one computation). Mental health/Skin carry no bit (always
+// shown); Mental health is deliberately NOT life-stage gated (adolescent-validated).
+export function getRecordsSpecialtyRelevance(profileId: number): {
+  vision: boolean;
+  dental: boolean;
+  substanceUse: boolean;
+} {
+  const nav = getNavRelevance(profileId);
+  return {
+    vision: nav.vision,
+    dental: nav.dental,
+    substanceUse: !isMinor(getUserAge(profileId)),
   };
 }

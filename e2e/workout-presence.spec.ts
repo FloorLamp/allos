@@ -25,7 +25,7 @@ async function pickActivity(page: Page, name: string) {
     .getByRole("listbox")
     .getByRole("button")
     .filter({ hasText: name })
-    .first()
+    .first() // first-ok: transient combobox list this spec just opened by typing `name`; the first filtered match is the intended option
     .click();
 }
 

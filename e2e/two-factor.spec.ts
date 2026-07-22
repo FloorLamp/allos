@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { totp } from "../lib/totp";
-import { settledClick } from "./helpers";
+import { createLoginViaFamily, setGrantsViaFamily } from "./family-helpers";
 
 // Optional TOTP 2FA (issue #23): enroll a login, then prove the login flow stops
 // at a second-factor step and completes with both a computed authenticator code
@@ -39,48 +39,19 @@ test("2FA: enroll, then second-factor login with code and recovery code (#23)", 
   page,
   browser,
 }) => {
-  // Unique per run so a CI retry against the same persistent DB doesn't collide
-  // on the NOCASE-unique username.
-  const user = `twofa${Date.now()}`;
-  const pass = "member-pass-1234"; // passes the strength gate; no username inside
-
-  // As admin (shared session): create the member login + grant it a profile so it
-  // has a usable session. Mirror view-only-access.spec.ts's createMember (#830):
-  // a bare settledClick is NOT enough here — the create click can be swallowed in
-  // the hydration window (no POST fires at all), AND the settings shell's
-  // background toasters poll via Server Action POSTs to the current route that are
-  // indistinguishable from the create action's POST, so settledClick's one-POST
-  // wait can FALSE-SETTLE on a bystander poll while the create never lands. That
-  // is exactly the retries=0 failure this hardens (2026-07-21, PR #1111 run
-  // 88649549701: grant-row-<user> never appeared). Retry the whole
-  // goto→fill→click→verify cycle against the DURABLE grant row; idempotent because
-  // the NOCASE-unique username rejects a duplicate submit with a friendly error
-  // while the fresh goto still finds the row, and the goto sidesteps a stale-RSC
-  // matrix a bare router.refresh() can leave under CI load.
-  await expect(async () => {
-    await page.goto("/settings/family");
-    await page.getByPlaceholder("Username").fill(user);
-    await page.getByPlaceholder("Password").fill(pass);
-    await page.getByRole("button", { name: "Create login" }).click();
-    await expect(page.getByTestId(`grant-row-${user}`)).toBeVisible({
-      timeout: 5000,
-    });
-  }).toPass({ timeout: 45_000 });
-
-  const grantRow = page.getByTestId(`grant-row-${user}`);
-  await grantRow.locator('input[type="checkbox"]').first().check();
-  // settledClick + a widened banner timeout: the raw Save-access click raced the
-  // save action's POST under full-suite load (the same #830 class), and "Access
-  // updated." only renders once the action lands. 15s, not the 5s default,
-  // because settledClick can return on a toaster poll's POST (see the create loop
-  // above) while the save action is still in flight.
-  await settledClick(
-    page,
-    grantRow.getByRole("button", { name: "Save access" })
-  );
-  await expect(grantRow.getByText("Access updated.")).toBeVisible({
-    timeout: 15_000,
-  });
+  // This test drives two hardened multi-step Family operations (create login, then
+  // grant a profile — each a fresh /settings/family navigation) BEFORE the 2FA enroll/
+  // login arc, so it needs the extended budget its sibling view-only-access already
+  // uses; without it the create+grant pair intermittently bumps the 30s default (seen
+  // at --repeat-each=3, CI-equivalent).
+  test.slow();
+  // As admin (shared session): create the member login + grant it the seeded profile
+  // so it has a usable session. Both steps go through the shared family helpers, which
+  // harden the onClick+router.refresh() create/grant against the hydration swallow and
+  // the toaster-poll false-settle (#830/#1111). createLoginViaFamily returns a
+  // per-run-unique username so a CI retry against the persistent DB can't collide.
+  const { username: user, password: pass } = await createLoginViaFamily(page);
+  await setGrantsViaFamily(page, user, { profileId: 1, access: "write" });
 
   // As the member (fresh context): enroll in 2FA on Settings → Preferences.
   const enrollCtx = await browser.newContext({
@@ -116,7 +87,7 @@ test("2FA: enroll, then second-factor login with code and recovery code (#23)", 
     await m
       .getByTestId("twofa-recovery-codes")
       .locator("li")
-      .first()
+      .first() // first-ok: any one of THIS login's freshly-shown recovery codes; the recovery path needs exactly one
       .innerText()
   ).trim();
   await enrollCtx.close();

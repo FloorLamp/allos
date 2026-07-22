@@ -31,7 +31,7 @@ async function removeHivCondition(page: Page): Promise<void> {
   while ((await hivRows().count()) > 0) {
     // Open the row's confirm dialog and WAIT for it to mount before driving its
     // confirm — a raw click on a not-yet-ready dialog can miss on a slow runner.
-    const trash = hivRows().first().getByRole("button", { name: "Delete" });
+    const trash = hivRows().first().getByRole("button", { name: "Delete" }); // first-ok: loop deletes EVERY HIV row; first-of-remaining is order-agnostic
     await expect(trash).toBeVisible({ timeout: WAIT });
     await trash.click();
     const dialog = page.getByRole("dialog");

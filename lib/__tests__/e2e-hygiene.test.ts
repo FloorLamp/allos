@@ -51,6 +51,19 @@ import { fileURLToPath } from "node:url";
 //        comment and is excluded from the count. Everything else is frozen at
 //        today's per-file count; new unmarked occurrences fail.
 //
+// A FIFTH frozen group (the family-create freeze, issue #868 phase-2):
+//
+//   (v)  Inline Settings → Family create-login / create-profile / set-grants
+//        sequences. Those controls are onClick+router.refresh() handlers (NOT form
+//        submits), so an inline goto→fill→click flakes on the hydration swallow /
+//        toaster false-settle (#830/#1111) — nine near-identical copies had grown
+//        across the dynamic specs. They now live in the ONE blessed home
+//        e2e/family-helpers.ts (createLoginViaFamily / createProfileViaFamily /
+//        setGrantsViaFamily); the three inline markers (`getByPlaceholder("Username")`,
+//        `"Add a profile"`, `"Save access"`) are frozen at ZERO in every OTHER file,
+//        so a NEW inline sequence fails. The helper module is SKIPPED (not
+//        allowlisted) for these three — it OWNS the markers by design.
+//
 // NOT mechanically enforced here (documented rule only — see
 // docs/internals/e2e-hygiene.md): exact-count assertions against SHARED-SEED
 // fixture rows ("2 today", "≥ 2 episode rows"). Detecting those syntactically
@@ -84,6 +97,29 @@ const TOPASS_RE = /\.toPass\(/g;
 // last-resort use (same escape-marker shape as first-ok). Note the marker line
 // is wherever `.toPass(` itself appears — usually the closing `}).toPass({...})`.
 const TOPASS_OK_MARKER = "topass-ok";
+
+// The family-create freeze (issue #868, phase-2 create-member hardening). The
+// Settings → Family create/grant controls are onClick+router.refresh() handlers, NOT
+// form submits, so an inline goto→fill→click sequence flakes on the hydration swallow /
+// toaster false-settle (#830/#1111). Nine near-identical copies of that dance had
+// accreted across the dynamic specs; they now live in the ONE blessed home
+// e2e/family-helpers.ts (createLoginViaFamily / createProfileViaFamily /
+// setGrantsViaFamily). These freeze the three inline markers at ZERO everywhere ELSE,
+// so a NEW inline create/grant sequence fails CI and must route through the helper.
+const FAMILY_HELPERS = "family-helpers.ts";
+// The create-login form's username field (`placeholder="Username"`) — unique to that
+// form (the login page uses `input[name="username"]`, not a placeholder).
+const CREATE_LOGIN_RE = /getByPlaceholder\(\s*["']Username["']\s*\)/g;
+// The grants matrix's save button label.
+const SET_GRANTS_RE = /["']Save access["']/g;
+// The profiles card's section label, used as the `hasText` scope for the create field.
+const ADD_PROFILE_RE = /["']Add a profile["']/g;
+// All inline family-create sequences were migrated onto e2e/family-helpers.ts, so every
+// OTHER spec freezes at zero. A new inline sequence (or a new offender file) fails; the
+// blessed home is skipped, not allowlisted, since it OWNS these markers by design.
+const CREATE_LOGIN_ALLOW: Record<string, number> = {};
+const SET_GRANTS_ALLOW: Record<string, number> = {};
+const ADD_PROFILE_ALLOW: Record<string, number> = {};
 
 // Frozen offenders as of #868 (per-file counts). Migrate an entry to
 // e2e/helpers.ts and LOWER its number here in the same PR; a fully-migrated file
@@ -127,11 +163,6 @@ const WAITFORTIMEOUT_ALLOW: Record<string, number> = {
 const FIRST_ALLOW: Record<string, number> = {
   "activity-equipment.spec.ts": 5,
   "ai-settings.spec.ts": 4,
-  "allergen-cross-reactivity.spec.ts": 1,
-  "audit-log.spec.ts": 1,
-  "care-plan-appointment-offer.spec.ts": 1,
-  "condition-suggestion.spec.ts": 1,
-  "contrast-safety.spec.ts": 1,
   "crisis-mental-health-visit.spec.ts": 4,
   "cycle.spec.ts": 2,
   "dashboard.spec.ts": 5,
@@ -141,13 +172,12 @@ const FIRST_ALLOW: Record<string, number> = {
   "drug-allergy.spec.ts": 3,
   "drug-interactions.spec.ts": 4,
   "edit-lock-badge.spec.ts": 2,
-  "emergency-card.spec.ts": 3,
+  // emergency-card.spec.ts dropped to 0 .first() in #1087 (its Saved-indicator
+  // checks moved to the Passport, which has a single SaveStatus — no .first() needed).
   "encounters.spec.ts": 2,
   "endurance-plans.spec.ts": 2,
   "entry-ergonomics.spec.ts": 24,
   "episode-med-reconcile.spec.ts": 2,
-  "equipment-manager.spec.ts": 1,
-  "equipment-registry.spec.ts": 1,
   "exercise-guide.spec.ts": 4,
   "food-slot-ranking.spec.ts": 4,
   "form-fill-paths.spec.ts": 2,
@@ -155,23 +185,19 @@ const FIRST_ALLOW: Record<string, number> = {
   "hearing.spec.ts": 2,
   "home-location.spec.ts": 3,
   "household-history.spec.ts": 4,
+  // illness-care carries a latent class-1 flake (a sibling mutates profile 1's
+  // seeded illness state; exposed only when co-located at --repeat-each). Its lone
+  // .first() stays frozen here until that flake is fixed in a focused follow-up.
   "illness-care.spec.ts": 1,
   "illness-episode-followups.spec.ts": 27,
   "illness-episode.spec.ts": 5,
-  "illness-front-door.spec.ts": 1,
   "illness-round3.spec.ts": 6,
   "immunizations.spec.ts": 2,
   "import-dedup.spec.ts": 3,
-  "import-records-browser.spec.ts": 1,
-  "imported-temp-unit.spec.ts": 1,
   "integrations-health-connect.spec.ts": 3,
   "journal-provenance.spec.ts": 7,
   "kids-growth.spec.ts": 2,
-  "live-workout.spec.ts": 1,
-  "longevity.spec.ts": 1,
   "manual-temperature.spec.ts": 2,
-  "maps-links.spec.ts": 1,
-  "medication-monitoring.spec.ts": 1,
   "medication-prefill.spec.ts": 8,
   "medications-followups.spec.ts": 6,
   // dose-history-row .first() (newest seeded dose) deferred to a dedicated-fixture
@@ -183,49 +209,29 @@ const FIRST_ALLOW: Record<string, number> = {
   "mobility.spec.ts": 2,
   "muscle-anatomy.spec.ts": 4,
   "muscle-coverage.spec.ts": 2,
-  "muscle-volume-bands.spec.ts": 1,
   "needs-attention-menu.spec.ts": 2,
-  "offsite-backup.spec.ts": 1,
   "onboarding.spec.ts": 2,
-  "pace-tone.spec.ts": 1,
   "palette-actions.spec.ts": 3,
-  "pgx-crosscheck.spec.ts": 1,
   "preventive-nudge.spec.ts": 2,
   "prn-family.spec.ts": 1,
-  "records-page.spec.ts": 1,
   "results-page.spec.ts": 2,
   "review-inbox.spec.ts": 3,
   "risk-factors.spec.ts": 2,
-  "routine-builder.spec.ts": 1,
-  "routine-deload.spec.ts": 1,
   "routine-recommendation.spec.ts": 2,
-  "rpe-logging.spec.ts": 1,
   "session-recap.spec.ts": 6,
-  "settings-ia.spec.ts": 1,
-  "share-link.spec.ts": 1,
-  "situations.spec.ts": 1,
   "skin.spec.ts": 4,
   "smoke.spec.ts": 7,
   "smoking-history.spec.ts": 4,
   "strength-standards.spec.ts": 3,
-  "supplement-add-reset.spec.ts": 1,
   "symptom-helpers.ts": 2,
   "symptom-log.spec.ts": 6,
-  "symptom-text-intake.spec.ts": 1,
   "temperature-unit.spec.ts": 3,
-  "timeline-linked-context.spec.ts": 1,
-  "training-restriction.spec.ts": 1,
-  "training-zones.spec.ts": 1,
-  "trends-per-tab.spec.ts": 1,
-  "two-factor.spec.ts": 2,
-  "unit-mislabel-review.spec.ts": 1,
-  "view-only-access.spec.ts": 1,
+  // two-factor / view-only-access each shed one grant-checkbox .first() when their
+  // create+grant dance moved into e2e/family-helpers.ts (which scopes the checkbox by
+  // the grant-cell testid, no .first()); two-factor keeps its recovery-code li .first().
   "vision.spec.ts": 3,
   "visits-lifecycle.spec.ts": 3,
   "weekly-recap.spec.ts": 2,
-  "weight-quick-add.spec.ts": 1,
-  "workout-heatmap.spec.ts": 1,
-  "workout-presence.spec.ts": 1,
 };
 
 // Frozen .toPass( offenders (per-file counts, `topass-ok`-marked lines excluded)
@@ -238,9 +244,10 @@ const FIRST_ALLOW: Record<string, number> = {
 // redesign, so they're grandfathered like any other offender, not blessed.
 const TOPASS_ALLOW: Record<string, number> = {
   "entry-ergonomics.spec.ts": 1,
-  "episode-med-reconcile.spec.ts": 1,
+  // episode-med-reconcile / illness-front-door / view-only-access dropped their
+  // remaining .toPass( when their family-create/switch dances moved into
+  // e2e/family-helpers.ts (phase-2 create-member hardening), so they're off the list.
   "illness-episode.spec.ts": 2,
-  "illness-front-door.spec.ts": 1,
   "illness-hero.spec.ts": 1,
   "illness-round3.spec.ts": 1,
   "kids-growth.spec.ts": 1,
@@ -255,12 +262,13 @@ const TOPASS_ALLOW: Record<string, number> = {
   "settings-ia.spec.ts": 1,
   "symptom-helpers.ts": 7,
   "symptom-log.spec.ts": 1,
-  "two-factor.spec.ts": 3,
+  // two-factor kept its two TOTP retry loops; its create-login loop moved to the helper.
+  "two-factor.spec.ts": 2,
   "unit-mislabel-review.spec.ts": 2,
-  "view-only-access.spec.ts": 1,
   "wake-aware-mornings.spec.ts": 2,
   "weight-quick-add.spec.ts": 1,
-  "wellbeing-check.spec.ts": 3,
+  // wellbeing-check kept its tapMood retry; its switch/create dances moved to the helper.
+  "wellbeing-check.spec.ts": 1,
 };
 
 function specFiles(): { name: string; text: string }[] {
@@ -285,9 +293,12 @@ function checkPattern(
     hint?: string;
     // Lines matching this marker are excluded before counting (the first-ok escape).
     excludeLineMarker?: string;
+    // Files skipped entirely — the blessed HOME for a pattern (e.g. family-helpers.ts
+    // legitimately contains the family-create sequences it exists to centralize).
+    skipFiles?: Set<string>;
   }
 ) {
-  const files = specFiles();
+  const files = specFiles().filter((f) => !opts?.skipFiles?.has(f.name));
   const seen = new Set<string>();
   const violations: string[] = [];
   const hint =
@@ -371,9 +382,56 @@ describe("e2e suite hygiene guard (issue #868)", () => {
     });
   });
 
+  it("no NEW inline create-login sequence in an e2e/*.ts (use createLoginViaFamily)", () => {
+    checkPattern(
+      "create-login (getByPlaceholder Username)",
+      CREATE_LOGIN_RE,
+      CREATE_LOGIN_ALLOW,
+      {
+        skipFiles: new Set([FAMILY_HELPERS]),
+        hint:
+          `Inline Settings → Family create-login sequences are banned — they flake on ` +
+          `the onClick+refresh hydration swallow / toaster false-settle (#830/#1111). ` +
+          `Use createLoginViaFamily from e2e/family-helpers.ts; see docs/internals/e2e-hygiene.md.`,
+      }
+    );
+  });
+
+  it("no NEW inline create-profile sequence in an e2e/*.ts (use createProfileViaFamily)", () => {
+    checkPattern(
+      "create-profile (Add a profile)",
+      ADD_PROFILE_RE,
+      ADD_PROFILE_ALLOW,
+      {
+        skipFiles: new Set([FAMILY_HELPERS]),
+        hint:
+          `Inline Settings → Family create-profile sequences are banned — they flake on ` +
+          `the onClick+refresh hydration swallow (#830/#1111). Use createProfileViaFamily ` +
+          `from e2e/family-helpers.ts; see docs/internals/e2e-hygiene.md.`,
+      }
+    );
+  });
+
+  it("no NEW inline set-grants sequence in an e2e/*.ts (use setGrantsViaFamily)", () => {
+    checkPattern("set-grants (Save access)", SET_GRANTS_RE, SET_GRANTS_ALLOW, {
+      skipFiles: new Set([FAMILY_HELPERS]),
+      hint:
+        `Inline Settings → Family grant sequences are banned — they flake on the ` +
+        `onClick+refresh hydration swallow / toaster false-settle (#830/#1111). Use ` +
+        `setGrantsViaFamily from e2e/family-helpers.ts; see docs/internals/e2e-hygiene.md.`,
+    });
+  });
+
   it("the blessed interaction module exists and exports settledClick + followLink", () => {
     const helpers = fs.readFileSync(path.join(E2E_DIR, "helpers.ts"), "utf8");
     expect(helpers).toMatch(/export async function settledClick\b/);
     expect(helpers).toMatch(/export async function followLink\b/);
+  });
+
+  it("the family helper module exists and exports the three create/grant drivers", () => {
+    const fam = fs.readFileSync(path.join(E2E_DIR, FAMILY_HELPERS), "utf8");
+    expect(fam).toMatch(/export async function createLoginViaFamily\b/);
+    expect(fam).toMatch(/export async function createProfileViaFamily\b/);
+    expect(fam).toMatch(/export async function setGrantsViaFamily\b/);
   });
 });

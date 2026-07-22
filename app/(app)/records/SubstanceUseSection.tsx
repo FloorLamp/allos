@@ -1,8 +1,6 @@
 import Link from "next/link";
-import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
-import PageContainer from "@/components/PageContainer";
-import { PageHeader, EmptyState } from "@/components/ui";
+import { EmptyState } from "@/components/ui";
 import { Notice } from "@/components/Notice";
 import { biomarkerViewHref } from "@/lib/hrefs";
 import {
@@ -11,19 +9,19 @@ import {
 } from "@/lib/instrument-records";
 import {
   SUBSTANCE_INSTRUMENTS,
-  isSubstanceInstrument,
   shouldSuggestClinicianDiscussion,
   capProgressLine,
 } from "@/lib/substance-use";
+import type { SubstanceInstrument } from "@/lib/substance-use";
 import { getSubstanceWeekState, getAlcoholWeeklyTrend } from "@/lib/queries";
 import { getSmokingHistory } from "@/lib/settings";
 import { resolveSmoking, smokingStatusLabel } from "@/lib/smoking";
-import SubstanceInstrumentsForm from "./SubstanceInstrumentsForm";
-import ConsumptionSection from "./ConsumptionSection";
+import SubstanceInstrumentsForm from "@/app/(app)/medical/substance-use/SubstanceInstrumentsForm";
+import ConsumptionSection from "@/app/(app)/medical/substance-use/ConsumptionSection";
 
-export const dynamic = "force-dynamic";
-
-// The substance-use surface (issue #998), under Medical next to Mental health:
+// The substance-use surface (issue #998), formerly the standalone
+// /medical/substance-use page, now the #substance-use section of Records ›
+// Specialty (#1175, the #1042 relocation pattern) sitting beside Mental health:
 // screen → track → support reduction. Validated screening instruments (AUDIT-C
 // in-app; AUDIT / DAST-10 as outside totals) trended like biomarkers; standard-
 // drink consumption on the shared food-log ledger; a user-set weekly reduction
@@ -32,24 +30,27 @@ export const dynamic = "force-dynamic";
 // tracker, not a chip-counter. A high score gets a calm discuss-with-a-clinician
 // note, NEVER the crisis surface (#996 is explicit/item-9 only) and never a
 // notification. Informational, not medical advice.
-
-export default async function SubstanceUsePage(props: {
-  searchParams: Promise<{ screen?: string | string[] }>;
+//
+// Life-stage gated (#1174): its instruments are adult-validated (USPSTF alcohol/
+// drug screening is 18+, adolescents use CRAFFT not these), so the whole section
+// hides for a KNOWN minor — the gate lives in the section-visibility predicate
+// (records/nav.ts + getRecordsSpecialtyRelevance), which drops both this section
+// and its jump-link. Mental health, adolescent-validated, stays ungated on
+// purpose. The server actions in app/(app)/medical/substance-use/actions.ts stay
+// put (route-independent); this is a re-mount, not a rewrite.
+export default function SubstanceUseSection({
+  profileId,
+  initialInstrument,
+}: {
+  profileId: number;
+  // Deep-link preselect (#1083) forwarded to the instrument form.
+  initialInstrument?: SubstanceInstrument;
 }) {
-  const { profile } = await requireSession();
-  const td = today(profile.id);
-  // Deep-link preselect (#1083): a preventive drug/alcohol-screening row/nudge lands
-  // here with `?screen=<INSTRUMENT>`. Validate against the known instruments; an
-  // unknown/absent value falls through to the form's AUDIT-C default.
-  const rawScreen = (await props.searchParams).screen;
-  const screenParam = Array.isArray(rawScreen) ? rawScreen[0] : rawScreen;
-  const initialInstrument = isSubstanceInstrument(screenParam)
-    ? screenParam
-    : undefined;
-  const readings = getSubstanceInstrumentReadings(profile.id);
-  const week = getSubstanceWeekState(profile.id);
-  const trend = getAlcoholWeeklyTrend(profile.id);
-  const smoking = resolveSmoking(getSmokingHistory(profile.id), false);
+  const td = today(profileId);
+  const readings = getSubstanceInstrumentReadings(profileId);
+  const week = getSubstanceWeekState(profileId);
+  const trend = getAlcoholWeeklyTrend(profileId);
+  const smoking = resolveSmoking(getSmokingHistory(profileId), false);
 
   // The latest reading per instrument that sits in a discuss-with-a-clinician
   // band — drives the ONE calm note below (never crisis, never a push).
@@ -63,12 +64,7 @@ export default async function SubstanceUsePage(props: {
   const maxTrend = Math.max(1, ...trend.map((w) => w.count));
 
   return (
-    <PageContainer width="reading" className="mx-auto space-y-6">
-      <PageHeader
-        title="Substance use"
-        subtitle="Track validated screening scores (AUDIT-C, AUDIT, DAST-10), standard drinks over time, and a reduction target you set yourself. A screening tool, not a diagnosis. Informational, not medical advice."
-      />
-
+    <div className="space-y-6">
       {/* Calm clinician-discussion note (#998): shown for a latest score in a
           higher band. Deliberately NOT the crisis surface and never a
           notification — informational framing only. */}
@@ -203,6 +199,6 @@ export default async function SubstanceUsePage(props: {
           </Link>
         </p>
       </section>
-    </PageContainer>
+    </div>
   );
 }

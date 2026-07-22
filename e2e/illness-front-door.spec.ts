@@ -1,5 +1,6 @@
 import { test, expect, type Page, type Locator } from "@playwright/test";
 import { settledClick } from "./helpers";
+import { createProfileViaFamily, switchToProfile } from "./family-helpers";
 import { medicationRow, prnTodayItem } from "./med-card-helpers";
 
 // The illness "first hour" front door (issue #843). Three doors, one story:
@@ -15,57 +16,12 @@ import { medicationRow, prnTodayItem } from "./med-card-helpers";
 // (an admin can act as any profile) and switches to it — isolated, and an adult by
 // default (no pediatric edge cases).
 
-let profileSeq = 0;
-
 // The seed's default admin profile (profile 1). Each test switches the shared session's
 // active profile to a fresh one, so afterEach switches it BACK — otherwise the change
-// leaks into every later spec (CI runs one worker sharing the session).
+// leaks into every later spec (CI runs one worker sharing the session). createProfile-
+// ViaFamily (e2e/family-helpers.ts) creates a fresh illness-free adult profile, switches
+// to it, and defers onboarding through the product's own affordance.
 const ADMIN_PROFILE = "admin";
-
-// Switch the shared session's active profile via the sidebar UserMenu. Retry-click
-// through the hydration window (#730), as the household specs do.
-async function switchToProfile(page: Page, name: string): Promise<void> {
-  const target = page
-    .getByTestId("user-menu-popover")
-    .getByRole("button", { name });
-  await expect(async () => {
-    await page.getByTestId("user-menu-trigger").click();
-    await expect(target).toBeVisible({ timeout: 2_000 });
-  }).toPass();
-  await target.click();
-  await expect(page.getByTestId("user-menu-trigger")).toContainText(name);
-}
-
-// Create a fresh healthy (illness-free, adult) profile via Settings → Family and switch
-// the active profile to it. Returns the (unique) profile name.
-async function freshProfile(page: Page, label: string): Promise<string> {
-  const name = `${label}-${Date.now()}-${++profileSeq}`;
-  await page.goto("/settings/family");
-  const profilesCard = page
-    .locator("div.card")
-    .filter({ hasText: "Add a profile" });
-  await profilesCard.getByPlaceholder("Name", { exact: true }).fill(name);
-  await settledClick(
-    page,
-    profilesCard.getByRole("button", { name: "Add", exact: true })
-  );
-  // Wait for the new row inside the (visible) Profiles card — not the hidden switcher
-  // popover, where the same name also renders.
-  await expect(profilesCard.getByText(name)).toBeVisible({ timeout: 15_000 });
-  await switchToProfile(page, name);
-  // Goal-based onboarding (#719/#814): a profile created in-app starts with
-  // onboarding_state "not_started", so its first dashboard visit redirects to
-  // /onboarding. These specs exercise the dashboard itself — defer setup through
-  // the product's own affordance so the fresh profile lands on the dashboard.
-  await page.goto("/");
-  if (page.url().includes("/onboarding")) {
-    await page
-      .getByRole("button", { name: "Set up later, take me to my dashboard" })
-      .click();
-    await expect(page).toHaveURL(/\/$|\/\?/);
-  }
-  return name;
-}
 
 // Restore the shared session to the default admin profile so this spec never leaks its
 // active-profile switch into another spec.
@@ -96,7 +52,7 @@ async function pickMedication(
     .getByRole("listbox")
     .getByRole("button")
     .filter({ hasText: value })
-    .first();
+    .first(); // first-ok: transient combobox list this spec just opened by typing `value`; the first filtered match is the intended option
   await expect(option).toBeVisible();
   await option.click();
 }
@@ -106,7 +62,7 @@ test.describe("Illness front door (#843)", () => {
     page,
   }) => {
     test.slow();
-    await freshProfile(page, "welldash");
+    await createProfileViaFamily(page, "welldash");
     await page.goto("/");
 
     // Well profile: the unified "How are you today?" card (#992) leads with the
@@ -177,7 +133,7 @@ test.describe("Illness front door (#843)", () => {
     page,
   }) => {
     test.slow();
-    await freshProfile(page, "fever7am");
+    await createProfileViaFamily(page, "fever7am");
     await page.goto("/");
 
     // Tap 1 — open the door.
@@ -201,7 +157,7 @@ test.describe("Illness front door (#843)", () => {
     page,
   }) => {
     test.slow();
-    await freshProfile(page, "otc");
+    await createProfileViaFamily(page, "otc");
 
     // Entry point 1 — the Medications page quick-add.
     await page.goto("/medications");
@@ -234,7 +190,7 @@ test.describe("Illness front door (#843)", () => {
     page,
   }) => {
     test.slow();
-    await freshProfile(page, "sickday1");
+    await createProfileViaFamily(page, "sickday1");
     await page.goto("/");
 
     // 1) Feeling sick? — one tap opens the full card.
