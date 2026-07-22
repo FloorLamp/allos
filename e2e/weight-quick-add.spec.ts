@@ -92,7 +92,7 @@ test("dashboard weight quick-add logs a weigh-in that persists into the trend (#
       page
         .getByTestId("body-charts-all")
         .getByText("71.4", { exact: false })
-        .first()
+        .first() // first-ok: the 71.4 kg weight THIS test just logged (own fresh context); assert it surfaces on the scoped Trends chart stack
     ).toBeVisible();
   } finally {
     await page.context().close();

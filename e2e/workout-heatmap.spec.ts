@@ -34,7 +34,7 @@ test("a heatmap day deep-links to its Timeline view (#186)", async ({
   const section = main.getByTestId("workout-heatmap-section");
   await expect(section).toBeVisible();
 
-  const first = section.getByTestId("heatmap-day").first();
+  const first = section.getByTestId("heatmap-day").first(); // first-ok: asserts ANY heatmap cell's date/href FORMAT (regex below), not a specific day — order-agnostic
   const date = await first.getAttribute("data-date");
   expect(date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 
