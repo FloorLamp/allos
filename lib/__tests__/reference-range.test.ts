@@ -862,6 +862,15 @@ describe("daysBetween / staleness / humanizeAge", () => {
     expect(isBiomarkerStale("2023-12-01", "labs", "2024-01-01")).toBe(false);
     expect(isBiomarkerStale(null, "labs", "2024-01-01")).toBe(false);
   });
+
+  it("never marks a non-lab class stale — no retest clock (#1076)", () => {
+    // A 3-year-old reading in each non-lab class is never stale: the retest clock
+    // is a LAB grammar. (A `lab` the same age IS stale — the control.)
+    for (const cat of ["reference", "vitals", "instrument", "derived"]) {
+      expect(isBiomarkerStale("2021-01-01", cat, "2024-01-01")).toBe(false);
+    }
+    expect(isBiomarkerStale("2021-01-01", "lab", "2024-01-01")).toBe(true);
+  });
 });
 
 describe("retestIntervalDays (per-biomarker cadence)", () => {

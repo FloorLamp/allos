@@ -59,19 +59,22 @@ export interface RecordInstrumentInput {
   notes?: string | null;
 }
 
-// Record ONE instrument score for a profile: a biomarker `medical_records` row plus its
-// per-item answers, in one IMMEDIATE transaction. Returns the new record id.
+// Record ONE instrument score for a profile: an `instrument`-category `medical_records`
+// row (#1076) plus its per-item answers, in one IMMEDIATE transaction. Returns the new id.
 export function recordInstrumentScore(
   profileId: number,
   input: RecordInstrumentInput
 ): number {
   const canonicalName = canonicalNameFor(input.instrument);
   return writeTx(() => {
+    // category 'instrument' (#1076): a screening-instrument total scores onto its
+    // own class, NOT the general lab bucket — so it joins the instrument series and
+    // can never leak into /results/biomarkers or the flagged hero.
     const info = db
       .prepare(
         `INSERT INTO medical_records
            (date, category, name, value, value_num, unit, reference_range, notes, canonical_name, profile_id)
-         VALUES (?, 'biomarker', ?, ?, ?, NULL, NULL, ?, ?, ?)`
+         VALUES (?, 'instrument', ?, ?, ?, NULL, NULL, ?, ?, ?)`
       )
       .run(
         input.date,

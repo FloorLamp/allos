@@ -25,15 +25,20 @@ function rec(over: Partial<MedicalRecord> = {}): LabInput {
 }
 
 describe("recentLabHighlights", () => {
-  it("keeps only lab and biomarker categories", () => {
+  it("keeps only lab category (#1076)", () => {
     const rows = recentLabHighlights([
       rec({ category: "lab", name: "A" }),
+      // Vitals, screening instruments, derived bio-age, immutable facts, and the
+      // emptied legacy `biomarker` bucket are NOT recent labs — each has its own home.
       rec({ category: "biomarker", name: "B" }),
       rec({ category: "vitals", name: "C" }),
       rec({ category: "scan", name: "D" }),
       rec({ category: "prescription", name: "E" }),
+      rec({ category: "instrument", name: "F" }),
+      rec({ category: "derived", name: "G" }),
+      rec({ category: "reference", name: "H" }),
     ]);
-    expect(rows.map((r) => r.name)).toEqual(["A", "B"]);
+    expect(rows.map((r) => r.name)).toEqual(["A"]);
   });
 
   it("floats out-of-range (non-normal, non-null) flags to the top", () => {

@@ -2518,7 +2518,7 @@
     },
     {
       "name": "Biological Age",
-      "category": "biomarker",
+      "category": "derived",
       "unit": "Years",
       "ref_low": null,
       "ref_high": 35.7,
@@ -2529,7 +2529,7 @@
     },
     {
       "name": "PhenoAge",
-      "category": "lab",
+      "category": "derived",
       "unit": "years",
       "ref_low": null,
       "ref_high": null,
@@ -3085,7 +3085,7 @@
     },
     {
       "name": "ABO Blood Group",
-      "category": "lab",
+      "category": "reference",
       "unit": null,
       "ref_low": null,
       "ref_high": null,
@@ -3096,7 +3096,7 @@
     },
     {
       "name": "Rh Type",
-      "category": "lab",
+      "category": "reference",
       "unit": null,
       "ref_low": null,
       "ref_high": null,
@@ -3107,7 +3107,7 @@
     },
     {
       "name": "Blood Type",
-      "category": "lab",
+      "category": "reference",
       "unit": null,
       "ref_low": null,
       "ref_high": null,
@@ -3624,7 +3624,7 @@
     },
     {
       "name": "PHQ-9",
-      "category": "biomarker",
+      "category": "instrument",
       "unit": null,
       "ref_low": null,
       "ref_high": null,
@@ -3635,7 +3635,7 @@
     },
     {
       "name": "GAD-7",
-      "category": "biomarker",
+      "category": "instrument",
       "unit": null,
       "ref_low": null,
       "ref_high": null,
@@ -3646,7 +3646,7 @@
     },
     {
       "name": "AUDIT-C",
-      "category": "biomarker",
+      "category": "instrument",
       "unit": null,
       "ref_low": null,
       "ref_high": null,
@@ -3657,7 +3657,7 @@
     },
     {
       "name": "AUDIT",
-      "category": "biomarker",
+      "category": "instrument",
       "unit": null,
       "ref_low": null,
       "ref_high": null,
@@ -3668,7 +3668,7 @@
     },
     {
       "name": "DAST-10",
-      "category": "biomarker",
+      "category": "instrument",
       "unit": null,
       "ref_low": null,
       "ref_high": null,

@@ -9,7 +9,7 @@
 // metric key / canonical name / canonical unit as the integration's and shares its
 // charts + reference-range flags:
 //   • Blood Pressure Systolic / Diastolic → medical_records, category 'vitals',  mmHg
-//   • Glucose                             → medical_records, category 'biomarker', mg/dL
+//   • Glucose                             → medical_records, category 'lab', mg/dL
 //   • Oxygen Saturation (SpO2)            → medical_records, category 'vitals',  %
 //   • Body Temperature                    → medical_records, category 'vitals',  degF
 //   • Sleep duration                      → metric_samples,  metric 'sleep_min', minutes
@@ -36,7 +36,7 @@ export type GlucoseUnit = "mg/dL" | "mmol/L";
 // every other vital (and untimed temperatures), so it never widens the persisted row.
 export interface VitalMedicalRow {
   canonical: string;
-  category: "vitals" | "biomarker";
+  category: "vitals" | "lab";
   unit: string;
   value_num: number; // canonical unit
   note?: string;
@@ -78,8 +78,11 @@ export const VITAL_CANONICAL = {
     unit: "mmHg",
   },
   glucose: {
+    // #1076: Glucose is a blood lab, not a vital sign — category `lab` (matching the
+    // canonical dataset), so it stays on the lab list once the biomarker surfaces
+    // scope to `lab` only. (It was the lone real lab in the old `biomarker` bucket.)
     canonical: "Glucose",
-    category: "biomarker" as const,
+    category: "lab" as const,
     unit: "mg/dL",
   },
   spo2: {

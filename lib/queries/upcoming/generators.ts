@@ -150,11 +150,12 @@ import { conditionReviewItems } from "../../condition-suggestion-findings";
 import { tempRedFlagItems } from "../../temp-red-flag-findings";
 import { followUpItems } from "../../followup-findings";
 
-// Biomarker categories a retest nudge makes sense for. Vitals/scans/prescriptions
-// aren't "labs to redraw", and genomics never go stale (handled by
-// isBiomarkerStale). Kept narrow so the retest signal stays a labs signal. The
-// cadence is per-analyte now (curated retest_days, default 365) rather than flat.
-const RETEST_CATEGORIES = new Set(["lab", "biomarker"]);
+// Biomarker categories a retest nudge makes sense for: `lab` ONLY (#1076).
+// Vitals/scans/prescriptions aren't "labs to redraw", genomics/reference never go
+// stale (handled by isBiomarkerStale), and instruments/derived composites carry no
+// retest clock. Kept narrow so the retest signal stays a labs signal. The cadence
+// is per-analyte (curated retest_days, default 365) rather than flat.
+const RETEST_CATEGORIES = new Set(["lab"]);
 
 // Doses pending TODAY across active supplements + medications (reuses the
 // supplement schedule's isDueOn with today's workout/situation context, and the

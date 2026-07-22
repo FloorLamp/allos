@@ -3,9 +3,9 @@ import { test, expect } from "@playwright/test";
 // #16: manual vitals entry. The Trends → Body tab carries a "Log vitals" quick-add
 // for the measures that previously could ONLY arrive via the Health Connect
 // exporter (blood pressure, glucose, SpO2, temperature, sleep, HRV). It writes to
-// the SAME tables/keys the integration uses, so an entered reading shows up in the
-// biomarker table (medical_records) and the Body sleep chart (metric_samples) —
-// this drives the form and asserts both surfaces reflect the new data.
+// the SAME tables/keys the integration uses. Since #1076 the physiologic vitals are
+// re-homed to the Trends → Vitals section (off the lab-scoped biomarker surfaces),
+// so an entered reading shows up there and in the Body sleep chart (metric_samples).
 test("logging vitals persists and renders alongside synced readings (#16)", async ({
   page,
 }) => {
@@ -26,15 +26,12 @@ test("logging vitals persists and renders alongside synced readings (#16)", asyn
   // End-to-end confirmation the server action wrote without error.
   await expect(page.getByText("Vitals saved")).toBeVisible();
 
-  // medical_records rows surface on the Biomarkers tab (widen the window so today's
-  // entry is in range regardless of the default range).
-  await page.goto("/trends?tab=biomarkers&from=2000-01-01&to=2100-01-01");
-  await expect(
-    page.getByRole("link", { name: "Blood Pressure Systolic" })
-  ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Oxygen Saturation" })
-  ).toBeVisible();
+  // The vitals surface on the Trends → Vitals section (#1076), widened so today's
+  // entry is in range regardless of the default window.
+  await page.goto("/trends?tab=vitals&from=2000-01-01&to=2100-01-01");
+  const vitals = page.getByTestId("trends-vitals");
+  await expect(vitals.getByTestId("vitals-blood-pressure")).toBeVisible();
+  await expect(vitals.getByTestId("vitals-spo2")).toBeVisible();
 
   // The sleep sample surfaces in the Body tab's compact Sleep summary tile (the
   // detailed per-night chart moved to the dedicated /sleep page, #1066).
@@ -73,9 +70,10 @@ test("vitals quick-add logs a temperature with an optional reading time (#843)",
   await form.getByRole("button", { name: "Save vitals" }).click();
   await expect(page.getByText("Vitals saved")).toBeVisible();
 
-  // The reading joins the Body Temperature series in the biomarker browser.
-  await page.goto("/trends?tab=biomarkers&from=2000-01-01&to=2100-01-01");
+  // The reading joins the Body Temperature acute view on the Trends → Vitals
+  // section (#1076): recent-readings grammar with a fever line, not a lab trajectory.
+  await page.goto("/trends?tab=vitals&from=2000-01-01&to=2100-01-01");
   await expect(
-    page.getByRole("link", { name: "Body Temperature" })
+    page.getByTestId("trends-vitals").getByTestId("vitals-temperature")
   ).toBeVisible();
 });

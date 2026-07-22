@@ -18,6 +18,7 @@ import BiomarkersSection, {
   type BiomarkerFlagFilter,
 } from "./BiomarkersSection";
 import BodySection from "./BodySection";
+import VitalsSection from "./VitalsSection";
 import FitnessSection from "./FitnessSection";
 import InsightsSection from "./InsightsSection";
 import NutritionSection from "./NutritionSection";
@@ -29,6 +30,7 @@ const TABS = [
   "overview",
   "compare",
   "biomarkers",
+  "vitals",
   "body",
   "nutrition",
   "fitness",
@@ -161,6 +163,7 @@ export default async function TrendsPage(props: {
     { id: "overview", label: "Overview" },
     { id: "compare", label: "Compare" },
     { id: "biomarkers", label: "Biomarkers" },
+    { id: "vitals", label: "Vitals" },
     { id: "body", label: "Body" },
     { id: "nutrition", label: "Nutrition" },
     ...(restricted
@@ -196,6 +199,8 @@ export default async function TrendsPage(props: {
             hrefFor={biomarkerHrefFor}
           />
         );
+      case "vitals":
+        return <VitalsSection range={range} />;
       case "body":
         return <BodySection range={range} />;
       case "nutrition":

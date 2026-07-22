@@ -19,7 +19,10 @@ import BiomarkersTable from "@/components/BiomarkersTable";
 import RecordForm from "@/components/RecordForm";
 import ProviderDatalist from "@/components/ProviderDatalist";
 import { addRecord } from "@/app/(app)/medical/actions";
-import { BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
+import {
+  BIOMARKER_CATEGORIES,
+  NON_BIOMARKER_CATEGORIES,
+} from "@/lib/medical-categories";
 
 // The query params the Biomarkers section consumes — the former /biomarkers index
 // page's searchParams, unchanged (#1042 phase 5 moved the content, not the
@@ -73,7 +76,7 @@ export default function BiomarkersSection({
   const current = searchParams.current === "1";
   const storedRecords = getMedicalRecords(profileId, {
     category: active,
-    excludeCategories: ["prescription"],
+    excludeCategories: NON_BIOMARKER_CATEGORIES,
     panel,
     range,
     q,
@@ -86,7 +89,13 @@ export default function BiomarkersSection({
   // sorted/marked-latest over the combined set so they behave like stored analytes.
   const derivedRecords = filterDerivedForTable(
     getDerivedBiomarkerReadings(profileId),
-    { category: active, excludeCategories: ["prescription"], panel, range, q }
+    {
+      category: active,
+      excludeCategories: NON_BIOMARKER_CATEGORIES,
+      panel,
+      range,
+      q,
+    }
   );
   const records = prepareTableRecords(storedRecords, derivedRecords, {
     sort,

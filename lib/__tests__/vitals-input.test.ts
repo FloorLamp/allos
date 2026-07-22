@@ -144,7 +144,8 @@ describe("normalizeVitalsInput", () => {
     const temp = out.medical.find((m) => m.canonical === "Body Temperature");
     expect(glucose).toEqual({
       canonical: "Glucose",
-      category: "biomarker",
+      // #1076: Glucose is a lab, not a vital sign.
+      category: "lab",
       unit: "mg/dL",
       value_num: 90.1,
     });

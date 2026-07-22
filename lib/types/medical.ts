@@ -93,7 +93,26 @@ export interface Appointment {
 }
 
 export type MedicalCategory =
-  "vitals" | "lab" | "genomics" | "biomarker" | "scan" | "prescription";
+  | "vitals"
+  | "lab"
+  | "genomics"
+  | "biomarker"
+  | "scan"
+  | "prescription"
+  // Non-lab analyte classes split out of the old "has a canonical range" bucket
+  // (#1076) so the lab surfaces (list/series/flagged hero/retest) scope to `lab`
+  // ONLY and each of these reaches its own domain home instead:
+  //   • instrument — validated screening-instrument TOTAL SCORES (PHQ-9, GAD-7,
+  //     AUDIT-C, AUDIT, DAST-10) → the mental-health / substance-use surfaces.
+  //     Deliberately kept OFF the general biomarker hero (a depression/alcohol
+  //     score must never leak into a shared health list).
+  //   • derived — computed composites (Biological Age, PhenoAge) → the Longevity
+  //     bio-age hero, not a measured-lab chart.
+  //   • reference — immutable identity facts (Blood Type / ABO / Rh) that display
+  //     but never carry a retest clock (they share the genomics staleness exclusion).
+  | "instrument"
+  | "derived"
+  | "reference";
 
 // "non-optimal" is the legacy directionless value (older rows, pre-migration);
 // new derivations use the directional "-high"/"-low" variants so the UI can show

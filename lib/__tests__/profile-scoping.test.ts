@@ -182,6 +182,18 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     includes: "PRAGMA table_info(medical_documents)",
     why: "migration 075 (#1022) ADD COLUMN guard: a schema-shape PRAGMA (does extraction_completed_at already exist?) so the non-version-gated migrate() replay no-ops — reads column metadata, never rows; mirrors migration 071's guard",
   },
+  {
+    file: "lib/migrations/versions/090-medical-record-category-classes.ts",
+    includes:
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'medical_records'",
+    why: "migration 090 (#1076) replay/partial-handle guard: a sqlite_master metadata probe (does the table carry the grown CHECK yet?) that reads schema, not rows — mirrors migration 074's guard",
+  },
+  {
+    file: "lib/migrations/versions/090-medical-record-category-classes.ts",
+    includes:
+      "UPDATE medical_records SET category = ? WHERE canonical_name = ? COLLATE NOCASE AND category != ?",
+    why: "migration 090 (#1076) one-shot category converge: re-derives category from canonical name for a fixed set of known analytes (Glucose→lab, PHQ-9…→instrument, PhenoAge/Biological Age→derived, Blood Type…→reference) across ALL profiles — a vocabulary-level classification fix, never reading one profile's data into another's",
+  },
 ];
 
 // `.prepare(sql)` sites whose argument is a runtime expression (not a string

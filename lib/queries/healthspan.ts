@@ -32,9 +32,9 @@ import {
   type PillarTrend,
 } from "../healthspan-pillars";
 
-// Lab-ish categories the optimal-range pillar counts (parity with the recent-labs
-// widget): actual labs/biomarkers, not vitals/scans/prescriptions.
-const LAB_CATEGORIES = new Set(["lab", "biomarker"]);
+// Lab categories the optimal-range pillar counts (parity with the recent-labs
+// widget): `lab` ONLY (#1076) — not vitals/instruments/derived/scans/prescriptions.
+const LAB_CATEGORIES = new Set(["lab"]);
 
 const VO2_MARKER = "VO2 Max";
 

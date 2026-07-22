@@ -25,14 +25,34 @@ describe("medical-categories: single source of truth", () => {
       "biomarker",
       "scan",
       "prescription",
+      // #1076 non-lab analyte classes split out of the old "has a range" bucket.
+      "instrument",
+      "derived",
+      "reference",
     ]);
   });
 
-  it("BIOMARKER_CATEGORIES drops only 'prescription'", () => {
-    expect([...BIOMARKER_CATEGORIES]).toEqual(
-      MEDICAL_CATEGORIES.filter((c) => c !== "prescription")
-    );
-    expect(BIOMARKER_CATEGORIES).not.toContain("prescription");
+  it("BIOMARKER_CATEGORIES is the flat-catalog browsable set (#1076)", () => {
+    // The Biomarkers browser (/results/biomarkers, a flat catalog) lists `lab` + the
+    // out-of-scope `genomics`/`scan` stores, and KEEPS `vitals` (the domain vitals —
+    // audiogram/IOP/acuity — have no dedicated chart home, so removing them would
+    // strand them). The re-homed classes with a home — instruments, derived bio-age,
+    // immutable facts — and the emptied legacy `biomarker` bucket are excluded.
+    expect([...BIOMARKER_CATEGORIES]).toEqual([
+      "lab",
+      "vitals",
+      "genomics",
+      "scan",
+    ]);
+    for (const excluded of [
+      "prescription",
+      "biomarker",
+      "instrument",
+      "derived",
+      "reference",
+    ]) {
+      expect(BIOMARKER_CATEGORIES as readonly string[]).not.toContain(excluded);
+    }
   });
 
   it("MEDICAL_FLAGS is the clinical subset, excluding the derived non-optimal flags", () => {

@@ -484,7 +484,7 @@ export function parseHealthConnectPayload(
   const vital = (
     key: string,
     canonical: string,
-    category: "vitals" | "biomarker",
+    category: "vitals" | "lab" | "biomarker",
     unit: string,
     valueOf: (rec: Record<string, unknown>) => number | null
   ) => {
@@ -545,7 +545,9 @@ export function parseHealthConnectPayload(
       });
   }
   // Glucose mmol/L → mg/dL; body temperature °C → °F (canonical units).
-  vital("blood_glucose", "Glucose", "biomarker", "mg/dL", (r) => {
+  // Glucose is a lab (#1076), not a vital sign — category 'lab' so it stays on the
+  // lab list once the biomarker surfaces scope to `lab` only.
+  vital("blood_glucose", "Glucose", "lab", "mg/dL", (r) => {
     const v = num(r.mmol_per_liter, r.mmol, r.value);
     return v == null ? null : Math.round(v * 18.0156 * 10) / 10;
   });
