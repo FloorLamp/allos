@@ -1117,13 +1117,23 @@ export default function ActivityForm({
   }
   persistRef.current = persist;
 
+  // `savedAt` is in the deps on purpose: it bumps after every successful save, so
+  // this effect RE-CHECKS dirtiness once a save completes. Without it, a rapid edit
+  // whose debounced persist fired while the previous save was still `inFlightRef`
+  // (so persist() bailed at the in-flight guard) could be dropped entirely — the
+  // trailing re-persist can run against a stale render closure, and the effect
+  // otherwise only re-arms on a `formSig` change, which doesn't happen again. Keying
+  // on savedAt guarantees that as long as the form stays dirty, another debounced
+  // save is scheduled with a fresh closure until the latest edit is persisted. (This
+  // was the ~1/9-under-load rpe-logging:68 drop: the 8.5 step never reached the
+  // server because its persist bailed on the in-flight 8-save and nothing re-armed.)
   useEffect(() => {
     if (formSig === savedSigRef.current) return; // unchanged (incl. first mount)
     if (!canSave) return;
     const h = setTimeout(() => void persistRef.current(), 700);
     return () => clearTimeout(h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formSig, canSave]);
+  }, [formSig, canSave, savedAt]);
 
   // Flush any pending change when the form goes away (e.g. switching cards,
   // dismissing the modal, navigating off the page).
