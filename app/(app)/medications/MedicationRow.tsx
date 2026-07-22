@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type {
   MedicationCourse,
@@ -31,7 +32,9 @@ import OverflowMenu, {
 } from "@/components/OverflowMenu";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
+import { useToast } from "@/components/Toast";
 import { deleteSupplement } from "@/app/(app)/nutrition/supplement-actions";
+import { restartMedication } from "@/app/(app)/medications/actions";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 
 // One medication as a SCANNABLE ROW on the /medications list (#817) — not the old
@@ -65,9 +68,32 @@ export default function MedicationRow({
   todayStr: string;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [restarting, setRestarting] = useState(false);
   const confirm = useConfirm();
   const undoable = useUndoableDelete();
+  const toast = useToast();
+  const router = useRouter();
   const formatPrefs = useFormatPrefs();
+
+  // Part C (#1140): one-tap Restart from the Past-med row — the same shared
+  // `restartMedicationCourse` primitive the detail card uses, no detail-page detour.
+  async function onRestart(close: () => void) {
+    if (restarting) return;
+    setRestarting(true);
+    try {
+      const fd = new FormData();
+      fd.set("id", String(med.id));
+      const res = await restartMedication(fd);
+      if (!res.ok) toast(res.error, { tone: "error" });
+      else {
+        toast(`${med.name} restarted.`);
+        router.refresh();
+      }
+    } finally {
+      setRestarting(false);
+      close();
+    }
+  }
 
   const current = isMedicationCurrent(med);
   const ordered = sortCourses(courses);
@@ -216,7 +242,7 @@ export default function MedicationRow({
                 >
                   Edit
                 </Link>
-                {current && (
+                {current ? (
                   <Link
                     href={`${medicationHref(med.id)}?action=stop`}
                     role="menuitem"
@@ -225,6 +251,17 @@ export default function MedicationRow({
                   >
                     Stop medication
                   </Link>
+                ) : (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={MENU_ITEM}
+                    data-testid="medication-row-restart"
+                    disabled={restarting}
+                    onClick={() => void onRestart(close)}
+                  >
+                    {restarting ? "Restarting…" : "Restart medication"}
+                  </button>
                 )}
                 <button
                   type="button"

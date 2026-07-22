@@ -88,6 +88,15 @@ test.describe("record ↔ visit / episode ↔ visit linking (#1050/#1053)", () =
     // Linked end-state: the Care line resolves to the visit.
     await expect(page.getByTestId("episode-care-link")).toBeVisible();
 
+    // #1198 many-model surface: the linked visit renders in the "Visits during this
+    // episode" list with its own Unlink control (the episode holds a SET of visits now).
+    const visitList = page.getByTestId("episode-care-visits");
+    await expect(visitList).toBeVisible();
+    await expect(visitList).toContainText(/Visit during this episode/i);
+    await expect(
+      visitList.getByRole("button", { name: "Unlink" })
+    ).toBeVisible();
+
     // And the visit shows the "During illness episode … day N" back-link.
     await followLink(
       page,

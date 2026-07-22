@@ -689,32 +689,59 @@ export function suggestionForEpisode(
   profileId: number,
   episode: EpisodeRange
 ): EpisodeVisitSuggestion | null {
-  const encounters = getLinkableEncounters(profileId);
+  // Exclude visits already in the episode's set (#1198) so, with the many-model, the
+  // in-range suggestion keeps offering the NOT-yet-linked in-range visits after the
+  // first is linked — instead of the old short-circuit that went silent once any one
+  // link existed.
+  const linked = new Set(linkedEncounterIdsForEpisode(profileId, episode.id));
+  const encounters = getLinkableEncounters(profileId).filter(
+    (e) => !linked.has(e.id)
+  );
   const declined = getDeclinedSignatures(profileId);
   return suggestForEpisode(episode, encounters, declined);
 }
 
-// The visit an episode is linked to (for the cockpit "Care" line).
-export function encounterForEpisode(
+// The SET of visits an episode is linked to (#1198), date-ordered (earliest first —
+// the care trail reads PCP → urgent care → specialist → follow-up), for the cockpit
+// "Care" line. Reads the episode_encounters link table (the single FK it replaced is
+// gone). Every visit is a representative deduped row.
+export function encountersForEpisode(
   profileId: number,
   episodeId: number
-): LinkedEncounterRef | null {
+): LinkedEncounterRef[] {
+  return db
+    .prepare(
+      `SELECT e.id, e.date, e.type, p.name AS providerName
+         FROM episode_encounters le
+         JOIN encounters e ON e.id = le.encounter_id AND e.profile_id = le.profile_id
+         LEFT JOIN providers p ON p.id = e.provider_id
+        WHERE le.episode_id = ? AND le.profile_id = ?
+        ORDER BY e.date, e.id`
+    )
+    .all(episodeId, profileId) as LinkedEncounterRef[];
+}
+
+// The encounter ids an episode is already linked to — for excluding them from the
+// suggestion + "add another visit" picker (#1198).
+export function linkedEncounterIdsForEpisode(
+  profileId: number,
+  episodeId: number
+): number[] {
   return (
-    (db
+    db
       .prepare(
-        `SELECT e.id, e.date, e.type, p.name AS providerName
-           FROM illness_episodes ie
-           JOIN encounters e ON e.id = ie.encounter_id AND e.profile_id = ie.profile_id
-           LEFT JOIN providers p ON p.id = e.provider_id
-          WHERE ie.id = ? AND ie.profile_id = ?`
+        `SELECT encounter_id FROM episode_encounters
+          WHERE episode_id = ? AND profile_id = ?`
       )
-      .get(episodeId, profileId) as LinkedEncounterRef | undefined) ?? null
-  );
+      .all(episodeId, profileId) as { encounter_id: number }[]
+  ).map((r) => r.encounter_id);
 }
 
 // The episode an encounter falls in, when the encounter is linked to one — for the
 // encounter page's "During illness episode: …, day N" back-link. day N is computed
-// by the caller from the episode range.
+// by the caller from the episode range. With the many-model an encounter can be linked
+// to several episodes; this returns the most recent (highest id) — the same singular
+// back-link the surface expects.
 export interface EncounterEpisodeRef {
   id: number;
   situation: string;
@@ -729,14 +756,19 @@ export function episodeForLinkedEncounter(
     (db
       .prepare(
         `SELECT ie.id, ie.situation, ie.started_at
-           FROM illness_episodes ie
-          WHERE ie.encounter_id = ? AND ie.profile_id = ?
+           FROM episode_encounters le
+           JOIN illness_episodes ie ON ie.id = le.episode_id AND ie.profile_id = le.profile_id
+          WHERE le.encounter_id = ? AND le.profile_id = ?
           ORDER BY ie.id DESC LIMIT 1`
       )
       .get(encounterId, profileId) as EncounterEpisodeRef | undefined) ?? null
   );
 }
 
+// ADD a visit to an episode's set (#1198) — INSERT a link row (idempotent, never an
+// overwrite) AND record the durable 'linked' decision (suggestion gating). Fixes the
+// old silent-overwrite: linking a second visit no longer drops the first. Verifies both
+// rows belong to the profile.
 export function linkEpisodeToEncounter(
   profileId: number,
   episodeId: number,
@@ -745,13 +777,16 @@ export function linkEpisodeToEncounter(
   return writeTx(() => {
     const encToken = encounterTokenById(profileId, encounterId);
     if (!encToken) return false;
-    const info = db
+    const episode = db
       .prepare(
-        `UPDATE illness_episodes SET encounter_id = ?
-          WHERE id = ? AND profile_id = ?`
+        `SELECT id FROM illness_episodes WHERE id = ? AND profile_id = ?`
       )
-      .run(encounterId, episodeId, profileId);
-    if (info.changes === 0) return false;
+      .get(episodeId, profileId) as { id: number } | undefined;
+    if (!episode) return false;
+    db.prepare(
+      `INSERT OR IGNORE INTO episode_encounters (profile_id, episode_id, encounter_id)
+       VALUES (?, ?, ?)`
+    ).run(profileId, episodeId, encounterId);
     upsertDecision(
       profileId,
       "episode",
@@ -782,23 +817,83 @@ export function declineEpisodeVisitLink(
   });
 }
 
+// Remove ONE visit from an episode's set (#1198) — delete just that link row AND clear
+// ONLY that encounter's 'linked' decision (the #203 side-state fix: a relink today never
+// left the previous encounter's decision behind, so the link table and the decisions
+// ledger now stay agreed — link/unlink each individually).
 export function unlinkEpisodeFromEncounter(
   profileId: number,
-  episodeId: number
+  episodeId: number,
+  encounterId: number
 ): boolean {
   return writeTx(() => {
+    const encToken = encounterTokenById(profileId, encounterId);
     const info = db
       .prepare(
-        `UPDATE illness_episodes SET encounter_id = NULL
-          WHERE id = ? AND profile_id = ?`
+        `DELETE FROM episode_encounters
+          WHERE episode_id = ? AND encounter_id = ? AND profile_id = ?`
       )
-      .run(episodeId, profileId);
-    db.prepare(
-      `DELETE FROM visit_link_decisions
-        WHERE profile_id = ? AND domain = 'episode' AND target_key = ? AND decision = 'linked'`
-    ).run(profileId, episodeToken({ id: episodeId }));
+      .run(episodeId, encounterId, profileId);
+    if (encToken) {
+      db.prepare(
+        `DELETE FROM visit_link_decisions
+          WHERE profile_id = ? AND domain = 'episode'
+            AND encounter_key = ? AND target_key = ? AND decision = 'linked'`
+      ).run(profileId, encToken, episodeToken({ id: episodeId }));
+    }
     return info.changes > 0;
   });
+}
+
+// Clear every episode↔visit link + agreed 'linked' decision for an episode about to be
+// deleted (#1198/#203). Called by deleteEpisodeRow and the merge loser cleanup. Composes
+// inside the caller's writeTx.
+export function clearEpisodeVisitLinks(
+  profileId: number,
+  episodeId: number
+): void {
+  db.prepare(
+    `DELETE FROM episode_encounters WHERE episode_id = ? AND profile_id = ?`
+  ).run(episodeId, profileId);
+  db.prepare(
+    `DELETE FROM visit_link_decisions
+      WHERE profile_id = ? AND domain = 'episode' AND target_key = ?`
+  ).run(profileId, episodeToken({ id: episodeId }));
+}
+
+// Re-parent an episode's visit links from the merge LOSER to the KEEPER (#1198/#199):
+// move each of the loser's link rows to the keeper (idempotent — a dup collapses), and
+// re-key the loser's 'linked' decisions onto the keeper token, dropping any that would
+// collide with a keeper decision. Composes inside the caller's writeTx.
+export function reparentEpisodeVisitLinks(
+  profileId: number,
+  keepEpisodeId: number,
+  dropEpisodeId: number
+): void {
+  const keepTok = episodeToken({ id: keepEpisodeId });
+  const dropTok = episodeToken({ id: dropEpisodeId });
+  db.prepare(
+    `INSERT OR IGNORE INTO episode_encounters (profile_id, episode_id, encounter_id)
+       SELECT profile_id, ?, encounter_id FROM episode_encounters
+        WHERE episode_id = ? AND profile_id = ?`
+  ).run(keepEpisodeId, dropEpisodeId, profileId);
+  db.prepare(
+    `DELETE FROM episode_encounters WHERE episode_id = ? AND profile_id = ?`
+  ).run(dropEpisodeId, profileId);
+  // Re-key decisions: drop a loser decision that would collide with a keeper's, then
+  // move the rest onto the keeper token.
+  db.prepare(
+    `DELETE FROM visit_link_decisions
+      WHERE profile_id = ? AND domain = 'episode' AND target_key = ?
+        AND encounter_key IN (
+          SELECT encounter_key FROM visit_link_decisions
+           WHERE profile_id = ? AND domain = 'episode' AND target_key = ?
+        )`
+  ).run(profileId, dropTok, profileId, keepTok);
+  db.prepare(
+    `UPDATE visit_link_decisions SET target_key = ?
+      WHERE profile_id = ? AND domain = 'episode' AND target_key = ?`
+  ).run(keepTok, profileId, dropTok);
 }
 
 // ── Reprocess durability + row-ops side-state ────────────────────────────────────
@@ -852,10 +947,19 @@ export function reapplyVisitLinkDecisions(profileId: number): void {
       continue;
     }
     if (d.decision === "linked") {
-      db.prepare(
-        `UPDATE ${targetTable} SET encounter_id = ?
-          WHERE id = ? AND profile_id = ? AND encounter_id IS NULL`
-      ).run(encId, targetId, profileId);
+      if (d.domain === "episode") {
+        // Episode ↔ visit is a link table now (#1198), not an FK column — re-apply the
+        // durable 'linked' decision by (re-)inserting the link row, idempotently.
+        db.prepare(
+          `INSERT OR IGNORE INTO episode_encounters (profile_id, episode_id, encounter_id)
+           VALUES (?, ?, ?)`
+        ).run(profileId, targetId, encId);
+      } else {
+        db.prepare(
+          `UPDATE ${targetTable} SET encounter_id = ?
+            WHERE id = ? AND profile_id = ? AND encounter_id IS NULL`
+        ).run(encId, targetId, profileId);
+      }
     }
   }
 }
@@ -885,8 +989,19 @@ export function nullEncounterLinks(
     `UPDATE medical_records SET encounter_id = NULL
       WHERE encounter_id = ? AND profile_id = ?`
   ).run(encounterId, profileId);
+  // Episode ↔ visit is now a link table (#1198): delete this encounter's link rows (its
+  // FK carries no ON DELETE, so the row would otherwise block the delete) AND clear the
+  // agreed 'linked' decisions for that encounter in the episode domain (the #203
+  // side-state fix — the encounter row still exists here, so its token still resolves).
+  const encToken = encounterTokenById(profileId, encounterId);
   db.prepare(
-    `UPDATE illness_episodes SET encounter_id = NULL
-      WHERE encounter_id = ? AND profile_id = ?`
+    `DELETE FROM episode_encounters WHERE encounter_id = ? AND profile_id = ?`
   ).run(encounterId, profileId);
+  if (encToken) {
+    db.prepare(
+      `DELETE FROM visit_link_decisions
+        WHERE profile_id = ? AND domain = 'episode'
+          AND encounter_key = ? AND decision = 'linked'`
+    ).run(profileId, encToken);
+  }
 }

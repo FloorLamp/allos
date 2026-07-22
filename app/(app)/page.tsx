@@ -67,6 +67,10 @@ import HouseholdStrip, {
 import IllnessHero, {
   type HeroCockpit,
 } from "@/components/dashboard/IllnessHero";
+import RecentlyResolvedReopen, {
+  type RecentlyResolvedItem,
+} from "@/components/dashboard/RecentlyResolvedReopen";
+import { reopenEligibleEpisodeForProfile } from "@/lib/illness-episode-store";
 import IllnessCockpitBody from "./symptoms/IllnessCockpitBody";
 import {
   currentEpisodeForProfile,
@@ -318,6 +322,32 @@ export default async function Dashboard() {
     };
   });
   const heroUi = getIllnessHeroUi(profile.id);
+
+  // Recently-resolved reopen affordance (issue #1140 Part A): for every accessible profile,
+  // the most-recent episode still inside its 7-day reopen window (the SAME
+  // episodeReopenEligibility rule the detail page uses). Cross-profile aware like the hero
+  // (#858) — each row reopens that member's episode via its profileId. Calm/dismissible,
+  // never the attention hero (#449). Names disambiguated across the accessible set (#531).
+  const reopenNames = disambiguateProfileNames(accessible);
+  const recentlyResolved: RecentlyResolvedItem[] = accessible
+    .map((p) => ({ p, ep: reopenEligibleEpisodeForProfile(p.id) }))
+    .filter(
+      (
+        x
+      ): x is {
+        p: (typeof accessible)[number];
+        ep: NonNullable<ReturnType<typeof reopenEligibleEpisodeForProfile>>;
+      } => x.ep !== null
+    )
+    .map(({ p, ep }) => ({
+      profileId: p.id,
+      episodeId: ep.id,
+      situation: ep.situation,
+      displayName: reopenNames.get(p.id) ?? p.name,
+      crossProfile: p.id !== profile.id,
+      profile: p,
+      episodeHref: episodeHref(ep.id),
+    }));
 
   // Contextual promotion of the merged household history (issue #1009 Ask 2): a CALM
   // link that surfaces near the illness hero when any accessible member is currently or
@@ -719,6 +749,9 @@ export default async function Dashboard() {
           <NeedsAttentionHero items={attention} today={on} />
         </div>
       </div>
+      {recentlyResolved.length > 0 && (
+        <RecentlyResolvedReopen items={recentlyResolved} />
+      )}
       {promoteHouseholdHistory && (
         <div className="mb-6" data-testid="household-history-promo">
           <Link

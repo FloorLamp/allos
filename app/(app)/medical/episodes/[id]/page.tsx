@@ -20,9 +20,11 @@ import {
   getEpisodeMedReconciliation,
   getPediatricFormContext,
   getEncounters,
-  encounterForEpisode,
+  encountersForEpisode,
+  linkedEncounterIdsForEpisode,
   suggestionForEpisode,
 } from "@/lib/queries";
+import { orderEpisodeManualCandidates } from "@/lib/visit-link-suggest";
 import EpisodeCareLine, {
   type CareVisitOption,
 } from "@/components/visit-links/EpisodeCareLine";
@@ -56,6 +58,7 @@ import { schoolReturnCompactClause } from "@/lib/school-return";
 import CardGroup, { CardGroupSection } from "@/components/CardGroup";
 import PageContainer from "@/components/PageContainer";
 import { episodeReopenEligibility } from "@/lib/illness-episode-reopen";
+import { getEpisodeReopenMedRestore } from "@/lib/illness-episode-write";
 import { IconCamera } from "@tabler/icons-react";
 
 export const dynamic = "force-dynamic";
@@ -179,6 +182,18 @@ export default async function EpisodePage(props: {
       ? getEpisodeMedReconciliation(profileId, episodeId)
       : [];
 
+  // The reopen-restore checklist (#1140 Part B): the meds this episode's end stopped that
+  // are STILL restart-eligible — offered on reopen (suggest-only), the symmetric inverse
+  // of the end-with-meds checklist. Only for a closed, reopen-eligible episode a writer
+  // can act on.
+  const reopenRestoreMeds =
+    !assembled.ongoing && canReopen && canWrite
+      ? getEpisodeReopenMedRestore(profileId, episodeId).map((m) => ({
+          itemId: m.itemId,
+          name: m.name,
+        }))
+      : [];
+
   // The logging bar anchors to today for an open episode; for a closed one it anchors to
   // the last active day, or a ?logDay= inside the range (backfill mode — item 11).
   const rangeStart = assembled.firstDay;
@@ -227,35 +242,35 @@ export default async function EpisodePage(props: {
   const householdNames = disambiguateProfileNames(accessible);
   const accessibleById = new Map(accessible.map((p) => [p.id, p]));
 
-  // Episode ↔ visit link (#1053): the "Care" line. `care` is the accepted resulting
-  // visit; `episodeVisitSuggestion` is the read-time in-range containment suggestion;
-  // `careManualOptions` is the "Link a visit…" picker (in-range visits first).
-  const care = encounterForEpisode(profileId, episodeId);
-  const episodeVisitSuggestion = care
-    ? null
-    : suggestionForEpisode(profileId, {
-        id: episodeId,
-        start: assembled.firstDay,
-        lastActiveDay: assembled.lastActiveDay,
-      });
-  const careManualOptions: CareVisitOption[] =
-    care || !canWrite
-      ? []
-      : getEncounters(profileId)
-          .map((e) => ({
-            id: e.id,
-            label: `${e.type || "Visit"} · ${e.date}`,
-            inRange:
-              assembled.firstDay != null &&
-              assembled.lastActiveDay != null &&
-              e.date >= assembled.firstDay &&
-              e.date <= assembled.lastActiveDay,
-          }))
-          .sort(
-            (a, b) =>
-              Number(b.inRange) - Number(a.inRange) || (a.id < b.id ? 1 : -1)
-          )
-          .slice(0, 8);
+  // Episode ↔ visit links (#1198): the "Care" line now lists the SET of linked visits
+  // (date-ordered). `episodeVisitSuggestion` keeps suggesting the in-range visits NOT
+  // yet linked (so it doesn't go silent once one is linked); `careManualOptions` is the
+  // "Link a visit…" picker to ADD more, excluding already-linked encounters and ordered
+  // by DATE PROXIMITY to the episode window (#1196), in-range first.
+  const careVisits = encountersForEpisode(profileId, episodeId);
+  const linkedEncounterIds = new Set(
+    linkedEncounterIdsForEpisode(profileId, episodeId)
+  );
+  const episodeVisitSuggestion = suggestionForEpisode(profileId, {
+    id: episodeId,
+    start: assembled.firstDay,
+    lastActiveDay: assembled.lastActiveDay,
+  });
+  const careManualOptions: CareVisitOption[] = !canWrite
+    ? []
+    : orderEpisodeManualCandidates(
+        getEncounters(profileId).filter((e) => !linkedEncounterIds.has(e.id)),
+        assembled.firstDay,
+        assembled.lastActiveDay
+      ).map((e) => ({
+        id: e.id,
+        label: `${e.type || "Visit"} · ${e.date}`,
+        inRange:
+          assembled.firstDay != null &&
+          assembled.lastActiveDay != null &&
+          e.date >= assembled.firstDay &&
+          e.date <= assembled.lastActiveDay,
+      }));
 
   return (
     <PageContainer width="reading" className="mx-auto space-y-5">
@@ -391,6 +406,7 @@ export default async function EpisodePage(props: {
                   canReopen={canReopen}
                   profileId={target}
                   medReconciliation={medReconciliation}
+                  reopenRestoreMeds={reopenRestoreMeds}
                 />
               )}
             </>
@@ -401,7 +417,7 @@ export default async function EpisodePage(props: {
       <EpisodeCareLine
         profileId={target ?? profileId}
         episodeId={episodeId}
-        care={care}
+        careVisits={careVisits}
         suggestion={episodeVisitSuggestion}
         manualOptions={careManualOptions}
         canWrite={canWrite}

@@ -28,6 +28,8 @@
 // medical_records category='prescription' row (its own candidate domain) — it is the
 // SINGLE `medication` (intake_items) entity, so a prescription is ONE candidate and
 // the cross-domain double-listing symptom is gone at the root.
+import { daysBetweenDateStr } from "./date";
+
 export type VisitLinkDomain =
   | "condition"
   | "procedure"
@@ -227,6 +229,73 @@ export function suggestForEpisode(
   if (inRange.length === 0) return null;
   if (inRange.length === 1) return { encounter: inRange[0] };
   return { candidates: inRange };
+}
+
+// ── Manual "Link a visit…" picker ordering (#1196) ───────────────────────────────
+//
+// The episode Care line's manual override lists in-range visits first, then offers
+// out-of-range ones too (the auto-detected window is a heuristic; a genuinely related
+// follow-up/pre-symptom visit legitimately falls just outside it). The DEFECT: the
+// out-of-range candidates were tie-broken by `id` DESCENDING (most-recently-CREATED),
+// which has nothing to do with how close a visit is to the episode — so a 2026 physical
+// crowded a just-outside follow-up out of the top 8. The fix orders the out-of-range set
+// by DATE PROXIMITY to the episode window.
+
+// The day-gap from a visit date to the episode window [firstDay, lastActiveDay]: 0 when
+// the date is inside the window (or the window is unknown — no proximity to measure),
+// else the distance to the nearer edge. Pure/testable.
+export function distanceToWindow(
+  date: string,
+  firstDay: string | null,
+  lastActiveDay: string | null
+): number {
+  if (!firstDay || !lastActiveDay) return 0;
+  if (date >= firstDay && date <= lastActiveDay) return 0;
+  const before = daysBetweenDateStr(date, firstDay); // >0 when date is before window
+  const after = daysBetweenDateStr(lastActiveDay, date); // >0 when date is after window
+  const gap = date < firstDay ? (before ?? 0) : (after ?? 0);
+  return Math.abs(gap);
+}
+
+export interface EpisodeManualCandidate {
+  id: number;
+  date: string;
+}
+
+// Order the "Link a visit…" candidates for an episode: in-range visits first, then
+// out-of-range by DATE PROXIMITY to the window (nearest edge first), then id-descending
+// as the final deterministic tie-break. Optionally BOUNDS the out-of-range set to a
+// sensible neighborhood (`maxOutOfRangeGapDays`, default 60) so a short episode with no
+// nearby visit shows just its in-range set rather than padding to `cap` with distant
+// unrelated visits (#1196's "nicety" — proximity ordering alone fixes the crowd-out, the
+// bound keeps the far tail out entirely). In-range visits are NEVER bounded out. Caps at
+// `cap` (default 8). Pure; the page maps the returned rows to labels.
+export function orderEpisodeManualCandidates<T extends EpisodeManualCandidate>(
+  candidates: T[],
+  firstDay: string | null,
+  lastActiveDay: string | null,
+  opts?: { cap?: number; maxOutOfRangeGapDays?: number }
+): T[] {
+  const cap = opts?.cap ?? 8;
+  const maxGap = opts?.maxOutOfRangeGapDays ?? 60;
+  const inRange = (d: string) =>
+    !!firstDay && !!lastActiveDay && d >= firstDay && d <= lastActiveDay;
+  return candidates
+    .filter(
+      (c) =>
+        inRange(c.date) ||
+        distanceToWindow(c.date, firstDay, lastActiveDay) <= maxGap
+    )
+    .sort((a, b) => {
+      const ar = inRange(a.date) ? 1 : 0;
+      const br = inRange(b.date) ? 1 : 0;
+      if (br !== ar) return br - ar;
+      const ad = distanceToWindow(a.date, firstDay, lastActiveDay);
+      const bd = distanceToWindow(b.date, firstDay, lastActiveDay);
+      if (ad !== bd) return ad - bd;
+      return a.id < b.id ? 1 : -1; // id only as a final deterministic tie-break
+    })
+    .slice(0, cap);
 }
 
 // ── "Create a visit from this record?" (#1099) ───────────────────────────────────

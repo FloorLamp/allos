@@ -8,10 +8,11 @@ import { encounterHref } from "@/lib/hrefs";
 import type { LinkedEncounterRef } from "@/lib/queries";
 import type { EpisodeVisitSuggestion } from "@/lib/visit-link-suggest";
 
-// The illness-episode cockpit's "Care" line (#1053): the resulting visit for this
-// episode — linked, suggested (in-range containment), or a manual picker. Server
-// component; every action is a plain server-action <form> (no client JS). `profileId`
-// rides each post as the cross-profile write target.
+// The illness-episode cockpit's "Care" line (#1053; many-model #1198): the SET of visits
+// for this episode — each linked visit listed (date-ordered) with its own Unlink, plus
+// the in-range suggestion and the "Link a visit…" picker to ADD more. Server component;
+// every action is a plain server-action <form> (no client JS). `profileId` rides each
+// post as the cross-profile write target.
 
 export interface CareVisitOption {
   id: number;
@@ -22,21 +23,25 @@ export interface CareVisitOption {
 export default function EpisodeCareLine({
   profileId,
   episodeId,
-  care,
+  careVisits,
   suggestion,
   manualOptions,
   canWrite,
 }: {
   profileId: number;
   episodeId: number;
-  care: LinkedEncounterRef | null;
+  careVisits: LinkedEncounterRef[];
   suggestion: EpisodeVisitSuggestion | null;
   manualOptions: CareVisitOption[];
   canWrite: boolean;
 }) {
-  // Nothing to show when there's no link, no in-range suggestion, and the reader can't
-  // link one manually.
-  if (!care && !suggestion && (!canWrite || manualOptions.length === 0))
+  // Nothing to show when there are no linked visits, no in-range suggestion, and the
+  // reader can't link one manually.
+  if (
+    careVisits.length === 0 &&
+    !suggestion &&
+    (!canWrite || manualOptions.length === 0)
+  )
     return null;
 
   const linkForm = (encounterId: number, label: string) => (
@@ -62,33 +67,49 @@ export default function EpisodeCareLine({
         Care
       </h2>
 
-      {care ? (
-        <div className="flex items-center justify-between gap-3 text-sm">
-          <span className="text-slate-800 dark:text-slate-100">
-            Seen at{" "}
-            <Link
-              href={encounterHref(care.id)}
-              className="font-medium text-brand-700 hover:underline dark:text-brand-300"
-              data-testid="episode-care-link"
-            >
-              {care.type || "Visit"} · {care.date}
-              {care.providerName ? ` — ${care.providerName}` : ""}
-            </Link>
-          </span>
-          {canWrite ? (
-            <form action={unlinkEpisodeVisitAction}>
-              <input type="hidden" name="profileId" value={profileId} />
-              <input type="hidden" name="episodeId" value={episodeId} />
-              <button
-                type="submit"
-                className="shrink-0 text-xs font-medium text-slate-400 transition hover:text-rose-600 dark:hover:text-rose-400"
+      {careVisits.length > 0 ? (
+        <div className="mb-3 space-y-1.5" data-testid="episode-care-visits">
+          <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+            {careVisits.length === 1
+              ? "Visit during this episode"
+              : "Visits during this episode"}
+          </p>
+          <ul className="space-y-1.5">
+            {careVisits.map((v) => (
+              <li
+                key={v.id}
+                className="flex items-center justify-between gap-3 text-sm"
               >
-                Unlink
-              </button>
-            </form>
-          ) : null}
+                <span className="text-slate-800 dark:text-slate-100">
+                  <Link
+                    href={encounterHref(v.id)}
+                    className="font-medium text-brand-700 hover:underline dark:text-brand-300"
+                    data-testid="episode-care-link"
+                  >
+                    {v.type || "Visit"} · {v.date}
+                    {v.providerName ? ` — ${v.providerName}` : ""}
+                  </Link>
+                </span>
+                {canWrite ? (
+                  <form action={unlinkEpisodeVisitAction}>
+                    <input type="hidden" name="profileId" value={profileId} />
+                    <input type="hidden" name="episodeId" value={episodeId} />
+                    <input type="hidden" name="encounterId" value={v.id} />
+                    <button
+                      type="submit"
+                      className="shrink-0 text-xs font-medium text-slate-400 transition hover:text-rose-600 dark:hover:text-rose-400"
+                    >
+                      Unlink
+                    </button>
+                  </form>
+                ) : null}
+              </li>
+            ))}
+          </ul>
         </div>
-      ) : (
+      ) : null}
+
+      {suggestion || (canWrite && manualOptions.length > 0) ? (
         <div className="space-y-2" data-testid="episode-care-suggestion">
           {suggestion?.encounter ? (
             <div className="flex items-center justify-between gap-3 text-sm">
@@ -158,7 +179,7 @@ export default function EpisodeCareLine({
             </details>
           ) : null}
         </div>
-      )}
+      ) : null}
     </section>
   );
 }
