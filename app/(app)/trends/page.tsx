@@ -18,6 +18,7 @@ import BiomarkersSection, {
   type BiomarkerFlagFilter,
 } from "./BiomarkersSection";
 import BodySection from "./BodySection";
+import { parseBodyView } from "./body-view";
 import VitalsSection from "./VitalsSection";
 import FitnessSection from "./FitnessSection";
 import InsightsSection from "./InsightsSection";
@@ -72,6 +73,7 @@ export default async function TrendsPage(props: {
     cmpA?: string | string[];
     cmpB?: string | string[];
     cmpn?: string | string[];
+    view?: string | string[];
   }>;
 }) {
   const searchParams = await props.searchParams;
@@ -100,6 +102,10 @@ export default async function TrendsPage(props: {
   const cmpA = firstParam(searchParams.cmpA);
   const cmpB = firstParam(searchParams.cmpB);
   const cmpNormalized = firstParam(searchParams.cmpn) === "1";
+  // #1067 Phase 2: the Body tab's overview layout mode (tiles vs the classic chart
+  // stack). Only meaningful on the Body tab; carried through the range control + tab
+  // navigation so a chosen layout survives a window change.
+  const bodyView = parseBodyView(firstParam(searchParams.view));
   // The Fitness section's nested strip (Strength/Cardio/Sport) is also driven by
   // the URL (?ftab=), so — like the top-level tab — only the active nested
   // section is built server-side. FitnessSection validates/defaults this.
@@ -116,6 +122,7 @@ export default async function TrendsPage(props: {
     cmpA?: string;
     cmpB?: string;
     cmpn?: boolean;
+    view?: "tiles" | "all";
   }): AppRoute {
     const sp = new URLSearchParams();
     if (params.tab && params.tab !== "overview") sp.set("tab", params.tab);
@@ -126,6 +133,7 @@ export default async function TrendsPage(props: {
     if (params.cmpA) sp.set("cmpA", params.cmpA);
     if (params.cmpB) sp.set("cmpB", params.cmpB);
     if (params.cmpn) sp.set("cmpn", "1");
+    if (params.view) sp.set("view", params.view);
     const qs = sp.toString();
     return qs ? `/trends?${qs}` : "/trends";
   }
@@ -140,6 +148,7 @@ export default async function TrendsPage(props: {
       cmpA,
       cmpB,
       cmpn: cmpNormalized,
+      view: activeTab === "body" ? bodyView : undefined,
     });
 
   const biomarkerHrefFor = (opts: {
@@ -202,7 +211,24 @@ export default async function TrendsPage(props: {
       case "vitals":
         return <VitalsSection range={range} />;
       case "body":
-        return <BodySection range={range} />;
+        return (
+          <BodySection
+            range={range}
+            view={bodyView}
+            tilesHref={trendsHref({
+              tab: "body",
+              from: range.from,
+              to: range.to,
+              view: "tiles",
+            })}
+            allHref={trendsHref({
+              tab: "body",
+              from: range.from,
+              to: range.to,
+              view: "all",
+            })}
+          />
+        );
       case "nutrition":
         return <NutritionSection range={range} />;
       case "fitness":
@@ -234,6 +260,7 @@ export default async function TrendsPage(props: {
             cmpA,
             cmpB,
             cmpn: cmpNormalized ? "1" : undefined,
+            view: activeTab === "body" ? bodyView : undefined,
           }}
           buildHref={buildRangeHref}
           idPrefix="trends"

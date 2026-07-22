@@ -32,6 +32,7 @@ export default function TrendMiniCard({
   minPctChange,
   footer,
   applyBiomarkerDomain = false,
+  testid = "trend-mini-card",
 }: {
   title: string;
   href: AppRoute;
@@ -43,6 +44,10 @@ export default function TrendMiniCard({
   range?: { low: number | null; high: number | null } | null;
   minPctChange?: number;
   footer?: ReactNode;
+  // Overridable card test hook (defaults to the generic "trend-mini-card"); the
+  // Body tile grid passes a per-metric id (`body-tile-steps`) so a spec can open a
+  // specific tile's detail page.
+  testid?: string;
   // For a biomarker-sourced tile (issue #407): thread the SHARED axis-domain policy
   // through to the sparkline so it scales the same series identically to the detail
   // chart (0-clamp for a non-negative analyte; a flat/near-flat series gets a small
@@ -66,7 +71,7 @@ export default function TrendMiniCard({
       : undefined;
   const deltaSign = summary && summary.absChange > 0 ? "+" : "";
   return (
-    <div className="card" data-testid="trend-mini-card">
+    <div className="card" data-testid={testid}>
       <div className="mb-2 flex items-center justify-between gap-2">
         <Link
           href={href}
