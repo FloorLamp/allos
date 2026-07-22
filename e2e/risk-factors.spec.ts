@@ -25,7 +25,7 @@ test.describe("health risk factors (issue #517)", () => {
 
     // Toggle on → autosaves.
     await healthcare.check();
-    await expect(page.getByLabel("Saved").first()).toBeVisible();
+    await expect(page.getByLabel("Saved").first()).toBeVisible(); // first-ok: asserts a Saved autosave indicator appears (several fields save) — order-agnostic
 
     // Reload — the flag round-trips from profile_settings.
     await page.reload();
@@ -43,7 +43,7 @@ test.describe("health risk factors (issue #517)", () => {
     // Reset to off, leaving the shared fixture as we found it.
     await page.goto("/records/care/overview");
     await page.getByTestId("risk-healthcare_worker").uncheck();
-    await expect(page.getByLabel("Saved").first()).toBeVisible();
+    await expect(page.getByLabel("Saved").first()).toBeVisible(); // first-ok: asserts a Saved autosave indicator appears (several fields save) — order-agnostic
     await page.reload();
     await expect(page.getByTestId("risk-healthcare_worker")).not.toBeChecked();
   });

@@ -66,7 +66,7 @@ test("the Needs attention hero renders with the seeded profile's items", async (
   // are present — the hero is not in its "all clear" state.
   await expect(hero.getByTestId("attention-count")).toBeVisible();
   await expect(
-    hero.locator('[data-testid^="attention-item-"]').first()
+    hero.locator('[data-testid^="attention-item-"]').first() // first-ok: asserts at least one attention item renders (hero not all-clear, see comment) — order-agnostic
   ).toBeVisible();
   await expect(
     hero.getByRole("link", { name: "View all needs attention" })
@@ -132,7 +132,7 @@ test("recent labs keeps dates intact and makes every result direction explicit",
   await expect(
     recentLabs.getByTestId("recent-lab-status").filter({ hasText: "Abnormal" })
   ).toHaveCount(1);
-  const firstDate = recentLabs.getByTestId("recent-lab-date").first();
+  const firstDate = recentLabs.getByTestId("recent-lab-date").first(); // first-ok: the most-recent lab date (list is newest-first) — asserts format, order-agnostic
   await expect(firstDate).toBeVisible();
   expect(
     await firstDate.evaluate((element) => getComputedStyle(element).whiteSpace)
@@ -175,8 +175,8 @@ test("attention rows move status and actions below content on mobile", async ({
     .getByRole("main")
     .getByTestId("needs-attention")
     .locator('[data-testid^="attention-item-"]')
-    .first();
-  const title = row.getByRole("link").first();
+    .first(); // first-ok: any attention item; asserts its row structure (detail/actions), order-agnostic
+  const title = row.getByRole("link").first(); // first-ok: the title link within that scoped row
   const detail = row.getByTestId("attention-item-detail");
   const actions = row.getByTestId("attention-item-actions");
   await expect(detail).toBeVisible();
@@ -274,7 +274,7 @@ test("a goal deadline item links to the Training → Goals tab, not the removed 
   // not the pageless /goals directory that 404'd.
   await expect(page).toHaveURL(/\/training\?tab=goals/);
   await expect(
-    page.getByRole("main").getByText("Reach 74 kg").first()
+    page.getByRole("main").getByText("Reach 74 kg").first() // first-ok: asserts the seeded "Reach 74 kg" goal renders on the goals tab — order-agnostic
   ).toBeVisible();
 });
 

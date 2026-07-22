@@ -153,7 +153,7 @@ export async function saveNote(
   text: string
 ): Promise<void> {
   await expect(async () => {
-    let bar = page.getByTestId("symptom-log-bar").first();
+    let bar = page.getByTestId("symptom-log-bar").first(); // first-ok: the acting profile's own symptom bar (top of the dashboard) — order-agnostic
     const note = bar.getByTestId(`symptom-${key}-note`);
     if (!((await note.count()) > 0 && (await note.innerText()) === text)) {
       const input = bar.getByTestId(`symptom-${key}-note-input`);
@@ -173,7 +173,7 @@ export async function saveNote(
       await saved;
     }
     await page.reload();
-    bar = page.getByTestId("symptom-log-bar").first();
+    bar = page.getByTestId("symptom-log-bar").first(); // first-ok: the acting profile's own symptom bar (re-queried after a refresh) — order-agnostic
     await expect(bar.getByTestId(`symptom-${key}-note`)).toHaveText(text, {
       timeout: 3_000,
     });
