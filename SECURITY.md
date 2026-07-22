@@ -104,9 +104,11 @@ handlers alike):
   HSTS. **No `preload`** on purpose: a self-hoster may run plain-HTTP internal
   subdomains, and the public preload list is an irreversible commitment we won't
   make on their behalf.
-- `X-Frame-Options: DENY` and `Content-Security-Policy: frame-ancestors 'none'`
-  — clickjacking defense (the CSP directive covers CSP-aware browsers; the
-  legacy header covers the rest).
+- `X-Frame-Options: DENY` — clickjacking defense for legacy browsers; CSP-aware
+  browsers get the same guarantee from the enforced CSP's
+  `frame-ancestors 'none'` directive (see the next section — the CSP itself is
+  emitted per-request by `middleware.ts`, not by `next.config.js`, so the policy
+  has exactly one source).
 - `X-Content-Type-Options: nosniff`
 - `Referrer-Policy: strict-origin-when-cross-origin`
 - `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()`
@@ -118,25 +120,43 @@ Public share links (`/share/*`) layer **stricter** values on top in
 so a sensitive, unauthenticated passport is never cached or indexed. Middleware
 runs per-request and its values override the global defaults for that route.
 
-### Content-Security-Policy graduation plan
+### Content-Security-Policy (enforced, nonce-based)
 
-The full CSP ships as **report-only** (`Content-Security-Policy-Report-Only`) so
-the policy can be observed in the field without breaking anything. Only
-`frame-ancestors 'none'` is **enforced** today (via a separate real
-`Content-Security-Policy` header), because it is safe to enforce immediately
-alongside `X-Frame-Options`.
+The full CSP is **enforced** — there is no report-only header anymore. (Rollout
+history: #21 shipped the policy report-only, #624 enforced the non-script
+directives, and #595 completed the graduation to the nonce-based policy below.)
 
-The report-only policy keeps `'unsafe-inline'` in `script-src`/`style-src`
-because Next 16's App Router emits inline bootstrap/runtime scripts and Tailwind
-emits inline styles; a nonce-based strict CSP requires threading a per-request
-nonce through the framework and is a deliberate follow-up. The graduation path:
+The policy has a **single source**: `lib/csp.ts` builds the header string, and
+`middleware.ts` generates a fresh per-request nonce and stamps the
+`Content-Security-Policy` header on every response — `next.config.js`
+deliberately declares no CSP header at all, so the policy cannot drift between
+two files.
 
-1. Watch report-only violations until the policy is clean in practice.
-2. Move the non-script directives (`default-src`, `object-src`, `base-uri`,
-   `form-action`, `connect-src`, `img-src`) from report-only into the enforced
-   header.
-3. Introduce a per-request nonce, drop `'unsafe-inline'`, and enforce
-   `script-src`/`style-src` last.
+Enforced directives in production:
+
+- `default-src 'self'`, `base-uri 'self'`, `object-src 'none'`,
+  `form-action 'self'`
+- `frame-ancestors 'none'` — clickjacking defense, mirroring
+  `X-Frame-Options: DENY`
+- `img-src 'self' data: blob:` — same-origin images plus data-URI icons and
+  blob: crop previews
+- `connect-src 'self'` — same-origin fetch/SSE only
+- `script-src 'self' 'nonce-<per-request>'` — **no `'unsafe-inline'`**. The
+  nonce admits the two inline bootstrap scripts (Next's own, which Next stamps
+  from the request-header CSP, and the theme-boot script, which reads the
+  `x-nonce` request header); every other script is a same-origin chunk covered
+  by `'self'`. `'strict-dynamic'` is deliberately not used — every script this
+  app serves is same-origin, so `'self'` + nonce is both sufficient and less
+  fragile.
+- `style-src 'self' 'unsafe-inline'` — the **one deliberate residual**:
+  Tailwind's utility layer and Next both emit inline `<style>` with no per-style
+  nonce hook, so inline _style_ (a far weaker vector than inline script) is
+  accepted as a decided, documented exception rather than an oversight.
+
+In development (`next dev` only), `script-src` relaxes to
+`'self' 'unsafe-inline' 'unsafe-eval'` with no nonce token, because React Fast
+Refresh and the error overlay require it; production builds never carry this
+relaxation.
 
 ### Session cookie
 

@@ -62,7 +62,7 @@ test("shows the recorded-allergy warnings on /medications (same-class + cross-re
   // recorded reaction and the informational, cited framing.
   const classCard = allergyWarningRows(warnings)
     .filter({ hasText: "Amoxicillin" })
-    .first();
+    .first(); // first-ok: filtered to the Amoxicillin warning — one match for the drug this test set up
   await expect(classCard).toBeVisible();
   await expect(classCard).toContainText("Penicillin");
   await expect(classCard).toContainText("recorded reaction: hives");
@@ -72,7 +72,7 @@ test("shows the recorded-allergy warnings on /medications (same-class + cross-re
   // Cross-class hit: cephalexin carries the possible-cross-reactivity framing.
   const crossCard = allergyWarningRows(warnings)
     .filter({ hasText: "Cephalexin" })
-    .first();
+    .first(); // first-ok: filtered to the Cephalexin cross-reactivity warning — one match for the drug this test set up
   await expect(crossCard).toBeVisible();
   await expect(crossCard).toContainText("cross-reactivity", {
     ignoreCase: true,
@@ -94,7 +94,7 @@ test("the allergy finding surfaces on Upcoming and stays hidden once dismissed",
   const finding = main
     .locator('[data-testid^="upcoming-item-allergy-med:"]')
     .filter({ hasText: "Amoxicillin" })
-    .first();
+    .first(); // first-ok: filtered to the Amoxicillin allergy finding — one match for the drug this test set up
   await expect(finding).toBeVisible();
 
   // Dismiss through the shared OverflowMenu (the portal-mounted menu panel).

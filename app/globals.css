@@ -115,7 +115,7 @@ body::before {
   /* Frosted glass: translucent surface + backdrop blur lets the page glow
      diffuse through; soft shadow for elevation, hairline border for the edge. */
   .card {
-    @apply rounded-xl border border-white/60 bg-white/55 p-5 shadow-lg shadow-slate-300/40 backdrop-blur-2xl backdrop-saturate-150 dark:border-white/10 dark:bg-ink-800/45 dark:shadow-black/30;
+    @apply min-w-0 max-w-full rounded-xl border border-white/60 bg-white/55 p-5 shadow-lg shadow-slate-300/40 backdrop-blur-2xl backdrop-saturate-150 dark:border-white/10 dark:bg-ink-800/45 dark:shadow-black/30;
   }
   .input {
     @apply w-full rounded-lg border border-black/10 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-white/10 dark:bg-ink-950 dark:text-slate-100 dark:placeholder:text-slate-500;

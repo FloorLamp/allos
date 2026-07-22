@@ -250,7 +250,7 @@ test("a new profile reaches a useful dashboard through the metrics path", async 
           "onboarding-routine-template"
         );
         await expect(templates).toHaveCount(3);
-        await expect(templates.first()).toContainText("Bodyweight 3×/week");
+        await expect(templates.first()).toContainText("Bodyweight 3×/week"); // first-ok: the fixed 3-template set renders in deterministic order (count asserted above); first is Bodyweight
         await routineStarter
           .getByRole("button", { name: "Use Bodyweight 3×/week" })
           .click();
@@ -287,9 +287,8 @@ test("a new profile reaches a useful dashboard through the metrics path", async 
     await expect(
       dashboard.getByTestId("onboarding-dashboard-preview")
     ).toContainText("Weight trend");
-    await expect(dashboard.locator('input[name="widget"]').first()).toHaveClass(
-      /rounded-md/
-    );
+    const firstWidget = dashboard.locator('input[name="widget"]').first(); // first-ok: the first dashboard widget input in deterministic seeded order
+    await expect(firstWidget).toHaveClass(/rounded-md/);
     const dashboardNext = dashboard.getByRole("button", { name: "Next" });
     const widgetChoices = dashboard.locator('input[name="widget"]');
     for (let i = 0; i < (await widgetChoices.count()); i += 1) {

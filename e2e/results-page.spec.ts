@@ -26,6 +26,24 @@ test("bare /results redirects to the Biomarkers tab and renders it (#1079)", asy
   );
 });
 
+test("the Biomarkers browser carries the trajectory watch but no fitness-percentile inline (#1164)", async ({
+  page,
+}) => {
+  await page.goto("/results/biomarkers");
+  const biomarkers = page.getByTestId("results-biomarkers");
+  await expect(biomarkers).toBeVisible();
+
+  // The trajectory watch (#41) moved here from the deleted Trends → Biomarkers tab —
+  // the seeded eGFR decline fires it (its own reset/dismiss lifecycle lives in
+  // trends-trajectory.spec; here we only prove the area landed on Results).
+  await expect(biomarkers.getByTestId("trajectory-findings")).toBeVisible();
+
+  // The fitness-percentile inline was DROPPED, not ported (#1164): the biomarker table
+  // is for labs, and the peer-percentile context for fitness-test vitals lives on the
+  // Fitness surface. Pin it absent so the dropped inline can't sneak back.
+  await expect(page.getByTestId("fitness-percentile-inline")).toHaveCount(0);
+});
+
 test("the tab strip navigates route-per-tab to Imaging and Genomics (#1079)", async ({
   page,
 }) => {
@@ -44,7 +62,7 @@ test("the tab strip navigates route-per-tab to Imaging and Genomics (#1079)", as
     imaging
       .getByTestId("imaging-study-list")
       .getByText(/Left Knee/)
-      .first()
+      .first() // first-ok: asserts the seeded Left Knee imaging study renders in the scoped list — order-agnostic
   ).toBeVisible();
 
   // Genomics tab → its own route + the seeded pharmacogenomic variant.
@@ -58,7 +76,7 @@ test("the tab strip navigates route-per-tab to Imaging and Genomics (#1079)", as
       .getByTestId("results-genomics")
       .getByTestId("genomic-variant-list")
       .getByText("CYP2C19")
-      .first()
+      .first() // first-ok: asserts the seeded CYP2C19 variant renders in the scoped list — order-agnostic
   ).toBeVisible();
 });
 

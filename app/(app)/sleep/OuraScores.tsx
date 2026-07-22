@@ -65,7 +65,7 @@ function ScoreTile({
 export default function OuraScores({ scores }: { scores: OuraScores }) {
   if (!scores.sleep && !scores.readiness) return null;
   return (
-    <section className="mb-6" data-testid="oura-scores">
+    <section data-testid="oura-scores">
       <div className="mb-2 flex items-center gap-2">
         <h2 className="section-label text-slate-500 dark:text-slate-400">
           From Oura
@@ -90,9 +90,8 @@ export default function OuraScores({ scores }: { scores: OuraScores }) {
         )}
       </div>
       <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-        Oura&rsquo;s proprietary 0&ndash;100 daily scores, shown as reported.
-        Not the app&rsquo;s own metric &mdash; it doesn&rsquo;t compute or
-        combine these into any assessment.
+        Oura&rsquo;s proprietary daily scores, shown as reported and not
+        combined into an Allos assessment.
       </p>
     </section>
   );

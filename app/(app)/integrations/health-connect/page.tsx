@@ -8,6 +8,10 @@ import {
 import { PageHeader } from "@/components/ui";
 import { getIntegration } from "@/lib/integrations/registry";
 import {
+  SOURCE_FIDELITY,
+  type ExporterSetting,
+} from "@/lib/integrations/health-connect";
+import {
   getConnection,
   getHealthConnectTokenInfo,
 } from "@/lib/integrations/connections";
@@ -260,6 +264,69 @@ export default async function HealthConnectPage() {
           />
         </div>
       )}
+
+      <RecommendedSettings />
+    </div>
+  );
+}
+
+// The per-type granularity guidance (issue #1065), rendered from the single
+// SOURCE_FIDELITY source of truth so the card and the parser (and the at-ingest
+// detectors) can never disagree about what to recommend. Shown in both the connected
+// and disconnected states, since it's most useful while setting the exporter up.
+const SETTING_LABEL: Record<ExporterSetting, string> = {
+  daily: "daily",
+  full: "full",
+  "1m": "1m",
+  off: "off",
+};
+
+function RecommendedSettings() {
+  return (
+    <div
+      className="card mt-6 max-w-3xl space-y-3 text-sm text-slate-600 dark:text-slate-300"
+      data-testid="hc-recommended-settings"
+    >
+      <h2 className="font-semibold text-slate-800 dark:text-slate-100">
+        Recommended settings
+      </h2>
+      <p className="text-xs text-slate-500 dark:text-slate-400">
+        The exporter app lets you set each data type&rsquo;s granularity (daily
+        / full / 1m / 5m / 15m). Pick these so Allos gets the resolution it
+        stores at — too fine bloats the payload (and risks rejection), too
+        coarse starves the charts.
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-left text-xs">
+          <thead>
+            <tr className="border-b border-black/10 dark:border-white/10">
+              <th className="py-1.5 pr-3 font-medium">Data type</th>
+              <th className="py-1.5 pr-3 font-medium">Select</th>
+              <th className="py-1.5 font-medium">Why</th>
+            </tr>
+          </thead>
+          <tbody>
+            {SOURCE_FIDELITY.map((row) => (
+              <tr
+                key={row.label}
+                className="border-b border-black/5 align-top dark:border-white/5"
+              >
+                <td className="py-1.5 pr-3 text-slate-700 dark:text-slate-200">
+                  {row.label}
+                </td>
+                <td className="py-1.5 pr-3">
+                  <code className="rounded bg-slate-100 px-1 py-0.5 font-mono dark:bg-ink-800">
+                    {SETTING_LABEL[row.setting]}
+                  </code>
+                </td>
+                <td className="py-1.5 text-slate-500 dark:text-slate-400">
+                  {row.why}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

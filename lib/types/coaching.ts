@@ -10,10 +10,11 @@ export interface Insight {
   created_at: string;
 }
 
-// A stored AI narrative (issue #20): a weekly/monthly period recap or a lab-trend
-// interpretation. kind selects which; period_end anchors it (recap end date or
-// latest lab date), period_start is the recap window start (null for lab-trend).
-export type NarrativeKind = "week" | "month" | "labs";
+// A stored AI narrative (issue #20): a weekly/monthly period recap. kind selects the
+// period; period_end anchors it (the recap end date), period_start is the window
+// start. (The "labs" lab-trend kind was retired with the Trends → Biomarkers tab —
+// #1164; any rows stored under it are inert, read by no surface.)
+export type NarrativeKind = "week" | "month";
 
 export interface Narrative {
   id: number;

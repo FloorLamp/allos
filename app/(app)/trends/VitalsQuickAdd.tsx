@@ -35,6 +35,7 @@ export default function VitalsQuickAdd({
   const { enqueue } = useOfflineQueue();
   const formRef = useRef<HTMLFormElement>(null);
   const systolicRef = useRef<HTMLInputElement>(null);
+  const sleepRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const tempUnitDetection = useTemperatureUnitDetection(temperatureUnit);
   // Deep-link focus (#1083): the preventive blood-pressure (vital) screening row/nudge
@@ -43,9 +44,10 @@ export default function VitalsQuickAdd({
   // param (not a Trends-section internal), to stay clear of the parallel #1067 overhaul.
   const focusParam = useSearchParams().get("focus");
   useEffect(() => {
-    if (focusParam !== "blood-pressure") return;
+    if (focusParam !== "blood-pressure" && focusParam !== "sleep") return;
     formRef.current?.scrollIntoView({ block: "center" });
-    systolicRef.current?.focus();
+    if (focusParam === "sleep") sleepRef.current?.focus();
+    else systolicRef.current?.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -107,6 +109,7 @@ export default function VitalsQuickAdd({
 
   return (
     <form
+      id="vitals-quick-add"
       ref={formRef}
       action={handle}
       className="card space-y-3"
@@ -261,6 +264,7 @@ export default function VitalsQuickAdd({
             Sleep (hours)
           </label>
           <input
+            ref={sleepRef}
             id="v-sleep"
             type="number"
             step="0.1"

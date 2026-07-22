@@ -97,6 +97,7 @@ import NextAppointmentWidget, {
 } from "@/components/dashboard/NextAppointmentWidget";
 import HealthspanPillarsWidget from "@/components/dashboard/HealthspanPillarsWidget";
 import SleepLastNightWidget from "@/components/dashboard/SleepLastNightWidget";
+import { sleepRecordPresentation } from "@/lib/sleep-summary";
 import QuickLogPrnWidget from "@/components/dashboard/QuickLogPrnWidget";
 import ActiveProtocolWidget from "@/components/dashboard/ActiveProtocolWidget";
 import HowAreYouCard from "@/components/dashboard/HowAreYouCard";
@@ -350,6 +351,9 @@ export default async function Dashboard() {
   const sleepSummary = has("sleep-last-night")
     ? getLastNightSummary(profile.id)
     : null;
+  const sleepPresentation = sleepSummary
+    ? sleepRecordPresentation(sleepSummary.wakeDay, on, formatPrefs)
+    : null;
   const sleepSri =
     has("sleep-last-night") && sleepSummary != null
       ? (getSleepRegularity(profile.id)?.sri ?? null)
@@ -492,7 +496,10 @@ export default async function Dashboard() {
     emptyIds.add("healthspan-pillars");
   if (has("quick-log-prn") && prnMeds.length === 0)
     emptyIds.add("quick-log-prn");
-  if (has("sleep-last-night") && sleepSummary == null)
+  if (
+    has("sleep-last-night") &&
+    (sleepSummary == null || sleepPresentation?.freshness === "stale")
+  )
     emptyIds.add("sleep-last-night");
 
   // The onboarding CTA for a data-aware widget whose domain is empty — the
@@ -543,10 +550,10 @@ export default async function Dashboard() {
       case "sleep-last-night":
         return (
           <WidgetEmpty
-            title="Last night's sleep"
+            title="Sleep"
             icon={IconMoon}
-            message="No sleep data yet. Connect Health Connect, Oura, or Withings to see how you slept each morning."
-            ctaLabel="Connect a source"
+            message="No sleep recorded last night. Sync Health Connect, Oura, or Withings to refresh your sleep data."
+            ctaLabel="Sync a source"
             ctaHref="/data"
           />
         );
@@ -566,11 +573,12 @@ export default async function Dashboard() {
       case "healthspan-pillars":
         return <HealthspanPillarsWidget pillars={pillars} />;
       case "sleep-last-night":
-        return sleepSummary ? (
+        return sleepSummary && sleepPresentation ? (
           <SleepLastNightWidget
             summary={sleepSummary}
             sri={sleepSri}
             timeFormat={formatPrefs.timeFormat}
+            presentation={sleepPresentation}
           />
         ) : null;
       case "weight-trend":

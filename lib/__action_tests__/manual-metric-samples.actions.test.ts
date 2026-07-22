@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import { addGrowth } from "@/app/(app)/trends/growth-actions";
 import { addVitals } from "@/app/(app)/trends/vitals-actions";
+import { getSleepMoodData } from "@/lib/queries";
 import { actAs, createLogin, createProfile, fd } from "./harness";
 
 interface SampleRow {
@@ -78,5 +79,14 @@ describe("manual metric samples", () => {
         value: 450,
       },
     ]);
+    expect(
+      getSleepMoodData(profile.id).history.find(
+        (row) => row.date === "2026-07-20"
+      )
+    ).toMatchObject({
+      sleepHours: 7.5,
+      sleepEditable: true,
+      sleepEditHours: 7.5,
+    });
   });
 });

@@ -41,7 +41,7 @@ test.describe("command palette — per-hit actions (#662)", () => {
     ).toBeVisible();
     const addResult = results
       .getByTestId("palette-hit-action-add-result")
-      .first();
+      .first(); // first-ok: the add-result action in the scoped command-palette results — order-agnostic
     await expect(addResult).toBeVisible();
 
     // The chip drives a client navigation (router.push) — retry the URL assertion
@@ -71,7 +71,7 @@ test.describe("command palette — per-hit actions (#662)", () => {
     const row = results
       .getByRole("listitem")
       .filter({ hasText: "Sertraline" })
-      .first();
+      .first(); // first-ok: filtered to the Sertraline palette result — one match for the searched med
     await expect(row).toBeVisible();
     await expect(row.getByTestId("palette-hit-action-log-dose")).toBeVisible();
     await expect(row.getByTestId("palette-hit-action-refill")).toBeVisible();
@@ -103,7 +103,7 @@ test.describe("command palette — per-hit actions (#662)", () => {
       const row = results
         .getByRole("listitem")
         .filter({ hasText: APPT_MARKER })
-        .first();
+        .first(); // first-ok: filtered to APPT_MARKER, a unique marker THIS spec planted — one match
       await expect(row).toBeVisible();
       const complete = row.getByTestId("palette-hit-action-complete");
       await expect(complete).toBeVisible();

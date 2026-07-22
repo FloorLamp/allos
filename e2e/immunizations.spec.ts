@@ -21,7 +21,7 @@ test.describe("Immunizations (#391)", () => {
     // The sortable Vaccines table renders rows, each drilling into a detail page.
     await expect(page.getByRole("heading", { name: "Vaccines" })).toBeVisible();
     await expect(
-      page.locator('a[href^="/immunizations/"]').first()
+      page.locator('a[href^="/immunizations/"]').first() // first-ok: follows any immunization detail link — order-agnostic navigation
     ).toBeVisible();
 
     // #552: an adult (profile 1, born 1986) sees age-inappropriate childhood-only
@@ -40,7 +40,7 @@ test.describe("Immunizations (#391)", () => {
       page.getByRole("heading", { name: "CDC recommended schedule" })
     ).toBeVisible();
     await expect(
-      page.getByText("Hepatitis B Surface Antibody").first()
+      page.getByText("Hepatitis B Surface Antibody").first() // first-ok: asserts the seeded HepB titer row renders — order-agnostic presence
     ).toBeVisible();
 
     // The per-vaccine detail: the seeded Tdap booster (2018-09-01) shows as one

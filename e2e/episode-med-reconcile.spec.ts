@@ -43,7 +43,7 @@ async function pickMedication(
     .getByRole("listbox")
     .getByRole("button")
     .filter({ hasText: value })
-    .first();
+    .first(); // first-ok: transient combobox list this spec just opened by typing `value`; the first filtered match is the intended option
   await expect(option).toBeVisible();
   await option.click();
 }
@@ -89,7 +89,7 @@ test.describe("Episode-end medication reconciliation (#880)", () => {
     // active profile's cockpit is at hero position, expanded by default).
     const episodeLink = page
       .getByRole("link", { name: /^More details about / })
-      .first();
+      .first(); // first-ok: the active (fresh) profile's hero-cockpit episode link (this spec owns the profile)
     await followLink(page, episodeLink, /\/medical\/episodes\/\d+/);
 
     // 5) "Feeling better" opens the reconciliation checklist — ibuprofen is listed and

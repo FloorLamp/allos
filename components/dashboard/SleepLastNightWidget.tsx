@@ -4,8 +4,10 @@ import {
   baselineDeltaPhrase,
   formatHm,
   type LastNightSummary,
+  type SleepRecordPresentation,
 } from "@/lib/sleep-summary";
 import { formatClockMinutes, type TimeFormat } from "@/lib/format-date";
+import { sriPresentation } from "@/lib/sleep-regularity";
 
 // Dashboard "last night" sleep tile (issue #1066): the morning-ritual promotion
 // that ships WITH the /sleep page (the illness-hero / weight-quick-add principle —
@@ -17,15 +19,17 @@ export default function SleepLastNightWidget({
   summary,
   sri,
   timeFormat,
+  presentation,
 }: {
   summary: LastNightSummary;
   sri: number | null;
   timeFormat: TimeFormat;
+  presentation: SleepRecordPresentation;
 }) {
   const delta = baselineDeltaPhrase(summary);
   return (
     <div className="card" data-testid="sleep-last-night-widget">
-      <WidgetHeader title="Last night" href="/sleep" />
+      <WidgetHeader title={presentation.label} href="/sleep" />
       <div className="flex items-start gap-3">
         <IconMoon
           className="mt-1 h-5 w-5 shrink-0 text-brand-600 dark:text-brand-400"
@@ -47,8 +51,9 @@ export default function SleepLastNightWidget({
             )}
           </div>
           <div className="text-sm text-slate-600 dark:text-slate-300">
-            {formatClockMinutes(timeFormat, summary.bedMinutes)} →{" "}
-            {formatClockMinutes(timeFormat, summary.wakeMinutes)}
+            {summary.bedMinutes != null && summary.wakeMinutes != null
+              ? `${formatClockMinutes(timeFormat, summary.bedMinutes)} → ${formatClockMinutes(timeFormat, summary.wakeMinutes)}`
+              : "Duration-only entry"}
             {summary.napMin > 0 && (
               <span className="text-slate-500 dark:text-slate-400">
                 {" "}
@@ -58,7 +63,7 @@ export default function SleepLastNightWidget({
           </div>
           {sri != null && (
             <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Regularity SRI {Math.round(sri)} / 100
+              Regularity · {sriPresentation(sri).text}
             </div>
           )}
         </div>

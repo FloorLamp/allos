@@ -15,14 +15,14 @@ test("editing a weight body-goal and switching the metric clears the target (iss
 
   // Anchor on the goal card's own level-3 heading — the Goal pacing watch card
   // ("'Cut to 78 kg' is off pace…") also contains the text and sits earlier in
-  // the DOM, so a bare hasText + .first() grabs the pacing card (which has no
+  // the DOM, so a bare hasText + first-match grabs the pacing card (which has no
   // "Goal actions" button).
   const card = main
     .locator("div.card")
     .filter({
       has: page.getByRole("heading", { name: "Cut to 78 kg", exact: true }),
     })
-    .first();
+    .first(); // first-ok: filtered to the goal card by its own heading; .first() is defensive (see comment above)
   await expect(card).toBeVisible();
 
   // Open the goal's action menu (portaled OverflowMenu) → Edit.

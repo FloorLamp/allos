@@ -27,6 +27,6 @@ test("logging a fever from the symptom card surfaces it flagged on the day view 
   // The reading rides the shared vitals series and lands on the Timeline day view as a
   // flagged (out-of-range) medical result naming Body Temperature.
   await page.goto("/timeline?category=medical");
-  await expect(page.getByText("Body Temperature").first()).toBeVisible();
-  await expect(page.getByText(/out of range/i).first()).toBeVisible();
+  await expect(page.getByText("Body Temperature").first()).toBeVisible(); // first-ok: asserts a Body Temperature reading renders — order-agnostic presence
+  await expect(page.getByText(/out of range/i).first()).toBeVisible(); // first-ok: asserts an out-of-range flag renders — order-agnostic presence
 });

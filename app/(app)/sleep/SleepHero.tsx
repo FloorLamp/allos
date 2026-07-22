@@ -4,10 +4,14 @@ import {
   baselineDeltaPhrase,
   formatHm,
   type LastNightSummary,
+  type SleepRecordPresentation,
 } from "@/lib/sleep-summary";
 import { formatClockMinutes, type TimeFormat } from "@/lib/format-date";
 import { timelineDayHref } from "@/lib/hrefs";
 import { chartSeries } from "@/lib/chart-colors";
+import { activityProvenanceLabel } from "@/lib/journal-format";
+import type { BedtimeSupplementSummary } from "@/lib/sleep-bedtime-supplements";
+import BedtimeSupplementStatus from "./BedtimeSupplementStatus";
 
 // The Sleep page hero (issue #1066): last night reduced to facts — duration, a
 // stage stacked bar, bed/wake, and the delta vs the trailing-30-night baseline —
@@ -70,17 +74,24 @@ function StageBar({
 export default function SleepHero({
   summary,
   timeFormat,
+  presentation,
+  bedtimeSupplements,
 }: {
   summary: LastNightSummary;
   timeFormat: TimeFormat;
+  presentation: SleepRecordPresentation;
+  bedtimeSupplements: BedtimeSupplementSummary | null;
 }) {
   const delta = baselineDeltaPhrase(summary);
+  const source = activityProvenanceLabel(summary.source);
   return (
     <section className="card mb-6" data-testid="sleep-hero">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
           <IconMoon className="h-5 w-5" stroke={1.75} aria-hidden />
-          <span className="section-label">Last night</span>
+          <span className="section-label" data-testid="sleep-hero-label">
+            {presentation.label}
+          </span>
         </div>
         <Link
           href={timelineDayHref(summary.wakeDay)}
@@ -92,34 +103,59 @@ export default function SleepHero({
         </Link>
       </div>
 
-      <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span
-          className="text-4xl font-bold tabular-nums text-slate-800 dark:text-slate-100"
-          data-testid="sleep-hero-duration"
-        >
-          {formatHm(summary.durationMin)}
-        </span>
-        {delta && (
-          <span
-            className="text-sm text-slate-500 dark:text-slate-400"
-            data-testid="sleep-hero-delta"
+      <div className="mt-4 grid gap-x-8 gap-y-4 sm:grid-cols-3">
+        <div>
+          <p className="section-label mb-1">Duration</p>
+          <p
+            className="text-4xl font-bold tabular-nums text-slate-800 dark:text-slate-100"
+            data-testid="sleep-hero-duration"
           >
-            {delta}
-          </span>
-        )}
-      </div>
+            {formatHm(summary.durationMin)}
+          </p>
+          {delta && (
+            <p
+              className="mt-1 text-sm text-slate-500 dark:text-slate-400"
+              data-testid="sleep-hero-delta"
+            >
+              {delta}
+            </p>
+          )}
+        </div>
 
-      <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-        Asleep {formatClockMinutes(timeFormat, summary.bedMinutes)} →{" "}
-        {formatClockMinutes(timeFormat, summary.wakeMinutes)}
-        {summary.baselineAvgMin != null && (
-          <>
-            {" "}
-            · {formatHm(summary.baselineAvgMin)} average over the last{" "}
-            {summary.baselineNights} nights
-          </>
-        )}
-      </p>
+        <div>
+          <p className="section-label mb-1">Sleep window</p>
+          <p className="text-xl font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+            {summary.bedMinutes != null && summary.wakeMinutes != null ? (
+              <>
+                {formatClockMinutes(timeFormat, summary.bedMinutes)} →{" "}
+                {formatClockMinutes(timeFormat, summary.wakeMinutes)}
+              </>
+            ) : (
+              <span className="text-base font-normal text-slate-500 dark:text-slate-400">
+                Not recorded
+              </span>
+            )}
+          </p>
+        </div>
+
+        <div>
+          <p className="section-label mb-1">Recent average</p>
+          {summary.baselineAvgMin != null ? (
+            <>
+              <p className="text-xl font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                {formatHm(summary.baselineAvgMin)}
+              </p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Based on the prior {summary.baselineNights} recorded nights
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              Not enough history yet
+            </p>
+          )}
+        </div>
+      </div>
 
       {summary.napMin > 0 && (
         <p
@@ -130,7 +166,24 @@ export default function SleepHero({
         </p>
       )}
 
+      {bedtimeSupplements && (
+        <div className="mt-3" data-testid="sleep-hero-bedtime-supplements">
+          <BedtimeSupplementStatus
+            summary={bedtimeSupplements}
+            prefix="Bedtime supplements"
+            detailsMode="taken-inline"
+          />
+        </div>
+      )}
+
       {summary.stages && <StageBar stages={summary.stages} />}
+
+      <p
+        className="mt-4 text-xs text-slate-500 dark:text-slate-400"
+        data-testid="sleep-hero-source"
+      >
+        {source === "Manual" ? "Logged manually" : `Source: ${source}`}
+      </p>
     </section>
   );
 }

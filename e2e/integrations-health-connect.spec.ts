@@ -14,11 +14,11 @@ import { E2E_LOGIN_HC, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 // again each read.
 async function readToken(page: Page): Promise<string> {
   const reveal = page.getByRole("button", { name: "Reveal" });
-  if (await reveal.count()) await reveal.first().click();
+  if (await reveal.count()) await reveal.first().click(); // first-ok: reveals the token (guarded by count; this integration has one token) — order-agnostic
   const tokenCode = page
     .locator("code.font-mono")
     .filter({ hasNotText: "http" });
-  const text = await tokenCode.first().textContent();
+  const text = await tokenCode.first().textContent(); // first-ok: this integration's single token code — order-agnostic
   return (text ?? "").trim();
 }
 
@@ -64,13 +64,39 @@ test.describe("Health Connect integration (#391)", () => {
       const tokenCode = member
         .locator("code.font-mono")
         .filter({ hasNotText: "http" });
+      const code = tokenCode.first(); // first-ok: this integration's single token code, asserted changed after rotate — order-agnostic
       await member.getByTestId("health-connect-rotate").click();
-      await expect(tokenCode.first()).not.toHaveText(first, {
-        timeout: 15_000,
-      });
+      await expect(code).not.toHaveText(first, { timeout: 15_000 });
       const second = await readToken(member);
       expect(second.length).toBeGreaterThan(10);
       expect(second).not.toBe(first);
+    } finally {
+      await member.context().close();
+    }
+  });
+
+  // Issue #1065: the setup card renders the per-type "Recommended settings" matrix
+  // (SOURCE_FIDELITY), so the user knows which granularity to pick in the exporter app.
+  test("renders the recommended per-type granularity settings block", async ({
+    browser,
+  }) => {
+    test.slow();
+    const member = await loginAs(browser, {
+      username: E2E_LOGIN_HC,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await member.goto("/integrations/health-connect");
+      const block = member.getByTestId("hc-recommended-settings");
+      await expect(block).toBeVisible();
+      await expect(
+        block.getByRole("heading", { name: "Recommended settings" })
+      ).toBeVisible();
+      // A load-bearing row from the verified matrix: Heart rate → 1m.
+      await expect(
+        block.getByText("Heart rate", { exact: true })
+      ).toBeVisible();
+      await expect(block.getByText("1m", { exact: true })).toBeVisible();
     } finally {
       await member.context().close();
     }

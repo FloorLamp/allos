@@ -7,7 +7,8 @@ import { buildTrajectoryFindings } from "@/lib/trajectory-series";
 import { activeFindings } from "@/lib/findings";
 import { dismissTrajectory } from "./actions";
 
-// Biomarker trajectory findings (issue #41) for the Trends → Biomarkers area. Runs
+// Biomarker trajectory findings (issue #41) for the Results → Biomarkers section
+// (#1164 moved it here from the deleted Trends → Biomarkers tab). Runs
 // the pure trajectory rules over the profile's per-analyte history and lists the
 // active ones — an in-range value projected to cross a boundary, a persistent
 // non-optimal pattern, or a concerning velocity — BEFORE a single-value flag would

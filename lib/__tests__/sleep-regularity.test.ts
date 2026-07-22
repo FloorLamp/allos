@@ -5,6 +5,7 @@ import {
   regularityTravelInsight,
   mainSleepSession,
   mainSleepNights,
+  sriPresentation,
   type SleepSession,
 } from "../sleep-regularity";
 
@@ -34,6 +35,22 @@ function consecutiveWakeDays(start: string, n: number): string[] {
   }
   return out;
 }
+
+describe("sriPresentation", () => {
+  it.each([
+    [83.6, "SRI 84", "good"],
+    [79.6, "SRI 80", "good"],
+    [72, "SRI 72", "warn"],
+    [59.6, "SRI 60", "warn"],
+    [-30.4, "SRI −30", "bad"],
+    [15, "SRI 15", "bad"],
+  ] as const)(
+    "presents the full SRI domain consistently (%s)",
+    (sri, text, tone) => {
+      expect(sriPresentation(sri)).toEqual({ text, tone });
+    }
+  );
+});
 
 describe("computeSleepRegularity — SRI formula", () => {
   it("a perfectly reproducible schedule scores SRI = 100", () => {
@@ -350,6 +367,20 @@ describe("mainSleepNights — one main session per wake-day, naps dropped", () =
       { wakeDay: "2026-01-02", durationMin: 480 }, // the overnight, NOT 480+90
       { wakeDay: "2026-01-03", durationMin: 420 },
     ]);
+  });
+
+  it("uses provider-reported sleep minutes for duration-facing consumers", () => {
+    const nights = mainSleepNights(
+      [
+        {
+          start: "2026-01-01T23:00:00Z",
+          end: "2026-01-02T07:00:00Z",
+          value: 425,
+        },
+      ],
+      "UTC"
+    );
+    expect(nights[0].durationMin).toBe(425);
   });
 
   it("drops a day that holds only naps", () => {

@@ -7,8 +7,8 @@
 // Intake composition (proteinIntake), superseding #767's tracked > logged > estimated
 // source-priority chain (issue #824):
 //   - `tracked`   — an integration's protein_g (Health Connect protein_grams → protein_g;
-//                   surfaced on Trends → Body → Macros). A measured FULL-DAY total, so it
-//                   OVERRIDES the sum below.
+//                   surfaced on Trends → Nutrition → Macros & fiber, #1166). A measured
+//                   FULL-DAY total, so it OVERRIDES the sum below.
 //   - `estimated` — servings × per-serving grams from the food-group catalog (#579 rollup,
 //                   reused, never a second engine). A FLOOR by construction — incidental
 //                   protein from untracked foods is invisible.

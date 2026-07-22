@@ -8,7 +8,8 @@ import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { shouldQueueOffline } from "@/lib/offline/queue";
 import { activateIllnessForSymptoms } from "@/app/(app)/symptoms/actions";
 import { logMood } from "@/app/(app)/mood/actions";
-import { MOOD_FACES, MOOD_LABELS, MOOD_FACTORS } from "@/lib/mood";
+import { MOOD_LABELS, MOOD_FACTORS } from "@/lib/mood";
+import MoodValencePicker from "@/components/MoodValencePicker";
 
 // The unified daily check-in card (issue #992): ONE "How are you today?" shell
 // that composes TWO separate engines — the lightweight mood tap (this issue) and
@@ -181,31 +182,7 @@ export default function HowAreYouCard({
 
       {/* The one-tap mood row — the everyday default action. */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-1" role="group" aria-label="Mood">
-          {MOOD_FACES.map((face, i) => {
-            const n = i + 1;
-            const selected = valence === n;
-            return (
-              <button
-                key={n}
-                type="button"
-                data-testid={`mood-tap-${n}`}
-                aria-pressed={selected}
-                aria-label={`Mood: ${MOOD_LABELS[i]}`}
-                title={MOOD_LABELS[i]}
-                disabled={pending}
-                onClick={() => tap(n)}
-                className={`flex h-9 w-9 items-center justify-center rounded-full border text-lg transition ${
-                  selected
-                    ? "border-brand-500 bg-brand-50 dark:bg-brand-950"
-                    : "border-transparent opacity-60 hover:opacity-100"
-                } disabled:opacity-40`}
-              >
-                {face}
-              </button>
-            );
-          })}
-        </div>
+        <MoodValencePicker value={valence} onChange={tap} disabled={pending} />
         <span
           className="text-xs text-slate-500 dark:text-slate-400"
           data-testid="mood-status"

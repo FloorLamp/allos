@@ -61,7 +61,7 @@ export default function StackedBarCard({
     );
   }
   return (
-    <div className="h-64 w-full">
+    <div className="h-64 min-w-0 max-w-full">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
           data={data}

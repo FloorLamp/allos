@@ -3,7 +3,8 @@ import { IconArrowRight } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { chartSeries } from "@/lib/chart-colors";
-import { formatHm } from "@/lib/sleep-summary";
+import { formatHm, sleepRecordPresentation } from "@/lib/sleep-summary";
+import { sriPresentation } from "@/lib/sleep-regularity";
 import {
   getUnitPrefs,
   getDisplayFormatPrefs,
@@ -58,7 +59,6 @@ import type { DateRange } from "@/lib/timeline-format";
 import { EmptyState } from "@/components/ui";
 import LineChartCard from "@/components/LineChartCard";
 import NotesText from "@/components/NotesText";
-import StackedBarCard from "@/components/StackedBarCard";
 import ScrollFade from "@/components/ScrollFade";
 import BodyTrendCharts, {
   type BodyChartSpec,
@@ -108,6 +108,7 @@ export default async function BodySection({
   const { login, profile } = await requireSession();
   const units = getUnitPrefs(login.id);
   const formatPrefs = getDisplayFormatPrefs(login.id);
+  const todayStr = today(profile.id);
   const wu = units.weightUnit;
 
   // Read the whole series (ALL_ROWS overrides the default 365-row cap) so an
@@ -367,8 +368,13 @@ export default async function BodySection({
   // deleted) — last night's main-session duration + the SRI — linking to /sleep.
   // Both figures come from the SAME computations the Sleep page reads.
   const lastNight = getLastNightSummary(profile.id);
+  const lastNightPresentation = lastNight
+    ? sleepRecordPresentation(lastNight.wakeDay, todayStr, formatPrefs)
+    : null;
+  const visibleLastNight =
+    lastNightPresentation?.freshness === "stale" ? null : lastNight;
   const sleepReg = getSleepRegularity(profile.id);
-  const hasSleep = lastNight != null || sleepReg != null;
+  const hasSleep = visibleLastNight != null || sleepReg != null;
   const leanMassChart = getMetricDailyTotals(profile.id, "lean_mass_kg").map(
     (r) => ({ date: r.date, value: round(r.value, 1) })
   );
@@ -385,24 +391,8 @@ export default async function BodySection({
   const caloriesChart = getMetricDailyTotals(profile.id, "nutrition_kcal").map(
     (r) => ({ date: r.date, value: Math.round(r.value) })
   );
-  const protein = new Map(
-    getMetricDailyTotals(profile.id, "protein_g").map((r) => [r.date, r.value])
-  );
-  const carbs = new Map(
-    getMetricDailyTotals(profile.id, "carbs_g").map((r) => [r.date, r.value])
-  );
-  const fat = new Map(
-    getMetricDailyTotals(profile.id, "fat_g").map((r) => [r.date, r.value])
-  );
-  const macroDates = [
-    ...new Set([...protein.keys(), ...carbs.keys(), ...fat.keys()]),
-  ].sort();
-  const macrosChart = macroDates.map((d) => ({
-    date: d.slice(5),
-    protein: round(protein.get(d) ?? 0, 0),
-    carbs: round(carbs.get(d) ?? 0, 0),
-    fat: round(fat.get(d) ?? 0, 0),
-  }));
+  // Macros (protein/carbs/fat) + fiber moved to Trends → Nutrition (#1166) — macros are
+  // nutrition, not body-composition (the #1076 "category names the surface" principle).
   // BMI over the weight series, pairing each weigh-in with the height in effect
   // ON OR BEFORE that date — the SAME date-paired derivation the growth card uses
   // (bmiSeriesDatePaired), so the two BMI charts on a child's Body tab can't
@@ -446,7 +436,6 @@ export default async function BodySection({
     bmrChart.length > 0 ||
     hydrationChart.length > 0 ||
     caloriesChart.length > 0 ||
-    macrosChart.length > 0 ||
     bmiChart.length > 0;
 
   // #1067 Phase 1: order the synced daily charts by relevance (present + recent
@@ -489,7 +478,7 @@ export default async function BodySection({
       id: "sleep",
       label: "Sleep",
       present: hasSleep,
-      latestDate: lastNight?.wakeDay ?? null,
+      latestDate: visibleLastNight?.wakeDay ?? null,
       order: 1,
       node: (
         <Link
@@ -509,25 +498,31 @@ export default async function BodySection({
             </span>
           </div>
           <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
-            {lastNight && (
+            {visibleLastNight && lastNightPresentation && (
               <div>
                 <div
                   className="text-3xl font-bold tabular-nums text-slate-800 dark:text-slate-100"
                   data-testid="sleep-tile-duration"
                 >
-                  {formatHm(lastNight.durationMin)}
+                  {formatHm(visibleLastNight.durationMin)}
                 </div>
                 <div className="text-xs text-slate-500 dark:text-slate-400">
-                  Last night ·{" "}
-                  {formatClockMinutes(
-                    formatPrefs.timeFormat,
-                    lastNight.bedMinutes
-                  )}
-                  –
-                  {formatClockMinutes(
-                    formatPrefs.timeFormat,
-                    lastNight.wakeMinutes
-                  )}
+                  {lastNightPresentation.label}
+                  {visibleLastNight.bedMinutes != null &&
+                    visibleLastNight.wakeMinutes != null && (
+                      <>
+                        {" · "}
+                        {formatClockMinutes(
+                          formatPrefs.timeFormat,
+                          visibleLastNight.bedMinutes
+                        )}
+                        –
+                        {formatClockMinutes(
+                          formatPrefs.timeFormat,
+                          visibleLastNight.wakeMinutes
+                        )}
+                      </>
+                    )}
                 </div>
               </div>
             )}
@@ -537,10 +532,10 @@ export default async function BodySection({
                   className="text-3xl font-bold text-indigo-600 dark:text-indigo-300"
                   data-testid="sri-value"
                 >
-                  {Math.round(sleepReg.sri)}
+                  {sriPresentation(sleepReg.sri).text}
                 </div>
                 <div className="text-xs text-slate-500 dark:text-slate-400">
-                  Regularity (SRI / 100)
+                  Regularity
                 </div>
               </div>
             )}
@@ -717,40 +712,6 @@ export default async function BodySection({
         </div>
       ),
     },
-    {
-      id: "macros",
-      label: "Macros",
-      present: macrosChart.length > 0,
-      // macrosChart's `date` is sliced to MM-DD for display; use the full-date
-      // macroDates for recency so the sort stays correct across year boundaries.
-      latestDate:
-        macroDates.length > 0 ? macroDates[macroDates.length - 1] : null,
-      order: 10,
-      node: (
-        <div
-          id="macros"
-          className={`${anchorClass} lg:col-span-2`}
-          key="macros"
-        >
-          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-            Macros (protein / carbs / fat)
-          </h2>
-          <StackedBarCard
-            data={macrosChart}
-            unit=" g"
-            series={[
-              {
-                key: "protein",
-                label: "Protein",
-                color: chartSeries.violet,
-              },
-              { key: "carbs", label: "Carbs", color: chartSeries.amber },
-              { key: "fat", label: "Fat", color: chartSeries.rose },
-            ]}
-          />
-        </div>
-      ),
-    },
   ];
   const orderedSynced = orderBodyCharts(syncedEntries);
 
@@ -815,7 +776,6 @@ export default async function BodySection({
   // Body fat is dropped for a growth-tracked profile (matching the charts/history);
   // every other metric self-gates on presence (buildBodyMetricTile → present=false
   // ⇒ orderBodyMetricTiles drops it). Sleep is a SPECIAL tile linking to /sleep.
-  const todayStr = today(profile.id);
   const tileSeries: Array<[BodyMetricSlug, { date: string; value: number }[]]> =
     [
       ["weight", weightAll],
@@ -846,7 +806,7 @@ export default async function BodySection({
   const sleepGridTile = hasSleep
     ? {
         present: true,
-        latestDate: lastNight?.wakeDay ?? null,
+        latestDate: visibleLastNight?.wakeDay ?? null,
         node: (
           <Link
             href="/sleep"
@@ -863,17 +823,22 @@ export default async function BodySection({
                 aria-hidden
               />
             </div>
-            {lastNight && (
-              <div className="text-2xl font-bold tabular-nums text-slate-800 dark:text-slate-100">
-                {formatHm(lastNight.durationMin)}
-              </div>
+            {visibleLastNight && lastNightPresentation && (
+              <>
+                <div className="text-2xl font-bold tabular-nums text-slate-800 dark:text-slate-100">
+                  {formatHm(visibleLastNight.durationMin)}
+                </div>
+                <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                  {lastNightPresentation.label}
+                </div>
+              </>
             )}
             {sleepReg != null && (
               <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                Regularity {Math.round(sleepReg.sri)}/100
+                Regularity · {sriPresentation(sleepReg.sri).text}
               </div>
             )}
-            {!lastNight && sleepReg == null && (
+            {!visibleLastNight && sleepReg == null && (
               <div className="text-sm text-slate-500 dark:text-slate-400">
                 Open Sleep
               </div>

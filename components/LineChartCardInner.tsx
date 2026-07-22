@@ -43,6 +43,7 @@ export default function LineChartCard({
   referenceValue,
   decimals,
   yDomain,
+  syncId,
 }: {
   data: { date: string; value: number | null }[];
   dataKey?: string;
@@ -55,6 +56,9 @@ export default function LineChartCard({
   // the biomarker DETAIL chart scale the same series identically (0-clamped for a
   // non-negative analyte; a flat series gets a small window). Omitted → auto.
   yDomain?: [number, number];
+  // Charts with the same id share hover position/tooltip alignment (used by the
+  // paired sleep + mood panels so the same date is compared in both).
+  syncId?: string;
   // Display precision for the tooltip value, so it reads the same rounded number
   // as the caller's headline/table (issue #403). Omitted → cap at 2 decimals.
   decimals?: number;
@@ -113,10 +117,11 @@ export default function LineChartCard({
     );
   }
   return (
-    <div className={`${heightClass} w-full`}>
+    <div className={`${heightClass} min-w-0 max-w-full`}>
       <ResponsiveContainer width="100%" height="100%">
         <LineChart
           data={data}
+          syncId={syncId}
           margin={{ top: 10, right: 16, bottom: 0, left: -8 }}
         >
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />

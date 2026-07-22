@@ -47,7 +47,7 @@ export function aggregateDoseDay(
   total: number,
   takenN: number,
   skippedN: number
-): AdherenceState {
+): Exclude<AdherenceState, "na"> {
   const due = Math.max(total, 1);
   if (takenN >= due) return "taken";
   if (takenN > 0) return "partial";

@@ -40,5 +40,6 @@ export async function logMood(formData: FormData): Promise<FormResult> {
 
   revalidatePath("/");
   revalidatePath("/trends");
+  revalidatePath("/sleep");
   return formOk();
 }

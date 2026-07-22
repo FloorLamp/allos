@@ -1,13 +1,14 @@
 // Read/write layer for stored AI narratives (issue #20): weekly/monthly period
-// recaps and lab-trend interpretations. Mirrors the daily-insights persistence
-// (upsert on a natural key, profile-scoped reads) so a narrative survives across
-// requests and a regenerate replaces the prior one for the same anchor.
+// recaps. Mirrors the daily-insights persistence (upsert on a natural key,
+// profile-scoped reads) so a narrative survives across requests and a regenerate
+// replaces the prior one for the same anchor. (The lab-trend interpretation kind was
+// retired with the Trends → Biomarkers tab — #1164.)
 
 import { db } from "../db";
 import type { Narrative, NarrativeKind } from "../types";
 
-// The recap kinds (period-scoped), separate from the lab-trend kind. Used by the
-// UI to list period recaps distinctly from lab-trend reads.
+// The recap kinds (period-scoped) the Insights tab lists. Now the whole narrative
+// vocabulary, since the lab-trend kind was removed (#1164).
 export const RECAP_KINDS: readonly NarrativeKind[] = ["week", "month"];
 
 export interface SaveNarrativeInput {
@@ -42,7 +43,7 @@ export function saveNarrative(profileId: number, input: SaveNarrativeInput) {
 
 // The most recent stored narratives for a profile, newest anchor first. When
 // `kinds` is given, only those kinds are returned (e.g. just the period recaps
-// for the Insights tab, or just lab-trend reads for the Biomarkers tab).
+// for the Insights tab).
 export function getRecentNarratives(
   profileId: number,
   kinds?: readonly NarrativeKind[],

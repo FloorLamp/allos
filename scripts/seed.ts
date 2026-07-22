@@ -2150,6 +2150,28 @@ db.prepare(
    VALUES (1, 'food_group', 'fatty_fish', 2, ?)`
 ).run(`${daysAgo(63)} 09:00:00`);
 
+// Tracked macros + fiber (Health Connect protein_grams/carbs_grams/fat_grams/
+// dietary_fiber_grams → protein_g/carbs_g/fat_g/fiber_g), so the Trends → Nutrition
+// "Macros & fiber" chart (#1166) has a real over-time series. Deliberately dated
+// 8–30 days ago — OUTSIDE the "this week" window — so it never flips the /nutrition
+// protein/fiber adequacy cards off their ESTIMATED (floor) basis, which the
+// protein-adequacy spec pins. Synthetic full-day totals with a small deterministic
+// jitter so the stacked bars vary day to day.
+const insMacro = db.prepare(
+  `INSERT OR IGNORE INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+     VALUES (1, 'health-connect', ?, ?, ?, ?, ?)`
+);
+for (let d = 30; d >= 8; d--) {
+  const date = daysAgo(d);
+  const start = `${date}T00:00:00Z`;
+  const end = `${date}T23:59:00Z`;
+  const j = (d * 5) % 17; // 0..16 deterministic jitter
+  insMacro.run("protein_g", date, start, end, 110 + j);
+  insMacro.run("carbs_g", date, start, end, 210 + j * 2);
+  insMacro.run("fat_g", date, start, end, 65 + (j % 11));
+  insMacro.run("fiber_g", date, start, end, 22 + (j % 9));
+}
+
 // ── Substance use (#998): a screening score + a reduction target ─────────────
 // One synthetic, lower-risk AUDIT-C reading (a screening-instrument score with its
 // three 0..4 item answers) plus an "≤ 7 drinks/week" reduction target (scope_kind

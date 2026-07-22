@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { typicalWakeTime, type SleepSession } from "../sleep-regularity";
+import {
+  typicalBedTime,
+  typicalWakeTime,
+  type SleepSession,
+} from "../sleep-regularity";
 
 // A UTC overnight session: bed the evening BEFORE `wakeDay`, waking at `wakeHhmm`
 // on `wakeDay`. With tz "UTC" the wall clock equals the stored instant, so the
@@ -100,5 +104,15 @@ describe("typicalWakeTime", () => {
     const days = consecutiveWakeDays("2026-06-01", 16);
     const sessions = days.map((d) => utcNight(d, hhmm(315), "22:00"));
     expect(typicalWakeTime(sessions, "UTC")).toBe(315);
+  });
+});
+
+describe("typicalBedTime", () => {
+  it("shares the canonical window and median derivation for bedtime", () => {
+    const days = consecutiveWakeDays("2026-06-01", 16);
+    const sessions = days.map((day, index) =>
+      utcNight(day, "07:00", index === 0 ? "20:00" : "23:00")
+    );
+    expect(typicalBedTime(sessions, "UTC")).toBe(23 * 60);
   });
 });

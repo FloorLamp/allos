@@ -27,7 +27,10 @@ test("Trends → Body renders the compact sleep tile with the SRI (#160/#1066)",
   // highly regular, so it renders a high positive number.
   const value = tile.getByTestId("sri-value");
   await expect(value).toBeVisible();
-  const sri = Number((await value.innerText()).trim());
+  await expect(value).toHaveText(/^SRI (?:−)?\d+$/);
+  const sri = Number(
+    (await value.innerText()).trim().replace("SRI ", "").replace("−", "-")
+  );
   expect(Number.isFinite(sri)).toBe(true);
   expect(sri).toBeGreaterThan(0);
   expect(sri).toBeLessThanOrEqual(100);
