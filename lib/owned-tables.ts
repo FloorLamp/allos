@@ -182,6 +182,17 @@ export const OWNED_TABLES = [
   // path an idempotent per-day upsert, so a delete is a plain row delete and
   // deleteProfile clears it by profile_id.
   "mood_logs",
+  // Episode ↔ visit link rows (#1198): the MANY relationship replacing the old single
+  // illness_episodes.encounter_id FK — one row per (episode, encounter) so an episode
+  // holds its full care trail. Directly owned; its encounter_id FK carries no ON DELETE
+  // (deleting an encounter clears its link rows first via nullEncounterLinks). Cleared on
+  // episode delete/merge (row-ops side-state, #203). deleteProfile clears by profile_id.
+  "episode_encounters",
+  // Meds an episode's end stopped (#1140 Part B): the reversal record so a reopen can
+  // restart exactly what the end closed (SUGGEST-ONLY, guarded to the still-illness_resolved
+  // course). Directly owned; its item_id/course_id FKs carry no ON DELETE (cleared on med
+  // delete and on episode delete/merge, #203). deleteProfile clears by profile_id.
+  "episode_stopped_meds",
 ] as const;
 
 export type OwnedTable = (typeof OWNED_TABLES)[number];
