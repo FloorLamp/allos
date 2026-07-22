@@ -54,6 +54,220 @@ export const KNOWN_HEALTH_CONNECT_KEYS = new Set<string>([
   "exercise",
 ]);
 
+// ---- per-type granularity guidance (issue #1065) ----
+//
+// The Health Connect Webhook exporter lets the user pick EACH data type's granularity
+// (`daily` / `full` / `1m` / `5m` / `15m`, plus off). The parser below has firm
+// per-type expectations, and a wrong pick has a concrete failure mode: too fine where
+// the app stores a daily total inflates the payload (the 11.3 MB wedge, #1064) and, for
+// additive metrics, re-opens the cross-app origin-dedup problem server-side; too coarse
+// where the app stores fine (HR at `daily`) starves the minute-bucket store. This map is
+// the ONE source of truth for the recommended settings: the setup card renders it, the
+// README/features table renders it, and the at-ingest detectors below read the
+// recommended setting from it — a parser change can't strand the instructions.
+export type ExporterSetting = "daily" | "full" | "1m" | "off";
+
+export interface SourceFidelityRow {
+  // The exporter app's data-type label(s) this row covers, verbatim-ish for the card.
+  label: string;
+  // The top-level payload keys this row governs. A key with a parser home is one of
+  // KNOWN_HEALTH_CONNECT_KEYS (the registry-completeness test binds the two); an
+  // `off` row (skin temperature) has a key with no home, shown so the user knows to
+  // leave it disabled.
+  keys: string[];
+  // The exporter option to select for this row.
+  setting: ExporterSetting;
+  // Why — what the app stores, in one clause for the card's "Why" column.
+  why: string;
+}
+
+export const SOURCE_FIDELITY: SourceFidelityRow[] = [
+  {
+    label: "Steps, Distance, Active/Total calories",
+    keys: ["steps", "distance", "active_calories", "total_calories"],
+    setting: "daily",
+    why: "stored as daily totals; `daily` also lets Health Connect apply its own cross-app origin dedup, so the number matches the phone's Health Connect screen",
+  },
+  {
+    label: "Heart rate",
+    keys: ["heart_rate"],
+    setting: "1m",
+    why: "stored as minute buckets (min/max per minute); `full`/per-second is discarded ~60:1 and `5m`/`15m`/`daily` starves the minute store that feeds HR charts",
+  },
+  {
+    label: "Weight, Body fat, Resting HR, Height, Lean/Bone mass, BMR",
+    keys: [
+      "weight",
+      "body_fat",
+      "resting_heart_rate",
+      "height",
+      "lean_body_mass",
+      "bone_mass",
+      "basal_metabolic_rate",
+    ],
+    setting: "daily",
+    why: "folded to a per-day aggregate in Body Metrics",
+  },
+  {
+    label: "Blood pressure, Glucose, SpO₂, Temperature, Respiratory rate, VO₂max, HRV",
+    keys: [
+      "blood_pressure",
+      "blood_glucose",
+      "oxygen_saturation",
+      "body_temperature",
+      "respiratory_rate",
+      "vo2_max",
+      "heart_rate_variability",
+    ],
+    setting: "full",
+    why: "every individual reading is kept (vitals / HRV samples)",
+  },
+  {
+    label: "Sleep",
+    keys: ["sleep"],
+    setting: "full",
+    why: "per-session + stages, attributed to the wake-up day",
+  },
+  {
+    label: "Exercise",
+    keys: ["exercise"],
+    setting: "full",
+    why: "per-session → workouts in Training history",
+  },
+  {
+    label: "Hydration, Nutrition",
+    keys: ["hydration", "nutrition"],
+    setting: "daily",
+    why: "daily flows (nutrition rides on a food tracker's Health Connect sync)",
+  },
+  {
+    label: "Skin temperature",
+    keys: ["skin_temperature"],
+    setting: "off",
+    why: "relative delta records have no model home — leave it off",
+  },
+];
+
+// The recommended exporter setting for a payload key, from SOURCE_FIDELITY. Undefined
+// for a key not in the map. Used by the at-ingest detectors so the hint text and the
+// setup card can never disagree about what to recommend (one source of truth).
+export function recommendedSettingForKey(
+  key: string
+): ExporterSetting | undefined {
+  return SOURCE_FIDELITY.find((row) => row.keys.includes(key))?.setting;
+}
+
+// ---- at-ingest wrong-setting detection (issue #1065) ----
+//
+// The payload's SHAPE reveals the granularity the user picked, so the server can
+// diagnose a wrong setting instead of degrading silently. Detection is INFORMATIONAL —
+// it never gates or drops a record; it appends a hint to the sync event's warnings,
+// surfaced in Data → Review next to the insert/skip split.
+
+// Summable interval metrics that Health Connect stores as DAILY totals. Arriving as
+// many sub-daily intervals per day means the exporter is set finer than `daily` — the
+// payload-inflation case. Kept as an explicit list (a subset of the SOURCE_FIDELITY
+// `daily` rows): point/day metrics like weight are naturally ~1/day and can't inflate,
+// so only the genuinely-additive interval types are checked.
+const FINE_GRAINED_CHECK: { key: string; label: string }[] = [
+  { key: "steps", label: "Steps" },
+  { key: "distance", label: "Distance" },
+  { key: "active_calories", label: "Active calories" },
+  { key: "total_calories", label: "Total calories" },
+];
+
+// A `daily` interval metric yields ~1 record/day/origin (a handful even with several
+// origin apps). 8+ records in a single day is unmistakably a sub-daily (`15m`/`1m`)
+// setting — well clear of any legitimate per-origin daily count.
+export const FINE_GRAINED_ROWS_PER_DAY = 8;
+
+// Heart rate at `1m` yields ~1440 records/day; `daily` yields ~1/day. To avoid
+// mistaking a sparse-but-fine day for a daily aggregate, only flag it when the batch
+// spans ≥2 distinct days with ≤2 records on the busiest day (the daily-aggregate shape).
+export const COARSE_HR_MIN_DAYS = 2;
+export const COARSE_HR_MAX_ROWS_PER_DAY = 2;
+
+function looseArray(v: unknown): Record<string, unknown>[] {
+  return Array.isArray(v)
+    ? (v.filter((x) => x && typeof x === "object") as Record<string, unknown>[])
+    : [];
+}
+
+// The calendar-day key (UTC date prefix) of a record's primary instant, or null when
+// none is present/valid. A coarse heuristic — the exact profile-timezone day isn't
+// needed to tell 1/day from 1440/day. Reads `time` (point records) then `start_time`
+// (interval records).
+function recordDayKey(rec: Record<string, unknown>): string | null {
+  const iso =
+    (typeof rec.time === "string" && rec.time) ||
+    (typeof rec.start_time === "string" && rec.start_time) ||
+    null;
+  if (!iso) return null;
+  const day = iso.slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null;
+}
+
+// The most records any single calendar day carries, over the given records. Pure.
+export function maxRecordsPerDay(recs: Record<string, unknown>[]): number {
+  const perDay = new Map<string, number>();
+  for (const rec of recs) {
+    const day = recordDayKey(rec);
+    if (!day) continue;
+    perDay.set(day, (perDay.get(day) ?? 0) + 1);
+  }
+  let max = 0;
+  for (const n of perDay.values()) if (n > max) max = n;
+  return max;
+}
+
+// The number of distinct calendar days the given records span. Pure.
+export function distinctRecordDays(recs: Record<string, unknown>[]): number {
+  const days = new Set<string>();
+  for (const rec of recs) {
+    const day = recordDayKey(rec);
+    if (day) days.add(day);
+  }
+  return days.size;
+}
+
+// Detect a mis-set exporter granularity from the payload shape and return actionable
+// hint lines for the sync event (issue #1065). Pure and defensive: a non-object body,
+// or a type absent from the batch, contributes nothing. The recommended setting in
+// each hint comes from SOURCE_FIDELITY (recommendedSettingForKey), never a literal.
+export function detectGranularityHints(body: unknown): string[] {
+  if (!body || typeof body !== "object") return [];
+  const payload = body as Record<string, unknown>;
+  const hints: string[] = [];
+
+  // Too fine: a daily-stored additive metric arriving as many sub-daily rows/day.
+  for (const { key, label } of FINE_GRAINED_CHECK) {
+    const recs = looseArray(payload[key]);
+    if (!recs.length) continue;
+    if (maxRecordsPerDay(recs) >= FINE_GRAINED_ROWS_PER_DAY) {
+      const setting = recommendedSettingForKey(key) ?? "daily";
+      hints.push(
+        `${label} look like a fine-grained setting — set ${label} to \`${setting}\` in the webhook app (large payloads risk rejection).`
+      );
+    }
+  }
+
+  // Too coarse: heart rate arriving as daily aggregates (≈1 record/day over ≥2 days),
+  // which starves the minute-bucket store the HR charts read.
+  const hr = looseArray(payload.heart_rate);
+  if (
+    hr.length &&
+    distinctRecordDays(hr) >= COARSE_HR_MIN_DAYS &&
+    maxRecordsPerDay(hr) <= COARSE_HR_MAX_ROWS_PER_DAY
+  ) {
+    const setting = recommendedSettingForKey("heart_rate") ?? "1m";
+    hints.push(
+      `Heart rate looks like a daily setting — set Heart rate to \`${setting}\` to get minute-level charts.`
+    );
+  }
+
+  return hints;
+}
+
 // Count the records carried under top-level array keys the parser does NOT consume.
 // Pure and defensive: a non-object body, a non-array value, or a known key all
 // contribute 0. This is the "unknown record type" tally that folds into out.skipped
@@ -772,6 +986,13 @@ export function parseHealthConnectPayload(
   }
 
   out.details.origins = originChoices(out.samples);
+
+  // Wrong-granularity diagnostics (#1065): read the raw payload shape and append any
+  // actionable hints to the warnings surfaced in Data → Review. Informational only —
+  // nothing here changes what was parsed or stored above.
+  for (const hint of detectGranularityHints(payload)) {
+    out.details.warnings.push(hint);
+  }
 
   return out;
 }
