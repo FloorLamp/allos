@@ -20,8 +20,17 @@ import { E2E_MEMBER_PASSWORD, E2E_LOGIN_TRENDS_BODY } from "./fixture-logins";
 const PHONE = { width: 360, height: 800 };
 const DESKTOP = { width: 1280, height: 900 };
 
-async function openBodyTab(page: Page): Promise<void> {
-  await page.goto("/trends?tab=body");
+async function openBodyTab(
+  page: Page,
+  opts: { view?: "all" | "tiles" } = {}
+): Promise<void> {
+  // #1067 Phase 2 made TILES the mobile default; the sticky jump chips + the
+  // per-chart anchors now live in the classic chart stack (`view=all`), so a test
+  // that asserts them opens the Body tab in that layout explicitly.
+  const q = opts.view
+    ? `/trends?tab=body&view=${opts.view}`
+    : "/trends?tab=body";
+  await page.goto(q);
   await expect(page.getByRole("tab", { name: "Body" })).toHaveAttribute(
     "aria-selected",
     "true"
@@ -75,7 +84,7 @@ test.describe("Trends → Body mobile (#1067 Phase 1)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     await page.setViewportSize(PHONE);
-    await openBodyTab(page);
+    await openBodyTab(page, { view: "all" });
 
     const jumpRow = page.getByTestId("chart-jump-chips");
     await expect(jumpRow).toBeVisible();
@@ -114,8 +123,10 @@ test.describe("Trends → Body mobile (#1067 Phase 1)", () => {
     });
     await page.setViewportSize(PHONE);
 
-    // Deep-link straight to the HR chart — the anchor resolves to the card.
-    await page.goto("/trends?tab=body#hr");
+    // Deep-link straight to the HR chart — the anchor resolves to the card. The
+    // per-chart anchors live in the classic chart stack (view=all) since #1067
+    // Phase 2 made tiles the mobile default.
+    await page.goto("/trends?tab=body&view=all#hr");
     await expect(page.getByRole("tab", { name: "Body" })).toHaveAttribute(
       "aria-selected",
       "true"
@@ -123,7 +134,7 @@ test.describe("Trends → Body mobile (#1067 Phase 1)", () => {
     await expect(page.locator("#hr")).toBeInViewport();
 
     // And the sleep anchor lands on the sleep tile.
-    await page.goto("/trends?tab=body#sleep");
+    await page.goto("/trends?tab=body&view=all#sleep");
     await expect(page.getByTestId("sleep-summary-tile")).toBeInViewport();
 
     await page.context().close();
