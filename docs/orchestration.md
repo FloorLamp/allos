@@ -400,57 +400,28 @@ python… ; done` CI-poll loop running in the background was starving the
    seed still wrote `notify_last_error*` settings keys the reader no longer
    consulted.) Reviewers: a PR that relocates state must grep
    `e2e/seed-events.ts` and `scripts/seed.ts` for the old mechanism.
-8. **The midnight-UTC window (~23:30–00:15 UTC)** — a gate that fails only in
-   this window is almost never the PR. Before blaming the diff, read the run's
-   wall-clock timestamps. Two subclasses, both hit on the #1047 gates:
-   (a) a CLIENT component computing a relative age ("2 hrs ago") from the
-   browser's real clock, which cannot see `ALLOS_TEST_NOW` — a fixture reading
-   stamped 00:05 flips to "(Yesterday)" as real time nears midnight. The pure
-   formatters (`formatRelativeTime`, `readingClockWithRelativeAge`) already
-   take an injectable `now`; the fix is always the #1028 pattern — thread a
-   server-computed `nowIso` prop across the "use client" boundary, never a
-   client-side `new Date()`. (b) a DB-tier fixture pairing `today(profileId)`
-   with a wall clock derived from a SHIFTED real instant (`now - 20min` →
-   `getUTCHours`): just after UTC midnight the hh:mm belongs to yesterday, so
-   date+time reconstructs an instant ~24h in the FUTURE (workout-presence-gate
-   failed exactly so at 00:14 UTC). Discipline: derive a fixture row's date
-   AND time from ONE instant. Sweep hook: `grep getUTCHours lib/__db_tests__`.
-   The GENERAL form is the **morning-UTC band** (issue #1048): rows the suite
-   writes at runtime get REAL timestamps (SQL `datetime('now')` defaults),
-   while assertions run on the frozen `ALLOS_TEST_NOW` = today 12:00 — from
-   00:00 to ~11:00 UTC real time LAGS frozen time by hours, and every
-   liveness/recency window reads a just-written row as stale (afternoon runs
-   survive only because future-instant tolerance is built in; morning runs
-   had simply never happened before 2026-07-20). Triage drill for ANY gate
-   failure in that band: reproduce the failed specs on plain MAIN at the same
-   hour — an identical failure proves the band, not the PR; then rerun the
-   gate after ~12:05 UTC (real ≥ frozen, the proven regime) and merge on that
-   green. Do not patch specs to tolerate the band; the structural fix is
-   #1048's design pass. **RESOLVED 2026-07-21 (PR #1103):** the frozen instant
-   is now the run's REAL start, not a fixed noon, so real time can no longer lag
-   frozen time by hours at any hour — the band and its night-gate discipline
-   below are history, kept for the triage pattern. The one residual: a run that
-   STARTS within its own duration (~25 min) of real midnight can still roll
-   SQL-stamped rows a day ahead of the frozen date.
-   **The band is BROAD, not two specs (2026-07-21, ~03:00 UTC).** It was first
-   seen as `workout-presence` + `temperature-unit`, but a night gate showed
-   ~10 recency/liveness-gated specs failing identically on plain main:
-   `protocol-reach` (×4 — the "ongoing protocol" annotations + biomarker
-   outcome options), `protein-adequacy`, `profile-switch-toasts` ("no ghost
-   toasts on first poll"), `qualitative-chart` (×3), plus the original two —
-   all rendering only the app shell (main content data-gated-out), no server
-   error logged, seed clean. So a night full-suite gate ALWAYS carries ~10
-   rotating false-failures, which is indistinguishable at a glance from
-   (a) a real regression or (b) single-process whole-suite degradation — and
-   tonight all three got confused on one gate. Discipline: (1) at night, the
-   ONLY authoritative full green is a post-12:05-UTC rerun; (2) to clear a
-   specific PR before then, the bisect is decisive — run the SAME failing
-   specs on the PR's BASE commit (pre-change main) at the SAME hour; identical
-   failures ⇒ band, and the PR's own changed spec passing + a green check job
-   is enough to merge on the carve-out (this is how food-nudge #1097 merged).
-   (3) A `BUILD=1` when checking out an OLDER commit in a reused worktree is
-   usually the downgrade guard (`user_version` newer than the old code's max
-   migration) — `rm data/allos.db*` and rebuild, it is NOT a real build break.
+8. **UTC time-band false-failures (RESOLVED 2026-07-21, PR #1103; kept for the
+   triage pattern).** A gate that fails only in a wall-clock window is almost
+   never the PR — read the run's timestamps before blaming the diff. Original
+   band: real time lagged the frozen `ALLOS_TEST_NOW` (a fixed noon) for hours
+   after 00:00 UTC, so runtime-stamped rows (`datetime('now')`) read stale
+   against every liveness/recency window, spraying ~10 rotating false-failures
+   across a night full-suite gate. #1103 froze the instant to the run's REAL
+   start, so real can no longer lag frozen at any hour. **Residual:** a run that
+   STARTS within its own duration (~25 min) of real midnight can still roll a
+   SQL-stamped row a day ahead of the frozen date. **Triage drill (still the
+   move for any suspected time artifact):** run the SAME failing specs on the
+   PR's BASE commit at the SAME hour — identical failures ⇒ time-band, not the
+   PR, and the PR's own changed spec passing + a green `check` merges on the
+   carve-out. Two root causes to grep for: (a) a CLIENT relative-age
+   (`"2 hrs ago"`) off the browser clock, which can't see `ALLOS_TEST_NOW` — fix
+   is the #1028 pattern (thread a server `nowIso` across the "use client"
+   boundary, never client `new Date()`); (b) a DB fixture pairing
+   `today(profileId)` with a wall clock off a SHIFTED instant → an instant ~24h
+   in the FUTURE (`grep getUTCHours lib/__db_tests__`; derive a row's date AND
+   time from ONE instant). (A `BUILD=1` when checking out an OLDER commit in a
+   reused worktree is the downgrade guard, not a build break — `rm data/allos.db*`
+   and rebuild.)
 9. **Persisted channel config turns event-driven dispatches into marker
    pollution** — the delivery-health marker is GLOBAL (one `notify_lifecycle`
    row), and `notify-delivery-error.spec.ts` asserts the seeded fixture
