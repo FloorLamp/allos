@@ -26,6 +26,24 @@ export function getMedicationsMissingRxcuiCount(profileId: number): number {
   );
 }
 
+// The SOLE unconfirmed medication's id when exactly ONE active medication lacks a
+// confirmed RxCUI, else null (#1146). Same predicate as the count above (the two
+// reads must agree on what "unconfirmed" means), read with LIMIT 2 so a many-med
+// profile never pays for a full-list scan. Profile-scoped.
+export function getMedicationMissingRxcuiSoleId(
+  profileId: number
+): number | null {
+  const rows = db
+    .prepare(
+      `SELECT id FROM intake_items
+        WHERE profile_id = ? AND kind = 'medication' AND active = 1
+          AND (rxcui IS NULL OR TRIM(rxcui) = '')
+        LIMIT 2`
+    )
+    .all(profileId) as { id: number }[];
+  return rows.length === 1 ? rows[0].id : null;
+}
+
 // Documents whose extraction is in the terminal `failed` state — stored but
 // contributing nothing until reprocessed (Data → Review). Profile-scoped.
 export function getFailedExtractionDocumentCount(profileId: number): number {

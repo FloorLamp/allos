@@ -117,6 +117,74 @@ describe("buildDataQualityFindings — sparse fixture end-to-end (#1045)", () =>
     ).toBe(false);
   });
 
+  it("med-rxcui CTA deep-links the SOLE unconfirmed med's edit form, else the filtered list (#1146)", () => {
+    const { profileId } = makeProfile("dq-rxcui-cta");
+    setUserSex(profileId, "male");
+    setUserBirthdate(profileId, "1985-01-01");
+    const medId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority, as_needed)
+           VALUES (?, 'Solo Mystery Pill', 1, 'medication', 'daily', 'high', 0)`
+        )
+        .run(profileId).lastInsertRowid
+    );
+
+    const one = buildDataQualityFindings(profileId).find(
+      (f) => f.dedupeKey === dataQualityDedupeKey("med-rxcui")
+    );
+    expect(one?.actionHref).toBe(`/medications/${medId}?action=edit`);
+
+    // A second unconfirmed med → the list filtered to the unconfirmed slice.
+    db.prepare(
+      `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority, as_needed)
+       VALUES (?, 'Second Mystery Pill', 1, 'medication', 'daily', 'high', 0)`
+    ).run(profileId);
+    const many = buildDataQualityFindings(profileId).find(
+      (f) => f.dedupeKey === dataQualityDedupeKey("med-rxcui")
+    );
+    expect(many?.actionHref).toBe("/medications?filter=needs-rxcui");
+  });
+
+  it("phenoage CTA prefills the biomarker add form with the first MISSING analyte (#1146)", () => {
+    const { profileId } = makeProfile("dq-phenoage-cta");
+    setUserSex(profileId, "female");
+    setUserBirthdate(profileId, "1980-01-01");
+    setSmokingHistory(profileId, {
+      status: "never",
+      packYears: null,
+      quitYear: null,
+    });
+    setRiskAttributesReviewed(profileId, true);
+    // One PhenoAge input present (Albumin) → a PARTIAL panel; the first missing
+    // analyte in checklist order is Creatinine.
+    db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, value, value_num, unit, canonical_name, source)
+       VALUES (?, '2026-01-15', 'lab', 'Albumin', '4.5', 4.5, 'g/dL', 'Albumin', 'manual')`
+    ).run(profileId);
+
+    const gap = buildDataQualityFindings(profileId).find(
+      (f) => f.dedupeKey === dataQualityDedupeKey("phenoage-inputs")
+    );
+    expect(gap?.actionHref).toBe("/results/biomarkers?new=1&name=Creatinine");
+  });
+
+  it("risk/smoking CTAs land on the anchored Care › Overview forms (#1146)", () => {
+    const { profileId } = makeProfile("dq-forms-cta");
+    setUserSex(profileId, "male");
+    setUserBirthdate(profileId, "1985-01-01");
+    const byKey = new Map(
+      buildDataQualityFindings(profileId).map((f) => [f.dedupeKey, f])
+    );
+    expect(byKey.get(dataQualityDedupeKey("smoking-status"))?.actionHref).toBe(
+      "/records/care/overview#smoking-history"
+    );
+    expect(byKey.get(dataQualityDedupeKey("risk-attributes"))?.actionHref).toBe(
+      "/records/care/overview#risk-factors"
+    );
+  });
+
   it("BOUNDARY: a structurally-complete adult profile emits nothing", () => {
     const { profileId } = makeProfile("dq-complete");
     setUserSex(profileId, "male");

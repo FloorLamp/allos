@@ -52,6 +52,7 @@ import {
 } from "./settings";
 import {
   getMedicationsMissingRxcuiCount,
+  getMedicationMissingRxcuiSoleId,
   getFailedExtractionDocumentCount,
   getLatestMetricSample,
   getBioAgeReadings,
@@ -59,7 +60,7 @@ import {
   countPrescribersNeedingLink,
 } from "./queries";
 import { resolveSmoking } from "./smoking";
-import { PHENOAGE_INPUT_COUNT } from "./bio-age";
+import { PHENOAGE_INPUT_COUNT, PHENOAGE_INPUT_NAMES } from "./bio-age";
 import {
   detectDataQualityGaps,
   dataQualityDedupeKey,
@@ -321,9 +322,15 @@ export function collectDataQualityGaps(profileId: number): DataQualityGap[] {
     heightKnown: getLatestMetricSample(profileId, "height_cm") !== null,
     smokingKnown: smoking.source !== null,
     medsMissingRxcui: getMedicationsMissingRxcuiCount(profileId),
+    medMissingRxcuiId: getMedicationMissingRxcuiSoleId(profileId),
     prescribersNeedingLink: countPrescribersNeedingLink(profileId),
     phenoAgePresentCount: bioAge.presentInputs.length,
     phenoAgeMissingCount: PHENOAGE_INPUT_COUNT - bioAge.presentInputs.length,
+    // The first missing analyte in checklist order — the #662 add-form prefill
+    // target for the phenoage CTA (#1146). Null when the panel is complete.
+    phenoAgeMissingPrimary:
+      PHENOAGE_INPUT_NAMES.find((n) => !bioAge.presentInputs.includes(n)) ??
+      null,
     failedExtractions: getFailedExtractionDocumentCount(profileId),
     riskAttributesReviewed: getRiskAttributesReviewed(profileId),
   };
