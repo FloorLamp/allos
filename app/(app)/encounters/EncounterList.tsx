@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { IconBuildingHospital } from "@tabler/icons-react";
 import EncounterForm from "./EncounterForm";
@@ -10,8 +11,27 @@ import ProviderName from "@/components/ProviderName";
 import OpenInMaps from "@/components/OpenInMaps";
 import { formatRecordDate } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import {
+  classLabel,
+  encounterKind,
+  encounterTypeDisplay,
+  ENCOUNTER_KIND_LABELS,
+  ENCOUNTER_KIND_ORDER,
+  type EncounterKind,
+} from "@/lib/encounter-kind";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
 import type { Encounter } from "@/lib/types";
+
+// The canonical kind of one encounter (#1233) — the ONE identity function every
+// surface keys on, never a per-surface string match.
+function kindOf(e: Encounter): EncounterKind {
+  return encounterKind({
+    classCode: e.class_code,
+    code: e.code,
+    codeSystem: e.code_system,
+    type: e.type,
+  });
+}
 
 // The visit date, showing a range when the encounter spans multiple days.
 function dateLabel(e: Encounter, fmt: DisplayFormatPrefs): string {
@@ -47,11 +67,11 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [
             href={`/encounters/${e.id}`}
             className="transition hover:text-brand-700 hover:underline dark:hover:text-brand-300"
           >
-            {e.type || "Visit"}
+            {encounterTypeDisplay(e.type, e.class_code)}
           </Link>
           {e.class_code ? (
             <span className="badge bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">
-              {e.class_code}
+              {classLabel(e.class_code)}
             </span>
           ) : null}
         </div>
@@ -151,28 +171,96 @@ export default function EncounterList({
   defaultDate: string;
 }) {
   const fmt = useFormatPrefs();
+  // Canonical-kind filter (#1233): "show ED visits" and friends, keyed on the ONE
+  // encounterKind() identity function. Only the kinds actually present appear as
+  // chips (in the canonical order), so a list with a single kind shows no filter.
+  const [kind, setKind] = useState<EncounterKind | "all">("all");
+  const presentKinds = useMemo(() => {
+    const seen = new Set<EncounterKind>();
+    for (const e of items) seen.add(kindOf(e));
+    return ENCOUNTER_KIND_ORDER.filter((k) => seen.has(k));
+  }, [items]);
+  const shown = useMemo(
+    () => (kind === "all" ? items : items.filter((e) => kindOf(e) === kind)),
+    [items, kind]
+  );
+
   return (
-    <RecordTable
-      items={items}
-      columns={buildColumns(fmt)}
-      emptyMessage="No visits yet. Add one, or import a MyChart / CCD health record to populate your visit history."
-      renderEditForm={(e, done) => (
-        <EncounterForm
-          action={updateEncounter}
-          encounter={e}
-          onDone={done}
-          defaultDate={defaultDate}
-        />
-      )}
-      confirmDelete={(e) => ({
-        title: "Delete visit",
-        message: `Delete the ${dateLabel(e, fmt)} visit? This can’t be undone.`,
-      })}
-      onDelete={async (e) => {
-        const fd = new FormData();
-        fd.set("id", String(e.id));
-        await deleteEncounter(fd);
-      }}
-    />
+    <>
+      {presentKinds.length > 1 ? (
+        <div
+          className="mb-3 flex flex-wrap gap-1.5"
+          data-testid="encounter-kind-filter"
+        >
+          <FilterChip
+            label="All"
+            active={kind === "all"}
+            onClick={() => setKind("all")}
+            testid="encounter-kind-all"
+          />
+          {presentKinds.map((k) => (
+            <FilterChip
+              key={k}
+              label={ENCOUNTER_KIND_LABELS[k]}
+              active={kind === k}
+              onClick={() => setKind(k)}
+              testid={`encounter-kind-${k}`}
+            />
+          ))}
+        </div>
+      ) : null}
+      <RecordTable
+        items={shown}
+        columns={buildColumns(fmt)}
+        emptyMessage="No visits yet. Add one, or import a MyChart / CCD health record to populate your visit history."
+        renderEditForm={(e, done) => (
+          <EncounterForm
+            action={updateEncounter}
+            encounter={e}
+            onDone={done}
+            defaultDate={defaultDate}
+          />
+        )}
+        confirmDelete={(e) => ({
+          title: "Delete visit",
+          message: `Delete the ${dateLabel(e, fmt)} visit? This can’t be undone.`,
+        })}
+        onDelete={async (e) => {
+          const fd = new FormData();
+          fd.set("id", String(e.id));
+          await deleteEncounter(fd);
+        }}
+      />
+    </>
+  );
+}
+
+// A single kind-filter chip. Active chip reads as a solid brand pill; inactive as a
+// quiet outline. `data-testid` gives the browser test a stable per-kind hook.
+function FilterChip({
+  label,
+  active,
+  onClick,
+  testid,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  testid: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      data-testid={testid}
+      className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+        active
+          ? "bg-brand-600 text-white dark:bg-brand-500"
+          : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-700"
+      }`}
+    >
+      {label}
+    </button>
   );
 }
