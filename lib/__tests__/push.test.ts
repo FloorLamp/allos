@@ -124,7 +124,7 @@ describe("push-core: buildPushPayload", () => {
       body: "Due",
       actions: [
         {
-          label: "Enter your DAST-10 score",
+          label: "Complete the DAST-10",
           url: "https://a.example/records/specialty/substance-use?screen=DAST-10",
         },
         { label: "✅ Done", data: "pvdone:3:drug_use_screening" },

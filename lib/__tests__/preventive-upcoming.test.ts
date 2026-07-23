@@ -82,9 +82,7 @@ describe("preventiveHref — per-class deep link from satisfiedBy (#1083)", () =
     expect(preventiveHref("screening", "alcohol_screening")).toBe(
       "/records/specialty/substance-use?screen=AUDIT-C"
     );
-  });
-
-  it("instrument total-only → the SAME ?screen= link (form focuses total entry)", () => {
+    // In-app since #1085 (was the total-only example) — the SAME ?screen= link.
     expect(preventiveHref("screening", "drug_use_screening")).toBe(
       "/records/specialty/substance-use?screen=DAST-10"
     );
@@ -117,11 +115,11 @@ describe("preventiveActionLabel — named CTA per class (#1083)", () => {
     expect(preventiveActionLabel("screening", "depression_screening")).toBe(
       "Complete the PHQ-9"
     );
-  });
-
-  it("instrument total-only → Enter your … score (can't be administered in-app)", () => {
+    // The verb is DATA-DRIVEN off satisfiedBy.entry (#1083): #1085 flipped the
+    // DAST-10 to in-app, so its CTA became "Complete the DAST-10" with no code
+    // change here.
     expect(preventiveActionLabel("screening", "drug_use_screening")).toBe(
-      "Enter your DAST-10 score"
+      "Complete the DAST-10"
     );
   });
 
@@ -164,7 +162,7 @@ describe("preventiveNudgeAction — shared link+CTA for the nudge (#1083/#221)",
     const nudge = preventiveNudgeAction(a, TODAY)!;
     const row = preventiveAssessmentToUpcomingItem(a, { today: TODAY });
     expect(nudge.href).toBe("/records/specialty/substance-use?screen=DAST-10");
-    expect(nudge.label).toBe("Enter your DAST-10 score");
+    expect(nudge.label).toBe("Complete the DAST-10");
     // Row and nudge agree — one computation, no hand-mirroring.
     expect(nudge.href).toBe(row.href);
     expect(nudge.label).toBe(row.actionLabel);
@@ -266,7 +264,7 @@ describe("preventiveAssessmentToUpcomingItem", () => {
       [
         "drug_use_screening",
         "/records/specialty/substance-use?screen=DAST-10",
-        "Enter your DAST-10 score",
+        "Complete the DAST-10",
       ],
     ];
     for (const [key, href, cta] of cases) {

@@ -30,12 +30,18 @@ import {
 } from "@/lib/instrument-records";
 import { logFoodServingCore } from "@/lib/food-log-write";
 import {
+  logSubstanceUnitCore,
+  undoSubstanceUnitCore,
+} from "@/lib/substance-log-write";
+import {
   collectUpcoming,
   getInferredPreventiveSatisfactions,
   getFrequencyTargetProgress,
   getSubstanceTarget,
   getSubstanceWeekState,
+  getAllSubstanceWeekStates,
   getAlcoholWeeklyTrend,
+  getSubstanceWeeklyTrend,
 } from "@/lib/queries";
 import { buildDigest, renderDigestMessage } from "@/lib/notifications/digest";
 import { gatherDigestInput } from "@/lib/notifications/digest-data";
@@ -69,11 +75,15 @@ function setBirthdate(profileId: number, iso: string): void {
   ).run(profileId, iso);
 }
 
-function addCap(profileId: number, cap: number): void {
+function addCap(
+  profileId: number,
+  cap: number,
+  substance: string = "alcohol"
+): void {
   db.prepare(
     `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week)
-     VALUES (?, 'substance', 'alcohol', ?)`
-  ).run(profileId, cap);
+     VALUES (?, 'substance', ?, ?)`
+  ).run(profileId, substance, cap);
 }
 
 function logDrinks(profileId: number, date: string, n: number): void {
@@ -248,7 +258,7 @@ describe("cap semantics never leak into floor-semantics surfaces (#998)", () => 
     const p = newProfile("SU state");
     addCap(p, 7);
     logDrinks(p, today(p), 5);
-    const state = getSubstanceWeekState(p);
+    const state = getSubstanceWeekState(p, "alcohol");
     expect(state.count).toBe(5);
     expect(state.target?.cap).toBe(7);
     expect(capProgressLine(state.status!)).toBe(
@@ -301,6 +311,208 @@ describe("no gamification (#998) — structural exemption + copy guard", () => {
       expect(text, `banned word "${banned}" in finding copy`).not.toContain(
         banned
       );
+    }
+  });
+});
+
+// ---- #1078: the non-food substance ledger (nicotine/cannabis) ---------------
+
+describe("substance_log ledger (#1078) — split-ledger week rollup + trend", () => {
+  it("one-tap log/undo increments and decrements the (profile, date, substance) row", () => {
+    const p = newProfile("SU nic ledger");
+    const td = today(p);
+
+    const one = logSubstanceUnitCore(p, "nicotine", td);
+    expect(one).toEqual({ kind: "logged", units: 1, substance: "nicotine" });
+    const two = logSubstanceUnitCore(p, "nicotine", td);
+    expect(two.kind === "logged" && two.units === 2).toBe(true);
+
+    // One counter row per (profile, date, substance) — the food_log shape.
+    const rows = db
+      .prepare(
+        `SELECT substance, units FROM substance_log WHERE profile_id = ? AND date = ?`
+      )
+      .all(p, td) as { substance: string; units: number }[];
+    expect(rows).toEqual([{ substance: "nicotine", units: 2 }]);
+
+    const undone = undoSubstanceUnitCore(p, "nicotine", td);
+    expect(undone).toEqual({ kind: "undone", units: 1, substance: "nicotine" });
+    // Undo to zero drops the row entirely; a further undo is a no-op at 0.
+    undoSubstanceUnitCore(p, "nicotine", td);
+    expect(undoSubstanceUnitCore(p, "nicotine", td)).toEqual({
+      kind: "undone",
+      units: 0,
+      substance: "nicotine",
+    });
+    const left = db
+      .prepare(`SELECT COUNT(*) AS n FROM substance_log WHERE profile_id = ?`)
+      .get(p) as { n: number };
+    expect(left.n).toBe(0);
+  });
+
+  it("refuses non-ledger substances: alcohol (food-log) and forged keys write nothing", () => {
+    const p = newProfile("SU ledger guard");
+    expect(logSubstanceUnitCore(p, "alcohol", today(p))).toEqual({
+      kind: "unknown-substance",
+    });
+    expect(logSubstanceUnitCore(p, "caffeine", today(p))).toEqual({
+      kind: "unknown-substance",
+    });
+    const n = db
+      .prepare(`SELECT COUNT(*) AS n FROM substance_log WHERE profile_id = ?`)
+      .get(p) as { n: number };
+    expect(n.n).toBe(0);
+  });
+
+  it("week state + trend read the substance's OWN ledger — no cross-substance or cross-ledger leaks", () => {
+    const p = newProfile("SU split ledgers");
+    const td = today(p);
+    logDrinks(p, td, 4); // food_log (alcohol)
+    logSubstanceUnitCore(p, "nicotine", td);
+    logSubstanceUnitCore(p, "nicotine", td);
+    logSubstanceUnitCore(p, "cannabis", td);
+
+    const states = getAllSubstanceWeekStates(p);
+    expect(states.map((s) => [s.substance, s.count])).toEqual([
+      ["alcohol", 4],
+      ["nicotine", 2],
+      ["cannabis", 1],
+    ]);
+
+    // The trend's current week equals the week state per substance (same window,
+    // same SUM — #221/#223), and the alcohol alias still reads the food ledger.
+    for (const s of ["nicotine", "cannabis"] as const) {
+      const trend = getSubstanceWeeklyTrend(p, s);
+      expect(trend[trend.length - 1].isCurrent).toBe(true);
+      expect(trend[trend.length - 1].count).toBe(s === "nicotine" ? 2 : 1);
+    }
+    const alcohol = getAlcoholWeeklyTrend(p);
+    expect(alcohol[alcohol.length - 1].count).toBe(4);
+  });
+});
+
+describe("buildSubstanceUseFindings (#1078) — per-substance over-target, coaching tier, calm", () => {
+  it("a nicotine week over its cap fires ONE registered coaching finding with use-wording", () => {
+    const p = newProfile("SU nic over");
+    const td = today(p);
+    addCap(p, 7, "nicotine");
+    for (let i = 0; i < 9; i++) logSubstanceUnitCore(p, "nicotine", td);
+
+    const findings = buildSubstanceUseFindings(p);
+    expect(findings).toHaveLength(1);
+    const f = findings[0];
+    expect(f.dedupeKey).toBe(substanceTargetSignalKey("nicotine"));
+    expect(dedupeKeyHasKnownPrefix(f.dedupeKey)).toBe(true);
+    expect(tierForDedupeKey(f.dedupeKey)).toBe("coaching");
+    expect(f.title).toBe("Nicotine is over your weekly target");
+    // The detail is the SAME shared per-substance progress line the page renders.
+    expect(f.detail).toBe(
+      capProgressLine(substanceCapStatus(9, 7), "nicotine")
+    );
+    expect(f.detail).toContain("2 over your 7-use weekly cap");
+    expect(
+      collectCoachingFindings(p, td, "kg").some(
+        (c) => c.dedupeKey === f.dedupeKey
+      )
+    ).toBe(true);
+  });
+
+  it("a cannabis cap-0 target fires only once something is logged, with its own key", () => {
+    const p = newProfile("SU cann dry");
+    addCap(p, 0, "cannabis");
+    expect(buildSubstanceUseFindings(p)).toEqual([]);
+    logSubstanceUnitCore(p, "cannabis", today(p));
+    const findings = buildSubstanceUseFindings(p);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].dedupeKey).toBe(substanceTargetSignalKey("cannabis"));
+    expect(findings[0].detail).toContain("cannabis-free week");
+  });
+
+  it("each substance keeps its OWN finding + key; under-cap substances stay silent", () => {
+    const p = newProfile("SU multi");
+    const td = today(p);
+    addCap(p, 2, "alcohol");
+    addCap(p, 2, "nicotine");
+    addCap(p, 20, "cannabis");
+    logDrinks(p, td, 5);
+    for (let i = 0; i < 3; i++) logSubstanceUnitCore(p, "nicotine", td);
+    logSubstanceUnitCore(p, "cannabis", td); // 1 of 20 — silent
+
+    const keys = buildSubstanceUseFindings(p).map((f) => f.dedupeKey);
+    expect(keys).toEqual([
+      substanceTargetSignalKey("alcohol"),
+      substanceTargetSignalKey("nicotine"),
+    ]);
+  });
+
+  it("nicotine/cannabis stay off every push surface and out of the digest (#449 coaching tier)", () => {
+    const p = newProfile("SU nic no-push");
+    const td = today(p);
+    addCap(p, 1, "nicotine");
+    addCap(p, 1, "cannabis");
+    for (let i = 0; i < 5; i++) {
+      logSubstanceUnitCore(p, "nicotine", td);
+      logSubstanceUnitCore(p, "cannabis", td);
+    }
+    const items = collectUpcoming(p, td);
+    expect(items.some((i) => i.key.startsWith(SUBSTANCE_USE_PREFIX))).toBe(
+      false
+    );
+    const model = buildDigest(gatherDigestInput(p, "SU nic no-push"));
+    if (model) {
+      const text = JSON.stringify(renderDigestMessage(model)).toLowerCase();
+      expect(text).not.toContain("nicotine");
+      expect(text).not.toContain("cannabis");
+      expect(text).not.toContain("substance");
+    }
+  });
+});
+
+describe("no gamification for the new substances (#1078) — structural exemption + copy guard", () => {
+  it("substance_log writes create no activities row and no streak/milestone input", () => {
+    const p = newProfile("SU nic exempt");
+    const td = today(p);
+    for (let i = 0; i < 4; i++) logSubstanceUnitCore(p, "nicotine", td);
+    logSubstanceUnitCore(p, "cannabis", td);
+
+    const activities = db
+      .prepare("SELECT COUNT(*) AS n FROM activities WHERE profile_id = ?")
+      .get(p) as { n: number };
+    expect(activities.n).toBe(0);
+
+    const input = gatherMilestoneInput(p);
+    expect(input.totalWorkouts).toBe(0);
+    expect(input.streak).toBe(0);
+  });
+
+  it("the per-substance finding copy carries no streak/badge/milestone/celebration language", () => {
+    const p = newProfile("SU nic copy");
+    const td = today(p);
+    addCap(p, 1, "nicotine");
+    addCap(p, 1, "cannabis");
+    for (let i = 0; i < 3; i++) {
+      logSubstanceUnitCore(p, "nicotine", td);
+      logSubstanceUnitCore(p, "cannabis", td);
+    }
+    for (const f of buildSubstanceUseFindings(p)) {
+      const text =
+        `${f.title} ${f.detail ?? ""} ${f.evidence ?? ""}`.toLowerCase();
+      for (const banned of [
+        "streak",
+        "badge",
+        "milestone",
+        "congrat",
+        "celebrat",
+        "great job",
+        "well done",
+        "keep it up",
+        "sober",
+        "quit-day",
+      ]) {
+        expect(text, `banned word "${banned}" in finding copy`).not.toContain(
+          banned
+        );
+      }
     }
   });
 });

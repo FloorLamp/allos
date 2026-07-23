@@ -49,14 +49,15 @@ test.describe("preventive deep-links per class (#1083)", () => {
     await expect(page).toHaveURL(destination);
   }
 
-  test("instrument total-only → substance-use section with DAST-10 preselected (Enter your score)", async () => {
+  test("instrument (drug screening) → substance-use section with DAST-10 preselected (Complete)", async () => {
     test.slow();
-    // The CTA names the total-only verb (can't be administered in-app).
+    // The CTA verb is data-driven off satisfiedBy.entry (#1083): DAST-10 is
+    // in-app since #1085, so the row reads "Complete the DAST-10".
     const cta = page
       .getByRole("main")
       .getByTestId("upcoming-cta-screening:drug_use_screening");
     await page.goto("/upcoming");
-    await expect(cta).toHaveText(/Enter your DAST-10 score/);
+    await expect(cta).toHaveText(/Complete the DAST-10/);
 
     // #1175: substance-use is now the Records › Specialty section (an adult-gated
     // route), so the preventive deep link lands on /records/specialty/substance-use.
@@ -64,10 +65,14 @@ test.describe("preventive deep-links per class (#1083)", () => {
       "drug_use_screening",
       /\/records\/specialty\/substance-use\?screen=DAST-10/
     );
-    // DAST-10 preselected ⇒ the total-only note (its item text isn't shipped) shows.
+    // DAST-10 preselected ⇒ the in-app tap-through renders its baked items
+    // (#1085), not the total-only note.
+    await expect(
+      page.getByRole("main").getByTestId("substance-item-0")
+    ).toBeVisible();
     await expect(
       page.getByRole("main").getByTestId("substance-total-only-note")
-    ).toBeVisible();
+    ).toHaveCount(0);
   });
 
   test("instrument in-app → mental-health page with PHQ-9 preselected (Complete)", async () => {

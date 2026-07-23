@@ -129,6 +129,12 @@ export const OWNED_TABLES = [
   // single running gram total per day (UNIQUE(profile_id, date)), SUMMED with the
   // food-group estimated floor. Directly owned; deleteProfile clears it by profile_id.
   "protein_log",
+  // Non-food substance consumption ledger (#1078): one row per (date, substance)
+  // with a per-use `units` count — nicotine/cannabis one-tap log/undo (alcohol
+  // stays on food_log; the reconciliation is recorded in lib/substance-use.ts).
+  // Directly owned; nothing FKs into it, so a delete is a plain row delete and
+  // deleteProfile clears it by profile_id.
+  "substance_log",
   // Day-by-day symptom log (#799). Directly owned; UNIQUE(profile_id, date, symptom)
   // keeps one row per symptom-day (worst-severity semantics).
   "symptom_logs",

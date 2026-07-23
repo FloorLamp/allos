@@ -9,6 +9,9 @@ import {
   shouldSuggestClinicianDiscussion,
   SUBSTANCES,
   isSubstance,
+  isSubstanceLogged,
+  substanceDef,
+  substanceUnitWord,
   substanceCapStatus,
   capProgressLine,
   substanceTargetSignalKey,
@@ -16,10 +19,13 @@ import {
   MAX_WEEKLY_CAP,
 } from "../substance-use";
 
-// Pure-tier pins for the substance-use domain (#998): instrument catalog shape +
-// licensing discipline, severity-band boundaries (the uncopyrightable facts), the
-// clinician-discussion threshold, cap-status math, the shared progress line, and
-// the findings-bus key namespace. The DB/action tiers cover the write paths.
+// Pure-tier pins for the substance-use domain (#998; #1078 nicotine/cannabis;
+// #1085 DAST-10 in-app): instrument catalog shape + licensing discipline,
+// severity-band boundaries (the uncopyrightable facts), the DAST-10 item encoding
+// (incl. the reverse-scored item), the clinician-discussion threshold, the
+// substance catalog + ledger split, cap-status math, the shared per-substance
+// progress line, and the findings-bus key namespace. The DB/action tiers cover
+// the write paths.
 
 describe("substance instrument catalog", () => {
   it("carries exactly AUDIT-C, AUDIT, DAST-10", () => {
@@ -29,7 +35,7 @@ describe("substance instrument catalog", () => {
     expect(isSubstanceInstrument(null)).toBe(false);
   });
 
-  it("bakes item text ONLY for the public-domain AUDIT-C (the licensing determination)", () => {
+  it("bakes item text for AUDIT-C and DAST-10; the AUDIT stays total-only (licensing)", () => {
     // AUDIT-C: in-app with 3 items, each carrying its own 0..4 options.
     const auditC = substanceInstrumentDef("AUDIT-C");
     expect(auditC.entry).toBe("in-app");
@@ -39,15 +45,60 @@ describe("substance instrument catalog", () => {
     }
     expect(auditC.maxTotal).toBe(12);
 
-    // AUDIT + DAST-10: total-only, NO reproduced item text — the conservative
-    // fallback for instruments whose reproduction rights aren't clearly free.
-    for (const key of ["AUDIT", "DAST-10"] as const) {
-      const def = substanceInstrumentDef(key);
-      expect(def.entry).toBe("total-only");
-      expect(def.items).toHaveLength(0);
+    // DAST-10 (#1085 — the owner-reversed #998 determination): in-app with the
+    // 10 yes/no items baked, each scored 0/1 via its own option values.
+    const dast = substanceInstrumentDef("DAST-10");
+    expect(dast.entry).toBe("in-app");
+    expect(dast.items).toHaveLength(10);
+    for (const item of dast.items) {
+      expect([...item.options.map((o) => o.value)].sort()).toEqual([0, 1]);
+      expect(item.options.map((o) => o.label).sort()).toEqual(["No", "Yes"]);
     }
-    expect(substanceInstrumentDef("AUDIT").maxTotal).toBe(40);
-    expect(substanceInstrumentDef("DAST-10").maxTotal).toBe(10);
+    expect(dast.maxTotal).toBe(10);
+    // The past-12-months framing travels with the items.
+    expect(dast.instructions).toContain("past 12 months");
+
+    // AUDIT: total-only, NO reproduced item text — the conservative path for the
+    // WHO grant that's narrower than this repo's redistribution surface.
+    const audit = substanceInstrumentDef("AUDIT");
+    expect(audit.entry).toBe("total-only");
+    expect(audit.items).toHaveLength(0);
+    expect(audit.maxTotal).toBe(40);
+  });
+
+  it("DAST-10 scoring: all highest-risk answers = 10, all lowest-risk = 0 (pins the reverse-scored item)", () => {
+    const dast = substanceInstrumentDef("DAST-10");
+    // The scorer is a plain sum of chosen option values, so these two invariants
+    // hold ONLY if the reverse-scored item's options are flipped — a naive
+    // Yes=1/No=0 encoding on every item fails both directions at item 3.
+    const highest = dast.items.reduce(
+      (sum, item) => sum + Math.max(...item.options.map((o) => o.value)),
+      0
+    );
+    const lowest = dast.items.reduce(
+      (sum, item) => sum + Math.min(...item.options.map((o) => o.value)),
+      0
+    );
+    expect(highest).toBe(10);
+    expect(lowest).toBe(0);
+
+    // Item 3 ("Are you always able to stop…") is THE reverse-scored item: "No"
+    // earns the point. Every other item scores "Yes" = 1.
+    const reverse = dast.items[2];
+    expect(reverse.prompt).toContain("Are you always able to stop");
+    expect(reverse.options.find((o) => o.label === "Yes")?.value).toBe(0);
+    expect(reverse.options.find((o) => o.label === "No")?.value).toBe(1);
+    dast.items.forEach((item, i) => {
+      if (i === 2) return;
+      expect(
+        item.options.find((o) => o.label === "Yes")?.value,
+        `item ${i + 1} Yes`
+      ).toBe(1);
+      expect(
+        item.options.find((o) => o.label === "No")?.value,
+        `item ${i + 1} No`
+      ).toBe(0);
+    });
   });
 
   it("bands are contiguous from 0 through maxTotal with monotonic levels", () => {
@@ -150,34 +201,68 @@ describe("substanceCapStatus + capProgressLine — the one shared computation", 
     );
   });
 
+  it("speaks each substance's own unit words (#1078) — same computation, per-substance formatting", () => {
+    // Nicotine: per-use counts, "use"-worded cap, nicotine-free week at cap 0.
+    expect(capProgressLine(substanceCapStatus(5, 7), "nicotine")).toBe(
+      "5 of your 7-use weekly cap used."
+    );
+    expect(capProgressLine(substanceCapStatus(9, 7), "nicotine")).toBe(
+      "9 uses logged this week — 2 over your 7-use weekly cap."
+    );
+    expect(capProgressLine(substanceCapStatus(1, 0), "nicotine")).toBe(
+      "1 use logged this week — your target is a nicotine-free week."
+    );
+    expect(capProgressLine(substanceCapStatus(0, 0), "nicotine")).toBe(
+      "No uses logged this week — your target is a nicotine-free week."
+    );
+    // Cannabis mirrors nicotine's unit words with its own free-week phrase.
+    expect(capProgressLine(substanceCapStatus(3, 2), "cannabis")).toBe(
+      "3 uses logged this week — 1 over your 2-use weekly cap."
+    );
+    expect(capProgressLine(substanceCapStatus(0, 0), "cannabis")).toBe(
+      "No uses logged this week — your target is a cannabis-free week."
+    );
+    // The default stays the #998 alcohol wording (back-compat).
+    expect(capProgressLine(substanceCapStatus(9, 7), "alcohol")).toBe(
+      capProgressLine(substanceCapStatus(9, 7))
+    );
+    expect(substanceUnitWord("alcohol", 1)).toBe("drink");
+    expect(substanceUnitWord("nicotine", 2)).toBe("uses");
+  });
+
   it("at the cap exactly is NOT over", () => {
     const s = substanceCapStatus(7, 7);
     expect(s.over).toBe(false);
     expect(s.remaining).toBe(0);
   });
 
-  it("no-gamification contract: the shared line never celebrates or streak-counts", () => {
-    for (const s of [
-      substanceCapStatus(0, 7),
-      substanceCapStatus(5, 7),
-      substanceCapStatus(7, 7),
-      substanceCapStatus(12, 7),
-      substanceCapStatus(0, 0),
-      substanceCapStatus(3, 0),
-    ]) {
-      const line = capProgressLine(s).toLowerCase();
-      for (const banned of [
-        "streak",
-        "badge",
-        "milestone",
-        "congrat",
-        "great job",
-        "well done",
-        "keep it up",
-        "days sober",
-        "day streak",
+  it("no-gamification contract: the shared line never celebrates or streak-counts, for ANY substance", () => {
+    for (const substance of SUBSTANCES) {
+      for (const s of [
+        substanceCapStatus(0, 7),
+        substanceCapStatus(5, 7),
+        substanceCapStatus(7, 7),
+        substanceCapStatus(12, 7),
+        substanceCapStatus(0, 0),
+        substanceCapStatus(3, 0),
       ]) {
-        expect(line).not.toContain(banned);
+        const line = capProgressLine(s, substance).toLowerCase();
+        for (const banned of [
+          "streak",
+          "badge",
+          "milestone",
+          "congrat",
+          "great job",
+          "well done",
+          "keep it up",
+          "days sober",
+          "day streak",
+          "quit-day",
+        ]) {
+          expect(line, `${substance}: banned "${banned}"`).not.toContain(
+            banned
+          );
+        }
       }
     }
   });
@@ -198,17 +283,51 @@ describe("substanceCapStatus + capProgressLine — the one shared computation", 
   });
 });
 
-describe("findings-bus namespace", () => {
+describe("substance catalog + findings-bus namespace", () => {
   it("substances + signal keys are stable and prefixed", () => {
-    expect([...SUBSTANCES]).toEqual(["alcohol"]);
+    expect([...SUBSTANCES]).toEqual(["alcohol", "nicotine", "cannabis"]);
     expect(isSubstance("alcohol")).toBe(true);
-    expect(isSubstance("nicotine")).toBe(false);
-    expect(substanceTargetSignalKey("alcohol")).toBe(
-      "substance-use:over-target:alcohol"
-    );
-    expect(
-      substanceTargetSignalKey("alcohol").startsWith(SUBSTANCE_USE_PREFIX)
-    ).toBe(true);
+    expect(isSubstance("nicotine")).toBe(true);
+    expect(isSubstance("cannabis")).toBe(true);
+    expect(isSubstance("caffeine")).toBe(false);
+    for (const s of SUBSTANCES) {
+      expect(substanceTargetSignalKey(s)).toBe(
+        `substance-use:over-target:${s}`
+      );
+      expect(substanceTargetSignalKey(s).startsWith(SUBSTANCE_USE_PREFIX)).toBe(
+        true
+      );
+    }
     expect(MAX_WEEKLY_CAP).toBeGreaterThan(0);
+  });
+
+  it("ledger split (#1078/#860): alcohol rides food_log; nicotine/cannabis ride substance_log", () => {
+    expect(substanceDef("alcohol").ledger).toBe("food-log");
+    expect(substanceDef("nicotine").ledger).toBe("substance-log");
+    expect(substanceDef("cannabis").ledger).toBe("substance-log");
+    // The write-core validator admits ONLY substance_log-ledger substances — an
+    // alcohol (food-log) key or a forged key writes nothing there.
+    expect(isSubstanceLogged("nicotine")).toBe(true);
+    expect(isSubstanceLogged("cannabis")).toBe(true);
+    expect(isSubstanceLogged("alcohol")).toBe(false);
+    expect(isSubstanceLogged("caffeine")).toBe(false);
+    expect(isSubstanceLogged(null)).toBe(false);
+  });
+
+  it("per-substance defs carry calm, non-gamified copy", () => {
+    for (const s of SUBSTANCES) {
+      const def = substanceDef(s);
+      const text =
+        `${def.label} ${def.logLabel} ${def.unitNote} ${def.freeWeekPhrase}`.toLowerCase();
+      for (const banned of [
+        "streak",
+        "badge",
+        "milestone",
+        "congrat",
+        "sober",
+      ]) {
+        expect(text, `${s}: banned "${banned}"`).not.toContain(banned);
+      }
+    }
   });
 });

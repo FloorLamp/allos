@@ -2194,7 +2194,7 @@ for (let d = 30; d >= 8; d--) {
   insMacro.run("fiber_g", date, start, end, 22 + (j % 9));
 }
 
-// ── Substance use (#998): a screening score + a reduction target ─────────────
+// ── Substance use (#998/#1078): screening score + reduction targets + ledger ──
 // One synthetic, lower-risk AUDIT-C reading (a screening-instrument score with its
 // three 0..4 item answers) plus an "≤ 7 drinks/week" reduction target (scope_kind
 // 'substance' — CAP semantics, read by lib/queries/substance.ts, never the floor
@@ -2221,6 +2221,24 @@ for (let d = 30; d >= 8; d--) {
     `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week, created_at)
      VALUES (1, 'substance', 'alcohol', 7, ?)`
   ).run(`${daysAgo(30)} 09:00:00`);
+
+  // #1078: the non-food substance ledger — a tapering nicotine pattern (a few
+  // uses on scattered days) with a "≤ 10 uses/week" reduction target, so the
+  // Nicotine intake section + trend render with data. Cannabis stays empty
+  // (sections render regardless — logging starts in-app).
+  const suNic = db.prepare(
+    `INSERT INTO substance_log (profile_id, date, substance, units, logged_at)
+     VALUES (1, ?, 'nicotine', ?, ?)`
+  );
+  for (let d = 20; d >= 0; d -= 1) {
+    if (d % 3 === 1) continue; // skip some days — a real, uneven pattern
+    const units = d > 10 ? 2 + (d % 2) : 1 + (d % 2); // gently declining
+    suNic.run(daysAgo(d), units, `${daysAgo(d)}T18:30:00Z`);
+  }
+  db.prepare(
+    `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week, created_at)
+     VALUES (1, 'substance', 'nicotine', 10, ?)`
+  ).run(`${daysAgo(21)} 09:00:00`);
 }
 
 // ── Active situations + change log (Trends Ph3 annotations) ──────────────────
