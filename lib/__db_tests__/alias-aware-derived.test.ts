@@ -10,7 +10,7 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { db, today } from "@/lib/db";
-import { getDerivedBiomarkerReadings } from "@/lib/queries";
+import { getDerivedBiomarkerReadings, getBioAgeReadings } from "@/lib/queries";
 
 let profileId: number;
 const DATE = "2024-01-01";
@@ -61,5 +61,16 @@ describe("derived-index gathering resolves a legacy-named component", () => {
     // and PhenoAge would not compute at all.
     expect(pheno, "PhenoAge missing — legacy MCV not resolved").toBeTruthy();
     expect(pheno!.value_num).toBeGreaterThan(0);
+  });
+
+  it("getBioAgeReadings (the longevity hero) also computes with the legacy MCV row", () => {
+    // The hero path must resolve the legacy name the SAME way as the derived table,
+    // or the two PhenoAge computations diverge (and the hero renders no value — the
+    // #1042 longevity e2e regression this guards against).
+    const bio = getBioAgeReadings(profileId);
+    const draw = bio.draws.find((d) => d.date === DATE);
+    expect(draw, "bio-age draw missing — legacy MCV not resolved").toBeTruthy();
+    expect(draw!.bioAge).toBeGreaterThan(0);
+    expect(bio.presentInputs).toContain("Mean Corpuscular Volume (MCV)");
   });
 });

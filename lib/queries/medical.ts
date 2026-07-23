@@ -564,9 +564,20 @@ export function getCanonicalAutocomplete(profileId: number): string[] {
 export function getCanonicalBiomarker(
   name: string
 ): CanonicalBiomarker | undefined {
-  return db
-    .prepare("SELECT * FROM canonical_biomarkers WHERE name = ? COLLATE NOCASE")
-    .get(name) as CanonicalBiomarker | undefined;
+  const stmt = db.prepare(
+    "SELECT * FROM canonical_biomarkers WHERE name = ? COLLATE NOCASE"
+  );
+  const exact = stmt.get(name) as CanonicalBiomarker | undefined;
+  if (exact) return exact;
+  // Alias-aware fallback: a caller (or a stored row) may pass a legacy spelling or a
+  // bare abbreviation the dataset no longer uses verbatim (e.g. "MCHC" after the
+  // rename to "Mean Corpuscular Hemoglobin Concentration (MCHC)"). Snap it onto the
+  // canonical name first — the same resolution the flag/info/derive paths use — so
+  // every canonical-entry lookup is uniformly robust to a non-canonical name.
+  const snapped = canonicalResolver()(name);
+  return snapped !== name
+    ? (stmt.get(snapped) as CanonicalBiomarker | undefined)
+    : undefined;
 }
 
 // The single most recent record for a canonical name (newest date, id tie-break),
@@ -1279,6 +1290,10 @@ export function getUnitMislabelReviews(
         .all() as CanonicalBiomarker[]
     ).map((c) => [c.name.toLowerCase(), c])
   );
+  // Alias-aware, like the flag path: a stored row under a legacy/abbreviation name
+  // ("MCHC" pre-migration-103) must still resolve to its canonical entry, else the
+  // scan skips it and its mislabel card never surfaces.
+  const resolve = canonicalResolver();
   const sex = getUserSex(profileId);
   const birthdate = getUserBirthdate(profileId);
   const storedAge = getStoredAge(profileId);
@@ -1287,7 +1302,7 @@ export function getUnitMislabelReviews(
   const out: UnitMislabelReview[] = [];
   for (const r of rows) {
     if (dismissed.has(unitMislabelSignalKey(r.id))) continue;
-    const cb = cbByName.get(r.canonical_name.toLowerCase());
+    const cb = cbByName.get(resolve(r.canonical_name).toLowerCase());
     if (!cb) continue;
     const age = ageForRecord({ sex, birthdate, age: storedAge }, r.date);
     const hit = detectUnitMislabel(
