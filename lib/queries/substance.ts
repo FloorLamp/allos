@@ -4,7 +4,7 @@
 // alcohol rides the EXISTING food_log / food_log_events observation store
 // (#860/#944 — a standard drink IS one serving of the curated `alcohol` food
 // group), while nicotine/cannabis ride the dedicated `substance_log` counter
-// ledger (migration 098 — not foods, so they never touch the nutrition ledger).
+// ledger (migration 096 — not foods, so they never touch the nutrition ledger).
 // The target lives on the EXISTING frequency_targets table (scope_kind
 // 'substance', migration 072) for every substance; this module only derives.
 // Substance targets carry CAP semantics (a ceiling), the inverse of every other

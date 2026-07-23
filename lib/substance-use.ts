@@ -345,7 +345,7 @@ export function isSubstance(v: unknown): v is Substance {
 // and the one-tap bar, and none of the other observation stores carries a
 // per-day tap-count semantic (symptom_logs is severity-per-day, metric_samples/
 // body_metrics are measured values, medical_records is result-shaped) — so they
-// ride the dedicated `substance_log` counter ledger (migration 098), the food_log
+// ride the dedicated `substance_log` counter ledger (migration 096), the food_log
 // shape re-instantiated for non-food substances. Units are deliberately plain
 // per-use counts (no mg-nicotine normalization across product types — out of
 // scope, low fidelity).

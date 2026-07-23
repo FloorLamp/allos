@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 098 (issue #1078): the dedicated NON-FOOD substance consumption ledger
+// Migration 096 (issue #1078): the dedicated NON-FOOD substance consumption ledger
 // — nicotine + cannabis per-use counts behind the substance-use surface's one-tap
 // log/undo and the weekly-cap reduction target. The #860/#944 reconciliation is
 // recorded in lib/substance-use.ts: alcohol stays on food_log (a standard drink IS
@@ -50,7 +50,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 98,
-  name: "098-substance-log",
+  id: 96,
+  name: "096-substance-log",
   up,
 };
