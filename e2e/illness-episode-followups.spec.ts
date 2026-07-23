@@ -13,7 +13,7 @@ async function openCurrentEpisode(page: Page) {
   const ongoing = page
     .getByTestId("episode-index-row")
     .filter({ hasText: /ongoing/i })
-    .first();
+    .first(); // first-ok: the fixture's own ongoing episode (filtered) — order-agnostic
   const href = await ongoing.getAttribute("href");
   expect(href).toMatch(/^\/medical\/episodes\/\d+$/);
   await page.goto(href!);
@@ -59,12 +59,11 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     await expect(page.getByTestId("symptom-log-bar")).toBeVisible();
     await expect(page.getByTestId("episode-fever-chart")).toBeVisible();
     await expect(page.getByTestId("episode-illness-timeline")).toBeVisible();
-    await expect(
-      page
-        .getByTestId("episode-illness-timeline")
-        .getByText("Today", { exact: true })
-        .first()
-    ).toBeVisible();
+    const todayGroup = page
+      .getByTestId("episode-illness-timeline")
+      .getByText("Today", { exact: true })
+      .first(); // first-ok: the Today group in the episode timeline — order-agnostic
+    await expect(todayGroup).toBeVisible();
     await expect(
       page
         .getByTestId("illness-event-symptom")
@@ -151,9 +150,8 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     await expect(
       peakSymptoms.getByTestId("episode-print-symptoms")
     ).toHaveClass(/print:flex/);
-    await expect(
-      page.getByTestId("episode-severity-dots").first()
-    ).toBeVisible();
+    const severityDots = page.getByTestId("episode-severity-dots").first(); // first-ok: asserts a severity-dots row renders — order-agnostic presence
+    await expect(severityDots).toBeVisible();
     await expect(page.getByText("Daily symptoms", { exact: true })).toHaveCount(
       0
     );
@@ -181,19 +179,15 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     const symptomWorkingRow = page
       .getByTestId("symptom-logged-list")
       .locator("li")
-      .first();
-    const doseWorkingRow = page.getByTestId("quick-log-prn-item").first();
+      .first(); // first-ok: a logged-symptom row — asserts its border layout, order-agnostic
+    const doseWorkingRow = page.getByTestId("quick-log-prn-item").first(); // first-ok: a PRN quick-log row — asserts its border layout, order-agnostic
     await expect(symptomWorkingRow).toHaveCSS("border-top-style", "solid");
     await expect(doseWorkingRow).toHaveCSS("border-top-width", "0px");
     await expect(doseWorkingRow).toHaveCSS("border-bottom-style", "solid");
     await expect(doseWorkingRow).toHaveCSS("border-radius", "0px");
-    await expect(doseWorkingRow.getByRole("link").first()).toHaveCSS(
-      "font-size",
-      "14px"
-    );
-    await expect(doseWorkingRow.getByRole("link").first()).toHaveClass(
-      /text-brand-600/
-    );
+    const doseLink = doseWorkingRow.getByRole("link").first(); // first-ok: the med link inside the scoped PRN row — order-agnostic
+    await expect(doseLink).toHaveCSS("font-size", "14px");
+    await expect(doseLink).toHaveClass(/text-brand-600/);
     await expect(doseWorkingRow).toContainText(/\d+(?:\.\d+)?\s*(?:mg|mL)/i);
     await expect(
       doseWorkingRow.getByTestId("prn-log-now")
@@ -224,7 +218,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     }
     const medNameBox = await doseWorkingRow
       .getByRole("link")
-      .first()
+      .first() // first-ok: the med link inside the scoped PRN row, measured for layout — order-agnostic
       .boundingBox();
     const medStatusBox = await doseWorkingRow
       .getByTestId("prn-day-label")
@@ -254,31 +248,27 @@ test.describe("Illness-episode follow-ups (#856)", () => {
       /bg-brand/
     );
     const medicationRows = page.getByTestId("illness-event-medication");
-    // Target a DOSED (mg/mL) med row by content, not `.first()`: under the pinned
+    // Target a DOSED (mg/mL) med row by content, not a positional first-match: under the pinned
     // clock (#1110) the seed's relative-time ibuprofen doses shift local-day, so the
     // FIRST med row is nondeterministic — a PRN with a non-mg/mL dose (Klor-Con
-    // "10 mEq") can sort ahead and fail a bare `.first()` mg/mL assertion. The seed's
+    // "10 mEq") can sort ahead and fail a bare first-match mg/mL assertion. The seed's
     // ibuprofen "200 mg" doses are always in the episode, so a mg/mL row is stable.
     const dosedMedicationRow = medicationRows
       .filter({ hasText: /\d+(?:\.\d+)?\s*(?:mg|mL)/i })
       .first(); // first-ok: filtered to a dosed (mg/mL) med row; all such rows render identically
     await expect(dosedMedicationRow).toBeVisible();
     await expect(dosedMedicationRow).toContainText(/mg|mL/i);
-    await expect(dosedMedicationRow.getByRole("link").first()).toHaveAttribute(
-      "href",
-      /^\/medications\/\d+$/
-    );
-    await expect(dosedMedicationRow.getByRole("link").first()).toHaveClass(
-      /text-brand-600/
-    );
+    const dosedLink = dosedMedicationRow.getByRole("link").first(); // first-ok: the med link inside the content-filtered dosed row — order-agnostic
+    await expect(dosedLink).toHaveAttribute("href", /^\/medications\/\d+$/);
+    await expect(dosedLink).toHaveClass(/text-brand-600/);
     await expect(
       page
         .getByTestId("illness-event-appointment")
         .filter({ hasText: "Lab results review" })
     ).toBeVisible();
     const dayGroups = page.getByTestId("illness-timeline-day");
-    await expect(dayGroups.first()).toBeVisible();
-    await expect(dayGroups.first()).toHaveCSS("padding-top", "6px");
+    await expect(dayGroups.first()).toBeVisible(); // first-ok: a timeline day group — asserts its padding, order-agnostic
+    await expect(dayGroups.first()).toHaveCSS("padding-top", "6px"); // first-ok: the same timeline day group — order-agnostic
     expect(await dayGroups.count()).toBeLessThan(
       await page.locator('[data-testid^="illness-event-"]').count()
     );
@@ -302,20 +292,18 @@ test.describe("Illness-episode follow-ups (#856)", () => {
       historyFilters.getByRole("button", { name: "All" })
     ).not.toHaveClass(/bg-brand/);
     await historyFilters.getByRole("button", { name: "Temperature" }).click();
-    await expect(
-      page.getByTestId("illness-event-temperature").first()
-    ).toBeVisible();
+    const tempEvent = page.getByTestId("illness-event-temperature").first(); // first-ok: asserts a temperature event renders under the Temperature filter — order-agnostic
+    await expect(tempEvent).toBeVisible();
     await expect(page.getByTestId("illness-event-medication")).toHaveCount(0);
     await expect(page.getByTestId("illness-event-appointment")).toHaveCount(0);
     await historyFilters.getByRole("button", { name: "All" }).click();
-    await expect(
-      page.getByTestId("illness-event-medication").first()
-    ).toBeVisible();
+    const medEvent = page.getByTestId("illness-event-medication").first(); // first-ok: asserts a medication event renders under the All filter — order-agnostic
+    await expect(medEvent).toBeVisible();
     // Historical symptom severity and notes can be corrected from the same ledger.
     const historicalSymptom = page
       .getByTestId("illness-event-symptom")
       .filter({ hasText: "Peaked in the evening" })
-      .first();
+      .first(); // first-ok: filtered to the note THIS spec logged — one match
     await historicalSymptom.getByTestId("overflow-menu-trigger").click();
     await page.getByRole("button", { name: "Edit", exact: true }).click();
     let symptomEditor = page.getByTestId("illness-event-editor");
@@ -335,7 +323,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     await expect(historicalSymptom).toContainText("Peaked in the evening");
 
     // Historical readings and doses have a real correction path from the ledger.
-    const tempRow = page.getByTestId("illness-event-temperature").first();
+    const tempRow = page.getByTestId("illness-event-temperature").first(); // first-ok: a temperature event row (has a correction path) — order-agnostic
     await tempRow.getByTestId("overflow-menu-trigger").click();
     await page.getByRole("button", { name: "Edit", exact: true }).click();
     const eventEditor = page.getByTestId("illness-event-editor");
@@ -346,7 +334,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     ).toBeVisible();
     const dateBox = await dateTime
       .locator('input:not([type="hidden"])')
-      .first()
+      .first() // first-ok: the date input in the scoped event-editor date-time control, measured for layout — order-agnostic
       .boundingBox();
     const timeBox = await dateTime.locator('input[name="time"]').boundingBox();
     const saveBox = await eventEditor
@@ -425,7 +413,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     // Log a symptom at a severity from the episode page — the SHARED SymptomLogBar now
     // uses the #857 active-first layout, so add via the picker then raise (the same
     // helpers the dashboard spec drives — one flow, no per-mount drift).
-    const bar = page.getByTestId("symptom-log-bar").first();
+    const bar = page.getByTestId("symptom-log-bar").first(); // first-ok: the acting profile's own symptom bar (top of the card) — order-agnostic
     await ensureUnlogged(bar, "sore_throat");
     await addFromPicker(bar, "sore_throat");
     await raiseSeverity(bar, "sore_throat", 3);
@@ -526,7 +514,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
         .getByTestId("episode-med-reconcile-list")
         .locator('input[type="checkbox"]:checked');
       for (let count = await selected.count(); count > 0; count--) {
-        await selected.first().uncheck();
+        await selected.first().uncheck(); // first-ok: loop unchecks EVERY selected item; first-of-remaining is order-agnostic
       }
       await reconcileConfirm.click();
     } else {
@@ -571,11 +559,11 @@ test.describe("Illness-episode follow-ups (#856)", () => {
       page.getByRole("heading", { name: "Illness episodes" })
     ).toBeVisible();
     const rows = page.getByTestId("episode-index-row");
-    await expect(rows.first()).toBeVisible();
+    await expect(rows.first()).toBeVisible(); // first-ok: asserts an episode-index row renders — order-agnostic presence
     expect(await rows.count()).toBeGreaterThanOrEqual(2); // open + past (seed)
 
     // Following a row opens its detail page.
-    await followLink(page, rows.first(), /\/medical\/episodes\/\d+/);
+    await followLink(page, rows.first(), /\/medical\/episodes\/\d+/); // first-ok: follows an episode-index row to its detail — order-agnostic
     await expect(
       page.getByRole("heading", { name: /Illness episode/ })
     ).toBeVisible();
@@ -588,7 +576,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     await page.goto("/");
     const episodeLink = page
       .getByRole("link", { name: /^More details about / })
-      .first();
+      .first(); // first-ok: the active profile's hero-cockpit episode link — order-agnostic
     await followLink(page, episodeLink, /\/medical\/episodes\/\d+/);
     const episodeUrl = page.url();
 
@@ -646,7 +634,7 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     const resolvedRow = page
       .getByTestId("episode-index-row")
       .filter({ hasText: /Self-resolved|Recovered without a visit/ })
-      .first();
+      .first(); // first-ok: filtered to the resolved episode row (repeat-safe match) — order-agnostic
     await followLink(page, resolvedRow, /\/medical\/episodes\/\d+/);
 
     await openEpisodeEditor(page);
@@ -677,14 +665,12 @@ test.describe("Illness-episode follow-ups (#856)", () => {
     // The outcome + note persist on the summary. Scope the note to its rendered
     // paragraph — the edit form's <textarea> also holds the text, so an unscoped
     // getByText matches two elements.
-    await expect(
-      page.getByText("Recovered without a visit").first()
-    ).toBeVisible();
-    await expect(
-      page
-        .getByRole("paragraph")
-        .filter({ hasText: "Rested; plenty of fluids" })
-        .first()
-    ).toBeVisible();
+    const recoveredText = page.getByText("Recovered without a visit").first(); // first-ok: the resolution text also lives in the edit textarea (see comment); assert the paragraph — order-agnostic
+    await expect(recoveredText).toBeVisible();
+    const restedNote = page
+      .getByRole("paragraph")
+      .filter({ hasText: "Rested; plenty of fluids" })
+      .first(); // first-ok: filtered to the resolution note THIS spec logged — one match
+    await expect(restedNote).toBeVisible();
   });
 });
