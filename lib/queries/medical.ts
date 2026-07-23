@@ -1,11 +1,7 @@
 import { db, writeTx } from "../db";
 import { cache } from "../request-cache";
-import {
-  biomarkerFamily,
-  BIOMARKER_FAMILIES,
-  buildCanonicalIndex,
-  snapCanonicalName,
-} from "../canonical-name";
+import { biomarkerFamily, BIOMARKER_FAMILIES } from "../canonical-name";
+import { canonicalResolver } from "../canonical-resolve";
 import {
   getStoredAge,
   getUserBirthdate,
@@ -974,13 +970,14 @@ function flagReconcileProfileContext(profileId: number) {
   const cbByName = new Map(cbRows.map((c) => [c.name.toLowerCase(), c]));
   // Alias-aware resolution: the pure core looks a row's canonical_name up by exact
   // (lowercased) name, so a stored row whose canonical_name is a legacy spelling or
-  // an un-migrated bare abbreviation (e.g. "RDW" before migration 102 runs) would
+  // an un-migrated bare abbreviation (e.g. "RDW" before migration 103 runs) would
   // silently MISS its entry and lose its band. Snap it onto the dataset spelling
-  // first — recognized aliases/variants resolve; an unrecognized name returns
-  // unchanged (→ still no match → no flag, exactly as before). This makes a future
-  // canonical rename not strictly require a stored-data migration.
-  const index = buildCanonicalIndex(cbRows.map((c) => c.name));
-  const resolve = (name: string): string => snapCanonicalName(name, index);
+  // first via the shared (cached) resolver — recognized aliases/variants resolve; an
+  // unrecognized name returns unchanged (→ still no match → no flag, exactly as
+  // before). The SAME resolver the derived-index gathering uses, so both read paths
+  // are uniformly alias-aware, and the ~300-entry index is cached per vocabulary
+  // rather than rebuilt per call. Makes a future rename not require a data migration.
+  const resolve = canonicalResolver();
   return {
     cbByName,
     resolve,

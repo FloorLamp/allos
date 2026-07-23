@@ -17,6 +17,7 @@ import {
   getUsedCanonicalNames,
 } from "./medical";
 import { canonicalGroupKey, groupByCanonicalName } from "../biomarker-group";
+import { canonicalResolver } from "../canonical-resolve";
 import { cache } from "../request-cache";
 import {
   getUserSex,
@@ -95,7 +96,21 @@ export function getDerivedBiomarkerReadings(
   // group) — a per-analyte getBiomarkerSeries here would re-run the dedup window
   // over the profile's whole lab history once per input AND per derived name,
   // O(analytes × records) per request (#105/#386). Mirrors buildTrajectoryFindings.
-  const grouped = groupByCanonicalName(getAllBiomarkerSeries(profileId));
+  //
+  // Alias-aware, like the flag path: a component's derived INPUT is declared under
+  // the canonical spelling ("Mean Corpuscular Volume (MCV)"), but a stored row may
+  // still carry a legacy/abbreviation name ("MCV", pre-migration-103). Snap each
+  // row's canonical_name through the shared resolver before grouping so it lands in
+  // the same group the input spec keys on — else PhenoAge would silently miss that
+  // component for the draw. Unrecognized names pass through unchanged.
+  const resolve = canonicalResolver();
+  const grouped = groupByCanonicalName(
+    getAllBiomarkerSeries(profileId).map((r) => ({
+      ...r,
+      canonical_name:
+        r.canonical_name != null ? resolve(r.canonical_name) : r.canonical_name,
+    }))
+  );
 
   // Load each component series once, reduced to exact numeric readings — an
   // arithmetic index can't consume a bounded/qualitative value. Keyed by the exact
