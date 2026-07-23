@@ -45,6 +45,8 @@ import {
   getCanonicalVocabulary,
   getMedicalDocument,
   getReprocessSnapshot,
+  foldConsolidatedMedsIntoSnapshot,
+  previewReconcileFlags,
   cleanupOrphanBiomarkerKeyedState,
 } from "@/lib/queries";
 import { runRecommendation } from "@/lib/recommendation-engine";
@@ -1450,8 +1452,18 @@ export async function previewReprocessById(
   );
   if ("skip" in extracted)
     return { status: "skipped", message: extracted.skip };
+  // Enrich the fresh extraction with the flags the post-commit reconcile will
+  // derive (age-banded vitals, optimal bands, titer immunity) — the persisted side
+  // carries them, so without this every derived flag reads as a phantom change on
+  // a byte-identical reprocess. Runs BEFORE the stash so the previewed input and
+  // the committed input are the same object state.
+  previewReconcileFlags(profileId, extracted.input.records);
   const current = getReprocessSnapshot(profileId, id);
   const next = snapshotFromPersistInput(extracted.input);
+  // Consolidated medications (#1204): a derived drug the profile already tracks
+  // under another document persists as renewal courses, not a new item — fold
+  // those into the persisted side so they don't preview as phantom additions.
+  foldConsolidatedMedsIntoSnapshot(profileId, current, next.medications);
   // Stash the reduced input under a single-use token so the confirmed apply commits
   // exactly what the user is reviewing. The staleness key pins the document row's
   // current state; the apply refuses the cached input if it has since changed.
