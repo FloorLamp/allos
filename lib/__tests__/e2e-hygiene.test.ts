@@ -169,12 +169,14 @@ const FIRST_ALLOW: Record<string, number> = {
   // seeded illness state; exposed only when co-located at --repeat-each). Its lone
   // .first() stays frozen here until that flake is fixed in a focused follow-up.
   "illness-care.spec.ts": 1,
+  // import-dedup merges (consumes) its seeded dup pair on the first run and never
+  // recreates it, so a --repeat-each iteration finds the badge already at 2 (not 3).
+  // Its 3 .first() stay frozen until the spec resets its dup-pair fixture per test.
   "import-dedup.spec.ts": 3,
   // dose-history-row .first() (newest seeded dose) deferred to a dedicated-fixture
   // pass — its safety rests on every OTHER spec only backdating writes to this
   // SHARED med, which is too fragile to bless with a marker.
   "medications-page.spec.ts": 1,
-  "prn-family.spec.ts": 1,
   // two-factor / view-only-access each shed one grant-checkbox .first() when their
   // create+grant dance moved into e2e/family-helpers.ts (which scopes the checkbox by
   // the grant-cell testid, no .first()); two-factor keeps its recovery-code li .first().
