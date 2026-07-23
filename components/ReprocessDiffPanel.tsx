@@ -9,15 +9,20 @@ import {
 } from "@/app/(app)/medical/document-actions";
 import type { PreviewReprocessResult } from "@/lib/medical-pipeline";
 import type { EntityDiff } from "@/lib/import-diff";
+import { reprocessPreviewView } from "@/lib/reprocess-preview-view";
 
-// Reprocess-with-diff. Instead of silently re-extracting and
-// replacing a document's rows, this previews the diff between what's currently
-// persisted and what a fresh re-extraction would produce, then commits on a
-// separate confirm. "Reprocess…" calls the read-only preview action (no DB
-// writes); "Confirm reprocess" calls applyReprocessPreview, which commits EXACTLY
-// the previewed extraction (#946) — no second model call — unless the token has
-// expired or the document changed, in which case it falls back to a fresh
-// re-extraction and we surface that the result may differ from the preview.
+// Preview-first re-extraction — the SOLE per-document reprocess control (#1071).
+// Instead of silently re-extracting and replacing a document's rows, this previews
+// the diff between what's currently persisted and what a fresh re-extraction would
+// produce, then commits on a separate confirm. The verbs say what differs (#1071):
+// "Preview changes" calls the read-only preview action (no DB writes) — it never
+// writes, so it can't be mistaken for the commit; "Save changes" calls
+// applyReprocessPreview, which commits EXACTLY the previewed extraction (#946) — no
+// second model call — unless the token has expired or the document changed, in
+// which case it falls back to a fresh re-extraction and we surface that the result
+// may differ from the preview. When the preview shows no changes the commit is
+// disabled (nothing to save); the content-hash "skipped" short-circuit is a
+// different case and keeps its "Re-extract anyway" override.
 export default function ReprocessDiffPanel({
   id,
   filename,
@@ -77,10 +82,11 @@ export default function ReprocessDiffPanel({
             type="button"
             onClick={preview}
             disabled={busy}
+            data-testid="reprocess-preview"
             className="btn-ghost inline-flex items-center gap-1.5 text-sm disabled:opacity-50"
           >
             <IconRefresh className="h-4 w-4" />
-            {previewing ? "Preparing preview…" : "Reprocess…"}
+            {previewing ? "Preparing preview…" : "Preview changes"}
           </button>
           {fallbackNote && (
             <p
@@ -104,9 +110,10 @@ export default function ReprocessDiffPanel({
               type="button"
               onClick={commit}
               disabled={busy}
+              data-testid="reprocess-anyway"
               className="btn inline-flex items-center gap-1.5 text-sm disabled:opacity-50"
             >
-              {committing ? "Reprocessing…" : "Reprocess anyway"}
+              {committing ? "Re-extracting…" : "Re-extract anyway"}
             </button>
             <button
               type="button"
@@ -122,63 +129,79 @@ export default function ReprocessDiffPanel({
 
       {result?.status === "ok" && (
         <div className="space-y-4">
-          <div>
-            <p className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-200">
-              Reprocessing “{filename}” would:
-            </p>
-            <div className="flex flex-wrap gap-2 text-sm">
-              <DiffCount
-                n={result.diff.totals.added}
-                label="added"
-                tone="emerald"
-              />
-              <DiffCount
-                n={result.diff.totals.removed}
-                label="removed"
-                tone="rose"
-              />
-              <DiffCount
-                n={result.diff.totals.changed}
-                label="changed"
-                tone="amber"
-              />
-              <DiffCount
-                n={result.diff.totals.unchanged}
-                label="unchanged"
-                tone="slate"
-              />
-            </div>
-            {!result.diff.hasChanges && (
-              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                A fresh re-extraction produces no changes.
+          {result.diff.hasChanges ? (
+            <div>
+              <p className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-200">
+                Re-extracting “{filename}” would:
               </p>
-            )}
-          </div>
+              <div className="flex flex-wrap gap-2 text-sm">
+                <DiffCount
+                  n={result.diff.totals.added}
+                  label="added"
+                  tone="emerald"
+                />
+                <DiffCount
+                  n={result.diff.totals.removed}
+                  label="removed"
+                  tone="rose"
+                />
+                <DiffCount
+                  n={result.diff.totals.changed}
+                  label="changed"
+                  tone="amber"
+                />
+                <DiffCount
+                  n={result.diff.totals.unchanged}
+                  label="unchanged"
+                  tone="slate"
+                />
+              </div>
+            </div>
+          ) : (
+            // No-change is the HEADLINE, not a footnote (#1071): one clear
+            // statement with the unchanged count as detail, and the Save button
+            // disabled below so it can't commit a pointless full row-replacement
+            // of identical content.
+            <div data-testid="reprocess-no-change">
+              <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                Re-extraction produced identical results — nothing to save.
+              </p>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                {result.diff.totals.unchanged} record
+                {result.diff.totals.unchanged === 1 ? "" : "s"} unchanged.
+              </p>
+            </div>
+          )}
 
           {result.diff.entities.map((e) => (
             <EntitySection key={e.entity} diff={e} />
           ))}
 
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Confirming re-runs extraction and replaces this document’s imported
-            rows (any manual edits to them are discarded). A fresh AI
-            re-extraction may differ slightly from this preview; deterministic
-            health-record imports are exact. Records diff exactly, but body
-            metrics, height/head-circumference and medications shown as “added”
-            may instead be deferred or skipped on commit when another source
-            already covers that date or an existing medication matches — so
-            those additions are indicative.
-          </p>
+          {result.diff.hasChanges && (
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Saving re-runs extraction and replaces this document’s imported
+              rows (any manual edits to them are discarded). A fresh AI
+              re-extraction may differ slightly from this preview; deterministic
+              health-record imports are exact. Records diff exactly, but body
+              metrics, height/head-circumference and medications shown as
+              “added” may instead be deferred or skipped on commit when another
+              source already covers that date or an existing medication matches
+              — so those additions are indicative.
+            </p>
+          )}
 
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={commit}
-              disabled={busy}
+              disabled={
+                busy || reprocessPreviewView(result.diff).commitDisabled
+              }
+              data-testid="reprocess-commit"
               className="btn inline-flex items-center gap-1.5 text-sm disabled:opacity-50"
             >
               <IconRefresh className="h-4 w-4" />
-              {committing ? "Reprocessing…" : "Confirm reprocess"}
+              {committing ? "Saving…" : "Save changes"}
             </button>
             <button
               type="button"

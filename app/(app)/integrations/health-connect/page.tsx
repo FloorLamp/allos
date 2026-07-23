@@ -17,12 +17,9 @@ import {
 } from "@/lib/integrations/connections";
 import { getPublicUrl } from "@/lib/settings";
 import { tokenLifecycleStatus } from "@/lib/token-lifecycle";
-import {
-  getIntegrationSyncEvents,
-  getLastSuccessfulSyncAt,
-} from "@/lib/queries";
+import { getLastSuccessfulSyncAt } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
-import IntegrationDebugPanel from "@/components/IntegrationDebugPanel";
+import IntegrationSyncHistoryLink from "@/components/IntegrationSyncHistoryLink";
 import { ExpirySelect, TokenLifecycleNote } from "@/components/TokenLifecycle";
 import { TokenRow } from "@/components/TokenRow";
 import { connectHealthConnect, disconnect } from "./actions";
@@ -73,7 +70,6 @@ export default async function HealthConnectPage() {
   }
 
   // Profile-scoped sync-event history for the debug panel.
-  const events = getIntegrationSyncEvents(profile.id, "health-connect");
   const lastSuccessAt = getLastSuccessfulSyncAt(profile.id, "health-connect");
 
   return (
@@ -257,8 +253,7 @@ export default async function HealthConnectPage() {
             </p>
           </div>
 
-          <IntegrationDebugPanel
-            events={events}
+          <IntegrationSyncHistoryLink
             lastSuccessAt={lastSuccessAt}
             connected={connected}
           />

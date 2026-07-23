@@ -150,9 +150,9 @@ export default function ImportFeed({
             first. Click an item to verify what it produced.
           </p>
         </div>
-        {/* "Re-extract all documents" lives in THIS header now (issue #208) so its
-            scope reads unambiguously — it re-extracts every uploaded document and
-            never touches the recurring syncs in "Connected sources". */}
+        {/* "Re-run extraction on all documents" lives in THIS header now (issue #208)
+            so its scope reads unambiguously — it re-extracts every uploaded document
+            and never touches the recurring syncs in "Connected sources". */}
         <ReprocessButton />
       </div>
       {feed.length === 0 ? (

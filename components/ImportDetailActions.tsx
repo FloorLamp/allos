@@ -11,12 +11,14 @@ import {
 } from "@/app/(app)/medical/document-actions";
 import type { ReprocessFromRawResult } from "@/lib/medical-pipeline";
 
-// The reprocess + delete actions on the import-detail page. Reprocess
-// is now preview-first (ReprocessDiffPanel: preview the diff, then confirm the
-// commit); delete confirms (it also removes the imported results) and navigates
-// back to the import log, since the detail page's own document is gone afterward.
+// The re-run + delete actions on the import-detail page (#1071). Re-extraction
+// is preview-first ONLY (ReprocessDiffPanel: "Preview changes" → "Save changes")
+// — there is no immediate fire-and-replace control anymore; "Re-apply saved
+// extraction" replays the cached extraction with no AI call; "Delete document &
+// its records" confirms (it also removes the imported results) and navigates back
+// to the import log, since the detail page's own document is gone afterward.
 //
-// `hasRaw` — whether this document has a SAVED AI extraction to re-import from
+// `hasRaw` — whether this document has a SAVED AI extraction to re-apply from
 // (#903). Health records (CCD/XDM/SHC/FHIR) import deterministically and have
 // none, so the re-import affordance is hidden for them rather than offered and
 // then refused.
@@ -37,27 +39,27 @@ export default function ImportDetailActions({
     null
   );
 
-  // Re-import from the extraction already saved on this document: re-runs only the
+  // Re-apply the extraction already saved on this document: re-runs only the
   // parsing/import half, so it makes NO AI call and costs no daily quota. The right
   // action when the saved extraction was fine but the app imported it wrong.
   async function onReimportFromRaw() {
     const ok = await confirm({
-      title: "Re-import from saved extraction",
+      title: "Re-apply saved extraction",
       message: (
         <div className="space-y-2">
           <p>
-            Re-imports “{filename}” from the AI extraction already saved with it
-            — <strong>no AI call, and no daily extraction quota used</strong>.
+            Re-applies the AI extraction already saved with “{filename}” —{" "}
+            <strong>no AI call, and no daily extraction quota used</strong>.
           </p>
           <p>
             This document&apos;s imported records are replaced and any manual
             edits to them are discarded — records you added by hand are
-            untouched. Use “Re-extract” instead if the extraction itself was
-            wrong.
+            untouched. Use “Preview changes” above instead if the extraction
+            itself was wrong and needs a fresh AI re-run.
           </p>
         </div>
       ),
-      confirmLabel: "Re-import",
+      confirmLabel: "Re-apply",
     });
     if (!ok) return;
     setRawResult(null);
@@ -80,9 +82,9 @@ export default function ImportDetailActions({
 
   async function onDelete() {
     const ok = await confirm({
-      title: "Delete document",
-      message: `Delete “${filename}” and the results it imported? This can’t be undone.`,
-      confirmLabel: "Delete",
+      title: "Delete document & its records",
+      message: `Delete “${filename}” and every record it imported? This can’t be undone.`,
+      confirmLabel: "Delete document & its records",
       danger: true,
     });
     if (!ok) return;
@@ -116,10 +118,13 @@ export default function ImportDetailActions({
             className="btn-ghost inline-flex items-center gap-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
           >
             <IconRefresh className="h-4 w-4" />
-            {reimporting ? "Re-importing…" : "Re-import from saved extraction"}
+            {reimporting ? "Re-applying…" : "Re-apply saved extraction"}
           </button>
           <span className="text-xs text-slate-500 dark:text-slate-400">
-            No AI call — re-reads the extraction saved with this document.
+            Which should I use? “Preview changes” re-runs the AI (costs a daily
+            extraction) when the extraction itself was wrong; “Re-apply saved
+            extraction” replays the saved result — no AI call — when only the
+            import was off.
           </span>
           {rawResult && (
             <span className={`text-sm ${rawTone}`}>{rawResult.message}</span>
@@ -130,6 +135,7 @@ export default function ImportDetailActions({
         type="button"
         onClick={onDelete}
         disabled={deleting || reimporting}
+        data-testid="delete-document"
         className="btn-ghost inline-flex items-center gap-1.5 text-sm text-rose-600 hover:text-rose-700 disabled:opacity-50 dark:text-rose-400"
       >
         <IconTrash className="h-4 w-4" />

@@ -124,18 +124,9 @@ export async function reprocessAllDocuments(): Promise<ReprocessResult> {
   return reprocessAllForProfile(login.id, profile.id);
 }
 
-// Reprocess a single document (form action). Overwrites that document's records.
-// Runs extraction in the BACKGROUND so the action returns immediately.
-export async function reprocessDocument(formData: FormData) {
-  const { login, profile } = await requireWriteAccess();
-  const id = Number(formData.get("id"));
-  if (!id) return;
-  reprocessDocumentById(login.id, profile.id, id);
-}
-
-// Re-import a document from its SAVED extraction — no AI call, no quota (#903).
-// Unlike reprocessDocument this is awaited: with no model call there's nothing
-// slow to background, so the caller gets the real outcome straight back.
+// Re-apply a document's SAVED extraction — no AI call, no quota (#903). With no
+// model call there's nothing slow to background, so the caller gets the real
+// outcome straight back (contrast the preview-first re-extraction path below).
 export async function reprocessDocumentFromRaw(
   formData: FormData
 ): Promise<ReprocessFromRawResult> {
@@ -164,7 +155,8 @@ export async function previewReprocess(
 // missing/expired/stale — another tab reprocessed, the file changed, or the 15-min
 // TTL lapsed — this falls back to a fresh background re-extraction and the returned
 // outcome (`re-extracted`) lets the UI note that the result may differ from the
-// preview. Distinct from the direct reprocessDocument path, which never previews.
+// preview. This preview→apply pair is the SOLE per-document re-extraction (#1071):
+// there is no un-previewed fire-and-replace action anymore.
 export async function applyReprocessPreview(
   formData: FormData
 ): Promise<ReprocessApplyOutcome> {

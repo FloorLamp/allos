@@ -61,7 +61,9 @@ test.describe("Data → Review import inbox", () => {
     // Admin-only raw payload viewer (#9): the seeded Health Connect sync carries a
     // raw_ref, so the admin (the seed logs in as admin) sees a "View raw"
     // affordance on the source card. Expanding it lazily fetches the admin-gated,
-    // profile-scoped raw route, which returns the captured provider JSON.
+    // profile-scoped raw route, which returns the captured provider JSON — now
+    // rendered through the shared RawDataViewer as a collapsible tree (#1318), not
+    // a flat <pre>.
     const viewRaw = hcCard.getByText("View raw").first(); // first-ok: asserts the source card's View raw affordance — order-agnostic presence
     await expect(viewRaw).toBeVisible();
     // The click can land while the page is still hydrating (all the assertions
@@ -70,12 +72,16 @@ test.describe("Data → Review import inbox", () => {
     // event outright. The component now catches up on mount (loads if it finds
     // itself already open), and this retry covers the swallowed-click case —
     // re-clicking after hydration settles.
-    const payload = hcCard.getByText(/"records"/);
+    const viewer = hcCard.getByTestId("raw-data-viewer");
     await expect(async () => {
-      if (!(await payload.isVisible())) await viewRaw.click();
-      await expect(payload).toBeVisible({ timeout: 4000 });
-    }).toPass({ timeout: 20_000 }); // topass-ok: re-click the <details> until the payload shows — SSR satisfies the earlier asserts, so the discrete onToggle can be swallowed pre-hydration; no POST to settle on
-    await expect(hcCard.getByText(/"Steps"/)).toBeVisible();
+      if (!(await viewer.isVisible())) await viewRaw.click();
+      await expect(viewer).toBeVisible({ timeout: 4000 });
+    }).toPass({ timeout: 20_000 }); // topass-ok: re-click the <details> until the tree loads — SSR satisfies the earlier asserts, so the discrete onToggle can be swallowed pre-hydration; no POST to settle on
+    // The captured JSON is navigable: the top-level "records" key renders in the
+    // tree; expanding reveals the nested "Steps" value (depth-collapsed by default).
+    await expect(viewer.getByText("records:", { exact: false })).toBeVisible();
+    await viewer.getByTestId("raw-expand-all").click();
+    await expect(viewer.getByText(/"Steps"/)).toBeVisible();
   });
 
   test("shows a removed source's history with a Reconnect link, and hides never-set-up sources (issue #294)", async ({
@@ -164,16 +170,16 @@ test.describe("Data → Review import inbox", () => {
     ).toBeVisible({ timeout: 15_000 });
   });
 
-  test("the re-extract-all button previews the AI cost before confirming", async ({
+  test("the re-run-extraction-on-all button previews the AI cost before confirming", async ({
     page,
   }) => {
     await page.goto("/data?section=review");
     const review = page.getByTestId("review-inbox");
 
-    // The rescoped button lives in the Imports section header and reads
-    // unambiguously.
+    // The rescoped batch button lives in the Imports section header and reads
+    // unambiguously — the #1071 vocabulary names the whole family by what differs.
     const button = review.getByTestId("reprocess-all");
-    await expect(button).toHaveText(/Re-extract all documents/);
+    await expect(button).toHaveText(/Re-run extraction on all documents/);
     await button.click();
 
     // The confirm dialog shows the deterministic/AI cost split computed before
