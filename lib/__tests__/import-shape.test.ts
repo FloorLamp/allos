@@ -61,7 +61,7 @@ describe("extractionToPersistInput (AI path)", () => {
       doneExtraction({
         results: [
           mkResult({
-            name: "TSH",
+            name: "Thyroid-Stimulating Hormone (TSH)",
             canonical_name: "Thyroid Stimulating Hormone",
             value: "2.1",
             value_num: 2.1,

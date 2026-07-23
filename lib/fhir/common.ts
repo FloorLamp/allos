@@ -1,4 +1,4 @@
-import { canonicalBiomarkerForLoinc, isVitalLoinc } from "../biomarker-loinc";
+import { classifyLoinc } from "../biomarker-loinc";
 import type { FhirCodeableConcept } from "../cvx-map";
 import { isRealIsoDate } from "../date";
 import { nuccLabel } from "../nucc-taxonomy";
@@ -427,9 +427,12 @@ export function fhirReadingFromCode(
   const loinc = loincFromFhirCode(code);
   // Classify vitals vs labs by LOINC (a FHIR Observation has no section to read),
   // so vital signs land under the vitals category — and don't get registered into
-  // the AI biomarker vocabulary — exactly as the CDA path routes them.
-  const category = isVitalLoinc(loinc) ? "vitals" : "lab";
-  const canonical = canonicalBiomarkerForLoinc(loinc) ?? name;
+  // the AI biomarker vocabulary — exactly as the CDA path routes them. One
+  // classifyLoinc lookup carries both the routing disposition and the canonical
+  // identity (the single precedence authority, #classifyLoinc).
+  const loincClass = classifyLoinc(loinc);
+  const category = loincClass.disposition === "vital" ? "vitals" : "lab";
+  const canonical = loincClass.canonical ?? name;
   // Body Temperature converts to canonical °F at the import boundary (#1018) —
   // the same conversion the CDA mapper and every live-entry writer perform, so an
   // Epic/Apple FHIR "38.5 Cel" joins the series as 101.3 degF. Recognized

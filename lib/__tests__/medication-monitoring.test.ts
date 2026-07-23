@@ -54,7 +54,7 @@ describe("buildMedMonitoring — matching", () => {
     const recent = shiftDateStr(TODAY, -10);
     const labDates = new Map<string, string>([
       [fam("Lithium"), recent],
-      [fam("TSH"), recent],
+      [fam("Thyroid-Stimulating Hormone (TSH)"), recent],
       [fam("Creatinine"), recent],
       [fam("eGFR"), recent],
       [fam("Calcium"), recent],
@@ -68,7 +68,7 @@ describe("buildMedMonitoring — matching", () => {
     const fresh = shiftDateStr(TODAY, -10);
     const labDates = new Map<string, string>([
       [fam("Lithium"), stale],
-      [fam("TSH"), fresh],
+      [fam("Thyroid-Stimulating Hormone (TSH)"), fresh],
       [fam("Creatinine"), fresh],
       [fam("eGFR"), fresh],
       [fam("Calcium"), fresh],
@@ -244,7 +244,7 @@ describe("copy + row note", () => {
     const note = monitoringRowNoteText({ name: "Lithium", rxcui: null });
     expect(note).toContain("Requires monitoring:");
     expect(note).toContain("lithium level");
-    expect(note).toContain("TSH");
+    expect(note).toContain("TSH (thyroid)");
     expect(
       monitoringRowNoteText({ name: "Ibuprofen", rxcui: null })
     ).toBeNull();

@@ -142,9 +142,12 @@ describe("convertToCanonical", () => {
   });
 
   it("converts a bare lowercase enzyme unit to the canonical U/L", () => {
-    expect(convertToCanonical(30, "u/l", { name: "ALT", unit: "U/L" })).toBe(
-      30
-    );
+    expect(
+      convertToCanonical(30, "u/l", {
+        name: "Alanine Aminotransferase (ALT)",
+        unit: "U/L",
+      })
+    ).toBe(30);
   });
 });
 
@@ -246,9 +249,12 @@ describe("real-world unit spellings (#759)", () => {
           unit: "kU/L",
         })
       ).toBe(0.35);
-      expect(convertToCanonical(30, "U/L", { name: "ALT", unit: "U/L" })).toBe(
-        30
-      );
+      expect(
+        convertToCanonical(30, "U/L", {
+          name: "Alanine Aminotransferase (ALT)",
+          unit: "U/L",
+        })
+      ).toBe(30);
     });
   });
 
@@ -257,7 +263,7 @@ describe("real-world unit spellings (#759)", () => {
     // for the identical µmol/min assay. A curated factor-1 conversion lets an IU/L
     // reading convert (and therefore flag + share the trend series) — WITHOUT
     // globally equating IU and U (the #759 dimension split still stands elsewhere).
-    const AST = { name: "AST", unit: "U/L" };
+    const AST = { name: "Aspartate Aminotransferase (AST)", unit: "U/L" };
 
     it("sameUnit(IU/L, U/L) stays false — the dimensions remain physically distinct", () => {
       // The fix is per-analyte (a conversion factor), not a global dimension merge:
@@ -277,10 +283,10 @@ describe("real-world unit spellings (#759)", () => {
 
     it("all six affected analytes accept an IU/L reading at factor 1", () => {
       const six = [
-        { name: "ALT", unit: "U/L" },
-        { name: "AST", unit: "U/L" },
+        { name: "Alanine Aminotransferase (ALT)", unit: "U/L" },
+        { name: "Aspartate Aminotransferase (AST)", unit: "U/L" },
         { name: "Alkaline Phosphatase", unit: "U/L" },
-        { name: "GGT", unit: "U/L" },
+        { name: "Gamma-Glutamyl Transferase (GGT)", unit: "U/L" },
         { name: "Amylase", unit: "U/L" },
         { name: "Lipase", unit: "U/L" },
       ];

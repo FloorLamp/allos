@@ -18,11 +18,11 @@ describe("isRetestWorthy (#546 recurring-monitoring tier)", () => {
     for (const n of [
       "Total Cholesterol",
       "Hemoglobin A1c",
-      "TSH",
+      "Thyroid-Stimulating Hormone (TSH)",
       "Creatinine",
-      "ALT",
+      "Alanine Aminotransferase (ALT)",
       "Hemoglobin",
-      "hs-CRP",
+      "High-Sensitivity C-Reactive Protein (hs-CRP)",
       "Vitamin D, 25-Hydroxy",
     ]) {
       expect(isRetestWorthy(n)).toBe(true);

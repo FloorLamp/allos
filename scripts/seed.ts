@@ -608,7 +608,7 @@ const PANELS: Panel[] = [
   {
     category: "lab",
     name: "ApoB",
-    canonical: "ApoB",
+    canonical: "Apolipoprotein B (ApoB)",
     unit: "mg/dL",
     ref: "<90",
     values: [101, 93, 85, 76, 66, 58],
@@ -658,7 +658,7 @@ const PANELS: Panel[] = [
   {
     category: "biomarker",
     name: "hs-CRP",
-    canonical: "hs-CRP",
+    canonical: "High-Sensitivity C-Reactive Protein (hs-CRP)",
     unit: "mg/L",
     ref: "<3.0",
     values: [1.4, 1.1, 0.9, 0.8, 0.6, 0.5],
@@ -666,7 +666,7 @@ const PANELS: Panel[] = [
   {
     category: "lab",
     name: "ALT",
-    canonical: "ALT",
+    canonical: "Alanine Aminotransferase (ALT)",
     unit: "U/L",
     ref: "<44",
     values: [31, 28, 26, 24, 22, 20],
@@ -674,7 +674,7 @@ const PANELS: Panel[] = [
   {
     category: "lab",
     name: "GGT",
-    canonical: "GGT",
+    canonical: "Gamma-Glutamyl Transferase (GGT)",
     unit: "U/L",
     ref: "<50",
     values: [33, 30, 27, 24, 22, 20],
@@ -743,7 +743,7 @@ const PANELS: Panel[] = [
   {
     category: "lab",
     name: "MCV",
-    canonical: "MCV",
+    canonical: "Mean Corpuscular Volume (MCV)",
     unit: "fL",
     ref: "80-100",
     values: [89, 89, 90, 90, 91, 91],
@@ -751,7 +751,7 @@ const PANELS: Panel[] = [
   {
     category: "lab",
     name: "RDW",
-    canonical: "RDW",
+    canonical: "Red Cell Distribution Width (RDW)",
     unit: "%",
     ref: "11.5-14.5",
     values: [13.4, 13.2, 13.1, 13.0, 12.9, 12.8],
@@ -768,7 +768,7 @@ const PANELS: Panel[] = [
   {
     category: "lab",
     name: "TSH",
-    canonical: "TSH",
+    canonical: "Thyroid-Stimulating Hormone (TSH)",
     unit: "uIU/mL",
     ref: "0.4-4.5",
     values: [2.8, 2.5, 2.2, 2.0, 1.8, 1.7],

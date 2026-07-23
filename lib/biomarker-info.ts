@@ -6,6 +6,7 @@
 // schema change. INFORMATIONAL, NOT MEDICAL ADVICE.
 
 import { BIOMARKER_DESCRIPTION_ENTRIES } from "./datasets/biomarker-descriptions";
+import { buildCanonicalIndex, snapCanonicalName } from "./canonical-name";
 
 export interface BiomarkerInfo {
   // Short abbreviation (e.g. "RDW"), when the marker has a well-known one.
@@ -41,9 +42,18 @@ const BY_LOWER: Map<string, BiomarkerInfo> = (() => {
   return map;
 })();
 
+// The description names ARE the canonical biomarker names, so an alias index over
+// them lets getBiomarkerInfo resolve a bare abbreviation / legacy spelling the same
+// way the import path does — e.g. "RDW" → "Red Cell Distribution Width (RDW)". Built
+// once at load.
+const NAME_INDEX = buildCanonicalIndex(
+  BIOMARKER_DESCRIPTION_ENTRIES.map((e) => e.name)
+);
+
 // The educational description for a canonical biomarker name, or null when none
-// is curated. Tries an exact key match first, then a case-insensitive fallback,
-// matching how the canonical_biomarkers name is treated elsewhere.
+// is curated. Tries an exact key match, then a case-insensitive one, then snaps the
+// input through the canonical alias index (so a bare abbreviation or a legacy
+// spelling still resolves — the exact-match hazard the flag path shares).
 export function getBiomarkerInfo(
   canonicalName: string | null | undefined
 ): BiomarkerInfo | null {
@@ -52,5 +62,10 @@ export function getBiomarkerInfo(
   if (exact) return exact;
   const trimmed = canonicalName.trim();
   if (DESCRIPTIONS[trimmed]) return DESCRIPTIONS[trimmed];
-  return BY_LOWER.get(trimmed.toLowerCase()) ?? null;
+  const byLower = BY_LOWER.get(trimmed.toLowerCase());
+  if (byLower) return byLower;
+  const snapped = snapCanonicalName(trimmed, NAME_INDEX);
+  return snapped !== trimmed
+    ? (BY_LOWER.get(snapped.toLowerCase()) ?? null)
+    : null;
 }

@@ -7,6 +7,7 @@ import {
   isDerivedPercentileLoinc,
   isUnmappedLabLoinc,
   qualitativeClassForLoinc,
+  classifyLoinc,
 } from "@/lib/biomarker-loinc";
 import { reconciledFlag, referenceRange } from "@/lib/reference-range";
 import { convertToCanonical } from "@/lib/unit-conversions";
@@ -37,18 +38,30 @@ describe("canonicalBiomarkerForLoinc — CBC + CMP lab mappings", () => {
     expect(canonicalBiomarkerForLoinc("718-7")).toBe("Hemoglobin");
     expect(canonicalBiomarkerForLoinc("789-8")).toBe("Red Blood Cell Count");
     expect(canonicalBiomarkerForLoinc("4544-3")).toBe("Hematocrit");
-    expect(canonicalBiomarkerForLoinc("787-2")).toBe("MCV");
-    expect(canonicalBiomarkerForLoinc("785-6")).toBe("MCH");
-    expect(canonicalBiomarkerForLoinc("786-4")).toBe("MCHC");
-    expect(canonicalBiomarkerForLoinc("788-0")).toBe("RDW");
+    expect(canonicalBiomarkerForLoinc("787-2")).toBe(
+      "Mean Corpuscular Volume (MCV)"
+    );
+    expect(canonicalBiomarkerForLoinc("785-6")).toBe(
+      "Mean Corpuscular Hemoglobin (MCH)"
+    );
+    expect(canonicalBiomarkerForLoinc("786-4")).toBe(
+      "Mean Corpuscular Hemoglobin Concentration (MCHC)"
+    );
+    expect(canonicalBiomarkerForLoinc("788-0")).toBe(
+      "Red Cell Distribution Width (RDW)"
+    );
     expect(canonicalBiomarkerForLoinc("777-3")).toBe("Platelet Count");
     expect(canonicalBiomarkerForLoinc("6690-2")).toBe("White Blood Cell Count");
-    expect(canonicalBiomarkerForLoinc("776-5")).toBe("MPV");
+    expect(canonicalBiomarkerForLoinc("776-5")).toBe(
+      "Mean Platelet Volume (MPV)"
+    );
   });
 
   it("maps common CMP analytes to their canonical entries", () => {
     expect(canonicalBiomarkerForLoinc("2345-7")).toBe("Glucose");
-    expect(canonicalBiomarkerForLoinc("3094-0")).toBe("BUN");
+    expect(canonicalBiomarkerForLoinc("3094-0")).toBe(
+      "Blood Urea Nitrogen (BUN)"
+    );
     expect(canonicalBiomarkerForLoinc("2160-0")).toBe("Creatinine");
     expect(canonicalBiomarkerForLoinc("2951-2")).toBe("Sodium");
     expect(canonicalBiomarkerForLoinc("2823-3")).toBe("Potassium");
@@ -58,8 +71,12 @@ describe("canonicalBiomarkerForLoinc — CBC + CMP lab mappings", () => {
     expect(canonicalBiomarkerForLoinc("1751-7")).toBe("Albumin");
     expect(canonicalBiomarkerForLoinc("2885-2")).toBe("Total Protein");
     expect(canonicalBiomarkerForLoinc("1975-2")).toBe("Total Bilirubin");
-    expect(canonicalBiomarkerForLoinc("1742-6")).toBe("ALT");
-    expect(canonicalBiomarkerForLoinc("1920-8")).toBe("AST");
+    expect(canonicalBiomarkerForLoinc("1742-6")).toBe(
+      "Alanine Aminotransferase (ALT)"
+    );
+    expect(canonicalBiomarkerForLoinc("1920-8")).toBe(
+      "Aspartate Aminotransferase (AST)"
+    );
     expect(canonicalBiomarkerForLoinc("6768-6")).toBe("Alkaline Phosphatase");
   });
 
@@ -107,15 +124,27 @@ describe("canonicalBiomarkerForLoinc — CBC + CMP lab mappings", () => {
       "19066-0",
       "8262-8",
       "106201-7",
+      // The "map every LOINC" sweep added the administrative rows a real XDM files
+      // in Results whose value is a restatement, a source, or a diagnosis code —
+      // never a measurable analyte. The specimen SOURCE (31208-2, "Cervix/
+      // Endocervix") is a source, not a result; the blood type restated by the
+      // "TSO Interp" codes (882-1/21026-0) is captured cleanly by the ABORh code
+      // 19057-9 → "Blood Type", so these restatements drop without loss.
+      "56850-1",
+      "75980-3",
+      "34574-4",
+      "36334-1",
+      "31208-2",
+      "893-8",
+      "890-4",
+      "882-1",
+      "21026-0",
     ]) {
       expect(isNonAnalyteLoinc(code)).toBe(true);
       expect(isUnmappedLabLoinc(code)).toBe(false);
     }
-    // A genuine analyte code is NOT swept up by the denylist — and the deliberately
-    // conservative set excludes anything that could carry a real result, e.g. an
-    // STI specimen-source code (31208-2) is left in place, not dropped.
+    // A genuine analyte code is NOT swept up by the denylist.
     expect(isNonAnalyteLoinc("2345-7")).toBe(false);
-    expect(isNonAnalyteLoinc("31208-2")).toBe(false);
   });
 
   // p3/p4 (pediatric): derived anthropometric percentiles are dropped (the app
@@ -348,13 +377,17 @@ describe("full clinical-lab panel mappings", () => {
     expect(canonicalBiomarkerForLoinc("18262-6")).toBe("LDL Cholesterol"); // direct
     expect(canonicalBiomarkerForLoinc("2571-8")).toBe("Triglycerides");
     expect(canonicalBiomarkerForLoinc("9830-1")).toBe("Cholesterol/HDL Ratio");
-    expect(canonicalBiomarkerForLoinc("1884-6")).toBe("ApoB");
+    expect(canonicalBiomarkerForLoinc("1884-6")).toBe(
+      "Apolipoprotein B (ApoB)"
+    );
   });
 
   it("maps diabetes, thyroid, iron, vitamin, hormone and metabolic analytes", () => {
     expect(canonicalBiomarkerForLoinc("4548-4")).toBe("Hemoglobin A1c");
     expect(canonicalBiomarkerForLoinc("20448-7")).toBe("Insulin");
-    expect(canonicalBiomarkerForLoinc("3016-3")).toBe("TSH");
+    expect(canonicalBiomarkerForLoinc("3016-3")).toBe(
+      "Thyroid-Stimulating Hormone (TSH)"
+    );
     expect(canonicalBiomarkerForLoinc("3024-7")).toBe("Free T4");
     expect(canonicalBiomarkerForLoinc("2276-4")).toBe("Ferritin");
     expect(canonicalBiomarkerForLoinc("2502-3")).toBe("Transferrin Saturation");
@@ -391,9 +424,13 @@ describe("full clinical-lab panel mappings", () => {
   it("maps alternate platelet/MPV LOINCs and blood lead to unit-matched entries", () => {
     expect(canonicalBiomarkerForLoinc("26515-7")).toBe("Platelet Count");
     expect(cb("Platelet Count").unit).toBe("10^3/uL");
-    expect(canonicalBiomarkerForLoinc("28542-9")).toBe("MPV");
-    expect(canonicalBiomarkerForLoinc("32623-1")).toBe("MPV");
-    expect(cb("MPV").unit).toBe("fL");
+    expect(canonicalBiomarkerForLoinc("28542-9")).toBe(
+      "Mean Platelet Volume (MPV)"
+    );
+    expect(canonicalBiomarkerForLoinc("32623-1")).toBe(
+      "Mean Platelet Volume (MPV)"
+    );
+    expect(cb("Mean Platelet Volume (MPV)").unit).toBe("fL");
     expect(canonicalBiomarkerForLoinc("77307-7")).toBe("Lead");
     expect(cb("Lead").unit).toBe("ug/dL");
   });
@@ -426,10 +463,12 @@ describe("full clinical-lab panel mappings", () => {
       expect(canonicalBiomarkerForLoinc(wrong)).toBeNull();
   });
 
-  it("maps total PSA to the actual 'PSA' entry and free% to the ratio entry", () => {
-    // The total-PSA canonical entry is named "PSA"; free% is a separate % entry.
-    expect(canonicalBiomarkerForLoinc("2857-1")).toBe("PSA");
-    expect(cb("PSA").unit).toBe("ng/mL");
+  it("maps total PSA to the actual 'Prostate-Specific Antigen (PSA)' entry and free% to the ratio entry", () => {
+    // The total-PSA canonical entry is named "Prostate-Specific Antigen (PSA)"; free% is a separate % entry.
+    expect(canonicalBiomarkerForLoinc("2857-1")).toBe(
+      "Prostate-Specific Antigen (PSA)"
+    );
+    expect(cb("Prostate-Specific Antigen (PSA)").unit).toBe("ng/mL");
     expect(cb("Prostate Specific Antigen (PSA), Free %").unit).toBe("%");
   });
 
@@ -748,5 +787,44 @@ describe("end-to-end import routing through snapCanonicalName", () => {
   it("routes a lipid and a corrected-code analyte end-to-end", () => {
     expect(route("13457-7", "LDL Cholesterol Calc")).toBe("LDL Cholesterol");
     expect(route("2283-0", "RBC Folate")).toBe("Folate, RBC");
+  });
+});
+
+describe("classifyLoinc — the single precedence authority", () => {
+  it("agrees with each individual predicate (no drift)", () => {
+    // One representative code per disposition + orthogonal facets.
+    const cases: Record<string, string> = {
+      "8480-6": "vital", // systolic BP (also has a canonical name)
+      "72486-4": "non-analyte", // "Approved By"
+      "59576-9": "percentile", // BMI percentile
+      "718-7": "lab", // Hemoglobin (mapped)
+      "20507-0": "lab", // RPR (mapped, qualitative infection)
+      "99999-9": "unmapped-lab", // nothing claims it
+    };
+    for (const [code, disposition] of Object.entries(cases)) {
+      const c = classifyLoinc(code);
+      expect(c.disposition, code).toBe(disposition);
+      // The disposition must be consistent with the standalone predicates.
+      expect(isVitalLoinc(code)).toBe(disposition === "vital");
+      expect(isNonAnalyteLoinc(code)).toBe(disposition === "non-analyte");
+      expect(isDerivedPercentileLoinc(code)).toBe(disposition === "percentile");
+      expect(isUnmappedLabLoinc(code)).toBe(disposition === "unmapped-lab");
+      // Facets ride alongside the disposition.
+      expect(c.canonical).toBe(canonicalBiomarkerForLoinc(code));
+      expect(c.qualitative).toBe(qualitativeClassForLoinc(code));
+    }
+  });
+
+  it("carries the qualitative class as an orthogonal facet on a mapped lab", () => {
+    const rpr = classifyLoinc("20507-0");
+    expect(rpr.disposition).toBe("lab");
+    expect(rpr.canonical).toBe("RPR");
+    expect(rpr.qualitative).toBe("infection");
+  });
+
+  it("a vital carries its canonical identity too (not a strict partition)", () => {
+    const bp = classifyLoinc("8480-6");
+    expect(bp.disposition).toBe("vital");
+    expect(bp.canonical).toBe("Blood Pressure Systolic");
   });
 });

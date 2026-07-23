@@ -1,7 +1,4 @@
-import {
-  isDerivedPercentileLoinc,
-  isNonAnalyteLoinc,
-} from "../biomarker-loinc";
+import { classifyLoinc } from "../biomarker-loinc";
 import {
   allergyExternalId,
   careGoalExternalId,
@@ -205,10 +202,12 @@ export function observationRecords(
   // unmapped-code report, so without this the FHIR path would persist them as junk
   // labs that never surface in that report (#693).
   return out
-    .filter(
-      (rec) =>
-        !isNonAnalyteLoinc(rec.loinc) && !isDerivedPercentileLoinc(rec.loinc)
-    )
+    .filter((rec) => {
+      // Drop the same administrative/percentile codes the CDA mapper drops
+      // (#681/#684/#722), via the single LOINC classifier.
+      const d = classifyLoinc(rec.loinc).disposition;
+      return d !== "non-analyte" && d !== "percentile";
+    })
     .map((rec) => ({ ...rec, encounter_external_id: encExt }));
 }
 

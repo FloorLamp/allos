@@ -311,11 +311,13 @@ describe("ctaHref precision — every gap deep-links the concrete form (#1146)",
         ...COMPLETE_ADULT,
         phenoAgePresentCount: 5,
         phenoAgeMissingCount: 4,
-        phenoAgeMissingPrimary: "hs-CRP",
+        phenoAgeMissingPrimary: "High-Sensitivity C-Reactive Protein (hs-CRP)",
       },
       "phenoage-inputs"
     );
-    expect(g.ctaHref).toBe("/results/biomarkers?new=1&name=hs-CRP");
+    expect(g.ctaHref).toBe(
+      "/results/biomarkers?new=1&name=High-Sensitivity%20C-Reactive%20Protein%20(hs-CRP)"
+    );
   });
 
   it("phenoage-inputs falls back to the unprefilled add form when no primary is known", () => {

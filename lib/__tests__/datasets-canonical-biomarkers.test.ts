@@ -69,9 +69,21 @@ import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 // flag-relevant rows, so the signature legitimately changes and the boot reconcile
 // re-flags stored orphaned readings (a fasting glucose / plain CRP that had no band)
 // against the new bands on the next boot.
+// Updated for the "map every LOINC" sweep: ~30 curated qualitative entries
+// (serology / PCR / IgG-immunity / NIPT screens / culture organism / Hep B/C /
+// hemoglobin electrophoresis) — all RANGELESS (in_range, null bands), so they add
+// NO flag-relevant rows — plus ONE ranged addition (Glucose, Gestational Screen
+// (50 g), ref_high 135), which does change the signature and re-flags a stored
+// gestational-screen reading that previously had no band.
+// Updated for the bare-abbreviation → "Full Name (ABBR)" consolidation: 15
+// measured-lab entries (ALT/AST/GGT/BUN/TSH/hs-CRP/PSA/ApoB/TIBC/IGF-1 + the CBC
+// indices MCV/MCH/MCHC/MPV/RDW) were renamed to their spelled-out form. Their
+// bands are UNCHANGED — only the name changed — so the signature moves (name is
+// part of it) but no stored record re-flags. Migration 093 rewrites stored
+// canonical_name so existing rows keep matching their (renamed) entry.
 const FLAG_SIGNATURE_GOLDEN =
   // A SHA-256 content hash of the canonical dataset; provably synthetic.
-  "a5a3b9293c623f5e8a74ebfa9fa0255b96e349f0902c521e677cc55b422f3a4d"; // phi-scan-ok
+  "83851fcdafca4c6a966dd925d6491c8b5775afe2dd977d11d0a23f08816f33d2"; // phi-scan-ok
 
 describe("canonical-biomarkers dataset on the curated-dataset framework", () => {
   it("passes the whole framework harness (citation + identity + refusal + no collisions)", () => {

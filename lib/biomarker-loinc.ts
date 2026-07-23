@@ -25,18 +25,18 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "718-7": "Hemoglobin", // Hemoglobin [Mass/volume] in Blood (g/dL)
   "789-8": "Red Blood Cell Count", // Erythrocytes [#/volume] in Blood by Automated count (10^6/uL)
   "4544-3": "Hematocrit", // Hematocrit [Volume Fraction] of Blood by Automated count (%)
-  "787-2": "MCV", // MCV [Entitic volume] by Automated count (fL)
-  "785-6": "MCH", // MCH [Entitic mass] by Automated count (pg)
-  "786-4": "MCHC", // MCHC [Mass/volume] by Automated count (g/dL)
-  "788-0": "RDW", // Erythrocyte distribution width [Ratio] by Automated count (%)
+  "787-2": "Mean Corpuscular Volume (MCV)", // MCV [Entitic volume] by Automated count (fL)
+  "785-6": "Mean Corpuscular Hemoglobin (MCH)", // MCH [Entitic mass] by Automated count (pg)
+  "786-4": "Mean Corpuscular Hemoglobin Concentration (MCHC)", // MCHC [Mass/volume] by Automated count (g/dL)
+  "788-0": "Red Cell Distribution Width (RDW)", // Erythrocyte distribution width [Ratio] by Automated count (%)
   "777-3": "Platelet Count", // Platelets [#/volume] in Blood by Automated count (10^3/uL)
   "6690-2": "White Blood Cell Count", // Leukocytes [#/volume] in Blood by Automated count (10^3/uL)
-  "776-5": "MPV", // Platelet mean volume [Entitic volume] in Blood by Automated count (fL)
+  "776-5": "Mean Platelet Volume (MPV)", // Platelet mean volume [Entitic volume] in Blood by Automated count (fL)
   // Alternate platelet/MPV LOINCs emitted by real Epic exports — same unit as the
   // automated-count forms above, so they route to the same canonical entries.
   "26515-7": "Platelet Count", // Platelets [#/volume] in Blood (method-less; 10^3/uL)
-  "28542-9": "MPV", // Platelet mean volume [Entitic volume] in Blood (method-less; fL)
-  "32623-1": "MPV", // Platelet mean volume [Entitic volume] in Blood by Rees-Ecker (fL)
+  "28542-9": "Mean Platelet Volume (MPV)", // Platelet mean volume [Entitic volume] in Blood (method-less; fL)
+  "32623-1": "Mean Platelet Volume (MPV)", // Platelet mean volume [Entitic volume] in Blood by Rees-Ecker (fL)
 
   // WBC differential. The differential is reported in TWO complementary quantities
   // — an absolute count (cells/uL) and a fraction of leukocytes (%) — which are
@@ -68,7 +68,7 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "1558-6": "Glucose, Fasting", // Fasting glucose [Mass/volume] in Serum/Plasma
   // (mg/dL). Distinct from a random Glucose (2345-7): fasting has its own 70–99
   // diagnostic band, so it routes to the dedicated "Glucose, Fasting" entry (#1195).
-  "3094-0": "BUN", // Urea nitrogen [Mass/volume] in Serum/Plasma (mg/dL)
+  "3094-0": "Blood Urea Nitrogen (BUN)", // Urea nitrogen [Mass/volume] in Serum/Plasma (mg/dL)
   "2160-0": "Creatinine", // Creatinine [Mass/volume] in Serum/Plasma (mg/dL)
   "2951-2": "Sodium", // Sodium [Moles/volume] in Serum/Plasma (mmol/L)
   "2823-3": "Potassium", // Potassium [Moles/volume] in Serum/Plasma (mmol/L)
@@ -78,8 +78,8 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "1751-7": "Albumin", // Albumin [Mass/volume] in Serum/Plasma (g/dL)
   "2885-2": "Total Protein", // Protein [Mass/volume] in Serum/Plasma (g/dL)
   "1975-2": "Total Bilirubin", // Bilirubin.total [Mass/volume] in Serum/Plasma (mg/dL)
-  "1742-6": "ALT", // Alanine aminotransferase [Enzymatic activity/volume] (U/L)
-  "1920-8": "AST", // Aspartate aminotransferase [Enzymatic activity/volume] (U/L)
+  "1742-6": "Alanine Aminotransferase (ALT)", // Alanine aminotransferase [Enzymatic activity/volume] (U/L)
+  "1920-8": "Aspartate Aminotransferase (AST)", // Aspartate aminotransferase [Enzymatic activity/volume] (U/L)
   "6768-6": "Alkaline Phosphatase", // Alkaline phosphatase [Enzymatic activity/volume] (U/L)
   // eGFR is fragmented across many LOINCs (formula + population variants); all
   // resolve to the one canonical eGFR entry (mL/min/1.73m2).
@@ -102,7 +102,7 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "43396-1": "Non-HDL Cholesterol", // Cholesterol non HDL [Mass/volume] in Serum/Plasma
   "13458-5": "VLDL Cholesterol", // Cholesterol in VLDL [Mass/volume], by calculation
   "9830-1": "Cholesterol/HDL Ratio", // Cholesterol.total/Cholesterol in HDL [Mass Ratio]
-  "1884-6": "ApoB", // Apolipoprotein B [Mass/volume] in Serum/Plasma (mg/dL)
+  "1884-6": "Apolipoprotein B (ApoB)", // Apolipoprotein B [Mass/volume] in Serum/Plasma (mg/dL)
   // Canonical Lp(a) is molar (nmol/L); map only the molar LOINC. The mass form
   // (10835-7, mg/dL) has no fixed unit conversion (particle mass varies), so it is
   // intentionally left unmapped rather than mis-scaled.
@@ -117,7 +117,7 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "1986-9": "C-Peptide", // C peptide [Mass/volume] in Serum/Plasma (ng/mL)
 
   // ── Thyroid ─────────────────────────────────────────────────────────────────
-  "3016-3": "TSH", // Thyrotropin [Units/volume] in Serum/Plasma (uIU/mL)
+  "3016-3": "Thyroid-Stimulating Hormone (TSH)", // Thyrotropin [Units/volume] in Serum/Plasma (uIU/mL)
   "3024-7": "Free T4", // Thyroxine (T4) free [Mass/volume] in Serum/Plasma (ng/dL)
   "3051-0": "Free T3", // Triiodothyronine (T3) free [Mass/volume] in Serum/Plasma (pg/mL)
   "8099-4": "Thyroid Peroxidase Antibodies (TPOAb)", // Thyroperoxidase Ab [Units/volume] (IU/mL)
@@ -128,7 +128,7 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   // ── Iron studies ────────────────────────────────────────────────────────────
   "2276-4": "Ferritin", // Ferritin [Mass/volume] in Serum/Plasma (ng/mL)
   "2498-4": "Iron", // Iron [Mass/volume] in Serum/Plasma (ug/dL)
-  "2500-7": "TIBC", // Iron binding capacity [Mass/volume] in Serum/Plasma (ug/dL)
+  "2500-7": "Total Iron-Binding Capacity (TIBC)", // Iron binding capacity [Mass/volume] in Serum/Plasma (ug/dL)
   "2502-3": "Transferrin Saturation", // Iron saturation [Mass Fraction] in Serum/Plasma (%)
 
   // ── Vitamins ────────────────────────────────────────────────────────────────
@@ -141,12 +141,12 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "1823-4": "Vitamin E (Alpha-Tocopherol)", // Alpha tocopherol [Mass/volume] (mg/L)
 
   // ── Inflammatory ────────────────────────────────────────────────────────────
-  "30522-7": "hs-CRP", // C reactive protein by High sensitivity method (mg/L)
+  "30522-7": "High-Sensitivity C-Reactive Protein (hs-CRP)", // C reactive protein by High sensitivity method (mg/L)
   "4537-7": "Erythrocyte Sedimentation Rate (ESR)", // ESR by Westergren (mm/h)
   "30341-2": "Erythrocyte Sedimentation Rate (ESR)", // ESR in Blood (method-less; mm/h)
 
   // ── Liver / pancreas ────────────────────────────────────────────────────────
-  "2324-2": "GGT", // Gamma glutamyl transferase [Enzymatic activity/volume] (U/L)
+  "2324-2": "Gamma-Glutamyl Transferase (GGT)", // Gamma glutamyl transferase [Enzymatic activity/volume] (U/L)
   "10834-0": "Globulin", // Globulin [Mass/volume] in Serum by calculation (g/dL)
   "1759-0": "Albumin/Globulin Ratio", // Albumin/Globulin [Mass Ratio] in Serum/Plasma
   "1798-8": "Amylase", // Amylase [Enzymatic activity/volume] in Serum/Plasma (U/L)
@@ -177,10 +177,10 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "2191-5": "DHEA-Sulfate", // DHEA-S [Mass/volume] in Serum/Plasma (ug/dL)
   "13967-5": "Sex Hormone Binding Globulin (SHBG)", // SHBG [Moles/volume] (nmol/L)
   "2842-3": "Prolactin", // Prolactin [Mass/volume] in Serum/Plasma (ng/mL)
-  "2484-4": "IGF-1", // Insulin-like growth factor-I [Mass/volume] (ng/mL)
+  "2484-4": "Insulin-Like Growth Factor 1 (IGF-1)", // Insulin-like growth factor-I [Mass/volume] (ng/mL)
 
   // ── Tumor markers ───────────────────────────────────────────────────────────
-  "2857-1": "PSA", // Prostate specific Ag [Mass/volume] in Serum/Plasma (ng/mL)
+  "2857-1": "Prostate-Specific Antigen (PSA)", // Prostate specific Ag [Mass/volume] in Serum/Plasma (ng/mL)
   "12841-3": "Prostate Specific Antigen (PSA), Free %", // free/total PSA [Mass Fraction] (%).
   // (NOT 10886-0, which is free-PSA absolute in ng/mL, a different quantity.)
 
@@ -258,6 +258,56 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "79882-7": "Visual Acuity, Right Eye", // Visual acuity uncorrected Right eye by Snellen
   "79883-5": "Visual Acuity, Left Eye", // Visual acuity uncorrected Left eye by Snellen
   "98499-7": "Visual Acuity, Right Eye", // Visual acuity uncorrected Right eye (general)
+
+  // ── Qualitative infection / serology / molecular results ───────────────────
+  // Each is a QUALITATIVE result (no numeric band); the canonical entry is rangeless
+  // and the positive-is-bad polarity comes from the 'infection' class in
+  // QUALITATIVE_CLASS_BY_LOINC below. Two LOINCs for one analyte (N. gonorrhoeae
+  // amplification variants) route to the same identity on purpose.
+  "20507-0": "RPR", // Rapid plasma reagin (syphilis)
+  "56888-1": "HIV Antigen/Antibody", // HIV Ag/Ab 4th-gen screen
+  "5196-1": "Hepatitis B Surface Antigen (HBsAg)", // existing entry (parenthetical form)
+  "13955-0": "Hepatitis C Antibody (Anti-HCV)", // existing entry (parenthetical form)
+  "94500-6": "SARS-CoV-2 NAAT", // SARS-CoV-2 PCR
+  "94558-4": "SARS-CoV-2 Antigen", // SARS-CoV-2 rapid antigen
+  "92142-9": "Influenza A NAAT", // Influenza A PCR
+  "92141-1": "Influenza B NAAT", // Influenza B PCR
+  "80382-5": "Influenza A Antigen", // Rapid influenza A antigen
+  "80383-3": "Influenza B Antigen", // Rapid influenza B antigen
+  "85479-4": "RSV NAAT", // Respiratory syncytial virus PCR
+  "60489-2": "Streptococcus A NAAT", // Group A Strep PCR
+  "48683-7": "Group B Streptococcus", // GBS screen
+  "21613-5": "Chlamydia trachomatis NAAT", // C. trachomatis amplification
+  "5028-6": "Neisseria gonorrhoeae NAAT", // N. gonorrhoeae amplification
+  "24111-7": "Neisseria gonorrhoeae NAAT", // N. gonorrhoeae amplification (variant)
+  "30167-1": "HPV, High-Risk", // Pooled high-risk HPV
+  "59263-4": "HPV Genotype 16", // HPV genotype 16
+  "75694-0": "HPV Genotype 18/45", // HPV genotype 18/45
+  "6463-4": "Culture Organism", // Culture organism 1
+  "44841-5": "Culture Organism", // Culture organism 2
+  "13514-5": "Hemoglobin Electrophoresis", // Hemoglobinopathy screen interpretation
+
+  // ── Durable-immunity IgG titers ────────────────────────────────────────────
+  // Rangeless (assay-specific cutoff); immune-positive-is-good from the 'immunity'
+  // class. Qualitative "Immune" and numeric-titer LOINCs share one identity.
+  "25514-1": "Rubella Antibody IgG", // Rubella IgG (qualitative)
+  "5334-8": "Rubella Antibody IgG", // Rubella antibody (IgG titer)
+  "20479-2": "Measles Antibody IgG", // Measles IgG (qualitative)
+  "5244-9": "Measles Antibody IgG", // Measles antibody (IgG titer)
+  "7966-5": "Mumps Antibody IgG", // Mumps IgG (qualitative)
+  "25418-5": "Mumps Antibody IgG", // Mumps antibody (IgG titer)
+  "8046-5": "Varicella Zoster Antibody IgG", // Varicella IgG (qualitative)
+  "5403-1": "Varicella Zoster Antibody IgG", // Varicella antibody (IgG titer)
+
+  // ── Prenatal cell-free-DNA (NIPT) screens + QC ─────────────────────────────
+  // Rangeless; low/high-risk axis from the 'screen' class, fetal fraction from 'qc'.
+  "75983-7": "Trisomy 21 Screen", // NIPT trisomy 21
+  "75558-7": "Trisomy 18 Screen", // NIPT trisomy 18
+  "73824-5": "Trisomy 13 Screen", // NIPT trisomy 13
+  "75605-6": "Fetal Fraction", // NIPT fetal fraction (QC)
+
+  // ── Numeric OB screen (with a screening cutoff) ────────────────────────────
+  "1504-0": "Glucose, Gestational Screen (50 g)", // 1-hour 50 g GCT
 };
 
 // The canonical biomarker name for a LOINC code, or null when unmapped.
@@ -318,13 +368,12 @@ export function isVitalLoinc(loinc: string | null | undefined): boolean {
 // "unmapped" for this purpose — it's intentionally kept out of the biomarker
 // vocabulary — so it's excluded here.
 export function isUnmappedLabLoinc(loinc: string | null | undefined): boolean {
+  // Delegates to the single precedence authority (classifyLoinc) so this and the
+  // routing predicates can never disagree about a code's fate.
   return (
     loinc != null &&
     loinc !== "" &&
-    !isVitalLoinc(loinc) &&
-    !isNonAnalyteLoinc(loinc) &&
-    !isDerivedPercentileLoinc(loinc) &&
-    canonicalBiomarkerForLoinc(loinc) == null
+    classifyLoinc(loinc).disposition === "unmapped-lab"
   );
 }
 
@@ -347,6 +396,22 @@ const NON_ANALYTE_LOINCS = new Set([
   "8262-8", // Limitations of The Test
   "106201-7", // Cytology accession #
   "19066-0", // Status Information
+  // Interpretation / narrative-summary rows that RESTATE a structured result rather
+  // than being a result themselves, plus non-result codes an EHR files in Results.
+  // Each was seen in a real XDM as an "unmapped lab" with an administrative value
+  // (a summary word, a generic "Result", a specimen source, a diagnosis code) — none
+  // is a measurable analyte, so it's recognized-and-dropped, never coining a series.
+  // A GENUINE coded result (the organism id, an amplification call, an antibody
+  // titer) is NOT here — those are mapped analytes above.
+  "56850-1", // Lab Interpretation (generic Normal/Abnormal summary)
+  "75980-3", // "Result" (generic placeholder restating a screen call)
+  "34574-4", // "Final Report" (narrative culture-report dump)
+  "36334-1", // ICD-10 (a diagnosis code filed as a result row)
+  "31208-2", // Specimen source (e.g. "Cervix/Endocervix") — not a result
+  "893-8", // Antibody Screen Interpretation (restates the structured screen)
+  "890-4", // Antibody-screen ("ABSCO") interpretation
+  "882-1", // Type & screen ("TSO") interpretation — blood type is captured cleanly
+  "21026-0", // by the ABORh code 19057-9 → "Blood Type"; these restate it.
 ]);
 
 // Derived anthropometric PERCENTILES that pediatric CCDs report alongside the raw
@@ -458,4 +523,49 @@ export function qualitativeClassForLoinc(
 ): QualitativeLoincClass | null {
   if (!loinc) return null;
   return QUALITATIVE_CLASS_BY_LOINC[loinc] ?? null;
+}
+
+// ── Single-classifier facade (the ONE precedence authority) ─────────────────
+//
+// The five LOINC-keyed tables above each answer a distinct question, and the
+// predicates were queried independently — so the ORDER that decides a code's fate
+// (a vital is never an "unmapped lab"; a non-analyte is dropped before we ask for a
+// canonical name) lived implicitly in isUnmappedLabLoinc's `&&` chain. classifyLoinc
+// makes that precedence explicit in ONE place and returns everything a caller needs
+// in a single lookup. It is NOT a strict partition: a vital ALSO carries a canonical
+// name (BP/temperature map to a vitals-category entry for series grouping), so
+// `disposition` is the routing/keep-drop decision while `canonical` + `qualitative`
+// are orthogonal facets carried alongside.
+//
+//   disposition:
+//     'vital'        — route to the vitals category (may also have `canonical`)
+//     'non-analyte'  — administrative/structural; the mapper DROPS it
+//     'percentile'   — a derived anthropometric percentile; DROPPED (app recomputes)
+//     'lab'          — a lab reading WITH a canonical identity (`canonical` set)
+//     'unmapped-lab' — a lab reading with NO canonical mapping (the debug gap)
+export type LoincDisposition =
+  "vital" | "non-analyte" | "percentile" | "lab" | "unmapped-lab";
+
+export interface LoincClassification {
+  disposition: LoincDisposition;
+  canonical: string | null;
+  qualitative: QualitativeLoincClass | null;
+}
+
+export function classifyLoinc(
+  loinc: string | null | undefined
+): LoincClassification {
+  const canonical = canonicalBiomarkerForLoinc(loinc);
+  const qualitative = qualitativeClassForLoinc(loinc);
+  // Precedence: vital → non-analyte → percentile → (mapped) lab → unmapped lab.
+  const disposition: LoincDisposition = isVitalLoinc(loinc)
+    ? "vital"
+    : isNonAnalyteLoinc(loinc)
+      ? "non-analyte"
+      : isDerivedPercentileLoinc(loinc)
+        ? "percentile"
+        : canonical != null
+          ? "lab"
+          : "unmapped-lab";
+  return { disposition, canonical, qualitative };
 }
