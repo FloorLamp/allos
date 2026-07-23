@@ -19,7 +19,7 @@ test("shows a stack-total UL warning for an over-UL magnesium stack", async ({
   await expect(warning).toContainText("Magnesium above the upper limit");
   await expect(warning).toContainText("600 mg");
   await expect(warning).toContainText("350 mg");
-  await expect(warning).toContainText("discuss with your clinician");
+  await expect(warning).toContainText("with your clinician");
   // Names both contributing products (the stack-total, not a single item).
   await expect(warning).toContainText("Magnesium Glycinate");
   await expect(warning).toContainText("Magnesium Citrate");

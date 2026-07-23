@@ -1,4 +1,3 @@
-import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import Link from "next/link";
 import {
   CRISIS_LEAD_LINE,
@@ -46,8 +45,7 @@ export default function CrisisResources({
       )}
 
       <p className="text-slate-600 dark:text-slate-300">
-        Consider discussing how you’re feeling with a clinician.{" "}
-        {MEDICAL_DISCLAIMER}
+        Consider discussing how you’re feeling with a clinician.
       </p>
 
       {isAdmin && !configured && (

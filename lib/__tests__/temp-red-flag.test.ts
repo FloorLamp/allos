@@ -150,7 +150,7 @@ describe("tempRedFlagFullDetail / inlineTempRedFlagNote", () => {
     )!;
     const full = tempRedFlagFullDetail(f);
     expect(full).toMatch(/Source:/);
-    expect(full).toMatch(/not medical advice/i);
+    expect(full).not.toMatch(/not medical advice/i);
   });
 
   it("inline note fires at logging for a crossing reading and is null otherwise", () => {

@@ -16,7 +16,6 @@
 // hero + the Telegram nudge through the shared dismissal bus. This module only DECIDES
 // + phrases; it owns no surface.
 
-import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import type { AssembledEpisode } from "./illness-episode-format";
 import type { TemperatureUnit } from "./settings";
 import { fmtTemp, fmtTempDual } from "./units";
@@ -90,12 +89,12 @@ export function tempRedFlagDetail(
 // Telegram nudge, inline toast): the fact + line, the source, then the mandatory
 // "informational, not medical advice" tail.
 export function tempRedFlagFullDetail(f: TempRedFlagFinding): string {
-  return `${f.detail} Source: ${f.source} ${MEDICAL_DISCLAIMER}`;
+  return `${f.detail} Source: ${f.source}`;
 }
 
 // The Finding.evidence line: the source + the non-negotiable disclaimer tail.
 export function tempRedFlagEvidence(f: TempRedFlagFinding): string {
-  return `Source: ${f.source} ${MEDICAL_DISCLAIMER}`;
+  return `Source: ${f.source}`;
 }
 
 // The inline note shown at the MOMENT of logging (the temperature toast/card), or
@@ -108,7 +107,7 @@ export function inlineTempRedFlagNote(
 ): string | null {
   const entry = detectTempRedFlag(degF, ageMonths);
   if (!entry) return null;
-  return `${entry.line}. Source: ${entry.source} ${MEDICAL_DISCLAIMER}`;
+  return `${entry.line}. Source: ${entry.source}`;
 }
 
 export interface DetectTempRedFlagOptions {

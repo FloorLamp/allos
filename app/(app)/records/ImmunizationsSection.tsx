@@ -1,4 +1,3 @@
-import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import Link from "next/link";
 import { today } from "@/lib/db";
 import {
@@ -401,9 +400,9 @@ export default function ImmunizationsSection({
           <ImmunizationForm action={addImmunization} defaultDate={now} />
           <MyChartImport />
           <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-            Simplified schedule. {MEDICAL_DISCLAIMER} The tracked schedule is a
-            practical subset of the CDC/ACIP recommendations and does not model
-            risk conditions, pregnancy, or shared-decision cases.
+            Simplified schedule. The tracked schedule is a practical subset of
+            the CDC/ACIP recommendations and does not model risk conditions,
+            pregnancy, or shared-decision cases.
           </p>
         </div>
       </div>

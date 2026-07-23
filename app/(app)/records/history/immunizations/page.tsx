@@ -1,4 +1,3 @@
-import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import { requireSession } from "@/lib/auth";
 import ImmunizationsSection from "../../ImmunizationsSection";
 import { SectionSubtitle } from "../../SectionHeader";
@@ -20,8 +19,7 @@ export default async function RecordsImmunizationsPage(props: {
   return (
     <div data-testid="records-immunizations">
       <SectionSubtitle>
-        Your vaccination record measured against a simplified CDC/ACIP schedule
-        — {MEDICAL_DISCLAIMER}
+        Your vaccination record measured against a simplified CDC/ACIP schedule.
       </SectionSubtitle>
       <ImmunizationsSection
         profileId={profile.id}

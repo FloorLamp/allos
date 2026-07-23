@@ -100,7 +100,7 @@ describe("getDrugAllergyWarnings — recorded allergy × active med (#1029)", ()
     expect(up?.key).toBe(warnings[0].dedupeKey);
     expect(up?.band).toBe("today"); // care-tier → Needs-attention hero
     expect(up?.carePersistent).toBe(true);
-    expect(up?.detail).toContain("discuss with your prescriber");
+    expect(up?.detail).toContain("with your prescriber");
   });
 
   it("is CARE-PERSISTENT (#1092): a page dismissal is resisted, but a live snooze defers it", () => {

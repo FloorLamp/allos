@@ -336,7 +336,7 @@ describe("warning copy + keys", () => {
     expect(magDetail).toContain("supplemental Magnesium");
     expect(magDetail).toContain("350 mg");
     expect(magDetail).toContain("600 mg");
-    expect(magDetail).toContain("discuss with your clinician");
+    expect(magDetail).toContain("with your clinician");
 
     const vitADetail = ulWarningDetail(vitA);
     expect(vitADetail).toContain("total intake");
@@ -350,7 +350,7 @@ describe("warning copy + keys", () => {
     expect(caveat).not.toBeNull();
     expect(caveat).toContain("chronic kidney disease");
     expect(caveat).toContain("magnesium");
-    expect(caveat).toContain("discuss with your clinician");
+    expect(caveat).toContain("with your clinician");
 
     // Appended to the detail when present, absent otherwise.
     expect(ulWarningDetail(mag, caveat)).toContain("may not apply to you");

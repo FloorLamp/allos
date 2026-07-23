@@ -1,6 +1,5 @@
 "use client";
 
-import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveRiskFactors } from "./actions";
@@ -93,8 +92,7 @@ export default function RiskFactorsForm({
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
         These help tailor how often some lab retests and screenings are
-        suggested, and how they&rsquo;re prioritized on Upcoming. Simplified.{" "}
-        {MEDICAL_DISCLAIMER}
+        suggested, and how they&rsquo;re prioritized on Upcoming. Simplified.
       </p>
 
       <div className="space-y-3">

@@ -1,4 +1,3 @@
-import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import { formatRecordDate } from "@/lib/record-format";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
 import { sphereProgression, formatDiopter } from "@/lib/optical-prescription";
@@ -46,8 +45,7 @@ export default function OpticalProgression({
         </div>
       </div>
       <p className="text-xs text-slate-500 dark:text-slate-400">
-        A more negative sphere means more nearsighted (myopic).{" "}
-        {MEDICAL_DISCLAIMER}
+        A more negative sphere means more nearsighted (myopic).
       </p>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">

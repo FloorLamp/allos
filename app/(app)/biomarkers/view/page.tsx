@@ -1,4 +1,3 @@
-import { MEDICAL_DISCLAIMER, NOT_A_DIAGNOSIS } from "@/lib/disclaimers";
 import Link from "next/link";
 import { IconArrowLeft } from "@tabler/icons-react";
 import {
@@ -524,7 +523,6 @@ export default async function BiomarkerDetailPage(props: {
           computed from your other lab readings on the same draw date, not
           measured directly.{" "}
           <span className="font-medium">{derivedReading.derived_formula}</span>.
-          {NOT_A_DIAGNOSIS}
         </Notice>
       )}
 
@@ -740,9 +738,8 @@ export default async function BiomarkerDetailPage(props: {
           </p>
         )}
         <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-          Reference and optimal ranges are informational. {MEDICAL_DISCLAIMER}{" "}
-          They may be inaccurate and often vary by sex and age. Consult a
-          clinician.
+          Reference and optimal ranges may be inaccurate and often vary by sex
+          and age. Consult a clinician.
         </p>
       </div>
 

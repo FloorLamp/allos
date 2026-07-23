@@ -88,9 +88,9 @@ describe("illness-care builder — duration variant (#448 fixture)", () => {
     expect(dur[0].domain).toBe("illness-care");
     expect(dur[0].tone).toBe("caution");
     expect(dur[0].title).toContain("Fever logged 4 days running");
-    // Cites the source verbatim-adjacent + the mandatory disclaimer tail.
+    // Cites the source; the disclaimer now lives on /disclaimer, not the finding (#1049).
     expect(dur[0].evidence).toContain("Source:");
-    expect(dur[0].evidence).toContain("Informational, not medical advice.");
+    expect(dur[0].evidence).not.toContain("Informational, not medical advice.");
     expect(dur[0].detail).toContain("more than 3 days");
     // Guardable against the known-prefix registry.
     expect(dedupeKeyHasKnownPrefix(dur[0].dedupeKey)).toBe(true);
@@ -105,7 +105,7 @@ describe("illness-care builder — duration variant (#448 fixture)", () => {
     expect(item).toBeTruthy();
     expect(item!.band).toBe("today");
     expect(item!.domain).toBe("illness-care");
-    expect(item!.detail).toContain("Informational, not medical advice.");
+    expect(item!.detail).not.toContain("Informational, not medical advice.");
 
     // It flows through collectUpcoming (the Upcoming page + hero + digest gather).
     const upcoming = collectUpcoming(p, today(p));

@@ -12,7 +12,6 @@
 // caption it rides alongside can never disagree ("one question, one computation").
 // No owned SQL is added here, so the profile-scoping guard is unaffected.
 
-import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import {
   getStrengthByExercise,
   getExerciseSetCountsSince,
@@ -624,8 +623,7 @@ export function buildOralHealthFindings(profileId: number): Finding[] {
       // Calm FYI — informational, never an alarm and never a push.
       tone: "info",
       evidence:
-        "Diabetes and periodontitis are bidirectionally linked (ADA / AAP). " +
-        MEDICAL_DISCLAIMER,
+        "Diabetes and periodontitis are bidirectionally linked (ADA / AAP).",
       actionHref: "/records/history/visits",
       actionLabel: "Dental care",
     },
@@ -701,7 +699,7 @@ export function buildSubstanceUseFindings(profileId: number): Finding[] {
       detail: capProgressLine(state.status, state.substance),
       // Calm FYI — informational, never an alarm and never a push.
       tone: "info",
-      evidence: `Your own weekly reduction target. ${MEDICAL_DISCLAIMER}`,
+      evidence: "Your own weekly reduction target.",
       actionHref: "/records/specialty/substance-use",
       actionLabel: "View intake",
     });
@@ -744,7 +742,7 @@ function foodSuggestionToFinding(s: FoodSuggestion): Finding {
     // Calm, informational lifestyle guidance — never a red attention flag; the reduce
     // direction is coaching-tier too (#449), never a push/hero.
     tone: "info",
-    evidence: `${s.evidence} Source: ${s.source}. ${MEDICAL_DISCLAIMER}`,
+    evidence: `${s.evidence} Source: ${s.source}.`,
     actionHref: biomarkerViewHref(s.triggeredBy[0] ?? null),
     actionLabel: "View biomarker",
   };

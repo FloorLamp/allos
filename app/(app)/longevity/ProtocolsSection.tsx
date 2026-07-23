@@ -1,4 +1,3 @@
-import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { getDisplayFormatPrefs } from "@/lib/settings";
@@ -100,7 +99,7 @@ export default async function ProtocolsSection({
             {template ? (
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 {template.blurb} The form below is prefilled — review and edit,
-                then save. {MEDICAL_DISCLAIMER}
+                then save.
               </p>
             ) : null}
           </div>
@@ -115,8 +114,8 @@ export default async function ProtocolsSection({
             template={template}
           />
           <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-            {MEDICAL_DISCLAIMER} Comparisons are descriptive (mean/median shift
-            with n per window), not statistical inference.
+            Comparisons are descriptive (mean/median shift with n per window),
+            not statistical inference.
           </p>
         </div>
       </div>

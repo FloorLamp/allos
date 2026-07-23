@@ -1,4 +1,3 @@
-import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import { getFamilyHistory } from "@/lib/queries";
 import FamilyHistoryForm from "@/app/(app)/family-history/FamilyHistoryForm";
 import FamilyHistoryList from "@/app/(app)/family-history/FamilyHistoryList";
@@ -26,8 +25,8 @@ export default function FamilyHistorySection({
       <div className="min-w-0 space-y-4">
         <FamilyHistoryForm action={addFamilyHistory} />
         <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-          {MEDICAL_DISCLAIMER} Imported entries come from uploaded health
-          records (CCD Family History section).
+          Imported entries come from uploaded health records (CCD Family History
+          section).
         </p>
       </div>
     </div>

@@ -1,4 +1,3 @@
-import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import RxOtcBadge from "@/components/RxOtcBadge";
 import {
   DEFAULT_FORMAT_PREFS,
@@ -114,10 +113,6 @@ export default function MedicationListView({
           </table>
         </div>
       )}
-
-      <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">
-        {MEDICAL_DISCLAIMER}
-      </p>
     </div>
   );
 }

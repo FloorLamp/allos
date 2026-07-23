@@ -1,6 +1,5 @@
 "use client";
 
-import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveSmokingHistory } from "./actions";
@@ -150,7 +149,7 @@ export default function SmokingHistoryForm({
       <p className="border-t border-black/5 pt-4 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">
         Privacy: smoking history is sensitive. Like the rest of this
         profile&rsquo;s medical passport, anyone granted access to this profile
-        (and any admin) can see it. {MEDICAL_DISCLAIMER}
+        (and any admin) can see it.
       </p>
     </div>
   );

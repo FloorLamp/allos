@@ -1,4 +1,3 @@
-import { NOT_A_DIAGNOSIS } from "@/lib/disclaimers";
 import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/auth";
 import { isMinor } from "@/lib/life-stage";
@@ -37,7 +36,7 @@ export default async function RecordsSubstanceUsePage(props: {
       <SectionSubtitle>
         Track validated screening scores (AUDIT-C, AUDIT, DAST-10), alcohol,
         nicotine, and cannabis use over time, and reduction targets you set
-        yourself. A screening tool. {NOT_A_DIAGNOSIS}
+        yourself.
       </SectionSubtitle>
       <SubstanceUseSection
         profileId={profile.id}

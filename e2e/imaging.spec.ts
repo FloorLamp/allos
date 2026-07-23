@@ -127,7 +127,7 @@ test.describe("Imaging studies — add → view → filter → edit → delete (
     await expect(card).toContainText("trailing 3 years");
     await expect(card).toContainText("Recorded:");
     await expect(card.getByTestId("radiation-dose-total")).toContainText("mSv");
-    await expect(card).toContainText("Informational, not medical advice.");
+    await expect(card).not.toContainText("Informational, not medical advice.");
 
     // Clean up the study we created.
     await row.getByRole("button", { name: "Delete" }).click();

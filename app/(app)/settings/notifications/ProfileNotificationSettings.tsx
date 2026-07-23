@@ -1,6 +1,5 @@
 "use client";
 
-import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { NotifySchedule } from "@/lib/settings";
@@ -410,7 +409,7 @@ export default function ProfileNotificationSettings({
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             A nudge (and digest lines) when a recommended checkup or screening
             is due or overdue. Due items still appear on your Upcoming page
-            either way. {MEDICAL_DISCLAIMER}
+            either way.
           </p>
         </div>
       </>

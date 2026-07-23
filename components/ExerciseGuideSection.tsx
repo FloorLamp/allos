@@ -1,4 +1,3 @@
-import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import { liftInfo, muscleLabel, type Equipment } from "@/lib/lifts";
 import { getExerciseGuide } from "@/lib/exercise-guides";
 import MuscleAnatomy from "@/components/MuscleAnatomy";
@@ -58,7 +57,7 @@ export default function ExerciseGuideSection({
         How to
       </h3>
       <p className="mb-3 text-xs italic text-slate-500 dark:text-slate-400">
-        Form reference. {MEDICAL_DISCLAIMER}
+        Form reference.
       </p>
 
       {muscles && (

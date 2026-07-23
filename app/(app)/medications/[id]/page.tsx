@@ -1,4 +1,3 @@
-import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { IconArrowLeft } from "@tabler/icons-react";
@@ -235,9 +234,6 @@ export default async function MedicationDetailPage(props: {
         initialAction={initialAction}
         conditions={medConditions}
       />
-      <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">
-        For reference only. {MEDICAL_DISCLAIMER}
-      </p>
     </PageContainer>
   );
 }

@@ -1,6 +1,5 @@
 "use client";
 
-import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import { useState } from "react";
 import GrowthChart, {
   type GrowthBand,
@@ -99,7 +98,7 @@ export default function GrowthChartsCard({
       />
 
       <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-        Reference curves (WHO 0–2 y, CDC 2–20 y). {MEDICAL_DISCLAIMER}
+        Reference curves (WHO 0–2 y, CDC 2–20 y).
       </p>
     </div>
   );

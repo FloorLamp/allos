@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { followLink } from "./helpers";
-import { MEDICAL_DISCLAIMER, DISCLAIMER_SECTIONS } from "../lib/disclaimers";
+import { DISCLAIMER_SECTIONS } from "../lib/disclaimers";
 import { CRISIS_LEAD_LINE } from "../lib/crisis-resources";
 
 // The consolidated Disclaimer surface (issue #1049). The ~40 inline "informational,
@@ -61,14 +61,14 @@ test.describe("consolidated disclaimer surface (issue #1049)", () => {
     page,
   }) => {
     // The crisis line is a safety contract, NOT passive legal copy — it was NOT swept
-    // to /disclaimer. The always-available surface renders it inline, with no dismiss
-    // control, and its trailing generic line is now sourced from the canonical
-    // MEDICAL_DISCLAIMER constant rather than a hand-written copy.
+    // to /disclaimer. The always-available surface renders the crisis resources inline,
+    // with no dismiss control. The generic "not medical advice" disclaimer was removed
+    // from this surface (it lives on /disclaimer now) — the crisis RESOURCES stay.
     await page.goto("/crisis-resources");
     const panel = page.getByTestId("crisis-resources");
     await expect(panel).toBeVisible();
     await expect(panel).toContainText(CRISIS_LEAD_LINE);
-    await expect(panel).toContainText(MEDICAL_DISCLAIMER);
+    await expect(panel).not.toContainText(/not medical advice/i);
     // Non-dismissible: no dismiss/hide affordance on the crisis surface.
     await expect(
       panel.getByRole("button", { name: /dismiss|hide|snooze/i })

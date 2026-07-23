@@ -14,14 +14,19 @@ import {
 // Source-scan guard for the disclaimer-consolidation invariant (issue #1049), in the
 // profile-scoping / telegram-chokepoint / immediate-tx / notes-text tradition. Disclaimer
 // copy used to live as ~40 inline literals that drifted into ~15 near-variants of one
-// sentence. It now has ONE home (lib/disclaimers.ts); every surface renders a REFERENCE
-// to a constant. This test reads the repo's own source as TEXT (no DB, no network — it
-// stays "pure") and fails the build if a NEW inline disclaimer literal reappears under
-// app/ or components/, so the 40→1 consolidation can't silently regrow.
+// sentence. Per the owner's ratified call, all of that boilerplate is now DELETED from the
+// surfaces: the disclaimer lives on ONE page (/disclaimer, footer-linked), and the domain
+// pages carry no disclaimer prose at all. This test reads the repo's own source as TEXT
+// (no DB, no network — it stays "pure") and fails the build if a disclaimer literal
+// reappears under app/ or components/, so the consolidation can't silently regrow.
 //
-// Escape hatch: a line carrying a `disclaimer-ok: <why>` comment is skipped, for the
-// rare case a contextual literal must stay inline (the PHQ-9 crisis contract, #716,
-// already sources its wording from lib/crisis-resources.ts constants, so it needs none).
+// STRICT: because no legitimate inline disclaimer remains, there are ZERO `disclaimer-ok:`
+// escapes in the tree, and the second test below pins that count at 0. The escape hatch
+// stays wired only for a future, reviewed carve-out; the PHQ-9 crisis contract (#716) is
+// NOT one — it renders crisis RESOURCES (a safety surface) sourced from
+// lib/crisis-resources.ts constants, which are not disclaimer phrasings and never trip
+// this scan. lib/disclaimers.ts itself is out of scan scope (it lives under lib/, and the
+// only remaining consumer is the /disclaimer page + tests).
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const SCAN_DIRS = ["app", "components"];
@@ -89,6 +94,35 @@ describe("disclaimer consolidation guard (issue #1049)", () => {
       `These hand-write a disclaimer phrase. Render a reference to a constant from ` +
         `lib/disclaimers.ts (MEDICAL_DISCLAIMER / NOT_A_DIAGNOSIS / NEVER_PRESCRIPTIVE / ` +
         `DATASET_DISCLAIMER) instead of a literal:\n${offenders.join("\n")}`
+    ).toEqual([]);
+  });
+
+  it("carries ZERO disclaimer-ok escapes — the surfaces hold no inline disclaimers", () => {
+    const escapes: string[] = [];
+    for (const { rel, text } of sourceFiles()) {
+      text.split("\n").forEach((line, i) => {
+        if (line.includes("disclaimer-ok")) escapes.push(`${rel}:${i + 1}`);
+      });
+    }
+    expect(
+      escapes,
+      `The disclaimer boilerplate was fully deleted from the surfaces, so no ` +
+        `disclaimer-ok escape should exist. If a NEW reviewed carve-out genuinely ` +
+        `needs one, update this test with the justification:\n${escapes.join("\n")}`
+    ).toEqual([]);
+  });
+
+  it("no surface under app/ or components/ imports a disclaimer constant except the /disclaimer page", () => {
+    const importers: string[] = [];
+    for (const { rel, text } of sourceFiles()) {
+      if (rel === "app/(app)/disclaimer/page.tsx") continue;
+      if (/from\s*["']@\/lib\/disclaimers["']/.test(text)) importers.push(rel);
+    }
+    expect(
+      importers,
+      `The disclaimer copy is consolidated onto /disclaimer; a domain surface should ` +
+        `not import from @/lib/disclaimers (delete the inline disclaimer instead):\n` +
+        importers.join("\n")
     ).toEqual([]);
   });
 
