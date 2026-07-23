@@ -116,9 +116,24 @@ export default function CoachingWidget({ recs }: { recs: Recommendation[] }) {
             </form>
           </div>
           {secondary && (
-            <p className="mt-3 border-t border-black/5 pt-3 text-xs text-slate-500 dark:border-white/5 dark:text-slate-400">
-              <span className="font-medium">Next:</span> {secondary.title} —{" "}
-              {secondary.detail}
+            <p
+              className="mt-3 border-t border-black/5 pt-3 text-xs text-slate-500 dark:border-white/5 dark:text-slate-400"
+              data-testid="coaching-secondary"
+            >
+              <span className="font-medium">Next:</span>{" "}
+              {/* The secondary rec carries the same actionHref as the top one
+                  (#1219) — render it as a compact link, not inert text. */}
+              {secondary.actionHref ? (
+                <Link
+                  href={secondary.actionHref}
+                  className="font-medium text-brand-700 hover:underline dark:text-brand-400"
+                >
+                  {secondary.title}
+                </Link>
+              ) : (
+                secondary.title
+              )}{" "}
+              — {secondary.detail}
             </p>
           )}
         </div>

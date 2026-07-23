@@ -994,6 +994,19 @@ export const DATASETS: ExportDataset[] = [
     countSql: `SELECT COUNT(*) AS n FROM food_log_events WHERE profile_id = ?`,
   }),
   tableDataset({
+    // Non-food substance consumption ledger (#1078): one row per (date, substance)
+    // with a per-use units count (nicotine/cannabis; alcohol rides food_log above).
+    // User-entered health data, so it's in the portable export; id-keyed + owned,
+    // deletable like the other logged datasets.
+    key: "substance_log",
+    label: "Substance log",
+    table: "substance_log",
+    columns: ["date", "substance", "units", "logged_at"],
+    select: `SELECT id, date, substance, units, logged_at
+       FROM substance_log WHERE profile_id = ? ORDER BY date DESC, substance`,
+    countSql: `SELECT COUNT(*) AS n FROM substance_log WHERE profile_id = ?`,
+  }),
+  tableDataset({
     // Protein-grams quick-add log (#824): one row per date with a running gram total
     // (protein powder / shakes have no food-group home). User-entered health data, so
     // it's in the portable export; id-keyed + owned, deletable like the other logged
@@ -1146,6 +1159,7 @@ export const DELETE_POLICY: Record<string, DatasetDeletePolicy> = {
   frequency_targets: { revalidate: ["/training", "/"] },
   food_log: { revalidate: ["/nutrition", "/trends", "/"] },
   food_log_events: { revalidate: ["/nutrition", "/"] },
+  substance_log: { revalidate: ["/records/specialty/substance-use", "/"] },
   protein_log: { revalidate: ["/nutrition", "/"] },
   symptom_logs: { revalidate: ["/", "/timeline"] },
   cycles: { revalidate: ["/medical/cycles", "/timeline", "/"] },

@@ -351,13 +351,13 @@ export const PREVENTIVE_CONCEPT_MAP: ConceptMatcher[] = [
       "dast",
     ],
     canonicalBiomarkers: ["DAST-10"],
-    // DAST-10 is total-only (copyright — see lib/substance-use.ts), so the CTA verb
-    // is "Enter your DAST-10 score", not "Complete". #1085 flips it to in-app.
+    // DAST-10 is in-app since #1085 (the owner-reversed #998 licensing call — see
+    // lib/substance-use.ts), so the CTA verb is "Complete the DAST-10".
     satisfiedBy: {
       kind: "instrument",
       instrument: "DAST-10",
       page: "/records/specialty/substance-use",
-      entry: "total-only",
+      entry: "in-app",
     },
   },
   {

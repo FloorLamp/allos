@@ -11,9 +11,13 @@ import {
   SUBSTANCE_INSTRUMENTS,
   shouldSuggestClinicianDiscussion,
   capProgressLine,
+  substanceDef,
 } from "@/lib/substance-use";
 import type { SubstanceInstrument } from "@/lib/substance-use";
-import { getSubstanceWeekState, getAlcoholWeeklyTrend } from "@/lib/queries";
+import {
+  getAllSubstanceWeekStates,
+  getSubstanceWeeklyTrend,
+} from "@/lib/queries";
 import { getSmokingHistory } from "@/lib/settings";
 import { resolveSmoking, smokingStatusLabel } from "@/lib/smoking";
 import SubstanceInstrumentsForm from "@/app/(app)/medical/substance-use/SubstanceInstrumentsForm";
@@ -23,9 +27,10 @@ import ConsumptionSection from "@/app/(app)/medical/substance-use/ConsumptionSec
 // /medical/substance-use page, now the #substance-use section of Records ›
 // Specialty (#1175, the #1042 relocation pattern) sitting beside Mental health:
 // screen → track → support reduction. Validated screening instruments (AUDIT-C
-// in-app; AUDIT / DAST-10 as outside totals) trended like biomarkers; standard-
-// drink consumption on the shared food-log ledger; a user-set weekly reduction
-// target with calm progress. NON-JUDGMENTAL AND NEVER GAMIFIED (product-decided):
+// and DAST-10 in-app — the latter since #1085; AUDIT as an outside total) trended
+// like biomarkers; per-substance consumption ledgers (#1078: alcohol on the shared
+// food-log ledger, nicotine/cannabis on substance_log); user-set weekly reduction
+// targets with calm progress. NON-JUDGMENTAL AND NEVER GAMIFIED (product-decided):
 // no streaks, no badges, no milestones, no celebratory copy — a harm-reduction
 // tracker, not a chip-counter. A high score gets a calm discuss-with-a-clinician
 // note, NEVER the crisis surface (#996 is explicit/item-9 only) and never a
@@ -48,8 +53,15 @@ export default function SubstanceUseSection({
 }) {
   const td = today(profileId);
   const readings = getSubstanceInstrumentReadings(profileId);
-  const week = getSubstanceWeekState(profileId);
-  const trend = getAlcoholWeeklyTrend(profileId);
+  // Per-substance week state + trend (#1078): alcohol / nicotine / cannabis, each
+  // dispatched to its own ledger by the ONE query-layer computation.
+  const weeks = getAllSubstanceWeekStates(profileId);
+  const trends = new Map(
+    weeks.map((w) => [
+      w.substance,
+      getSubstanceWeeklyTrend(profileId, w.substance),
+    ])
+  );
   const smoking = resolveSmoking(getSmokingHistory(profileId), false);
 
   // The latest reading per instrument that sits in a discuss-with-a-clinician
@@ -60,8 +72,6 @@ export default function SubstanceUseSection({
     (r): r is SubstanceInstrumentReading =>
       r != null && shouldSuggestClinicianDiscussion(r.instrument, r.total)
   );
-
-  const maxTrend = Math.max(1, ...trend.map((w) => w.count));
 
   return (
     <div className="space-y-6">
@@ -98,7 +108,7 @@ export default function SubstanceUseSection({
         />
         <div data-testid="substance-history">
           {readings.length === 0 ? (
-            <EmptyState message="No screening scores yet. Answer the AUDIT-C above, or enter an AUDIT or DAST-10 total from elsewhere." />
+            <EmptyState message="No screening scores yet. Answer the AUDIT-C or DAST-10 above, or enter a total from elsewhere." />
           ) : (
             <ul className="space-y-2">
               {readings.map((r) => (
@@ -131,53 +141,76 @@ export default function SubstanceUseSection({
         </div>
       </section>
 
-      {/* Consumption + reduction target */}
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300">
-          Alcohol intake
-        </h2>
-        <p className="text-sm" data-testid="substance-week-count">
-          <span className="font-semibold">{week.count}</span> standard{" "}
-          {week.count === 1 ? "drink" : "drinks"} logged this week.
-        </p>
-        {week.status ? (
-          <p className="text-sm" data-testid="substance-cap-progress">
-            {capProgressLine(week.status)}
-          </p>
-        ) : null}
-        <ConsumptionSection
-          weekCount={week.count}
-          capSet={week.target != null}
-          cap={week.target?.cap ?? null}
-        />
-        <p className="text-xs text-slate-500 dark:text-slate-400">
-          One standard drink ≈ 12 oz beer, 5 oz wine, or 1.5 oz spirits. Drinks
-          log into the same ledger as Nutrition&rsquo;s alcohol group — logging
-          in either place counts once.
-        </p>
+      {/* Consumption + reduction target, one section per tracked substance
+          (#1078): alcohol on the shared food-log ledger, nicotine/cannabis on
+          the dedicated substance_log ledger — same one-tap log/undo, weekly cap,
+          calm progress line, and trailing trend, all through the ONE dispatched
+          computation the coaching finding also reads. */}
+      {weeks.map((week) => {
+        const def = substanceDef(week.substance);
+        const trend = trends.get(week.substance) ?? [];
+        const maxTrend = Math.max(1, ...trend.map((w) => w.count));
+        return (
+          <section className="space-y-3" key={week.substance}>
+            <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300">
+              {def.label} intake
+            </h2>
+            <p
+              className="text-sm"
+              data-testid={`substance-week-count-${week.substance}`}
+            >
+              <span className="font-semibold">{week.count}</span>{" "}
+              {week.count === 1 ? def.countSingular : def.countPlural} logged
+              this week.
+            </p>
+            {week.status ? (
+              <p
+                className="text-sm"
+                data-testid={`substance-cap-progress-${week.substance}`}
+              >
+                {capProgressLine(week.status, week.substance)}
+              </p>
+            ) : null}
+            <ConsumptionSection
+              substance={week.substance}
+              weekCount={week.count}
+              capSet={week.target != null}
+              cap={week.target?.cap ?? null}
+            />
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {def.unitNote}
+            </p>
 
-        {/* Trailing weekly trend — a calm bar list, oldest first. */}
-        <div className="space-y-1" data-testid="substance-trend">
-          {trend.map((w) => (
-            <div key={w.start} className="flex items-center gap-2 text-xs">
-              <span className="w-20 shrink-0 text-slate-500 dark:text-slate-400">
-                {w.start.slice(5)}
-                {w.isCurrent ? " (now)" : ""}
-              </span>
-              <div className="h-2 flex-1 rounded bg-black/5 dark:bg-white/5">
-                <div
-                  className="h-2 rounded bg-brand-400/70"
-                  style={{ width: `${(w.count / maxTrend) * 100}%` }}
-                />
-              </div>
-              <span className="w-6 text-right tabular-nums">{w.count}</span>
+            {/* Trailing weekly trend — a calm bar list, oldest first. */}
+            <div
+              className="space-y-1"
+              data-testid={`substance-trend-${week.substance}`}
+            >
+              {trend.map((w) => (
+                <div key={w.start} className="flex items-center gap-2 text-xs">
+                  <span className="w-20 shrink-0 text-slate-500 dark:text-slate-400">
+                    {w.start.slice(5)}
+                    {w.isCurrent ? " (now)" : ""}
+                  </span>
+                  <div className="h-2 flex-1 rounded bg-black/5 dark:bg-white/5">
+                    <div
+                      className="h-2 rounded bg-brand-400/70"
+                      style={{ width: `${(w.count / maxTrend) * 100}%` }}
+                    />
+                  </div>
+                  <span className="w-6 text-right tabular-nums">{w.count}</span>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      </section>
+          </section>
+        );
+      })}
 
-      {/* Tobacco/nicotine: the existing structured smoking status links in as the
-          risk factor (#83) — recorded on Medical → Background. */}
+      {/* Tobacco/nicotine STATUS: the existing structured smoking status links in
+          as the risk-factor / screening-eligibility source of truth (#83 —
+          pack-years drives USPSTF lung/AAA cadence and is NEVER recomputed from
+          the nicotine consumption log above; they answer different questions and
+          deliberately coexist, #1078). Recorded on Health record → Background. */}
       <section className="space-y-2">
         <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300">
           Tobacco

@@ -108,6 +108,32 @@ export function biomarkerViewHref(
     : "/results/biomarkers";
 }
 
+// The biomarker ADD-FORM deep link: Results › Biomarkers with the add form
+// focused (?new=1) and optionally name-prefilled (#662). This is the ONE encoding
+// of the lab-record deep-link shape (#1083) shared by the preventive screening
+// rows/nudges (lib/preventive-upcoming) and the data-quality PhenoAge gap
+// (#1146), so the two lanes can't diverge (#221). The base is the post-#1079
+// tabbed route — never `/results#biomarkers`, which only survives via redirect.
+export function biomarkerAddHref(name?: string | null): AppRoute {
+  const n = name?.trim();
+  return n
+    ? `/results/biomarkers?new=1&name=${encodeURIComponent(n)}`
+    : "/results/biomarkers?new=1";
+}
+
+// The Medications list filtered to a maintenance slice (#1146). Source of truth
+// for the union — the page parses `?filter=`, so a rename is one edit and every
+// caller is re-checked by the compiler (typedRoutes validates the /medications
+// path but NOT the `?filter=` value — this union does, mirroring dataSectionHref).
+// `needs-rxcui`: only ACTIVE medications with no confirmed RxNorm code (the #851
+// confirm backlog the data-quality med-rxcui gap points at when several need it).
+export const MEDICATION_FILTERS = ["needs-rxcui"] as const;
+export type MedicationFilter = (typeof MEDICATION_FILTERS)[number];
+
+export function medicationsFilterHref(filter: MedicationFilter): AppRoute {
+  return `/medications?filter=${filter}`;
+}
+
 // The Timeline "jump to this day" link: filter the feed to a single day AND
 // scroll to that day's anchor. One place for the `/timeline?from=X&to=X#…`
 // pattern the sidebar calendar and the workout heatmap (#186) both build.
@@ -188,6 +214,15 @@ export function providerHref(id: number): AppRoute {
 export function medicationHref(id: number): AppRoute {
   const href: Route<`/medications/${number}`> = `/medications/${id}`;
   return href as AppRoute;
+}
+
+// A medication's EDIT form: the detail page opened with its edit workflow
+// (`?action=edit`) — the form that carries the #851 RxNorm confirm affordance.
+// The ONE encoding of that action-shape, shared by the list row's Edit item
+// (MedicationRow) and the data-quality med-rxcui gap CTA when exactly one
+// medication needs its code confirmed (#1146).
+export function medicationEditHref(id: number): AppRoute {
+  return `${medicationHref(id)}?action=edit` as AppRoute;
 }
 
 // A protocol (training/care protocol) detail page.

@@ -27,7 +27,7 @@ import {
   getRecentDatedExercises,
   getFoodSuggestions,
   getFrequencyTargetProgress,
-  getSubstanceWeekState,
+  getAllSubstanceWeekStates,
   getIntakeSafetyContext,
   getActiveMedicationFamilies,
   getBiomarkerSeries,
@@ -52,6 +52,7 @@ import {
 } from "./settings";
 import {
   getMedicationsMissingRxcuiCount,
+  getMedicationMissingRxcuiSoleId,
   getFailedExtractionDocumentCount,
   getLatestMetricSample,
   getBioAgeReadings,
@@ -59,7 +60,7 @@ import {
   countPrescribersNeedingLink,
 } from "./queries";
 import { resolveSmoking } from "./smoking";
-import { PHENOAGE_INPUT_COUNT } from "./bio-age";
+import { PHENOAGE_INPUT_COUNT, PHENOAGE_INPUT_NAMES } from "./bio-age";
 import {
   detectDataQualityGaps,
   dataQualityDedupeKey,
@@ -86,7 +87,11 @@ import {
   foodHabitInteractions,
   foodHabitInteractionNote,
 } from "./food-habit";
-import { substanceTargetSignalKey, capProgressLine } from "./substance-use";
+import {
+  substanceTargetSignalKey,
+  capProgressLine,
+  substanceDef,
+} from "./substance-use";
 import {
   proteinAdequacySignalKey,
   proteinAdequacyTitle,
@@ -321,9 +326,15 @@ export function collectDataQualityGaps(profileId: number): DataQualityGap[] {
     heightKnown: getLatestMetricSample(profileId, "height_cm") !== null,
     smokingKnown: smoking.source !== null,
     medsMissingRxcui: getMedicationsMissingRxcuiCount(profileId),
+    medMissingRxcuiId: getMedicationMissingRxcuiSoleId(profileId),
     prescribersNeedingLink: countPrescribersNeedingLink(profileId),
     phenoAgePresentCount: bioAge.presentInputs.length,
     phenoAgeMissingCount: PHENOAGE_INPUT_COUNT - bioAge.presentInputs.length,
+    // The first missing analyte in checklist order — the #662 add-form prefill
+    // target for the phenoage CTA (#1146). Null when the panel is complete.
+    phenoAgeMissingPrimary:
+      PHENOAGE_INPUT_NAMES.find((n) => !bioAge.presentInputs.includes(n)) ??
+      null,
     failedExtractions: getFailedExtractionDocumentCount(profileId),
     riskAttributesReviewed: getRiskAttributesReviewed(profileId),
   };
@@ -657,38 +668,41 @@ export function buildFoodHabitFindings(profileId: number): Finding[] {
     });
 }
 
-// ---- Substance use (#998): over-target reduction observation ---------------
+// ---- Substance use (#998/#1078): over-target reduction observations --------
 
-// ONE calm, non-judgmental coaching finding when this week's logged standard drinks
-// exceed the profile's own reduction target ("9 drinks logged this week — 2 over
-// your 7-drink weekly cap."). Reads through getSubstanceWeekState — the SAME
-// week-window + food_log rollup the substance surface renders — and formats via the
-// shared capProgressLine, so the page and the finding can never disagree ("one
-// question, one computation"). Coaching tier ONLY (#449): it joins
-// collectCoachingFindings, its dedupeKey rides the shared suppression bus
-// (SUBSTANCE_USE_PREFIX is registered in RULE_FINDING_PREFIXES), and it NEVER
-// notifies / never reaches the hero — substance data stays off every push channel.
-// NO GAMIFICATION (#998, the #716 contract): nothing fires under/at the target — no
-// "on track!" note, no streaks, no milestones; silence is the success state. Nothing
-// fires with no target set (the observation exists only against the user's OWN
-// goal). No owned SQL added here (reads through the profile-scoped query layer).
+// ONE calm, non-judgmental coaching finding PER SUBSTANCE whose logged units this
+// week exceed the profile's own reduction target ("9 drinks logged this week — 2
+// over your 7-drink weekly cap."). Iterates the substance catalog (#1078:
+// alcohol + nicotine + cannabis) and reads through getAllSubstanceWeekStates —
+// the SAME week-window + split-ledger rollup the substance surface renders — and
+// formats via the shared capProgressLine, so the page and the finding can never
+// disagree ("one question, one computation"). Coaching tier ONLY (#449): it joins
+// collectCoachingFindings, each dedupeKey rides the shared suppression bus
+// (SUBSTANCE_USE_PREFIX is registered in RULE_FINDING_PREFIXES, keyed per
+// substance — #203 stable), and it NEVER notifies / never reaches the hero —
+// substance data stays off every push channel. NO GAMIFICATION (#998, the #716
+// contract): nothing fires under/at the target — no "on track!" note, no streaks,
+// no milestones; silence is the success state. Nothing fires with no target set
+// (the observation exists only against the user's OWN goal). No owned SQL added
+// here (reads through the profile-scoped query layer).
 export function buildSubstanceUseFindings(profileId: number): Finding[] {
-  const state = getSubstanceWeekState(profileId);
-  if (!state.status || !state.status.over) return [];
-  return [
-    {
+  const out: Finding[] = [];
+  for (const state of getAllSubstanceWeekStates(profileId)) {
+    if (!state.status || !state.status.over) continue;
+    out.push({
       domain: "substance-use",
       dedupeKey: substanceTargetSignalKey(state.substance),
-      title: "Alcohol is over your weekly target",
-      detail: capProgressLine(state.status),
+      title: `${substanceDef(state.substance).label} is over your weekly target`,
+      detail: capProgressLine(state.status, state.substance),
       // Calm FYI — informational, never an alarm and never a push.
       tone: "info",
       evidence:
         "Your own weekly reduction target. Informational, not medical advice.",
       actionHref: "/records/specialty/substance-use",
       actionLabel: "View intake",
-    },
-  ];
+    });
+  }
+  return out;
 }
 
 // ---- Nutrition output (#577): deterministic biomarker→food suggestions ------

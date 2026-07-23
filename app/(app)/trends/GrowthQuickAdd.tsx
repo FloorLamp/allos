@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
@@ -27,7 +27,19 @@ export default function GrowthQuickAdd({
   const router = useRouter();
   const toast = useToast();
   const formRef = useRef<HTMLFormElement>(null);
+  const heightRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
+  // Deep-link focus (#1146, mirroring VitalsQuickAdd's #1083 pattern): the
+  // data-quality pediatric-height CTA lands on `/trends?tab=body&focus=height`.
+  // Scroll the quick-add into view and focus the height field so the missing
+  // reading is one tap away. A STABLE route + param, not a section internal.
+  const focusParam = useSearchParams().get("focus");
+  useEffect(() => {
+    if (focusParam !== "height") return;
+    formRef.current?.scrollIntoView({ block: "center" });
+    heightRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handle(formData: FormData) {
     setError(null);
@@ -88,6 +100,7 @@ export default function GrowthQuickAdd({
           </label>
           <div className="flex gap-2">
             <input
+              ref={heightRef}
               id="g-height"
               type="number"
               step="0.1"

@@ -8,6 +8,7 @@ import {
   isSubstanceInstrument,
   substanceInstrumentDef,
   isSubstance,
+  substanceDef,
   ALCOHOL_FOOD_GROUP,
   MAX_WEEKLY_CAP,
   type SubstanceInstrument,
@@ -17,25 +18,30 @@ import {
   type InstrumentAnswer,
 } from "@/lib/instrument-records";
 import { logFoodServingCore, undoFoodServingCore } from "@/lib/food-log-write";
+import {
+  logSubstanceUnitCore,
+  undoSubstanceUnitCore,
+} from "@/lib/substance-log-write";
 import { getSubstanceWeekState } from "@/lib/queries";
 import { formError, formOk, type FormResult } from "@/lib/types";
 
-// Server Actions for the substance-use surface (issue #998). Standard per-profile:
-// every action operates on the session's ACTIVE profile behind requireWriteAccess()
-// (the gate is inlined so the write-access scanner sees a literal call in each
-// body), then delegates to the auth-blind write cores (#319) and revalidates.
-// Substance data never rides a notification or any push channel from here.
+// Server Actions for the substance-use surface (issues #998, #1078). Standard
+// per-profile: every action operates on the session's ACTIVE profile behind
+// requireWriteAccess() (the gate is inlined so the write-access scanner sees a
+// literal call in each body), then delegates to the auth-blind write cores (#319)
+// and revalidates. Substance data never rides a notification or any push channel
+// from here.
 
 export type SubstanceInstrumentActionResult =
   { ok: true; id: number } | { ok: false; error: string };
 
-// This week's post-write standard-drink count rides the result so the one-tap
-// log/undo reconciles optimistically against the server (the #748 item 2 pattern).
-export type DrinkLogResult =
+// This week's post-write unit count rides the result so the one-tap log/undo
+// reconciles optimistically against the server (the #748 item 2 pattern).
+export type SubstanceLogResult =
   { ok: true; weekCount: number } | { ok: false; error: string };
 
 function revalidateSubstanceUse() {
-  revalidatePath("/medical/substance-use");
+  revalidatePath("/records/specialty/substance-use");
   revalidatePath("/nutrition");
   revalidatePath("/timeline");
   revalidatePath("/upcoming");
@@ -43,10 +49,11 @@ function revalidateSubstanceUse() {
 }
 
 // Record ONE substance-instrument score. Two shapes (the #716 action contract):
-//   • in-app administration (AUDIT-C) → `answers` carries every item's answer,
-//     validated against the item's OWN option set, and the total is derived
-//     server-side from them (the source of truth);
-//   • outside total-only entry (AUDIT / DAST-10, and AUDIT-C done elsewhere) →
+//   • in-app administration (AUDIT-C, and DAST-10 since #1085) → `answers` carries
+//     every item's answer, validated against the item's OWN option set, and the
+//     total is derived server-side from them (the source of truth);
+//   • outside total-only entry (AUDIT, and any in-app instrument done elsewhere —
+//     an imported/outside total lands in the SAME canonical_name series) →
 //     `total` is submitted directly with no answers.
 export async function recordSubstanceInstrumentAction(
   formData: FormData
@@ -120,41 +127,58 @@ export async function recordSubstanceInstrumentAction(
   return { ok: true, id };
 }
 
-// Log ONE standard drink for today. The write is the SAME auth-blind food-log core
-// the Nutrition one-tap bar and the Telegram button use (one store, one
-// computation, #860/#944): a standard drink IS one serving of the curated
-// `alcohol` food group.
-export async function logDrinkAction(): Promise<DrinkLogResult> {
+// Log ONE unit of a substance for today, dispatched to the substance's ledger
+// (#1078 split-ledger, one computation per substance): alcohol goes through the
+// SAME auth-blind food-log core the Nutrition one-tap bar and the Telegram button
+// use (a standard drink IS one serving of the curated `alcohol` food group,
+// #860/#944); nicotine/cannabis go through the substance_log core. Both answer
+// from the typed outcome — never unconditionally confirm.
+export async function logSubstanceUnitAction(
+  formData: FormData
+): Promise<SubstanceLogResult> {
   const { profile } = await requireWriteAccess();
-  const outcome = logFoodServingCore(
-    profile.id,
-    ALCOHOL_FOOD_GROUP,
-    today(profile.id)
-  );
-  if (outcome.kind === "unknown-group")
-    return { ok: false, error: "Couldn't log that drink." };
+  const substance = String(formData.get("substance") ?? "");
+  if (!isSubstance(substance))
+    return { ok: false, error: "Unknown substance." };
+  const outcome =
+    substanceDef(substance).ledger === "food-log"
+      ? logFoodServingCore(profile.id, ALCOHOL_FOOD_GROUP, today(profile.id))
+      : logSubstanceUnitCore(profile.id, substance, today(profile.id));
+  if (outcome.kind !== "logged")
+    return { ok: false, error: "Couldn't log that." };
   revalidateSubstanceUse();
-  return { ok: true, weekCount: getSubstanceWeekState(profile.id).count };
+  return {
+    ok: true,
+    weekCount: getSubstanceWeekState(profile.id, substance).count,
+  };
 }
 
-// Undo one standard drink logged today (idempotent — a no-op at zero).
-export async function undoDrinkAction(): Promise<DrinkLogResult> {
+// Undo one unit logged today (idempotent — a no-op at zero), same dispatch.
+export async function undoSubstanceUnitAction(
+  formData: FormData
+): Promise<SubstanceLogResult> {
   const { profile } = await requireWriteAccess();
-  const outcome = undoFoodServingCore(
-    profile.id,
-    ALCOHOL_FOOD_GROUP,
-    today(profile.id)
-  );
-  if (outcome.kind === "unknown-group")
-    return { ok: false, error: "Couldn't undo that drink." };
+  const substance = String(formData.get("substance") ?? "");
+  if (!isSubstance(substance))
+    return { ok: false, error: "Unknown substance." };
+  const outcome =
+    substanceDef(substance).ledger === "food-log"
+      ? undoFoodServingCore(profile.id, ALCOHOL_FOOD_GROUP, today(profile.id))
+      : undoSubstanceUnitCore(profile.id, substance, today(profile.id));
+  if (outcome.kind !== "undone")
+    return { ok: false, error: "Couldn't undo that." };
   revalidateSubstanceUse();
-  return { ok: true, weekCount: getSubstanceWeekState(profile.id).count };
+  return {
+    ok: true,
+    weekCount: getSubstanceWeekState(profile.id, substance).count,
+  };
 }
 
-// Set (or update) the weekly reduction target: a CAP of standard drinks per week,
-// 0..MAX_WEEKLY_CAP (0 = an alcohol-free week target — "Dry January"). One target
-// per (profile, substance) via the migration-072 partial unique index; re-setting
-// updates the cap in place. User-initiated and reversible — never auto-created.
+// Set (or update) a weekly reduction target: a CAP of units per week (standard
+// drinks / uses), 0..MAX_WEEKLY_CAP (0 = a substance-free week target — "Dry
+// January", a quit target). One target per (profile, substance) via the
+// migration-072 partial unique index; re-setting updates the cap in place.
+// User-initiated and reversible — never auto-created.
 export async function setSubstanceTargetAction(
   formData: FormData
 ): Promise<FormResult> {

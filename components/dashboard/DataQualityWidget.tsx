@@ -1,7 +1,11 @@
 import { IconChecklist } from "@tabler/icons-react";
 import type { Finding } from "@/lib/findings";
 import FindingsList from "@/components/FindingsList";
-import { dismissCoachingObservation } from "@/app/(app)/actions";
+import {
+  capDashboardList,
+  DATA_QUALITY_GAPS_CAP,
+} from "@/lib/dashboard-widgets";
+import { dismissDataQualityGap } from "@/app/(app)/actions";
 
 // Dashboard "Data quality" widget (issue #1045). The structural gaps that silently
 // degrade engines — a missing birthdate, unset sex, unconfirmed RxCUIs, a failed
@@ -11,17 +15,19 @@ import { dismissCoachingObservation } from "@/app/(app)/actions";
 // with their SAME `data-quality:` dedupeKeys, so a dismiss here silences the gap on the
 // coaching rollup too, through the shared findings bus. Returns nothing when there are no
 // gaps (absent-pillar rule) — a structurally-complete profile sees this widget disappear.
+// Gaps beyond the cap stay reachable via the shared "Show N more" disclosure (#1219).
 export default function DataQualityWidget({
   findings,
 }: {
   findings: Finding[];
 }) {
   const n = findings.length;
-  const shown = findings.slice(0, 3);
+  const { shown, overflow } = capDashboardList(findings, DATA_QUALITY_GAPS_CAP);
   return (
     <FindingsList
       findings={shown}
-      dismissAction={dismissCoachingObservation}
+      moreFindings={overflow}
+      dismissAction={dismissDataQualityGap}
       heading="Data quality"
       subtitle={
         n > shown.length

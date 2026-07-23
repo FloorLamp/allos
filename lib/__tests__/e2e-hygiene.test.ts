@@ -160,19 +160,14 @@ const WAITFORTIMEOUT_ALLOW: Record<string, number> = {
 // as of the flaky-e2e hardening pass. Same immutable-downward discipline as the
 // two lists above: migrate a spec onto an exact locator / dedicated fixture and
 // LOWER its number in the same PR; a NEW unmarked .first() (or a new file) fails.
-const FIRST_ALLOW: Record<string, number> = {
-  // illness-care carries a latent class-1 flake (a sibling mutates profile 1's
-  // seeded illness state; exposed only when co-located at --repeat-each). Its lone
-  // .first() stays frozen here until that flake is fixed in a focused follow-up.
-  "illness-care.spec.ts": 1,
-  // dose-history-row .first() (newest seeded dose) deferred to a dedicated-fixture
-  // pass — its safety rests on every OTHER spec only backdating writes to this
-  // SHARED med, which is too fragile to bless with a marker.
-  "medications-page.spec.ts": 1,
-  // two-factor / view-only-access each shed one grant-checkbox .first() when their
-  // create+grant dance moved into e2e/family-helpers.ts (which scopes the checkbox by
-  // the grant-cell testid, no .first()); two-factor keeps its recovery-code li .first().
-};
+// EMPTY — the grandfathered .first() burn-down (#868) is complete: every spec that
+// carried an unmarked .first() on a shared surface was migrated onto a spec-owned
+// fixture (a dedicated fixture login, a beforeEach re-seed, or an exact locator) or
+// marked `first-ok` at its owned-fixture use. The last three cleared were
+// medications-page (dose-history invariant marked), edit-lock-badge (beforeEach
+// restores its consumed lock → exact locators), and illness-care (dedicated sick
+// profile). The freeze stays at ZERO: a NEW unmarked .first() on any e2e/*.ts fails.
+const FIRST_ALLOW: Record<string, number> = {};
 
 // Frozen .toPass( offenders (per-file counts, `topass-ok`-marked lines excluded)
 // as of the post-burn-down hardening pass (#1160 follow-up). Same

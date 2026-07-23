@@ -106,6 +106,8 @@ import {
   SICK_COLLAPSE_PROFILE,
   E2E_LOGIN_SITCOACH,
   SITCOACH_PROFILE,
+  E2E_LOGIN_ILLNESS_CARE,
+  ILLNESS_CARE_PROFILE,
   E2E_LOGIN_CARE,
   CARE_PARENT_PROFILE,
   SICK_KID_A_PROFILE,
@@ -160,6 +162,8 @@ import {
   E2E_LOGIN_DQ_CARE,
   DQ_CARE_PARENT_PROFILE,
   DQ_CARE_CHILD_PROFILE,
+  E2E_LOGIN_DQ_ADULT,
+  DQ_ADULT_PROFILE,
   E2E_LOGIN_VISITLINKS,
   VISITLINKS_PROFILE,
   E2E_LOGIN_CREATEVISIT,
@@ -2648,6 +2652,9 @@ db.prepare(
 db.prepare(
   `DELETE FROM food_log WHERE profile_id = ? AND group_key = 'alcohol'`
 ).run(substanceId);
+// The non-food ledger (#1078: nicotine/cannabis one-tap counts) — same empty
+// contract as the alcohol food-log rows above.
+db.prepare(`DELETE FROM substance_log WHERE profile_id = ?`).run(substanceId);
 db.prepare(
   `DELETE FROM frequency_targets WHERE profile_id = ? AND scope_kind = 'substance'`
 ).run(substanceId);
@@ -3437,6 +3444,58 @@ seedSickEpisode(sitCoachId, { activateSituation: true });
 }
 seedMemberLogin(E2E_LOGIN_SITCOACH, sitCoachId);
 
+// ILLNESS_CARE: a dedicated sick profile for the illness-care care finding (#805). Its
+// fever is logged on FOUR consecutive days (daysAgo 3→0), crossing the cited "more than
+// 3 days" line so the finding surfaces on Upcoming. Dedicated + read-only in
+// illness-care.spec — profile 1 carries the same fixture, but the illness lifecycle specs
+// mutate profile 1's illness state (end/reopen episode, dismiss the finding), and under
+// --repeat-each a sibling's mutation made the finding vanish for the reader. Mirrors the
+// scripts/seed.ts profile-1 shape: active Illness situation + open episode + 4-day fever.
+const illnessCareId = fixtureProfileId(ILLNESS_CARE_PROFILE);
+{
+  const on = today(illnessCareId);
+  const existingSit = db
+    .prepare(
+      "SELECT id FROM situations WHERE profile_id = ? AND name = 'Illness'"
+    )
+    .get(illnessCareId) as { id: number } | undefined;
+  const sitId =
+    existingSit?.id ??
+    Number(
+      db
+        .prepare(
+          "INSERT INTO situations (profile_id, name, active, illness_type) VALUES (?, 'Illness', 1, 1)"
+        )
+        .run(illnessCareId).lastInsertRowid
+    );
+  db.prepare(
+    "UPDATE situations SET active = 1, illness_type = 1 WHERE id = ?"
+  ).run(sitId);
+  db.prepare("DELETE FROM illness_episodes WHERE profile_id = ?").run(
+    illnessCareId
+  );
+  db.prepare(
+    `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+     VALUES (?, 'Illness', ?, NULL)`
+  ).run(illnessCareId, shiftDateStr(on, -3));
+  // Fever on all four consecutive days (daysAgo 3→0) → "more than 3 days" → the finding.
+  const seedFever = db.prepare(
+    `INSERT INTO symptom_logs (profile_id, date, symptom, severity, note)
+     VALUES (?, ?, 'fever', ?, NULL)
+     ON CONFLICT (profile_id, date, symptom)
+     DO UPDATE SET severity = MAX(symptom_logs.severity, excluded.severity)`
+  );
+  for (const [ago, severity] of [
+    [3, 2],
+    [2, 3],
+    [1, 3],
+    [0, 2],
+  ] as const) {
+    seedFever.run(illnessCareId, shiftDateStr(on, -ago), severity);
+  }
+}
+seedMemberLogin(E2E_LOGIN_ILLNESS_CARE, illnessCareId);
+
 // CARE: acts as the well Care Parent, granted both sick kids → two accordion cockpits.
 const careLoginId = seedMemberLogin(E2E_LOGIN_CARE, careParentId);
 grantProfile(careLoginId, sickKidAId);
@@ -4184,6 +4243,67 @@ console.log(
   `e2e: seeded data-quality fixtures — gappy ${dqGappyId}, complete ${dqCompleteId}, ` +
     `care parent ${dqParentId} + child ${dqChildId} (#1045)`
 );
+
+// (D) A structurally-GAPPY ADULT (#1146/#1219): birthdate + sex set (male, adult) so
+// the ADULT-gated gaps fire — smoking status unknown, risk factors unreviewed, and a
+// PARTIAL PhenoAge panel (one Albumin lab → first missing analyte is Creatinine) —
+// and its CTAs must deep-link the exact forms. The same profile hosts the
+// dashboard-deeplinks #1219 fixtures: a target-less goal (bare title row → goals
+// link) and FOUR ongoing protocols + a layout that shows the active-protocols widget
+// (cap 3 → "+1 more" overflow link). Idempotent; synthetic values only.
+{
+  const dqAdultId = fixtureProfileId(DQ_ADULT_PROFILE);
+  clearProfileAttrs(dqAdultId);
+  setAttr(dqAdultId, "sex", "male");
+  setAttr(dqAdultId, "birthdate", "1984-04-01");
+  db.prepare(
+    `DELETE FROM medical_records WHERE profile_id = ? AND name = 'Albumin'`
+  ).run(dqAdultId);
+  db.prepare(
+    `INSERT INTO medical_records
+       (profile_id, date, category, name, value, value_num, unit, canonical_name, source)
+     VALUES (?, '2026-01-15', 'lab', 'Albumin', '4.5', 4.5, 'g/dL', 'Albumin', 'manual')`
+  ).run(dqAdultId);
+
+  // #1219 item 3 — a goal with NO measurable target (no exercise/metric/body-metric
+  // and no target_value): the dashboard row renders no bar, so its title must link.
+  db.prepare(
+    `DELETE FROM goals WHERE profile_id = ? AND title = 'Feel better all around'`
+  ).run(dqAdultId);
+  db.prepare(
+    `INSERT INTO goals (profile_id, title, status) VALUES (?, 'Feel better all around', 'active')`
+  ).run(dqAdultId);
+
+  // #1219 item 4 — four ONGOING protocols (end_date null) + a stored dashboard
+  // layout that shows the off-by-default active-protocols widget, so the widget
+  // caps at 3 and renders the "+1 more" overflow link. Distinct start dates pin
+  // the shown/overflow split (getProtocols orders by start_date DESC).
+  db.prepare(
+    `DELETE FROM protocols WHERE profile_id = ? AND name LIKE 'DQ Protocol %'`
+  ).run(dqAdultId);
+  const insDqProtocol = db.prepare(
+    `INSERT INTO protocols (profile_id, name, start_date, outcome_keys)
+     VALUES (?, ?, ?, '[]')`
+  );
+  const dqAdultToday = today(dqAdultId);
+  for (let i = 1; i <= 4; i++) {
+    insDqProtocol.run(
+      dqAdultId,
+      `DQ Protocol ${i}`,
+      shiftDateStr(dqAdultToday, -(10 + i))
+    );
+  }
+  setAttr(
+    dqAdultId,
+    "dashboard_layout",
+    JSON.stringify({ order: ["active-protocols"], hidden: [] })
+  );
+
+  seedMemberLogin(E2E_LOGIN_DQ_ADULT, dqAdultId, "write");
+  console.log(
+    `e2e: seeded data-quality ADULT fixture — profile ${dqAdultId} (${DQ_ADULT_PROFILE}) (#1146/#1219)`
+  );
+}
 
 // ── Record ↔ visit / episode ↔ visit linking fixture (#1050/#1053) ──────────────
 // A self-contained profile: one visit, a same-day UNLINKED medication (with a

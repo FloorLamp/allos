@@ -76,7 +76,13 @@ export default function RiskFactorsForm({
   }
 
   return (
-    <div className="card max-w-lg space-y-4" data-testid="risk-factors">
+    <div
+      // Anchor target for the data-quality risk-attributes CTA (#1146):
+      // /records/care/overview#risk-factors lands on THIS form, not the page top.
+      id="risk-factors"
+      className="card max-w-lg scroll-mt-24 space-y-4"
+      data-testid="risk-factors"
+    >
       <div className="flex items-center justify-between">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Health risk factors

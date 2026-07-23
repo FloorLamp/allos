@@ -11,12 +11,13 @@ import {
 import { recordSubstanceInstrumentAction } from "./actions";
 
 // The substance-instrument capture form (#998) — the #716 guided-battery pattern:
-// an in-app AUDIT-C tap-through that computes the score client-side for preview
-// (the server re-derives it from the answers), plus outside total-only entry for
-// AUDIT and DAST-10, whose item text is deliberately NOT reproduced in-app (the
-// licensing determination in lib/substance-use.ts). DELIBERATELY calm: no streaks,
-// no milestones, no "improve your score" copy — a screening tool, not a diagnosis,
-// and never gamified.
+// in-app AUDIT-C and DAST-10 tap-throughs (DAST-10 since #1085) that compute the
+// score client-side for preview (the server re-derives it from the answers), plus
+// outside total-only entry for the AUDIT, whose item text is deliberately NOT
+// reproduced in-app (the licensing determination in lib/substance-use.ts) — and
+// for any in-app instrument administered elsewhere. DELIBERATELY calm: no
+// streaks, no milestones, no "improve your score" copy — a screening tool, not a
+// diagnosis, and never gamified.
 
 export default function SubstanceInstrumentsForm({
   defaultDate,
@@ -127,8 +128,8 @@ export default function SubstanceInstrumentsForm({
         })}
       </div>
 
-      {/* Mode toggle — only for the in-app instrument; AUDIT / DAST-10 are
-          total-only (item text not reproduced — see lib/substance-use.ts). */}
+      {/* Mode toggle — only for the in-app instruments (AUDIT-C, DAST-10); the
+          AUDIT is total-only (item text not reproduced — lib/substance-use.ts). */}
       {inApp ? (
         <div className="flex flex-wrap gap-4 text-sm">
           <label className="flex items-center gap-1.5">
@@ -181,6 +182,16 @@ export default function SubstanceInstrumentsForm({
       <form onSubmit={submit} className="space-y-4">
         {effectiveMode === "administer" ? (
           <>
+            {/* Instrument-level framing (the DAST-10's past-12-months scope) —
+                part of the validated instrument, so it travels with the items. */}
+            {def.instructions ? (
+              <p
+                className="text-sm text-slate-500 dark:text-slate-400"
+                data-testid="substance-instrument-instructions"
+              >
+                {def.instructions}
+              </p>
+            ) : null}
             {def.items.map((item, i) => (
               <fieldset
                 key={i}
@@ -207,7 +218,13 @@ export default function SubstanceInstrumentsForm({
                             : "border-black/10 dark:border-white/10"
                         }`}
                       >
-                        {opt.value} · {opt.label}
+                        {/* Yes/no items (DAST-10) show only the label — printing
+                            the 0/1 point value would telegraph the scoring (and
+                            the reverse-scored item's flip). The multi-point
+                            AUDIT-C keeps its value-prefixed options. */}
+                        {item.options.length > 2
+                          ? `${opt.value} · ${opt.label}`
+                          : opt.label}
                       </button>
                     );
                   })}

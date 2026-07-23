@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   biomarkerViewHref,
+  biomarkerAddHref,
   timelineDayHref,
   dataSectionHref,
   DATA_SECTIONS,
@@ -9,8 +10,44 @@ import {
   protocolHref,
   immunizationHref,
   integrationDetailHref,
+  medicationEditHref,
+  medicationsFilterHref,
   currentPathHref,
 } from "@/lib/hrefs";
+
+describe("biomarkerAddHref", () => {
+  it("links the biomarker add form prefilled with the analyte name (#662/#1083)", () => {
+    expect(biomarkerAddHref("LDL Cholesterol")).toBe(
+      "/results/biomarkers?new=1&name=LDL%20Cholesterol"
+    );
+  });
+
+  it("falls back to the unprefilled add form without a name", () => {
+    expect(biomarkerAddHref(null)).toBe("/results/biomarkers?new=1");
+    expect(biomarkerAddHref(undefined)).toBe("/results/biomarkers?new=1");
+    expect(biomarkerAddHref("  ")).toBe("/results/biomarkers?new=1");
+  });
+
+  it("uses the post-#1079 tabbed base, never the redirect-surviving hash form", () => {
+    expect(biomarkerAddHref("hs-CRP").startsWith("/results/biomarkers?")).toBe(
+      true
+    );
+  });
+});
+
+describe("medicationEditHref", () => {
+  it("opens the medication detail page's edit workflow (the #851 confirm form)", () => {
+    expect(medicationEditHref(42)).toBe("/medications/42?action=edit");
+  });
+});
+
+describe("medicationsFilterHref", () => {
+  it("links the medications list narrowed to a maintenance slice", () => {
+    expect(medicationsFilterHref("needs-rxcui")).toBe(
+      "/medications?filter=needs-rxcui"
+    );
+  });
+});
 
 describe("biomarkerViewHref", () => {
   it("links to the view page with the CANONICAL name when one is present", () => {

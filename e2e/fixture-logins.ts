@@ -224,6 +224,17 @@ export const SICK_COLLAPSE_PROFILE = "Sick Collapse (e2e)";
 export const E2E_LOGIN_SITCOACH = "e2e_sitcoach";
 export const SITCOACH_PROFILE = "Situation Coaching (e2e)";
 
+// The illness-care care finding (#805): a dedicated sick profile whose fever is logged
+// on FOUR consecutive days (daysAgo 3→0), crossing the cited "more than 3 days" line so
+// the finding surfaces on Upcoming. Dedicated ON PURPOSE — profile 1 carries the same
+// 4-day-fever fixture, but the illness lifecycle specs (end/reopen episode, dismiss the
+// finding) mutate profile 1's illness state, and under CI's --repeat-each co-location a
+// sibling's end-episode/dismiss made the finding vanish for the reader. This profile is
+// read-only in illness-care.spec, so the finding stays deterministic. seedSickEpisode's
+// 1-day fever is NOT enough (the finding needs the 4-day run), so it's seeded directly.
+export const E2E_LOGIN_ILLNESS_CARE = "e2e_illness_care";
+export const ILLNESS_CARE_PROFILE = "Illness Care (e2e)";
+
 // A caregiver granted their OWN well base profile plus two currently-sick children
 // (Kid A owns a PRN med for the dose path). Acting as the well base profile, both kids
 // render as compact accordion cockpits — the multi-sick / cross-profile-temp case.
@@ -494,6 +505,17 @@ export const DQ_COMPLETE_PROFILE = "Data Quality Complete (e2e)";
 export const E2E_LOGIN_DQ_CARE = "e2e_dq_care";
 export const DQ_CARE_PARENT_PROFILE = "Data Quality Parent (e2e)";
 export const DQ_CARE_CHILD_PROFILE = "Data Quality Child (e2e)";
+
+// A member whose SOLE profile is a structurally-GAPPY ADULT (#1146): birthdate + sex
+// set, but smoking status unknown, risk factors unreviewed, and a PARTIAL PhenoAge
+// panel (one Albumin lab) — so the "Data quality" widget renders the adult-gated
+// gaps whose CTAs must deep-link the exact forms (smoking-history / risk-factors
+// anchors, the prefilled biomarker add form). It also owns the dashboard-deeplinks
+// fixtures that need a quiet dedicated dashboard: a target-less goal (#1219 item 3)
+// and four ongoing protocols + a layout that shows the active-protocols widget
+// (#1219 item 4). Read-mostly: its spec only navigates; no dismissals are written.
+export const E2E_LOGIN_DQ_ADULT = "e2e_dq_adult";
+export const DQ_ADULT_PROFILE = "Data Quality Adult (e2e)";
 
 // A member granted a dedicated ADULT profile for the Home Assistant channel-config
 // spec. Isolated as of #1025: the spec persists a REAL (unreachable) HA webhook to

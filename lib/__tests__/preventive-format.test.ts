@@ -112,19 +112,19 @@ describe("renderPreventiveMessage", () => {
       );
     });
 
-    it("pins the total-only verb (DAST-10 — can't be administered in-app)", () => {
+    it("passes an instrument CTA through verbatim (DAST-10 — in-app since #1085)", () => {
       const msg = renderPreventiveMessage(
         "Ada",
         item({
           ruleKey: "drug_use_screening",
           name: "Drug use screening",
           href: "/records/specialty/substance-use?screen=DAST-10",
-          ctaLabel: "Enter your DAST-10 score",
+          ctaLabel: "Complete the DAST-10",
         }),
         3,
         "https://allos.example"
       );
-      expect(msg.actions![0].label).toBe("Enter your DAST-10 score");
+      expect(msg.actions![0].label).toBe("Complete the DAST-10");
       expect(msg.actions![0].url).toBe(
         "https://allos.example/records/specialty/substance-use?screen=DAST-10"
       );

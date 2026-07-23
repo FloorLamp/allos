@@ -1,17 +1,20 @@
-// SERVER-ACTION TIER (#998) — the substance-use write paths. The instrument action
-// derives the AUDIT-C total from the per-item 0..4 answers (server is the source of
-// truth), refuses in-app administration of the total-only instruments (AUDIT /
-// DAST-10 — their item text is deliberately not shipped), validates the outside-
-// total bounds, and gates on requireWriteAccess. The drink log rides the shared
-// food-log core into the `alcohol` group; the target actions upsert/clear the
-// substance frequency_targets row (cap semantics, one row per substance).
+// SERVER-ACTION TIER (#998, #1078, #1085) — the substance-use write paths. The
+// instrument action derives the in-app totals from the per-item answers (server is
+// the source of truth — AUDIT-C's 0..4 options and, since #1085, DAST-10's 0/1
+// yes/no options incl. the flipped reverse-scored item), refuses in-app
+// administration of the total-only AUDIT (its item text is deliberately not
+// shipped), validates the outside-total bounds, and gates on requireWriteAccess.
+// The unit log dispatches per substance (#1078): alcohol through the shared
+// food-log core into the `alcohol` group, nicotine/cannabis through the
+// substance_log core; the target actions upsert/clear the substance
+// frequency_targets row (cap semantics, one row per substance).
 
 import { describe, expect, it } from "vitest";
 import { db } from "@/lib/db";
 import {
   recordSubstanceInstrumentAction,
-  logDrinkAction,
-  undoDrinkAction,
+  logSubstanceUnitAction,
+  undoSubstanceUnitAction,
   setSubstanceTargetAction,
   clearSubstanceTargetAction,
 } from "@/app/(app)/medical/substance-use/actions";
@@ -74,19 +77,81 @@ describe("recordSubstanceInstrumentAction", () => {
     expect(r.ok).toBe(false);
   });
 
-  it("refuses in-app administration of a total-only instrument (no baked item text)", async () => {
+  it("administers a DAST-10 in-app (#1085): total derived server-side from the 10 yes/no answers", async () => {
+    const login = createLogin();
+    const profile = createProfile("su-dast-admin", login.id);
+    actAs(login, profile);
+
+    // Items 1–2 "Yes" (1 each), item 3 "No" (the reverse-scored item — its "No"
+    // option VALUE is 1), the rest "No"/lowest (0) → total 3, Moderate band.
+    const r = await recordSubstanceInstrumentAction(
+      fd({
+        instrument: "DAST-10",
+        mode: "administer",
+        date: "2026-07-01",
+        answers: JSON.stringify([1, 1, 1, 0, 0, 0, 0, 0, 0, 0]),
+      })
+    );
+    expect(r.ok).toBe(true);
+    expect(scoreRow(profile.id, "DAST-10")?.value_num).toBe(3);
+    const respCount = db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM instrument_responses WHERE profile_id = ?"
+      )
+      .get(profile.id) as { n: number };
+    expect(respCount.n).toBe(10);
+  });
+
+  it("rejects a wrong-length or out-of-option DAST-10 answer set", async () => {
+    const login = createLogin();
+    const profile = createProfile("su-dast-bad", login.id);
+    actAs(login, profile);
+    for (const answers of [
+      [1, 1, 1], // wrong length
+      [1, 1, 1, 0, 0, 0, 0, 0, 0, 2], // 2 is not a 0/1 yes-no option value
+    ]) {
+      const r = await recordSubstanceInstrumentAction(
+        fd({
+          instrument: "DAST-10",
+          mode: "administer",
+          date: "2026-07-01",
+          answers: JSON.stringify(answers),
+        })
+      );
+      expect(r.ok, JSON.stringify(answers)).toBe(false);
+    }
+  });
+
+  it("refuses in-app administration of the total-only AUDIT (no baked item text)", async () => {
     const login = createLogin();
     const profile = createProfile("su-totalonly", login.id);
     actAs(login, profile);
     const r = await recordSubstanceInstrumentAction(
       fd({
-        instrument: "DAST-10",
+        instrument: "AUDIT",
         mode: "administer",
         date: "2026-07-01",
         answers: JSON.stringify([1, 1, 1, 1, 1, 1, 1, 1, 1, 1]),
       })
     );
     expect(r.ok).toBe(false);
+  });
+
+  it("still accepts an outside DAST-10 total (#1085 keeps the #998 total path working)", async () => {
+    const login = createLogin();
+    const profile = createProfile("su-dast-outside", login.id);
+    actAs(login, profile);
+    const r = await recordSubstanceInstrumentAction(
+      fd({
+        instrument: "DAST-10",
+        mode: "outside",
+        date: "2026-07-01",
+        total: "4",
+      })
+    );
+    expect(r.ok).toBe(true);
+    // Same canonical_name series as an in-app administration — one identity.
+    expect(scoreRow(profile.id, "DAST-10")?.value_num).toBe(4);
   });
 
   it("accepts an outside AUDIT total and bounds it to 0..40", async () => {
@@ -128,15 +193,15 @@ describe("recordSubstanceInstrumentAction", () => {
   });
 });
 
-describe("logDrinkAction / undoDrinkAction — the shared food-log ledger", () => {
-  it("logs into the alcohol food_log group and reports the weekly count; undo reverses", async () => {
+describe("logSubstanceUnitAction / undoSubstanceUnitAction — per-substance ledger dispatch", () => {
+  it("alcohol logs into the food_log group and reports the weekly count; undo reverses", async () => {
     const login = createLogin();
     const profile = createProfile("su-drink", login.id);
     actAs(login, profile);
 
-    const one = await logDrinkAction();
+    const one = await logSubstanceUnitAction(fd({ substance: "alcohol" }));
     expect(one).toEqual({ ok: true, weekCount: 1 });
-    const two = await logDrinkAction();
+    const two = await logSubstanceUnitAction(fd({ substance: "alcohol" }));
     expect(two).toEqual({ ok: true, weekCount: 2 });
 
     // The SAME store Nutrition's one-tap bar reads (one ledger, two surfaces).
@@ -152,9 +217,48 @@ describe("logDrinkAction / undoDrinkAction — the shared food-log ledger", () =
       )
       .get(profile.id) as { n: number };
     expect(events.n).toBe(2);
+    // Nothing leaked into the non-food ledger.
+    const sub = db
+      .prepare(`SELECT COUNT(*) AS n FROM substance_log WHERE profile_id = ?`)
+      .get(profile.id) as { n: number };
+    expect(sub.n).toBe(0);
 
-    const undone = await undoDrinkAction();
+    const undone = await undoSubstanceUnitAction(fd({ substance: "alcohol" }));
     expect(undone).toEqual({ ok: true, weekCount: 1 });
+  });
+
+  it("nicotine logs into substance_log (#1078) and reports the weekly count; undo reverses", async () => {
+    const login = createLogin();
+    const profile = createProfile("su-nicotine", login.id);
+    actAs(login, profile);
+
+    const one = await logSubstanceUnitAction(fd({ substance: "nicotine" }));
+    expect(one).toEqual({ ok: true, weekCount: 1 });
+    const two = await logSubstanceUnitAction(fd({ substance: "nicotine" }));
+    expect(two).toEqual({ ok: true, weekCount: 2 });
+
+    const row = db
+      .prepare(
+        `SELECT units FROM substance_log WHERE profile_id = ? AND substance = 'nicotine'`
+      )
+      .get(profile.id) as { units: number };
+    expect(row.units).toBe(2);
+    // The food ledger is untouched — no nutrition pollution (#1078).
+    const food = db
+      .prepare(`SELECT COUNT(*) AS n FROM food_log WHERE profile_id = ?`)
+      .get(profile.id) as { n: number };
+    expect(food.n).toBe(0);
+
+    const undone = await undoSubstanceUnitAction(fd({ substance: "nicotine" }));
+    expect(undone).toEqual({ ok: true, weekCount: 1 });
+  });
+
+  it("rejects an unknown substance", async () => {
+    const login = createLogin();
+    const profile = createProfile("su-bogus-substance", login.id);
+    actAs(login, profile);
+    const r = await logSubstanceUnitAction(fd({ substance: "caffeine" }));
+    expect(r.ok).toBe(false);
   });
 });
 
@@ -205,8 +309,18 @@ describe("setSubstanceTargetAction / clearSubstanceTargetAction", () => {
       );
       expect(r.ok, `cap ${cap} should be rejected`).toBe(false);
     }
+    // Nicotine/cannabis targets are first-class since #1078 (the target layer was
+    // already substance-parameterized); an unknown substance still bounces.
     expect(
       (await setSubstanceTargetAction(fd({ substance: "nicotine", cap: "3" })))
+        .ok
+    ).toBe(true);
+    expect(
+      (await setSubstanceTargetAction(fd({ substance: "cannabis", cap: "0" })))
+        .ok
+    ).toBe(true);
+    expect(
+      (await setSubstanceTargetAction(fd({ substance: "caffeine", cap: "3" })))
         .ok
     ).toBe(false);
   });
