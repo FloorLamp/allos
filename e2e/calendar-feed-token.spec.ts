@@ -46,5 +46,14 @@ test.describe("Calendar feed token lifecycle", () => {
     const newRes = await request.get(secondUrl);
     expect(newRes.status()).toBe(200);
     expect(await newRes.text()).toContain("BEGIN:VCALENDAR");
+
+    // Clean up: DISABLE the feed so the enable-from-scratch flows are re-runnable
+    // (#868 fixture ownership). This spec previously left profile 1's feed
+    // enabled, which stranded calendar-feed-customization.spec.ts's "Enable
+    // feed" click on any later run against the same DB (e.g. --repeat-each).
+    await page.getByRole("button", { name: "Disable feed" }).click();
+    await expect(
+      page.getByRole("button", { name: "Enable feed" })
+    ).toBeVisible();
   });
 });

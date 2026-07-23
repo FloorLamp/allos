@@ -24,7 +24,7 @@ import {
 import { requireSession } from "@/lib/auth";
 import IntegrationDebugPanel from "@/components/IntegrationDebugPanel";
 import { ExpirySelect, TokenLifecycleNote } from "@/components/TokenLifecycle";
-import { SecretField } from "./HealthConnectConfig";
+import { TokenRow } from "@/components/TokenRow";
 import { connectHealthConnect, disconnect } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -126,8 +126,8 @@ export default async function HealthConnectPage() {
               )}
             </div>
 
-            <SecretField label="Endpoint URL" value={endpoint} />
-            <SecretField label="Bearer token" value={token!} secret />
+            <TokenRow label="Endpoint URL" value={endpoint} />
+            <TokenRow label="Bearer token" value={token!} secret />
 
             {tokenInfo.source === "db" ? (
               <TokenLifecycleNote

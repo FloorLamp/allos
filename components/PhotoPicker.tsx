@@ -16,7 +16,10 @@ import type { PhotoResult } from "@/app/(app)/settings/photo-actions";
 // smaller, muted control that sits inside a Family admin row.
 const INPUT_CLASS: Record<Variant, string> = {
   default:
-    "block text-sm text-slate-600 file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-brand-600 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white hover:file:bg-brand-700 dark:text-slate-300",
+    // min-w-0 max-w-full (#1063): a native file input has a wide intrinsic size
+    // ("Choose File · <name>") that otherwise forces the Settings → Profile card
+    // past a phone viewport; capping it lets the control truncate instead.
+    "block min-w-0 max-w-full text-sm text-slate-600 file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-brand-600 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white hover:file:bg-brand-700 dark:text-slate-300",
   compact:
     "block max-w-full text-xs text-slate-600 file:mr-2 file:cursor-pointer file:rounded-md file:border-0 file:bg-slate-200 file:px-2 file:py-1 file:text-xs file:font-medium file:text-slate-700 hover:file:bg-slate-300 dark:text-slate-300 dark:file:bg-ink-800 dark:file:text-slate-200",
 };
@@ -87,7 +90,7 @@ export default function PhotoPicker({
   }
 
   return (
-    <div className="space-y-2">
+    <div className="min-w-0 space-y-2">
       <div className="flex flex-wrap items-center gap-2">
         <input
           ref={fileRef}

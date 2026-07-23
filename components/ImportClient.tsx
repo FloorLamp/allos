@@ -254,8 +254,11 @@ function ImportJobCard({ job, unit }: { job: ImportJob; unit: WeightUnit }) {
 
   return (
     <div className="card space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-sm">
+      {/* flex-wrap + min-w-0 (#1063): at phone width the status text wraps and
+          the Review/Discard buttons drop below it instead of pushing past the
+          viewport (where the shell's overflow-x-clip makes them unreachable). */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
           <span className="font-semibold text-slate-800 dark:text-slate-100">
             {label} import
           </span>

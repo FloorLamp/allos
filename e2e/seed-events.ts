@@ -62,6 +62,8 @@ import {
   E2E_LOGIN_NAV_MALE,
   NAV_MALE_PROFILE,
   E2E_LOGIN_HC,
+  E2E_LOGIN_MOBILE_HC,
+  MOBILE_HC_PROFILE,
   E2E_LOGIN_NOGEAR,
   E2E_LOGIN_FITNESS,
   E2E_LOGIN_FITNESS_SENIOR,
@@ -2114,6 +2116,26 @@ seedMemberLogin(E2E_LOGIN_STRAVA, stravaReauthId);
 // A dedicated, connection-less profile for the Health Connect generate→rotate flow.
 const healthConnectId = fixtureProfileId(HEALTH_CONNECT_PROFILE);
 seedMemberLogin(E2E_LOGIN_HC, healthConnectId);
+
+// #1063 — a dedicated Health Connect profile seeded already CONNECTED with a
+// long, synthetic DB-backed token, so the mobile-overflow spec renders the
+// endpoint/token card read-only (never generating or rotating — those mutations
+// belong to the E2E_LOGIN_HC spec above and would race a concurrent reader).
+const mobileHcId = fixtureProfileId(MOBILE_HC_PROFILE);
+upsertConnection(mobileHcId, "health-connect", {
+  status: "connected",
+  config: {
+    // Synthetic 64-char token of hex characters (real generated tokens are 48
+    // hex chars), so the row is provably wider than a 360px viewport without
+    // wrapping. Deliberately LOW-entropy ("e2e0" × 16) — a random-looking hex
+    // string trips the gitleaks generic-api-key rule even when fake.
+    token: "e2e0".repeat(16),
+    tokenCreatedAt: utcSqlString(
+      new Date(clockNow().getTime() - 24 * 3600 * 1000)
+    ),
+  },
+});
+seedMemberLogin(E2E_LOGIN_MOBILE_HC, mobileHcId);
 
 // ── Nutrition trio (#974 protein gauge / #975 preferences / #976 fiber) ──────
 // A dedicated adult profile carrying everything the three nutrition surfaces read: a

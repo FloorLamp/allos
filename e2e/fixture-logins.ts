@@ -598,3 +598,12 @@ export const REST_CARD_PROFILE = "Rest Card (e2e)";
 // needs-attention/coaching specs' bus reads.
 export const E2E_LOGIN_SUPPRESSED = "e2e_suppressed";
 export const SUPPRESSED_PROFILE = "Suppressed Center (e2e)";
+
+// #1063 — the mobile clipped-content audit. A dedicated profile whose Health
+// Connect connection is seeded CONNECTED with a long, synthetic DB-backed token,
+// so the mobile-overflow spec can assert the endpoint/token rows fit a phone
+// viewport WITHOUT generating or rotating anything — the HEALTH_CONNECT_PROFILE
+// above is owned by the generate→rotate spec, whose token mutations would race a
+// concurrent reader under parallel workers. Read-only in its spec.
+export const E2E_LOGIN_MOBILE_HC = "e2e_mobile_hc";
+export const MOBILE_HC_PROFILE = "Mobile HC (e2e)";
