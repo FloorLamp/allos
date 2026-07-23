@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
+  ACTIVE_PROTOCOLS_CAP,
+  COACHING_OBSERVATIONS_CAP,
   DASHBOARD_WIDGETS,
+  DATA_QUALITY_GAPS_CAP,
+  capDashboardList,
   customizableWidgetDefs,
   dashboardGoalsHabitsLayout,
   resolveWidgets,
@@ -251,6 +255,39 @@ describe("summarizeDashboardHabits", () => {
     expect(summary.hidden.map((target) => target.id)).toEqual(["almost"]);
     expect(summary.completedCount).toBe(1);
     expect(summary.hiddenOpenCount).toBe(1);
+  });
+});
+
+describe("capDashboardList (#1219)", () => {
+  it("splits a list into the capped slice and its overflow, order kept", () => {
+    const { shown, overflow } = capDashboardList([1, 2, 3, 4, 5], 3);
+    expect(shown).toEqual([1, 2, 3]);
+    expect(overflow).toEqual([4, 5]);
+  });
+
+  it("returns everything shown / no overflow at or under the cap", () => {
+    expect(capDashboardList([1, 2], 3)).toEqual({
+      shown: [1, 2],
+      overflow: [],
+    });
+    expect(capDashboardList([], 3)).toEqual({ shown: [], overflow: [] });
+  });
+
+  it("tolerates a degenerate cap", () => {
+    expect(capDashboardList([1, 2], 0)).toEqual({
+      shown: [],
+      overflow: [1, 2],
+    });
+    expect(capDashboardList([1, 2], -1)).toEqual({
+      shown: [],
+      overflow: [1, 2],
+    });
+  });
+
+  it("pins the widget cap policy: observations 2, data-quality 3, protocols 3", () => {
+    expect(COACHING_OBSERVATIONS_CAP).toBe(2);
+    expect(DATA_QUALITY_GAPS_CAP).toBe(3);
+    expect(ACTIVE_PROTOCOLS_CAP).toBe(3);
   });
 });
 

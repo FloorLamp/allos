@@ -506,6 +506,17 @@ export const E2E_LOGIN_DQ_CARE = "e2e_dq_care";
 export const DQ_CARE_PARENT_PROFILE = "Data Quality Parent (e2e)";
 export const DQ_CARE_CHILD_PROFILE = "Data Quality Child (e2e)";
 
+// A member whose SOLE profile is a structurally-GAPPY ADULT (#1146): birthdate + sex
+// set, but smoking status unknown, risk factors unreviewed, and a PARTIAL PhenoAge
+// panel (one Albumin lab) — so the "Data quality" widget renders the adult-gated
+// gaps whose CTAs must deep-link the exact forms (smoking-history / risk-factors
+// anchors, the prefilled biomarker add form). It also owns the dashboard-deeplinks
+// fixtures that need a quiet dedicated dashboard: a target-less goal (#1219 item 3)
+// and four ongoing protocols + a layout that shows the active-protocols widget
+// (#1219 item 4). Read-mostly: its spec only navigates; no dismissals are written.
+export const E2E_LOGIN_DQ_ADULT = "e2e_dq_adult";
+export const DQ_ADULT_PROFILE = "Data Quality Adult (e2e)";
+
 // A member granted a dedicated ADULT profile for the Home Assistant channel-config
 // spec. Isolated as of #1025: the spec persists a REAL (unreachable) HA webhook to
 // prove the config round-trip, and the temperature write paths now dispatch the

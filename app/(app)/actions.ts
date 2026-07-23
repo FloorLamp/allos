@@ -96,6 +96,16 @@ export async function dismissCoachingObservation(formData: FormData) {
   revalidatePath("/");
 }
 
+// The Data quality widget's dismiss (#1045/#1219 nit): TODAY it shares the
+// coaching-observation core above — the `data-quality:` keys ride the same bus and
+// pass the same prefix guard — but the two widgets get distinct named actions so
+// they can diverge safely (a data-quality-only behavior change must never silently
+// alter the coaching rollup's dismiss, and vice versa). Same gate: requireWriteAccess
+// inside the delegate.
+export async function dismissDataQualityGap(formData: FormData) {
+  await dismissCoachingObservation(formData);
+}
+
 // Snooze one attention item from the hero: hide it (via the shared findings
 // suppression store) until today + `days`, after which it reappears — matching the
 // Upcoming page's snooze exactly (same key, same store, same snoozeUntil clamp), so

@@ -13,6 +13,12 @@ import { addSupplement } from "@/app/(app)/nutrition/supplement-actions";
 import CardGroup, { CardGroupSection } from "@/components/CardGroup";
 import PageContainer from "@/components/PageContainer";
 import { getDisplayFormatPrefs, getUnitPrefs } from "@/lib/settings";
+import {
+  MEDICATIONS_HREF,
+  MEDICATION_FILTERS,
+  type MedicationFilter,
+} from "@/lib/hrefs";
+import Link from "next/link";
 import { IconChevronDown } from "@tabler/icons-react";
 
 export const dynamic = "force-dynamic";
@@ -31,8 +37,22 @@ export const dynamic = "force-dynamic";
 //   5. Add medication — one header CTA opens an inline workspace that starts with
 //      OTC quick-add and switches to the full prescription/schedule form on demand.
 // One intake_items table; supplements live on Nutrition → Supplements.
-export default async function MedicationsPage() {
+export default async function MedicationsPage(props: {
+  searchParams: Promise<{ filter?: string | string[] }>;
+}) {
+  const searchParams = await props.searchParams;
   const { login, profile } = await requireSession();
+  // Maintenance filter (#1146): `?filter=needs-rxcui` narrows the current list to
+  // active meds with no confirmed RxNorm code — the data-quality med-rxcui gap's
+  // landing view when several meds need the #851 confirm. Unknown values ignored.
+  const rawFilter = Array.isArray(searchParams.filter)
+    ? searchParams.filter[0]
+    : searchParams.filter;
+  const filter: MedicationFilter | null = MEDICATION_FILTERS.includes(
+    rawFilter as MedicationFilter
+  )
+    ? (rawFilter as MedicationFilter)
+    : null;
   const formatPrefs = getDisplayFormatPrefs(login.id);
   const data = loadMedicationsData(
     profile.id,
@@ -46,6 +66,11 @@ export default async function MedicationsPage() {
     name: c.name,
   }));
   const medCount = data.current.length + data.past.length;
+  // The unconfirmed slice mirrors getMedicationsMissingRxcuiCount's predicate.
+  const shownCurrent =
+    filter === "needs-rxcui"
+      ? data.current.filter((m) => !m.med.rxcui || !m.med.rxcui.trim())
+      : data.current;
   const prnCount = data.current.filter(
     (item) => item.med.as_needed === 1
   ).length;
@@ -113,19 +138,36 @@ export default async function MedicationsPage() {
         />
 
         {/* 3. Current medications stay primary. Past medications use their own muted,
-            collapsed surface below so the two states are distinguishable at a glance. */}
+            collapsed surface below so the two states are distinguishable at a glance.
+            Under the needs-rxcui filter the list narrows to the unconfirmed slice
+            (same predicate as the data-quality gather: active, no/blank rxcui). */}
+        {filter === "needs-rxcui" && (
+          <p
+            className="mb-3 flex flex-wrap items-center gap-2 text-sm text-slate-600 dark:text-slate-300"
+            data-testid="medications-filter-notice"
+          >
+            Showing medications without a confirmed RxNorm code — open each one
+            and use “Find RxNorm code”.
+            <Link
+              href={MEDICATIONS_HREF}
+              className="font-medium text-brand-700 hover:underline dark:text-brand-300"
+            >
+              Show all
+            </Link>
+          </p>
+        )}
         <CardGroup
           title="Current medications"
-          description={`${data.current.length} active medication${data.current.length === 1 ? "" : "s"} · Dose schedules, refill status, and recent adherence.`}
+          description={`${shownCurrent.length}${filter ? ` of ${data.current.length}` : ""} active medication${shownCurrent.length === 1 ? "" : "s"} · Dose schedules, refill status, and recent adherence.`}
           action={
             data.current.length > 0 ? <MedicationListActions /> : undefined
           }
           data-testid="medication-list"
         >
           <CardGroupSection>
-            {data.current.length > 0 ? (
+            {shownCurrent.length > 0 ? (
               <div className="divide-y divide-black/5 dark:divide-white/5">
-                {data.current.map((m) => (
+                {shownCurrent.map((m) => (
                   <MedicationRow
                     key={m.med.id}
                     med={m.med}
@@ -142,13 +184,15 @@ export default async function MedicationsPage() {
               </div>
             ) : (
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                No current medications yet.
+                {filter === "needs-rxcui"
+                  ? "Every current medication has a confirmed RxNorm code."
+                  : "No current medications yet."}
               </p>
             )}
           </CardGroupSection>
         </CardGroup>
 
-        {data.past.length > 0 ? (
+        {data.past.length > 0 && !filter ? (
           <details className="card group" data-testid="past-medications">
             <summary className="-m-2 flex w-[calc(100%+1rem)] cursor-pointer list-none items-center justify-between gap-4 rounded-lg p-2 outline-none transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500/40 [&::-webkit-details-marker]:hidden dark:hover:bg-ink-850">
               <span className="min-w-0">

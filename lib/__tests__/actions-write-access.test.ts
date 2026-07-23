@@ -187,6 +187,11 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   },
   // --- Thin wrappers that delegate to a gated helper ---
   {
+    file: "app/(app)/actions.ts",
+    fn: "dismissDataQualityGap",
+    why: "delegates to dismissCoachingObservation(), which calls requireWriteAccess() (#1219 named alias so the two widgets can diverge safely)",
+  },
+  {
     file: "app/(app)/encounters/appointment-actions.ts",
     fn: "completeAppointment",
     why: "delegates to setStatus(), which calls requireWriteAccess()",

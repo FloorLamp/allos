@@ -13,7 +13,7 @@
 // due-text exactly like immunizationItems.
 
 import type { PreventiveAssessment } from "./preventive-status";
-import type { AppRoute } from "./hrefs";
+import { biomarkerAddHref, type AppRoute } from "./hrefs";
 import type { UpcomingItem, UrgencyBand } from "./upcoming";
 import {
   appointmentKindForRule,
@@ -40,10 +40,9 @@ function screeningActionHref(sb: ScreeningSatisfiedBy): AppRoute {
       // `<page>?screen=<INSTRUMENT>` — the form preselects + focuses that instrument.
       return `${sb.page}?screen=${encodeURIComponent(sb.instrument)}`;
     case "lab":
-      // The #662 biomarker add-form prefill; unprefilled when no tracked biomarker.
-      return sb.primary
-        ? `/results/biomarkers?new=1&name=${encodeURIComponent(sb.primary)}`
-        : "/results/biomarkers?new=1";
+      // The #662 biomarker add-form prefill (shared shape, lib/hrefs
+      // biomarkerAddHref); unprefilled when no tracked biomarker.
+      return biomarkerAddHref(sb.primary);
     case "vital":
       return VITALS_ENTRY_HREF;
     case "procedure":

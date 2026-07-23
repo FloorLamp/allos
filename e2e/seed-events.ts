@@ -162,6 +162,8 @@ import {
   E2E_LOGIN_DQ_CARE,
   DQ_CARE_PARENT_PROFILE,
   DQ_CARE_CHILD_PROFILE,
+  E2E_LOGIN_DQ_ADULT,
+  DQ_ADULT_PROFILE,
   E2E_LOGIN_VISITLINKS,
   VISITLINKS_PROFILE,
   E2E_LOGIN_CREATEVISIT,
@@ -4239,6 +4241,67 @@ console.log(
   `e2e: seeded data-quality fixtures — gappy ${dqGappyId}, complete ${dqCompleteId}, ` +
     `care parent ${dqParentId} + child ${dqChildId} (#1045)`
 );
+
+// (D) A structurally-GAPPY ADULT (#1146/#1219): birthdate + sex set (male, adult) so
+// the ADULT-gated gaps fire — smoking status unknown, risk factors unreviewed, and a
+// PARTIAL PhenoAge panel (one Albumin lab → first missing analyte is Creatinine) —
+// and its CTAs must deep-link the exact forms. The same profile hosts the
+// dashboard-deeplinks #1219 fixtures: a target-less goal (bare title row → goals
+// link) and FOUR ongoing protocols + a layout that shows the active-protocols widget
+// (cap 3 → "+1 more" overflow link). Idempotent; synthetic values only.
+{
+  const dqAdultId = fixtureProfileId(DQ_ADULT_PROFILE);
+  clearProfileAttrs(dqAdultId);
+  setAttr(dqAdultId, "sex", "male");
+  setAttr(dqAdultId, "birthdate", "1984-04-01");
+  db.prepare(
+    `DELETE FROM medical_records WHERE profile_id = ? AND name = 'Albumin'`
+  ).run(dqAdultId);
+  db.prepare(
+    `INSERT INTO medical_records
+       (profile_id, date, category, name, value, value_num, unit, canonical_name, source)
+     VALUES (?, '2026-01-15', 'lab', 'Albumin', '4.5', 4.5, 'g/dL', 'Albumin', 'manual')`
+  ).run(dqAdultId);
+
+  // #1219 item 3 — a goal with NO measurable target (no exercise/metric/body-metric
+  // and no target_value): the dashboard row renders no bar, so its title must link.
+  db.prepare(
+    `DELETE FROM goals WHERE profile_id = ? AND title = 'Feel better all around'`
+  ).run(dqAdultId);
+  db.prepare(
+    `INSERT INTO goals (profile_id, title, status) VALUES (?, 'Feel better all around', 'active')`
+  ).run(dqAdultId);
+
+  // #1219 item 4 — four ONGOING protocols (end_date null) + a stored dashboard
+  // layout that shows the off-by-default active-protocols widget, so the widget
+  // caps at 3 and renders the "+1 more" overflow link. Distinct start dates pin
+  // the shown/overflow split (getProtocols orders by start_date DESC).
+  db.prepare(
+    `DELETE FROM protocols WHERE profile_id = ? AND name LIKE 'DQ Protocol %'`
+  ).run(dqAdultId);
+  const insDqProtocol = db.prepare(
+    `INSERT INTO protocols (profile_id, name, start_date, outcome_keys)
+     VALUES (?, ?, ?, '[]')`
+  );
+  const dqAdultToday = today(dqAdultId);
+  for (let i = 1; i <= 4; i++) {
+    insDqProtocol.run(
+      dqAdultId,
+      `DQ Protocol ${i}`,
+      shiftDateStr(dqAdultToday, -(10 + i))
+    );
+  }
+  setAttr(
+    dqAdultId,
+    "dashboard_layout",
+    JSON.stringify({ order: ["active-protocols"], hidden: [] })
+  );
+
+  seedMemberLogin(E2E_LOGIN_DQ_ADULT, dqAdultId, "write");
+  console.log(
+    `e2e: seeded data-quality ADULT fixture — profile ${dqAdultId} (${DQ_ADULT_PROFILE}) (#1146/#1219)`
+  );
+}
 
 // ── Record ↔ visit / episode ↔ visit linking fixture (#1050/#1053) ──────────────
 // A self-contained profile: one visit, a same-day UNLINKED medication (with a

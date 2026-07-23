@@ -97,9 +97,22 @@ export default function GoalsHabitsWidget({
                   return (
                     <li key={goal.id}>
                       <div className="flex items-center justify-between gap-3 text-sm">
-                        <span className="truncate font-medium text-slate-700 dark:text-slate-200">
-                          {goal.title}
-                        </span>
+                        {pct != null ? (
+                          <span className="truncate font-medium text-slate-700 dark:text-slate-200">
+                            {goal.title}
+                          </span>
+                        ) : (
+                          /* A goal with no measurable target renders no bar — link
+                             its title to the goals surface so the row is still a
+                             path to the goal, not an inert label (#1219). */
+                          <Link
+                            href="/training?tab=goals"
+                            data-testid="goal-title-link"
+                            className="truncate font-medium text-slate-700 hover:text-brand-600 hover:underline dark:text-slate-200 dark:hover:text-brand-400"
+                          >
+                            {goal.title}
+                          </Link>
+                        )}
                         {pct != null && (
                           <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
                             {pct}%

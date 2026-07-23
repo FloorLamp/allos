@@ -18,7 +18,7 @@ import {
   unresolvedCount,
   medicationMetaLine,
 } from "@/lib/medication-history";
-import { medicationHref } from "@/lib/hrefs";
+import { medicationEditHref, medicationHref } from "@/lib/hrefs";
 import { formatMedicationDoseLine } from "@/lib/medication-dose-format";
 import {
   RefillBadge,
@@ -235,7 +235,7 @@ export default function MedicationRow({
             {({ close }) => (
               <>
                 <Link
-                  href={`${medicationHref(med.id)}?action=edit`}
+                  href={medicationEditHref(med.id)}
                   role="menuitem"
                   className={MENU_ITEM}
                   onClick={close}

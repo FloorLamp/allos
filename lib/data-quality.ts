@@ -22,7 +22,14 @@
 // gaps into the shared Finding envelope, and every surface (dashboard widget, coaching
 // findings, household rollup) is a thin formatter over these results.
 
-import { dataSectionHref, MEDICATIONS_HREF, type AppRoute } from "./hrefs";
+import {
+  biomarkerAddHref,
+  dataSectionHref,
+  medicationEditHref,
+  medicationsFilterHref,
+  MEDICATIONS_HREF,
+  type AppRoute,
+} from "./hrefs";
 import { isAdultForClinical } from "./life-stage";
 
 // The dedupeKey namespace every data-quality finding keys under (registered in
@@ -98,6 +105,10 @@ export interface DataQualityInputs {
   smokingKnown: boolean;
   // Count of ACTIVE medications with no confirmed RxCUI (name-only safety matching).
   medsMissingRxcui: number;
+  // The SOLE unconfirmed medication's id when medsMissingRxcui === 1, else null.
+  // Lets the CTA deep-link the one med's edit form (where the #851 RxNorm confirm
+  // affordance lives) instead of dropping the user on the list (#1146).
+  medMissingRxcuiId: number | null;
   // Count of medications with a free-text prescriber that near-misses an individual
   // provider (or matches an org-only row) but isn't linked (#1051). The exact backfill
   // can't claim these — a suggest-and-accept correction unlocks provider-centric views
@@ -107,6 +118,10 @@ export interface DataQualityInputs {
   // how many of the nine analytes are present, and how many are still missing.
   phenoAgePresentCount: number;
   phenoAgeMissingCount: number;
+  // The first MISSING analyte's canonical name (PHENOAGE_INPUT_NAMES order), or
+  // null when the panel is complete. Drives the #662 add-form name prefill so the
+  // CTA lands on the exact lab entry, not a browse page (#1146).
+  phenoAgeMissingPrimary: string | null;
   // Count of `failed`-extraction documents (imported but contributing nothing).
   failedExtractions: number;
   // Whether the self-declared risk attributes have ever been reviewed.
@@ -176,7 +191,10 @@ function pediatricHeightGap(i: DataQualityInputs): DataQualityGap | null {
     label: "Add a height",
     whyLine:
       "Unlocks pediatric blood-pressure percentiles (they're height-indexed).",
-    ctaHref: "/trends?tab=body",
+    // The child-profile growth quick-add on Trends → Body, focused on the height
+    // field (#1146) — height/growth entry stayed on the Body tab when #1076 moved
+    // vitals to their own tab, so this is the post-move entry surface.
+    ctaHref: "/trends?tab=body&focus=height",
     leverage: 1,
   };
 }
@@ -191,7 +209,9 @@ function smokingStatusGap(i: DataQualityInputs): DataQualityGap | null {
     label: "Record smoking status",
     whyLine:
       "Unlocks the lung-cancer LDCT and abdominal-aortic-aneurysm screening gates.",
-    ctaHref: "/records",
+    // The smoking-history form itself (Records › Care › Overview, anchored), not
+    // the records landing page (#1146).
+    ctaHref: "/records/care/overview#smoking-history",
     leverage: 2,
   };
 }
@@ -206,9 +226,13 @@ function medRxcuiGap(i: DataQualityInputs): DataQualityGap | null {
     whyLine:
       `${n} ${noun} no confirmed RxNorm code, so their interaction, PGx, dental, ` +
       `and ototoxic safety checks match by name only.`,
-    // The #851 confirm flow lives on the medication edit form (#1032's limited-
-    // coverage chip points at the same place).
-    ctaHref: MEDICATIONS_HREF,
+    // The #851 confirm flow lives on the medication EDIT form: with exactly one
+    // unconfirmed med, deep-link its edit form directly; with several, the list
+    // filtered to the unconfirmed slice (#1146) — never the bare list.
+    ctaHref:
+      n === 1 && i.medMissingRxcuiId != null
+        ? medicationEditHref(i.medMissingRxcuiId)
+        : medicationsFilterHref("needs-rxcui"),
     leverage: 4,
   };
 }
@@ -245,7 +269,10 @@ function phenoAgeGap(i: DataQualityInputs): DataQualityGap | null {
     whyLine:
       `${i.phenoAgePresentCount} of ${total} biological-age inputs are present — ` +
       `the remaining labs unlock your biological age.`,
-    ctaHref: dataSectionHref("import"),
+    // The biomarker add form, prefilled with the first missing analyte (#1146) —
+    // the SAME lab deep-link shape the preventive screening rows use (#1083), via
+    // the shared biomarkerAddHref, so the two lanes can't diverge (#221).
+    ctaHref: biomarkerAddHref(i.phenoAgeMissingPrimary),
     leverage: 1,
   };
 }
@@ -275,7 +302,9 @@ function riskAttributesGap(i: DataQualityInputs): DataQualityGap | null {
     whyLine:
       "Unlocks risk-stratified screening cadence (occupational and immune-status " +
       "context).",
-    ctaHref: "/records",
+    // The risk-factors form itself (Records › Care › Overview, anchored), not the
+    // records landing page (#1146).
+    ctaHref: "/records/care/overview#risk-factors",
     leverage: 1,
   };
 }

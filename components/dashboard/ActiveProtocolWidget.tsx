@@ -2,6 +2,10 @@ import Link from "next/link";
 import { IconFlask2 } from "@tabler/icons-react";
 import WidgetHeader from "./WidgetHeader";
 import type { ActiveProtocolSummary } from "@/lib/queries/protocols";
+import {
+  ACTIVE_PROTOCOLS_CAP,
+  capDashboardList,
+} from "@/lib/dashboard-widgets";
 
 // Active protocols (issue #660, opt-in via Customize). Each ongoing N-of-1
 // experiment as a compact row: days elapsed, this-week practice adherence, and the
@@ -27,11 +31,15 @@ export default function ActiveProtocolWidget({
 }: {
   protocols: ActiveProtocolSummary[];
 }) {
+  // Standard list-widget cap + overflow link (#1219): this was the one list widget
+  // mapping ALL its rows; the rest beyond the cap stay one click away on the
+  // protocols surface.
+  const { shown, overflow } = capDashboardList(protocols, ACTIVE_PROTOCOLS_CAP);
   return (
     <div className="card" data-testid="active-protocols">
       <WidgetHeader title="Active protocols" href="/longevity#protocols" />
       <ul className="space-y-3">
-        {protocols.map((p) => (
+        {shown.map((p) => (
           <li
             key={p.id}
             className="rounded-lg border border-black/5 p-3 dark:border-white/10"
@@ -92,6 +100,15 @@ export default function ActiveProtocolWidget({
           </li>
         ))}
       </ul>
+      {overflow.length > 0 && (
+        <Link
+          href="/longevity#protocols"
+          data-testid="active-protocols-more"
+          className="mt-3 inline-block text-xs font-medium text-slate-500 hover:text-brand-600 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
+        >
+          +{overflow.length} more protocol{overflow.length === 1 ? "" : "s"} →
+        </Link>
+      )}
     </div>
   );
 }

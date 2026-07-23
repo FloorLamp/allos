@@ -22,9 +22,11 @@ const COMPLETE_ADULT: DataQualityInputs = {
   heightKnown: false, // adult → pediatric-height gate never fires
   smokingKnown: true,
   medsMissingRxcui: 0,
+  medMissingRxcuiId: null,
   prescribersNeedingLink: 0,
   phenoAgePresentCount: 9,
   phenoAgeMissingCount: 0,
+  phenoAgeMissingPrimary: null,
   failedExtractions: 0,
   riskAttributesReviewed: true,
 };
@@ -48,6 +50,7 @@ describe("detectDataQualityGaps — the boundary invariant", () => {
         ...COMPLETE_ADULT,
         phenoAgePresentCount: 0,
         phenoAgeMissingCount: 9,
+        phenoAgeMissingPrimary: "Albumin",
       })
     ).toEqual([]);
   });
@@ -256,9 +259,11 @@ describe("leverage ranking is stable and deterministic", () => {
       heightKnown: false,
       smokingKnown: false, // smoking gated on adult → age null suppresses it
       medsMissingRxcui: 1, // med-rxcui (4)
+      medMissingRxcuiId: 42,
       prescribersNeedingLink: 0,
       phenoAgePresentCount: 0,
       phenoAgeMissingCount: 9,
+      phenoAgeMissingPrimary: "Albumin",
       failedExtractions: 1, // failed (1)
       riskAttributesReviewed: false, // risk gated on adult → suppressed (age null)
     });
@@ -289,6 +294,161 @@ describe("leverage ranking is stable and deterministic", () => {
       expect(dataQualityDedupeKey(g.key).startsWith(DATA_QUALITY_PREFIX)).toBe(
         true
       );
+    }
+  });
+});
+
+describe("ctaHref precision — every gap deep-links the concrete form (#1146)", () => {
+  function gapFor(inputs: DataQualityInputs, key: string) {
+    const g = detectDataQualityGaps(inputs).find((x) => x.key === key);
+    expect(g, `expected gap ${key} to fire`).toBeTruthy();
+    return g!;
+  }
+
+  it("phenoage-inputs prefills the biomarker add form with the first missing analyte", () => {
+    const g = gapFor(
+      {
+        ...COMPLETE_ADULT,
+        phenoAgePresentCount: 5,
+        phenoAgeMissingCount: 4,
+        phenoAgeMissingPrimary: "hs-CRP",
+      },
+      "phenoage-inputs"
+    );
+    expect(g.ctaHref).toBe("/results/biomarkers?new=1&name=hs-CRP");
+  });
+
+  it("phenoage-inputs falls back to the unprefilled add form when no primary is known", () => {
+    const g = gapFor(
+      {
+        ...COMPLETE_ADULT,
+        phenoAgePresentCount: 5,
+        phenoAgeMissingCount: 4,
+        phenoAgeMissingPrimary: null,
+      },
+      "phenoage-inputs"
+    );
+    expect(g.ctaHref).toBe("/results/biomarkers?new=1");
+  });
+
+  it("risk-attributes targets the risk-factors form, not the records landing page", () => {
+    const g = gapFor(
+      { ...COMPLETE_ADULT, riskAttributesReviewed: false },
+      "risk-attributes"
+    );
+    expect(g.ctaHref).toBe("/records/care/overview#risk-factors");
+  });
+
+  it("smoking-status targets the smoking-history form, not the records landing page", () => {
+    const g = gapFor(
+      { ...COMPLETE_ADULT, smokingKnown: false },
+      "smoking-status"
+    );
+    expect(g.ctaHref).toBe("/records/care/overview#smoking-history");
+  });
+
+  it("med-rxcui with ONE unconfirmed med deep-links that med's edit form", () => {
+    const g = gapFor(
+      { ...COMPLETE_ADULT, medsMissingRxcui: 1, medMissingRxcuiId: 42 },
+      "med-rxcui"
+    );
+    expect(g.ctaHref).toBe("/medications/42?action=edit");
+  });
+
+  it("med-rxcui with SEVERAL unconfirmed meds links the list filtered to them", () => {
+    const g = gapFor(
+      { ...COMPLETE_ADULT, medsMissingRxcui: 3, medMissingRxcuiId: null },
+      "med-rxcui"
+    );
+    expect(g.ctaHref).toBe("/medications?filter=needs-rxcui");
+  });
+
+  it("med-rxcui without a sole id falls back to the filtered list even at N=1", () => {
+    const g = gapFor(
+      { ...COMPLETE_ADULT, medsMissingRxcui: 1, medMissingRxcuiId: null },
+      "med-rxcui"
+    );
+    expect(g.ctaHref).toBe("/medications?filter=needs-rxcui");
+  });
+
+  it("pediatric-height targets the growth quick-add, focused on height", () => {
+    const g = gapFor(
+      {
+        ...COMPLETE_ADULT,
+        age: PEDIATRIC_HEIGHT_MAX_AGE - 1,
+        heightKnown: false,
+      },
+      "pediatric-height"
+    );
+    expect(g.ctaHref).toBe("/trends?tab=body&focus=height");
+  });
+
+  it("GUARD: no gap's ctaHref uses a pre-#1079 base or a bare browse page", () => {
+    // Fire the maximal gap set across two age regimes and check every CTA base.
+    const allGaps = [
+      ...detectDataQualityGaps({
+        age: null,
+        sexKnown: false,
+        sex: null,
+        reproductiveStatusKnown: false,
+        heightKnown: false,
+        smokingKnown: false,
+        medsMissingRxcui: 2,
+        medMissingRxcuiId: null,
+        prescribersNeedingLink: 1,
+        phenoAgePresentCount: 3,
+        phenoAgeMissingCount: 6,
+        phenoAgeMissingPrimary: "Albumin",
+        failedExtractions: 1,
+        riskAttributesReviewed: false,
+      }),
+      ...detectDataQualityGaps({
+        ...COMPLETE_ADULT,
+        sex: "female",
+        age: REPRODUCTIVE_STATUS_BAND_MIN_AGE,
+        reproductiveStatusKnown: false,
+        smokingKnown: false,
+        riskAttributesReviewed: false,
+        medsMissingRxcui: 1,
+        medMissingRxcuiId: 7,
+        phenoAgePresentCount: 1,
+        phenoAgeMissingCount: 8,
+        phenoAgeMissingPrimary: "Creatinine",
+      }),
+      ...detectDataQualityGaps({
+        ...COMPLETE_ADULT,
+        age: PEDIATRIC_HEIGHT_MAX_AGE - 1,
+        heightKnown: false,
+      }),
+    ];
+    expect(allGaps.length).toBeGreaterThanOrEqual(10);
+    // Post-#1079 route discipline: the redirect-surviving legacy literals would
+    // still typecheck, so pin the exact allowed bases here (the #1083 trap).
+    const ALLOWED_BASES = [
+      "/settings/profile",
+      "/results/biomarkers",
+      "/records/care/overview",
+      "/medications",
+      /^\/medications\/\d+$/,
+      "/trends",
+      "/data",
+    ];
+    for (const g of allGaps) {
+      const base = g.ctaHref.split(/[?#]/)[0];
+      const ok = ALLOWED_BASES.some((b) =>
+        typeof b === "string" ? b === base : b.test(base)
+      );
+      expect(ok, `unexpected ctaHref base for ${g.key}: ${g.ctaHref}`).toBe(
+        true
+      );
+      // Never the pre-#1079 hash-section form or a bare browse page.
+      // (prescriber-link is the one deliberate list-level target: its accept
+      // affordance has no dedicated form surface yet — #1051.)
+      expect(g.ctaHref.startsWith("/results#")).toBe(false);
+      expect(g.ctaHref).not.toBe("/records");
+      if (g.key !== "prescriber-link") {
+        expect(g.ctaHref).not.toBe("/medications");
+      }
     }
   });
 });
