@@ -1,6 +1,6 @@
 "use client";
 
-import { IconRefresh, IconLoader2 } from "@tabler/icons-react";
+import { IconLoader2 } from "@tabler/icons-react";
 import Link from "next/link";
 import type { MedicalRecord } from "@/lib/types";
 import { groupContiguous } from "@/lib/table-sort";
@@ -11,7 +11,6 @@ import EditableRecordRow from "./EditableRecordRow";
 import RangeFilterSelect from "./RangeFilterSelect";
 import SortableHeader from "./SortableHeader";
 import RecordSearch from "./RecordSearch";
-import { useReprocessDocument } from "@/components/useReprocessDocument";
 
 // The grouping identity for a record: its canonical name when present, else the
 // raw name — the same key the biomarkers table groups on, so name-sorted rows
@@ -71,13 +70,14 @@ function ReadonlyRecordRow({ record: r }: { record: MedicalRecord }) {
 // The records table for one medical_records category tab of the import-detail
 // records browser (#271): the old CategoryFilterSelect collapsed into the tab
 // strip, so the host passes the tab's label as `title` and scopes the records
-// itself. Its reprocess button shares the useReprocessDocument hook with the
-// documents-list row button, which flips the document to 'processing' and runs
-// extraction in the background. The action returns immediately; a "Processing…"
-// overlay stays over the table for the whole time the document is `processing`
-// (from this reprocess, or a first upload extraction viewed here), and the
-// app-wide ExtractionToaster refreshes the page and toasts when the background
-// job finishes (clearing it).
+// itself. Re-extraction is NOT triggered here anymore (#1071): the immediate
+// fire-and-replace icon this table used to carry was the unsafe twin of the
+// detail page's preview-first flow, so it was removed — the SOLE per-document
+// reprocess is ImportDetailActions' "Preview changes → Save changes". A
+// "Processing…" overlay still stays over the table while the document is
+// `processing` (a first upload extraction, or a re-extraction kicked off from the
+// preview flow), and the app-wide ExtractionToaster refreshes the page and toasts
+// when the background job finishes (clearing it).
 //
 // Presentation splits by category (#1182): analyte categories (lab/biomarker/
 // genomics) keep the editable analyte grid — Name · Panel · Value · Reference · …
@@ -85,8 +85,6 @@ function ReadonlyRecordRow({ record: r }: { record: MedicalRecord }) {
 // category (vitals/scan/instrument/derived/reference) gets the read-only compact
 // value/date table above, with no Panel/Reference columns and no edit affordance.
 export default function ExtractedRecords({
-  docId,
-  filename,
   title = "Extracted records",
   analyte,
   processing,
@@ -96,17 +94,15 @@ export default function ExtractedRecords({
   sort,
   emptyMessage,
 }: {
-  docId: number;
-  filename: string;
   // Heading for the table — the active tab's label ("Labs", "Vitals"…).
   title?: string;
   // Whether this tab's category carries the analyte grammar (value/unit/reference
   // band). True → the editable analyte grid; false → the read-only value/date
   // table. Decided by isAnalyteCategory in lib/import-browser.
   analyte: boolean;
-  // The document's extraction is still running (from upload or a prior
-  // reprocess). Reprocessing now would race that in-flight job, so we show a
-  // spinner instead of the reprocess button.
+  // The document's extraction is still running (from upload or a re-extraction
+  // kicked off from the detail page's preview flow), so we show a spinner and a
+  // "Processing…" overlay over the table until it settles.
   processing: boolean;
   records: MedicalRecord[];
   q?: string;
@@ -116,8 +112,6 @@ export default function ExtractedRecords({
   sort: "name" | "panel" | "date";
   emptyMessage: string;
 }) {
-  const { pending, reprocess } = useReprocessDocument(docId, filename);
-
   // Group contiguous same-name rows only when name-sorted AND on the analyte
   // grid (rows already arrive adjacent by name from the query); the read-only
   // non-analyte table renders flat (its rows are heterogeneous, not one analyte).
@@ -136,22 +130,11 @@ export default function ExtractedRecords({
         <RecordSearch q={q} />
         {/* The out-of-range filter keys on a reference band — analyte-only. */}
         {analyte && <RangeFilterSelect value={range} />}
-        {processing ? (
+        {processing && (
           <IconLoader2
             className="ml-auto h-4 w-4 animate-spin text-slate-500 motion-reduce:animate-none dark:text-slate-400"
             aria-label="Processing"
           />
-        ) : (
-          <button
-            type="button"
-            onClick={reprocess}
-            disabled={pending}
-            title="Reprocess document"
-            aria-label="Reprocess document"
-            className="ml-auto text-slate-500 hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-400 dark:hover:text-brand-400"
-          >
-            <IconRefresh className="h-4 w-4" />
-          </button>
         )}
       </div>
 
@@ -227,7 +210,7 @@ export default function ExtractedRecords({
           </div>
         )}
 
-        {(pending || processing) && (
+        {processing && (
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 dark:bg-ink-900/70">
             <span className="text-sm font-medium text-slate-500 dark:text-slate-400">
               Processing…

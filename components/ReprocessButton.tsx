@@ -10,7 +10,7 @@ import type { ReprocessResult } from "@/lib/medical-pipeline";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { formatReprocessCost } from "@/lib/reprocess-cost";
 
-// "Re-extract all documents" — re-extracts every uploaded document and replaces its
+// "Re-run extraction on all documents" — re-extracts every uploaded document and replaces its
 // imported records with fresh results: deterministic re-import for health records
 // (MyChart CCD/XDM, SMART Health Cards, FHIR), AI extraction for scans/PDFs. It is
 // scoped to DOCUMENTS only (never the recurring syncs), which is why it lives in the
@@ -58,7 +58,7 @@ export default function ReprocessButton() {
     // no quota cost — just run it.
     if (!cost.noAi) {
       const ok = await confirm({
-        title: "Re-extract all documents",
+        title: "Re-run extraction on all documents",
         message: (
           <div className="space-y-2">
             <p className="font-medium text-slate-700 dark:text-slate-200">
@@ -71,7 +71,7 @@ export default function ReprocessButton() {
             </p>
           </div>
         ),
-        confirmLabel: "Re-extract all",
+        confirmLabel: "Re-run extraction on all",
       });
       if (!ok) return;
     }
@@ -104,8 +104,8 @@ export default function ReprocessButton() {
         onClick={run}
         disabled={pending}
         data-testid="reprocess-all"
-        title="Re-extract all documents"
-        aria-label="Re-extract all documents"
+        title="Re-run extraction on all documents"
+        aria-label="Re-run extraction on all documents"
         className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-brand-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-400 dark:hover:text-brand-400"
       >
         {pending ? (
@@ -113,7 +113,7 @@ export default function ReprocessButton() {
         ) : (
           <>
             <IconRefresh className="h-4 w-4" />
-            <span>Re-extract all documents</span>
+            <span>Re-run extraction on all documents</span>
           </>
         )}
       </button>

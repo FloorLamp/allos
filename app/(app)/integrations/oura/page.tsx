@@ -4,12 +4,9 @@ import { PageHeader } from "@/components/ui";
 import { Notice } from "@/components/Notice";
 import { getIntegration } from "@/lib/integrations/registry";
 import { getConnection, getOuraConfig } from "@/lib/integrations/connections";
-import {
-  getIntegrationSyncEvents,
-  getLastSuccessfulSyncAt,
-} from "@/lib/queries";
+import { getLastSuccessfulSyncAt } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
-import IntegrationDebugPanel from "@/components/IntegrationDebugPanel";
+import IntegrationSyncHistoryLink from "@/components/IntegrationSyncHistoryLink";
 import { connectOura, syncOuraAction, disconnectOuraAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -49,7 +46,6 @@ export default async function OuraPage(props: {
     lastSummary = null;
   }
 
-  const events = getIntegrationSyncEvents(profile.id, "oura");
   const lastSuccessAt = getLastSuccessfulSyncAt(profile.id, "oura");
 
   return (
@@ -133,8 +129,7 @@ export default async function OuraPage(props: {
 
           <SetupCard />
 
-          <IntegrationDebugPanel
-            events={events}
+          <IntegrationSyncHistoryLink
             lastSuccessAt={lastSuccessAt}
             connected={connected}
           />

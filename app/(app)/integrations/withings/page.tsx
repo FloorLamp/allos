@@ -7,12 +7,9 @@ import {
   getConnection,
   getWithingsConfig,
 } from "@/lib/integrations/connections";
-import {
-  getIntegrationSyncEvents,
-  getLastSuccessfulSyncAt,
-} from "@/lib/queries";
+import { getLastSuccessfulSyncAt } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
-import IntegrationDebugPanel from "@/components/IntegrationDebugPanel";
+import IntegrationSyncHistoryLink from "@/components/IntegrationSyncHistoryLink";
 import { TokenRow } from "@/components/TokenRow";
 import { withingsCallbackUrl } from "./url";
 import {
@@ -65,7 +62,6 @@ export default async function WithingsPage(props: {
     lastSummary = null;
   }
 
-  const events = getIntegrationSyncEvents(profile.id, "withings");
   const lastSuccessAt = getLastSuccessfulSyncAt(profile.id, "withings");
 
   return (
@@ -144,8 +140,7 @@ export default async function WithingsPage(props: {
 
           <SetupCard callbackUrl={callbackUrl} />
 
-          <IntegrationDebugPanel
-            events={events}
+          <IntegrationSyncHistoryLink
             lastSuccessAt={lastSuccessAt}
             connected={connected}
           />

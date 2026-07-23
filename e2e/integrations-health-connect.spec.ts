@@ -57,6 +57,15 @@ test.describe("Health Connect integration (#391)", () => {
       const first = await readToken(member);
       expect(first.length).toBeGreaterThan(10);
 
+      // #1212: sync history is deduped to ONE surface (Review → Connected
+      // sources). The setup page no longer renders its own "Recent activity"
+      // table — it links to that single history instead (a real destination, not
+      // a dead-end).
+      const historyLink = member.getByTestId("sync-history-link");
+      await expect(historyLink).toBeVisible();
+      await expect(historyLink).toHaveAttribute("href", "/data?section=review");
+      await expect(member.getByText("Recent activity")).toHaveCount(0);
+
       // Rotate → a fresh token replaces the old one on the page. Wait for the
       // revalidated render to actually swap the displayed value away from the old
       // token before reading (the action call resolves before the RSC refresh

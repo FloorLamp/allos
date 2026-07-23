@@ -1560,13 +1560,42 @@ db.prepare(`DELETE FROM immunizations WHERE source = ?`).run(
   BROWSER_DOC_SOURCE
 );
 db.prepare(`DELETE FROM medical_documents WHERE id = ?`).run(BROWSER_DOC_ID);
+// A tiny, synthetic CCD-shaped raw so the Debug → Raw extraction panel exercises the
+// shared RawDataViewer's XML tree mode (#1318): nested elements + attributes, all
+// obviously-fictional (Test Patient, made-up codes) — no real PHI.
+const BROWSER_DOC_RAW_XML = `<ClinicalDocument xmlns="urn:hl7-org:v3">
+  <recordTarget>
+    <patientRole>
+      <id extension="E2E-000" root="2.16.840.1.113883.19.5"/>
+      <patient>
+        <name><given>Test</given><family>Patient</family></name>
+        <birthTime value="19900101"/>
+      </patient>
+    </patientRole>
+  </recordTarget>
+  <component>
+    <structuredBody>
+      <component>
+        <section>
+          <title>Results</title>
+          <entry>
+            <observation classCode="OBS">
+              <code code="E2E-FER" displayName="Ferritin"/>
+              <value unit="ng/mL" value="95"/>
+            </observation>
+          </entry>
+        </section>
+      </component>
+    </structuredBody>
+  </component>
+</ClinicalDocument>`;
 db.prepare(
   `INSERT INTO medical_documents
      (id, profile_id, filename, stored_path, mime_type, size_bytes, doc_type,
-      source, extraction_status, extracted_count, uploaded_at)
+      source, extraction_status, extracted_count, uploaded_at, raw_extraction)
    VALUES (?, ?, 'e2e-records-browser.xml', '', 'application/xml', 4096,
-           'MyChart export (CCD/XDM)', 'ccda', 'done', 6, '2026-07-08 09:50:00')`
-).run(BROWSER_DOC_ID, PROFILE_ID);
+           'MyChart export (CCD/XDM)', 'ccda', 'done', 6, '2026-07-08 09:50:00', ?)`
+).run(BROWSER_DOC_ID, PROFILE_ID, BROWSER_DOC_RAW_XML);
 // A provider referenced by one lab row → the Providers count chip shows 1.
 db.prepare(
   `DELETE FROM providers WHERE dedup_key = 'e2e-browser-clinic'`

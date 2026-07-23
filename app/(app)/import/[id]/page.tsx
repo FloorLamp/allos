@@ -31,6 +31,7 @@ import { parseSortColumn, parseSortDir } from "@/lib/table-sort";
 import { PageHeader } from "@/components/ui";
 import { Notice } from "@/components/Notice";
 import ImportDetailActions from "@/components/ImportDetailActions";
+import RawDataViewer from "@/components/RawDataViewer";
 import ReassignDocument from "@/components/ReassignDocument";
 import ExtractedRecords from "@/components/ExtractedRecords";
 import CreateVisitFromRecord from "@/components/visit-links/CreateVisitFromRecord";
@@ -371,8 +372,6 @@ export default async function ImportDetailPage(props: {
         {activeTab &&
           (activeTab.kind === "records" ? (
             <ExtractedRecords
-              docId={id}
-              filename={doc.filename}
               title={activeTab.label}
               analyte={usesAnalyteGrid(activeTab.category)}
               processing={doc.extraction_status === "processing"}
@@ -766,9 +765,10 @@ export default async function ImportDetailPage(props: {
               <summary className="cursor-pointer text-sm font-medium text-brand-700 hover:underline dark:text-brand-400">
                 Raw extraction
               </summary>
-              <pre className="mt-2 max-h-[60vh] overflow-auto rounded-lg border border-black/10 bg-slate-50 p-3 text-xs text-slate-700 dark:border-white/10 dark:bg-ink-900 dark:text-slate-300">
-                {raw}
-              </pre>
+              {/* The shared collapsible JSON/XML tree + copy (#1318) — a CCD/XDM
+                  raw renders as a foldable element tree, an AI extraction as a JSON
+                  tree, anything else as plain text. */}
+              <RawDataViewer text={doc.raw_extraction ?? raw} />
             </details>
           ) : (
             <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -788,9 +788,10 @@ export default async function ImportDetailPage(props: {
             hasRaw={!!doc.raw_extraction}
           />
           <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-            Reprocessing previews the diff before re-running extraction and
-            replacing this document’s imported records. Deleting removes the
-            document and everything it imported.
+            “Preview changes” shows the diff before a fresh AI re-extraction
+            replaces this document’s imported records; “Re-apply saved
+            extraction” replays the saved result with no AI call; “Delete”
+            removes the document and every record it imported.
           </p>
           {reassignTargets.length > 0 && (
             <div className="mt-4 border-t border-black/5 pt-4 dark:border-white/10">

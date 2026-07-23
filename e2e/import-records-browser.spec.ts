@@ -126,22 +126,72 @@ test.describe("Import detail: tabbed records browser", () => {
     );
   });
 
-  // The reprocess-with-preview panel (ReprocessDiffPanel) that the apply-commits-the-
-  // preview change (#946) reworks. The e2e env has NO extractor configured, so a
-  // preview reports it can't re-extract and the panel offers "Reprocess anyway"
-  // rather than a diff/commit — which is exactly the reachable state here. It proves
-  // the refactored panel still renders and drives its preview Server Action end-to-
-  // end; the committed-preview vs re-extracted-fallback outcome + its fallback note
-  // need a live extractor and are covered at the action tier.
-  test("reprocess-with-preview panel renders and previews (#946)", async ({
+  // The preview-first re-extraction panel (ReprocessDiffPanel) — the SOLE
+  // per-document reprocess after the #1071 verb consolidation. The e2e env has NO
+  // extractor configured, so a preview reports it can't re-extract and the panel
+  // offers "Re-extract anyway" rather than a diff/commit — which is exactly the
+  // reachable state here. It proves the panel still renders and drives its preview
+  // Server Action end-to-end; the committed-preview vs re-extracted-fallback
+  // outcome + its fallback note need a live extractor and are covered at the
+  // action tier. The no-change disabled-commit decision is unit-tested
+  // (lib/__tests__/reprocess-preview-view.test.ts) since the ok/no-change branch is
+  // unreachable without an extractor.
+  test("re-extraction is preview-first only — no immediate fire-and-replace (#1071)", async ({
     page,
   }) => {
     await page.goto("/import/908");
-    const reprocess = page.getByRole("button", { name: /Reprocess…/ });
-    await expect(reprocess).toBeVisible();
-    await settledClick(page, reprocess);
+
+    // The consolidated verb: "Preview changes" reads the diff (never writes) —
+    // there is no bare "Reprocess" control anymore (the removed unsafe path can't
+    // return), and no immediate ExtractedRecords fire-and-replace icon.
     await expect(
-      page.getByRole("button", { name: /Reprocess anyway/ })
-    ).toBeVisible();
+      page.getByRole("button", { name: "Reprocess document" })
+    ).toHaveCount(0);
+    const preview = page.getByTestId("reprocess-preview");
+    await expect(preview).toHaveText(/Preview changes/);
+    await settledClick(page, preview);
+
+    // Extractor-less env → the panel reports it can't re-extract and offers the
+    // "we didn't run it" override, distinct from a committed diff.
+    await expect(page.getByTestId("reprocess-anyway")).toHaveText(
+      /Re-extract anyway/
+    );
+  });
+
+  // #1318: the shared RawDataViewer renders the document's raw extraction as a
+  // collapsible tree (doc 908's raw is a synthetic CCD → XML mode) with a copy
+  // button, replacing the old flat <pre>. Fold/expand + copy are exercised here.
+  test("raw extraction renders through the collapsible RawDataViewer (#1318)", async ({
+    page,
+  }) => {
+    await page.goto("/import/908");
+    // Open the Debug → Raw extraction disclosure (native <details>).
+    await page.getByText("Raw extraction", { exact: true }).click();
+    const viewer = page.getByTestId("raw-data-viewer");
+    await expect(viewer).toBeVisible();
+    // XML mode: the root element + an attribute value render in the tree.
+    await expect(viewer).toContainText("ClinicalDocument");
+
+    // Expand-all reveals deep content; collapse-all hides it (the fold machinery).
+    await viewer.getByTestId("raw-expand-all").click();
+    await expect(viewer).toContainText("Results");
+    await viewer.getByTestId("raw-collapse-all").click();
+    await expect(viewer).not.toContainText("Results");
+
+    // Copy grabs the full raw text and flashes the transient confirmation.
+    await viewer.getByTestId("raw-copy").click();
+    await expect(viewer.getByTestId("raw-copied")).toBeVisible();
+  });
+
+  // The destructive verb (#1071 item 5) keeps a confirm, and the confirm names
+  // exactly what it removes — the document AND its records.
+  test("Delete confirms and names its scope (#1071)", async ({ page }) => {
+    await page.goto("/import/908");
+    // The document-level delete (not a per-record row delete) — scoped by testid.
+    await page.getByTestId("delete-document").click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText(/Delete document & its records/);
+    await expect(dialog).toContainText(/every record it imported/);
   });
 });

@@ -4,12 +4,9 @@ import { PageHeader } from "@/components/ui";
 import { Notice } from "@/components/Notice";
 import { getIntegration } from "@/lib/integrations/registry";
 import { getConnection, getStravaConfig } from "@/lib/integrations/connections";
-import {
-  getIntegrationSyncEvents,
-  getLastSuccessfulSyncAt,
-} from "@/lib/queries";
+import { getLastSuccessfulSyncAt } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
-import IntegrationDebugPanel from "@/components/IntegrationDebugPanel";
+import IntegrationSyncHistoryLink from "@/components/IntegrationSyncHistoryLink";
 import { TokenRow } from "@/components/TokenRow";
 import { baseUrl, stravaCallbackUrl } from "./url";
 import {
@@ -65,7 +62,6 @@ export default async function StravaPage(props: {
   }
 
   // Profile-scoped sync-event history for the debug panel.
-  const events = getIntegrationSyncEvents(profile.id, "strava");
   const lastSuccessAt = getLastSuccessfulSyncAt(profile.id, "strava");
 
   return (
@@ -144,8 +140,7 @@ export default async function StravaPage(props: {
             callbackDomain={callbackDomain}
           />
 
-          <IntegrationDebugPanel
-            events={events}
+          <IntegrationSyncHistoryLink
             lastSuccessAt={lastSuccessAt}
             connected={connected}
           />

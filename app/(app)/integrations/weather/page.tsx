@@ -4,15 +4,12 @@ import { PageHeader } from "@/components/ui";
 import { Notice } from "@/components/Notice";
 import { getIntegration } from "@/lib/integrations/registry";
 import { getConnection } from "@/lib/integrations/connections";
-import {
-  getIntegrationSyncEvents,
-  getLastSuccessfulSyncAt,
-} from "@/lib/queries";
+import { getLastSuccessfulSyncAt } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
 import { getHomeLocation, getSkinType } from "@/lib/settings";
 import { today } from "@/lib/db";
 import { getUvDoseForDay } from "@/lib/queries/weather";
-import IntegrationDebugPanel from "@/components/IntegrationDebugPanel";
+import IntegrationSyncHistoryLink from "@/components/IntegrationSyncHistoryLink";
 import {
   enableWeatherAction,
   syncWeatherAction,
@@ -42,7 +39,6 @@ export default async function WeatherPage(props: {
     ? (ERROR_MESSAGES[searchParams.error] ?? "Something went wrong. Try again.")
     : null;
 
-  const events = getIntegrationSyncEvents(profile.id, "weather");
   const lastSuccessAt = getLastSuccessfulSyncAt(profile.id, "weather");
   const dose = connected
     ? getUvDoseForDay(profile.id, today(profile.id))
@@ -177,8 +173,7 @@ export default async function WeatherPage(props: {
         <SetupCard />
 
         {connected && (
-          <IntegrationDebugPanel
-            events={events}
+          <IntegrationSyncHistoryLink
             lastSuccessAt={lastSuccessAt}
             connected={connected}
           />
