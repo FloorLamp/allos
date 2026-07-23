@@ -1,7 +1,11 @@
 // Pure helpers for Telegram callback payloads — no DB/network, so they can be
 // unit-tested (lib/__tests__). Consumed by telegram-callbacks.ts.
 
-import type { DoseTakenOutcome, EscalationAckOutcome } from "../types";
+import type {
+  DoseTakenOutcome,
+  EscalationAckOutcome,
+  PracticeLogOutcome,
+} from "../types";
 import type { FoodLogOutcome } from "../food-log-write";
 import type { ProteinAddOutcome } from "../protein-log-write";
 import { formatRecordDate } from "../record-format";
@@ -485,6 +489,56 @@ export function parsePrnLogCallback(data: unknown): PrnLogCallback | null {
   const itemId = Number(itemStr);
   if (!profileId || !itemId || !token) return null;
   return { profileId, itemId, token };
+}
+
+// ---- Wellness-practice "Done ✓" logging over Telegram (#1259 phase 2) ----
+// A "pdone:<profileId>:<targetId>:<token>" button logs one practice session NOW for the
+// target's practice. Like a dose/PRN tap the profile id is a cross-check (the handler
+// re-resolves the acting profile from the chat, and logPracticeByTargetId re-verifies the
+// target is that profile's practice), and the handler answers from the typed
+// PracticeLogOutcome — never unconditionally, because a session log is NOT idempotent
+// (multi-session days are supported). `token` is a per-render nonce keeping a redelivered
+// callback distinguishable; the button IS consumed on tap (the keyboard is edited away),
+// so a stale message can't double-log.
+export interface PracticeDoneCallback {
+  profileId: number;
+  targetId: number;
+  token: string;
+}
+
+// Encode the "pdone:<profileId>:<targetId>:<token>" button token. The single source of
+// truth for the shape (the builder mints it, the parser reads it).
+export function practiceDoneCallback(
+  profileId: number,
+  targetId: number,
+  token: string
+): string {
+  return `pdone:${profileId}:${targetId}:${token}`;
+}
+
+// Parse a "pdone:<profileId>:<targetId>:<token>" token. The token is the greedy tail (a
+// nonce with no colons). Malformed (wrong prefix, bad ids, missing token) → null.
+export function parsePracticeDoneCallback(
+  data: unknown
+): PracticeDoneCallback | null {
+  if (typeof data !== "string" || !data.startsWith("pdone:")) return null;
+  const [, profStr, targStr, token] = data.split(":");
+  const profileId = Number(profStr);
+  const targetId = Number(targStr);
+  if (!profileId || !targetId || !token) return null;
+  return { profileId, targetId, token };
+}
+
+// The toast answer for a practice Done tap, from the typed write outcome. Honest per
+// outcome (the markDoseTaken contract): the running count on a fresh log, an honest
+// "couldn't log" otherwise — never an unconditional confirm.
+export function practiceDoneAnswerText(outcome: PracticeLogOutcome): string {
+  if (outcome.kind === "logged") {
+    return outcome.count === 1
+      ? "Logged today's session"
+      : `Logged — ${outcome.count} sessions today`;
+  }
+  return "Couldn't log that session.";
 }
 
 export interface FoodLogCallback {

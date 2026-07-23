@@ -11,7 +11,12 @@ import type {
   ProtocolPractice,
   IntakeItemOption,
 } from "@/lib/queries/protocols";
-import { PRACTICE_TYPES, practiceSelectValue } from "@/lib/protocol-practice";
+import {
+  PRACTICE_TYPES,
+  practiceSelectValue,
+  CUSTOM_PRACTICE_VALUE,
+} from "@/lib/protocol-practice";
+import { PRACTICE_STARTER_LIST } from "@/lib/practice";
 import { FOOD_GROUPS } from "@/lib/food-groups";
 import type { ProtocolTemplate } from "@/lib/protocol-templates";
 
@@ -94,6 +99,22 @@ export default function ProtocolForm({
     onDone?.();
     router.refresh();
   }
+
+  // Re-seed the practice picker (#1259). A saved wellness practice on the CURATED starter
+  // list selects its option; a custom one selects the "Other…" sentinel and pre-fills the
+  // free-text field. Type/food practices round-trip through practiceSelectValue as before.
+  const isCuratedPractice =
+    practice?.scopeKind === "practice" &&
+    (PRACTICE_STARTER_LIST as readonly string[]).includes(practice.value);
+  const practiceSelectDefault = practice
+    ? practice.scopeKind === "practice" && !isCuratedPractice
+      ? CUSTOM_PRACTICE_VALUE
+      : practiceSelectValue(practice.scopeKind, practice.value)
+    : (tpl?.practiceType ?? "");
+  const practiceCustomDefault =
+    practice?.scopeKind === "practice" && !isCuratedPractice
+      ? practice.value
+      : "";
 
   const uid = protocol?.id ?? "new";
   return (
@@ -246,23 +267,32 @@ export default function ProtocolForm({
         <span className="label">
           Practice adherence <span className="text-slate-400">(optional)</span>
         </span>
-        <div className="mt-1 grid grid-cols-[1fr,auto] items-end gap-2">
+        <div className="mt-1 grid grid-cols-[1fr,auto,auto] items-end gap-2">
           <div>
             <label className="sr-only" htmlFor={`pr-practice-type-${uid}`}>
-              Practice activity type
+              Practice
             </label>
             <select
               id={`pr-practice-type-${uid}`}
               name="practice_type"
               className="input"
-              defaultValue={
-                practice
-                  ? practiceSelectValue(practice.scopeKind, practice.value)
-                  : (tpl?.practiceType ?? "")
-              }
+              defaultValue={practiceSelectDefault}
               data-testid="protocol-practice-type"
             >
               <option value="">No adherence tracking</option>
+              <optgroup label="Wellness practice">
+                {PRACTICE_STARTER_LIST.map((name) => (
+                  <option
+                    key={name}
+                    value={practiceSelectValue("practice", name)}
+                  >
+                    {name}
+                  </option>
+                ))}
+                <option value={CUSTOM_PRACTICE_VALUE}>
+                  Other practice (custom)…
+                </option>
+              </optgroup>
               <optgroup label="Activity">
                 {PRACTICE_TYPES.map((t) => (
                   <option key={t} value={t}>
@@ -288,20 +318,45 @@ export default function ProtocolForm({
               name="practice_per_week"
               min={1}
               max={14}
-              className="input w-20"
+              className="input w-16"
               defaultValue={practice?.perWeek ?? tpl?.practicePerWeek ?? ""}
-              placeholder="4"
-              aria-label="Sessions per week"
+              placeholder="3"
+              aria-label="Sessions per week (minimum)"
               data-testid="protocol-practice-per-week"
+            />
+            <span className="whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">
+              –
+            </span>
+            <input
+              type="number"
+              name="practice_per_week_max"
+              min={1}
+              max={14}
+              className="input w-16"
+              defaultValue={practice?.perWeekMax ?? ""}
+              placeholder="5"
+              aria-label="Sessions per week (maximum, optional)"
+              data-testid="protocol-practice-per-week-max"
             />
             <span className="whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">
               × / week
             </span>
           </div>
         </div>
+        <input
+          type="text"
+          name="practice_custom"
+          className="input mt-2"
+          defaultValue={practiceCustomDefault}
+          placeholder="Custom wellness practice (e.g. Grounding walk)"
+          aria-label="Custom wellness practice"
+          data-testid="protocol-practice-custom"
+        />
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          Track how often you actually do the practice — reuses your weekly
-          routine targets (e.g. sauna 4×/week).
+          Track a wellness practice (e.g. red light 3–5×/week) — leave the max
+          blank for a simple floor. One-tap logging appears once saved.
+          Region-targeted rehab belongs in your routine&apos;s mobility targets,
+          not here.
         </p>
       </div>
       <div>

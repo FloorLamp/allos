@@ -26,11 +26,14 @@ function progress(
       scope_kind: scopeKind,
       scope_value: scopeValue,
       per_week: perWeek,
+      per_week_max: null,
       created_at: "2026-01-01",
     },
     count,
     per_week: perWeek,
+    per_week_max: null,
     met: count >= perWeek,
+    atCeiling: false,
     pace: count >= perWeek ? "met" : "behind",
   };
 }

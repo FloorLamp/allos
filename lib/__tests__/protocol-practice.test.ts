@@ -45,6 +45,7 @@ describe("parseScopedPractice (#580 — activity OR food group)", () => {
       scopeKind: "type",
       scopeValue: "cardio",
       perWeek: 4,
+      perWeekMax: null,
     });
   });
 
@@ -53,6 +54,7 @@ describe("parseScopedPractice (#580 — activity OR food group)", () => {
       scopeKind: "food_group",
       scopeValue: "fatty_fish",
       perWeek: 2,
+      perWeekMax: null,
     });
   });
 
@@ -76,6 +78,7 @@ describe("parseScopedPractice (#580 — activity OR food group)", () => {
       scopeKind: "food_group",
       scopeValue: "legumes",
       perWeek: 3,
+      perWeekMax: null,
     });
   });
 });

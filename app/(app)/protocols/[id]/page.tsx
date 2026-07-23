@@ -19,8 +19,11 @@ import { getUnitPrefs } from "@/lib/settings";
 import { intakeHref } from "@/lib/hrefs";
 import { formatUsageSummary } from "@/lib/usage-format";
 import { protocolPracticeLabel } from "@/lib/protocol-practice";
+import { practiceCadenceText, PRACTICE_PLENTY_TEXT } from "@/lib/practice";
+import { getPracticeDayCount } from "@/lib/practice-log";
 import ProtocolControls from "../ProtocolControls";
 import ProtocolCompare from "../ProtocolCompare";
+import LogPracticeButton from "../LogPracticeButton";
 import { updateProtocol, endProtocol, deleteProtocol } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -65,6 +68,12 @@ export default async function ProtocolDetailPage(props: {
   // the item was deleted.
   const intakeItem = getProtocolIntakeItem(profile.id, protocol.intake_item_id);
   const adherence = getProtocolAdherence(profile.id, protocol);
+  // Today's running session count for the one-tap widget (#1259), only for a wellness
+  // practice — the count sits beside the Log button so a second tap is informed.
+  const practiceTodayCount =
+    practice?.scopeKind === "practice"
+      ? getPracticeDayCount(profile.id, practice.value, todayStr)
+      : 0;
   const usage = getProtocolUsage(profile.id, protocol, todayStr);
   const hasPracticeCard = !!gear || !!practice || !!intakeItem;
 
@@ -150,10 +159,18 @@ export default async function ProtocolDetailPage(props: {
                     data-testid="protocol-adherence"
                   >
                     <span className="font-semibold tabular-nums">
-                      {adherence?.count ?? 0} / {practice.perWeek}
+                      {adherence?.count ?? 0} /{" "}
+                      {practiceCadenceText(
+                        practice.perWeek,
+                        practice.perWeekMax
+                      )}
                     </span>{" "}
                     {protocolPracticeLabel(practice.scopeKind, practice.value)}
-                    {adherence?.met ? (
+                    {adherence?.atCeiling ? (
+                      <span className="badge ml-1.5 bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">
+                        {PRACTICE_PLENTY_TEXT}
+                      </span>
+                    ) : adherence?.met ? (
                       <span className="badge ml-1.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
                         On track
                       </span>
@@ -163,6 +180,13 @@ export default async function ProtocolDetailPage(props: {
                       </span>
                     )}
                   </div>
+                  {practice.scopeKind === "practice" && (
+                    <LogPracticeButton
+                      practice={practice.value}
+                      todayCount={practiceTodayCount}
+                      atCeiling={adherence?.atCeiling ?? false}
+                    />
+                  )}
                 </div>
               )}
 

@@ -281,17 +281,61 @@ export interface Goal {
 // key) whose per_week is a weekly CAP — a ceiling, the inverse of every other
 // scope's floor — read through lib/queries/substance.ts and deliberately EXCLUDED
 // from getFrequencyTargetProgress (a floor reader would nag toward MORE).
+// practice (#1259) is a wellness-modality scope (a lib/practice.ts practice name —
+// red light, sauna, cold plunge, meditation, …) whose progress counts DISTINCT DAYS
+// a session was logged into practice_logs this week — normal FLOOR semantics, joining
+// getFrequencyTargetProgress like the training scopes.
 export type FrequencyScopeKind =
-  "region" | "group" | "type" | "food_group" | "mobility_region" | "substance";
+  | "region"
+  | "group"
+  | "type"
+  | "food_group"
+  | "mobility_region"
+  | "substance"
+  | "practice";
 
-// A user-defined "hit X at least N times/week" target.
+// A user-defined "hit X at least N times/week" target. per_week is the FLOOR; the
+// OPTIONAL per_week_max (#1259) is a ceiling that makes the target a RANGE ("3–5×/week"
+// → per_week 3, per_week_max 5). NULL = a single-floor target (every scope but practice
+// leaves it null today). At/above the ceiling the surfaces render a calm "that's plenty";
+// the floor still drives adherence + nudges.
 export interface FrequencyTarget {
   id: number;
   scope_kind: FrequencyScopeKind;
   scope_value: string;
   per_week: number;
+  per_week_max: number | null;
   created_at: string;
 }
+
+// One logged wellness-practice session (#1259, migration 098): a (practice, date) tick
+// with OPTIONAL time-of-day and duration. Multi-session days are real rows (the PRN
+// administration-ledger model, #797); adherence stays day-distinct regardless.
+export interface PracticeLog {
+  id: number;
+  practice: string;
+  date: string;
+  // Local HH:MM in the profile's timezone; null for a bare tick / a date-only one-tap.
+  time: string | null;
+  // Canonical minutes (the Units rule); null when not recorded.
+  duration_min: number | null;
+  notes: string | null;
+  created_at: string;
+}
+
+// Outcome of one-tap logging a practice session (logPracticeSession, #1259). A session
+// log is NOT idempotent (multiple/day is supported), so the typed result lets every
+// surface — the widget, the Telegram Done button — answer honestly (the DoseTakenOutcome
+// / AdministrationOutcome contract) instead of unconditionally confirming:
+//   logged — a fresh session row was written; `count` is the day's running total.
+//   invalid-date — the supplied date failed the accept window / blank name; nothing written.
+//   stale-target — a Telegram-button log against a frequency_target that no longer exists,
+//                  isn't this profile's, or isn't a practice scope (deleted/edited since
+//                  the message was sent); nothing written.
+export type PracticeLogOutcome =
+  | { kind: "logged"; count: number; date: string }
+  | { kind: "invalid-date" }
+  | { kind: "stale-target" };
 
 // ── Routines (#738, migration 039) ─────────────────────────────────────────────
 // A routine is a declarative, user-owned program the user ADOPTS (from the

@@ -38,6 +38,7 @@ import { crisisFindingLine } from "../../crisis-resources";
 import { getResolvedCrisisResources } from "../../settings";
 import { refillSignalKey } from "../../refill-nudge";
 import { trainingSignalKey } from "../../workout-nudge";
+import { practiceSignalKey } from "../../practice";
 import { getActiveEndurancePlans } from "../../endurance-plans";
 import { assessSchedule } from "../../immunization-status";
 import { preventiveAssessmentToUpcomingItem } from "../../preventive-upcoming";
@@ -879,24 +880,58 @@ function trainingItems(profileId: number): UpcomingItem[] {
   // cardio still surface). Same flag every deload surface reads.
   const deload =
     getRoutineCycleStatus(profileId, today(profileId))?.isDeloadWeek ?? false;
+  return (
+    getFrequencyTargetProgress(profileId)
+      .filter((p) => !p.met)
+      // Wellness-practice targets (#1259) get their OWN pace-aware item (practiceItems)
+      // with the distinct `practice:` key namespace — never mislabeled "Weekly training
+      // target" here.
+      .filter((p) => p.target.scope_kind !== "practice")
+      .filter(
+        (p) =>
+          !(
+            deload &&
+            (p.target.scope_kind === "region" ||
+              p.target.scope_kind === "group")
+          )
+      )
+      .map((p) => ({
+        key: trainingSignalKey(p.target.id),
+        domain: "training" as const,
+        title: frequencyScopeLabel(p.target.scope_kind, p.target.scope_value),
+        detail: "Weekly training target",
+        href: "/training",
+        dueDate: null,
+        band: "week" as const,
+        dueText: `${p.count}/${p.per_week} this week`,
+      }))
+  );
+}
+
+// Wellness-practice weekly targets running BEHIND their floor (#1259). The calm,
+// coaching-tier twin of the Telegram practice nudge — SAME `practice:<id>` key so a
+// dismissal here silences the push (the #227 workout-nudge bus pattern). Only surfaces a
+// target that is behind pace AND not at/above its ceiling: on-track or "that's plenty"
+// weeks stay quiet. A weekly concern, so it sits in the This-week band with a progress
+// due-text (a range shows the ceiling: "2/3–5 this week"). Reuses getFrequencyTargetProgress
+// (one computation); hidden for age-restricted profiles, mirroring the Training surface.
+function practiceItems(profileId: number): UpcomingItem[] {
+  if (isTrainingRestricted(profileId)) return [];
   return getFrequencyTargetProgress(profileId)
-    .filter((p) => !p.met)
-    .filter(
-      (p) =>
-        !(
-          deload &&
-          (p.target.scope_kind === "region" || p.target.scope_kind === "group")
-        )
-    )
+    .filter((p) => p.target.scope_kind === "practice")
+    .filter((p) => !p.met && !p.atCeiling && p.pace === "behind")
     .map((p) => ({
-      key: trainingSignalKey(p.target.id),
-      domain: "training" as const,
-      title: frequencyScopeLabel(p.target.scope_kind, p.target.scope_value),
-      detail: "Weekly training target",
-      href: "/training",
+      key: practiceSignalKey(p.target.id),
+      domain: "practice" as const,
+      title: p.target.scope_value,
+      detail: "Weekly practice target",
+      href: "/longevity#protocols",
       dueDate: null,
       band: "week" as const,
-      dueText: `${p.count}/${p.per_week} this week`,
+      dueText:
+        p.per_week_max != null && p.per_week_max > p.per_week
+          ? `${p.count}/${p.per_week}–${p.per_week_max} this week`
+          : `${p.count}/${p.per_week} this week`,
     }));
 }
 
@@ -1009,6 +1044,7 @@ const rawUpcoming = cache(function rawUpcoming(
     ...biomarkerItems(profileId, today),
     ...goalItems(profileId),
     ...trainingItems(profileId),
+    ...practiceItems(profileId),
     ...enduranceEventItems(profileId, today, distanceUnit),
   ];
 });

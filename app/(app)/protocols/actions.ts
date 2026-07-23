@@ -10,7 +10,13 @@ import { normalizeOutcomeKeys } from "@/lib/protocol-metrics";
 import { getProtocol, situationUsedByOtherProtocol } from "@/lib/queries";
 import { getEquipmentById } from "@/lib/equipment";
 import { parseScopedPractice } from "@/lib/protocol-practice";
-import { formError, formOk, type FormResult } from "@/lib/types";
+import { logPracticeSession } from "@/lib/practice-log";
+import {
+  formError,
+  formOk,
+  type FormResult,
+  type PracticeLogOutcome,
+} from "@/lib/types";
 
 function revalidateProtocols(id?: number) {
   // The hub lives on the Longevity page's #protocols section (#1042 phase 4);
@@ -122,7 +128,9 @@ function syncPracticeTarget(
   // reference + ownership machinery below is scope-agnostic, so both kinds reuse it.
   const practice = parseScopedPractice(
     str(formData, "practice_type"),
-    formData.get("practice_per_week") as string | null
+    formData.get("practice_per_week") as string | null,
+    formData.get("practice_per_week_max") as string | null,
+    str(formData, "practice_custom")
   );
 
   let tid: number | null = null;
@@ -140,24 +148,26 @@ function syncPracticeTarget(
     if (found) {
       tid = found.id;
       // If the protocol already OWNED this exact target, keep ownership and let the
-      // edit update its per-week; otherwise reference it read-only (owns=0).
+      // edit update its per-week (+ optional range ceiling, #1259); otherwise reference
+      // it read-only (owns=0).
       if (prev.frequency_target_id === found.id && prev.owns_frequency_target) {
         owns = 1;
         db.prepare(
-          `UPDATE frequency_targets SET per_week = ? WHERE id = ? AND profile_id = ?`
-        ).run(practice.perWeek, found.id, profileId);
+          `UPDATE frequency_targets SET per_week = ?, per_week_max = ? WHERE id = ? AND profile_id = ?`
+        ).run(practice.perWeek, practice.perWeekMax, found.id, profileId);
       }
     } else {
       const info = db
         .prepare(
-          `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week)
-           VALUES (?, ?, ?, ?)`
+          `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week, per_week_max)
+           VALUES (?, ?, ?, ?, ?)`
         )
         .run(
           profileId,
           practice.scopeKind,
           practice.scopeValue,
-          practice.perWeek
+          practice.perWeek,
+          practice.perWeekMax
         );
       tid = Number(info.lastInsertRowid);
       owns = 1;
@@ -187,6 +197,29 @@ function cleanupStaleOwnedTarget(
 ) {
   if (staleOwnedTargetId != null)
     maybeDeleteOwnedTarget(profileId, staleOwnedTargetId, exceptProtocolId);
+}
+
+// One-tap log a wellness-practice session (#1259) for TODAY (the profile-local date).
+// The thin action over the auth-blind write core (logPracticeSession) — the ONE shared
+// entry point for the protocol detail, the Active-protocols widget, and (via its own
+// wrapper) the Telegram Done button. requireWriteAccess resolves the ACTIVE profile, so a
+// caregiver acting-as a child logs against the child (the profileId-first write core
+// needs no special code — the caregiver shape is a scoping property of the auth gate).
+// Returns the typed outcome carrying the day's running count; the surface renders from it,
+// never unconditionally confirms.
+export async function logPractice(
+  formData: FormData
+): Promise<PracticeLogOutcome> {
+  const { profile } = await requireWriteAccess();
+  const practice = String(formData.get("practice") ?? "").trim();
+  if (!practice) return { kind: "invalid-date" };
+  const outcome = logPracticeSession(profile.id, practice, today(profile.id));
+  if (outcome.kind === "logged") {
+    revalidateProtocols();
+    revalidatePath("/timeline");
+    revalidatePath("/upcoming");
+  }
+  return outcome;
 }
 
 export async function createProtocol(formData: FormData): Promise<FormResult> {
