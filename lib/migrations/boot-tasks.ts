@@ -251,6 +251,13 @@ export function bootstrapAuth(db: Database.Database) {
     db.prepare(
       "INSERT INTO login_profiles (login_id, profile_id) VALUES (?, ?)"
     ).run(acct.lastInsertRowid, prof.lastInsertRowid);
+    // The bootstrap admin's sole profile IS them — mark it as the login's own-profile
+    // (issue #1013) so a fresh single-user instance reads as "self" from the start
+    // (no spurious not-self naming), rather than leaving the self undefined.
+    db.prepare("UPDATE logins SET own_profile_id = ? WHERE id = ?").run(
+      prof.lastInsertRowid,
+      acct.lastInsertRowid
+    );
     // Only profiles born after goal-based onboarding shipped carry this marker.
     // Existing profiles have no row and therefore are never forced through a
     // replay after upgrade.

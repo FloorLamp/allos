@@ -27,6 +27,7 @@ import { isTrainingRestricted } from "@/lib/age-gate";
 import { isFoodLoggingRelevant } from "@/lib/life-stage";
 import { requireSession, getAccessibleProfiles } from "@/lib/auth";
 import { requireScope } from "@/lib/scope";
+import { writeSubjectName } from "@/lib/own-profile";
 import {
   getActivitySuggestions,
   getRecentExerciseHistory,
@@ -87,6 +88,17 @@ export default async function AppLayout({
   const inViewProfiles = scope.viewIds
     .map((id) => scope.profiles.find((p) => p.id === id))
     .filter((p): p is (typeof scope.profiles)[number] => p != null);
+  // Own-profile link (#1013): the acting profile's subject name when the login is
+  // acting as someone OTHER than its own profile (null when acting as self / no
+  // own-profile set). Threaded to the live workout editor + dock — the fastest-
+  // tapping surface, where wrong-profile writes happen — so "Finish workout" becomes
+  // "Finish workout — Mia". Disambiguated names come from the scope (#534).
+  const actingSubjectName = writeSubjectName(
+    scope.ownProfileId,
+    scope.actingProfileId,
+    scope.profiles.find((p) => p.id === scope.actingProfileId)?.name ??
+      profile.name
+  );
 
   const units = getUnitPrefs(login.id);
   const formatPrefs = getDisplayFormatPrefs(login.id);
@@ -200,6 +212,7 @@ export default async function AppLayout({
                 presence={presence}
                 liveEditData={liveEditData}
                 liveStartEpochMs={liveStartEpochMs}
+                subjectName={actingSubjectName}
               >
                 <div className="flex min-h-screen">
                   <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-4 overflow-y-auto border-r border-black/10 bg-white/70 p-4 backdrop-blur-xl md:flex print:hidden dark:border-white/5 dark:bg-ink-950/70">
@@ -207,6 +220,7 @@ export default async function AppLayout({
                       activityDates={timelineDates}
                       version={version}
                       active={session.profile}
+                      username={login.username}
                       profiles={profiles}
                       viewIds={scope.viewIds}
                       restricted={restricted}
@@ -228,6 +242,7 @@ export default async function AppLayout({
                       activityDates={timelineDates}
                       version={version}
                       active={session.profile}
+                      username={login.username}
                       profiles={profiles}
                       viewIds={scope.viewIds}
                       restricted={restricted}

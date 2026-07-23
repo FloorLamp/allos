@@ -364,6 +364,53 @@ export function accessibleProfilesForLogin(loginId: number): SessionProfile[] {
   return accessibleProfiles(loginId, acct.role);
 }
 
+// ── Own-profile association (issue #1013) ─────────────────────────────────────
+//
+// A login may designate ONE of its accessible profiles as "mine" — the self the
+// not-self write affordances (#1013) and the profile banner (#1096) key on. This is
+// purely an association: it changes NO access (grants + admin-bypass govern access
+// exactly as before). Stored as logins.own_profile_id (migration 103), read back
+// here and re-validated against the login's CURRENT accessible set at the scope
+// boundary (resolveScope), so a revoked grant drops the link to null on the next
+// read even if the stored value wasn't nulled.
+
+const LOGIN_OWN_PROFILE_STMT = db.prepare(
+  "SELECT own_profile_id AS ownProfileId FROM logins WHERE id = ?"
+);
+
+// The raw stored own-profile id for a login, or null (unset, or the login is gone).
+// NOT validated against grants — that is resolveScope's job on read.
+export function ownProfileForLogin(loginId: number): number | null {
+  const row = LOGIN_OWN_PROFILE_STMT.get(loginId) as
+    | { ownProfileId: number | null }
+    | undefined;
+  return row?.ownProfileId ?? null;
+}
+
+// DB-callable core of the own-profile setter: point a login's own-profile at
+// `profileId` (or clear it with null), after verifying the login may ACT AS the
+// target (granted, or admin) — the SAME accessibility gate switchActiveProfile
+// applies, so a login can only ever mark an accessible profile as its own. Returns
+// true when written, false when the target is inaccessible (no-op). Split from the
+// action shell so the accessibility constraint is testable without a request.
+export function setOwnProfileForLogin(
+  loginId: number,
+  role: Role,
+  profileId: number | null
+): boolean {
+  if (profileId !== null) {
+    const allowed = accessibleProfiles(loginId, role).some(
+      (p) => p.id === profileId
+    );
+    if (!allowed) return false;
+  }
+  db.prepare("UPDATE logins SET own_profile_id = ? WHERE id = ?").run(
+    profileId,
+    loginId
+  );
+  return true;
+}
+
 // Total number of profiles in the instance, regardless of the caller's grants.
 // The Household view is a cross-profile overview (admins see all profiles), so
 // the nav gates it on the instance-wide count, not the caller's accessible set.

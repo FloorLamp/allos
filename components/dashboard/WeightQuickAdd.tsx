@@ -9,6 +9,7 @@ import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { validateBodyMetricInput } from "@/lib/body-metric-input";
 import { shouldQueueOffline } from "@/lib/offline/queue";
 import { addBodyMetric } from "@/app/(app)/trends/body-actions";
+import { subjectActionLabel } from "@/lib/own-profile";
 
 // Inline weight quick-add for the dashboard weight-trend widget (#1042 phase 2).
 // Manual daily weighers had the app's highest-frequency action at its deepest
@@ -23,11 +24,16 @@ import { addBodyMetric } from "@/app/(app)/trends/body-actions";
 export default function WeightQuickAdd({
   weightUnit,
   today,
+  subjectName,
 }: {
   weightUnit: WeightUnit;
   // The active profile's current date (server-resolved in its timezone) — the
   // quick-add always logs "today", like a scale would.
   today: string;
+  // Not-self subject name (issue #1013): when the login is acting as someone other
+  // than its own profile, the label names them ("Log — Mia", "Log today's weight for
+  // Mia") so a caregiver's weigh-in never lands on the wrong record. Null → plain.
+  subjectName: string | null;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -88,7 +94,9 @@ export default function WeightQuickAdd({
       <div className="flex items-end gap-2">
         <div className="min-w-0 flex-1">
           <label className="label" htmlFor="dash-weight">
-            Log today&apos;s weight ({weightUnit})
+            {subjectName
+              ? `Log today's weight for ${subjectName} (${weightUnit})`
+              : `Log today's weight (${weightUnit})`}
           </label>
           <input
             id="dash-weight"
@@ -106,7 +114,7 @@ export default function WeightQuickAdd({
           data-testid="weight-quick-add-save"
           pendingLabel="Saving…"
         >
-          Log
+          {subjectActionLabel("Log", subjectName)}
         </SubmitButton>
       </div>
       {error && (

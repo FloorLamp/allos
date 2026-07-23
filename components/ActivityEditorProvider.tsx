@@ -52,6 +52,12 @@ interface ActivityEditorApi {
   // been logged; `hasLastActivity` gates the affordance.
   openRepeatLast: () => void;
   hasLastActivity: boolean;
+  // Not-self subject name (issue #1013): set when the acting profile — which owns
+  // every workout logged here — is NOT the login's own profile, so the live editor's
+  // action ("Finish workout — Mia") and the dock name whose session it is. Null when
+  // acting as self / no own-profile is set. The fastest-tapping surface in the app is
+  // exactly where a wrong-profile write happens, so it carries the subject stamp.
+  subjectName: string | null;
   close: () => void;
   // Whether an editor is currently open, and what it's editing — so a page can
   // hand the editor a column to dock into and react to it being active.
@@ -88,6 +94,7 @@ export default function ActivityEditorProvider({
   presence,
   liveEditData = null,
   liveStartEpochMs = null,
+  subjectName = null,
   children,
 }: {
   units: UnitPrefs;
@@ -121,6 +128,10 @@ export default function ActivityEditorProvider({
   // The active session's start instant (epoch ms), so the dock ticks elapsed off the
   // real start after a reload (client rest-timer state is honestly lost there).
   liveStartEpochMs?: number | null;
+  // The acting profile's not-self subject name (issue #1013): the disambiguated name
+  // when the acting profile isn't the login's own, else null. Resolved server-side
+  // (writeSubjectName) and surfaced on the live editor + dock.
+  subjectName?: string | null;
   children: React.ReactNode;
 }) {
   const tz = useTimezone();
@@ -236,6 +247,7 @@ export default function ActivityEditorProvider({
         setOpen(true);
       },
       hasLastActivity: lastActivity != null,
+      subjectName,
       close: () => {
         setMinimized(false);
         setOpen(false);
@@ -244,7 +256,7 @@ export default function ActivityEditorProvider({
       editData,
       registerDock,
     }),
-    [open, editData, registerDock, tz, lastActivity, restricted]
+    [open, editData, registerDock, tz, lastActivity, restricted, subjectName]
   );
 
   // Resume the acting profile's active session in the live editor from the dock —
@@ -366,6 +378,7 @@ export default function ActivityEditorProvider({
           startEpochMs={barStartEpoch}
           live={minimized ? live : true}
           stale={presence?.stale ?? false}
+          ownerName={subjectName}
           onOpen={minimized ? () => setMinimized(false) : resumeLive}
         />
       )}

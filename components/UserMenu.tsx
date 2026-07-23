@@ -29,6 +29,7 @@ import {
 // switch/logout controls are still plain <form>s bound to Server Actions.
 export default function UserMenu({
   active,
+  username,
   profiles,
   viewIds = [],
   reviewCount = 0,
@@ -36,6 +37,11 @@ export default function UserMenu({
   onNavigate,
 }: {
   active: SessionProfile;
+  // The signed-in login's username — shown as "Signed in as <username>" at the top
+  // of the OVERLAY only (issue #1013). The collapsed pill stays profile-only (a
+  // login name there would clutter the one line the pill has); the overlay answers
+  // "which login am I?" the moment it's opened.
+  username: string;
   profiles: SessionProfile[];
   // The session's multi-profile VIEW-SET (issue #1096) — the profiles currently
   // toggled INTO the merged view. Each accessible-profile row gets a view toggle
@@ -143,6 +149,15 @@ export default function UserMenu({
           open ? "flex" : "hidden"
         } max-h-[calc(100vh-5rem)] flex-col gap-1 overflow-y-auto overscroll-contain rounded-lg border border-black/10 bg-white p-2 shadow-xl dark:border-white/10 dark:bg-ink-850`}
       >
+        <p
+          data-testid="signed-in-as"
+          className="border-b border-black/5 px-2 pb-1.5 pt-1 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400"
+        >
+          Signed in as{" "}
+          <span className="font-semibold text-slate-700 dark:text-slate-200">
+            {username}
+          </span>
+        </p>
         {readOnly && (
           <p className="px-2 py-1 text-xs text-amber-700 dark:text-amber-300">
             Viewing <span className="font-semibold">{active.name}</span> —

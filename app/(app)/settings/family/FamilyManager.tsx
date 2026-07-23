@@ -28,6 +28,7 @@ import {
   deleteLogin,
   revokeLoginSessions,
   setGrants,
+  setLoginOwnProfile,
   setLoginEmail,
   sendInvite,
   type FamilyResult,
@@ -44,6 +45,10 @@ interface Login {
   username: string;
   role: "admin" | "member";
   email: string | null;
+  // The login's own-profile association (issue #1013), or null — which profile the
+  // login considers "mine". Admin-editable here; constrained to the login's
+  // accessible profiles server-side.
+  own_profile_id: number | null;
 }
 
 // A small inline status line shared by every form in this screen.
@@ -769,31 +774,97 @@ function GrantsCard({
         </p>
       ) : (
         <div className="space-y-3">
-          {logins.map((a) =>
-            a.role === "admin" ? (
-              <div
-                key={a.id}
-                className="flex flex-wrap items-center gap-2 rounded-lg border border-black/10 p-3 dark:border-white/10"
-              >
-                <span className="font-medium text-slate-800 dark:text-slate-100">
-                  {a.username}
-                </span>
-                <span className="text-xs text-slate-500 dark:text-slate-400">
-                  — all profiles (admin)
-                </span>
+          {logins.map((a) => {
+            // The profiles this login may act as — the choices for its own-profile
+            // (#1013): an admin reaches every profile, a member only its grants. The
+            // server (setOwnProfileForLogin) re-checks this constraint.
+            const reachable =
+              a.role === "admin"
+                ? profiles
+                : profiles.filter((p) => (grants[a.id] ?? []).includes(p.id));
+            return (
+              <div key={a.id} className="space-y-2">
+                {a.role === "admin" ? (
+                  <div className="flex flex-wrap items-center gap-2 rounded-lg border border-black/10 p-3 dark:border-white/10">
+                    <span className="font-medium text-slate-800 dark:text-slate-100">
+                      {a.username}
+                    </span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      — all profiles (admin)
+                    </span>
+                  </div>
+                ) : (
+                  <GrantsRow
+                    login={a}
+                    profiles={profiles}
+                    granted={grants[a.id] ?? []}
+                    access={access[a.id] ?? {}}
+                  />
+                )}
+                <OwnProfileRow login={a} profiles={reachable} />
               </div>
-            ) : (
-              <GrantsRow
-                key={a.id}
-                login={a}
-                profiles={profiles}
-                granted={grants[a.id] ?? []}
-                access={access[a.id] ?? {}}
-              />
-            )
-          )}
+            );
+          })}
         </div>
       )}
+    </div>
+  );
+}
+
+// Admin control for a login's own-profile association (issue #1013): which of the
+// login's accessible profiles it considers "mine" (or none). An association, not an
+// access grant — it only labels the login's self so its not-self write affordances
+// name the subject. Constrained to the login's reachable profiles (the <select>
+// lists exactly them; the server re-checks). Autosaves on change.
+function OwnProfileRow({
+  login,
+  profiles,
+}: {
+  login: Login;
+  profiles: Profile[];
+}) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [result, setResult] = useState<FamilyResult | null>(null);
+  const [value, setValue] = useState<string>(
+    login.own_profile_id != null ? String(login.own_profile_id) : "none"
+  );
+
+  function save(next: string) {
+    const fd = new FormData();
+    fd.set("loginId", String(login.id));
+    fd.set("own_profile_id", next);
+    start(async () => {
+      const r = await setLoginOwnProfile(fd);
+      setResult(r);
+      if (r.ok) router.refresh();
+    });
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 px-3 text-sm">
+      <span className="text-xs text-slate-500 dark:text-slate-400">
+        Own profile
+      </span>
+      <select
+        aria-label={`Own profile for ${login.username}`}
+        data-testid={`own-profile-${login.username}`}
+        value={value}
+        disabled={pending}
+        onChange={(e) => {
+          setValue(e.target.value);
+          save(e.target.value);
+        }}
+        className="input h-8 w-44 py-0 text-sm disabled:opacity-40"
+      >
+        <option value="none">None</option>
+        {profiles.map((p) => (
+          <option key={p.id} value={String(p.id)}>
+            {p.name}
+          </option>
+        ))}
+      </select>
+      <Msg result={result} />
     </div>
   );
 }

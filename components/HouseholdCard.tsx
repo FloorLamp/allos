@@ -18,6 +18,7 @@ import {
   confirmDoseAction,
 } from "@/app/(app)/household/actions";
 import { fmtWeight } from "@/lib/units";
+import { subjectActionLabel } from "@/lib/own-profile";
 import { upcomingDueText } from "@/lib/upcoming";
 import type { HouseholdRollup } from "@/lib/queries";
 import type { WeightUnit } from "@/lib/settings";
@@ -36,6 +37,12 @@ export interface HouseholdCardData {
   profile: AvatarProfile;
   // The caller's access to THIS profile: gates whether quick-action buttons render.
   canWrite: boolean;
+  // The subject NAME to stamp on this card's write affordance ("Confirm — Mia"), or
+  // null when the write goes to the login's OWN profile / no own-profile is set
+  // (issue #1013). Resolved server-side (writeSubjectName over the scope's ownProfileId
+  // vs THIS card's profile) so a caregiver's dose confirm names the card's person,
+  // never the viewer.
+  subjectName: string | null;
   // Today's attention items (due doses / low refills / next visit) for this profile.
   rollup: HouseholdRollup;
   // This profile's "today" (resolved in its timezone) — for the appointment due-text.
@@ -142,7 +149,7 @@ function AttentionRow({
 }
 
 function Attention({ data }: { data: HouseholdCardData }) {
-  const { profile, canWrite, rollup, today } = data;
+  const { profile, canWrite, rollup, today, subjectName } = data;
   const { dueDoses, lowRefills, nextAppointment } = rollup;
   const nothing =
     dueDoses.length === 0 && lowRefills.length === 0 && !nextAppointment;
@@ -183,7 +190,7 @@ function Attention({ data }: { data: HouseholdCardData }) {
                         stroke={2}
                         aria-hidden="true"
                       />
-                      Confirm
+                      {subjectActionLabel("Confirm", subjectName)}
                     </button>
                   </form>
                 ) : null

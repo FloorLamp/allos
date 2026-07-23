@@ -15,6 +15,7 @@ import {
   requireLoginWriteAccess,
   destroyOtherSessionsForCurrent,
   revokeSession,
+  setOwnProfileForLogin,
 } from "@/lib/auth";
 import { checkPasswordStrength } from "@/lib/password-strength";
 import {
@@ -88,6 +89,37 @@ export async function saveDisplayFormatPrefs(formData: FormData) {
   setDisplayFormatPrefs(login.id, { timeFormat, dateFormat });
   // Date/time formatting is applied across the whole app.
   revalidatePath("/", "layout");
+}
+
+// ---- Own-profile association (issue #1013) ----
+
+// Point the caller's OWN login at one of its accessible profiles as "mine", or
+// clear it (profileId absent/"none" → null). Login-scoped auth state (like
+// change-own-password) — it labels which profile is the login's self and grants NO
+// access, so it gates on requireLoginWriteAccess (demo-gated: the shared demo login
+// must not let one visitor relabel everyone's self). The accessibility constraint
+// lives in setOwnProfileForLogin (only an accessible profile may be marked own); a
+// forged inaccessible id is a silent no-op there, surfaced as a friendly error.
+export async function saveOwnProfile(
+  formData: FormData
+): Promise<{ ok: boolean; error?: string }> {
+  const { login } = await requireLoginWriteAccess();
+  const raw = formData.get("own_profile_id");
+  const profileId =
+    raw === null || raw === "" || raw === "none" ? null : Number(raw);
+  if (profileId !== null && !Number.isInteger(profileId)) {
+    return { ok: false, error: "Invalid profile." };
+  }
+  const ok = setOwnProfileForLogin(login.id, login.role, profileId);
+  if (!ok) {
+    return {
+      ok: false,
+      error: "That profile isn't one you can act as. Reload and try again.",
+    };
+  }
+  // The own-profile link drives the not-self write labels across the whole app.
+  revalidatePath("/", "layout");
+  return { ok: true };
 }
 
 // ---- Change own password ----
