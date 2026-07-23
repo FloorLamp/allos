@@ -1542,8 +1542,8 @@ function persistExtractedMedications(
   }
 
   // Find an existing tracked med this parsed prescription matches — the SAME
-  // cleaned/grouping-name identity the #1027 duplication family + the records bridge
-  // key on (medNameKey), RxCUI-first when both sides carry a code (#482/#1026).
+  // cleaned/grouping-name identity the #1027 duplication family keys on (medNameKey),
+  // RxCUI-first when both sides carry a code (#482/#1026).
   const matchExisting = (
     med: ReturnType<typeof parsePrescription>
   ): MedMatchState | null => {

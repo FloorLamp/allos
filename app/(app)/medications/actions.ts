@@ -16,7 +16,6 @@ import {
   logHistoricalMedicationDose,
   updateHistoricalMedicationDose,
   deleteAdministrationLog,
-  createMedicationFromRecord,
   dismissFinding,
   restoreFinding,
   refillSupply,
@@ -25,7 +24,6 @@ import {
   linkMedIndication,
   declineMedIndication,
 } from "@/lib/queries";
-import { MED_BRIDGE_PREFIX } from "@/lib/medication-record-match";
 import { DORMANT_PRN_PREFIX } from "@/lib/dormant-prn";
 import { createMedicationShareLink } from "@/lib/share-links-db";
 import { expiresAtFor } from "@/lib/share-links";
@@ -382,43 +380,6 @@ export async function deleteAdministration(
   return { undoId };
 }
 
-// "Track this" from the records bridge (#560/#817): materialize an imported
-// prescription record into a tracked kind='medication' intake_item. Suggest-only —
-// only ever runs on the user's explicit tap. The auth-blind write core
-// (createMedicationFromRecord) links the new med to the source document
-// (source='extracted' + document_id) so a later reassign/delete stays whole (#199-#203).
-export async function trackMedicationFromRecord(
-  formData: FormData
-): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
-  const recordId = Number(formData.get("record_id"));
-  if (!recordId) return formError("Couldn't find that prescription record.");
-  const created = createMedicationFromRecord(profile.id, recordId);
-  if (!created) {
-    return formError("Couldn't track that — it may have been removed.");
-  }
-  revalidatePath("/medications");
-  revalidatePath("/nutrition");
-  revalidatePath("/");
-  return formOk();
-}
-
-// Dismiss a records-bridge suggestion (#203 name-keyed hygiene): silence a single
-// untracked-prescription suggestion through the shared findings-suppression bus.
-// Guarded to the med-bridge namespace so it can only ever silence one of those keys.
-export async function dismissMedicationRecord(
-  formData: FormData
-): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
-  const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
-  if (!dedupeKey.startsWith(MED_BRIDGE_PREFIX)) {
-    return formError("Couldn't dismiss that suggestion.");
-  }
-  dismissFinding(profile.id, dedupeKey);
-  revalidatePath("/medications");
-  return formOk();
-}
-
 // Dismiss a dormant-PRN sweep suggestion (issue #880 item 3, #203 id-keyed hygiene):
 // silence one "no doses in 90+ days" card through the shared findings-suppression bus.
 // Guarded to the dormant-prn namespace so it can only ever silence one of those keys. The
@@ -518,23 +479,6 @@ export async function refillMedication(
         "Couldn't record that refill — it may have been removed."
       );
   }
-}
-
-// Restore a dismissed records-bridge suggestion (#852 item 6): drop its suppression so
-// the "From your records" suggestion reappears — the undoable-delete spirit applied to
-// suggestions, keeping the suggest-only contract. Guarded to the med-bridge namespace so
-// it can only ever un-dismiss one of those keys.
-export async function restoreMedicationRecord(
-  formData: FormData
-): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
-  const dedupeKey = String(formData.get("dedupe_key") ?? "").trim();
-  if (!dedupeKey.startsWith(MED_BRIDGE_PREFIX)) {
-    return formError("Couldn't restore that suggestion.");
-  }
-  restoreFinding(profile.id, dedupeKey);
-  revalidatePath("/medications");
-  return formOk();
 }
 
 // Promote a medication side effect into a manual allergies/intolerance row.

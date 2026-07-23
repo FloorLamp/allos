@@ -5,9 +5,9 @@
 //
 // No DB or network — a pure function of the match's strength + the existing med's
 // lifecycle/strength state, unit-tested in lib/__tests__/medication-renewal.test.ts.
-// The identity MATCH itself (cleaned/grouping name, RxCUI-first, #482 family) is the
-// ONE matcher in lib/medication-record-match.ts (`recordMatchesMed`) — this module
-// only decides the RELATIONSHIP once identity is established, so the two never fight.
+// The identity MATCH itself keys on the shared cleaned/grouping name from
+// lib/medication-record-match.ts (`medNameKey`) — this module only decides the
+// RELATIONSHIP once identity is established, so the two never fight.
 //
 // The #1204 ⇄ #1027 boundary, distinguished by LIFECYCLE OVERLAP, not strength:
 //   - Concurrent (the existing med has an OPEN course AND the new order is a

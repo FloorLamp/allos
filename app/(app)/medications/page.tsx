@@ -4,7 +4,6 @@ import { loadMedicationsData } from "./med-data";
 import MedicationsTodayPanel from "./MedicationsTodayPanel";
 import MedicationRow from "./MedicationRow";
 import MedicationListActions from "./MedicationListActions";
-import RecordsBridge from "./RecordsBridge";
 import DormantPrnSweep from "./DormantPrnSweep";
 import MedicationAddWorkspace from "./MedicationAddWorkspace";
 import IntakeWarnings, { IntakeSafetyScope } from "@/components/IntakeWarnings";
@@ -75,10 +74,7 @@ export default async function MedicationsPage(props: {
     (item) => item.med.as_needed === 1
   ).length;
   const hasReviewItems =
-    data.bridge.length > 0 ||
-    data.dismissedBridge.length > 0 ||
-    data.dormantPrn.length > 0 ||
-    data.dismissedDormantPrn.length > 0;
+    data.dormantPrn.length > 0 || data.dismissedDormantPrn.length > 0;
   const hasSafetyWarnings =
     data.interactionWarnings.length > 0 ||
     data.pgxWarnings.length > 0 ||
@@ -227,17 +223,9 @@ export default async function MedicationsPage(props: {
         {hasReviewItems ? (
           <CardGroup
             title="Review medication list"
-            description="Resolve imported prescriptions and medications that may no longer be current."
+            description="Resolve medications that may no longer be current."
             data-testid="medication-review"
           >
-            {(data.bridge.length > 0 || data.dismissedBridge.length > 0) && (
-              <CardGroupSection>
-                <RecordsBridge
-                  suggestions={data.bridge}
-                  dismissed={data.dismissedBridge}
-                />
-              </CardGroupSection>
-            )}
             {(data.dormantPrn.length > 0 ||
               data.dismissedDormantPrn.length > 0) && (
               <CardGroupSection>

@@ -41,12 +41,6 @@ const PERSIST_FILE = "lib/import-persist.ts";
 // Empty today — every import write goes through the core. Keep it SHORT and justified.
 const ALLOW: { file: string; includes: string; why: string }[] = [
   {
-    file: "lib/queries/intake/medications.ts",
-    includes:
-      "INTO intake_items (name, notes, active, condition, priority, kind",
-    why: "createMedicationFromRecord (#817 'Track this' bridge) projects ONE prescription record into a footprint-scoped extracted med (source='extracted' + document_id) — the manual single-record twin of persistExtractedMedications. intake_items is a footprint table, so clear/reassign/count already handle the row; the write stays document-footprint-complete.",
-  },
-  {
     file: "lib/migrations/versions/092-consolidate-imported-prescriptions.ts",
     includes:
       "INSERT INTO intake_items (name, notes, active, condition, priority, kind, as_needed",
