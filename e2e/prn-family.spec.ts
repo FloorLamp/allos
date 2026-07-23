@@ -53,7 +53,7 @@ test("the OTC ibuprofen card shows the family-held redose line (no false GO)", a
   // The OTC item's own ledger is empty, but the 800 mg sibling dosed 1h ago — the
   // redose line must be HELD (counting down from the sibling's dose, across items),
   // never "Redose OK".
-  const redoseLine = main.getByTestId("prn-redose-line").first();
+  const redoseLine = main.getByTestId("prn-redose-line").first(); // first-ok: the family-held redose line on this spec's DEDICATED fixture profile (E2E_LOGIN_PRN_FAMILY) — deterministic
   await expect(redoseLine).toBeVisible();
   await expect(redoseLine).toContainText("Next dose in ~");
   await expect(redoseLine).toContainText("1 of 4 today");
