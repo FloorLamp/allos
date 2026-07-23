@@ -175,7 +175,9 @@ import {
   TRENDS_BODY_PROFILE,
   E2E_LOGIN_REST,
   REST_CARD_PROFILE,
+  E2E_LOGIN_PHOTOS,
   E2E_LOGIN_SUPPRESSED,
+  PROGRESS_PHOTOS_PROFILE,
   SUPPRESSED_PROFILE,
 } from "./fixture-logins";
 import { adoptTemplate, activateRoutine } from "../lib/routines";
@@ -4686,5 +4688,18 @@ console.log(
 
   console.log(
     `e2e: seeded suppressed-center fixture — profile ${scId} (${SUPPRESSED_PROFILE}), appointment ${scApptId} (#1151)`
+  );
+}
+
+// #1119 — progress photos: a dedicated, initially PHOTO-LESS profile + write
+// member. The spec itself uploads/deletes photos (and clears the table for this
+// profile in beforeAll), so the seed only guarantees the login/profile exist —
+// keeping the data-gated nav flip and the exact-count grid assertions isolated
+// from profile 1 (whose sidebar order nav-consolidation.spec.ts pins verbatim).
+{
+  const photosId = fixtureProfileId(PROGRESS_PHOTOS_PROFILE);
+  seedMemberLogin(E2E_LOGIN_PHOTOS, photosId, "write");
+  console.log(
+    `e2e: seeded progress-photos fixture — profile ${photosId} (${PROGRESS_PHOTOS_PROFILE}) (#1119)`
   );
 }

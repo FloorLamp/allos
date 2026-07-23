@@ -629,3 +629,12 @@ export const SUPPRESSED_PROFILE = "Suppressed Center (e2e)";
 // concurrent reader under parallel workers. Read-only in its spec.
 export const E2E_LOGIN_MOBILE_HC = "e2e_mobile_hc";
 export const MOBILE_HC_PROFILE = "Mobile HC (e2e)";
+
+// #1119 — progress photos. A dedicated adult profile the progress-photos spec
+// captures into (via the PhotoCapture fallback file input) and CLEANS ITSELF
+// (it deletes the profile's progress_photos rows at spec start), so the
+// data-gated "Progress photos" nav entry flips within its OWN sidebar — and the
+// shared admin session's exact top-level order (nav-consolidation.spec.ts,
+// which enumerates profile 1's sidebar verbatim) never changes.
+export const E2E_LOGIN_PHOTOS = "e2e_photos";
+export const PROGRESS_PHOTOS_PROFILE = "Progress Photos (e2e)";

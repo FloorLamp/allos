@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  IconCamera,
   IconLayoutDashboard,
   IconTimelineEvent,
   IconTrendingUp,
@@ -170,6 +171,17 @@ const entries: Entry[] = [
     label: "Sleep",
     icon: IconMoon,
     relevanceKey: "sleep",
+  },
+  // Progress photos (#1119): a data-gated visual READING surface beside Sleep.
+  // Gate = any progress photo (the `progress` relevance bit); cosmetic like every
+  // relevance gate — the page stays reachable by URL, and the command palette's
+  // "Progress photos" action is the always-visible entry (so a first capture is
+  // never stranded behind the empty-state gate).
+  {
+    href: "/progress",
+    label: "Progress photos",
+    icon: IconCamera,
+    relevanceKey: "progress",
   },
   { href: "/upcoming", label: "Upcoming", icon: IconCalendarClock },
   {
