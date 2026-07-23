@@ -4208,14 +4208,14 @@ console.log(
   `e2e: seeded coded preventive-satisfaction fixture — profile ${prevCodeId} (${PREVENTIVE_CODES_PROFILE}) (#1035/#1037)`
 );
 
-// ── Drug-allergy × medication cross-check fixture (#1029) ─────────────────────
+// ── Drug-allergy × medication cross-check fixture (#1029, #1092) ──────────────
 // A dedicated adult profile with a recorded "Penicillin — hives" allergy plus two
 // tracked active medications: amoxicillin (a same-class penicillin hit) and
 // cephalexin (the documented penicillin ↔ cephalosporin cross-reactivity hit). The
-// spec asserts the safety-strip cards on /medications and the care-tier Upcoming
-// finding, and owns its dismissal state (reset per test). Idempotent for a reused
-// server: hard-clear this profile's allergies + intake rows before re-seeding.
-// Synthetic, no PHI.
+// spec asserts the safety-strip cards on /medications and the care-persistent
+// Needs-attention hero finding (#1092: snooze-only, a page dismissal resisted), and
+// owns its dismissal state (reset per test). Idempotent for a reused server:
+// hard-clear this profile's allergies + intake rows before re-seeding. Synthetic, no PHI.
 const drugAllergyId = fixtureProfileId(DRUG_ALLERGY_PROFILE);
 db.prepare(`DELETE FROM allergies WHERE profile_id = ?`).run(drugAllergyId);
 db.prepare(

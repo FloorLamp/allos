@@ -461,20 +461,32 @@ function ototoxicItems(profileId: number): UpcomingItem[] {
   }));
 }
 
-// Drug-allergy × medication-stack cross-check (issue #1029): an active medication
-// meeting a recorded non-resolved allergy — direct ingredient match, same curated
-// class, or a documented cross-reactive class. Reuses the shared
+// Drug-allergy × medication-stack cross-check (issues #1029, #1092): an active
+// medication meeting a recorded non-resolved allergy — direct ingredient match, same
+// curated class, or a documented cross-reactive class. Reuses the shared
 // getDrugAllergyWarnings gather (same pure crossCheckDrugAllergies as the
 // /medications + Supplements safety strips), so each (allergy, med) pair surfaces as
-// a dismissible finding keyed by `allergy-med:<allergyId>-<itemId>` (id-keyed per
-// #203 — it dies with either row) — through getFindingSuppressions like every other
-// finding, so a dismiss/snooze silences it everywhere ("dismiss once, silence
-// everywhere"; a clinician-reviewed, deliberately-continued med is the common case).
+// the SAME finding keyed by `allergy-med:<allergyId>-<itemId>` (id-keyed per #203 —
+// it dies with either row) through the shared bus ("one question, one computation").
 // SAFETY / care-tier (per #449 — a recorded-allergy match is exactly the
 // interaction/PGx class of med-safety note): banded to Today so it surfaces on the
-// dashboard "Needs attention" hero. Standing informational finding (no due date),
-// framed "discuss with your prescriber/pharmacist", never prescriptive — the check
-// runs at surface time and never blocks a med write (#1029 ask 4).
+// dashboard "Needs attention" hero and rides the Telegram digest. Standing
+// informational finding (no due date), framed "discuss with your prescriber/
+// pharmacist", never prescriptive — the check runs at surface time and never blocks a
+// med write (#1029 ask 4).
+//
+// CARE-PERSISTENT (#1092, the #942/#553 safety stance): a live allergy↔med
+// contraindication is a SAFETY signal, so — like the overdue follow-up (#700 ask 5) —
+// a page dismissal must not PERMANENTLY silence it. `carePersistent: true` routes it
+// through the "snooze-only" lifecycle policy (isItemHiddenBySuppression): an
+// indefinite dismiss is RESISTED (the finding re-surfaces on the hero / Upcoming /
+// digest while BOTH the med is active AND the allergy stands), while a deliberate
+// time-boxed SNOOZE still defers it, and the surfaces render a snooze-only menu (no
+// Dismiss). The both-stand gating is inherent in the builder: the finding vanishes
+// the moment the med goes inactive or the allergy resolves (getDrugAllergyWarnings
+// emits nothing), so there is nothing left to suppress. The calm per-page intake
+// strip keeps its plain acknowledge-Dismiss; the persistence net lives on the care /
+// push surfaces this generator feeds.
 function drugAllergyItems(profileId: number): UpcomingItem[] {
   return getDrugAllergyWarnings(profileId).map((hit) => ({
     key: hit.dedupeKey,
@@ -485,6 +497,7 @@ function drugAllergyItems(profileId: number): UpcomingItem[] {
     dueDate: null,
     band: "today" as const,
     dueText: "Review",
+    carePersistent: true,
   }));
 }
 
