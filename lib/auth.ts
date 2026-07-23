@@ -382,8 +382,7 @@ const LOGIN_OWN_PROFILE_STMT = db.prepare(
 // NOT validated against grants — that is resolveScope's job on read.
 export function ownProfileForLogin(loginId: number): number | null {
   const row = LOGIN_OWN_PROFILE_STMT.get(loginId) as
-    | { ownProfileId: number | null }
-    | undefined;
+    { ownProfileId: number | null } | undefined;
   return row?.ownProfileId ?? null;
 }
 

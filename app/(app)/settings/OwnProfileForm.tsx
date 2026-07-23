@@ -45,9 +45,9 @@ export default function OwnProfileForm({
         <SaveStatus pending={pending} savedAt={savedAt} error={error} />
       </div>
       <p className="text-sm text-slate-500 dark:text-slate-400">
-        Mark one profile as your own. When you log something for anyone else, the
-        button names them — so a dose or weigh-in never lands on the wrong record.
-        Leave it unset if none of these profiles is you.
+        Mark one profile as your own. When you log something for anyone else,
+        the button names them — so a dose or weigh-in never lands on the wrong
+        record. Leave it unset if none of these profiles is you.
       </p>
       <select
         data-testid="own-profile-select"
