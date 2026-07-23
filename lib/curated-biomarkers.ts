@@ -11,6 +11,8 @@
 // from tests. Ranges are INFORMATIONAL, not medical advice; human-review the
 // committed JSON before it is trusted.
 
+import { canonicalAliases, normalizeCanonicalKey } from "./canonical-name";
+
 // One age-banded reference/optimal override. Ages are WHOLE YEARS and the band is
 // half-open [min_age, max_age); max_age null is open-ended. Mirrors
 // lib/types.AgeBandedRange (kept structurally identical so the JSON round-trips).
@@ -2464,8 +2466,33 @@ export const CATEGORY_OVERRIDES: Record<string, string> = {
 // CURATED_LABS order.
 export function curateBiomarkers(biomarkers: Biomarker[]): Biomarker[] {
   const curatedNames = new Set(CURATED_LABS.map((l) => l.name.toLowerCase()));
+  // Orphan prune (generator idempotency under RENAME/REMOVE): when a curated entry
+  // is renamed, its old name is added as a CANONICAL_ALIAS source (a non-canonical
+  // spelling) and dropped from CURATED_LABS — but its previously-written JSON row
+  // still exists here and, no longer matching curatedNames, would be KEPT as a
+  // duplicate (the stale "Hepatitis B Surface Antigen" beside its "(HBsAg)" entry).
+  // A row whose name is an alias SOURCE that REROUTES to a different analyte identity
+  // is by definition not a canonical entry, so drop it: the alias routes that spelling
+  // onto the real entry. The "different identity" guard is essential — a punctuation
+  // variant alias like ["Thyroid Stimulating Hormone (TSH)" → "Thyroid-Stimulating
+  // Hormone (TSH)"] normalizes source and target to the SAME key, so it must NOT prune
+  // the real entry; only an alias whose source-key ≠ target-key (a genuine reroute,
+  // e.g. "Hepatitis B Surface Antigen" → "…(HBsAg)") marks an orphan. Provenance-free
+  // and idempotent (the committed JSON carries no such orphan, so a re-run no-ops).
+  const orphanKeys = new Set(
+    canonicalAliases()
+      .filter(
+        ([from, to]) =>
+          normalizeCanonicalKey(from) !== normalizeCanonicalKey(to)
+      )
+      .map(([from]) => normalizeCanonicalKey(from))
+  );
   const kept = biomarkers
-    .filter((b) => !curatedNames.has(b.name.toLowerCase()))
+    .filter(
+      (b) =>
+        !curatedNames.has(b.name.toLowerCase()) &&
+        !orphanKeys.has(normalizeCanonicalKey(b.name))
+    )
     .map((b) => ({ ...b }));
   const out: Biomarker[] = [...kept, ...CURATED_LABS.map((l) => ({ ...l }))];
   const byName = new Map(out.map((b) => [b.name.toLowerCase(), b]));

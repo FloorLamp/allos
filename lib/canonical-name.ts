@@ -289,26 +289,11 @@ const CANONICAL_ALIASES: [string, string][] = [
   //    equations give DIFFERENT numbers; a report listing two would collapse two
   //    distinct values onto one date. Left surfaced rather than mis-grouped.
 
-  // Bare-abbreviation → "Full Name (ABBR)" consolidation. The canonical entries
-  // were renamed to the spelled-out form so the passport list reads consistently;
-  // these route the standalone acronym (what an extractor or a legacy row emits)
-  // onto the new name. A stored row keyed by the old bare abbreviation is rewritten
-  // by migration 103; this covers fresh imports and any un-migrated caller.
-  ["ALT", "Alanine Aminotransferase (ALT)"],
-  ["AST", "Aspartate Aminotransferase (AST)"],
-  ["GGT", "Gamma-Glutamyl Transferase (GGT)"],
-  ["BUN", "Blood Urea Nitrogen (BUN)"],
-  ["TSH", "Thyroid-Stimulating Hormone (TSH)"],
-  ["hs-CRP", "High-Sensitivity C-Reactive Protein (hs-CRP)"],
-  ["PSA", "Prostate-Specific Antigen (PSA)"],
-  ["ApoB", "Apolipoprotein B (ApoB)"],
-  ["TIBC", "Total Iron-Binding Capacity (TIBC)"],
-  ["IGF-1", "Insulin-Like Growth Factor 1 (IGF-1)"],
-  ["MCV", "Mean Corpuscular Volume (MCV)"],
-  ["MCH", "Mean Corpuscular Hemoglobin (MCH)"],
-  ["MCHC", "Mean Corpuscular Hemoglobin Concentration (MCHC)"],
-  ["MPV", "Mean Platelet Volume (MPV)"],
-  ["RDW", "Red Cell Distribution Width (RDW)"],
+  // NB: a "Full Name (ABBR)" entry does NOT need its bare abbreviation or bare full
+  // name listed here — buildCanonicalIndex auto-derives both (see FULL_ABBR_RE). Only
+  // WORD synonyms of such an entry (SGPT→ALT, Bicarbonate→Carbon Dioxide) need a
+  // curated route, since those aren't derivable from the name.
+
 ];
 
 // Build a normalized-key -> canonical-spelling lookup from a vocabulary list.
@@ -323,6 +308,28 @@ export function buildCanonicalIndex(vocabulary: string[]): Map<string, string> {
     const key = normalizeCanonicalKey(name);
     if (key && !index.has(key)) index.set(key, name);
   }
+  // Auto-derived aliases for a "Full Name (ABBR)" entry. Its combined-token key
+  // matches NEITHER the bare full name NOR the bare abbreviation alone (an extractor
+  // emits one or the other), so every such entry would otherwise need two hand-written
+  // CANONICAL_ALIASES — an easy-to-half-do footgun. Derive both here instead:
+  //   • the bare full name (strip the trailing parenthetical) — always safe.
+  //   • the bare abbreviation — ONLY when the parenthetical LOOKS like an acronym
+  //     (no spaces, ≥2 uppercase or a digit), so a word-parenthetical ("(Bicarbonate)",
+  //     "(Retinol)") or a value ("(50 g)") is NOT mistaken for an abbreviation. Those
+  //     word-synonyms keep their explicit curated alias.
+  // A real entry always wins a key collision (added first above), so a derived alias
+  // can only fill a gap, never hijack a distinct analyte.
+  for (const name of vocabulary) {
+    const m = FULL_ABBR_RE.exec(name);
+    if (!m) continue;
+    const [, full, abbr] = m;
+    // Resolve to the entry's OWN spelling (case/whitespace-normalized) so the alias
+    // targets the real vocabulary name, not the raw regex capture.
+    const canonical = index.get(normalizeCanonicalKey(name));
+    if (!canonical) continue;
+    addAlias(index, full, canonical);
+    if (looksLikeAbbreviation(abbr)) addAlias(index, abbr, canonical);
+  }
   for (const [alias, canonical] of CANONICAL_ALIASES) {
     const aliasKey = normalizeCanonicalKey(alias);
     if (!aliasKey || index.has(aliasKey)) continue;
@@ -330,6 +337,30 @@ export function buildCanonicalIndex(vocabulary: string[]): Map<string, string> {
     if (target) index.set(aliasKey, target);
   }
   return index;
+}
+
+// A canonical name written "Full Name (ABBR)" — captures the full name and the
+// parenthetical. Only the LAST parenthetical (so "Carbon Dioxide (Bicarbonate) (CO2)"
+// yields full="Carbon Dioxide (Bicarbonate)", abbr="CO2").
+const FULL_ABBR_RE = /^(.+) \(([^()]+)\)$/;
+
+// Whether a parenthetical is an ACRONYM (register it as an alias) vs a word or a
+// value (leave to a curated alias): no internal space, and either ≥2 uppercase
+// letters or a digit — matches RDW / MCV / hs-CRP / CO2 / IGF-1, rejects
+// "Bicarbonate" / "Retinol" / "50 g".
+function looksLikeAbbreviation(s: string): boolean {
+  if (/\s/.test(s)) return false;
+  const uppers = (s.match(/[A-Z]/g) ?? []).length;
+  return uppers >= 2 || /\d/.test(s);
+}
+
+function addAlias(
+  index: Map<string, string>,
+  alias: string,
+  canonical: string
+): void {
+  const key = normalizeCanonicalKey(alias);
+  if (key && !index.has(key)) index.set(key, canonical);
 }
 
 // The curated alias routes, exposed for the vocabulary-integrity test (it pins
