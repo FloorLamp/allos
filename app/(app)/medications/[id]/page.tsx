@@ -3,12 +3,13 @@ import { notFound } from "next/navigation";
 import { IconArrowLeft } from "@tabler/icons-react";
 import { getAccessibleProfiles, requireSession } from "@/lib/auth";
 import {
-  getProviderNames,
+  getPickerProviders,
   getMedicationDoseHistory,
   resolveMedicationAcrossProfiles,
   encounterForRecord,
   getConditions,
 } from "@/lib/queries";
+import { mergedSituationOptions } from "@/lib/situations";
 import { encounterHref } from "@/lib/hrefs";
 import { formatRecordDate } from "@/lib/record-format";
 import { parseUtcSql, zonedDateParts } from "@/lib/date";
@@ -17,10 +18,15 @@ import {
   formatGivenAtClockWithRelativeAge,
 } from "@/lib/administration-format";
 import { MEDICATIONS_HREF } from "@/lib/hrefs";
-import { getDisplayFormatPrefs, getUnitPrefs } from "@/lib/settings";
+import {
+  getDisplayFormatPrefs,
+  getUnitPrefs,
+  getSituations,
+} from "@/lib/settings";
 import { PageHeader } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
-import ProviderDatalist from "@/components/ProviderDatalist";
+import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
+import { SituationOptionsProvider } from "@/components/SituationOptionsContext";
 import ProfileIdentityBanner from "@/components/ProfileIdentityBanner";
 import {
   loadMedicationsData,
@@ -148,6 +154,9 @@ export default async function MedicationDetailPage(props: {
     id: c.id,
     name: c.name,
   }));
+  const situationOptions = mergedSituationOptions(getSituations(profileId)).map(
+    (o) => o.name
+  );
 
   return (
     <PageContainer
@@ -155,7 +164,6 @@ export default async function MedicationDetailPage(props: {
       className="mx-auto"
       data-testid="medication-detail"
     >
-      {canWrite ? <ProviderDatalist names={getProviderNames()} /> : null}
       <div className="mb-4">
         <ProfileIdentityBanner
           profile={subject}
@@ -198,42 +206,46 @@ export default async function MedicationDetailPage(props: {
           </Link>
         </p>
       ) : null}
-      <MedicationCard
-        supplement={m.med}
-        doses={m.doses}
-        allSupplements={data.allSupplements}
-        stackItems={data.stackItems}
-        pgxVariants={data.pgxVariants}
-        pairs={m.pairs}
-        takenDoseIds={data.taken}
-        skippedDoseIds={data.skipped}
-        due={m.due}
-        courses={m.courses}
-        sideEffects={m.sideEffects}
-        strip={m.strip}
-        refillRate={m.refillRate}
-        todayStr={data.todayStr}
-        nowIso={data.nowIso}
-        trainingRestricted={data.trainingRestricted}
-        suppressedFoodKeys={data.suppressedFoodKeys}
-        prnDayLabel={m.prnDayLabel}
-        prnAdministrations={m.prnAdministrations}
-        doseHistory={doseHistory}
-        prnRedoseLine={m.prnRedoseLine}
-        prnRedosePrimary={m.prnRedosePrimary}
-        monitoringLabs={m.monitoringLabs}
-        pediatric={data.pediatric}
-        age={data.age}
-        adherenceCalendar={calendar}
-        takenDoseTimes={m.takenDoseTimes}
-        timezone={data.tz}
-        historyMinDate={historyMinDate}
-        historyMaxDate={historyMaxDate}
-        defaultHistoryTime={data.nowHhmm}
-        canWrite={canWrite}
-        initialAction={initialAction}
-        conditions={medConditions}
-      />
+      <ProviderOptionsProvider providers={getPickerProviders()}>
+        <SituationOptionsProvider options={situationOptions}>
+          <MedicationCard
+            supplement={m.med}
+            doses={m.doses}
+            allSupplements={data.allSupplements}
+            stackItems={data.stackItems}
+            pgxVariants={data.pgxVariants}
+            pairs={m.pairs}
+            takenDoseIds={data.taken}
+            skippedDoseIds={data.skipped}
+            due={m.due}
+            courses={m.courses}
+            sideEffects={m.sideEffects}
+            strip={m.strip}
+            refillRate={m.refillRate}
+            todayStr={data.todayStr}
+            nowIso={data.nowIso}
+            trainingRestricted={data.trainingRestricted}
+            suppressedFoodKeys={data.suppressedFoodKeys}
+            prnDayLabel={m.prnDayLabel}
+            prnAdministrations={m.prnAdministrations}
+            doseHistory={doseHistory}
+            prnRedoseLine={m.prnRedoseLine}
+            prnRedosePrimary={m.prnRedosePrimary}
+            monitoringLabs={m.monitoringLabs}
+            pediatric={data.pediatric}
+            age={data.age}
+            adherenceCalendar={calendar}
+            takenDoseTimes={m.takenDoseTimes}
+            timezone={data.tz}
+            historyMinDate={historyMinDate}
+            historyMaxDate={historyMaxDate}
+            defaultHistoryTime={data.nowHhmm}
+            canWrite={canWrite}
+            initialAction={initialAction}
+            conditions={medConditions}
+          />
+        </SituationOptionsProvider>
+      </ProviderOptionsProvider>
       <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">
         For reference only — not medical advice.
       </p>

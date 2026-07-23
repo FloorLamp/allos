@@ -4,13 +4,14 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
+import ProviderCombobox from "@/components/ProviderCombobox";
 import { useToast } from "@/components/Toast";
 import type { Encounter, FormResult } from "@/lib/types";
 
 // Shared add/edit visit form. Add mode: no `encounter` (blank fields, date seeded
 // to defaultDate). Edit mode: pass the row + an `onDone` callback (renders a hidden
-// id + a Cancel button). The date is required; provider + facility are create-on-
-// type inputs backed by the page's shared <datalist id="provider-names">.
+// id + a Cancel button). The date is required; provider + facility are create-on-type
+// ProviderCombobox pickers (#1176) over the section's shared registry rows.
 export default function EncounterForm({
   action,
   encounter,
@@ -143,12 +144,10 @@ export default function EncounterForm({
         <label className="label" htmlFor={`enc-provider-${uid}`}>
           Provider
         </label>
-        {/* Create-on-type from the shared registry via <datalist id="provider-names">. */}
-        <input
+        {/* Create-on-type from the shared registry (ProviderCombobox, #1176). */}
+        <ProviderCombobox
           id={`enc-provider-${uid}`}
           name="provider"
-          list="provider-names"
-          className="input"
           defaultValue={encounter?.provider_name ?? ""}
           placeholder="e.g. Dr. Smith"
         />
@@ -172,11 +171,10 @@ export default function EncounterForm({
         <label className="label" htmlFor={`enc-location-${uid}`}>
           Facility / location
         </label>
-        <input
+        <ProviderCombobox
           id={`enc-location-${uid}`}
           name="location"
-          list="provider-names"
-          className="input"
+          ariaLabel="Facility"
           defaultValue={encounter?.location_name ?? ""}
           placeholder="e.g. Example Medical Center, telehealth"
         />

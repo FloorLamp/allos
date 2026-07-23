@@ -3,10 +3,11 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import SubmitButton from "@/components/SubmitButton";
+import Combobox from "@/components/Combobox";
 import { useToast } from "@/components/Toast";
 import type { FamilyHistory, FormResult } from "@/lib/types";
 
-// Common relatives, offered as a datalist so a user can pick or type their own.
+// Common relatives, offered as a pick-or-type Combobox (allowFreeText).
 const RELATIONS = [
   "Mother",
   "Father",
@@ -41,6 +42,9 @@ export default function FamilyHistoryForm({
   const formRef = useRef<HTMLFormElement>(null);
   const editing = !!entry;
   const [error, setError] = useState<string | null>(null);
+  // Relation is a controlled Combobox (#1177) — form.reset() can't clear it, so the
+  // add path clears this state explicitly on a successful save.
+  const [relation, setRelation] = useState(entry?.relation ?? "");
 
   async function handle(formData: FormData) {
     setError(null);
@@ -60,7 +64,10 @@ export default function FamilyHistoryForm({
       return;
     }
     toast(editing ? "Family history updated" : "Family history saved");
-    if (!editing) formRef.current?.reset();
+    if (!editing) {
+      formRef.current?.reset();
+      setRelation("");
+    }
     onDone?.();
     router.refresh();
   }
@@ -74,21 +81,18 @@ export default function FamilyHistoryForm({
         </h2>
       )}
       {editing && <input type="hidden" name="id" value={entry!.id} />}
-      <datalist id="family-relations">
-        {RELATIONS.map((r) => (
-          <option key={r} value={r} />
-        ))}
-      </datalist>
       <div>
         <label className="label" htmlFor={`fh-relation-${uid}`}>
           Relative
         </label>
-        <input
+        <Combobox
           id={`fh-relation-${uid}`}
           name="relation"
-          list="family-relations"
-          className="input"
-          defaultValue={entry?.relation ?? ""}
+          ariaLabel="Relative"
+          value={relation}
+          onChange={setRelation}
+          options={RELATIONS}
+          allowFreeText
           placeholder="e.g. Mother, Father, Sibling"
         />
       </div>

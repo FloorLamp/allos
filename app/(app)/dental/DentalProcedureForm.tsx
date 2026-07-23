@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
+import ProviderCombobox from "@/components/ProviderCombobox";
 import { useToast } from "@/components/Toast";
 import {
   DENTAL_STATUSES,
@@ -201,12 +202,10 @@ export default function DentalProcedureForm({
         <label className="label" htmlFor={`dp-provider-${uid}`}>
           Provider
         </label>
-        {/* Create-on-type from the shared registry via <datalist id="provider-names">. */}
-        <input
+        {/* Create-on-type from the shared registry (ProviderCombobox, #1176). */}
+        <ProviderCombobox
           id={`dp-provider-${uid}`}
           name="provider"
-          list="provider-names"
-          className="input"
           defaultValue={record?.provider_name ?? ""}
           placeholder="e.g. Dr. Rivera (dentist)"
         />

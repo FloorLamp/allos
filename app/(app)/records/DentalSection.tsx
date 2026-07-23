@@ -1,10 +1,10 @@
 import {
   getDentalProcedures,
   getDentalProcedureFollowUps,
-  getProviderNames,
+  getPickerProviders,
   createVisitOffers,
 } from "@/lib/queries";
-import ProviderDatalist from "@/components/ProviderDatalist";
+import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import CreateVisitFromRecord from "@/components/visit-links/CreateVisitFromRecord";
 import DentalProcedureForm from "@/app/(app)/dental/DentalProcedureForm";
 import DentalProcedureList from "@/app/(app)/dental/DentalProcedureList";
@@ -26,24 +26,24 @@ export default function DentalSection({ profileId }: { profileId: number }) {
   const createVisitOffersList = createVisitOffers(profileId, "dental");
 
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
-      {/* Shared provider picker options for the add + edit forms (#1088). */}
-      <ProviderDatalist names={getProviderNames()} />
-      <div className="min-w-0 space-y-4 lg:col-span-2">
-        <CreateVisitFromRecord
-          profileId={profileId}
-          offers={createVisitOffersList}
-        />
-        <DentalProcedureList items={records} followUps={followUps} />
-      </div>
+    <ProviderOptionsProvider providers={getPickerProviders()}>
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="min-w-0 space-y-4 lg:col-span-2">
+          <CreateVisitFromRecord
+            profileId={profileId}
+            offers={createVisitOffersList}
+          />
+          <DentalProcedureList items={records} followUps={followUps} />
+        </div>
 
-      <div className="min-w-0 space-y-4">
-        <DentalProcedureForm action={addDentalProcedure} />
-        <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-          Informational only, not medical advice. This is a record of dental
-          work and findings, not a clinical charting tool.
-        </p>
+        <div className="min-w-0 space-y-4">
+          <DentalProcedureForm action={addDentalProcedure} />
+          <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
+            Informational only, not medical advice. This is a record of dental
+            work and findings, not a clinical charting tool.
+          </p>
+        </div>
       </div>
-    </div>
+    </ProviderOptionsProvider>
   );
 }

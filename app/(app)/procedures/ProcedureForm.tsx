@@ -4,12 +4,13 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
+import ProviderCombobox from "@/components/ProviderCombobox";
 import { useToast } from "@/components/Toast";
 import type { Procedure, FormResult } from "@/lib/types";
 
 // Shared add/edit procedure form. Add mode: no `procedure`. Edit mode: pass the row
 // + an `onDone` callback (renders a hidden id + a Cancel button). The performer is a
-// create-on-type input backed by the page's shared <datalist id="provider-names">.
+// create-on-type ProviderCombobox (#1176) over the section's shared registry rows.
 export default function ProcedureForm({
   action,
   procedure,
@@ -118,12 +119,10 @@ export default function ProcedureForm({
         <label className="label" htmlFor={`proc-provider-${uid}`}>
           Provider
         </label>
-        {/* Create-on-type from the shared registry via <datalist id="provider-names">. */}
-        <input
+        {/* Create-on-type from the shared registry (ProviderCombobox, #1176). */}
+        <ProviderCombobox
           id={`proc-provider-${uid}`}
           name="provider"
-          list="provider-names"
-          className="input"
           defaultValue={procedure?.provider_name ?? ""}
           placeholder="e.g. Dr. Smith"
         />
