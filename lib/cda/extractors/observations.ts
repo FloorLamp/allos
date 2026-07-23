@@ -7,7 +7,12 @@ import {
   isNonAnalyteLoinc,
   isVitalLoinc,
 } from "../../biomarker-loinc";
-import type { ImportedProvider, ImportedRecord } from "../../health-import";
+import type {
+  ImportedImagingStudy,
+  ImportedProvider,
+  ImportedRecord,
+} from "../../health-import";
+import { normalizeLaterality, normalizeModality } from "../../imaging-study";
 import {
   VITAL_CANONICAL,
   normalizeImportedTemperature,
@@ -18,6 +23,7 @@ import {
   asArray,
   buildNarrativeIdMap,
   effTime,
+  hl7Period,
   loincDisplayName,
   loincFromCode,
   providerFromPerformer,
@@ -158,6 +164,9 @@ function observationsFromEntries(
       (c: any) => c?.observation
     );
     for (const o of [...nested, ...asArray(entry?.observation)]) {
+      // A radiology-study observation carries no lab value (its structured
+      // modality/site route to imaging_studies below) — never a lab record.
+      if (isRadiologyStudyObs(o)) continue;
       const rec = mapObservation(
         o,
         category,
@@ -166,6 +175,88 @@ function observationsFromEntries(
         allowCategoryOverride
       );
       if (rec) out.push(rec);
+    }
+  }
+  return out;
+}
+
+// ── Radiology study observations → imaging_studies (CDA) ────────────────────
+// Epic ships a radiology study as a Result Observation coded LOINC 18782-3
+// "Radiology Study observation (narrative)". The <value> is nullFlavor'd (the report
+// body isn't inline), but it carries a STRUCTURED methodCode (modality — "Ultrasound"),
+// targetSiteCode (body region — "Breast") + a laterality qualifier ("left") and an
+// effectiveTime. The FHIR path already maps an ImagingStudy resource to
+// ImportedImagingStudy; this recovers the SAME study event from a CDA Results section
+// (previously dropped as a null-value lab), reusing the shared modality/laterality
+// normalizers. No inline impression is available, so it lands as a dated
+// modality/site/laterality study — the persist layer writes it exactly like the FHIR
+// path (imaging_studies is already in the import footprint).
+const RADIOLOGY_STUDY_LOINC = "18782-3";
+
+export function isRadiologyStudyObs(obs: any): boolean {
+  return obs?.code?.["@_code"] === RADIOLOGY_STUDY_LOINC;
+}
+
+// The printed human label — <originalText> text, else the coding's displayName. Epic
+// puts "Ultrasound"/"Breast"/"left" in <originalText> with an Epic-local code system
+// the normalizers can't read, so the text is the signal.
+function codedLabel(node: any): string | null {
+  const ot = textOf(node?.originalText)?.trim();
+  if (ot) return ot;
+  const dn = node?.["@_displayName"];
+  return typeof dn === "string" && dn.trim() ? dn.trim() : null;
+}
+
+function firstObsIdExt(obs: any): string | null {
+  for (const id of asArray(obs?.id)) {
+    if (id?.["@_nullFlavor"] != null) continue;
+    const ext = String(id?.["@_extension"] ?? "").trim();
+    if (ext) return ext;
+  }
+  return null;
+}
+
+function mapImagingStudy(obs: any): ImportedImagingStudy | null {
+  if (!isRadiologyStudyObs(obs) || truthyNegation(obs?.["@_negationInd"]))
+    return null;
+  const { start } = hl7Period(obs?.effectiveTime);
+  const date = start ?? effTime(obs?.effectiveTime);
+  const idExt = firstObsIdExt(obs);
+  // Nothing to key on → can't dedup a re-import, so drop rather than mint an
+  // unstable row.
+  if (!date && !idExt) return null;
+  const modality = normalizeModality(codedLabel(obs?.methodCode));
+  const site = codedLabel(obs?.targetSiteCode);
+  const qualifier = asArray(obs?.targetSiteCode?.qualifier)[0];
+  const laterality = normalizeLaterality(codedLabel(qualifier?.value));
+  return {
+    modality,
+    body_region: site,
+    laterality,
+    contrast: false,
+    contrast_agent: null,
+    study_date: date,
+    dose_msv: null,
+    impression: null,
+    indication: null,
+    status: obs?.statusCode?.["@_code"] ?? null,
+    external_id: idExt
+      ? `ccda:imaging:${idExt}`
+      : `ccda:imaging:${date}:${modality}:${(site ?? "").toLowerCase()}`,
+  };
+}
+
+// Deep-walk a Results section's entries for radiology-study observations (the SAME
+// organizer→component / bare-observation shape observationsFromEntries reads).
+function imagingStudiesFromEntries(entries: any[]): ImportedImagingStudy[] {
+  const out: ImportedImagingStudy[] = [];
+  for (const entry of entries) {
+    const nested = asArray(entry?.organizer?.component).map(
+      (c: any) => c?.observation
+    );
+    for (const o of [...nested, ...asArray(entry?.observation)]) {
+      const study = mapImagingStudy(o);
+      if (study) out.push(study);
     }
   }
   return out;
@@ -180,6 +271,7 @@ export const labResultsExtractor: SectionExtractor = {
       "lab",
       buildNarrativeIdMap(s.raw?.text)
     ),
+    imagingStudies: imagingStudiesFromEntries(s.entries),
   }),
 };
 
