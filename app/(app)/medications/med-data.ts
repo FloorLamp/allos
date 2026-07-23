@@ -29,7 +29,6 @@ import {
   getAdministrationsForItemsOnDate,
   getPediatricFormContext,
   getPrnMedicationsForQuickLog,
-  getMedicalRecords,
   getMedicationFamilyStates,
 } from "@/lib/queries";
 import { redoseWindowStatus } from "@/lib/prn-redose";
@@ -89,31 +88,12 @@ import {
   buildAdherenceCalendar,
   type AdherenceCalendarModel,
 } from "@/lib/adherence-calendar";
-import {
-  bridgeCandidates,
-  medBridgeDismissalKey,
-  type TrackedMedLike,
-} from "@/lib/medication-record-match";
 import { getLastAdministrationDateByItem } from "@/lib/queries";
 import {
   dormantPrnCandidates,
   type DormantPrnInput,
   type DormantPrnSuggestion,
 } from "@/lib/dormant-prn";
-
-// One imported prescription record with no matched tracked med, surfaced by the
-// "From your records" bridge as a suggest-only "Track this" (#560/#817).
-export interface BridgeSuggestion {
-  recordId: number;
-  name: string;
-  detail: string | null;
-  date: string;
-  dedupeKey: string;
-  // Non-null when the drug is already tracked at a provably DIFFERENT strength
-  // (#1027 ask 4): the record's parsed strength ("800 mg"), so the row offers
-  // "Track as separate 800 mg item" instead of folding silently.
-  strengthOffer: string | null;
-}
 
 // The per-med derived context every card/row formats over. `prnRedoseLine` is the
 // marker-agnostic next-window chip; `prnDayLabel`/`prnTimes` are the administration
@@ -189,11 +169,6 @@ export interface MedicationsData {
     redoseLine: string | null;
     redosePrimary: boolean;
   }[];
-  bridge: BridgeSuggestion[];
-  // Bridge suggestions the user has dismissed (#852 item 6): surfaced in a collapsed
-  // "dismissed (N)" disclosure with restore, so a mis-tap is recoverable while the
-  // suggest-only contract holds. Empty when nothing's been dismissed.
-  dismissedBridge: BridgeSuggestion[];
   // Dormant-PRN sweep (issue #880 item 3): active PRN meds with no dose in 90+ days,
   // offered as suggest-only "move to past" — the existing-backlog cleanup episode-end only
   // catches going forward. `dismissedDormantPrn` mirrors the bridge's recoverable list.
@@ -421,8 +396,8 @@ export function loadMedicationsData(
   const byId = new Map<number, MedCardData>();
   for (const d of [...currentData, ...pastData]) byId.set(d.med.id, d);
 
-  // Findings-suppression store (#435): food-timing dismissals for FoodGuidance, the
-  // cross-kind interaction/PGx bus filter, and the med-bridge dismissals.
+  // Findings-suppression store (#435): food-timing dismissals for FoodGuidance and
+  // the cross-kind interaction/PGx bus filter.
   const suppressions = getFindingSuppressions(profileId);
   const suppressedFoodKeys = [...suppressions.entries()]
     .filter(
@@ -526,51 +501,9 @@ export function loadMedicationsData(
     };
   });
 
-  // "From your records" bridge (#817): imported prescription records with no matched
-  // tracked med, minus any the user dismissed (name-keyed #203 via the bus).
-  const trackedMeds: TrackedMedLike[] = supplements
-    .filter((s) => s.kind === "medication")
-    .map((s) => ({
-      name: s.name,
-      brand: s.brand,
-      rxcui: s.rxcui,
-      rxcuiIngredients: parseRxcuiIngredients(s.rxcui_ingredients),
-      // Dose amounts carry the strength for the common "Ibuprofen" + "200 mg"
-      // shape, so the bridge's different-strength offer (#1027) can compare.
-      doseAmounts: (dosesBySupp.get(s.id) ?? [])
-        .map((d) => d.amount)
-        .filter((a): a is string => !!a),
-    }));
-  const prescriptionRecords = getMedicalRecords(profileId, {
-    category: "prescription",
-    sort: "date",
-    dir: "desc",
-  });
-  const allBridge: BridgeSuggestion[] = bridgeCandidates(
-    prescriptionRecords,
-    trackedMeds
-  ).map(({ record: r, strengthOffer }) => {
-    const dedupeKey = medBridgeDismissalKey(r, strengthOffer);
-    return {
-      recordId: r.id,
-      name: r.canonical_name?.trim() || r.name,
-      detail: [r.value, r.unit].filter(Boolean).join(" ") || null,
-      date: r.date,
-      dedupeKey,
-      strengthOffer,
-    };
-  });
-  const isDismissed = (s: BridgeSuggestion) => {
-    const rec = suppressions.get(s.dedupeKey);
-    return !!(rec && isSuppressed(rec, todayStr));
-  };
-  const bridge = allBridge.filter((s) => !isDismissed(s));
-  // Dismissed suggestions surfaced (recoverable) in the #852 item 6 disclosure.
-  const dismissedBridge = allBridge.filter(isDismissed);
-
   // Dormant-PRN sweep (#880 item 3): active PRN meds with no dose in 90+ days. Anchored on
   // the last 'taken' administration (or creation, if never dosed) via the ONE gather, then
-  // filtered by the same #203 bus dismissals (id-keyed) as the bridge.
+  // filtered by the #203 bus dismissals (id-keyed).
   const lastAdminByItem = getLastAdministrationDateByItem(profileId);
   const dormantInputs: DormantPrnInput[] = supplements
     .filter((s) => s.kind === "medication")
@@ -612,8 +545,6 @@ export function loadMedicationsData(
     current: currentData,
     past: pastData,
     prnToday,
-    bridge,
-    dismissedBridge,
     dormantPrn,
     dismissedDormantPrn,
     byId,

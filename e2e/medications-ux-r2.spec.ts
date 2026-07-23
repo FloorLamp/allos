@@ -13,9 +13,9 @@ import {
 // from e2e/seed-events.ts: "Zeta Morning Med (e2e)" / "Alpha Evening Med (e2e)" (scheduled,
 // distinct buckets), "Low Supply Med (e2e)" (below the refill threshold), "Adherence
 // Refill Med (e2e)" (scheduled with taken-logs), and "PRN Quicklog Med (e2e)" (PRN).
-// (Item 6 — recoverable records-bridge dismissals — left with its fixture in #1232:
+// (Item 6 — recoverable records-bridge dismissals — went with its fixture in #1232;
 // post-#1178/092 no write path produces the medical_records 'prescription' rows the
-// bridge reads, so the seeded suggestion re-created an unreachable state.)
+// bridge read, and the bridge itself was removed outright in #1270.)
 
 // The vertical position of the first element matching `name` within `scope`.
 async function topOf(scope: Locator, name: string): Promise<number> {

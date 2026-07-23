@@ -1731,8 +1731,9 @@ console.log(
 // every such row into the single medication entity (intake_items) and NO current
 // write path produces the shape anymore, so the fixture was re-creating a state
 // the app itself can never reach (failure class 7 — a fixture feeding a dead
-// legacy read path). The "From your records" bridge is legacy-only by
-// construction now (its removal is tracked as an owner decision on #1232).
+// legacy read path). The "From your records" bridge itself was then removed
+// outright (UI/actions/generator) in #1270; only a stored `med-bridge:` dismissal
+// survives, exercised by the suppressed-center orphan fixture below.
 
 // An imported visit whose notes carry a real line break (issue #794 cluster 11a),
 // so the encounter-detail notes test can pin that multi-line notes render with
