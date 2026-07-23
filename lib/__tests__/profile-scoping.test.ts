@@ -3,6 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { OWNED_TABLES } from "@/lib/owned-tables";
+import {
+  isCrossProfileSqlModule,
+  usesProfileIdInList,
+} from "@/lib/cross-profile";
 
 // Static leak-detection for the multi-user conversion. This
 // reads the repo's own source as TEXT — no DB, no network, so it stays "pure" in
@@ -346,6 +350,41 @@ describe("profile scoping: every owned-table query filters by profile_id", () =>
         if (!allowed) {
           violations.push(`${rel}: ${sql}`);
         }
+      }
+    }
+
+    expect(violations, `\n${violations.join("\n")}\n`).toEqual([]);
+  });
+});
+
+// COMPANION RULE — set-based cross-profile SQL is confined to registered modules
+// (issue #1095 §3). The scanner above requires `profile_id` in every owned-table
+// query; a set-based `WHERE profile_id IN (…)` statement NAMES profile_id, so it
+// already PASSES that rule — nothing there keeps the set-based shape from silently
+// spreading to a module that never validated its id list against the caller's grants.
+// This rule closes that gap: any `.prepare` matching `profile_id IN` must live in a
+// registered cross-profile module (lib/cross-profile.ts → CROSS_PROFILE_SQL_MODULES).
+// Everywhere else it fails the scan. The registry is EMPTY today (no set-based reader
+// has landed); the pure detector + registry membership are fixture-pinned in
+// lib/__tests__/cross-profile.test.ts, so the rule is proven to fire before any real
+// consumer exists.
+describe("cross-profile scoping: profile_id IN only in registered modules", () => {
+  const files = sourceFiles();
+
+  it("has no profile_id IN statement outside a registered cross-profile module", () => {
+    const violations: string[] = [];
+
+    for (const file of files) {
+      const rel = path.relative(REPO, file).split(path.sep).join("/");
+      const src = fs.readFileSync(file, "utf8");
+      for (const arg of prepareArgs(src)) {
+        if (arg.kind !== "sql") continue; // non-literal args handled by the rule above
+        const sql = norm(arg.text);
+        if (!usesProfileIdInList(sql)) continue;
+        if (isCrossProfileSqlModule(rel)) continue;
+        violations.push(
+          `${rel}: uses "profile_id IN" but is not a registered cross-profile module — register it in lib/cross-profile.ts (CROSS_PROFILE_SQL_MODULES) only if it feeds the IN-list from a resolved ProfileScope's ids. SQL: ${sql}`
+        );
       }
     }
 
