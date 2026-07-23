@@ -13,6 +13,7 @@ import type { DocumentProducedCounts } from "./import-log";
 import type { WeightUnit } from "./settings";
 import type { Provider, ProviderType } from "./types/medical";
 import { providerDisambigLabel } from "./provider-merge";
+import { encounterTypeDisplay } from "./encounter-kind";
 import { fmtWeight } from "./units";
 import {
   biomarkerViewHref,
@@ -292,11 +293,12 @@ export function visitItem(row: {
   date: string;
   end_date: string | null;
   type: string | null;
+  class_code?: string | null;
   reason: string | null;
 }): ProducedItem {
   return {
     id: row.id,
-    title: row.type?.trim() || "Visit",
+    title: encounterTypeDisplay(row.type, row.class_code),
     detail: detailLine(row.reason),
     date: row.end_date ? `${row.date} – ${row.end_date}` : row.date,
     href: encounterHref(row.id),

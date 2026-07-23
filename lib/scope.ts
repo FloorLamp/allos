@@ -35,6 +35,7 @@ import {
   accessibleProfilesForLogin,
   accessForProfile,
   getCurrentViewProfileIds,
+  ownProfileForLogin,
   type Access,
   type Role,
   type SessionProfile,
@@ -48,8 +49,11 @@ export interface ProfileScope {
   // The session's active profile — the single-active-profile concept, unchanged. A
   // write with no explicit target still acts as THIS profile.
   actingProfileId: number;
-  // #1013's own-profile association, once it lands (null until then). Rides in the
-  // scope so the display layer needs no second resolution.
+  // #1013's own-profile association (logins.own_profile_id, migration 103): the
+  // profile the login has marked as "mine", or null (unset / caregiver-only login).
+  // Re-validated ∩ accessible on resolution, so a revoked grant reads back null.
+  // Rides in the scope so the display layer (self-vs-other, not-self write labels via
+  // lib/own-profile.ts) needs no second resolution.
   ownProfileId: number | null;
   // The accessible set, with DISAMBIGUATED names (#534) — the source of truth every
   // surface labels from. Ordered by id (stable "first accessible").
@@ -100,6 +104,16 @@ export function resolveScope(
 
   const actingProfileId = session.profile.id;
 
+  // #1013: re-validate the own-profile link against the CURRENT accessible set. An
+  // association to a profile the login no longer reaches (grant revoked, profile
+  // deleted before deleteProfile nulled it) resolves to null — the same "re-derive
+  // against current grants" stance the active profile + view-set take. So a stale
+  // stored value can never make an inaccessible profile read as "self".
+  const validatedOwnProfileId =
+    ownProfileId !== null && accessibleSet.has(ownProfileId)
+      ? ownProfileId
+      : null;
+
   let viewIds: number[];
   if (rawViewIds && rawViewIds.length > 0) {
     const wanted = new Set(rawViewIds.filter((id) => accessibleSet.has(id)));
@@ -114,7 +128,7 @@ export function resolveScope(
     loginId: login.id,
     role: login.role,
     actingProfileId,
-    ownProfileId,
+    ownProfileId: validatedOwnProfileId,
     profiles,
     ids,
     viewIds,
@@ -141,7 +155,10 @@ export async function requireScope(
   const session = await requireSession();
   const raw =
     rawViewIds !== undefined ? rawViewIds : await getCurrentViewProfileIds();
-  return resolveScope(session, raw);
+  // #1013: the own-profile link rides the scope so the display layer needs no second
+  // resolution. Loaded from the stored value; resolveScope re-validates it ∩ accessible.
+  const ownProfileId = ownProfileForLogin(session.login.id);
+  return resolveScope(session, raw, ownProfileId);
 }
 
 // ── Subject stamping (#534, #531/#900) ────────────────────────────────────────

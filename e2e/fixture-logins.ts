@@ -686,3 +686,20 @@ export const MULTI_OWNER_PROFILE = "Multi Owner (e2e)";
 export const MULTI_SHARED_PROFILE = "Multi Shared (e2e)";
 export const MULTI_OWNER_DOSE = "Multi Owner Vitamin";
 export const MULTI_SHARED_DOSE = "Multi Shared Vitamin";
+
+// Own-profile link + not-self write affordances (issue #1013). A dedicated member
+// granted TWO adult profiles WRITE, with own_profile_id pointing at the FIRST — the
+// login's declared "self". Each carries a due-today dose + one weigh-in, so the
+// household cards render dose-confirm buttons and the dashboard weight widget renders.
+// Acting as SELF → affordances stay plain; switching to the OTHER (not the login's
+// own) → they NAME the subject ("Confirm — Own Other (e2e)", "Finish workout — …").
+// Both profiles are adults (no birthdate → never training-restricted), so the live
+// workout editor is available. Dedicated + isolated so this spec's weigh-in / workout
+// writes never race the shared household specs; SELF is created first so it holds the
+// lower id and is the caregiver's ACTING profile on login (createSession picks
+// accessibleProfiles[0]). Synthetic, no PHI.
+export const E2E_LOGIN_OWN = "e2e_own";
+export const OWN_SELF_PROFILE = "Own Self (e2e)";
+export const OWN_OTHER_PROFILE = "Own Other (e2e)";
+export const OWN_SELF_DOSE = "Own Self Vitamin";
+export const OWN_OTHER_DOSE = "Own Other Vitamin";

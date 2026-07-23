@@ -1,6 +1,7 @@
 import { activityComponentSportNames } from "./activity-icon";
 import { shiftDateStr } from "./date";
 import { db } from "./db";
+import { encounterTypeDisplay } from "./encounter-kind";
 import { vaccineDisplayName } from "./immunization-catalog";
 import { medicationCourseEvents } from "./medication-history";
 import { ENCOUNTER_REPRESENTATIVE_IDS } from "./queries/medical";
@@ -716,7 +717,8 @@ function collectEvents(
   // the shared representative-id subquery (the profile_id bind for it comes first).
   const encounters = db
     .prepare(
-      `SELECT e.id, e.date, e.type, e.reason, e.diagnoses, e.notes, e.document_id,
+      `SELECT e.id, e.date, e.type, e.class_code, e.reason, e.diagnoses, e.notes,
+              e.document_id,
               p.name AS provider_name, loc.name AS location_name
          FROM encounters e
          LEFT JOIN providers p ON p.id = e.provider_id
@@ -730,6 +732,7 @@ function collectEvents(
     id: number;
     date: string;
     type: string | null;
+    class_code: string | null;
     reason: string | null;
     diagnoses: string | null;
     notes: string | null;
@@ -753,7 +756,7 @@ function collectEvents(
         id: `visit:${e.id}`,
         date: e.date,
         category: "visit",
-        title: e.type ?? "Visit",
+        title: encounterTypeDisplay(e.type, e.class_code),
         subtitle: compactList(
           [e.provider_name, e.location_name, e.reason].filter(
             (x): x is string => !!x

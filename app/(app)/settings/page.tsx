@@ -1,11 +1,18 @@
 import { getUnitPrefs, getDisplayFormatPrefs } from "@/lib/settings";
-import { requireSession, listLoginSessions } from "@/lib/auth";
+import {
+  requireSession,
+  listLoginSessions,
+  getAccessibleProfiles,
+  ownProfileForLogin,
+} from "@/lib/auth";
+import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
 import { getLoginTotpState, countUnusedRecoveryCodes } from "@/lib/two-factor";
 import { PageHeader } from "@/components/ui";
 import AppVersion from "@/components/AppVersion";
 import SettingsTabs from "./SettingsTabs";
 import UnitPrefsForm from "./UnitPrefsForm";
+import OwnProfileForm from "./OwnProfileForm";
 import FormatPrefsForm from "./FormatPrefsForm";
 import ChangePasswordSettings from "./ChangePasswordSettings";
 import TwoFactorSettings from "./TwoFactorSettings";
@@ -24,6 +31,15 @@ export default async function SettingsPage() {
   const demoRestricted = isDemoRestricted(isDemoMode(), login.role);
   const prefs = getUnitPrefs(login.id);
   const formatPrefs = getDisplayFormatPrefs(login.id);
+  // Own-profile association (#1013): the login's accessible profiles (disambiguated,
+  // #534) populate the "which one is you?" picker; the stored id preselects it.
+  const accessibleProfiles = await getAccessibleProfiles();
+  const ownProfileNames = disambiguateProfileNames(accessibleProfiles);
+  const ownProfileChoices = accessibleProfiles.map((p) => ({
+    ...p,
+    name: ownProfileNames.get(p.id) ?? p.name,
+  }));
+  const ownProfileId = ownProfileForLogin(login.id);
   const sessions = await listLoginSessions(login.id);
   const twofaEnabled = getLoginTotpState(login.id).enabled;
   const recoveryRemaining = twofaEnabled
@@ -37,6 +53,12 @@ export default async function SettingsPage() {
         subtitle={`Preferences — these settings belong to your login (${login.username}), not the profile being viewed. They follow you across every profile.`}
       />
       <SettingsTabs isAdmin={isAdmin} />
+      {ownProfileChoices.length > 0 && (
+        <OwnProfileForm
+          profiles={ownProfileChoices}
+          ownProfileId={ownProfileId}
+        />
+      )}
       <UnitPrefsForm prefs={prefs} />
       <FormatPrefsForm prefs={formatPrefs} />
       {!demoRestricted && <ChangePasswordSettings username={login.username} />}

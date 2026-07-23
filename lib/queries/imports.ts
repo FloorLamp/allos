@@ -353,7 +353,7 @@ export function getDocumentProduced(
 export function getDocumentVisits(profileId: number, docId: number) {
   return db
     .prepare(
-      `SELECT id, date, end_date, type, reason FROM encounters
+      `SELECT id, date, end_date, type, class_code, reason FROM encounters
         WHERE profile_id = ? AND document_id = ?
         ORDER BY date DESC, id DESC`
     )
@@ -362,6 +362,7 @@ export function getDocumentVisits(profileId: number, docId: number) {
     date: string;
     end_date: string | null;
     type: string | null;
+    class_code: string | null;
     reason: string | null;
   }[];
 }

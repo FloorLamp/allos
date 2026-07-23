@@ -32,15 +32,21 @@ export interface TelegramRecipient {
 }
 
 // The logins that MANAGE a profile for the purpose of notification fan-out:
-// explicit login_profiles grants plus (once #1013 persists it) the login whose OWN
-// profile this is. Admin role is deliberately NOT a source here — see the module
-// header. Ordered by login id so "first login wins" in the chat dedup is stable.
+// explicit login_profiles grants UNION the login whose OWN profile this is
+// (`logins.own_profile_id`, #1013). Admin role is deliberately NOT a source here —
+// see the module header. A login sees its own profile's notifications even without
+// an explicit self-grant (the #1013 own-profile association is the caregiver's own
+// tracked self). Ordered by login id so "first login wins" in the chat dedup is
+// stable and distinct so a login granted AND owning the profile appears once.
 export function managingLoginIdsForProfile(profileId: number): number[] {
   const rows = db
     .prepare(
-      "SELECT login_id FROM login_profiles WHERE profile_id = ? ORDER BY login_id"
+      `SELECT login_id FROM login_profiles WHERE profile_id = ?
+       UNION
+       SELECT id AS login_id FROM logins WHERE own_profile_id = ?
+       ORDER BY login_id`
     )
-    .all(profileId) as { login_id: number }[];
+    .all(profileId, profileId) as { login_id: number }[];
   return rows.map((r) => r.login_id);
 }
 

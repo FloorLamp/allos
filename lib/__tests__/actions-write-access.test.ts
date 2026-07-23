@@ -82,6 +82,12 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   },
   {
     file: "app/(app)/settings/actions.ts",
+    fn: "saveOwnProfile",
+    why: "login-scoped: sets the caller's OWN login's own-profile association (an association, not an access grant — #1013); demo-gated so the shared demo login can't relabel everyone's self",
+    gate: "requireLoginWriteAccess",
+  },
+  {
+    file: "app/(app)/settings/actions.ts",
     fn: "revokeSessionAction",
     why: "login-scoped: revokes one of the caller's own sessions (demo-gated, #278)",
     gate: "requireLoginWriteAccess",

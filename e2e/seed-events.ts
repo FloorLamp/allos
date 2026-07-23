@@ -89,6 +89,11 @@ import {
   MULTI_SHARED_PROFILE,
   MULTI_OWNER_DOSE,
   MULTI_SHARED_DOSE,
+  E2E_LOGIN_OWN,
+  OWN_SELF_PROFILE,
+  OWN_OTHER_PROFILE,
+  OWN_SELF_DOSE,
+  OWN_OTHER_DOSE,
   E2E_MEMBER_PASSWORD,
   DUP_REVIEW_PROFILE,
   EMPTY_TRAINING_PROFILE,
@@ -5008,5 +5013,62 @@ console.log(
   grantProfile(multiLoginId, multiSharedId, "write");
   console.log(
     `e2e: seeded multi-view fixture — ${E2E_LOGIN_MULTI} granted ${MULTI_OWNER_PROFILE} (${multiOwnerId}) + ${MULTI_SHARED_PROFILE} (${multiSharedId})`
+  );
+}
+
+// ── Own-profile / not-self write affordances fixture (issue #1013) ────────────
+// A dedicated member (E2E_LOGIN_OWN) granted TWO adult profiles WRITE, with its
+// own-profile pointing at the FIRST (SELF). Each carries a due-today dose (household
+// dose-confirm buttons) + one weigh-in (the dashboard weight widget renders). The
+// spec asserts the not-self naming on the OTHER profile (never the login's own).
+{
+  const ownSelfId = fixtureProfileId(OWN_SELF_PROFILE);
+  const ownOtherId = fixtureProfileId(OWN_OTHER_PROFILE);
+  const seedOwnDose = (profileId: number, name: string): void => {
+    if (
+      !db
+        .prepare("SELECT 1 FROM intake_items WHERE profile_id = ? AND name = ?")
+        .get(profileId, name)
+    ) {
+      const supp = db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, condition, priority, active, source)
+           VALUES (?, ?, 'daily', 'high', 1, 'manual')`
+        )
+        .run(profileId, name);
+      db.prepare(
+        `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+         VALUES (?, '1000 IU', '08:00', 'any', 0)`
+      ).run(Number(supp.lastInsertRowid));
+    }
+  };
+  const seedOwnWeigh = (profileId: number): void => {
+    if (
+      !db
+        .prepare(
+          "SELECT 1 FROM body_metrics WHERE profile_id = ? AND notes = 'e2e:own-seed'"
+        )
+        .get(profileId)
+    ) {
+      db.prepare(
+        `INSERT INTO body_metrics (profile_id, date, weight_kg, notes)
+         VALUES (?, date('now'), 72.0, 'e2e:own-seed')`
+      ).run(profileId);
+    }
+  };
+  seedOwnDose(ownSelfId, OWN_SELF_DOSE);
+  seedOwnDose(ownOtherId, OWN_OTHER_DOSE);
+  seedOwnWeigh(ownSelfId);
+  seedOwnWeigh(ownOtherId);
+  const ownLoginId = seedMemberLogin(E2E_LOGIN_OWN, ownSelfId, "write");
+  grantProfile(ownLoginId, ownOtherId, "write");
+  // Declare SELF as the login's own-profile (#1013): the association, not a grant.
+  db.prepare("UPDATE logins SET own_profile_id = ? WHERE id = ?").run(
+    ownSelfId,
+    ownLoginId
+  );
+  console.log(
+    `e2e: seeded own-profile fixture — ${E2E_LOGIN_OWN} own=${OWN_SELF_PROFILE} (${ownSelfId}), other=${OWN_OTHER_PROFILE} (${ownOtherId})`
   );
 }

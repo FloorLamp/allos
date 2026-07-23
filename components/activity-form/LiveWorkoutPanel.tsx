@@ -3,6 +3,8 @@
 import { useEffect, useRef } from "react";
 import { IconBolt, IconFlagCheck } from "@tabler/icons-react";
 import RestTimer from "./RestTimer";
+import { useActivityEditor } from "@/components/ActivityEditorProvider";
+import { subjectActionLabel } from "@/lib/own-profile";
 
 // Minimal WakeLockSentinel typing — lib.dom's is behind a flag not enabled here.
 interface WakeLockSentinelLike {
@@ -31,6 +33,10 @@ export default function LiveWorkoutPanel({
   onFinish: () => void;
 }) {
   const sentinelRef = useRef<WakeLockSentinelLike | null>(null);
+  // Not-self stamp (issue #1013): the running session belongs to the acting profile;
+  // when that isn't the login's own profile, name it on the live control strip so a
+  // set logged in the wrong record is caught at the point of action.
+  const { subjectName } = useActivityEditor();
 
   // Keep the screen awake for the phone-at-the-gym surface. Best-effort: absent
   // (desktop / unsupported) or rejected (not user-activated) it silently no-ops,
@@ -68,9 +74,12 @@ export default function LiveWorkoutPanel({
       className="space-y-3 rounded-xl border border-brand-300 bg-brand-50/40 p-3 dark:border-brand-800 dark:bg-brand-950/30"
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-1.5 text-sm font-semibold text-brand-700 dark:text-brand-300">
+        <span
+          data-testid="live-workout-subject"
+          className="flex items-center gap-1.5 text-sm font-semibold text-brand-700 dark:text-brand-300"
+        >
           <IconBolt className="h-4 w-4" stroke={2} />
-          Live workout
+          {subjectActionLabel("Live workout", subjectName)}
         </span>
         <button
           type="button"
@@ -79,7 +88,7 @@ export default function LiveWorkoutPanel({
           className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-500 active:scale-95"
         >
           <IconFlagCheck className="h-4 w-4" />
-          Finish workout
+          {subjectActionLabel("Finish workout", subjectName)}
         </button>
       </div>
       <RestTimer exercise={leadExercise} autoStartKey={restStartKey} />

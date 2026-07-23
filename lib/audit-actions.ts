@@ -36,6 +36,11 @@ export const AUDIT_ACTIONS = {
   profileCreate: "profile.create",
   profileDelete: "profile.delete",
   grantUpdate: "grant.update",
+  // The own-profile association (issue #1013): a login marking one accessible
+  // profile as "mine" (or clearing it). An association, not an access grant, so it
+  // shares the `grant` domain but its own verb. target = login id, detail = the new
+  // own-profile id (or "none").
+  ownProfileUpdate: "grant.own-profile",
   medicalFileView: "medical-file.view",
   medicalDocUpload: "medical-document.upload",
   medicalDocDelete: "medical-document.delete",

@@ -18,6 +18,7 @@ import { episodeHref } from "@/lib/hrefs";
 import { daysBetweenDateStr } from "@/lib/date";
 import FromThisVisit from "@/components/visit-links/FromThisVisit";
 import { formatRecordDate, sourceLabel } from "@/lib/record-format";
+import { classLabel, encounterTypeDisplay } from "@/lib/encounter-kind";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
 import { PageHeader } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
@@ -110,7 +111,7 @@ export default async function EncounterDetailPage(props: {
       </Link>
 
       <PageHeader
-        title={encounter.type || "Visit"}
+        title={encounterTypeDisplay(encounter.type, encounter.class_code)}
         subtitle={dateLabel(encounter, fmt)}
       />
 
@@ -138,7 +139,7 @@ export default async function EncounterDetailPage(props: {
           {encounter.class_code ? (
             <DetailRow label="Class">
               <span className="badge bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">
-                {encounter.class_code}
+                {classLabel(encounter.class_code)}
               </span>
             </DetailRow>
           ) : null}

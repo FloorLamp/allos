@@ -155,5 +155,39 @@ vi.mock("@/lib/auth", async () => {
         .get(session.login.id, profileId);
       return row != null;
     },
+    // Own-profile association (issue #1013). Faithful to the real core: the reader
+    // returns the stored id from the REAL temp DB; the setter enforces the same
+    // accessibility constraint (admins reach every profile, members only granted)
+    // before writing, returning false (no-op) for an inaccessible target.
+    ownProfileForLogin: (loginId: number) => {
+      const row = db
+        .prepare("SELECT own_profile_id AS o FROM logins WHERE id = ?")
+        .get(loginId) as { o: number | null } | undefined;
+      return row?.o ?? null;
+    },
+    setOwnProfileForLogin: (
+      loginId: number,
+      role: string,
+      profileId: number | null
+    ) => {
+      if (profileId !== null) {
+        const reachable =
+          role === "admin"
+            ? (db
+                .prepare("SELECT id FROM profiles WHERE id = ?")
+                .get(profileId) as { id: number } | undefined)
+            : (db
+                .prepare(
+                  "SELECT profile_id AS id FROM login_profiles WHERE login_id = ? AND profile_id = ?"
+                )
+                .get(loginId, profileId) as { id: number } | undefined);
+        if (!reachable) return false;
+      }
+      db.prepare("UPDATE logins SET own_profile_id = ? WHERE id = ?").run(
+        profileId,
+        loginId
+      );
+      return true;
+    },
   };
 });

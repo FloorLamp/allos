@@ -51,7 +51,12 @@ import { collectCoachingFindings } from "@/lib/rule-findings";
 import { pickNextAppointment } from "@/lib/household";
 import { isGoalLive } from "@/lib/goals";
 import { activeByKey, activeFindings, coachingDedupeKey } from "@/lib/findings";
-import { requireSession, getAccessibleProfiles } from "@/lib/auth";
+import {
+  requireSession,
+  getAccessibleProfiles,
+  ownProfileForLogin,
+} from "@/lib/auth";
+import { writeSubjectName } from "@/lib/own-profile";
 import { withAiLogContext } from "@/lib/ai-log";
 import { runRecommendation } from "@/lib/recommendation-engine";
 import { isTrainingRestricted } from "@/lib/age-gate";
@@ -210,6 +215,16 @@ export default async function Dashboard() {
   // few profile-scoped reads. Grants are respected — getAccessibleProfiles returns
   // only reachable profiles, and the switch action re-checks.
   const accessible = await getAccessibleProfiles();
+  // Own-profile link (#1013): the acting-profile write forms (the weight quick-add)
+  // name the subject when the login is acting as someone OTHER than its own profile,
+  // so a weigh-in never silently lands on the wrong person's record. Null (no naming)
+  // when acting as self or no own-profile is set. Disambiguated (#534).
+  const ownProfileId = ownProfileForLogin(login.id);
+  const actingSubjectName = writeSubjectName(
+    ownProfileId,
+    profile.id,
+    disambiguateProfileNames(accessible).get(profile.id) ?? profile.name
+  );
   const onboardingState =
     access === "write" && onboardingNeedsSetup(storedOnboarding)
       ? storedOnboarding
@@ -795,6 +810,7 @@ export default async function Dashboard() {
             weightUnit={units.weightUnit}
             formatPrefs={formatPrefs}
             today={on}
+            subjectName={actingSubjectName}
           />
         );
       case "goals-habits":
