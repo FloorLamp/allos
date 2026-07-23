@@ -21,6 +21,7 @@ import {
   isVisitDiagnosesSection,
   mapAllergy,
   mapCondition,
+  isRadiologyStudyObs,
   mapImmunization,
   mapMedication,
   mapObservation,
@@ -242,7 +243,9 @@ function collectSectionDrops(
   if (key === "results" || key === "vitals" || key === "functionalStatus") {
     const cat = key === "vitals" ? "vitals" : "lab";
     for (const o of observationNodesOf(section.entries)) {
-      if (mapObservation(o, cat, ids)) continue;
+      // A radiology-study observation is CONSUMED into imaging_studies (its
+      // nullFlavor lab value would otherwise read as a no_value/null_flavor drop).
+      if (isRadiologyStudyObs(o) || mapObservation(o, cat, ids)) continue;
       drops.push(classifyObservationDrop(o, cat, ids, title));
     }
   } else if (key === "immunizations") {
