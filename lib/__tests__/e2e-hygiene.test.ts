@@ -169,7 +169,6 @@ const FIRST_ALLOW: Record<string, number> = {
   // seeded illness state; exposed only when co-located at --repeat-each). Its lone
   // .first() stays frozen here until that flake is fixed in a focused follow-up.
   "illness-care.spec.ts": 1,
-  "illness-episode-followups.spec.ts": 27,
   "illness-episode.spec.ts": 5,
   "illness-round3.spec.ts": 6,
   "import-dedup.spec.ts": 3,
