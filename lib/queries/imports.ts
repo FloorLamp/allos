@@ -46,7 +46,9 @@ import {
   type ImportSnapshot,
 } from "../import-diff";
 import { getMedMatchStates } from "./intake/medications";
-import { medNameKey } from "../medication-record-match";
+import { foldConsolidatedMeds } from "../medication-renewal";
+import { parsePrescription } from "../prescription-parse";
+import type { PersistRecord } from "../import-shape";
 
 export interface ImportLogDocumentRow {
   kind: "document";
@@ -870,31 +872,41 @@ export function getReprocessSnapshot(
 // #1204 renewal consolidation, a drug a document derives that the profile ALREADY
 // tracks persists as courses on the EXISTING item, and no intake_items row carries
 // the later document's id. Left alone, every later document's reprocess preview
-// shows those drugs as phantom "+ added" medications. This folds the derived rows
-// that match a tracked med — by the SAME name/brand key the renewal matcher uses
-// (medNameKey) — into the persisted side, so they compare unchanged. That is the
-// truthful preview: committing adds nothing (the renewal path creates no item, and
-// its course insert dedups on (item_id, started_on)). A derived drug the profile
-// does NOT track still previews as added.
+// shows those drugs as phantom "+ added" medications. This DB seam gathers the
+// tracked-med match states + the derived rows' parsed strengths and hands them to
+// the pure `foldConsolidatedMeds`, which folds only the derived rows that would
+// RENEW onto a tracked med (so they compare unchanged) — MIRRORING the commit-time
+// classifyReprescription. Critically (#1280) it does NOT fold a derived med that
+// would resolve to a "separate" item (existing open course + provably different
+// strength, the #1027 carve-out): that is a genuinely-new medication and must
+// preview as an addition, never be silently hidden. `derivedRecords` are the fresh
+// extraction's records, from which we recover each derived med's strength the same
+// way the commit path does (parsePrescription), keyed by the medicationRow key.
 export function foldConsolidatedMedsIntoSnapshot(
   profileId: number,
   snap: ImportSnapshot,
-  derivedMeds: DiffRow[]
+  derivedMeds: DiffRow[],
+  derivedRecords: PersistRecord[]
 ): void {
-  const have = new Set(snap.medications.map((m) => m.key));
-  let trackedKeys: Set<string> | null = null;
-  for (const row of derivedMeds) {
-    if (have.has(row.key)) continue;
-    if (trackedKeys == null) {
-      trackedKeys = new Set();
-      for (const med of getMedMatchStates(profileId)) {
-        trackedKeys.add(medNameKey(med.name));
-        if (med.brand) trackedKeys.add(medNameKey(med.brand));
-      }
-    }
-    if (trackedKeys.has(medNameKey(row.label))) {
-      have.add(row.key);
-      snap.medications.push({ ...row });
-    }
+  const newStrengthByKey = new Map<string, string | null>();
+  for (const r of derivedRecords) {
+    if (r.category !== "prescription" || !r.name?.trim()) continue;
+    const key = medicationRow(r.name).key;
+    if (newStrengthByKey.has(key)) continue; // first record per key wins (mirrors grouping)
+    newStrengthByKey.set(
+      key,
+      parsePrescription({
+        name: r.name,
+        value: r.value,
+        unit: r.unit,
+        notes: r.notes,
+      }).strength
+    );
   }
+  foldConsolidatedMeds(
+    getMedMatchStates(profileId),
+    snap,
+    derivedMeds,
+    newStrengthByKey
+  );
 }

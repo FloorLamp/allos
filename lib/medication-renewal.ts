@@ -26,6 +26,9 @@
 // refill — the primary bug #1204 fixes). The one carve-out to separate is the
 // provable open-course + different-strength case #1027 owns.
 
+import { medNameKey } from "./medication-record-match";
+import type { DiffRow, ImportSnapshot } from "./import-diff";
+
 // Normalize a strength token for comparison: lowercased, whitespace removed
 // ("800 mg" ≡ "800mg" ≡ "800 MG"). Null/blank in ⇒ null out.
 export function normalizeStrength(s: string | null | undefined): string | null {
@@ -80,4 +83,68 @@ export function isDoseChange(
   );
   if (live.size === 0) return false;
   return !live.has(nu);
+}
+
+// The tracked-med state the medication fold needs — a STRUCTURAL subset of
+// getMedMatchStates' MedMatchState (kept minimal so this pure module never imports
+// the DB query layer). A full MedMatchState satisfies it.
+export interface MedFoldMatch {
+  name: string;
+  brand: string | null;
+  hasOpenCourse: boolean;
+  strengths: string[];
+}
+
+// Reprocess-preview medication fold (#1204 phantom-diff fix + the #1280 correction).
+//
+// Since the #1204 renewal consolidation, a drug a document derives that the profile
+// ALREADY tracks persists as a COURSE on the existing item — no intake_items row
+// carries the later document's id — so a naive diff shows those drugs as phantom
+// "+ added" medications. This folds a derived med that matches a tracked med (by the
+// SAME medNameKey the renewal matcher uses) into the persisted side so it compares
+// unchanged.
+//
+// #1280: the fold must MIRROR the commit-time decision (classifyReprescription), not
+// fold on a bare name match. When the existing med has an OPEN course AND the derived
+// strength is PROVABLY DIFFERENT, the commit path creates a NEW, SEPARATE item (the
+// #1027 concurrent-different-strength carve-out) — so the preview must show that as a
+// real addition, NOT hide it under "unchanged". Only a derived med that would RENEW
+// (same/unknown strength, or a closed prior course) is folded; a "separate" one is
+// left to preview as added. `newStrengthByKey` maps each derived row's `key` to its
+// parsed strength (null when unknown — conservatively renews, per classifyReprescription).
+export function foldConsolidatedMeds(
+  trackedStates: MedFoldMatch[],
+  snap: ImportSnapshot,
+  derivedMeds: DiffRow[],
+  newStrengthByKey: Map<string, string | null>
+): void {
+  const have = new Set(snap.medications.map((m) => m.key));
+  // Name key → the FIRST tracked med declaring it (mirrors matchExisting's first-match
+  // over ctx.existing, so preview and commit resolve the same existing med).
+  const trackedByKey = new Map<string, MedFoldMatch>();
+  for (const med of trackedStates) {
+    for (const k of [
+      medNameKey(med.name),
+      med.brand ? medNameKey(med.brand) : null,
+    ]) {
+      if (k && !trackedByKey.has(k)) trackedByKey.set(k, med);
+    }
+  }
+  for (const row of derivedMeds) {
+    if (have.has(row.key)) continue;
+    const existing = trackedByKey.get(medNameKey(row.label));
+    if (!existing) continue;
+    const relationship = classifyReprescription({
+      existingHasOpenCourse: existing.hasOpenCourse,
+      existingStrengths: new Set(
+        existing.strengths
+          .map((s) => normalizeStrength(s))
+          .filter((s): s is string => !!s)
+      ),
+      newStrength: newStrengthByKey.get(row.key) ?? null,
+    });
+    if (relationship !== "renewal") continue; // #1027 "separate" → previews as added
+    have.add(row.key);
+    snap.medications.push({ ...row });
+  }
 }
