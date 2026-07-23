@@ -150,6 +150,20 @@ export function pillarHref(key: PillarKey): AppRoute {
 
 export type PillarTone = "good" | "warn" | "bad" | "neutral";
 
+// The text twin of each tone's color (WCAG 1.4.1, issue #1220): a pillar's
+// good/warn/bad judgment must never travel by COLOR ALONE, so every judging tone
+// carries a short label that both pillar surfaces (the dashboard widget and the
+// Longevity page's PillarStat) render as a visible badge next to the colored
+// value — the ONE mapping (#221), so a new pillar or surface can't ship
+// color-only again. `neutral` is deliberately null: it makes no judgment (its
+// value renders in the plain text color), so there is nothing to label.
+export const PILLAR_TONE_LABEL: Record<PillarTone, string | null> = {
+  good: "Good",
+  warn: "Fair",
+  bad: "Poor",
+  neutral: null,
+};
+
 export interface PillarTrend {
   direction: "up" | "down" | "flat";
   label: string;

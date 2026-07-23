@@ -1,14 +1,13 @@
 import Link from "next/link";
 import WidgetHeader from "@/components/dashboard/WidgetHeader";
 import { MedicalValue } from "@/components/ui";
-import {
-  recentLabDirectionlessStatus,
-  type RecentLabRow,
-} from "@/lib/recent-labs";
+import { recentLabStatus, type RecentLabRow } from "@/lib/recent-labs";
 import { formatCompactAge } from "@/lib/format-date";
 import type { FlagTone } from "@/lib/reference-range";
 
-function directionlessStatusClass(tone: FlagTone): string {
+// Tone → text color for the status label (the visible non-color channel each
+// flagged row carries next to its colored value — WCAG 1.4.1, issue #1220).
+function statusClass(tone: FlagTone): string {
   switch (tone) {
     case "bad":
       return "text-rose-600 dark:text-rose-400";
@@ -44,7 +43,7 @@ export default function RecentLabsWidget({
       ) : (
         <ul className="space-y-1.5">
           {rows.map((r) => {
-            const status = recentLabDirectionlessStatus(r.flag);
+            const status = recentLabStatus(r.flag);
             return (
               <li key={r.name} className="flex items-center gap-3">
                 <Link
@@ -58,7 +57,7 @@ export default function RecentLabsWidget({
                   {status && (
                     <span
                       data-testid="recent-lab-status"
-                      className={`ml-1 text-xs font-medium ${directionlessStatusClass(status.tone)}`}
+                      className={`ml-1 text-xs font-medium ${statusClass(status.tone)}`}
                     >
                       · {status.label}
                     </span>

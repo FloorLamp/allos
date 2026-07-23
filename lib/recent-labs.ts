@@ -2,6 +2,7 @@ import {
   flagLabel,
   flagTone,
   isNonOptimal,
+  isNormalFlag,
   isOutOfRange,
   type FlagTone,
 } from "./reference-range";
@@ -37,15 +38,18 @@ export interface RecentLabRow {
   stale: boolean;
 }
 
-// High/low variants carry a directional caret in MedicalValue. These legacy or
-// qualitative statuses have no direction, so compact surfaces need an explicit
-// text label instead of relying on value color alone.
-export function recentLabDirectionlessStatus(
+// The visible text label a compact lab row pairs with its flag color — the
+// non-color channel (WCAG 1.4.1, issue #1220). EVERY non-normal flag gets one,
+// directional flags included: MedicalValue's caret encodes direction as a shape,
+// but the red-vs-amber severity split (High vs Above optimal) traveled by color
+// alone. Normal/null stays unlabeled (no judgment to announce). One mapping —
+// flagLabel/flagTone (the #306 chokepoint) — so a new flag can't ship color-only.
+export function recentLabStatus(
   flag: MedicalFlag | null
 ): { label: string; tone: FlagTone } | null {
-  return flag === "abnormal" || flag === "non-optimal" || flag === "immune"
-    ? { label: flagLabel(flag), tone: flagTone(flag) }
-    : null;
+  return isNormalFlag(flag)
+    ? null
+    : { label: flagLabel(flag), tone: flagTone(flag) };
 }
 
 // The subset of a medical record the highlight selection reads. `getMedicalRecords`
