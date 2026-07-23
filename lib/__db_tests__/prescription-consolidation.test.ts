@@ -15,6 +15,7 @@ import {
   encounterForRecord,
 } from "@/lib/queries";
 import { up as migration092 } from "@/lib/migrations/versions/092-consolidate-imported-prescriptions";
+import { up as migration101 } from "@/lib/migrations/versions/101-recover-blank-name-prescriptions";
 
 const DATE = "2026-03-03";
 
@@ -428,5 +429,106 @@ describe("migration 092 consolidates legacy paired + unpaired prescription rows"
           .get(projected!.id) as { n: number }
       ).n
     ).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("#1281 migration 101 recovers a blank-name unpaired prescription non-lossily", () => {
+  // Migration 092 SKIPPED a blank/whitespace-name unpaired prescription (its step D
+  // `continue`) yet still deleted its record + decision (steps F/G) — a silent loss.
+  // Migration 101 projects a PLACEHOLDER-named medication (+ course) and re-keys the
+  // decision instead of dropping it. The fixture is the pre-092 shape (a surviving
+  // blank-name prescription + a record-domain decision); 101 runs directly on it.
+  it("projects a placeholder medication + course and re-keys the visit-link decision", () => {
+    const doc = newDocument(profileId);
+    // A blank-name (whitespace) UNPAIRED prescription record — the malformed shape 092
+    // discarded — carrying a document-owned external id.
+    const recId = Number(
+      db
+        .prepare(
+          `INSERT INTO medical_records
+             (profile_id, date, category, name, document_id, source, external_id)
+           VALUES (?, ?, 'prescription', '   ', ?, 'document:9', 'document:9|rxblank')`
+        )
+        .run(profileId, DATE, doc).lastInsertRowid
+    );
+    // Its durable 'record'-domain accepted visit-link decision.
+    db.prepare(
+      `INSERT INTO visit_link_decisions
+         (profile_id, domain, encounter_key, target_key, decision)
+       VALUES (?, 'record', 'ext:document:9|enc', 'ext:document:9|rxblank', 'linked')`
+    ).run(profileId);
+
+    migration101(db);
+
+    // The retired blank-name record is gone.
+    expect(
+      (
+        db
+          .prepare(`SELECT COUNT(*) AS n FROM medical_records WHERE id = ?`)
+          .get(recId) as { n: number }
+      ).n
+    ).toBe(0);
+
+    // A placeholder-named medication was created WITH a course (never silently dropped).
+    const med = db
+      .prepare(
+        `SELECT id, name, kind, as_needed, import_key FROM intake_items
+          WHERE profile_id = ? AND kind = 'medication' AND document_id = ?`
+      )
+      .get(profileId, doc) as
+      | {
+          id: number;
+          name: string;
+          kind: string;
+          as_needed: number;
+          import_key: string | null;
+        }
+      | undefined;
+    expect(med).toBeDefined();
+    expect(med!.name).toBe("Unnamed medication");
+    expect(med!.as_needed).toBe(1);
+    expect(
+      (
+        db
+          .prepare(
+            `SELECT COUNT(*) AS n FROM medication_courses WHERE item_id = ?`
+          )
+          .get(med!.id) as { n: number }
+      ).n
+    ).toBeGreaterThanOrEqual(1);
+
+    // The decision was re-keyed onto the medication domain (not lost), and no
+    // record-domain decision remains for it.
+    const decisions = db
+      .prepare(
+        `SELECT domain, target_key FROM visit_link_decisions WHERE profile_id = ?`
+      )
+      .all(profileId) as { domain: string; target_key: string }[];
+    expect(decisions.every((d) => d.domain === "medication")).toBe(true);
+    expect(
+      decisions.some((d) => d.target_key === `ext:${med!.import_key}`)
+    ).toBe(true);
+  });
+
+  it("is a replay-safe no-op once no blank-name prescription records remain", () => {
+    // No prescription records for this profile → 101 creates nothing (the up-to-date
+    // DB case, and the migrate() unconditional-replay case).
+    const before = (
+      db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM intake_items WHERE profile_id = ? AND kind = 'medication'`
+        )
+        .get(profileId) as { n: number }
+    ).n;
+    migration101(db);
+    migration101(db);
+    const after = (
+      db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM intake_items WHERE profile_id = ? AND kind = 'medication'`
+        )
+        .get(profileId) as { n: number }
+    ).n;
+    expect(after).toBe(before);
   });
 });

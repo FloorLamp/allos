@@ -1,21 +1,16 @@
-// SERVER-ACTION TIER — the one-tap "Refilled" action + bridge restore (issue #852).
+// SERVER-ACTION TIER — the one-tap "Refilled" action (issue #852 item 3).
 //
 // refillMedication adds a remembered fill size back to a med's on-hand supply through
 // the CAS write core (refillSupply → resolveRefillWrite), which re-reads the on-hand
 // value under the IMMEDIATE write lock and adds RELATIVE to it — so a dose confirm that
 // decremented supply between page-load and the refill tap is preserved, not clobbered
-// (#467). restoreMedicationRecord un-dismisses a records-bridge suggestion (#852 item 6).
+// (#467).
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { decrementSupply } from "@/lib/queries";
-import {
-  refillMedication,
-  restoreMedicationRecord,
-  dismissMedicationRecord,
-} from "@/app/(app)/medications/actions";
-import { medBridgeDismissalKey } from "@/lib/medication-record-match";
+import { refillMedication } from "@/app/(app)/medications/actions";
 import { seedActor, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
@@ -58,16 +53,6 @@ function onHand(id: number): {
     quantity_on_hand: number | null;
     last_fill_size: number | null;
   };
-}
-
-function dismissalKeys(profileId: number): string[] {
-  return (
-    db
-      .prepare(
-        "SELECT signal_key FROM upcoming_dismissals WHERE profile_id = ? ORDER BY signal_key"
-      )
-      .all(profileId) as { signal_key: string }[]
-  ).map((r) => r.signal_key);
 }
 
 describe("refillMedication (#852 item 3)", () => {
@@ -127,34 +112,5 @@ describe("refillMedication (#852 item 3)", () => {
     const res = await refillMedication(fd({ id, fill_size: 0 }));
     expect(res.ok).toBe(false);
     expect(onHand(id).quantity_on_hand).toBe(3);
-  });
-});
-
-describe("restoreMedicationRecord (#852 item 6)", () => {
-  it("drops the med-bridge dismissal so the suggestion reappears", async () => {
-    const { profile } = seedActor();
-    const key = medBridgeDismissalKey({
-      name: "Amoxicillin 500 mg",
-      canonical_name: "Amoxicillin",
-    });
-    await dismissMedicationRecord(fd({ dedupe_key: key }));
-    expect(dismissalKeys(profile.id)).toContain("med-bridge:amoxicillin");
-
-    const res = await restoreMedicationRecord(fd({ dedupe_key: key }));
-    expect(res.ok).toBe(true);
-    expect(dismissalKeys(profile.id)).toEqual([]);
-    expect(revalidate).toHaveBeenCalledWith("/medications");
-  });
-
-  it("refuses a key outside the med-bridge namespace", async () => {
-    const { profile } = seedActor();
-    // Seed a non-bridge dismissal directly; restore must not touch it.
-    db.prepare(
-      `INSERT INTO upcoming_dismissals (profile_id, signal_key, dismissed_at)
-       VALUES (?, 'dose:12', datetime('now'))`
-    ).run(profile.id);
-    const res = await restoreMedicationRecord(fd({ dedupe_key: "dose:12" }));
-    expect(res.ok).toBe(false);
-    expect(dismissalKeys(profile.id)).toEqual(["dose:12"]);
   });
 });

@@ -46,12 +46,12 @@ async function openRowMenuItemAndFollow(
 // administration row) and the /medications/[id] clinical-record detail page.
 // Fixtures come from e2e/seed-events.ts: "Adherence Refill Med (e2e)" (current
 // daily, scheduled) and "PRN Quicklog Med (e2e)" (PRN with administrations).
-// (The "From your records" bridge tests left with their fixture in #1232: no
-// current write path can produce the medical_records 'prescription' rows the
-// bridge reads — migration 092 consolidated them into intake_items — so the
-// seeded suggestions re-created a state the app can never reach. The bridge
-// actions stay covered at the action tier, lib/__action_tests__/
-// medication-bridge.actions.test.ts.)
+// (The "From your records" bridge was removed outright in #1270: migration 092
+// consolidated every medical_records 'prescription' row into intake_items, so no
+// current write path can produce the rows the bridge read — its e2e fixture went in
+// #1232, and its UI/actions/generator/action-tests in #1270. Only a stored
+// `med-bridge:` dismissal survives, labeled/cleared in the suppressed center — see
+// e2e/suppressed-center.spec.ts.)
 
 test("Today panel leads with a due scheduled dose and a PRN administration row", async ({
   page,

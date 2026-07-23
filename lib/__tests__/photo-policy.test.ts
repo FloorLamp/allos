@@ -9,7 +9,10 @@ import {
   resolvePhotoDate,
   PHOTO_MAX_EDGE,
   PHOTO_THUMB_EDGE,
+  MAX_PHOTO_BYTES,
+  sniffImageMime,
 } from "../photo/policy";
+import { MAX_AVATAR_BYTES } from "../profile-photo";
 import { normalizePose, PROGRESS_POSES } from "../progress-photos";
 
 describe("fitWithin", () => {
@@ -69,6 +72,34 @@ describe("resolvePhotoDate", () => {
   it("defaults to today when nothing else is valid", () => {
     expect(resolvePhotoDate(null, null, TODAY)).toBe(TODAY);
     expect(resolvePhotoDate("garbage", "also-garbage", TODAY)).toBe(TODAY);
+  });
+});
+
+// #1284: the upload cap + magic-byte sniff are shared photo-capture policy, owned by
+// lib/photo/policy.ts (not an unrelated single-domain module), and DISTINCT from the
+// tighter profile-avatar cap.
+describe("photo-capture upload policy (#1284)", () => {
+  it("MAX_PHOTO_BYTES is the 15 MB capture cap, distinct from the 5 MB avatar cap", () => {
+    expect(MAX_PHOTO_BYTES).toBe(15 * 1024 * 1024);
+    expect(MAX_AVATAR_BYTES).toBe(5 * 1024 * 1024);
+    expect(MAX_PHOTO_BYTES).not.toBe(MAX_AVATAR_BYTES);
+  });
+
+  it("sniffImageMime derives the mime from magic bytes, rejecting non-images", () => {
+    expect(sniffImageMime(Buffer.from([0xff, 0xd8, 0xff, 0x00]))).toBe(
+      "image/jpeg"
+    );
+    expect(sniffImageMime(Buffer.from([0x89, 0x50, 0x4e, 0x47]))).toBe(
+      "image/png"
+    );
+    expect(sniffImageMime(Buffer.from("GIF89a"))).toBe("image/gif");
+    const webp = Buffer.concat([
+      Buffer.from("RIFF"),
+      Buffer.alloc(4),
+      Buffer.from("WEBP"),
+    ]);
+    expect(sniffImageMime(webp)).toBe("image/webp");
+    expect(sniffImageMime(Buffer.from("not an image"))).toBeNull();
   });
 });
 

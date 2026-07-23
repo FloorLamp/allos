@@ -118,6 +118,12 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "sweepDeletedRows: the 24h undo-holding purge is GLOBAL by design (one call per hourly tick clears every profile's expired rows), so it is intentionally profile-agnostic",
   },
   {
+    file: "lib/undo-delete-db.ts",
+    includes:
+      "SELECT payload FROM deleted_rows WHERE deleted_at < datetime('now', ?)",
+    why: "sweepDeletedRows video-file cleanup (#1290): reads the SAME expiring rows the GLOBAL purge DELETE (above) is about to remove, to unlink their orphaned clip files — profile-agnostic for the identical reason, and each captured path is then re-contained under its domain root before any unlink",
+  },
+  {
     file: "lib/offline/writes.ts",
     includes: "DELETE FROM replayed_keys WHERE created_at < datetime('now', ?)",
     why: "sweepReplayedKeys (#98): the offline-replay idempotency-ledger retention purge is GLOBAL by design (one call per hourly tick prunes every profile's expired keys by age, once past the replay-race window), so it is intentionally profile-agnostic — mirrors sweepDeletedRows",

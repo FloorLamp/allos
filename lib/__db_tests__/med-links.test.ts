@@ -1,8 +1,9 @@
 // DB INTEGRATION TIER (#1051 med↔prescriber, #1052 med↔indication). Exercises the
-// import tier-1 indication self-heal + reprocess re-derivation, the records-bridge
-// provider/source-record carry-through + the transitive "Prescribed at" chain, the
+// import tier-1 indication self-heal + reprocess re-derivation, the
 // exact-individual backfill's determinism boundary, the picker two-rows-for-one-person
 // trap, provider merge re-keying, and the row-ops NULL-out on record/condition delete.
+// (The records-bridge provider/source-record carry-through tests went with the bridge
+// removal, #1270.)
 // Deterministic: :memory: DB via setup.ts; fixed dates.
 
 import { describe, it, expect, beforeEach } from "vitest";
@@ -15,8 +16,6 @@ import { captureDelete } from "@/lib/undo-delete-db";
 import { up as backfillPrescriberLinks } from "@/lib/migrations/versions/088-backfill-prescriber-links";
 import type { PersistInput } from "@/lib/import-shape";
 import {
-  createMedicationFromRecord,
-  encounterForRecord,
   linkMedIndication,
   declineMedIndication,
   indicationSuggestionForMed,
@@ -314,69 +313,6 @@ describe("#1052 tier-2 suggest-and-accept + decline memory", () => {
   });
 });
 
-describe("#1051 records bridge carries provider_id + source_record_id", () => {
-  it("carries the record's individual provider + its OWN visit link (no source_record_id since #1178)", () => {
-    const providerId = individualProvider("Dr. Rivera");
-    const doc = newDocument(profileId);
-    // A prescription record linked to an encounter + the individual prescriber.
-    const encounterId = Number(
-      db
-        .prepare(
-          `INSERT INTO encounters (date, type, source, document_id, external_id, profile_id)
-           VALUES (?, 'Office Visit', 'Clinic', ?, 'clinic|enc1', ?)`
-        )
-        .run(DATE, doc, profileId).lastInsertRowid
-    );
-    const recordId = Number(
-      db
-        .prepare(
-          `INSERT INTO medical_records
-             (date, category, name, provider_id, encounter_id, document_id, source, profile_id)
-           VALUES (?, 'prescription', 'Amoxicillin 500 mg', ?, ?, ?, 'Clinic', ?)`
-        )
-        .run(DATE, providerId, encounterId, doc, profileId).lastInsertRowid
-    );
-    const created = createMedicationFromRecord(profileId, recordId);
-    expect(created).not.toBeNull();
-    const med = db
-      .prepare(
-        `SELECT provider_id, encounter_id FROM intake_items WHERE id = ?`
-      )
-      .get(created!.id) as {
-      provider_id: number | null;
-      encounter_id: number | null;
-    };
-    expect(med.provider_id).toBe(providerId);
-    // Since #1178 the med carries the record's OWN encounter link directly — no
-    // source_record_id chain — so "Prescribed at" resolves off the med itself.
-    expect(med.encounter_id).toBe(encounterId);
-    const via = encounterForRecord(profileId, "medication", created!.id);
-    expect(via?.id).toBe(encounterId);
-  });
-
-  it("falls back to text-resolving the prescriber when the record's provider is an org", () => {
-    const orgId = orgProvider("Sample Care East");
-    const drId = individualProvider("Dr. Rivera");
-    const doc = newDocument(profileId);
-    const recordId = Number(
-      db
-        .prepare(
-          `INSERT INTO medical_records
-             (date, category, name, notes, provider_id, document_id, source, profile_id)
-           VALUES (?, 'prescription', 'Amoxicillin', 'Prescriber: Dr. Rivera', ?, ?, 'Clinic', ?)`
-        )
-        .run(DATE, orgId, doc, profileId).lastInsertRowid
-    );
-    const created = createMedicationFromRecord(profileId, recordId);
-    const med = db
-      .prepare(`SELECT provider_id FROM intake_items WHERE id = ?`)
-      .get(created!.id) as { provider_id: number | null };
-    // The org link is NOT carried into the prescriber slot; the free-text prescriber
-    // resolves to the individual instead.
-    expect(med.provider_id).toBe(drId);
-  });
-});
-
 describe("#1051 backfill (migration 085) — determinism boundary", () => {
   it("links exact individual matches, leaves near-miss / org-typed / ambiguous / occupied", () => {
     const dr = individualProvider("Sarah Chen");
@@ -440,49 +376,6 @@ describe("#1051 provider merge re-keys the prescriber FK; text stays fallback", 
     expect(med.provider_id).toBe(keep);
     // The free-text prescriber is untouched (fallback only).
     expect(med.prescriber).toBe("Doctor Rivera");
-  });
-});
-
-describe("#1204 manual track-from-record attaches a course on a match", () => {
-  it("adds a course to the existing med instead of a duplicate item", () => {
-    const doc = newDocument(profileId);
-    // Track a first prescription → a new med.
-    const rec1 = Number(
-      db
-        .prepare(
-          `INSERT INTO medical_records (date, category, name, document_id, source, profile_id)
-           VALUES (?, 'prescription', 'Amoxicillin', ?, 'Clinic', ?)`
-        )
-        .run(DATE, doc, profileId).lastInsertRowid
-    );
-    const first = createMedicationFromRecord(profileId, rec1);
-    expect(first).not.toBeNull();
-
-    // A second prescription of the SAME drug (a later document) tracked by hand →
-    // attaches a COURSE to the existing med, not a duplicate item.
-    const doc2 = newDocument(profileId);
-    const rec2 = Number(
-      db
-        .prepare(
-          `INSERT INTO medical_records (date, category, name, document_id, source, profile_id)
-           VALUES (?, 'prescription', 'Amoxicillin 500 mg', ?, 'Clinic', ?)`
-        )
-        .run("2026-06-01", doc2, profileId).lastInsertRowid
-    );
-    const second = createMedicationFromRecord(profileId, rec2);
-    expect(second!.id).toBe(first!.id); // SAME item, not a duplicate
-
-    const items = db
-      .prepare(
-        `SELECT COUNT(*) AS n FROM intake_items
-          WHERE profile_id = ? AND kind = 'medication' AND lower(name) = 'amoxicillin'`
-      )
-      .get(profileId) as { n: number };
-    expect(items.n).toBe(1);
-    const courses = db
-      .prepare(`SELECT COUNT(*) AS n FROM medication_courses WHERE item_id = ?`)
-      .get(first!.id) as { n: number };
-    expect(courses.n).toBe(2); // the initial course + the renewal course
   });
 });
 

@@ -9,15 +9,18 @@
 
 import { db, writeTx } from "./db";
 import {
+  capturedVideoFiles,
   getKindSpec,
   parsePayload,
   remapRow,
   serializePayload,
+  type CapturedVideoFile,
   type ExternalRefSpec,
   type IdMaps,
   type MergeUndoContext,
   type Row,
 } from "./undo-delete";
+import { unlinkVideoFiles } from "./video/store";
 import { revertActivityMerge } from "./merge-activity";
 import { restoreAdministrationLog } from "./queries/intake/adherence";
 import { unlinkFollowUpsForMedicalRecord } from "./followup-write";
@@ -294,12 +297,66 @@ export function restoreDeletedRow(profileId: number, undoId: number): boolean {
 // call per hourly notify tick clears every profile's expired undo records (purged
 // means purged), so it is intentionally NOT profile-scoped (allowlisted in the
 // profile-scoping test). Returns the number of rows removed. Never throws.
+//
+// Purge-time file cleanup (#1290): a captured delete's clip FILES (activity_videos /
+// symptom_videos stored_path + poster_path) survive the delete+undo window on disk so
+// a restore re-points at them, but a purge WITHOUT a restore leaves them orphaned —
+// rows gone (unservable) yet present on disk, which the strictest-privacy tier these
+// clips sit in can't tolerate. So BEFORE the delete we read the expiring payloads and
+// collect their captured clip files, and AFTER the delete we unlink each one that no
+// LIVE row still references (content-hash dedup means a re-upload can share the file).
 export function sweepDeletedRows(maxAgeHours = 24): number {
   try {
-    return db
+    const cutoff = `-${maxAgeHours} hours`;
+
+    // Collect the captured clip/poster files of the rows about to be purged. A
+    // malformed/legacy payload (e.g. the bespoke `administration` kind) never blocks
+    // the sweep — its parse is caught and skipped.
+    const expiring = db
+      .prepare(
+        `SELECT payload FROM deleted_rows WHERE deleted_at < datetime('now', ?)`
+      )
+      .all(cutoff) as { payload: string }[];
+    const videoFiles: CapturedVideoFile[] = [];
+    for (const r of expiring) {
+      try {
+        videoFiles.push(...capturedVideoFiles(parsePayload(r.payload)));
+      } catch {
+        // an unparseable / non-registry payload carries no reclaimable video files
+      }
+    }
+
+    const changes = db
       .prepare(`DELETE FROM deleted_rows WHERE deleted_at < datetime('now', ?)`)
-      .run(`-${maxAgeHours} hours`).changes;
+      .run(cutoff).changes;
+
+    // After the holding rows are gone, unlink the now-unreferenced clip files.
+    unlinkPurgedVideoFiles(videoFiles);
+
+    return changes;
   } catch {
     return 0;
+  }
+}
+
+// Unlink the clip/poster files of purged captures, SKIPPING any path a live
+// activity_videos / symptom_videos row still references — content-hash dedup means a
+// re-upload of the identical clip after the delete re-created a live row pointing at
+// the SAME on-disk file (stored_path is content-named), so unlinking it would break a
+// live clip. The actual unlink is path-contained per domain root (unlinkVideoFiles),
+// best-effort, and never throws (the row deletes already committed). (#1290)
+function unlinkPurgedVideoFiles(files: readonly CapturedVideoFile[]): void {
+  for (const f of files) {
+    const table =
+      f.domain === "activity" ? "activity_videos" : "symptom_videos";
+    const stillLive = db.prepare(
+      `SELECT 1 FROM ${table} WHERE stored_path = ? OR poster_path = ?`
+    );
+    const toUnlink: string[] = [];
+    for (const p of [f.storedPath, f.posterPath]) {
+      if (!p) continue;
+      if (stillLive.get(p, p) === undefined) toUnlink.push(p);
+    }
+    if (toUnlink.length) unlinkVideoFiles(f.domain, toUnlink);
   }
 }

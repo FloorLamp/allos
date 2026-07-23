@@ -16,7 +16,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { db, writeTx } from "./db";
 import { isRealIsoDate } from "./date";
-import { sniffImageMime, MAX_PHOTO_BYTES } from "./symptom-photo-write";
+import { sniffImageMime, MAX_PHOTO_BYTES } from "./photo/policy";
 
 // The ONLY directory lesion photos are stored under (per-profile subdirs). A served
 // path must resolve inside this dir (the serve route's path-traversal guard).

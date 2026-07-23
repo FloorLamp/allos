@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 101 (issue #1096): the persisted multi-profile VIEW-SET on the session.
+// Migration 102 (issue #1096): the persisted multi-profile VIEW-SET on the session.
 //
 // A session already carries ONE `active_profile_id` — the single WRITE target (the
 // "acting" profile). Multi-profile VIEWING (#1096) adds a READ overlay on top of it:
@@ -34,7 +34,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 101,
-  name: "101-session-view-profiles",
+  id: 102,
+  name: "102-session-view-profiles",
   up,
 };

@@ -14,8 +14,10 @@ export const PHOTO_ROOT = path.resolve(
   "profile-photos"
 );
 
-// 5 MB — avatars are small; anything larger is almost certainly a mistake.
-export const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
+// 5 MB — avatars are small; anything larger is almost certainly a mistake. Named
+// distinctly from the photo-capture domains' MAX_PHOTO_BYTES (lib/photo/policy.ts,
+// 15 MB) so the two differently-scoped caps can never be confused (#1284).
+export const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 
 // Accepted upload types → the on-disk extension we name the file with. The
 // extension is derived from the (validated) mime, never from the client-supplied

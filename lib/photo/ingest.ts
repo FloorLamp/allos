@@ -26,13 +26,14 @@
 
 import crypto from "node:crypto";
 import sharp from "sharp";
-import { sniffImageMime, MAX_PHOTO_BYTES } from "../symptom-photo-write";
 import { readJpegExif, EMPTY_EXIF_SUMMARY } from "./exif";
 import {
   PHOTO_MAX_EDGE,
   PHOTO_THUMB_EDGE,
   PHOTO_JPEG_QUALITY,
   PHOTO_THUMB_QUALITY,
+  MAX_PHOTO_BYTES,
+  sniffImageMime,
 } from "./policy";
 
 // A processed, storage-ready photo. `bytes`/`thumbBytes` are always re-encoded

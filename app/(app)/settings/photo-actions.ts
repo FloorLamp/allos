@@ -9,7 +9,7 @@ import {
   canAccessProfile,
 } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { MAX_PHOTO_BYTES, MIME_TO_EXT, PHOTO_ROOT } from "@/lib/profile-photo";
+import { MAX_AVATAR_BYTES, MIME_TO_EXT, PHOTO_ROOT } from "@/lib/profile-photo";
 
 // Profile avatar upload/remove — one pair of actions serving two surfaces:
 // Settings → Profile (operates on the caller's ACTIVE profile) and the Family
@@ -74,11 +74,11 @@ export async function uploadProfilePhoto(
       ok: false,
       error: "Only PNG, JPEG, or WebP images are allowed.",
     };
-  if (file.size > MAX_PHOTO_BYTES)
+  if (file.size > MAX_AVATAR_BYTES)
     return {
       ok: false,
       error: `Image is too large (max ${Math.round(
-        MAX_PHOTO_BYTES / 1024 / 1024
+        MAX_AVATAR_BYTES / 1024 / 1024
       )} MB).`,
     };
 

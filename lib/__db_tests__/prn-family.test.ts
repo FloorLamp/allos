@@ -8,9 +8,7 @@
 //     dispatch through the stubbed-fetch HA channel — the prn-redose-notify harness);
 //   • the family over-max care finding (combined count vs the most conservative max)
 //     and its Upcoming twin;
-//   • the coaching-tier therapeutic-duplication note with a registry-parsing key;
-//   • the records bridge offering a different-strength suggestion and folding the
-//     same-strength one (ask 4), through the real med-data loader.
+//   • the coaching-tier therapeutic-duplication note with a registry-parsing key.
 //
 // Every value is synthetic (fake meds + a fake HA webhook URL; no phones, no PHI).
 
@@ -31,7 +29,6 @@ import {
   tierForDedupeKey,
 } from "@/lib/rule-finding-prefixes";
 import { MED_DUP_PREFIX } from "@/lib/medication-family";
-import { loadMedicationsData } from "@/app/(app)/medications/med-data";
 
 const HA_URL = "http://homeassistant.local:8123/api/webhook/allos-prn-family";
 
@@ -260,28 +257,5 @@ describe("therapeutic-duplication note (#1027 ask 3, coaching tier)", () => {
     expect(
       collectUpcoming(p, today(p)).some((u) => u.key.startsWith(MED_DUP_PREFIX))
     ).toBe(false);
-  });
-});
-
-describe("records bridge — different-strength offer (#1027 ask 4)", () => {
-  it("offers an imported 800 mg prescription as a separate item when only 200 mg is tracked; folds the same strength", () => {
-    const p = newProfile("FamBridge");
-    seedMed(p, "Ibuprofen", { amount: "200 mg" });
-    db.prepare(
-      `INSERT INTO medical_records (profile_id, date, category, name, value, unit)
-       VALUES (?, '2026-07-01', 'prescription', 'ibuprofen 800 mg tablet', NULL, NULL)`
-    ).run(p);
-    db.prepare(
-      `INSERT INTO medical_records (profile_id, date, category, name, value, unit)
-       VALUES (?, '2026-07-02', 'prescription', 'Ibuprofen 200 mg', NULL, NULL)`
-    ).run(p);
-
-    const data = loadMedicationsData(p);
-    const offers = data.bridge.filter((b) => b.strengthOffer != null);
-    expect(offers).toHaveLength(1);
-    expect(offers[0].strengthOffer).toBe("800 mg");
-    // The 200 mg record folded (already tracked at that strength) — the only
-    // surviving suggestion is the 800 mg offer.
-    expect(data.bridge).toHaveLength(1);
   });
 });

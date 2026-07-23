@@ -5,6 +5,8 @@ import {
   serializePayload,
   parsePayload,
   remapRow,
+  capturedVideoFiles,
+  VIDEO_FILE_TABLES,
   type IdMaps,
   type Row,
 } from "@/lib/undo-delete";
@@ -221,5 +223,60 @@ describe("remapRow", () => {
       { column: "course_id", ref: "courses" },
     ]);
     expect(out.course_id).toBeNull();
+  });
+});
+
+// #1290: the purge sweep must unlink a captured clip's on-disk files when its undo
+// buffer entry expires without a restore. This pure half extracts (domain, file)
+// pairs from the payload; the live-reference dedup guard + unlink is the DB tier.
+describe("capturedVideoFiles (#1290)", () => {
+  it("extracts activity_videos clip + poster paths from an activity payload", () => {
+    const payload = parsePayload(
+      serializePayload("activity", {
+        activity: [{ id: 1 }],
+        sets: [],
+        route: [],
+        video: [
+          {
+            id: 7,
+            activity_id: 1,
+            stored_path: "data/uploads/activity-videos/3/abc.mp4",
+            poster_path: "data/uploads/activity-videos/3/abc.poster.jpg",
+          },
+          {
+            id: 8,
+            activity_id: 1,
+            stored_path: "data/uploads/activity-videos/3/def.mov",
+            poster_path: null,
+          },
+        ],
+      })
+    );
+    expect(capturedVideoFiles(payload)).toEqual([
+      {
+        domain: "activity",
+        storedPath: "data/uploads/activity-videos/3/abc.mp4",
+        posterPath: "data/uploads/activity-videos/3/abc.poster.jpg",
+      },
+      {
+        domain: "activity",
+        storedPath: "data/uploads/activity-videos/3/def.mov",
+        posterPath: null,
+      },
+    ]);
+  });
+
+  it("returns nothing for a payload with no video child (a body-metric delete)", () => {
+    const payload = parsePayload(
+      serializePayload("body-metric", { metric: [{ id: 1 }] })
+    );
+    expect(capturedVideoFiles(payload)).toEqual([]);
+  });
+
+  it("maps the video-file tables to their domain (the store's DOMAIN_DIRS keys)", () => {
+    expect(VIDEO_FILE_TABLES).toEqual({
+      activity_videos: "activity",
+      symptom_videos: "symptom",
+    });
   });
 });

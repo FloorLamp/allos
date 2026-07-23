@@ -13,12 +13,12 @@ import {
   restoreDormantPrn,
 } from "./actions";
 
-// Dormant-PRN sweep card (issue #880 item 3), the RecordsBridge pattern applied to the
-// existing backlog: active PRN meds with no dose in 90+ days — the 2am ibuprofen still
-// "Current" months later. Suggest-only (#560): "Move to past" closes the course (a plain
-// stop with reason 'completed_course'; restartable any time), and each row is dismissible
-// per med with a #203 id-keyed dedupe so a waved-off suggestion stays quiet. Renders
-// nothing when there's nothing dormant. Mirrors the bridge's recoverable "dismissed (N)"
+// Dormant-PRN sweep card (issue #880 item 3), a suggest-only maintenance surface over
+// the existing backlog: active PRN meds with no dose in 90+ days — the 2am ibuprofen
+// still "Current" months later. Suggest-only (#560): "Move to past" closes the course (a
+// plain stop with reason 'completed_course'; restartable any time), and each row is
+// dismissible per med with a #203 id-keyed dedupe so a waved-off suggestion stays quiet.
+// Renders nothing when there's nothing dormant, with a recoverable "dismissed (N)"
 // disclosure.
 export default function DormantPrnSweep({
   suggestions,

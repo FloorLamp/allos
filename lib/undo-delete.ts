@@ -441,3 +441,52 @@ export function remapRow(row: Row, idMaps: IdMaps, fks: FkSpec[]): Row {
   }
   return out;
 }
+
+// ── Purge-time file cleanup (issue #1290) ──────────────────────────────────────
+// A captured delete's on-disk clip FILES (activity_videos / symptom_videos
+// stored_path + poster_path) deliberately survive the delete+undo window untouched
+// so a restore re-points at the same file (#1224). But when the holding row
+// EXPIRES and is purged WITHOUT a restore, that file loses its last justification —
+// its row is gone (unservable) yet it lingers on disk, which matters for the
+// strictest-privacy tier these clips sit in. The purge sweep must therefore unlink
+// the captured files (the row-ops "undo inverts the side effect" rule, #199/#200,
+// applied at the purge — the point the side effect can no longer be inverted).
+//
+// This pure half maps a payload's captured video-table rows to their (domain, file
+// path) pairs; the impure sweep (lib/undo-delete-db.ts) applies the content-hash
+// dedup guard — skip a path a LIVE row still references — and the path-contained
+// unlink. Video-file tables are named here (not imported from the impure
+// lib/video/store) so this module stays free of fs.
+
+// entity.table → the video domain its files live under (lib/video/store's DOMAIN_DIRS).
+export const VIDEO_FILE_TABLES: Record<string, "activity" | "symptom"> = {
+  activity_videos: "activity",
+  symptom_videos: "symptom",
+};
+
+export interface CapturedVideoFile {
+  domain: "activity" | "symptom";
+  storedPath: string | null;
+  posterPath: string | null;
+}
+
+// The clip/poster files captured in a payload (empty for a kind with no video child).
+// Pure — walks the kind spec to map each video entity's rows to their stored paths.
+export function capturedVideoFiles(payload: Payload): CapturedVideoFile[] {
+  const spec = getKindSpec(payload.kind);
+  const out: CapturedVideoFile[] = [];
+  for (const entity of spec.entities) {
+    const domain = VIDEO_FILE_TABLES[entity.table];
+    if (!domain) continue;
+    for (const row of payload.rows[entity.entity] ?? []) {
+      out.push({
+        domain,
+        storedPath:
+          typeof row.stored_path === "string" ? row.stored_path : null,
+        posterPath:
+          typeof row.poster_path === "string" ? row.poster_path : null,
+      });
+    }
+  }
+  return out;
+}

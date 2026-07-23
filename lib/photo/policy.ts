@@ -23,6 +23,56 @@ export const PHOTO_THUMB_QUALITY = 78;
 // Client-side canvas re-encode quality (0-1 for canvas.toBlob).
 export const PHOTO_CLIENT_QUALITY = 0.85;
 
+// Upload byte cap shared by every photo-capture domain (#1284): a phone snapshot is
+// well under this; anything larger is a mistake or abuse. This is the ONE place the
+// ceiling lives so the domain ingests (lib/photo/ingest.ts, lib/symptom-photo-write.ts,
+// lib/skin-photo-write.ts) can't drift — and it is DISTINCT from the profile-avatar cap
+// (lib/profile-photo.ts MAX_AVATAR_BYTES, 5 MB), which is deliberately tighter.
+export const MAX_PHOTO_BYTES = 15 * 1024 * 1024;
+
+// Image types accepted, keyed by the magic-byte sniff below. The stored mime is
+// SERVER-derived (sniffed here), never the client-declared one, so a mislabeled file
+// can't smuggle a non-image through (the medical-pipeline #27 posture). Pure byte
+// inspection, so it belongs in this shared policy module alongside the size cap (#1284).
+const IMAGE_SNIFFERS: { mime: string; test: (b: Buffer) => boolean }[] = [
+  {
+    mime: "image/jpeg",
+    test: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
+  },
+  {
+    mime: "image/png",
+    test: (b) =>
+      b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47,
+  },
+  {
+    mime: "image/gif",
+    test: (b) =>
+      b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38,
+  },
+  {
+    mime: "image/webp",
+    test: (b) =>
+      b.length >= 12 &&
+      b.toString("ascii", 0, 4) === "RIFF" &&
+      b.toString("ascii", 8, 12) === "WEBP",
+  },
+  {
+    mime: "image/heic",
+    test: (b) =>
+      b.length >= 12 &&
+      b.toString("ascii", 4, 12).startsWith("ftyp") &&
+      /hei[cf]|mif1|msf1/.test(b.toString("ascii", 8, 16)),
+  },
+];
+
+// The server-derived image mime, or null when the bytes aren't a recognized image.
+export function sniffImageMime(buffer: Buffer): string | null {
+  for (const s of IMAGE_SNIFFERS) {
+    if (s.test(buffer)) return s.mime;
+  }
+  return null;
+}
+
 // Fit width×height inside a maxEdge box, preserving aspect ratio, never
 // enlarging. Dimensions are rounded and floored at 1px.
 export function fitWithin(

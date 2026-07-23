@@ -15,6 +15,10 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { db, writeTx } from "./db";
 import { isRealIsoDate } from "./date";
+// The upload byte cap + magic-byte sniff are shared photo-capture policy (#1284) —
+// one definition in lib/photo/policy.ts so this domain, lib/skin-photo-write.ts, and
+// the shared lib/photo/ingest.ts can never disagree on size/type acceptance.
+import { MAX_PHOTO_BYTES, sniffImageMime } from "./photo/policy";
 
 // The ONLY directory symptom photos are stored under (per-profile subdirs). A served
 // path must resolve inside this dir (the serve route's path-traversal guard).
@@ -24,51 +28,6 @@ export const SYMPTOM_PHOTO_DIR = path.join(
   "uploads",
   "symptom-photos"
 );
-
-// A rash photo is a phone snapshot — cap well under the medical-doc ceiling.
-export const MAX_PHOTO_BYTES = 15 * 1024 * 1024;
-
-// Image types accepted, keyed by the magic-byte sniff below. The stored mime is
-// SERVER-derived (sniffed), never the client-declared one, so a mislabeled file can't
-// smuggle a non-image through (the medical-pipeline #27 posture).
-const IMAGE_SNIFFERS: { mime: string; test: (b: Buffer) => boolean }[] = [
-  {
-    mime: "image/jpeg",
-    test: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
-  },
-  {
-    mime: "image/png",
-    test: (b) =>
-      b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47,
-  },
-  {
-    mime: "image/gif",
-    test: (b) =>
-      b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38,
-  },
-  {
-    mime: "image/webp",
-    test: (b) =>
-      b.length >= 12 &&
-      b.toString("ascii", 0, 4) === "RIFF" &&
-      b.toString("ascii", 8, 12) === "WEBP",
-  },
-  {
-    mime: "image/heic",
-    test: (b) =>
-      b.length >= 12 &&
-      b.toString("ascii", 4, 12).startsWith("ftyp") &&
-      /hei[cf]|mif1|msf1/.test(b.toString("ascii", 8, 16)),
-  },
-];
-
-// The server-derived image mime, or null when the bytes aren't a recognized image.
-export function sniffImageMime(buffer: Buffer): string | null {
-  for (const s of IMAGE_SNIFFERS) {
-    if (s.test(buffer)) return s.mime;
-  }
-  return null;
-}
 
 function safeName(name: string): string {
   return (
