@@ -6,6 +6,10 @@ import PageContainer from "@/components/PageContainer";
 import FitnessTestTimer from "@/components/activity-form/FitnessTestTimer";
 import FitnessDomainBars from "@/components/FitnessDomainBars";
 import { TONE_TILE } from "@/components/fitness-heat";
+import {
+  FitnessDomainGlyph,
+  FitnessPictogram,
+} from "@/components/fitness-pictograms";
 import type { WeightUnit } from "@/lib/settings";
 import {
   BIG_LIFT_OPTIONS,
@@ -202,11 +206,27 @@ function Tile({
       } ${tile.stale ? "opacity-60 grayscale-[0.4]" : ""}`}
     >
       <div className="flex items-start justify-between gap-1">
-        <span className="text-sm font-semibold leading-tight">
-          {tile.label}
-        </span>
-        <span className="shrink-0 rounded bg-black/5 px-1 py-0.5 text-xs uppercase tracking-wide opacity-70 dark:bg-white/10">
-          {DOMAIN_LABEL[tile.domain] ?? tile.domain}
+        <div className="flex min-w-0 items-start gap-1.5">
+          {/* Decorative per-test figure (#1253) — currentColor, so the tile's tone
+              and the stale treatment color it; the text label stays the name. */}
+          <FitnessPictogram
+            testKey={tile.key}
+            className="h-6 w-6 shrink-0 opacity-80 sm:h-7 sm:w-7"
+          />
+          <span className="text-sm font-semibold leading-tight">
+            {tile.label}
+          </span>
+        </div>
+        {/* Below sm the chip collapses to its glyph + a title, with the text kept
+            for AT (sr-only) — the 2-col tiles are too narrow for glyph AND text. */}
+        <span
+          className="inline-flex shrink-0 items-center gap-1 rounded bg-black/5 px-1 py-0.5 text-xs uppercase tracking-wide opacity-70 dark:bg-white/10"
+          title={DOMAIN_LABEL[tile.domain] ?? tile.domain}
+        >
+          <FitnessDomainGlyph domain={tile.domain} className="h-3 w-3" />
+          <span className="sr-only sm:not-sr-only">
+            {DOMAIN_LABEL[tile.domain] ?? tile.domain}
+          </span>
         </span>
       </div>
 
@@ -356,8 +376,15 @@ function EntryModal({
         onClick={(e) => e.stopPropagation()}
         className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-black/10 bg-white p-4 shadow-xl dark:border-white/10 dark:bg-slate-900 sm:rounded-2xl"
       >
-        <div className="mb-2 flex items-baseline justify-between gap-2">
-          <h3 className="text-base font-semibold">{def.label}</h3>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            {/* The same figure as the tile — one keyed lookup, no second mapping. */}
+            <FitnessPictogram
+              testKey={def.key}
+              className="h-8 w-8 shrink-0 text-slate-500 dark:text-slate-400"
+            />
+            <h3 className="text-base font-semibold">{def.label}</h3>
+          </div>
           <button
             type="button"
             onClick={onClose}

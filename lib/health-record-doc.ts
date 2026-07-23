@@ -9,7 +9,7 @@ import {
 import { getCanonicalVocabulary } from "./queries";
 import {
   buildCanonicalIndex,
-  snapCanonicalName,
+  snapCanonicalNameIntoBatch,
   distinguishVitaminDIsoform,
 } from "./canonical-name";
 import { createLogger } from "./log";
@@ -64,7 +64,10 @@ export function persistHealthRecordDoc(
     // The tiny LOINC map alone covers only a handful of vitals.
     const canonicalIndex = buildCanonicalIndex(getCanonicalVocabulary());
     for (const r of parsed.records) {
-      r.canonical = snapCanonicalName(
+      // Batch-aware: a vocabulary miss claims its key in this batch's index, so
+      // two spellings of one analyte within one import collapse onto the first
+      // instead of both registering (and splitting the series).
+      r.canonical = snapCanonicalNameIntoBatch(
         distinguishVitaminDIsoform(r.canonical, r.name),
         canonicalIndex
       );

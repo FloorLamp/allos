@@ -1,6 +1,7 @@
 import type { Pillar } from "@/lib/healthspan-pillars";
 import {
   PILLAR_TONE_CLASS,
+  PillarToneBadge,
   TrendArrow,
 } from "@/components/dashboard/HealthspanPillarsWidget";
 
@@ -14,13 +15,17 @@ export default function PillarStat({ pillar }: { pillar: Pillar }) {
     <div
       className="flex flex-col rounded-lg border border-black/10 p-2.5 dark:border-white/10"
       data-testid={`longevity-pillar-${pillar.key}`}
+      data-tone={pillar.tone}
     >
       <span className="section-label">{pillar.label}</span>
-      <span
-        className={`mt-1 text-lg font-bold tabular-nums ${PILLAR_TONE_CLASS[pillar.tone]}`}
-        data-testid={`longevity-pillar-${pillar.key}-value`}
-      >
-        {pillar.value}
+      <span className="mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+        <span
+          className={`text-lg font-bold tabular-nums ${PILLAR_TONE_CLASS[pillar.tone]}`}
+          data-testid={`longevity-pillar-${pillar.key}-value`}
+        >
+          {pillar.value}
+        </span>
+        <PillarToneBadge tone={pillar.tone} />
       </span>
       <span className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
         {pillar.detail}

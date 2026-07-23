@@ -4,7 +4,11 @@ import {
   IconArrowDownRight,
   IconMinus,
 } from "@tabler/icons-react";
-import type { Pillar, PillarTone } from "@/lib/healthspan-pillars";
+import {
+  PILLAR_TONE_LABEL,
+  type Pillar,
+  type PillarTone,
+} from "@/lib/healthspan-pillars";
 import WidgetHeader from "./WidgetHeader";
 
 // Dashboard healthspan-pillars widget (issue #161): a row of evidence-backed
@@ -24,6 +28,31 @@ export const PILLAR_TONE_CLASS: Record<PillarTone, string> = {
   bad: "text-rose-600 dark:text-rose-400",
   neutral: "text-slate-700 dark:text-slate-200",
 };
+
+const PILLAR_TONE_BADGE_CLASS: Record<PillarTone, string> = {
+  good: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
+  warn: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
+  bad: "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300",
+  neutral: "",
+};
+
+// The non-color channel for a pillar's judgment (WCAG 1.4.1, issue #1220): the
+// PILLAR_TONE_LABEL text as a chip beside the colored value, mirroring the
+// sibling ActiveProtocolWidget's "On track / Behind" badges. Renders nothing for
+// `neutral` (no judgment → nothing to announce). Shared by this widget AND the
+// Longevity page's PillarStat, like the tone/trend atoms above.
+export function PillarToneBadge({ tone }: { tone: PillarTone }) {
+  const label = PILLAR_TONE_LABEL[tone];
+  if (!label) return null;
+  return (
+    <span
+      className={`badge ${PILLAR_TONE_BADGE_CLASS[tone]}`}
+      data-testid="pillar-tone-badge"
+    >
+      {label}
+    </span>
+  );
+}
 
 export function TrendArrow({ pillar }: { pillar: Pillar }) {
   if (!pillar.trend) return null;
@@ -56,13 +85,17 @@ export default function HealthspanPillarsWidget({
             href={p.href}
             className="flex flex-col rounded-lg border border-black/10 p-2.5 transition hover:border-brand-300 dark:border-white/10 dark:hover:border-brand-700"
             data-testid={`pillar-${p.key}`}
+            data-tone={p.tone}
           >
             <span className="section-label">{p.label}</span>
-            <span
-              className={`mt-1 text-lg font-bold tabular-nums ${PILLAR_TONE_CLASS[p.tone]}`}
-              data-testid={`pillar-${p.key}-value`}
-            >
-              {p.value}
+            <span className="mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+              <span
+                className={`text-lg font-bold tabular-nums ${PILLAR_TONE_CLASS[p.tone]}`}
+                data-testid={`pillar-${p.key}-value`}
+              >
+                {p.value}
+              </span>
+              <PillarToneBadge tone={p.tone} />
             </span>
             <span className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
               {p.detail}

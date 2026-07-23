@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { IconCaretUpFilled, IconCaretDownFilled } from "@tabler/icons-react";
 import ActivityIcon from "@/components/ActivityIcon";
-import { flagTone } from "@/lib/reference-range";
+import { flagLabel, flagTone } from "@/lib/reference-range";
 import type { AppRoute } from "@/lib/hrefs";
 
 export function PageHeader({
@@ -137,22 +137,33 @@ export function MedicalValue({
 }) {
   // Arrow direction: clinical high / above-optimal point up; low / below-optimal
   // point down. Legacy directionless "non-optimal" gets no arrow (re-derives to a
-  // directional flag on the next reconcile).
+  // directional flag on the next reconcile). The caret is decorative (aria-hidden):
+  // the sr-only flagLabel beside it is the text equivalent (WCAG 1.4.1, issue
+  // #1220) — the caret's direction is a shape, but the red-vs-amber SEVERITY
+  // (High vs Above optimal) was color-only, and the old icon-level aria-label
+  // ("above target") flattened both to one phrase.
   const up = flag === "high" || flag === "non-optimal-high";
   const down = flag === "low" || flag === "non-optimal-low";
   return (
     <span className={medicalValueClass(flag)}>
       {value ?? "—"} {unit ?? ""}
-      {up ? (
-        <IconCaretUpFilled
-          aria-label="above target"
-          className="ml-0.5 inline-block h-[0.85em] w-[0.85em] align-[-0.1em]"
-        />
-      ) : down ? (
-        <IconCaretDownFilled
-          aria-label="below target"
-          className="ml-0.5 inline-block h-[0.85em] w-[0.85em] align-[-0.1em]"
-        />
+      {up || down ? (
+        <>
+          {up ? (
+            <IconCaretUpFilled
+              aria-hidden
+              className="ml-0.5 inline-block h-[0.85em] w-[0.85em] align-[-0.1em]"
+            />
+          ) : (
+            <IconCaretDownFilled
+              aria-hidden
+              className="ml-0.5 inline-block h-[0.85em] w-[0.85em] align-[-0.1em]"
+            />
+          )}
+          <span className="sr-only" data-testid="medical-flag-text">
+            {flagLabel(flag)}
+          </span>
+        </>
       ) : null}
     </span>
   );

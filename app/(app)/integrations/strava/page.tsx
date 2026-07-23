@@ -10,7 +10,7 @@ import {
 } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
 import IntegrationDebugPanel from "@/components/IntegrationDebugPanel";
-import { SecretField } from "../health-connect/HealthConnectConfig";
+import { TokenRow } from "@/components/TokenRow";
 import { baseUrl, stravaCallbackUrl } from "./url";
 import {
   saveStravaCredentials,
@@ -248,11 +248,8 @@ function SetupCard({
       <h2 className="font-semibold text-slate-800 dark:text-slate-100">
         Setup
       </h2>
-      <SecretField
-        label="Authorization Callback Domain"
-        value={callbackDomain}
-      />
-      <SecretField label="Callback URL" value={callbackUrl} />
+      <TokenRow label="Authorization Callback Domain" value={callbackDomain} />
+      <TokenRow label="Callback URL" value={callbackUrl} />
       <ol className="list-decimal space-y-2 pl-5">
         <li>
           Create an application at{" "}

@@ -297,6 +297,65 @@ export async function followLink(
   }
 }
 
+// Mobile clipped-content guard (issue #1063). The app shell deliberately clips
+// horizontal overflow (`<main className="… overflow-x-clip">` in
+// app/(app)/layout.tsx), so broken phone-width layouts never page-scroll — they
+// render as INVISIBLE, unreachable content (copy/token buttons pushed off-screen).
+// That also defeats the naive `document.scrollWidth > clientWidth` check: it
+// reads 0 overflow on every page. So this asserts ELEMENT-level containment:
+// every rendered element's right edge must sit inside the viewport (+2px
+// tolerance), unless it lives inside a functioning `overflow-x: auto|scroll`
+// container that itself fits — the AGENTS.md "wide content scrolls inside its
+// own container" rule, made mechanical. Call it AFTER the page's content is
+// visible (assert a page-specific element first), with the viewport already at
+// phone width. Offenders are reported with tag/testid/class + widths so a
+// failure names the guilty element directly.
+export async function expectNoClippedContent(page: Page): Promise<void> {
+  const offenders = await page.evaluate(() => {
+    const vw = document.documentElement.clientWidth;
+    const TOL = 2;
+    const bad: string[] = [];
+    const insideWorkingScroller = (el: Element): boolean => {
+      for (let a = el.parentElement; a; a = a.parentElement) {
+        const o = getComputedStyle(a).overflowX;
+        if (o === "auto" || o === "scroll") {
+          const r = a.getBoundingClientRect();
+          // The scroll container must itself fit the viewport — a scroller that
+          // overflows just moves the problem up a level.
+          if (r.right <= vw + TOL) return true;
+        }
+      }
+      return false;
+    };
+    for (const el of Array.from(document.body.querySelectorAll("*"))) {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue; // not rendered
+      if (r.right <= vw + TOL) continue; // fits
+      if (r.left >= vw) continue; // fully off-canvas by design (drawers, toasts)
+      const cs = getComputedStyle(el);
+      if (cs.visibility === "hidden" || cs.opacity === "0") continue;
+      if (insideWorkingScroller(el)) continue;
+      const id = el.getAttribute("data-testid");
+      const cls = typeof el.className === "string" ? el.className : "";
+      bad.push(
+        `<${el.tagName.toLowerCase()}${id ? ` data-testid="${id}"` : ""}` +
+          `${cls ? ` class="${cls.slice(0, 80)}"` : ""}> ` +
+          `right=${Math.round(r.right)} vs viewport=${vw}`
+      );
+    }
+    // Belt-and-braces: the PR #1249 document-level check too, for surfaces
+    // outside the clipping app shell (share pages, print views).
+    const doc = document.documentElement;
+    if (doc.scrollWidth > doc.clientWidth + TOL) {
+      bad.push(
+        `document scrollWidth=${doc.scrollWidth} vs clientWidth=${doc.clientWidth}`
+      );
+    }
+    return bad.slice(0, 20);
+  });
+  expect(offenders, offenders.join("\n")).toEqual([]);
+}
+
 // Playwright surfaces a click on a link that a prior iteration already navigated
 // away from as an "element is not attached to the DOM" / "detached" error. That
 // is the ONE race followLink is allowed to swallow (the next URL check passes);

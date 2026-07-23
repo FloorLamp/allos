@@ -19,6 +19,7 @@ import {
 import { writeRawPayload } from "../lib/integrations/raw-log";
 import { upsertConnection } from "../lib/integrations/connections";
 import { seedDupReviewPair } from "./dup-review-fixture";
+import { EDIT_LOCK_SIGNATURE } from "./edit-lock-fixture";
 import {
   setDashboardLayout,
   setProfileSetting,
@@ -62,6 +63,8 @@ import {
   E2E_LOGIN_NAV_MALE,
   NAV_MALE_PROFILE,
   E2E_LOGIN_HC,
+  E2E_LOGIN_MOBILE_HC,
+  MOBILE_HC_PROFILE,
   E2E_LOGIN_NOGEAR,
   E2E_LOGIN_FITNESS,
   E2E_LOGIN_FITNESS_SENIOR,
@@ -2115,6 +2118,26 @@ seedMemberLogin(E2E_LOGIN_STRAVA, stravaReauthId);
 const healthConnectId = fixtureProfileId(HEALTH_CONNECT_PROFILE);
 seedMemberLogin(E2E_LOGIN_HC, healthConnectId);
 
+// #1063 — a dedicated Health Connect profile seeded already CONNECTED with a
+// long, synthetic DB-backed token, so the mobile-overflow spec renders the
+// endpoint/token card read-only (never generating or rotating — those mutations
+// belong to the E2E_LOGIN_HC spec above and would race a concurrent reader).
+const mobileHcId = fixtureProfileId(MOBILE_HC_PROFILE);
+upsertConnection(mobileHcId, "health-connect", {
+  status: "connected",
+  config: {
+    // Synthetic 64-char token of hex characters (real generated tokens are 48
+    // hex chars), so the row is provably wider than a 360px viewport without
+    // wrapping. Deliberately LOW-entropy ("e2e0" × 16) — a random-looking hex
+    // string trips the gitleaks generic-api-key rule even when fake.
+    token: "e2e0".repeat(16),
+    tokenCreatedAt: utcSqlString(
+      new Date(clockNow().getTime() - 24 * 3600 * 1000)
+    ),
+  },
+});
+seedMemberLogin(E2E_LOGIN_MOBILE_HC, mobileHcId);
+
 // ── Nutrition trio (#974 protein gauge / #975 preferences / #976 fiber) ──────
 // A dedicated adult profile carrying everything the three nutrition surfaces read: a
 // recent weigh-in (a target to scale), this-week food servings across protein- AND
@@ -3181,10 +3204,12 @@ console.log(
 // and periodically lands ON any fixed date (it hit 06-05 on 2026-07-18 and broke CI
 // suite-wide). Compute a guaranteed-free day instead, anchored ~6 weeks back like
 // the original. Idempotent: the fixture row is re-keyed by its synthetic signature
-// (source + exact weight), so prior seeds' copies are removed wherever they landed.
+// (source + exact weight — the shared EDIT_LOCK_SIGNATURE that edit-lock-badge.spec's
+// beforeEach restores the lock by), so prior seeds' copies are removed wherever they
+// landed.
 db.prepare(
-  `DELETE FROM body_metrics WHERE profile_id = ? AND source = 'withings' AND weight_kg = 77.7`
-).run(PROFILE_ID);
+  `DELETE FROM body_metrics WHERE profile_id = ? AND source = ? AND weight_kg = ?`
+).run(PROFILE_ID, EDIT_LOCK_SIGNATURE.source, EDIT_LOCK_SIGNATURE.weightKg);
 let editLockDate = shiftDateStr(today(PROFILE_ID), -43);
 while (
   db
@@ -3195,8 +3220,13 @@ while (
 }
 db.prepare(
   `INSERT INTO body_metrics (profile_id, date, weight_kg, source, edited)
-   VALUES (?, ?, 77.7, 'withings', 1)`
-).run(PROFILE_ID, editLockDate);
+   VALUES (?, ?, ?, ?, 1)`
+).run(
+  PROFILE_ID,
+  editLockDate,
+  EDIT_LOCK_SIGNATURE.weightKg,
+  EDIT_LOCK_SIGNATURE.source
+);
 console.log(
   `e2e: seeded an edit-locked (hand-edited) Withings body-metric row on ${editLockDate} (computed cadence-free day) for the edit-lock badge (#659)`
 );

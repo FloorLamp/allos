@@ -33,6 +33,7 @@ import type {
   MedicalFlag,
   MedicalRecord,
 } from "../types";
+import type { PersistInput } from "../import-shape";
 
 // ---- Medical ----
 export type MedicalSortColumn = "name" | "panel" | "date";
@@ -957,12 +958,106 @@ export function getImmunityTiters(profileId: number): ImmunityTiter[] {
 // (qualitative). Pass `ids` to limit the scan to specific rows (e.g. a
 // just-imported batch); omit to evaluate all eligible rows. Returns the number
 // of rows whose flag changed.
+// The profile-level context both flag passes judge against: sex + birthdate /
+// stored age (age-banded ranges), reproductive status and the cycle log (#718),
+// and the canonical table preloaded as a NOCASE map. Shared by reconcileFlags and
+// its preview twin below so the two can never read different context.
+function flagReconcileProfileContext(profileId: number) {
+  const cbByName = new Map(
+    (
+      db
+        .prepare("SELECT * FROM canonical_biomarkers")
+        .all() as CanonicalBiomarker[]
+    ).map((c) => [c.name.toLowerCase(), c])
+  );
+  return {
+    cbByName,
+    ctx: {
+      sex: getUserSex(profileId),
+      birthdate: getUserBirthdate(profileId),
+      age: getStoredAge(profileId),
+      reproductiveStatus: getUserReproductiveStatus(profileId),
+      periods: listCyclePeriods(profileId),
+    },
+  };
+}
+
+// The flag values reconcileFlags is allowed to revisit — a derived/range flag. A
+// qualitative 'abnormal'/'immune' etc. from the numeric pass's view is left alone.
+const RECONCILABLE_FLAGS = new Set([
+  "normal",
+  "non-optimal",
+  "non-optimal-high",
+  "non-optimal-low",
+  "high",
+  "low",
+]);
+
+// Preview twin of reconcileFlags: derive the flags the post-commit reconcile WILL
+// write for a NOT-yet-persisted batch of records (the reprocess preview's fresh
+// extraction), mutating each record's `flag` in place. Without this, the preview
+// diff compares post-follow-up persisted rows against pre-follow-up extraction, so
+// every app-derived flag (age-banded vitals, optimal bands, titer "immune") reads
+// as a phantom "flag → none" change on a byte-identical reprocess. Same
+// eligibility gates and the same pure cores (computeFlagReconciliation /
+// computeQualitativeFlagChanges) as reconcileFlags, so preview and commit can't
+// drift.
+export function previewReconcileFlags(
+  profileId: number,
+  records: PersistInput["records"]
+): void {
+  if (records.length === 0) return;
+  const { cbByName, ctx } = flagReconcileProfileContext(profileId);
+  const numericRows = records.flatMap((r, i) =>
+    r.canonical?.trim() &&
+    r.value_num != null &&
+    (r.flag == null || RECONCILABLE_FLAGS.has(r.flag))
+      ? [
+          {
+            id: i,
+            value_num: r.value_num,
+            unit: r.unit,
+            canonical_name: r.canonical,
+            flag: r.flag,
+            date: r.date,
+            reference: r.reference_range,
+          },
+        ]
+      : []
+  );
+  const qualRows = records.flatMap((r, i) =>
+    r.value_num == null && (r.category === "lab" || r.category === "biomarker")
+      ? [
+          {
+            id: i,
+            name: r.canonical?.trim() || r.name,
+            value: r.value,
+            notes: r.notes,
+            reference: r.reference_range,
+            flag: r.flag,
+            loinc: r.loinc,
+          },
+        ]
+      : []
+  );
+  for (const c of [
+    ...computeFlagReconciliation(numericRows, cbByName, ctx),
+    ...computeQualitativeFlagChanges(qualRows),
+  ]) {
+    records[c.id].flag = c.flag as PersistInput["records"][number]["flag"];
+  }
+}
+
 export function reconcileFlags(profileId: number, ids?: number[]): number {
   // profile_id scopes every row, so an id from another profile in `ids` simply
   // can't match — the caller's list is never trusted on its own.
+  // The revisitable-flag set is the SAME constant the preview twin gates on
+  // (RECONCILABLE_FLAGS — fixed app-controlled tokens, safe to inline in SQL), so
+  // the two eligibility checks cannot drift.
+  const reconcilable = [...RECONCILABLE_FLAGS].map((f) => `'${f}'`).join(",");
   let sql = `SELECT id, value_num, unit, canonical_name, flag, date, reference_range FROM medical_records
      WHERE profile_id = ? AND canonical_name IS NOT NULL AND value_num IS NOT NULL
-       AND (flag IS NULL OR flag IN ('normal','non-optimal','non-optimal-high','non-optimal-low','high','low'))`;
+       AND (flag IS NULL OR flag IN (${reconcilable}))`;
   const args: number[] = [profileId];
   if (ids) {
     if (ids.length === 0) return 0;
@@ -981,40 +1076,13 @@ export function reconcileFlags(profileId: number, ids?: number[]): number {
     }[]
   ).map((r) => ({ ...r, reference: r.reference_range }));
 
-  // Sex + age context: age-banded ranges are judged against the subject's age on
-  // each record's own collection date (from the birthdate), so read the profile's
-  // birthdate/stored-age once and let computeFlagReconciliation derive per-row age.
-  const sex = getUserSex(profileId);
-  const birthdate = getUserBirthdate(profileId);
-  const storedAge = getStoredAge(profileId);
-  // Reproductive status (female physiology only) overrides the age proxy for the
-  // reproductive hormones — a profile-level attribute applied to all its records.
-  const reproductiveStatus = getUserReproductiveStatus(profileId);
-  // The profile's logged menstrual periods (#718): computeFlagReconciliation derives
-  // each hormone record's cycle phase from its own collection date, refining the range
-  // above the coarse status proxy. Empty for a profile with no cycle log (→ unchanged).
-  const periods = listCyclePeriods(profileId);
-  // Preload the whole canonical table into a case-insensitive map so the loop is a
-  // hash lookup, not a per-record `SELECT ... COLLATE NOCASE` (N+1). Mirrors the
-  // boot-time reconcileNonOptimalFlags in lib/db.ts. The canonical PK is NOCASE and
-  // biomarker names are ASCII, so lowercasing keys matches SQLite's NOCASE compare.
-  const cbByName = new Map(
-    (
-      db
-        .prepare("SELECT * FROM canonical_biomarkers")
-        .all() as CanonicalBiomarker[]
-    ).map((c) => [c.name.toLowerCase(), c])
-  );
+  // Sex/age/cycle context + the preloaded canonical map — shared with the preview
+  // twin (flagReconcileProfileContext) so both judge against identical context.
+  const { cbByName, ctx } = flagReconcileProfileContext(profileId);
 
   // The per-row flag-derivation is the pure shared decision (lib/flag-reconcile),
   // so this and the boot-time reconcile in lib/db.ts stay in lock-step.
-  const changes = computeFlagReconciliation(rows, cbByName, {
-    sex,
-    birthdate,
-    age: storedAge,
-    reproductiveStatus,
-    periods,
-  });
+  const changes = computeFlagReconciliation(rows, cbByName, ctx);
   // Qualitative pass (#549): the numeric reconcile above bails on value_num IS NULL,
   // so a qualitative value's extractor-guessed flag is never revisited. Route those
   // rows through the shared classifier — promote a durable-immunity titer to "immune"

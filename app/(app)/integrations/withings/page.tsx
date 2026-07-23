@@ -13,7 +13,7 @@ import {
 } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
 import IntegrationDebugPanel from "@/components/IntegrationDebugPanel";
-import { SecretField } from "../health-connect/HealthConnectConfig";
+import { TokenRow } from "@/components/TokenRow";
 import { withingsCallbackUrl } from "./url";
 import {
   saveWithingsCredentials,
@@ -247,7 +247,7 @@ function SetupCard({ callbackUrl }: { callbackUrl: string }) {
       <h2 className="font-semibold text-slate-800 dark:text-slate-100">
         Setup
       </h2>
-      <SecretField label="Callback URI" value={callbackUrl} />
+      <TokenRow label="Callback URI" value={callbackUrl} />
       <ol className="list-decimal space-y-2 pl-5">
         <li>
           Register an application in the{" "}

@@ -124,11 +124,9 @@ test("recent labs keeps dates intact and makes every result direction explicit",
     .getByTestId("dashboard-widget-recent-labs");
 
   await expect(recentLabs).toHaveClass(/lg:col-span-3/);
-  await expect(
-    recentLabs.locator(
-      '[aria-label="above target"], [aria-label="below target"]'
-    )
-  ).not.toHaveCount(0);
+  // Each directional caret carries a text equivalent (sr-only flagLabel) rather
+  // than an icon-level aria-label — the #1220 non-color channel.
+  await expect(recentLabs.getByTestId("medical-flag-text")).not.toHaveCount(0);
   await expect(
     recentLabs.getByTestId("recent-lab-status").filter({ hasText: "Abnormal" })
   ).toHaveCount(1);
