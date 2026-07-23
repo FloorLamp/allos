@@ -74,8 +74,8 @@ export default function LoginTelegramSettings({
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
-        Reminders for every profile you manage arrive in this Telegram chat, with
-        one-tap “taken” buttons. Find your chat id at{" "}
+        Reminders for every profile you manage arrive in this Telegram chat,
+        with one-tap “taken” buttons. Find your chat id at{" "}
         <code>api.telegram.org/bot&lt;token&gt;/getUpdates</code>.
       </p>
 
@@ -84,9 +84,9 @@ export default function LoginTelegramSettings({
           className="text-xs text-amber-600 dark:text-amber-400"
           data-testid="notify-review-needed"
         >
-          Please review your Telegram chat — it was moved from a per-profile
-          setting and we couldn’t pick one automatically. Confirm the chat id
-          below and save.
+          Review your Telegram chat — it was moved from a per-profile setting
+          and couldn’t be picked automatically. Confirm the chat id below and
+          save.
         </p>
       )}
 

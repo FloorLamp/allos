@@ -351,8 +351,7 @@ export async function saveProfileNotifyMute(
   const profileId = Number(formData.get("profile_id"));
   if (!Number.isInteger(profileId) || !canAccessProfile(session, profileId))
     return { ok: false };
-  const muted =
-    formData.get("muted") === "on" || formData.get("muted") === "1";
+  const muted = formData.get("muted") === "on" || formData.get("muted") === "1";
   setProfileMutedForLogin(session.login.id, profileId, muted);
   revalidatePath("/settings/notifications");
   return { ok: true };

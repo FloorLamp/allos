@@ -10,6 +10,7 @@
 // configured gets the food nudge via Telegram ONLY, while other kinds still reach push.
 
 import { vi, describe, it, expect, beforeAll, beforeEach } from "vitest";
+import { seedLoginTelegram } from "./fixtures";
 
 // Stub the two network surfaces (Telegram send + web-push) so dispatch() exercises the
 // real channel routing without any I/O.
@@ -54,24 +55,26 @@ beforeAll(() => {
 
   // Channel 1 — Telegram: a global bot token + this profile's enabled flag + chat id.
   setSetting("telegram_bot_token", "test-bot-token");
-  setProfileSetting(profileId, "telegram_enabled", "1");
-  setProfileSetting(profileId, "telegram_chat_id", "5550100");
-
-  // Channel 2 — Web Push: instance VAPID keys + a subscription owned by an admin login
-  // (admins reach every profile, so the subscription is entitled to this profile).
+  seedLoginTelegram(profileId, "5550100");
+  // Channel 2 — Web Push: instance VAPID keys + a subscription owned by a login
+  // GRANTED this profile (issue #1072: the push audience is explicit grants, no
+  // admin-bypass — an entitled subscription needs a real login_profiles grant).
   setSetting("vapid_public_key", "test-public");
   setSetting("vapid_private_key", "test-private");
-  const adminId = Number(
+  const managerId = Number(
     db
       .prepare(
-        "INSERT INTO logins (username, password_hash, role) VALUES ('food-admin', 'x', 'admin')"
+        "INSERT INTO logins (username, password_hash, role) VALUES ('food-manager', 'x', 'member')"
       )
       .run().lastInsertRowid
   );
   db.prepare(
+    "INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'write')"
+  ).run(managerId, profileId);
+  db.prepare(
     `INSERT INTO push_subscriptions (endpoint, login_id, p256dh, auth)
      VALUES ('https://push.example/ep-1', ?, 'p', 'a')`
-  ).run(adminId);
+  ).run(managerId);
 });
 
 beforeEach(() => {

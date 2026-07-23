@@ -10,10 +10,7 @@ import {
 } from "@/lib/notifications/home-assistant-core";
 import { isPushDeliverableKind } from "@/lib/notifications/push-core";
 import { saveHomeAssistantNotifyKinds } from "../profile/actions";
-import {
-  savePushNotifyKinds,
-  saveLoginTelegramNotifyKinds,
-} from "../actions";
+import { savePushNotifyKinds, saveLoginTelegramNotifyKinds } from "../actions";
 
 // The kind × channel matrix (#928) — the Notifications tab's centerpiece. Rows are
 // notification kinds, columns are the three channels, so "which messages reach me

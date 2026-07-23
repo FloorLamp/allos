@@ -75,7 +75,11 @@ export function setLoginTelegram(
   cfg: { telegramEnabled: boolean; telegramChatId: string }
 ): LoginTelegram {
   writeTx(() => {
-    setLoginSetting(loginId, "telegram_enabled", cfg.telegramEnabled ? "1" : "0");
+    setLoginSetting(
+      loginId,
+      "telegram_enabled",
+      cfg.telegramEnabled ? "1" : "0"
+    );
     setLoginSetting(loginId, "telegram_chat_id", cfg.telegramChatId.trim());
   });
   return getLoginTelegram(loginId);
@@ -279,8 +283,7 @@ export function getProfilesByTelegramChatId(chatId: string): number[] {
 
 // Merged view (global bot config + this login's delivery channel), for the
 // settings page and the "send test" path.
-export interface NotificationConfig
-  extends TelegramBotConfig, LoginTelegram {}
+export interface NotificationConfig extends TelegramBotConfig, LoginTelegram {}
 
 export function getNotificationConfig(loginId: number): NotificationConfig {
   return { ...getTelegramBotConfig(), ...getLoginTelegram(loginId) };

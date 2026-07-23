@@ -28,7 +28,7 @@ import {
 import { getFoodServingsOnDate } from "@/lib/queries";
 import { handleCallbackQuery } from "@/lib/notifications/telegram-callbacks";
 import { answerCallbackQuery } from "@/lib/notifications/telegram-api";
-import { seedProfile, type SeededProfile } from "./fixtures";
+import { seedProfile, type SeededProfile, seedLoginTelegram } from "./fixtures";
 
 const answerMock = vi.mocked(answerCallbackQuery);
 const OWN_CHAT = "5550100";
@@ -58,8 +58,7 @@ beforeAll(() => {
   p = seedProfile("tg-food");
   t = today(p.profileId);
   // Map the profile to a Telegram chat so inbound taps resolve to it.
-  setProfileSetting(p.profileId, "telegram_chat_id", OWN_CHAT);
-  setProfileSetting(p.profileId, "telegram_enabled", "1");
+  seedLoginTelegram(p.profileId, OWN_CHAT);
 });
 
 beforeEach(() => {

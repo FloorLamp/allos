@@ -124,83 +124,81 @@ export default function ProfileNotificationSettings({
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
-        When this person’s reminders are sent. These times apply to every channel
-        they’re delivered on (Telegram, web push, Home Assistant). Connect a
-        Telegram chat under <em>This login</em> above.
+        When this person’s reminders are sent. These times apply to every
+        channel they’re delivered on (Telegram, web push, Home Assistant).
+        Connect a Telegram chat under <em>This login</em> above.
       </p>
 
       <>
-          {/* Food logging (#682) — a morning/midday/evening nudge with one-tap
+        {/* Food logging (#682) — a morning/midday/evening nudge with one-tap
               buttons for your most-eaten foods, on the same schedule as supplement
               reminders. Hidden for a profile too young for food-group logging. */}
-          {foodLoggingRelevant && (
-            <div className="border-t border-black/5 pt-5 dark:border-white/5">
-              <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
-                <input
-                  type="checkbox"
-                  checked={foodEnabled}
-                  onChange={(e) => setFoodEnabled(e.target.checked)}
-                  className="h-4 w-4 accent-brand-600"
-                  data-testid="food-telegram-enabled"
-                />
-                Log food from Telegram
-              </label>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                A quick nudge at your supplement times with one-tap buttons for
-                your most-eaten foods. Tap to log a serving — your full food log
-                stays on the Nutrition page.
-              </p>
-            </div>
-          )}
-
-          {/* Daily mood check-in (#992) — opt-in, off by default: a gentle
-              once-daily "How are you today?" at the evening supplement hour. It
-              auto-pauses after a few ignored days and re-arms the next time a
-              check-in is logged; skipping never escalates anything. */}
+        {foodLoggingRelevant && (
           <div className="border-t border-black/5 pt-5 dark:border-white/5">
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
               <input
                 type="checkbox"
-                checked={moodEnabled}
-                onChange={(e) => setMoodEnabled(e.target.checked)}
+                checked={foodEnabled}
+                onChange={(e) => setFoodEnabled(e.target.checked)}
                 className="h-4 w-4 accent-brand-600"
-                data-testid="mood-checkin-enabled"
+                data-testid="food-telegram-enabled"
               />
-              Daily mood check-in
+              Log food from Telegram
             </label>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              A gentle once-daily &ldquo;How are you today?&rdquo; in the
-              evening with one-tap answers. It pauses itself after a few ignored
-              days and comes back when you next log a check-in — skipping is
-              always fine.
-            </p>
-            <label className="mt-3 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
-              <input
-                type="checkbox"
-                checked={moodRecap}
-                onChange={(e) => setMoodRecap(e.target.checked)}
-                className="h-4 w-4 accent-brand-600"
-                data-testid="mood-recap-enabled"
-              />
-              Mood line in the weekly recap
-            </label>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Adds a one-line summary of the week&rsquo;s check-ins to the
-              weekly recap — an average, never a score to beat.
+              A quick nudge at your supplement times with one-tap buttons for
+              your most-eaten foods. Tap to log a serving — your full food log
+              stays on the Nutrition page.
             </p>
           </div>
+        )}
 
-          {/* Schedule — an hourly cron (npm run notify) sends each slot at its hour. */}
-          <div className="border-t border-black/5 pt-5 dark:border-white/5">
-            <label className="label">Schedule</label>
-            <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
-              Run <code>npm run notify</code> hourly (cron); each slot sends at
-              its hour (this profile’s timezone).
-            </p>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-2">
-              {(
-                ["Morning", "Midday", "Evening", "Bedtime"] as SuppWindow[]
-              ).map((w) => (
+        {/* Daily mood check-in (#992) — opt-in, off by default: a gentle
+              once-daily "How are you today?" at the evening supplement hour. It
+              auto-pauses after a few ignored days and re-arms the next time a
+              check-in is logged; skipping never escalates anything. */}
+        <div className="border-t border-black/5 pt-5 dark:border-white/5">
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+            <input
+              type="checkbox"
+              checked={moodEnabled}
+              onChange={(e) => setMoodEnabled(e.target.checked)}
+              className="h-4 w-4 accent-brand-600"
+              data-testid="mood-checkin-enabled"
+            />
+            Daily mood check-in
+          </label>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            A gentle once-daily &ldquo;How are you today?&rdquo; in the evening
+            with one-tap answers. It pauses itself after a few ignored days and
+            comes back when you next log a check-in — skipping is always fine.
+          </p>
+          <label className="mt-3 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+            <input
+              type="checkbox"
+              checked={moodRecap}
+              onChange={(e) => setMoodRecap(e.target.checked)}
+              className="h-4 w-4 accent-brand-600"
+              data-testid="mood-recap-enabled"
+            />
+            Mood line in the weekly recap
+          </label>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Adds a one-line summary of the week&rsquo;s check-ins to the weekly
+            recap — an average, never a score to beat.
+          </p>
+        </div>
+
+        {/* Schedule — an hourly cron (npm run notify) sends each slot at its hour. */}
+        <div className="border-t border-black/5 pt-5 dark:border-white/5">
+          <label className="label">Schedule</label>
+          <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
+            Run <code>npm run notify</code> hourly (cron); each slot sends at
+            its hour (this profile’s timezone).
+          </p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-2">
+            {(["Morning", "Midday", "Evening", "Bedtime"] as SuppWindow[]).map(
+              (w) => (
                 <div key={w}>
                   <span className="text-xs text-slate-500 dark:text-slate-400">
                     {w} supps
@@ -246,179 +244,174 @@ export default function ProfileNotificationSettings({
                     ))}
                   </select>
                 </div>
-              ))}
-            </div>
-
-            <label className="mt-3 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
-              <input
-                type="checkbox"
-                checked={workoutEnabled}
-                onChange={(e) => setWorkoutEnabled(e.target.checked)}
-                className="h-4 w-4 accent-brand-600"
-              />
-              Workout reminder
-            </label>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Sent on the usual training schedule — {workoutSummary} — when
-              behind on the weekly routine.
-            </p>
+              )
+            )}
           </div>
 
-          {/* Morning digest — one daily summary at digest hour: anything new
+          <label className="mt-3 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+            <input
+              type="checkbox"
+              checked={workoutEnabled}
+              onChange={(e) => setWorkoutEnabled(e.target.checked)}
+              className="h-4 w-4 accent-brand-600"
+            />
+            Workout reminder
+          </label>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Sent on the usual training schedule — {workoutSummary} — when behind
+            on the weekly routine.
+          </p>
+        </div>
+
+        {/* Morning digest — one daily summary at digest hour: anything new
               about an open illness, today's what's-due list (doses, refills,
               appointments, retests, goals & more — the same list your Upcoming
               page shows, so a snooze/dismiss there quiets it here), yesterday's
               activities/adherence/weight, and anything new to look at (#1108). */}
-          <div className="border-t border-black/5 pt-5 dark:border-white/5">
-            <label className="label">Morning digest</label>
-            <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
-              A once-a-day summary at the hour below (this profile’s timezone),
-              including today’s what’s-due list. Skips sections with nothing to
-              report. Pick <em>Auto</em> to have it arrive around when you
-              usually wake.
-            </p>
-            <select
-              value={
-                digestAuto
-                  ? "auto"
-                  : digestHour == null
-                    ? ""
-                    : String(digestHour)
-              }
-              onChange={(e) => {
-                const v = e.target.value;
-                setDigestAuto(v === "auto");
-                if (v !== "auto") setDigestHour(v === "" ? null : Number(v));
-              }}
-              className="input sm:w-64"
-              aria-label="Morning digest hour"
-              data-testid="digest-hour"
-            >
-              <option value="">Off</option>
-              {/* Follow the wake time — the digest lands when you wake (#1117). */}
-              <option value="auto">{autoLabel}</option>
-              {Array.from({ length: 24 }, (_, i) => (
-                <option key={i} value={i}>
-                  {String(i).padStart(2, "0")}:00
-                </option>
-              ))}
-            </select>
+        <div className="border-t border-black/5 pt-5 dark:border-white/5">
+          <label className="label">Morning digest</label>
+          <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
+            A once-a-day summary at the hour below (this profile’s timezone),
+            including today’s what’s-due list. Skips sections with nothing to
+            report. Pick <em>Auto</em> to have it arrive around when you usually
+            wake.
+          </p>
+          <select
+            value={
+              digestAuto ? "auto" : digestHour == null ? "" : String(digestHour)
+            }
+            onChange={(e) => {
+              const v = e.target.value;
+              setDigestAuto(v === "auto");
+              if (v !== "auto") setDigestHour(v === "" ? null : Number(v));
+            }}
+            className="input sm:w-64"
+            aria-label="Morning digest hour"
+            data-testid="digest-hour"
+          >
+            <option value="">Off</option>
+            {/* Follow the wake time — the digest lands when you wake (#1117). */}
+            <option value="auto">{autoLabel}</option>
+            {Array.from({ length: 24 }, (_, i) => (
+              <option key={i} value={i}>
+                {String(i).padStart(2, "0")}:00
+              </option>
+            ))}
+          </select>
 
-            {/* Sleep summary (#1117) — opt-in, off by default. Adds a calm
+          {/* Sleep summary (#1117) — opt-in, off by default. Adds a calm
                 "how'd I sleep" section (last night vs baseline, stages, an SRI
                 note, any nap on its own line) to the morning digest. Best around
                 the wake-derived hour; the hourly tick means "the hour you usually
                 wake", not to-the-minute. */}
-            <label className="mt-3 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
-              <input
-                type="checkbox"
-                checked={sleepDigest}
-                onChange={(e) => setSleepDigest(e.target.checked)}
-                className="h-4 w-4 accent-brand-600"
-                data-testid="digest-sleep-enabled"
-              />
-              Include a sleep summary
-            </label>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              A gentle recap of last night’s sleep vs your baseline — never a
-              score to beat. Needs a sleep integration; it’s skipped when
-              there’s no recent sleep data. Arrives around your usual wake hour
-              (the reminder tick is hourly, so it’s that hour, not to the
-              minute).
-            </p>
-          </div>
+          <label className="mt-3 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+            <input
+              type="checkbox"
+              checked={sleepDigest}
+              onChange={(e) => setSleepDigest(e.target.checked)}
+              className="h-4 w-4 accent-brand-600"
+              data-testid="digest-sleep-enabled"
+            />
+            Include a sleep summary
+          </label>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            A gentle recap of last night’s sleep vs your baseline — never a
+            score to beat. Needs a sleep integration; it’s skipped when there’s
+            no recent sleep data. Arrives around your usual wake hour (the
+            reminder tick is hourly, so it’s that hour, not to the minute).
+          </p>
+        </div>
 
-          {/* Weekly recap — a once-a-week summary of the last seven days
+        {/* Weekly recap — a once-a-week summary of the last seven days
               (workouts, volume, PRs, adherence, weight, streak). */}
-          <div className="border-t border-black/5 pt-5 dark:border-white/5">
-            <label className="label">Weekly recap</label>
-            <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
-              A once-a-week summary of your last seven days, on the day and hour
-              below (this profile’s timezone). Skips weeks with nothing to
-              report.
-            </p>
-            <div className="flex flex-wrap gap-2">
+        <div className="border-t border-black/5 pt-5 dark:border-white/5">
+          <label className="label">Weekly recap</label>
+          <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
+            A once-a-week summary of your last seven days, on the day and hour
+            below (this profile’s timezone). Skips weeks with nothing to report.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <select
+              value={recapDay == null ? "" : String(recapDay)}
+              onChange={(e) =>
+                setRecapDay(
+                  e.target.value === "" ? null : Number(e.target.value)
+                )
+              }
+              className="input sm:w-40"
+              aria-label="Weekly recap day"
+            >
+              <option value="">Off</option>
+              {[
+                "Sunday",
+                "Monday",
+                "Tuesday",
+                "Wednesday",
+                "Thursday",
+                "Friday",
+                "Saturday",
+              ].map((d, i) => (
+                <option key={d} value={i}>
+                  {d}
+                </option>
+              ))}
+            </select>
+            {recapDay != null && (
               <select
-                value={recapDay == null ? "" : String(recapDay)}
-                onChange={(e) =>
-                  setRecapDay(
-                    e.target.value === "" ? null : Number(e.target.value)
-                  )
-                }
-                className="input sm:w-40"
-                aria-label="Weekly recap day"
+                value={String(recapHour)}
+                onChange={(e) => setRecapHour(Number(e.target.value))}
+                className="input sm:w-32"
+                aria-label="Weekly recap hour"
               >
-                <option value="">Off</option>
-                {[
-                  "Sunday",
-                  "Monday",
-                  "Tuesday",
-                  "Wednesday",
-                  "Thursday",
-                  "Friday",
-                  "Saturday",
-                ].map((d, i) => (
-                  <option key={d} value={i}>
-                    {d}
+                {Array.from({ length: 24 }, (_, i) => (
+                  <option key={i} value={i}>
+                    {String(i).padStart(2, "0")}:00
                   </option>
                 ))}
               </select>
-              {recapDay != null && (
-                <select
-                  value={String(recapHour)}
-                  onChange={(e) => setRecapHour(Number(e.target.value))}
-                  className="input sm:w-32"
-                  aria-label="Weekly recap hour"
-                >
-                  {Array.from({ length: 24 }, (_, i) => (
-                    <option key={i} value={i}>
-                      {String(i).padStart(2, "0")}:00
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
+            )}
           </div>
+        </div>
 
-          {/* Milestone alerts — a quiet notification when a milestone fires
+        {/* Milestone alerts — a quiet notification when a milestone fires
               (Nth workout, streak length, goal reached, adherence run). They
               are always recorded to the Timeline regardless of this toggle. */}
-          <div className="border-t border-black/5 pt-5 dark:border-white/5">
-            <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
-              <input
-                type="checkbox"
-                checked={milestonesEnabled}
-                onChange={(e) => setMilestonesEnabled(e.target.checked)}
-                className="h-4 w-4 accent-brand-600"
-              />
-              Milestone alerts
-            </label>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              A quiet note when you hit a milestone. Milestones always appear on
-              your Timeline either way.
-            </p>
-          </div>
+        <div className="border-t border-black/5 pt-5 dark:border-white/5">
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+            <input
+              type="checkbox"
+              checked={milestonesEnabled}
+              onChange={(e) => setMilestonesEnabled(e.target.checked)}
+              className="h-4 w-4 accent-brand-600"
+            />
+            Milestone alerts
+          </label>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            A quiet note when you hit a milestone. Milestones always appear on
+            your Timeline either way.
+          </p>
+        </div>
 
-          {/* Preventive-care reminders (#87) — a proactive nudge when a
+        {/* Preventive-care reminders (#87) — a proactive nudge when a
               preventive visit or screening comes due, plus its lines in the
               "what's due" digest. Due items always stay on the Upcoming page. */}
-          <div className="border-t border-black/5 pt-5 dark:border-white/5">
-            <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
-              <input
-                type="checkbox"
-                checked={preventiveEnabled}
-                onChange={(e) => setPreventiveEnabled(e.target.checked)}
-                className="h-4 w-4 accent-brand-600"
-                data-testid="preventive-enabled"
-              />
-              Preventive-care reminders
-            </label>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              A nudge (and digest lines) when a recommended checkup or screening
-              is due or overdue. Due items still appear on your Upcoming page
-              either way. Informational only — not medical advice.
-            </p>
-          </div>
+        <div className="border-t border-black/5 pt-5 dark:border-white/5">
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+            <input
+              type="checkbox"
+              checked={preventiveEnabled}
+              onChange={(e) => setPreventiveEnabled(e.target.checked)}
+              className="h-4 w-4 accent-brand-600"
+              data-testid="preventive-enabled"
+            />
+            Preventive-care reminders
+          </label>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            A nudge (and digest lines) when a recommended checkup or screening
+            is due or overdue. Due items still appear on your Upcoming page
+            either way. Informational only — not medical advice.
+          </p>
+        </div>
       </>
 
       {/* Quiet hours (#450) — the waking window for non-urgent EPISODE nudges

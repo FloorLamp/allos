@@ -126,9 +126,7 @@ export async function runEscalations(
     // The override supersedes the fan-out (per-item caregiver routing); else fan out
     // to every managing login's chat. Deduped so a chat that ALSO appears in the
     // fan-out isn't double-hit when an override matches it.
-    const targets = override
-      ? [override]
-      : fanRecipients.map((r) => r.chatId);
+    const targets = override ? [override] : fanRecipients.map((r) => r.chatId);
     if (targets.length === 0) {
       log.info("escalation skipped: no target chat", {
         profile: profileId,

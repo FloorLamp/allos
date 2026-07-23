@@ -119,6 +119,26 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   },
   {
     file: "app/(app)/settings/actions.ts",
+    fn: "saveLoginTelegram",
+    why: "login-scoped: the Telegram delivery channel belongs to the LOGIN (#1072) — chat id + enable in login_settings, not profile-owned data; a per-profile event fans out to managing logins",
+  },
+  {
+    file: "app/(app)/settings/actions.ts",
+    fn: "saveLoginTelegramNotifyKinds",
+    why: "login-scoped: persists the caller's OWN Telegram per-kind matrix column (login_settings), moved from profile to login by #1072",
+  },
+  {
+    file: "app/(app)/settings/actions.ts",
+    fn: "saveProfileNotifyMute",
+    why: "login-scoped: the caller's per-(login,profile) notification mute (#1072) — only affects THIS login's fan-out; validated against canAccessProfile so a forged id is refused, but the write is login-owned settings, not profile data",
+  },
+  {
+    file: "app/(app)/settings/actions.ts",
+    fn: "sendTestNotification",
+    why: "login-scoped: sends a test Telegram message to the caller's OWN chat (#1072), bypassing the profile fan-out — reads login_settings, writes nothing profile-owned",
+  },
+  {
+    file: "app/(app)/settings/actions.ts",
     fn: "begin2fa",
     why: "login-scoped: starts 2FA enrollment for the caller's OWN login (mints a pending TOTP secret), not profile-owned data (demo-gated, #278)",
     gate: "requireLoginWriteAccess",

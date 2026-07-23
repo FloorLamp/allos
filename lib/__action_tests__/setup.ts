@@ -140,5 +140,20 @@ vi.mock("@/lib/auth", async () => {
         .get(loginId, profileId) as { access: string | null } | undefined;
       return row?.access === "read" ? "read" : "write";
     },
+    // Faithful to prod canAccessProfile: admins reach every profile, members only
+    // their granted ones. Used by login-scoped actions that take a profile id
+    // (e.g. the #1072 per-(login,profile) notification mute) to reject a forged id.
+    canAccessProfile: (
+      session: { login: { id: number; role: string } },
+      profileId: number
+    ) => {
+      if (session.login.role === "admin") return true;
+      const row = db
+        .prepare(
+          "SELECT 1 FROM login_profiles WHERE login_id = ? AND profile_id = ?"
+        )
+        .get(session.login.id, profileId);
+      return row != null;
+    },
   };
 });

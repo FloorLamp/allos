@@ -225,7 +225,8 @@ export function seedLoginTelegram(
   const enabled = opts.enabled ?? true;
   const role = opts.role ?? "member";
   const username =
-    opts.username ?? `login_p${profileId}_${chatId}_${Math.random().toString(36).slice(2, 8)}`;
+    opts.username ??
+    `login_p${profileId}_${chatId}_${Math.random().toString(36).slice(2, 8)}`;
   const loginId = Number(
     db
       .prepare(
