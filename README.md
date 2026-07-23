@@ -138,6 +138,8 @@ Two concepts:
 
 Admins manage everyone under **Settings → Family**: add or rename profiles, create logins, reset passwords, and grant each member login access to specific profiles. Each grant is **read & write** or **read-only** — enforced on the server (every mutating action is rejected for a read-only grant), not merely hidden in the UI.
 
+When you can reach more than one profile, the **profile menu** does two jobs: tap a name to **act as** that profile (the single write target and "whose settings apply" anchor), or toggle the **eye** beside a name to add it to your **view**. Adding a second profile turns on multi-profile viewing — a thin banner strip names everyone in view, and pages that support it (starting with **Upcoming**) merge each profile's data into one list with a **subject chip** on every row (names appear only when more than one profile is in view). Each row's actions still target that row's own profile and respect its grant, so a read-only member's rows show without edit buttons; **writes are never batched across people**. Your acting profile is always in view and can't be hidden. Single-profile logins never see the banner and nothing changes.
+
 ### First profile setup
 
 A newly created profile starts with a short, page-by-page setup that can be left

@@ -240,6 +240,76 @@ export function groupAttentionForPage(
 }
 
 // ---------------------------------------------------------------------------
+// Multi-profile MERGE (issue #1096) — the Upcoming page's cross-profile view.
+// ---------------------------------------------------------------------------
+
+// An attention item tagged with the profile it belongs to. The multi-view Upcoming
+// stamps this on every item so a merged row can render its subject (#534) and its
+// per-item write can target the item's OWN profile.
+export type ProfiledUpcomingItem = UpcomingItem & { profileId: number };
+
+// One member's already-gathered attention items, plus THAT member's own "today"
+// (its timezone-local date). The date is carried per member on purpose — it is the
+// per-profile-context trap (issue #1096): a member's banding (overdue/today/week)
+// MUST be computed against its OWN today, never a shared one. Sam's dose due on his
+// local Tuesday is not "overdue" just because Mia's timezone already rolled over.
+export interface MemberAttention {
+  profileId: number;
+  today: string;
+  items: ProfiledUpcomingItem[];
+}
+
+// Absolute (context-free) within-band order for merged cross-profile items. We do
+// NOT reuse compareWithinBand here: it takes a single `today` and would evaluate one
+// member's item against another member's clock. Each member's banding is already
+// decided in its own context (below); within a merged band we only need a stable,
+// timezone-independent tiebreak — soonest due date, then risk priority, then a
+// stable id — so the merged list never reorders between renders.
+function compareMerged(
+  a: ProfiledUpcomingItem,
+  b: ProfiledUpcomingItem
+): number {
+  const ad = a.dueDate ?? "9999-12-31";
+  const bd = b.dueDate ?? "9999-12-31";
+  if (ad !== bd) return ad < bd ? -1 : 1;
+  const ap = a.priority ?? 0;
+  const bp = b.priority ?? 0;
+  if (ap !== bp) return bp - ap; // higher priority first
+  if (a.profileId !== b.profileId) return a.profileId - b.profileId;
+  return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
+}
+
+// Merge several members' attention models into ONE page-grouped view, banding EACH
+// member's items in that member's OWN today (the trap), then concatenating same-kind
+// groups and ordering within each with the absolute comparator above. The result is
+// the same AttentionPageGroup shape the single-profile page renders, so the page is
+// a formatter over this — one grouping engine, whether one profile or five (#221).
+// Empty groups are dropped; group order stays PAGE_GROUP_ORDER.
+export function mergeAttentionPageGroups(
+  members: readonly MemberAttention[]
+): AttentionPageGroup[] {
+  const byKind = new Map<PageGroupKind, ProfiledUpcomingItem[]>();
+  for (const member of members) {
+    // groupAttentionForPage bands + orders THIS member's items against THIS
+    // member's today — the per-profile computation, composed per member.
+    for (const group of groupAttentionForPage(member.items, member.today)) {
+      const arr = byKind.get(group.kind);
+      const profiled = group.items as ProfiledUpcomingItem[];
+      if (arr) arr.push(...profiled);
+      else byKind.set(group.kind, [...profiled]);
+    }
+  }
+  const groups: AttentionPageGroup[] = [];
+  for (const kind of PAGE_GROUP_ORDER) {
+    const arr = byKind.get(kind);
+    if (!arr || arr.length === 0) continue;
+    arr.sort(compareMerged);
+    groups.push({ kind, label: PAGE_GROUP_LABELS[kind], items: arr });
+  }
+  return groups;
+}
+
+// ---------------------------------------------------------------------------
 // Presentation B — the dashboard CARD (triage glance): the act-now slice only,
 // a strict SUBSET of the page's model.
 // ---------------------------------------------------------------------------

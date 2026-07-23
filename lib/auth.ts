@@ -11,6 +11,11 @@ import {
   sessionCookieOptions,
 } from "./session-cookie";
 import { isDemoMode, isDemoRestricted } from "./demo";
+import {
+  parseViewProfileIds,
+  serializeViewProfileIds,
+  toggleViewId,
+} from "./view-set";
 
 // Re-exported so existing importers (the login action, etc.) keep resolving the
 // cookie name + options from lib/auth. The single source of truth is
@@ -495,11 +500,88 @@ export function switchActiveProfile(
 
 // Switch the active profile on the current session row, after verifying the
 // login may act as it (granted, or admin). No-op-safe: an inaccessible target
-// is rejected.
+// is rejected. Switching the acting profile RESETS the view-set to single-view
+// (issue #1096: reset is simpler and least surprising than intersect) — the new
+// acting profile becomes the only viewed one until the user re-expands the view.
 export async function setActiveProfile(profileId: number): Promise<void> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return;
   const session = await getCurrentSession();
   if (!session) return;
-  switchActiveProfile(session, token, profileId);
+  if (switchActiveProfile(session, token, profileId)) {
+    // Reset the view overlay: NULL = single-view (just the new acting profile).
+    SESSION_SET_VIEW_STMT.run(null, hashToken(token));
+  }
+}
+
+// ── Multi-profile view-set (issue #1096) ──────────────────────────────────────
+//
+// The view-set is a READ overlay stored on the session row (migration 101) as JSON,
+// re-validated against grants on every read (resolveScope). It is NOT an auth check
+// — writes still target the single active profile. These helpers own only the raw
+// stored value; the grant validation on read lives in lib/scope.ts.
+
+const SESSION_VIEW_STMT = db.prepare(
+  "SELECT view_profile_ids AS raw FROM sessions WHERE token_hash = ?"
+);
+const SESSION_SET_VIEW_STMT = db.prepare(
+  "UPDATE sessions SET view_profile_ids = ? WHERE token_hash = ?"
+);
+
+// DB-callable core: the raw (UNVALIDATED) persisted view-set for a session token, or
+// [] when unset/malformed. resolveScope re-intersects it with the caller's current
+// accessible set, so this can be trusted no further than "what was stored".
+export function sessionViewProfileIds(token: string): number[] {
+  const row = SESSION_VIEW_STMT.get(hashToken(token)) as
+    { raw: string | null } | undefined;
+  return parseViewProfileIds(row?.raw ?? null);
+}
+
+// The current session's raw persisted view-set (or null when there's no cookie).
+// Passed to resolveScope/requireScope, which does the grant validation — this is
+// deliberately the UNVALIDATED stored value.
+export async function getCurrentViewProfileIds(): Promise<number[] | null> {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  if (!token) return null;
+  return sessionViewProfileIds(token);
+}
+
+// DB-callable core: persist a view-set for a session, VALIDATED against the login's
+// current grants (∩ accessible — a member can never persist an ungranted id) and
+// normalized to NULL for the single-view default. Returns the ids actually stored
+// (∩ accessible, acting-profile always retained). Split from the shell so the
+// validation is testable without a request.
+export function setSessionViewProfiles(
+  session: CurrentSession,
+  token: string,
+  rawIds: readonly number[]
+): number[] {
+  const { login, profile } = session;
+  const accessible = new Set(
+    accessibleProfiles(login.id, login.role).map((p) => p.id)
+  );
+  // Keep the acting profile always in view, then the requested ids that survive the
+  // grant intersection. A revoked/ungranted id is silently dropped here (and would
+  // be dropped again on read) — the "re-derive against current grants" stance.
+  const validated = [profile.id, ...rawIds].filter(
+    (id, i, arr) => accessible.has(id) && arr.indexOf(id) === i
+  );
+  const stored = serializeViewProfileIds(validated, profile.id);
+  SESSION_SET_VIEW_STMT.run(stored, hashToken(token));
+  return parseViewProfileIds(stored ?? null).length > 0
+    ? parseViewProfileIds(stored ?? null)
+    : [profile.id];
+}
+
+// Toggle one accessible profile in/out of the current session's view-set (the
+// banner's per-chip view toggle). Grant-validated through setSessionViewProfiles, so
+// an ungranted target is a no-op. No-op-safe when there's no live session/cookie.
+export async function toggleViewProfile(profileId: number): Promise<void> {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  if (!token) return;
+  const session = await getCurrentSession();
+  if (!session) return;
+  const current = sessionViewProfileIds(token);
+  const next = toggleViewId(current, profileId, session.profile.id);
+  setSessionViewProfiles(session, token, next);
 }

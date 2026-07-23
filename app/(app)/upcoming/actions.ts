@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireWriteAccess } from "@/lib/auth";
+import { requireWriteAccess, requireProfileWriteAccess } from "@/lib/auth";
 import { today } from "@/lib/db";
 import {
   markDoseTaken,
@@ -19,6 +19,25 @@ import { formError, formOk, type FormResult } from "@/lib/types";
 import { requireSession } from "@/lib/auth";
 import { explainFinding } from "@/lib/explain-finding";
 import type { Reason } from "@/lib/reasons";
+
+// Resolve the target profile for a per-item write on the (possibly multi-view)
+// Upcoming page (issue #1096). Every row carries its OWN profileId — on a multi-view
+// page a dose confirmed on Sam's row must write to SAM, not the acting profile — so
+// each write form posts `profile_id` and the action gates the ITEM's profile via
+// requireProfileWriteAccess (asserts reachable AND write; a read-only-granted or
+// ungranted member is bounced). With no `profile_id` (a legacy/single-view form) it
+// falls back to the active-profile requireWriteAccess gate — which also keeps the
+// write-access scanner satisfied by the literal call it recognizes. Returns the
+// gated target profile id; callers derive that member's own today() from it.
+async function gateItemProfile(formData: FormData): Promise<number> {
+  const pid = Number(formData.get("profile_id"));
+  if (pid > 0) {
+    await requireProfileWriteAccess(pid);
+    return pid;
+  }
+  const { profile } = await requireWriteAccess();
+  return profile.id;
+}
 
 // "Why is this flagged?" (issue #878, Phase 1). Narrate a finding's OWN reason payload
 // via the Light tier, or fall back to the deterministic structured rendering. Read-only
@@ -52,10 +71,10 @@ export async function explainFindingAction(
 // path the Telegram callback uses — so a dose confirmed here reflects everywhere.
 // Marking-only (never un-marks): a taken dose simply drops off the Upcoming list.
 export async function markTaken(formData: FormData): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const pid = await gateItemProfile(formData);
   const doseId = Number(formData.get("dose_id"));
   if (!doseId) return formError("Couldn't find that dose.");
-  markDoseTaken(profile.id, doseId, null, today(profile.id));
+  markDoseTaken(pid, doseId, null, today(pid));
   revalidatePath("/upcoming");
   revalidatePath("/nutrition");
   revalidatePath("/medications");
@@ -72,11 +91,11 @@ export async function markTaken(formData: FormData): Promise<FormResult> {
 export async function markPreventiveDone(
   formData: FormData
 ): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const pid = await gateItemProfile(formData);
   const ruleKey = String(formData.get("rule_key") ?? "").trim();
   if (!ruleKey || !preventiveRuleByKey(ruleKey))
     return formError("Couldn't find that preventive item.");
-  recordPreventiveDone(profile.id, ruleKey, today(profile.id));
+  recordPreventiveDone(pid, ruleKey, today(pid));
   revalidatePath("/upcoming");
   revalidatePath("/");
   return formOk();
@@ -90,10 +109,10 @@ export async function markPreventiveDone(
 export async function markCarePlanDone(
   formData: FormData
 ): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const pid = await gateItemProfile(formData);
   const id = Number(formData.get("care_plan_item_id"));
   if (!id) return formError("Couldn't find that care-plan item.");
-  markCarePlanItemDone(profile.id, id);
+  markCarePlanItemDone(pid, id);
   revalidatePath("/upcoming");
   revalidatePath("/records");
   revalidatePath("/");
@@ -107,14 +126,14 @@ export async function markCarePlanDone(
 export async function overridePreventive(
   formData: FormData
 ): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const pid = await gateItemProfile(formData);
   const ruleKey = String(formData.get("rule_key") ?? "").trim();
   const kind = String(formData.get("kind") ?? "");
   if (!ruleKey || !preventiveRuleByKey(ruleKey))
     return formError("Couldn't find that preventive item.");
   if (kind !== "declined" && kind !== "not_applicable")
     return formError("Choose an override option.");
-  setPreventiveOverride(profile.id, ruleKey, kind);
+  setPreventiveOverride(pid, ruleKey, kind);
   revalidatePath("/upcoming");
   revalidatePath("/");
   return formOk();
@@ -129,13 +148,13 @@ export async function overridePreventive(
 // another profile's row. A resolving_study_id of 0/empty records the outcome without
 // pinning a record (the field name is legacy — it carries any domain's resolving id).
 export async function resolveFollowUp(formData: FormData): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const pid = await gateItemProfile(formData);
   const carePlanItemId = Number(formData.get("care_plan_item_id"));
   const resolution = String(formData.get("resolution") ?? "");
   const resolvingStudyId = Number(formData.get("resolving_study_id")) || null;
   if (!carePlanItemId) return formError("Couldn't find that follow-up.");
   const res = resolveFollowUpCore(
-    profile.id,
+    pid,
     carePlanItemId,
     resolution,
     resolvingStudyId
@@ -158,12 +177,12 @@ export async function resolveFollowUp(formData: FormData): Promise<FormResult> {
 // (profile_id, signal_key) index so re-snoozing — or snoozing a previously-
 // dismissed item — just moves the date and clears any dismiss). Profile-scoped.
 export async function snoozeItem(formData: FormData): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const pid = await gateItemProfile(formData);
   const signalKey = String(formData.get("signal_key") ?? "").trim();
-  const until = snoozeUntil(today(profile.id), Number(formData.get("days")));
+  const until = snoozeUntil(today(pid), Number(formData.get("days")));
   if (!signalKey) return formError("Couldn't find that item.");
   if (until == null) return formError("Choose how long to snooze.");
-  snoozeFinding(profile.id, signalKey, until);
+  snoozeFinding(pid, signalKey, until);
   revalidatePath("/upcoming");
   return formOk();
 }
@@ -172,10 +191,10 @@ export async function snoozeItem(formData: FormData): Promise<FormResult> {
 // Delegates to the shared writer (upserts, clearing any snooze so a dismiss always
 // wins). Profile-scoped.
 export async function dismissItem(formData: FormData): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const pid = await gateItemProfile(formData);
   const signalKey = String(formData.get("signal_key") ?? "").trim();
   if (!signalKey) return formError("Couldn't find that item.");
-  dismissFinding(profile.id, signalKey);
+  dismissFinding(pid, signalKey);
   revalidatePath("/upcoming");
   return formOk();
 }
@@ -183,10 +202,10 @@ export async function dismissItem(formData: FormData): Promise<FormResult> {
 // Restore a snoozed/dismissed item: drop its suppression row so it reappears on
 // Upcoming immediately. Profile-scoped.
 export async function restoreItem(formData: FormData): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const pid = await gateItemProfile(formData);
   const signalKey = String(formData.get("signal_key") ?? "").trim();
   if (!signalKey) return formError("Couldn't find that item.");
-  restoreFinding(profile.id, signalKey);
+  restoreFinding(pid, signalKey);
   revalidatePath("/upcoming");
   return formOk();
 }

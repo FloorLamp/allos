@@ -28,10 +28,16 @@ export default function SnoozeDismissMenu({
   snoozeAction,
   dismissAction,
   snoozeOnly = false,
+  profileId,
 }: {
   signalKey: string;
   snoozeAction: (formData: FormData) => Promise<void>;
   dismissAction: (formData: FormData) => Promise<void>;
+  // The item's OWNING profile (issue #1096). On a multi-view surface the
+  // dismissal/snooze must land on the ITEM's profile, not the acting one, so the
+  // caller threads it and each form posts `profile_id`. Omitted (undefined) on a
+  // single-view surface, where the action falls back to the active profile.
+  profileId?: number;
   // Care-tier persistence (#700 ask 5): an OVERDUE safety follow-up resists an
   // indefinite dismiss — it can still be time-boxed-snoozed, but the Dismiss option
   // is omitted (the filter would ignore a dismiss for it anyway; hiding it here keeps
@@ -57,6 +63,9 @@ export default function SnoozeDismissMenu({
             >
               <input type="hidden" name="signal_key" value={signalKey} />
               <input type="hidden" name="days" value={opt.days} />
+              {profileId != null && (
+                <input type="hidden" name="profile_id" value={profileId} />
+              )}
               <button type="submit" role="menuitem" className={MENU_ITEM}>
                 {opt.label}
               </button>
@@ -68,6 +77,9 @@ export default function SnoozeDismissMenu({
               className="border-t border-black/5 dark:border-white/5"
             >
               <input type="hidden" name="signal_key" value={signalKey} />
+              {profileId != null && (
+                <input type="hidden" name="profile_id" value={profileId} />
+              )}
               <button
                 type="submit"
                 role="menuitem"

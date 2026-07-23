@@ -84,6 +84,11 @@ import {
   E2E_LOGIN_STRAVA,
   E2E_LOGIN_WEATHER,
   WEATHER_PROFILE,
+  E2E_LOGIN_MULTI,
+  MULTI_OWNER_PROFILE,
+  MULTI_SHARED_PROFILE,
+  MULTI_OWNER_DOSE,
+  MULTI_SHARED_DOSE,
   E2E_MEMBER_PASSWORD,
   DUP_REVIEW_PROFILE,
   EMPTY_TRAINING_PROFILE,
@@ -4966,5 +4971,42 @@ console.log(
   }
   console.log(
     `e2e: seeded weather/UV fixture — profile ${wxId} (${WEATHER_PROFILE}), day ${wxToday} (#1172)`
+  );
+}
+
+// ── Multi-profile viewing fixtures (issue #1096) ──────────────────────────────
+// A dedicated member (E2E_LOGIN_MULTI) granted TWO dedicated profiles, both WRITE,
+// each with one due-today supplement dose. The multi-view spec toggles the second
+// profile into the view-set on /upcoming and confirms a CROSS-PROFILE dose — an
+// isolated fixture so that persistent write never races the shared household specs.
+{
+  const multiOwnerId = fixtureProfileId(MULTI_OWNER_PROFILE);
+  const multiSharedId = fixtureProfileId(MULTI_SHARED_PROFILE);
+  const seedMultiDose = (profileId: number, name: string): void => {
+    if (
+      !db
+        .prepare("SELECT 1 FROM intake_items WHERE profile_id = ? AND name = ?")
+        .get(profileId, name)
+    ) {
+      const supp = db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, condition, priority, active, source)
+           VALUES (?, ?, 'daily', 'high', 1, 'manual')`
+        )
+        .run(profileId, name);
+      // One daily dose, no taken-log for today → surfaces as a due dose on Upcoming.
+      db.prepare(
+        `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+         VALUES (?, '1000 IU', '08:00', 'any', 0)`
+      ).run(Number(supp.lastInsertRowid));
+    }
+  };
+  seedMultiDose(multiOwnerId, MULTI_OWNER_DOSE);
+  seedMultiDose(multiSharedId, MULTI_SHARED_DOSE);
+  const multiLoginId = seedMemberLogin(E2E_LOGIN_MULTI, multiOwnerId, "write");
+  grantProfile(multiLoginId, multiSharedId, "write");
+  console.log(
+    `e2e: seeded multi-view fixture — ${E2E_LOGIN_MULTI} granted ${MULTI_OWNER_PROFILE} (${multiOwnerId}) + ${MULTI_SHARED_PROFILE} (${multiSharedId})`
   );
 }

@@ -23,6 +23,7 @@ export default function MobileNav({
   version,
   active,
   profiles,
+  viewIds = [],
   restricted = false,
   isAdmin = false,
   multiProfile = false,
@@ -40,6 +41,9 @@ export default function MobileNav({
   // switcher/logout (UserMenu); resolved from the session on the server.
   active: SessionProfile;
   profiles: SessionProfile[];
+  // The session's multi-profile VIEW-SET (issue #1096); threaded into the shared
+  // SidebarContent so the drawer's profile menu shows the same view toggles.
+  viewIds?: number[];
   // When true, the fitness-oriented nav entries are hidden for the active
   // (age-restricted) profile. Resolved on the server; see lib/age-gate.ts.
   restricted?: boolean;
@@ -152,6 +156,7 @@ export default function MobileNav({
               version={version}
               active={active}
               profiles={profiles}
+              viewIds={viewIds}
               restricted={restricted}
               isAdmin={isAdmin}
               multiProfile={multiProfile}
