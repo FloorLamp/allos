@@ -76,6 +76,17 @@ export function writeActivityFold(
         `UPDATE activity_routes SET activity_id = ? WHERE activity_id = ?`
       ).run(keepId, dropId);
     }
+    // Re-parent the discarded row's form-check video clips onto the keeper (#1224,
+    // #199) so a merge NEVER loses a clip — a blind move (many-per-activity, no
+    // uniqueness). activity_videos is profile-owned, so the WHERE names profile_id
+    // (unlike the child exercise_sets/activity_routes). The clips then follow the
+    // keeper; a merge-undo leaves them on the keeper rather than restoring them to
+    // the discarded row (a documented, clip-preserving deviation — the clip is never
+    // lost, only re-homed).
+    db.prepare(
+      `UPDATE activity_videos SET activity_id = ?
+        WHERE activity_id = ? AND profile_id = ?`
+    ).run(keepId, dropId, profileId);
   }
   db.prepare(
     `UPDATE activities

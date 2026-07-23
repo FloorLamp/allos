@@ -40,6 +40,19 @@ import {
   pickImportedActivityMetrics,
 } from "./activity-import-details";
 import { zoneForBpm, type ZoneModel } from "./training-zones";
+import type { ActivityVideoRow } from "./activity-video-write";
+
+// A form-check video clip attached to an activity (#1224), in the SERIALIZABLE
+// shape the card renders — booleans/numbers only, so it crosses the server/client
+// boundary into JournalCard. Built from the ActivityVideoRow the feed gathers.
+export interface JournalCardVideo {
+  id: number;
+  exercise: string | null;
+  caption: string | null;
+  kind: string;
+  hasLocation: boolean;
+  durationSec: number | null;
+}
 
 // One rendered line under a card: a strength exercise (with its summary + status),
 // or a cardio/sport effort (with its distance/duration/speed detail string). The
@@ -99,6 +112,9 @@ export interface JournalCardData {
   // tile-free SVG route thumbnail on the card; only imported outdoor activities with
   // a captured route carry one.
   routePolyline: string | null;
+  // Form-check video clips attached to this activity (#1224), newest first (empty
+  // when none). Rendered as the card's "Form check" strip.
+  videos: JournalCardVideo[];
 }
 
 export interface DayGroup {
@@ -184,6 +200,9 @@ export interface BuildJournalCardsInput {
   // The active profile's canonical HR-zone model. The zone is resolved once per
   // activity and carried by ActivityEditData into both card and form renderers.
   zoneModel?: ZoneModel | null;
+  // activityId -> its form-check video clips (#1224), for the card's "Form check"
+  // strip. Optional (defaults to none) so pure-test call sites need no clip data.
+  activityVideos?: Map<number, ActivityVideoRow[]>;
 }
 
 // Compact, unit-aware values for the richer per-activity metrics carried by pull
@@ -275,6 +294,7 @@ export function buildJournalCards({
   routes,
   activeCalories,
   zoneModel,
+  activityVideos,
 }: BuildJournalCardsInput): DayGroup[] {
   const wu = units.weightUnit;
   const timeFormat: TimeFormat = formatPrefs.timeFormat;
@@ -470,6 +490,15 @@ export function buildJournalCards({
       foldValues: pickFoldValues(a as unknown as Record<string, unknown>),
       // GPS route polyline for the tile-free SVG thumbnail (issue #569), or null.
       routePolyline,
+      // Form-check video clips (#1224), mapped to the serializable card shape.
+      videos: (activityVideos?.get(a.id) ?? []).map((v) => ({
+        id: v.id,
+        exercise: v.exercise,
+        caption: v.caption,
+        kind: v.kind,
+        hasLocation: v.has_location === 1,
+        durationSec: v.duration_sec,
+      })),
     };
 
     let group = byDate.get(a.date);

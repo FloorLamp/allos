@@ -151,6 +151,14 @@ const EXPORT_ALLOWLIST: { table: string; why: string }[] = [
     table: "progress_photos",
     why: "physique progress photos (#1119). The STRICTEST privacy tier by design — body photos are excluded from share links, the emergency card, AND the default full export (the issue's product decision; an opt-in export is a documented follow-up); the images are EXIF-stripped binary blobs on disk (data/uploads/progress-photos/<profileId>/) with only a thin date/pose/caption row here, and are unlinked with the profile on delete.",
   },
+  {
+    table: "symptom_videos",
+    why: "symptom / episode video clips (#1224). The STRICTEST privacy tier, exactly like symptom_photos/progress_photos — clips are excluded from share links, the emergency card, AND the default full export (the issue's product decision; an opt-in export is a documented follow-up). The clips are binary blobs on disk (data/uploads/symptom-videos/<profileId>/) with only a thin date/caption/duration row here, and are unlinked with the profile on delete.",
+  },
+  {
+    table: "activity_videos",
+    why: "training form-check video clips (#1224). Same strictest privacy tier — clips are excluded from share links and the default full export (an opt-in export is a documented follow-up). The clips are binary blobs on disk (data/uploads/activity-videos/<profileId>/) with only a thin activity/exercise/caption row here, and are unlinked with the profile on delete.",
+  },
 ];
 
 describe("full export covers every owned domain (issue #465)", () => {
