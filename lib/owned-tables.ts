@@ -193,6 +193,13 @@ export const OWNED_TABLES = [
   // course). Directly owned; its item_id/course_id FKs carry no ON DELETE (cleared on med
   // delete and on episode delete/merge, #203). deleteProfile clears by profile_id.
   "episode_stopped_meds",
+  // Physique progress photos (#1119 phase 2): dated, pose-tagged body photos over the
+  // shared photo core (EXIF-stripped + downscaled + thumbnailed at ingest). File-backed
+  // MEDIA with a thin metadata row (the lesion_photos/symptom_photos precedent), NOT an
+  // observation-store tenant. Directly owned; deleteProfile clears the rows and its
+  // on-disk files (stored_path + thumb_path) are unlinked separately (path-contained
+  // under data/uploads/progress-photos/<profileId>/).
+  "progress_photos",
 ] as const;
 
 export type OwnedTable = (typeof OWNED_TABLES)[number];

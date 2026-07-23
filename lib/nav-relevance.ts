@@ -36,6 +36,11 @@ export interface NavRelevance {
   vision: boolean;
   dental: boolean;
   sleep: boolean;
+  // Progress photos (#1119): pure data presence (any progress_photos row),
+  // exactly like sleep — no life-stage logic; the page stays reachable by URL
+  // and via the command palette's "Progress photos" action (the always-visible
+  // creation path, so the empty-state gate never strands creation).
+  progress: boolean;
 }
 
 export type NavRelevanceKey = keyof NavRelevance;
@@ -47,6 +52,7 @@ export const DEFAULT_NAV_RELEVANCE: NavRelevance = {
   vision: true,
   dental: true,
   sleep: true,
+  progress: true,
 };
 
 export interface CycleRelevanceInput {

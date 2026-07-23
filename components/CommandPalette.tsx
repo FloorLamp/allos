@@ -9,6 +9,7 @@ import {
   IconBolt,
   IconCalendarEvent,
   IconCalendarPlus,
+  IconCamera,
   IconChartLine,
   IconClipboardList,
   IconCornerDownLeft,
@@ -90,6 +91,7 @@ const ACTION_ICONS: Record<
   heart: (p) => <IconHeartbeat {...p} />,
   calendar: (p) => <IconCalendarPlus {...p} />,
   chart: (p) => <IconChartLine {...p} />,
+  camera: (p) => <IconCamera {...p} />,
 };
 
 // The palette's flat, navigable item model — quick-log preview, then create

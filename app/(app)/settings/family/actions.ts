@@ -77,6 +77,16 @@ const LESION_PHOTO_UPLOAD_ROOT = path.resolve(
   "lesion-photos"
 );
 
+// Progress photos (#1119) live under the shared photo core's per-profile root;
+// deleting a profile unlinks its photo files AND thumbnails too (path-contained,
+// same posture as the other photo domains).
+const PROGRESS_PHOTO_UPLOAD_ROOT = path.resolve(
+  process.cwd(),
+  "data",
+  "uploads",
+  "progress-photos"
+);
+
 // Best-effort unlink of files that resolve to inside `root`. A path pointing
 // outside the root (hostile/corrupt stored_path) is skipped, never followed.
 // Failures are logged and swallowed — the DB rows are already gone by this point.
@@ -223,6 +233,19 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
       .all(id) as { stored_path: string }[]
   ).map((r) => r.stored_path);
 
+  // Progress-photo file paths (#1119) — stored photo AND thumbnail — collected
+  // before the OWNED_TABLES sweep deletes their rows.
+  const progressPhotoPaths = (
+    db
+      .prepare(
+        `SELECT stored_path, thumb_path FROM progress_photos
+          WHERE profile_id = ? AND stored_path IS NOT NULL AND stored_path != ''`
+      )
+      .all(id) as { stored_path: string; thumb_path: string | null }[]
+  ).flatMap((r) =>
+    r.thumb_path ? [r.stored_path, r.thumb_path] : [r.stored_path]
+  );
+
   // Disable foreign_keys for the whole subtree sweep (issue #729). The app
   // connection runs foreign_keys = ON, and OWNED_TABLES lists medical_documents
   // BEFORE its FK children (conditions/encounters/procedures/family_history/
@@ -313,6 +336,7 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
   deleteFilesUnderRoot(MEDICAL_UPLOAD_ROOT, docPaths);
   deleteFilesUnderRoot(SYMPTOM_PHOTO_UPLOAD_ROOT, photoPaths);
   deleteFilesUnderRoot(LESION_PHOTO_UPLOAD_ROOT, lesionPhotoPaths);
+  deleteFilesUnderRoot(PROGRESS_PHOTO_UPLOAD_ROOT, progressPhotoPaths);
   if (prof.photo_path) deleteFilesUnderRoot(PHOTO_ROOT, [prof.photo_path]);
 
   // Sweep the same files from the OFF-VOLUME uploads mirror (#625) so a deleted

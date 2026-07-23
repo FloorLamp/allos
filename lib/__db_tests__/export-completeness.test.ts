@@ -147,6 +147,10 @@ const EXPORT_ALLOWLIST: { table: string; why: string }[] = [
     table: "lesion_photos",
     why: "serial lesion photos (#715). PHI-cautious by design, exactly like symptom_photos — the images are binary blobs on disk (data/uploads/lesion-photos/<profileId>/) with only a thin date/caption row here, intentionally excluded from the full data export, and unlinked with the profile on delete.",
   },
+  {
+    table: "progress_photos",
+    why: "physique progress photos (#1119). The STRICTEST privacy tier by design — body photos are excluded from share links, the emergency card, AND the default full export (the issue's product decision; an opt-in export is a documented follow-up); the images are EXIF-stripped binary blobs on disk (data/uploads/progress-photos/<profileId>/) with only a thin date/pose/caption row here, and are unlinked with the profile on delete.",
+  },
 ];
 
 describe("full export covers every owned domain (issue #465)", () => {

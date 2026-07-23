@@ -49,6 +49,11 @@ export function getNavRelevance(profileId: number): NavRelevance {
     dental: hasDentalRows,
     // Data presence only (any recorded sleep session) — the #1066 Sleep nav gate.
     sleep: hasSleepData(profileId),
+    // Data presence only (any progress photo) — the #1119 Progress-photos gate.
+    progress:
+      db
+        .prepare(`SELECT 1 FROM progress_photos WHERE profile_id = ? LIMIT 1`)
+        .get(profileId) != null,
   };
 }
 

@@ -28,7 +28,7 @@ export interface PaletteAction {
   // Extra search terms so "gym" finds "Log workout", "lab" finds biomarkers, etc.
   keywords: string[];
   // Icon key resolved to a Tabler icon in CommandPalette.
-  icon: "barbell" | "scale" | "heart" | "calendar" | "chart";
+  icon: "barbell" | "scale" | "heart" | "calendar" | "chart" | "camera";
   target: PaletteActionTarget;
 }
 
@@ -86,6 +86,26 @@ export const PALETTE_ACTIONS: PaletteAction[] = [
       kind: "navigate",
       href: `/records/history/visits?${FOCUS_PARAM}=1`,
     },
+  },
+  {
+    id: "add-progress-photo",
+    // The always-visible entry to /progress (#1119): the nav leaf is data-gated
+    // (hidden until a first photo exists), so this action is the non-stranded
+    // creation path for the first capture. The focus param auto-opens the
+    // capture flow on arrival (useFocusFormOnParam-style, handled by the page).
+    label: "Add progress photo",
+    keywords: [
+      "photo",
+      "physique",
+      "body",
+      "picture",
+      "camera",
+      "pose",
+      "capture",
+      "progress",
+    ],
+    icon: "camera",
+    target: { kind: "navigate", href: `/progress?${FOCUS_PARAM}=1` },
   },
   {
     id: "add-biomarker",
