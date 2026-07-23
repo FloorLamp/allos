@@ -39,6 +39,7 @@ import { canDeleteLogin, canDeleteProfile } from "@/lib/family-deletion";
 import { removeFromOffsiteMirror } from "@/lib/backup";
 import { OWNED_TABLES } from "@/lib/owned-tables";
 import { PHOTO_ROOT } from "@/lib/profile-photo";
+import { photoDomainRoot } from "@/lib/photo/store";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { createLogger } from "@/lib/log";
@@ -79,13 +80,11 @@ const LESION_PHOTO_UPLOAD_ROOT = path.resolve(
 
 // Progress photos (#1119) live under the shared photo core's per-profile root;
 // deleting a profile unlinks its photo files AND thumbnails too (path-contained,
-// same posture as the other photo domains).
-const PROGRESS_PHOTO_UPLOAD_ROOT = path.resolve(
-  process.cwd(),
-  "data",
-  "uploads",
-  "progress-photos"
-);
+// same posture as the other photo domains). Reuse the store's OWN mapping
+// (photoDomainRoot → DOMAIN_DIRS, #1284) rather than re-deriving the path here, so a
+// later rename of the "progress" domain dir can't leave this containment check
+// silently pointing at the wrong root and orphaning files after a profile delete.
+const PROGRESS_PHOTO_UPLOAD_ROOT = path.resolve(photoDomainRoot("progress"));
 
 // Symptom / episode video clips and training form-check clips (#1224) live under
 // their own per-profile roots; deleting a profile unlinks its clip files AND

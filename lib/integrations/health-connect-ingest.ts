@@ -1,4 +1,5 @@
 import { writeTx } from "@/lib/db";
+import { createLogger } from "@/lib/log";
 import { chunk, INGEST_CHUNK_SIZE } from "@/lib/ingest-bounds";
 import { emptyCounts, foldCounts, type UpsertCounts } from "./sync-log";
 import {
@@ -11,6 +12,8 @@ import {
 } from "./normalize";
 import { HEALTH_CONNECT_ID, type ParsedPayload } from "./health-connect";
 import { queuePostWorkoutForFreshImports } from "@/lib/notifications/post-workout-imports";
+
+const log = createLogger("health-connect-ingest");
 
 // The chunked write path for a parsed Health Connect batch (issue #1064).
 //
@@ -72,7 +75,21 @@ export function ingestHealthConnectPayload(
   // The no-finish fallback for imports (#1154 §B2): a just-ingested session dated
   // today gets the delayed post-workout dose dispatch armed, so its doses aren't
   // bucket-slot-dependent. Only when the ingest actually INSERTED rows.
-  if (activities.inserted > 0) queuePostWorkoutForFreshImports(profileId);
+  //
+  // ISOLATED (#1285): every chunk's DB writes already committed above, so a failure in
+  // this post-commit arming (e.g. a downstream findings computation throwing) must NOT
+  // bubble up and misreport an otherwise-successful ingest batch as a full sync failure.
+  // Log it to the error sink and carry on; the next rolling-window push re-arms it.
+  if (activities.inserted > 0) {
+    try {
+      queuePostWorkoutForFreshImports(profileId);
+    } catch (err) {
+      log.error("post-workout arming failed after Health Connect ingest", {
+        profileId,
+        err,
+      });
+    }
+  }
   for (const slice of chunk(parsed.vitals, chunkSize)) {
     const r = writeTx(() => upsertVitals(profileId, slice, source));
     vitals = foldCounts([vitals, r.counts]);

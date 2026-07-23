@@ -52,6 +52,12 @@ const ALLOW: { file: string; includes: string; why: string }[] = [
       "INSERT INTO intake_items (name, notes, active, condition, priority, kind, as_needed",
     why: "migration 092 (#1178) one-shot consolidation: projects each UNPAIRED legacy prescription record into a footprint-scoped extracted med (source='extracted' + document_id) — the exact projection the persist core does, applied once at upgrade time. intake_items is a footprint table, so clear/reassign/count already handle these rows; a migration is a schema/data converge run once behind the user_version gate, not a runtime import bypass.",
   },
+  {
+    file: "lib/migrations/versions/101-recover-blank-name-prescriptions.ts",
+    includes:
+      "INSERT INTO intake_items (name, notes, active, condition, priority, kind, as_needed",
+    why: "migration 101 (#1281) corrective to 092: projects each surviving BLANK-name prescription record into a footprint-scoped extracted med (source='extracted' + document_id) under a placeholder name — the identical projection migration 092 does, with the blank-name skip fixed. intake_items is a footprint table (clear/reassign/count already handle the row); a one-shot migration behind the user_version gate, not a runtime import bypass.",
+  },
 ];
 
 function walk(dir: string, out: string[]) {
