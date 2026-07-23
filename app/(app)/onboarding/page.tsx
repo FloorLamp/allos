@@ -54,9 +54,12 @@ const ONBOARDING_WIDGET_DESCRIPTIONS: Record<string, string> = {
   "coaching-observations": "Health patterns worth noticing.",
   "healthspan-pillars": "Key long-term health signals.",
   "weight-trend": "Recent weight changes.",
-  "quick-log-prn": "Log an as-needed medication in one tap.",
+  "nutrition-today": "Today's protein against your goal.",
+  "steps-today": "Steps today versus your 7-day average.",
+  "vitals-latest": "Your latest blood pressure and resting heart rate.",
+  "cycle-phase": "Your current cycle day and phase.",
   "goals-habits": "Goals and weekly habits.",
-  "symptom-log": "Quick symptom logging when someone is unwell.",
+  "symptom-log": "A daily check-in — mood, feeling unwell, and as-needed meds.",
   "weekly-recap": "A seven-day progress summary.",
 };
 

@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import WidgetHeader from "@/components/dashboard/WidgetHeader";
 import { useToast } from "@/components/Toast";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { shouldQueueOffline } from "@/lib/offline/queue";
 import { activateIllnessForSymptoms } from "@/app/(app)/symptoms/actions";
+import { toggleSituation } from "@/app/(app)/nutrition/supplement-actions";
 import { logMood } from "@/app/(app)/mood/actions";
 import { MOOD_LABELS, MOOD_FACTORS } from "@/lib/mood";
 import MoodValencePicker from "@/components/MoodValencePicker";
@@ -26,7 +27,15 @@ import MoodValencePicker from "@/components/MoodValencePicker";
 //      (#858) above the grid, so this card defers to it with a quiet note — and
 //      STILL offers the mood tap (mood during illness is useful signal), so the
 //      two coexist rather than one hiding the other.
-//   3. Extensible: a future subjective sleep-quality or psych check would join
+//   3. "Take any meds?" — the folded PRN quick-log branch (issue #1221). The old
+//      standalone `quick-log-prn` widget is retired; the check-in card now owns
+//      mood + illness + meds. The page passes the server-rendered PRN control node
+//      (`medsSlot`) ONLY on a well day with active PRN meds — when illness is active
+//      the hero cockpit already embeds the SAME logger (so the branch is omitted to
+//      avoid the duplicate the old availability gate hand-managed), and a profile
+//      with no active PRN meds simply gets no branch (a daily-ritual card stays calm,
+//      not a standing add-a-medication CTA — the Medications page owns onboarding).
+//   4. Extensible: a future subjective sleep-quality or psych check would join
 //      this shell as another row, not a new competing card.
 //
 // One tap logs the day's mood; "More detail" expands energy/anxiety + factor
@@ -91,6 +100,8 @@ export default function HowAreYouCard({
   date,
   mood,
   activeEpisode,
+  medsSlot = null,
+  situations = null,
 }: {
   // The profile-local capture date — a queued offline tap lands on THIS day.
   date: string;
@@ -99,12 +110,28 @@ export default function HowAreYouCard({
   mood: TodayMood | null;
   // Whether the acting profile has an open illness episode (the hero is up).
   activeEpisode: boolean;
+  // The server-rendered PRN quick-log control (issue #1221), or null. The page passes
+  // it ONLY on a well day with active PRN meds — rendered on the server (so lib/clock's
+  // frozen-clock override applies) and threaded through this client boundary as an RSC
+  // node, exactly like the illness-hero cockpit body.
+  medsSlot?: ReactNode;
+  // The "Anything going on?" situations entrypoint (issue #1221 part 6), or null. The
+  // NON-clinical situation chips (Travel / High stress / Poor sleep / custom — illness
+  // types excluded, that lifecycle is the illness door's) with each chip's active state,
+  // plus the shared #662 activation line. Generalizes what the illness branch already is
+  // — a hard-wired situation entrypoint — into a quiet, zero-footprint-when-unused
+  // disclosure.
+  situations?: {
+    options: { name: string; active: boolean }[];
+    activationLine: string | null;
+  } | null;
 }) {
   const router = useRouter();
   const toast = useToast();
   const { enqueue } = useOfflineQueue();
   const [pending, start] = useTransition();
   const [sickPending, startSick] = useTransition();
+  const [sitPending, startSit] = useTransition();
   const [expanded, setExpanded] = useState(false);
 
   // Local mirrors of today's entry for instant feedback; the server row is the
@@ -174,6 +201,21 @@ export default function HowAreYouCard({
     setFactors((prev) =>
       prev.includes(slug) ? prev.filter((f) => f !== slug) : [...prev, slug]
     );
+  }
+
+  // Toggle a non-clinical situation (issue #1221 part 6). Reuses the SAME
+  // setActiveSituations path as the Supplements bar via the shared toggleSituation action
+  // (transition events → chart annotations come free), then refreshes so the active chips +
+  // activation line update from the server (the dueness/bus truth).
+  function toggleSit(name: string) {
+    setError(null);
+    startSit(async () => {
+      const fd = new FormData();
+      fd.set("situation", name);
+      const res = await toggleSituation(fd);
+      if (res.ok) router.refresh();
+      else setError(res.error);
+    });
   }
 
   return (
@@ -317,6 +359,72 @@ export default function HowAreYouCard({
           </button>
         </div>
       )}
+
+      {/* The "Take any meds?" branch — the folded PRN quick-log (issue #1221). The
+          page supplies the server-rendered control only on a well day with active PRN
+          meds; a calm disclosure keeps the everyday check-in uncluttered. */}
+      {medsSlot ? (
+        <details
+          className="mt-3 border-t border-black/5 pt-2 dark:border-white/5"
+          data-testid="checkin-meds"
+        >
+          <summary
+            data-testid="checkin-meds-toggle"
+            className="cursor-pointer text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+          >
+            Take any meds?
+          </summary>
+          <div className="mt-2">{medsSlot}</div>
+        </details>
+      ) : null}
+
+      {/* The "Anything going on?" situations entrypoint (issue #1221 part 6) —
+          generalizing the illness branch (itself a hard-wired situation door) into a
+          quiet disclosure of the NON-clinical situation chips. Illness types are
+          excluded (that lifecycle is the illness door's). */}
+      {situations && situations.options.length > 0 ? (
+        <details
+          className="mt-3 border-t border-black/5 pt-2 dark:border-white/5"
+          data-testid="checkin-situations"
+        >
+          <summary
+            data-testid="checkin-situations-toggle"
+            className="cursor-pointer text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+          >
+            Anything going on?
+          </summary>
+          <div
+            className="mt-2 flex flex-wrap items-center gap-1.5"
+            data-testid="checkin-situations-chips"
+          >
+            {situations.options.map((o) => (
+              <button
+                key={o.name}
+                type="button"
+                data-testid={`checkin-situation-${o.name}`}
+                aria-pressed={o.active}
+                disabled={sitPending}
+                onClick={() => toggleSit(o.name)}
+                className={`badge cursor-pointer disabled:opacity-60 ${
+                  o.active
+                    ? "bg-brand-600 text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-700"
+                }`}
+              >
+                {o.name}
+              </button>
+            ))}
+          </div>
+          {situations.activationLine ? (
+            <p
+              className="mt-2 text-xs text-slate-500 dark:text-slate-400"
+              data-testid="checkin-situation-activation"
+            >
+              {situations.activationLine}
+            </p>
+          ) : null}
+        </details>
+      ) : null}
     </div>
   );
 }

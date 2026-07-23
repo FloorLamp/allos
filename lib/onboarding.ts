@@ -556,7 +556,10 @@ const CONTEXTUAL_ONBOARDING_WIDGETS = ["symptom-log"];
 
 const FOCUS_WIDGETS: Record<OnboardingFocus, readonly string[]> = {
   "medical-records": ["recent-labs", "next-appointment", "healthspan-pillars"],
-  medications: ["recent-labs", "coaching-observations", "quick-log-prn"],
+  // PRN logging folded into the "How are you today?" check-in as its "Take any meds?"
+  // branch (#1221), so a medications-focused onboarding prioritizes that check-in card
+  // (which owns med logging now) alongside the labs/observations cards.
+  medications: ["recent-labs", "coaching-observations", "symptom-log"],
   fitness: ["coaching", "goals-habits", "weight-trend", "weekly-recap"],
   "metrics-labs": ["weight-trend", "recent-labs", "healthspan-pillars"],
   "preventive-care": ["next-appointment", "recent-labs"],

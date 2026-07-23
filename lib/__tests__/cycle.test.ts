@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   cyclePhaseOnDate,
+  cycleDayOnDate,
   cycleLengths,
   cycleStats,
   periodLengthDays,
@@ -31,6 +32,29 @@ const HISTORY: CyclePeriod[] = [
   period(2, "2026-01-29", "2026-02-02"), // 28-day cycle
   period(3, "2026-02-26", "2026-03-02"), // 28-day cycle
 ];
+
+describe("cycleDayOnDate (#1221)", () => {
+  it("returns null before any recorded period", () => {
+    expect(cycleDayOnDate(HISTORY, "2025-12-31")).toBeNull();
+  });
+
+  it("counts 1-based from the current cycle's start (start day = day 1)", () => {
+    expect(cycleDayOnDate(HISTORY, "2026-01-01")).toBe(1);
+    expect(cycleDayOnDate(HISTORY, "2026-01-05")).toBe(5);
+    // Day before the next period start (2026-01-29) is cycle day 28.
+    expect(cycleDayOnDate(HISTORY, "2026-01-28")).toBe(28);
+  });
+
+  it("resets to day 1 at the next recorded period start", () => {
+    expect(cycleDayOnDate(HISTORY, "2026-01-29")).toBe(1);
+    expect(cycleDayOnDate(HISTORY, "2026-01-30")).toBe(2);
+  });
+
+  it("keeps counting into the open cycle from the latest start", () => {
+    expect(cycleDayOnDate(HISTORY, "2026-02-26")).toBe(1);
+    expect(cycleDayOnDate(HISTORY, "2026-03-10")).toBe(13);
+  });
+});
 
 describe("cyclePhaseOnDate", () => {
   it("returns null before any recorded period", () => {

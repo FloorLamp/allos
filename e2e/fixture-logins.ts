@@ -639,6 +639,21 @@ export const MOBILE_HC_PROFILE = "Mobile HC (e2e)";
 export const E2E_LOGIN_PHOTOS = "e2e_photos";
 export const PROGRESS_PHOTOS_PROFILE = "Progress Photos (e2e)";
 
+// #1221 — the dashboard daily-loop recomposition. A dedicated adult FEMALE profile
+// carrying one reading in every domain the four new cards read, all dated to the
+// fixture's "today" so the cards render populated (not their data-aware empty state):
+//   • steps today + a trailing week (Steps-today card),
+//   • a recent BP pair + resting HR (Latest-vitals card),
+//   • today's food + a body weight (Nutrition-today protein card),
+//   • three completed periods so cycle tracking is relevant and a phase/day derives
+//     (Cycle-phase card),
+//   • one active PRN medication (the check-in "Take any meds?" branch).
+// Isolated on purpose — the spec is read-only, but planting a female profile with
+// cycles + full daily-loop data on profile 1 (or the cycle fixture) would perturb
+// those specs' surfaces. Synthetic, no PHI.
+export const E2E_LOGIN_DAILY = "e2e_daily";
+export const DAILY_LOOP_PROFILE = "Daily Loop (e2e)";
+
 // #1224 — video capture. A dedicated ADULT profile (birthdate seeded, so /training
 // isn't age-gated) carrying ONE seeded strength activity the video spec attaches a
 // form-check clip to, and its own episode/symptom surfaces. The spec CLEANS ITSELF

@@ -324,7 +324,9 @@ describe("onboarding dashboard layout", () => {
     expect(layout.hidden).toContain("recent-labs");
     expect(layout.hidden).not.toContain("coaching");
     expect(layout.hidden).not.toContain("symptom-log");
-    expect(layout.hidden).toContain("quick-log-prn");
+    // A non-fitness default widget (the #1221 nutrition card) is hidden by the fitness
+    // focus but stays in the catalog (re-enableable), not permanently removed.
+    expect(layout.hidden).toContain("nutrition-today");
     expect(layout.order).toContain("recent-labs");
   });
 
@@ -342,7 +344,7 @@ describe("onboarding dashboard layout", () => {
     // in registry order, are the only ones the broad "explore" layout hides.
     expect(explore.hidden).toEqual(["active-protocols", "weekly-recap"]);
     expect(explore.order).toEqual(
-      expect.arrayContaining(["quick-log-prn", "symptom-log"])
+      expect.arrayContaining(["nutrition-today", "symptom-log"])
     );
   });
 

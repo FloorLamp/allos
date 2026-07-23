@@ -4,6 +4,59 @@
 // intake_items.situation_id) lives in lib/settings/profile-attrs.ts; this module is
 // the string discipline + the one-way condition bridge, kept pure/unit-testable.
 
+import { SUGGESTED_SITUATIONS } from "./supplement-schedule";
+
+// The merged situation-OPTION set — the profile's saved vocabulary rows UNION the
+// built-in suggestions, NOCASE-deduped (a stored "illness" collapses onto the suggested
+// "Illness"), vocabulary first then the remaining suggestions. The ONE helper the
+// Supplements-bar chip row, the dashboard check-in "Anything going on?" chips, and (per
+// the #1177 `situation-options` migration) the item-form option source all consume, so
+// the three surfaces can never disagree about what the situation vocabulary is (#221).
+export interface SituationOption {
+  name: string;
+  // True when this option is a SAVED vocabulary row (vs a suggestion with no row yet):
+  // only a real row can carry the #799 illness-type flag / be toggled illness-type.
+  inVocabulary: boolean;
+  // The #799 illness-type flag for a saved row (always false for a suggestion-only
+  // option). An illness-type situation is a symptom-log container; the dashboard chip
+  // row EXCLUDES these (the card's illness door owns that lifecycle, #856).
+  illnessType: boolean;
+}
+
+export function mergedSituationOptions(
+  rows: readonly { name: string; illness_type?: number | boolean | null }[]
+): SituationOption[] {
+  const byKey = new Map<string, SituationOption>();
+  for (const r of rows) {
+    const key = normalizeSituationName(r.name).toLowerCase();
+    if (!byKey.has(key))
+      byKey.set(key, {
+        name: r.name,
+        inVocabulary: true,
+        illnessType: !!r.illness_type,
+      });
+  }
+  for (const s of SUGGESTED_SITUATIONS) {
+    const key = normalizeSituationName(s).toLowerCase();
+    if (!byKey.has(key))
+      byKey.set(key, { name: s, inVocabulary: false, illnessType: false });
+  }
+  return [...byKey.values()];
+}
+
+// The NON-clinical subset of the merged options — the dashboard check-in chip row
+// (issue #1221 part 6). Excludes every illness-type vocabulary row AND the built-in
+// "Illness" suggestion: the check-in's own "Not feeling well?" door + the #856
+// episode-coherence machinery own the illness lifecycle (one lifecycle, one door), so
+// a chip must never be a second illness entrypoint.
+export function nonIllnessSituationOptions(
+  rows: readonly { name: string; illness_type?: number | boolean | null }[]
+): SituationOption[] {
+  return mergedSituationOptions(rows).filter(
+    (o) => !o.illnessType && !isBuiltInIllnessSituation(o.name)
+  );
+}
+
 // The one-line situations-bar activation acknowledgment (issue #662 item 1):
 // "3 situational items now active" when a toggle changes the shape of the due dose
 // list, else null when nothing situational is currently due. Pure formatter over the

@@ -38,6 +38,30 @@ export interface WidgetDef {
   // Renders an onboarding CTA (not a blank card) when its domain has no data yet.
   // The page decides emptiness and passes it to resolveWidgetList.
   dataAware?: boolean;
+  // Hidden for an INFANT profile (< 1 y) — the nav's `requiresFoodLogging` gate
+  // (issue #591) applied to the dashboard: a food-logging widget that's meaningless
+  // for a milk-only infant is dropped from the grid AND from Customize, exactly like
+  // the Nutrition nav entry. The page resolves the bit (isFoodLoggingRelevant) and
+  // passes it via the WidgetGate.
+  requiresFoodLogging?: boolean;
+  // Hidden when the named nav-relevance bit is false for the active profile — the
+  // #1042 `relevanceKey` gate applied to the dashboard. Only "cycle" is used today
+  // (the Cycle-phase card, gated on the SAME bit as the Cycle nav entry, so the card
+  // and the nav entry can never disagree about whether cycle tracking is relevant).
+  relevanceKey?: "cycle";
+}
+
+// The per-profile eligibility gate the page resolves from DB state and threads into
+// the resolve* functions — the dashboard twin of the nav's per-entry gating
+// (`requiresFoodLogging` #591, the `relevanceKey` bitset #1042). All-optional with an
+// all-eligible default (matching the nav's DEFAULT_NAV_RELEVANCE posture), so a caller
+// that doesn't thread a bit never over-hides.
+export interface WidgetGate {
+  // isFoodLoggingRelevant(age) — false only for a KNOWN infant profile; gates
+  // `requiresFoodLogging` widgets.
+  foodLogging?: boolean;
+  // The nav-relevance `cycle` bit; gates `relevanceKey === "cycle"` widgets.
+  cycle?: boolean;
 }
 
 // Per-profile customization. `order` is the display order of widget ids; `hidden`
@@ -230,17 +254,60 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     dataAware: true,
   },
   {
-    id: "quick-log-prn",
-    label: "Log a PRN dose",
+    id: "nutrition-today",
+    label: "Nutrition today",
     description:
-      "One-tap logging for your as-needed medications — now, or a retro time (30m/1h ago, or a specific time). Records each real administration, not just one per day.",
-    // On by default so the retro-entry home is discoverable. Data-aware: a profile
-    // with no active PRN medications gets an onboarding CTA instead of a blank card.
-    // Not fitness-gated — PRN meds matter for a restricted/child profile too.
+      "Today's protein against your goal band, with this week's daily average — the same figures the Nutrition → Food gauge shows.",
+    // On by default so the nutrition domain (a top-level nav domain with zero
+    // dashboard presence before #1221) is served by promotion. Data-aware: a profile
+    // with no logged/tracked intake gets an onboarding CTA instead of a blank card.
+    // Not fitness-gated — protein matters for every profile. requiresFoodLogging so it
+    // drops for an infant profile, exactly like the Nutrition nav entry (#591).
     defaultOn: true,
     fitness: false,
     span: "half",
     dataAware: true,
+    requiresFoodLogging: true,
+  },
+  {
+    id: "steps-today",
+    label: "Steps today",
+    description:
+      "Your step count today against your trailing 7-day average — surfaced from Trends → Body to the daily glance.",
+    // On by default (promotion, #1066). Data-aware: a profile with no step data yet
+    // gets a connect-a-source CTA. Not fitness-gated — steps matter for every profile.
+    defaultOn: true,
+    fitness: false,
+    span: "half",
+    dataAware: true,
+  },
+  {
+    id: "vitals-latest",
+    label: "Latest vitals",
+    description:
+      "Your most recent blood pressure and resting heart rate, each with a trend arrow — surfaced from Trends → Vitals to the daily glance.",
+    // On by default (promotion, #1066). Data-aware: a profile with no BP/resting-HR
+    // reading gets a log-a-reading CTA. Not fitness-gated — vitals matter for every
+    // profile.
+    defaultOn: true,
+    fitness: false,
+    span: "half",
+    dataAware: true,
+  },
+  {
+    id: "cycle-phase",
+    label: "Cycle phase",
+    description:
+      "Your current cycle day and derived phase — informational only, never a prediction. Appears only when cycle tracking is relevant for the profile.",
+    // On by default, but gated on the SAME `cycle` relevance bit as the Cycle nav
+    // entry (relevanceKey), so it's hidden entirely unless cycle tracking applies to
+    // the profile. NOT data-aware: it self-hides (renders nothing) when no phase is
+    // derivable yet — an informational card, never an onboarding CTA (the #714
+    // tracking-not-forecasting contract).
+    defaultOn: true,
+    fitness: false,
+    span: "half",
+    relevanceKey: "cycle",
   },
   {
     id: "goals-habits",
@@ -289,6 +356,15 @@ export const DASHBOARD_WIDGETS: WidgetDef[] = [
     fitness: true,
     span: "half",
   },
+  // The former `quick-log-prn` widget (the standalone "Log a PRN dose" card, #797) was
+  // FOLDED into the "How are you today?" check-in as its "Take any meds?" branch (issue
+  // #1221): one check-in card now owns mood + illness + meds, which also removes the
+  // split-brain where the standalone widget was availability-suppressed whenever the
+  // illness cockpit (which embeds the same logger) was open. A stored layout that still
+  // names `quick-log-prn` in its order/hidden lists is dropped by resolveWidgetList's
+  // defensive merge (unknown ids are filtered — see the registry test), so old layouts
+  // stay valid without a migration (the `sick-household` precedent below, #203-adjacent).
+  //
   // The former `sick-household` widget was FOLDED into the illness hero (issue #858):
   // every accessible open episode now renders at hero altitude (a full cockpit for the
   // acting profile, a compact accordion line for household members), so a second widget
@@ -315,11 +391,23 @@ export interface ResolvedWidget {
 }
 
 // The widgets a profile is eligible to customize, in registry order: everything
-// except pinned widgets (rendered separately) and fitness widgets on an
-// age-restricted profile.
-export function customizableWidgetDefs(restricted: boolean): WidgetDef[] {
+// except pinned widgets (rendered separately), fitness widgets on an age-restricted
+// profile, and per-`WidgetGate` entries whose gate bit is off for the profile
+// (`requiresFoodLogging` on an infant, `relevanceKey` when the relevance bit is
+// false) — the dashboard twin of the nav's per-entry gating. The gate defaults to
+// all-eligible so a caller that doesn't thread it never over-hides.
+export function customizableWidgetDefs(
+  restricted: boolean,
+  gate: WidgetGate = {}
+): WidgetDef[] {
+  const foodLogging = gate.foodLogging ?? true;
+  const cycle = gate.cycle ?? true;
   return DASHBOARD_WIDGETS.filter(
-    (w) => !w.pinned && !(restricted && w.fitness)
+    (w) =>
+      !w.pinned &&
+      !(restricted && w.fitness) &&
+      !(w.requiresFoodLogging && !foodLogging) &&
+      !(w.relevanceKey === "cycle" && !cycle)
   );
 }
 
@@ -336,9 +424,10 @@ export function customizableWidgetDefs(restricted: boolean): WidgetDef[] {
 export function resolveWidgetList(
   layout: DashboardLayout | null,
   restricted: boolean,
-  emptyIds: Set<string> = new Set()
+  emptyIds: Set<string> = new Set(),
+  gate: WidgetGate = {}
 ): ResolvedWidget[] {
-  const eligible = customizableWidgetDefs(restricted);
+  const eligible = customizableWidgetDefs(restricted, gate);
   const eligibleIds = new Set(eligible.map((w) => w.id));
 
   const ordered: string[] = [];
@@ -371,9 +460,10 @@ export function resolveWidgetList(
 export function resolveWidgets(
   layout: DashboardLayout | null,
   restricted: boolean,
-  emptyIds: Set<string> = new Set()
+  emptyIds: Set<string> = new Set(),
+  gate: WidgetGate = {}
 ): WidgetDef[] {
-  return resolveWidgetList(layout, restricted, emptyIds)
+  return resolveWidgetList(layout, restricted, emptyIds, gate)
     .filter((w) => w.visible)
     .map((w) => w.def);
 }

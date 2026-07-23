@@ -54,6 +54,7 @@ import { situationHistoryResolver } from "@/lib/trend-annotations";
 import {
   suggestedSituationsFromConditions,
   situationActivationLine,
+  mergedSituationOptions,
 } from "@/lib/situations";
 import {
   countSituationalDue,
@@ -64,7 +65,6 @@ import {
   PRIORITY_ORDER,
   PRIORITY_LABELS,
   CONDITION_LABELS,
-  SUGGESTED_SITUATIONS,
   priorityClass,
   workoutDaySubtitleLabel,
   type TimeBucket,
@@ -270,20 +270,14 @@ export default async function SupplementsTab() {
     );
 
   // The situations bar is driven by the id-keyed vocabulary (#560): every situation
-  // ROW for this profile, plus the built-in suggestions (NOCASE-deduped against the
-  // vocabulary so a stored "illness" doesn't double up with the suggested "Illness").
+  // ROW for this profile, plus the built-in suggestions — the ONE shared merged option
+  // set (mergedSituationOptions: vocabulary ∪ SUGGESTED_SITUATIONS, NOCASE-deduped so a
+  // stored "illness" doesn't double up with the suggested "Illness"), so this bar, the
+  // dashboard check-in "Anything going on?" chips, and the item-form option source can
+  // never disagree about the vocabulary (#221/#1177). Each option carries its #799
+  // illness-type flag (`illnessType`) and whether it's a saved row (`inVocabulary`).
   const situationRows = getSituations(profile.id);
-  const vocabulary = situationRows.map((s) => s.name);
-  // Which situations are illness-type-flagged (#799) — a symptom-log container. Keyed
-  // NOCASE so a chip's label matches its row regardless of casing.
-  const illnessTypeByName = new Map(
-    situationRows.map((s) => [s.name.toLowerCase(), !!s.illness_type])
-  );
-  const situationChips = [
-    ...new Map(
-      [...vocabulary, ...SUGGESTED_SITUATIONS].map((n) => [n.toLowerCase(), n])
-    ).values(),
-  ];
+  const situationChips = mergedSituationOptions(situationRows);
 
   // One-way condition bridge (#560 part 2): an ACTIVE acute illness/injury condition
   // suggests its matching clinical situation, so a sick user doesn't flip two toggles
@@ -412,20 +406,20 @@ export default async function SupplementsTab() {
       >
         <span className="section-label">Situations</span>
         {situationChips.map((sit) => {
-          const on = activeSituations.has(sit);
+          const on = activeSituations.has(sit.name);
           // A real vocabulary row can opt into being an illness-type symptom container
           // (#799); a suggested-but-unsaved chip has no row yet, so no toggle.
-          const isRow = illnessTypeByName.has(sit.toLowerCase());
-          const illnessOn = illnessTypeByName.get(sit.toLowerCase()) ?? false;
+          const isRow = sit.inVocabulary;
+          const illnessOn = sit.illnessType;
           return (
-            <div key={sit} className="flex items-center gap-1">
+            <div key={sit.name} className="flex items-center gap-1">
               <form
                 action={async (fd) => {
                   "use server";
                   await toggleSituation(fd);
                 }}
               >
-                <input type="hidden" name="situation" value={sit} />
+                <input type="hidden" name="situation" value={sit.name} />
                 <SubmitButton
                   aria-pressed={on}
                   className={`badge cursor-pointer disabled:opacity-60 ${
@@ -434,7 +428,7 @@ export default async function SupplementsTab() {
                       : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-700"
                   }`}
                 >
-                  {sit}
+                  {sit.name}
                 </SubmitButton>
               </form>
               {isRow && (
@@ -444,7 +438,7 @@ export default async function SupplementsTab() {
                     await toggleSituationIllnessType(fd);
                   }}
                 >
-                  <input type="hidden" name="situation" value={sit} />
+                  <input type="hidden" name="situation" value={sit.name} />
                   <SubmitButton
                     aria-pressed={illnessOn}
                     title={
@@ -452,7 +446,7 @@ export default async function SupplementsTab() {
                         ? "Illness — symptom logging on"
                         : "Mark as illness (enables symptom logging)"
                     }
-                    data-testid={`situation-illness-${sit}`}
+                    data-testid={`situation-illness-${sit.name}`}
                     className={`badge cursor-pointer px-1.5 disabled:opacity-60 ${
                       illnessOn
                         ? "bg-orange-500 text-white"
