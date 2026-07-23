@@ -11,12 +11,16 @@
 // already filters profile_id (enforced by lib/__tests__/profile-scoping.test.ts),
 // so this adds no new scoping surface.
 
-import { db } from "../db";
+import { db, today } from "../db";
 import {
   buildAttentionModel,
   buildFlaggedItem,
   attentionCardItems,
+  mergeAttentionPageGroups,
   type AttentionIntegration,
+  type AttentionPageGroup,
+  type MemberAttention,
+  type ProfiledUpcomingItem,
 } from "../attention";
 import { getNewlyFlaggedBiomarkers } from "../notifications/digest-data";
 import type { DigestFlaggedBiomarker } from "../notifications/digest";
@@ -235,6 +239,69 @@ export function collectSuppressedAttention(
       item: null,
       orphan: display == null,
     });
+  }
+  return out;
+}
+
+// ── Multi-profile attention (issue #1096) ─────────────────────────────────────
+//
+// The list-first, LOOP-composed cross-profile gather behind the multi-view Upcoming
+// page. It takes the resolved view-set (`scope.viewIds` — already ∩ the caller's
+// accessible set), never imports lib/auth, and composes the EXISTING per-profile
+// collectAttentionModel over each member. It is DELIBERATELY loop-composed, not
+// set-based `profile_id IN` SQL: every member's dueness/banding is derived from that
+// member's OWN today() (its timezone), which the per-profile-context trap
+// (lib/cross-profile.ts) forbids evaluating in another member's context. So there is
+// no new cross-profile SQL module to register — only a merge of per-profile results.
+
+export interface MultiProfileAttention {
+  // Per-member models (each carries the member's own `today`), preserved so the
+  // pure merge can band each in its own context — the trap.
+  members: MemberAttention[];
+  // The merged, page-grouped view (items carry `profileId` for subject stamping).
+  groups: AttentionPageGroup[];
+  // Total item count across the whole view-set (the page's "N total" badge).
+  total: number;
+}
+
+export function collectMultiProfileAttention(
+  viewIds: readonly number[],
+  units: UpcomingDisplayUnits = CANONICAL_DISPLAY_UNITS
+): MultiProfileAttention {
+  const members: MemberAttention[] = [];
+  let total = 0;
+  for (const pid of viewIds) {
+    // Each member's "today" resolved in ITS OWN timezone (the trap): a member's
+    // banding must never be computed in another member's context.
+    const now = today(pid);
+    const items: ProfiledUpcomingItem[] = collectAttentionModel(
+      pid,
+      now,
+      units
+    ).map((i) => ({ ...i, profileId: pid }));
+    total += items.length;
+    members.push({ profileId: pid, today: now, items });
+  }
+  return { members, groups: mergeAttentionPageGroups(members), total };
+}
+
+// A suppressed-attention entry tagged with its owning profile, so the multi-view
+// "Snoozed & dismissed" section can stamp its subject and route its Restore write to
+// the item's OWN profile (never the acting one — #1096's per-item-profile rule).
+export type ProfiledSuppressedEntry = SuppressedAttentionEntry & {
+  profileId: number;
+};
+
+export function collectMultiProfileSuppressed(
+  viewIds: readonly number[],
+  units: UpcomingDisplayUnits = CANONICAL_DISPLAY_UNITS
+): ProfiledSuppressedEntry[] {
+  const out: ProfiledSuppressedEntry[] = [];
+  for (const pid of viewIds) {
+    const now = today(pid);
+    for (const e of collectSuppressedAttention(pid, now, units)) {
+      out.push({ ...e, profileId: pid });
+    }
   }
   return out;
 }

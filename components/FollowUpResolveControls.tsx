@@ -13,10 +13,15 @@ export default function FollowUpResolveControls({
   action,
   carePlanItemId,
   resolvingRecordId,
+  profileId,
 }: {
   action: (formData: FormData) => Promise<void>;
   carePlanItemId: number;
   resolvingRecordId: number;
+  // The item's OWNING profile (issue #1096): on a multi-view surface the resolution
+  // must target the ITEM's profile, so the caller threads it and the form posts
+  // `profile_id`. Omitted on single-view (falls back to the active profile).
+  profileId?: number;
 }) {
   return (
     <form
@@ -30,6 +35,9 @@ export default function FollowUpResolveControls({
         name="resolving_study_id"
         value={resolvingRecordId}
       />
+      {profileId != null && (
+        <input type="hidden" name="profile_id" value={profileId} />
+      )}
       {(
         [
           ["resolved", "Resolved"],

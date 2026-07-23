@@ -672,3 +672,17 @@ export const VIDEO_PROFILE = "Video Capture (e2e)";
 // which on profile 1 would race the review-inbox/integration specs.
 export const E2E_LOGIN_WEATHER = "e2e_weather";
 export const WEATHER_PROFILE = "Weather (e2e)";
+
+// #1096 — multi-profile viewing (the banner view-set + multi-view Upcoming). A
+// dedicated member granted TWO dedicated profiles, both WRITE, each carrying its own
+// due-today supplement dose. Isolated on purpose: the spec toggles a second profile
+// into the view-set and confirms a cross-profile dose (a persistent write), so
+// sharing profile 1 / the household profile would race the household-rollup specs
+// (which pin those profiles' exact dose state). The OWNER profile is created first
+// so it holds the lower id and is therefore the caregiver's ACTING profile on login
+// (createSession picks accessibleProfiles[0]). Synthetic, no PHI.
+export const E2E_LOGIN_MULTI = "e2e_multi";
+export const MULTI_OWNER_PROFILE = "Multi Owner (e2e)";
+export const MULTI_SHARED_PROFILE = "Multi Shared (e2e)";
+export const MULTI_OWNER_DOSE = "Multi Owner Vitamin";
+export const MULTI_SHARED_DOSE = "Multi Shared Vitamin";

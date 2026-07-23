@@ -8,6 +8,7 @@ import VersionWatcher from "@/components/VersionWatcher";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import OfflineQueueProvider from "@/components/OfflineQueueProvider";
 import ProfileSwitchWatcher from "@/components/ProfileSwitchWatcher";
+import ProfileViewStrip from "@/components/ProfileViewStrip";
 import OnboardingReturnBanner from "@/components/OnboardingReturnBanner";
 import { getAppVersion } from "@/lib/version";
 import { TimezoneProvider } from "@/components/TimezoneProvider";
@@ -25,6 +26,7 @@ import { getEquipment } from "@/lib/equipment";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import { isFoodLoggingRelevant } from "@/lib/life-stage";
 import { requireSession, getAccessibleProfiles } from "@/lib/auth";
+import { requireScope } from "@/lib/scope";
 import {
   getActivitySuggestions,
   getRecentExerciseHistory,
@@ -77,6 +79,14 @@ export default async function AppLayout({
   const session = await requireSession();
   const { login, profile } = session;
   const profiles = await getAccessibleProfiles();
+  // The cross-profile scope (issue #1096): the persisted view-set (∩ accessible),
+  // resolved once at the shell so the profile menu's view toggles and the
+  // persistent view strip both read the SAME validated viewIds. Its disambiguated
+  // `profiles` (#534) name the in-view chips.
+  const scope = await requireScope();
+  const inViewProfiles = scope.viewIds
+    .map((id) => scope.profiles.find((p) => p.id === id))
+    .filter((p): p is (typeof scope.profiles)[number] => p != null);
 
   const units = getUnitPrefs(login.id);
   const formatPrefs = getDisplayFormatPrefs(login.id);
@@ -198,6 +208,7 @@ export default async function AppLayout({
                       version={version}
                       active={session.profile}
                       profiles={profiles}
+                      viewIds={scope.viewIds}
                       restricted={restricted}
                       isAdmin={isAdmin}
                       multiProfile={multiProfile}
@@ -218,6 +229,7 @@ export default async function AppLayout({
                       version={version}
                       active={session.profile}
                       profiles={profiles}
+                      viewIds={scope.viewIds}
                       restricted={restricted}
                       isAdmin={isAdmin}
                       multiProfile={multiProfile}
@@ -235,6 +247,10 @@ export default async function AppLayout({
                       className="mx-auto pt-8 pb-[max(2rem,env(safe-area-inset-bottom))] pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))] 3xl:max-w-[110rem]"
                     >
                       <OnboardingReturnBanner show={showOnboardingReturn} />
+                      <ProfileViewStrip
+                        profiles={inViewProfiles}
+                        actingProfileId={scope.actingProfileId}
+                      />
                       {children}
                     </div>
                   </main>

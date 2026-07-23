@@ -1,14 +1,24 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { IconChevronDown, IconLogout, IconInbox } from "@tabler/icons-react";
+import {
+  IconChevronDown,
+  IconLogout,
+  IconInbox,
+  IconEye,
+  IconEyeOff,
+} from "@tabler/icons-react";
 import type { SessionProfile } from "@/lib/auth";
 import { dataSectionHref } from "@/lib/hrefs";
 import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
 import Avatar from "@/components/Avatar";
 import { clearEmergencyPayload } from "@/components/emergency-offline";
 import { clearQueue } from "@/lib/offline/queue-db";
-import { logoutAction, switchProfileAction } from "@/app/(app)/user-actions";
+import {
+  logoutAction,
+  switchProfileAction,
+  setViewProfileAction,
+} from "@/app/(app)/user-actions";
 
 // Active-profile display + profile switcher + logout, rendered in the layout
 // chrome. Collapsed by default to a pill showing the active profile; clicking it
@@ -20,12 +30,18 @@ import { logoutAction, switchProfileAction } from "@/app/(app)/user-actions";
 export default function UserMenu({
   active,
   profiles,
+  viewIds = [],
   reviewCount = 0,
   readOnly = false,
   onNavigate,
 }: {
   active: SessionProfile;
   profiles: SessionProfile[];
+  // The session's multi-profile VIEW-SET (issue #1096) — the profiles currently
+  // toggled INTO the merged view. Each accessible-profile row gets a view toggle
+  // driving setViewProfileAction; the acting profile is always in-view (its toggle
+  // is shown checked + inert — you can't hide the profile you're acting as).
+  viewIds?: number[];
   // Integrations needing attention (failed syncs); rendered as a badge on the
   // pill and beside the "Import review" link. Resolved server-side (Data → Review).
   reviewCount?: number;
@@ -133,37 +149,86 @@ export default function UserMenu({
             read-only. You can browse everything but can&apos;t make changes.
           </p>
         )}
+        {profiles.length > 1 && (
+          <>
+            <p className="px-2 pb-0.5 pt-1 section-label">Profiles</p>
+            <p className="px-2 pb-1 text-xs text-slate-500 dark:text-slate-400">
+              Tap a name to act as them. Toggle the eye to show a profile in
+              your view.
+            </p>
+          </>
+        )}
         {profiles.length > 1 &&
           profiles.map((p) => {
             const isActive = p.id === active.id;
+            const inView = isActive || viewIds.includes(p.id);
+            const name = displayNames.get(p.id) ?? p.name;
             return (
-              <form key={p.id} action={switchProfileAction}>
-                <input type="hidden" name="profileId" value={p.id} />
-                <button
-                  type="submit"
-                  aria-current={isActive ? "true" : undefined}
-                  onClick={() => {
-                    // The switch-time device-local cleanup is centralized in
-                    // ProfileSwitchWatcher (#600) — it wipes the previous profile's
-                    // emergency card whenever the active profile id changes, so EVERY
-                    // switch affordance is covered by construction rather than each
-                    // hand-mirroring the wipe here. The offline queue is deliberately
-                    // NOT wiped on switch anymore: its intents are profile-stamped
-                    // (#599) and replay onto their own profile.
-                    setOpen(false);
-                  }}
-                  className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium transition ${
-                    isActive
-                      ? "bg-gradient-to-r from-brand-500 to-brand-600 text-white shadow-sm"
-                      : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
-                  }`}
-                >
-                  <Avatar profile={p} size="sm" />
-                  <span className="min-w-0 truncate">
-                    {displayNames.get(p.id) ?? p.name}
-                  </span>
-                </button>
-              </form>
+              // Two controls per row (#1096): the ACT-AS switch (the name) and the
+              // in/out-of-VIEW toggle (the eye). Kept as sibling forms so each posts
+              // its own Server Action — the switch changes the write target, the
+              // toggle changes only the read overlay.
+              <div key={p.id} className="flex items-center gap-1">
+                <form action={switchProfileAction} className="min-w-0 flex-1">
+                  <input type="hidden" name="profileId" value={p.id} />
+                  <button
+                    type="submit"
+                    aria-current={isActive ? "true" : undefined}
+                    onClick={() => {
+                      // The switch-time device-local cleanup is centralized in
+                      // ProfileSwitchWatcher (#600) — it wipes the previous profile's
+                      // emergency card whenever the active profile id changes, so EVERY
+                      // switch affordance is covered by construction rather than each
+                      // hand-mirroring the wipe here. The offline queue is deliberately
+                      // NOT wiped on switch anymore: its intents are profile-stamped
+                      // (#599) and replay onto their own profile.
+                      setOpen(false);
+                    }}
+                    className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium transition ${
+                      isActive
+                        ? "bg-gradient-to-r from-brand-500 to-brand-600 text-white shadow-sm"
+                        : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
+                    }`}
+                  >
+                    <Avatar profile={p} size="sm" />
+                    <span className="min-w-0 truncate">{name}</span>
+                  </button>
+                </form>
+                <form action={setViewProfileAction} className="shrink-0">
+                  <input type="hidden" name="profileId" value={p.id} />
+                  <button
+                    type="submit"
+                    disabled={isActive}
+                    data-testid={`view-toggle-${p.id}`}
+                    aria-pressed={inView}
+                    aria-label={
+                      isActive
+                        ? `${name} is always in your view`
+                        : inView
+                          ? `Remove ${name} from view`
+                          : `Add ${name} to view`
+                    }
+                    title={
+                      isActive
+                        ? "Always in view"
+                        : inView
+                          ? "In view — tap to hide"
+                          : "Not in view — tap to show"
+                    }
+                    className={`flex h-8 w-8 items-center justify-center rounded-md border transition disabled:opacity-40 ${
+                      inView
+                        ? "border-brand-300 bg-brand-50 text-brand-600 dark:border-brand-500/40 dark:bg-brand-500/10 dark:text-brand-300"
+                        : "border-black/10 text-slate-400 hover:bg-slate-100 dark:border-white/10 dark:hover:bg-ink-750"
+                    }`}
+                  >
+                    {inView ? (
+                      <IconEye className="h-4 w-4" stroke={1.75} />
+                    ) : (
+                      <IconEyeOff className="h-4 w-4" stroke={1.75} />
+                    )}
+                  </button>
+                </form>
+              </div>
             );
           })}
         {/* A plain <a>, NOT a Next <Link>, on purpose (#830). Reached only after

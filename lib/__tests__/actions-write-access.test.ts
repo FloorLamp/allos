@@ -166,6 +166,11 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     why: "moves the session's active-profile pointer (setActiveProfile re-checks accessibility); not a write to profile-owned data, and read-only members must still be able to switch profiles",
   },
   {
+    file: "app/(app)/user-actions.ts",
+    fn: "setViewProfileAction",
+    why: "toggles the session's multi-profile VIEW-SET (#1096), a READ overlay only (toggleViewProfile is grant-validated: an ungranted id is a no-op); mutates no profile-owned data, and read-only members must still be able to view profiles",
+  },
+  {
     file: "app/(auth)/login/actions.ts",
     fn: "login",
     why: "public auth entry point; runs before any session/profile exists",
@@ -217,6 +222,51 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     file: "app/(app)/household/actions.ts",
     fn: "confirmDoseAction",
     why: "acts on a NON-active target profile; gates via requireProfileWriteAccess(targetId), which asserts the target is accessible AND write — the active-profile requireWriteAccess() would authorize the wrong profile",
+  },
+  // --- Multi-view Upcoming per-item writes (issue #1096) — each row carries its
+  // OWN profileId, so the write must target the ITEM's profile, not the acting one.
+  // All gate through the shared gateItemProfile() helper, which calls
+  // requireProfileWriteAccess(itemProfileId) (a read-only-granted / ungranted member
+  // is bounced) and falls back to requireWriteAccess() for a single-view form. ---
+  {
+    file: "app/(app)/upcoming/actions.ts",
+    fn: "markTaken",
+    why: "multi-view (#1096): confirms a dose on the ITEM's row; gateItemProfile() → requireProfileWriteAccess(itemProfileId), so Sam's dose writes to Sam even while acting as someone else",
+  },
+  {
+    file: "app/(app)/upcoming/actions.ts",
+    fn: "markPreventiveDone",
+    why: "multi-view (#1096): records a preventive satisfaction on the ITEM's profile via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
+  {
+    file: "app/(app)/upcoming/actions.ts",
+    fn: "markCarePlanDone",
+    why: "multi-view (#1096): completes a care-plan item on the ITEM's profile via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
+  {
+    file: "app/(app)/upcoming/actions.ts",
+    fn: "overridePreventive",
+    why: "multi-view (#1096): overrides a preventive rule on the ITEM's profile via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
+  {
+    file: "app/(app)/upcoming/actions.ts",
+    fn: "resolveFollowUp",
+    why: "multi-view (#1096): resolves a follow-up on the ITEM's profile via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
+  {
+    file: "app/(app)/upcoming/actions.ts",
+    fn: "snoozeItem",
+    why: "multi-view (#1096): snoozes on the ITEM's suppression bus via gateItemProfile() → requireProfileWriteAccess(itemProfileId), so a dismissal lands on the item's profile, never the acting one",
+  },
+  {
+    file: "app/(app)/upcoming/actions.ts",
+    fn: "dismissItem",
+    why: "multi-view (#1096): dismisses on the ITEM's suppression bus via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
+  {
+    file: "app/(app)/upcoming/actions.ts",
+    fn: "restoreItem",
+    why: "multi-view (#1096): restores on the ITEM's suppression bus via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
 ];
 

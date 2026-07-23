@@ -35,6 +35,7 @@ export default function SidebarContent({
   version,
   active,
   profiles,
+  viewIds = [],
   restricted = false,
   isAdmin = false,
   multiProfile = false,
@@ -50,6 +51,9 @@ export default function SidebarContent({
   version: AppVersion;
   active: SessionProfile;
   profiles: SessionProfile[];
+  // The session's multi-profile VIEW-SET (issue #1096) — threaded through to the
+  // profile menu's per-profile view toggles. Defaults empty (single-view).
+  viewIds?: number[];
   restricted?: boolean;
   // Reveals any admin-only nav entries; the pages themselves still call
   // requireAdmin().
@@ -128,6 +132,7 @@ export default function SidebarContent({
         <UserMenu
           active={active}
           profiles={profiles}
+          viewIds={viewIds}
           reviewCount={reviewCount}
           readOnly={readOnly}
           onNavigate={onNavigate}

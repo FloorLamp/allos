@@ -25,23 +25,23 @@ import {
   IconSun,
   type TablerIcon,
 } from "@tabler/icons-react";
-import { requireSession } from "@/lib/auth";
+import { requireScope, stampSubjects, type SubjectInfo } from "@/lib/scope";
 import { today } from "@/lib/db";
 import {
-  collectAttentionModel,
-  collectSuppressedAttention,
-  type SuppressedAttentionEntry,
+  collectMultiProfileAttention,
+  collectMultiProfileSuppressed,
+  type ProfiledSuppressedEntry,
 } from "@/lib/queries";
 import { SUPPRESSION_DOMAIN_ORDER } from "@/lib/suppression-display";
 import { getUserBirthdate, getStoredAge, getUnitPrefs } from "@/lib/settings";
-import { groupAttentionForPage, type PageGroupKind } from "@/lib/attention";
+import { type PageGroupKind, type ProfiledUpcomingItem } from "@/lib/attention";
 import {
   isItemSuppressibleFlag,
   upcomingDueText,
   type UpcomingDomain,
-  type UpcomingItem,
 } from "@/lib/upcoming";
 import { PageHeader, EmptyState } from "@/components/ui";
+import Avatar from "@/components/Avatar";
 import SubmitButton from "@/components/SubmitButton";
 import SnoozeDismissMenu from "@/components/SnoozeDismissMenu";
 import PreventiveOverrideMenu from "./PreventiveOverrideMenu";
@@ -107,29 +107,53 @@ const GROUP_TONE: Record<PageGroupKind, string> = {
 };
 
 export default async function UpcomingPage() {
-  const { login, profile } = await requireSession();
-  const now = today(profile.id);
+  // The cross-profile scope (issue #1096): the persisted view-set (∩ accessible).
+  // In the common single-view case `viewIds` is just the acting profile and the page
+  // renders exactly as before; when the user has toggled other profiles into view,
+  // this merges each member's attention model — computed in THAT member's own
+  // timezone/today (the per-profile-context trap) — into one list, subject-stamped.
+  const scope = await requireScope();
+  const { loginId, actingProfileId, viewIds } = scope;
+  const multi = viewIds.length > 1;
+  // The acting profile's own today — the fallback clock for the demographics banner
+  // and any item whose member-today lookup misses (never in practice).
+  const now = today(actingProfileId);
   // The viewer's unit prefs (#1019 display-unit policy: web always follows the
-  // login's prefs) so measurement-carrying item strings — the temperature
-  // red-flag, an endurance event distance — render in the viewer's unit.
-  const units = getUnitPrefs(login.id);
-  // The ONE unified attention model (issue #524) — the SAME set the dashboard card
-  // renders (as an act-now subset). The page shows it in FULL: date-scheduled work
-  // in calendar bands, plus the flagged-lab / failing-sync / review signals under
-  // their own groupings. Completeness is the point of the planning view.
-  const items = collectAttentionModel(profile.id, now, units);
-  const groups = groupAttentionForPage(items, now);
-  const total = items.length;
-  const suppressed = collectSuppressedAttention(profile.id, now, units);
+  // login's prefs) so measurement-carrying item strings render in the viewer's unit.
+  const units = getUnitPrefs(loginId);
 
-  // Preventive well-visits/screenings (issue #82) are only assessed when the
-  // profile's age is known; without a birthdate/age they emit nothing. Surface a
-  // one-time pointer instead of silence, and a general-guidelines disclaimer
-  // whenever any preventive item is shown.
+  // The ONE unified attention model (issue #524), composed per member (#1096). Each
+  // member's dueness/banding is computed in its own today (loop-composed, never
+  // set-based SQL over a shared clock — the trap). The single-profile page is just
+  // the one-member case of this.
+  const model = collectMultiProfileAttention(viewIds, units);
+  const groups = model.groups;
+  const total = model.total;
+  const suppressed = collectMultiProfileSuppressed(viewIds, units);
+
+  // Per-member "today" for correct relative due-text on each merged row, and the
+  // per-item subject identity (#534) resolved ONCE through the shared stampSubjects
+  // (names show only when multi — a single view stays exactly as clean as today).
+  const nowByProfile = new Map(
+    model.members.map((m) => [m.profileId, m.today])
+  );
+  const subjectByProfile = new Map<number, SubjectInfo>();
+  if (multi) {
+    for (const s of stampSubjects(
+      scope,
+      viewIds.map((id) => ({ profileId: id }))
+    )) {
+      subjectByProfile.set(s.profileId, s.subject);
+    }
+  }
+
+  // Preventive well-visits/screenings (issue #82) are only assessed when the acting
+  // profile's age is known; the pointer is acting-profile guidance.
   const hasDemographics =
-    getUserBirthdate(profile.id) != null || getStoredAge(profile.id) != null;
-  const hasPreventive = items.some(
-    (i) => i.domain === "visit" || i.domain === "screening"
+    getUserBirthdate(actingProfileId) != null ||
+    getStoredAge(actingProfileId) != null;
+  const hasPreventive = groups.some((g) =>
+    g.items.some((i) => i.domain === "visit" || i.domain === "screening")
   );
 
   return (
@@ -183,12 +207,19 @@ export default async function UpcomingPage() {
                 </span>
               </h2>
               <div className="card space-y-1 p-2">
-                {group.items.map((item) => (
+                {(group.items as ProfiledUpcomingItem[]).map((item) => (
                   <Row
-                    key={item.key}
+                    key={`${item.profileId}:${item.key}`}
                     item={item}
-                    now={now}
+                    now={nowByProfile.get(item.profileId) ?? now}
                     tone={GROUP_TONE[group.kind]}
+                    multi={multi}
+                    actingProfileId={actingProfileId}
+                    subject={
+                      multi
+                        ? (subjectByProfile.get(item.profileId) ?? null)
+                        : null
+                    }
                   />
                 ))}
               </div>
@@ -197,7 +228,13 @@ export default async function UpcomingPage() {
         </div>
       )}
 
-      {suppressed.length > 0 && <SuppressedSection items={suppressed} />}
+      {suppressed.length > 0 && (
+        <SuppressedSection
+          items={suppressed}
+          multi={multi}
+          subjectByProfile={subjectByProfile}
+        />
+      )}
 
       {hasPreventive && (
         <p className="mt-8 flex items-start gap-2 text-xs text-slate-500 dark:text-slate-400">
@@ -216,11 +253,44 @@ export default async function UpcomingPage() {
   );
 }
 
+// A small subject chip (#534/#900) rendered on a cross-profile row when the view
+// holds more than one profile. On-element identity, never spatial (#531).
+function SubjectChip({ subject }: { subject: SubjectInfo }) {
+  return (
+    <span
+      data-testid={`subject-chip-${subject.profileId}`}
+      className="flex shrink-0 items-center gap-1 rounded-full border border-black/10 bg-slate-50 py-0.5 pl-0.5 pr-2 text-xs font-medium text-slate-600 dark:border-white/10 dark:bg-ink-850 dark:text-slate-300"
+    >
+      <Avatar
+        profile={{
+          id: subject.profileId,
+          name: subject.name,
+          photo_path: subject.photoPath,
+          photo_version: subject.photoVersion,
+        }}
+        size="sm"
+      />
+      {subject.name}
+      {subject.access === "read" && (
+        <span className="rounded-full bg-amber-100 px-1 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+          RO
+        </span>
+      )}
+    </span>
+  );
+}
+
 // Inline controls for a due preventive visit/screening row (issue #82): a fast
 // "Mark done" (records a satisfaction dated today, like a dose "mark taken") plus
 // an override menu to mark the rule Declined or Not applicable — either hides it.
 // The override menu is the shared OverflowMenu-based popover (issue #281).
-function PreventiveControls({ ruleKey }: { ruleKey: string }) {
+function PreventiveControls({
+  ruleKey,
+  profileId,
+}: {
+  ruleKey: string;
+  profileId: number;
+}) {
   return (
     <div className="flex shrink-0 items-center gap-1">
       <form
@@ -230,6 +300,7 @@ function PreventiveControls({ ruleKey }: { ruleKey: string }) {
         }}
       >
         <input type="hidden" name="rule_key" value={ruleKey} />
+        <input type="hidden" name="profile_id" value={profileId} />
         <SubmitButton
           pendingLabel="…"
           className="rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
@@ -242,14 +313,19 @@ function PreventiveControls({ ruleKey }: { ruleKey: string }) {
   );
 }
 
-// The collapsed "Snoozed & dismissed" section — now the COMPLETE window over the
-// findings-suppression bus (issue #1151): care items, coaching/observational
-// findings, per-surface suggestions, and warnings, grouped by domain. Each row
-// carries a Restore that drops the suppression row (the exact shared-store op the
-// inline restores use), so the finding reappears on its origin surface —
-// "un-dismiss once, reappears everywhere". An orphan row (subject deleted /
-// unknown key, #203) renders generically; its Restore just clears the dead key.
-function SuppressedSection({ items }: { items: SuppressedAttentionEntry[] }) {
+// The collapsed "Snoozed & dismissed" section — the COMPLETE window over the
+// findings-suppression bus (issue #1151), now cross-profile (#1096): each row's
+// Restore targets the ITEM's own profile (profile_id threaded), never the acting
+// one.
+function SuppressedSection({
+  items,
+  multi,
+  subjectByProfile,
+}: {
+  items: ProfiledSuppressedEntry[];
+  multi: boolean;
+  subjectByProfile: Map<number, SubjectInfo>;
+}) {
   const groups = SUPPRESSION_DOMAIN_ORDER.map((domain) => ({
     domain,
     entries: items.filter((e) => e.domain === domain),
@@ -269,9 +345,12 @@ function SuppressedSection({ items }: { items: SuppressedAttentionEntry[] }) {
             <div className="space-y-1">
               {g.entries.map((e) => {
                 const Icon = e.item ? DOMAIN_ICON[e.item.domain] : IconBellOff;
+                const subject = multi
+                  ? (subjectByProfile.get(e.profileId) ?? null)
+                  : null;
                 return (
                   <div
-                    key={e.signalKey}
+                    key={`${e.profileId}:${e.signalKey}`}
                     data-testid="suppressed-row"
                     className="flex items-center gap-3 rounded-lg px-2 py-2"
                   >
@@ -289,6 +368,7 @@ function SuppressedSection({ items }: { items: SuppressedAttentionEntry[] }) {
                           : "Dismissed"}
                       </div>
                     </div>
+                    {subject && <SubjectChip subject={subject} />}
                     <form
                       action={async (fd) => {
                         "use server";
@@ -300,6 +380,11 @@ function SuppressedSection({ items }: { items: SuppressedAttentionEntry[] }) {
                         type="hidden"
                         name="signal_key"
                         value={e.signalKey}
+                      />
+                      <input
+                        type="hidden"
+                        name="profile_id"
+                        value={e.profileId}
                       />
                       <SubmitButton
                         pendingLabel="…"
@@ -327,12 +412,28 @@ function Row({
   item,
   now,
   tone,
+  multi,
+  actingProfileId,
+  subject,
 }: {
-  item: UpcomingItem;
+  item: ProfiledUpcomingItem;
   now: string;
   tone: string;
+  // True when >1 profile is in view — gates subject chips and per-item write
+  // targeting.
+  multi: boolean;
+  actingProfileId: number;
+  // The row's subject identity (#534), or null in single-view. When present and
+  // read-only-granted, this row's write affordances are hidden — the #858 per-item
+  // access-gating rule generalized (#1096).
+  subject: SubjectInfo | null;
 }) {
   const Icon = DOMAIN_ICON[item.domain];
+  // A row is writable when single-view (server still enforces), or when the item's
+  // subject is write-granted. A read-only-granted member's rows show but carry no
+  // write buttons.
+  const canWrite = subject == null || subject.access === "write";
+  const isActing = item.profileId === actingProfileId;
   return (
     <div
       data-testid={`upcoming-item-${item.key}`}
@@ -358,10 +459,11 @@ function Row({
           </div>
         )}
       </div>
+      {multi && subject && <SubjectChip subject={subject} />}
       <div className={`shrink-0 whitespace-nowrap text-xs font-medium ${tone}`}>
         {upcomingDueText(item, now)}
       </div>
-      {item.doseId != null && (
+      {canWrite && item.doseId != null && (
         <form
           action={async (fd) => {
             "use server";
@@ -370,6 +472,7 @@ function Row({
           className="shrink-0"
         >
           <input type="hidden" name="dose_id" value={item.doseId} />
+          <input type="hidden" name="profile_id" value={item.profileId} />
           <SubmitButton
             pendingLabel="…"
             className="rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
@@ -411,10 +514,13 @@ function Row({
           Book
         </Link>
       )}
-      {item.preventiveRuleKey != null && (
-        <PreventiveControls ruleKey={item.preventiveRuleKey} />
+      {canWrite && item.preventiveRuleKey != null && (
+        <PreventiveControls
+          ruleKey={item.preventiveRuleKey}
+          profileId={item.profileId}
+        />
       )}
-      {item.carePlanItemId != null && (
+      {canWrite && item.carePlanItemId != null && (
         <form
           action={async (fd) => {
             "use server";
@@ -427,6 +533,7 @@ function Row({
             name="care_plan_item_id"
             value={item.carePlanItemId}
           />
+          <input type="hidden" name="profile_id" value={item.profileId} />
           <SubmitButton
             pendingLabel="…"
             className="rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
@@ -436,9 +543,10 @@ function Row({
         </form>
       )}
       {/* Condition suggestion (issue #685): an inline confirm that adds the suggested
-      problem-list condition — suggest-only, so it acts ONLY on this explicit click,
-      never on ingest. Dismiss lives in the shared snooze/dismiss menu below. */}
-      {item.conditionSuggestion != null && (
+      problem-list condition. confirmConditionSuggestion targets the ACTING profile,
+      so on a multi-view page it's shown only for the acting profile's own rows —
+      never a wrong-target write on another member's row (#1096). */}
+      {canWrite && item.conditionSuggestion != null && (!multi || isActing) && (
         <form
           action={async (fd) => {
             "use server";
@@ -469,7 +577,7 @@ function Row({
       )}
       {/* Finding follow-up resolution offer (issue #700): a matching later record
       landed, so offer the outcome (resolved / stable / changed) confirm-first. */}
-      {item.followUpResolve != null && (
+      {canWrite && item.followUpResolve != null && (
         <FollowUpResolveControls
           action={async (fd) => {
             "use server";
@@ -477,11 +585,11 @@ function Row({
           }}
           carePlanItemId={item.followUpResolve.carePlanItemId}
           resolvingRecordId={item.followUpResolve.resolvingRecordId}
+          profileId={item.profileId}
         />
       )}
       {/* "Why is this flagged?" (issue #878, Phase 1): narrate the item's OWN carried
-      reasons via the Light tier, or the deterministic structured fallback keyless.
-      Only shown when the item carries structured reasons. */}
+      reasons. Read-only, so it's shown regardless of write access. */}
       {item.reasons != null && item.reasons.length > 0 && (
         <ExplainFinding
           title={item.title}
@@ -489,14 +597,13 @@ function Row({
           reasons={item.reasons}
         />
       )}
-      {/* Per-item snooze/dismiss popover — the shared OverflowMenu-based menu
-      (issue #281), identical to the dashboard hero's. Only suppressible items get
-      one; the structural signals (failing sync / review count) are resolved, not
-      snoozed (issue #524). A care-persistent overdue follow-up (#700) gets a
-      snooze-ONLY menu — it resists an indefinite dismiss. */}
-      {isItemSuppressibleFlag(item) && (
+      {/* Per-item snooze/dismiss popover — the dismissal writes to the ITEM's own
+      profile (profile_id threaded), never the acting one (#1096). Hidden on a
+      read-only-granted row. */}
+      {canWrite && isItemSuppressibleFlag(item) && (
         <SnoozeDismissMenu
           signalKey={item.key}
+          profileId={item.profileId}
           snoozeOnly={item.carePersistent === true}
           snoozeAction={async (fd) => {
             "use server";

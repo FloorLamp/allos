@@ -34,6 +34,7 @@ import {
   requireSession,
   accessibleProfilesForLogin,
   accessForProfile,
+  getCurrentViewProfileIds,
   type Access,
   type Role,
   type SessionProfile,
@@ -127,13 +128,20 @@ export function resolveScope(
 // (the overwhelmingly common case) — this ADDS a primitive, it does not move the app
 // to multi-profile-by-default.
 //
-// `rawViewIds` is the future persisted view-set hook (#1096); until that column
-// exists, callers pass nothing and the view defaults to [actingProfileId].
+// `rawViewIds` is the persisted view-set hook (#1096). When the caller passes
+// nothing (`undefined`), requireScope LOADS the session's persisted
+// `sessions.view_profile_ids` (migration 101) and validates it here — so a
+// multi-view page just calls `requireScope()` and reads `scope.viewIds`. Passing an
+// explicit array (or null) overrides the persisted set for that resolution (used by
+// tests and any surface that wants an ad-hoc view). The stored value is ALWAYS
+// re-validated (∩ accessible) in resolveScope — never trusted as stored.
 export async function requireScope(
   rawViewIds?: readonly number[] | null
 ): Promise<ProfileScope> {
   const session = await requireSession();
-  return resolveScope(session, rawViewIds);
+  const raw =
+    rawViewIds !== undefined ? rawViewIds : await getCurrentViewProfileIds();
+  return resolveScope(session, raw);
 }
 
 // ── Subject stamping (#534, #531/#900) ────────────────────────────────────────
