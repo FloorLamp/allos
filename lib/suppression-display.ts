@@ -200,6 +200,13 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
     label: () => "Training target",
   },
   {
+    // Wellness-practice weekly target (#1259): the Upcoming twin of the pace-aware
+    // Telegram nudge — dismiss once silences both (the #227 workout-nudge pattern).
+    prefix: "practice:",
+    domain: "Due & scheduled",
+    label: () => "Practice target",
+  },
+  {
     prefix: "endurance-event:",
     domain: "Due & scheduled",
     label: () => "Endurance event",

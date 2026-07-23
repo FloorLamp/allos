@@ -49,6 +49,11 @@ export async function uploadProgressPhoto(
   if (outcome.kind === "invalid") return formError(outcome.error);
   // "duplicate" is a success: the identical capture is already in the series.
   revalidatePath("/progress");
+  // The "Progress photos" sidebar entry is data-gated by getNavRelevance
+  // (relevanceKey "progress"), read once in the shared app layout — so the first
+  // photo must revalidate "/" or the nav link stays hidden until an unrelated
+  // reload (the sleep/mood precedent, #1282).
+  revalidatePath("/");
   return formOk();
 }
 
@@ -62,5 +67,8 @@ export async function deleteProgressPhoto(
   if (!id) return formError("That photo is no longer available.");
   deleteProgressPhotoCore(profile.id, id);
   revalidatePath("/progress");
+  // Deleting the last photo re-hides the nav entry — revalidate "/" so the shared
+  // layout's nav relevance re-resolves, matching the upload path (#1282).
+  revalidatePath("/");
   return formOk();
 }

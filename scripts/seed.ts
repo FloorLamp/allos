@@ -2118,6 +2118,48 @@ db.prepare(
   creatineId
 );
 
+// ── Wellness practice as protocol adherence (issue #1259) ────────────────────
+// A red-light-therapy protocol with a 3–5×/week RANGE target (a `practice`-scope
+// frequency target on the shared table) it OWNS, plus a handful of logged sessions in
+// the dedicated practice_logs store across the last week — so the protocol's adherence
+// card + the Active-protocols widget show real progress with the one-tap "Log session"
+// button, the Timeline shows the sessions, and the pace-aware Telegram nudge has data.
+// Synthetic — an obviously-fictional self-experiment, no PHI.
+const redLightTargetId = Number(
+  db
+    .prepare(
+      `INSERT INTO frequency_targets (profile_id, scope_kind, scope_value, per_week, per_week_max, created_at)
+       VALUES (1, 'practice', 'Red light therapy', 3, 5, ?)`
+    )
+    .run(`${daysAgo(35)} 09:00:00`).lastInsertRowid
+);
+db.prepare(
+  `INSERT INTO protocols
+     (profile_id, name, start_date, end_date, notes, outcome_keys, situation,
+      frequency_target_id, owns_frequency_target)
+   VALUES (1, ?, ?, NULL, ?, ?, NULL, ?, 1)`
+).run(
+  "Red light 3–5×/week",
+  daysAgo(35),
+  "10-min red-light panel session; tracking sleep regularity and resting HR.",
+  JSON.stringify(["metric:resting_hr"]),
+  redLightTargetId
+);
+// ~5 weeks of sessions, mostly 3–4 days/week (some days two sessions). Each row is a
+// real session with an optional local time + duration in minutes (canonical).
+const redLightSession = db.prepare(
+  `INSERT INTO practice_logs (profile_id, practice, date, time, duration_min)
+   VALUES (1, 'Red light therapy', ?, ?, ?)`
+);
+for (let d = 34; d >= 0; d--) {
+  // Mon/Wed/Fri/Sun rhythm → ~4 distinct days/week (a comfortable in-range week).
+  if (d % 7 === 0 || d % 7 === 2 || d % 7 === 4 || d % 7 === 6) {
+    redLightSession.run(daysAgo(d), "07:30", 10);
+    // An occasional evening second session (multi-session day — day-distinct adherence).
+    if (d % 14 === 0) redLightSession.run(daysAgo(d), "21:15", 10);
+  }
+}
+
 // ── Food-group serving log (issue #579) ──────────────────────────────────────
 // ~8 weeks of realistic food-group servings so the /nutrition log, the weekly rollup,
 // the Trends → Nutrition tab, and the food-habit N-week consistency trend (#954) have

@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 098 (issue #1172): the cached hourly weather/UV series behind the
+// Migration 100 (issue #1172): the cached hourly weather/UV series behind the
 // Open-Meteo integration and the two-sided UV-dose sun model.
 //
 // SCOPING — GLOBAL, LOCATION-KEYED, NOT PROFILE-OWNED (a deliberate decision). The UV
@@ -21,10 +21,13 @@ import type { Migration } from "../runner";
 // crosses directly with the local-time daylight/activity windows the dose model uses.
 // `source` records which adapter produced the row (open-meteo today, swappable). The UV
 // + irradiance columns are all nullable (a provider/endpoint may omit a variable for an
-// hour); uv_index_clear_sky is the degradation-ladder clear-sky field.
+// hour); uv_index_clear_sky is the degradation-ladder clear-sky field. No secondary
+// index is needed: `UNIQUE (lat, lng, hour_ts)` already materializes the implicit index
+// the reads use (both the point upsert and the `hour_ts LIKE '<date>T%'` day scan are a
+// prefix probe on it), so a separate index over the same columns would be pure dead weight.
 //
-// CREATE ... IF NOT EXISTS + the index guards keep the non-version-gated migrate()
-// replay a no-op. Determinism: reads only the DB + its own constants.
+// CREATE ... IF NOT EXISTS keeps the non-version-gated migrate() replay a no-op.
+// Determinism: reads only the DB + its own constants.
 
 export function up(db: Database.Database): void {
   db.exec(`
@@ -42,13 +45,11 @@ export function up(db: Database.Database): void {
       fetched_at         TEXT NOT NULL DEFAULT (datetime('now')),
       UNIQUE (lat, lng, hour_ts)
     );
-    CREATE INDEX IF NOT EXISTS idx_weather_uv_hours_loc_day
-      ON weather_uv_hours(lat, lng, hour_ts);
   `);
 }
 
 export const migration: Migration = {
-  id: 98,
-  name: "098-weather-uv-cache",
+  id: 100,
+  name: "100-weather-uv-cache",
   up,
 };

@@ -75,6 +75,9 @@ const ALLOWLIST: Record<string, string> = {
   appointmentItems: "carries its own real appointment date",
   goalItems: "carries its own target date",
   trainingItems: "weekly frequency count — not risk-ranked",
+  practiceItems:
+    "wellness-practice weekly pace count (#1259) — a calm coaching-tier habit " +
+    "nudge, not a risk-ranked clinical due signal",
   carePlanItems: "provider-ordered item with its own planned date",
   enduranceEventItems:
     "endurance event day (#839) — carries its own real event_date; a user-set race " +

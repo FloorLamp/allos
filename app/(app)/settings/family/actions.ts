@@ -87,6 +87,22 @@ const PROGRESS_PHOTO_UPLOAD_ROOT = path.resolve(
   "progress-photos"
 );
 
+// Symptom / episode video clips and training form-check clips (#1224) live under
+// their own per-profile roots; deleting a profile unlinks its clip files AND
+// poster frames too (path-contained, same posture as the photo domains).
+const SYMPTOM_VIDEO_UPLOAD_ROOT = path.resolve(
+  process.cwd(),
+  "data",
+  "uploads",
+  "symptom-videos"
+);
+const ACTIVITY_VIDEO_UPLOAD_ROOT = path.resolve(
+  process.cwd(),
+  "data",
+  "uploads",
+  "activity-videos"
+);
+
 // Best-effort unlink of files that resolve to inside `root`. A path pointing
 // outside the root (hostile/corrupt stored_path) is skipped, never followed.
 // Failures are logged and swallowed — the DB rows are already gone by this point.
@@ -246,6 +262,22 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
     r.thumb_path ? [r.stored_path, r.thumb_path] : [r.stored_path]
   );
 
+  // Symptom / activity video clip + poster file paths (#1224), collected before
+  // the OWNED_TABLES sweep deletes their rows.
+  const collectVideoPaths = (table: string): string[] =>
+    (
+      db
+        .prepare(
+          `SELECT stored_path, poster_path FROM ${table}
+            WHERE profile_id = ? AND stored_path IS NOT NULL AND stored_path != ''`
+        )
+        .all(id) as { stored_path: string; poster_path: string | null }[]
+    ).flatMap((r) =>
+      r.poster_path ? [r.stored_path, r.poster_path] : [r.stored_path]
+    );
+  const symptomVideoPaths = collectVideoPaths("symptom_videos");
+  const activityVideoPaths = collectVideoPaths("activity_videos");
+
   // Disable foreign_keys for the whole subtree sweep (issue #729). The app
   // connection runs foreign_keys = ON, and OWNED_TABLES lists medical_documents
   // BEFORE its FK children (conditions/encounters/procedures/family_history/
@@ -337,6 +369,8 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
   deleteFilesUnderRoot(SYMPTOM_PHOTO_UPLOAD_ROOT, photoPaths);
   deleteFilesUnderRoot(LESION_PHOTO_UPLOAD_ROOT, lesionPhotoPaths);
   deleteFilesUnderRoot(PROGRESS_PHOTO_UPLOAD_ROOT, progressPhotoPaths);
+  deleteFilesUnderRoot(SYMPTOM_VIDEO_UPLOAD_ROOT, symptomVideoPaths);
+  deleteFilesUnderRoot(ACTIVITY_VIDEO_UPLOAD_ROOT, activityVideoPaths);
   if (prof.photo_path) deleteFilesUnderRoot(PHOTO_ROOT, [prof.photo_path]);
 
   // Sweep the same files from the OFF-VOLUME uploads mirror (#625) so a deleted

@@ -181,6 +181,8 @@ import {
   E2E_LOGIN_SUPPRESSED,
   PROGRESS_PHOTOS_PROFILE,
   SUPPRESSED_PROFILE,
+  E2E_LOGIN_VIDEO,
+  VIDEO_PROFILE,
 } from "./fixture-logins";
 import { adoptTemplate, activateRoutine } from "../lib/routines";
 import { getTimezone, setInstanceTimezone, setTimezone } from "../lib/settings";
@@ -4703,6 +4705,35 @@ console.log(
   seedMemberLogin(E2E_LOGIN_PHOTOS, photosId, "write");
   console.log(
     `e2e: seeded progress-photos fixture — profile ${photosId} (${PROGRESS_PHOTOS_PROFILE}) (#1119)`
+  );
+}
+
+// #1224 — video capture: a dedicated ADULT profile (birthdate so /training isn't
+// age-gated) with ONE seeded strength activity the spec attaches a form-check clip
+// to. The spec clears the profile's activity_videos / symptom_videos rows itself,
+// so its clip counts stay isolated. Idempotent for a reused server.
+{
+  const videoId = fixtureProfileId(VIDEO_PROFILE);
+  db.prepare(
+    `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', '1990-04-01')`
+  ).run(videoId);
+  db.prepare(
+    `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'sex', 'female')`
+  ).run(videoId);
+  const hasActivity = db
+    .prepare(
+      `SELECT id FROM activities WHERE profile_id = ? AND title = 'Squat session (e2e)'`
+    )
+    .get(videoId) as { id: number } | undefined;
+  if (!hasActivity) {
+    db.prepare(
+      `INSERT INTO activities (profile_id, date, type, title, source)
+         VALUES (?, ?, 'strength', 'Squat session (e2e)', 'manual')`
+    ).run(videoId, today(videoId));
+  }
+  seedMemberLogin(E2E_LOGIN_VIDEO, videoId, "write");
+  console.log(
+    `e2e: seeded video-capture fixture — profile ${videoId} (${VIDEO_PROFILE}) (#1224)`
   );
 }
 

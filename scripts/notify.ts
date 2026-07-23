@@ -27,6 +27,7 @@ import {
   type ReminderWindow,
 } from "../lib/notifications/supplements";
 import { buildWorkoutTargetReminder } from "../lib/notifications/workouts";
+import { buildPracticeReminder } from "../lib/notifications/practices";
 import { buildFoodNudge } from "../lib/notifications/food";
 import { FOOD_NUDGE_WINDOWS } from "../lib/notifications/food-format";
 import { buildMoodCheckin } from "../lib/notifications/mood";
@@ -137,10 +138,11 @@ async function send(
 async function manual(arg: string, profileId: number) {
   let msg: NotificationMessage | null;
   if (arg === "workout") msg = buildWorkoutTargetReminder(profileId);
+  else if (arg === "practice") msg = buildPracticeReminder(profileId);
   else if (WINDOWS[arg]) msg = buildSupplementReminder(profileId, WINDOWS[arg]);
   else {
     console.error(
-      "Usage: npm run notify -- <morning|midday|evening|bedtime|workout> [--profile <id>]"
+      "Usage: npm run notify -- <morning|midday|evening|bedtime|workout|practice> [--profile <id>]"
     );
     process.exit(2);
   }
@@ -579,6 +581,36 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
       if (trf.failed) anyFailed = true;
     } catch (e) {
       log.error("temp-red-flag check failed", {
+        profile: profile.id,
+        err: e instanceof Error ? e : String(e),
+      });
+      anyFailed = true;
+    }
+  }
+
+  // Pace-aware wellness-practice nudge (#1259): waking-window, once per profile-local
+  // day, BUS-GATED coaching-tier. buildPracticeReminder returns null when nothing is
+  // behind OR every behind target's `practice:<id>` Upcoming twin is dismissed/snoozed
+  // (the frozen state — no marker set, so un-dismissing resumes the lifecycle). Gated on
+  // Telegram being deliverable: the defining feature is the "Done ✓" button, and a
+  // practice target only exists once the user created a practice protocol (that IS the
+  // opt-in). NEVER safety-tier — a missed session is not a missed medication.
+  if (
+    waking &&
+    telegramChannel.isConfigured(profile.id) &&
+    getProfileSetting(profile.id, "notify_last_practice") !== date
+  ) {
+    try {
+      const built = buildPracticeReminder(profile.id);
+      if (built) {
+        const msg = prefixMessage(built, prefix);
+        const { delivered, failed } = await send(profile.id, msg);
+        if (failed) anyFailed = true;
+        if (delivered)
+          setProfileSetting(profile.id, "notify_last_practice", date);
+      }
+    } catch (e) {
+      log.error("practice nudge failed", {
         profile: profile.id,
         err: e instanceof Error ? e : String(e),
       });

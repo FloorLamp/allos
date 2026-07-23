@@ -11,6 +11,7 @@ import {
   IconFlask,
   IconTarget,
   IconBarbell,
+  IconSparkles,
   IconClipboardList,
   IconPlugConnectedX,
   IconInbox,
@@ -83,6 +84,7 @@ const DOMAIN_ICON: Record<UpcomingDomain, TablerIcon> = {
   "med-monitor": IconMicroscope,
   goal: IconTarget,
   training: IconBarbell,
+  practice: IconSparkles,
   careplan: IconClipboardList,
   followup: IconStethoscope,
   // A calm, medical icon for the crisis check-in (#716) — never an alarm triangle.

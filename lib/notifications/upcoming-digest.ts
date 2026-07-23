@@ -47,6 +47,10 @@ const DOMAIN_NOUN: Record<UpcomingDomain, string> = {
   "med-monitor": "monitoring lab",
   goal: "goal",
   training: "training target",
+  // A wellness-practice weekly target (#1259). Coaching-tier (calm) — its OWN pace-aware
+  // nudge is the push channel, so it's deliberately omitted from DOMAIN_SEQ and never
+  // counted in this digest; the exhaustive Record needs the noun.
+  practice: "practice target",
   careplan: "care-plan item",
   // A finding follow-up (#700). Care-tier on the hero/Upcoming (an overdue one
   // escalates there + resists dismiss), but the Telegram digest push is deliberately

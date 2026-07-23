@@ -19,7 +19,21 @@ function isValidScope(kind: FrequencyScopeKind, value: string): boolean {
   // `region`, but counted from recovery sessions (a separate view, #482).
   if (kind === "mobility_region")
     return (REGION_SCOPES as string[]).includes(value);
+  // Wellness-practice targets (#1259): scope_value is a free-text practice NAME (curated
+  // starter list + free text), so any non-empty name is valid.
+  if (kind === "practice") return value.length > 0;
   return false;
+}
+
+// Parse an optional weekly ceiling (#1259): a positive integer strictly greater than the
+// floor makes the target a range; anything else (blank, non-numeric, ≤ floor) is no
+// ceiling (NULL). Only practice targets carry one today, but the column is general.
+function parsePerWeekMax(
+  raw: FormDataEntryValue | null,
+  floor: number
+): number | null {
+  const n = Math.round(Number(raw ?? 0));
+  return Number.isFinite(n) && n > floor ? n : null;
 }
 
 export async function createFrequencyTarget(formData: FormData) {
@@ -39,6 +53,9 @@ export async function createFrequencyTarget(formData: FormData) {
     if (!slug) return;
     value = slug;
   }
+  // Optional weekly ceiling (#1259) — a range target ("3–5×/week"). NULL keeps the
+  // existing single-floor semantics for every other scope.
+  const perWeekMax = parsePerWeekMax(formData.get("per_week_max"), perWeek);
 
   if (id) {
     // Editing an existing routine — update it in place, including a changed scope.
@@ -48,8 +65,8 @@ export async function createFrequencyTarget(formData: FormData) {
       "DELETE FROM frequency_targets WHERE scope_kind = ? AND scope_value = ? AND id != ? AND profile_id = ?"
     ).run(kind, value, id, profile.id);
     db.prepare(
-      "UPDATE frequency_targets SET scope_kind = ?, scope_value = ?, per_week = ? WHERE id = ? AND profile_id = ?"
-    ).run(kind, value, perWeek, id, profile.id);
+      "UPDATE frequency_targets SET scope_kind = ?, scope_value = ?, per_week = ?, per_week_max = ? WHERE id = ? AND profile_id = ?"
+    ).run(kind, value, perWeek, perWeekMax, id, profile.id);
   } else {
     // New entry: one target per (scope_kind, scope_value), so an existing scope
     // has its cadence updated instead of duplicated.
@@ -60,12 +77,12 @@ export async function createFrequencyTarget(formData: FormData) {
       .get(kind, value, profile.id) as { id: number } | undefined;
     if (existing) {
       db.prepare(
-        "UPDATE frequency_targets SET per_week = ? WHERE id = ? AND profile_id = ?"
-      ).run(perWeek, existing.id, profile.id);
+        "UPDATE frequency_targets SET per_week = ?, per_week_max = ? WHERE id = ? AND profile_id = ?"
+      ).run(perWeek, perWeekMax, existing.id, profile.id);
     } else {
       db.prepare(
-        "INSERT INTO frequency_targets (scope_kind, scope_value, per_week, profile_id) VALUES (?,?,?,?)"
-      ).run(kind, value, perWeek, profile.id);
+        "INSERT INTO frequency_targets (scope_kind, scope_value, per_week, per_week_max, profile_id) VALUES (?,?,?,?,?)"
+      ).run(kind, value, perWeek, perWeekMax, profile.id);
     }
   }
   revalidatePath("/training");

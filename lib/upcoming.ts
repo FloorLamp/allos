@@ -85,6 +85,9 @@ export type UpcomingDomain =
   | "med-monitor"
   | "goal"
   | "training"
+  // A wellness-practice weekly target running behind its floor (#1259) — the calm,
+  // coaching-tier twin of the pace-aware Telegram nudge, alongside the training target.
+  | "practice"
   | "careplan"
   // A tracked finding→follow-up→resolution chain node (issue #700): a linked
   // follow-up that is due/overdue, or that has a matching later record and OFFERS a
@@ -144,6 +147,9 @@ const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
   "med-monitor": 11.5,
   goal: 12,
   training: 13,
+  // A wellness-practice weekly target behind its floor (#1259) — sort it alongside the
+  // training target it mirrors (a calm, coaching-tier pace nudge).
+  practice: 13.5,
   // A finding follow-up (#700) is care-tier safety — sort it alongside the other
   // care notes (just after the condition-review suggestion), ahead of the calm
   // scheduling/coaching domains.

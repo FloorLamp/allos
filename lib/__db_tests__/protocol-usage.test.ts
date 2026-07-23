@@ -140,6 +140,7 @@ describe("getProtocolUsage / getProtocolPractice / getProtocolAdherence", () => 
       scopeKind: "type",
       value: "cardio",
       perWeek: 4,
+      perWeekMax: null,
     });
 
     // A cardio activity this week counts toward the SAME frequency-target progress.

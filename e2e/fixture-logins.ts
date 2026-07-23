@@ -639,6 +639,14 @@ export const MOBILE_HC_PROFILE = "Mobile HC (e2e)";
 export const E2E_LOGIN_PHOTOS = "e2e_photos";
 export const PROGRESS_PHOTOS_PROFILE = "Progress Photos (e2e)";
 
+// #1224 — video capture. A dedicated ADULT profile (birthdate seeded, so /training
+// isn't age-gated) carrying ONE seeded strength activity the video spec attaches a
+// form-check clip to, and its own episode/symptom surfaces. The spec CLEANS ITSELF
+// (deletes the profile's activity_videos / symptom_videos rows at spec start), so
+// its clip counts stay isolated from profile 1 and the shared admin sidebar.
+export const E2E_LOGIN_VIDEO = "e2e_video";
+export const VIDEO_PROFILE = "Video Capture (e2e)";
+
 // #1172 — the Open-Meteo weather/UV integration + the two-sided UV-dose sun model.
 // A dedicated adult profile seeded with a home location, Fitzpatrick skin type,
 // the weather connection ENABLED, an outdoor daytime activity today, and cached
