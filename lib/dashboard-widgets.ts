@@ -48,6 +48,28 @@ export interface DashboardLayout {
   hidden: string[];
 }
 
+// ── Dashboard list caps (#1219) ────────────────────────────────────────────────
+// Every capped list widget splits through ONE pure helper and surfaces its
+// overflow (a disclosure of the remaining rows, or a "+N more" link) — a widget
+// that shows "N of M" must also offer a path to the hidden M−N. The caps are
+// named here so the widgets and the pure test agree on the policy.
+
+// Coaching observations rollup: top 2 (the calm dashboard slice, #449).
+export const COACHING_OBSERVATIONS_CAP = 2;
+// Data-quality gaps widget: top 3 by leverage (#1045).
+export const DATA_QUALITY_GAPS_CAP = 3;
+// Active protocols: 3 rows, the standard list-widget footprint (#660/#1219).
+export const ACTIVE_PROTOCOLS_CAP = 3;
+
+// Split a list into the capped visible slice and its overflow. Pure; order kept.
+export function capDashboardList<T>(
+  items: readonly T[],
+  cap: number
+): { shown: T[]; overflow: T[] } {
+  const n = Math.max(0, Math.trunc(cap));
+  return { shown: items.slice(0, n), overflow: items.slice(n) };
+}
+
 // The dashboard shows only a compact weekly-habit subset. Rank the WHOLE open
 // set before applying the limit so creation order cannot hide a less-complete
 // habit behind one that is nearly done. Kept pure for direct regression coverage.
