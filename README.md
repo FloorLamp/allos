@@ -193,6 +193,7 @@ Connect devices and services under **Data → Import**:
 - **Strava** — OAuth; runs/rides with HR, pace, elevation, power, and a GPS route thumbnail rendered locally from the stored polyline (no map tiles, no external requests)
 - **Oura Ring** — a pasted personal access token; sleep + stages, nightly HRV, resting HR, workouts, and Oura's own **sleep score** and **readiness score** (its proprietary 0–100 daily numbers, shown attributed on the **Sleep** page — display-only, never fed into the app's own metrics or coaching)
 - **Withings** — your own OAuth app; scale and BP-cuff measurements, body composition, SpO₂, temperature, sleep
+- **Weather & UV (Open-Meteo)** — keyless, no account: fetches the hourly **UV index** and **solar irradiance** for your **home location** (Settings → Profile), so your outdoor daylight time becomes a two-sided **UV dose** — enough for vitamin D and circadian light, with a **burn-risk heads-up** past your skin type's threshold. Open-Meteo's free historical archive **backfills** the UV for activities you already logged, and the whole feature **degrades gracefully**: live UV → a clear-sky estimate → the plain minutes-only behavior, so sun features stay fully functional offline. Add your **skin type (Fitzpatrick)** on Settings → Profile to turn on the overexposure side; left unset, only the "enough sun" side is shown
 - **Calendar feed** — an outbound `.ics` subscription per profile (choose which categories it carries and how much PHI each event shows), plus a consolidated per-login **family calendar**
 - **Garmin** — planned
 

@@ -62,6 +62,11 @@ const ALLOWLIST: Record<string, string> = {
     "standing ototoxic-medication awareness cross-check (#717) — an active ototoxic " +
     "medication (aminoglycoside/platinum/loop-diuretic/salicylate/vancomycin/quinine); " +
     "informational hearing-safety note, not a risk-ranked due signal",
+  uvOverexposureItems:
+    "same-day UV overexposure heads-up (#1172) — a cumulative erythemal dose crossing " +
+    "the user's OWN skin-type (Fitzpatrick) MED threshold; a physics-thresholded safety " +
+    "note, not a demographic risk-ranked due signal, so it opts out like the other " +
+    "med/sun-safety findings",
   medMonitoringItems:
     "medication → required-monitoring-lab bridge (#995) — a med-driven retest clock whose " +
     "cadence + reach tier come from the curated medication-monitoring DATASET (per-entry " +

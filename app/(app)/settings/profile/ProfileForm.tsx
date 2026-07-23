@@ -33,6 +33,7 @@ export default function ProfileForm({
   weekMode: initialWeekMode,
   homeLat: initialHomeLat,
   homeLng: initialHomeLng,
+  skinType: initialSkinType,
 }: {
   fullName: string | null;
   sex: Sex | null;
@@ -44,6 +45,7 @@ export default function ProfileForm({
   weekMode: string;
   homeLat: number | null;
   homeLng: number | null;
+  skinType: number | null;
 }) {
   const router = useRouter();
   const [fullName, setFullName] = useState(initialFullName ?? "");
@@ -71,6 +73,11 @@ export default function ProfileForm({
     initialHomeLng == null ? "" : String(initialHomeLng)
   );
   const [geoError, setGeoError] = useState<string | null>(null);
+  // Fitzpatrick skin type I–VI (#1172), stored "1".."6" — the burn (MED) threshold
+  // for the overexposure side of the two-sided UV-dose sun model. "" = unset.
+  const [skinType, setSkinType] = useState(
+    initialSkinType == null ? "" : String(initialSkinType)
+  );
 
   // With a birthdate set, the age is derived from it; otherwise the age field
   // below holds the manual/document fallback.
@@ -92,6 +99,7 @@ export default function ProfileForm({
     weekMode: string;
     homeLat?: string;
     homeLng?: string;
+    skinType?: string;
   }) {
     const fd = new FormData();
     fd.set("full_name", next.fullName ?? fullName);
@@ -110,6 +118,8 @@ export default function ProfileForm({
     // wipes them; both blank clears the location (issue #570).
     fd.set("home_lat", next.homeLat ?? homeLat);
     fd.set("home_lng", next.homeLng ?? homeLng);
+    // Carry the current skin type so a save of another field never wipes it.
+    fd.set("skin_type", next.skinType ?? skinType);
     runSave(async () => {
       await saveProfileSettings(fd);
       router.refresh();
@@ -404,6 +414,42 @@ export default function ProfileForm({
           Optional. Stored coarse (~11 km) and used only for sunrise/sunset and
           daylight features — never sent anywhere. Clear both fields to remove
           it.
+        </p>
+      </div>
+
+      <div className="border-t border-black/5 pt-5 dark:border-white/10">
+        <label className="label">Skin type (Fitzpatrick)</label>
+        <select
+          value={skinType}
+          data-testid="skin-type"
+          onChange={(e) => {
+            const v = e.target.value;
+            setSkinType(v);
+            save({
+              sex,
+              birthdate,
+              age: ageFallback,
+              timezone,
+              weekStart,
+              weekMode,
+              skinType: v,
+            });
+          }}
+          className="input"
+        >
+          <option value="">Not set</option>
+          <option value="1">I — always burns, never tans</option>
+          <option value="2">II — usually burns, tans minimally</option>
+          <option value="3">III — sometimes burns, tans uniformly</option>
+          <option value="4">IV — rarely burns, tans easily</option>
+          <option value="5">V — very rarely burns, tans darkly</option>
+          <option value="6">VI — never burns</option>
+        </select>
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          Optional. Sets the burn-risk (UV overexposure) threshold for the
+          sun-exposure model. Left unset, only the &ldquo;enough sun&rdquo; side
+          is shown — the overexposure heads-up stays silent rather than
+          guessing.
         </p>
       </div>
 

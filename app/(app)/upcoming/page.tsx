@@ -22,6 +22,7 @@ import {
   IconCalendarCheck,
   IconClipboardPlus,
   IconArrowRight,
+  IconSun,
   type TablerIcon,
 } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
@@ -74,6 +75,7 @@ const DOMAIN_ICON: Record<UpcomingDomain, TablerIcon> = {
   contrast: IconAlertTriangle,
   "dental-safety": IconAlertTriangle,
   ototoxic: IconAlertTriangle,
+  "uv-exposure": IconSun,
   appointment: IconStethoscope,
   visit: IconStethoscope,
   screening: IconMicroscope,

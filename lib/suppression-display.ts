@@ -282,6 +282,11 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
   },
   { prefix: "ototoxic:", domain: "Warnings", label: () => "Ototoxicity note" },
   {
+    prefix: "uv-exposure:",
+    domain: "Warnings",
+    label: () => "UV overexposure note",
+  },
+  {
     prefix: FOOD_TIMING_PREFIX,
     domain: "Warnings",
     label: () => "Food-timing guidance",

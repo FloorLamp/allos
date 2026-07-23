@@ -29,6 +29,7 @@ import {
   biomarkerViewHref,
   intakeHref,
   nutritionTabHref,
+  timelineDayHref,
   MEDICATIONS_HREF,
   INSTRUMENTS_HREF,
 } from "../../hrefs";
@@ -150,6 +151,8 @@ import { illnessCareItems } from "../../illness-care-findings";
 import { conditionReviewItems } from "../../condition-suggestion-findings";
 import { tempRedFlagItems } from "../../temp-red-flag-findings";
 import { followUpItems } from "../../followup-findings";
+import { getUvDoseForDay } from "../weather";
+import { decideUvOverexposure } from "../../uv-overexposure";
 
 // Biomarker categories a retest nudge makes sense for: `lab` ONLY (#1076).
 // Vitals/scans/prescriptions aren't "labs to redraw", genomics/reference never go
@@ -325,6 +328,33 @@ function interactionItems(profileId: number): UpcomingItem[] {
     band: "today" as const,
     dueText: "Review",
   }));
+}
+
+// UV overexposure (issue #1172): the CARE half of the two-sided UV-dose sun model. It
+// reads TODAY's UV dose (getUvDoseForDay — the ONE computation, degradation ladder and
+// daylight intersection included) and, when the day's cumulative erythemal dose crosses
+// the skin-type burn (MED) threshold, surfaces one dismissible finding keyed
+// `uv-exposure:overexposure:<date>` — through getFindingSuppressions like every other
+// finding, so a dismiss/snooze silences it. STAYS SILENT without a skin type (the
+// decide returns null) and without a home location (getUvDoseForDay returns null).
+// Standing informational care note (no due date): banded to Today, never prescriptive.
+function uvOverexposureItems(profileId: number, today: string): UpcomingItem[] {
+  const dose = getUvDoseForDay(profileId, today);
+  if (!dose) return [];
+  const obs = decideUvOverexposure(today, dose);
+  if (!obs) return [];
+  return [
+    {
+      key: obs.dedupeKey,
+      domain: "uv-exposure" as const,
+      title: obs.title,
+      detail: obs.detail,
+      href: timelineDayHref(today),
+      dueDate: null,
+      band: "today" as const,
+      dueText: "Review",
+    },
+  ];
 }
 
 // Pharmacogenomics cross-check (issue #710): a stored PGx result (a genomic_variants
@@ -1031,6 +1061,7 @@ const rawUpcoming = cache(function rawUpcoming(
     ...tempRedFlagItems(profileId, today, temperatureUnit),
     ...drugAllergyItems(profileId),
     ...interactionItems(profileId),
+    ...uvOverexposureItems(profileId, today),
     ...pgxItems(profileId),
     ...contrastItems(profileId, today),
     ...dentalSafetyItems(profileId),

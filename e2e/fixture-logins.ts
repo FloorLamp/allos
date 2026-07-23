@@ -646,3 +646,14 @@ export const PROGRESS_PHOTOS_PROFILE = "Progress Photos (e2e)";
 // its clip counts stay isolated from profile 1 and the shared admin sidebar.
 export const E2E_LOGIN_VIDEO = "e2e_video";
 export const VIDEO_PROFILE = "Video Capture (e2e)";
+
+// #1172 — the Open-Meteo weather/UV integration + the two-sided UV-dose sun model.
+// A dedicated adult profile seeded with a home location, Fitzpatrick skin type,
+// the weather connection ENABLED, an outdoor daytime activity today, and cached
+// live UV for that day+location — so the weather spec can assert the integration
+// page's connected state AND the timeline's live UV badge without touching profile
+// 1's shared timeline/integration surfaces (whose exact state other specs pin).
+// Isolated on purpose: the spec toggles the weather connection (enable/disable),
+// which on profile 1 would race the review-inbox/integration specs.
+export const E2E_LOGIN_WEATHER = "e2e_weather";
+export const WEATHER_PROFILE = "Weather (e2e)";

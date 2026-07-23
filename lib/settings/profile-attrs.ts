@@ -29,6 +29,7 @@ import {
 import { syncOpenIllnessEpisode } from "../illness-episode-store";
 import { DEFAULT_FITNESS_RETEST_DAYS } from "../fitness-retest";
 import { zipToHome } from "../home-location";
+import { parseSkinType, type FitzpatrickType } from "../uv-dose";
 import { getHomeLocation, setHomeLocation } from "./location";
 import {
   METRIC_SOURCE_PRIORITY_KEY,
@@ -57,6 +58,27 @@ export function setUserSex(profileId: number, sex: Sex | null) {
     return;
   }
   setProfileSetting(profileId, "sex", sex);
+}
+
+// The profile's Fitzpatrick skin phototype (I–VI), stored as "1".."6" (issue #1172).
+// The overexposure sub-dependency of the two-sided UV-dose sun model: it sets the
+// skin-type-adjusted burn (MED) threshold. Null when unset — the overexposure care
+// finding then stays SILENT rather than guessing a threshold (degrade gracefully); the
+// sufficiency/coaching side does not need it. Stored per-profile in profile_settings
+// (key/value, no migration).
+export function getSkinType(profileId: number): FitzpatrickType | null {
+  return parseSkinType(getProfileSetting(profileId, "skin_type"));
+}
+
+export function setSkinType(
+  profileId: number,
+  skinType: FitzpatrickType | null
+) {
+  if (skinType == null) {
+    deleteProfileSetting(profileId, "skin_type");
+    return;
+  }
+  setProfileSetting(profileId, "skin_type", String(skinType));
 }
 
 // The profile's reproductive (menopausal) status — a CURRENT attribute of the

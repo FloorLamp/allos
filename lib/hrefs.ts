@@ -165,6 +165,7 @@ const INTEGRATION_DETAIL_ROUTES: Partial<Record<IntegrationId, AppRoute>> = {
   strava: "/integrations/strava",
   oura: "/integrations/oura",
   withings: "/integrations/withings",
+  weather: "/integrations/weather",
   "calendar-feed": "/integrations/calendar-feed",
 };
 

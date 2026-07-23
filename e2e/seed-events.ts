@@ -80,6 +80,8 @@ import {
   E2E_LOGIN_ONBOARDING_CAREGIVER,
   E2E_LOGIN_ORIENTATION,
   E2E_LOGIN_STRAVA,
+  E2E_LOGIN_WEATHER,
+  WEATHER_PROFILE,
   E2E_MEMBER_PASSWORD,
   DUP_REVIEW_PROFILE,
   EMPTY_TRAINING_PROFILE,
@@ -4732,5 +4734,64 @@ console.log(
   seedMemberLogin(E2E_LOGIN_VIDEO, videoId, "write");
   console.log(
     `e2e: seeded video-capture fixture — profile ${videoId} (${VIDEO_PROFILE}) (#1224)`
+  );
+}
+
+// #1172 — the Open-Meteo weather/UV integration + two-sided UV-dose sun model. A
+// dedicated adult profile seeded so the weather spec is fully isolated from profile
+// 1: a coarse home location (New York; timezone matched so the local hour labels line
+// up), Fitzpatrick skin type II, the weather connection ENABLED, an outdoor daytime
+// activity TODAY (10:00–12:00, avg_temp_c present = the outdoor signal), and cached
+// LIVE UV for that day+location — so /integrations/weather renders Connected and the
+// timeline renders the live UV badge. All UV values are low-entropy synthetic.
+{
+  const wxId = fixtureProfileId(WEATHER_PROFILE);
+  seedMemberLogin(E2E_LOGIN_WEATHER, wxId, "write");
+  const wxTz = "America/New_York";
+  const wxLat = 40.7;
+  const wxLng = -74;
+  // Home location + timezone + skin type (profile_settings key/value — no migration).
+  const setPS = db.prepare(
+    `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, ?, ?)
+       ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+  );
+  setPS.run(wxId, "home_lat", String(wxLat));
+  setPS.run(wxId, "home_lng", String(wxLng));
+  setPS.run(wxId, "timezone", wxTz);
+  setPS.run(wxId, "skin_type", "2");
+  // Today in the profile's timezone (YYYY-MM-DD).
+  const wxToday = new Intl.DateTimeFormat("en-CA", {
+    timeZone: wxTz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  // Enable the keyless weather connection (the enable flag the tick + grid read).
+  upsertConnection(wxId, "weather", { status: "connected", config: null });
+  // An outdoor daytime walk today, well inside the daylight window.
+  db.prepare(
+    `INSERT INTO activities
+       (profile_id, date, type, title, start_time, end_time, avg_temp_c)
+     VALUES (?, ?, 'cardio', 'Lunch walk', '10:00', '12:00', 20)`
+  ).run(wxId, wxToday);
+  // Cached live UV (+ irradiance) for the location's hours that day — the values the
+  // dose model crosses with the walk. High-ish UV so the badge is unmistakable; the
+  // overexposure side needs the skin type above.
+  const insUv = db.prepare(
+    `INSERT INTO weather_uv_hours
+       (lat, lng, hour_ts, uv_index, uv_index_clear_sky,
+        shortwave_radiation, direct_radiation, diffuse_radiation, source)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open-meteo')
+     ON CONFLICT(lat, lng, hour_ts) DO NOTHING`
+  );
+  for (const [hr, uv] of [
+    ["10", 7],
+    ["11", 8],
+    ["12", 8],
+  ] as [string, number][]) {
+    insUv.run(wxLat, wxLng, `${wxToday}T${hr}:00`, uv, uv + 1, 600, 500, 100);
+  }
+  console.log(
+    `e2e: seeded weather/UV fixture — profile ${wxId} (${WEATHER_PROFILE}), day ${wxToday} (#1172)`
   );
 }

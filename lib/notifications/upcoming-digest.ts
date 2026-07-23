@@ -32,6 +32,9 @@ const DOMAIN_NOUN: Record<UpcomingDomain, string> = {
   contrast: "contrast-safety note",
   "dental-safety": "dental-safety note",
   ototoxic: "hearing-safety note",
+  // A same-day UV overexposure heads-up (#1172). Care-tier, counted in the push
+  // alongside the other same-day med/sun-safety notes.
+  "uv-exposure": "UV overexposure note",
   appointment: "appointment",
   visit: "preventive visit",
   screening: "screening",
@@ -82,6 +85,7 @@ const DOMAIN_SEQ: UpcomingDomain[] = [
   "contrast",
   "dental-safety",
   "ototoxic",
+  "uv-exposure",
   "appointment",
   "careplan",
   "visit",

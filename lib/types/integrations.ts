@@ -10,8 +10,10 @@
 // subscribe feed, where a calendar client polls our token-authed .ics URL).
 // 'push' = phone exporter POSTs to us (Health Connect); 'oauth' = OAuth pull with a
 // redirect/callback (Strava); 'token' = pull with a pasted personal access token, no
-// OAuth app/redirect/callback (Oura); 'feed' = outbound subscription (calendar).
-export type IntegrationKind = "push" | "oauth" | "token" | "feed";
+// OAuth app/redirect/callback (Oura); 'feed' = outbound subscription (calendar);
+// 'public' = keyless pull needing NO account/credential — just a prerequisite already
+// on the profile (the home location), e.g. Open-Meteo weather/UV (#1172).
+export type IntegrationKind = "push" | "oauth" | "token" | "feed" | "public";
 
 // 'available' integrations can be configured now; 'planned' render as a preview.
 export type IntegrationStatus = "available" | "planned";
@@ -22,6 +24,7 @@ export type IntegrationId =
   | "oura"
   | "withings"
   | "garmin"
+  | "weather"
   | "calendar-feed";
 
 // A row in the integrations registry — the Integrations page renders from these.
