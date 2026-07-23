@@ -209,6 +209,24 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     includes: "JOIN medical_records r ON r.id = ii.source_record_id",
     why: "migration 092 (#1178) one-shot consolidation: enumerates each PAIRED (med, prescription-record) twin BY the source_record_id back-link the import wrote — the join key itself is the med↔record identity, and both rows share the same profile_id by construction (a med is projected within one profile's import). The per-row re-key/UPDATE it drives all carry the row's own profile_id; this SELECT never reads one profile's data into another's.",
   },
+  {
+    file: "lib/migrations/versions/103-canonical-name-abbreviation-consolidation.ts",
+    includes:
+      "UPDATE medical_records SET canonical_name = ? WHERE canonical_name = ? COLLATE NOCASE",
+    why: "migration 103 one-shot canonical-name rename: a bare-abbreviation biomarker name (e.g. 'RDW') is a GLOBAL vocabulary identity, not per-profile data, so the acronym→'Full Name (ABBR)' rewrite applies to every profile's rows by value — profile_id is deliberately absent. Pure value substitution (same analyte keeps its identity); reads no row across profiles.",
+  },
+  {
+    file: "lib/migrations/versions/103-canonical-name-abbreviation-consolidation.ts",
+    includes:
+      "UPDATE OR IGNORE starred_biomarkers SET canonical_name = ? WHERE canonical_name = ? COLLATE NOCASE",
+    why: "migration 103 (see above): the same global rename applied to the passport pins, again by vocabulary value across all profiles; OR IGNORE guards the (profile_id, canonical_name) PK against a pre-existing new-name pin.",
+  },
+  {
+    file: "lib/migrations/versions/103-canonical-name-abbreviation-consolidation.ts",
+    includes:
+      "DELETE FROM starred_biomarkers WHERE canonical_name = ? COLLATE NOCASE",
+    why: "migration 103 (see above): drops the now-redundant OLD-name pin left after an OR IGNORE collision — a global vocabulary cleanup by canonical name, not a per-profile read.",
+  },
 ];
 
 // `.prepare(sql)` sites whose argument is a runtime expression (not a string

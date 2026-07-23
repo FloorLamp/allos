@@ -56,7 +56,7 @@
       "description": "Non-HDL cholesterol is total cholesterol minus HDL, capturing all the cholesterol carried by potentially artery-clogging particles. It is considered a strong overall marker of cardiovascular risk."
     },
     {
-      "name": "ApoB",
+      "name": "Apolipoprotein B (ApoB)",
       "abbreviation": "ApoB",
       "full_name": "Apolipoprotein B",
       "description": "Apolipoprotein B is a protein found on LDL and other atherogenic particles, with one molecule per particle, so it reflects the total number of cholesterol-carrying particles that can enter artery walls. Higher ApoB is closely linked to cardiovascular risk."
@@ -100,7 +100,7 @@
       "description": "C-peptide is released in equal amounts to insulin when the pancreas makes insulin, so it serves as a marker of how much insulin the body is producing. It helps distinguish between different causes of blood-sugar problems."
     },
     {
-      "name": "hs-CRP",
+      "name": "High-Sensitivity C-Reactive Protein (hs-CRP)",
       "abbreviation": "hs-CRP",
       "full_name": "High-Sensitivity C-Reactive Protein",
       "description": "High-sensitivity C-reactive protein is a marker of low-grade inflammation in the body, measured with a sensitive assay. Elevated levels are associated with increased cardiovascular risk and active inflammation."
@@ -116,19 +116,19 @@
       "description": "Uric acid is a waste product formed when the body breaks down purines from food and cells. High levels can crystallize in joints and are associated with gout and kidney stones."
     },
     {
-      "name": "GGT",
+      "name": "Gamma-Glutamyl Transferase (GGT)",
       "abbreviation": "GGT",
       "full_name": "Gamma-Glutamyl Transferase",
       "description": "GGT is an enzyme found mainly in the liver and bile ducts. Elevated levels can indicate liver or bile-duct issues and are often associated with alcohol use."
     },
     {
-      "name": "ALT",
+      "name": "Alanine Aminotransferase (ALT)",
       "abbreviation": "ALT",
       "full_name": "Alanine Aminotransferase",
       "description": "ALT is an enzyme concentrated in liver cells that is released into the blood when they are damaged. It is a widely used marker of liver health, with elevations suggesting liver stress or injury."
     },
     {
-      "name": "AST",
+      "name": "Aspartate Aminotransferase (AST)",
       "abbreviation": "AST",
       "full_name": "Aspartate Aminotransferase",
       "description": "AST is an enzyme found in the liver, heart, and muscles that rises when those tissues are damaged. It is commonly measured alongside ALT to assess liver health."
@@ -191,7 +191,7 @@
       "description": "Phosphorus is a mineral that works with calcium to build bones and is central to energy metabolism. Levels are regulated by the kidneys and hormones, and abnormal values can reflect kidney or parathyroid issues."
     },
     {
-      "name": "BUN",
+      "name": "Blood Urea Nitrogen (BUN)",
       "abbreviation": "BUN",
       "full_name": "Blood Urea Nitrogen",
       "description": "Blood urea nitrogen measures the amount of urea, a waste product of protein breakdown, that the kidneys filter from the blood. It is used to assess kidney function and hydration."
@@ -249,13 +249,13 @@
       "description": "Platelets are small blood cells that clump together to form clots and stop bleeding. Low counts can increase bleeding risk, while high counts can increase clotting risk."
     },
     {
-      "name": "MCV",
+      "name": "Mean Corpuscular Volume (MCV)",
       "abbreviation": "MCV",
       "full_name": "Mean Corpuscular Volume",
       "description": "MCV measures the average size of red blood cells. It helps classify types of anemia, with small cells often seen in iron deficiency and large cells in B12 or folate deficiency."
     },
     {
-      "name": "RDW",
+      "name": "Red Cell Distribution Width (RDW)",
       "abbreviation": "RDW",
       "full_name": "Red Cell Distribution Width",
       "description": "RDW measures how much red blood cells vary in size. A higher RDW means greater size variation and can be an early clue to certain anemias or nutritional deficiencies."
@@ -281,7 +281,7 @@
       "description": "Serum iron measures the amount of iron circulating in the blood bound to transport proteins. It is interpreted alongside other iron tests to assess iron deficiency or overload."
     },
     {
-      "name": "TIBC",
+      "name": "Total Iron-Binding Capacity (TIBC)",
       "abbreviation": "TIBC",
       "full_name": "Total Iron-Binding Capacity",
       "description": "TIBC measures the blood's total capacity to bind and transport iron, reflecting the amount of transferrin available. It rises in iron deficiency and helps evaluate iron status."
@@ -292,7 +292,7 @@
       "description": "Transferrin saturation is the percentage of iron-transport protein that is actually carrying iron. It helps assess iron status, being low in deficiency and high in iron overload."
     },
     {
-      "name": "TSH",
+      "name": "Thyroid-Stimulating Hormone (TSH)",
       "abbreviation": "TSH",
       "full_name": "Thyroid-Stimulating Hormone",
       "description": "TSH is a pituitary hormone that signals the thyroid to make thyroid hormones. It is the primary screening test for thyroid function, with high levels suggesting an underactive thyroid and low levels an overactive one."
@@ -344,13 +344,13 @@
       "description": "Cortisol is the body's main stress hormone, made by the adrenal glands, and it regulates metabolism, blood sugar, and the stress response. Levels follow a daily rhythm, and abnormal values can indicate adrenal or pituitary problems."
     },
     {
-      "name": "IGF-1",
+      "name": "Insulin-Like Growth Factor 1 (IGF-1)",
       "abbreviation": "IGF-1",
       "full_name": "Insulin-Like Growth Factor 1",
       "description": "IGF-1 is a hormone produced mainly by the liver in response to growth hormone and mediates many of its growth-promoting effects. It is used to assess growth hormone activity."
     },
     {
-      "name": "PSA",
+      "name": "Prostate-Specific Antigen (PSA)",
       "abbreviation": "PSA",
       "full_name": "Prostate-Specific Antigen",
       "description": "PSA is a protein made by the prostate gland that circulates in the blood. It is used to screen for and monitor prostate conditions, with elevated levels warranting further evaluation."
@@ -703,19 +703,19 @@
       "description": "Monocytes are white blood cells that engulf pathogens and debris and help coordinate immune responses. Elevated levels can accompany infection, inflammation, or recovery from illness."
     },
     {
-      "name": "MCH",
+      "name": "Mean Corpuscular Hemoglobin (MCH)",
       "abbreviation": "MCH",
       "full_name": "Mean Corpuscular Hemoglobin",
       "description": "MCH measures the average amount of hemoglobin in each red blood cell. It is used with other red-cell indices to classify types of anemia."
     },
     {
-      "name": "MCHC",
+      "name": "Mean Corpuscular Hemoglobin Concentration (MCHC)",
       "abbreviation": "MCHC",
       "full_name": "Mean Corpuscular Hemoglobin Concentration",
       "description": "MCHC measures the average concentration of hemoglobin within red blood cells. It helps characterize anemias and distinguish among their causes."
     },
     {
-      "name": "MPV",
+      "name": "Mean Platelet Volume (MPV)",
       "abbreviation": "MPV",
       "full_name": "Mean Platelet Volume",
       "description": "MPV measures the average size of platelets. Larger platelets tend to be younger and more active, and the value can offer clues about platelet production and turnover."

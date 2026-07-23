@@ -716,7 +716,7 @@ const REDUCE_ENTRIES: ReduceFoodEntry[] = [
   {
     key: "ldl-apob",
     label: "LDL cholesterol / ApoB",
-    biomarkers: ["LDL Cholesterol", "ApoB"],
+    biomarkers: ["LDL Cholesterol", "Apolipoprotein B (ApoB)"],
     direction: "high",
     foods: [
       {

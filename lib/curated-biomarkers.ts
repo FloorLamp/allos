@@ -2295,7 +2295,7 @@ export const RETEST_DAYS: Record<string, number> = {
   // rather than the flat 365 fallback (#1193).
   "Vitamin D2, 25-Hydroxy": 180,
   "Vitamin D3, 25-Hydroxy": 180,
-  "hs-CRP": 180,
+  "High-Sensitivity C-Reactive Protein (hs-CRP)": 180,
   "Total Cholesterol": 365,
   "LDL Cholesterol": 365,
   "HDL Cholesterol": 365,
@@ -2329,10 +2329,10 @@ export const RETEST_DAYS: Record<string, number> = {
 // by exact canonical name; applied in curateBiomarkers below (idempotent, so the
 // committed JSON stays a fixed point of the --curated-only transform).
 export const ENZYME_IU_INTERCHANGEABLE: string[] = [
-  "ALT",
-  "AST",
+  "Alanine Aminotransferase (ALT)",
+  "Aspartate Aminotransferase (AST)",
   "Alkaline Phosphatase",
-  "GGT",
+  "Gamma-Glutamyl Transferase (GGT)",
   "Amylase",
   "Lipase",
 ];
@@ -2387,25 +2387,25 @@ export const RETEST_WORTHY: string[] = [
   "Triglycerides",
   "Non-HDL Cholesterol",
   "VLDL Cholesterol",
-  "ApoB",
+  "Apolipoprotein B (ApoB)",
   "Lipoprotein(a)",
   "Cholesterol/HDL Ratio",
   "Triglyceride/HDL Ratio",
   // Thyroid
-  "TSH",
+  "Thyroid-Stimulating Hormone (TSH)",
   "Free T4",
   "Free T3",
   // Renal
   "Creatinine",
   "eGFR",
-  "BUN",
+  "Blood Urea Nitrogen (BUN)",
   "Cystatin C",
   "Uric Acid",
   // Hepatic (LFTs) + protein
-  "ALT",
-  "AST",
+  "Alanine Aminotransferase (ALT)",
+  "Aspartate Aminotransferase (AST)",
   "Alkaline Phosphatase",
-  "GGT",
+  "Gamma-Glutamyl Transferase (GGT)",
   "Total Bilirubin",
   "Albumin",
   "Total Protein",
@@ -2421,15 +2421,15 @@ export const RETEST_WORTHY: string[] = [
   "White Blood Cell Count",
   "Platelet Count",
   "Red Blood Cell Count",
-  "MCV",
+  "Mean Corpuscular Volume (MCV)",
   // Inflammation
-  "hs-CRP",
+  "High-Sensitivity C-Reactive Protein (hs-CRP)",
   "Erythrocyte Sedimentation Rate (ESR)",
   // Commonly-monitored / repleted nutritionals + iron studies
   "Vitamin D, 25-Hydroxy",
   "Ferritin",
   "Iron",
-  "TIBC",
+  "Total Iron-Binding Capacity (TIBC)",
   "Transferrin Saturation",
   "Vitamin B12",
   "Folate",
@@ -2438,7 +2438,7 @@ export const RETEST_WORTHY: string[] = [
   // Androgen / prostate monitoring (curated retest cadences already exist for these)
   "Testosterone, Total",
   "Testosterone, Free",
-  "PSA",
+  "Prostate-Specific Antigen (PSA)",
 ];
 
 // Category corrections for AI-GENERATED rows not in CURATED_LABS (#1076). The

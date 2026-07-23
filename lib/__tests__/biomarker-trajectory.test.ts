@@ -182,7 +182,7 @@ describe("rule 1 — approaching boundary", () => {
     const pts = line([0, 90, 180], 0.4, 0.1); // 0.4 → 0.6 over 180d
     const fs = analyteTrajectoryFindings(
       input({
-        analyte: "PSA",
+        analyte: "Prostate-Specific Antigen (PSA)",
         unit: "ng/mL",
         points: pts,
         reference: { low: null, high: 4 },
@@ -447,7 +447,7 @@ describe("rule 3 — velocity", () => {
     const pts = line(offsets, 1.5, +1); // 1.5, 2.5, 3.5
     const fs = analyteTrajectoryFindings(
       input({
-        analyte: "PSA",
+        analyte: "Prostate-Specific Antigen (PSA)",
         unit: "ng/mL",
         points: pts,
         reference: { low: null, high: 4 },

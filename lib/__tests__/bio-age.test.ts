@@ -17,7 +17,9 @@ describe("PhenoAge input catalogue", () => {
     expect(PHENOAGE_INPUT_NAMES).toHaveLength(9);
     // A couple of anchors so the checklist wording stays grounded in real names.
     expect(PHENOAGE_INPUT_NAMES).toContain("Albumin");
-    expect(PHENOAGE_INPUT_NAMES).toContain("hs-CRP");
+    expect(PHENOAGE_INPUT_NAMES).toContain(
+      "High-Sensitivity C-Reactive Protein (hs-CRP)"
+    );
   });
 });
 
@@ -136,27 +138,34 @@ describe("inputCompleteness", () => {
   it("partial panel lists exactly the missing analytes (the import CTA)", () => {
     // Present seven of nine; missing hs-CRP and Albumin.
     const present = PHENOAGE_INPUT_NAMES.filter(
-      (n) => n !== "hs-CRP" && n !== "Albumin"
+      (n) =>
+        n !== "High-Sensitivity C-Reactive Protein (hs-CRP)" && n !== "Albumin"
     );
     const c = inputCompleteness(present);
     expect(c.complete).toBe(false);
     expect(c.presentCount).toBe(7);
     expect(c.missing).toEqual(
-      PHENOAGE_INPUT_NAMES.filter((n) => n === "Albumin" || n === "hs-CRP")
+      PHENOAGE_INPUT_NAMES.filter(
+        (n) =>
+          n === "Albumin" ||
+          n === "High-Sensitivity C-Reactive Protein (hs-CRP)"
+      )
     );
     const msg = completenessChecklistMessage(c);
     expect(msg).toContain("7 of 9 inputs present");
     expect(msg).toContain("add");
-    expect(msg).toContain("hs-CRP");
+    expect(msg).toContain("High-Sensitivity C-Reactive Protein (hs-CRP)");
     expect(msg).toContain("Albumin");
     expect(msg).toContain("to compute your biological age");
   });
 
   it("a single missing analyte uses no comma", () => {
-    const present = PHENOAGE_INPUT_NAMES.filter((n) => n !== "RDW");
+    const present = PHENOAGE_INPUT_NAMES.filter(
+      (n) => n !== "Red Cell Distribution Width (RDW)"
+    );
     const msg = completenessChecklistMessage(inputCompleteness(present));
     expect(msg).toBe(
-      "8 of 9 inputs present; add RDW to compute your biological age."
+      "8 of 9 inputs present; add Red Cell Distribution Width (RDW) to compute your biological age."
     );
   });
 

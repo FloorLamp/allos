@@ -36,7 +36,10 @@ describe("noiseFloorForSeries — source precedence (issue #563)", () => {
   it("2. a fractional reading defeats the integer path", () => {
     // Not all-integer ⇒ fall through to the reference-width fallback.
     expect(
-      noiseFloorForSeries("PSA", [0.4, 0.5, 0.6], { low: 0, high: 4 })
+      noiseFloorForSeries("Prostate-Specific Antigen (PSA)", [0.4, 0.5, 0.6], {
+        low: 0,
+        high: 4,
+      })
     ).toBeCloseTo(4 * REFERENCE_WIDTH_NOISE_FRACTION);
   });
 

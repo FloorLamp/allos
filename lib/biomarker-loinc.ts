@@ -25,18 +25,18 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "718-7": "Hemoglobin", // Hemoglobin [Mass/volume] in Blood (g/dL)
   "789-8": "Red Blood Cell Count", // Erythrocytes [#/volume] in Blood by Automated count (10^6/uL)
   "4544-3": "Hematocrit", // Hematocrit [Volume Fraction] of Blood by Automated count (%)
-  "787-2": "MCV", // MCV [Entitic volume] by Automated count (fL)
-  "785-6": "MCH", // MCH [Entitic mass] by Automated count (pg)
-  "786-4": "MCHC", // MCHC [Mass/volume] by Automated count (g/dL)
-  "788-0": "RDW", // Erythrocyte distribution width [Ratio] by Automated count (%)
+  "787-2": "Mean Corpuscular Volume (MCV)", // MCV [Entitic volume] by Automated count (fL)
+  "785-6": "Mean Corpuscular Hemoglobin (MCH)", // MCH [Entitic mass] by Automated count (pg)
+  "786-4": "Mean Corpuscular Hemoglobin Concentration (MCHC)", // MCHC [Mass/volume] by Automated count (g/dL)
+  "788-0": "Red Cell Distribution Width (RDW)", // Erythrocyte distribution width [Ratio] by Automated count (%)
   "777-3": "Platelet Count", // Platelets [#/volume] in Blood by Automated count (10^3/uL)
   "6690-2": "White Blood Cell Count", // Leukocytes [#/volume] in Blood by Automated count (10^3/uL)
-  "776-5": "MPV", // Platelet mean volume [Entitic volume] in Blood by Automated count (fL)
+  "776-5": "Mean Platelet Volume (MPV)", // Platelet mean volume [Entitic volume] in Blood by Automated count (fL)
   // Alternate platelet/MPV LOINCs emitted by real Epic exports — same unit as the
   // automated-count forms above, so they route to the same canonical entries.
   "26515-7": "Platelet Count", // Platelets [#/volume] in Blood (method-less; 10^3/uL)
-  "28542-9": "MPV", // Platelet mean volume [Entitic volume] in Blood (method-less; fL)
-  "32623-1": "MPV", // Platelet mean volume [Entitic volume] in Blood by Rees-Ecker (fL)
+  "28542-9": "Mean Platelet Volume (MPV)", // Platelet mean volume [Entitic volume] in Blood (method-less; fL)
+  "32623-1": "Mean Platelet Volume (MPV)", // Platelet mean volume [Entitic volume] in Blood by Rees-Ecker (fL)
 
   // WBC differential. The differential is reported in TWO complementary quantities
   // — an absolute count (cells/uL) and a fraction of leukocytes (%) — which are
@@ -68,7 +68,7 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "1558-6": "Glucose, Fasting", // Fasting glucose [Mass/volume] in Serum/Plasma
   // (mg/dL). Distinct from a random Glucose (2345-7): fasting has its own 70–99
   // diagnostic band, so it routes to the dedicated "Glucose, Fasting" entry (#1195).
-  "3094-0": "BUN", // Urea nitrogen [Mass/volume] in Serum/Plasma (mg/dL)
+  "3094-0": "Blood Urea Nitrogen (BUN)", // Urea nitrogen [Mass/volume] in Serum/Plasma (mg/dL)
   "2160-0": "Creatinine", // Creatinine [Mass/volume] in Serum/Plasma (mg/dL)
   "2951-2": "Sodium", // Sodium [Moles/volume] in Serum/Plasma (mmol/L)
   "2823-3": "Potassium", // Potassium [Moles/volume] in Serum/Plasma (mmol/L)
@@ -78,8 +78,8 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "1751-7": "Albumin", // Albumin [Mass/volume] in Serum/Plasma (g/dL)
   "2885-2": "Total Protein", // Protein [Mass/volume] in Serum/Plasma (g/dL)
   "1975-2": "Total Bilirubin", // Bilirubin.total [Mass/volume] in Serum/Plasma (mg/dL)
-  "1742-6": "ALT", // Alanine aminotransferase [Enzymatic activity/volume] (U/L)
-  "1920-8": "AST", // Aspartate aminotransferase [Enzymatic activity/volume] (U/L)
+  "1742-6": "Alanine Aminotransferase (ALT)", // Alanine aminotransferase [Enzymatic activity/volume] (U/L)
+  "1920-8": "Aspartate Aminotransferase (AST)", // Aspartate aminotransferase [Enzymatic activity/volume] (U/L)
   "6768-6": "Alkaline Phosphatase", // Alkaline phosphatase [Enzymatic activity/volume] (U/L)
   // eGFR is fragmented across many LOINCs (formula + population variants); all
   // resolve to the one canonical eGFR entry (mL/min/1.73m2).
@@ -102,7 +102,7 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "43396-1": "Non-HDL Cholesterol", // Cholesterol non HDL [Mass/volume] in Serum/Plasma
   "13458-5": "VLDL Cholesterol", // Cholesterol in VLDL [Mass/volume], by calculation
   "9830-1": "Cholesterol/HDL Ratio", // Cholesterol.total/Cholesterol in HDL [Mass Ratio]
-  "1884-6": "ApoB", // Apolipoprotein B [Mass/volume] in Serum/Plasma (mg/dL)
+  "1884-6": "Apolipoprotein B (ApoB)", // Apolipoprotein B [Mass/volume] in Serum/Plasma (mg/dL)
   // Canonical Lp(a) is molar (nmol/L); map only the molar LOINC. The mass form
   // (10835-7, mg/dL) has no fixed unit conversion (particle mass varies), so it is
   // intentionally left unmapped rather than mis-scaled.
@@ -117,7 +117,7 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "1986-9": "C-Peptide", // C peptide [Mass/volume] in Serum/Plasma (ng/mL)
 
   // ── Thyroid ─────────────────────────────────────────────────────────────────
-  "3016-3": "TSH", // Thyrotropin [Units/volume] in Serum/Plasma (uIU/mL)
+  "3016-3": "Thyroid-Stimulating Hormone (TSH)", // Thyrotropin [Units/volume] in Serum/Plasma (uIU/mL)
   "3024-7": "Free T4", // Thyroxine (T4) free [Mass/volume] in Serum/Plasma (ng/dL)
   "3051-0": "Free T3", // Triiodothyronine (T3) free [Mass/volume] in Serum/Plasma (pg/mL)
   "8099-4": "Thyroid Peroxidase Antibodies (TPOAb)", // Thyroperoxidase Ab [Units/volume] (IU/mL)
@@ -128,7 +128,7 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   // ── Iron studies ────────────────────────────────────────────────────────────
   "2276-4": "Ferritin", // Ferritin [Mass/volume] in Serum/Plasma (ng/mL)
   "2498-4": "Iron", // Iron [Mass/volume] in Serum/Plasma (ug/dL)
-  "2500-7": "TIBC", // Iron binding capacity [Mass/volume] in Serum/Plasma (ug/dL)
+  "2500-7": "Total Iron-Binding Capacity (TIBC)", // Iron binding capacity [Mass/volume] in Serum/Plasma (ug/dL)
   "2502-3": "Transferrin Saturation", // Iron saturation [Mass Fraction] in Serum/Plasma (%)
 
   // ── Vitamins ────────────────────────────────────────────────────────────────
@@ -141,12 +141,12 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "1823-4": "Vitamin E (Alpha-Tocopherol)", // Alpha tocopherol [Mass/volume] (mg/L)
 
   // ── Inflammatory ────────────────────────────────────────────────────────────
-  "30522-7": "hs-CRP", // C reactive protein by High sensitivity method (mg/L)
+  "30522-7": "High-Sensitivity C-Reactive Protein (hs-CRP)", // C reactive protein by High sensitivity method (mg/L)
   "4537-7": "Erythrocyte Sedimentation Rate (ESR)", // ESR by Westergren (mm/h)
   "30341-2": "Erythrocyte Sedimentation Rate (ESR)", // ESR in Blood (method-less; mm/h)
 
   // ── Liver / pancreas ────────────────────────────────────────────────────────
-  "2324-2": "GGT", // Gamma glutamyl transferase [Enzymatic activity/volume] (U/L)
+  "2324-2": "Gamma-Glutamyl Transferase (GGT)", // Gamma glutamyl transferase [Enzymatic activity/volume] (U/L)
   "10834-0": "Globulin", // Globulin [Mass/volume] in Serum by calculation (g/dL)
   "1759-0": "Albumin/Globulin Ratio", // Albumin/Globulin [Mass Ratio] in Serum/Plasma
   "1798-8": "Amylase", // Amylase [Enzymatic activity/volume] in Serum/Plasma (U/L)
@@ -177,10 +177,10 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "2191-5": "DHEA-Sulfate", // DHEA-S [Mass/volume] in Serum/Plasma (ug/dL)
   "13967-5": "Sex Hormone Binding Globulin (SHBG)", // SHBG [Moles/volume] (nmol/L)
   "2842-3": "Prolactin", // Prolactin [Mass/volume] in Serum/Plasma (ng/mL)
-  "2484-4": "IGF-1", // Insulin-like growth factor-I [Mass/volume] (ng/mL)
+  "2484-4": "Insulin-Like Growth Factor 1 (IGF-1)", // Insulin-like growth factor-I [Mass/volume] (ng/mL)
 
   // ── Tumor markers ───────────────────────────────────────────────────────────
-  "2857-1": "PSA", // Prostate specific Ag [Mass/volume] in Serum/Plasma (ng/mL)
+  "2857-1": "Prostate-Specific Antigen (PSA)", // Prostate specific Ag [Mass/volume] in Serum/Plasma (ng/mL)
   "12841-3": "Prostate Specific Antigen (PSA), Free %", // free/total PSA [Mass Fraction] (%).
   // (NOT 10886-0, which is free-PSA absolute in ng/mL, a different quantity.)
 

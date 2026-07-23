@@ -75,9 +75,15 @@ import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 // NO flag-relevant rows — plus ONE ranged addition (Glucose, Gestational Screen
 // (50 g), ref_high 135), which does change the signature and re-flags a stored
 // gestational-screen reading that previously had no band.
+// Updated for the bare-abbreviation → "Full Name (ABBR)" consolidation: 15
+// measured-lab entries (ALT/AST/GGT/BUN/TSH/hs-CRP/PSA/ApoB/TIBC/IGF-1 + the CBC
+// indices MCV/MCH/MCHC/MPV/RDW) were renamed to their spelled-out form. Their
+// bands are UNCHANGED — only the name changed — so the signature moves (name is
+// part of it) but no stored record re-flags. Migration 093 rewrites stored
+// canonical_name so existing rows keep matching their (renamed) entry.
 const FLAG_SIGNATURE_GOLDEN =
   // A SHA-256 content hash of the canonical dataset; provably synthetic.
-  "0400ddf2eec195487eb7fa76df1f58677b52a9fcdafe36ba2b8ecc0c249e9c74"; // phi-scan-ok
+  "83851fcdafca4c6a966dd925d6491c8b5775afe2dd977d11d0a23f08816f33d2"; // phi-scan-ok
 
 describe("canonical-biomarkers dataset on the curated-dataset framework", () => {
   it("passes the whole framework harness (citation + identity + refusal + no collisions)", () => {

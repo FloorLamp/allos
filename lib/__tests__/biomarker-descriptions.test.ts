@@ -87,7 +87,7 @@ describe("biomarker-descriptions integrity", () => {
 
 describe("getBiomarkerInfo", () => {
   it("matches case-insensitively", () => {
-    const upper = getBiomarkerInfo("rdw");
+    const upper = getBiomarkerInfo("red cell distribution width (rdw)");
     expect(upper?.full_name).toBe("Red Cell Distribution Width");
   });
 
@@ -99,6 +99,8 @@ describe("getBiomarkerInfo", () => {
   });
 
   it("trims surrounding whitespace", () => {
-    expect(getBiomarkerInfo("  RDW  ")?.abbreviation).toBe("RDW");
+    expect(
+      getBiomarkerInfo("  Red Cell Distribution Width (RDW)  ")?.abbreviation
+    ).toBe("RDW");
   });
 });

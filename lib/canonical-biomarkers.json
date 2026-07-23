@@ -91,7 +91,7 @@
       "retest_days": 365
     },
     {
-      "name": "ApoB",
+      "name": "Apolipoprotein B (ApoB)",
       "category": "lab",
       "unit": "mg/dL",
       "ref_low": null,
@@ -195,7 +195,7 @@
       "retest_days": 180
     },
     {
-      "name": "hs-CRP",
+      "name": "High-Sensitivity C-Reactive Protein (hs-CRP)",
       "category": "lab",
       "unit": "mg/L",
       "ref_low": null,
@@ -244,7 +244,7 @@
       "retest_days": 365
     },
     {
-      "name": "GGT",
+      "name": "Gamma-Glutamyl Transferase (GGT)",
       "category": "lab",
       "unit": "U/L",
       "ref_low": null,
@@ -258,7 +258,7 @@
       }
     },
     {
-      "name": "ALT",
+      "name": "Alanine Aminotransferase (ALT)",
       "category": "lab",
       "unit": "U/L",
       "ref_low": null,
@@ -280,7 +280,7 @@
       }
     },
     {
-      "name": "AST",
+      "name": "Aspartate Aminotransferase (AST)",
       "category": "lab",
       "unit": "U/L",
       "ref_low": null,
@@ -595,7 +595,7 @@
       ]
     },
     {
-      "name": "BUN",
+      "name": "Blood Urea Nitrogen (BUN)",
       "category": "lab",
       "unit": "mg/dL",
       "ref_low": 7,
@@ -923,7 +923,7 @@
       ]
     },
     {
-      "name": "MCV",
+      "name": "Mean Corpuscular Volume (MCV)",
       "category": "lab",
       "unit": "fL",
       "ref_low": 80,
@@ -961,7 +961,7 @@
       ]
     },
     {
-      "name": "RDW",
+      "name": "Red Cell Distribution Width (RDW)",
       "category": "lab",
       "unit": "%",
       "ref_low": 11.5,
@@ -1099,7 +1099,7 @@
       }
     },
     {
-      "name": "TIBC",
+      "name": "Total Iron-Binding Capacity (TIBC)",
       "category": "lab",
       "unit": "ug/dL",
       "ref_low": 250,
@@ -1124,7 +1124,7 @@
       "note": null
     },
     {
-      "name": "TSH",
+      "name": "Thyroid-Stimulating Hormone (TSH)",
       "category": "lab",
       "unit": "uIU/mL",
       "ref_low": 0.4,
@@ -1330,7 +1330,7 @@
       }
     },
     {
-      "name": "IGF-1",
+      "name": "Insulin-Like Growth Factor 1 (IGF-1)",
       "category": "lab",
       "unit": "ng/mL",
       "ref_low": 88,
@@ -1344,7 +1344,7 @@
       }
     },
     {
-      "name": "PSA",
+      "name": "Prostate-Specific Antigen (PSA)",
       "category": "lab",
       "unit": "ng/mL",
       "ref_low": null,
@@ -2108,7 +2108,7 @@
       "note": null
     },
     {
-      "name": "MCH",
+      "name": "Mean Corpuscular Hemoglobin (MCH)",
       "category": "lab",
       "unit": "pg",
       "ref_low": 27,
@@ -2119,7 +2119,7 @@
       "note": "Mean corpuscular hemoglobin"
     },
     {
-      "name": "MCHC",
+      "name": "Mean Corpuscular Hemoglobin Concentration (MCHC)",
       "category": "lab",
       "unit": "g/dL",
       "ref_low": 31.6,
@@ -2130,7 +2130,7 @@
       "note": "Mean corpuscular hemoglobin concentration"
     },
     {
-      "name": "MPV",
+      "name": "Mean Platelet Volume (MPV)",
       "category": "lab",
       "unit": "fL",
       "ref_low": 7.5,

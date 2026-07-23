@@ -197,13 +197,16 @@ describe("prepareTableRecords", () => {
     const stored = [
       rec({
         id: 1,
-        name: "ApoB",
-        canonical_name: "ApoB",
+        name: "Apolipoprotein B (ApoB)",
+        canonical_name: "Apolipoprotein B (ApoB)",
         date: "2024-01-01",
       }),
     ];
     const d = [derived(-1, "eGFR", "2024-01-01")];
     const out = prepareTableRecords(stored, d, { sort: "name", dir: "asc" });
-    expect(out.map((r) => tableNameKey(r))).toEqual(["ApoB", "eGFR"]);
+    expect(out.map((r) => tableNameKey(r))).toEqual([
+      "Apolipoprotein B (ApoB)",
+      "eGFR",
+    ]);
   });
 });

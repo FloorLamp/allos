@@ -29,9 +29,11 @@ describe("biomarkerAddHref", () => {
   });
 
   it("uses the post-#1079 tabbed base, never the redirect-surviving hash form", () => {
-    expect(biomarkerAddHref("hs-CRP").startsWith("/results/biomarkers?")).toBe(
-      true
-    );
+    expect(
+      biomarkerAddHref(
+        "High-Sensitivity C-Reactive Protein (hs-CRP)"
+      ).startsWith("/results/biomarkers?")
+    ).toBe(true);
   });
 });
 
