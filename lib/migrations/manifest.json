@@ -93,5 +93,8 @@
   "092-consolidate-imported-prescriptions.ts": "63bc9b766ab29c265b67e4a1a2d6980630dbd0e7bbf8544798bb2960b0f24bd6",
   "093-retire-notify-last-upcoming.ts": "5b3eb496087b329e3478bf021d57136e41a27147a92241bdc2f083e9f3db0b77",
   "094-episode-encounters.ts": "630124f9e8cb00c4f64e727bfa4be7cb24816c0e9011aa69c30afa3de572e5f5",
-  "095-episode-stopped-meds.ts": "2afae3c40b2b823abd9086833c7cd639f9b0f0f8bce1ffbb38a9a0a2450ba8a7"
+  "095-episode-stopped-meds.ts": "2afae3c40b2b823abd9086833c7cd639f9b0f0f8bce1ffbb38a9a0a2450ba8a7",
+  "096-reserved.ts": "d8ce3ee0c8d2e2a235b0b661970bb5400df49ce866bb5e5af8a20cc695a73d0c",
+  "097-reserved.ts": "081c4fe4a6015042a416dea45104da42a54fdce12d351c62445c33cc9fe8df5a",
+  "098-substance-log.ts": "4023d3a771a95141d9151fb21c7072330a3e379ce33870008753613a39f6aa26"
 }

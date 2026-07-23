@@ -2646,6 +2646,9 @@ db.prepare(
 db.prepare(
   `DELETE FROM food_log WHERE profile_id = ? AND group_key = 'alcohol'`
 ).run(substanceId);
+// The non-food ledger (#1078: nicotine/cannabis one-tap counts) — same empty
+// contract as the alcohol food-log rows above.
+db.prepare(`DELETE FROM substance_log WHERE profile_id = ?`).run(substanceId);
 db.prepare(
   `DELETE FROM frequency_targets WHERE profile_id = ? AND scope_kind = 'substance'`
 ).run(substanceId);

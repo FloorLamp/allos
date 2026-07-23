@@ -94,6 +94,11 @@ import { migration as m092 } from "./092-consolidate-imported-prescriptions";
 import { migration as m093 } from "./093-retire-notify-last-upcoming";
 import { migration as m094 } from "./094-episode-encounters";
 import { migration as m095 } from "./095-episode-stopped-meds";
+// 096/097 are RESERVED no-op slots for a concurrently-developed branch (see
+// 096-reserved.ts); this branch's own schema change is 098.
+import { migration as m096 } from "./096-reserved";
+import { migration as m097 } from "./097-reserved";
+import { migration as m098 } from "./098-substance-log";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -197,4 +202,7 @@ export const MIGRATIONS: Migration[] = [
   m093,
   m094,
   m095,
+  m096,
+  m097,
+  m098,
 ];

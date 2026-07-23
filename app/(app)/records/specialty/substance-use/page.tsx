@@ -34,9 +34,10 @@ export default async function RecordsSubstanceUsePage(props: {
   return (
     <div data-testid="records-substance-use">
       <SectionSubtitle>
-        Track validated screening scores (AUDIT-C, AUDIT, DAST-10), standard
-        drinks over time, and a reduction target you set yourself. A screening
-        tool, not a diagnosis. Informational, not medical advice.
+        Track validated screening scores (AUDIT-C, AUDIT, DAST-10), alcohol,
+        nicotine, and cannabis use over time, and reduction targets you set
+        yourself. A screening tool, not a diagnosis. Informational, not medical
+        advice.
       </SectionSubtitle>
       <SubstanceUseSection
         profileId={profile.id}

@@ -20,9 +20,13 @@
 //     repo's redistribution surface (self-hosted, license-unconstrained deploys), so
 //     the CONSERVATIVE path applies: the app records an outside-administered total
 //     (0–40) and bakes only the WHO risk-zone thresholds (facts).
-//   • DAST-10 — TOTAL-SCORE ENTRY ONLY, no item text. Copyright Harvey A. Skinner
-//     (1982) / CAMH; reproduction permissions are not clearly free. Only the
-//     published interpretation bands (facts) are baked.
+//   • DAST-10 — IN-APP administration with baked item text (#1085, a deliberate
+//     REVERSAL of the #998 total-only determination by repo-owner decision). Item
+//     text © 1982 Harvey A. Skinner / CAMH; the owner-recorded permission basis is
+//     CAMH's standing grant of clinical/educational reproduction with attribution
+//     (recorded in the citation below per #1085). Outside total entry keeps working
+//     unchanged — an imported/outside total and an in-app administration land in the
+//     SAME canonical_name series.
 //
 // SENSITIVITY (decided, #998 — these are LAW):
 //   • NEVER gamify. No streaks, no badges, no "X days sober" milestones, no
@@ -61,6 +65,18 @@ export interface SubstanceInstrumentItem {
   options: readonly { value: number; label: string }[];
 }
 
+// A yes/no item scored 0/1 (DAST-10). The reverse-scored item is encoded purely by
+// FLIPPING the option values — the scorer just sums chosen option values (same as
+// AUDIT-C), so no special reverse-score logic exists anywhere (#1085).
+const YES_NO: readonly { value: number; label: string }[] = [
+  { value: 1, label: "Yes" },
+  { value: 0, label: "No" },
+];
+const YES_NO_REVERSED: readonly { value: number; label: string }[] = [
+  { value: 0, label: "Yes" },
+  { value: 1, label: "No" },
+];
+
 export interface SubstanceInstrumentDef {
   key: SubstanceInstrument;
   // The canonical_name the score is stored under in medical_records (#482 one
@@ -73,6 +89,10 @@ export interface SubstanceInstrumentDef {
   entry: "in-app" | "total-only";
   // The baked items (in-app instruments only; empty for total-only).
   items: readonly SubstanceInstrumentItem[];
+  // Instrument-level instructions shown above the items when administering in-app
+  // (the DAST-10's past-12-months / "drug abuse" framing is part of the validated
+  // instrument, so it travels with the item text).
+  instructions?: string;
   maxTotal: number;
   // The preventive screening this instrument's score satisfies (screenings dataset).
   satisfiesScreening: string;
@@ -164,15 +184,73 @@ const AUDIT: SubstanceInstrumentDef = {
     "WHO AUDIT manual (Babor et al.), risk zones I–IV. Item text is not reproduced in-app.",
 };
 
-// DAST-10 — general drug-use screen (past 12 months, non-alcohol). Total-only (see
-// header). Bands are Skinner's published interpretation levels (facts).
+// DAST-10 — general drug-use screen (past 12 months, non-alcohol). IN-APP since
+// #1085 (see the licensing header): ten yes/no items scored 0/1, one point per
+// drug-use-indicating answer. Item 3 ("Are you always able to stop…") is the ONE
+// reverse-scored item — "No" earns the point — encoded by flipping its option
+// values, so the shared sum-the-chosen-values scorer needs no special case. Bands
+// are Skinner's published interpretation levels (facts, unchanged from #998).
 const DAST_10: SubstanceInstrumentDef = {
   key: "DAST-10",
   canonicalName: "DAST-10",
   title: "DAST-10",
   measures: "drug use",
-  entry: "total-only",
-  items: [],
+  entry: "in-app",
+  instructions:
+    "The following questions concern your possible involvement with drugs, not " +
+    "including alcoholic beverages, during the past 12 months. “Drug abuse” " +
+    "refers to the use of prescribed or over-the-counter medications in excess of " +
+    "the directions, and any non-medical use of drugs.",
+  items: [
+    {
+      prompt:
+        "Have you used drugs other than those required for medical reasons?",
+      options: YES_NO,
+    },
+    {
+      prompt: "Do you abuse more than one drug at a time?",
+      options: YES_NO,
+    },
+    {
+      // The reverse-scored item: "No" earns the point (flipped option values).
+      prompt:
+        "Are you always able to stop using drugs when you want to? (If you never use drugs, answer “Yes.”)",
+      options: YES_NO_REVERSED,
+    },
+    {
+      prompt:
+        "Have you had “blackouts” or “flashbacks” as a result of drug use?",
+      options: YES_NO,
+    },
+    {
+      prompt: "Do you ever feel bad or guilty about your drug use?",
+      options: YES_NO,
+    },
+    {
+      prompt:
+        "Does your spouse (or parents) ever complain about your involvement with drugs?",
+      options: YES_NO,
+    },
+    {
+      prompt: "Have you neglected your family because of your use of drugs?",
+      options: YES_NO,
+    },
+    {
+      prompt:
+        "Have you engaged in illegal activities in order to obtain drugs?",
+      options: YES_NO,
+    },
+    {
+      prompt:
+        "Have you ever experienced withdrawal symptoms (felt sick) when you stopped taking drugs?",
+      options: YES_NO,
+    },
+    {
+      prompt:
+        "Have you had medical problems as a result of your drug use (e.g. memory loss, hepatitis, convulsions, bleeding, etc.)?",
+      options: YES_NO,
+    },
+  ],
   maxTotal: 10,
   satisfiesScreening: "drug_use_screening",
   bands: [
@@ -184,7 +262,10 @@ const DAST_10: SubstanceInstrumentDef = {
   ],
   discussBandLevel: 3,
   citation:
-    "Skinner 1982 (DAST); published DAST-10 interpretation bands. Item text is not reproduced in-app.",
+    "Skinner HA (1982), the Drug Abuse Screening Test (Addictive Behaviors 7:363–371); " +
+    "DAST-10 item text © 1982 Harvey A. Skinner / CAMH, reproduced with attribution " +
+    "under CAMH's clinical/educational reproduction permission (owner-recorded, #1085); " +
+    "published DAST-10 interpretation bands.",
 };
 
 const DEFS: Record<SubstanceInstrument, SubstanceInstrumentDef> = {
@@ -243,38 +324,119 @@ export function shouldSuggestClinicianDiscussion(
   );
 }
 
-// ---- Consumption + reduction target (alcohol standard drinks) --------------
+// ---- Consumption + reduction target (per-substance ledgers) ----------------
 
-// The tracked substances. Alcohol is the one with a consumption ledger today: a
-// standard drink IS one serving of the curated `alcohol` food group (its dataset
-// serving line is literally "One standard drink…"), so consumption rides the
-// EXISTING food_log / food_log_events observation store (#860/#944 — no new value
-// store, no parallel table). Tobacco/nicotine participates through the existing
-// structured smoking status (lib/smoking.ts) rather than a per-unit ledger.
-export const SUBSTANCES = ["alcohol"] as const;
+// The tracked substances (#998 alcohol; #1078 adds nicotine + cannabis). Each has
+// a consumption ledger + an optional weekly-cap reduction target; WHICH ledger a
+// substance rides is a per-substance fact (see SubstanceDef.ledger below).
+export const SUBSTANCES = ["alcohol", "nicotine", "cannabis"] as const;
 export type Substance = (typeof SUBSTANCES)[number];
 
 export function isSubstance(v: unknown): v is Substance {
   return typeof v === "string" && (SUBSTANCES as readonly string[]).includes(v);
 }
 
+// Per-substance display + ledger facts. The LEDGER split (#1078, the #860/#944
+// reconciliation): a standard drink IS one serving of the curated `alcohol` food
+// group (its dataset serving line is literally "One standard drink…"), so alcohol
+// consumption rides the EXISTING food_log / food_log_events observation store —
+// one store, two surfaces with Nutrition. Nicotine and cannabis are NOT foods:
+// overloading food_log/food_groups with them would pollute the nutrition ledger
+// and the one-tap bar, and none of the other observation stores carries a
+// per-day tap-count semantic (symptom_logs is severity-per-day, metric_samples/
+// body_metrics are measured values, medical_records is result-shaped) — so they
+// ride the dedicated `substance_log` counter ledger (migration 098), the food_log
+// shape re-instantiated for non-food substances. Units are deliberately plain
+// per-use counts (no mg-nicotine normalization across product types — out of
+// scope, low fidelity).
+export interface SubstanceDef {
+  key: Substance;
+  label: string; // section heading noun — "Alcohol"
+  ledger: "food-log" | "substance-log";
+  unitSingular: string; // cap phrasing — "7-drink weekly cap" / "7-use weekly cap"
+  unitPlural: string;
+  countSingular: string; // the week-count line — "1 standard drink logged…"
+  countPlural: string;
+  logLabel: string; // the one-tap button
+  freeWeekPhrase: string; // the cap-0 target, article included
+  unitNote: string; // the plain unit explainer under the one-tap bar
+}
+
+const SUBSTANCE_DEFS: Record<Substance, SubstanceDef> = {
+  alcohol: {
+    key: "alcohol",
+    label: "Alcohol",
+    ledger: "food-log",
+    unitSingular: "drink",
+    unitPlural: "drinks",
+    countSingular: "standard drink",
+    countPlural: "standard drinks",
+    logLabel: "Log a standard drink",
+    freeWeekPhrase: "an alcohol-free week",
+    unitNote:
+      "One standard drink ≈ 12 oz beer, 5 oz wine, or 1.5 oz spirits. Drinks log " +
+      "into the same ledger as Nutrition’s alcohol group — logging in either place " +
+      "counts once.",
+  },
+  nicotine: {
+    key: "nicotine",
+    label: "Nicotine",
+    ledger: "substance-log",
+    unitSingular: "use",
+    unitPlural: "uses",
+    countSingular: "use",
+    countPlural: "uses",
+    logLabel: "Log a use",
+    freeWeekPhrase: "a nicotine-free week",
+    unitNote:
+      "One use = one cigarette, pouch, or vape session — count whatever matches " +
+      "your products. Uses aren’t converted to milligrams of nicotine across " +
+      "product types.",
+  },
+  cannabis: {
+    key: "cannabis",
+    label: "Cannabis",
+    ledger: "substance-log",
+    unitSingular: "use",
+    unitPlural: "uses",
+    countSingular: "use",
+    countPlural: "uses",
+    logLabel: "Log a use",
+    freeWeekPhrase: "a cannabis-free week",
+    unitNote: "One use = one session, whatever the form.",
+  },
+};
+
+export function substanceDef(substance: Substance): SubstanceDef {
+  return SUBSTANCE_DEFS[substance];
+}
+
+// Whether a value names a substance whose ledger is the dedicated substance_log
+// table (nicotine/cannabis — alcohol stays on food_log). The write core validates
+// through this so a forged/stale key lands nothing.
+export function isSubstanceLogged(v: unknown): v is Substance {
+  return isSubstance(v) && SUBSTANCE_DEFS[v].ledger === "substance-log";
+}
+
 // The food_log group_key alcohol consumption is stored under — the ledger identity
 // shared with Nutrition's one-tap bar (one store, two surfaces, one computation).
 export const ALCOHOL_FOOD_GROUP = "alcohol";
 
-// The largest sane weekly cap (mirrors the food-habit MAX_PER_WEEK clamp scale).
+// The largest sane weekly cap for any substance (mirrors the food-habit
+// MAX_PER_WEEK clamp scale).
 export const MAX_WEEKLY_CAP = 70;
 
-// A reduction target's weekly state: this week's logged standard drinks vs the
-// user-set cap. `cap` 0 is a valid target (an alcohol-free week — "Dry January").
+// A reduction target's weekly state: this week's logged units vs the user-set
+// cap. `cap` 0 is a valid target (a substance-free week — "Dry January", a quit
+// target).
 // Semantics are INVERTED from every other frequency target (a ceiling, not a
 // floor), which is exactly why substance targets are EXCLUDED from
 // getFrequencyTargetProgress — a floor-semantics reader would nag toward MORE.
 export interface SubstanceCapStatus {
-  count: number; // standard drinks logged this week
+  count: number; // units logged this week (standard drinks / uses)
   cap: number; // the user-set weekly cap
   over: boolean; // count > cap
-  remaining: number; // drinks left under the cap (0 when at/over)
+  remaining: number; // units left under the cap (0 when at/over)
 }
 
 export function substanceCapStatus(
@@ -291,23 +453,31 @@ export function substanceCapStatus(
   };
 }
 
-// The ONE progress line every surface renders ("one question, one computation"):
-// the substance page, the coaching finding detail, and any future formatter all
-// share this. Calm and factual — never celebratory, never judgmental.
-export function capProgressLine(s: SubstanceCapStatus): string {
-  if (s.cap === 0) {
-    return s.count === 0
-      ? "No drinks logged this week — your target is an alcohol-free week."
-      : `${s.count} ${drinksWord(s.count)} logged this week — your target is an alcohol-free week.`;
-  }
-  if (s.over) {
-    return `${s.count} ${drinksWord(s.count)} logged this week — ${s.count - s.cap} over your ${s.cap}-drink weekly cap.`;
-  }
-  return `${s.count} of your ${s.cap}-drink weekly cap used.`;
+// The substance's unit word for a count ("drink"/"drinks", "use"/"uses").
+export function substanceUnitWord(substance: Substance, n: number): string {
+  const def = SUBSTANCE_DEFS[substance];
+  return n === 1 ? def.unitSingular : def.unitPlural;
 }
 
-function drinksWord(n: number): string {
-  return n === 1 ? "drink" : "drinks";
+// The ONE progress line every surface renders ("one question, one computation"):
+// the substance page, the coaching finding detail, and any future formatter all
+// share this, per substance (#1078 generalized the wording; the alcohol strings
+// are byte-identical to #998's). Calm and factual — never celebratory, never
+// judgmental.
+export function capProgressLine(
+  s: SubstanceCapStatus,
+  substance: Substance = "alcohol"
+): string {
+  const def = SUBSTANCE_DEFS[substance];
+  if (s.cap === 0) {
+    return s.count === 0
+      ? `No ${def.unitPlural} logged this week — your target is ${def.freeWeekPhrase}.`
+      : `${s.count} ${substanceUnitWord(substance, s.count)} logged this week — your target is ${def.freeWeekPhrase}.`;
+  }
+  if (s.over) {
+    return `${s.count} ${substanceUnitWord(substance, s.count)} logged this week — ${s.count - s.cap} over your ${s.cap}-${def.unitSingular} weekly cap.`;
+  }
+  return `${s.count} of your ${s.cap}-${def.unitSingular} weekly cap used.`;
 }
 
 // ---- Coaching-finding identity (#448/#449) ---------------------------------
