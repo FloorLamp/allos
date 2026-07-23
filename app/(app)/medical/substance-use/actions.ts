@@ -23,7 +23,18 @@ import {
   undoSubstanceUnitCore,
 } from "@/lib/substance-log-write";
 import { getSubstanceWeekState } from "@/lib/queries";
+import { isMinor } from "@/lib/life-stage";
+import { getUserAge } from "@/lib/settings";
 import { formError, formOk, type FormResult } from "@/lib/types";
+
+// #1174 gated the substance-use SURFACE (hidden nav + page redirect) to adults;
+// #1279 closes the gap under it — Server Actions are independently POST-callable, so
+// each write path re-checks life stage at the auth boundary (a UI-only gate is theater
+// if the write core underneath has no independent check). Mirrors the page's
+// isMinor(getUserAge(profile.id)); refuses a KNOWN minor (unknown/adult age passes,
+// per the module's documented "hide only on a positive under-age match" policy). The
+// lib write cores stay auth-blind — the check belongs here, not below the action layer.
+const MINOR_REFUSAL = "This isn't available for this profile.";
 
 // Server Actions for the substance-use surface (issues #998, #1078). Standard
 // per-profile: every action operates on the session's ACTIVE profile behind
@@ -59,6 +70,8 @@ export async function recordSubstanceInstrumentAction(
   formData: FormData
 ): Promise<SubstanceInstrumentActionResult> {
   const { profile } = await requireWriteAccess();
+  if (isMinor(getUserAge(profile.id)))
+    return { ok: false, error: MINOR_REFUSAL };
 
   const instrumentRaw = String(formData.get("instrument") ?? "");
   if (!isSubstanceInstrument(instrumentRaw))
@@ -137,6 +150,8 @@ export async function logSubstanceUnitAction(
   formData: FormData
 ): Promise<SubstanceLogResult> {
   const { profile } = await requireWriteAccess();
+  if (isMinor(getUserAge(profile.id)))
+    return { ok: false, error: MINOR_REFUSAL };
   const substance = String(formData.get("substance") ?? "");
   if (!isSubstance(substance))
     return { ok: false, error: "Unknown substance." };
@@ -158,6 +173,8 @@ export async function undoSubstanceUnitAction(
   formData: FormData
 ): Promise<SubstanceLogResult> {
   const { profile } = await requireWriteAccess();
+  if (isMinor(getUserAge(profile.id)))
+    return { ok: false, error: MINOR_REFUSAL };
   const substance = String(formData.get("substance") ?? "");
   if (!isSubstance(substance))
     return { ok: false, error: "Unknown substance." };
@@ -183,6 +200,7 @@ export async function setSubstanceTargetAction(
   formData: FormData
 ): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
+  if (isMinor(getUserAge(profile.id))) return formError(MINOR_REFUSAL);
   const substance = String(formData.get("substance") ?? "");
   if (!isSubstance(substance)) return formError("Unknown substance.");
   const capRaw = Number(formData.get("cap"));
@@ -209,6 +227,7 @@ export async function clearSubstanceTargetAction(
   formData: FormData
 ): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
+  if (isMinor(getUserAge(profile.id))) return formError(MINOR_REFUSAL);
   const substance = String(formData.get("substance") ?? "");
   if (!isSubstance(substance)) return formError("Unknown substance.");
   const target = db

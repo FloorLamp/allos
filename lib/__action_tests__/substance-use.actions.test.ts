@@ -19,6 +19,7 @@ import {
   clearSubstanceTargetAction,
 } from "@/app/(app)/medical/substance-use/actions";
 import { actAs, createLogin, createProfile, fd } from "./harness";
+import { setProfileSetting } from "@/lib/settings";
 
 function scoreRow(profileId: number, canon: string) {
   return db
@@ -323,5 +324,74 @@ describe("setSubstanceTargetAction / clearSubstanceTargetAction", () => {
       (await setSubstanceTargetAction(fd({ substance: "caffeine", cap: "3" })))
         .ok
     ).toBe(false);
+  });
+});
+
+// #1279 — the life-stage (minor) gate lives on the SURFACE (hidden nav + page
+// redirect, #1174), but Server Actions are independently POST-callable, so each
+// write path must re-check age at the auth boundary. These drive every action
+// DIRECTLY against a known-minor profile (bypassing the page) and assert refusal —
+// the layer the #1174 e2e (nav-hidden + redirect) structurally can't see. An
+// adult/unknown-age profile is unaffected (the many passing tests above).
+describe("substance-use actions refuse a known minor (#1279)", () => {
+  function minorActor(slug: string) {
+    const login = createLogin();
+    const profile = createProfile(slug, login.id);
+    // Stored-age fallback = 15 → isMinor(getUserAge) true (no birthdate needed).
+    setProfileSetting(profile.id, "age", "15");
+    actAs(login, profile);
+    return profile;
+  }
+
+  it("recordSubstanceInstrumentAction refuses (in-app administer AND outside total)", async () => {
+    const profile = minorActor("su-minor-instrument");
+    const administered = await recordSubstanceInstrumentAction(
+      fd({
+        instrument: "AUDIT-C",
+        mode: "administer",
+        date: "2026-07-01",
+        answers: JSON.stringify([2, 1, 4]),
+      })
+    );
+    expect(administered.ok).toBe(false);
+    const outside = await recordSubstanceInstrumentAction(
+      fd({
+        instrument: "AUDIT",
+        mode: "outside",
+        date: "2026-07-01",
+        total: "10",
+      })
+    );
+    expect(outside.ok).toBe(false);
+    // Nothing was written for the minor.
+    const n = db
+      .prepare("SELECT COUNT(*) AS n FROM medical_records WHERE profile_id = ?")
+      .get(profile.id) as { n: number };
+    expect(n.n).toBe(0);
+  });
+
+  it("logSubstanceUnitAction / undoSubstanceUnitAction refuse (alcohol + nicotine ledgers)", async () => {
+    minorActor("su-minor-log");
+    for (const substance of ["alcohol", "nicotine"]) {
+      expect((await logSubstanceUnitAction(fd({ substance }))).ok).toBe(false);
+      expect((await undoSubstanceUnitAction(fd({ substance }))).ok).toBe(false);
+    }
+  });
+
+  it("setSubstanceTargetAction / clearSubstanceTargetAction refuse", async () => {
+    const profile = minorActor("su-minor-target");
+    expect(
+      (await setSubstanceTargetAction(fd({ substance: "alcohol", cap: "7" })))
+        .ok
+    ).toBe(false);
+    expect(
+      (await clearSubstanceTargetAction(fd({ substance: "alcohol" }))).ok
+    ).toBe(false);
+    const rows = db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM frequency_targets WHERE profile_id = ?"
+      )
+      .get(profile.id) as { n: number };
+    expect(rows.n).toBe(0);
   });
 });

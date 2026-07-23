@@ -178,8 +178,14 @@ test.describe("Illness front door (#843)", () => {
     const inline = page.getByTestId("illness-medication-quick-add");
     await expect(inline).toBeVisible();
     await pickMedication(inline, "Acetaminophen");
+    // Wait for the resolver prefill to commit before submitting (see the sick-day-1
+    // note): a raced submit posts a non-as-needed medication with no start date, which
+    // addSupplement rejects, silently creating nothing.
+    await expect(inline.getByTestId("quick-add-amount")).not.toHaveValue("");
     await inline.getByRole("button", { name: "Quick add" }).click();
-    // The inline panel collapses back to its prompt on success.
+    // The inline panel collapses back to its prompt only on a successful create; wait for
+    // it before navigating so the goto never aborts an in-flight write (the #1255 bug).
+    await expect(inline).toBeHidden({ timeout: 15_000 });
     await expect(page.getByTestId("illness-add-medication")).toBeVisible();
     // And the med really landed on the Medications page.
     await page.goto("/medications");
@@ -222,11 +228,24 @@ test.describe("Illness front door (#843)", () => {
     await settledClick(page, page.getByTestId("temp-quick-save"));
     await expect(page.getByTestId("temp-quick-entry")).toHaveCount(0);
 
-    // 4) Quick-add ibuprofen right from the symptom card.
+    // 4) Quick-add ibuprofen right from the symptom card. Wait for the pick's resolver
+    // prefill (#846) to COMMIT before submitting: it sets the OTC label defaults —
+    // amount AND the as-needed/interval fields — and if "Quick add" fires before that
+    // lands, the form posts a medication with no start date that isn't as-needed, which
+    // addSupplement rejects, so nothing is created (the silent no-op behind #1255). The
+    // non-empty amount is the same commit signal door C waits on (line 169).
     await page.getByTestId("illness-add-medication").click();
     const inline = page.getByTestId("illness-medication-quick-add");
     await pickMedication(inline, "Ibuprofen");
+    await expect(inline.getByTestId("quick-add-amount")).not.toHaveValue("");
     await settledClick(page, inline.getByRole("button", { name: "Quick add" }));
+    // The panel collapses back to its prompt ONLY on a successful create (onDone), so
+    // WAIT for it to close before leaving the page — the original #1255 bug was the test
+    // navigating away (goto "/" below) while addSupplement was still in flight, which
+    // ABORTED the write so the med was never created and the PRN list came up empty. The
+    // create revalidates the (now cross-profile, #1252) dashboard, so it can take a beat
+    // under load — give it the same 15s the redose line below allows.
+    await expect(inline).toBeHidden({ timeout: 15_000 });
     await expect(page.getByTestId("illness-add-medication")).toBeVisible();
 
     // 5) Log a dose from the dashboard PRN quick-log widget, then the redose chip shows.
