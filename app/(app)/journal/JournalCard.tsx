@@ -18,6 +18,8 @@ import { zonePresentation } from "@/lib/training-zones";
 // DisplayPart moved to lib/journal-card.ts (issue #334); re-exported here so the
 // existing `./JournalCard` import path keeps working.
 import type { DisplayPart } from "@/lib/journal-card";
+import ActivityVideoStrip from "@/components/activity/ActivityVideoStrip";
+import type { JournalCardVideo } from "@/lib/journal-card";
 import ActivityCardMenu, { type MergeSibling } from "./ActivityCardMenu";
 
 export type { DisplayPart };
@@ -53,6 +55,8 @@ export default function JournalCard({
   mergeSiblings = [],
   keeperLabel,
   units,
+  videos = [],
+  canWrite = false,
   onSelectExercise,
   onSelectCardio,
   onSelectSport,
@@ -92,6 +96,11 @@ export default function JournalCard({
   // Provenance label for THIS card's values — the keeper side of a merge conflict.
   keeperLabel: string;
   units: UnitPrefs;
+  // Form-check video clips attached to this activity (#1224), empty when none.
+  videos?: JournalCardVideo[];
+  // Whether the acting login can write to this activity's profile — gates the
+  // clip upload/delete affordances (the server actions re-gate regardless).
+  canWrite?: boolean;
   // When provided, a strength exercise name becomes a button that opens its
   // detail (progression/benchmarks/goals) in the history right column.
   onSelectExercise?: (exercise: string) => void;
@@ -514,6 +523,19 @@ export default function JournalCard({
           )}
         </div>
       )}
+
+      <ActivityVideoStrip
+        activityId={activity.id}
+        videos={videos.map((v) => ({
+          id: v.id,
+          exercise: v.exercise,
+          caption: v.caption,
+          kind: v.kind,
+          hasLocation: v.hasLocation,
+          durationSec: v.durationSec,
+        }))}
+        canWrite={canWrite}
+      />
 
       <ActivityProvenance
         label={provenance.label}

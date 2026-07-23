@@ -52,6 +52,8 @@ import EpisodeLogPanel from "@/components/illness/EpisodeLogPanel";
 import StaleEpisodeNudge from "@/components/illness/StaleEpisodeNudge";
 import SymptomPhotoStrip from "@/components/illness/SymptomPhotoStrip";
 import { getSymptomPhotosInRange } from "@/lib/symptom-photo-write";
+import SymptomVideoStrip from "@/components/illness/SymptomVideoStrip";
+import { getSymptomVideosInRange } from "@/lib/symptom-video-write";
 import { staleEpisodeNudgeFor } from "@/lib/stale-episode-data";
 import { schoolReturnStatusFor } from "@/lib/school-return-data";
 import { schoolReturnCompactClause } from "@/lib/school-return";
@@ -141,6 +143,17 @@ export default async function EpisodePage(props: {
   const photos =
     assembled.firstDay && assembled.lastActiveDay
       ? getSymptomPhotosInRange(
+          profileId,
+          assembled.firstDay,
+          assembled.lastActiveDay
+        )
+      : [];
+  // Symptom video clips attached in the episode window (#1224) — a dedicated
+  // gather, like the photos; NOT part of the share payload (strictest-tier PHI
+  // default-exclude).
+  const videos =
+    assembled.firstDay && assembled.lastActiveDay
+      ? getSymptomVideosInRange(
           profileId,
           assembled.firstDay,
           assembled.lastActiveDay
@@ -386,7 +399,7 @@ export default async function EpisodePage(props: {
           ) : undefined
         }
         timelineAfterHistory={
-          photos.length > 0 || canWrite ? (
+          photos.length > 0 || videos.length > 0 || canWrite ? (
             <>
               <SymptomPhotoStrip
                 photos={photos.map((p) => ({
@@ -394,6 +407,20 @@ export default async function EpisodePage(props: {
                   date: p.date,
                   symptom: p.symptom,
                   caption: p.caption,
+                }))}
+                uploadDate={logDate}
+                canWrite={canWrite}
+                profileId={target}
+              />
+              <SymptomVideoStrip
+                videos={videos.map((v) => ({
+                  id: v.id,
+                  date: v.date,
+                  symptom: v.symptom,
+                  caption: v.caption,
+                  kind: v.kind,
+                  hasLocation: v.has_location === 1,
+                  durationSec: v.duration_sec,
                 }))}
                 uploadDate={logDate}
                 canWrite={canWrite}
