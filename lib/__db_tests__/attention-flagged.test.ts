@@ -247,7 +247,7 @@ describe("current-reading filter (issue #557)", () => {
     for (const [name, yearsAgo] of [
       ["Cholesterol", 3],
       ["Triglycerides", 4],
-      ["ALT", 5],
+      ["Alanine Aminotransferase (ALT)", 5],
     ] as const) {
       db.prepare(
         `INSERT INTO medical_records
@@ -273,7 +273,11 @@ describe("current-reading filter (issue #557)", () => {
       getCurrentFlaggedBiomarkers(pid)
         .map((r) => r.name)
         .sort()
-    ).toEqual(["ALT", "Cholesterol", "Triglycerides"]);
+    ).toEqual([
+      "Alanine Aminotransferase (ALT)",
+      "Cholesterol",
+      "Triglycerides",
+    ]);
   });
 });
 

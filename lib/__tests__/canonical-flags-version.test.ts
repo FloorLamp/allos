@@ -3,7 +3,7 @@ import { canonicalFlagsSignature } from "@/lib/canonical-flags-version";
 
 const base = [
   {
-    name: "ALT",
+    name: "Alanine Aminotransferase (ALT)",
     unit: "U/L",
     direction: "lower_better",
     ref_high: 44,

@@ -403,7 +403,12 @@ describe("scoping", () => {
 
     actAs(login, profileA);
     await addRecord(
-      fd({ date: "2026-01-15", category: "lab", name: "TSH", value: "2.0" })
+      fd({
+        date: "2026-01-15",
+        category: "lab",
+        name: "Thyroid-Stimulating Hormone (TSH)",
+        value: "2.0",
+      })
     );
 
     expect(getMedicalRecords(profileB.id)).toHaveLength(0);

@@ -273,7 +273,9 @@ describe("biomarkerFamily (unified identity — #482)", () => {
     expect(biomarkerFamily("Glucose")).not.toBe(A1C_KEY);
     expect(biomarkerFamily("Fasting Glucose")).not.toBe(A1C_KEY);
     // Distinct assays / fractions stay on their own identity.
-    expect(biomarkerFamily("CRP")).not.toBe(biomarkerFamily("hs-CRP"));
+    expect(biomarkerFamily("CRP")).not.toBe(
+      biomarkerFamily("High-Sensitivity C-Reactive Protein (hs-CRP)")
+    );
     expect(biomarkerFamily("Testosterone, Free")).not.toBe(
       biomarkerFamily("Testosterone, Total")
     );
@@ -322,12 +324,12 @@ describe("canonical aliases (synonym/abbreviation drift)", () => {
       ["HbA1c", "Hemoglobin A1c"],
       ["A1c", "Hemoglobin A1c"],
       ["Glycated Hemoglobin", "Hemoglobin A1c"],
-      ["SGPT", "ALT"],
-      ["Aspartate Aminotransferase", "AST"],
-      ["Urea Nitrogen", "BUN"],
-      ["Thyroid Stimulating Hormone", "TSH"],
+      ["SGPT", "Alanine Aminotransferase (ALT)"],
+      ["Aspartate Aminotransferase", "Aspartate Aminotransferase (AST)"],
+      ["Urea Nitrogen", "Blood Urea Nitrogen (BUN)"],
+      ["Thyroid Stimulating Hormone", "Thyroid-Stimulating Hormone (TSH)"],
       ["Estimated GFR", "eGFR"],
-      ["Apolipoprotein B", "ApoB"],
+      ["Apolipoprotein B", "Apolipoprotein B (ApoB)"],
       ["Cobalamin", "Vitamin B12"],
       ["Folic Acid", "Folate"],
       ["Bicarbonate", "Carbon Dioxide"],
@@ -341,8 +343,11 @@ describe("canonical aliases (synonym/abbreviation drift)", () => {
       ["Anti-TPO", "Thyroid Peroxidase Antibodies (TPOAb)"],
       // AI-extraction spellings audited in #918.
       ["Absolute Neutrophil Count", "Neutrophils, Absolute"],
-      ["Thyroid Stimulating Hormone (TSH)", "TSH"],
-      ["Prostate Specific Antigen (PSA)", "PSA"],
+      [
+        "Thyroid Stimulating Hormone (TSH)",
+        "Thyroid-Stimulating Hormone (TSH)",
+      ],
+      ["Prostate Specific Antigen (PSA)", "Prostate-Specific Antigen (PSA)"],
       ["Micronutrient, Vitamin B12", "Vitamin B12"],
       // The D2/D3 print forms now route to their OWN fraction entries (#1193),
       // never folded onto the total.
@@ -442,7 +447,9 @@ describe("canonical aliases (synonym/abbreviation drift)", () => {
     expect(snapCanonicalName("C-Reactive Protein", index)).toBe(
       "C-Reactive Protein"
     );
-    expect(snapCanonicalName("CRP", index)).not.toBe("hs-CRP");
+    expect(snapCanonicalName("CRP", index)).not.toBe(
+      "High-Sensitivity C-Reactive Protein (hs-CRP)"
+    );
     // Fasting glucose keeps its own identity, apart from a random Glucose.
     expect(snapCanonicalName("Glucose, Fasting", index)).toBe(
       "Glucose, Fasting"
@@ -470,8 +477,12 @@ describe("canonical aliases (synonym/abbreviation drift)", () => {
 
   it("keeps genuinely distinct assays apart (no over-merging)", () => {
     // Plain CRP is a different assay than hs-CRP — must not alias onto it.
-    expect(snapCanonicalName("CRP", index)).not.toBe("hs-CRP");
-    expect(snapCanonicalName("C-Reactive Protein", index)).not.toBe("hs-CRP");
+    expect(snapCanonicalName("CRP", index)).not.toBe(
+      "High-Sensitivity C-Reactive Protein (hs-CRP)"
+    );
+    expect(snapCanonicalName("C-Reactive Protein", index)).not.toBe(
+      "High-Sensitivity C-Reactive Protein (hs-CRP)"
+    );
     // Free testosterone stays on its own series — the aliases never route a
     // fraction onto the total (it snaps to the free entry by word order, not total).
     expect(snapCanonicalName("Free Testosterone", index)).toBe(

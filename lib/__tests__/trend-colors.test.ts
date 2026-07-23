@@ -33,8 +33,8 @@ describe("deCollideColor", () => {
       "LDL Cholesterol",
       "HDL Cholesterol",
       "Glucose",
-      "TSH",
-      "ALT",
+      "Thyroid-Stimulating Hormone (TSH)",
+      "Alanine Aminotransferase (ALT)",
     ];
     for (const a of names) {
       for (const b of names) {

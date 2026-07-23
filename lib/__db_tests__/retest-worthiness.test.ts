@@ -72,7 +72,12 @@ beforeAll(() => {
      VALUES (?, 'risk_healthcare_worker', '1')`
   ).run(p.profileId);
   // Worthy lipid whose ONLY reading is ~15 years old — historical baseline.
-  addReading("ApoB", shiftDateStr(p.todayStr, -5500), 90, "mg/dL");
+  addReading(
+    "Apolipoprotein B (ApoB)",
+    shiftDateStr(p.todayStr, -5500),
+    90,
+    "mg/dL"
+  );
 });
 
 describe("retest-worthiness inclusion gate + age ceiling (#546 / #587)", () => {

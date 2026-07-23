@@ -133,7 +133,9 @@ describe("retestModulationFor", () => {
     const pregnant = new Set<RiskFactor>(["pregnant"]);
     // TSH is deliberately NOT modeled (no universal thyroid-screening rec), and the
     // exact-name match must not let 'Hemoglobin' leak onto 'Hemoglobin A1c'.
-    expect(retestModulationFor("TSH", pregnant)).toEqual(NO_MODULATION);
+    expect(
+      retestModulationFor("Thyroid-Stimulating Hormone (TSH)", pregnant)
+    ).toEqual(NO_MODULATION);
     expect(retestModulationFor("Hemoglobin A1c", pregnant)).toEqual(
       NO_MODULATION
     );

@@ -44,8 +44,8 @@ function seedEightInputs(profileId: number): void {
   insertLab(profileId, "Creatinine", "mg/dL", "0.9", 0.9);
   insertLab(profileId, "Glucose", "mg/dL", "90", 90);
   insertLab(profileId, "Lymphocytes", "%", "32", 32);
-  insertLab(profileId, "MCV", "fL", "89", 89);
-  insertLab(profileId, "RDW", "%", "13", 13);
+  insertLab(profileId, "Mean Corpuscular Volume (MCV)", "fL", "89", 89);
+  insertLab(profileId, "Red Cell Distribution Width (RDW)", "%", "13", 13);
   insertLab(profileId, "Alkaline Phosphatase", "U/L", "62", 62);
   insertLab(profileId, "White Blood Cell Count", "10^3/uL", "5.5", 5.5);
 }
@@ -62,32 +62,60 @@ describe("bio-age: below-detection hs-CRP still completes the PhenoAge draw", ()
 
   it("recovers the detection limit from a '<0.2 mg/L' hs-CRP and completes the draw", () => {
     // Bounded / below-detection reading: no exact value_num, only the "<0.2" string.
-    insertLab(profileId, "hs-CRP", "mg/L", "<0.2", null);
+    insertLab(
+      profileId,
+      "High-Sensitivity C-Reactive Protein (hs-CRP)",
+      "mg/L",
+      "<0.2",
+      null
+    );
 
     const { draws, presentInputs } = getBioAgeReadings(profileId);
-    expect(presentInputs).toContain("hs-CRP");
+    expect(presentInputs).toContain(
+      "High-Sensitivity C-Reactive Protein (hs-CRP)"
+    );
     expect(draws).toHaveLength(1);
     // The draw's CRP input carries the detection limit (0.2 mg/L), not a dropped value.
-    const crp = draws[0].inputs.find((i) => i.name === "hs-CRP");
+    const crp = draws[0].inputs.find(
+      (i) => i.name === "High-Sensitivity C-Reactive Protein (hs-CRP)"
+    );
     expect(crp?.value).toBe(0.2);
     expect(draws[0].bioAge).toBeGreaterThan(0);
   });
 
   it("computes the same PhenoAge as an exact 0.2 mg/L hs-CRP would", () => {
-    insertLab(profileId, "hs-CRP", "mg/L", "<0.2", null);
+    insertLab(
+      profileId,
+      "High-Sensitivity C-Reactive Protein (hs-CRP)",
+      "mg/L",
+      "<0.2",
+      null
+    );
     const bounded = getBioAgeReadings(profileId).draws[0].bioAge;
 
     const other = newProfile("Exact CRP Test");
     setUserBirthdate(other, "1980-01-01");
     seedEightInputs(other);
-    insertLab(other, "hs-CRP", "mg/L", "0.2", 0.2);
+    insertLab(
+      other,
+      "High-Sensitivity C-Reactive Protein (hs-CRP)",
+      "mg/L",
+      "0.2",
+      0.2
+    );
     const exact = getBioAgeReadings(other).draws[0].bioAge;
 
     expect(bounded).toBe(exact);
   });
 
   it("emits the same PhenoAge row through the derived-table gather (hero ↔ table parity)", () => {
-    insertLab(profileId, "hs-CRP", "mg/L", "<0.2", null);
+    insertLab(
+      profileId,
+      "High-Sensitivity C-Reactive Protein (hs-CRP)",
+      "mg/L",
+      "<0.2",
+      null
+    );
 
     // The derived-biomarker gather (the biomarkers-table path) recovers the same
     // censored input, so the PhenoAge row it emits matches the hero's draw — the
@@ -101,10 +129,18 @@ describe("bio-age: below-detection hs-CRP still completes the PhenoAge draw", ()
   });
 
   it("still drops a purely qualitative hs-CRP (nothing numeric to use)", () => {
-    insertLab(profileId, "hs-CRP", "mg/L", "see note", null);
+    insertLab(
+      profileId,
+      "High-Sensitivity C-Reactive Protein (hs-CRP)",
+      "mg/L",
+      "see note",
+      null
+    );
 
     const { draws, presentInputs } = getBioAgeReadings(profileId);
-    expect(presentInputs).not.toContain("hs-CRP");
+    expect(presentInputs).not.toContain(
+      "High-Sensitivity C-Reactive Protein (hs-CRP)"
+    );
     expect(draws).toHaveLength(0);
   });
 });

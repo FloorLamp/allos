@@ -11,6 +11,8 @@
 // from tests. Ranges are INFORMATIONAL, not medical advice; human-review the
 // committed JSON before it is trusted.
 
+import { canonicalAliases, normalizeCanonicalKey } from "./canonical-name";
+
 // One age-banded reference/optimal override. Ages are WHOLE YEARS and the band is
 // half-open [min_age, max_age); max_age null is open-ended. Mirrors
 // lib/types.AgeBandedRange (kept structurally identical so the JSON round-trips).
@@ -1931,6 +1933,334 @@ export const CURATED_LABS: Biomarker[] = [
     },
     note: "Fasting plasma glucose. ADA thresholds: 70–99 normal, 100–125 prediabetes, ≥126 diabetes (confirmed). Distinct from a random Glucose and from the A1c/eAG family.",
   },
+
+  // ── Qualitative infection / serology / molecular results ───────────────────
+  // Reported QUALITATIVELY (Reactive/Non-Reactive, Detected/Not Detected,
+  // Positive/Negative), so they carry NO numeric reference band — curated for
+  // RECOGNITION + canonical grouping, exactly like the ABO/dipstick entries above,
+  // NOT for a range. Their flag polarity (a POSITIVE is bad) is already settled by
+  // the LOINC → 'infection' class table in lib/biomarker-loinc (qualitativeClassForLoinc)
+  // and the qualitative classifier — this just gives each a stable identity so a
+  // result stacks under one series and dedups by LOINC instead of coining an ad-hoc
+  // name. `direction: "in_range"` + null bounds = never a numeric flag. Category
+  // `lab` (not `reference`) because — unlike an immutable blood group — an infection
+  // result is a real clinical finding that can recur and is worth surfacing.
+  {
+    name: "RPR",
+    category: "lab",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Rapid plasma reagin — syphilis screen. Qualitative (Reactive/Non-Reactive); a reactive result is followed by a confirmatory treponemal test. No numeric band.",
+  },
+  {
+    name: "Hemoglobin Electrophoresis",
+    category: "lab",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Hemoglobinopathy screen (sickle-cell / thalassemia trait). Reported as an interpretation (e.g. Normal / abnormal variant pattern), not a measured quantity. No numeric band.",
+  },
+  {
+    name: "HIV Antigen/Antibody",
+    category: "lab",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "HIV 4th-generation Ag/Ab combination screen. Qualitative (Reactive/Non-Reactive); a reactive result is confirmed by a supplemental assay. No numeric band.",
+  },
+  {
+    name: "SARS-CoV-2 NAAT",
+    category: "lab",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "SARS-CoV-2 (COVID-19) nucleic-acid amplification (PCR). Qualitative (Detected/Not Detected). No numeric band.",
+  },
+  {
+    name: "SARS-CoV-2 Antigen",
+    category: "lab",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "SARS-CoV-2 (COVID-19) rapid antigen test. Qualitative (Positive/Negative). No numeric band.",
+  },
+  {
+    name: "Influenza A NAAT",
+    category: "lab",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Influenza A virus nucleic-acid amplification (PCR). Qualitative (Detected/Not Detected). No numeric band.",
+  },
+  {
+    name: "Influenza B NAAT",
+    category: "lab",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Influenza B virus nucleic-acid amplification (PCR). Qualitative (Detected/Not Detected). No numeric band.",
+  },
+  {
+    name: "Influenza A Antigen",
+    category: "lab",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Influenza A rapid antigen test. Qualitative (Positive/Negative). No numeric band.",
+  },
+  {
+    name: "Influenza B Antigen",
+    category: "lab",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Influenza B rapid antigen test. Qualitative (Positive/Negative). No numeric band.",
+  },
+  {
+    name: "RSV NAAT",
+    category: "lab",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Respiratory syncytial virus nucleic-acid amplification (PCR). Qualitative (Detected/Not Detected). No numeric band.",
+  },
+  {
+    name: "Streptococcus A NAAT",
+    category: "lab",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Group A Streptococcus (pharyngitis) nucleic-acid amplification. Qualitative (Detected/Not Detected). No numeric band.",
+  },
+  {
+    name: "Group B Streptococcus",
+    category: "lab",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Group B Streptococcus (GBS) screen — routine in pregnancy. Qualitative (Detected/Not Detected). No numeric band.",
+  },
+  {
+    name: "Chlamydia trachomatis NAAT",
+    category: "lab",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Chlamydia trachomatis nucleic-acid amplification. Qualitative (Detected/Not Detected). No numeric band.",
+  },
+  {
+    name: "Neisseria gonorrhoeae NAAT",
+    category: "lab",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Neisseria gonorrhoeae nucleic-acid amplification. Qualitative (Detected/Not Detected). No numeric band.",
+  },
+  {
+    name: "HPV, High-Risk",
+    category: "lab",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "High-risk human papillomavirus (pooled hrHPV) — cervical cancer screen. Qualitative (Positive/Negative). No numeric band.",
+  },
+  {
+    name: "HPV Genotype 16",
+    category: "lab",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "HPV genotype 16 (a high-risk type). Qualitative (Positive/Negative). Kept distinct from the pooled hrHPV result and from genotype 18/45. No numeric band.",
+  },
+  {
+    name: "HPV Genotype 18/45",
+    category: "lab",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "HPV genotype 18/45 (high-risk types). Qualitative (Positive/Negative). Kept distinct from the pooled hrHPV result and from genotype 16. No numeric band.",
+  },
+  {
+    name: "Culture Organism",
+    category: "lab",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: 'The organism identified by a microbiology culture (the value is the organism name, e.g. "Methicillin-Susceptible Staphylococcus aureus"). Qualitative identity, not a measurement — no numeric band.',
+  },
+
+  // ── Durable-immunity IgG titers ────────────────────────────────────────────
+  // Vaccine/exposure immunity antibodies. Reported either qualitatively ("Immune")
+  // or as an assay-specific numeric titer — BOTH forms carry the SAME canonical
+  // identity here (an XDM ships one analyte both ways). Deliberately RANGELESS: the
+  // "immune ≥ X" cutoff is assay-specific, and the immune-POSITIVE-is-GOOD verdict
+  // is already owned by the LOINC → 'immunity' class (#516), not a numeric band.
+  {
+    name: "Rubella Antibody IgG",
+    category: "lab",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Rubella IgG — immunity marker. Reported qualitatively (Immune/Non-Immune) or as an assay-specific titer; immune is favorable. No universal numeric band (assay-specific).",
+  },
+  {
+    name: "Measles Antibody IgG",
+    category: "lab",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Measles (rubeola) IgG — immunity marker. Reported qualitatively (Immune/Non-Immune) or as an assay-specific titer; immune is favorable. No universal numeric band (assay-specific).",
+  },
+  {
+    name: "Mumps Antibody IgG",
+    category: "lab",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Mumps IgG — immunity marker. Reported qualitatively (Immune/Non-Immune) or as an assay-specific titer; immune is favorable. No universal numeric band (assay-specific).",
+  },
+  {
+    name: "Varicella Zoster Antibody IgG",
+    category: "lab",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Varicella-zoster (chickenpox) IgG — immunity marker. Reported qualitatively (Immune/Non-Immune) or as an assay-specific titer; immune is favorable. No universal numeric band (assay-specific).",
+  },
+
+  // ── Prenatal cell-free-DNA (NIPT) screens ──────────────────────────────────
+  // The trisomy screens carry a LOW-/HIGH-RISK axis (not presence positive/negative),
+  // owned by the LOINC → 'screen' class (#687); fetal fraction is the run-QC metric
+  // (never a health signal). All RANGELESS — a screen is a risk call, not a measured
+  // analyte; fetal fraction carries a % unit for display but never flags (`qc` class).
+  {
+    name: "Trisomy 21 Screen",
+    category: "lab",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Prenatal cell-free-DNA screen for trisomy 21 (Down syndrome). A low-/high-risk screen, not a diagnosis — a high-risk result is confirmed by diagnostic testing. No numeric band.",
+  },
+  {
+    name: "Trisomy 18 Screen",
+    category: "lab",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Prenatal cell-free-DNA screen for trisomy 18 (Edwards syndrome). A low-/high-risk screen, not a diagnosis. No numeric band.",
+  },
+  {
+    name: "Trisomy 13 Screen",
+    category: "lab",
+    unit: null,
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Prenatal cell-free-DNA screen for trisomy 13 (Patau syndrome). A low-/high-risk screen, not a diagnosis. No numeric band.",
+  },
+  {
+    name: "Fetal Fraction",
+    category: "lab",
+    unit: "%",
+    ref_low: null,
+    ref_high: null,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "in_range",
+    note: "Fraction of cell-free DNA in a NIPT draw that is fetal (a run-quality metric, typically ≥4% for a valid result). A QC value, NOT a health signal — never flagged.",
+  },
+
+  // ── Gestational glucose challenge (the one NUMERIC addition, with a cutoff) ─
+  // The 1-hour 50 g glucose challenge test (GCT), an OB screen with a well-established
+  // screening threshold (commonly 135–140 mg/dL; the source names its 135 cutoff). A
+  // value AT/ABOVE the cutoff prompts the diagnostic 3-hour OGTT. Distinct from fasting
+  // and random Glucose. Source: ACOG gestational-diabetes screening. INFORMATIONAL.
+  {
+    name: "Glucose, Gestational Screen (50 g)",
+    category: "lab",
+    unit: "mg/dL",
+    ref_low: null,
+    ref_high: 135,
+    optimal_low: null,
+    optimal_high: null,
+    direction: "lower_better",
+    note: "1-hour 50 g glucose challenge (GCT) — gestational-diabetes screen. A value ≥ the lab's cutoff (here 135 mg/dL) prompts the diagnostic 3-hour OGTT. Distinct from fasting/random Glucose.",
+  },
 ];
 
 // Curated per-analyte retest cadences, in DAYS, keyed by exact canonical name
@@ -1967,7 +2297,7 @@ export const RETEST_DAYS: Record<string, number> = {
   // rather than the flat 365 fallback (#1193).
   "Vitamin D2, 25-Hydroxy": 180,
   "Vitamin D3, 25-Hydroxy": 180,
-  "hs-CRP": 180,
+  "High-Sensitivity C-Reactive Protein (hs-CRP)": 180,
   "Total Cholesterol": 365,
   "LDL Cholesterol": 365,
   "HDL Cholesterol": 365,
@@ -2001,10 +2331,10 @@ export const RETEST_DAYS: Record<string, number> = {
 // by exact canonical name; applied in curateBiomarkers below (idempotent, so the
 // committed JSON stays a fixed point of the --curated-only transform).
 export const ENZYME_IU_INTERCHANGEABLE: string[] = [
-  "ALT",
-  "AST",
+  "Alanine Aminotransferase (ALT)",
+  "Aspartate Aminotransferase (AST)",
   "Alkaline Phosphatase",
-  "GGT",
+  "Gamma-Glutamyl Transferase (GGT)",
   "Amylase",
   "Lipase",
 ];
@@ -2059,25 +2389,25 @@ export const RETEST_WORTHY: string[] = [
   "Triglycerides",
   "Non-HDL Cholesterol",
   "VLDL Cholesterol",
-  "ApoB",
+  "Apolipoprotein B (ApoB)",
   "Lipoprotein(a)",
   "Cholesterol/HDL Ratio",
   "Triglyceride/HDL Ratio",
   // Thyroid
-  "TSH",
+  "Thyroid-Stimulating Hormone (TSH)",
   "Free T4",
   "Free T3",
   // Renal
   "Creatinine",
   "eGFR",
-  "BUN",
+  "Blood Urea Nitrogen (BUN)",
   "Cystatin C",
   "Uric Acid",
   // Hepatic (LFTs) + protein
-  "ALT",
-  "AST",
+  "Alanine Aminotransferase (ALT)",
+  "Aspartate Aminotransferase (AST)",
   "Alkaline Phosphatase",
-  "GGT",
+  "Gamma-Glutamyl Transferase (GGT)",
   "Total Bilirubin",
   "Albumin",
   "Total Protein",
@@ -2093,15 +2423,15 @@ export const RETEST_WORTHY: string[] = [
   "White Blood Cell Count",
   "Platelet Count",
   "Red Blood Cell Count",
-  "MCV",
+  "Mean Corpuscular Volume (MCV)",
   // Inflammation
-  "hs-CRP",
+  "High-Sensitivity C-Reactive Protein (hs-CRP)",
   "Erythrocyte Sedimentation Rate (ESR)",
   // Commonly-monitored / repleted nutritionals + iron studies
   "Vitamin D, 25-Hydroxy",
   "Ferritin",
   "Iron",
-  "TIBC",
+  "Total Iron-Binding Capacity (TIBC)",
   "Transferrin Saturation",
   "Vitamin B12",
   "Folate",
@@ -2110,7 +2440,7 @@ export const RETEST_WORTHY: string[] = [
   // Androgen / prostate monitoring (curated retest cadences already exist for these)
   "Testosterone, Total",
   "Testosterone, Free",
-  "PSA",
+  "Prostate-Specific Antigen (PSA)",
 ];
 
 // Category corrections for AI-GENERATED rows not in CURATED_LABS (#1076). The
@@ -2136,8 +2466,33 @@ export const CATEGORY_OVERRIDES: Record<string, string> = {
 // CURATED_LABS order.
 export function curateBiomarkers(biomarkers: Biomarker[]): Biomarker[] {
   const curatedNames = new Set(CURATED_LABS.map((l) => l.name.toLowerCase()));
+  // Orphan prune (generator idempotency under RENAME/REMOVE): when a curated entry
+  // is renamed, its old name is added as a CANONICAL_ALIAS source (a non-canonical
+  // spelling) and dropped from CURATED_LABS — but its previously-written JSON row
+  // still exists here and, no longer matching curatedNames, would be KEPT as a
+  // duplicate (the stale "Hepatitis B Surface Antigen" beside its "(HBsAg)" entry).
+  // A row whose name is an alias SOURCE that REROUTES to a different analyte identity
+  // is by definition not a canonical entry, so drop it: the alias routes that spelling
+  // onto the real entry. The "different identity" guard is essential — a punctuation
+  // variant alias like ["Thyroid Stimulating Hormone (TSH)" → "Thyroid-Stimulating
+  // Hormone (TSH)"] normalizes source and target to the SAME key, so it must NOT prune
+  // the real entry; only an alias whose source-key ≠ target-key (a genuine reroute,
+  // e.g. "Hepatitis B Surface Antigen" → "…(HBsAg)") marks an orphan. Provenance-free
+  // and idempotent (the committed JSON carries no such orphan, so a re-run no-ops).
+  const orphanKeys = new Set(
+    canonicalAliases()
+      .filter(
+        ([from, to]) =>
+          normalizeCanonicalKey(from) !== normalizeCanonicalKey(to)
+      )
+      .map(([from]) => normalizeCanonicalKey(from))
+  );
   const kept = biomarkers
-    .filter((b) => !curatedNames.has(b.name.toLowerCase()))
+    .filter(
+      (b) =>
+        !curatedNames.has(b.name.toLowerCase()) &&
+        !orphanKeys.has(normalizeCanonicalKey(b.name))
+    )
     .map((b) => ({ ...b }));
   const out: Biomarker[] = [...kept, ...CURATED_LABS.map((l) => ({ ...l }))];
   const byName = new Map(out.map((b) => [b.name.toLowerCase(), b]));

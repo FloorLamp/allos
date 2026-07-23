@@ -50,6 +50,19 @@ describe("biomarker-descriptions coverage", () => {
       expect(info, `no info for ${name}`).not.toBeNull();
     }
   });
+
+  // The REVERSE guard (symmetric drift): no description entry may name a biomarker
+  // that isn't in canonical-biomarkers.json. Without this, a canonical RENAME that
+  // updates only one dataset leaves an orphaned description keyed to the OLD name —
+  // dead weight that silently stops resolving. Together with the forward guard above
+  // this pins the two datasets' name SETS as identical, so a rename must touch both.
+  it("has no orphaned description (every description names a real canonical)", () => {
+    const canonicalSet = new Set(canonicalNames);
+    const orphaned = Object.keys(descriptions).filter(
+      (name) => !canonicalSet.has(name)
+    );
+    expect(orphaned).toEqual([]);
+  });
 });
 
 describe("biomarker-descriptions integrity", () => {
@@ -87,7 +100,7 @@ describe("biomarker-descriptions integrity", () => {
 
 describe("getBiomarkerInfo", () => {
   it("matches case-insensitively", () => {
-    const upper = getBiomarkerInfo("rdw");
+    const upper = getBiomarkerInfo("red cell distribution width (rdw)");
     expect(upper?.full_name).toBe("Red Cell Distribution Width");
   });
 
@@ -99,6 +112,8 @@ describe("getBiomarkerInfo", () => {
   });
 
   it("trims surrounding whitespace", () => {
-    expect(getBiomarkerInfo("  RDW  ")?.abbreviation).toBe("RDW");
+    expect(
+      getBiomarkerInfo("  Red Cell Distribution Width (RDW)  ")?.abbreviation
+    ).toBe("RDW");
   });
 });

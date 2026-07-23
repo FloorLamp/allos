@@ -56,7 +56,7 @@
       "description": "Non-HDL cholesterol is total cholesterol minus HDL, capturing all the cholesterol carried by potentially artery-clogging particles. It is considered a strong overall marker of cardiovascular risk."
     },
     {
-      "name": "ApoB",
+      "name": "Apolipoprotein B (ApoB)",
       "abbreviation": "ApoB",
       "full_name": "Apolipoprotein B",
       "description": "Apolipoprotein B is a protein found on LDL and other atherogenic particles, with one molecule per particle, so it reflects the total number of cholesterol-carrying particles that can enter artery walls. Higher ApoB is closely linked to cardiovascular risk."
@@ -100,7 +100,7 @@
       "description": "C-peptide is released in equal amounts to insulin when the pancreas makes insulin, so it serves as a marker of how much insulin the body is producing. It helps distinguish between different causes of blood-sugar problems."
     },
     {
-      "name": "hs-CRP",
+      "name": "High-Sensitivity C-Reactive Protein (hs-CRP)",
       "abbreviation": "hs-CRP",
       "full_name": "High-Sensitivity C-Reactive Protein",
       "description": "High-sensitivity C-reactive protein is a marker of low-grade inflammation in the body, measured with a sensitive assay. Elevated levels are associated with increased cardiovascular risk and active inflammation."
@@ -116,19 +116,19 @@
       "description": "Uric acid is a waste product formed when the body breaks down purines from food and cells. High levels can crystallize in joints and are associated with gout and kidney stones."
     },
     {
-      "name": "GGT",
+      "name": "Gamma-Glutamyl Transferase (GGT)",
       "abbreviation": "GGT",
       "full_name": "Gamma-Glutamyl Transferase",
       "description": "GGT is an enzyme found mainly in the liver and bile ducts. Elevated levels can indicate liver or bile-duct issues and are often associated with alcohol use."
     },
     {
-      "name": "ALT",
+      "name": "Alanine Aminotransferase (ALT)",
       "abbreviation": "ALT",
       "full_name": "Alanine Aminotransferase",
       "description": "ALT is an enzyme concentrated in liver cells that is released into the blood when they are damaged. It is a widely used marker of liver health, with elevations suggesting liver stress or injury."
     },
     {
-      "name": "AST",
+      "name": "Aspartate Aminotransferase (AST)",
       "abbreviation": "AST",
       "full_name": "Aspartate Aminotransferase",
       "description": "AST is an enzyme found in the liver, heart, and muscles that rises when those tissues are damaged. It is commonly measured alongside ALT to assess liver health."
@@ -191,7 +191,7 @@
       "description": "Phosphorus is a mineral that works with calcium to build bones and is central to energy metabolism. Levels are regulated by the kidneys and hormones, and abnormal values can reflect kidney or parathyroid issues."
     },
     {
-      "name": "BUN",
+      "name": "Blood Urea Nitrogen (BUN)",
       "abbreviation": "BUN",
       "full_name": "Blood Urea Nitrogen",
       "description": "Blood urea nitrogen measures the amount of urea, a waste product of protein breakdown, that the kidneys filter from the blood. It is used to assess kidney function and hydration."
@@ -249,13 +249,13 @@
       "description": "Platelets are small blood cells that clump together to form clots and stop bleeding. Low counts can increase bleeding risk, while high counts can increase clotting risk."
     },
     {
-      "name": "MCV",
+      "name": "Mean Corpuscular Volume (MCV)",
       "abbreviation": "MCV",
       "full_name": "Mean Corpuscular Volume",
       "description": "MCV measures the average size of red blood cells. It helps classify types of anemia, with small cells often seen in iron deficiency and large cells in B12 or folate deficiency."
     },
     {
-      "name": "RDW",
+      "name": "Red Cell Distribution Width (RDW)",
       "abbreviation": "RDW",
       "full_name": "Red Cell Distribution Width",
       "description": "RDW measures how much red blood cells vary in size. A higher RDW means greater size variation and can be an early clue to certain anemias or nutritional deficiencies."
@@ -281,7 +281,7 @@
       "description": "Serum iron measures the amount of iron circulating in the blood bound to transport proteins. It is interpreted alongside other iron tests to assess iron deficiency or overload."
     },
     {
-      "name": "TIBC",
+      "name": "Total Iron-Binding Capacity (TIBC)",
       "abbreviation": "TIBC",
       "full_name": "Total Iron-Binding Capacity",
       "description": "TIBC measures the blood's total capacity to bind and transport iron, reflecting the amount of transferrin available. It rises in iron deficiency and helps evaluate iron status."
@@ -292,7 +292,7 @@
       "description": "Transferrin saturation is the percentage of iron-transport protein that is actually carrying iron. It helps assess iron status, being low in deficiency and high in iron overload."
     },
     {
-      "name": "TSH",
+      "name": "Thyroid-Stimulating Hormone (TSH)",
       "abbreviation": "TSH",
       "full_name": "Thyroid-Stimulating Hormone",
       "description": "TSH is a pituitary hormone that signals the thyroid to make thyroid hormones. It is the primary screening test for thyroid function, with high levels suggesting an underactive thyroid and low levels an overactive one."
@@ -344,13 +344,13 @@
       "description": "Cortisol is the body's main stress hormone, made by the adrenal glands, and it regulates metabolism, blood sugar, and the stress response. Levels follow a daily rhythm, and abnormal values can indicate adrenal or pituitary problems."
     },
     {
-      "name": "IGF-1",
+      "name": "Insulin-Like Growth Factor 1 (IGF-1)",
       "abbreviation": "IGF-1",
       "full_name": "Insulin-Like Growth Factor 1",
       "description": "IGF-1 is a hormone produced mainly by the liver in response to growth hormone and mediates many of its growth-promoting effects. It is used to assess growth hormone activity."
     },
     {
-      "name": "PSA",
+      "name": "Prostate-Specific Antigen (PSA)",
       "abbreviation": "PSA",
       "full_name": "Prostate-Specific Antigen",
       "description": "PSA is a protein made by the prostate gland that circulates in the blood. It is used to screen for and monitor prostate conditions, with elevated levels warranting further evaluation."
@@ -703,19 +703,19 @@
       "description": "Monocytes are white blood cells that engulf pathogens and debris and help coordinate immune responses. Elevated levels can accompany infection, inflammation, or recovery from illness."
     },
     {
-      "name": "MCH",
+      "name": "Mean Corpuscular Hemoglobin (MCH)",
       "abbreviation": "MCH",
       "full_name": "Mean Corpuscular Hemoglobin",
       "description": "MCH measures the average amount of hemoglobin in each red blood cell. It is used with other red-cell indices to classify types of anemia."
     },
     {
-      "name": "MCHC",
+      "name": "Mean Corpuscular Hemoglobin Concentration (MCHC)",
       "abbreviation": "MCHC",
       "full_name": "Mean Corpuscular Hemoglobin Concentration",
       "description": "MCHC measures the average concentration of hemoglobin within red blood cells. It helps characterize anemias and distinguish among their causes."
     },
     {
-      "name": "MPV",
+      "name": "Mean Platelet Volume (MPV)",
       "abbreviation": "MPV",
       "full_name": "Mean Platelet Volume",
       "description": "MPV measures the average size of platelets. Larger platelets tend to be younger and more active, and the value can offer clues about platelet production and turnover."
@@ -1371,6 +1371,168 @@
       "name": "Glucose, Fasting",
       "full_name": "Fasting Plasma Glucose",
       "description": "Blood sugar measured after not eating for several hours, used to screen for and monitor prediabetes and diabetes. Normal is roughly 70-99 mg/dL, 100-125 indicates prediabetes, and 126 or higher (confirmed) indicates diabetes. Informational, not a diagnosis."
+    },
+    {
+      "name": "RPR",
+      "abbreviation": "RPR",
+      "full_name": "Rapid Plasma Reagin",
+      "description": "A blood screen for syphilis. Reported qualitatively as reactive or non-reactive; a reactive result is followed by a confirmatory treponemal test."
+    },
+    {
+      "name": "HIV Antigen/Antibody",
+      "abbreviation": "HIV Ag/Ab",
+      "full_name": "HIV Antigen/Antibody Combination",
+      "description": "A 4th-generation screen that detects both HIV antigen and antibody, catching infection earlier than antibody-only tests. A reactive result is confirmed by a supplemental assay."
+    },
+    {
+      "name": "SARS-CoV-2 NAAT",
+      "abbreviation": "SARS-CoV-2 PCR",
+      "full_name": "SARS-CoV-2 Nucleic Acid Amplification",
+      "description": "A molecular (PCR) test for the virus that causes COVID-19. Reported as detected or not detected."
+    },
+    {
+      "name": "SARS-CoV-2 Antigen",
+      "abbreviation": "SARS-CoV-2 Ag",
+      "full_name": "SARS-CoV-2 Antigen",
+      "description": "A rapid antigen test for the virus that causes COVID-19. Faster but less sensitive than PCR; reported as positive or negative."
+    },
+    {
+      "name": "Influenza A NAAT",
+      "abbreviation": "Flu A PCR",
+      "full_name": "Influenza A Nucleic Acid Amplification",
+      "description": "A molecular (PCR) test for influenza A. Reported as detected or not detected."
+    },
+    {
+      "name": "Influenza B NAAT",
+      "abbreviation": "Flu B PCR",
+      "full_name": "Influenza B Nucleic Acid Amplification",
+      "description": "A molecular (PCR) test for influenza B. Reported as detected or not detected."
+    },
+    {
+      "name": "Influenza A Antigen",
+      "abbreviation": "Flu A Ag",
+      "full_name": "Influenza A Antigen",
+      "description": "A rapid antigen test for influenza A. Reported as positive or negative."
+    },
+    {
+      "name": "Influenza B Antigen",
+      "abbreviation": "Flu B Ag",
+      "full_name": "Influenza B Antigen",
+      "description": "A rapid antigen test for influenza B. Reported as positive or negative."
+    },
+    {
+      "name": "RSV NAAT",
+      "abbreviation": "RSV PCR",
+      "full_name": "Respiratory Syncytial Virus Nucleic Acid Amplification",
+      "description": "A molecular (PCR) test for RSV, a common respiratory virus. Reported as detected or not detected."
+    },
+    {
+      "name": "Streptococcus A NAAT",
+      "abbreviation": "Strep A PCR",
+      "full_name": "Group A Streptococcus Nucleic Acid Amplification",
+      "description": "A molecular test for group A strep, the cause of strep throat. Reported as detected or not detected."
+    },
+    {
+      "name": "Group B Streptococcus",
+      "abbreviation": "GBS",
+      "full_name": "Group B Streptococcus Screen",
+      "description": "A screen for group B strep colonization, done routinely in late pregnancy to guide antibiotics during labor. Reported as detected or not detected."
+    },
+    {
+      "name": "Chlamydia trachomatis NAAT",
+      "abbreviation": "CT NAAT",
+      "full_name": "Chlamydia trachomatis Nucleic Acid Amplification",
+      "description": "A molecular test for chlamydia, a common sexually transmitted infection. Reported as detected or not detected."
+    },
+    {
+      "name": "Neisseria gonorrhoeae NAAT",
+      "abbreviation": "GC NAAT",
+      "full_name": "Neisseria gonorrhoeae Nucleic Acid Amplification",
+      "description": "A molecular test for gonorrhea, a sexually transmitted infection. Reported as detected or not detected."
+    },
+    {
+      "name": "HPV, High-Risk",
+      "abbreviation": "hrHPV",
+      "full_name": "High-Risk Human Papillomavirus",
+      "description": "A pooled test for the high-risk HPV types that cause cervical cancer, used in cervical screening. Reported as positive or negative."
+    },
+    {
+      "name": "HPV Genotype 16",
+      "abbreviation": "HPV 16",
+      "full_name": "Human Papillomavirus Genotype 16",
+      "description": "Detection of HPV type 16, one of the highest-risk cervical-cancer types, reported separately from the pooled high-risk result."
+    },
+    {
+      "name": "HPV Genotype 18/45",
+      "abbreviation": "HPV 18/45",
+      "full_name": "Human Papillomavirus Genotype 18/45",
+      "description": "Detection of HPV types 18 and 45, high-risk cervical-cancer types, reported separately from the pooled high-risk result."
+    },
+    {
+      "name": "Culture Organism",
+      "abbreviation": "Organism",
+      "full_name": "Culture Organism",
+      "description": "The organism identified by a microbiology culture. The result is the organism's name (for example, a specific bacterium) rather than a number."
+    },
+    {
+      "name": "Rubella Antibody IgG",
+      "abbreviation": "Rubella IgG",
+      "full_name": "Rubella IgG Antibody",
+      "description": "An antibody marker of immunity to rubella (German measles), from past infection or vaccination. Reported as immune/non-immune or as a titer."
+    },
+    {
+      "name": "Measles Antibody IgG",
+      "abbreviation": "Measles IgG",
+      "full_name": "Measles IgG Antibody",
+      "description": "An antibody marker of immunity to measles, from past infection or vaccination. Reported as immune/non-immune or as a titer."
+    },
+    {
+      "name": "Mumps Antibody IgG",
+      "abbreviation": "Mumps IgG",
+      "full_name": "Mumps IgG Antibody",
+      "description": "An antibody marker of immunity to mumps, from past infection or vaccination. Reported as immune/non-immune or as a titer."
+    },
+    {
+      "name": "Varicella Zoster Antibody IgG",
+      "abbreviation": "VZV IgG",
+      "full_name": "Varicella-Zoster IgG Antibody",
+      "description": "An antibody marker of immunity to varicella-zoster (chickenpox), from past infection or vaccination. Reported as immune/non-immune or as a titer."
+    },
+    {
+      "name": "Trisomy 21 Screen",
+      "abbreviation": "T21",
+      "full_name": "Trisomy 21 (Down Syndrome) Screen",
+      "description": "A prenatal cell-free-DNA screen estimating the risk of Down syndrome. A low- or high-risk result, not a diagnosis; high risk is confirmed by diagnostic testing."
+    },
+    {
+      "name": "Trisomy 18 Screen",
+      "abbreviation": "T18",
+      "full_name": "Trisomy 18 (Edwards Syndrome) Screen",
+      "description": "A prenatal cell-free-DNA screen estimating the risk of Edwards syndrome. A low- or high-risk result, not a diagnosis."
+    },
+    {
+      "name": "Trisomy 13 Screen",
+      "abbreviation": "T13",
+      "full_name": "Trisomy 13 (Patau Syndrome) Screen",
+      "description": "A prenatal cell-free-DNA screen estimating the risk of Patau syndrome. A low- or high-risk result, not a diagnosis."
+    },
+    {
+      "name": "Fetal Fraction",
+      "abbreviation": "FF",
+      "full_name": "Fetal Fraction",
+      "description": "The proportion of cell-free DNA in a prenatal (NIPT) blood draw that comes from the pregnancy. A quality measure of the test, not a health signal."
+    },
+    {
+      "name": "Glucose, Gestational Screen (50 g)",
+      "abbreviation": "GCT",
+      "full_name": "Glucose Challenge Test (50 g)",
+      "description": "A 1-hour glucose challenge used to screen for gestational diabetes. A value at or above the lab's cutoff prompts a longer diagnostic glucose-tolerance test."
+    },
+    {
+      "name": "Hemoglobin Electrophoresis",
+      "abbreviation": "Hb Electrophoresis",
+      "full_name": "Hemoglobin Electrophoresis",
+      "description": "A test that separates the types of hemoglobin to screen for sickle-cell and thalassemia traits. Reported as a normal or abnormal variant pattern."
     }
   ]
 }

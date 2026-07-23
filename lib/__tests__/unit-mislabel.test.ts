@@ -16,7 +16,7 @@ import {
 // so the type is satisfied). Mirrors real MCHC: g/dL, reference 31.6–35.4, no optimal.
 function mchc() {
   return {
-    name: "MCHC",
+    name: "Mean Corpuscular Hemoglobin Concentration (MCHC)",
     unit: "g/dL",
     direction: "in_range" as const,
     ref_low: 31.6,

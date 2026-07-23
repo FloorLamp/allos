@@ -126,15 +126,24 @@ const METFORMIN_REF =
 
 // Common labs, spelled to the CANONICAL biomarker names (lib/canonical-biomarkers.json)
 // wherever one exists, so a real reading satisfies the requirement family-aware.
-const TSH = { canonical: "TSH", label: "TSH (thyroid)" };
+const TSH = {
+  canonical: "Thyroid-Stimulating Hormone (TSH)",
+  label: "TSH (thyroid)",
+};
 const FREE_T4 = { canonical: "Free T4", label: "Free T4" };
 const CREATININE = { canonical: "Creatinine", label: "creatinine" };
 const EGFR = { canonical: "eGFR", label: "eGFR (kidney function)" };
 const CALCIUM = { canonical: "Calcium", label: "calcium" };
 const POTASSIUM = { canonical: "Potassium", label: "potassium" };
 const SODIUM = { canonical: "Sodium", label: "sodium" };
-const ALT = { canonical: "ALT", label: "ALT (liver)" };
-const AST = { canonical: "AST", label: "AST (liver)" };
+const ALT = {
+  canonical: "Alanine Aminotransferase (ALT)",
+  label: "ALT (liver)",
+};
+const AST = {
+  canonical: "Aspartate Aminotransferase (AST)",
+  label: "AST (liver)",
+};
 const WBC = { canonical: "White Blood Cell Count", label: "CBC (white cells)" };
 const ANC = {
   canonical: "Neutrophils, Absolute",

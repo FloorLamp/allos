@@ -101,7 +101,8 @@ import { migration as m099 } from "./099-practice-targets-and-logs";
 import { migration as m100 } from "./100-weather-uv-cache";
 import { migration as m101 } from "./101-recover-blank-name-prescriptions";
 import { migration as m102 } from "./102-session-view-profiles";
-import { migration as m103 } from "./103-login-notification-channels";
+import { migration as m103 } from "./103-canonical-name-abbreviation-consolidation";
+import { migration as m104 } from "./104-login-notification-channels";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -213,4 +214,5 @@ export const MIGRATIONS: Migration[] = [
   m101,
   m102,
   m103,
+  m104,
 ];

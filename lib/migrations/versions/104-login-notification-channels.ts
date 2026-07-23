@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 103 (issue #1072): move the Telegram delivery CHANNEL from the PROFILE
+// Migration 104 (issue #1072): move the Telegram delivery CHANNEL from the PROFILE
 // (a data subject) to the LOGIN (a person with a phone).
 //
 // Before: `profile_settings.telegram_chat_id` / `telegram_enabled` /
@@ -195,7 +195,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 103,
-  name: "103-login-notification-channels",
+  id: 104,
+  name: "104-login-notification-channels",
   up,
 };

@@ -158,7 +158,10 @@ describe("bloodTypeFromReadings", () => {
     expect(bloodTypeFromReadings([reading("Rh Type", "POSITIVE")])).toBeNull();
     expect(bloodTypeFromReadings([])).toBeNull();
     expect(
-      bloodTypeFromReadings([reading("Sodium", "140"), reading("ALT", "22")])
+      bloodTypeFromReadings([
+        reading("Sodium", "140"),
+        reading("Alanine Aminotransferase (ALT)", "22"),
+      ])
     ).toBeNull();
   });
 
