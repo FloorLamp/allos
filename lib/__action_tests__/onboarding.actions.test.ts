@@ -4,7 +4,6 @@ import {
   completeOnboarding,
   continueOnboardingData,
   deferOnboarding,
-  dismissProfileOrientation,
   saveOnboardingBasics,
   saveOnboardingDashboard,
   saveOnboardingFocuses,
@@ -23,7 +22,6 @@ import {
   getUnitPrefs,
   getUserBirthdate,
   getUserSex,
-  isProfileOrientationDismissed,
   setOnboardingState,
   setUserBirthdate,
 } from "@/lib/settings";
@@ -58,16 +56,6 @@ describe("onboarding actions", () => {
       status: "in_progress",
       profilePath: null,
     });
-  });
-
-  it("dismisses existing-profile orientation at the login tier", async () => {
-    const login = createLogin({ username: "orientation-dismiss" });
-    const profile = createTestProfile("Existing Person", login.id);
-    actAs(login, profile);
-
-    expect(isProfileOrientationDismissed(login.id, profile.id)).toBe(false);
-    await dismissProfileOrientation();
-    expect(isProfileOrientationDismissed(login.id, profile.id)).toBe(true);
   });
 
   it("opts an admin-created profile into versioned onboarding", async () => {

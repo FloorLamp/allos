@@ -33,7 +33,6 @@ import { hashPasswordSync } from "../lib/password";
 import {
   resetOnboardingProfileRows,
   writeWizardEntryState,
-  clearOrientationDismissal,
 } from "./onboarding-reset";
 import {
   E2E_LOGIN_CHILD,
@@ -80,7 +79,6 @@ import {
   E2E_LOGIN_FORM_INJURY,
   E2E_LOGIN_ONBOARDING,
   E2E_LOGIN_ONBOARDING_CAREGIVER,
-  E2E_LOGIN_ORIENTATION,
   E2E_LOGIN_STRAVA,
   E2E_LOGIN_WEATHER,
   WEATHER_PROFILE,
@@ -111,7 +109,6 @@ import {
   ROUTINE_PROFILE,
   ONBOARDING_CAREGIVER_PROFILE,
   ONBOARDING_PROFILE,
-  ORIENTATION_PROFILE,
   SOURCE_COMPARE_PROFILE,
   STRAVA_REAUTH_PROFILE,
   E2E_LOGIN_SICK_SELF,
@@ -2496,23 +2493,6 @@ resetOnboardingProfileRows(db, caregiverOnboardingId);
 writeWizardEntryState(db, caregiverOnboardingId);
 seedMemberLogin(E2E_LOGIN_ONBOARDING_CAREGIVER, caregiverOnboardingId);
 
-// A populated legacy/existing profile gets orientation, never the empty-profile
-// wizard. Clear the per-login dismissal so repeated e2e runs remain deterministic.
-const orientationId = fixtureProfileId(ORIENTATION_PROFILE);
-db.prepare(
-  `DELETE FROM profile_settings WHERE profile_id = ? AND key = 'onboarding_state'`
-).run(orientationId);
-db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(orientationId);
-db.prepare(
-  `INSERT INTO body_metrics (profile_id, date, weight_kg, source)
-   VALUES (?, ?, 68.2, 'manual')`
-).run(orientationId, today(orientationId));
-const orientationLoginId = seedMemberLogin(
-  E2E_LOGIN_ORIENTATION,
-  orientationId,
-  "read"
-);
-clearOrientationDismissal(db, orientationLoginId, orientationId);
 // One logged activity so the Training "Log" tab renders the Journal (with its "New
 // activity" button) instead of the empty state — the spec opens that add form to
 // reach the equipment picker's empty-state door. An activity creates no equipment,

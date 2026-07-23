@@ -39,8 +39,6 @@ import {
 import {
   ONBOARDING_PROFILE,
   ONBOARDING_CAREGIVER_PROFILE,
-  ORIENTATION_PROFILE,
-  E2E_LOGIN_ORIENTATION,
 } from "./fixture-logins";
 
 // The minimal handle surface both callers share.
@@ -101,25 +99,11 @@ export function writeWizardEntryState(db: DbHandle, profileId: number): void {
   ).run(profileId, serializeOnboardingState(initialOnboardingState()));
 }
 
-// Clear the per-login existing-profile orientation dismissal so the orientation
-// card shows again (the "Got it" click writes this key).
-export function clearOrientationDismissal(
-  db: DbHandle,
-  loginId: number,
-  profileId: number
-): void {
-  db.prepare(`DELETE FROM login_settings WHERE login_id = ? AND key = ?`).run(
-    loginId,
-    `profile_orientation_v1:${profileId}`
-  );
-}
-
-export type OnboardingFixtureRole = "onboarding" | "caregiver" | "orientation";
+export type OnboardingFixtureRole = "onboarding" | "caregiver";
 
 const ROLE_PROFILE: Record<OnboardingFixtureRole, string> = {
   onboarding: ONBOARDING_PROFILE,
   caregiver: ONBOARDING_CAREGIVER_PROFILE,
-  orientation: ORIENTATION_PROFILE,
 };
 
 // Reset ONE fixture role. Per-role (not reset-all) on purpose: fullyParallel can
@@ -136,20 +120,6 @@ export function resetOnboardingFixture(
     throw new Error(
       `onboarding fixture profile "${ROLE_PROFILE[role]}" not found — did seed-events run?`
     );
-  }
-  if (role === "orientation") {
-    // The orientation test only dismisses the card (a login_settings key); its
-    // seeded body metric is untouched, so only the dismissal needs clearing.
-    const login = db
-      .prepare(`SELECT id FROM logins WHERE username = ?`)
-      .get(E2E_LOGIN_ORIENTATION) as { id: number } | undefined;
-    if (!login) {
-      throw new Error(
-        `orientation fixture login "${E2E_LOGIN_ORIENTATION}" not found — did seed-events run?`
-      );
-    }
-    clearOrientationDismissal(db, login.id, profile.id);
-    return;
   }
   resetOnboardingProfileRows(db, profile.id);
   writeWizardEntryState(db, profile.id);

@@ -166,11 +166,13 @@ delivery is never enabled merely by choosing a preference; a channel must still 
 deliberately configured under **Settings → Notifications**.
 
 Self and caregiver setup are explicit paths, and creating a profile still does
-not create a login. A login opening an already-populated profile receives a short,
-per-login orientation explaining its access and existing data instead of the
-empty-profile flow. Server readiness and infrastructure configuration remain an
-admin-only concern under **Settings → Server**. Seeded sample data opens directly
-on the populated Dashboard.
+not create a login. A login opening an already-populated profile lands directly on
+that profile's Dashboard; persistent chrome always names whose record is in view —
+a profile banner you tap to switch, the profile menu's "Signed in as" line for the
+login identity, and a **read-only** badge when the grant is view-only — while any
+structural setup gaps surface in the Dashboard's **Data quality** card. Server
+readiness and infrastructure configuration remain an admin-only concern under
+**Settings → Server**. Seeded sample data opens directly on the populated Dashboard.
 
 Each login also picks its own **display units** under **Settings → Preferences** — weight (kg/lb), distance (km/mi), and temperature (°F/°C) — plus its **date & time format** — a 12-hour or 24-hour clock and a date shape (`Jan 5, 2026` / `5 Jan 2026` / `2026-01-05`) — a per-login choice that follows you across every profile; storage stays canonical (kg/km/°F, ISO `YYYY-MM-DD` dates) and only the display converts. Date/time defaults preserve the existing look (24-hour; `Mon D, YYYY`), and login-less channels (Telegram/push and the calendar feed) keep a fixed format. Any login can change its own password (minimum 10 characters, mixed character classes) and enroll **TOTP two-factor authentication** under **Settings → Preferences** — strongly recommended for admins; 8 one-time recovery codes are shown once at enrollment. If an admin loses both the authenticator and the recovery codes, the `ALLOS_DISABLE_2FA` env var (see **Configuration**) is the loudly-logged, audited escape hatch.
 

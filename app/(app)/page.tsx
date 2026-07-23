@@ -62,7 +62,6 @@ import { runRecommendation } from "@/lib/recommendation-engine";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import {
   getDashboardLayout,
-  isProfileOrientationDismissed,
   getOnboardingState,
   getUnitPrefs,
   getDisplayFormatPrefs,
@@ -143,7 +142,6 @@ import HowAreYouCard from "@/components/dashboard/HowAreYouCard";
 import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
 import OnboardingResumeCard from "@/components/dashboard/OnboardingResumeCard";
 import OnboardingChecklist from "@/components/dashboard/OnboardingChecklist";
-import ProfileOrientationCard from "@/components/dashboard/ProfileOrientationCard";
 import { saveDashboardLayout, saveIllnessHeroState } from "./actions";
 import {
   episodeHref,
@@ -251,16 +249,6 @@ export default async function Dashboard() {
           getProfileTelegram(profile.id).telegramEnabled ||
           getProfileHomeAssistant(profile.id).enabled ||
           countPushSubscriptionsForLogin(login.id) > 0,
-      }
-    : null;
-  const showOrientation =
-    (storedOnboarding === null ||
-      (access === "read" && onboardingNeedsSetup(storedOnboarding))) &&
-    !isProfileOrientationDismissed(login.id, profile.id);
-  const orientationPresence = showOrientation
-    ? {
-        ...getOnboardingDataPresence(profile.id),
-        caregiving: accessible.length > 1,
       }
     : null;
   const householdEntries: HouseholdStripEntry[] =
@@ -971,14 +959,6 @@ export default async function Dashboard() {
         <OnboardingChecklist
           focuses={onboardingChecklist.focuses}
           completion={onboardingChecklistCompletion}
-        />
-      )}
-      {showOrientation && orientationPresence && (
-        <ProfileOrientationCard
-          profileName={profile.name}
-          access={access}
-          attentionCount={attention.length}
-          presence={orientationPresence}
         />
       )}
       <HouseholdStrip entries={householdEntries} />

@@ -45,7 +45,6 @@ import {
   getUserSex,
   isValidTimezone,
   setDashboardLayout,
-  dismissProfileOrientation as markProfileOrientationDismissed,
   setOnboardingState,
   setNotifySchedule,
   setStoredAge,
@@ -109,12 +108,6 @@ export async function startOnboardingRoutine(
   revalidatePath("/onboarding");
   revalidatePath("/training");
   return { ok: true, routineId, routineName: template.name };
-}
-
-export async function dismissProfileOrientation() {
-  const { login, profile } = await requireSession();
-  markProfileOrientationDismissed(login.id, profile.id);
-  revalidatePath("/");
 }
 
 export async function dismissOnboardingChecklist() {
