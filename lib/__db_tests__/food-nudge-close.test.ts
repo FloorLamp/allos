@@ -39,7 +39,7 @@ import {
   editMessageReplyMarkupRaw,
 } from "@/lib/notifications/telegram-api";
 import type { NotificationMessage } from "@/lib/notifications/types";
-import { seedProfile, type SeededProfile } from "./fixtures";
+import { seedProfile, type SeededProfile, seedLoginTelegram } from "./fixtures";
 
 const sendMock = vi.mocked(sendMessageRaw);
 const stripMock = vi.mocked(editMessageReplyMarkupRaw);
@@ -59,8 +59,7 @@ beforeAll(() => {
   t = today(p.profileId);
   // Telegram configured for this profile (global token + per-profile enable + chat).
   setSetting("telegram_bot_token", "test-bot-token");
-  setProfileSetting(p.profileId, "telegram_enabled", "1");
-  setProfileSetting(p.profileId, "telegram_chat_id", CHAT);
+  seedLoginTelegram(p.profileId, CHAT);
   // A staple habit so buildFoodNudge yields a real button-carrying nudge.
   logFood(t, "leafy_greens", 3);
 });

@@ -30,7 +30,7 @@ import {
   editMessageTextRaw,
   sendMessageRaw,
 } from "@/lib/notifications/telegram-api";
-import { seedProfile, type SeededProfile } from "./fixtures";
+import { seedProfile, type SeededProfile, seedLoginTelegram } from "./fixtures";
 import { tempReplyMarker } from "@/lib/notifications/callback-data";
 
 const answerMock = vi.mocked(answerCallbackQuery);
@@ -55,8 +55,7 @@ let p: SeededProfile;
 
 beforeAll(() => {
   p = seedProfile("TG859");
-  setProfileSetting(p.profileId, "telegram_chat_id", CHAT);
-  setProfileSetting(p.profileId, "telegram_enabled", "1");
+  seedLoginTelegram(p.profileId, CHAT);
 });
 
 describe("symptom quick-log (button grid → severity → log)", () => {

@@ -51,18 +51,85 @@ export function getTelegramBotConfig(): TelegramBotConfig {
   };
 }
 
-// Per-profile Telegram delivery target (whether reminders are on for this profile
-// and the chat they're sent to).
-export interface ProfileTelegram {
+// Login-scoped Telegram delivery channel (issue #1072). The channel belongs to the
+// LOGIN (a person with a phone), not the profile (a data subject) — a per-profile
+// notification fans out to the logins that manage that profile (see
+// lib/notifications/fan-out.ts). `telegramEnabled` is the login's channel switch;
+// `telegramChatId` is the chat their reminders land in. Both live in login_settings.
+export interface LoginTelegram {
   telegramEnabled: boolean;
   telegramChatId: string;
 }
 
-export function getProfileTelegram(profileId: number): ProfileTelegram {
+export function getLoginTelegram(loginId: number): LoginTelegram {
   return {
-    telegramEnabled: getProfileSetting(profileId, "telegram_enabled") === "1",
-    telegramChatId: getProfileSetting(profileId, "telegram_chat_id") ?? "",
+    telegramEnabled: getLoginSetting(loginId, "telegram_enabled") === "1",
+    telegramChatId: getLoginSetting(loginId, "telegram_chat_id") ?? "",
   };
+}
+
+// Persist this login's Telegram channel (enable toggle + chat id). Login-scoped, so
+// any live session for the login may set it via the Preferences (login) tier.
+export function setLoginTelegram(
+  loginId: number,
+  cfg: { telegramEnabled: boolean; telegramChatId: string }
+): LoginTelegram {
+  writeTx(() => {
+    setLoginSetting(
+      loginId,
+      "telegram_enabled",
+      cfg.telegramEnabled ? "1" : "0"
+    );
+    setLoginSetting(loginId, "telegram_chat_id", cfg.telegramChatId.trim());
+  });
+  return getLoginTelegram(loginId);
+}
+
+// ---- Per-(login, profile) notification mute (issue #1072) ----
+// The per-profile routing flexibility the old per-profile model had, re-homed on the
+// login×profile pair: a login can silence a specific profile ("don't notify me about
+// Grandpa") without affecting the OTHER logins that manage the same profile. Stored
+// as a login_settings marker keyed by the profile id (`notify_mute_profile_<id>`) —
+// login-scoped KV, so no schema change and no owned-table ripple; a leftover marker
+// after a profile delete is a dead id-keyed key (ids never recycle, #203-safe).
+// SAFETY-tier mute is ALLOWED but OFF by default — a co-parent must not silently miss
+// a dose escalation; the toggle exists, the default is unmuted.
+function muteKey(profileId: number): string {
+  return `notify_mute_profile_${profileId}`;
+}
+
+export function isProfileMutedForLogin(
+  loginId: number,
+  profileId: number
+): boolean {
+  return getLoginSetting(loginId, muteKey(profileId)) === "1";
+}
+
+export function setProfileMutedForLogin(
+  loginId: number,
+  profileId: number,
+  muted: boolean
+): void {
+  setLoginSetting(loginId, muteKey(profileId), muted ? "1" : "0");
+}
+
+// ---- Post-migration "review your notification settings" flag (issue #1072) ----
+// The channel migration (profile → login) is best-effort: a wrong channel is a
+// missed notification (recoverable by reconfiguring), never data loss. When the
+// per-login channel derivation was AMBIGUOUS (a granted profile's chat differed
+// from the login's derived one, or a chat spanned multiple logins), the migration
+// sets this flag so the login is nudged to confirm its notification settings on
+// next login. Login-scoped; cleared once the login visits/saves its channel.
+export function getNotifyReviewNeeded(loginId: number): boolean {
+  return getLoginSetting(loginId, "notify_review_needed") === "1";
+}
+
+export function setNotifyReviewNeeded(loginId: number): void {
+  setLoginSetting(loginId, "notify_review_needed", "1");
+}
+
+export function clearNotifyReviewNeeded(loginId: number): void {
+  setLoginSetting(loginId, "notify_review_needed", "0");
 }
 
 // ---- Food logging over Telegram (issue #682) — per-profile opt-in ----
@@ -184,43 +251,42 @@ export function setFoodNudgePointer(
   );
 }
 
-// Resolve every profile a Telegram chat id belongs to. A single chat (e.g. a
-// family group) can be the delivery target for several profiles, so this returns
-// all of them — inbound button taps carry only a chat id, and the callback
-// handler picks the one the button token names (rejecting taps from an unknown
-// chat). The chat id is stored as a string in profile_settings; callers stringify.
+// Resolve every profile an inbound Telegram chat id may act as — chat → LOGIN →
+// in-scope profiles (issue #1072). A chat id now belongs to a LOGIN
+// (login_settings.telegram_chat_id), and that login manages a set of profiles via
+// explicit grants; a single family-group chat can be shared by several logins, so
+// this unions every managing login's in-scope, non-muted profiles. Inbound button
+// taps carry only a chat id, and the callback handler picks the one the button
+// token names (rejecting taps from a chat that can't act as that profile). The
+// grant/login tables are login-scoped (not profile-owned), so the profile filter
+// lives in the join, not a profile_id scope.
 export function getProfilesByTelegramChatId(chatId: string): number[] {
-  if (!chatId) return [];
+  const chat = chatId.trim();
+  if (!chat) return [];
   const rows = db
     .prepare(
-      "SELECT profile_id FROM profile_settings WHERE key = 'telegram_chat_id' AND value = ?"
+      `SELECT DISTINCT lp.profile_id AS profile_id
+         FROM login_settings ls
+         JOIN login_profiles lp ON lp.login_id = ls.login_id
+        WHERE ls.key = 'telegram_chat_id' AND ls.value = ?
+          AND NOT EXISTS (
+            SELECT 1 FROM login_settings m
+             WHERE m.login_id = ls.login_id
+               AND m.key = 'notify_mute_profile_' || lp.profile_id
+               AND m.value = '1'
+          )
+        ORDER BY lp.profile_id`
     )
-    .all(chatId) as { profile_id: number }[];
+    .all(chat) as { profile_id: number }[];
   return rows.map((r) => r.profile_id);
 }
 
-// Merged view (global bot config + this profile's delivery target), for the
-// settings page and outbound notifications.
-export interface NotificationConfig
-  extends TelegramBotConfig, ProfileTelegram {}
+// Merged view (global bot config + this login's delivery channel), for the
+// settings page and the "send test" path.
+export interface NotificationConfig extends TelegramBotConfig, LoginTelegram {}
 
-export function getNotificationConfig(profileId: number): NotificationConfig {
-  return { ...getTelegramBotConfig(), ...getProfileTelegram(profileId) };
-}
-
-// Persist this profile's Telegram delivery target (enable toggle + chat id).
-// Per-profile, so any login acting as the profile may set it (member-safe).
-export function setProfileTelegram(
-  profileId: number,
-  cfg: { telegramEnabled: boolean; telegramChatId: string }
-): ProfileTelegram {
-  setProfileSetting(
-    profileId,
-    "telegram_enabled",
-    cfg.telegramEnabled ? "1" : "0"
-  );
-  setProfileSetting(profileId, "telegram_chat_id", cfg.telegramChatId.trim());
-  return getProfileTelegram(profileId);
+export function getNotificationConfig(loginId: number): NotificationConfig {
+  return { ...getTelegramBotConfig(), ...getLoginTelegram(loginId) };
 }
 
 // ---- Home Assistant notification channel (per profile, issue #248) ----
@@ -293,22 +359,24 @@ export function setProfileHomeAssistant(
 // (login) columns. All three are plain KV JSON arrays of DISABLED kinds (absence =
 // every kind on), parsed/serialized by the shared pure core. No schema change.
 
-// Telegram column — per PROFILE (a chat id belongs to one tracked person), beside
-// the profile's telegram_enabled / chat id.
-export function getProfileTelegramDisabledKinds(
-  profileId: number
+// Telegram column — per LOGIN (issue #1072: the Telegram chat belongs to the login,
+// so which kinds reach it is the login's choice too), beside the login's
+// telegram_enabled / chat id. A message for a profile fans out to every managing
+// login's chat; each login's disabled set gates its own copy at the send seam.
+export function getLoginTelegramDisabledKinds(
+  loginId: number
 ): NotificationKind[] {
   return parseDisabledKinds(
-    getProfileSetting(profileId, "telegram_notify_disabled_kinds")
+    getLoginSetting(loginId, "telegram_notify_disabled_kinds")
   );
 }
 
-export function setProfileTelegramDisabledKinds(
-  profileId: number,
+export function setLoginTelegramDisabledKinds(
+  loginId: number,
   kinds: readonly NotificationKind[]
 ): void {
-  setProfileSetting(
-    profileId,
+  setLoginSetting(
+    loginId,
     "telegram_notify_disabled_kinds",
     serializeDisabledKinds(kinds)
   );

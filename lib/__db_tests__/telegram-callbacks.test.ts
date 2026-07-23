@@ -36,7 +36,7 @@ import {
   answerCallbackQuery,
   editMessageTextRaw,
 } from "@/lib/notifications/telegram-api";
-import { seedProfile, type SeededProfile } from "./fixtures";
+import { seedProfile, type SeededProfile, seedLoginTelegram } from "./fixtures";
 
 const answerMock = vi.mocked(answerCallbackQuery);
 const editTextMock = vi.mocked(editMessageTextRaw);
@@ -77,9 +77,7 @@ let criticalDoseId: number;
 
 beforeAll(() => {
   p = seedProfile("TG233");
-  setProfileSetting(p.profileId, "telegram_chat_id", OWN_CHAT);
-  setProfileSetting(p.profileId, "telegram_enabled", "1");
-
+  seedLoginTelegram(p.profileId, OWN_CHAT);
   // A critical med with a caregiver escalate chat + one dose, for the escalation
   // buttons. Synthetic chat id, obviously-fictional name.
   criticalSuppId = Number(
@@ -428,8 +426,7 @@ describe("shared-chat attribution survives a tap (#377)", () => {
   // profiles share the same family chat, matching the issue's scenario.
   beforeAll(() => {
     const sib = seedProfile("TG377sib");
-    setProfileSetting(sib.profileId, "telegram_chat_id", OWN_CHAT);
-    setProfileSetting(sib.profileId, "telegram_enabled", "1");
+    seedLoginTelegram(sib.profileId, OWN_CHAT);
   });
 
   it("a dose ✅ rebuild keeps the [Name] label on the rebuilt title", async () => {
@@ -570,8 +567,7 @@ describe("handleAllTaken tolerates an already-logged dose (#616)", () => {
   let doseB: number;
   beforeAll(() => {
     hp = seedProfile("TG616");
-    setProfileSetting(hp.profileId, "telegram_chat_id", ALL_CHAT);
-    setProfileSetting(hp.profileId, "telegram_enabled", "1");
+    seedLoginTelegram(hp.profileId, ALL_CHAT);
     const mkItem = (name: string) =>
       Number(
         db

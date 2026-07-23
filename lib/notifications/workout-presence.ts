@@ -30,10 +30,11 @@ import {
   getProfileSetting,
   setProfileSetting,
   getPublicUrl,
-  getProfileTelegramDisabledKinds,
+  getLoginTelegramDisabledKinds,
   getProfileHomeAssistant,
 } from "../settings";
 import { isKindEnabled } from "./home-assistant-core";
+import { resolveTelegramRecipients } from "./fan-out";
 import {
   composeFinishNudge,
   recapNudgeLine,
@@ -197,14 +198,15 @@ export async function runPostWorkoutForActivity(
   const doseMsg = buildPostWorkoutFinishReminder(profileId, date);
   const recap = getSessionRecap(profileId, activityId);
   // Recap-line inclusion (#924) is gated by the `workout-recap` row of the #928
-  // kind×channel matrix — included unless the user turned it OFF on EVERY
-  // profile-scoped channel (Telegram + Home Assistant). The login-scoped push
-  // channel gates its own copy at dispatch; a recap-only message additionally
-  // carries kind "workout-recap" so each channel's matrix gate applies at send time.
+  // kind×channel matrix — included unless it's turned OFF on EVERY delivery path.
+  // Telegram is now LOGIN-scoped (#1072) and fans out to the managing logins, so the
+  // line is enabled on Telegram if ANY managing login left it on; Home Assistant
+  // stays per-profile. The push channel gates its own copy at dispatch; a recap-only
+  // message additionally carries kind "workout-recap" so each channel's matrix gate
+  // applies at send time.
   const recapEnabled =
-    isKindEnabled(
-      "workout-recap",
-      getProfileTelegramDisabledKinds(profileId)
+    resolveTelegramRecipients(profileId).some((r) =>
+      isKindEnabled("workout-recap", getLoginTelegramDisabledKinds(r.loginId))
     ) ||
     isKindEnabled(
       "workout-recap",

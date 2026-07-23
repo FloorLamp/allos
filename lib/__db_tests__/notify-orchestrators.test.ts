@@ -23,7 +23,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import {
-  setProfileTelegram,
   setTelegramBotConfig,
   setProfileHomeAssistant,
   setProfileSetting,
@@ -53,7 +52,7 @@ import { runEaseBack, easeBackMarkerKey } from "@/lib/notifications/ease-back";
 import { gatherCoachingInput } from "@/lib/queries";
 import { createEpisodeRow } from "@/lib/illness-episode-store";
 import { shiftDateStr } from "@/lib/date";
-import { seedProfile } from "./fixtures";
+import { seedProfile, seedLoginTelegram } from "./fixtures";
 
 // ---- fixtures ----
 
@@ -79,17 +78,15 @@ function configureHA(profileId: number): void {
   });
 }
 
-// Enable the global bot + this profile's Telegram delivery target (a dispatch()
-// channel AND the escalation send target).
+// Enable the global bot + a MANAGING LOGIN whose Telegram chat receives this
+// profile's notifications (issue #1072: the channel is login-scoped and delivery
+// fans out to managing logins; this is also the escalation fan-out target).
 function configureTelegram(profileId: number, chatId = "555001"): void {
   setTelegramBotConfig({
     telegramBotToken: "orch-test-token",
     telegramMode: "poll",
   });
-  setProfileTelegram(profileId, {
-    telegramEnabled: true,
-    telegramChatId: chatId,
-  });
+  seedLoginTelegram(profileId, chatId);
 }
 
 function jsonResponse(obj: unknown): Response {

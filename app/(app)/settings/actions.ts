@@ -33,6 +33,17 @@ import {
   setUnitPrefs,
   setDisplayFormatPrefs,
   setLoginPushDisabledKinds,
+  getLoginTelegram,
+  setLoginTelegram,
+  setLoginTelegramDisabledKinds,
+  isProfileMutedForLogin,
+  setProfileMutedForLogin,
+  clearNotifyReviewNeeded,
+  getTelegramBotConfig,
+  getProfileFoodTelegram,
+  getFoodTelegramPrompted,
+  setFoodTelegramPrompted,
+  getUserAge,
   type DistanceUnit,
   type WeightUnit,
   type TemperatureUnit,
@@ -45,6 +56,10 @@ import {
   deletePushSubscription,
   sendTestPushToLogin,
 } from "@/lib/notifications/push";
+import { sendTelegramMessage } from "@/lib/notifications/telegram";
+import { sendFoodOptInPrompt } from "@/lib/notifications/food";
+import { isFoodLoggingRelevant } from "@/lib/life-stage";
+import { canAccessProfile } from "@/lib/auth";
 import { parsePushSubscription } from "@/lib/notifications/push-core";
 import { parseDisabledKinds } from "@/lib/notifications/home-assistant-core";
 import { recordAudit } from "@/lib/audit";
@@ -280,6 +295,122 @@ export async function sendTestPush(): Promise<{
           "No subscribed browsers for your login. Enable push on this browser first.",
       };
     return { ok: true, message: "Sent ✅ — check your notifications." };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// ---- Telegram delivery channel (login scope, issue #1072) ----
+//
+// The Telegram chat belongs to the LOGIN (a person with a phone), not the profile
+// (a data subject) — a per-profile notification fans out to the logins that manage
+// it (lib/notifications/fan-out.ts). So the channel enable + chat id, the per-kind
+// Telegram matrix column, and the "mute this profile" override are all login-scoped
+// and gate on requireSession() like the push actions, never requireWriteAccess on a
+// profile. Allowlisted in actions-write-access.test.ts on that basis.
+
+export async function saveLoginTelegram(formData: FormData): Promise<{
+  ok: boolean;
+}> {
+  const { login, profile } = await requireSession();
+
+  // Whether the acting profile was reachable over the login's Telegram BEFORE this
+  // save, so we can offer the one-time food-logging opt-in on first connection
+  // (#682) — now keyed on the LOGIN's channel becoming live.
+  const botConfigured = getTelegramBotConfig().telegramBotToken !== "";
+  const before = getLoginTelegram(login.id);
+  const wasReachable =
+    botConfigured &&
+    before.telegramEnabled &&
+    before.telegramChatId !== "" &&
+    !isProfileMutedForLogin(login.id, profile.id);
+
+  const enabledRaw = formData.get("telegram_enabled");
+  setLoginTelegram(login.id, {
+    telegramEnabled: enabledRaw === "on" || enabledRaw === "1",
+    telegramChatId: String(formData.get("telegram_chat_id") ?? ""),
+  });
+  // Saving the channel is the login confirming its notification settings, so clear
+  // any post-migration "review your settings" flag (#1072).
+  clearNotifyReviewNeeded(login.id);
+
+  const after = getLoginTelegram(login.id);
+  const nowReachable =
+    botConfigured &&
+    after.telegramEnabled &&
+    after.telegramChatId !== "" &&
+    !isProfileMutedForLogin(login.id, profile.id);
+  if (
+    nowReachable &&
+    !wasReachable &&
+    getProfileFoodTelegram(profile.id) === false &&
+    !getFoodTelegramPrompted(profile.id) &&
+    isFoodLoggingRelevant(getUserAge(profile.id))
+  ) {
+    setFoodTelegramPrompted(profile.id);
+    try {
+      await sendFoodOptInPrompt(profile.id);
+    } catch {
+      // A failed prompt send is non-critical — the toggle still lives in Settings.
+    }
+  }
+  revalidatePath("/settings/notifications");
+  return { ok: true };
+}
+
+// The per-kind Telegram matrix column, now login-scoped (#1072).
+export async function saveLoginTelegramNotifyKinds(
+  formData: FormData
+): Promise<{ ok: boolean }> {
+  const { login } = await requireSession();
+  const disabled = parseDisabledKinds(
+    String(formData.get("disabled_kinds") ?? "")
+  );
+  setLoginTelegramDisabledKinds(login.id, disabled);
+  revalidatePath("/settings/notifications");
+  return { ok: true };
+}
+
+// Mute (or un-mute) a specific profile for the CALLER's login (#1072): "don't
+// notify me about Grandpa". Login-scoped; only affects THIS login's fan-out, never
+// the other logins that manage the same profile. Safety-tier mute is allowed but
+// off by default. The profile must be one the caller can access (a forged id is
+// rejected) so a login can't create mute state for a profile outside its scope.
+export async function saveProfileNotifyMute(
+  formData: FormData
+): Promise<{ ok: boolean }> {
+  const session = await requireSession();
+  const profileId = Number(formData.get("profile_id"));
+  if (!Number.isInteger(profileId) || !canAccessProfile(session, profileId))
+    return { ok: false };
+  const muted = formData.get("muted") === "on" || formData.get("muted") === "1";
+  setProfileMutedForLogin(session.login.id, profileId, muted);
+  revalidatePath("/settings/notifications");
+  return { ok: true };
+}
+
+// Send a test message to the caller's OWN Telegram chat (login-scoped, #1072),
+// bypassing the profile fan-out so a login can always verify its own channel.
+export async function sendTestNotification(): Promise<{
+  ok: boolean;
+  message: string;
+}> {
+  const { login } = await requireSession();
+  const { telegramBotToken } = getTelegramBotConfig();
+  const { telegramEnabled, telegramChatId } = getLoginTelegram(login.id);
+  if (!telegramBotToken || !telegramEnabled || !telegramChatId)
+    return {
+      ok: false,
+      message:
+        "No Telegram channel — enable Telegram, fill in your chat id, and ask an admin to set the bot token on Settings → Server.",
+    };
+  try {
+    await sendTelegramMessage(telegramChatId, {
+      title: "Test notification",
+      body: "Notifications are working ✅",
+      kind: "test",
+    });
+    return { ok: true, message: "Sent ✅ — check your Telegram." };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }

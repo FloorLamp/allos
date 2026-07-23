@@ -17,7 +17,6 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import {
-  setProfileTelegram,
   setTelegramBotConfig,
   setProfileSetting,
   getProfileSetting,
@@ -25,6 +24,7 @@ import {
 import { runDigest, gatherDigestInput } from "@/lib/notifications/digest-data";
 import { buildDigest, renderDigestMessage } from "@/lib/notifications/digest";
 import { up as retireUpcomingMarker } from "@/lib/migrations/versions/093-retire-notify-last-upcoming";
+import { seedLoginTelegram } from "./fixtures";
 
 function newProfile(name: string): number {
   return Number(
@@ -114,10 +114,7 @@ function configureTelegram(profileId: number, chatId = "555001"): void {
     telegramBotToken: "digest-merge-token",
     telegramMode: "poll",
   });
-  setProfileTelegram(profileId, {
-    telegramEnabled: true,
-    telegramChatId: chatId,
-  });
+  seedLoginTelegram(profileId, chatId);
 }
 
 function stubFetch(): ReturnType<typeof vi.fn> {

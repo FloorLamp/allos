@@ -1,18 +1,19 @@
-// SERVER-ACTION TIER — the kind × channel matrix columns (#928). Each column saves
-// through a tier-correct action: Telegram + Home Assistant follow the PROFILE
-// (requireWriteAccess), Web Push follows the LOGIN (requireSession, login-scoped).
-// Proves each persists to its own tier store, the HA column preserves the channel's
-// enable/URL, and the profile-tier columns refuse a read-only member.
+// SERVER-ACTION TIER — the kind × channel matrix columns (#928, re-homed by #1072).
+// Each column saves through a tier-correct action: Telegram + Web Push follow the
+// LOGIN (requireSession, login-scoped as of #1072), Home Assistant follows the
+// PROFILE (requireWriteAccess). Proves each persists to its own tier store, the HA
+// column preserves the channel's enable/URL, the login-tier columns allow a
+// read-only member, and the HA (profile) column refuses one.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
+import { saveHomeAssistantNotifyKinds } from "@/app/(app)/settings/profile/actions";
 import {
-  saveTelegramNotifyKinds,
-  saveHomeAssistantNotifyKinds,
-} from "@/app/(app)/settings/profile/actions";
-import { savePushNotifyKinds } from "@/app/(app)/settings/actions";
+  savePushNotifyKinds,
+  saveLoginTelegramNotifyKinds,
+} from "@/app/(app)/settings/actions";
 import {
-  getProfileTelegramDisabledKinds,
+  getLoginTelegramDisabledKinds,
   getLoginPushDisabledKinds,
   getProfileHomeAssistant,
   setProfileHomeAssistant,
@@ -27,22 +28,22 @@ const disabled = (kinds: string[]) => ({
 
 beforeEach(() => revalidate.mockClear());
 
-describe("saveTelegramNotifyKinds (profile tier)", () => {
-  it("persists the Telegram column to the acting profile", async () => {
+describe("saveLoginTelegramNotifyKinds (login tier, #1072)", () => {
+  it("persists the Telegram column to the acting login, not the profile", async () => {
     const login = createLogin();
     const profile = createProfile("tg-owner", login.id);
-    const bystander = createProfile("bystander", login.id);
+    const other = createLogin();
     actAs(login, profile);
 
-    const res = await saveTelegramNotifyKinds(
+    const res = await saveLoginTelegramNotifyKinds(
       fd(disabled(["refill", "digest"]))
     );
     expect(res).toEqual({ ok: true });
-    expect(new Set(getProfileTelegramDisabledKinds(profile.id))).toEqual(
+    expect(new Set(getLoginTelegramDisabledKinds(login.id))).toEqual(
       new Set(["refill", "digest"])
     );
-    // Profile-scoped: a bystander profile is untouched.
-    expect(getProfileTelegramDisabledKinds(bystander.id)).toEqual([]);
+    // Login-scoped: another login is untouched.
+    expect(getLoginTelegramDisabledKinds(other.id)).toEqual([]);
     expect(revalidate).toHaveBeenCalledWith("/settings/notifications");
   });
 
@@ -50,18 +51,19 @@ describe("saveTelegramNotifyKinds (profile tier)", () => {
     const login = createLogin();
     const profile = createProfile("tg-parse", login.id);
     actAs(login, profile);
-    await saveTelegramNotifyKinds(fd(disabled(["refill", "not-a-kind"])));
-    expect(getProfileTelegramDisabledKinds(profile.id)).toEqual(["refill"]);
+    await saveLoginTelegramNotifyKinds(fd(disabled(["refill", "not-a-kind"])));
+    expect(getLoginTelegramDisabledKinds(login.id)).toEqual(["refill"]);
   });
 
-  it("refuses a read-only member (requireWriteAccess gate)", async () => {
+  it("is allowed for a read-only member (login-scoped, not profile-owned)", async () => {
     const login = createLogin({ role: "member" });
     const profile = createProfile("tg-ro", login.id);
     actAs(login, profile, "read");
-    await expect(
-      saveTelegramNotifyKinds(fd(disabled(["refill"])))
-    ).rejects.toThrow(/read-only/);
-    expect(getProfileTelegramDisabledKinds(profile.id)).toEqual([]);
+    // requireSession() only — a read-only member may still set their own Telegram
+    // channel prefs (the chat is theirs), like the push column.
+    const res = await saveLoginTelegramNotifyKinds(fd(disabled(["refill"])));
+    expect(res).toEqual({ ok: true });
+    expect(getLoginTelegramDisabledKinds(login.id)).toEqual(["refill"]);
   });
 });
 
@@ -97,8 +99,8 @@ describe("savePushNotifyKinds (login tier)", () => {
     const res = await savePushNotifyKinds(fd(disabled(["milestone"])));
     expect(res).toEqual({ ok: true });
     expect(getLoginPushDisabledKinds(login.id)).toEqual(["milestone"]);
-    // Login-scoped: NOT written to the profile's telegram column.
-    expect(getProfileTelegramDisabledKinds(profile.id)).toEqual([]);
+    // Login-scoped: NOT written to the login's telegram column.
+    expect(getLoginTelegramDisabledKinds(login.id)).toEqual([]);
     expect(revalidate).toHaveBeenCalledWith("/settings/notifications");
   });
 

@@ -14,8 +14,9 @@ import { db, today } from "@/lib/db";
 import {
   setProfileHomeAssistant,
   getProfileSetting,
-  setProfileTelegramDisabledKinds,
+  setLoginTelegramDisabledKinds,
 } from "@/lib/settings";
+import { seedLoginTelegram } from "./fixtures";
 import { utcSqlString } from "@/lib/date";
 import {
   runPostWorkoutFinish,
@@ -245,9 +246,11 @@ describe("recap-led finish nudge composition (#924)", () => {
     const date = today(p);
     const activityId = seedManualFinished(p, date, 20);
     addWorkingSets(activityId, "Bench Press");
-    // Disable workout-recap on BOTH profile-scoped channels (Telegram + HA) — the
-    // recap line rides in the finish nudge unless it's off everywhere.
-    setProfileTelegramDisabledKinds(p, ["workout-recap"]);
+    // Disable workout-recap on every configured channel — the recap line rides in
+    // the finish nudge unless it's off everywhere. Telegram is login-scoped (#1072):
+    // seed a managing login whose Telegram has workout-recap turned off, plus HA.
+    const l = seedLoginTelegram(p, "555900");
+    setLoginTelegramDisabledKinds(l, ["workout-recap"]);
     setProfileHomeAssistant(p, {
       enabled: true,
       webhookUrl: HA_URL,

@@ -17,13 +17,7 @@ import {
   setUserReproductiveStatus,
   getStoredAge,
   setStoredAge,
-  getUserAge,
   getTimezone,
-  getProfileTelegram,
-  setProfileTelegram,
-  getTelegramBotConfig,
-  getFoodTelegramPrompted,
-  setFoodTelegramPrompted,
   setProfileFoodTelegram,
   setProfileMoodCheckin,
   setProfileMoodRecap,
@@ -32,7 +26,6 @@ import {
   setNotifySchedule,
   getProfileHomeAssistant,
   setProfileHomeAssistant,
-  setProfileTelegramDisabledKinds,
   setExcludedFoodGroups,
   isValidTimezone,
   setTimezone,
@@ -54,9 +47,6 @@ import { parseHome } from "@/lib/home-location";
 import { parseSkinType } from "@/lib/uv-dose";
 import { reconcileFlags } from "@/lib/queries";
 import { sweepIngestWindowForTimezoneChange } from "@/lib/integrations/ingest-timezone-sweep";
-import { dispatch } from "@/lib/notifications";
-import { sendFoodOptInPrompt } from "@/lib/notifications/food";
-import { isFoodLoggingRelevant } from "@/lib/life-stage";
 import {
   WAKING_START_HOUR,
   WAKING_END_HOUR,
@@ -273,24 +263,16 @@ export async function saveDietaryPreferences(formData: FormData) {
 // with smoking history + risk factors (#928). Write core in
 // app/(app)/medical/background/actions.ts, still profile-scoped + requireWriteAccess.
 
-// ---- Notifications: profile delivery target (profile scope) ----
+// ---- Notifications: per-profile schedule + per-subject toggles (profile scope) ----
 
-// The per-profile parts of notifications: whether reminders are on for this
-// profile, the chat they're sent to, and the send schedule. The global bot
-// credentials are set separately (admin-only, see saveTelegramBotConfig).
+// The per-SUBJECT parts of notifications: the send schedule (slot hours, digest,
+// recap, quiet hours) and the per-subject content opt-ins (food logging, mood,
+// sleep). The DELIVERY CHANNEL (Telegram chat id + enable) is login-scoped as of
+// issue #1072 — see saveLoginTelegram in ../actions — because the chat belongs to a
+// person, not a data subject. The global bot credentials are admin-only
+// (saveTelegramBotConfig).
 export async function saveNotificationPrefs(formData: FormData) {
   const { profile } = await requireWriteAccess();
-
-  // Whether the profile's Telegram was fully connectable BEFORE this save, so we can
-  // detect a first connection and offer the one-time food-logging opt-in prompt (#682).
-  const before = getProfileTelegram(profile.id);
-  const wasConfigured = before.telegramEnabled && before.telegramChatId !== "";
-
-  const enabledRaw = formData.get("telegram_enabled");
-  setProfileTelegram(profile.id, {
-    telegramEnabled: enabledRaw === "on" || enabledRaw === "1",
-    telegramChatId: String(formData.get("telegram_chat_id") ?? ""),
-  });
 
   // Food logging over Telegram (#682): the per-profile opt-in toggle. Gated on the
   // field's presence so a form that doesn't render it can't wipe the setting.
@@ -319,30 +301,6 @@ export async function saveNotificationPrefs(formData: FormData) {
   if (formData.has("digest_sleep_enabled")) {
     const v = formData.get("digest_sleep_enabled");
     setProfileSleepDigest(profile.id, v === "on" || v === "1");
-  }
-
-  // First-connection prompt: the first time this profile becomes fully connectable
-  // (enabled + chat id + a bot token exists) and we haven't asked before, send a
-  // one-time "want to log food too?" message with Enable/No-thanks buttons, and mark
-  // it prompted so it never re-nags. Skipped for a life stage where food logging is
-  // hidden (infant). Best-effort — a send failure must never fail the settings save.
-  const after = getProfileTelegram(profile.id);
-  const botConfigured = getTelegramBotConfig().telegramBotToken !== "";
-  const nowConfigured =
-    after.telegramEnabled && after.telegramChatId !== "" && botConfigured;
-  if (
-    nowConfigured &&
-    !wasConfigured &&
-    !getFoodTelegramPrompted(profile.id) &&
-    isFoodLoggingRelevant(getUserAge(profile.id))
-  ) {
-    setFoodTelegramPrompted(profile.id);
-    try {
-      await sendFoodOptInPrompt(profile.id);
-    } catch {
-      // A failed prompt send is non-critical (the toggle still lives in Settings);
-      // the prompted marker is already set so we don't retry-spam on the next save.
-    }
   }
 
   // Per-slot send schedule. "" / "off" → that window is disabled.
@@ -407,30 +365,8 @@ export async function saveNotificationPrefs(formData: FormData) {
   revalidatePath("/settings/profile");
 }
 
-export async function sendTestNotification(): Promise<{
-  ok: boolean;
-  message: string;
-}> {
-  const { profile } = await requireWriteAccess();
-  const results = await dispatch(profile.id, {
-    title: "Test notification",
-    body: "Notifications are working ✅",
-    kind: "test",
-  });
-  if (results.length === 0)
-    return {
-      ok: false,
-      message:
-        "No channel configured — check “Enable Telegram notifications”, fill in your chat id, and ask an admin to set the bot token on Settings → Server.",
-    };
-  const failed = results.filter((r) => !r.ok);
-  if (failed.length)
-    return {
-      ok: false,
-      message: failed.map((f) => `${f.id}: ${f.error}`).join("; "),
-    };
-  return { ok: true, message: "Sent ✅ — check your Telegram." };
-}
+// The Telegram "send test" is login-scoped as of #1072 (sendTestNotification in
+// ../actions) — it verifies the login's OWN chat, not a profile fan-out.
 
 // ---- Notifications: Home Assistant channel (profile scope, issue #248) ----
 
@@ -482,17 +418,8 @@ export async function saveHomeAssistantPrefs(
 // validated by the shared pure core (unknown kinds dropped). The HA action preserves
 // the channel's enable/URL/secret and rewrites only the disabled set.
 
-export async function saveTelegramNotifyKinds(
-  formData: FormData
-): Promise<{ ok: true }> {
-  const { profile } = await requireWriteAccess();
-  const disabled = parseDisabledKinds(
-    String(formData.get("disabled_kinds") ?? "")
-  );
-  setProfileTelegramDisabledKinds(profile.id, disabled);
-  revalidatePath("/settings/notifications");
-  return { ok: true };
-}
+// The Telegram matrix column is login-scoped as of #1072
+// (saveLoginTelegramNotifyKinds in ../actions).
 
 export async function saveHomeAssistantNotifyKinds(
   formData: FormData

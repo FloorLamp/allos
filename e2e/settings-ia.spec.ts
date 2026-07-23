@@ -45,13 +45,14 @@ test.describe("Settings IA (#928) — admin", () => {
     await expect(page.getByTestId("matrix-row-digest")).toBeVisible();
     await expect(page.getByTestId("matrix-row-upcoming")).toHaveCount(0);
 
-    // Guard (moved from home-assistant-notify.spec.ts when that spec went to its
-    // own fixture profile): the HA card's submit button is deliberately NOT named
-    // "Save" — role name matching is substring-based, and pre-existing specs (e.g.
-    // preventive-nudge.spec.ts) click a bare "Save" on this admin page. Exactly one
-    // "Save"-named button (the Telegram card's) must exist, or those clicks turn
-    // strict-mode ambiguous.
-    await expect(page.getByRole("button", { name: "Save" })).toHaveCount(1);
+    // Guard: after the #1072 login-scoping split there are exactly TWO "Save"-named
+    // buttons on this admin page — the "This login" Telegram channel card and the
+    // "This profile" Reminders & schedule card. The HA card's submit button is
+    // deliberately NOT named "Save", and the mute/push cards autosave, so the count
+    // stays a stable 2. Specs that submit on this page MUST scope their Save click to
+    // a specific card (preventive-nudge/quiet-hours/wake-aware/food-telegram all do),
+    // or a bare "Save" click turns strict-mode ambiguous.
+    await expect(page.getByRole("button", { name: "Save" })).toHaveCount(2);
   });
 
   test("the Profile tab has a sticky anchor jump-nav that jumps to each section", async ({

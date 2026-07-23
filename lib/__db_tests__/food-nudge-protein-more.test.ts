@@ -35,7 +35,7 @@ import {
   answerCallbackQuery,
   editMessageTextRaw,
 } from "@/lib/notifications/telegram-api";
-import { seedProfile, type SeededProfile } from "./fixtures";
+import { seedProfile, type SeededProfile, seedLoginTelegram } from "./fixtures";
 
 const answerMock = vi.mocked(answerCallbackQuery);
 const editTextMock = vi.mocked(editMessageTextRaw);
@@ -101,8 +101,7 @@ let t: string;
 beforeAll(() => {
   p = seedProfile("food-nudge-pm");
   t = today(p.profileId);
-  setProfileSetting(p.profileId, "telegram_chat_id", CHAT);
-  setProfileSetting(p.profileId, "telegram_enabled", "1");
+  seedLoginTelegram(p.profileId, CHAT);
 });
 
 describe("protein '+Xg' tap (#1073)", () => {

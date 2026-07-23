@@ -21,8 +21,7 @@
 
 import {
   getFoodNudgePointer,
-  getProfileTelegram,
-  getProfileTelegramDisabledKinds,
+  getLoginTelegramDisabledKinds,
   getTelegramBotConfig,
   setFoodNudgePointer,
 } from "../settings";
@@ -31,6 +30,7 @@ import type { NotificationChannel, NotificationMessage } from "./types";
 import { prefixMessage } from "./types";
 import { prefixForProfile } from "./attribution";
 import { isKindEnabled } from "./home-assistant-core";
+import { resolveTelegramRecipients } from "./fan-out";
 import { foodNudgePointerFromMessage } from "./food-nudge-pointer";
 import {
   editMessageReplyMarkupRaw,
@@ -63,29 +63,41 @@ export {
 export const telegramChannel: NotificationChannel = {
   id: "telegram",
   isConfigured(profileId: number) {
+    // Login-scoped channel fan-out (issue #1072): a message ABOUT this profile is
+    // deliverable when the bot is configured AND at least one MANAGING login has an
+    // enabled Telegram chat (and hasn't muted this profile). The channel resolves N
+    // recipients now, not one profile chat.
     const { telegramBotToken } = getTelegramBotConfig();
-    const { telegramEnabled, telegramChatId } = getProfileTelegram(profileId);
-    return telegramEnabled && !!telegramBotToken && !!telegramChatId;
+    if (!telegramBotToken) return false;
+    return resolveTelegramRecipients(profileId).length > 0;
   },
   async send(profileId: number, msg: NotificationMessage) {
-    // Per-kind matrix gate (#928): a kind the profile turned off for the Telegram
-    // column is a deliberate non-send, not a failure — no throw, so dispatch()
-    // counts the channel healthy and never sets notify_last_error (mirrors the HA /
-    // push channels' disabled-kind no-op). `test` is always allowed. Enforced HERE,
-    // inside the chokepoint, so the gate can't be bypassed by a raw-primitive send.
-    if (!isKindEnabled(msg.kind, getProfileTelegramDisabledKinds(profileId)))
-      return;
-    const { telegramChatId } = getProfileTelegram(profileId);
-    const messageId = await sendMessageRaw(telegramChatId, msg);
-    // A food nudge closes the PREVIOUS food nudge's still-live keyboard (#947): each
-    // slot sends a fresh message with live serving buttons, and a stale keyboard from
-    // a previous day would silently log to the WRONG date on tap. Done HERE, in the
-    // chokepoint, because this is the only place with both the just-sent message id
-    // and the guarded keyboard-edit primitive. STRICTLY best-effort — the send
-    // already succeeded, so a failed strip must never surface as a channel failure
-    // (it would falsely set notify_last_error); rotateFoodNudgePointer swallows.
-    if (msg.kind === "food" && messageId != null)
-      await rotateFoodNudgePointer(profileId, telegramChatId, messageId, msg);
+    // Fan the message out to every managing login's chat (deduped by chat id, so a
+    // shared family group gets ONE copy). Each recipient is gated by ITS login's
+    // Telegram disabled-kinds set (#928, now login-scoped per #1072) — a kind a
+    // login turned off is a deliberate non-send for that login, not a failure (no
+    // throw, so dispatch() counts the channel healthy and never sets
+    // notify_last_error, mirroring the HA/push disabled-kind no-op). `test` is
+    // always allowed. Enforced HERE, inside the chokepoint, so the gate can't be
+    // bypassed by a raw-primitive send. A send throw for ANY recipient propagates so
+    // dispatch() marks the channel failed and the slot can retry.
+    const recipients = resolveTelegramRecipients(profileId);
+    for (const { loginId, chatId } of recipients) {
+      if (!isKindEnabled(msg.kind, getLoginTelegramDisabledKinds(loginId)))
+        continue;
+      const messageId = await sendMessageRaw(chatId, msg);
+      // A food nudge closes the PREVIOUS food nudge's still-live keyboard (#947):
+      // each slot sends a fresh message with live serving buttons, and a stale
+      // keyboard from a previous day would silently log to the WRONG date on tap.
+      // Done HERE, in the chokepoint, because this is the only place with both the
+      // just-sent message id and the guarded keyboard-edit primitive. STRICTLY
+      // best-effort — the send already succeeded, so a failed strip must never
+      // surface as a channel failure; rotateFoodNudgePointer swallows. The pointer
+      // is stored per-profile (last chat wins on a multi-chat fan-out — a food nudge
+      // is gated on Telegram deliverability and is overwhelmingly single-chat).
+      if (msg.kind === "food" && messageId != null)
+        await rotateFoodNudgePointer(profileId, chatId, messageId, msg);
+    }
   },
 };
 

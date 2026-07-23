@@ -4,11 +4,11 @@ import { settledClick } from "./helpers";
 // Wake-aware mornings (issue #1117): the "Auto — from your wake time" state on the
 // Morning intake slot + the morning digest, and the sleep-summary opt-in, on
 // Settings → Notifications. Runs as admin acting as the seeded profile 1 (shared
-// storageState). BLAST RADIUS: it enables Telegram to reveal the schedule and
-// drives the Morning/digest selects + the sleep toggle, then RESETS them (Morning
-// back to Auto — profile 1's default, digest off, sleep off, Telegram off) so the
-// shared fixture is left as found. No bot token is configured in the e2e DB, so
-// saving never sends anything.
+// storageState). As of #1072 the schedule is per-SUBJECT and always visible under
+// "Reminders & schedule" (no longer gated behind a per-profile Telegram toggle).
+// BLAST RADIUS: it drives the Morning/digest selects + the sleep toggle, then RESETS
+// them (Morning back to Auto — profile 1's default, digest off, sleep off) so the
+// shared fixture is left as found.
 test.describe("wake-aware mornings (issue #1117)", () => {
   test("Auto option + sleep-summary opt-in round-trip", async ({ page }) => {
     test.slow(); // local `next dev` compiles the route on first hit
@@ -16,22 +16,12 @@ test.describe("wake-aware mornings (issue #1117)", () => {
     await page.goto("/settings/notifications");
 
     const card = page.locator(".card", {
-      has: page.getByRole("heading", { name: "Notifications (Telegram)" }),
+      has: page.getByRole("heading", { name: "Reminders & schedule" }),
     });
     await expect(card).toBeVisible();
 
-    // The schedule lives inside the Telegram-enabled block. The enable toggle is a
-    // controlled checkbox; a click before hydration is swallowed (#830), so retry
-    // clicking until it sticks — a single check() can land in the pre-hydration gap.
-    const enableTelegram = card.getByLabel("Enable Telegram notifications");
-    await expect(async () => {
-      if (!(await enableTelegram.isChecked())) await enableTelegram.click();
-      await expect(enableTelegram).toBeChecked();
-    }).toPass(); // topass-ok: re-click the controlled Telegram toggle until it sticks checked past the pre-hydration swallow (#830)
-
     const morning = page.getByTestId("supp-morning-hour");
     const digest = page.getByTestId("digest-hour");
-    const sleep = page.getByTestId("digest-sleep-enabled");
     const save = card.getByRole("button", { name: "Save" });
 
     // The wake-aware option is offered on both the Morning slot and the digest.
@@ -63,14 +53,9 @@ test.describe("wake-aware mornings (issue #1117)", () => {
     await expect(page.getByTestId("digest-sleep-enabled")).toBeChecked();
 
     // Reset the shared fixture: Morning back to Auto (its default), digest off,
-    // sleep off, Telegram off.
+    // sleep off.
     await page.getByTestId("digest-hour").selectOption("");
     await page.getByTestId("digest-sleep-enabled").uncheck();
-    const disableTelegram = card.getByLabel("Enable Telegram notifications");
-    await expect(async () => {
-      if (await disableTelegram.isChecked()) await disableTelegram.click();
-      await expect(disableTelegram).not.toBeChecked();
-    }).toPass(); // topass-ok: re-click the controlled Telegram toggle until it clears unchecked past the pre-hydration swallow (#830)
     await settledClick(page, card.getByRole("button", { name: "Save" }));
     await expect(card.getByLabel("Saved")).toBeVisible();
   });
