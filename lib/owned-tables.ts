@@ -206,6 +206,12 @@ export const OWNED_TABLES = [
   // on-disk files (stored_path + thumb_path) are unlinked separately (path-contained
   // under data/uploads/progress-photos/<profileId>/).
   "progress_photos",
+  // Wellness-practice session log (#1259, migration 099): one row per logged practice
+  // session (red light, sauna, meditation, …) with optional time/duration. A DELIBERATE
+  // exception to the reuse-a-store rule (#860/#944) — a session is not a valued
+  // observation. Directly owned; nothing FKs into it, so a delete is a plain row delete
+  // and deleteProfile clears it by profile_id. Adherence counts DISTINCT DAYS.
+  "practice_logs",
   // Symptom / episode video clips (#1224 phase 1): dated clips attached to a
   // symptom-DAY (tremor/seizure/gait/stridor episodes), the symptom_photos posture
   // for VIDEO. File-backed MEDIA with a thin metadata row, NOT an observation-store

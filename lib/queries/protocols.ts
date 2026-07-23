@@ -296,9 +296,11 @@ export function getProtocolUsage(
 // form. A practice is an activity TYPE or a FOOD GROUP (both first-class protocol
 // interventions); a region/group training target is not a "practice". Profile-scoped.
 export interface ProtocolPractice {
-  scopeKind: "type" | "food_group";
+  scopeKind: "type" | "food_group" | "practice";
   value: string;
   perWeek: number;
+  // The optional weekly ceiling (#1259) — a range ("3–5×/week"). Null for a bare floor.
+  perWeekMax: number | null;
 }
 
 export function getProtocolPractice(
@@ -308,17 +310,29 @@ export function getProtocolPractice(
   if (protocol.frequency_target_id == null) return null;
   const t = db
     .prepare(
-      `SELECT scope_kind, scope_value, per_week FROM frequency_targets
+      `SELECT scope_kind, scope_value, per_week, per_week_max FROM frequency_targets
         WHERE id = ? AND profile_id = ?`
     )
     .get(protocol.frequency_target_id, profileId) as
-    { scope_kind: string; scope_value: string; per_week: number } | undefined;
-  if (!t || (t.scope_kind !== "type" && t.scope_kind !== "food_group"))
+    | {
+        scope_kind: string;
+        scope_value: string;
+        per_week: number;
+        per_week_max: number | null;
+      }
+    | undefined;
+  if (
+    !t ||
+    (t.scope_kind !== "type" &&
+      t.scope_kind !== "food_group" &&
+      t.scope_kind !== "practice")
+  )
     return null;
   return {
     scopeKind: t.scope_kind,
     value: t.scope_value,
     perWeek: t.per_week,
+    perWeekMax: t.per_week_max,
   };
 }
 
@@ -463,8 +477,16 @@ export interface ActiveProtocolSummary {
   adherence: {
     count: number;
     perWeek: number;
+    // The optional weekly ceiling (#1259) — a range; null for a bare floor.
+    perWeekMax: number | null;
     met: boolean;
+    // At/above the ceiling — the calm "that's plenty" state (#1259).
+    atCeiling: boolean;
     label: string;
+    // The practice NAME when this is a wellness-practice adherence (#1259), enabling the
+    // widget's one-tap "Log session" button; null for type/food_group adherence (which
+    // are logged elsewhere — a workout, a food serving).
+    practiceName: string | null;
   } | null;
   primaryOutcome: {
     label: string;
@@ -508,11 +530,15 @@ export function getActiveProtocolSummaries(
             ? {
                 count: adherenceProgress.count,
                 perWeek: practice.perWeek,
+                perWeekMax: adherenceProgress.per_week_max,
                 met: adherenceProgress.met,
+                atCeiling: adherenceProgress.atCeiling,
                 label: protocolPracticeLabel(
                   practice.scopeKind,
                   practice.value
                 ),
+                practiceName:
+                  practice.scopeKind === "practice" ? practice.value : null,
               }
             : null,
         primaryOutcome: primary

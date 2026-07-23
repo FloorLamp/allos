@@ -44,3 +44,7 @@ export * from "./queries/data-quality";
 // The shared, GLOBAL providers registry — not profile-scoped, but
 // re-exported here so pages read it through the familiar @/lib/queries surface.
 export * from "./providers-db";
+// Wellness-practice session store (#1259): the one-tap write core + day/week reads live
+// in the top-level lib module; re-exported here so the `@/lib/queries` surface carries it
+// (the notify callback + the query consumers import from queries).
+export * from "./practice-log";

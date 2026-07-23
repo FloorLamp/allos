@@ -13,6 +13,7 @@ import {
   getDoseEscalateChatId,
   escalationAckState,
   logAdministration,
+  logPracticeByTargetId,
   getPrnMedicationsForQuickLog,
   getIntakeItemName,
 } from "../queries";
@@ -80,6 +81,8 @@ import {
   parseFoodProteinCallback,
   parsePreventiveCallback,
   parsePrnLogCallback,
+  parsePracticeDoneCallback,
+  practiceDoneAnswerText,
   parseRefillCallback,
   parseSkipCallback,
   parseTakeCallback,
@@ -92,6 +95,7 @@ import {
   SYMPTOM_SEVERITY_LABELS,
   type MoodCheckinCallback,
   type PrnLogCallback,
+  type PracticeDoneCallback,
   type SymptomPickCallback,
   type SymptomSeverityCallback,
   preventiveAnswerText,
@@ -214,6 +218,14 @@ export async function handleCallbackQuery(
     return;
   }
 
+  // Wellness-practice "Done ✓" (#1259): a button from the pace-aware practice nudge
+  // logs one session NOW for the target's practice, and is consumed on tap.
+  const practiceDone = parsePracticeDoneCallback(cq.data);
+  if (practiceDone) {
+    await handlePracticeDoneTap(cq, practiceDone);
+    return;
+  }
+
   // Daily mood check-in (#992): a face button logs the day's mood — the same
   // idempotent per-day upsert the dashboard card and offline replay run.
   const moodTap = parseMoodCheckinCallback(cq.data);
@@ -319,6 +331,45 @@ async function handlePrnLogTap(
   const outcome = logAdministration(profileId, token.itemId);
   const name = getIntakeItemName(profileId, token.itemId) ?? "medication";
   await answerCallbackQuery(cq.id, administrationOutcomeText(outcome, name));
+}
+
+// A practice "Done ✓" tap (#1259): log one session NOW for the tapped target's practice,
+// scoped to the profile resolved from the chat (never the token's profile id alone).
+// Answers from the typed PracticeLogOutcome — never an unconditional confirm (a session
+// log is not idempotent) — and CONSUMES the tapped button so a stale message can't
+// double-log; sibling practice buttons survive so the nudge stays usable.
+async function handlePracticeDoneTap(
+  cq: TelegramCallbackQuery,
+  token: PracticeDoneCallback
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  const profileId =
+    chatId != null
+      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
+      : null;
+  if (profileId == null) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+  const outcome = logPracticeByTargetId(profileId, token.targetId);
+  await answerCallbackQuery(cq.id, practiceDoneAnswerText(outcome));
+
+  const messageId = cq.message?.message_id;
+  const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
+  if (chatId == null || messageId == null || rows.length === 0) return;
+  const remaining = removeButton(rows, cq.data as string);
+  if (remaining.length === 0) {
+    await closeMessage(
+      chatId,
+      messageId,
+      replacementWithTitle(
+        cq.message?.text,
+        outcome.kind === "logged" ? "Logged ✅" : OUTDATED_MESSAGE_TEXT
+      )
+    );
+  } else {
+    await updateMessageKeyboard(chatId, messageId, remaining);
+  }
 }
 
 // The profile's top symptoms for the quick-log grid: its recency-ranked logged
