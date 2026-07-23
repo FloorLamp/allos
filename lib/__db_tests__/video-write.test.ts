@@ -32,6 +32,7 @@ import {
   getActivityVideosForActivities,
   deleteActivityVideoCore,
 } from "@/lib/activity-video-write";
+import { captureDelete, sweepDeletedRows } from "@/lib/undo-delete-db";
 
 let profileId: number;
 let activityId: number;
@@ -272,6 +273,116 @@ describe("addActivityVideoCore — activity ownership + cascade", () => {
       profileId
     );
     expect(getActivityVideos(profileId, tmpAct)).toHaveLength(0);
+  });
+
+  // #1290: deleting an activity captures its cascaded clip rows into the undo buffer
+  // and leaves the files on disk (so undo can restore them). When that buffer entry
+  // PURGES without a restore, the now-orphaned files must be unlinked — unless a live
+  // row still references the same content-named file (dedup re-upload).
+  describe("undo-buffer purge unlinks orphaned clip files (#1290)", () => {
+    const abs = (rel: string) => path.resolve(process.cwd(), rel);
+    const newActivity = (title: string): number =>
+      Number(
+        db
+          .prepare(
+            `INSERT INTO activities (profile_id, type, title, date) VALUES (?, 'strength', ?, ?)`
+          )
+          .run(profileId, title, today(profileId)).lastInsertRowid
+      );
+    const backdate = (undoId: number) =>
+      db
+        .prepare(
+          `UPDATE deleted_rows SET deleted_at = datetime('now', '-2 days') WHERE id = ?`
+        )
+        .run(undoId);
+
+    it("purging a captured activity delete unlinks its clip + poster files", () => {
+      const act = newActivity("Purge me");
+      const v = ingested(
+        buildMp4Fixture({ durationSec: 3, creationDate: "2026-07-01" })
+      );
+      const out = addActivityVideoCore(
+        profileId,
+        { activityId: act, exercise: null, caption: null },
+        v,
+        Buffer.from("PURGE-POSTER")
+      );
+      expect(out.kind).toBe("added");
+      const row = db
+        .prepare(
+          `SELECT stored_path, poster_path FROM activity_videos WHERE activity_id = ?`
+        )
+        .get(act) as { stored_path: string; poster_path: string };
+      expect(fs.existsSync(abs(row.stored_path))).toBe(true);
+
+      // Delete the activity into the undo buffer — files deliberately survive.
+      const undoId = captureDelete("activity", profileId, act)!;
+      expect(undoId).toBeTruthy();
+      expect(fs.existsSync(abs(row.stored_path))).toBe(true);
+      expect(fs.existsSync(abs(row.poster_path))).toBe(true);
+
+      // A fresh sweep leaves the buffered entry (and its files) alone.
+      sweepDeletedRows(24);
+      expect(fs.existsSync(abs(row.stored_path))).toBe(true);
+
+      // Backdate past the window → purge unlinks the now-unreferenced files.
+      backdate(undoId);
+      sweepDeletedRows(24);
+      expect(fs.existsSync(abs(row.stored_path))).toBe(false);
+      expect(fs.existsSync(abs(row.poster_path))).toBe(false);
+    });
+
+    it("does NOT unlink a file a live row still references (content-hash dedup)", () => {
+      const act = newActivity("Dedup source");
+      const v = ingested(
+        buildMp4Fixture({ durationSec: 4, creationDate: "2026-07-02" })
+      );
+      const out = addActivityVideoCore(
+        profileId,
+        { activityId: act, exercise: null, caption: null },
+        v,
+        null
+      );
+      expect(out.kind).toBe("added");
+      const storedPath = (
+        db
+          .prepare(
+            `SELECT stored_path FROM activity_videos WHERE activity_id = ?`
+          )
+          .get(act) as { stored_path: string }
+      ).stored_path;
+
+      // Capture-delete the activity (row gone, file stays, payload references it).
+      const undoId = captureDelete("activity", profileId, act)!;
+
+      // Re-upload the IDENTICAL clip to a different live activity → a live row now
+      // points at the SAME content-named file (dedup: store overwrote in place).
+      const keeper = newActivity("Dedup keeper");
+      const re = addActivityVideoCore(
+        profileId,
+        { activityId: keeper, exercise: null, caption: null },
+        ingested(
+          buildMp4Fixture({ durationSec: 4, creationDate: "2026-07-02" })
+        ),
+        null
+      );
+      expect(re.kind).toBe("added");
+      const keeperPath = (
+        db
+          .prepare(
+            `SELECT stored_path FROM activity_videos WHERE activity_id = ?`
+          )
+          .get(keeper) as { stored_path: string }
+      ).stored_path;
+      expect(keeperPath).toBe(storedPath); // same file, shared by dedup
+      expect(fs.existsSync(abs(storedPath))).toBe(true);
+
+      // Purge the stale capture — the file must SURVIVE (a live row references it).
+      backdate(undoId);
+      sweepDeletedRows(24);
+      expect(fs.existsSync(abs(storedPath))).toBe(true);
+      expect(getActivityVideos(profileId, keeper)).toHaveLength(1);
+    });
   });
 
   it("delete removes the row + files, profile-scoped by id", () => {
