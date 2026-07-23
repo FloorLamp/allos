@@ -2,6 +2,7 @@
 // mapper and its helpers, the reason-for-visit / visit-diagnoses / clinical-note
 // derivations, and the encounters section extractor.
 import { isNoKnownProblemText } from "../../clinical-parse";
+import { ENCOUNTER_CLASS_LABELS } from "../../encounter-kind";
 import type { ImportedEncounter, ImportedProvider } from "../../health-import";
 import {
   ACT_CODE_OID,
@@ -297,25 +298,6 @@ export interface EncompassingEncounterInfo {
   // leaving the visit (and its responsible clinician + facility) behind.
   activity: ImportedEncounter | null;
 }
-
-// Friendly labels for the HL7 ActEncounterCode classes. There is no canonical
-// encounter-type vocabulary in the app — `type` is display text from the source —
-// so when the header visit's <code> carries ONLY the class (eClinicalWorks emits
-// a bare AMB with displayName "ambulatory"), the class label supplies a readable
-// type instead of that lowercase code-system text.
-const ENCOUNTER_CLASS_LABELS: Record<string, string> = {
-  AMB: "Ambulatory",
-  IMP: "Inpatient",
-  ACUTE: "Inpatient acute",
-  NONAC: "Inpatient non-acute",
-  EMER: "Emergency",
-  FLD: "Field",
-  HH: "Home health",
-  OBSENC: "Observation",
-  PRENC: "Pre-admission",
-  SS: "Short stay",
-  VR: "Virtual",
-};
 
 // The document-level care team from the header's documentationOf/serviceEvent
 // performers — where an eCW document states the patient's PCP (functionCode PCP)
