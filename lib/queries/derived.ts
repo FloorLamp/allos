@@ -89,20 +89,27 @@ function toVirtualRecord(
 // so a derived value badges high/low/non-optimal consistently. A draw that already
 // has a STORED reading of the same derived analyte is skipped, so a lab that
 // reports e.g. Non-HDL or eGFR directly is never shadowed by a computed duplicate.
-export function getDerivedBiomarkerReadings(
+// The SINGLE derived-index computation for a profile (#221 — one question, one
+// computation). Both consumers — the derived-table readings AND the bio-age hero —
+// go through here, so they can never disagree about a PhenoAge (or any derived)
+// value: same resolved-and-grouped component series, same computeDerivedReadings
+// call. cache()'d, so the ~O(N log N) grouped scan + the compute run at most ONCE
+// per profile per request no matter how many surfaces read it.
+//
+// Alias-aware, like the flag path: a component's derived INPUT is declared under the
+// canonical spelling ("Mean Corpuscular Volume (MCV)"), but a stored row may still
+// carry a legacy/abbreviation name ("MCV", pre-migration-103). Each row's
+// canonical_name is snapped through the shared resolver before grouping so it lands
+// in the group the input spec keys on — else a component would be silently missed.
+const getDerivedComputation = cache(function getDerivedComputation(
   profileId: number
-): MedicalRecord[] {
-  // One deduped read of every analyte's series, grouped in JS (lib/biomarker-
-  // group) — a per-analyte getBiomarkerSeries here would re-run the dedup window
-  // over the profile's whole lab history once per input AND per derived name,
-  // O(analytes × records) per request (#105/#386). Mirrors buildTrajectoryFindings.
-  //
-  // Alias-aware, like the flag path: a component's derived INPUT is declared under
-  // the canonical spelling ("Mean Corpuscular Volume (MCV)"), but a stored row may
-  // still carry a legacy/abbreviation name ("MCV", pre-migration-103). Snap each
-  // row's canonical_name through the shared resolver before grouping so it lands in
-  // the same group the input spec keys on — else PhenoAge would silently miss that
-  // component for the draw. Unrecognized names pass through unchanged.
+): {
+  readings: DerivedReading[];
+  // The input canonical names the profile has ≥1 usable numeric reading of.
+  presentInputs: Set<string>;
+  sex: ReturnType<typeof getUserSex>;
+  status: ReturnType<typeof getUserReproductiveStatus>;
+} {
   const resolve = canonicalResolver();
   const grouped = groupByCanonicalName(
     getAllBiomarkerSeries(profileId).map((r) => ({
@@ -116,15 +123,18 @@ export function getDerivedBiomarkerReadings(
   // arithmetic index can't consume a bounded/qualitative value. Keyed by the exact
   // input canonical name (computeDerivedReadings looks up by spec.canonical).
   const seriesByCanonical = new Map<string, ComponentReading[]>();
+  const presentInputs = new Set<string>();
   for (const canonical of derivedInputCanonicalNames()) {
     const rows = (grouped.get(canonicalGroupKey(canonical)) ?? [])
       .map((r) => ({ r, v: componentNumeric(r) }))
       .filter((x): x is { r: MedicalRecord; v: number } => x.v != null)
       .map(({ r, v }) => ({ date: r.date, value: v, unit: r.unit }));
     seriesByCanonical.set(canonical, rows);
+    if (rows.length > 0) presentInputs.add(canonical);
   }
 
-  // Dates already covered by a stored reading of each derived analyte — skip them.
+  // Dates already covered by a stored reading of each derived analyte — skip them
+  // (a lab reporting the index directly wins its draw over a computed one).
   const storedDatesByName: Partial<Record<DerivedName, Set<string>>> = {};
   for (const name of DERIVED_NAMES) {
     const dates = new Set(
@@ -140,6 +150,13 @@ export function getDerivedBiomarkerReadings(
     { sex, ageOn: (date) => getUserAgeOn(profileId, date) },
     { storedDatesByName }
   );
+  return { readings, presentInputs, sex, status };
+});
+
+export function getDerivedBiomarkerReadings(
+  profileId: number
+): MedicalRecord[] {
+  const { readings, sex, status } = getDerivedComputation(profileId);
 
   // Cache canonical entries so each analyte's ranges are looked up once for flags.
   const cbCache = new Map<string, ReturnType<typeof getCanonicalBiomarker>>();
@@ -230,57 +247,14 @@ export interface BioAgeDraw {
 // is the DB seam over the pure lib/bio-age + lib/derived-biomarkers math; nothing is
 // written, and every read goes through an already profile-scoped query, so the
 // profile-scoping guard is unaffected.
-// cache(): the dashboard renders the bio-age hero AND the healthspan pillars, each
-// calling this once per render — and internally it reads ~10 PhenoAge input series,
-// each a full dedup scan (#386). Single primitive arg, so cache() collapses the two
-// render calls (and their ~10 scans) to one per profile per request.
-export const getBioAgeReadings = cache(function getBioAgeReadings(
-  profileId: number
-): {
+// The hero reads the SAME getDerivedComputation the derived table does (#221), so
+// the two PhenoAge numbers can never diverge, and the shared cache() collapses the
+// heavy grouped scan + compute across every surface that reads either.
+export function getBioAgeReadings(profileId: number): {
   draws: BioAgeDraw[];
   presentInputs: string[];
 } {
-  // Load the nine PhenoAge input series, alias-aware and grouped ONCE — the same
-  // resolved-and-grouped path getDerivedBiomarkerReadings uses (a component stored
-  // under a legacy spelling, e.g. bare "MCV", resolves to its canonical group), so
-  // the hero and the derived table compute PhenoAge from the identical data and can
-  // never disagree. One scan for all inputs, vs a per-analyte dedup scan each (#386).
-  const resolve = canonicalResolver();
-  const grouped = groupByCanonicalName(
-    getAllBiomarkerSeries(profileId).map((r) => ({
-      ...r,
-      canonical_name:
-        r.canonical_name != null ? resolve(r.canonical_name) : r.canonical_name,
-    }))
-  );
-  const seriesByCanonical = new Map<string, ComponentReading[]>();
-  const present = new Set<string>();
-  for (const canonical of PHENOAGE_INPUT_NAMES) {
-    const rows = (grouped.get(canonicalGroupKey(canonical)) ?? [])
-      .map((r) => ({ r, v: componentNumeric(r) }))
-      .filter((x): x is { r: MedicalRecord; v: number } => x.v != null)
-      .map(({ r, v }) => ({ date: r.date, value: v, unit: r.unit }));
-    seriesByCanonical.set(canonical, rows);
-    if (rows.length > 0) present.add(canonical);
-  }
-
-  // A lab that reports PhenoAge directly wins its draw (parity with the derived
-  // table): skip those dates so a computed value never shadows a stored one.
-  const storedDates = new Set(
-    (grouped.get(canonicalGroupKey("PhenoAge")) ?? []).map((r) => r.date)
-  );
-  const storedDatesByName: Partial<Record<DerivedName, Set<string>>> =
-    storedDates.size ? { PhenoAge: storedDates } : {};
-
-  const readings = computeDerivedReadings(
-    seriesByCanonical,
-    {
-      sex: getUserSex(profileId),
-      ageOn: (date) => getUserAgeOn(profileId, date),
-    },
-    { storedDatesByName }
-  );
-
+  const { readings, presentInputs } = getDerivedComputation(profileId);
   const draws: BioAgeDraw[] = readings
     .filter((r) => r.name === "PhenoAge")
     .map((r) => ({
@@ -289,7 +263,10 @@ export const getBioAgeReadings = cache(function getBioAgeReadings(
       chronoAge: getUserAgeOn(profileId, r.date),
       inputs: r.inputs,
     }));
-
-  const presentInputs = PHENOAGE_INPUT_NAMES.filter((n) => present.has(n));
-  return { draws, presentInputs };
-});
+  // The nine PhenoAge inputs the profile has any usable reading of (drives the
+  // partial-panel checklist CTA) — filtered from the shared present-input set.
+  return {
+    draws,
+    presentInputs: PHENOAGE_INPUT_NAMES.filter((n) => presentInputs.has(n)),
+  };
+}
