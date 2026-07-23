@@ -15,6 +15,7 @@ import {
   getWeights,
 } from "./queries";
 import { getEquipment } from "./equipment";
+import { getActivityVideosForActivities } from "./activity-video-write";
 import { buildJournalCards, type DayGroup } from "./journal-card";
 import type { DatedWeight } from "./calorie-estimate";
 import type { UnitPrefs } from "./settings";
@@ -58,6 +59,9 @@ export function buildJournalFeedPage(
     profileId,
     page.activities
   );
+  // Form-check video clips (#1224) for this page's activities — one query, then
+  // bucketed per activity; only the small metadata rows cross to the card.
+  const activityVideos = getActivityVideosForActivities(profileId, activityIds);
   // Resolve per-set / per-activity equipment_id -> implement name. includeRetired: a
   // retired implement must still label the historical sets it was logged against
   // (issue #341). The equipment list is small and profile-owned, so re-reading it per
@@ -86,6 +90,7 @@ export function buildJournalFeedPage(
     routes,
     activeCalories,
     zoneModel: getProfileZoneModel(profileId),
+    activityVideos,
   });
 
   return { groups, nextBefore: page.nextBefore };

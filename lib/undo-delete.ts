@@ -172,6 +172,19 @@ export const UNDO_KINDS: Record<string, KindSpec> = {
         childWhere: "activity_id = ?",
         childBinds: 1,
       },
+      {
+        // Training form-check video clips (#1224) — many-per-activity children
+        // cascade-deleted with the activity (activity_videos.activity_id ON DELETE
+        // CASCADE), so a plain delete CAPTURES and RESTORES their rows exactly like
+        // the sets/route (#199/#200). The clip FILES on disk are content-named and
+        // survive the delete+undo window untouched, so a restored row re-points at
+        // the same file. They have no FK outside this capture, so no externalRefs.
+        entity: "video",
+        table: "activity_videos",
+        fks: [{ column: "activity_id", ref: "activity" }],
+        childWhere: "activity_id = ?",
+        childBinds: 1,
+      },
     ],
   },
 

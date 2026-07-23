@@ -308,7 +308,7 @@ export interface FrequencyTarget {
   created_at: string;
 }
 
-// One logged wellness-practice session (#1259, migration 098): a (practice, date) tick
+// One logged wellness-practice session (#1259, migration 099): a (practice, date) tick
 // with OPTIONAL time-of-day and duration. Multi-session days are real rows (the PRN
 // administration-ledger model, #797); adherence stays day-distinct regardless.
 export interface PracticeLog {

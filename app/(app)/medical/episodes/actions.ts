@@ -11,7 +11,7 @@ import { createEpisodeShareLink } from "@/lib/share-links-db";
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { isRealIsoDate, zonedWallTimeToUtc } from "@/lib/date";
-import { db } from "@/lib/db";
+import { db, today } from "@/lib/db";
 import { getTimezone, deleteProfileSetting } from "@/lib/settings";
 import { refillMarkerKey } from "@/lib/refill-nudge";
 import { updateTemperatureCore } from "@/lib/temperature-log";
@@ -46,6 +46,14 @@ import {
   deleteSymptomPhotoCore,
   updateSymptomPhotoCaptionCore,
 } from "@/lib/symptom-photo-write";
+import {
+  attachSymptomVideoCore,
+  deleteSymptomVideoCore,
+  updateSymptomVideoCaptionCore,
+} from "@/lib/symptom-video-write";
+import { ingestVideo } from "@/lib/video/ingest";
+import { posterBytesFrom } from "@/lib/video/poster";
+import { resolveVideoDate } from "@/lib/video/policy";
 import { setSymptomSeverityCore } from "@/lib/symptom-log-write";
 
 // Illness-episode Server Actions (issues #801/#856/#879). An action either operates on the
@@ -704,6 +712,97 @@ export async function deleteSymptomPhotoAction(
   if (!Number.isInteger(id) || id <= 0)
     return { ok: false, error: "That photo is no longer available." };
   deleteSymptomPhotoCore(profileId, id);
+  revalidatePath("/medical/episodes/[id]", "page");
+  return { ok: true };
+}
+
+// Attach a symptom VIDEO/AUDIO clip to a day (#1224 phase 1). The bytes are
+// container-sniffed + capped by ingestVideo (never the client type; 60s/100MB),
+// stored AS-IS; a client-extracted poster frame (`poster`) is run through the
+// #1119 photo ingest to strip its EXIF before storage. Cross-profile gated (#879).
+// Answers from the core's typed outcome; never leaks internals.
+export async function uploadSymptomVideoAction(
+  formData: FormData
+): Promise<EpisodeActionResult> {
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
+  const file = formData.get("video");
+  if (!(file instanceof File) || file.size === 0)
+    return { ok: false, error: "Choose a clip to attach." };
+  const explicitDate = parseDateOrNull(formData.get("date"));
+  const symptom = String(formData.get("symptom") ?? "").trim() || null;
+  const caption = String(formData.get("caption") ?? "").trim() || null;
+
+  const ingested = ingestVideo(Buffer.from(await file.arrayBuffer()));
+  if (ingested.kind === "invalid") return { ok: false, error: ingested.error };
+
+  // A poster frame is optional — an audio clip, or a browser that couldn't decode
+  // the frame, simply has none. When present, strip its metadata via the photo
+  // pipeline before storing.
+  const poster = await posterBytesFrom(formData.get("poster"));
+
+  const date = resolveVideoDate(
+    explicitDate,
+    ingested.video.creationDate,
+    today(profileId)
+  );
+  const outcome = attachSymptomVideoCore(
+    profileId,
+    { date, symptom, caption },
+    ingested.video,
+    poster
+  );
+  if (outcome.kind === "invalid") return { ok: false, error: outcome.error };
+  revalidatePath("/medical/episodes/[id]", "page");
+  return { ok: true };
+}
+
+// Edit a symptom clip's caption without replacing the file. Cross-profile gated;
+// the core scopes the id to the resolved profile.
+export async function updateSymptomVideoCaptionAction(
+  formData: FormData
+): Promise<EpisodeActionResult> {
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
+  const id = Number(formData.get("videoId"));
+  if (!Number.isInteger(id) || id <= 0)
+    return { ok: false, error: "That clip is no longer available." };
+  const caption = String(formData.get("caption") ?? "");
+  if (!updateSymptomVideoCaptionCore(profileId, id, caption))
+    return { ok: false, error: "That clip is no longer available." };
+  revalidatePath("/medical/episodes/[id]", "page");
+  return { ok: true };
+}
+
+// Delete a symptom clip (row + on-disk files). Cross-profile gated (#879); the
+// core is profile-scoped by id, so a forged household clip id is dropped.
+export async function deleteSymptomVideoAction(
+  formData: FormData
+): Promise<EpisodeActionResult> {
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
+  const id = Number(formData.get("videoId"));
+  if (!Number.isInteger(id) || id <= 0)
+    return { ok: false, error: "That clip is no longer available." };
+  deleteSymptomVideoCore(profileId, id);
   revalidatePath("/medical/episodes/[id]", "page");
   return { ok: true };
 }

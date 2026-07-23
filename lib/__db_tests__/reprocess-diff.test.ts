@@ -13,6 +13,7 @@ import {
   getReprocessSnapshot,
   previewReconcileFlags,
   foldConsolidatedMedsIntoSnapshot,
+  getMedMatchStates,
 } from "@/lib/queries";
 import {
   persistDocumentImport,
@@ -442,7 +443,12 @@ describe("reprocess preview phantoms", () => {
     ).toEqual(["med:ibuprofen"]);
 
     // Folded: the tracked match compares unchanged; nothing added or removed.
-    foldConsolidatedMedsIntoSnapshot(pid, current, next.medications);
+    foldConsolidatedMedsIntoSnapshot(
+      pid,
+      current,
+      next.medications,
+      inputB().records
+    );
     const folded = computeImportDiff(current, next);
     const meds = folded.entities.find((e) => e.entity === "medications")!;
     expect(meds.added).toEqual([]);
@@ -463,13 +469,124 @@ describe("reprocess preview phantoms", () => {
     });
     const current2 = getReprocessSnapshot(pid, docB);
     const next2 = snapshotFromPersistInput(withNew);
-    foldConsolidatedMedsIntoSnapshot(pid, current2, next2.medications);
+    foldConsolidatedMedsIntoSnapshot(
+      pid,
+      current2,
+      next2.medications,
+      withNew.records
+    );
     const diff2 = computeImportDiff(current2, next2);
     expect(
       diff2.entities
         .find((e) => e.entity === "medications")!
         .added.map((m) => m.key)
     ).toEqual(["med:amoxicillin"]);
+  });
+
+  it("does NOT fold a #1027 concurrent-different-strength derived med — it previews as an addition (#1280)", () => {
+    const pid = newProfile("PHANTOM-MEDS-1027");
+    const rx = (name: string, ext: string) => ({
+      category: "prescription" as const,
+      name,
+      canonical: name,
+      value: null,
+      value_num: null,
+      unit: null,
+      date: DATE,
+      reference_range: null,
+      flag: null,
+      panel: null,
+      notes: null,
+      source: "ccda",
+      external_id: ext,
+      loinc: null,
+      provider: null,
+      courses: null,
+    });
+    const bare = {
+      immunizations: [],
+      allergies: [],
+      conditions: [],
+      encounters: [],
+      bodyMetrics: [],
+      heights: [],
+      headCircs: [],
+    };
+
+    // Doc A tracks Ibuprofen 200 mg — a fresh import gives it a single OPEN course
+    // at 200 mg (ensureMedicationCourse(..., stopped=false)), the #1027 precondition.
+    const docA = newDocument(pid, "A.ccd");
+    persistDocumentImport(
+      pid,
+      docA,
+      makeInput({ ...bare, records: [rx("Ibuprofen 200 mg", "med:ibu-a")] })
+    );
+    // Doc B owns only Cetirizine (so it exists as this document's tracked med).
+    const docB = newDocument(pid, "B.ccd");
+    persistDocumentImport(
+      pid,
+      docB,
+      makeInput({ ...bare, records: [rx("Cetirizine 10 mg", "med:cet-b")] })
+    );
+
+    // Sanity: the existing Ibuprofen really has an open course at 200 mg.
+    const states = getMedMatchStates(pid);
+    const ibu = states.find((s) =>
+      s.name.toLowerCase().startsWith("ibuprofen")
+    )!;
+    expect(ibu.hasOpenCourse).toBe(true);
+    expect(ibu.strengths).toContain("200 mg");
+
+    // Now a reprocess of doc B derives Ibuprofen 800 mg (Rx) alongside its Cetirizine.
+    // Commit-time classifyReprescription → "separate" (open course + provably
+    // different strength) → a NEW item. So the preview MUST surface it as an addition.
+    const reB = makeInput({
+      ...bare,
+      records: [
+        rx("Ibuprofen 800 mg", "med:ibu-b"),
+        rx("Cetirizine 10 mg", "med:cet-b"),
+      ],
+    });
+    const current = getReprocessSnapshot(pid, docB);
+    expect(current.medications.map((m) => m.key)).toEqual(["med:cetirizine"]);
+    const next = snapshotFromPersistInput(reB);
+    foldConsolidatedMedsIntoSnapshot(
+      pid,
+      current,
+      next.medications,
+      reB.records
+    );
+    const diff = computeImportDiff(current, next);
+    const meds = diff.entities.find((e) => e.entity === "medications")!;
+    // The genuinely-new Ibuprofen 800 mg is shown as added, NOT silently hidden.
+    expect(meds.added.map((m) => m.key)).toEqual(["med:ibuprofen"]);
+    expect(meds.unchanged.map((m) => m.key)).toEqual(["med:cetirizine"]);
+
+    // Contrast: a SAME-strength renewal (Ibuprofen 200 mg) still folds to unchanged
+    // — the #1204 phantom-diff fix is intact, the #1280 correction is precise.
+    const renewB = makeInput({
+      ...bare,
+      records: [
+        rx("Ibuprofen 200 mg", "med:ibu-b"),
+        rx("Cetirizine 10 mg", "med:cet-b"),
+      ],
+    });
+    const current2 = getReprocessSnapshot(pid, docB);
+    const next2 = snapshotFromPersistInput(renewB);
+    foldConsolidatedMedsIntoSnapshot(
+      pid,
+      current2,
+      next2.medications,
+      renewB.records
+    );
+    const meds2 = computeImportDiff(current2, next2).entities.find(
+      (e) => e.entity === "medications"
+    )!;
+    expect(meds2.added).toEqual([]);
+    expect(meds2.unchanged.map((m) => m.key).sort()).toEqual([
+      "med:cetirizine",
+      "med:ibuprofen",
+    ]);
   });
 });
 
@@ -543,7 +660,12 @@ describe("intra-batch canonical collapse (end-to-end)", () => {
     previewReconcileFlags(pid, input.records);
     const current = getReprocessSnapshot(pid, did);
     const next = snapshotFromPersistInput(input);
-    foldConsolidatedMedsIntoSnapshot(pid, current, next.medications);
+    foldConsolidatedMedsIntoSnapshot(
+      pid,
+      current,
+      next.medications,
+      input.records
+    );
     expect(computeImportDiff(current, next).hasChanges).toBe(false);
   });
 });

@@ -91,6 +91,7 @@ export default function JournalView({
   showHeader = true,
   showWeeklyTargets = true,
   sex,
+  canWriteVideos = false,
 }: {
   // The NEWEST page of day groups, refreshed by the server on every auto-save (issue
   // #451). Older windows are fetched on demand and held in local state below.
@@ -112,6 +113,9 @@ export default function JournalView({
   showWeeklyTargets?: boolean;
   // Profile sex, so the exercise detail's strength standards use the right chart.
   sex?: Sex | null;
+  // Whether the acting login can write to the feed's profile — gates the per-card
+  // form-check video affordances (#1224). The server actions re-gate regardless.
+  canWriteVideos?: boolean;
 }) {
   const {
     open,
@@ -842,6 +846,8 @@ export default function JournalView({
                           }))}
                         keeperLabel={c.provenance.label}
                         units={units}
+                        videos={c.videos}
+                        canWrite={canWriteVideos}
                         onSelectExercise={(name) =>
                           showDetail("exercise", name)
                         }

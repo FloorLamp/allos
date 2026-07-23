@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 098 (issue #1259): wellness practices as protocol adherence. Two
+// Migration 099 (issue #1259): wellness practices as protocol adherence. Two
 // coordinated schema changes that ship as ONE version (a CHECK-rebuild and a new
 // table can share a migration):
 //
@@ -109,7 +109,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 98,
-  name: "098-practice-targets-and-logs",
+  id: 99,
+  name: "099-practice-targets-and-logs",
   up,
 };
