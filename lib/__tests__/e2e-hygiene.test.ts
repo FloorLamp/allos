@@ -161,10 +161,6 @@ const WAITFORTIMEOUT_ALLOW: Record<string, number> = {
 // two lists above: migrate a spec onto an exact locator / dedicated fixture and
 // LOWER its number in the same PR; a NEW unmarked .first() (or a new file) fails.
 const FIRST_ALLOW: Record<string, number> = {
-  // edit-lock-badge carries a latent class-1 flake (a batch sibling mutates
-  // profile 1's body metrics that /trends?tab=body reads; exposed only when
-  // co-located at --repeat-each). Its two .first() stay frozen until a focused fix.
-  "edit-lock-badge.spec.ts": 2,
   // illness-care carries a latent class-1 flake (a sibling mutates profile 1's
   // seeded illness state; exposed only when co-located at --repeat-each). Its lone
   // .first() stays frozen here until that flake is fixed in a focused follow-up.
