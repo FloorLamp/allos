@@ -8,6 +8,7 @@
 import type { FitnessDomainSummary } from "@/lib/fitness-check-model";
 import { heatTone } from "@/lib/fitness-tile";
 import { TONE_BAR } from "./fitness-heat";
+import { FitnessDomainGlyph } from "./fitness-pictograms";
 
 const DOMAIN_LABEL: Record<string, string> = {
   endurance: "Endurance",
@@ -32,7 +33,11 @@ export default function FitnessDomainBars({
         return (
           <div key={d.domain} data-testid={`${testIdPrefix}-${d.domain}`}>
             <div className="flex justify-between text-xs text-slate-600 dark:text-slate-300">
-              <span>{DOMAIN_LABEL[d.domain] ?? d.domain}</span>
+              <span className="inline-flex items-center gap-1">
+                {/* Decorative domain glyph (#1253) — the text label stays. */}
+                <FitnessDomainGlyph domain={d.domain} />
+                {DOMAIN_LABEL[d.domain] ?? d.domain}
+              </span>
               <span>
                 {d.percentile != null
                   ? `${d.percentile}th pct`
