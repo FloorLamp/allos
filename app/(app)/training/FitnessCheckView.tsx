@@ -321,6 +321,16 @@ function EntryModal({
   const setField = (k: string, v: string) =>
     setFields((f) => ({ ...f, [k]: v }));
 
+  // After a countdown timer ends, flip focus to the result input the user now fills (reps /
+  // distance / recovery HR) — scoped to this open modal by its data-testid (#1275).
+  const focusTestId = (tid: string) => {
+    requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLInputElement>(`[data-testid="${tid}"]`)
+        ?.focus();
+    });
+  };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -489,6 +499,36 @@ function EntryModal({
                   testKey={def.key}
                 />
               )}
+              {/* Field-test timers (#1275): the Cooper run (720s) / Queens step (180s)
+                  count DOWN then focus their result input; the Rockport mile counts UP and
+                  fills the walk-time minutes. The watch value has no timing. */}
+              {(() => {
+                const md = vo2Methods.find((m) => m.key === method);
+                if (!md) return null;
+                const isRockport = md.key === "rockport";
+                if (md.timerWindow == null && !isRockport) return null;
+                return (
+                  <FitnessTestTimer
+                    testId={`fitness-timer-${def.key}-${md.key}`}
+                    label={`${def.label} · ${md.label}`}
+                    testKey={def.key}
+                    window={md.timerWindow}
+                    onFinish={(s) => {
+                      if (isRockport) {
+                        setField(
+                          "walkTimeMin",
+                          String(Math.round((s / 60) * 100) / 100)
+                        );
+                        focusTestId(`fitness-field-${def.key}-walkHr`);
+                      } else if (md.key === "cooper") {
+                        focusTestId(`fitness-field-${def.key}-distanceMeters`);
+                      } else if (md.key === "step") {
+                        focusTestId(`fitness-field-${def.key}-stepRecoveryHr`);
+                      }
+                    }}
+                  />
+                );
+              })()}
             </div>
           )}
 
@@ -561,10 +601,24 @@ function EntryModal({
                   data-testid={`fitness-value-${def.key}`}
                 />
               </label>
+              {/* Count-up timer for the hold/balance tests: Finish fills the seconds. */}
               {def.inputKind === "seconds" && (
                 <FitnessTestTimer
                   testId={`fitness-timer-${def.key}`}
-                  onUse={(s) => setValue(String(s))}
+                  label={def.label}
+                  testKey={def.key}
+                  onFinish={(s) => setValue(String(s))}
+                />
+              )}
+              {/* Countdown timer for the fixed-window rep tests (chair stand, arm curl,
+                  2-minute step): auto-ends, then focuses the reps input to fill (#1275). */}
+              {def.inputKind === "reps" && def.timerWindow != null && (
+                <FitnessTestTimer
+                  testId={`fitness-timer-${def.key}`}
+                  label={def.label}
+                  testKey={def.key}
+                  window={def.timerWindow}
+                  onFinish={() => focusTestId(`fitness-value-${def.key}`)}
                 />
               )}
             </>

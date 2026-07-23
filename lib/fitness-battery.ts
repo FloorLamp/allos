@@ -90,6 +90,12 @@ export interface FitnessTestDef {
   // Equipment the test wants; when the profile's registry lacks it the UI offers the
   // documented substitute (equipment-aware, #834).
   equipment?: { needs: string; substitute: string };
+  // Large-format timer window (#1275), in seconds. PRESENT → a FIXED-WINDOW protocol: the
+  // timer counts DOWN from this window, ends itself at 0:00 with a cue, then the result
+  // (reps) is entered. ABSENT → a count-UP protocol (plank/dead hang/balance/TUG): the
+  // timer counts up and Finish stamps the elapsed seconds into the seconds input. The value
+  // is DATA, pinned to each test's cited protocol by lib/__tests__/fitness-battery.test.ts.
+  timerWindow?: number;
   min?: number;
   max?: number;
 }
@@ -104,6 +110,11 @@ export interface Vo2MethodDef {
   label: string;
   seniorSafe: boolean;
   instructions: string[];
+  // Large-format timer window (#1275), in seconds — same meaning as FitnessTestDef.timerWindow.
+  // Cooper is a fixed 12-minute run (720s countdown → enter distance); the Queens 3-minute
+  // step is 180s (countdown → measure recovery HR). The Rockport walk and the watch value
+  // carry no window (count-up / no timing), so this is absent there.
+  timerWindow?: number;
 }
 
 export const VO2_METHODS: Vo2MethodDef[] = [
@@ -119,6 +130,7 @@ export const VO2_METHODS: Vo2MethodDef[] = [
     key: "cooper",
     label: "Cooper 12-minute run",
     seniorSafe: false,
+    timerWindow: 720, // 12 minutes
     instructions: [
       "Warm up, then run/walk as far as you can in exactly 12 minutes on a flat course or track.",
       "Enter the total distance covered in meters.",
@@ -137,6 +149,7 @@ export const VO2_METHODS: Vo2MethodDef[] = [
     key: "step",
     label: "3-minute step test",
     seniorSafe: true,
+    timerWindow: 180, // 3 minutes (Queens College step test)
     instructions: [
       "Step up-and-down on a ~40 cm step for 3 minutes at a steady cadence (24/min men, 22/min women).",
       "Sit, wait 5 seconds, then measure your recovery heart rate; enter it here.",
@@ -282,6 +295,7 @@ export const FITNESS_BATTERY: FitnessTestDef[] = [
     unit: "reps",
     inputKind: "reps",
     normsMarker: "30-Second Chair Stand",
+    timerWindow: 30,
     store: {
       kind: "vital",
       canonical: "30-Second Chair Stand",
@@ -303,6 +317,7 @@ export const FITNESS_BATTERY: FitnessTestDef[] = [
     unit: "reps",
     inputKind: "reps",
     normsMarker: "30-Second Arm Curl",
+    timerWindow: 30,
     store: {
       kind: "vital",
       canonical: "30-Second Arm Curl",
@@ -340,6 +355,7 @@ export const FITNESS_BATTERY: FitnessTestDef[] = [
     unit: "reps",
     inputKind: "reps",
     normsMarker: "2-Minute Step",
+    timerWindow: 120,
     store: { kind: "vital", canonical: "2-Minute Step", category: "vitals" },
     citation: "Rikli & Jones Senior Fitness Test.",
     instructions: [

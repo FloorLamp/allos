@@ -1,18 +1,10 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import { IconBolt, IconFlagCheck } from "@tabler/icons-react";
 import RestTimer from "./RestTimer";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
+import { useWakeLock } from "@/components/useWakeLock";
 import { subjectActionLabel } from "@/lib/own-profile";
-
-// Minimal WakeLockSentinel typing — lib.dom's is behind a flag not enabled here.
-interface WakeLockSentinelLike {
-  release: () => Promise<void>;
-}
-interface WakeLockLike {
-  request: (type: "screen") => Promise<WakeLockSentinelLike>;
-}
 
 // The live-mode control panel (issue #340), pinned above the shared ActivityForm.
 // It doesn't fork the form — the whole form still renders below it, so "finish"
@@ -32,41 +24,13 @@ export default function LiveWorkoutPanel({
   // Stamp end=now and leave live mode (back to the normal form).
   onFinish: () => void;
 }) {
-  const sentinelRef = useRef<WakeLockSentinelLike | null>(null);
   // Not-self stamp (issue #1013): the running session belongs to the acting profile;
   // when that isn't the login's own profile, name it on the live control strip so a
   // set logged in the wrong record is caught at the point of action.
   const { subjectName } = useActivityEditor();
 
-  // Keep the screen awake for the phone-at-the-gym surface. Best-effort: absent
-  // (desktop / unsupported) or rejected (not user-activated) it silently no-ops,
-  // and the browser auto-releases the lock when the tab is hidden anyway. Re-acquire
-  // when the tab returns to the foreground.
-  useEffect(() => {
-    const wakeLock = (navigator as unknown as { wakeLock?: WakeLockLike })
-      .wakeLock;
-    if (!wakeLock) return;
-    let released = false;
-    const acquire = async () => {
-      try {
-        if (document.visibilityState !== "visible") return;
-        sentinelRef.current = await wakeLock.request("screen");
-      } catch {
-        // Denied/unsupported — the timer still runs; the screen may just dim.
-      }
-    };
-    const onVisible = () => {
-      if (document.visibilityState === "visible" && !released) void acquire();
-    };
-    void acquire();
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      released = true;
-      document.removeEventListener("visibilitychange", onVisible);
-      void sentinelRef.current?.release().catch(() => {});
-      sentinelRef.current = null;
-    };
-  }, []);
+  // Keep the screen awake for the phone-at-the-gym surface — the shared hook (#1275).
+  useWakeLock();
 
   return (
     <div
