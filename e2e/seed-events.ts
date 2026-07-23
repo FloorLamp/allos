@@ -56,6 +56,8 @@ import {
   NUTRITION_PROFILE,
   E2E_LOGIN_CYCLE,
   CYCLE_PROFILE,
+  E2E_LOGIN_DAILY,
+  DAILY_LOOP_PROFILE,
   E2E_LOGIN_WEIGHT_QA,
   WEIGHT_QUICKADD_PROFILE,
   E2E_LOGIN_NAV_FEMALE,
@@ -3873,6 +3875,176 @@ seedMemberLogin(E2E_LOGIN_CYCLE, cycleProfileId, "write");
 console.log(
   `e2e: seeded cycle-log fixture — profile ${cycleProfileId} (${CYCLE_PROFILE}) (#714)`
 );
+
+// ── Dashboard daily-loop fixture (#1221) ──────────────────────────────────────
+// A dedicated adult female profile carrying one reading in every domain the four new
+// dashboard cards read, all dated to the fixture's "today" so each card renders
+// populated. Read-only in its spec; hard-clear the fixture rows first for a reused
+// server. Synthetic, no PHI.
+{
+  const dailyId = fixtureProfileId(DAILY_LOOP_PROFILE);
+  const dToday = today(dailyId);
+
+  // Female + premenopausal so cycle tracking is relevant even before the cycle rows
+  // below (data wins regardless, but this mirrors a realistic profile).
+  db.prepare(
+    `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'sex', 'female')`
+  ).run(dailyId);
+  db.prepare(
+    `INSERT OR IGNORE INTO profile_settings (profile_id, key, value)
+     VALUES (?, 'reproductive_status', 'premenopausal')`
+  ).run(dailyId);
+
+  // Body composition: a recent weigh-in (the protein target's mass) + resting HR (two
+  // readings so the Latest-vitals card shows a resting-HR trend arrow).
+  db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(dailyId);
+  const insBm = db.prepare(
+    `INSERT INTO body_metrics (profile_id, date, weight_kg, resting_hr, notes)
+     VALUES (?, ?, ?, ?, 'e2e:daily-loop')`
+  );
+  insBm.run(dailyId, shiftDateStr(dToday, -3), 64.0, 60);
+  insBm.run(dailyId, dToday, 63.6, 58);
+
+  // Steps: today + a trailing week (additive; one source per day) so the Steps-today
+  // card shows today vs the 7-day average with a direction arrow.
+  db.prepare(
+    `DELETE FROM metric_samples WHERE profile_id = ? AND metric = 'steps'`
+  ).run(dailyId);
+  const insSteps = db.prepare(
+    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+     VALUES (?, 'health-connect', 'steps', ?, ?, ?, ?)`
+  );
+  for (const [ago, steps] of [
+    [7, 6800],
+    [6, 7200],
+    [5, 8100],
+    [4, 6500],
+    [3, 7700],
+    [2, 8300],
+    [1, 7100],
+    [0, 9400], // today, above the trailing average → "up"
+  ] as const) {
+    const day = shiftDateStr(dToday, -ago);
+    insSteps.run(dailyId, day, `${day}T00:00:00Z`, `${day}T23:59:59Z`, steps);
+  }
+
+  // Blood pressure: a recent pair of readings (systolic + diastolic) stored as
+  // biomarker medical_records, so the Latest-vitals card shows "118/76" with a trend.
+  db.prepare(
+    `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name IN ('Blood Pressure Systolic', 'Blood Pressure Diastolic')`
+  ).run(dailyId);
+  const insBp = db.prepare(
+    `INSERT INTO medical_records
+       (profile_id, date, category, name, value, unit, reference_range, value_num, canonical_name)
+     VALUES (?, ?, 'vitals', ?, ?, 'mmHg', ?, ?, ?)`
+  );
+  for (const [ago, sys, dia] of [
+    [10, 122, 80],
+    [2, 118, 76],
+  ] as const) {
+    const day = shiftDateStr(dToday, -ago);
+    insBp.run(
+      dailyId,
+      day,
+      "Blood Pressure Systolic",
+      String(sys),
+      "90-120",
+      sys,
+      "Blood Pressure Systolic"
+    );
+    insBp.run(
+      dailyId,
+      day,
+      "Blood Pressure Diastolic",
+      String(dia),
+      "60-80",
+      dia,
+      "Blood Pressure Diastolic"
+    );
+  }
+
+  // Food today: a few protein-bearing food-group servings so getProteinToday reads a
+  // non-zero floor against the goal band (the Nutrition-today card).
+  db.prepare(`DELETE FROM food_log WHERE profile_id = ?`).run(dailyId);
+  const insFood = db.prepare(
+    `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)`
+  );
+  for (const [ago, group, servings] of [
+    [0, "legumes", 2],
+    [0, "fatty_fish", 1],
+    [0, "leafy_greens", 2],
+    [1, "legumes", 1],
+    [1, "red_meat", 1],
+  ] as const) {
+    insFood.run(dailyId, shiftDateStr(dToday, -ago), group, servings);
+  }
+
+  // Cycles: three completed, roughly-regular periods (no open period) so cycle tracking
+  // is relevant and a phase + cycle-day derive for the Cycle-phase card.
+  db.prepare(`DELETE FROM cycles WHERE profile_id = ?`).run(dailyId);
+  for (const [startAgo, endAgo, flow] of [
+    [70, 66, "medium"],
+    [42, 38, "medium"],
+    [14, 10, "light"],
+  ] as const) {
+    db.prepare(
+      `INSERT INTO cycles (profile_id, period_start, period_end, flow) VALUES (?, ?, ?, ?)`
+    ).run(
+      dailyId,
+      shiftDateStr(dToday, -startAgo),
+      shiftDateStr(dToday, -endAgo),
+      flow
+    );
+  }
+
+  // One active PRN medication so the check-in "Take any meds?" branch renders on this
+  // profile's dashboard too (the folded quick-log, #1221).
+  db.prepare(
+    `DELETE FROM intake_items WHERE profile_id = ? AND name = 'Daily Loop PRN (e2e)'`
+  ).run(dailyId);
+  db.prepare(
+    `INSERT INTO intake_items (profile_id, kind, name, active, as_needed)
+     VALUES (?, 'medication', 'Daily Loop PRN (e2e)', 1, 1)`
+  ).run(dailyId);
+
+  // A custom NON-clinical situation (starts inactive) + a situational supplement keyed
+  // to it, so the check-in "Anything going on?" chips include a custom fixture situation
+  // and toggling it flips a situational supplement due — the #662 activation line the
+  // Part-6 spec asserts on both the check-in card and the Supplements bar. Hard-clear for
+  // a reused server (the situations UNIQUE(profile_id, name NOCASE) would otherwise clash).
+  db.prepare(
+    `DELETE FROM intake_items WHERE profile_id = ? AND name = 'Focus Blend (e2e)'`
+  ).run(dailyId);
+  db.prepare(
+    `DELETE FROM situations WHERE profile_id = ? AND name = 'Deadline (e2e)'`
+  ).run(dailyId);
+  const dailySitId = Number(
+    db
+      .prepare(
+        `INSERT INTO situations (profile_id, name, active, illness_type)
+         VALUES (?, 'Deadline (e2e)', 0, 0)`
+      )
+      .run(dailyId).lastInsertRowid
+  );
+  const dailySuppId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items
+           (profile_id, kind, name, condition, priority, situation, situation_id, active)
+         VALUES (?, 'supplement', 'Focus Blend (e2e)', 'situational', 'low', 'Deadline (e2e)', ?, 1)`
+      )
+      .run(dailyId, dailySitId).lastInsertRowid
+  );
+  db.prepare(
+    `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+     VALUES (?, '1 cap', 'Anytime', 'any', 0)`
+  ).run(dailySuppId);
+
+  seedMemberLogin(E2E_LOGIN_DAILY, dailyId, "write");
+  console.log(
+    `e2e: seeded dashboard daily-loop fixture — profile ${dailyId} (${DAILY_LOOP_PROFILE}) (#1221)`
+  );
+}
 
 // ── Nav relevance gating fixtures (#1042 phase 1) ─────────────────────────────
 // Two dedicated, read-only profiles for the nav-consolidation spec:

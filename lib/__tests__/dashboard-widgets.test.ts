@@ -63,6 +63,9 @@ describe("resolveWidgets / resolveWidgetList", () => {
       "weekly-routine",
       // Folded into the illness hero (#858) — a stored layout naming it stays valid.
       "sick-household",
+      // Folded into the "How are you today?" check-in as the "Take any meds?" branch
+      // (#1221) — a stored layout naming it is dropped without a migration.
+      "quick-log-prn",
     ];
     const list = resolveWidgetList(
       { order: [...retired, "weight-trend"], hidden: retired },
@@ -72,6 +75,19 @@ describe("resolveWidgets / resolveWidgetList", () => {
       expect.arrayContaining(retired)
     );
     expect(list.map((w) => w.def.id)).toContain("goals-habits");
+  });
+
+  it("the folded quick-log-prn widget is gone from the registry (#1221)", () => {
+    // The PRN quick-log is now the check-in card's "Take any meds?" branch; a stored
+    // layout that still lists it is dropped defensively and it must not reappear as a
+    // customizable widget.
+    expect(DASHBOARD_WIDGETS.map((w) => w.id)).not.toContain("quick-log-prn");
+    const list = resolveWidgetList(
+      { order: ["quick-log-prn", "weight-trend"], hidden: [] },
+      false
+    );
+    expect(list.map((w) => w.def.id)).not.toContain("quick-log-prn");
+    expect(list.map((w) => w.def.id)).toContain("weight-trend");
   });
 
   it("the folded sick-household widget is gone from the registry (#858)", () => {
@@ -151,6 +167,46 @@ describe("resolveWidgets / resolveWidgetList", () => {
     expect(ids(visible).indexOf("weight-trend")).toBeLessThan(
       ids(visible).indexOf("recent-labs")
     );
+  });
+
+  // Issue #1221 — the per-profile WidgetGate (the dashboard twin of the nav's
+  // per-entry gating): requiresFoodLogging + relevanceKey === "cycle".
+  it("gate foodLogging:false drops nutrition-today (the infant-profile food gate)", () => {
+    const shown = resolveWidgets(null, false, undefined, {
+      foodLogging: false,
+    });
+    expect(ids(shown)).not.toContain("nutrition-today");
+    // Non-food-gated cards survive the food gate.
+    expect(ids(shown)).toContain("steps-today");
+    expect(ids(shown)).toContain("vitals-latest");
+    // The full list (Customize) also drops it, so it never renders even in preview.
+    const list = resolveWidgetList(null, false, undefined, {
+      foodLogging: false,
+    });
+    expect(list.map((w) => w.def.id)).not.toContain("nutrition-today");
+  });
+
+  it("gate cycle:false drops cycle-phase (the cycle-relevance gate), default keeps it", () => {
+    const hidden = resolveWidgets(null, false, undefined, { cycle: false });
+    expect(ids(hidden)).not.toContain("cycle-phase");
+    // Default gate (all-eligible) keeps both gated cards.
+    const shown = resolveWidgets(null, false);
+    expect(ids(shown)).toContain("cycle-phase");
+    expect(ids(shown)).toContain("nutrition-today");
+  });
+
+  it("a gated widget in a stored order is still dropped when its gate bit is off", () => {
+    const layout: DashboardLayout = {
+      order: ["cycle-phase", "nutrition-today", "weight-trend"],
+      hidden: [],
+    };
+    const list = resolveWidgetList(layout, false, undefined, {
+      foodLogging: false,
+      cycle: false,
+    });
+    expect(list.map((w) => w.def.id)).not.toContain("cycle-phase");
+    expect(list.map((w) => w.def.id)).not.toContain("nutrition-today");
+    expect(list.map((w) => w.def.id)).toContain("weight-trend");
   });
 
   it("dedupes a stored order that repeats an id", () => {

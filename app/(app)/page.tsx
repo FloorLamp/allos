@@ -1,7 +1,14 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { IconFlask, IconScale, IconPill, IconMoon } from "@tabler/icons-react";
+import {
+  IconFlask,
+  IconScale,
+  IconMoon,
+  IconSalad,
+  IconWalk,
+  IconHeartbeat,
+} from "@tabler/icons-react";
 import { now as clockNow } from "@/lib/clock";
 import { today } from "@/lib/db";
 import {
@@ -23,7 +30,22 @@ import {
   getWorkoutPresence,
   getSessionRecap,
   getMoodOnDate,
+  getProteinToday,
+  getMetricDailyTotals,
+  getBiomarkerSeries,
+  getNavRelevance,
+  getSituationalDueCount,
 } from "@/lib/queries";
+import {
+  nonIllnessSituationOptions,
+  situationActivationLine,
+} from "@/lib/situations";
+import { listCyclePeriods } from "@/lib/cycle-store";
+import { cyclePhaseOnDate, cycleDayOnDate } from "@/lib/cycle";
+import { summarizeStepsToday } from "@/lib/steps-today";
+import { latestTrend } from "@/lib/latest-trend";
+import { isFoodLoggingRelevant } from "@/lib/life-stage";
+import { getUserAge } from "@/lib/settings/profile-attrs";
 import { recommendCoaching } from "@/lib/coaching";
 import { collectCoachingFindings } from "@/lib/rule-findings";
 import { pickNextAppointment } from "@/lib/household";
@@ -43,6 +65,8 @@ import {
   getEmergencyCardEnabled,
   getProfileHomeAssistant,
   getProfileTelegram,
+  getSituations,
+  getActiveSituations,
 } from "@/lib/settings";
 import { countPushSubscriptionsForLogin } from "@/lib/notifications/push";
 import { hasConnectedDataSource } from "@/lib/integrations/connections";
@@ -102,7 +126,13 @@ import NextAppointmentWidget, {
 import HealthspanPillarsWidget from "@/components/dashboard/HealthspanPillarsWidget";
 import SleepLastNightWidget from "@/components/dashboard/SleepLastNightWidget";
 import { sleepRecordPresentation } from "@/lib/sleep-summary";
-import QuickLogPrnWidget from "@/components/dashboard/QuickLogPrnWidget";
+import { QuickLogPrnContent } from "@/components/dashboard/QuickLogPrnWidget";
+import NutritionTodayWidget from "@/components/dashboard/NutritionTodayWidget";
+import StepsTodayWidget from "@/components/dashboard/StepsTodayWidget";
+import VitalsLatestWidget, {
+  type VitalsLatestModel,
+} from "@/components/dashboard/VitalsLatestWidget";
+import CyclePhaseWidget from "@/components/dashboard/CyclePhaseWidget";
 import ActiveProtocolWidget from "@/components/dashboard/ActiveProtocolWidget";
 import HowAreYouCard from "@/components/dashboard/HowAreYouCard";
 import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
@@ -233,7 +263,21 @@ export default async function Dashboard() {
   // then fetch only the data those widgets need — a net win over the old
   // unconditional fetching. Every eligible widget is rendered server-side so
   // Customize mode can preview/re-enable a hidden one without a round-trip.
-  const list = resolveWidgetList(getDashboardLayout(profile.id), restricted);
+  // Per-profile widget gate (issue #1221): the dashboard twin of the nav's per-entry
+  // gating. Nutrition-today drops for an infant profile (the SAME isFoodLoggingRelevant
+  // bit as the Nutrition nav entry, #591); Cycle-phase drops unless cycle tracking is
+  // relevant (the SAME getNavRelevance().cycle bit as the Cycle nav entry, #1042) — so a
+  // card can never disagree with its nav twin about applicability.
+  const widgetGate = {
+    foodLogging: isFoodLoggingRelevant(getUserAge(profile.id)),
+    cycle: getNavRelevance(profile.id).cycle,
+  };
+  const list = resolveWidgetList(
+    getDashboardLayout(profile.id),
+    restricted,
+    undefined,
+    widgetGate
+  );
   const eligible = new Set(list.map((w) => w.def.id));
   const has = (id: string) => eligible.has(id);
 
@@ -511,11 +555,82 @@ export default async function Dashboard() {
     ? getWeeklyRecap(profile.id, units.weightUnit)
     : null;
 
-  // quick-log-prn — active PRN (as-needed) meds for one-tap administration logging
-  // (#797), each with today's count + last intake time.
-  const prnMeds = has("quick-log-prn")
-    ? getPrnMedicationsForQuickLog(profile.id)
+  // nutrition-today (#1221): today's protein against the goal band + the weekly average
+  // — the SAME getProteinToday model the Food-tab gauge and the food-nudge read (#221).
+  // Null when there's no target (no bodyweight) or no protein data → the data-aware CTA.
+  const proteinToday = has("nutrition-today")
+    ? getProteinToday(profile.id)
+    : null;
+
+  // steps-today (#1221): today's steps vs the trailing 7-day average, a formatter over
+  // summarizeStepsToday fed by the deduped one-source-per-day steps series (#14/#221).
+  // Empty series → the data-aware CTA (connect a source).
+  const stepsRows = has("steps-today")
+    ? getMetricDailyTotals(profile.id, "steps")
     : [];
+  const stepsSummary =
+    stepsRows.length > 0 ? summarizeStepsToday(stepsRows, on) : null;
+
+  // vitals-latest (#1221): the latest BP + resting HR readings with a trend arrow, over
+  // the SAME series queries behind Trends → Vitals (getBiomarkerSeries for BP,
+  // getBodyMetricDailySeries for resting HR), each reduced via the shared latestTrend
+  // helper (#221). Null components self-omit; an all-null model is the data-aware CTA.
+  let vitalsModel: VitalsLatestModel | null = null;
+  if (has("vitals-latest")) {
+    const systolic = getBiomarkerSeries(profile.id, "Blood Pressure Systolic")
+      .filter((r) => r.value_num != null)
+      .map((r) => ({ date: r.date, value: Math.round(r.value_num as number) }));
+    const diastolic = getBiomarkerSeries(profile.id, "Blood Pressure Diastolic")
+      .filter((r) => r.value_num != null)
+      .map((r) => ({ date: r.date, value: Math.round(r.value_num as number) }));
+    const restingHrSeries = getBodyMetricDailySeries(
+      profile.id,
+      "resting_hr",
+      ALL_ROWS
+    ).map((w) => ({ date: w.date, value: Math.round(w.value) }));
+    const sysLatest = latestTrend(systolic);
+    const diaLatest = latestTrend(diastolic);
+    const hrLatest = latestTrend(restingHrSeries);
+    const bp =
+      sysLatest && diaLatest
+        ? {
+            systolic: sysLatest.value,
+            diastolic: diaLatest.value,
+            date: sysLatest.date,
+            direction: sysLatest.direction,
+          }
+        : null;
+    const restingHr = hrLatest
+      ? {
+          value: hrLatest.value,
+          date: hrLatest.date,
+          direction: hrLatest.direction,
+        }
+      : null;
+    vitalsModel = bp || restingHr ? { bp, restingHr } : null;
+  }
+
+  // cycle-phase (#1221): "Cycle day N · <phase>" over cycleDayOnDate + cyclePhaseOnDate
+  // (lib/cycle.ts, #221) — informational only, no prediction. Relevance-gated in the
+  // registry; self-hides when no phase is derivable (before any recorded period).
+  const cyclePeriods = has("cycle-phase") ? listCyclePeriods(profile.id) : [];
+  const cyclePhase =
+    cyclePeriods.length > 0 ? cyclePhaseOnDate(cyclePeriods, on) : null;
+  const cycleDay =
+    cyclePeriods.length > 0 ? cycleDayOnDate(cyclePeriods, on) : null;
+  const cycleModel =
+    cyclePhase != null && cycleDay != null
+      ? { day: cycleDay, phase: cyclePhase }
+      : null;
+
+  // symptom-log meds branch (#1221): the folded PRN quick-log. Shown ONLY on a WELL day
+  // with active PRN meds — when illness is active the hero cockpit above already embeds
+  // the SAME logger (so we omit the branch to avoid the duplicate the old availability
+  // gate hand-managed), and a profile with no active PRN meds gets no branch at all.
+  const checkinPrnMeds =
+    has("symptom-log") && !activeSick
+      ? getPrnMedicationsForQuickLog(profile.id)
+      : [];
 
   // active-protocols (issue #660): the ongoing N-of-1 experiments, each a formatter
   // over the SAME detail-page computations (comparison + adherence). Opt-in widget;
@@ -534,6 +649,25 @@ export default async function Dashboard() {
   // Hideable from Customize like any other widget.
   const todayMood = has("symptom-log") ? getMoodOnDate(profile.id, on) : null;
 
+  // symptom-log "Anything going on?" situations entrypoint (#1221 part 6): the NON-clinical
+  // situation chips (illness types excluded — that lifecycle is the illness door's) over the
+  // SAME merged option set the Supplements bar renders (nonIllnessSituationOptions), each with
+  // its active state, plus the shared #662 activation line from the SAME dueness count the bar
+  // uses (getSituationalDueCount → countSituationalDue). Null when the card isn't eligible.
+  const checkinSituations = has("symptom-log")
+    ? (() => {
+        const activeSet = new Set(getActiveSituations(profile.id));
+        return {
+          options: nonIllnessSituationOptions(getSituations(profile.id)).map(
+            (o) => ({ name: o.name, active: activeSet.has(o.name) })
+          ),
+          activationLine: situationActivationLine(
+            getSituationalDueCount(profile.id)
+          ),
+        };
+      })()
+    : null;
+
   // Data-aware empty set (issue #171): a data-aware widget whose domain has no data
   // yet renders an onboarding CTA instead of a blank card. Computed from the same
   // reads the widget consumes, so the CTA shows exactly when the widget would be
@@ -544,8 +678,11 @@ export default async function Dashboard() {
     emptyIds.add("weight-trend");
   if (has("healthspan-pillars") && pillars.length === 0)
     emptyIds.add("healthspan-pillars");
-  if (has("quick-log-prn") && prnMeds.length === 0)
-    emptyIds.add("quick-log-prn");
+  if (has("nutrition-today") && proteinToday == null)
+    emptyIds.add("nutrition-today");
+  if (has("steps-today") && stepsSummary == null) emptyIds.add("steps-today");
+  if (has("vitals-latest") && vitalsModel == null)
+    emptyIds.add("vitals-latest");
   if (
     has("sleep-last-night") &&
     (sleepSummary == null || sleepPresentation?.freshness === "stale")
@@ -587,14 +724,34 @@ export default async function Dashboard() {
             ctaHref="/data"
           />
         );
-      case "quick-log-prn":
+      case "nutrition-today":
         return (
           <WidgetEmpty
-            title="Log a dose"
-            icon={IconPill}
-            message="No as-needed medications yet. Add a PRN medication to log doses like ibuprofen or an inhaler right from here."
-            ctaLabel="Add a medication"
-            ctaHref="/medications"
+            title="Nutrition today"
+            icon={IconSalad}
+            message="No food logged yet. Log today's food or set your body weight to track protein against your goal."
+            ctaLabel="Log food"
+            ctaHref="/nutrition"
+          />
+        );
+      case "steps-today":
+        return (
+          <WidgetEmpty
+            title="Steps today"
+            icon={IconWalk}
+            message="No step data yet. Connect Health Connect to sync your daily steps automatically."
+            ctaLabel="Connect a source"
+            ctaHref="/integrations/health-connect"
+          />
+        );
+      case "vitals-latest":
+        return (
+          <WidgetEmpty
+            title="Latest vitals"
+            icon={IconHeartbeat}
+            message="No blood pressure or resting heart rate yet. Log a reading to see it here at a glance."
+            ctaLabel="Log a reading"
+            ctaHref="/trends?tab=vitals"
           />
         );
       case "sleep-last-night":
@@ -663,14 +820,20 @@ export default async function Dashboard() {
         return weeklyRecap ? (
           <WeeklyRecapWidget recap={weeklyRecap} formatPrefs={formatPrefs} />
         ) : null;
-      case "quick-log-prn":
-        return (
-          <QuickLogPrnWidget
-            meds={prnMeds}
-            tz={getTimezone(profile.id)}
-            timeFormat={formatPrefs.timeFormat}
-          />
-        );
+      case "nutrition-today":
+        return proteinToday ? (
+          <NutritionTodayWidget today={proteinToday} />
+        ) : null;
+      case "steps-today":
+        return stepsSummary ? (
+          <StepsTodayWidget summary={stepsSummary} />
+        ) : null;
+      case "vitals-latest":
+        return vitalsModel ? <VitalsLatestWidget model={vitalsModel} /> : null;
+      case "cycle-phase":
+        return cycleModel ? (
+          <CyclePhaseWidget day={cycleModel.day} phase={cycleModel.phase} />
+        ) : null;
       case "active-protocols":
         return activeProtocols.length ? (
           <ActiveProtocolWidget protocols={activeProtocols} />
@@ -693,6 +856,21 @@ export default async function Dashboard() {
                 : null
             }
             activeEpisode={activeSick}
+            medsSlot={
+              checkinPrnMeds.length > 0 ? (
+                <QuickLogPrnContent
+                  meds={checkinPrnMeds}
+                  tz={getTimezone(profile.id)}
+                  timeFormat={formatPrefs.timeFormat}
+                  title="Log a dose"
+                  headingVariant="section"
+                  compact
+                  rowVariant="embedded"
+                  showPageLink={false}
+                />
+              ) : null
+            }
+            situations={checkinSituations}
           />
         );
       default:
@@ -713,12 +891,14 @@ export default async function Dashboard() {
       (def.id !== "data-quality" || dataQualityFindings.length > 0) &&
       (def.id !== "weekly-recap" || weeklyRecap !== null) &&
       (def.id !== "active-protocols" || activeProtocols.length > 0) &&
-      // symptom-log is the unified "How are you today?" card (#992): the mood tap is
-      // always offered, so the slot stays available in both illness states.
-      // The active illness cockpit now composes the SAME compact medication logger.
-      // Keep the standalone PRN widget for well days, but never duplicate it below the
-      // acting profile's open cockpit.
-      (def.id !== "quick-log-prn" || !activeSick),
+      // cycle-phase (#1221): informational card that self-hides when no phase is
+      // derivable yet (before any recorded period) — never an onboarding CTA.
+      (def.id !== "cycle-phase" || cycleModel !== null),
+    // symptom-log is the unified "How are you today?" card (#992): the mood tap is
+    // always offered, so the slot stays available in both illness states. Its folded
+    // "Take any meds?" branch (#1221) is composed inside the card (shown only on a well
+    // day with active PRN meds), which removes the old standalone-widget availability
+    // special case entirely.
     node:
       def.dataAware && emptyIds.has(def.id)
         ? emptyNode(def.id)

@@ -22,7 +22,7 @@ import {
   resolveSituationId,
   getSituations,
 } from "@/lib/settings";
-import { getSupplements } from "@/lib/queries";
+import { getSupplements, getSituationalDueCount } from "@/lib/queries";
 
 function newProfile(name: string): number {
   return Number(
@@ -98,6 +98,37 @@ describe("situations vocabulary (#560)", () => {
     expect(getSupplements(p).find((s) => s.id === itemId)?.situation).toBe(
       "Illness"
     );
+  });
+});
+
+// getSituationalDueCount (#1221 part 6): the shared dueness count behind BOTH the
+// Supplements-bar activation line and the dashboard check-in "Anything going on?" line.
+describe("getSituationalDueCount (#1221 part 6)", () => {
+  it("counts situational supplements as due only while their situation is active", () => {
+    const p = newProfile("situational-due");
+    const sid = resolveSituationId(p, "Travel")!;
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, condition, priority, situation, situation_id, active)
+           VALUES (?, 'Melatonin', 'situational', 'low', 'Travel', ?, 1)`
+        )
+        .run(p, sid).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, '3 mg', 'Anytime', 'any', 0)`
+    ).run(itemId);
+
+    // Travel inactive → not due.
+    expect(getSituationalDueCount(p)).toBe(0);
+    // Activate Travel → the situational item is now due.
+    setActiveSituations(p, ["Travel"]);
+    expect(getSituationalDueCount(p)).toBe(1);
+    // Deactivate → back to 0 (the toggle-off "trip's over" path).
+    setActiveSituations(p, []);
+    expect(getSituationalDueCount(p)).toBe(0);
   });
 });
 

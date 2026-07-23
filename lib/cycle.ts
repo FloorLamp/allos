@@ -141,6 +141,27 @@ export function cyclePhaseOnDate(
   return "follicular"; // open cycle — luteal not derivable without the next period
 }
 
+// The CYCLE DAY on `date` (1-based) — days since the start of the current cycle (the
+// latest recorded period start on-or-before `date`), inclusive of the start day, so the
+// first bleeding day is day 1. Null before any recorded period (same domain as
+// cyclePhaseOnDate). Retrospective and non-predictive: it counts elapsed days from a
+// LOGGED start, never a forecast. The Cycle-phase dashboard card (#1221) formats
+// "Cycle day N · <phase>" over this + cyclePhaseOnDate.
+export function cycleDayOnDate(
+  periods: CyclePeriod[],
+  date: string
+): number | null {
+  const sorted = sortByStart(periods);
+  let idx = -1;
+  for (let i = 0; i < sorted.length; i++) {
+    if (sorted[i].period_start <= date) idx = i;
+    else break;
+  }
+  if (idx === -1) return null; // before any recorded period
+  const elapsed = daysBetweenDateStr(sorted[idx].period_start, date);
+  return elapsed == null ? null : elapsed + 1; // 1-based (start day = day 1)
+}
+
 export interface CycleLength {
   start: string; // period_start of the cycle
   nextStart: string; // period_start of the following period

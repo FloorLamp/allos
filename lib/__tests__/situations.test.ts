@@ -4,7 +4,68 @@ import {
   sameSituation,
   situationForConditionName,
   suggestedSituationsFromConditions,
+  mergedSituationOptions,
+  nonIllnessSituationOptions,
 } from "@/lib/situations";
+import { SUGGESTED_SITUATIONS } from "@/lib/supplement-schedule";
+
+describe("mergedSituationOptions (#1221 part 6 / #1177)", () => {
+  it("with no vocabulary → exactly the built-in suggestions, none in vocabulary", () => {
+    const opts = mergedSituationOptions([]);
+    expect(opts.map((o) => o.name)).toEqual([...SUGGESTED_SITUATIONS]);
+    expect(opts.every((o) => !o.inVocabulary)).toBe(true);
+    expect(opts.every((o) => !o.illnessType)).toBe(true);
+  });
+
+  it("puts vocabulary rows first, then the remaining suggestions, NOCASE-deduped", () => {
+    const opts = mergedSituationOptions([
+      { name: "Migraine", illness_type: 0 },
+      { name: "travel", illness_type: 0 }, // collapses onto suggested "Travel"
+    ]);
+    // Vocabulary order first ("Migraine", the stored "travel"), then the suggestions
+    // that didn't collide (Illness / High stress / Poor sleep) — "Travel" is dropped as
+    // a dup of the stored "travel".
+    expect(opts.map((o) => o.name)).toEqual([
+      "Migraine",
+      "travel",
+      "Illness",
+      "High stress",
+      "Poor sleep",
+    ]);
+    const byName = new Map(opts.map((o) => [o.name, o]));
+    expect(byName.get("Migraine")!.inVocabulary).toBe(true);
+    expect(byName.get("travel")!.inVocabulary).toBe(true);
+    expect(byName.get("Illness")!.inVocabulary).toBe(false);
+  });
+
+  it("carries the #799 illness-type flag for a saved row", () => {
+    const opts = mergedSituationOptions([
+      { name: "Kid sick", illness_type: 1 },
+    ]);
+    expect(opts.find((o) => o.name === "Kid sick")!.illnessType).toBe(true);
+  });
+});
+
+describe("nonIllnessSituationOptions (#1221 part 6)", () => {
+  it("excludes illness-type rows AND the built-in Illness suggestion", () => {
+    const opts = nonIllnessSituationOptions([
+      { name: "Kid sick", illness_type: 1 }, // illness-type row → excluded
+      { name: "Deadline crunch", illness_type: 0 }, // custom non-clinical → kept
+    ]);
+    const names = opts.map((o) => o.name);
+    expect(names).toContain("Deadline crunch");
+    expect(names).toContain("Travel");
+    expect(names).not.toContain("Kid sick");
+    expect(names).not.toContain("Illness"); // the illness door owns that lifecycle
+  });
+
+  it("a stored illness-typed 'Illness' row is still excluded", () => {
+    const opts = nonIllnessSituationOptions([
+      { name: "Illness", illness_type: 1 },
+    ]);
+    expect(opts.map((o) => o.name)).not.toContain("Illness");
+  });
+});
 
 describe("normalizeSituationName", () => {
   it("trims and collapses internal whitespace", () => {

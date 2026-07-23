@@ -82,6 +82,12 @@ test("dashboard quick-log widget logs an administration and updates the count (#
 }) => {
   await page.goto("/");
 
+  // The seed leaves profile 1 with an OPEN illness episode, so the acting profile's PRN
+  // quick-log lives in the illness-hero cockpit (which embeds the SAME logger). The
+  // folded "Take any meds?" branch of the "How are you today?" check-in deliberately
+  // steps aside while illness is active (#1221) — the cockpit is the single dashboard
+  // instance of the `quick-log-prn` control, so this locator stays unambiguous. (The
+  // well-day check-in meds branch is covered by e2e/dashboard-daily-loop.spec.ts.)
   const widget = page.getByTestId("quick-log-prn");
   await expect(widget).toBeVisible();
 
