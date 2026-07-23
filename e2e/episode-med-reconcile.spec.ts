@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import path from "node:path";
 import { followLink } from "./nav";
 import { createProfileViaFamily, switchToProfile } from "./family-helpers";
+import { settledClick } from "./helpers";
 import {
   medicationRow,
   medicationList,
@@ -98,7 +99,7 @@ test.describe("Episode-end medication reconciliation (#880)", () => {
     const list = page.getByTestId("episode-med-reconcile-list");
     await expect(list).toBeVisible();
     await expect(list).toContainText("Ibuprofen");
-    await page.getByTestId("episode-med-reconcile-confirm").click();
+    await settledClick(page, page.getByTestId("episode-med-reconcile-confirm"));
 
     // 6) The ibuprofen has left Current for Past — the med list that IS the doctor-visit
     // artifact no longer misrepresents it as a standing med.
@@ -147,7 +148,7 @@ test.describe("Episode-end medication reconciliation (#880)", () => {
     await expect(page.getByTestId("episode-med-reconcile-list")).toContainText(
       "Ibuprofen"
     );
-    await page.getByTestId("episode-med-reconcile-confirm").click();
+    await settledClick(page, page.getByTestId("episode-med-reconcile-confirm"));
 
     // Part A (#1140): the just-resolved illness surfaces on the dashboard as a calm,
     // dismissible "Recently resolved — reopen?" line (within its 7-day window).
@@ -228,10 +229,12 @@ test.describe("Episode-end medication reconciliation (#880)", () => {
     const endField = page.getByTestId("med-end-date");
     await expect(endField).toBeVisible();
     await endField.fill("2025-08-15");
-    await page
-      .getByRole("main")
-      .getByRole("button", { name: "Save", exact: true })
-      .click();
+    // settledClick: await the save POST before the next goto so its in-flight
+    // action/refresh can't interleave into goto("/medications") on a cold shard (#1323).
+    await settledClick(
+      page,
+      page.getByRole("main").getByRole("button", { name: "Save", exact: true })
+    );
 
     await page.goto("/medications");
     await pastMedications(page).locator("summary").click();

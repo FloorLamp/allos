@@ -148,7 +148,12 @@ export async function switchToProfile(page: Page, name: string): Promise<void> {
     // The popover trigger can be clicked pre-hydration; no single awaitable event
     // covers "trigger opened AND target rendered", so re-open until it does.
   }).toPass(); // topass-ok: popover trigger pre-hydration re-open (#730)
-  await target.click();
+  // settledClick, not a bare click: the switch is a `<form action={switchProfileAction}>`
+  // submit whose POST + revalidatePath("/", "layout") refresh navigates the current route.
+  // A bare click awaits none of that, so on a cold shard the still-in-flight "/" navigation
+  // can interleave into the caller's NEXT goto and hijack it (#1323). Awaiting the switch
+  // POST here drains it before the caller navigates; toContainText then confirms it landed.
+  await settledClick(page, target);
   await expect(page.getByTestId("user-menu-trigger")).toContainText(name);
 }
 
