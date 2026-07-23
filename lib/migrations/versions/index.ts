@@ -96,6 +96,7 @@ import { migration as m094 } from "./094-episode-encounters";
 import { migration as m095 } from "./095-episode-stopped-meds";
 import { migration as m096 } from "./096-substance-log";
 import { migration as m097 } from "./097-progress-photos";
+import { migration as m098 } from "./098-weather-uv-cache";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -201,4 +202,5 @@ export const MIGRATIONS: Migration[] = [
   m095,
   m096,
   m097,
+  m098,
 ];

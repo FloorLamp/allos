@@ -113,6 +113,21 @@ export const INTEGRATIONS: IntegrationDef[] = [
     docsUrl: "https://developer.garmin.com/gc-developer-program/health-api/",
   },
   {
+    id: "weather",
+    name: "Weather & UV (Open-Meteo)",
+    kind: "public",
+    status: "available",
+    blurb:
+      "Bring in the actual UV index and solar irradiance at your home location, so " +
+      "your outdoor daylight time becomes a two-sided UV dose — enough sun for " +
+      "vitamin D and circadian light, but a heads-up before you'd burn. Powered by " +
+      "Open-Meteo: no API key or account, and its free historical archive backfills " +
+      "the UV for activities you already logged. Needs only your home location " +
+      "(Settings → Profile); works offline with a clear-sky estimate.",
+    dataTypes: ["UV index", "Solar irradiance"],
+    docsUrl: "https://open-meteo.com/",
+  },
+  {
     id: "calendar-feed",
     name: "Calendar feed",
     kind: "feed",

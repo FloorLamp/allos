@@ -90,6 +90,7 @@ import {
 import { runStravaSync } from "../lib/integrations/strava-sync";
 import { runOuraSync } from "../lib/integrations/oura-sync";
 import { runWithingsSync } from "../lib/integrations/withings-sync";
+import { runWeatherSync } from "../lib/integrations/weather-sync";
 
 const log = createLogger("notify");
 
@@ -232,6 +233,20 @@ async function syncIntegrations(profileId: number) {
     }
   } catch (e) {
     log.error("withings sync failed", {
+      profile: profileId,
+      err: e instanceof Error ? e : String(e),
+    });
+  }
+  try {
+    // Keyless Open-Meteo UV/weather (#1172): gated on the enable flag, and
+    // runWeatherSync itself no-ops without a home location. Idempotent rolling
+    // window, so re-fetching the overlap each tick is free.
+    if (getConnection(profileId, "weather")?.status === "connected") {
+      const r = await runWeatherSync(profileId);
+      log.info("weather sync", { profile: profileId, ...(r as object) });
+    }
+  } catch (e) {
+    log.error("weather sync failed", {
       profile: profileId,
       err: e instanceof Error ? e : String(e),
     });

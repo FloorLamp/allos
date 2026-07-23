@@ -95,6 +95,10 @@ export type UpcomingDomain =
   // but NEVER pushed — deliberately omitted from the digest DOMAIN_SEQ and given no
   // notify orchestrator, so no channel ever carries crisis content.
   | "mental-health"
+  // A day's cumulative outdoor UV dose past the skin-type burn (MED) threshold
+  // (issue #1172) — the care half of the two-sided UV-dose sun model. Care-tier,
+  // informational (never prescriptive); silent without a skin type.
+  | "uv-exposure"
   | "biomarker-flag"
   | "integration"
   | "review";
@@ -126,6 +130,9 @@ const DOMAIN_ORDER: Record<UpcomingDomain, number> = {
   // An active ototoxic-medication hearing-safety note (#717) — a care-tier
   // informational finding, alongside the other med-safety notes, ahead of scheduling.
   ototoxic: 5.6,
+  // A same-day UV overexposure heads-up (#1172) — a care-tier informational note,
+  // grouped with the other med-safety/care notes ahead of the scheduling domains.
+  "uv-exposure": 5.7,
   appointment: 6,
   careplan: 7,
   visit: 8,

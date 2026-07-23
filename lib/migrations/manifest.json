@@ -95,5 +95,6 @@
   "094-episode-encounters.ts": "630124f9e8cb00c4f64e727bfa4be7cb24816c0e9011aa69c30afa3de572e5f5",
   "095-episode-stopped-meds.ts": "2afae3c40b2b823abd9086833c7cd639f9b0f0f8bce1ffbb38a9a0a2450ba8a7",
   "096-substance-log.ts": "0cdeaa104f2b1ba5cdedab89104088036ad54ec300e9a3dab30e628b8a294013",
-  "097-progress-photos.ts": "6d599b6e592c880688247b58490ad6cd1a8b984d003278f7708779b173d7c1f5"
+  "097-progress-photos.ts": "6d599b6e592c880688247b58490ad6cd1a8b984d003278f7708779b173d7c1f5",
+  "098-weather-uv-cache.ts": "ae99c0845c849415c2075c4f3ad1542ec060d329c888cdbb53d0529734a574be"
 }

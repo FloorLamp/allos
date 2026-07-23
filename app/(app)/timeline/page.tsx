@@ -43,6 +43,7 @@ import {
   type TimelineCategory,
   type TimelineEvent,
 } from "@/lib/timeline";
+import { getUvDoseForDay } from "@/lib/queries/weather";
 import {
   getDaylightOutdoorMinutesByDay,
   getSymptomSeveritiesOnDate,
@@ -357,6 +358,27 @@ export default async function TimelinePage(props: {
         days.map((d) => d.date)
       )
     : new Map<string, number>();
+  // Per-day LIVE UV enrichment (#1172) for the DaylightChip — the SAME UV-dose
+  // computation (getUvDoseForDay) every UV surface formats. Computed only for days
+  // that actually logged outdoor daylight time, and only surfaced when the source is
+  // live (measured) UV, so with no integration / offline the chip degrades to
+  // minutes-only. Bounded: the visible day window.
+  const uvByDay = new Map<
+    string,
+    { uvMinutes: number | null; peakUvIndex: number | null }
+  >();
+  if (home) {
+    for (const [date, mins] of daylightOutdoor) {
+      if (mins <= 0) continue;
+      const dose = getUvDoseForDay(profile.id, date);
+      if (dose && dose.uvSource === "live") {
+        uvByDay.set(date, {
+          uvMinutes: dose.uvMinutes,
+          peakUvIndex: dose.peakUvIndex,
+        });
+      }
+    }
+  }
   // Recorded periods for the derived cycle phase + period marker on each day header
   // (issue #714). One profile-scoped read; the pure cyclePhaseOnDate/periodOnDate
   // derivations resolve per day. Empty (chip renders nothing) until periods are logged.
@@ -524,6 +546,7 @@ export default async function TimelinePage(props: {
                     date={day.date}
                     timezone={profileTimezone}
                     outdoorMinutes={daylightOutdoor.get(day.date) ?? 0}
+                    uv={uvByDay.get(day.date) ?? null}
                   />
                   <CyclePhaseChip
                     phase={cyclePhaseOnDate(cyclePeriods, day.date)}

@@ -992,3 +992,30 @@ export async function getWithingsAccessToken(
   });
   return parsed.access_token;
 }
+
+// ---- Weather / UV (Open-Meteo) ----
+
+// The keyless weather/UV provider (issue #1172). Open-Meteo needs NO API key/account,
+// so there is no token or OAuth config — the only prerequisite is the profile's home
+// location (Settings → Profile), and the connection's `config` stays null. The
+// integration_connections row is used purely as the enable/disable flag the hourly
+// tick reads (status === "connected") and the Integrations grid renders, mirroring the
+// other providers so the surface stays uniform. The cached hourly series itself is a
+// GLOBAL, location-keyed table (weather_uv_hours), not this per-profile row.
+export const WEATHER_ID = "weather";
+
+// Enable the weather/UV integration for a profile: mark the connection connected so the
+// tick auto-syncs and the grid shows "Connected". Keyless — no config to store.
+export function enableWeather(profileId: number) {
+  upsertConnection(profileId, WEATHER_ID, {
+    status: "connected",
+    config: null,
+  });
+}
+
+export function disconnectWeather(profileId: number) {
+  upsertConnection(profileId, WEATHER_ID, {
+    status: "disconnected",
+    config: null,
+  });
+}

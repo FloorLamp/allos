@@ -37,6 +37,7 @@ import {
   isValidTimezone,
   setTimezone,
   setHomeLocation,
+  setSkinType,
   isValidWeekStart,
   setWeekStart,
   isValidWeekMode,
@@ -50,6 +51,7 @@ import {
 import { parseCrisisResourcesText } from "@/lib/crisis-resources";
 import { parseCadence } from "@/lib/recommendation-run";
 import { parseHome } from "@/lib/home-location";
+import { parseSkinType } from "@/lib/uv-dose";
 import { reconcileFlags } from "@/lib/queries";
 import { sweepIngestWindowForTimezoneChange } from "@/lib/integrations/ingest-timezone-sweep";
 import { dispatch } from "@/lib/notifications";
@@ -185,6 +187,15 @@ export async function saveProfileSettings(formData: FormData) {
       const home = parseHome(latRaw, lngRaw);
       if (home) setHomeLocation(profile.id, home);
     }
+  }
+
+  // Fitzpatrick skin type (#1172): the burn (MED) threshold for the UV-dose
+  // overexposure side. "" → CLEAR (unset → overexposure stays silent); "1".."6" →
+  // stored. parseSkinType rejects anything else, so a bad value clears rather than
+  // persists garbage.
+  if (formData.has("skin_type")) {
+    const raw = String(formData.get("skin_type") ?? "").trim();
+    setSkinType(profile.id, raw === "" ? null : parseSkinType(raw));
   }
 
   // Week start (0=Sun … 6=Sat): where calendars break and, in calendar mode, when

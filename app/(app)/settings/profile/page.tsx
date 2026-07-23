@@ -6,6 +6,7 @@ import {
   getUserFullName,
   getTimezone,
   getHomeLocation,
+  getSkinType,
   getWeekStart,
   getWeekMode,
   getMaxHrOverride,
@@ -100,6 +101,7 @@ export default async function ProfileSettingsPage() {
               weekMode={weekMode}
               homeLat={home?.lat ?? null}
               homeLng={home?.lng ?? null}
+              skinType={getSkinType(profile.id)}
             />
           </section>
           {trainingShown && (

@@ -8,11 +8,21 @@ import type { HomeLocation } from "@/lib/home-location";
 // degrade-gracefully pattern), so callers can drop it in unconditionally.
 //
 // Server-safe (a pure formatter over solarDay). `date` is "YYYY-MM-DD".
+// A day's UV enrichment (issue #1172): the LIVE UV summary from the ONE UV-dose
+// computation (getUvDoseForDay). Passed only when actual measured UV is available for
+// the day's outdoor window; absent → the chip degrades to minutes-only (offline / no
+// integration), preserving #570's offline guarantee.
+export interface DaylightUv {
+  uvMinutes: number | null;
+  peakUvIndex: number | null;
+}
+
 export default function DaylightChip({
   home,
   date,
   timezone,
   outdoorMinutes = 0,
+  uv = null,
 }: {
   home: HomeLocation | null | undefined;
   date: string;
@@ -21,6 +31,9 @@ export default function DaylightChip({
   // getDaylightOutdoorMinutesByDay computation the coaching observation averages.
   // 0 → the "outdoors" line is omitted.
   outdoorMinutes?: number;
+  // Live UV enrichment for the day's outdoor window (#1172), or null to degrade to
+  // minutes-only. The caller only passes this when the source is measured/live.
+  uv?: DaylightUv | null;
 }) {
   if (!home) return null;
   const day = solarDay(home.lat, home.lng, date, timezone);
@@ -32,6 +45,16 @@ export default function DaylightChip({
         className="inline-flex items-center gap-1 text-brand-600 dark:text-brand-400"
       >
         ☀ {outdoorMinutes} min outdoors
+      </span>
+    ) : null;
+  const uvBadge =
+    uv && uv.peakUvIndex != null && uv.peakUvIndex > 0 ? (
+      <span
+        data-testid="daylight-uv"
+        className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400"
+        title="Peak UV index during your outdoor window"
+      >
+        UV {Math.round(uv.peakUvIndex)}
       </span>
     ) : null;
 
@@ -60,6 +83,7 @@ export default function DaylightChip({
         {day.sunset}
       </span>
       {outdoors}
+      {uvBadge}
     </div>
   );
 }

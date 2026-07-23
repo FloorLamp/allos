@@ -5,8 +5,8 @@ Status: **shipped** · descriptive documentation of current behavior, extracted 
 Connect outside services under **Data → Import** so your health data syncs
 automatically. Each provider has its own setup page (linked from the Import tab's
 "Connect a device or service" card). **Google Health Connect**, **Strava**,
-**Oura Ring**, and **Withings** are available today; **Garmin** is scaffolded as
-"coming soon".
+**Oura Ring**, **Withings**, and the keyless **Weather & UV (Open-Meteo)** source are
+available today; **Garmin** is scaffolded as "coming soon".
 
 ### Google Health Connect
 
@@ -201,6 +201,42 @@ re-fetches never double-count. **Manually entered rows are never overwritten**, 
 row you've hand-edited is left untouched on the next sync. Rate limits truncate the
 run and keep the cursor so the next tick resumes. Blood pressure lands as vitals and
 is reference-range flagged exactly like a manual reading.
+
+### Weather & UV (Open-Meteo)
+
+Unlike the device integrations, this one has **no account and no API key** — it fetches
+public weather data for the one location you've already set. It turns your outdoor
+daylight time (the sunrise/sunset intersection above) into a **two-sided UV dose**:
+enough sun for vitamin-D synthesis and circadian light, but a heads-up before you'd
+burn.
+
+1. Set your coarse **home location** on **Settings → Profile** (stored at ~11 km — city
+   scale, never a street address). This is the only prerequisite.
+2. Go to **Data → Import → Weather & UV (Open-Meteo)** and click **Enable**. The hourly
+   **UV index** and **solar irradiance** (shortwave/direct/diffuse W/m²) for that spot
+   then sync automatically every hour via [Open-Meteo](https://open-meteo.com/), and you
+   can press **Sync now** any time.
+3. Optionally add your **skin type (Fitzpatrick I–VI)** on Settings → Profile to switch
+   on the **overexposure** side (the burn-risk threshold). Left unset, only the "enough
+   sun" side is shown — the overexposure heads-up stays silent rather than guessing.
+
+**What it feeds.** Your outdoor daylight window is crossed with the UV that actually
+occurred during those hours — Open-Meteo's **free historical archive** backfills the UV
+for activities you already logged, so a past walk gets a real dose, not a forecast. The
+**sufficiency** side (were you out during meaningful-UV hours, roughly UV ≥ 3?) is a calm
+coaching signal; the **overexposure** side (cumulative erythemal dose past your skin
+type's MED) is a care-tier heads-up on Upcoming + the dashboard. The Timeline's daylight
+chip gains a UV badge for the day's outdoor window.
+
+**Offline / degradation.** Sun features stay fully functional without the network: the
+model degrades **live UV → a clear-sky estimate** (Open-Meteo's `uv_index_clear_sky`, or
+a sun-elevation ceiling computed locally) **→ the plain minutes-only behavior**. The
+overexposure side stays silent without a skin-type threshold rather than guessing.
+
+**Cache.** The hourly UV series is cached **per location, shared across profiles** (UV at
+a coordinate+hour is one physical fact), keyed on `(lat, lng, hour_ts)` and deduped on
+that key — a re-fetch of the same hour rewrites nothing. Every sync appends an
+`integration_sync_events` row under the acting profile (visible in **Data → Review**).
 
 ### Comparing sources & picking a primary one
 
