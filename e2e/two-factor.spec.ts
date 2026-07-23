@@ -32,7 +32,7 @@ async function completeTotpLogin(page: Page, secret: string): Promise<void> {
     await page.waitForURL((u) => !u.pathname.startsWith("/login"), {
       timeout: 10_000,
     });
-  }).toPass({ timeout: 45_000 });
+  }).toPass({ timeout: 45_000 }); // topass-ok: re-verify with a freshly minted TOTP until off /login — the time-based code can expire between attempts, so code+submit is re-driven
 }
 
 test("2FA: enroll, then second-factor login with code and recovery code (#23)", async ({
@@ -82,7 +82,7 @@ test("2FA: enroll, then second-factor login with code and recovery code (#23)", 
     await expect(m.getByTestId("twofa-recovery-codes")).toBeVisible({
       timeout: 5000,
     });
-  }).toPass({ timeout: 45_000 });
+  }).toPass({ timeout: 45_000 }); // topass-ok: re-activate with a fresh TOTP until the one-time recovery codes render — time-based code, re-driven per attempt
   const recoveryCode = (
     await m
       .getByTestId("twofa-recovery-codes")

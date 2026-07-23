@@ -40,7 +40,7 @@ async function logAndConfirm(
     await expect(
       bar.getByTestId(`symptom-${key}-sev-${level}`)
     ).toHaveAttribute("aria-pressed", "true", { timeout: 3_000 });
-  }).toPass({ timeout: 40_000 });
+  }).toPass({ timeout: 40_000 }); // topass-ok: reload-until-persisted: confirm the async severity write survives a reload; no single event marks 'persisted AND reflected'
 }
 
 // Symptom log (#799/#857). The seed activates the built-in illness-type "Illness"

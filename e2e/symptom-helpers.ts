@@ -11,9 +11,9 @@ import { settledClick } from "./helpers";
 // follow, handled by two composable mechanisms:
 //
 //   1. A trailing refresh can reset the bar's TRANSIENT client state (such as an open
-//      picker) mid-interaction. Every helper wraps its tap+assert in an
-//      auto-retrying expect(...).toPass(): if a refresh wiped the affordance, the retry
-//      re-does the (idempotent) tap.
+//      picker) mid-interaction. Every helper wraps its tap+assert in an auto-retrying
+//      expect poll: if a refresh wiped the affordance, the retry re-does the
+//      (idempotent) tap.
 //   2. The tap is OPTIMISTIC, so a later DEPENDENT step (a reload, a note UPDATE that
 //      needs the row committed) can race the write. Waiting for commit is a TAP-mode
 //      PARAMETER: a caller with dependent steps passes settledTap(page) — the
@@ -50,7 +50,7 @@ export async function ensureUnlogged(
     await expect(bar.getByTestId(`symptom-${key}`)).toHaveCount(0, {
       timeout: STEP,
     });
-  }).toPass({ timeout: OUTER });
+  }).toPass({ timeout: OUTER }); // topass-ok: driver-internal tap-retry: re-drive the affordance tap until its settledTap-armed wait lands; a refresh that wipes the affordance is re-driven
 }
 
 // Add a catalog symptom via the "＋ add symptom" picker — it logs at severity 1 and
@@ -74,7 +74,7 @@ export async function addFromPicker(
       }
     }
     await expect(row).toBeVisible({ timeout: STEP });
-  }).toPass({ timeout: OUTER });
+  }).toPass({ timeout: OUTER }); // topass-ok: driver-internal tap-retry: re-drive the affordance tap until its settledTap-armed wait lands; a refresh that wipes the affordance is re-driven
 }
 
 // Raise a logged symptom to a severity level (a tap only RAISES — worst-severity).
@@ -90,7 +90,7 @@ export async function raiseSeverity(
     await expect(chip).toHaveAttribute("aria-pressed", "true", {
       timeout: STEP,
     });
-  }).toPass({ timeout: OUTER });
+  }).toPass({ timeout: OUTER }); // topass-ok: driver-internal tap-retry: re-drive the affordance tap until its settledTap-armed wait lands; a refresh that wipes the affordance is re-driven
 }
 
 // Lowering is also a direct labeled-chip action. It writes through the dedicated lower
@@ -107,7 +107,7 @@ export async function lowerSeverity(
     await expect(chip).toHaveAttribute("aria-pressed", "true", {
       timeout: STEP,
     });
-  }).toPass({ timeout: OUTER });
+  }).toPass({ timeout: OUTER }); // topass-ok: driver-internal tap-retry: re-drive the affordance tap until its settledTap-armed wait lands; a refresh that wipes the affordance is re-driven
 }
 
 // Expand the collapsed temperature entry (idempotent — a no-op if already open; re-opens
@@ -119,7 +119,7 @@ export async function openTempEntry(bar: Locator): Promise<void> {
       await bar.getByTestId("temp-quick-toggle").click();
     }
     await expect(input).toBeVisible({ timeout: STEP });
-  }).toPass({ timeout: OUTER });
+  }).toPass({ timeout: OUTER }); // topass-ok: driver-internal tap-retry: re-drive the affordance tap until its settledTap-armed wait lands; a refresh that wipes the affordance is re-driven
 }
 
 // Set a symptom's one-line note and confirm it PERSISTED — the logAndConfirm
@@ -179,5 +179,5 @@ export async function saveNote(
     });
     // Budget note: the whole loop must fit inside the 30s per-test timeout, so
     // OUTER (25s) rather than a larger custom budget.
-  }).toPass({ timeout: OUTER });
+  }).toPass({ timeout: OUTER }); // topass-ok: driver-internal tap-retry: re-drive the affordance tap until its settledTap-armed wait lands; a refresh that wipes the affordance is re-driven
 }

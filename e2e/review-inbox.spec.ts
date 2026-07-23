@@ -74,7 +74,7 @@ test.describe("Data → Review import inbox", () => {
     await expect(async () => {
       if (!(await payload.isVisible())) await viewRaw.click();
       await expect(payload).toBeVisible({ timeout: 4000 });
-    }).toPass({ timeout: 20_000 });
+    }).toPass({ timeout: 20_000 }); // topass-ok: re-click the <details> until the payload shows — SSR satisfies the earlier asserts, so the discrete onToggle can be swallowed pre-hydration; no POST to settle on
     await expect(hcCard.getByText(/"Steps"/)).toBeVisible();
   });
 
