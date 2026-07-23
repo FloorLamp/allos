@@ -111,20 +111,23 @@ jobs:
   #   • auth.setup.ts is passed alongside so the login dependency runs even
   #     though the file filter wouldn't otherwise match it.
   #
-  # SHARED INFRA (#889): a PR that edits ONLY a shared e2e module — helpers.ts,
-  # seed-events.ts, fixture-logins.ts, nav.ts, symptom-helpers.ts, auth.setup.ts
-  # — changed no `*.spec.ts`, so the spec filter matched nothing and this lane
-  # used to skip entirely. That's backwards: shared infra is the HIGHEST blast
-  # radius (seed-events.ts + fixture-logins.ts build the seed EVERY spec runs
-  # against; nav.ts re-exports helpers.ts). A grep import-map would be
-  # structurally dishonest for exactly those files — it maps seed-events.ts to
-  # zero importing specs and would run nothing. So when any shared (non-spec)
-  # e2e/*.ts changed we fall back to the WHOLE suite at --retries=0 (no
-  # repeat-each): one bounded extra pass, total coverage for the infra blast
-  # radius. repeat-each is deliberately NOT applied suite-wide (that ~27 min run
-  # is the cost the fallback avoids). A mixed diff (spec + infra) does BOTH — the
-  # changed specs at --repeat-each=3 AND the full suite at --retries=0 — so
-  # neither set is dropped.
+  # This lane's ONLY additive job is that repeat-each=3 scrutiny on the CHANGED
+  # SPECS — the sharded `e2e` matrix below already runs the WHOLE suite at
+  # retries=0 on every non-docs PR, so total coverage is never this lane's to
+  # provide. It therefore gates on changed `*.spec.ts` and does nothing else.
+  #
+  # SHARED INFRA (was #889, removed): a PR editing ONLY a shared e2e module —
+  # seed-events.ts, fixture-logins.ts, helpers.ts, nav.ts, symptom-helpers.ts,
+  # auth.setup.ts — changes no spec, so this lane correctly skips. That is NOT a
+  # coverage gap: shared infra is the highest blast radius, but the sharded
+  # matrix runs the whole suite against the changed infra at retries=0 already,
+  # so it IS scrutinized. The old fallback re-ran the whole suite here too, in a
+  # single long-lived process — which added no repeat-each scrutiny, no faster
+  # verdict (~28 min, slower than the ~8 min matrix), and no coverage the matrix
+  # lacked, while reintroducing the exact single-worker cumulative degradation
+  # the matrix was SHARDED to avoid (the #1306 flake class: a spec fine when
+  # sharded, timing out deep into the single-worker crush). Dropped: the matrix
+  # owns infra coverage; this lane owns changed-spec repeat-each.
   e2e-changed:
     runs-on: ubuntu-latest
     steps:
@@ -134,9 +137,10 @@ jobs:
         with:
           fetch-depth: 2
 
-      # Cheap gate BEFORE the expensive setup/build: this job has work only when
-      # the PR touched something under e2e/. (Docs-only PRs trivially pass too.)
-      - name: Detect changed e2e files
+      # Cheap gate BEFORE the expensive setup/build: this job has work ONLY when
+      # the PR changed an e2e *spec* — an infra-only or docs-only PR skips it
+      # (the sharded matrix covers infra blast radius at retries=0).
+      - name: Detect changed e2e specs
         id: e2e-diff
         run: |
           BASE="${{ github.event.pull_request.base.sha }}"
@@ -144,34 +148,25 @@ jobs:
             BASE="HEAD^1"
           fi
           echo "base=$BASE" >> "$GITHUB_OUTPUT"
-          if git diff --name-only "$BASE" HEAD | grep -qE '^e2e/.*\.ts$'; then
+          if git diff --name-only "$BASE" HEAD | grep -qE '^e2e/.*\.spec\.ts$'; then
             echo "any=true" >> "$GITHUB_OUTPUT"
           else
             echo "any=false" >> "$GITHUB_OUTPUT"
-            echo "No changed e2e files - skipping the retries=0 lane."
+            echo "No changed e2e specs - skipping the repeat-each scrutiny lane."
           fi
 
       - uses: ./.github/actions/e2e-setup
         if: steps.e2e-diff.outputs.any == 'true'
 
-      - name: E2E changed specs + shared-infra scrutiny (retries=0)
+      - name: E2E changed specs (--repeat-each=3 --retries=0)
         if: steps.e2e-diff.outputs.any == 'true'
         run: |
           DIFF=$(git diff --name-only "${{ steps.e2e-diff.outputs.base }}" HEAD)
           CHANGED_SPECS=$(echo "$DIFF" | grep -E '^e2e/.*\.spec\.ts$' || true)
-          CHANGED_INFRA=$(echo "$DIFF" | grep -E '^e2e/.*\.ts$' | grep -vE '\.spec\.ts$' || true)
 
-          if [ -n "$CHANGED_SPECS" ]; then
-            echo "Changed e2e specs (running at --repeat-each=3 --retries=0):"
-            echo "$CHANGED_SPECS"
-            npx playwright test e2e/auth.setup.ts $CHANGED_SPECS --repeat-each=3 --retries=0
-          fi
-
-          if [ -n "$CHANGED_INFRA" ]; then
-            echo "Changed shared e2e infra (whole suite at --retries=0 - highest blast radius):"
-            echo "$CHANGED_INFRA"
-            npx playwright test --retries=0
-          fi
+          echo "Changed e2e specs (running at --repeat-each=3 --retries=0):"
+          echo "$CHANGED_SPECS"
+          npx playwright test e2e/auth.setup.ts $CHANGED_SPECS --repeat-each=3 --retries=0
 
       - name: Upload Playwright report
         if: ${{ !cancelled() && steps.e2e-diff.outputs.any == 'true' }}
