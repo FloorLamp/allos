@@ -602,10 +602,19 @@ export const REST_CARD_PROFILE = "Rest Card (e2e)";
 // #1151 — the aggregated Upcoming "Snoozed & dismissed" section. A dedicated
 // adult profile carrying one suppression from each class the section now spans:
 // a CARE snooze (a future appointment), a COACHING dismissal (a training-obs
-// plateau key), and a SUGGESTION dismissal (a med-bridge untracked
-// prescription, with its backing imported Rx record so a Restore makes it
-// reappear on /medications). Isolated on purpose: the spec restores/clears
+// plateau key), and a SUGGESTION dismissal (a med-bridge key with no backing
+// record — the shape a pre-092 dismissal leaves behind, labelled purely from
+// its key, #1232). Isolated on purpose: the spec restores/clears
 // suppression rows (and resets them itself), which on profile 1 would race the
 // needs-attention/coaching specs' bus reads.
 export const E2E_LOGIN_SUPPRESSED = "e2e_suppressed";
 export const SUPPRESSED_PROFILE = "Suppressed Center (e2e)";
+
+// #1063 — the mobile clipped-content audit. A dedicated profile whose Health
+// Connect connection is seeded CONNECTED with a long, synthetic DB-backed token,
+// so the mobile-overflow spec can assert the endpoint/token rows fit a phone
+// viewport WITHOUT generating or rotating anything — the HEALTH_CONNECT_PROFILE
+// above is owned by the generate→rotate spec, whose token mutations would race a
+// concurrent reader under parallel workers. Read-only in its spec.
+export const E2E_LOGIN_MOBILE_HC = "e2e_mobile_hc";
+export const MOBILE_HC_PROFILE = "Mobile HC (e2e)";

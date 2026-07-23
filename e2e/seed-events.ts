@@ -18,6 +18,8 @@ import {
 } from "../lib/date";
 import { writeRawPayload } from "../lib/integrations/raw-log";
 import { upsertConnection } from "../lib/integrations/connections";
+import { seedDupReviewPair } from "./dup-review-fixture";
+import { EDIT_LOCK_SIGNATURE } from "./edit-lock-fixture";
 import {
   setDashboardLayout,
   setProfileSetting,
@@ -61,6 +63,8 @@ import {
   E2E_LOGIN_NAV_MALE,
   NAV_MALE_PROFILE,
   E2E_LOGIN_HC,
+  E2E_LOGIN_MOBILE_HC,
+  MOBILE_HC_PROFILE,
   E2E_LOGIN_NOGEAR,
   E2E_LOGIN_FITNESS,
   E2E_LOGIN_FITNESS_SENIOR,
@@ -442,52 +446,11 @@ ins.run(
 
 // ── Duplicate/conflict fixtures (issue #10, Phase 2) ──────────────────────────
 // A cross-source ACTIVITY pair on one day: a manually-logged "Morning run" and a
-// Strava-imported run with overlapping clock times — a HIGH-confidence duplicate
-// the Review inbox must surface with merge/keep-both/dismiss actions. Clear any
-// prior fixtures first so re-seeding is idempotent. Synthetic data only.
-const DUP_DATE = "2026-07-07";
-// Idempotency cleanup scoped to THIS fixture's rows only (its titles + its own
-// external_id) — a blanket source='strava' delete on the date silently ate the
-// provenance fixture's "Strava morning ride" whenever seed.ts's relative
-// daysAgo(3) rolled onto DUP_DATE (it did on 2026-07-10, failing
-// journal-provenance suite-wide until the date moved on).
-db.prepare(
-  `DELETE FROM activities WHERE profile_id = ? AND date = ? AND (external_id = 'strava:e2e-run-1' OR title IN ('Morning run', 'Afternoon Run'))`
-).run(PROFILE_ID, DUP_DATE);
-db.prepare(`DELETE FROM import_pair_decisions WHERE profile_id = ?`).run(
-  PROFILE_ID
-);
-
-const insActivity = db.prepare(
-  `INSERT INTO activities
-     (profile_id, date, type, title, duration_min, distance_km,
-      start_time, end_time, source, external_id, edited)
-   VALUES (?, ?, 'cardio', ?, ?, ?, ?, ?, ?, ?, 0)`
-);
-// Manual entry (source NULL): the user's own "Morning run".
-insActivity.run(
-  PROFILE_ID,
-  DUP_DATE,
-  "Morning run",
-  32,
-  5.0,
-  "08:00",
-  "08:32",
-  null,
-  null
-);
-// Strava import of the same run, overlapping times → detected as a duplicate.
-insActivity.run(
-  PROFILE_ID,
-  DUP_DATE,
-  "Afternoon Run",
-  33,
-  5.1,
-  "08:02",
-  "08:35",
-  "strava",
-  "strava:e2e-run-1"
-);
+// Strava-imported run with overlapping clock times — a HIGH-confidence duplicate the
+// Review inbox must surface with merge/keep-both/dismiss actions. The seeder lives in
+// e2e/dup-review-fixture.ts so import-dedup.spec.ts (which MERGES the pair) can re-seed
+// it per test and stay repeat-safe (#868). Synthetic data only.
+seedDupReviewPair(db, PROFILE_ID);
 
 // ── Manual pair-merge fixture (issue #64) ─────────────────────────────────────
 // Two same-day MANUAL cardio activities the Journal's manual merge test folds
@@ -1556,18 +1519,24 @@ console.log(
 );
 
 // ── Import-detail tabbed records-browser fixture (issue #271) ─────────────────
-// A 'done' document that produced rows across several kinds — labs + a
-// prescription (medical_records), a visit, a condition, an immunization, and a
-// referenced provider — so the records browser has a multi-tab strip to render:
-// default tab, ?tab= selection, category-correct row links (the prescription →
-// /medications regression), the read-only visit listing deep-linking to
-// /encounters/[id], and the Providers chip (linking to /providers). Fixed id 908; all content
-// synthetic (fictional analytes/clinic/patient — no real PHI).
+// A 'done' document that produced rows across several kinds — labs + a projected
+// medication (intake_items, the single medication entity an imported prescription
+// becomes post-#1178 — never a medical_records 'prescription' row, #1232), a
+// visit, a condition, an immunization, and a referenced provider — so the records
+// browser has a multi-tab strip to render: default tab, ?tab= selection,
+// category-correct row links (the medication → /medications regression), the
+// read-only visit listing deep-linking to /encounters/[id], and the Providers
+// chip (linking to /providers). Fixed id 908; all content synthetic (fictional
+// analytes/clinic/patient — no real PHI).
 const BROWSER_DOC_ID = 908;
 const BROWSER_DOC_SOURCE = `document:${BROWSER_DOC_ID}`;
 db.prepare(`DELETE FROM medical_records WHERE document_id = ?`).run(
   BROWSER_DOC_ID
 );
+// FK is ON (lib/db.ts), so this cascades the med's doses/courses/logs.
+db.prepare(
+  `DELETE FROM intake_items WHERE profile_id = ? AND document_id = ?`
+).run(PROFILE_ID, BROWSER_DOC_ID);
 db.prepare(`DELETE FROM encounters WHERE document_id = ?`).run(BROWSER_DOC_ID);
 db.prepare(`DELETE FROM conditions WHERE document_id = ?`).run(BROWSER_DOC_ID);
 db.prepare(`DELETE FROM immunizations WHERE source = ?`).run(
@@ -1631,18 +1600,36 @@ insBrowserRecord.run(
   BROWSER_DOC_ID,
   null
 );
-insBrowserRecord.run(
-  PROFILE_ID,
-  "prescription",
-  "E2E Amoxicillin 500 mg",
-  null,
-  null,
-  null,
-  null,
-  "E2E Amoxicillin 500 mg",
-  BROWSER_DOC_ID,
-  null
+// The document's projected MEDICATION (#1178/#1232): the current single-entity
+// shape persistExtractedMedications writes for a CCD prescription — a
+// kind='medication' intake_items row (source='extracted', document_id, the
+// stable `medimport:` import_key), the strength carried on a dose row (an
+// as-needed med, no fabricated reminder), and an initial open course. Loratadine
+// pairs with the seeded "E2E Hay fever" condition and is off the curated
+// interaction/allergy sets, so it adds no warnings to shared surfaces.
+const browserMedId = Number(
+  db
+    .prepare(
+      `INSERT INTO intake_items
+         (name, notes, active, condition, priority, kind, as_needed,
+          document_id, source, provider_id, import_key, profile_id)
+       VALUES (?, NULL, 1, 'daily', 'high', 'medication', 1,
+               ?, 'extracted', NULL, ?, ?)`
+    )
+    .run(
+      "E2E Loratadine",
+      BROWSER_DOC_ID,
+      `medimport:${BROWSER_DOC_ID}|e2e loratadine`,
+      PROFILE_ID
+    ).lastInsertRowid
 );
+db.prepare(
+  `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+   VALUES (?, '10 mg', NULL, 'any', 0)`
+).run(browserMedId);
+db.prepare(
+  `INSERT INTO medication_courses (item_id, started_on) VALUES (?, '2026-06-20')`
+).run(browserMedId);
 db.prepare(
   `INSERT INTO encounters
      (profile_id, date, type, class_code, reason, document_id, source)
@@ -1658,7 +1645,7 @@ db.prepare(
 ).run(PROFILE_ID, BROWSER_DOC_SOURCE);
 
 console.log(
-  `e2e: seeded import document ${BROWSER_DOC_ID} with labs + prescription + visit + condition + immunization for the records browser (#271)`
+  `e2e: seeded import document ${BROWSER_DOC_ID} with labs + medication + visit + condition + immunization for the records browser (#271)`
 );
 
 // ── Import-detail type-appropriate panels fixture (issue #1182) ──────────────
@@ -1729,44 +1716,13 @@ console.log(
   `e2e: seeded import document ${PANELS_DOC_ID} with a lab + a vitals row + a provider for the type-appropriate panels (#1182)`
 );
 
-// ── Records bridge fixture (#817) ────────────────────────────────────────────
-// Two imported prescription records (documentless) with NO matched tracked med, so
-// the /medications "From your records" bridge has deterministic suggest-only rows:
-// one to TRACK (→ becomes a medication) and one to DISMISS (→ disappears via the
-// findings bus). Fully synthetic names with no trailing strength, so cleanMedicationName
-// is the identity — the tracked med and the dismissal key are predictable. Idempotent:
-// the records, any med tracked from a prior run, and the dismissal are all reset each
-// boot so both rows show again on a fresh run.
-const BRIDGE_TRACK_MED = "E2E Bridge Track Med";
-const BRIDGE_DISMISS_MED = "E2E Bridge Dismiss Med";
-// A THIRD untracked prescription dedicated to the #852 item 6 dismiss→restore round-trip
-// (kept separate from the Track/Dismiss rows so that spec never collides with theirs).
-const BRIDGE_RESTORE_MED = "E2E Bridge Restore Med";
-db.prepare(
-  `DELETE FROM medical_records WHERE profile_id = ? AND category = 'prescription' AND name IN (?, ?, ?)`
-).run(PROFILE_ID, BRIDGE_TRACK_MED, BRIDGE_DISMISS_MED, BRIDGE_RESTORE_MED);
-db.prepare(`DELETE FROM intake_items WHERE profile_id = ? AND name = ?`).run(
-  PROFILE_ID,
-  BRIDGE_TRACK_MED
-);
-db.prepare(
-  `DELETE FROM upcoming_dismissals WHERE profile_id = ? AND signal_key IN (?, ?)`
-).run(
-  PROFILE_ID,
-  `med-bridge:${BRIDGE_DISMISS_MED.toLowerCase()}`,
-  `med-bridge:${BRIDGE_RESTORE_MED.toLowerCase()}`
-);
-const insBridgeRx = db.prepare(
-  `INSERT INTO medical_records
-     (profile_id, date, category, name, canonical_name, source)
-   VALUES (?, '2026-06-10', 'prescription', ?, ?, 'ccda')`
-);
-insBridgeRx.run(PROFILE_ID, BRIDGE_TRACK_MED, BRIDGE_TRACK_MED);
-insBridgeRx.run(PROFILE_ID, BRIDGE_DISMISS_MED, BRIDGE_DISMISS_MED);
-insBridgeRx.run(PROFILE_ID, BRIDGE_RESTORE_MED, BRIDGE_RESTORE_MED);
-console.log(
-  `e2e: seeded records-bridge fixture (untracked prescriptions "${BRIDGE_TRACK_MED}" + "${BRIDGE_DISMISS_MED}" + "${BRIDGE_RESTORE_MED}") (#817/#852)`
-);
+// The old records-bridge fixture (#817/#852) seeded documentless medical_records
+// category='prescription' rows here. Removed by #1232: migration 092 consolidated
+// every such row into the single medication entity (intake_items) and NO current
+// write path produces the shape anymore, so the fixture was re-creating a state
+// the app itself can never reach (failure class 7 — a fixture feeding a dead
+// legacy read path). The "From your records" bridge is legacy-only by
+// construction now (its removal is tracked as an owner decision on #1232).
 
 // An imported visit whose notes carry a real line break (issue #794 cluster 11a),
 // so the encounter-detail notes test can pin that multi-line notes render with
@@ -2163,6 +2119,26 @@ seedMemberLogin(E2E_LOGIN_STRAVA, stravaReauthId);
 // A dedicated, connection-less profile for the Health Connect generate→rotate flow.
 const healthConnectId = fixtureProfileId(HEALTH_CONNECT_PROFILE);
 seedMemberLogin(E2E_LOGIN_HC, healthConnectId);
+
+// #1063 — a dedicated Health Connect profile seeded already CONNECTED with a
+// long, synthetic DB-backed token, so the mobile-overflow spec renders the
+// endpoint/token card read-only (never generating or rotating — those mutations
+// belong to the E2E_LOGIN_HC spec above and would race a concurrent reader).
+const mobileHcId = fixtureProfileId(MOBILE_HC_PROFILE);
+upsertConnection(mobileHcId, "health-connect", {
+  status: "connected",
+  config: {
+    // Synthetic 64-char token of hex characters (real generated tokens are 48
+    // hex chars), so the row is provably wider than a 360px viewport without
+    // wrapping. Deliberately LOW-entropy ("e2e0" × 16) — a random-looking hex
+    // string trips the gitleaks generic-api-key rule even when fake.
+    token: "e2e0".repeat(16),
+    tokenCreatedAt: utcSqlString(
+      new Date(clockNow().getTime() - 24 * 3600 * 1000)
+    ),
+  },
+});
+seedMemberLogin(E2E_LOGIN_MOBILE_HC, mobileHcId);
 
 // ── Nutrition trio (#974 protein gauge / #975 preferences / #976 fiber) ──────
 // A dedicated adult profile carrying everything the three nutrition surfaces read: a
@@ -3230,10 +3206,12 @@ console.log(
 // and periodically lands ON any fixed date (it hit 06-05 on 2026-07-18 and broke CI
 // suite-wide). Compute a guaranteed-free day instead, anchored ~6 weeks back like
 // the original. Idempotent: the fixture row is re-keyed by its synthetic signature
-// (source + exact weight), so prior seeds' copies are removed wherever they landed.
+// (source + exact weight — the shared EDIT_LOCK_SIGNATURE that edit-lock-badge.spec's
+// beforeEach restores the lock by), so prior seeds' copies are removed wherever they
+// landed.
 db.prepare(
-  `DELETE FROM body_metrics WHERE profile_id = ? AND source = 'withings' AND weight_kg = 77.7`
-).run(PROFILE_ID);
+  `DELETE FROM body_metrics WHERE profile_id = ? AND source = ? AND weight_kg = ?`
+).run(PROFILE_ID, EDIT_LOCK_SIGNATURE.source, EDIT_LOCK_SIGNATURE.weightKg);
 let editLockDate = shiftDateStr(today(PROFILE_ID), -43);
 while (
   db
@@ -3244,8 +3222,13 @@ while (
 }
 db.prepare(
   `INSERT INTO body_metrics (profile_id, date, weight_kg, source, edited)
-   VALUES (?, ?, 77.7, 'withings', 1)`
-).run(PROFILE_ID, editLockDate);
+   VALUES (?, ?, ?, ?, 1)`
+).run(
+  PROFILE_ID,
+  editLockDate,
+  EDIT_LOCK_SIGNATURE.weightKg,
+  EDIT_LOCK_SIGNATURE.source
+);
 console.log(
   `e2e: seeded an edit-locked (hand-edited) Withings body-metric row on ${editLockDate} (computed cadence-free day) for the edit-lock badge (#659)`
 );
@@ -4264,8 +4247,8 @@ console.log(
 }
 
 // ── Record ↔ visit / episode ↔ visit linking fixture (#1050/#1053) ──────────────
-// A self-contained profile: one visit, a same-day UNLINKED medication (with its
-// prescription record + a course started that day so the tier-2 engine dates it), and
+// A self-contained profile: one visit, a same-day UNLINKED medication (with a
+// course started that day so the tier-2 engine dates it), and
 // an illness episode spanning that day with NO linked visit. The spec drives the
 // "From this visit?" batch link, the med "Prescribed at" line, and the cockpit Care
 // suggestion → link → encounter back-link. OWNS every row (dedicated profile), so the
@@ -4295,8 +4278,9 @@ console.log(
       `INSERT INTO encounters (profile_id, date, type, class_code, reason, provider_id)
        VALUES (?, ?, 'Office Visit', 'AMB', 'Sinus infection', ?)`
     ).run(vlProfileId, VL_DATE, vlProviderId);
-    // An unlinked medication + its prescription record + a course dated VL_DATE, with
-    // the SAME provider so the suggestion reads STRONG.
+    // An unlinked medication + a course dated VL_DATE, with the SAME provider so
+    // the suggestion reads STRONG. (The med IS the tier-2 candidate — #1178
+    // removed the paired medical_records 'prescription' row / 'record' domain.)
     const vlMedId = Number(
       db
         .prepare(
@@ -4308,10 +4292,6 @@ console.log(
     db.prepare(
       "INSERT INTO medication_courses (item_id, started_on) VALUES (?, ?)"
     ).run(vlMedId, VL_DATE);
-    db.prepare(
-      `INSERT INTO medical_records (profile_id, date, category, name, provider_id)
-       VALUES (?, ?, 'prescription', 'Amoxicillin 500 mg (e2e)', ?)`
-    ).run(vlProfileId, VL_DATE, vlProviderId);
     // An illness episode spanning VL_DATE, no linked visit yet.
     db.prepare(
       `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
@@ -4607,8 +4587,9 @@ console.log(
 // A dedicated profile whose "Snoozed & dismissed" section spans all three
 // classes: a CARE snooze (future appointment), a COACHING dismissal (a
 // training-obs plateau key — no backing rows needed; the dismissal IS the fact),
-// and a SUGGESTION dismissal (a med-bridge untracked prescription whose backing
-// imported Rx record exists, so a Restore makes it reappear on /medications).
+// and a SUGGESTION dismissal (a med-bridge key resolved purely from its prefix —
+// post-#1178/092 no backing medical_records 'prescription' row can exist, and a
+// dismissal that outlived its record is a REAL current-state shape, #1232).
 // Idempotent: the spec ALSO resets these suppression rows itself before each
 // test (retries / --repeat-each), so this boot-time seed only guarantees the
 // backing data + a first-run state. All synthetic.
@@ -4631,19 +4612,9 @@ console.log(
       .run(scId, `${shiftDateStr(scToday, 5)} 10:00`).lastInsertRowid
   );
 
-  // Backing untracked prescription for the med-bridge suggestion.
-  db.prepare(
-    `DELETE FROM medical_records WHERE profile_id = ? AND category = 'prescription' AND name = 'E2E Suppressed Rx'`
-  ).run(scId);
-  db.prepare(
-    `DELETE FROM intake_items WHERE profile_id = ? AND name = 'E2E Suppressed Rx'`
-  ).run(scId);
-  db.prepare(
-    `INSERT INTO medical_records (profile_id, date, category, name, canonical_name, source)
-     VALUES (?, '2026-06-12', 'prescription', 'E2E Suppressed Rx', 'E2E Suppressed Rx', 'ccda')`
-  ).run(scId);
-
-  // The three suppression rows (the spec re-asserts these per test).
+  // The three suppression rows (the spec re-asserts these per test). The
+  // med-bridge key needs no backing row — the section's resolver labels it from
+  // the key alone (lib/suppression-display.ts), and Restore simply clears it.
   db.prepare(`DELETE FROM upcoming_dismissals WHERE profile_id = ?`).run(scId);
   db.prepare(
     `INSERT INTO upcoming_dismissals (profile_id, signal_key, snooze_until)

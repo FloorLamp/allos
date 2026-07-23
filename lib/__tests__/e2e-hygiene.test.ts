@@ -161,18 +161,10 @@ const WAITFORTIMEOUT_ALLOW: Record<string, number> = {
 // two lists above: migrate a spec onto an exact locator / dedicated fixture and
 // LOWER its number in the same PR; a NEW unmarked .first() (or a new file) fails.
 const FIRST_ALLOW: Record<string, number> = {
-  // edit-lock-badge carries a latent class-1 flake (a batch sibling mutates
-  // profile 1's body metrics that /trends?tab=body reads; exposed only when
-  // co-located at --repeat-each). Its two .first() stay frozen until a focused fix.
-  "edit-lock-badge.spec.ts": 2,
   // illness-care carries a latent class-1 flake (a sibling mutates profile 1's
   // seeded illness state; exposed only when co-located at --repeat-each). Its lone
   // .first() stays frozen here until that flake is fixed in a focused follow-up.
   "illness-care.spec.ts": 1,
-  // import-dedup merges (consumes) its seeded dup pair on the first run and never
-  // recreates it, so a --repeat-each iteration finds the badge already at 2 (not 3).
-  // Its 3 .first() stay frozen until the spec resets its dup-pair fixture per test.
-  "import-dedup.spec.ts": 3,
   // dose-history-row .first() (newest seeded dose) deferred to a dedicated-fixture
   // pass — its safety rests on every OTHER spec only backdating writes to this
   // SHARED med, which is too fragile to bless with a marker.
@@ -199,7 +191,8 @@ const TOPASS_ALLOW: Record<string, number> = {
   "illness-hero.spec.ts": 1,
   "illness-round3.spec.ts": 1,
   "kids-growth.spec.ts": 1,
-  "medications-page.spec.ts": 2,
+  // medications-page shed its two unmarked .toPass( when the records-bridge tests
+  // left with their legacy fixture (#1232) — its remaining loop is topass-ok-marked.
   "medications-ux-r2.spec.ts": 1,
   "mobility.spec.ts": 1,
   "nav-consolidation.spec.ts": 1,

@@ -42,8 +42,11 @@ import {
   bodyMetricRow,
   sampleRow,
   unscopeExternalId,
+  type DiffRow,
   type ImportSnapshot,
 } from "../import-diff";
+import { getMedMatchStates } from "./intake/medications";
+import { medNameKey } from "../medication-record-match";
 
 export interface ImportLogDocumentRow {
   kind: "document";
@@ -861,4 +864,37 @@ export function getReprocessSnapshot(
   snap.headCircs = headCircs.map((h) => sampleRow("hc", h.date, h.value));
 
   return snap;
+}
+
+// The medications snapshot above keys on intake_items.document_id — but since the
+// #1204 renewal consolidation, a drug a document derives that the profile ALREADY
+// tracks persists as courses on the EXISTING item, and no intake_items row carries
+// the later document's id. Left alone, every later document's reprocess preview
+// shows those drugs as phantom "+ added" medications. This folds the derived rows
+// that match a tracked med — by the SAME name/brand key the renewal matcher uses
+// (medNameKey) — into the persisted side, so they compare unchanged. That is the
+// truthful preview: committing adds nothing (the renewal path creates no item, and
+// its course insert dedups on (item_id, started_on)). A derived drug the profile
+// does NOT track still previews as added.
+export function foldConsolidatedMedsIntoSnapshot(
+  profileId: number,
+  snap: ImportSnapshot,
+  derivedMeds: DiffRow[]
+): void {
+  const have = new Set(snap.medications.map((m) => m.key));
+  let trackedKeys: Set<string> | null = null;
+  for (const row of derivedMeds) {
+    if (have.has(row.key)) continue;
+    if (trackedKeys == null) {
+      trackedKeys = new Set();
+      for (const med of getMedMatchStates(profileId)) {
+        trackedKeys.add(medNameKey(med.name));
+        if (med.brand) trackedKeys.add(medNameKey(med.brand));
+      }
+    }
+    if (trackedKeys.has(medNameKey(row.label))) {
+      have.add(row.key);
+      snap.medications.push({ ...row });
+    }
+  }
 }

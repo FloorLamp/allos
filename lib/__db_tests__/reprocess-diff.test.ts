@@ -8,10 +8,26 @@
 // confirm will produce.
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { getReprocessSnapshot } from "@/lib/queries";
-import { persistDocumentImport } from "@/lib/import-persist";
+import {
+  getCanonicalVocabulary,
+  getReprocessSnapshot,
+  previewReconcileFlags,
+  foldConsolidatedMedsIntoSnapshot,
+} from "@/lib/queries";
+import {
+  persistDocumentImport,
+  applyImportFollowups,
+} from "@/lib/import-persist";
 import { snapshotFromPersistInput, computeImportDiff } from "@/lib/import-diff";
+import { healthRecordToPersistInput } from "@/lib/import-shape";
 import type { PersistInput } from "@/lib/import-shape";
+import { persistHealthRecordDoc } from "@/lib/health-record-doc";
+import { parseHealthRecord } from "@/lib/health-record-parse";
+import {
+  buildCanonicalIndex,
+  snapCanonicalNameIntoBatch,
+  distinguishVitaminDIsoform,
+} from "@/lib/canonical-name";
 import { db } from "@/lib/db";
 
 const DATE = "2020-05-01";
@@ -259,5 +275,275 @@ describe("reprocess-diff preview then commit", () => {
     persistDocumentImport(profileId, docId, reprocessed);
     const after = getReprocessSnapshot(profileId, docId);
     expect(computeImportDiff(after, next).hasChanges).toBe(false);
+  });
+});
+
+// The two preview-phantom classes: a byte-identical reprocess must preview clean.
+//
+// (1) Derived flags: applyImportFollowups → reconcileFlags writes app-derived
+// flags (canonical ranges) onto persisted rows AFTER the persist boundary, while
+// the preview's extraction side carries only source-stated flags — so every
+// derived flag read as "changed: flag → none". previewReconcileFlags is the
+// preview twin that derives the same flags onto the fresh input.
+//
+// (2) Consolidated medications (#1204): a drug a later document derives that the
+// profile already tracks persists as renewal courses on the EXISTING item — no
+// intake_items row carries the later document_id — so the later document's
+// preview showed it as a phantom "+ added" med. foldConsolidatedMedsIntoSnapshot
+// folds tracked matches into the persisted side.
+describe("reprocess preview phantoms", () => {
+  it("previewReconcileFlags derives the same flag the commit-side reconcile wrote", () => {
+    const pid = newProfile("PHANTOM-FLAGS");
+    const did = newDocument(pid, "flags.ccd");
+    const glucoseHigh = () =>
+      makeInput({
+        records: [
+          {
+            category: "lab",
+            name: "Glucose",
+            canonical: "Glucose",
+            value: "200",
+            value_num: 200,
+            unit: "mg/dL",
+            date: DATE,
+            reference_range: null,
+            flag: null, // the source states no flag — the app derives one
+            panel: "Metabolic",
+            notes: null,
+            source: "ccda",
+            external_id: "obs:glucose-hi",
+            loinc: null,
+            provider: null,
+            courses: null,
+          },
+          {
+            // Qualitative pass: a durable-immunity titer gets a derived 'immune'
+            // (#544) — the second flavor of app-derived flag the preview must mirror.
+            category: "lab",
+            name: "Rubella Antibody IgG",
+            canonical: "Rubella Antibody IgG",
+            value: "Immune",
+            value_num: null,
+            unit: null,
+            date: DATE,
+            reference_range: null,
+            flag: null,
+            panel: null,
+            notes: null,
+            source: "ccda",
+            external_id: "obs:rubella-igg",
+            loinc: null,
+            provider: null,
+            courses: null,
+          },
+        ],
+        immunizations: [],
+        allergies: [],
+        conditions: [],
+        encounters: [],
+        bodyMetrics: [],
+        heights: [],
+        headCircs: [],
+      });
+    const persisted = persistDocumentImport(pid, did, glucoseHigh());
+    applyImportFollowups(pid, {
+      demographics: null,
+      canonicalNames: [],
+      insertedRecordIds: persisted.insertedRecordIds,
+    });
+    // Sanity: the follow-ups really derived both flag flavors (else vacuous).
+    const storedFlags = db
+      .prepare(
+        "SELECT name, flag FROM medical_records WHERE profile_id = ? ORDER BY name"
+      )
+      .all(pid) as { name: string; flag: string | null }[];
+    expect(storedFlags).toEqual([
+      { name: "Glucose", flag: "high" },
+      { name: "Rubella Antibody IgG", flag: "immune" },
+    ]);
+
+    // Without enrichment: the phantom (flag high/immune → none).
+    const raw = glucoseHigh();
+    expect(
+      computeImportDiff(
+        getReprocessSnapshot(pid, did),
+        snapshotFromPersistInput(raw)
+      ).hasChanges
+    ).toBe(true);
+
+    // With the preview twin: both flavors derived identically → clean.
+    previewReconcileFlags(pid, raw.records);
+    expect(raw.records[0].flag).toBe("high");
+    expect(raw.records[1].flag).toBe("immune");
+    expect(
+      computeImportDiff(
+        getReprocessSnapshot(pid, did),
+        snapshotFromPersistInput(raw)
+      ).hasChanges
+    ).toBe(false);
+  });
+
+  it("foldConsolidatedMedsIntoSnapshot keeps a renewal-consolidated med out of 'added'", () => {
+    const pid = newProfile("PHANTOM-MEDS");
+    const rx = (name: string, ext: string) => ({
+      category: "prescription" as const,
+      name,
+      canonical: name,
+      value: null,
+      value_num: null,
+      unit: null,
+      date: DATE,
+      reference_range: null,
+      flag: null,
+      panel: null,
+      notes: null,
+      source: "ccda",
+      external_id: ext,
+      loinc: null,
+      provider: null,
+      courses: null,
+    });
+    const bare = {
+      immunizations: [],
+      allergies: [],
+      conditions: [],
+      encounters: [],
+      bodyMetrics: [],
+      heights: [],
+      headCircs: [],
+    };
+    const docA = newDocument(pid, "A.ccd");
+    persistDocumentImport(
+      pid,
+      docA,
+      makeInput({ ...bare, records: [rx("Ibuprofen 200 mg", "med:ibu-a")] })
+    );
+    const inputB = () =>
+      makeInput({
+        ...bare,
+        records: [
+          rx("Ibuprofen 200 mg", "med:ibu-b"),
+          rx("Cetirizine 10 mg", "med:cet-b"),
+        ],
+      });
+    const docB = newDocument(pid, "B.ccd");
+    persistDocumentImport(pid, docB, inputB());
+
+    // The renewal consolidated Ibuprofen onto doc A's item — doc B owns only
+    // Cetirizine, so the raw preview shows Ibuprofen as a phantom addition.
+    const current = getReprocessSnapshot(pid, docB);
+    expect(current.medications.map((m) => m.key)).toEqual(["med:cetirizine"]);
+    const next = snapshotFromPersistInput(inputB());
+    const rawDiff = computeImportDiff(current, next);
+    expect(
+      rawDiff.entities
+        .find((e) => e.entity === "medications")!
+        .added.map((m) => m.key)
+    ).toEqual(["med:ibuprofen"]);
+
+    // Folded: the tracked match compares unchanged; nothing added or removed.
+    foldConsolidatedMedsIntoSnapshot(pid, current, next.medications);
+    const folded = computeImportDiff(current, next);
+    const meds = folded.entities.find((e) => e.entity === "medications")!;
+    expect(meds.added).toEqual([]);
+    expect(meds.removed).toEqual([]);
+    expect(meds.unchanged.map((m) => m.key).sort()).toEqual([
+      "med:cetirizine",
+      "med:ibuprofen",
+    ]);
+
+    // A derived drug the profile does NOT track still previews as added.
+    const withNew = makeInput({
+      ...bare,
+      records: [
+        rx("Ibuprofen 200 mg", "med:ibu-b"),
+        rx("Cetirizine 10 mg", "med:cet-b"),
+        rx("Amoxicillin 400 mg", "med:amox-b"),
+      ],
+    });
+    const current2 = getReprocessSnapshot(pid, docB);
+    const next2 = snapshotFromPersistInput(withNew);
+    foldConsolidatedMedsIntoSnapshot(pid, current2, next2.medications);
+    const diff2 = computeImportDiff(current2, next2);
+    expect(
+      diff2.entities
+        .find((e) => e.entity === "medications")!
+        .added.map((m) => m.key)
+    ).toEqual(["med:amoxicillin"]);
+  });
+});
+
+// (3) Canonical-vocabulary feedback: an import carrying TWO spellings of one
+// analyte ("Zeta Antibody IgG" / "Zeta Antibody (IgG)" — same normalized key)
+// used to register BOTH into the vocabulary (each record snapped only against the
+// PRE-import vocabulary), splitting the series and making the next snap's winner
+// an arbitrary alphabetical pick — so a byte-identical reprocess renamed
+// canonicals. The batch-aware snap collapses same-key spellings within one import
+// onto the first occurrence.
+describe("intra-batch canonical collapse (end-to-end)", () => {
+  const TWO_SPELLINGS_CCD = `<?xml version="1.0"?>
+<ClinicalDocument xmlns="urn:hl7-org:v3">
+  <effectiveTime value="20200501"/>
+  <recordTarget><patientRole><patient>
+    <name><given>Test</given><family>Patient</family></name>
+  </patient></patientRole></recordTarget>
+  <component><structuredBody>
+    <component><section>
+      <templateId root="2.16.840.1.113883.10.20.22.2.3.1"/>
+      <code code="30954-2" codeSystem="2.16.840.1.113883.6.1"/>
+      <title>Results</title>
+      <entry><organizer classCode="BATTERY" moodCode="EVN">
+        <component><observation classCode="OBS" moodCode="EVN">
+          <code code="99991-1" codeSystem="2.16.840.1.113883.6.1" displayName="Zeta Antibody IgG"/>
+          <effectiveTime value="20200501"/>
+          <value type="PQ" value="10" unit="U/mL"/>
+        </observation></component>
+        <component><observation classCode="OBS" moodCode="EVN">
+          <code code="99992-9" codeSystem="2.16.840.1.113883.6.1" displayName="Zeta Antibody (IgG)"/>
+          <effectiveTime value="20200501"/>
+          <value type="PQ" value="20" unit="U/mL"/>
+        </observation></component>
+      </organizer></entry>
+    </section></component>
+  </structuredBody></component>
+</ClinicalDocument>`;
+
+  it("one import of two same-key spellings yields one canonical, one vocabulary entry, and a clean preview", () => {
+    const pid = newProfile("BATCH-SNAP");
+    const did = newDocument(pid, "two-spellings.ccd");
+    const buffer = Buffer.from(TWO_SPELLINGS_CCD);
+    const outcome = persistHealthRecordDoc(pid, did, buffer);
+    expect(outcome.status).toBe("done");
+
+    // Both rows share the batch's FIRST spelling; only that one registered.
+    const canonicals = db
+      .prepare(
+        "SELECT DISTINCT canonical_name FROM medical_records WHERE profile_id = ?"
+      )
+      .all(pid) as { canonical_name: string }[];
+    expect(canonicals.map((c) => c.canonical_name)).toEqual([
+      "Zeta Antibody IgG",
+    ]);
+    const vocab = db
+      .prepare("SELECT name FROM canonical_biomarkers WHERE name LIKE 'Zeta%'")
+      .all() as { name: string }[];
+    expect(vocab.map((v) => v.name)).toEqual(["Zeta Antibody IgG"]);
+
+    // Reprocess preview (the extractPersistInputForPreview shape): re-parse,
+    // batch-snap against the NOW-registered vocabulary, enrich, diff → clean.
+    const { parsed, source } = parseHealthRecord(buffer);
+    const index = buildCanonicalIndex(getCanonicalVocabulary());
+    for (const r of parsed.records) {
+      r.canonical = snapCanonicalNameIntoBatch(
+        distinguishVitaminDIsoform(r.canonical, r.name),
+        index
+      );
+    }
+    const input = healthRecordToPersistInput(parsed, source, "MyChart export");
+    previewReconcileFlags(pid, input.records);
+    const current = getReprocessSnapshot(pid, did);
+    const next = snapshotFromPersistInput(input);
+    foldConsolidatedMedsIntoSnapshot(pid, current, next.medications);
+    expect(computeImportDiff(current, next).hasChanges).toBe(false);
   });
 });

@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   buildPillars,
   optimalRangeHitRate,
+  PILLAR_TONE_LABEL,
   type BiomarkerReading,
+  type PillarTone,
 } from "@/lib/healthspan-pillars";
 import { formatPercentile, type FitnessPercentile } from "@/lib/fitness-norms";
 import { bioAgeDelta, bioAgeDeltaPhrase } from "@/lib/bio-age";
@@ -53,6 +55,30 @@ describe("optimalRangeHitRate", () => {
 
   it("empty input yields a zero denominator (pillar hides)", () => {
     expect(optimalRangeHitRate([])).toEqual({ optimal: 0, total: 0 });
+  });
+});
+
+describe("PILLAR_TONE_LABEL (the non-color channel, #1220)", () => {
+  it("pairs every judging tone with a distinct, non-empty text label", () => {
+    const judging: PillarTone[] = ["good", "warn", "bad"];
+    const labels = judging.map((t) => PILLAR_TONE_LABEL[t]);
+    for (const label of labels) {
+      expect(label).toBeTruthy();
+      expect(typeof label).toBe("string");
+    }
+    // Distinct labels — two tones sharing one word would re-collapse the
+    // judgment the badge exists to distinguish.
+    expect(new Set(labels).size).toBe(judging.length);
+  });
+
+  it("pins the exact badge wording each pillar surface renders", () => {
+    expect(PILLAR_TONE_LABEL.good).toBe("Good");
+    expect(PILLAR_TONE_LABEL.warn).toBe("Fair");
+    expect(PILLAR_TONE_LABEL.bad).toBe("Poor");
+  });
+
+  it("neutral makes no judgment, so it carries no label", () => {
+    expect(PILLAR_TONE_LABEL.neutral).toBeNull();
   });
 });
 

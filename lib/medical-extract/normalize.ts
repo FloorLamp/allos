@@ -6,6 +6,7 @@ import { strOrNull } from "../parse";
 import { isRealIsoDate } from "../date";
 import {
   buildCanonicalIndex,
+  claimCanonicalKey,
   snapCanonicalName,
   distinguishVitaminDIsoform,
   isGarbageCanonical,
@@ -216,6 +217,11 @@ export function normalizeResults(
       str(r?.unit),
       canonicalIndex
     );
+    // Batch collapse: claim the FINAL resolved name's key in this extraction's
+    // index (post unit-arbitration, so the claim can't disagree with it), so a
+    // later same-key spelling in the same document snaps onto this one instead of
+    // both registering into the vocabulary and splitting the analyte's series.
+    if (canonicalName) claimCanonicalKey(canonicalName, canonicalIndex);
     // #1076: the canonical dataset owns the classification. When the resolved
     // canonical name is in the controlled vocabulary, its category WINS over the
     // model's guess — so an extracted PHQ-9 joins the instrument series (never
