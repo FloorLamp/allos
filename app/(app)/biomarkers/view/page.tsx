@@ -32,7 +32,7 @@ import {
   humanizeAge,
 } from "@/lib/reference-range";
 import { convertToCanonical, sameUnit } from "@/lib/unit-conversions";
-import { getBiomarkerInfo } from "@/lib/biomarker-info";
+import { getBiomarkerInfo } from "@/lib/datasets/biomarker-descriptions";
 import {
   getUnitPrefs,
   getUserAgeOn,

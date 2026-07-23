@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import canonical from "@/lib/canonical-biomarkers.json";
 import descriptionsJson from "@/lib/datasets/data/biomarker-descriptions.json";
-import { getBiomarkerInfo } from "@/lib/biomarker-info";
+import { getBiomarkerInfo } from "@/lib/datasets/biomarker-descriptions";
 
 // The dataset migrated onto the curated-dataset framework (#860 Track B): it moved
 // from an object map to an identity-keyed entries array. Rebuild the exact-name → info
