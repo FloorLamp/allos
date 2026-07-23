@@ -50,6 +50,7 @@ import {
   getSmokingHistory,
   getRiskAttributesReviewed,
 } from "./settings";
+import { isMinor } from "./life-stage";
 import {
   getMedicationsMissingRxcuiCount,
   getMedicationMissingRxcuiSoleId,
@@ -686,6 +687,9 @@ export function buildFoodHabitFindings(profileId: number): Finding[] {
 // (the observation exists only against the user's OWN goal). No owned SQL added
 // here (reads through the profile-scoped query layer).
 export function buildSubstanceUseFindings(profileId: number): Finding[] {
+  // The substance-use surface is adult-gated (#1174/#1279); never emit a coaching
+  // finding that deep-links a known minor to a now-redirected route.
+  if (isMinor(getUserAge(profileId))) return [];
   const out: Finding[] = [];
   for (const state of getAllSubstanceWeekStates(profileId)) {
     if (!state.status || !state.status.over) continue;

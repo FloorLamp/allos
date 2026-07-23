@@ -1465,7 +1465,12 @@ export async function previewReprocessById(
   // Consolidated medications (#1204): a derived drug the profile already tracks
   // under another document persists as renewal courses, not a new item — fold
   // those into the persisted side so they don't preview as phantom additions.
-  foldConsolidatedMedsIntoSnapshot(profileId, current, next.medications);
+  foldConsolidatedMedsIntoSnapshot(
+    profileId,
+    current,
+    next.medications,
+    extracted.input.records
+  );
   // Stash the reduced input under a single-use token so the confirmed apply commits
   // exactly what the user is reviewing. The staleness key pins the document row's
   // current state; the apply refuses the cached input if it has since changed.

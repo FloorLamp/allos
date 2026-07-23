@@ -8,10 +8,11 @@
 // cross-profile fetch by id. The static scanners can't see across the action
 // boundary; this is the dynamic guard.
 
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
+import { revalidatePath } from "next/cache";
 import {
   uploadProgressPhoto,
   deleteProgressPhoto,
@@ -21,6 +22,8 @@ import { db } from "@/lib/db";
 import { readJpegExif } from "@/lib/photo/exif";
 import { spliceExifIntoJpeg } from "@/lib/photo/exif-fixture";
 import { seedActor, createLogin, createProfile, actAs } from "./harness";
+
+const revalidate = vi.mocked(revalidatePath);
 
 let gpsJpeg: Buffer;
 
@@ -97,6 +100,19 @@ describe("uploadProgressPhoto", () => {
     // The bytes ON DISK are metadata-free even though the client sent GPS.
     const disk = fs.readFileSync(path.resolve(process.cwd(), row.stored_path));
     expect(readJpegExif(disk)).toMatchObject({ hasExif: false, hasGps: false });
+  });
+
+  it("revalidates both /progress and / so the data-gated sidebar nav entry appears after the first photo (#1282)", async () => {
+    seedActor();
+    revalidate.mockClear();
+    const res = await uploadProgressPhoto(
+      photoForm(gpsJpeg, { pose: "front" })
+    );
+    expect(res.ok).toBe(true);
+    // "/" refreshes the shared layout's nav relevance (relevanceKey "progress"),
+    // matching the sleep/mood precedent — else the link stays hidden until reload.
+    expect(revalidate).toHaveBeenCalledWith("/progress");
+    expect(revalidate).toHaveBeenCalledWith("/");
   });
 
   it("an explicit form date beats the EXIF date", async () => {
@@ -213,9 +229,13 @@ describe("deleteProgressPhoto + serve-route scoping", () => {
     ).toMatchObject({ c: 1 });
     expect(intruder.profile.id).not.toBe(owner.profile.id);
 
-    // The owner's delete really removes row + file.
+    // The owner's delete really removes row + file, and revalidates "/" too so the
+    // nav entry re-hides when the last photo is gone (#1282, symmetric with upload).
     actAs(owner.login, owner.profile);
+    revalidate.mockClear();
     expect((await deleteProgressPhoto(fdDel)).ok).toBe(true);
+    expect(revalidate).toHaveBeenCalledWith("/progress");
+    expect(revalidate).toHaveBeenCalledWith("/");
     expect(
       db
         .prepare(`SELECT COUNT(*) c FROM progress_photos WHERE id = ?`)
