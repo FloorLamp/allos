@@ -1,3 +1,4 @@
+import { NOT_A_DIAGNOSIS } from "@/lib/disclaimers";
 import Link from "next/link";
 import { today } from "@/lib/db";
 import { EmptyState } from "@/components/ui";
@@ -91,8 +92,7 @@ export default function SubstanceUseSection({
                   `${r.instrument} on ${r.date}: ${r.total} (${r.band.label.toLowerCase()})`
               )
               .join(" · ")}
-            . A screening score is not a diagnosis — it&rsquo;s a conversation
-            starter.
+            . {NOT_A_DIAGNOSIS} A screening score is a conversation starter.
           </p>
         </Notice>
       ) : null}

@@ -1,3 +1,4 @@
+import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import Link from "next/link";
 import { today } from "@/lib/db";
 import { HOUSEHOLD_HISTORY_HREF } from "@/lib/hrefs";
@@ -182,7 +183,7 @@ export default function VisitsSection({
             Already happened
           </span>
           . Imported visits come from uploaded health records (CCD Encounters
-          section). Informational only, not medical advice.
+          section). {MEDICAL_DISCLAIMER}
         </p>
         <EncounterList items={encounters} defaultDate={now} />
       </section>

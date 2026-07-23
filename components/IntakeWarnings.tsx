@@ -1,3 +1,4 @@
+import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import { IconAlertTriangle, IconChevronDown } from "@tabler/icons-react";
 import { FindingCard } from "@/components/FindingCard";
 import {
@@ -170,7 +171,7 @@ export default function IntakeWarnings({
                   </>
                 }
                 detail={hit.mechanism}
-                evidence={`Informational, not medical advice — discuss with your prescriber or pharmacist. Source: ${hit.source}`}
+                evidence={`${MEDICAL_DISCLAIMER} Discuss with your prescriber or pharmacist. Source: ${hit.source}`}
                 dismissKey={hit.dedupeKey}
                 dismissLabel={`Dismiss ${interactionTitle(hit)} interaction`}
               />
@@ -229,7 +230,7 @@ export default function IntakeWarnings({
                 icon={false}
                 title={ototoxicTitle(hit)}
                 detail={hit.note}
-                evidence={`Informational — a general note about the medication class, not advice to change anything; discuss any hearing or balance concern with your prescriber. Source: ${hit.citation}`}
+                evidence={`${MEDICAL_DISCLAIMER} A general note about the medication class, not a recommendation to change anything; discuss any hearing or balance concern with your prescriber. Source: ${hit.citation}`}
                 dismissKey={hit.dedupeKey}
                 dismissLabel={`Dismiss ${ototoxicTitle(hit)} hearing-safety note`}
               />

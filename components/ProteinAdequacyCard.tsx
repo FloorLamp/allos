@@ -1,3 +1,4 @@
+import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import type { ReactNode } from "react";
 import {
   proteinIntakeSummary,
@@ -87,7 +88,7 @@ export default function ProteinAdequacyCard({
         {(adequacy?.intake.basis ?? today?.todayIntake?.basis) !== "tracked"
           ? "A floor from your logged food-group servings plus any protein you logged directly — untracked foods add more. "
           : ""}
-        Informational, not medical or dietary advice.
+        {MEDICAL_DISCLAIMER}
       </p>
     </div>
   );

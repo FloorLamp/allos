@@ -1,3 +1,4 @@
+import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import { EmptyState } from "@/components/ui";
 import { getCoverageGaps, getCoverageGapCandidates } from "@/lib/queries";
 import { taskEndpointInfo } from "@/lib/ai-resolve";
@@ -44,7 +45,7 @@ export default function CoverageSection({ profileId }: { profileId: number }) {
         AI-generated context is descriptive only and{" "}
         <span className="font-medium">unverified</span> — it never sets a
         reference range, flag, or interaction. Curated data drives all clinical
-        logic. Informational, not medical advice.
+        logic. {MEDICAL_DISCLAIMER}
       </p>
     </div>
   );

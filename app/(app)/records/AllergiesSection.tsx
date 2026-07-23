@@ -1,3 +1,4 @@
+import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import Link from "next/link";
 import {
   getAllergies,
@@ -116,9 +117,9 @@ export default function AllergiesSection({ profileId }: { profileId: number }) {
       <div className="min-w-0 space-y-4">
         <AllergyForm action={addAllergy} />
         <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-          Informational only, not medical advice. Allergen-specific IgE
-          (RAST/ImmunoCAP) results are surfaced as sensitizations when above
-          range or class ≥ 1; total serum IgE is excluded.
+          {MEDICAL_DISCLAIMER} Allergen-specific IgE (RAST/ImmunoCAP) results
+          are surfaced as sensitizations when above range or class ≥ 1; total
+          serum IgE is excluded.
         </p>
       </div>
     </div>

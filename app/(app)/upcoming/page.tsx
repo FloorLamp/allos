@@ -244,8 +244,8 @@ export default async function UpcomingPage() {
           />
           <span>
             Preventive visit &amp; screening suggestions are based on general
-            guidelines and are informational only — your provider&apos;s advice
-            wins.
+            guidelines and are informational only — your provider&apos;s
+            guidance wins.
           </span>
         </p>
       )}

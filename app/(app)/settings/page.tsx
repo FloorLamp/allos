@@ -8,6 +8,7 @@ import {
 import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
 import { isDemoMode, isDemoRestricted } from "@/lib/demo";
 import { getLoginTotpState, countUnusedRecoveryCodes } from "@/lib/two-factor";
+import Link from "next/link";
 import { PageHeader } from "@/components/ui";
 import AppVersion from "@/components/AppVersion";
 import SettingsTabs from "./SettingsTabs";
@@ -69,8 +70,17 @@ export default async function SettingsPage() {
         />
       )}
       <ActiveSessions sessions={sessions} canRevoke={!demoRestricted} />
-      <footer className="mt-10 border-t border-black/10 pt-4 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">
-        Version <AppVersion />
+      <footer className="mt-10 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-black/10 pt-4 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">
+        <span>
+          Version <AppVersion />
+        </span>
+        <span aria-hidden>·</span>
+        <Link
+          href="/disclaimer"
+          className="underline-offset-2 hover:text-slate-700 hover:underline dark:hover:text-slate-200"
+        >
+          Disclaimer
+        </Link>
       </footer>
     </div>
   );

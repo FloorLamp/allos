@@ -1,3 +1,4 @@
+import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import { getProcedures, getProviderNames } from "@/lib/queries";
 import ProviderDatalist from "@/components/ProviderDatalist";
 import ProcedureForm from "@/app/(app)/procedures/ProcedureForm";
@@ -33,8 +34,8 @@ export default function ProceduresSection({
         <div className="min-w-0 space-y-4">
           <ProcedureForm action={addProcedure} prefillName={prefillName} />
           <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-            Informational only, not medical advice. Imported procedures come
-            from uploaded health records (CCD Procedures section).
+            {MEDICAL_DISCLAIMER} Imported procedures come from uploaded health
+            records (CCD Procedures section).
           </p>
         </div>
       </div>

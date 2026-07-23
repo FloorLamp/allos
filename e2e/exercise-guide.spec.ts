@@ -39,7 +39,8 @@ test("the exercise detail panel shows a How-to guide for a catalog lift, and non
   const guide = main.getByTestId("exercise-guide").first(); // first-ok: asserts an exercise guide renders — order-agnostic presence
   await expect(guide).toBeVisible();
   await expect(guide).toContainText("How to");
-  await expect(guide).toContainText("Form reference, not medical advice");
+  await expect(guide).toContainText("Form reference");
+  await expect(guide).toContainText("Informational, not medical advice");
   await expect(guide.getByTestId("guide-setup")).toBeVisible();
   await expect(guide.getByTestId("guide-execution")).toBeVisible();
 
@@ -79,7 +80,7 @@ test("the strength set editor's ⓘ opens the shared guide overlay for a catalog
   await expect(dialog).toContainText("How to: Barbell Bench Press");
   const guide = dialog.getByTestId("exercise-guide");
   await expect(guide).toBeVisible();
-  await expect(guide).toContainText("Form reference, not medical advice");
+  await expect(guide).toContainText("Informational, not medical advice");
   await expect(guide.getByTestId("guide-setup")).toBeVisible();
   // Bench Press carries a Barbell-specific note; the overlay is scoped to the
   // selected implement, so its equipment-notes block shows the Barbell cue.

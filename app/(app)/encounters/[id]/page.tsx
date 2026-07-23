@@ -1,3 +1,4 @@
+import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -260,8 +261,8 @@ export default async function EncounterDetailPage(props: {
       />
 
       <p className="mt-4 px-1 text-xs text-slate-500 dark:text-slate-400">
-        Informational only, not medical advice. Imported visits come from
-        uploaded health records (CCD Encounters section).
+        {MEDICAL_DISCLAIMER} Imported visits come from uploaded health records
+        (CCD Encounters section).
       </p>
     </PageContainer>
   );

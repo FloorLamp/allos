@@ -1,3 +1,4 @@
+import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import {
   getDentalProcedures,
   getDentalProcedureFollowUps,
@@ -40,8 +41,8 @@ export default function DentalSection({ profileId }: { profileId: number }) {
       <div className="min-w-0 space-y-4">
         <DentalProcedureForm action={addDentalProcedure} />
         <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-          Informational only, not medical advice. This is a record of dental
-          work and findings, not a clinical charting tool.
+          {MEDICAL_DISCLAIMER} This is a record of dental work and findings, not
+          a clinical charting tool.
         </p>
       </div>
     </div>

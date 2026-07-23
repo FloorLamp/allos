@@ -1,3 +1,4 @@
+import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import {
   fiberIntakeSummary,
   fiberTargetSummary,
@@ -68,7 +69,7 @@ export default function FiberAdequacyCard({
         {intake.basis !== "tracked"
           ? "A floor from your logged food-group servings plus any fiber supplements you confirmed — untracked foods add more. "
           : ""}
-        Informational, not medical or dietary advice.
+        {MEDICAL_DISCLAIMER}
       </p>
     </div>
   );

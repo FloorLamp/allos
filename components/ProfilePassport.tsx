@@ -1,3 +1,4 @@
+import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import {
   DEFAULT_FORMAT_PREFS,
   formatDateShape,
@@ -684,9 +685,8 @@ export default function ProfilePassport({
 
       {/* Footer: generated date + disclaimer (screen + print). */}
       <footer className="px-1 pb-4 text-xs text-slate-500 dark:text-slate-400">
-        Generated {fmtDate(generatedAt, formatPrefs)}. This summary is for
-        informational purposes only and is not medical advice or a complete
-        medical record.
+        Generated {fmtDate(generatedAt, formatPrefs)}. {MEDICAL_DISCLAIMER} This
+        summary is not a complete medical record.
       </footer>
     </div>
   );

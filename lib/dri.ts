@@ -25,6 +25,7 @@
 // Everything here is INFORMATIONAL, never prescriptive: the copy is "discuss with
 // your clinician", never "stop taking X".
 
+import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import type { Sex } from "./types";
 import type { ConditionInput } from "./condition-codes";
 import { conditionsContraindicatingNutrient } from "./condition-nutrient";
@@ -439,7 +440,7 @@ export function rdaAdequacyDetail(a: RdaAdequacy): string {
   const rda = `${fmtAmount(a.rda)} ${a.unit}`;
   return (
     `Your supplements alone provide about ${amt}/day of ${a.label} — roughly ${a.sharePct}% of the ${rda}/day RDA for your age. ` +
-    `Food provides the rest, so a low share here does NOT mean a shortfall — it's just what your stack contributes. Informational, not medical advice.`
+    `Food provides the rest, so a low share here does NOT mean a shortfall — it's just what your stack contributes. ${MEDICAL_DISCLAIMER}`
   );
 }
 

@@ -1,3 +1,4 @@
+import { NOT_A_DIAGNOSIS } from "@/lib/disclaimers";
 import { requireSession } from "@/lib/auth";
 import { isInstrument, type Instrument } from "@/lib/mental-health";
 import MentalHealthSection from "../../MentalHealthSection";
@@ -23,8 +24,7 @@ export default async function RecordsMentalHealthPage(props: {
     <div data-testid="records-mental-health">
       <SectionSubtitle>
         Track validated screening instruments — PHQ-9 and GAD-7 — as
-        severity-banded scores over time. A screening tool, not a diagnosis.
-        Informational, not medical advice.
+        severity-banded scores over time. A screening tool. {NOT_A_DIAGNOSIS}
       </SectionSubtitle>
       <MentalHealthSection
         profileId={profile.id}

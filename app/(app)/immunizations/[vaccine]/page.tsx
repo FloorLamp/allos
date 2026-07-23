@@ -1,3 +1,4 @@
+import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import Link from "next/link";
 import { IconArrowLeft } from "@tabler/icons-react";
 import { requireSession } from "@/lib/auth";
@@ -243,8 +244,8 @@ export default async function VaccineDetailPage(props: {
         <div className="min-w-0 space-y-4">
           <OverrideControls vaccine={code} current={override} />
           <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-            Informational only, not medical advice. Overrides affect only how
-            this profile&rsquo;s schedule is scored here.
+            {MEDICAL_DISCLAIMER} Overrides affect only how this profile&rsquo;s
+            schedule is scored here.
           </p>
         </div>
       </div>

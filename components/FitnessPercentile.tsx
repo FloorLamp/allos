@@ -1,3 +1,4 @@
+import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import {
   fitnessContext,
   formatPercentile,
@@ -52,8 +53,8 @@ export function FitnessPercentileCard({ ctx }: { ctx: FitnessContext | null }) {
       </div>
       <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
         Compared with same-age, same-sex population norms ({ctx.source}) —
-        informational, not medical advice. Fitness age is the age whose median
-        value matches your reading.
+        {MEDICAL_DISCLAIMER} Fitness age is the age whose median value matches
+        your reading.
       </p>
     </div>
   );

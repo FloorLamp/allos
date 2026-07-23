@@ -21,6 +21,7 @@
 //   • The tone is INFORMATIONAL, never alarmist: this is a quantified-self signal, not
 //     a "you've had too much" verdict — dose is a provider conversation.
 
+import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import type { ImagingModality } from "./types/medical";
 import {
   RADIATION_DOSE_ENTRIES,
@@ -252,7 +253,8 @@ export function doseFramingNote(pediatric: boolean): string {
   return (
     "A running estimate for context, not a limit. Whether imaging is worthwhile is a " +
     "conversation to have with your provider, who weighs it against why the study was " +
-    "needed. Informational, not medical advice."
+    "needed. " +
+    MEDICAL_DISCLAIMER
   );
 }
 

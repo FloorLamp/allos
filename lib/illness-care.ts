@@ -22,6 +22,7 @@
 // hero + the Telegram nudge through the shared dismissal bus. This module only
 // DECIDES + phrases; it owns no surface.
 
+import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import { daysBetweenDateStr } from "./date";
 import type { AssembledEpisode, SymptomSeries } from "./illness-episode-format";
 import {
@@ -222,12 +223,12 @@ export function detectIllnessCareFindings(
 // "informational, not medical advice" tail. The Finding envelope keeps the source +
 // tail in its own `evidence` slot instead (see the builder).
 export function illnessCareFullDetail(f: IllnessCareFinding): string {
-  return `${f.detail} Source: ${f.source} Informational, not medical advice.`;
+  return `${f.detail} Source: ${f.source} ${MEDICAL_DISCLAIMER}`;
 }
 
 // The Finding.evidence line: the source + the non-negotiable disclaimer tail.
 export function illnessCareEvidence(f: IllnessCareFinding): string {
-  return `Source: ${f.source} Informational, not medical advice.`;
+  return `Source: ${f.source} ${MEDICAL_DISCLAIMER}`;
 }
 
 // ---- Nudge episode-dedup planning (pure) -----------------------------------

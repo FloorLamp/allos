@@ -13,6 +13,7 @@
 // since the last antipyretic administration) must clear the threshold. Taking a fever
 // reducer masks fever, so it resets the clock exactly like a fresh fever reading.
 
+import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import type { TemperatureUnit } from "./settings";
 import { fmtTemp } from "./units";
 
@@ -106,7 +107,7 @@ export function formatSchoolReturnLine(
   return (
     `Fever-free ${status.feverFreeHours}h (${annotation}) — the common ` +
     `school/daycare guideline is fever-free for ${status.thresholdHours}h ` +
-    `without a fever reducer. Informational, not medical advice.`
+    `without a fever reducer. ${MEDICAL_DISCLAIMER}`
   );
 }
 

@@ -1,3 +1,4 @@
+import { MEDICAL_DISCLAIMER } from "@/lib/disclaimers";
 import {
   getSkinLesions,
   getSkinLesionFollowUps,
@@ -34,9 +35,9 @@ export default function SkinSection({ profileId }: { profileId: number }) {
       <div className="min-w-0 space-y-4">
         <SkinLesionForm action={addSkinLesion} />
         <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-          Informational only, not medical advice. This is a self-monitoring
-          record for you and your dermatologist — it tracks and compares
-          lesions, it does not assess them.
+          {MEDICAL_DISCLAIMER} This is a self-monitoring record for you and your
+          dermatologist — it tracks and compares lesions, it does not assess
+          them.
         </p>
       </div>
     </div>
