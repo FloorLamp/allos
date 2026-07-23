@@ -83,7 +83,11 @@ test.describe("Profile switch does not replay document history as toasts (#296)"
       page,
       page
         .getByTestId("user-menu-popover")
-        .getByRole("button", { name: TOAST_SWITCH_B_PROFILE })
+        // Act-as switch button by its `switch-to-<id>` testid (#1096), scoped to
+        // this profile's row — the sibling "eye" view toggle also carries the name
+        // in its aria-label, so a getByRole name match would resolve both.
+        .locator('[data-testid^="switch-to-"]')
+        .filter({ hasText: TOAST_SWITCH_B_PROFILE })
     );
     await expect(page.getByTestId("user-menu-trigger")).toContainText(
       TOAST_SWITCH_B_PROFILE
@@ -100,7 +104,11 @@ test.describe("Profile switch does not replay document history as toasts (#296)"
       page,
       page
         .getByTestId("user-menu-popover")
-        .getByRole("button", { name: TOAST_SWITCH_A_PROFILE })
+        // Act-as switch button by its `switch-to-<id>` testid (#1096), scoped to
+        // this profile's row — the sibling "eye" view toggle also carries the name
+        // in its aria-label, so a getByRole name match would resolve both.
+        .locator('[data-testid^="switch-to-"]')
+        .filter({ hasText: TOAST_SWITCH_A_PROFILE })
     );
     await expect(page.getByTestId("user-menu-trigger")).toContainText(
       TOAST_SWITCH_A_PROFILE

@@ -130,7 +130,13 @@ test.describe("Illness-episode view (#801)", () => {
     // button never appears. Re-click until the popover actually shows the target.
     const rileyButton = member
       .getByTestId("user-menu-popover")
-      .getByRole("button", { name: "Riley (child)" });
+      // Target the act-as switch button by its `switch-to-<id>` testid (#1096),
+      // scoped to the row showing this profile's name — the sibling per-profile
+      // "eye" view toggle also carries the name in its aria-label, so a getByRole
+      // name match would resolve both. The toggle's icon-only button has no text,
+      // so hasText selects only the switch button.
+      .locator('[data-testid^="switch-to-"]')
+      .filter({ hasText: "Riley (child)" });
     await expect(async () => {
       await member.getByTestId("user-menu-trigger").click();
       await expect(rileyButton).toBeVisible({ timeout: 2_000 });
@@ -168,7 +174,13 @@ test.describe("Illness-episode view (#801)", () => {
     // through the pre-hydration window — see the sibling test).
     const rileyButton = member
       .getByTestId("user-menu-popover")
-      .getByRole("button", { name: "Riley (child)" });
+      // Target the act-as switch button by its `switch-to-<id>` testid (#1096),
+      // scoped to the row showing this profile's name — the sibling per-profile
+      // "eye" view toggle also carries the name in its aria-label, so a getByRole
+      // name match would resolve both. The toggle's icon-only button has no text,
+      // so hasText selects only the switch button.
+      .locator('[data-testid^="switch-to-"]')
+      .filter({ hasText: "Riley (child)" });
     await expect(async () => {
       await member.getByTestId("user-menu-trigger").click();
       await expect(rileyButton).toBeVisible({ timeout: 2_000 });

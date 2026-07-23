@@ -130,9 +130,18 @@ async function profileRowExists(page: Page, name: string): Promise<boolean> {
 // Switch the shared session's active profile via the sidebar UserMenu, retry-clicking
 // through the hydration window (#730) as the household/front-door specs do.
 export async function switchToProfile(page: Page, name: string): Promise<void> {
+  // Target the act-as switch button by its data-testid (#1096) — the popover now
+  // holds TWO name-bearing controls per profile (the act-as switch + a per-profile
+  // "eye" view toggle whose aria-label also contains the name), so a getByRole
+  // name match resolves both (strict-mode "2 elements"). The stable hook is the
+  // `switch-to-<id>` testid on the switch button; scope to the row showing this
+  // profile's name via hasText (the toggle's icon-only button carries no text, so
+  // it never matches). Robust regardless of avatar alt text — the repo's
+  // data-testid-hook convention over a brittle accessible-name match.
   const target = page
     .getByTestId("user-menu-popover")
-    .getByRole("button", { name });
+    .locator('[data-testid^="switch-to-"]')
+    .filter({ hasText: name });
   await expect(async () => {
     await page.getByTestId("user-menu-trigger").click();
     await expect(target).toBeVisible({ timeout: 2_000 });

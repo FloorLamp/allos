@@ -173,6 +173,7 @@ export default function UserMenu({
                   <input type="hidden" name="profileId" value={p.id} />
                   <button
                     type="submit"
+                    data-testid={`switch-to-${p.id}`}
                     aria-current={isActive ? "true" : undefined}
                     onClick={() => {
                       // The switch-time device-local cleanup is centralized in
