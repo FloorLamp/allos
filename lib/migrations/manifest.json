@@ -101,5 +101,6 @@
   "100-weather-uv-cache.ts": "66f80a935c79fd7df0c28cbce04a514d7782945731d18df90fc6c0dbbd74d55e",
   "101-recover-blank-name-prescriptions.ts": "b2d70f15958ebd8d93cb8b7c88d39df00396323e6516446d86e1a3de404ec708",
   "102-session-view-profiles.ts": "ba5a7da82eadc13847216b6a1b8318077f88909e0c87501aede311c5b6f233de",
-  "103-canonical-name-abbreviation-consolidation.ts": "bbfe2a1cd1970c8992726b7cce7120a97fc6f11224dcf608ef3dda0d6bb960d3"
+  "103-canonical-name-abbreviation-consolidation.ts": "bbfe2a1cd1970c8992726b7cce7120a97fc6f11224dcf608ef3dda0d6bb960d3",
+  "104-login-own-profile.ts": "fdf60f897384f8bde6f2ce66e6f2e561aae6bd1b2d8ff1214fafe9f92ae58121"
 }

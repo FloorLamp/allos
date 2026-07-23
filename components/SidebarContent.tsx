@@ -34,6 +34,7 @@ export default function SidebarContent({
   activityDates,
   version,
   active,
+  username,
   profiles,
   viewIds = [],
   restricted = false,
@@ -50,6 +51,11 @@ export default function SidebarContent({
   activityDates: string[];
   version: AppVersion;
   active: SessionProfile;
+  // The signed-in login's username — shown as "Signed in as <username>" in the
+  // profile-menu overlay (issue #1013), answering "which login am I?" without
+  // cluttering the collapsed pill. Threaded through this ONE shared component so
+  // both viewports carry it (never a hand-mirrored hidden md:* branch).
+  username: string;
   profiles: SessionProfile[];
   // The session's multi-profile VIEW-SET (issue #1096) — threaded through to the
   // profile menu's per-profile view toggles. Defaults empty (single-view).
@@ -131,6 +137,7 @@ export default function SidebarContent({
       <div className="mt-auto flex flex-col gap-2">
         <UserMenu
           active={active}
+          username={username}
           profiles={profiles}
           viewIds={viewIds}
           reviewCount={reviewCount}

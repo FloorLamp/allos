@@ -13,12 +13,16 @@ export default function WeightTrendWidget({
   weightUnit,
   formatPrefs,
   today,
+  subjectName,
 }: {
   data: { date: string; value: number }[];
   weightUnit: WeightUnit;
   formatPrefs: DisplayFormatPrefs;
   // The active profile's current date, threaded to the quick-add.
   today: string;
+  // The subject to name on the weigh-in button when acting as someone other than
+  // the login's own profile (issue #1013); null → the plain "Log" label.
+  subjectName: string | null;
 }) {
   const latest = data.length > 0 ? data[data.length - 1] : null;
   // Server-truth marker: rendered from the SERVER-resolved series (not client
@@ -29,7 +33,11 @@ export default function WeightTrendWidget({
   // precedent).
   const footer = (
     <>
-      <WeightQuickAdd weightUnit={weightUnit} today={today} />
+      <WeightQuickAdd
+        weightUnit={weightUnit}
+        today={today}
+        subjectName={subjectName}
+      />
       {latest ? (
         <span
           hidden

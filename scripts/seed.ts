@@ -2544,6 +2544,18 @@ createShareLink(
   new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // +30 days
 );
 
+// Own-profile link (issue #1013): the seed admin IS the primary (SEED_PROFILE_ID)
+// profile, so mark it as their own — then the not-self write affordances are
+// demoable out of the box (acting as the child profile names "Riley (child)", the
+// household child card's dose confirm names the child, the admin's own record does
+// not). Bootstrap already sets this for a fresh admin; re-assert it idempotently.
+if (seedAdminLogin) {
+  db.prepare("UPDATE logins SET own_profile_id = ? WHERE id = ?").run(
+    SEED_PROFILE_ID,
+    seedAdminLogin.id
+  );
+}
+
 // ── Refill tracking — low days-of-supply → Upcoming refill signal.
 const setSupply = db.prepare(
   `UPDATE intake_items SET quantity_on_hand = ?, qty_per_dose = ? WHERE profile_id = 1 AND name = ?`

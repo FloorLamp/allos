@@ -18,6 +18,9 @@ interface LoginRow {
   username: string;
   role: "admin" | "member";
   email: string | null;
+  // The login's own-profile association (issue #1013), or null (unset). Which
+  // profile this login considers "mine" — an association, not an access grant.
+  own_profile_id: number | null;
 }
 export interface ProfileDataSummary {
   activities: number;
@@ -36,7 +39,9 @@ export default async function FamilySettingsPage() {
     )
     .all() as ProfileRow[];
   const logins = db
-    .prepare("SELECT id, username, role, email FROM logins ORDER BY id")
+    .prepare(
+      "SELECT id, username, role, email, own_profile_id FROM logins ORDER BY id"
+    )
     .all() as LoginRow[];
   // Whether the instance can send login-lifecycle mail (SMTP + public URL set):
   // gates the invite affordances (the ANTHROPIC_API_KEY / unconfigured precedent).

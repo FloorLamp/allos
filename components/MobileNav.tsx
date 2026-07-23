@@ -22,6 +22,7 @@ export default function MobileNav({
   activityDates,
   version,
   active,
+  username,
   profiles,
   viewIds = [],
   restricted = false,
@@ -40,6 +41,9 @@ export default function MobileNav({
   // The active profile + accessible profiles feed the shared sidebar's profile
   // switcher/logout (UserMenu); resolved from the session on the server.
   active: SessionProfile;
+  // The signed-in login's username — threaded into the shared SidebarContent so the
+  // drawer's profile menu shows "Signed in as <username>" like the desktop (#1013).
+  username: string;
   profiles: SessionProfile[];
   // The session's multi-profile VIEW-SET (issue #1096); threaded into the shared
   // SidebarContent so the drawer's profile menu shows the same view toggles.
@@ -155,6 +159,7 @@ export default function MobileNav({
               activityDates={activityDates}
               version={version}
               active={active}
+              username={username}
               profiles={profiles}
               viewIds={viewIds}
               restricted={restricted}

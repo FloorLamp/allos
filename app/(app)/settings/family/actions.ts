@@ -9,6 +9,7 @@ import {
   destroyLoginSessions,
   destroySession,
   adminLoginCount,
+  setOwnProfileForLogin,
   type Role,
 } from "@/lib/auth";
 import { db, writeTx } from "@/lib/db";
@@ -349,6 +350,13 @@ export async function deleteProfile(formData: FormData): Promise<FamilyResult> {
       db.prepare("DELETE FROM login_profiles WHERE profile_id = ?").run(id);
       db.prepare(
         "UPDATE sessions SET active_profile_id = NULL WHERE active_profile_id = ?"
+      ).run(id);
+      // Null any login's own-profile pointer at this profile (issue #1013,
+      // row-side-state): the association dies with the data subject. Explicit here
+      // (the FK carries no ON DELETE action — ADD COLUMN can't attach one) so
+      // re-enabling foreign_keys after the sweep meets a clean graph.
+      db.prepare(
+        "UPDATE logins SET own_profile_id = NULL WHERE own_profile_id = ?"
       ).run(id);
       db.prepare("DELETE FROM profiles WHERE id = ?").run(id);
     });
@@ -762,6 +770,14 @@ export async function setGrants(formData: FormData): Promise<FamilyResult> {
     for (const g of diff.add) ins.run(loginId, g.profileId, g.access);
     for (const g of diff.update) upd.run(g.access, loginId, g.profileId);
     for (const pid of diff.remove) del.run(loginId, pid);
+    // Row-side-state (issue #1013): revoking the grant that made a profile this
+    // login's own-profile drops the association too (an own-profile must stay within
+    // the login's accessible set). resolveScope re-validates on read as well, so this
+    // is the stored twin of that re-derivation.
+    const ownNull = db.prepare(
+      "UPDATE logins SET own_profile_id = NULL WHERE id = ? AND own_profile_id = ?"
+    );
+    for (const pid of diff.remove) ownNull.run(loginId, pid);
     return { kind: "applied", diff };
   });
 
@@ -786,4 +802,49 @@ export async function setGrants(formData: FormData): Promise<FamilyResult> {
   revalidatePath("/settings/family");
   revalidatePath("/", "layout"); // the member's switcher reflects new access
   return { ok: true, message: "Access updated." };
+}
+
+// Admin path for the own-profile association (issue #1013): set (or clear) which
+// profile a login considers "mine". Admin-only (requireAdmin). Purely an association
+// — it grants NO access; setOwnProfileForLogin still constrains the target to the
+// login's OWN accessible set (a member's grants, an admin's all-profiles), so an
+// admin can't mark an ungranted profile as a member's self. A forged/ungranted id is
+// a friendly error. Nulling is allowed (own_profile_id = null).
+export async function setLoginOwnProfile(
+  formData: FormData
+): Promise<FamilyResult> {
+  const admin = await requireAdmin();
+  const loginId = Number(formData.get("loginId"));
+  if (!loginId) return { ok: false, error: "Unknown login." };
+  const acct = db
+    .prepare("SELECT id, role FROM logins WHERE id = ?")
+    .get(loginId) as { id: number; role: Role } | undefined;
+  if (!acct) return { ok: false, error: "Login not found." };
+
+  const raw = formData.get("own_profile_id");
+  const profileId =
+    raw === null || raw === "" || raw === "none" ? null : Number(raw);
+  if (profileId !== null && !Number.isInteger(profileId)) {
+    return { ok: false, error: "Invalid profile." };
+  }
+
+  const ok = setOwnProfileForLogin(acct.id, acct.role, profileId);
+  if (!ok) {
+    return {
+      ok: false,
+      error: "That login can't act as that profile.",
+    };
+  }
+
+  recordAudit({
+    loginId: admin.login.id,
+    profileId: admin.profile.id,
+    action: AUDIT_ACTIONS.ownProfileUpdate,
+    target: String(loginId),
+    detail: `own=${profileId ?? "none"}`,
+  });
+
+  revalidatePath("/settings/family");
+  revalidatePath("/", "layout"); // the login's not-self labels reflect the change
+  return { ok: true, message: "Own profile updated." };
 }

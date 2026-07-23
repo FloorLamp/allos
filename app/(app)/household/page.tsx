@@ -4,7 +4,10 @@ import {
   requireSession,
   getAccessibleProfiles,
   accessForProfile,
+  ownProfileForLogin,
 } from "@/lib/auth";
+import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
+import { writeSubjectName } from "@/lib/own-profile";
 import { HOUSEHOLD_HISTORY_HREF } from "@/lib/hrefs";
 import { today } from "@/lib/db";
 import {
@@ -61,6 +64,11 @@ export default async function HouseholdPage() {
   const { login } = await requireSession();
   const profiles = await getAccessibleProfiles();
   if (profiles.length < 2) redirect("/");
+  // Own-profile link (#1013): the login's self, so each card's dose-confirm names
+  // the CARD's person unless it's the login's own card (or no own-profile is set).
+  // Names are disambiguated (#534) so two same-named profiles stay distinguishable.
+  const ownProfileId = ownProfileForLogin(login.id);
+  const cardNames = disambiguateProfileNames(profiles);
   const weightUnit = getUnitPrefs(login.id).weightUnit;
   const temperatureUnit = getUnitPrefs(login.id).temperatureUnit;
   const formatPrefs = getDisplayFormatPrefs(login.id);
@@ -141,6 +149,11 @@ export default async function HouseholdPage() {
     return {
       profile,
       canWrite,
+      subjectName: writeSubjectName(
+        ownProfileId,
+        pid,
+        cardNames.get(pid) ?? profile.name
+      ),
       rollup,
       today: day,
       adherence,
