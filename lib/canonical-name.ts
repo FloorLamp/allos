@@ -293,7 +293,6 @@ const CANONICAL_ALIASES: [string, string][] = [
   // name listed here — buildCanonicalIndex auto-derives both (see FULL_ABBR_RE). Only
   // WORD synonyms of such an entry (SGPT→ALT, Bicarbonate→Carbon Dioxide) need a
   // curated route, since those aren't derivable from the name.
-
 ];
 
 // Build a normalized-key -> canonical-spelling lookup from a vocabulary list.
