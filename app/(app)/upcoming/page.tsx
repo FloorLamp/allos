@@ -332,7 +332,10 @@ function Row({
   return (
     <div
       data-testid={`upcoming-item-${item.key}`}
-      className="flex items-center gap-3 rounded-lg px-2 py-2 transition hover:bg-slate-50 dark:hover:bg-ink-850"
+      // flex-wrap (#1063): the trailing action/badge chips are nowrap-by-design,
+      // so at phone width they must WRAP under the title instead of forcing the
+      // row past the viewport (where the shell's overflow-x-clip hides them).
+      className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg px-2 py-2 transition hover:bg-slate-50 dark:hover:bg-ink-850"
     >
       <Icon
         className="h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400"

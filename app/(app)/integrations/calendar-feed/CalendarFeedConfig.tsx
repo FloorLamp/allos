@@ -1,12 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import {
-  IconCopy,
-  IconCheck,
-  IconRefresh,
-  IconAlertTriangle,
-} from "@tabler/icons-react";
+import { IconCheck, IconRefresh, IconAlertTriangle } from "@tabler/icons-react";
 import type { CalendarFeedDetail } from "@/lib/settings";
 import {
   FEED_CATEGORY_LABELS,
@@ -20,6 +15,7 @@ import {
   type TokenLifecycleStatus,
 } from "@/lib/token-lifecycle";
 import { TokenLifecycleNote } from "@/components/TokenLifecycle";
+import { TokenRow } from "@/components/TokenRow";
 import {
   enableCalendarFeedAction,
   disableCalendarFeedAction,
@@ -79,33 +75,6 @@ function ExpiryPicker({
         ))}
       </select>
     </label>
-  );
-}
-
-function CopyButton({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      type="button"
-      onClick={async () => {
-        try {
-          await navigator.clipboard.writeText(value);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1500);
-        } catch {
-          /* clipboard unavailable — URL is shown for manual copy */
-        }
-      }}
-      className="inline-flex shrink-0 items-center gap-1 rounded-md border border-black/10 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-800"
-      aria-label="Copy"
-    >
-      {copied ? (
-        <IconCheck className="h-3.5 w-3.5" />
-      ) : (
-        <IconCopy className="h-3.5 w-3.5" />
-      )}
-      {copied ? "Copied" : "Copy"}
-    </button>
   );
 }
 
@@ -255,16 +224,11 @@ export default function CalendarFeedConfig({
 
         {createdUrl ? (
           <div>
-            <label className="label">Subscribe URL</label>
-            <div className="flex items-center gap-2">
-              <code
-                className="input min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs"
-                data-testid="calendar-feed-url"
-              >
-                {createdUrl}
-              </code>
-              <CopyButton value={createdUrl} />
-            </div>
+            <TokenRow
+              label="Subscribe URL"
+              value={createdUrl}
+              testid="calendar-feed-url"
+            />
             <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
               Copy this now — for your security the link is shown only once. You
               can always rotate to a new one below.

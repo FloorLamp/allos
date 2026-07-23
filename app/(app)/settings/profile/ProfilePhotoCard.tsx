@@ -24,7 +24,7 @@ export default function ProfilePhotoCard({
       <h2 className="font-semibold text-slate-800 dark:text-slate-100">
         Photo
       </h2>
-      <div className="flex items-center gap-4">
+      <div className="flex min-w-0 items-center gap-4">
         <Avatar profile={profile} size="md" />
         <PhotoPicker
           hasPhoto={!!profile.photo_path}
