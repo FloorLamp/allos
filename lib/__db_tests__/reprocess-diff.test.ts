@@ -316,6 +316,26 @@ describe("reprocess preview phantoms", () => {
             provider: null,
             courses: null,
           },
+          {
+            // Qualitative pass: a durable-immunity titer gets a derived 'immune'
+            // (#544) — the second flavor of app-derived flag the preview must mirror.
+            category: "lab",
+            name: "Rubella Antibody IgG",
+            canonical: "Rubella Antibody IgG",
+            value: "Immune",
+            value_num: null,
+            unit: null,
+            date: DATE,
+            reference_range: null,
+            flag: null,
+            panel: null,
+            notes: null,
+            source: "ccda",
+            external_id: "obs:rubella-igg",
+            loinc: null,
+            provider: null,
+            courses: null,
+          },
         ],
         immunizations: [],
         allergies: [],
@@ -331,15 +351,18 @@ describe("reprocess preview phantoms", () => {
       canonicalNames: [],
       insertedRecordIds: persisted.insertedRecordIds,
     });
-    // Sanity: the follow-up really derived a flag (else this test is vacuous).
-    const storedFlag = db
+    // Sanity: the follow-ups really derived both flag flavors (else vacuous).
+    const storedFlags = db
       .prepare(
-        "SELECT flag FROM medical_records WHERE profile_id = ? AND name = 'Glucose'"
+        "SELECT name, flag FROM medical_records WHERE profile_id = ? ORDER BY name"
       )
-      .get(pid) as { flag: string | null };
-    expect(storedFlag.flag).toBe("high");
+      .all(pid) as { name: string; flag: string | null }[];
+    expect(storedFlags).toEqual([
+      { name: "Glucose", flag: "high" },
+      { name: "Rubella Antibody IgG", flag: "immune" },
+    ]);
 
-    // Without enrichment: the phantom (flag high → none).
+    // Without enrichment: the phantom (flag high/immune → none).
     const raw = glucoseHigh();
     expect(
       computeImportDiff(
@@ -348,9 +371,10 @@ describe("reprocess preview phantoms", () => {
       ).hasChanges
     ).toBe(true);
 
-    // With the preview twin: clean.
+    // With the preview twin: both flavors derived identically → clean.
     previewReconcileFlags(pid, raw.records);
     expect(raw.records[0].flag).toBe("high");
+    expect(raw.records[1].flag).toBe("immune");
     expect(
       computeImportDiff(
         getReprocessSnapshot(pid, did),

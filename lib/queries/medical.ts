@@ -1051,9 +1051,13 @@ export function previewReconcileFlags(
 export function reconcileFlags(profileId: number, ids?: number[]): number {
   // profile_id scopes every row, so an id from another profile in `ids` simply
   // can't match — the caller's list is never trusted on its own.
+  // The revisitable-flag set is the SAME constant the preview twin gates on
+  // (RECONCILABLE_FLAGS — fixed app-controlled tokens, safe to inline in SQL), so
+  // the two eligibility checks cannot drift.
+  const reconcilable = [...RECONCILABLE_FLAGS].map((f) => `'${f}'`).join(",");
   let sql = `SELECT id, value_num, unit, canonical_name, flag, date, reference_range FROM medical_records
      WHERE profile_id = ? AND canonical_name IS NOT NULL AND value_num IS NOT NULL
-       AND (flag IS NULL OR flag IN ('normal','non-optimal','non-optimal-high','non-optimal-low','high','low'))`;
+       AND (flag IS NULL OR flag IN (${reconcilable}))`;
   const args: number[] = [profileId];
   if (ids) {
     if (ids.length === 0) return 0;
