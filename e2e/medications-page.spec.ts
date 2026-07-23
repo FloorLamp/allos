@@ -354,9 +354,8 @@ test("a medication row links to its clinical-record detail page", async ({
   const doseHistory = detail.getByTestId("dose-history");
   // The newest seeded dose is from yesterday. Its database insertion timestamp is
   // today, but history must use the dose's logical date before adding relative age.
-  await expect(
-    doseHistory.getByTestId("dose-history-row").first()
-  ).not.toContainText("(just now)");
+  const newestDoseRow = doseHistory.getByTestId("dose-history-row").first(); // first-ok: newest row on the uniquely-named "Adherence Refill Med (e2e)" detail page; deterministically yesterday's seeded dose — the only sibling that logs a dose (medications-followups) targets a different med (PRN Quicklog Med), so no concurrent write can push a newer row here
+  await expect(newestDoseRow).not.toContainText("(just now)");
   await doseHistory.getByRole("button", { name: "Log past dose" }).click();
   const historyForm = doseHistory.getByTestId("historical-dose-form");
   await expect(historyForm).toContainText(

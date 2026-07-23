@@ -165,10 +165,6 @@ const FIRST_ALLOW: Record<string, number> = {
   // seeded illness state; exposed only when co-located at --repeat-each). Its lone
   // .first() stays frozen here until that flake is fixed in a focused follow-up.
   "illness-care.spec.ts": 1,
-  // dose-history-row .first() (newest seeded dose) deferred to a dedicated-fixture
-  // pass — its safety rests on every OTHER spec only backdating writes to this
-  // SHARED med, which is too fragile to bless with a marker.
-  "medications-page.spec.ts": 1,
   // two-factor / view-only-access each shed one grant-checkbox .first() when their
   // create+grant dance moved into e2e/family-helpers.ts (which scopes the checkbox by
   // the grant-cell testid, no .first()); two-factor keeps its recovery-code li .first().
