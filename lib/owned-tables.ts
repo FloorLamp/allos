@@ -206,6 +206,24 @@ export const OWNED_TABLES = [
   // on-disk files (stored_path + thumb_path) are unlinked separately (path-contained
   // under data/uploads/progress-photos/<profileId>/).
   "progress_photos",
+  // Symptom / episode video clips (#1224 phase 1): dated clips attached to a
+  // symptom-DAY (tremor/seizure/gait/stridor episodes), the symptom_photos posture
+  // for VIDEO. File-backed MEDIA with a thin metadata row, NOT an observation-store
+  // tenant. Directly owned; deleteProfile clears the rows and its on-disk files
+  // (stored_path + poster_path) are unlinked separately (path-contained under
+  // data/uploads/symptom-videos/<profileId>/). Membership in an episode is DERIVED
+  // by date-range (no FK to illness_episodes).
+  "symptom_videos",
+  // Training form-check video clips (#1224 phase 1): clips attached to an ACTIVITY
+  // (a lift/movement, optional exercise name for per-lift filtering). File-backed
+  // MEDIA with a thin metadata row. Directly owned (its own profile_id); its
+  // activity_id FK carries ON DELETE CASCADE so a plain activity delete removes its
+  // clips (the rows are captured into the undo buffer first — UNDO_KINDS.activity,
+  // and re-parented to the keeper on a merge, #199). deleteProfile clears the rows
+  // and unlinks its on-disk files (path-contained under
+  // data/uploads/activity-videos/<profileId>/). Ordered AFTER activities, though the
+  // profile sweep runs with foreign_keys OFF so intra-subtree order is immaterial.
+  "activity_videos",
 ] as const;
 
 export type OwnedTable = (typeof OWNED_TABLES)[number];

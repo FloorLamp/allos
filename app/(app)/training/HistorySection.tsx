@@ -16,12 +16,16 @@ import {
   getUserSex,
   getDisplayFormatPrefs,
 } from "@/lib/settings";
-import { requireSession } from "@/lib/auth";
+import { requireSession, accessForProfile } from "@/lib/auth";
 import { buildJournalFeedPage } from "@/lib/journal-feed";
 import JournalView from "../journal/JournalView";
 
 export default async function HistorySection() {
   const { login, profile } = await requireSession();
+  // Whether the acting login can write to the active profile — gates the per-card
+  // form-check video affordances (#1224). The server actions re-gate regardless.
+  const canWriteVideos =
+    accessForProfile(login.id, login.role, profile.id) === "write";
   const units = getUnitPrefs(login.id);
   const wu = units.weightUnit;
 
@@ -91,6 +95,7 @@ export default async function HistorySection() {
       activeDaysStrip={getActiveDaysStrip(profile.id, 21)}
       showHeader={false}
       sex={getUserSex(profile.id)}
+      canWriteVideos={canWriteVideos}
     />
   );
 }

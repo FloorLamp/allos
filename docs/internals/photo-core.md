@@ -5,9 +5,13 @@ Status: shipped
 The one capture → ingest → store → browse/compare stack every photo-carrying
 domain uses (issue #1119, phase 1). The physique progress-photo domain
 (`progress_photos`, phase 2) is its first tenant; skin (`lesion_photos`) and
-symptom (`symptom_photos`) photos migrate onto it in phase 3, and video capture
-(#1224) is expected to extend the same shell. This file is the contract a new
-tenant builds against.
+symptom (`symptom_photos`) photos migrate onto it in phase 3. **Video capture
+(#1224) shipped as a SIBLING core** — `lib/video/*` / `components/video/*`, same
+per-profile store conventions and strictest-privacy tier, adding container
+sniffing, a Range-capable serve, and poster frames; see
+`docs/internals/video-core.md` (the poster frame it extracts is EXIF-stripped
+through THIS core's `processPhoto`). This file is the contract a new photo tenant
+builds against.
 
 ## Why one core (the chokepoint argument)
 
