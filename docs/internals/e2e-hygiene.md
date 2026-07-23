@@ -33,6 +33,8 @@ order-dependent. The recurring reds fall into four classes:
    a page with a live request), `toPass()` re-click loops, `waitForTimeout()`
    sleeps, `followLink`.
 
+**Mobile no-overflow assertions go through `expectNoClippedContent` (e2e/helpers.ts, #1063).** The app shell clips horizontal overflow (`overflow-x-clip`), so a broken phone-width layout renders as invisible, unreachable content and the naive document-level `scrollWidth > clientWidth` check reads zero on every page. The blessed helper asserts ELEMENT-level containment — every rendered element's right edge inside the viewport unless it sits in a working `overflow-x: auto` container that itself fits — and folds the document-level check in for unclipped surfaces (share/print views). Set the phone viewport after auth, anchor on a page-specific element first, then call it; offenders are reported with tag/testid/class + widths.
+
 4. **CI retries paint over everything ≤50% flaky.** `retries: 1–2` proves "passes
    within N attempts", not "works": a 50%-flaky de-wrapped spec shipped green, and
    a 4-tests-broken PR self-reported green. Retries also interact badly with the
