@@ -220,4 +220,22 @@ describe("fan-out delivery resolution", () => {
     expect(managingLoginIdsForProfile(kid)).not.toContain(admin);
     expect(resolveTelegramRecipients(kid)).toEqual([]);
   });
+
+  it("fans to a login by its OWN-PROFILE association even without an explicit grant (#1013)", () => {
+    const me = newProfile("Me (own)");
+    const login = newLogin("member", "own-profile-login");
+    // No login_profiles grant — only the own-profile association (#1013).
+    db.prepare("UPDATE logins SET own_profile_id = ? WHERE id = ?").run(
+      me,
+      login
+    );
+    db.prepare(
+      "INSERT INTO login_settings (login_id, key, value) VALUES (?, 'telegram_enabled', '1'), (?, 'telegram_chat_id', '5550222')"
+    ).run(login, login);
+
+    expect(managingLoginIdsForProfile(me)).toContain(login);
+    expect(resolveTelegramRecipients(me)).toEqual([
+      { loginId: login, chatId: "5550222" },
+    ]);
+  });
 });
