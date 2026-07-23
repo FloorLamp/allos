@@ -591,9 +591,9 @@ export const REST_CARD_PROFILE = "Rest Card (e2e)";
 // #1151 — the aggregated Upcoming "Snoozed & dismissed" section. A dedicated
 // adult profile carrying one suppression from each class the section now spans:
 // a CARE snooze (a future appointment), a COACHING dismissal (a training-obs
-// plateau key), and a SUGGESTION dismissal (a med-bridge untracked
-// prescription, with its backing imported Rx record so a Restore makes it
-// reappear on /medications). Isolated on purpose: the spec restores/clears
+// plateau key), and a SUGGESTION dismissal (a med-bridge key with no backing
+// record — the shape a pre-092 dismissal leaves behind, labelled purely from
+// its key, #1232). Isolated on purpose: the spec restores/clears
 // suppression rows (and resets them itself), which on profile 1 would race the
 // needs-attention/coaching specs' bus reads.
 export const E2E_LOGIN_SUPPRESSED = "e2e_suppressed";

@@ -1034,15 +1034,10 @@ med.run(
   null,
   "Consider methylated folate"
 );
-med.run(
-  daysAgo(45),
-  "prescription",
-  "Atorvastatin",
-  "10mg",
-  "daily",
-  null,
-  "Preventive"
-);
+// (The old seed also wrote a medical_records 'prescription' row here — a shape
+// the app no longer produces post-#1178: an imported prescription IS the single
+// medication entity now. The demo's imported med lives in the Medications
+// section below as an extracted intake_items row instead. #1232)
 
 // Immunizations — an adult profile (~40y). A birthdate makes the schedule's
 // age-based recommendations meaningful; childhood series are represented, plus
@@ -1263,6 +1258,33 @@ courseIns.run(
   daysAgo(50),
   "completed_course",
   "10-day course"
+);
+
+// Atorvastatin: an IMPORTED medication (source='extracted' — the single
+// medication entity a health-record prescription becomes post-#1178; the old
+// seed stored this as a medical_records 'prescription' row, a shape the app no
+// longer produces — #1232). Documentless (paste-import shape: no document_id,
+// no import_key), strength on a dose row, later stopped when the demo switched
+// to simvastatin — so it demos imported provenance in the Past list without
+// joining any active-med surface.
+const atorvastatinId = Number(
+  db
+    .prepare(
+      `INSERT INTO intake_items
+         (profile_id, name, notes, active, condition, priority, kind, as_needed,
+          document_id, source)
+       VALUES (1, 'Atorvastatin', 'Preventive', 0, 'daily', 'high',
+               'medication', 1, NULL, 'extracted')`
+    )
+    .run().lastInsertRowid
+);
+medDose.run(atorvastatinId, "10 mg", null, "any", 0);
+courseIns.run(
+  atorvastatinId,
+  daysAgo(45),
+  daysAgo(12),
+  "switched",
+  "Switched to simvastatin"
 );
 
 // A KNOWN-INTERACTING pair (issue #144): Warfarin (anticoagulant) + Ibuprofen (an

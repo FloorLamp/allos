@@ -201,7 +201,8 @@ const TOPASS_ALLOW: Record<string, number> = {
   "illness-hero.spec.ts": 1,
   "illness-round3.spec.ts": 1,
   "kids-growth.spec.ts": 1,
-  "medications-page.spec.ts": 2,
+  // medications-page shed its two unmarked .toPass( when the records-bridge tests
+  // left with their legacy fixture (#1232) — its remaining loop is topass-ok-marked.
   "medications-ux-r2.spec.ts": 1,
   "mobility.spec.ts": 1,
   "nav-consolidation.spec.ts": 1,

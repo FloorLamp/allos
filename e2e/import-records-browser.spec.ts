@@ -3,10 +3,11 @@ import { followLink, settledClick } from "./helpers";
 
 // Import detail — tabbed per-category records browser (issue #271). The e2e seed
 // (e2e/seed-events.ts) plants document 908 with produced rows across several
-// kinds: 2 labs + 1 prescription (medical_records), a visit, a condition, an
-// immunization, and one referenced provider. The browser must expose EVERY
+// kinds: 2 labs + 1 projected medication (intake_items — the single medication
+// entity an imported prescription becomes, #1178/#1232), a visit, a condition,
+// an immunization, and one referenced provider. The browser must expose EVERY
 // produced type as a browsable tab (visits & co. used to be invisible), keep the
-// counts as the tab labels, link rows category-correctly (the prescription →
+// counts as the tab labels, link rows category-correctly (the medication →
 // biomarker-page regression), and expose providers as their own tab (#1182 —
 // the per-document Providers listing is covered by import-produced-panels.spec).
 test.describe("Import detail: tabbed records browser", () => {
@@ -17,8 +18,8 @@ test.describe("Import detail: tabbed records browser", () => {
 
     const strip = page.getByTestId("import-tab-strip");
     await expect(strip.getByTestId("import-tab-lab")).toHaveText("Labs 2");
-    await expect(strip.getByTestId("import-tab-prescription")).toHaveText(
-      "Prescriptions 1"
+    await expect(strip.getByTestId("import-tab-medications")).toHaveText(
+      "Medications 1"
     );
     await expect(strip.getByTestId("import-tab-visits")).toHaveText("Visits 1");
     await expect(strip.getByTestId("import-tab-conditions")).toHaveText(
@@ -52,24 +53,28 @@ test.describe("Import detail: tabbed records browser", () => {
     await page.keyboard.press("Escape");
   });
 
-  test("REGRESSION: prescription rows link to /medicine, never a biomarker page", async ({
+  test("REGRESSION: the document's medication links to /medications, never a biomarker page", async ({
     page,
   }) => {
-    await page.goto("/import/908?tab=prescription");
+    await page.goto("/import/908?tab=medications");
 
-    await expect(page.getByTestId("import-tab-prescription")).toHaveAttribute(
+    await expect(page.getByTestId("import-tab-medications")).toHaveAttribute(
       "aria-current",
       "page"
     );
     await expect(
-      page.getByRole("heading", { name: /^Prescriptions/ })
+      page.getByRole("heading", { name: /^Medications/ })
     ).toBeVisible();
-    const nameLink = page.getByRole("link", {
-      name: "E2E Amoxicillin 500 mg",
-    });
-    await expect(nameLink).toHaveAttribute("href", "/medications");
-    // Nothing in the prescription panel may point at a biomarker series page.
-    const biomarkerLinks = page.locator('table a[href^="/biomarkers/view"]');
+    const listing = page.getByTestId("produced-listing");
+    const item = listing.getByTestId("produced-item");
+    await expect(item).toHaveCount(1);
+    await expect(item).toContainText("E2E Loratadine");
+    await expect(item.getByRole("link")).toHaveAttribute(
+      "href",
+      "/medications"
+    );
+    // Nothing in the medications panel may point at a biomarker series page.
+    const biomarkerLinks = listing.locator('a[href^="/biomarkers/view"]');
     await expect(biomarkerLinks).toHaveCount(0);
   });
 

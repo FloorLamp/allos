@@ -1,9 +1,11 @@
 // Issue #1151 — Upcoming's "Snoozed & dismissed" section aggregates EVERYTHING
 // on the suppression bus: a care snooze (appointment), a coaching dismissal
-// (training-obs plateau), and a suggestion dismissal (med-bridge untracked
-// prescription) render together, grouped, each with a Restore; restoring the
-// suggestion removes it from the section AND it reappears on its origin surface
-// (/medications "From your records").
+// (training-obs plateau), and a suggestion dismissal (a med-bridge key) render
+// together, grouped, each with a Restore; restoring the suggestion removes it
+// from the section. (The med-bridge key has no backing record — post-#1178/092
+// the app cannot produce medical_records 'prescription' rows, and a dismissal
+// that outlived its record is a real current-state shape the section must still
+// label + restore, #1232.)
 //
 // Fixture ownership (#868): the dedicated SUPPRESSED_PROFILE + member login
 // (seed-events.ts); each test re-asserts its own suppression rows directly in
@@ -112,7 +114,7 @@ test("Snoozed & dismissed spans care + coaching + suggestion rows, grouped with 
   ).toBeVisible();
 });
 
-test("restoring a suggestion clears it here and it reappears on its origin surface (#1151)", async ({
+test("restoring a suggestion dismissal clears it from the section (#1151)", async ({
   browser,
 }) => {
   resetSuppressions();
@@ -130,10 +132,7 @@ test("restoring a suggestion clears it here and it reappears on its origin surfa
   await expect(bridgeRow).toBeVisible();
   await settledClick(page, bridgeRow.getByRole("button", { name: "Restore" }));
   await expect(bridgeRow).toHaveCount(0);
-
-  // The origin surface: the untracked prescription is suggested again on
-  // /medications "From your records".
-  await page.goto("/medications");
-  await expect(page.getByText("From your records")).toBeVisible();
-  await expect(page.getByText("E2E Suppressed Rx")).toBeVisible();
+  // (No origin-surface reappearance to assert: post-#1178/092 the bridge's
+  // backing 'prescription' records cannot exist, so Restore's job here is
+  // simply clearing the outlived key — the #203 orphan-pruning behavior.)
 });

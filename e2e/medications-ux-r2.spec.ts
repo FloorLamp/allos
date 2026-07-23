@@ -8,12 +8,14 @@ import {
 
 // #852 Medications UX round 2: the time-aware Today panel (item 1), PRN→detail links in
 // both hosts (item 2), the one-tap "Refilled" action + run-out date (item 3), the
-// printable/shareable current-medication list (item 4), the detail-page month adherence
-// calendar (item 5), and recoverable records-bridge dismissals (item 6). Fixtures come
+// printable/shareable current-medication list (item 4), and the detail-page month
+// adherence calendar (item 5). Fixtures come
 // from e2e/seed-events.ts: "Zeta Morning Med (e2e)" / "Alpha Evening Med (e2e)" (scheduled,
 // distinct buckets), "Low Supply Med (e2e)" (below the refill threshold), "Adherence
-// Refill Med (e2e)" (scheduled with taken-logs), "PRN Quicklog Med (e2e)" (PRN), and
-// "E2E Bridge Restore Med" (an untracked prescription for the dismiss→restore round-trip).
+// Refill Med (e2e)" (scheduled with taken-logs), and "PRN Quicklog Med (e2e)" (PRN).
+// (Item 6 — recoverable records-bridge dismissals — left with its fixture in #1232:
+// post-#1178/092 no write path produces the medical_records 'prescription' rows the
+// bridge reads, so the seeded suggestion re-created an unreachable state.)
 
 // The vertical position of the first element matching `name` within `scope`.
 async function topOf(scope: Locator, name: string): Promise<number> {
@@ -150,36 +152,4 @@ test("item 5: the detail page shows a month adherence calendar over the existing
       .locator('[data-testid="adherence-cal-day"][data-state="taken"]')
       .first() // first-ok: asserts a "taken" day cell renders (seed logged 14 taken days) — order-agnostic
   ).toBeVisible();
-});
-
-test("item 6: a dismissed records-bridge suggestion is recoverable", async ({
-  page,
-}) => {
-  const MED = "E2E Bridge Restore Med";
-  await page.goto("/medications");
-  const bridge = page.getByTestId("records-bridge");
-  const active = bridge
-    .getByTestId("records-bridge-item")
-    .filter({ hasText: MED });
-
-  // Dismiss it (it may already be dismissed from a prior run — handle both).
-  if (await active.count()) {
-    await active.getByTestId("records-bridge-dismiss").click();
-    await expect(active).toHaveCount(0, { timeout: 3000 });
-  }
-
-  // It now lives in the collapsed "Dismissed (N)" disclosure with a Restore.
-  const dismissed = bridge.getByTestId("records-bridge-dismissed");
-  await expect(dismissed).toBeVisible();
-  await dismissed.locator("summary").click();
-  const dismissedItem = bridge
-    .getByTestId("records-bridge-dismissed-item")
-    .filter({ hasText: MED });
-  await expect(dismissedItem).toBeVisible();
-
-  // Restore puts it back into the active suggestions.
-  await dismissedItem.getByTestId("records-bridge-restore").click();
-  await expect(
-    bridge.getByTestId("records-bridge-item").filter({ hasText: MED })
-  ).toBeVisible({ timeout: 3000 });
 });
