@@ -258,6 +258,56 @@ export const LOINC_TO_CANONICAL: Record<string, string> = {
   "79882-7": "Visual Acuity, Right Eye", // Visual acuity uncorrected Right eye by Snellen
   "79883-5": "Visual Acuity, Left Eye", // Visual acuity uncorrected Left eye by Snellen
   "98499-7": "Visual Acuity, Right Eye", // Visual acuity uncorrected Right eye (general)
+
+  // ── Qualitative infection / serology / molecular results ───────────────────
+  // Each is a QUALITATIVE result (no numeric band); the canonical entry is rangeless
+  // and the positive-is-bad polarity comes from the 'infection' class in
+  // QUALITATIVE_CLASS_BY_LOINC below. Two LOINCs for one analyte (N. gonorrhoeae
+  // amplification variants) route to the same identity on purpose.
+  "20507-0": "RPR", // Rapid plasma reagin (syphilis)
+  "56888-1": "HIV Antigen/Antibody", // HIV Ag/Ab 4th-gen screen
+  "5196-1": "Hepatitis B Surface Antigen (HBsAg)", // existing entry (parenthetical form)
+  "13955-0": "Hepatitis C Antibody (Anti-HCV)", // existing entry (parenthetical form)
+  "94500-6": "SARS-CoV-2 NAAT", // SARS-CoV-2 PCR
+  "94558-4": "SARS-CoV-2 Antigen", // SARS-CoV-2 rapid antigen
+  "92142-9": "Influenza A NAAT", // Influenza A PCR
+  "92141-1": "Influenza B NAAT", // Influenza B PCR
+  "80382-5": "Influenza A Antigen", // Rapid influenza A antigen
+  "80383-3": "Influenza B Antigen", // Rapid influenza B antigen
+  "85479-4": "RSV NAAT", // Respiratory syncytial virus PCR
+  "60489-2": "Streptococcus A NAAT", // Group A Strep PCR
+  "48683-7": "Group B Streptococcus", // GBS screen
+  "21613-5": "Chlamydia trachomatis NAAT", // C. trachomatis amplification
+  "5028-6": "Neisseria gonorrhoeae NAAT", // N. gonorrhoeae amplification
+  "24111-7": "Neisseria gonorrhoeae NAAT", // N. gonorrhoeae amplification (variant)
+  "30167-1": "HPV, High-Risk", // Pooled high-risk HPV
+  "59263-4": "HPV Genotype 16", // HPV genotype 16
+  "75694-0": "HPV Genotype 18/45", // HPV genotype 18/45
+  "6463-4": "Culture Organism", // Culture organism 1
+  "44841-5": "Culture Organism", // Culture organism 2
+  "13514-5": "Hemoglobin Electrophoresis", // Hemoglobinopathy screen interpretation
+
+  // ── Durable-immunity IgG titers ────────────────────────────────────────────
+  // Rangeless (assay-specific cutoff); immune-positive-is-good from the 'immunity'
+  // class. Qualitative "Immune" and numeric-titer LOINCs share one identity.
+  "25514-1": "Rubella Antibody IgG", // Rubella IgG (qualitative)
+  "5334-8": "Rubella Antibody IgG", // Rubella antibody (IgG titer)
+  "20479-2": "Measles Antibody IgG", // Measles IgG (qualitative)
+  "5244-9": "Measles Antibody IgG", // Measles antibody (IgG titer)
+  "7966-5": "Mumps Antibody IgG", // Mumps IgG (qualitative)
+  "25418-5": "Mumps Antibody IgG", // Mumps antibody (IgG titer)
+  "8046-5": "Varicella Zoster Antibody IgG", // Varicella IgG (qualitative)
+  "5403-1": "Varicella Zoster Antibody IgG", // Varicella antibody (IgG titer)
+
+  // ── Prenatal cell-free-DNA (NIPT) screens + QC ─────────────────────────────
+  // Rangeless; low/high-risk axis from the 'screen' class, fetal fraction from 'qc'.
+  "75983-7": "Trisomy 21 Screen", // NIPT trisomy 21
+  "75558-7": "Trisomy 18 Screen", // NIPT trisomy 18
+  "73824-5": "Trisomy 13 Screen", // NIPT trisomy 13
+  "75605-6": "Fetal Fraction", // NIPT fetal fraction (QC)
+
+  // ── Numeric OB screen (with a screening cutoff) ────────────────────────────
+  "1504-0": "Glucose, Gestational Screen (50 g)", // 1-hour 50 g GCT
 };
 
 // The canonical biomarker name for a LOINC code, or null when unmapped.
@@ -347,6 +397,22 @@ const NON_ANALYTE_LOINCS = new Set([
   "8262-8", // Limitations of The Test
   "106201-7", // Cytology accession #
   "19066-0", // Status Information
+  // Interpretation / narrative-summary rows that RESTATE a structured result rather
+  // than being a result themselves, plus non-result codes an EHR files in Results.
+  // Each was seen in a real XDM as an "unmapped lab" with an administrative value
+  // (a summary word, a generic "Result", a specimen source, a diagnosis code) — none
+  // is a measurable analyte, so it's recognized-and-dropped, never coining a series.
+  // A GENUINE coded result (the organism id, an amplification call, an antibody
+  // titer) is NOT here — those are mapped analytes above.
+  "56850-1", // Lab Interpretation (generic Normal/Abnormal summary)
+  "75980-3", // "Result" (generic placeholder restating a screen call)
+  "34574-4", // "Final Report" (narrative culture-report dump)
+  "36334-1", // ICD-10 (a diagnosis code filed as a result row)
+  "31208-2", // Specimen source (e.g. "Cervix/Endocervix") — not a result
+  "893-8", // Antibody Screen Interpretation (restates the structured screen)
+  "890-4", // Antibody-screen ("ABSCO") interpretation
+  "882-1", // Type & screen ("TSO") interpretation — blood type is captured cleanly
+  "21026-0", // by the ABORh code 19057-9 → "Blood Type"; these restate it.
 ]);
 
 // Derived anthropometric PERCENTILES that pediatric CCDs report alongside the raw

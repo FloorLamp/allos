@@ -107,15 +107,27 @@ describe("canonicalBiomarkerForLoinc — CBC + CMP lab mappings", () => {
       "19066-0",
       "8262-8",
       "106201-7",
+      // The "map every LOINC" sweep added the administrative rows a real XDM files
+      // in Results whose value is a restatement, a source, or a diagnosis code —
+      // never a measurable analyte. The specimen SOURCE (31208-2, "Cervix/
+      // Endocervix") is a source, not a result; the blood type restated by the
+      // "TSO Interp" codes (882-1/21026-0) is captured cleanly by the ABORh code
+      // 19057-9 → "Blood Type", so these restatements drop without loss.
+      "56850-1",
+      "75980-3",
+      "34574-4",
+      "36334-1",
+      "31208-2",
+      "893-8",
+      "890-4",
+      "882-1",
+      "21026-0",
     ]) {
       expect(isNonAnalyteLoinc(code)).toBe(true);
       expect(isUnmappedLabLoinc(code)).toBe(false);
     }
-    // A genuine analyte code is NOT swept up by the denylist — and the deliberately
-    // conservative set excludes anything that could carry a real result, e.g. an
-    // STI specimen-source code (31208-2) is left in place, not dropped.
+    // A genuine analyte code is NOT swept up by the denylist.
     expect(isNonAnalyteLoinc("2345-7")).toBe(false);
-    expect(isNonAnalyteLoinc("31208-2")).toBe(false);
   });
 
   // p3/p4 (pediatric): derived anthropometric percentiles are dropped (the app

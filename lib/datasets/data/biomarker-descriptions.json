@@ -1371,6 +1371,168 @@
       "name": "Glucose, Fasting",
       "full_name": "Fasting Plasma Glucose",
       "description": "Blood sugar measured after not eating for several hours, used to screen for and monitor prediabetes and diabetes. Normal is roughly 70-99 mg/dL, 100-125 indicates prediabetes, and 126 or higher (confirmed) indicates diabetes. Informational, not a diagnosis."
+    },
+    {
+      "name": "RPR",
+      "abbreviation": "RPR",
+      "full_name": "Rapid Plasma Reagin",
+      "description": "A blood screen for syphilis. Reported qualitatively as reactive or non-reactive; a reactive result is followed by a confirmatory treponemal test."
+    },
+    {
+      "name": "HIV Antigen/Antibody",
+      "abbreviation": "HIV Ag/Ab",
+      "full_name": "HIV Antigen/Antibody Combination",
+      "description": "A 4th-generation screen that detects both HIV antigen and antibody, catching infection earlier than antibody-only tests. A reactive result is confirmed by a supplemental assay."
+    },
+    {
+      "name": "SARS-CoV-2 NAAT",
+      "abbreviation": "SARS-CoV-2 PCR",
+      "full_name": "SARS-CoV-2 Nucleic Acid Amplification",
+      "description": "A molecular (PCR) test for the virus that causes COVID-19. Reported as detected or not detected."
+    },
+    {
+      "name": "SARS-CoV-2 Antigen",
+      "abbreviation": "SARS-CoV-2 Ag",
+      "full_name": "SARS-CoV-2 Antigen",
+      "description": "A rapid antigen test for the virus that causes COVID-19. Faster but less sensitive than PCR; reported as positive or negative."
+    },
+    {
+      "name": "Influenza A NAAT",
+      "abbreviation": "Flu A PCR",
+      "full_name": "Influenza A Nucleic Acid Amplification",
+      "description": "A molecular (PCR) test for influenza A. Reported as detected or not detected."
+    },
+    {
+      "name": "Influenza B NAAT",
+      "abbreviation": "Flu B PCR",
+      "full_name": "Influenza B Nucleic Acid Amplification",
+      "description": "A molecular (PCR) test for influenza B. Reported as detected or not detected."
+    },
+    {
+      "name": "Influenza A Antigen",
+      "abbreviation": "Flu A Ag",
+      "full_name": "Influenza A Antigen",
+      "description": "A rapid antigen test for influenza A. Reported as positive or negative."
+    },
+    {
+      "name": "Influenza B Antigen",
+      "abbreviation": "Flu B Ag",
+      "full_name": "Influenza B Antigen",
+      "description": "A rapid antigen test for influenza B. Reported as positive or negative."
+    },
+    {
+      "name": "RSV NAAT",
+      "abbreviation": "RSV PCR",
+      "full_name": "Respiratory Syncytial Virus Nucleic Acid Amplification",
+      "description": "A molecular (PCR) test for RSV, a common respiratory virus. Reported as detected or not detected."
+    },
+    {
+      "name": "Streptococcus A NAAT",
+      "abbreviation": "Strep A PCR",
+      "full_name": "Group A Streptococcus Nucleic Acid Amplification",
+      "description": "A molecular test for group A strep, the cause of strep throat. Reported as detected or not detected."
+    },
+    {
+      "name": "Group B Streptococcus",
+      "abbreviation": "GBS",
+      "full_name": "Group B Streptococcus Screen",
+      "description": "A screen for group B strep colonization, done routinely in late pregnancy to guide antibiotics during labor. Reported as detected or not detected."
+    },
+    {
+      "name": "Chlamydia trachomatis NAAT",
+      "abbreviation": "CT NAAT",
+      "full_name": "Chlamydia trachomatis Nucleic Acid Amplification",
+      "description": "A molecular test for chlamydia, a common sexually transmitted infection. Reported as detected or not detected."
+    },
+    {
+      "name": "Neisseria gonorrhoeae NAAT",
+      "abbreviation": "GC NAAT",
+      "full_name": "Neisseria gonorrhoeae Nucleic Acid Amplification",
+      "description": "A molecular test for gonorrhea, a sexually transmitted infection. Reported as detected or not detected."
+    },
+    {
+      "name": "HPV, High-Risk",
+      "abbreviation": "hrHPV",
+      "full_name": "High-Risk Human Papillomavirus",
+      "description": "A pooled test for the high-risk HPV types that cause cervical cancer, used in cervical screening. Reported as positive or negative."
+    },
+    {
+      "name": "HPV Genotype 16",
+      "abbreviation": "HPV 16",
+      "full_name": "Human Papillomavirus Genotype 16",
+      "description": "Detection of HPV type 16, one of the highest-risk cervical-cancer types, reported separately from the pooled high-risk result."
+    },
+    {
+      "name": "HPV Genotype 18/45",
+      "abbreviation": "HPV 18/45",
+      "full_name": "Human Papillomavirus Genotype 18/45",
+      "description": "Detection of HPV types 18 and 45, high-risk cervical-cancer types, reported separately from the pooled high-risk result."
+    },
+    {
+      "name": "Culture Organism",
+      "abbreviation": "Organism",
+      "full_name": "Culture Organism",
+      "description": "The organism identified by a microbiology culture. The result is the organism's name (for example, a specific bacterium) rather than a number."
+    },
+    {
+      "name": "Rubella Antibody IgG",
+      "abbreviation": "Rubella IgG",
+      "full_name": "Rubella IgG Antibody",
+      "description": "An antibody marker of immunity to rubella (German measles), from past infection or vaccination. Reported as immune/non-immune or as a titer."
+    },
+    {
+      "name": "Measles Antibody IgG",
+      "abbreviation": "Measles IgG",
+      "full_name": "Measles IgG Antibody",
+      "description": "An antibody marker of immunity to measles, from past infection or vaccination. Reported as immune/non-immune or as a titer."
+    },
+    {
+      "name": "Mumps Antibody IgG",
+      "abbreviation": "Mumps IgG",
+      "full_name": "Mumps IgG Antibody",
+      "description": "An antibody marker of immunity to mumps, from past infection or vaccination. Reported as immune/non-immune or as a titer."
+    },
+    {
+      "name": "Varicella Zoster Antibody IgG",
+      "abbreviation": "VZV IgG",
+      "full_name": "Varicella-Zoster IgG Antibody",
+      "description": "An antibody marker of immunity to varicella-zoster (chickenpox), from past infection or vaccination. Reported as immune/non-immune or as a titer."
+    },
+    {
+      "name": "Trisomy 21 Screen",
+      "abbreviation": "T21",
+      "full_name": "Trisomy 21 (Down Syndrome) Screen",
+      "description": "A prenatal cell-free-DNA screen estimating the risk of Down syndrome. A low- or high-risk result, not a diagnosis; high risk is confirmed by diagnostic testing."
+    },
+    {
+      "name": "Trisomy 18 Screen",
+      "abbreviation": "T18",
+      "full_name": "Trisomy 18 (Edwards Syndrome) Screen",
+      "description": "A prenatal cell-free-DNA screen estimating the risk of Edwards syndrome. A low- or high-risk result, not a diagnosis."
+    },
+    {
+      "name": "Trisomy 13 Screen",
+      "abbreviation": "T13",
+      "full_name": "Trisomy 13 (Patau Syndrome) Screen",
+      "description": "A prenatal cell-free-DNA screen estimating the risk of Patau syndrome. A low- or high-risk result, not a diagnosis."
+    },
+    {
+      "name": "Fetal Fraction",
+      "abbreviation": "FF",
+      "full_name": "Fetal Fraction",
+      "description": "The proportion of cell-free DNA in a prenatal (NIPT) blood draw that comes from the pregnancy. A quality measure of the test, not a health signal."
+    },
+    {
+      "name": "Glucose, Gestational Screen (50 g)",
+      "abbreviation": "GCT",
+      "full_name": "Glucose Challenge Test (50 g)",
+      "description": "A 1-hour glucose challenge used to screen for gestational diabetes. A value at or above the lab's cutoff prompts a longer diagnostic glucose-tolerance test."
+    },
+    {
+      "name": "Hemoglobin Electrophoresis",
+      "abbreviation": "Hb Electrophoresis",
+      "full_name": "Hemoglobin Electrophoresis",
+      "description": "A test that separates the types of hemoglobin to screen for sickle-cell and thalassemia traits. Reported as a normal or abnormal variant pattern."
     }
   ]
 }
