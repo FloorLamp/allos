@@ -6,6 +6,8 @@ import {
   ACTIVE_PROTOCOLS_CAP,
   capDashboardList,
 } from "@/lib/dashboard-widgets";
+import { practiceCadenceText, PRACTICE_PLENTY_TEXT } from "@/lib/practice";
+import LogPracticeButton from "@/app/(app)/protocols/LogPracticeButton";
 
 // Active protocols (issue #660, opt-in via Customize). Each ongoing N-of-1
 // experiment as a compact row: days elapsed, this-week practice adherence, and the
@@ -63,10 +65,18 @@ export default function ActiveProtocolWidget({
                 data-testid="active-protocol-adherence"
               >
                 <span className="font-semibold tabular-nums">
-                  {p.adherence.count} / {p.adherence.perWeek}
+                  {p.adherence.count} /{" "}
+                  {practiceCadenceText(
+                    p.adherence.perWeek,
+                    p.adherence.perWeekMax
+                  )}
                 </span>{" "}
                 {p.adherence.label}
-                {p.adherence.met ? (
+                {p.adherence.atCeiling ? (
+                  <span className="badge ml-1.5 bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">
+                    {PRACTICE_PLENTY_TEXT}
+                  </span>
+                ) : p.adherence.met ? (
                   <span className="badge ml-1.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
                     On track
                   </span>
@@ -76,6 +86,17 @@ export default function ActiveProtocolWidget({
                   </span>
                 )}
               </div>
+            )}
+
+            {/* One-tap logging for a wellness practice (#1259) — the count is the
+                summary's this-week distinct-day tally; the button reports today's own
+                running count from its outcome. */}
+            {p.adherence?.practiceName && (
+              <LogPracticeButton
+                practice={p.adherence.practiceName}
+                todayCount={0}
+                atCeiling={p.adherence.atCeiling}
+              />
             )}
 
             {p.primaryOutcome && (

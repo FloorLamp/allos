@@ -582,6 +582,26 @@ export const DATASETS: ExportDataset[] = [
        FROM mood_logs WHERE profile_id = ? ORDER BY date DESC, id DESC`,
     countSql: `SELECT COUNT(*) AS n FROM mood_logs WHERE profile_id = ?`,
   }),
+  tableDataset({
+    // Wellness-practice session log (#1259): one row per logged session (red light,
+    // sauna, meditation, …) with optional time-of-day and duration. User-entered health
+    // data, so it's in the portable export; id-keyed + owned, deletable like the other
+    // logged datasets.
+    key: "practice_logs",
+    label: "Practice sessions",
+    table: "practice_logs",
+    columns: [
+      "practice",
+      "date",
+      "time",
+      "duration_min",
+      "notes",
+      "created_at",
+    ],
+    select: `SELECT id, practice, date, time, duration_min, notes, created_at
+       FROM practice_logs WHERE profile_id = ? ORDER BY date DESC, id DESC`,
+    countSql: `SELECT COUNT(*) AS n FROM practice_logs WHERE profile_id = ?`,
+  }),
   {
     // Supplements + medications (the parent intake_items rows), one per row, with
     // each item's dose SCHEDULE folded into a readable `schedule` summary (built
@@ -1164,6 +1184,7 @@ export const DELETE_POLICY: Record<string, DatasetDeletePolicy> = {
   symptom_logs: { revalidate: ["/", "/timeline"] },
   cycles: { revalidate: ["/medical/cycles", "/timeline", "/"] },
   mood_logs: { revalidate: ["/trends", "/"] },
+  practice_logs: { revalidate: ["/timeline", "/longevity", "/"] },
 };
 
 export function getDataset(key: string): ExportDataset | undefined {

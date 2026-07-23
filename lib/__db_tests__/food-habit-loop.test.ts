@@ -108,6 +108,7 @@ describe("food-habit → protocol loop (#580)", () => {
       scopeKind: "food_group",
       value: "fatty_fish",
       perWeek: 2,
+      perWeekMax: null,
     });
 
     // Adherence is the SAME progress (one computation).

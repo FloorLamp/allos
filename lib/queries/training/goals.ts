@@ -4,8 +4,9 @@ import {
   computeBodyGoalProgress,
   computeGoalProgress,
 } from "../../goal-progress";
-import { goalMatchesExercise, frequencyPace } from "../../goals";
+import { goalMatchesExercise } from "../../goals";
 import type { FrequencyPace } from "../../goals";
+import { frequencyRangeState } from "../../practice";
 import { daysBetweenDateStr } from "../../date";
 import type { BodyGroup, MuscleRegion } from "../../lifts";
 import { regionForExercise, regionsForGroup } from "../../lifts";
@@ -137,7 +138,14 @@ export interface FrequencyTargetProgress {
   target: FrequencyTarget;
   count: number;
   per_week: number;
+  // The optional weekly ceiling (#1259): a range target ("3–5×/week") is DONE for the
+  // week once count reaches it — a calm "that's plenty", never a red state. NULL for a
+  // single-floor target. Copied through so every surface reads the SAME range.
+  per_week_max: number | null;
   met: boolean;
+  // At/above the ceiling (per_week_max != null && count >= per_week_max). Silences the
+  // nudge and flips the surfaces to the calm plenty state (#1259).
+  atCeiling: boolean;
   // Paced status (#748 item 3): "met" once complete, "on-pace" while keeping up with the
   // share of the week elapsed, else "behind". Computed once here so every surface agrees.
   pace: FrequencyPace;
@@ -241,6 +249,24 @@ export function getFrequencyTargetProgress(
       foodServings.set(r.group_key, r.n);
   }
 
+  // Wellness-practice (#1259) targets count DISTINCT DAYS a session was logged into
+  // practice_logs this week — the dedicated store the reuse-a-store rule (#860/#944)
+  // deliberately carved out (a session is not a valued observation). Day-distinct so a
+  // second same-day session never double-counts. Gathered once for all practice targets.
+  const practiceDates = new Map<string, Set<string>>();
+  if (targets.some((t) => t.scope_kind === "practice")) {
+    for (const r of db
+      .prepare(
+        `SELECT practice, date FROM practice_logs
+          WHERE profile_id = ? AND date >= ?`
+      )
+      .all(profileId, since) as { practice: string; date: string }[]) {
+      let set = practiceDates.get(r.practice);
+      if (!set) practiceDates.set(r.practice, (set = new Set()));
+      set.add(r.date);
+    }
+  }
+
   return targets.map((t) => {
     let count = 0;
     if (t.scope_kind === "region") {
@@ -254,15 +280,28 @@ export function getFrequencyTargetProgress(
       count = foodServings.get(t.scope_value) ?? 0;
     } else if (t.scope_kind === "mobility_region") {
       count = mobilityRegionDates.get(t.scope_value as MuscleRegion)?.size ?? 0;
+    } else if (t.scope_kind === "practice") {
+      count = practiceDates.get(t.scope_value)?.size ?? 0;
     } else {
       count = typeDates.get(t.scope_value)?.size ?? 0;
     }
+    // Range semantics (#1259): the FLOOR (per_week) drives met + pace; the optional
+    // ceiling (per_week_max) flips atCeiling once reached — a calm "that's plenty", never
+    // a red state. One computation (frequencyRangeState) shared by every surface.
+    const range = frequencyRangeState(
+      count,
+      t.per_week,
+      t.per_week_max,
+      elapsedDays
+    );
     return {
       target: t,
       count,
       per_week: t.per_week,
-      met: count >= t.per_week,
-      pace: frequencyPace(count, t.per_week, elapsedDays),
+      per_week_max: t.per_week_max,
+      met: range.met,
+      atCeiling: range.atCeiling,
+      pace: range.pace,
     };
   });
 }

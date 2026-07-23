@@ -1101,6 +1101,62 @@ function collectEvents(
     );
   }
 
+  // Wellness-practice sessions (#1259): one event per practice-DAY (the day's session
+  // set), so a run of red-light days reads as a compact per-day entry. The dedicated
+  // practice_logs store gets its own timeline entry (the cost of the reuse-a-store
+  // exception, #860/#944). Each session's time/duration is a detail item; deep-links back
+  // to the day.
+  const practiceBounds = exact("date");
+  const practiceDays = db
+    .prepare(
+      `SELECT date, practice, COUNT(*) AS count,
+              GROUP_CONCAT(
+                COALESCE(time, '') || '::' || COALESCE(duration_min, ''),
+                '||'
+              ) AS sessions
+         FROM practice_logs
+        WHERE profile_id = ?${practiceBounds.clause}
+        GROUP BY date, practice
+        ORDER BY date DESC
+        LIMIT ?`
+    )
+    .all(profileId, ...practiceBounds.params, perTableLimit) as {
+    date: string;
+    practice: string;
+    count: number;
+    sessions: string | null;
+  }[];
+  for (const p of practiceDays) {
+    const sessions = (p.sessions ?? "")
+      .split("||")
+      .filter(Boolean)
+      .map((pair) => {
+        const idx = pair.lastIndexOf("::");
+        const time = idx >= 0 ? pair.slice(0, idx) : "";
+        const durRaw = idx >= 0 ? pair.slice(idx + 2) : "";
+        const dur = durRaw ? Number(durRaw) : null;
+        return { time, dur };
+      });
+    const detailItems = sessions.map((s, i) => ({
+      label: s.time || `Session ${i + 1}`,
+      value:
+        s.dur != null && Number.isFinite(s.dur) ? `${s.dur} min` : "Logged",
+    }));
+    pushLimited(
+      events,
+      {
+        id: `practice:${p.date}:${p.practice}`,
+        date: p.date,
+        category: "practice",
+        title: p.practice,
+        subtitle: p.count === 1 ? "1 session" : `${p.count} sessions`,
+        href: timelineDayHref(p.date),
+        detailItems,
+      },
+      options
+    );
+  }
+
   // Illness episodes (#801): one STORY card per derived episode, spanning the range and
   // anchored at its last active day (today for an ongoing one). The headline + details
   // format over the SAME assembly the detail + share pages use — no second engine (#221).
@@ -1195,6 +1251,7 @@ export function getTimelineDates(
     "SELECT date FROM insights WHERE profile_id = @profileId",
     "SELECT achieved_on AS date FROM milestones WHERE profile_id = @profileId",
     "SELECT date FROM symptom_logs WHERE profile_id = @profileId",
+    "SELECT date FROM practice_logs WHERE profile_id = @profileId",
     "SELECT start_date AS date FROM protocols WHERE profile_id = @profileId",
     `SELECT end_date AS date FROM protocols
       WHERE profile_id = @profileId AND end_date IS NOT NULL`,
