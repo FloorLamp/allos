@@ -126,7 +126,7 @@ export default function ProfileNotificationSettings({
       <p className="text-xs text-slate-500 dark:text-slate-400">
         When this person’s reminders are sent. These times apply to every
         channel they’re delivered on (Telegram, web push, Home Assistant).
-        Connect a Telegram chat under <em>This login</em> above.
+        Connect a Telegram chat in your login’s channel above.
       </p>
 
       <>
