@@ -106,6 +106,8 @@ import {
   SICK_COLLAPSE_PROFILE,
   E2E_LOGIN_SITCOACH,
   SITCOACH_PROFILE,
+  E2E_LOGIN_ILLNESS_CARE,
+  ILLNESS_CARE_PROFILE,
   E2E_LOGIN_CARE,
   CARE_PARENT_PROFILE,
   SICK_KID_A_PROFILE,
@@ -3434,6 +3436,58 @@ seedSickEpisode(sitCoachId, { activateSituation: true });
   ).run(suppId);
 }
 seedMemberLogin(E2E_LOGIN_SITCOACH, sitCoachId);
+
+// ILLNESS_CARE: a dedicated sick profile for the illness-care care finding (#805). Its
+// fever is logged on FOUR consecutive days (daysAgo 3→0), crossing the cited "more than
+// 3 days" line so the finding surfaces on Upcoming. Dedicated + read-only in
+// illness-care.spec — profile 1 carries the same fixture, but the illness lifecycle specs
+// mutate profile 1's illness state (end/reopen episode, dismiss the finding), and under
+// --repeat-each a sibling's mutation made the finding vanish for the reader. Mirrors the
+// scripts/seed.ts profile-1 shape: active Illness situation + open episode + 4-day fever.
+const illnessCareId = fixtureProfileId(ILLNESS_CARE_PROFILE);
+{
+  const on = today(illnessCareId);
+  const existingSit = db
+    .prepare(
+      "SELECT id FROM situations WHERE profile_id = ? AND name = 'Illness'"
+    )
+    .get(illnessCareId) as { id: number } | undefined;
+  const sitId =
+    existingSit?.id ??
+    Number(
+      db
+        .prepare(
+          "INSERT INTO situations (profile_id, name, active, illness_type) VALUES (?, 'Illness', 1, 1)"
+        )
+        .run(illnessCareId).lastInsertRowid
+    );
+  db.prepare(
+    "UPDATE situations SET active = 1, illness_type = 1 WHERE id = ?"
+  ).run(sitId);
+  db.prepare("DELETE FROM illness_episodes WHERE profile_id = ?").run(
+    illnessCareId
+  );
+  db.prepare(
+    `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+     VALUES (?, 'Illness', ?, NULL)`
+  ).run(illnessCareId, shiftDateStr(on, -3));
+  // Fever on all four consecutive days (daysAgo 3→0) → "more than 3 days" → the finding.
+  const seedFever = db.prepare(
+    `INSERT INTO symptom_logs (profile_id, date, symptom, severity, note)
+     VALUES (?, ?, 'fever', ?, NULL)
+     ON CONFLICT (profile_id, date, symptom)
+     DO UPDATE SET severity = MAX(symptom_logs.severity, excluded.severity)`
+  );
+  for (const [ago, severity] of [
+    [3, 2],
+    [2, 3],
+    [1, 3],
+    [0, 2],
+  ] as const) {
+    seedFever.run(illnessCareId, shiftDateStr(on, -ago), severity);
+  }
+}
+seedMemberLogin(E2E_LOGIN_ILLNESS_CARE, illnessCareId);
 
 // CARE: acts as the well Care Parent, granted both sick kids → two accordion cockpits.
 const careLoginId = seedMemberLogin(E2E_LOGIN_CARE, careParentId);
