@@ -368,13 +368,12 @@ export function isVitalLoinc(loinc: string | null | undefined): boolean {
 // "unmapped" for this purpose — it's intentionally kept out of the biomarker
 // vocabulary — so it's excluded here.
 export function isUnmappedLabLoinc(loinc: string | null | undefined): boolean {
+  // Delegates to the single precedence authority (classifyLoinc) so this and the
+  // routing predicates can never disagree about a code's fate.
   return (
     loinc != null &&
     loinc !== "" &&
-    !isVitalLoinc(loinc) &&
-    !isNonAnalyteLoinc(loinc) &&
-    !isDerivedPercentileLoinc(loinc) &&
-    canonicalBiomarkerForLoinc(loinc) == null
+    classifyLoinc(loinc).disposition === "unmapped-lab"
   );
 }
 
@@ -524,4 +523,49 @@ export function qualitativeClassForLoinc(
 ): QualitativeLoincClass | null {
   if (!loinc) return null;
   return QUALITATIVE_CLASS_BY_LOINC[loinc] ?? null;
+}
+
+// ── Single-classifier facade (the ONE precedence authority) ─────────────────
+//
+// The five LOINC-keyed tables above each answer a distinct question, and the
+// predicates were queried independently — so the ORDER that decides a code's fate
+// (a vital is never an "unmapped lab"; a non-analyte is dropped before we ask for a
+// canonical name) lived implicitly in isUnmappedLabLoinc's `&&` chain. classifyLoinc
+// makes that precedence explicit in ONE place and returns everything a caller needs
+// in a single lookup. It is NOT a strict partition: a vital ALSO carries a canonical
+// name (BP/temperature map to a vitals-category entry for series grouping), so
+// `disposition` is the routing/keep-drop decision while `canonical` + `qualitative`
+// are orthogonal facets carried alongside.
+//
+//   disposition:
+//     'vital'        — route to the vitals category (may also have `canonical`)
+//     'non-analyte'  — administrative/structural; the mapper DROPS it
+//     'percentile'   — a derived anthropometric percentile; DROPPED (app recomputes)
+//     'lab'          — a lab reading WITH a canonical identity (`canonical` set)
+//     'unmapped-lab' — a lab reading with NO canonical mapping (the debug gap)
+export type LoincDisposition =
+  "vital" | "non-analyte" | "percentile" | "lab" | "unmapped-lab";
+
+export interface LoincClassification {
+  disposition: LoincDisposition;
+  canonical: string | null;
+  qualitative: QualitativeLoincClass | null;
+}
+
+export function classifyLoinc(
+  loinc: string | null | undefined
+): LoincClassification {
+  const canonical = canonicalBiomarkerForLoinc(loinc);
+  const qualitative = qualitativeClassForLoinc(loinc);
+  // Precedence: vital → non-analyte → percentile → (mapped) lab → unmapped lab.
+  const disposition: LoincDisposition = isVitalLoinc(loinc)
+    ? "vital"
+    : isNonAnalyteLoinc(loinc)
+      ? "non-analyte"
+      : isDerivedPercentileLoinc(loinc)
+        ? "percentile"
+        : canonical != null
+          ? "lab"
+          : "unmapped-lab";
+  return { disposition, canonical, qualitative };
 }

@@ -7,6 +7,7 @@ import {
   isDerivedPercentileLoinc,
   isUnmappedLabLoinc,
   qualitativeClassForLoinc,
+  classifyLoinc,
 } from "@/lib/biomarker-loinc";
 import { reconciledFlag, referenceRange } from "@/lib/reference-range";
 import { convertToCanonical } from "@/lib/unit-conversions";
@@ -786,5 +787,44 @@ describe("end-to-end import routing through snapCanonicalName", () => {
   it("routes a lipid and a corrected-code analyte end-to-end", () => {
     expect(route("13457-7", "LDL Cholesterol Calc")).toBe("LDL Cholesterol");
     expect(route("2283-0", "RBC Folate")).toBe("Folate, RBC");
+  });
+});
+
+describe("classifyLoinc — the single precedence authority", () => {
+  it("agrees with each individual predicate (no drift)", () => {
+    // One representative code per disposition + orthogonal facets.
+    const cases: Record<string, string> = {
+      "8480-6": "vital", // systolic BP (also has a canonical name)
+      "72486-4": "non-analyte", // "Approved By"
+      "59576-9": "percentile", // BMI percentile
+      "718-7": "lab", // Hemoglobin (mapped)
+      "20507-0": "lab", // RPR (mapped, qualitative infection)
+      "99999-9": "unmapped-lab", // nothing claims it
+    };
+    for (const [code, disposition] of Object.entries(cases)) {
+      const c = classifyLoinc(code);
+      expect(c.disposition, code).toBe(disposition);
+      // The disposition must be consistent with the standalone predicates.
+      expect(isVitalLoinc(code)).toBe(disposition === "vital");
+      expect(isNonAnalyteLoinc(code)).toBe(disposition === "non-analyte");
+      expect(isDerivedPercentileLoinc(code)).toBe(disposition === "percentile");
+      expect(isUnmappedLabLoinc(code)).toBe(disposition === "unmapped-lab");
+      // Facets ride alongside the disposition.
+      expect(c.canonical).toBe(canonicalBiomarkerForLoinc(code));
+      expect(c.qualitative).toBe(qualitativeClassForLoinc(code));
+    }
+  });
+
+  it("carries the qualitative class as an orthogonal facet on a mapped lab", () => {
+    const rpr = classifyLoinc("20507-0");
+    expect(rpr.disposition).toBe("lab");
+    expect(rpr.canonical).toBe("RPR");
+    expect(rpr.qualitative).toBe("infection");
+  });
+
+  it("a vital carries its canonical identity too (not a strict partition)", () => {
+    const bp = classifyLoinc("8480-6");
+    expect(bp.disposition).toBe("vital");
+    expect(bp.canonical).toBe("Blood Pressure Systolic");
   });
 });
