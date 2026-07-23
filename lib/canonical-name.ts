@@ -325,6 +325,39 @@ export function snapCanonicalName(
   return index.get(normalizeCanonicalKey(name)) ?? name;
 }
 
+// Batch-aware snap for an import's record loop: like snapCanonicalName, but a
+// vocabulary MISS claims the name's key in the caller-local index, so a same-key
+// spelling LATER in the same batch collapses onto the batch's first occurrence.
+// Without this, one import carrying both "Rubella Antibody IgG" and "Rubella
+// Antibody (IgG)" (an XDM whose documents spell one analyte two ways) snapped
+// each against the pre-import vocabulary only — both spellings survived onto
+// rows, both registered as vocabulary entries, the analyte's series split, and
+// the NEXT snap resolved the now-colliding key to an arbitrary alphabetical
+// winner (so a byte-identical reprocess renamed canonicals). Callers pass a
+// fresh buildCanonicalIndex() per batch; the mutation never outlives the batch.
+export function snapCanonicalNameIntoBatch(
+  name: string,
+  index: Map<string, string>
+): string {
+  const key = normalizeCanonicalKey(name);
+  const hit = index.get(key);
+  if (hit) return hit;
+  if (key) index.set(key, name);
+  return name;
+}
+
+// Claim a FINAL canonical name's key in a caller-local batch index without
+// re-snapping — for the AI path, whose unit-aware arbitration
+// (unitAwareCanonical) can re-resolve the snapped name AFTER the snap, so the
+// claim must happen on the post-arbitration result rather than inside the snap.
+export function claimCanonicalKey(
+  name: string,
+  index: Map<string, string>
+): void {
+  const key = normalizeCanonicalKey(name);
+  if (key && !index.has(key)) index.set(key, name);
+}
+
 // Garbage / placeholder canonical_names the AI extractor sometimes emits instead of
 // a real analyte identity — "Comment(s)" is a recurring dumping-ground (a urine pH
 // and a WBC row both came back as "Comment(S)" in real extractions, #918). Using it
