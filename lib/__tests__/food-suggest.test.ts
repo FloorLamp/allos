@@ -358,12 +358,15 @@ describe("suggestFoods — reduce direction (#775)", () => {
       baseInput({
         flagged: [
           { name: "LDL Cholesterol", flag: "high" },
-          { name: "ApoB", flag: "high" },
+          { name: "Apolipoprotein B (ApoB)", flag: "high" },
         ],
       })
     );
     expect(out).toHaveLength(1);
-    expect(out[0].triggeredBy).toEqual(["LDL Cholesterol", "ApoB"]);
+    expect(out[0].triggeredBy).toEqual([
+      "LDL Cholesterol",
+      "Apolipoprotein B (ApoB)",
+    ]);
   });
 
   it("an IN-RANGE (normal) reading yields no reduce suggestion (true negative)", () => {

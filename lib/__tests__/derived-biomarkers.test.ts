@@ -277,10 +277,12 @@ describe("computeDerivedReadings — PhenoAge", () => {
       Albumin: [{ date, value: 4.7, unit: "g/dL" }],
       Creatinine: [{ date, value: 1.0, unit: "mg/dL" }],
       Glucose: [{ date, value: 90, unit: "mg/dL" }],
-      "hs-CRP": [{ date, value: 0.5, unit: "mg/L" }],
+      "High-Sensitivity C-Reactive Protein (hs-CRP)": [
+        { date, value: 0.5, unit: "mg/L" },
+      ],
       Lymphocytes: [{ date, value: 35, unit: "%" }],
-      MCV: [{ date, value: 90, unit: "fL" }],
-      RDW: [{ date, value: 13, unit: "%" }],
+      "Mean Corpuscular Volume (MCV)": [{ date, value: 90, unit: "fL" }],
+      "Red Cell Distribution Width (RDW)": [{ date, value: 13, unit: "%" }],
       "Alkaline Phosphatase": [{ date, value: 65, unit: "U/L" }],
       "White Blood Cell Count": [{ date, value: 5.5, unit: "10^3/uL" }],
       ...over,
@@ -306,7 +308,9 @@ describe("computeDerivedReadings — PhenoAge", () => {
             { date: "2024-01-01", value: 1.0 / 0.0113, unit: "umol/L" },
           ],
           Glucose: [{ date: "2024-01-01", value: 90 / 18.02, unit: "mmol/L" }],
-          "hs-CRP": [{ date: "2024-01-01", value: 0.05, unit: "mg/dL" }],
+          "High-Sensitivity C-Reactive Protein (hs-CRP)": [
+            { date: "2024-01-01", value: 0.05, unit: "mg/dL" },
+          ],
         })
       ),
       demo("male", 45)
@@ -316,7 +320,7 @@ describe("computeDerivedReadings — PhenoAge", () => {
 
   it("emits NOTHING on a partial panel (a missing analyte, no imputation)", () => {
     const draw = fullDraw("2024-01-01");
-    delete draw["RDW"]; // drop one of the nine required inputs
+    delete draw["Red Cell Distribution Width (RDW)"]; // drop one of the nine required inputs
     const r = computeDerivedReadings(seriesOf(draw), demo("male", 45));
     expect(find(r, "PhenoAge", "2024-01-01")).toBeUndefined();
   });
@@ -437,10 +441,10 @@ describe("derivedInputCanonicalNames", () => {
         "Insulin",
         "Creatinine",
         "Albumin",
-        "hs-CRP",
+        "High-Sensitivity C-Reactive Protein (hs-CRP)",
         "Lymphocytes",
-        "MCV",
-        "RDW",
+        "Mean Corpuscular Volume (MCV)",
+        "Red Cell Distribution Width (RDW)",
         "Alkaline Phosphatase",
         "White Blood Cell Count",
       ])

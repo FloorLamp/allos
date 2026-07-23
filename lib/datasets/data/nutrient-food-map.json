@@ -27,7 +27,7 @@
         "label": "LDL cholesterol / ApoB",
         "biomarkers": [
           "LDL Cholesterol",
-          "ApoB"
+          "Apolipoprotein B (ApoB)"
         ],
         "direction": "high",
         "foods": [

@@ -1,6 +1,7 @@
 import { db, writeTx } from "../db";
 import { cache } from "../request-cache";
 import { biomarkerFamily, BIOMARKER_FAMILIES } from "../canonical-name";
+import { canonicalResolver } from "../canonical-resolve";
 import {
   getStoredAge,
   getUserBirthdate,
@@ -563,9 +564,20 @@ export function getCanonicalAutocomplete(profileId: number): string[] {
 export function getCanonicalBiomarker(
   name: string
 ): CanonicalBiomarker | undefined {
-  return db
-    .prepare("SELECT * FROM canonical_biomarkers WHERE name = ? COLLATE NOCASE")
-    .get(name) as CanonicalBiomarker | undefined;
+  const stmt = db.prepare(
+    "SELECT * FROM canonical_biomarkers WHERE name = ? COLLATE NOCASE"
+  );
+  const exact = stmt.get(name) as CanonicalBiomarker | undefined;
+  if (exact) return exact;
+  // Alias-aware fallback: a caller (or a stored row) may pass a legacy spelling or a
+  // bare abbreviation the dataset no longer uses verbatim (e.g. "MCHC" after the
+  // rename to "Mean Corpuscular Hemoglobin Concentration (MCHC)"). Snap it onto the
+  // canonical name first — the same resolution the flag/info/derive paths use — so
+  // every canonical-entry lookup is uniformly robust to a non-canonical name.
+  const snapped = canonicalResolver()(name);
+  return snapped !== name
+    ? (stmt.get(snapped) as CanonicalBiomarker | undefined)
+    : undefined;
 }
 
 // The single most recent record for a canonical name (newest date, id tie-break),
@@ -963,15 +975,23 @@ export function getImmunityTiters(profileId: number): ImmunityTiter[] {
 // and the canonical table preloaded as a NOCASE map. Shared by reconcileFlags and
 // its preview twin below so the two can never read different context.
 function flagReconcileProfileContext(profileId: number) {
-  const cbByName = new Map(
-    (
-      db
-        .prepare("SELECT * FROM canonical_biomarkers")
-        .all() as CanonicalBiomarker[]
-    ).map((c) => [c.name.toLowerCase(), c])
-  );
+  const cbRows = db
+    .prepare("SELECT * FROM canonical_biomarkers")
+    .all() as CanonicalBiomarker[];
+  const cbByName = new Map(cbRows.map((c) => [c.name.toLowerCase(), c]));
+  // Alias-aware resolution: the pure core looks a row's canonical_name up by exact
+  // (lowercased) name, so a stored row whose canonical_name is a legacy spelling or
+  // an un-migrated bare abbreviation (e.g. "RDW" before migration 103 runs) would
+  // silently MISS its entry and lose its band. Snap it onto the dataset spelling
+  // first via the shared (cached) resolver — recognized aliases/variants resolve; an
+  // unrecognized name returns unchanged (→ still no match → no flag, exactly as
+  // before). The SAME resolver the derived-index gathering uses, so both read paths
+  // are uniformly alias-aware, and the ~300-entry index is cached per vocabulary
+  // rather than rebuilt per call. Makes a future rename not require a data migration.
+  const resolve = canonicalResolver();
   return {
     cbByName,
+    resolve,
     ctx: {
       sex: getUserSex(profileId),
       birthdate: getUserBirthdate(profileId),
@@ -1007,7 +1027,7 @@ export function previewReconcileFlags(
   records: PersistInput["records"]
 ): void {
   if (records.length === 0) return;
-  const { cbByName, ctx } = flagReconcileProfileContext(profileId);
+  const { cbByName, ctx, resolve } = flagReconcileProfileContext(profileId);
   const numericRows = records.flatMap((r, i) =>
     r.canonical?.trim() &&
     r.value_num != null &&
@@ -1017,7 +1037,7 @@ export function previewReconcileFlags(
             id: i,
             value_num: r.value_num,
             unit: r.unit,
-            canonical_name: r.canonical,
+            canonical_name: resolve(r.canonical),
             flag: r.flag,
             date: r.date,
             reference: r.reference_range,
@@ -1030,7 +1050,7 @@ export function previewReconcileFlags(
       ? [
           {
             id: i,
-            name: r.canonical?.trim() || r.name,
+            name: resolve(r.canonical?.trim() || r.name),
             value: r.value,
             notes: r.notes,
             reference: r.reference_range,
@@ -1064,6 +1084,11 @@ export function reconcileFlags(profileId: number, ids?: number[]): number {
     sql += ` AND id IN (${ids.map(() => "?").join(",")})`;
     args.push(...ids);
   }
+  // Sex/age/cycle context + the preloaded canonical map + alias-aware resolve —
+  // shared with the preview twin (flagReconcileProfileContext) so both judge against
+  // identical context AND resolve names the same way.
+  const { cbByName, ctx, resolve } = flagReconcileProfileContext(profileId);
+
   const rows = (
     db.prepare(sql).all(...args) as {
       id: number;
@@ -1074,14 +1099,13 @@ export function reconcileFlags(profileId: number, ids?: number[]): number {
       date: string;
       reference_range: string | null;
     }[]
-  ).map((r) => ({ ...r, reference: r.reference_range }));
+  ).map((r) => ({
+    ...r,
+    canonical_name: resolve(r.canonical_name),
+    reference: r.reference_range,
+  }));
 
-  // Sex/age/cycle context + the preloaded canonical map — shared with the preview
-  // twin (flagReconcileProfileContext) so both judge against identical context.
-  const { cbByName, ctx } = flagReconcileProfileContext(profileId);
-
-  // The per-row flag-derivation is the pure shared decision (lib/flag-reconcile),
-  // so this and the boot-time reconcile in lib/db.ts stay in lock-step.
+  // The per-row flag-derivation is the pure shared decision (lib/flag-reconcile).
   const changes = computeFlagReconciliation(rows, cbByName, ctx);
   // Qualitative pass (#549): the numeric reconcile above bails on value_num IS NULL,
   // so a qualitative value's extractor-guessed flag is never revisited. Route those
@@ -1110,7 +1134,7 @@ export function reconcileFlags(profileId: number, ids?: number[]): number {
     }[]
   ).map((r) => ({
     id: r.id,
-    name: r.canonical_name?.trim() || r.name,
+    name: resolve(r.canonical_name?.trim() || r.name),
     value: r.value,
     notes: r.notes,
     reference: r.reference_range,
@@ -1266,6 +1290,10 @@ export function getUnitMislabelReviews(
         .all() as CanonicalBiomarker[]
     ).map((c) => [c.name.toLowerCase(), c])
   );
+  // Alias-aware, like the flag path: a stored row under a legacy/abbreviation name
+  // ("MCHC" pre-migration-103) must still resolve to its canonical entry, else the
+  // scan skips it and its mislabel card never surfaces.
+  const resolve = canonicalResolver();
   const sex = getUserSex(profileId);
   const birthdate = getUserBirthdate(profileId);
   const storedAge = getStoredAge(profileId);
@@ -1274,7 +1302,7 @@ export function getUnitMislabelReviews(
   const out: UnitMislabelReview[] = [];
   for (const r of rows) {
     if (dismissed.has(unitMislabelSignalKey(r.id))) continue;
-    const cb = cbByName.get(r.canonical_name.toLowerCase());
+    const cb = cbByName.get(resolve(r.canonical_name).toLowerCase());
     if (!cb) continue;
     const age = ageForRecord({ sex, birthdate, age: storedAge }, r.date);
     const hit = detectUnitMislabel(

@@ -62,35 +62,41 @@ const CANONICAL_ALIASES: [string, string][] = [
   ["Glycosylated Hemoglobin", "Hemoglobin A1c"],
   ["Glycohemoglobin", "Hemoglobin A1c"],
   // Liver enzymes (legacy SGPT/SGOT spellings)
-  ["Alanine Aminotransferase", "ALT"],
-  ["Alanine Transaminase", "ALT"],
-  ["SGPT", "ALT"],
-  ["Aspartate Aminotransferase", "AST"],
-  ["Aspartate Transaminase", "AST"],
-  ["SGOT", "AST"],
-  ["Gamma-Glutamyl Transferase", "GGT"],
-  ["Gamma-Glutamyl Transpeptidase", "GGT"],
-  ["Gamma GT", "GGT"],
-  ["GGTP", "GGT"],
+  ["Alanine Aminotransferase", "Alanine Aminotransferase (ALT)"],
+  ["Alanine Transaminase", "Alanine Aminotransferase (ALT)"],
+  ["SGPT", "Alanine Aminotransferase (ALT)"],
+  ["Aspartate Aminotransferase", "Aspartate Aminotransferase (AST)"],
+  ["Aspartate Transaminase", "Aspartate Aminotransferase (AST)"],
+  ["SGOT", "Aspartate Aminotransferase (AST)"],
+  ["Gamma-Glutamyl Transferase", "Gamma-Glutamyl Transferase (GGT)"],
+  ["Gamma-Glutamyl Transpeptidase", "Gamma-Glutamyl Transferase (GGT)"],
+  ["Gamma GT", "Gamma-Glutamyl Transferase (GGT)"],
+  ["GGTP", "Gamma-Glutamyl Transferase (GGT)"],
   // Renal
-  ["Urea Nitrogen", "BUN"],
-  ["Blood Urea Nitrogen", "BUN"],
+  ["Urea Nitrogen", "Blood Urea Nitrogen (BUN)"],
+  ["Blood Urea Nitrogen", "Blood Urea Nitrogen (BUN)"],
   ["Estimated GFR", "eGFR"],
   ["GFR, Estimated", "eGFR"],
   ["Glomerular Filtration Rate, Estimated", "eGFR"],
   // Thyroid
-  ["Thyroid Stimulating Hormone", "TSH"],
+  ["Thyroid Stimulating Hormone", "Thyroid-Stimulating Hormone (TSH)"],
   // The model sometimes mirrors the "Full Name (ABBREV)" print form even though the
   // canonical entry is the bare abbreviation, adding a `tsh` token the bare-name
   // alias above doesn't carry (seen in AI extractions, #918).
-  ["Thyroid Stimulating Hormone (TSH)", "TSH"],
-  ["Thyrotropin", "TSH"],
+  ["Thyroid Stimulating Hormone (TSH)", "Thyroid-Stimulating Hormone (TSH)"],
+  ["Thyrotropin", "Thyroid-Stimulating Hormone (TSH)"],
   // Inflammation (high-sensitivity ONLY — plain CRP is a distinct assay)
-  ["hsCRP", "hs-CRP"],
-  ["High Sensitivity CRP", "hs-CRP"],
-  ["High-Sensitivity C-Reactive Protein", "hs-CRP"],
-  ["C-Reactive Protein, High Sensitivity", "hs-CRP"],
-  ["Cardio CRP", "hs-CRP"],
+  ["hsCRP", "High-Sensitivity C-Reactive Protein (hs-CRP)"],
+  ["High Sensitivity CRP", "High-Sensitivity C-Reactive Protein (hs-CRP)"],
+  [
+    "High-Sensitivity C-Reactive Protein",
+    "High-Sensitivity C-Reactive Protein (hs-CRP)",
+  ],
+  [
+    "C-Reactive Protein, High Sensitivity",
+    "High-Sensitivity C-Reactive Protein (hs-CRP)",
+  ],
+  ["Cardio CRP", "High-Sensitivity C-Reactive Protein (hs-CRP)"],
   // Plain (standard-sensitivity) CRP — a DIFFERENT assay than hs-CRP (mg/L, acute
   // inflammation/infection cutoffs, not the CV-risk hs range), so the bare "CRP"
   // abbreviation routes to its OWN "C-Reactive Protein" entry (#1195), NEVER folded
@@ -98,11 +104,11 @@ const CANONICAL_ALIASES: [string, string][] = [
   // directly; the abbreviation needs the explicit route.
   ["CRP", "C-Reactive Protein"],
   // Prostate (unqualified PSA = total; the Free % entry stays distinct)
-  ["Prostate Specific Antigen", "PSA"],
-  ["Prostate-Specific Antigen", "PSA"],
-  ["Prostate Specific Antigen (PSA)", "PSA"],
-  ["Prostate Specific Antigen, Total", "PSA"],
-  ["PSA, Total", "PSA"],
+  ["Prostate Specific Antigen", "Prostate-Specific Antigen (PSA)"],
+  ["Prostate-Specific Antigen", "Prostate-Specific Antigen (PSA)"],
+  ["Prostate Specific Antigen (PSA)", "Prostate-Specific Antigen (PSA)"],
+  ["Prostate Specific Antigen, Total", "Prostate-Specific Antigen (PSA)"],
+  ["PSA, Total", "Prostate-Specific Antigen (PSA)"],
   // NOTE: no alias for the free-fraction PERCENT. normalizeCanonicalKey strips "%",
   // so "PSA, Free %" (the % ratio) and "PSA, Free" (the distinct free-ABSOLUTE assay,
   // ng/mL) collapse to the SAME key {free, psa} — an alias would capture both and
@@ -112,9 +118,9 @@ const CANONICAL_ALIASES: [string, string][] = [
   // mis-grouping; resolving them properly needs the curated absolute entry + the unit
   // guard, tracked separately.
   // Lipids / apolipoprotein
-  ["Apolipoprotein B", "ApoB"],
-  ["Apo B", "ApoB"],
-  ["Apolipoprotein B-100", "ApoB"],
+  ["Apolipoprotein B", "Apolipoprotein B (ApoB)"],
+  ["Apo B", "Apolipoprotein B (ApoB)"],
+  ["Apolipoprotein B-100", "Apolipoprotein B (ApoB)"],
   // LDL cholesterol: the near-universal "LDL-C" print form and the calculated-method
   // drift the token set misses ({c, ldl} / {calculated, ldl} ≠ {cholesterol, ldl}),
   // so they orphan into their own band-less series (#1195). Route them onto the real
@@ -123,7 +129,7 @@ const CANONICAL_ALIASES: [string, string][] = [
   ["LDL Calculated", "LDL Cholesterol"],
   ["LDL Cholesterol, Calculated", "LDL Cholesterol"],
   // Iron
-  ["Total Iron Binding Capacity", "TIBC"],
+  ["Total Iron Binding Capacity", "Total Iron-Binding Capacity (TIBC)"],
   // CBC differential — ABSOLUTE counts (cells/uL). The model prefixes "Absolute"
   // where the vocabulary either suffixes ", Absolute" (neutrophils) or uses the bare
   // name (the others — whose "%" form is the ", Relative" entry). Routing the wrong
@@ -183,10 +189,10 @@ const CANONICAL_ALIASES: [string, string][] = [
   ["DHEAS", "DHEA-Sulfate"],
   ["Dehydroepiandrosterone Sulfate", "DHEA-Sulfate"],
   ["Urate", "Uric Acid"],
-  ["IGF-I", "IGF-1"],
-  ["Insulin-like Growth Factor 1", "IGF-1"],
-  ["Insulin-Like Growth Factor-1", "IGF-1"],
-  ["Somatomedin C", "IGF-1"],
+  ["IGF-I", "Insulin-Like Growth Factor 1 (IGF-1)"],
+  ["Insulin-like Growth Factor 1", "Insulin-Like Growth Factor 1 (IGF-1)"],
+  ["Insulin-Like Growth Factor-1", "Insulin-Like Growth Factor 1 (IGF-1)"],
+  ["Somatomedin C", "Insulin-Like Growth Factor 1 (IGF-1)"],
   // "Full Name (ABBREV)" entries: alias BOTH the abbreviation and the full name.
   ["CK", "Creatine Kinase (CK)"],
   ["CPK", "Creatine Kinase (CK)"],
@@ -282,6 +288,11 @@ const CANONICAL_ALIASES: [string, string][] = [
   //  • "eGFR, African American" / "eGFR, Thai" — race/ethnicity-specific eGFR
   //    equations give DIFFERENT numbers; a report listing two would collapse two
   //    distinct values onto one date. Left surfaced rather than mis-grouped.
+
+  // NB: a "Full Name (ABBR)" entry does NOT need its bare abbreviation or bare full
+  // name listed here — buildCanonicalIndex auto-derives both (see FULL_ABBR_RE). Only
+  // WORD synonyms of such an entry (SGPT→ALT, Bicarbonate→Carbon Dioxide) need a
+  // curated route, since those aren't derivable from the name.
 ];
 
 // Build a normalized-key -> canonical-spelling lookup from a vocabulary list.
@@ -296,6 +307,28 @@ export function buildCanonicalIndex(vocabulary: string[]): Map<string, string> {
     const key = normalizeCanonicalKey(name);
     if (key && !index.has(key)) index.set(key, name);
   }
+  // Auto-derived aliases for a "Full Name (ABBR)" entry. Its combined-token key
+  // matches NEITHER the bare full name NOR the bare abbreviation alone (an extractor
+  // emits one or the other), so every such entry would otherwise need two hand-written
+  // CANONICAL_ALIASES — an easy-to-half-do footgun. Derive both here instead:
+  //   • the bare full name (strip the trailing parenthetical) — always safe.
+  //   • the bare abbreviation — ONLY when the parenthetical LOOKS like an acronym
+  //     (no spaces, ≥2 uppercase or a digit), so a word-parenthetical ("(Bicarbonate)",
+  //     "(Retinol)") or a value ("(50 g)") is NOT mistaken for an abbreviation. Those
+  //     word-synonyms keep their explicit curated alias.
+  // A real entry always wins a key collision (added first above), so a derived alias
+  // can only fill a gap, never hijack a distinct analyte.
+  for (const name of vocabulary) {
+    const m = FULL_ABBR_RE.exec(name);
+    if (!m) continue;
+    const [, full, abbr] = m;
+    // Resolve to the entry's OWN spelling (case/whitespace-normalized) so the alias
+    // targets the real vocabulary name, not the raw regex capture.
+    const canonical = index.get(normalizeCanonicalKey(name));
+    if (!canonical) continue;
+    addAlias(index, full, canonical);
+    if (looksLikeAbbreviation(abbr)) addAlias(index, abbr, canonical);
+  }
   for (const [alias, canonical] of CANONICAL_ALIASES) {
     const aliasKey = normalizeCanonicalKey(alias);
     if (!aliasKey || index.has(aliasKey)) continue;
@@ -303,6 +336,30 @@ export function buildCanonicalIndex(vocabulary: string[]): Map<string, string> {
     if (target) index.set(aliasKey, target);
   }
   return index;
+}
+
+// A canonical name written "Full Name (ABBR)" — captures the full name and the
+// parenthetical. Only the LAST parenthetical (so "Carbon Dioxide (Bicarbonate) (CO2)"
+// yields full="Carbon Dioxide (Bicarbonate)", abbr="CO2").
+const FULL_ABBR_RE = /^(.+) \(([^()]+)\)$/;
+
+// Whether a parenthetical is an ACRONYM (register it as an alias) vs a word or a
+// value (leave to a curated alias): no internal space, and either ≥2 uppercase
+// letters or a digit — matches RDW / MCV / hs-CRP / CO2 / IGF-1, rejects
+// "Bicarbonate" / "Retinol" / "50 g".
+function looksLikeAbbreviation(s: string): boolean {
+  if (/\s/.test(s)) return false;
+  const uppers = (s.match(/[A-Z]/g) ?? []).length;
+  return uppers >= 2 || /\d/.test(s);
+}
+
+function addAlias(
+  index: Map<string, string>,
+  alias: string,
+  canonical: string
+): void {
+  const key = normalizeCanonicalKey(alias);
+  if (key && !index.has(key)) index.set(key, canonical);
 }
 
 // The curated alias routes, exposed for the vocabulary-integrity test (it pins

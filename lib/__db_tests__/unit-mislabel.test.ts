@@ -55,7 +55,7 @@ function insertMchc(
       .prepare(
         `INSERT INTO medical_records
            (profile_id, date, category, name, value, unit, canonical_name, value_num, reference_range, flag)
-         VALUES (?, ?, 'lab', 'MCHC', ?, ?, 'MCHC', ?, ?, ?)`
+         VALUES (?, ?, 'lab', 'Mean Corpuscular Hemoglobin Concentration (MCHC)', ?, ?, 'Mean Corpuscular Hemoglobin Concentration (MCHC)', ?, ?, ?)`
       )
       .run(
         profileId,
@@ -92,7 +92,7 @@ describe("unit-mislabel cross-check (issue #761)", () => {
   it("seeds MCHC into canonical_biomarkers (g/dL, ref 31.6–35.4)", () => {
     const cb = db
       .prepare(
-        "SELECT unit, ref_low, ref_high FROM canonical_biomarkers WHERE name = 'MCHC'"
+        "SELECT unit, ref_low, ref_high FROM canonical_biomarkers WHERE name = 'Mean Corpuscular Hemoglobin Concentration (MCHC)'"
       )
       .get() as { unit: string; ref_low: number; ref_high: number } | undefined;
     expect(cb?.unit).toBe("g/dL");
@@ -116,7 +116,7 @@ describe("unit-mislabel cross-check (issue #761)", () => {
     const cards = getUnitMislabelReviews(profileId);
     expect(cards).toHaveLength(2);
     expect(cards.find((c) => c.id === mislabeledId)).toMatchObject({
-      name: "MCHC",
+      name: "Mean Corpuscular Hemoglobin Concentration (MCHC)",
       value: 33,
       statedUnit: "g/L",
       correctedUnit: "g/dL",

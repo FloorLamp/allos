@@ -23,7 +23,7 @@ function insertMchcMislabel(profileId: number): number {
       .prepare(
         `INSERT INTO medical_records
            (profile_id, date, category, name, value, unit, canonical_name, value_num, reference_range, flag)
-         VALUES (?, ?, 'lab', 'MCHC', '33', 'g/L', 'MCHC', 33, '31-37', NULL)`
+         VALUES (?, ?, 'lab', 'Mean Corpuscular Hemoglobin Concentration (MCHC)', '33', 'g/L', 'Mean Corpuscular Hemoglobin Concentration (MCHC)', 33, '31-37', NULL)`
       )
       .run(profileId, today(profileId)).lastInsertRowid
   );

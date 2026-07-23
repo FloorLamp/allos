@@ -72,7 +72,12 @@ describe("getMedMonitoringItems — active monitored meds (#995)", () => {
     // Long-established (maintenance phase): started 2 years ago.
     addCourse(medId, shiftDateStr(td, -730));
     // Every lithium lab fresh EXCEPT the level, drawn 400 days ago (past 180d maintenance).
-    for (const lab of ["TSH", "Creatinine", "eGFR", "Calcium"]) {
+    for (const lab of [
+      "Thyroid-Stimulating Hormone (TSH)",
+      "Creatinine",
+      "eGFR",
+      "Calcium",
+    ]) {
       addLab(profileId, lab, shiftDateStr(td, -20));
     }
     addLab(profileId, "Lithium", shiftDateStr(td, -400));

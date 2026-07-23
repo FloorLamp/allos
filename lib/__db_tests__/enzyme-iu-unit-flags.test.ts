@@ -27,7 +27,7 @@ let iuHighId: number; // AST 200 IU/L — above range, must flag "high"
 let ulHighId: number; // AST 200 U/L  — the same value in the canonical spelling
 let ulNormalId: number; // AST 25 U/L — in range, stays unflagged
 
-const AST_CB = { name: "AST", unit: "U/L" };
+const AST_CB = { name: "Aspartate Aminotransferase (AST)", unit: "U/L" };
 
 function flagOf(id: number): string | null {
   const r = db
@@ -45,7 +45,7 @@ beforeAll(() => {
   const insert = db.prepare(
     `INSERT INTO medical_records
        (profile_id, date, category, name, value, unit, canonical_name, value_num, flag)
-     VALUES (?, ?, 'lab', 'AST', ?, ?, 'AST', ?, ?)`
+     VALUES (?, ?, 'lab', 'Aspartate Aminotransferase (AST)', ?, ?, 'Aspartate Aminotransferase (AST)', ?, ?)`
   );
   // Three AST readings on distinct dates so the read-layer dedup keeps all three.
   // Flags seeded NULL — the reconcile gate is what must derive them.
@@ -83,7 +83,10 @@ describe("enzyme U/L ⇄ IU/L unit interchangeability (#828)", () => {
   });
 
   it("joins the IU/L reading into the same AST trend series as the U/L readings", () => {
-    const series = getBiomarkerSeries(profileId, "AST");
+    const series = getBiomarkerSeries(
+      profileId,
+      "Aspartate Aminotransferase (AST)"
+    );
     const ids = series.map((r) => r.id);
     // All three readings — regardless of unit spelling — are ONE series.
     expect(ids).toContain(iuHighId);
