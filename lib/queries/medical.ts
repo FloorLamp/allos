@@ -1,6 +1,11 @@
 import { db, writeTx } from "../db";
 import { cache } from "../request-cache";
-import { biomarkerFamily, BIOMARKER_FAMILIES } from "../canonical-name";
+import {
+  biomarkerFamily,
+  BIOMARKER_FAMILIES,
+  buildCanonicalIndex,
+  snapCanonicalName,
+} from "../canonical-name";
 import {
   getStoredAge,
   getUserBirthdate,
@@ -963,15 +968,22 @@ export function getImmunityTiters(profileId: number): ImmunityTiter[] {
 // and the canonical table preloaded as a NOCASE map. Shared by reconcileFlags and
 // its preview twin below so the two can never read different context.
 function flagReconcileProfileContext(profileId: number) {
-  const cbByName = new Map(
-    (
-      db
-        .prepare("SELECT * FROM canonical_biomarkers")
-        .all() as CanonicalBiomarker[]
-    ).map((c) => [c.name.toLowerCase(), c])
-  );
+  const cbRows = db
+    .prepare("SELECT * FROM canonical_biomarkers")
+    .all() as CanonicalBiomarker[];
+  const cbByName = new Map(cbRows.map((c) => [c.name.toLowerCase(), c]));
+  // Alias-aware resolution: the pure core looks a row's canonical_name up by exact
+  // (lowercased) name, so a stored row whose canonical_name is a legacy spelling or
+  // an un-migrated bare abbreviation (e.g. "RDW" before migration 102 runs) would
+  // silently MISS its entry and lose its band. Snap it onto the dataset spelling
+  // first — recognized aliases/variants resolve; an unrecognized name returns
+  // unchanged (→ still no match → no flag, exactly as before). This makes a future
+  // canonical rename not strictly require a stored-data migration.
+  const index = buildCanonicalIndex(cbRows.map((c) => c.name));
+  const resolve = (name: string): string => snapCanonicalName(name, index);
   return {
     cbByName,
+    resolve,
     ctx: {
       sex: getUserSex(profileId),
       birthdate: getUserBirthdate(profileId),
@@ -1007,7 +1019,7 @@ export function previewReconcileFlags(
   records: PersistInput["records"]
 ): void {
   if (records.length === 0) return;
-  const { cbByName, ctx } = flagReconcileProfileContext(profileId);
+  const { cbByName, ctx, resolve } = flagReconcileProfileContext(profileId);
   const numericRows = records.flatMap((r, i) =>
     r.canonical?.trim() &&
     r.value_num != null &&
@@ -1017,7 +1029,7 @@ export function previewReconcileFlags(
             id: i,
             value_num: r.value_num,
             unit: r.unit,
-            canonical_name: r.canonical,
+            canonical_name: resolve(r.canonical),
             flag: r.flag,
             date: r.date,
             reference: r.reference_range,
@@ -1030,7 +1042,7 @@ export function previewReconcileFlags(
       ? [
           {
             id: i,
-            name: r.canonical?.trim() || r.name,
+            name: resolve(r.canonical?.trim() || r.name),
             value: r.value,
             notes: r.notes,
             reference: r.reference_range,
@@ -1064,6 +1076,11 @@ export function reconcileFlags(profileId: number, ids?: number[]): number {
     sql += ` AND id IN (${ids.map(() => "?").join(",")})`;
     args.push(...ids);
   }
+  // Sex/age/cycle context + the preloaded canonical map + alias-aware resolve —
+  // shared with the preview twin (flagReconcileProfileContext) so both judge against
+  // identical context AND resolve names the same way.
+  const { cbByName, ctx, resolve } = flagReconcileProfileContext(profileId);
+
   const rows = (
     db.prepare(sql).all(...args) as {
       id: number;
@@ -1074,14 +1091,13 @@ export function reconcileFlags(profileId: number, ids?: number[]): number {
       date: string;
       reference_range: string | null;
     }[]
-  ).map((r) => ({ ...r, reference: r.reference_range }));
+  ).map((r) => ({
+    ...r,
+    canonical_name: resolve(r.canonical_name),
+    reference: r.reference_range,
+  }));
 
-  // Sex/age/cycle context + the preloaded canonical map — shared with the preview
-  // twin (flagReconcileProfileContext) so both judge against identical context.
-  const { cbByName, ctx } = flagReconcileProfileContext(profileId);
-
-  // The per-row flag-derivation is the pure shared decision (lib/flag-reconcile),
-  // so this and the boot-time reconcile in lib/db.ts stay in lock-step.
+  // The per-row flag-derivation is the pure shared decision (lib/flag-reconcile).
   const changes = computeFlagReconciliation(rows, cbByName, ctx);
   // Qualitative pass (#549): the numeric reconcile above bails on value_num IS NULL,
   // so a qualitative value's extractor-guessed flag is never revisited. Route those
@@ -1110,7 +1126,7 @@ export function reconcileFlags(profileId: number, ids?: number[]): number {
     }[]
   ).map((r) => ({
     id: r.id,
-    name: r.canonical_name?.trim() || r.name,
+    name: resolve(r.canonical_name?.trim() || r.name),
     value: r.value,
     notes: r.notes,
     reference: r.reference_range,
