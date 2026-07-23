@@ -33,12 +33,18 @@ test.describe("Data → Review duplicate resolver", () => {
     await page.goto("/data?section=review");
     const review = page.getByTestId("review-inbox");
 
-    // The badge sums the two always-failing integrations — Strava (1) and the
-    // Withings connection seeded in a dead-token needs_reauth state (1, issue #326) —
-    // plus the seeded unresolved duplicate pair (1) = 3. Both failing integrations are
-    // constant fixtures no spec mutates, and this spec owns the pair's lifecycle, so
-    // the exact count is deterministic here.
-    await expect(page.getByTestId("review-badge").first()).toHaveText("3"); // first-ok: the review badge (also in the mobile drawer); deterministic — beforeEach re-seeds the pair, so it's always 3 at start
+    // The badge sums profile 1's open review items: the two always-failing integrations
+    // — Strava (1) and the Withings connection seeded in a dead-token needs_reauth state
+    // (1, issue #326) — plus this spec's re-seeded duplicate pair (1), so it starts at 3.
+    // But the badge is a SHARED-SEED count (#868): a co-located sibling can add a
+    // profile-1 review item (e.g. a same-day body-metric conflict) and inflate it, so we
+    // don't assert the exact 3 — we capture the baseline and assert the merge below
+    // decrements it by exactly one. At workers=1 no sibling runs mid-test, so the
+    // baseline is stable across this test.
+    const badge = page.getByTestId("review-badge").first(); // first-ok: the review badge (also in the mobile drawer); either mirror carries the same count
+    await expect(badge).toBeVisible();
+    const badgeBefore = Number((await badge.textContent())?.trim());
+    expect(badgeBefore).toBeGreaterThanOrEqual(3); // ≥ the 2 constant failing integrations + this spec's pair
 
     // The detected pair renders under "Possible duplicates" with both rows and a
     // High-confidence chip.
@@ -71,9 +77,10 @@ test.describe("Data → Review duplicate resolver", () => {
     await expect(page.getByText("Afternoon Run").first()).toBeVisible(); // first-ok: the kept activity after the merge THIS test performed on the day it owns — deterministic
     await expect(page.getByText("Morning run")).toHaveCount(0);
 
-    // The badge drops to 2 (the two still-failing integrations — Strava and the
-    // needs_reauth Withings connection — with the duplicate pair now resolved).
+    // The badge drops by exactly one — the merged pair is gone, everything else (the two
+    // failing integrations plus whatever a sibling may have added) is untouched.
     await page.goto("/");
-    await expect(page.getByTestId("review-badge").first()).toHaveText("2"); // first-ok: the review badge (also in the mobile drawer); deterministic — this run merged the pair, leaving the two constant failing integrations
+    const badgeAfter = page.getByTestId("review-badge").first(); // first-ok: the review badge (also in the mobile drawer); either mirror carries the same count
+    await expect(badgeAfter).toHaveText(String(badgeBefore - 1));
   });
 });
