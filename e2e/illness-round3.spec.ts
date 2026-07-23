@@ -121,7 +121,7 @@ test.describe("Illness round 3 (#859)", () => {
         buffer: uniquePng(),
       });
       await expect(deleteButtons.first()).toBeVisible({ timeout: 5_000 }); // first-ok: asserts a photo delete button renders before the delete loop — order-agnostic
-    }).toPass({ timeout: 45_000 });
+    }).toPass({ timeout: 45_000 }); // topass-ok: upload-until-applied: only an actually-applied photo renders a delete button, so the loop can't false-pass; a double-land is absorbed by the delete-all cleanup
 
     await expect(page.getByText("Photo attached.")).toBeVisible();
     const captionedPhoto = strip

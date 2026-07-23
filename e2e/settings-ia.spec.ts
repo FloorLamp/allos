@@ -195,7 +195,7 @@ test.describe("Settings IA (#928) — member + matrix", () => {
         await expect(async () => {
           await cell.click();
           await expect(cell).toBeChecked({ checked: to });
-        }).toPass();
+        }).toPass(); // topass-ok: re-click the grant cell until the optimistic flip proves onChange fired — 'my click landed' is non-atomic with no navigation to follow (#830)
         await expect(cell).toBeEnabled();
       };
       const tgRefill = member.getByTestId("matrix-cell-telegram-refill");

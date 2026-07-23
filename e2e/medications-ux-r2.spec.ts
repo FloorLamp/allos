@@ -100,7 +100,7 @@ async function extractShareUrl(page: Page): Promise<string> {
   await expect(async () => {
     await page.getByTestId("medication-share-open").click();
     await expect(create).toBeVisible({ timeout: 2000 });
-  }).toPass();
+  }).toPass(); // topass-ok: re-open the share modal until its client-state Create button appears past the hydration swallow (#730) — no awaitable event for a client toggle
   await create.click();
   const url = page.getByTestId("medication-share-url");
   await expect(url).toBeVisible();

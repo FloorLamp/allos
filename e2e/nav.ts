@@ -47,6 +47,6 @@ export async function openCommandPalette(page: Page): Promise<Locator> {
       await page.keyboard.press("Control+KeyK");
     }
     await expect(input).toBeVisible({ timeout: 1000 });
-  }).toPass({ timeout: 20000, intervals: [300, 700, 1500] });
+  }).toPass({ timeout: 20000, intervals: [300, 700, 1500] }); // topass-ok: re-press Ctrl+K until the palette input appears past the hydration window — visibility-guarded so a late press can't toggle it shut
   return input;
 }

@@ -134,7 +134,11 @@ test("biomarkers page surfaces the derived PhenoAge biological age (#157)", asyn
   await followLink(page, link, /\/biomarkers\/view/);
 
   const note = page.getByTestId("derived-note");
-  await expect(note).toBeVisible();
+  // The biomarkers/view page derives PhenoAge (Levine 2018) from the nine-analyte panel
+  // at read time — a first-visit compute burst that a degraded whole-suite single-worker
+  // runner can push past the default 5s (#1306). Give the first render the heavy-page
+  // budget; the follow-up content asserts inherit the now-rendered note.
+  await expect(note).toBeVisible({ timeout: 15_000 });
   await expect(note).toContainText("Derived index");
   await expect(note).toContainText("Levine PhenoAge");
 });

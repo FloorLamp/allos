@@ -78,7 +78,7 @@ test.describe("Mobility (#840)", () => {
       await expect(
         page.getByTestId("mobility-move-pigeon_pose")
       ).toHaveAttribute("aria-pressed", "true", { timeout: 3000 });
-    }).toPass({ timeout: 45_000 });
+    }).toPass({ timeout: 45_000 }); // topass-ok: reload-until-persisted: confirm the async move-toggle write survives a reload; no single event marks 'persisted AND reflected'
 
     // The recovery session rides the shared journal feed (Training → Log) like any activity.
     await page.goto("/training?tab=log");

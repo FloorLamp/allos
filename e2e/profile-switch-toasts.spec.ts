@@ -73,7 +73,7 @@ test.describe("Profile switch does not replay document history as toasts (#296)"
     );
     // Give the toaster's first poll room to run (idle cadence is 6s), then confirm
     // a clean baseline — no toasts from profile A's own terminal history either.
-    await page.waitForTimeout(7000);
+    await page.waitForTimeout(7000); // waitfortimeout-ok: bounded absence-of-effect: span the toaster's 6s idle poll (+margin) so a regressed build WOULD have ghost-toasted, then assert none did — the poll POST is indistinguishable from any mutation, so no waitForResponse can gate it
     await expectNoToasterOutput(page);
 
     // Switch to profile B, which has its OWN terminal document/job history. Pre-fix
@@ -94,7 +94,7 @@ test.describe("Profile switch does not replay document history as toasts (#296)"
     );
 
     // Wait through a full idle poll cycle so a regressed build would have toasted.
-    await page.waitForTimeout(7000);
+    await page.waitForTimeout(7000); // waitfortimeout-ok: bounded absence-of-effect: span the toaster's 6s idle poll (+margin) so a regressed build WOULD have ghost-toasted, then assert none did — the poll POST is indistinguishable from any mutation, so no waitForResponse can gate it
     await expectNoToasterOutput(page);
 
     // Switch back to profile A — its docs must not re-toast either (the "switching
@@ -114,7 +114,7 @@ test.describe("Profile switch does not replay document history as toasts (#296)"
       TOAST_SWITCH_A_PROFILE
     );
 
-    await page.waitForTimeout(7000);
+    await page.waitForTimeout(7000); // waitfortimeout-ok: bounded absence-of-effect: span the toaster's 6s idle poll (+margin) so a regressed build WOULD have ghost-toasted, then assert none did — the poll POST is indistinguishable from any mutation, so no waitForResponse can gate it
     await expectNoToasterOutput(page);
   });
 });

@@ -461,7 +461,7 @@ test("the activity form keeps workout entry primary and context visible across b
       await page.getByRole("button", { name: "Close", exact: true }).click();
       throw err;
     }
-  }).toPass({ timeout: 30_000 });
+  }).toPass({ timeout: 30_000 }); // topass-ok: re-click Push day, closing the held-overlay variant between tries, until the docked-header CSS lands — two open states, no single awaitable event
 
   // The single visible title is editable in place; there is no duplicate Name
   // field beneath it. Its desktop header stays with a long docked form.

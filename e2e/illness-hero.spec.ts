@@ -221,7 +221,7 @@ test("the acting profile's cockpit collapses to its status and the collapse pers
       await expect(ownFor()).toHaveAttribute("data-expanded", want, {
         timeout: 3_000,
       });
-    }).toPass({ timeout: 25_000 });
+    }).toPass({ timeout: 25_000 }); // topass-ok: reload-until-persisted: confirm the async expand/collapse write survives a reload; no single event marks 'persisted AND reflected'
   }
 
   // Start from a known EXPANDED, persisted baseline (repeat-safe).

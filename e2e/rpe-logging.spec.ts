@@ -159,7 +159,7 @@ test("RPE selector round-trips through the activity form (#743)", async ({
     await expect(page.getByRole("heading", { name: title })).toBeVisible();
     // The RPE selector reloaded the persisted half-point value — the round-trip.
     await expect(page.getByTestId("set1-rpe-value")).toHaveText("8.5");
-  }).toPass({ timeout: 20_000 });
+  }).toPass({ timeout: 20_000 }); // topass-ok: reopen-until-persisted: re-goto + reopen the stored session until the persisted half-point RPE renders — a reload-until-rendered nav, no single awaitable event
 
   // Cleanup: delete the probe row from the still-open editor (dialog-scoped
   // confirm), restoring the seed state for order-independent sibling specs. The

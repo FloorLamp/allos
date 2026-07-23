@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { loginAs, followLink } from "./nav";
+import { switchToProfile } from "./family-helpers";
 import { medicationDetail, medicationOverview } from "./med-card-helpers";
 import {
   E2E_MEMBER_PASSWORD,
@@ -124,27 +125,11 @@ test.describe("Illness-episode view (#801)", () => {
     // Act as profile 2 ("Riley (child)" — scripts/seed.ts owns id 2; seed-events'
     // "Sam Rivers" insert is a documented no-op) — NOT the sick one — so the illness
     // hero's accordion is the only place the sick profile (id 1) surfaces.
-    // Retry-click through the hydration window (#730): loginAs returns as soon as
-    // the URL leaves /login, so an immediate click on the client-state menu trigger
-    // can be a dead pre-hydration click — the popover never opens and the profile
-    // button never appears. Re-click until the popover actually shows the target.
-    const rileyButton = member
-      .getByTestId("user-menu-popover")
-      // Target the act-as switch button by its `switch-to-<id>` testid (#1096),
-      // scoped to the row showing this profile's name — the sibling per-profile
-      // "eye" view toggle also carries the name in its aria-label, so a getByRole
-      // name match would resolve both. The toggle's icon-only button has no text,
-      // so hasText selects only the switch button.
-      .locator('[data-testid^="switch-to-"]')
-      .filter({ hasText: "Riley (child)" });
-    await expect(async () => {
-      await member.getByTestId("user-menu-trigger").click();
-      await expect(rileyButton).toBeVisible({ timeout: 2_000 });
-    }).toPass();
-    await rileyButton.click();
-    await expect(member.getByTestId("user-menu-trigger")).toContainText(
-      "Riley (child)"
-    );
+    // Switch the acting profile to Riley via the header switcher — routed through the
+    // ONE blessed helper (family-helpers.ts), which rides out the #730 pre-hydration
+    // window (loginAs returns the moment the URL leaves /login, so an immediate click on
+    // the client-state menu trigger can be a dead pre-hydration click).
+    await switchToProfile(member, "Riley (child)");
 
     await member.goto("/");
     // Profile 1 (sick) renders as a compact accordion cockpit in the illness hero,
@@ -170,25 +155,9 @@ test.describe("Illness-episode view (#801)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
 
-    // Switch the acting profile to Riley (profile 2) via the header switcher (retry
-    // through the pre-hydration window — see the sibling test).
-    const rileyButton = member
-      .getByTestId("user-menu-popover")
-      // Target the act-as switch button by its `switch-to-<id>` testid (#1096),
-      // scoped to the row showing this profile's name — the sibling per-profile
-      // "eye" view toggle also carries the name in its aria-label, so a getByRole
-      // name match would resolve both. The toggle's icon-only button has no text,
-      // so hasText selects only the switch button.
-      .locator('[data-testid^="switch-to-"]')
-      .filter({ hasText: "Riley (child)" });
-    await expect(async () => {
-      await member.getByTestId("user-menu-trigger").click();
-      await expect(rileyButton).toBeVisible({ timeout: 2_000 });
-    }).toPass();
-    await rileyButton.click();
-    await expect(member.getByTestId("user-menu-trigger")).toContainText(
-      "Riley (child)"
-    );
+    // Switch the acting profile to Riley (profile 2) via the header switcher — the ONE
+    // blessed helper rides out the pre-hydration window (see the sibling test).
+    await switchToProfile(member, "Riley (child)");
 
     await member.goto("/");
     const cockpit = member.getByTestId("illness-cockpit-1");
