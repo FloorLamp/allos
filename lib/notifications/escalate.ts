@@ -13,11 +13,11 @@ import {
   type EscalationWindow,
 } from "./escalation";
 import { sendTelegramMessage } from "./telegram";
+import { resolveTelegramRecipients } from "./fan-out";
 import { getTakenDoseIds, getSkippedDoseIds } from "../queries";
 import {
   getProfileSetting,
   setProfileSetting,
-  getProfileTelegram,
   getTelegramBotConfig,
   type NotifySchedule,
 } from "../settings";
@@ -104,45 +104,65 @@ export async function runEscalations(
   });
   if (due.length === 0) return { failed: false };
 
-  // Delivery gate: the bot must be configured and this profile's Telegram
-  // enabled. The target chat is the escalation override when set, else the
-  // profile's own chat.
+  // Delivery gate: the bot must be configured. Missed-dose escalation is SAFETY-tier
+  // and FANS OUT to every managing login's chat (issue #1072: a co-parent gets the
+  // kid's escalation — the #858 co-caregiver intent, structural instead of dependent
+  // on a shared chat id). A supplement's escalate_chat_id override, when set, targets
+  // that ONE explicit caregiver chat INSTEAD (unchanged) — an intentional per-item
+  // routing that predates the fan-out. Fan-out recipients are deduped by chat id so a
+  // shared family group never double-fires. Per-recipient send failures are folded,
+  // and the per-dose/day marker is stamped once any recipient took the message (the
+  // fire decision stays profile+dose+day — one evaluation, unchanged).
   const { telegramBotToken } = getTelegramBotConfig();
-  const { telegramEnabled, telegramChatId } = getProfileTelegram(profileId);
-  if (!telegramBotToken || !telegramEnabled) {
-    log.info("escalation skipped: no channel", { profile: profileId });
+  if (!telegramBotToken) {
+    log.info("escalation skipped: no bot", { profile: profileId });
     return { failed: false };
   }
+  const fanRecipients = resolveTelegramRecipients(profileId);
 
   let failed = false;
   for (const d of due) {
-    const target = (d.escalateChatId ?? "").trim() || telegramChatId;
-    if (!target) {
+    const override = (d.escalateChatId ?? "").trim();
+    // The override supersedes the fan-out (per-item caregiver routing); else fan out
+    // to every managing login's chat. Deduped so a chat that ALSO appears in the
+    // fan-out isn't double-hit when an override matches it.
+    const targets = override
+      ? [override]
+      : fanRecipients.map((r) => r.chatId);
+    if (targets.length === 0) {
       log.info("escalation skipped: no target chat", {
         profile: profileId,
         dose: d.doseId,
       });
       continue;
     }
-    try {
-      await sendTelegramMessage(
-        target,
-        renderEscalationMessage(profileName, d, profileId, date)
-      );
-      setProfileSetting(profileId, escKey(d.doseId), date);
-      log.info("escalated missed dose", {
-        profile: profileId,
-        dose: d.doseId,
-        supp: d.supplementName,
-      });
-    } catch (e) {
-      failed = true;
-      log.error("escalation send failed", {
-        profile: profileId,
-        dose: d.doseId,
-        err: e instanceof Error ? e : String(e),
-      });
+    let anyDelivered = false;
+    for (const target of Array.from(new Set(targets))) {
+      try {
+        await sendTelegramMessage(
+          target,
+          renderEscalationMessage(profileName, d, profileId, date)
+        );
+        anyDelivered = true;
+        log.info("escalated missed dose", {
+          profile: profileId,
+          dose: d.doseId,
+          supp: d.supplementName,
+        });
+      } catch (e) {
+        failed = true;
+        log.error("escalation send failed", {
+          profile: profileId,
+          dose: d.doseId,
+          err: e instanceof Error ? e : String(e),
+        });
+      }
     }
+    // Mark the dose escalated for the day once ANY recipient received it (the
+    // "delivered = at least one recipient ok" semantics the dose-reminder slots use):
+    // the safety signal reached a caregiver, so it never re-nags today. A send where
+    // EVERY recipient failed leaves the marker unset so the next hour retries.
+    if (anyDelivered) setProfileSetting(profileId, escKey(d.doseId), date);
   }
   return { failed };
 }

@@ -21,7 +21,6 @@ import { today } from "../db";
 import { shiftDateStr } from "../date";
 import {
   getProfilesByTelegramChatId,
-  getProfileTelegram,
   setProfileSetting,
   setProfileFoodTelegram,
   setFoodTelegramPrompted,
@@ -129,6 +128,7 @@ import {
   type TelegramCallbackQuery,
 } from "./telegram";
 import type { TelegramMessage } from "./telegram-api";
+import { resolveTelegramRecipients } from "./fan-out";
 import type { NotificationAction } from "./types";
 
 // "⏰ Remind later" on a preventive nudge snoozes the finding a week out — the item
@@ -857,14 +857,15 @@ async function handleEscalationTap(
     await answerCallbackQuery(cq.id);
     return;
   }
-  // The chats authorized to act on this escalation: the profile's own delivery
-  // chat and the escalate override of the supplement the tapped DOSE actually
+  // The chats authorized to act on this escalation: every chat the escalation could
+  // have FANNED OUT to for this profile (issue #1072 — each managing login's chat,
+  // deduped) plus the escalate override of the supplement the tapped DOSE actually
   // belongs to (issue #615). The caregiver chat is derived from the dose row, NOT
-  // from the token's supp id — otherwise a token could pair supplement X's
-  // escalate chat with a dose of supplement Y, letting X's caregiver confirm/silence
-  // Y's doses. Both reads are profile-scoped, so a forged id can't widen the set.
+  // from the token's supp id — otherwise a token could pair supplement X's escalate
+  // chat with a dose of supplement Y, letting X's caregiver confirm/silence Y's
+  // doses. The fan-out set resolves through grants, so a forged id can't widen it.
   const authorizedChats = [
-    getProfileTelegram(esc.profileId).telegramChatId,
+    ...resolveTelegramRecipients(esc.profileId).map((r) => r.chatId),
     getDoseEscalateChatId(esc.profileId, esc.doseId),
   ];
   const profileId = resolveEscalationTap(esc, String(chatId), authorizedChats);

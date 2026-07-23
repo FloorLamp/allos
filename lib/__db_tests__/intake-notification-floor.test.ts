@@ -21,9 +21,9 @@ import {
   getNotifySchedule,
   setProfileSetting,
   getProfileSetting,
-  setProfileTelegram,
   setTelegramBotConfig,
 } from "@/lib/settings";
+import { seedLoginTelegram } from "./fixtures";
 
 function createProfile(name: string): number {
   return Number(
@@ -138,7 +138,7 @@ describe("#1156 — low-priority supplements: tracked, not nagged", () => {
       telegramBotToken: "floor-test-token",
       telegramMode: "poll",
     });
-    setProfileTelegram(p, { telegramEnabled: true, telegramChatId: "555002" });
+    seedLoginTelegram(p, "555002");
     const fetchMock = vi.fn(
       async () =>
         new Response(JSON.stringify({ ok: true, result: {} }), {

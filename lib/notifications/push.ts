@@ -156,11 +156,16 @@ export function countPushSubscriptionsForLogin(loginId: number): number {
   ).n;
 }
 
-// Every subscription entitled to profile P's notifications: subscriptions whose
-// owning login can access P (admins reach every profile; members via a
-// login_profiles grant). push_subscriptions/logins/login_profiles are all
-// login/global tables — NOT profile-owned — so this is not (and can't be)
-// profile_id-scoped; the profile filter lives in the grant subquery.
+// Every subscription that should receive profile P's notifications: subscriptions
+// of every login that MANAGES P (issue #1072). The audience is EXPLICIT grants
+// (login_profiles) only — NOT the admin-bypass-all rule that used to be here — with
+// muted (login, profile) pairs excluded. A notification is a push into someone's
+// pocket, so an admin who can act as every profile must OPT IN (grant themselves)
+// rather than be fanned every profile's reminders; this is the one place
+// admin-sees-all is deliberately not inherited (see lib/notifications/fan-out.ts).
+// push_subscriptions/logins/login_profiles/login_settings are all login/global
+// tables — NOT profile-owned — so this is not (and can't be) profile_id-scoped; the
+// profile filter lives in the grant subquery.
 export function getPushSubscriptionsForProfile(
   profileId: number
 ): SubscriptionRow[] {
@@ -168,11 +173,17 @@ export function getPushSubscriptionsForProfile(
     .prepare(
       `SELECT ps.endpoint, ps.login_id, ps.p256dh, ps.auth
          FROM push_subscriptions ps
-         JOIN logins l ON l.id = ps.login_id
-        WHERE l.role = 'admin'
-           OR l.id IN (SELECT login_id FROM login_profiles WHERE profile_id = ?)`
+        WHERE ps.login_id IN (
+                SELECT login_id FROM login_profiles WHERE profile_id = ?
+              )
+          AND NOT EXISTS (
+                SELECT 1 FROM login_settings m
+                 WHERE m.login_id = ps.login_id
+                   AND m.key = 'notify_mute_profile_' || ?
+                   AND m.value = '1'
+              )`
     )
-    .all(profileId) as SubscriptionRow[];
+    .all(profileId, profileId) as SubscriptionRow[];
 }
 
 // ---- Sending ----

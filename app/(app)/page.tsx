@@ -64,7 +64,7 @@ import {
   getTimezone,
   getEmergencyCardEnabled,
   getProfileHomeAssistant,
-  getProfileTelegram,
+  getLoginTelegram,
   getSituations,
   getActiveSituations,
 } from "@/lib/settings";
@@ -233,7 +233,7 @@ export default async function Dashboard() {
         connectedDataSource: hasConnectedDataSource(profile.id),
         notifications:
           onboardingChecklist.notificationIntent === "none" ||
-          getProfileTelegram(profile.id).telegramEnabled ||
+          getLoginTelegram(login.id).telegramEnabled ||
           getProfileHomeAssistant(profile.id).enabled ||
           countPushSubscriptionsForLogin(login.id) > 0,
       }

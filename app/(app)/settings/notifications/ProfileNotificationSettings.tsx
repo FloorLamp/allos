@@ -1,23 +1,20 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { NotifySchedule, ProfileTelegram } from "@/lib/settings";
-import {
-  saveNotificationPrefs,
-  sendTestNotification,
-} from "../profile/actions";
+import type { NotifySchedule } from "@/lib/settings";
+import { saveNotificationPrefs } from "../profile/actions";
 import SaveStatus from "@/components/SaveStatus";
 import { useSaveStatus } from "@/components/useSaveStatus";
 
 type SuppWindow = "Morning" | "Midday" | "Evening" | "Bedtime";
 
-// The PROFILE-scoped parts of notifications: whether reminders are on for this
-// profile, the chat they go to, and the send schedule. The global bot token +
-// transport mode are admin-managed on Settings → Server.
+// The PROFILE-scoped (per-subject) parts of notifications: the send schedule and
+// the per-subject content opt-ins (food logging, mood, sleep). These apply to
+// EVERY delivery channel this subject rides. The Telegram delivery channel itself
+// (chat id + enable) is LOGIN-scoped as of #1072 — see LoginTelegramSettings — and
+// the global bot token/mode are admin-managed on Settings → Server.
 export default function ProfileNotificationSettings({
-  telegram,
-  botConfigured,
   schedule,
   workoutSummary,
   foodTelegramEnabled,
@@ -27,8 +24,6 @@ export default function ProfileNotificationSettings({
   sleepDigestEnabled,
   wakeHour,
 }: {
-  telegram: ProfileTelegram;
-  botConfigured: boolean;
   schedule: NotifySchedule;
   workoutSummary: string;
   foodTelegramEnabled: boolean;
@@ -42,8 +37,6 @@ export default function ProfileNotificationSettings({
   wakeHour: number | null;
 }) {
   const router = useRouter();
-  const [enabled, setEnabled] = useState(telegram.telegramEnabled);
-  const [chatId, setChatId] = useState(telegram.telegramChatId);
   const [foodEnabled, setFoodEnabled] = useState(foodTelegramEnabled);
   const [moodEnabled, setMoodEnabled] = useState(moodCheckinEnabled);
   const [moodRecap, setMoodRecap] = useState(moodRecapEnabled);
@@ -64,13 +57,7 @@ export default function ProfileNotificationSettings({
   const [wakingStart, setWakingStart] = useState(schedule.wakingStartHour);
   const [wakingEnd, setWakingEnd] = useState(schedule.wakingEndHour);
   const { pending, savedAt, error, save: runSave } = useSaveStatus();
-  // The test send drives the result message, not the "saved" chip, so it keeps its
-  // own transition.
-  const [testing, startTest] = useTransition();
-  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(
-    null
-  );
-  const busy = pending || testing;
+  const busy = pending;
 
   // The label for the wake-aware "Auto" option (#1117), naming the hour it resolves
   // to when there's enough sleep data.
@@ -80,8 +67,6 @@ export default function ProfileNotificationSettings({
 
   function buildFormData() {
     const fd = new FormData();
-    fd.set("telegram_enabled", enabled ? "1" : "0");
-    fd.set("telegram_chat_id", chatId);
     fd.set("food_telegram_enabled", foodEnabled ? "1" : "0");
     fd.set("mood_checkin_enabled", moodEnabled ? "1" : "0");
     fd.set("mood_recap_enabled", moodRecap ? "1" : "0");
@@ -125,29 +110,7 @@ export default function ProfileNotificationSettings({
   function save() {
     runSave(async () => {
       await saveNotificationPrefs(buildFormData());
-      setResult(null);
       router.refresh();
-    });
-  }
-
-  // Test acts on *stored* settings, so persist the form first — otherwise unsaved
-  // edits are silently ignored and nothing sends. The "Saved" chip stays tied to
-  // the explicit Save button: showing it here would read as success even when the
-  // test itself fails. The try/catch keeps a transient throw from escalating to
-  // the error boundary.
-  function test() {
-    const fd = buildFormData();
-    startTest(async () => {
-      try {
-        await saveNotificationPrefs(fd);
-        setResult(await sendTestNotification());
-        router.refresh();
-      } catch {
-        setResult({
-          ok: false,
-          message: "Couldn’t send the test. Try again.",
-        });
-      }
     });
   }
 
@@ -155,46 +118,18 @@ export default function ProfileNotificationSettings({
     <div id="notifications" className="card mt-6 max-w-lg space-y-5">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Notifications (Telegram)
+          Reminders &amp; schedule
         </h2>
         <SaveStatus pending={pending} savedAt={savedAt} error={error} />
       </div>
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
-        Get supplement reminders in Telegram with one-tap “taken” buttons. Find
-        your chat id at{" "}
-        <code>api.telegram.org/bot&lt;token&gt;/getUpdates</code>.
+        When this person’s reminders are sent. These times apply to every channel
+        they’re delivered on (Telegram, web push, Home Assistant). Connect a
+        Telegram chat under <em>This login</em> above.
       </p>
 
-      {!botConfigured && (
-        <p className="text-xs text-amber-600 dark:text-amber-400">
-          No Telegram bot is configured yet. An admin sets the bot token on
-          Settings → Server; until then reminders can’t be sent.
-        </p>
-      )}
-
-      <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
-        <input
-          type="checkbox"
-          checked={enabled}
-          onChange={(e) => setEnabled(e.target.checked)}
-          className="h-4 w-4 accent-brand-600"
-        />
-        Enable Telegram notifications
-      </label>
-
-      {enabled && (
-        <>
-          <div>
-            <label className="label">Chat ID</label>
-            <input
-              value={chatId}
-              onChange={(e) => setChatId(e.target.value)}
-              placeholder="e.g. 987654321"
-              className="input"
-            />
-          </div>
-
+      <>
           {/* Food logging (#682) — a morning/midday/evening nudge with one-tap
               buttons for your most-eaten foods, on the same schedule as supplement
               reminders. Hidden for a profile too young for food-group logging. */}
@@ -484,8 +419,7 @@ export default function ProfileNotificationSettings({
               either way. Informational only — not medical advice.
             </p>
           </div>
-        </>
-      )}
+      </>
 
       {/* Quiet hours (#450) — the waking window for non-urgent EPISODE nudges
           (refill, preventive, milestone). Shown regardless of the Telegram toggle
@@ -538,29 +472,7 @@ export default function ProfileNotificationSettings({
         <button type="button" onClick={save} disabled={busy} className="btn">
           Save
         </button>
-        {enabled && (
-          <button
-            type="button"
-            onClick={test}
-            disabled={busy}
-            className="btn-ghost"
-          >
-            Send test notification
-          </button>
-        )}
       </div>
-
-      {result && (
-        <p
-          className={`text-sm ${
-            result.ok
-              ? "text-emerald-600 dark:text-emerald-400"
-              : "text-rose-600 dark:text-rose-400"
-          }`}
-        >
-          {result.message}
-        </p>
-      )}
     </div>
   );
 }

@@ -9,17 +9,17 @@ import {
   serializeDisabledKinds,
 } from "@/lib/notifications/home-assistant-core";
 import { isPushDeliverableKind } from "@/lib/notifications/push-core";
+import { saveHomeAssistantNotifyKinds } from "../profile/actions";
 import {
-  saveTelegramNotifyKinds,
-  saveHomeAssistantNotifyKinds,
-} from "../profile/actions";
-import { savePushNotifyKinds } from "../actions";
+  savePushNotifyKinds,
+  saveLoginTelegramNotifyKinds,
+} from "../actions";
 
 // The kind × channel matrix (#928) — the Notifications tab's centerpiece. Rows are
 // notification kinds, columns are the three channels, so "which messages reach me
 // where" reads in one glance. Each column persists in ITS channel's tier store
-// through a tier-correct action (#319): Telegram + Home Assistant follow the PROFILE,
-// Web Push follows the LOGIN — labeled accordingly. A checked cell means "this kind
+// through a tier-correct action (#319): Telegram + Web Push follow the LOGIN (#1072),
+// Home Assistant follows the PROFILE — labeled accordingly. A checked cell means "this kind
 // reaches this channel"; unchecking adds the kind to that channel's DISABLED set.
 //
 // Rules baked in:
@@ -68,7 +68,7 @@ export default function NotificationMatrix({
     {
       id: "telegram",
       label: "Telegram",
-      owner: "this profile",
+      owner: "this login",
       configured: telegramConfigured,
     },
     {
@@ -86,7 +86,7 @@ export default function NotificationMatrix({
   ];
 
   const saver: Record<ChannelId, (fd: FormData) => Promise<unknown>> = {
-    telegram: saveTelegramNotifyKinds,
+    telegram: saveLoginTelegramNotifyKinds,
     push: savePushNotifyKinds,
     ha: saveHomeAssistantNotifyKinds,
   };

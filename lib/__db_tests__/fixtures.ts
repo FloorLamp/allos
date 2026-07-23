@@ -208,3 +208,39 @@ export function seedProfile(tag: string, opts: SeedOpts = {}): SeededProfile {
 
   return seed();
 }
+
+// Create a member login granted to `profileId` and point its LOGIN-scoped Telegram
+// channel at `chatId` (issue #1072: the chat belongs to the login, and delivery to a
+// profile fans out to the logins that manage it). Returns the login id. This is the
+// new-model replacement for the old `setProfileTelegram(profileId, …)` fixture: a
+// per-profile event now needs a MANAGING LOGIN with an enabled chat to be
+// deliverable. `enabled` defaults true; pass false to seed a login whose channel is
+// off. Direct SQL for logins/grants (login/global tables), setLoginSetting for the
+// channel KV.
+export function seedLoginTelegram(
+  profileId: number,
+  chatId: string,
+  opts: { enabled?: boolean; username?: string; role?: "admin" | "member" } = {}
+): number {
+  const enabled = opts.enabled ?? true;
+  const role = opts.role ?? "member";
+  const username =
+    opts.username ?? `login_p${profileId}_${chatId}_${Math.random().toString(36).slice(2, 8)}`;
+  const loginId = Number(
+    db
+      .prepare(
+        "INSERT INTO logins (username, password_hash, role) VALUES (?, 'x', ?)"
+      )
+      .run(username, role).lastInsertRowid
+  );
+  db.prepare(
+    "INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'write') ON CONFLICT(login_id, profile_id) DO NOTHING"
+  ).run(loginId, profileId);
+  db.prepare(
+    "INSERT INTO login_settings (login_id, key, value) VALUES (?, 'telegram_enabled', ?) ON CONFLICT(login_id, key) DO UPDATE SET value = excluded.value"
+  ).run(loginId, enabled ? "1" : "0");
+  db.prepare(
+    "INSERT INTO login_settings (login_id, key, value) VALUES (?, 'telegram_chat_id', ?) ON CONFLICT(login_id, key) DO UPDATE SET value = excluded.value"
+  ).run(loginId, chatId);
+  return loginId;
+}

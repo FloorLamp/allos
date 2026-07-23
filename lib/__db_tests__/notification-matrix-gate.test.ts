@@ -9,8 +9,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db } from "@/lib/db";
 import {
   setSetting,
-  setProfileTelegram,
-  setProfileTelegramDisabledKinds,
+  setLoginTelegram,
+  setLoginTelegramDisabledKinds,
   setLoginPushDisabledKinds,
 } from "@/lib/settings";
 import {
@@ -71,8 +71,12 @@ describe("Telegram column gate (chokepoint)", () => {
   it("a disabled kind is a silent non-send — no fetch, no marker", async () => {
     setSetting("telegram_bot_token", "test-token");
     const p = newProfile("tg-gate");
-    setProfileTelegram(p, { telegramEnabled: true, telegramChatId: "123" });
-    setProfileTelegramDisabledKinds(p, ["refill"]);
+    // #1072: the Telegram channel is login-scoped — a MANAGING login carries the
+    // chat and the disabled-kinds gate.
+    const l = newLogin("member");
+    grant(l, p);
+    setLoginTelegram(l, { telegramEnabled: true, telegramChatId: "123" });
+    setLoginTelegramDisabledKinds(l, ["refill"]);
 
     const results = await dispatch(p, REFILL);
     // Telegram is the only configured channel; the send short-circuited.
@@ -84,8 +88,10 @@ describe("Telegram column gate (chokepoint)", () => {
   it("an enabled kind DOES reach the Telegram send site", async () => {
     setSetting("telegram_bot_token", "test-token");
     const p = newProfile("tg-enabled");
-    setProfileTelegram(p, { telegramEnabled: true, telegramChatId: "123" });
-    setProfileTelegramDisabledKinds(p, ["digest"]); // refill still on
+    const l = newLogin("member");
+    grant(l, p);
+    setLoginTelegram(l, { telegramEnabled: true, telegramChatId: "123" });
+    setLoginTelegramDisabledKinds(l, ["digest"]); // refill still on
 
     const results = await dispatch(p, REFILL);
     expect(results).toEqual([{ id: "telegram", ok: true }]);
