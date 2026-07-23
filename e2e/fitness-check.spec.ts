@@ -51,11 +51,31 @@ test.describe("Fitness check grid (#1129/#1132/#1135)", () => {
       "rough guide"
     );
 
+    // #1253: every tile leads with its decorative pictogram — aria-hidden, with the
+    // text label/overlay still present (never icon-only), and the domain chip/bars
+    // carry their glyphs (scoped lookups: the glyph testid repeats across tiles).
+    const gripTileEl = page.getByTestId("fitness-tile-grip");
+    const gripPicto = gripTileEl.getByTestId("fitness-pictogram-grip");
+    await expect(gripPicto).toBeVisible();
+    await expect(gripPicto).toHaveAttribute("aria-hidden", "true");
+    await expect(gripPicto).toHaveAttribute("data-pictogram", "grip");
+    await expect(gripTileEl).toContainText("Grip strength");
+    await expect(
+      gripTileEl.getByTestId("fitness-domain-glyph-strength")
+    ).toBeVisible();
+    await expect(
+      page
+        .getByTestId("fitness-domain-strength")
+        .getByTestId("fitness-domain-glyph-strength")
+    ).toBeVisible();
+
     // Tap the grip tile → the entry modal opens → record a NEW grip value (prior seeded
     // check was 44) → the tile updates and shows a +6 improvement delta.
     await page.getByTestId("fitness-tile-grip").click();
     const gripModal = page.getByTestId("fitness-entry-grip");
     await expect(gripModal).toBeVisible();
+    // The modal header reuses the same figure — one keyed lookup, no second mapping.
+    await expect(gripModal.getByTestId("fitness-pictogram-grip")).toBeVisible();
     await gripModal.getByTestId("fitness-value-grip").fill("50");
     await settledClick(page, gripModal.getByTestId("fitness-submit-grip"));
 
