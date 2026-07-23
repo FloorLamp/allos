@@ -69,7 +69,7 @@ test("journal cards show a source provenance chip and 'added' timestamp (#11)", 
   await expect(page.getByTestId("est-calories-input")).toHaveValue(
     /^[1-9]\d*$/
   );
-  await page.waitForTimeout(900);
+  await page.waitForTimeout(900); // waitfortimeout-ok: bounded absence-of-effect: wait past the 700ms autosave debounce, then assert the manual row stayed un-edited — opening it must not trip autosave; non-occurrence has no positive event to await
   await page.getByRole("button", { name: "Close" }).click();
   await expect(manualCard.getByTestId("activity-provenance")).not.toContainText(
     "edited"
@@ -101,7 +101,7 @@ test("journal cards show a source provenance chip and 'added' timestamp (#11)", 
   await expect(page.getByTestId("imported-edit-note")).toHaveCount(0);
   // Opening an imported row must not run the manual calorie auto-fill, dirty
   // the form, and trigger the 700 ms autosave/edit lock by itself.
-  await page.waitForTimeout(900);
+  await page.waitForTimeout(900); // waitfortimeout-ok: bounded absence-of-effect: wait past the 700ms autosave debounce, then assert the imported row stayed un-edited — opening it must not run the calorie auto-fill; non-occurrence has no positive event to await
   await page.getByRole("button", { name: "Close" }).click();
   await expect(
     healthConnectCard.getByTestId("activity-provenance")

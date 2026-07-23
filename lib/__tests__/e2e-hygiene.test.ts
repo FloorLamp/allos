@@ -16,7 +16,10 @@ import { fileURLToPath } from "node:url";
 //        for the WRONG thing (network silence, not "my interaction landed"). The
 //        blessed replacement is e2e/helpers.ts (settledClick / followLink).
 //   (ii) waitForTimeout(...) — a fixed sleep that asserts nothing and is either
-//        too short (flakes under CI contention) or too long (slows the suite).
+//        too short (flakes under CI contention) or too long (slows the suite). The ONE
+//        sanctioned use — an irreducible bounded absence-of-effect proof (a known
+//        product window in which nothing must happen) — carries a same-line
+//        `waitfortimeout-ok: <why>` marker and is excluded from the count.
 //
 // Existing offenders are grandfathered via a per-file allowlist (file → count);
 // a NEW occurrence, or a NEW file introducing either, exceeds its allowed
@@ -87,6 +90,12 @@ const SCAN_EXCLUDE = new Set(["helpers.ts"]);
 // couldn't see helper files AND couldn't see the options-arg form).
 const NETWORKIDLE_RE = /waitForLoadState\(\s*["']networkidle["']/g;
 const WAITFORTIMEOUT_RE = /\.waitForTimeout\(/g;
+// A `.waitForTimeout(` on a line carrying a `waitfortimeout-ok: <why>` comment is a
+// reviewed IRREDUCIBLE bounded absence-of-effect proof (same same-line escape-marker
+// shape as first-ok/topass-ok). It probes a KNOWN product time window and asserts
+// NOTHING happened within it — a NON-occurrence has no positive event to await, so a
+// bounded sleep is the only truthful gate. Everything else is banned.
+const WAITFORTIMEOUT_OK_MARKER = "waitfortimeout-ok";
 const FIRST_RE = /\.first\(\)/g;
 // A `.first()` on a line carrying a `first-ok: <why>` comment is a reviewed,
 // spec-owned-fixture use and is excluded from the count (the same same-line
@@ -134,27 +143,12 @@ const ADD_PROFILE_ALLOW: Record<string, number> = {};
 // any new one fails here.
 const NETWORKIDLE_ALLOW: Record<string, number> = {};
 
-const WAITFORTIMEOUT_ALLOW: Record<string, number> = {
-  // IRREDUCIBLE bounded absence-of-effect proofs — the ONE sanctioned waitForTimeout
-  // (docs/internals/e2e-hygiene.md, "Bounded absence-of-effect wait"). Each probes a
-  // KNOWN product time window and asserts that within it NOTHING happened; there is
-  // no positive event to await instead, because the thing being proven is the
-  // NON-occurrence of a timer-driven effect.
-  //   • journal-provenance (2): opening an imported/manual activity row must NOT
-  //     auto-fill calories, dirty the form, and trip the 700ms autosave/edit-lock.
-  //     The wait lets a REGRESSED build's autosave fire before we assert not-"edited";
-  //     close too early and a real bug passes green. No awaitable event substitutes
-  //     for "the 700ms debounce elapsed with no POST."
-  //   • profile-switch-toasts (3): after a profile switch, the ExtractionToaster/
-  //     ImportJobsToaster must NOT replay the new profile's terminal history as ghost
-  //     toasts. The wait spans the toasters' 6s idle poll cadence (+margin) so a
-  //     regressed build WOULD have toasted. The poll is a Server Action POST (posts to
-  //     the current route, indistinguishable from any other POST), so a waitForResponse
-  //     gate can't reliably pick out "the toaster polled" — matching a generic POST
-  //     would reintroduce the very race the wait rules out. Frozen at the poll cadence.
-  "journal-provenance.spec.ts": 2,
-  "profile-switch-toasts.spec.ts": 3,
-};
+// EMPTY — the only sanctioned waitForTimeout is the IRREDUCIBLE bounded absence-of-effect
+// proof, now carried by a same-line `waitfortimeout-ok: <why>` marker at each site (the
+// journal-provenance 700ms-autosave-must-not-fire probes and the profile-switch-toasts
+// 6s-idle-poll ghost-toast probes), so it's excluded from the count and the allowlist is
+// empty — uniform with FIRST_ALLOW/TOPASS_ALLOW. A NEW unmarked waitForTimeout fails CI.
+const WAITFORTIMEOUT_ALLOW: Record<string, number> = {};
 
 // Frozen .first() offenders (per-file counts, `first-ok`-marked lines excluded)
 // as of the flaky-e2e hardening pass. Same immutable-downward discipline as the
@@ -261,11 +255,20 @@ describe("e2e suite hygiene guard (issue #868)", () => {
     );
   });
 
-  it("no NEW waitForTimeout(...) in an e2e/*.ts (use e2e/helpers.ts or a real expect)", () => {
+  it("no NEW unmarked waitForTimeout(...) in an e2e/*.ts (use e2e/helpers.ts or mark waitfortimeout-ok)", () => {
     checkPattern(
       "waitForTimeout(...)",
       WAITFORTIMEOUT_RE,
-      WAITFORTIMEOUT_ALLOW
+      WAITFORTIMEOUT_ALLOW,
+      {
+        excludeLineMarker: WAITFORTIMEOUT_OK_MARKER,
+        hint:
+          `New waitForTimeout(...) is banned — await the actual signal instead ` +
+          `(settledClick / followLink / a plain retrying expect on one locator), or ` +
+          `add a same-line \`waitfortimeout-ok: <why>\` comment ONLY for an irreducible ` +
+          `bounded absence-of-effect proof (a known product window in which nothing must ` +
+          `happen); see docs/internals/e2e-hygiene.md.`,
+      }
     );
   });
 
