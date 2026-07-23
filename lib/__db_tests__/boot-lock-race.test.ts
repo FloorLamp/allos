@@ -123,7 +123,11 @@ describe("cold-boot lock race is busy-tolerant (issue #581)", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "allos-boot-"));
     const file = path.join(dir, "allos.db");
     try {
-      const HOLD = 400;
+      // A generous hold: the floor below proves "it WAITED (real contention)", and the
+      // one flake surface is worker→main message latency eating the overlap before the
+      // probe starts. A 1000ms hold leaves ~880ms of slack over the 120ms floor even on
+      // a starved CI runner, where a 400ms hold once did not.
+      const HOLD = 1000;
       const { result: waited, err } = await withHeldLock(file, HOLD, () => {
         // Mirror the FIXED createDb pragma order: busy_timeout BEFORE journal_mode.
         const b = new Database(file);
@@ -146,7 +150,10 @@ describe("cold-boot lock race is busy-tolerant (issue #581)", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "allos-boot-"));
     const file = path.join(dir, "allos.db");
     try {
-      const { err } = await withHeldLock(file, 500, () => {
+      // 1000ms hold so the probe reliably overlaps it even if worker→main message
+      // latency delays the probe start on a starved runner (busy_timeout=0 throws
+      // instantly on contention, so it only needs the lock to still be held).
+      const { err } = await withHeldLock(file, 1000, () => {
         const b = new Database(file);
         b.pragma("busy_timeout = 0"); // the pre-fix hazard: no wait
         b.pragma("journal_mode = WAL");
@@ -173,9 +180,9 @@ describe("cold-boot lock race is busy-tolerant (issue #581)", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "allos-boot-"));
     const file = path.join(dir, "allos.db");
     try {
-      const { err } = await withHeldLock(file, 700, () => {
+      const { err } = await withHeldLock(file, 1000, () => {
         const b = new Database(file);
-        b.pragma("busy_timeout = 150"); // expires before the peer's 700ms hold
+        b.pragma("busy_timeout = 150"); // expires before the peer's 1000ms hold
         b.pragma("journal_mode = WAL");
         try {
           bootWrite(b);
@@ -199,7 +206,7 @@ describe("cold-boot lock race is busy-tolerant (issue #581)", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "allos-boot-"));
     const file = path.join(dir, "allos.db");
     try {
-      const HOLD = 700;
+      const HOLD = 1000;
       const { result, err } = await withHeldLock(
         file,
         HOLD,
@@ -214,8 +221,12 @@ describe("cold-boot lock race is busy-tolerant (issue #581)", () => {
           b.pragma("busy_timeout = 150"); // same short timeout as the failing case
           b.pragma("journal_mode = WAL");
           try {
+            // The write under test — uncontended by construction (the peer's whole boot,
+            // write lock included, is done before acquireBootLock returned) — plus a
+            // second identical write as this runner's disk-speed BASELINE.
             const writeMs = bootWrite(b);
-            return { waitedForLock, writeMs };
+            const baselineMs = bootWrite(b);
+            return { waitedForLock, writeMs, baselineMs };
           } finally {
             b.close();
             bl!.release();
@@ -227,12 +238,14 @@ describe("cold-boot lock race is busy-tolerant (issue #581)", () => {
       // It serialized on the sidecar (blocked most of the peer's hold window)…
       expect(result.waitedForLock).toBeGreaterThanOrEqual(300);
       // …and then wrote with no meaningful contention on the main DB. The bound
-      // distinguishes "uncontended" from "burned a lock wait": a contended write
-      // here waits a HOLD-class (700ms) window, an uncontended one is disk-speed
-      // only. 150 was a raw-speed bet a loaded CI runner lost by 6ms (#1192 CI,
-      // 156ms) — 400 keeps slack for slow runners while still proving no
-      // HOLD-class wait happened.
-      expect(result.writeMs).toBeLessThan(400);
+      // distinguishes "uncontended" from "burned a lock wait": a write that raced a
+      // still-held lock waits a HOLD-class (1000ms) window, an uncontended one is
+      // disk-speed. An ABSOLUTE ceiling was the wrong tool — a loaded runner inflates
+      // even an uncontended write (150→156ms lost #1192, then 400), so this compares to
+      // a same-runner baseline instead: the guarded write must land within HOLD/2 of a
+      // plain uncontended write, which scales with runner speed while a HOLD-class
+      // regression (boot lock released before the write lock) still blows past it.
+      expect(result.writeMs).toBeLessThan(result.baselineMs + HOLD / 2);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
