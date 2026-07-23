@@ -72,7 +72,7 @@ test("dashboard weight quick-add logs a weigh-in that persists into the trend (#
       await expect(marker).toHaveAttribute("data-value", "71.4", {
         timeout: 4_000,
       });
-    }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] });
+    }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-fill+save until the trend marker reflects the value past the pre-hydration swallow — no single awaitable event
 
     // Server truth survives a reload — the weigh-in persisted and is the trend's
     // newest point, rendered by the chart-state widget.

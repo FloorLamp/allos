@@ -80,7 +80,7 @@ test.describe("Nutrition trio", () => {
             .getAttribute("data-grams")
         );
         expect(after).toBeGreaterThan(before);
-      }).toPass({ timeout: WAIT });
+      }).toPass({ timeout: WAIT }); // topass-ok: re-read the gauge's data-grams NUMBER until it exceeds the baseline — 'increased' can't be one toHaveAttribute; settledClick already committed the write
     } finally {
       await page.close();
     }

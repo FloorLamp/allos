@@ -39,7 +39,7 @@ async function tapMood(page: Page, card: Locator, n: number): Promise<void> {
       String(n),
       { timeout: 4_000 }
     );
-  }).toPass();
+  }).toPass(); // topass-ok: re-tap the mood until the server-logged valence reflects it past the pre-hydration swallow — idempotent per-day upsert, safe to re-drive
 }
 
 test.afterEach(async ({ page }) => {

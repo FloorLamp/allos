@@ -168,7 +168,7 @@ test.describe.serial("kids growth trends", () => {
           box.y + box.height * 0.5
         );
         await expect(tooltip).toContainText("lb");
-      }).toPass({ timeout: 10_000 });
+      }).toPass({ timeout: 10_000 }); // topass-ok: recharts opens the tooltip only after a hover mousemove — re-hover per attempt, no single awaitable render event (the sleep-page precedent)
 
       // And never kg while lb is the preference.
       await expect(tooltip).not.toContainText("kg");

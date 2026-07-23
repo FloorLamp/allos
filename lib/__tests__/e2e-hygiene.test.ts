@@ -169,43 +169,16 @@ const WAITFORTIMEOUT_ALLOW: Record<string, number> = {
 // profile). The freeze stays at ZERO: a NEW unmarked .first() on any e2e/*.ts fails.
 const FIRST_ALLOW: Record<string, number> = {};
 
-// Frozen .toPass( offenders (per-file counts, `topass-ok`-marked lines excluded)
-// as of the post-burn-down hardening pass (#1160 follow-up). Same
-// immutable-downward discipline: replace a retry loop with a settled interaction
-// (settledClick/followLink/a plain retrying expect on ONE locator) and LOWER its
-// number in the same PR; a NEW unmarked .toPass( (or a new file) fails. The
-// symptom-helpers.ts entries are the drivers' internal tap-retry loops — already
-// paired with settledTap arming the right wait; migrating them means a driver
-// redesign, so they're grandfathered like any other offender, not blessed.
-const TOPASS_ALLOW: Record<string, number> = {
-  "entry-ergonomics.spec.ts": 1,
-  // episode-med-reconcile / illness-front-door / view-only-access dropped their
-  // remaining .toPass( when their family-create/switch dances moved into
-  // e2e/family-helpers.ts (phase-2 create-member hardening), so they're off the list.
-  "illness-episode.spec.ts": 2,
-  "illness-hero.spec.ts": 1,
-  "illness-round3.spec.ts": 1,
-  "kids-growth.spec.ts": 1,
-  // medications-page shed its two unmarked .toPass( when the records-bridge tests
-  // left with their legacy fixture (#1232) — its remaining loop is topass-ok-marked.
-  "medications-ux-r2.spec.ts": 1,
-  "mobility.spec.ts": 1,
-  "nav-consolidation.spec.ts": 1,
-  "nav.ts": 1,
-  "nutrition-trio.spec.ts": 1,
-  "review-inbox.spec.ts": 1,
-  "rpe-logging.spec.ts": 1,
-  "settings-ia.spec.ts": 1,
-  "symptom-helpers.ts": 7,
-  "symptom-log.spec.ts": 1,
-  // two-factor kept its two TOTP retry loops; its create-login loop moved to the helper.
-  "two-factor.spec.ts": 2,
-  "unit-mislabel-review.spec.ts": 2,
-  "wake-aware-mornings.spec.ts": 2,
-  "weight-quick-add.spec.ts": 1,
-  // wellbeing-check kept its tapMood retry; its switch/create dances moved to the helper.
-  "wellbeing-check.spec.ts": 1,
-};
+// EMPTY — the .toPass( burn-down is complete, mirroring FIRST_ALLOW. Every retry loop
+// that survives is a reviewed, genuinely-necessary last resort carrying a same-line
+// `topass-ok: <why>` marker (a pre-hydration re-click/re-press with no POST to settle
+// on, a reload-until-persisted confirm, a re-mint-TOTP loop, a recharts hover, or a
+// re-read-until-a-number-increases) — those are excluded from the count, so the
+// allowlist itself is empty. illness-episode's two inline popover re-opens were the
+// last conversion: they were verbatim copies of switchToProfile and now route through
+// that ONE blessed helper (family-helpers.ts). The freeze stays at ZERO: a NEW unmarked
+// .toPass( on any e2e/*.ts fails.
+const TOPASS_ALLOW: Record<string, number> = {};
 
 function specFiles(): { name: string; text: string }[] {
   return fs

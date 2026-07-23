@@ -27,7 +27,7 @@ test.describe("wake-aware mornings (issue #1117)", () => {
     await expect(async () => {
       if (!(await enableTelegram.isChecked())) await enableTelegram.click();
       await expect(enableTelegram).toBeChecked();
-    }).toPass();
+    }).toPass(); // topass-ok: re-click the controlled Telegram toggle until it sticks checked past the pre-hydration swallow (#830)
 
     const morning = page.getByTestId("supp-morning-hour");
     const digest = page.getByTestId("digest-hour");
@@ -70,7 +70,7 @@ test.describe("wake-aware mornings (issue #1117)", () => {
     await expect(async () => {
       if (await disableTelegram.isChecked()) await disableTelegram.click();
       await expect(disableTelegram).not.toBeChecked();
-    }).toPass();
+    }).toPass(); // topass-ok: re-click the controlled Telegram toggle until it clears unchecked past the pre-hydration swallow (#830)
     await settledClick(page, card.getByRole("button", { name: "Save" }));
     await expect(card.getByLabel("Saved")).toBeVisible();
   });

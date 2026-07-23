@@ -65,7 +65,7 @@ test("mobile drawer renders the same order through the shared content (#1042)", 
       await page.getByRole("button", { name: "Open menu" }).click();
     }
     await expect(drawerNav).toBeVisible({ timeout: 1000 });
-  }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] });
+  }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-tap the hamburger until the drawer opens past the pre-hydration swallow (#500) — opening is idempotent, no single re-click+await event
   await expect(drawerNav.locator("> *")).toHaveText(TOP_LEVEL_ORDER);
 });
 
