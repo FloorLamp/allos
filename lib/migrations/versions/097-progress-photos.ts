@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 096 (issue #1119 phase 2): the physique progress-photo domain —
+// Migration 097 (issue #1119 phase 2): the physique progress-photo domain —
 // dated, pose-tagged body photos over the shared photo core (EXIF-stripped,
 // downscaled, thumbnailed at ingest; files under
 // data/uploads/progress-photos/<profileId>/).
@@ -45,7 +45,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 96,
-  name: "096-progress-photos",
+  id: 97,
+  name: "097-progress-photos",
   up,
 };

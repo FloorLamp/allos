@@ -289,8 +289,8 @@ export default function PhotoCapture({
             {stage.kind === "fallback" ? (
               <div className="space-y-2">
                 <p className="text-sm text-slate-600 dark:text-slate-300">
-                  Choose a photo to add. It's resized and cleaned of camera
-                  metadata (location, device info) before it's stored.
+                  Choose a photo to add. It is resized and cleaned of camera
+                  metadata (location, device info) before it is stored.
                 </p>
                 <input
                   ref={fileInputRef}

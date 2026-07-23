@@ -172,37 +172,36 @@ export default function ProgressPhotosView({
             setSeriesFilter(key);
             if (key) setPose(key as ProgressPose);
           }}
-          renderActions={
-            readOnly
-              ? undefined
-              : (photo) => (
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      className="rounded-lg bg-white/10 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/20"
-                      onClick={() => setView("compare")}
-                      data-testid="photo-lightbox-compare"
-                    >
-                      Compare series
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded-lg bg-rose-600/80 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-600"
-                      data-testid="photo-lightbox-delete"
-                      onClick={async () => {
-                        if (!window.confirm("Delete this photo?")) return;
-                        const fd = new FormData();
-                        fd.set("photo_id", String(photo.id));
-                        const res = await deleteProgressPhoto(fd);
-                        setNotice(res.ok ? "Photo deleted." : res.error);
-                        router.refresh();
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                )
-          }
+          renderActions={(photo) => (
+            <div className="flex items-center gap-2">
+              {/* Compare is a READ affordance — available to every grant. */}
+              <button
+                type="button"
+                className="rounded-lg bg-white/10 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/20"
+                onClick={() => setView("compare")}
+                data-testid="photo-lightbox-compare"
+              >
+                Compare series
+              </button>
+              {!readOnly ? (
+                <button
+                  type="button"
+                  className="rounded-lg bg-rose-600/80 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-600"
+                  data-testid="photo-lightbox-delete"
+                  onClick={async () => {
+                    if (!window.confirm("Delete this photo?")) return;
+                    const fd = new FormData();
+                    fd.set("photo_id", String(photo.id));
+                    const res = await deleteProgressPhoto(fd);
+                    setNotice(res.ok ? "Photo deleted." : res.error);
+                    router.refresh();
+                  }}
+                >
+                  Delete
+                </button>
+              ) : null}
+            </div>
+          )}
         />
       ) : (
         <section className="space-y-2">

@@ -94,7 +94,7 @@ import { migration as m092 } from "./092-consolidate-imported-prescriptions";
 import { migration as m093 } from "./093-retire-notify-last-upcoming";
 import { migration as m094 } from "./094-episode-encounters";
 import { migration as m095 } from "./095-episode-stopped-meds";
-import { migration as m096 } from "./096-progress-photos";
+import { migration as m097 } from "./097-progress-photos";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -198,5 +198,5 @@ export const MIGRATIONS: Migration[] = [
   m093,
   m094,
   m095,
-  m096,
+  m097,
 ];
