@@ -9,6 +9,7 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import {
+  getCanonicalVocabulary,
   getReprocessSnapshot,
   previewReconcileFlags,
   foldConsolidatedMedsIntoSnapshot,
@@ -18,7 +19,15 @@ import {
   applyImportFollowups,
 } from "@/lib/import-persist";
 import { snapshotFromPersistInput, computeImportDiff } from "@/lib/import-diff";
+import { healthRecordToPersistInput } from "@/lib/import-shape";
 import type { PersistInput } from "@/lib/import-shape";
+import { persistHealthRecordDoc } from "@/lib/health-record-doc";
+import { parseHealthRecord } from "@/lib/health-record-parse";
+import {
+  buildCanonicalIndex,
+  snapCanonicalNameIntoBatch,
+  distinguishVitaminDIsoform,
+} from "@/lib/canonical-name";
 import { db } from "@/lib/db";
 
 const DATE = "2020-05-01";
@@ -437,5 +446,80 @@ describe("reprocess preview phantoms", () => {
         .find((e) => e.entity === "medications")!
         .added.map((m) => m.key)
     ).toEqual(["med:amoxicillin"]);
+  });
+});
+
+// (3) Canonical-vocabulary feedback: an import carrying TWO spellings of one
+// analyte ("Zeta Antibody IgG" / "Zeta Antibody (IgG)" — same normalized key)
+// used to register BOTH into the vocabulary (each record snapped only against the
+// PRE-import vocabulary), splitting the series and making the next snap's winner
+// an arbitrary alphabetical pick — so a byte-identical reprocess renamed
+// canonicals. The batch-aware snap collapses same-key spellings within one import
+// onto the first occurrence.
+describe("intra-batch canonical collapse (end-to-end)", () => {
+  const TWO_SPELLINGS_CCD = `<?xml version="1.0"?>
+<ClinicalDocument xmlns="urn:hl7-org:v3">
+  <effectiveTime value="20200501"/>
+  <recordTarget><patientRole><patient>
+    <name><given>Test</given><family>Patient</family></name>
+  </patient></patientRole></recordTarget>
+  <component><structuredBody>
+    <component><section>
+      <templateId root="2.16.840.1.113883.10.20.22.2.3.1"/>
+      <code code="30954-2" codeSystem="2.16.840.1.113883.6.1"/>
+      <title>Results</title>
+      <entry><organizer classCode="BATTERY" moodCode="EVN">
+        <component><observation classCode="OBS" moodCode="EVN">
+          <code code="99991-1" codeSystem="2.16.840.1.113883.6.1" displayName="Zeta Antibody IgG"/>
+          <effectiveTime value="20200501"/>
+          <value type="PQ" value="10" unit="U/mL"/>
+        </observation></component>
+        <component><observation classCode="OBS" moodCode="EVN">
+          <code code="99992-9" codeSystem="2.16.840.1.113883.6.1" displayName="Zeta Antibody (IgG)"/>
+          <effectiveTime value="20200501"/>
+          <value type="PQ" value="20" unit="U/mL"/>
+        </observation></component>
+      </organizer></entry>
+    </section></component>
+  </structuredBody></component>
+</ClinicalDocument>`;
+
+  it("one import of two same-key spellings yields one canonical, one vocabulary entry, and a clean preview", () => {
+    const pid = newProfile("BATCH-SNAP");
+    const did = newDocument(pid, "two-spellings.ccd");
+    const buffer = Buffer.from(TWO_SPELLINGS_CCD);
+    const outcome = persistHealthRecordDoc(pid, did, buffer);
+    expect(outcome.status).toBe("done");
+
+    // Both rows share the batch's FIRST spelling; only that one registered.
+    const canonicals = db
+      .prepare(
+        "SELECT DISTINCT canonical_name FROM medical_records WHERE profile_id = ?"
+      )
+      .all(pid) as { canonical_name: string }[];
+    expect(canonicals.map((c) => c.canonical_name)).toEqual([
+      "Zeta Antibody IgG",
+    ]);
+    const vocab = db
+      .prepare("SELECT name FROM canonical_biomarkers WHERE name LIKE 'Zeta%'")
+      .all() as { name: string }[];
+    expect(vocab.map((v) => v.name)).toEqual(["Zeta Antibody IgG"]);
+
+    // Reprocess preview (the extractPersistInputForPreview shape): re-parse,
+    // batch-snap against the NOW-registered vocabulary, enrich, diff → clean.
+    const { parsed, source } = parseHealthRecord(buffer);
+    const index = buildCanonicalIndex(getCanonicalVocabulary());
+    for (const r of parsed.records) {
+      r.canonical = snapCanonicalNameIntoBatch(
+        distinguishVitaminDIsoform(r.canonical, r.name),
+        index
+      );
+    }
+    const input = healthRecordToPersistInput(parsed, source, "MyChart export");
+    previewReconcileFlags(pid, input.records);
+    const current = getReprocessSnapshot(pid, did);
+    const next = snapshotFromPersistInput(input);
+    foldConsolidatedMedsIntoSnapshot(pid, current, next.medications);
+    expect(computeImportDiff(current, next).hasChanges).toBe(false);
   });
 });

@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   normalizeCanonicalKey,
   buildCanonicalIndex,
+  claimCanonicalKey,
   snapCanonicalName,
+  snapCanonicalNameIntoBatch,
   vitaminDIsoform,
   distinguishVitaminDIsoform,
   vitaminDRetestFamily,
@@ -570,5 +572,36 @@ describe("canonical aliases (synonym/abbreviation drift)", () => {
       // And it resolves through the production index.
       expect(snapCanonicalName(alias, index)).toBe(canonical);
     }
+  });
+});
+
+describe("snapCanonicalNameIntoBatch / claimCanonicalKey (intra-batch collapse)", () => {
+  it("a vocabulary miss claims its key so later same-key spellings collapse onto it", () => {
+    const index = buildCanonicalIndex(["Glucose"]);
+    // First spelling misses the vocabulary → kept AND claimed.
+    expect(snapCanonicalNameIntoBatch("Zeta Antibody IgG", index)).toBe(
+      "Zeta Antibody IgG"
+    );
+    // Same-key sibling later in the batch collapses onto the first occurrence.
+    expect(snapCanonicalNameIntoBatch("Zeta Antibody (IgG)", index)).toBe(
+      "Zeta Antibody IgG"
+    );
+    // A real vocabulary hit still wins over any batch claim.
+    expect(snapCanonicalNameIntoBatch("glucose", index)).toBe("Glucose");
+  });
+
+  it("the batch claim never outlives its index and never rewrites an existing key", () => {
+    const index = buildCanonicalIndex(["Glucose"]);
+    claimCanonicalKey("Zeta Antibody IgG", index);
+    claimCanonicalKey("Zeta Antibody (IgG)", index); // same key — first claim holds
+    expect(snapCanonicalName("zeta antibody igg", index)).toBe(
+      "Zeta Antibody IgG"
+    );
+    claimCanonicalKey("GLUCOSE", index); // may not hijack a vocabulary entry
+    expect(snapCanonicalName("glucose", index)).toBe("Glucose");
+    // A fresh index is unaffected (per-batch scope).
+    expect(
+      snapCanonicalName("zeta antibody igg", buildCanonicalIndex(["Glucose"]))
+    ).toBe("zeta antibody igg");
   });
 });

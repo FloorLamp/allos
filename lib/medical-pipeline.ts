@@ -66,7 +66,7 @@ import {
 import { parseHealthRecord } from "@/lib/health-record-parse";
 import {
   buildCanonicalIndex,
-  snapCanonicalName,
+  snapCanonicalNameIntoBatch,
   distinguishVitaminDIsoform,
 } from "@/lib/canonical-name";
 import {
@@ -1346,7 +1346,9 @@ async function extractPersistInputForPreview(
       const { parsed, source } = parseHealthRecord(buffer);
       const canonicalIndex = buildCanonicalIndex(getCanonicalVocabulary());
       for (const r of parsed.records) {
-        r.canonical = snapCanonicalName(
+        // Batch-aware, exactly as persistHealthRecordDoc snaps — the preview must
+        // collapse same-key spellings the same way the commit will.
+        r.canonical = snapCanonicalNameIntoBatch(
           distinguishVitaminDIsoform(r.canonical, r.name),
           canonicalIndex
         );
