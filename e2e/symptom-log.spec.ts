@@ -20,7 +20,7 @@ async function logAndConfirm(
   level: number
 ): Promise<void> {
   await expect(async () => {
-    let bar = page.getByTestId("symptom-log-bar").first();
+    let bar = page.getByTestId("symptom-log-bar").first(); // first-ok: the acting profile's own symptom bar (top of the dashboard) — order-agnostic
     if ((await bar.getByTestId(`symptom-${key}`).count()) === 0) {
       if ((await bar.getByTestId("symptom-add-picker").count()) === 0) {
         await bar.getByTestId("symptom-add-picker-toggle").click();
@@ -36,7 +36,7 @@ async function logAndConfirm(
       await chip.click();
     }
     await page.reload();
-    bar = page.getByTestId("symptom-log-bar").first();
+    bar = page.getByTestId("symptom-log-bar").first(); // first-ok: the acting profile's own symptom bar (top of the dashboard) — order-agnostic
     await expect(
       bar.getByTestId(`symptom-${key}-sev-${level}`)
     ).toHaveAttribute("aria-pressed", "true", { timeout: 3_000 });
@@ -61,7 +61,7 @@ test("active-first: catalog collapses into the picker; logging via the picker ra
 }) => {
   await page.goto("/");
   const tap = settledTap(page);
-  const bar = page.getByTestId("symptom-log-bar").first();
+  const bar = page.getByTestId("symptom-log-bar").first(); // first-ok: the acting profile's own symptom bar (top of the dashboard) — order-agnostic
   await expect(bar).toBeVisible();
   await ensureUnlogged(bar, "headache", tap);
   await ensureUnlogged(bar, "nausea", tap);
@@ -81,7 +81,7 @@ test("explicit-lower: tapping a labeled lower chip saves directly", async ({
 }) => {
   await page.goto("/");
   const tap = settledTap(page);
-  const bar = page.getByTestId("symptom-log-bar").first();
+  const bar = page.getByTestId("symptom-log-bar").first(); // first-ok: the acting profile's own symptom bar (top of the dashboard) — order-agnostic
   await expect(bar).toBeVisible();
   await ensureUnlogged(bar, "chills", tap);
 
@@ -107,7 +107,7 @@ test("note affordance: a logged row opens a one-line note that persists", async 
 }) => {
   await page.goto("/");
   const tap = settledTap(page);
-  const bar = page.getByTestId("symptom-log-bar").first();
+  const bar = page.getByTestId("symptom-log-bar").first(); // first-ok: the acting profile's own symptom bar (top of the dashboard) — order-agnostic
   await expect(bar).toBeVisible();
   await ensureUnlogged(bar, "body_aches", tap);
 
@@ -121,7 +121,7 @@ test("note affordance: a logged row opens a one-line note that persists", async 
 
   // It survives a reload (persisted server-side).
   await page.reload();
-  const bar2 = page.getByTestId("symptom-log-bar").first();
+  const bar2 = page.getByTestId("symptom-log-bar").first(); // first-ok: the acting profile's own symptom bar (top of the dashboard) — order-agnostic
   await expect(bar2.getByTestId("symptom-body_aches-note")).toHaveText(
     "spiked after nap"
   );
