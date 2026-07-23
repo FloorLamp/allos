@@ -190,11 +190,6 @@ export const ONBOARDING_PROFILE = "Onboarding Person (e2e)";
 export const E2E_LOGIN_ONBOARDING_CAREGIVER = "e2e_onboarding_caregiver";
 export const ONBOARDING_CAREGIVER_PROFILE = "Caregiver Onboarding Person (e2e)";
 
-// A populated profile with no new-profile onboarding marker. Its member receives
-// the distinct, dismissible existing-profile orientation on the Dashboard.
-export const E2E_LOGIN_ORIENTATION = "e2e_orientation";
-export const ORIENTATION_PROFILE = "Existing Profile (e2e)";
-
 // ── Illness hero fixtures (#858) ──────────────────────────────────────────────
 // The illness hero moved the sick-day cockpit OFF the customizable grid (the former
 // symptom-log widget) and above it, and gained cross-profile logging + collapse

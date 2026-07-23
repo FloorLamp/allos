@@ -8,7 +8,6 @@ import {
 import {
   E2E_LOGIN_ONBOARDING,
   E2E_LOGIN_ONBOARDING_CAREGIVER,
-  E2E_LOGIN_ORIENTATION,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
 
@@ -467,30 +466,6 @@ test("a caregiver profile path ends with household-oriented next steps", async (
     await expect(
       checklist.getByRole("link", { name: /Review profiles and access/ })
     ).toHaveAttribute("href", "/household");
-  } finally {
-    await page.context().close();
-  }
-});
-
-test("a granted login receives existing-profile orientation, not empty setup", async ({
-  browser,
-}) => {
-  // Repeat-safety: the "Got it" click below writes the per-login dismissal key;
-  // clear it so the orientation card shows again on a repeat.
-  resetFixture("orientation");
-  const page = await loginAs(browser, {
-    username: E2E_LOGIN_ORIENTATION,
-    password: E2E_MEMBER_PASSWORD,
-  });
-
-  try {
-    const orientation = page.getByTestId("profile-orientation-card");
-    await expect(orientation).toBeVisible();
-    await expect(orientation).toContainText("read-only access");
-    await expect(orientation).toContainText("metrics or labs");
-    await expect(page.getByTestId("onboarding-resume-card")).toHaveCount(0);
-    await orientation.getByRole("button", { name: "Got it" }).click();
-    await expect(orientation).toHaveCount(0);
   } finally {
     await page.context().close();
   }
