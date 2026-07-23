@@ -35,15 +35,15 @@ test.describe("Illness round 3 (#859)", () => {
 
     // Reach the acting profile's open episode through its own index. The dashboard can
     // contain other household members' episode links after earlier stress-lane specs
-    // create profiles, so a page-global `.first()` would make this test order-dependent.
+    // create profiles, so a page-global first-match would make this test order-dependent.
     await page.goto("/medical/episodes");
     const episodeLink = page
       .getByTestId("episode-index-row")
       .filter({ hasText: /ongoing/i })
-      .first();
+      .first(); // first-ok: the acting profile's own ongoing episode via its index (see comment) — order-agnostic
     await followLink(page, episodeLink, /\/medical\/episodes\/\d+/);
 
-    const bar = page.getByTestId("symptom-log-bar").first();
+    const bar = page.getByTestId("symptom-log-bar").first(); // first-ok: the acting profile's own symptom bar — order-agnostic
 
     // Item 3: log a very high fever (104.5°F) — the source's cited single-reading
     // red-flag instruction fires inline at logging (any age).
@@ -90,7 +90,7 @@ test.describe("Illness round 3 (#859)", () => {
       remaining > 0;
       remaining--
     ) {
-      await settledClick(page, deleteButtons.first());
+      await settledClick(page, deleteButtons.first()); // first-ok: loop deletes EVERY photo; first-of-remaining is order-agnostic
       await expect(deleteButtons).toHaveCount(remaining - 1, {
         timeout: 15_000,
       });
@@ -120,7 +120,7 @@ test.describe("Illness round 3 (#859)", () => {
         mimeType: "image/png",
         buffer: uniquePng(),
       });
-      await expect(deleteButtons.first()).toBeVisible({ timeout: 5_000 });
+      await expect(deleteButtons.first()).toBeVisible({ timeout: 5_000 }); // first-ok: asserts a photo delete button renders before the delete loop — order-agnostic
     }).toPass({ timeout: 45_000 });
 
     await expect(page.getByText("Photo attached.")).toBeVisible();
@@ -152,7 +152,7 @@ test.describe("Illness round 3 (#859)", () => {
       remaining > 0;
       remaining--
     ) {
-      await settledClick(page, deleteButtons.first());
+      await settledClick(page, deleteButtons.first()); // first-ok: loop deletes EVERY photo; first-of-remaining is order-agnostic
       await expect(deleteButtons).toHaveCount(remaining - 1, {
         timeout: 15_000,
       });

@@ -24,7 +24,7 @@ test.describe("Illness-episode view (#801)", () => {
     await page.goto("/timeline?category=illness");
 
     // The episode card's title is a link — an "Illness" story headline with "day N".
-    const link = page.getByRole("link", { name: /Illness · day \d+/ }).first();
+    const link = page.getByRole("link", { name: /Illness · day \d+/ }).first(); // first-ok: the acting profile's Illness episode headline link — order-agnostic
     await expect(link).toBeVisible();
     await followLink(page, link, /\/medical\/episodes\//);
 
@@ -57,7 +57,7 @@ test.describe("Illness-episode view (#801)", () => {
     await page.goto("/");
     const episodeLink = page
       .getByRole("link", { name: /^More details about / })
-      .first();
+      .first(); // first-ok: the active profile's hero-cockpit episode link — order-agnostic
     await followLink(page, episodeLink, /\/medical\/episodes\/\d+/);
 
     // Mint a share link from the Share modal.
@@ -104,10 +104,9 @@ test.describe("Illness-episode view (#801)", () => {
     test.slow();
     await page.goto("/household");
     // Profile 1 is sick (seed), so at least one card carries the sick chip.
-    await expect(page.getByTestId("household-sick-chip").first()).toBeVisible();
-    await expect(page.getByTestId("household-sick-chip").first()).toContainText(
-      /sick/i
-    );
+    const sickChip = page.getByTestId("household-sick-chip").first(); // first-ok: at least one card carries the sick chip (profile 1 is sick, see comment) — order-agnostic
+    await expect(sickChip).toBeVisible();
+    await expect(sickChip).toContainText(/sick/i);
   });
 
   test("a granted member sees the sick profile's illness-hero accordion from a NON-sick active profile (#858)", async ({
@@ -219,7 +218,7 @@ test.describe("Illness-episode view (#801)", () => {
     const medicationLink = member
       .getByTestId("episode-last-dose")
       .getByRole("link")
-      .first();
+      .first(); // first-ok: the med link inside the scoped episode-last-dose row — order-agnostic
     await expect(medicationLink).toBeVisible();
     await followLink(member, medicationLink, /\/medications\/\d+/);
     await expect(medicationDetail(member)).toBeVisible();
