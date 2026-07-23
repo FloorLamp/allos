@@ -167,6 +167,8 @@ import {
   TRENDS_BODY_PROFILE,
   E2E_LOGIN_REST,
   REST_CARD_PROFILE,
+  E2E_LOGIN_SUPPRESSED,
+  SUPPRESSED_PROFILE,
 } from "./fixture-logins";
 import { adoptTemplate, activateRoutine } from "../lib/routines";
 import { getTimezone, setInstanceTimezone, setTimezone } from "../lib/settings";
@@ -4535,5 +4537,63 @@ console.log(
   seedMemberLogin(E2E_LOGIN_REST, rcId, "write");
   console.log(
     `e2e: seeded coaching rest-card fixture — profile ${rcId} (${REST_CARD_PROFILE}) (#1148/#1150)`
+  );
+}
+
+// ── Suppressed-center fixture (#1151) ─────────────────────────────────────────
+// A dedicated profile whose "Snoozed & dismissed" section spans all three
+// classes: a CARE snooze (future appointment), a COACHING dismissal (a
+// training-obs plateau key — no backing rows needed; the dismissal IS the fact),
+// and a SUGGESTION dismissal (a med-bridge untracked prescription whose backing
+// imported Rx record exists, so a Restore makes it reappear on /medications).
+// Idempotent: the spec ALSO resets these suppression rows itself before each
+// test (retries / --repeat-each), so this boot-time seed only guarantees the
+// backing data + a first-run state. All synthetic.
+{
+  const scId = fixtureProfileId(SUPPRESSED_PROFILE);
+  seedMemberLogin(E2E_LOGIN_SUPPRESSED, scId, "write");
+  const scToday = today(scId);
+
+  // Backing appointment (future, scheduled) — recreated each boot so its date
+  // stays in the future relative to the frozen clock.
+  db.prepare(
+    `DELETE FROM appointments WHERE profile_id = ? AND title = 'E2E Suppressed Appointment'`
+  ).run(scId);
+  const scApptId = Number(
+    db
+      .prepare(
+        `INSERT INTO appointments (profile_id, scheduled_at, title, status)
+         VALUES (?, ?, 'E2E Suppressed Appointment', 'scheduled')`
+      )
+      .run(scId, `${shiftDateStr(scToday, 5)} 10:00`).lastInsertRowid
+  );
+
+  // Backing untracked prescription for the med-bridge suggestion.
+  db.prepare(
+    `DELETE FROM medical_records WHERE profile_id = ? AND category = 'prescription' AND name = 'E2E Suppressed Rx'`
+  ).run(scId);
+  db.prepare(
+    `DELETE FROM intake_items WHERE profile_id = ? AND name = 'E2E Suppressed Rx'`
+  ).run(scId);
+  db.prepare(
+    `INSERT INTO medical_records (profile_id, date, category, name, canonical_name, source)
+     VALUES (?, '2026-06-12', 'prescription', 'E2E Suppressed Rx', 'E2E Suppressed Rx', 'ccda')`
+  ).run(scId);
+
+  // The three suppression rows (the spec re-asserts these per test).
+  db.prepare(`DELETE FROM upcoming_dismissals WHERE profile_id = ?`).run(scId);
+  db.prepare(
+    `INSERT INTO upcoming_dismissals (profile_id, signal_key, snooze_until)
+     VALUES (?, ?, ?)`
+  ).run(scId, `appointment:${scApptId}`, shiftDateStr(scToday, 3));
+  const scDismiss = db.prepare(
+    `INSERT INTO upcoming_dismissals (profile_id, signal_key, dismissed_at)
+     VALUES (?, ?, datetime('now'))`
+  );
+  scDismiss.run(scId, "training-obs:plateau:e2e suppressed lift");
+  scDismiss.run(scId, "med-bridge:e2e suppressed rx");
+
+  console.log(
+    `e2e: seeded suppressed-center fixture — profile ${scId} (${SUPPRESSED_PROFILE}), appointment ${scApptId} (#1151)`
   );
 }

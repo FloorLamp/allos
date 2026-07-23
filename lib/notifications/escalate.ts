@@ -4,7 +4,7 @@
 // when set, else the profile's own chat). Called once per hour from the notify
 // tick, independently of whether any reminder slot is due this hour.
 
-import { collectWindowDoses } from "./supplements";
+import { collectWindowDoses, getPreWorkoutSlotHour } from "./supplements";
 import { escalationMarkerKey } from "./escalation-keys";
 import {
   escalationsDue,
@@ -25,7 +25,7 @@ import { createLogger } from "../log";
 
 const log = createLogger("notify");
 
-const WINDOWS: EscalationWindow[] = ["Morning", "Midday", "Evening", "Bedtime"];
+const WINDOWS = ["Morning", "Midday", "Evening", "Bedtime"] as const;
 
 // Default wait after a slot's reminder before escalating an unconfirmed critical
 // dose, when the supplement leaves escalate_after_min unset.
@@ -47,12 +47,24 @@ export async function runEscalations(
   hour: number,
   sched: NotifySchedule
 ): Promise<{ failed: boolean }> {
-  // Gather critical, unconfirmed candidates only from windows whose reminder was
-  // actually delivered today — there's no missed dose to chase otherwise.
+  // Gather critical, unconfirmed candidates only from slots whose reminder was
+  // actually delivered today — there's no missed dose to chase otherwise. The
+  // PreWorkout pseudo-slot (#1154) is chased like a window, anchored on its
+  // workout-relative hour. This gather deliberately reads the UNFILTERED
+  // collectWindowDoses — the #1156 priority floor never gates the safety tier,
+  // so a low-priority CRITICAL item still escalates once its slot's reminder
+  // went out.
   const candidates: EscalationCandidate[] = [];
   const sentWindows: EscalationWindow[] = [];
-  for (const w of WINDOWS) {
-    const slotHour = sched.supplementHours[w];
+  const preWorkoutHour = getPreWorkoutSlotHour(profileId);
+  const slots: { w: EscalationWindow; slotHour: number | null }[] = [
+    ...WINDOWS.map((w) => ({
+      w: w as EscalationWindow,
+      slotHour: sched.supplementHours[w],
+    })),
+    { w: "PreWorkout" as EscalationWindow, slotHour: preWorkoutHour },
+  ];
+  for (const { w, slotHour } of slots) {
     if (slotHour == null) continue;
     if (getProfileSetting(profileId, `notify_last_supp_${w}`) !== date)
       continue;

@@ -21,8 +21,9 @@
 // keyed by the activity id — #203-safe: AUTOINCREMENT ids never recycle, so a
 // stale marker is a harmless dead row needing no rename cleanup).
 
-import { today } from "../db";
+import { db, today, writeTx } from "../db";
 import { now as clockNow } from "../clock";
+import { isCompletedSessionRow } from "../workout-presence";
 import { getWorkoutPresence } from "../queries/presence";
 import { getSessionRecap } from "../queries/session-recap";
 import {
@@ -40,7 +41,11 @@ import {
 } from "./workout-recap-format";
 import { getFrequencyTargetProgress } from "../queries";
 import { collectWindowDoses } from "./supplements";
-import type { ReminderWindow, WindowDose } from "./supplement-format";
+import {
+  notifiableWindowDoses,
+  type ReminderWindow,
+  type WindowDose,
+} from "./supplement-format";
 import { PRIORITY_ORDER } from "../supplement-schedule";
 import { dispatch } from "./index";
 import type { NotificationAction, NotificationMessage } from "./types";
@@ -86,7 +91,9 @@ export function renderPostWorkoutFinishMessage(
   date: string,
   entries: WindowDose[]
 ): NotificationMessage | null {
-  const pending = entries
+  // The #1156 priority floor: a low-priority SUPPLEMENT never rides a dose
+  // reminder (body or buttons); medications are never gated (safety tier).
+  const pending = notifiableWindowDoses(entries)
     .filter((e) => !e.taken && !e.skipped)
     .sort(
       (a, b) =>
@@ -141,27 +148,54 @@ export function buildPostWorkoutFinishReminder(
   );
 }
 
-// Deliver the post-workout reminder once, at the moment the session is `finished`.
-// One-shot per activity id; only-when-pending; the marker is stamped only on
-// delivery so a no-channel run retries next tick (within the finished window).
-export async function runPostWorkoutFinish(
+// Deliver the post-workout reminder for ONE activity — the shared dispatch core
+// (#1154 §B / #221): the presence-driven tick flagship AND the write-path
+// delayed dispatch (lib/notifications/post-workout-queue.ts) both call this, so
+// gating (dueness, the #924 recap composition, the #928 channel matrix) and the
+// one-shot marker can never fork. One-shot per activity id; only-when-pending;
+// the marker is stamped only on delivery (under writeTx with a re-read, so the
+// action-timer and the tick racing each other stamp at most once) so a
+// no-channel/failed run retries on the tick backstop.
+//
+// `verifyCompletedToday` (the queued path) re-reads the activity at fire time
+// and skips — without burning the one-shot — unless the row still exists for
+// this profile, is dated today (profile-local), and is COMPLETED
+// (isCompletedSessionRow): a finish that was undone in the delay window, or an
+// edit that moved the session off today, sends nothing. The presence path skips
+// this (presence already proved a just-finished session).
+export async function runPostWorkoutForActivity(
   profileId: number,
-  now: Date = clockNow()
+  activityId: number,
+  opts: { verifyCompletedToday?: boolean } = {}
 ): Promise<{ failed: boolean }> {
-  const presence = getWorkoutPresence(profileId, now);
-  if (presence.state !== "finished" || presence.activityId == null)
-    return { failed: false };
+  const date = today(profileId);
+  if (opts.verifyCompletedToday) {
+    const row = db
+      .prepare(
+        `SELECT date, start_time, end_time, duration_min
+           FROM activities WHERE id = ? AND profile_id = ?`
+      )
+      .get(activityId, profileId) as
+      | {
+          date: string;
+          start_time: string | null;
+          end_time: string | null;
+          duration_min: number | null;
+        }
+      | undefined;
+    if (!row || row.date !== date || !isCompletedSessionRow(row))
+      return { failed: false };
+  }
 
-  const markerKey = postWorkoutFinishMarkerKey(presence.activityId);
+  const markerKey = postWorkoutFinishMarkerKey(activityId);
   if (getProfileSetting(profileId, markerKey) != null) return { failed: false };
 
-  const date = today(profileId);
   // The recap-led composition (#924): the session recap line LEADS, then the due
   // post-workout supplement section. The recap line is gated by the workout-recap
   // kind (below); the dose section by dueness. Either alone still sends; both
   // absent ⇒ no send (and the one-shot is not burned).
   const doseMsg = buildPostWorkoutFinishReminder(profileId, date);
-  const recap = getSessionRecap(profileId, presence.activityId);
+  const recap = getSessionRecap(profileId, activityId);
   // Recap-line inclusion (#924) is gated by the `workout-recap` row of the #928
   // kind×channel matrix — included unless the user turned it OFF on EVERY
   // profile-scoped channel (Telegram + Home Assistant). The login-scoped push
@@ -194,13 +228,35 @@ export async function runPostWorkoutFinish(
   const delivered = results.some((r) => r.ok);
   const failed = results.some((r) => !r.ok);
   if (delivered) {
-    setProfileSetting(profileId, markerKey, date);
+    // Stamp the one-shot under the write lock with a re-read (#468): the delayed
+    // action-timer (web process) and the hourly tick both run this core off the
+    // same marker — whoever delivers first stamps it; a concurrent second
+    // deliverer finding it already stamped doesn't re-stamp (the residual
+    // both-in-flight overlap is the documented at-least-once posture — a rare
+    // duplicate dose reminder is strictly safer than a missed one).
+    writeTx(() => {
+      if (getProfileSetting(profileId, markerKey) == null) {
+        setProfileSetting(profileId, markerKey, date);
+      }
+    });
     log.info("post-workout finish nudge sent", {
       profile: profileId,
-      activity: presence.activityId,
+      activity: activityId,
     });
   }
   return { failed };
+}
+
+// Deliver the post-workout reminder once, at the moment the session is `finished`
+// (the presence-driven tick flagship). Delegates to the shared per-activity core.
+export async function runPostWorkoutFinish(
+  profileId: number,
+  now: Date = clockNow()
+): Promise<{ failed: boolean }> {
+  const presence = getWorkoutPresence(profileId, now);
+  if (presence.state !== "finished" || presence.activityId == null)
+    return { failed: false };
+  return runPostWorkoutForActivity(profileId, presence.activityId);
 }
 
 // --- Stale-session suggest ---

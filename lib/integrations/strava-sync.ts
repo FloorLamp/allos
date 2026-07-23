@@ -17,6 +17,7 @@ import {
 } from "./sync-log";
 import { mapStravaActivity } from "./strava";
 import { writeRawPayload } from "./raw-log";
+import { queuePostWorkoutForFreshImports } from "@/lib/notifications/post-workout-imports";
 import {
   upsertActivities,
   upsertActivityRoutes,
@@ -207,6 +208,12 @@ export async function runStravaSync(
     });
     return { error: message };
   }
+
+  // The no-finish fallback for imports (#1154 §B2): a just-synced session dated
+  // today gets the delayed post-workout dose dispatch armed, so its doses aren't
+  // bucket-slot-dependent. Only when the sync actually INSERTED rows — a pure
+  // re-scan of known rows arms nothing.
+  if (upActivities.inserted > 0) queuePostWorkoutForFreshImports(profileId);
 
   // Advance the cursor to the newest activity we successfully processed, so the
   // next run's trailing window starts from there. (When truncated, newestStart

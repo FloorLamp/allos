@@ -25,6 +25,7 @@ import {
   OURA_READINESS_SCORE_METRIC,
 } from "./oura";
 import { writeRawPayload } from "./raw-log";
+import { queuePostWorkoutForFreshImports } from "@/lib/notifications/post-workout-imports";
 import {
   upsertActivities,
   upsertBodyMetrics,
@@ -315,6 +316,11 @@ export async function runOuraSync(
     });
     return { error: message };
   }
+
+  // The no-finish fallback for imports (#1154 §B2): a just-synced session dated
+  // today gets the delayed post-workout dose dispatch armed, so its doses aren't
+  // bucket-slot-dependent.
+  if (upActivities.inserted > 0) queuePostWorkoutForFreshImports(profileId);
 
   // Advance the cursor to the newest day fully processed — but NEVER when truncated,
   // so a rate-limited/capped run re-fetches the whole window next time rather than

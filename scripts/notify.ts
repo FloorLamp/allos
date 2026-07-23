@@ -21,6 +21,9 @@ import "./load-env";
 
 import {
   buildSupplementReminder,
+  buildIntakeReminderForSlots,
+  getPreWorkoutSlotHour,
+  type IntakeSendSlot,
   type ReminderWindow,
 } from "../lib/notifications/supplements";
 import { buildWorkoutTargetReminder } from "../lib/notifications/workouts";
@@ -56,6 +59,7 @@ import {
   runPostWorkoutFinish,
   runStaleWorkoutSuggest,
 } from "../lib/notifications/workout-presence";
+import { flushPostWorkoutDispatches } from "../lib/notifications/post-workout-queue";
 import { runRefills } from "../lib/notifications/refill";
 import { runPreventive } from "../lib/notifications/preventive";
 import { runIllnessCare } from "../lib/notifications/illness-care";
@@ -262,22 +266,70 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
   const coachingInput = (): CoachingInput =>
     (coachingInputCache ??= gatherCoachingInput(profile.id, "kg", "km"));
 
+  const prefix = prefixForProfile(profile.id);
+  let anyFailed = false;
+
+  // ── Supplement dose reminders: ONE merged send per hour (#1154) ────────────
+  // Every slot due (and unsent) this hour — the four fixed windows plus the
+  // workout-relative PreWorkout pseudo-slot — coalesces into ONE message, so two
+  // windows configured at the same hour (or the pseudo-slot colliding with a
+  // window) can never double-notify. Each slot keeps its own per-day marker
+  // (notify_last_supp_<slot>); every slot that contributed entries to a
+  // delivered merged send is marked, so none re-fires today. A slot whose gather
+  // is empty stays unmarked and re-evaluates next hour (the classic retry).
+  const intakeSlotsDue: IntakeSendSlot[] = [];
+  for (const w of ["Morning", "Midday", "Evening", "Bedtime"] as const) {
+    const slotHour = sched.supplementHours[w];
+    // Due across [slotHour, slotHour+1] so a DST-skipped hour or a failed send
+    // still fires the next hour; the per-day dedup prevents a double send.
+    if (
+      slotHour != null &&
+      slotDue(slotHour, hour) &&
+      getProfileSetting(profile.id, `notify_last_supp_${w}`) !== date
+    )
+      intakeSlotsDue.push(w);
+  }
+  // The PreWorkout pseudo-slot (#1154 Fix A): `anytime` + `pre_workout` doses
+  // fire ~an hour before the inferred training hour instead of folding into the
+  // Morning window. Gated on intake reminders being on at all (any window
+  // configured) — turning every window off silences this too.
+  if (
+    Object.values(sched.supplementHours).some((h) => h != null) &&
+    getProfileSetting(profile.id, "notify_last_supp_PreWorkout") !== date
+  ) {
+    const preHour = getPreWorkoutSlotHour(profile.id);
+    if (preHour != null && slotDue(preHour, hour))
+      intakeSlotsDue.push("PreWorkout");
+  }
+  if (intakeSlotsDue.length > 0) {
+    const built = buildIntakeReminderForSlots(profile.id, intakeSlotsDue);
+    if (!built) {
+      log.info("nothing due", {
+        profile: profile.id,
+        slots: intakeSlotsDue.join(","),
+      });
+    } else {
+      const { delivered, failed } = await send(
+        profile.id,
+        prefixMessage(built.message, prefix)
+      );
+      if (failed) anyFailed = true;
+      // Mark each contributing slot once delivered so none re-sends later today;
+      // if nothing delivered (no channel / all failed) leave unmarked so a retry
+      // can recover.
+      if (delivered) {
+        for (const s of built.slots)
+          setProfileSetting(profile.id, `notify_last_supp_${s}`, date);
+      }
+    }
+  }
+
   const dueSlots: {
     slot: string;
     build: () => NotificationMessage | null;
     // Optional post-delivery hook (e.g. the mood check-in's ignored-days bump).
     onDelivered?: () => void;
   }[] = [];
-  for (const w of ["Morning", "Midday", "Evening", "Bedtime"] as const) {
-    const slotHour = sched.supplementHours[w];
-    // Due across [slotHour, slotHour+1] so a DST-skipped hour or a failed send
-    // still fires the next hour; the per-day dedup below prevents a double send.
-    if (slotHour != null && slotDue(slotHour, hour))
-      dueSlots.push({
-        slot: `supp_${w}`,
-        build: () => buildSupplementReminder(profile.id, w),
-      });
-  }
   // Food-log nudge (#682): opt-in per profile, riding the SAME morning/midday/evening
   // supplement slot hours (no separate schedule — "same times as supplements"). Its
   // own per-day dedup marker (notify_last_food_<Window>) and its own build, so it
@@ -333,8 +385,6 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
       });
   }
 
-  const prefix = prefixForProfile(profile.id);
-  let anyFailed = false;
   for (const { slot, build, onDelivered } of dueSlots) {
     const key = `notify_last_${slot}`;
     if (getProfileSetting(profile.id, key) === date) {
@@ -727,6 +777,20 @@ async function tick() {
     if (reaped > 0) log.info("reaped stuck extractions", { reaped });
   } catch (e) {
     log.error("stuck-extraction reap failed", {
+      err: e instanceof Error ? e : String(e),
+    });
+  }
+
+  // Delayed post-workout dispatches (#1154 §B): a sync inside THIS tick may have
+  // armed the ~60s dispatch timer for a just-imported completed session, and the
+  // tick process is about to exit — run any pending dispatch NOW instead of
+  // dropping it with the process (the web process keeps its timers; only the
+  // short-lived tick needs the flush). Best-effort: the shared one-shot marker +
+  // the next tick's backstop cover a failure.
+  try {
+    await flushPostWorkoutDispatches();
+  } catch (e) {
+    log.error("post-workout dispatch flush failed", {
       err: e instanceof Error ? e : String(e),
     });
   }

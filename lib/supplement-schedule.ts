@@ -242,6 +242,24 @@ export const PRIORITY_ORDER: Record<SupplementPriority, number> = {
   low: 2,
 };
 
+// The NOTIFICATION priority floor (issue #1156): whether a scheduled dose of this
+// item sends dose-reminder notifications at all. A LOW-priority SUPPLEMENT is
+// "tracked, not nagged" — it stays fully visible in-app (Supplements page,
+// Upcoming, adherence strip) but is excluded from every dose-reminder send
+// (Telegram / Web Push / Home Assistant), so a shelf of nice-to-haves can't flood
+// the reminder or its button keyboard. The one hard boundary (#449/#942): the
+// floor is a CALM-tier lever only — a MEDICATION's scheduled reminder is safety
+// tier and is DELIBERATELY never priority-gated, so marking a critical med "low"
+// can never silence its safety signal (missed-dose escalation is likewise never
+// gated; see lib/notifications/escalate.ts). Priority itself stays the user's
+// static, user-owned tag (#559) — this adds a notification CONSUMER, it never
+// invents priority or changes dueness (isDueOn is untouched).
+export function doseReminderNotifies(
+  item: Pick<Supplement, "kind" | "priority">
+): boolean {
+  return !(item.kind === "supplement" && item.priority === "low");
+}
+
 export const PRIORITY_LABELS: Record<SupplementPriority, string> = {
   mandatory: "Mandatory",
   high: "High",

@@ -19,8 +19,10 @@ import {
 import { utcSqlString } from "@/lib/date";
 import {
   runPostWorkoutFinish,
+  runPostWorkoutForActivity,
   postWorkoutFinishMarkerKey,
 } from "@/lib/notifications/workout-presence";
+import { setProfileSetting } from "@/lib/settings";
 
 const HA_URL = "http://homeassistant.local:8123/api/webhook/allos-postworkout";
 const NOW = new Date("2026-07-17T18:00:00Z");
@@ -291,5 +293,137 @@ describe("recap-led finish nudge composition (#924)", () => {
     const r = await runPostWorkoutFinish(p, NOW);
     expect(r.failed).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+// #1154 §B — the shared per-activity dispatch core the delayed write-path timer
+// calls (runPostWorkoutForActivity with fire-time verification). The presence
+// flagship above delegates to the same core, so these pin only the direct-path
+// deltas: the no-finish fallback (a retroactive/imported completed session
+// OUTSIDE the presence window still delivers), the fire-time completed check (an
+// undone finish sends nothing and doesn't burn the one-shot), the shared marker
+// (a flagship delivery makes the direct path a no-op), and the #1156 floor on
+// the dose section.
+describe("runPostWorkoutForActivity (the delayed-dispatch core, #1154 §B)", () => {
+  it("delivers for a retroactive completed session that ended hours ago (not bucket-dependent)", async () => {
+    const p = newProfile("PWRetro");
+    seedPostWorkoutSupp(p);
+    const date = today(p);
+    // Ended 3h ago — far outside the presence flagship's 60-min window.
+    const activityId = seedManualFinished(p, date, 180);
+    configureHA(p);
+    const fetchMock = stubFetch();
+
+    // The presence path sees nothing…
+    const r0 = await runPostWorkoutFinish(p, NOW);
+    expect(r0.failed).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    // …but the direct per-activity dispatch delivers.
+    const r = await runPostWorkoutForActivity(p, activityId, {
+      verifyCompletedToday: true,
+    });
+    expect(r.failed).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(getProfileSetting(p, postWorkoutFinishMarkerKey(activityId))).toBe(
+      date
+    );
+  });
+
+  it("fire-time verification: an UNDONE finish (live draft again) sends nothing and keeps the one-shot", async () => {
+    const p = newProfile("PWUndone");
+    seedPostWorkoutSupp(p);
+    const date = today(p);
+    // A started-but-unended, duration-less row: the live-draft signature.
+    const activityId = Number(
+      db
+        .prepare(
+          `INSERT INTO activities
+             (profile_id, date, type, title, start_time, end_time, created_at, updated_at, source)
+           VALUES (?, ?, 'strength', 'Draft (test)', ?, NULL, ?, ?, NULL)`
+        )
+        .run(
+          p,
+          date,
+          hhmmAgo(30),
+          utcSqlString(new Date(NOW.getTime() - 30 * 60_000)),
+          utcSqlString(NOW)
+        ).lastInsertRowid
+    );
+    configureHA(p);
+    const fetchMock = stubFetch();
+
+    const r = await runPostWorkoutForActivity(p, activityId, {
+      verifyCompletedToday: true,
+    });
+    expect(r.failed).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(
+      getProfileSetting(p, postWorkoutFinishMarkerKey(activityId))
+    ).toBeUndefined();
+  });
+
+  it("shares the one-shot marker with the tick flagship: whoever delivers first wins", async () => {
+    const p = newProfile("PWSharedMarker");
+    seedPostWorkoutSupp(p);
+    const date = today(p);
+    const activityId = seedManualFinished(p, date, 20);
+    configureHA(p);
+    const fetchMock = stubFetch();
+
+    // The direct path (as if the ~60s timer fired) delivers and stamps…
+    await runPostWorkoutForActivity(p, activityId, {
+      verifyCompletedToday: true,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // …so the tick's presence flagship skips (no double send).
+    const r = await runPostWorkoutFinish(p, NOW);
+    expect(r.failed).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("a cross-profile/unknown activity id is a no-op", async () => {
+    const p = newProfile("PWForeign");
+    const other = newProfile("PWForeignOwner");
+    seedPostWorkoutSupp(p);
+    const foreign = seedManualFinished(other, today(other), 20);
+    configureHA(p);
+    const fetchMock = stubFetch();
+    const r = await runPostWorkoutForActivity(p, foreign, {
+      verifyCompletedToday: true,
+    });
+    expect(r.failed).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("#1156 floor: a LOW-priority post_workout supplement is excluded; an all-low finish sends nothing", async () => {
+    const p = newProfile("PWFloor");
+    const date = today(p);
+    // One low post_workout supplement — the whole dose section goes silent, and
+    // with no working sets there's no recap either → no send, one-shot kept.
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, active, kind, condition, priority, as_needed)
+           VALUES (?, 'Low Post (test)', 1, 'supplement', 'post_workout', 'low', 0)`
+        )
+        .run(p).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, '5 g', 'anytime', 'any', 0)`
+    ).run(itemId);
+    const activityId = seedManualFinished(p, date, 20);
+    configureHA(p);
+    const fetchMock = stubFetch();
+
+    const r = await runPostWorkoutFinish(p, NOW);
+    expect(r.failed).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(
+      getProfileSetting(p, postWorkoutFinishMarkerKey(activityId))
+    ).toBeUndefined();
+    void setProfileSetting; // referenced to keep the shared import stable
   });
 });

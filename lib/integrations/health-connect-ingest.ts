@@ -10,6 +10,7 @@ import {
   type IngestCounts,
 } from "./normalize";
 import { HEALTH_CONNECT_ID, type ParsedPayload } from "./health-connect";
+import { queuePostWorkoutForFreshImports } from "@/lib/notifications/post-workout-imports";
 
 // The chunked write path for a parsed Health Connect batch (issue #1064).
 //
@@ -68,6 +69,10 @@ export function ingestHealthConnectPayload(
     const c = writeTx(() => upsertActivities(profileId, slice, source));
     activities = foldCounts([activities, c]);
   }
+  // The no-finish fallback for imports (#1154 §B2): a just-ingested session dated
+  // today gets the delayed post-workout dose dispatch armed, so its doses aren't
+  // bucket-slot-dependent. Only when the ingest actually INSERTED rows.
+  if (activities.inserted > 0) queuePostWorkoutForFreshImports(profileId);
   for (const slice of chunk(parsed.vitals, chunkSize)) {
     const r = writeTx(() => upsertVitals(profileId, slice, source));
     vitals = foldCounts([vitals, r.counts]);

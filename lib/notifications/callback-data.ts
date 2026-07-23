@@ -6,7 +6,7 @@ import type { FoodLogOutcome } from "../food-log-write";
 import type { ProteinAddOutcome } from "../protein-log-write";
 import { formatRecordDate } from "../record-format";
 import { foodGroupName } from "../food-groups";
-import type { ReminderWindow } from "./supplement-format";
+import { INTAKE_SEND_SLOTS, type IntakeSendSlot } from "./supplement-format";
 import { FOOD_NUDGE_WINDOWS, type FoodNudgeWindow } from "./food-format";
 
 // A keyboard button carries EITHER a callback token or a deep-link url (issue
@@ -26,29 +26,47 @@ export interface TakeCallback {
 
 export interface AllCallback {
   profileId: number;
-  window: ReminderWindow;
+  window: IntakeSendSlot;
   date: string;
 }
 
-const REMINDER_WINDOWS: readonly ReminderWindow[] = [
-  "Morning",
-  "Midday",
-  "Evening",
-  "Bedtime",
-];
-
-// Parse an "all:<profileId>:<window>:<date>" button token — the "mark every
-// pending dose in this session taken" action. `window` must be one of the fixed
-// ReminderWindow labels. Like parseTakeCallback, the profile id is a cross-check
-// (the handler re-resolves the acting profile from the chat). Anything malformed
-// (unknown prefix, bad window, missing date) returns null.
+// Parse an "all:<profileId>:<slot>:<date>" button token — the "mark every
+// pending dose in this session taken" action. `slot` must be one of the fixed
+// send-slot labels (the four windows, or the PreWorkout pseudo-slot — #1154).
+// Like parseTakeCallback, the profile id is a cross-check (the handler
+// re-resolves the acting profile from the chat). Anything malformed (unknown
+// prefix, bad slot, missing date) returns null.
 export function parseAllCallback(data: unknown): AllCallback | null {
   if (typeof data !== "string" || !data.startsWith("all:")) return null;
   const [, profStr, window, date] = data.split(":");
   const profileId = Number(profStr);
   if (!profileId || !date) return null;
-  if (!REMINDER_WINDOWS.includes(window as ReminderWindow)) return null;
-  return { profileId, window: window as ReminderWindow, date };
+  if (!INTAKE_SEND_SLOTS.includes(window as IntakeSendSlot)) return null;
+  return { profileId, window: window as IntakeSendSlot, date };
+}
+
+// Harvest the dose-session footprint out of a (possibly merged, #1154) reminder
+// keyboard: every dose id a surviving take/skip button carries, plus every slot a
+// per-slot "✅ All" token names. The rebuild paths feed these to
+// slotSessionForKeyboard so a tap on a merged message re-renders EVERY slot the
+// message covered, not just the tapped dose's. Pure; unknown tokens are ignored.
+export function keyboardDoseFootprint(rows: InlineKeyboard): {
+  doseIds: number[];
+  slots: IntakeSendSlot[];
+} {
+  const doseIds = new Set<number>();
+  const slots = new Set<IntakeSendSlot>();
+  for (const row of rows) {
+    for (const b of row) {
+      const tap =
+        parseTakeCallback(b.callback_data) ??
+        parseSkipCallback(b.callback_data);
+      if (tap) doseIds.add(tap.doseId);
+      const all = parseAllCallback(b.callback_data);
+      if (all) slots.add(all.window);
+    }
+  }
+  return { doseIds: [...doseIds], slots: [...slots] };
 }
 
 // Parse a "<prefix>:<profileId>:<doseId>:<suppId>:<date>" dose button token for a
