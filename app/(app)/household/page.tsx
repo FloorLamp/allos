@@ -8,7 +8,7 @@ import {
 } from "@/lib/auth";
 import { disambiguateProfileNames } from "@/lib/profile-disambiguation";
 import { writeSubjectName } from "@/lib/own-profile";
-import { HOUSEHOLD_HISTORY_HREF } from "@/lib/hrefs";
+import { EPISODES_HREF } from "@/lib/hrefs";
 import { today } from "@/lib/db";
 import {
   getActivities,
@@ -201,7 +201,7 @@ export default async function HouseholdPage() {
         subtitle="Everyone at a glance — confirm what's due, or tap a card to open that profile."
         action={
           <Link
-            href={HOUSEHOLD_HISTORY_HREF}
+            href={EPISODES_HREF}
             className="text-sm font-medium text-sky-700 hover:underline dark:text-sky-300"
             data-testid="household-history-link"
           >

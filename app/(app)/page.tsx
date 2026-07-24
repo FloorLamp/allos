@@ -156,7 +156,7 @@ import { saveDashboardLayout, saveIllnessHeroState } from "./actions";
 import {
   episodeHref,
   encounterHref,
-  HOUSEHOLD_HISTORY_HREF,
+  EPISODES_HREF,
   type AppRoute,
 } from "@/lib/hrefs";
 import { formatRecordDateTime } from "@/lib/record-format";
@@ -996,10 +996,10 @@ export default async function Dashboard() {
       {promoteHouseholdHistory && (
         <div className="mb-6" data-testid="household-history-promo">
           <Link
-            href={HOUSEHOLD_HISTORY_HREF}
+            href={EPISODES_HREF}
             className="inline-flex items-center gap-2 text-sm font-medium text-sky-700 hover:underline dark:text-sky-300"
           >
-            See the household&rsquo;s visit &amp; illness history →
+            See the household&rsquo;s illness episodes &amp; visits →
           </Link>
         </div>
       )}

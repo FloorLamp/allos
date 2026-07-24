@@ -1,104 +1,176 @@
 import Link from "next/link";
-import { requireSession, getAccessibleProfiles } from "@/lib/auth";
+import { requireScope } from "@/lib/scope";
+import { today } from "@/lib/db";
+import { shiftDateStr } from "@/lib/date";
 import { getUnitPrefs, getDisplayFormatPrefs } from "@/lib/settings";
-import { fmtTemp } from "@/lib/units";
-import { formatRecordDate } from "@/lib/record-format";
-import type { DisplayFormatPrefs } from "@/lib/format-date";
-import { summarizeEpisodesForProfile } from "@/lib/illness-episode-summary";
-import { episodeHref, HOUSEHOLD_HISTORY_HREF } from "@/lib/hrefs";
+import { gatherCareTrail } from "@/lib/care-trail-gather";
+import {
+  buildCareTrail,
+  careTrailRows,
+  perMemberEpisodeStats,
+  normalizeCareTrailKind,
+  type CareTrailKind,
+} from "@/lib/care-trail";
+import { buildSwimlane } from "@/lib/care-trail-swimlane";
+import { episodesKindHref } from "@/lib/hrefs";
+import type { AvatarProfile } from "@/components/Avatar";
 import PageContainer from "@/components/PageContainer";
 import { PageHeader, EmptyState } from "@/components/ui";
+import CareTrailBand from "@/components/illness/CareTrailBand";
+import CareTrailList from "@/components/illness/CareTrailList";
+import CareTrailStatsStrip from "@/components/illness/CareTrailStatsStrip";
 
 export const dynamic = "force-dynamic";
 
-// The episodes index (issue #856 item 9): every past illness for the active profile —
-// date range, duration, peak temp, symptom set, and outcome — answering "when did I last
-// have a fever and how did it go." Consumes summarizeEpisodesForProfile (the one #801
-// assembly per row). Retroactive by construction: a boundary-edited/retro episode row
-// simply appears here.
+// The Illness episodes index (#856), which BECAME the view-set-driven household care-trail
+// surface (#1373 Part 2, superseding #879's surface split — its single-ENGINE rule
+// survives). The #1096 profile banner (rendered app-wide in the layout) drives WHOSE data
+// shows via scope.viewIds; a URL-driven two-state `?kind=` toggle drives WHAT shows:
+//   • illness (default): episodes + their LINKED visits (#1198) nested as indented child
+//     rows in episode-relative time, and prescribed medication courses nested by the SAME
+//     classifyEpisodeMed window classification the reconcile uses (one computation);
+//   • illness+visits: adds the UNLINKED routine visits as standalone interleaved rows.
+// There is deliberately no visits-only lens — the flat all-visits question belongs to
+// records → Visits (the management surface). Single-view is the former index restyled: no
+// banner, kind=illness default, one member's episodes.
+export default async function EpisodesIndexPage(props: {
+  searchParams: Promise<{ kind?: string | string[] }>;
+}) {
+  const { kind: rawKind } = await props.searchParams;
+  const kind: CareTrailKind = normalizeCareTrailKind(
+    Array.isArray(rawKind) ? rawKind[0] : rawKind
+  );
 
-// Pref-aware (#964/#1020): formatRecordDate replaces the old implicit-locale
-// toLocaleDateString, which leaked the server's locale.
-const fmtDate = (d: string | null, prefs: DisplayFormatPrefs): string =>
-  formatRecordDate(d, "—", prefs);
+  const scope = await requireScope();
+  const { loginId, actingProfileId, viewIds } = scope;
+  const multi = viewIds.length > 1;
+  const temperatureUnit = getUnitPrefs(loginId).temperatureUnit;
+  const formatPrefs = getDisplayFormatPrefs(loginId);
 
-export default async function EpisodesIndexPage() {
-  const { login, profile } = await requireSession();
-  const temperatureUnit = getUnitPrefs(login.id).temperatureUnit;
-  const formatPrefs = getDisplayFormatPrefs(login.id);
-  const episodes = summarizeEpisodesForProfile(profile.id);
-  // Widen-to-household link (issue #1009 Ask 4) — shown only for a multi-profile login,
-  // the same predicate that gates the Household strip/nav.
-  const showHousehold = (await getAccessibleProfiles()).length > 1;
+  // The care-trail gather + nest (auth-blind, profileIds-list-first). viewIds is the ONLY
+  // legitimate cross-profile id source (validated ∩ accessible in requireScope).
+  const gather = gatherCareTrail(viewIds);
+  const build = buildCareTrail(gather.episodes, gather.visits, gather.courses);
+  const rows = careTrailRows(build, kind);
+
+  // Disambiguated subject identity (#534) for every in-view member.
+  const subjectById = new Map<
+    number,
+    { name: string; profile: AvatarProfile }
+  >();
+  for (const id of viewIds) {
+    const p = scope.profiles.find((sp) => sp.id === id);
+    if (p) subjectById.set(id, { name: p.name, profile: p });
+  }
+
+  // The trailing-window swimlane axis (a single axis; per-member day math already resolved
+  // in the bars). Window ends at the acting profile's today, spans ~12 months back.
+  const windowEnd = today(actingProfileId);
+  const windowStart = shiftDateStr(windowEnd, -365);
+  const swimlane = buildSwimlane(build, viewIds, windowStart, windowEnd);
+  const currentYear = Number(windowEnd.slice(0, 4));
+  const stats = multi ? perMemberEpisodeStats(build.episodes, currentYear) : [];
+
+  // Members in view with no episodes at all — a per-member "none yet" line in multi-view
+  // (the absent-pillar: don't imply a member is missing).
+  const membersWithEpisodes = new Set(build.episodes.map((e) => e.profileId));
+
+  const subtitle = multi
+    ? "Everyone's illness episodes and visits — most recent first."
+    : "Every logged illness — most recent first.";
 
   return (
     <PageContainer width="reading">
-      <PageHeader
-        title="Illness episodes"
-        subtitle="Every logged illness — most recent first."
-        action={
-          showHousehold ? (
-            <Link
-              href={HOUSEHOLD_HISTORY_HREF}
-              className="text-sm font-medium text-sky-700 hover:underline dark:text-sky-300"
-              data-testid="household-view-link"
-            >
-              Household view →
-            </Link>
-          ) : undefined
-        }
-      />
-      {episodes.length === 0 ? (
-        <EmptyState message="No illness episodes yet. When you flag an illness situation and log symptoms, it appears here." />
+      <PageHeader title="Illness episodes" subtitle={subtitle} />
+
+      {/* The two-state content toggle (URL-driven; default illness). */}
+      <div
+        className="mb-4 flex flex-wrap gap-2"
+        data-testid="care-trail-kind-toggle"
+      >
+        <KindTab kind="illness" active={kind === "illness"} label="Illness" />
+        <KindTab
+          kind="illness+visits"
+          active={kind === "illness+visits"}
+          label="Illness + visits"
+        />
+      </div>
+
+      {swimlane.hasData && (
+        <div className="mb-5">
+          <CareTrailBand
+            swimlane={swimlane}
+            subjectById={subjectById}
+            temperatureLabel="Past 12 months"
+          />
+        </div>
+      )}
+
+      {stats.length > 0 && (
+        <div className="mb-5">
+          <CareTrailStatsStrip stats={stats} subjectById={subjectById} />
+        </div>
+      )}
+
+      {rows.length === 0 ? (
+        <EmptyState
+          message={
+            kind === "illness"
+              ? "No illness episodes yet. When you flag an illness situation and log symptoms, it appears here."
+              : "No illness episodes or visits yet."
+          }
+        />
       ) : (
-        <ul className="flex flex-col gap-2" data-testid="episode-index">
-          {episodes.map((e) => {
-            const range = `${fmtDate(e.firstDay, formatPrefs)} – ${
-              e.ongoing ? "ongoing" : fmtDate(e.lastActiveDay, formatPrefs)
-            }`;
-            const outcome =
-              e.outcome ??
-              (e.promotedConditionName
-                ? `Condition: ${e.promotedConditionName}`
-                : e.ongoing
-                  ? "Ongoing"
-                  : "Self-resolved");
-            return (
-              <li key={e.id}>
-                <Link
-                  href={episodeHref(e.id)}
-                  className="card block transition hover:shadow-md"
-                  data-testid="episode-index-row"
-                >
-                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                    <span className="font-semibold text-slate-800 dark:text-slate-100">
-                      {e.situation}
-                    </span>
-                    <span className="text-sm text-slate-500 dark:text-slate-400">
-                      {range}
-                    </span>
-                  </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-                    {e.dayCount != null && <span>{e.dayCount}-day</span>}
-                    {e.maxTempF != null && (
-                      <span>peak {fmtTemp(e.maxTempF, temperatureUnit)}</span>
-                    )}
-                    {e.distinctSymptomCount > 0 && (
-                      <span>
-                        {e.symptomLabels.slice(0, 4).join(", ")}
-                        {e.symptomLabels.length > 4 ? "…" : ""}
-                      </span>
-                    )}
-                    <span className="ml-auto font-medium text-slate-600 dark:text-slate-300">
-                      {outcome}
-                    </span>
-                  </div>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+        <CareTrailList
+          rows={rows}
+          subjectById={subjectById}
+          actingProfileId={actingProfileId}
+          multi={multi}
+          temperatureUnit={temperatureUnit}
+          formatPrefs={formatPrefs}
+        />
+      )}
+
+      {multi && (
+        <div
+          className="mt-6 flex flex-col gap-1 text-xs text-slate-500 dark:text-slate-400"
+          data-testid="care-trail-empty-members"
+        >
+          {viewIds
+            .filter((id) => !membersWithEpisodes.has(id))
+            .map((id) => (
+              <span key={id} data-profile-id={id}>
+                No episodes: {subjectById.get(id)?.name ?? `Profile ${id}`}
+              </span>
+            ))}
+        </div>
       )}
     </PageContainer>
+  );
+}
+
+function KindTab({
+  kind,
+  active,
+  label,
+}: {
+  kind: CareTrailKind;
+  active: boolean;
+  label: string;
+}) {
+  return (
+    <Link
+      href={episodesKindHref(kind)}
+      data-testid={`care-trail-kind-${kind === "illness" ? "illness" : "visits"}`}
+      data-active={active}
+      aria-pressed={active}
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-sm transition ${
+        active
+          ? "border-sky-500 bg-sky-50 font-medium text-sky-700 dark:border-sky-400 dark:bg-sky-950 dark:text-sky-300"
+          : "border-black/10 text-slate-600 hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
+      }`}
+    >
+      {label}
+    </Link>
   );
 }
