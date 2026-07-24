@@ -631,7 +631,9 @@ describe("buildFoodSuggestionFindings (#577)", () => {
     expect(findings).toHaveLength(1);
     expect(findings[0].dedupeKey).toBe(foodSuggestSignalKey("omega-3"));
     expect(findings[0].detail?.toLowerCase()).toContain("fatty fish");
-    expect(findings[0].evidence?.toLowerCase()).toContain("not medical advice");
+    expect(findings[0].evidence?.toLowerCase()).not.toContain(
+      "not medical advice"
+    );
   });
 
   it("a SUPERSEDED low reading (a later normal) does not trigger — current-reading filter #557", () => {

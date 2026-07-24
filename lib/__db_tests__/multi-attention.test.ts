@@ -78,6 +78,16 @@ describe("collectMultiProfileAttention", () => {
       collectAttentionModel(a.profileId, a.todayStr).length +
       collectAttentionModel(b.profileId, b.todayStr).length;
     expect(model.total).toBe(expectedTotal);
+
+    // The by-person view (issue #1327 fix 2) carries one section per in-view member,
+    // in view order, each with that member's own groups; both members have due items
+    // here, so neither is empty and emptyMemberIds is empty (fix 3).
+    expect(model.memberSections.map((s) => s.profileId)).toEqual([
+      a.profileId,
+      b.profileId,
+    ]);
+    expect(model.memberSections.every((s) => !s.empty)).toBe(true);
+    expect(model.emptyMemberIds).toEqual([]);
   });
 
   it("is the single-view identity: one profile merges to that profile's own grouping", () => {

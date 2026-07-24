@@ -112,7 +112,14 @@ export type MedicalCategory =
   //     but never carry a retest clock (they share the genomics staleness exclusion).
   | "instrument"
   | "derived"
-  | "reference";
+  | "reference"
+  // Narrative diagnostic reports (#708 CDA feed): the free-text body of a
+  // microbiology culture / gram stain / cytopathology report — a dated document, not
+  // an analyte. Carries its text in `notes` with value/value_num null, so it never
+  // trends, flags, or lands in the biomarker catalog; it surfaces on Results →
+  // Reports. Distinct from `lab` (a measured reading) and `scan` (a numeric imaging
+  // measurement).
+  | "report";
 
 // "non-optimal" is the legacy directionless value (older rows, pre-migration);
 // new derivations use the directional "-high"/"-low" variants so the UI can show

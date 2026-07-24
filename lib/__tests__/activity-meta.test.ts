@@ -238,20 +238,42 @@ describe("compositeRollup", () => {
   };
 
   it("sums leg distances", () => {
-    expect(compositeRollup([swim, bike], null).distanceKm).toBe(21);
+    expect(compositeRollup([swim, bike], null, null).distanceKm).toBe(21);
   });
 
   it("collapses a zero total distance to null (strength-only brick)", () => {
-    expect(compositeRollup([lift], null).distanceKm).toBeNull();
+    expect(compositeRollup([lift], null, null).distanceKm).toBeNull();
   });
 
-  it("prefers the clock span over the sum of leg durations", () => {
-    // legs sum to 60, but the wall clock says 75 (includes transitions).
-    expect(compositeRollup([swim, bike], 75).durationMin).toBe(75);
+  // #1202: for a pure cardio/sport session the ACTIVE total is Σ legs (moving time),
+  // and the wall-clock span is ELAPSED — NOT active. The clock no longer wins the
+  // parent duration (that was the edit-flip bug).
+  it("keeps active = Σ leg durations; the clock span is elapsed, not active", () => {
+    const r = compositeRollup([swim, bike], null, 98); // legs sum 60; clock 98
+    expect(r.durationMin).toBe(60); // active
+    expect(r.elapsedMin).toBe(98); // elapsed (incl. transitions)
+  });
+
+  // The single-paused-run fixture from the issue: components {run 45}, clock 60.
+  it("single paused run: active 45, elapsed 60", () => {
+    const run = { type: "cardio" as const, distance_km: 8, duration_min: 45 };
+    const r = compositeRollup([run], null, 60);
+    expect(r.durationMin).toBe(45);
+    expect(r.elapsedMin).toBe(60);
+  });
+
+  // The brick fixture from the issue: swim 20 + bike 40 + run 30, 8-min transitions.
+  it("brick: active 90 (Σ legs), elapsed 98 (the 8-min transition lives only in elapsed)", () => {
+    const run = { type: "cardio" as const, distance_km: 5, duration_min: 30 };
+    const r = compositeRollup([swim, bike, run], null, 98);
+    expect(r.durationMin).toBe(90);
+    expect(r.elapsedMin).toBe(98);
   });
 
   it("falls back to the sum of leg durations when there is no clock span", () => {
-    expect(compositeRollup([swim, bike], null).durationMin).toBe(60);
+    const r = compositeRollup([swim, bike], null, null);
+    expect(r.durationMin).toBe(60);
+    expect(r.elapsedMin).toBeNull();
   });
 
   it("collapses a zero summed duration to null with no clock span", () => {
@@ -260,22 +282,35 @@ describe("compositeRollup", () => {
       distance_km: 5,
       duration_min: null,
     };
-    expect(compositeRollup([noDur], null).durationMin).toBeNull();
+    expect(compositeRollup([noDur], null, null).durationMin).toBeNull();
   });
 
-  it("uses the clock span even when it is shorter than the parts", () => {
-    expect(compositeRollup([swim, bike], 10).durationMin).toBe(10);
+  // A strength/mixed session can't sum active from set-based legs, so its active is
+  // the session total (entered minutes), and the clock span is its elapsed.
+  it("strength session: active = the session total; clock span is elapsed", () => {
+    const r = compositeRollup([lift], 50, 55);
+    expect(r.durationMin).toBe(50);
+    expect(r.elapsedMin).toBe(55);
+  });
+
+  // The elapsed ≥ active invariant (#132): a clock span shorter than active is an
+  // implausible elapsed and is dropped to null rather than stored as a bogus rest.
+  it("drops an implausible clock span (< active) from elapsed", () => {
+    const r = compositeRollup([swim, bike], null, 10); // active 60, clock 10
+    expect(r.durationMin).toBe(60);
+    expect(r.elapsedMin).toBeNull();
   });
 
   it("reports hasStrength when any leg is a strength leg", () => {
-    expect(compositeRollup([swim, lift], null).hasStrength).toBe(true);
-    expect(compositeRollup([swim, bike], null).hasStrength).toBe(false);
+    expect(compositeRollup([swim, lift], null, null).hasStrength).toBe(true);
+    expect(compositeRollup([swim, bike], null, null).hasStrength).toBe(false);
   });
 
   it("handles an empty component list", () => {
-    expect(compositeRollup([], null)).toEqual({
+    expect(compositeRollup([], null, null)).toEqual({
       distanceKm: null,
       durationMin: null,
+      elapsedMin: null,
       hasStrength: false,
     });
   });

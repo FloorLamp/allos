@@ -113,10 +113,6 @@ export default function MedicationListView({
           </table>
         </div>
       )}
-
-      <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">
-        Informational only, not medical advice.
-      </p>
     </div>
   );
 }

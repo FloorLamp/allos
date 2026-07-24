@@ -65,8 +65,8 @@ export default function ConditionsSection({
       <div className="min-w-0 space-y-4">
         <ConditionForm action={addCondition} />
         <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-          Informational only, not medical advice. Imported problems come from
-          uploaded health records (CCD Active Problems section).
+          Imported problems come from uploaded health records (CCD Active
+          Problems section).
         </p>
       </div>
     </div>

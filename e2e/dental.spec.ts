@@ -55,7 +55,8 @@ test.describe("Dental records — add → view → filter → track recheck → 
     // It appears in the list with its display label, tooth, and a status badge.
     const list = page.getByTestId("dental-procedure-list");
     const row = list.getByRole("row").filter({ hasText: NAME });
-    await expect(row).toBeVisible();
+    // Renders on the form's router.refresh() — a cold shard can outrun the default 5s (imaging/#1306 precedent).
+    await expect(row).toBeVisible({ timeout: 15_000 });
     await expect(row).toContainText(`#${TOOTH}`);
     await expect(row).toContainText("watch");
 
@@ -93,7 +94,8 @@ test.describe("Dental records — add → view → filter → track recheck → 
     await editForm.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByText("Record updated")).toBeVisible();
     await expect(list.getByRole("row").filter({ hasText: NAME })).toContainText(
-      "Interval stable."
+      "Interval stable.",
+      { timeout: 15_000 }
     );
 
     // Delete it and confirm it's gone. The confirm click MUST be scoped to the dialog

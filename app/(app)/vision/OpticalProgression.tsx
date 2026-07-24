@@ -45,8 +45,7 @@ export default function OpticalProgression({
         </div>
       </div>
       <p className="text-xs text-slate-500 dark:text-slate-400">
-        A more negative sphere means more nearsighted (myopic). Informational
-        only, not medical advice.
+        A more negative sphere means more nearsighted (myopic).
       </p>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">

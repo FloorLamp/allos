@@ -309,6 +309,46 @@ export function mergeAttentionPageGroups(
   return groups;
 }
 
+// One member's own page-grouped attention, for the BY-PERSON view mode (issue #1327
+// fix 2). Carries the member's `profileId`/`today` so the page renders a per-member
+// header, plus `empty` so an in-view member with nothing due is rendered as a calm
+// "All caught up" section rather than silent (#489 / #1327 fix 3) — silence reads as
+// "scrolled past her", which is exactly what the caregiver can't afford.
+export interface MemberSection {
+  profileId: number;
+  today: string;
+  groups: AttentionPageGroup[];
+  empty: boolean;
+}
+
+// By-person mode: group EACH member's items under that member's OWN page bands, banded
+// in that member's OWN today (the per-profile-context trap — same rule as the interleaved
+// merge). Returns one section per member IN VIEW ORDER, INCLUDING empty members (so the
+// page can render their "All caught up"). The alternative presentation to
+// mergeAttentionPageGroups over the SAME per-member models — the mode lives in this shared
+// merge layer so every #1328 adopter inherits both orderings, never a per-page fork (#221).
+export function groupAttentionByPerson(
+  members: readonly MemberAttention[]
+): MemberSection[] {
+  return members.map((m) => {
+    const groups = groupAttentionForPage(m.items, m.today);
+    return {
+      profileId: m.profileId,
+      today: m.today,
+      groups,
+      empty: groups.length === 0,
+    };
+  });
+}
+
+// The in-view members with NOTHING due (issue #1327 fix 3), in view order. The
+// interleaved mode appends one compact "All caught up: <name>" line per empty member so a
+// quiet member is acknowledged, never silently absent. Returns profileIds only; the caller
+// maps each to its disambiguated name from the scope (#534) — this layer stays name-blind.
+export function emptyMemberIds(members: readonly MemberAttention[]): number[] {
+  return members.filter((m) => m.items.length === 0).map((m) => m.profileId);
+}
+
 // ---------------------------------------------------------------------------
 // Presentation B — the dashboard CARD (triage glance): the act-now slice only,
 // a strict SUBSET of the page's model.

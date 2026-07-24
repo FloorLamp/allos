@@ -106,7 +106,7 @@ export function formatSchoolReturnLine(
   return (
     `Fever-free ${status.feverFreeHours}h (${annotation}) — the common ` +
     `school/daycare guideline is fever-free for ${status.thresholdHours}h ` +
-    `without a fever reducer. Informational, not medical advice.`
+    `without a fever reducer.`
   );
 }
 

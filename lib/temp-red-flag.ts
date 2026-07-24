@@ -89,12 +89,12 @@ export function tempRedFlagDetail(
 // Telegram nudge, inline toast): the fact + line, the source, then the mandatory
 // "informational, not medical advice" tail.
 export function tempRedFlagFullDetail(f: TempRedFlagFinding): string {
-  return `${f.detail} Source: ${f.source} Informational, not medical advice.`;
+  return `${f.detail} Source: ${f.source}`;
 }
 
 // The Finding.evidence line: the source + the non-negotiable disclaimer tail.
 export function tempRedFlagEvidence(f: TempRedFlagFinding): string {
-  return `Source: ${f.source} Informational, not medical advice.`;
+  return `Source: ${f.source}`;
 }
 
 // The inline note shown at the MOMENT of logging (the temperature toast/card), or
@@ -107,7 +107,7 @@ export function inlineTempRedFlagNote(
 ): string | null {
   const entry = detectTempRedFlag(degF, ageMonths);
   if (!entry) return null;
-  return `${entry.line}. Source: ${entry.source} Informational, not medical advice.`;
+  return `${entry.line}. Source: ${entry.source}`;
 }
 
 export interface DetectTempRedFlagOptions {

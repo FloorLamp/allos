@@ -25,5 +25,5 @@ test("Supplements tab shows the RDA-adequacy share for an under-RDA stack nutrie
   await expect(calcium).toContainText(/supplements alone provide/i);
   // The load-bearing wording contract: never implies a deficiency.
   await expect(calcium).not.toContainText(/deficient|deficiency/i);
-  await expect(calcium).toContainText(/not medical advice/i);
+  await expect(calcium).not.toContainText(/not medical advice/i);
 });

@@ -179,7 +179,7 @@ export default function VisitsSection({
               Already happened
             </span>
             . Imported visits come from uploaded health records (CCD Encounters
-            section). Informational only, not medical advice.
+            section).
           </p>
           <EncounterList items={encounters} defaultDate={now} />
         </section>

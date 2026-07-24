@@ -16,8 +16,8 @@ test.describe("health risk factors (issue #517)", () => {
 
     const card = page.getByTestId("risk-factors");
     await expect(card).toBeVisible();
-    // Framing + privacy copy is stated in the UI.
-    await expect(card).toContainText("not medical advice");
+    // Privacy copy is stated; the disclaimer moved to /disclaimer (#1049).
+    await expect(card).not.toContainText("not medical advice");
     await expect(card).toContainText("Privacy");
 
     const healthcare = page.getByTestId("risk-healthcare_worker");

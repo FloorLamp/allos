@@ -17,7 +17,7 @@ import { E2E_MEMBER_PASSWORD, E2E_LOGIN_ILLNESS_CARE } from "./fixture-logins";
 // deterministic — the ONE illness-care item, no positional pick needed.
 //
 // The finding must state the logged FACT + the cited LINE + the SOURCE, and carry
-// the mandatory "informational, not medical advice" tail — never a diagnosis.
+// the source citation (the disclaimer now lives on /disclaimer, #1049).
 
 test("a 4-day fever surfaces a cited illness-care finding on Upcoming", async ({
   browser,
@@ -37,10 +37,10 @@ test("a 4-day fever surfaces a cited illness-care finding on Upcoming", async ({
 
   // The logged fact.
   await expect(row).toContainText("Fever logged 4 days running");
-  // The cited line + the source + the mandatory disclaimer tail.
+  // The cited line + the source. The disclaimer moved to /disclaimer (#1049).
   await expect(row).toContainText("more than 3 days");
   await expect(row).toContainText("Source:");
-  await expect(row).toContainText("Informational, not medical advice.");
+  await expect(row).not.toContainText("Informational, not medical advice.");
 
   await page.context().close();
 });

@@ -25,8 +25,7 @@ export default function HealthGoalsSection({
       <div className="min-w-0 space-y-4">
         <CareGoalForm action={addCareGoal} />
         <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-          Informational only, not medical advice. Imported goals come from
-          uploaded health records (Goals section).
+          Imported goals come from uploaded health records (Goals section).
         </p>
       </div>
     </div>

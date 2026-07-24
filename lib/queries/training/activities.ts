@@ -586,6 +586,7 @@ function activityToEditData(profileId: number, a: Activity): ActivityEditData {
     title: a.title,
     date: a.date,
     duration_min: a.duration_min,
+    elapsed_min: a.elapsed_min,
     distance_km: a.distance_km,
     intensity: a.intensity,
     start_time: a.start_time,

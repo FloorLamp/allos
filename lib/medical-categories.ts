@@ -13,6 +13,9 @@
 //     a depression/alcohol score must never surface in a general health catalog).
 //   • 'derived'    — bio-age composites → the Longevity bio-age hero.
 //   • 'reference'  — immutable facts → the passport.
+//   • 'report'     — narrative micro/path report bodies → Results → Reports (#708);
+//     they carry text in `notes` with no value, so they must never appear in the
+//     analyte catalog.
 // 'vitals' STAYS browsable here on purpose (#1076): the physiologic vitals gained a
 // Trends → Vitals trend home, but the DOMAIN vitals catalogued here — audiogram
 // hearing thresholds (#713), intraocular pressure / visual acuity (#697), periodontal
@@ -33,6 +36,7 @@ export const MEDICAL_CATEGORIES = [
   "instrument",
   "derived",
   "reference",
+  "report",
 ] as const satisfies readonly MedicalCategory[];
 
 export const BIOMARKER_CATEGORIES = [

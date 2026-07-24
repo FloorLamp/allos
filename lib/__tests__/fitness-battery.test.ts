@@ -97,6 +97,41 @@ describe("battery ↔ scoring-engine consistency", () => {
   });
 });
 
+describe("timed-test windows (#1275)", () => {
+  // The mode is DATA, not a component fork: a `timerWindow` (seconds) turns a test's timer
+  // into a countdown pinned to its cited protocol; its absence means count-up. This asserts
+  // every timed test's window matches the protocol it cites.
+  it("pins each fixed-window test's countdown to its protocol window", () => {
+    const expected: Record<string, number> = {
+      chairstand: 30, // 30-Second Chair Stand
+      armcurl: 30, // 30-Second Arm Curl
+      vo2step2min: 120, // 2-Minute Step
+    };
+    for (const [key, window] of Object.entries(expected)) {
+      expect(fitnessTest(key)!.timerWindow, `${key} window`).toBe(window);
+    }
+  });
+
+  it("leaves the count-up (hold/balance/mobility) tests window-less", () => {
+    // These count UP until the user is done — no fixed window (plank/dead hang have no
+    // protocol ceiling; balance/TUG stop on a stumble or completion).
+    for (const key of ["plank", "deadhang", "balance", "tug"]) {
+      const t = fitnessTest(key);
+      if (!t) continue; // deadhang/plank are adult-only; guard for battery slicing
+      expect(t.timerWindow, `${key} should count up`).toBeUndefined();
+    }
+  });
+
+  it("pins the fixed-window VO2 field-test methods, leaving count-up ones window-less", () => {
+    const byKey = new Map(VO2_METHODS.map((m) => [m.key, m]));
+    expect(byKey.get("cooper")!.timerWindow).toBe(720); // Cooper 12-minute run
+    expect(byKey.get("step")!.timerWindow).toBe(180); // Queens 3-minute step
+    // The watch value has no timing; the Rockport mile counts up to a self-paced finish.
+    expect(byKey.get("watch")!.timerWindow).toBeUndefined();
+    expect(byKey.get("rockport")!.timerWindow).toBeUndefined();
+  });
+});
+
 describe("age-banded battery swap (adult ↔ senior)", () => {
   it("gives adults the push-up/dead-hang items, not the senior SFT items", () => {
     const adult = batteryForAge(40).map((t) => t.key);

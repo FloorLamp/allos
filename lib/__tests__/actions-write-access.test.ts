@@ -54,6 +54,11 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     why: "read-only: cross-domain search of the active profile",
   },
   {
+    file: "app/(app)/search-actions.ts",
+    fn: "askRecordsAction",
+    why: "read-only (#878): retrieves the active profile's OWN rows (profile-scoped search) and narrates a grounded answer via the AI resolver; computes no fact and writes nothing, so login-scoped requireSession() is the right gate",
+  },
+  {
     file: "app/(app)/upcoming/actions.ts",
     fn: "explainFindingAction",
     why: "read-only (#878): narrates a finding's OWN reason payload via the AI resolver; computes no fact and writes nothing, so login-scoped requireSession() is the right gate",
@@ -73,6 +78,11 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     file: "app/(app)/settings/actions.ts",
     fn: "saveDisplayFormatPrefs",
     why: "login-scoped: date/time display prefs keyed by login.id, not profile data (#964)",
+  },
+  {
+    file: "app/(app)/upcoming/actions.ts",
+    fn: "dismissMultiviewHintAction",
+    why: "login-scoped: dismisses the caller's OWN one-time multi-view discoverability hint (a 'seen' flag in login_settings, #1327), not profile-owned data — same shape as saveUnitPrefs, so requireSession() is the right gate; no demo-gating needed (a harmless per-login UI flag)",
   },
   {
     file: "app/(app)/settings/actions.ts",

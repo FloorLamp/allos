@@ -901,10 +901,15 @@ export function healthRecordToPersistInput(
     value_num: r.value_num,
     unit: r.unit,
     date: r.date,
-    reference_range: null,
-    flag: null,
+    // The source lab's own range + interpretation (#761 follow-up), when the CCD
+    // stated them; reconcileFlags then refines a mapped lab's flag against the
+    // canonical band and leaves an unmapped lab's source flag intact.
+    reference_range: r.reference_range ?? null,
+    flag: r.flag ?? null,
     panel: null,
-    notes: null,
+    // Narrative report records (#708) carry their body text here; every other
+    // reading leaves it null.
+    notes: r.notes ?? null,
     source,
     external_id: r.external_id,
     loinc: r.loinc ?? null,

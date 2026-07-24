@@ -267,8 +267,8 @@ export function drugAllergyDetail(hit: DrugAllergyHit): string {
 // never prescriptive — a deliberately-continued, clinician-reviewed med is common).
 export function drugAllergyEvidence(hit: DrugAllergyHit): string {
   return (
-    "Informational, not medical advice — discuss with your prescriber or " +
-    "pharmacist; do not stop or change a medication based on this alone, and the " +
+    "Discuss with your prescriber or pharmacist; do not stop or change a " +
+    "medication based on this alone, and the " +
     `absence of a flag is not clearance. Source: ${hit.source}.`
   );
 }

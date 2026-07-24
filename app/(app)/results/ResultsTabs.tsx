@@ -4,8 +4,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { AppRoute } from "@/lib/hrefs";
 
-// The Results tab strip (#1079): the three read-heavy result stores — Biomarkers,
-// Imaging, Genomics — as route-per-tab (`/results/<tab>`) instead of the #1042
+// The Results tab strip (#1079): the read-heavy result stores — Biomarkers, Imaging,
+// Reports (narrative micro/path report bodies, #708), Genomics — as route-per-tab
+// (`/results/<tab>`) instead of the #1042
 // stacked-section page. Underline style + active-by-`usePathname()`, the
 // SettingsTabs (#928) pattern. Route-per-tab (not `?tab=`) keeps the Biomarkers
 // searchparams namespace (`?q/?category/?panel/?range/?sort/?dir/?current/?p/
@@ -15,6 +16,7 @@ type Tab = { href: AppRoute; label: string };
 const TABS: Tab[] = [
   { href: "/results/biomarkers", label: "Biomarkers" },
   { href: "/results/imaging", label: "Imaging" },
+  { href: "/results/reports", label: "Reports" },
   { href: "/results/genomics", label: "Genomics" },
 ];
 

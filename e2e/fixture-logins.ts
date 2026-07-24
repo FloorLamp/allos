@@ -140,6 +140,15 @@ export const SLEEP_EDIT_PROFILE = "Sleep Edit (e2e)";
 export const E2E_LOGIN_SLEEP_PHASE = "e2e_sleep_phase";
 export const SLEEP_PHASE_PROFILE = "Sleep Phase (e2e)";
 
+// A dedicated READ-ONLY segmented-night fixture (#1190/#1191/#1283): every seeded
+// night is a biphasic 23:00→03:00 (4h) + 04:00→08:00 (4h) pair with NO single block
+// reaching the 6h main-sleep floor, so the merge must read them as ONE ~8h night
+// (bed 23:00 → wake 08:00, no nap) rather than a 4h night + a separate nap. Seeded
+// once before the suite in UTC; the browser spec never mutates or cleans it, so
+// parallel / --repeat-each runs cannot race another test's state.
+export const E2E_LOGIN_SLEEP_SEGMENTED = "e2e_sleep_segmented";
+export const SLEEP_SEGMENTED_PROFILE = "Sleep Segmented (e2e)";
+
 // A dedicated, write-granted ADULT profile with NO instrument scores logged (#716):
 // the mental-health-instruments spec OWNS every write here (it administers a PHQ-9 /
 // GAD-7 in-app), so it never touches — or counts rows on — a shared-seed profile. Its
@@ -698,3 +707,15 @@ export const OWN_SELF_PROFILE = "Own Self (e2e)";
 export const OWN_OTHER_PROFILE = "Own Other (e2e)";
 export const OWN_SELF_DOSE = "Own Self Vitamin";
 export const OWN_OTHER_DOSE = "Own Other Vitamin";
+
+// Grounded record Q&A — "ask your records" (issue #878, Phase 2). A member granted a
+// dedicated adult profile whose ONLY notable record is an antibiotics medication
+// (Amoxicillin, its notes naming it an antibiotics course) plus a matching urgent-care
+// visit — so the palette's "Ask about your records" over "when did I last take
+// antibiotics?" retrieves them and renders a LINKED answer. The e2e DB boots without an
+// AI tier, so the answer is the offline structured floor (the grounded rows, linked);
+// the empty-retrieval "nothing found" refusal is exercised over an unmatched question.
+// Read-only + isolated (never a shared-seed profile), so it's safe under --repeat-each.
+export const E2E_LOGIN_ASK = "e2e_ask";
+export const ASK_RECORDS_PROFILE = "Records QA (e2e)";
+export const ASK_RECORDS_MED = "Amoxicillin";

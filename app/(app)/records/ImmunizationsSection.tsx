@@ -403,10 +403,9 @@ export default function ImmunizationsSection({
             <ImmunizationForm action={addImmunization} defaultDate={now} />
             <MyChartImport />
             <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-              Simplified schedule — informational only, not medical advice. The
-              tracked schedule is a practical subset of the CDC/ACIP
-              recommendations and does not model risk conditions, pregnancy, or
-              shared-decision cases.
+              Simplified schedule. The tracked schedule is a practical subset of
+              the CDC/ACIP recommendations and does not model risk conditions,
+              pregnancy, or shared-decision cases.
             </p>
           </div>
         </div>

@@ -9,7 +9,6 @@ import {
   encounterForRecord,
   getConditions,
 } from "@/lib/queries";
-import { mergedSituationOptions } from "@/lib/situations";
 import { encounterHref } from "@/lib/hrefs";
 import { formatRecordDate } from "@/lib/record-format";
 import { parseUtcSql, zonedDateParts } from "@/lib/date";
@@ -23,6 +22,7 @@ import {
   getUnitPrefs,
   getSituations,
 } from "@/lib/settings";
+import { mergedSituationOptions } from "@/lib/situations";
 import { PageHeader } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
@@ -164,50 +164,52 @@ export default async function MedicationDetailPage(props: {
       className="mx-auto"
       data-testid="medication-detail"
     >
-      <div className="mb-4">
-        <ProfileIdentityBanner
-          profile={subject}
-          crossProfile={crossProfile}
-          testIdPrefix="medication"
-        />
-      </div>
-      {!crossProfile ? (
-        <Link
-          href={MEDICATIONS_HREF}
-          className="mb-2 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-brand-600 dark:text-slate-400 dark:hover:text-brand-400"
-        >
-          <IconArrowLeft className="h-4 w-4" />
-          Back to medications
-        </Link>
-      ) : null}
-      <PageHeader title={m.med.name} subtitle={m.med.brand ?? undefined} />
-      {crossProfile ? (
-        <p
-          className="mb-4 text-sm text-slate-500 dark:text-slate-400"
-          data-testid="medication-cross-profile-note"
-        >
-          Viewing {subject.name}&apos;s medication. Act as {subject.name} to
-          make changes or view their full medication list.
-        </p>
-      ) : null}
-      {prescribedAt ? (
-        <p
-          className="mb-4 text-sm text-slate-600 dark:text-slate-300"
-          data-testid="medication-prescribed-at"
-        >
-          Prescribed at:{" "}
-          <Link
-            href={encounterHref(prescribedAt.id)}
-            className="font-medium text-brand-700 hover:underline dark:text-brand-300"
-          >
-            {prescribedAt.type || "Visit"},{" "}
-            {formatRecordDate(prescribedAt.date, "", formatPrefs)}
-            {prescribedAt.providerName ? ` — ${prescribedAt.providerName}` : ""}
-          </Link>
-        </p>
-      ) : null}
       <ProviderOptionsProvider providers={getPickerProviders()}>
         <SituationOptionsProvider options={situationOptions}>
+          <div className="mb-4">
+            <ProfileIdentityBanner
+              profile={subject}
+              crossProfile={crossProfile}
+              testIdPrefix="medication"
+            />
+          </div>
+          {!crossProfile ? (
+            <Link
+              href={MEDICATIONS_HREF}
+              className="mb-2 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-brand-600 dark:text-slate-400 dark:hover:text-brand-400"
+            >
+              <IconArrowLeft className="h-4 w-4" />
+              Back to medications
+            </Link>
+          ) : null}
+          <PageHeader title={m.med.name} subtitle={m.med.brand ?? undefined} />
+          {crossProfile ? (
+            <p
+              className="mb-4 text-sm text-slate-500 dark:text-slate-400"
+              data-testid="medication-cross-profile-note"
+            >
+              Viewing {subject.name}&apos;s medication. Act as {subject.name} to
+              make changes or view their full medication list.
+            </p>
+          ) : null}
+          {prescribedAt ? (
+            <p
+              className="mb-4 text-sm text-slate-600 dark:text-slate-300"
+              data-testid="medication-prescribed-at"
+            >
+              Prescribed at:{" "}
+              <Link
+                href={encounterHref(prescribedAt.id)}
+                className="font-medium text-brand-700 hover:underline dark:text-brand-300"
+              >
+                {prescribedAt.type || "Visit"},{" "}
+                {formatRecordDate(prescribedAt.date, "", formatPrefs)}
+                {prescribedAt.providerName
+                  ? ` — ${prescribedAt.providerName}`
+                  : ""}
+              </Link>
+            </p>
+          ) : null}
           <MedicationCard
             supplement={m.med}
             doses={m.doses}
@@ -246,9 +248,6 @@ export default async function MedicationDetailPage(props: {
           />
         </SituationOptionsProvider>
       </ProviderOptionsProvider>
-      <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">
-        For reference only — not medical advice.
-      </p>
     </PageContainer>
   );
 }

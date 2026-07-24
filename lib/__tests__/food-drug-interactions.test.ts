@@ -109,7 +109,7 @@ describe("formatting", () => {
 
   it("foodGuidanceDetail is informational, never prescriptive, and cites a source", () => {
     const detail = foodGuidanceDetail(hit);
-    expect(detail).toContain("discuss with your prescriber or pharmacist");
+    expect(detail).toContain("with your prescriber or pharmacist");
     expect(detail).toContain("Source:");
     expect(detail.toLowerCase()).not.toContain("stop taking");
   });

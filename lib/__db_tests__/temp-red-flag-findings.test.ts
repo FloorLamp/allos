@@ -73,7 +73,7 @@ describe("temp-red-flag builder — infant fever (#448 fixture)", () => {
     expect(findings[0].title).toContain("100.6");
     expect(findings[0].detail).toMatch(/contact a clinician/i);
     expect(findings[0].evidence).toContain("Source:");
-    expect(findings[0].evidence).toContain(
+    expect(findings[0].evidence).not.toContain(
       "Informational, not medical advice."
     );
     expect(dedupeKeyHasKnownPrefix(findings[0].dedupeKey)).toBe(true);
@@ -86,7 +86,7 @@ describe("temp-red-flag builder — infant fever (#448 fixture)", () => {
     expect(items).toHaveLength(1);
     expect(items[0].key).toBe(findings[0].dedupeKey);
     expect(items[0].band).toBe("today");
-    expect(items[0].detail).toContain("Informational, not medical advice.");
+    expect(items[0].detail).not.toContain("Informational, not medical advice.");
 
     // Flows through collectUpcoming (Upcoming page + hero + digest gather).
     expect(

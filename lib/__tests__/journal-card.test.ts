@@ -31,6 +31,7 @@ function activity(over: Partial<Activity> & { id: number }): Activity {
     title: "Session",
     notes: null,
     duration_min: null,
+    elapsed_min: null,
     distance_km: null,
     intensity: null,
     start_time: null,

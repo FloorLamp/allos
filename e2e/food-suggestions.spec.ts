@@ -24,8 +24,10 @@ test("omega-3 detail page suggests fatty fish, swapped to the alternative for th
   await expect(suggestion).toContainText("alternative");
   await expect(suggestion).toContainText(/walnut|flax|algae/i);
   await expect(suggestion).not.toContainText("salmon");
-  // Framing.
-  await expect(suggestion).toContainText("Informational, not medical advice");
+  // Framing: no disclaimer boilerplate on the suggestion (moved to /disclaimer, #1049).
+  await expect(suggestion).not.toContainText(
+    "Informational, not medical advice"
+  );
 });
 
 test("folate detail page suggests leafy greens with the warfarin vitamin-K note (#577)", async ({
@@ -64,5 +66,7 @@ test("high LDL detail page shows a REDUCE suggestion (cut back on limit-tier foo
   await expect(suggestion).toHaveAttribute("data-direction", "reduce");
   await expect(suggestion).toContainText(/cut back/i);
   await expect(suggestion).toContainText(/fried|processed/i);
-  await expect(suggestion).toContainText("Informational, not medical advice");
+  await expect(suggestion).not.toContainText(
+    "Informational, not medical advice"
+  );
 });

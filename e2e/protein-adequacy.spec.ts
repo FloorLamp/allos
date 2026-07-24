@@ -33,7 +33,4 @@ test("the protein-adequacy card shows an estimated floor vs a goal-scaled band (
   const target = page.getByTestId("protein-target");
   await expect(target).toContainText(/g\/kg/i);
   await expect(target).toContainText(/g\/day/i);
-
-  // And the card carries the informational, not-prescriptive framing.
-  await expect(card).toContainText(/informational/i);
 });

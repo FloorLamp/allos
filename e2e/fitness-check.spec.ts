@@ -135,6 +135,100 @@ test.describe("Fitness check grid (#1129/#1132/#1135)", () => {
     await page.close();
   });
 
+  // #1275: the large-format timer. A count-UP test (plank) times a hold and Finish fills
+  // the seconds input; a fixed-window countdown test (chair stand) reaches its result input.
+  // The timer runs on real Date.now/rAF — no waitForTimeout (#868): the count-up wait is a
+  // retrying expect on the readout advancing past 0:00, and the countdown reaches its result
+  // via Finish-early (deterministic, no 30s wall wait). The FITNESS profile is a dedicated
+  // isolated fixture, so recording a small plank/chair-stand value under --repeat-each is
+  // last-write-wins and never exact-count-asserted.
+  test("count-up timer times a hold and Finish fills the seconds input", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_FITNESS,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    test.slow();
+
+    await page.goto("/training?tab=fitness");
+    await expect(page.getByTestId("fitness-check")).toBeVisible();
+
+    // Open the plank tile → its modal carries the large-timer launcher.
+    await page.getByTestId("fitness-tile-plank").click();
+    const modal = page.getByTestId("fitness-entry-plank");
+    await expect(modal).toBeVisible();
+
+    // Launch the takeover, start the count-up clock.
+    await page.getByTestId("fitness-timer-plank-launch").click();
+    await expect(page.getByTestId("fitness-timer-plank-panel")).toBeVisible();
+    await page.getByTestId("fitness-timer-plank-start").click();
+
+    // Real wait via a retrying expect: the readout advances past 0:00 (≥ 1 whole second
+    // elapsed), so Finish stamps a non-zero value. No waitForTimeout.
+    await expect(
+      page.getByTestId("fitness-timer-plank-readout")
+    ).not.toHaveText("0:00");
+
+    // Finish → the takeover collapses and the seconds input is filled.
+    await page.getByTestId("fitness-timer-plank-finish").click();
+    await expect(page.getByTestId("fitness-timer-plank-panel")).toBeHidden();
+    const valueInput = page.getByTestId("fitness-value-plank");
+    await expect(valueInput).not.toHaveValue("");
+    const filled = await valueInput.inputValue();
+    expect(Number(filled)).toBeGreaterThanOrEqual(1);
+
+    // Explicit submit (#794) records it through the same path manual entry uses.
+    await settledClick(page, modal.getByTestId("fitness-submit-plank"));
+    await expect(modal).toBeHidden();
+    await expect(page.getByTestId("fitness-tile-plank")).toContainText(filled);
+
+    await page.close();
+  });
+
+  test("fixed-window countdown timer reaches the result input (Finish-early)", async ({
+    browser,
+  }) => {
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_FITNESS,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    test.slow();
+
+    await page.goto("/training?tab=fitness");
+    await expect(page.getByTestId("fitness-check")).toBeVisible();
+
+    // Chair stand is a 30-second fixed-window test → the timer counts DOWN.
+    await page.getByTestId("fitness-tile-chairstand").click();
+    const modal = page.getByTestId("fitness-entry-chairstand");
+    await expect(modal).toBeVisible();
+
+    await page.getByTestId("fitness-timer-chairstand-launch").click();
+    const panel = page.getByTestId("fitness-timer-chairstand-panel");
+    await expect(panel).toBeVisible();
+    // Countdown seeds at the full window.
+    await expect(
+      page.getByTestId("fitness-timer-chairstand-readout")
+    ).toHaveText("0:30");
+
+    await page.getByTestId("fitness-timer-chairstand-start").click();
+    // Finish-early — a stopped run is still a result; the takeover collapses back to the
+    // sheet and focus flips to the reps input.
+    await page.getByTestId("fitness-timer-chairstand-finish").click();
+    await expect(panel).toBeHidden();
+
+    const reps = page.getByTestId("fitness-value-chairstand");
+    await expect(reps).toBeVisible();
+    await reps.fill("18");
+    await settledClick(page, modal.getByTestId("fitness-submit-chairstand"));
+    await expect(modal).toBeHidden();
+    await expect(page.getByTestId("fitness-tile-chairstand")).toContainText(
+      "18"
+    );
+
+    await page.close();
+  });
+
   test("shows the older-adult battery variant for a senior profile", async ({
     browser,
   }) => {

@@ -237,21 +237,32 @@ export interface CompositeComponent {
   duration_min: number | null;
 }
 
-// Multisport roll-up (issue #313, extracted from journal saveActivity). Collapses
-// a composite's legs into the parent activity's overall distance/duration:
+// Multisport roll-up (issue #313, revised by #1202). Collapses a composite's legs
+// into the parent activity's overall distance + the two formalized times:
 // - distance is the SUM of the legs, but ">0 else null" so a strength-only brick
 //   (no distance) stores NULL rather than a misleading 0 km;
-// - duration prefers the wall-CLOCK span (`clockDurationMin`, from start/end times)
-//   when present — that's the true elapsed time including transitions — and only
-//   falls back to the SUM of the legs' durations otherwise (again ">0 else null").
+// - `durationMin` is the ACTIVE (moving/effort) total — the pace/volume/LOAD source,
+//   NOT the clock span. For a pure cardio/sport session (incl. a brick) it is the
+//   SUM of the legs' active durations (so a paused run counts its moving time, not
+//   its rests, and a benign edit can no longer flip it up to the elapsed span — the
+//   #791/#133 corruption). A session with a set-based STRENGTH leg can't sum its
+//   active from components, so it keeps the prior whole-session total
+//   (`sessionDurationMin`, which the CALLER resolves as clock-then-entered — strength
+//   has no moving/elapsed split), falling back to Σ legs;
+// - `elapsedMin` is the wall-CLOCK span (`clockDurationMin`) when it is a plausible
+//   elapsed (≥ active — the #132 invariant); an implausible span is dropped to null
+//   rather than stored as a bogus rest. Elapsed − active = the in-leg rests +
+//   between-leg transitions that belong to no component.
 // Also reports whether any leg is a strength leg (the parent then gets a set-count).
-// Pure so the journal write path and the Strava leg-grouping importer share it.
+// Pure so the journal write path and the form's live rollup share it.
 export function compositeRollup(
   components: CompositeComponent[],
-  clockDurationMin: number | null
+  sessionDurationMin: number | null,
+  clockDurationMin: number | null = null
 ): {
   distanceKm: number | null;
   durationMin: number | null;
+  elapsedMin: number | null;
   hasStrength: boolean;
 } {
   const hasStrength = components.some((c) => c.type === "strength");
@@ -264,9 +275,23 @@ export function compositeRollup(
     (sum, c) => sum + (c.duration_min ?? 0),
     0
   );
-  const durationMin =
-    clockDurationMin ?? (partsDuration > 0 ? partsDuration : null);
-  return { distanceKm, durationMin, hasStrength };
+  const legsActive = partsDuration > 0 ? partsDuration : null;
+  // Active total. For a pure cardio/sport session (incl. a brick) it is Σ legs —
+  // the MOVING time — never the rest-inflated clock span, so a paused import counts
+  // its effort and a benign edit can't flip it up to elapsed (the #1202 fix). A
+  // session with a set-based STRENGTH leg keeps the prior whole-session semantics
+  // (`sessionDurationMin`, which the caller resolves as clock-then-entered) since
+  // strength has no moving/elapsed split and its time can't be summed from legs.
+  const durationMin = hasStrength
+    ? (sessionDurationMin ?? legsActive)
+    : (legsActive ?? sessionDurationMin);
+  // Elapsed is the clock span, kept only when it honors elapsed ≥ active.
+  const elapsedMin =
+    clockDurationMin != null &&
+    (durationMin == null || clockDurationMin >= durationMin)
+      ? clockDurationMin
+      : null;
+  return { distanceKm, durationMin, elapsedMin, hasStrength };
 }
 
 /**

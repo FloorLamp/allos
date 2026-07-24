@@ -1,38 +1,30 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { getExtractionStates } from "@/app/(app)/medical/document-actions";
 import { diffCompletions, shouldResetSeed } from "@/lib/toaster-diff";
-import {
-  IconAlertTriangle,
-  IconArrowRight,
-  IconCircleCheck,
-  IconX,
-} from "@tabler/icons-react";
-
-interface Toast {
-  key: number;
-  tone: "success" | "error";
-  docId: number;
-  filename: string;
-  count: number;
-  error?: string | null;
-}
-
-let toastSeq = 0;
+import { useToast, useDismissToast } from "@/components/Toast";
+import { MEDICAL_UPLOAD_TOAST_KEY } from "@/lib/upload-gate";
 
 // The document statuses `getExtractionStates` reports as terminal (no longer
 // processing). `done` toasts as a success; `failed`/`skipped` as an error.
 const isExtractionTerminal = (status: string) =>
   status === "done" || status === "failed" || status === "skipped";
 
-// App-wide watcher for background medical-document extraction. Polls the
-// extraction status (faster while something is processing), and when a document
-// transitions out of `processing` it (a) refreshes the current route so the
-// /medical table updates, and (b) shows a toast. Lives in the root layout so the
-// toast still fires if the user has navigated away from /medical.
+// App-wide HEADLESS watcher for background medical-document extraction (#1315).
+// Polls the extraction status (faster while something is processing), and when a
+// document transitions out of `processing` it (a) refreshes the current route so
+// the /medical table updates, and (b) raises a toast — now through the shared
+// ToastProvider (useToast), not a bespoke second renderer. Lives in the root layout
+// so the toast still fires if the user navigated away from /medical.
+//
+// One toast system (#1315): the merge kills the two-renderers disease. The upload
+// confirmation and the extraction-complete toast now share ONE lifecycle slot — the
+// upload posts under MEDICAL_UPLOAD_TOAST_KEY, and the FIRST terminal event here
+// dismisses that key and posts its own per-document toast, so the slot upgrades in
+// place ("Uploaded — reading…" → "12 records ✓") instead of stacking. Subsequent
+// docs each get their own key (doc-<id>) as before.
 //
 // `profileId` is the session's active profile — the profile `getExtractionStates`
 // is scoped to. It's a dep of the poll effect and resets the seed on a switch
@@ -46,14 +38,11 @@ export default function ExtractionToaster({
   profileId: number;
 }) {
   const router = useRouter();
+  const toast = useToast();
+  const dismissKey = useDismissToast();
   const prev = useRef<Map<number, string> | null>(null);
   // The profile the current seed was built for; drives shouldResetSeed below.
   const seededFor = useRef<number | null>(null);
-  const [toasts, setToasts] = useState<Toast[]>([]);
-
-  const dismiss = useCallback((key: number) => {
-    setToasts((list) => list.filter((t) => t.key !== key));
-  }, []);
 
   useEffect(() => {
     // A profile switch re-runs this effect (profileId is a dep). Discard the
@@ -105,28 +94,32 @@ export default function ExtractionToaster({
         isExtractionTerminal
       );
       prev.current = next;
-      if (!seeded) {
-        const fresh: Toast[] = finished.map((d) =>
-          d.status === "done"
-            ? {
-                key: ++toastSeq,
-                tone: "success",
-                docId: d.id,
-                filename: d.filename,
-                count: d.count,
-              }
-            : {
-                key: ++toastSeq,
-                tone: "error",
-                docId: d.id,
-                filename: d.filename,
-                count: 0,
-                error: d.error,
-              }
-        );
-        if (fresh.length) setToasts((list) => [...list, ...fresh]);
-        if (changed) router.refresh();
+      if (!seeded && finished.length) {
+        // The first real result retires the upload confirmation slot — the upload
+        // toast's job ("it's in flight, track in Review") is done. dismissKey is a
+        // no-op once cleared, so calling it per batch of finished docs is safe.
+        dismissKey(MEDICAL_UPLOAD_TOAST_KEY);
+        for (const d of finished) {
+          const action = {
+            label: "View document",
+            onClick: () => router.push(`/import/${d.id}`),
+          };
+          if (d.status === "done") {
+            toast(
+              `${d.filename}: imported ${d.count} record${d.count === 1 ? "" : "s"}.`,
+              { key: `doc-${d.id}`, duration: null, action }
+            );
+          } else {
+            toast(
+              d.error
+                ? `Couldn’t extract results from ${d.filename}: ${d.error}`
+                : `Couldn’t extract results from ${d.filename}.`,
+              { key: `doc-${d.id}`, tone: "error", duration: null, action }
+            );
+          }
+        }
       }
+      if (!seeded && changed) router.refresh();
 
       const processing = docs.some((d) => d.status === "processing");
       timer = setTimeout(poll, processing ? 2000 : 6000);
@@ -137,87 +130,8 @@ export default function ExtractionToaster({
       active = false;
       clearTimeout(timer);
     };
-  }, [router, profileId]);
+  }, [router, toast, dismissKey, profileId]);
 
-  if (toasts.length === 0) return null;
-  return (
-    <div className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] z-50 flex flex-col gap-2">
-      {toasts.map((t) => (
-        <ToastCard key={t.key} toast={t} onDismiss={() => dismiss(t.key)} />
-      ))}
-    </div>
-  );
-}
-
-function ToastCard({
-  toast,
-  onDismiss,
-}: {
-  toast: Toast;
-  onDismiss: () => void;
-}) {
-  const success = toast.tone === "success";
-
-  // No auto-dismiss: extraction results are easy to miss, so the toast stays up
-  // until the user dismisses it via the close button or the "View document"
-  // link (both call onDismiss).
-  return (
-    <div
-      role="status"
-      className={`w-80 rounded-xl border bg-white p-4 shadow-lg dark:bg-ink-900 ${
-        success
-          ? "border-emerald-200 dark:border-emerald-800"
-          : "border-rose-200 dark:border-rose-800"
-      }`}
-    >
-      <div className="flex items-start gap-3">
-        <span className="leading-none">
-          {success ? (
-            <IconCircleCheck className="h-5 w-5 text-emerald-500" />
-          ) : (
-            <IconAlertTriangle className="h-5 w-5 text-amber-500" />
-          )}
-        </span>
-        <div className="flex-1">
-          <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-            {success ? "Extraction complete" : "Extraction unsuccessful"}
-          </div>
-          <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
-            {success ? (
-              <>
-                Imported{" "}
-                <span className="font-medium text-slate-700 dark:text-slate-200">
-                  {toast.count}
-                </span>{" "}
-                record{toast.count === 1 ? "" : "s"} from {toast.filename}.
-              </>
-            ) : (
-              <>
-                Couldn’t extract results from {toast.filename}.
-                {toast.error ? (
-                  <span className="mt-1 block text-slate-600 dark:text-slate-300">
-                    {toast.error}
-                  </span>
-                ) : null}
-              </>
-            )}
-          </p>
-          <Link
-            href={`/import/${toast.docId}`}
-            onClick={onDismiss}
-            className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-brand-700 hover:underline dark:text-brand-400"
-          >
-            View document <IconArrowRight className="h-4 w-4" />
-          </Link>
-        </div>
-        <button
-          onClick={onDismiss}
-          aria-label="Dismiss"
-          className="text-slate-300 hover:text-slate-500 dark:text-slate-600 dark:hover:text-slate-400"
-        >
-          <IconX className="h-4 w-4" />
-        </button>
-      </div>
-    </div>
-  );
+  // Headless: it renders through the shared ToastProvider, not its own overlay.
+  return null;
 }

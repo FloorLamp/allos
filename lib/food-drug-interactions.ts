@@ -153,8 +153,8 @@ export function foodGuidanceLine(hit: FoodInteractionHit): string {
 // source. Shown under the guidance line on the create/edit item-form notice.
 export function foodGuidanceDetail(hit: FoodInteractionHit): string {
   return (
-    `${hit.mechanism} This is informational, not medical advice — discuss with ` +
-    `your prescriber or pharmacist. Source: ${hit.source}.`
+    `${hit.mechanism} Discuss with your prescriber or pharmacist. ` +
+    `Source: ${hit.source}.`
   );
 }
 

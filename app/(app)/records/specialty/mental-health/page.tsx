@@ -23,8 +23,7 @@ export default async function RecordsMentalHealthPage(props: {
     <div data-testid="records-mental-health">
       <SectionSubtitle>
         Track validated screening instruments — PHQ-9 and GAD-7 — as
-        severity-banded scores over time. A screening tool, not a diagnosis.
-        Informational, not medical advice.
+        severity-banded scores over time.
       </SectionSubtitle>
       <MentalHealthSection
         profileId={profile.id}

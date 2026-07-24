@@ -9,6 +9,7 @@ import type { AppRoute } from "./hrefs";
 import type { DistanceUnit, TemperatureUnit } from "./settings";
 import type { Reason } from "./reasons";
 import type { LifecycleSuppressionPolicy } from "./lifecycle";
+import type { WriteTarget } from "./multi-view";
 import { daysBetweenDateStr, shiftDateStr } from "./date";
 import { daysRemainingLabel } from "./format-date";
 import { compareSortHint } from "./dose-order";
@@ -263,6 +264,16 @@ export interface UpcomingItem {
   // problem-list condition (issue #685 — suggest-only, the user confirms). Only
   // condition-review items carry one; the confirm creates the Condition idempotently.
   conditionSuggestion?: { name: string; code: string | null };
+  // Where this item's INLINE WRITE ACTION lands (issue #1327 fix 5). Default (absent)
+  // is "item" — the action writes to the row's OWN subject profile (a dose confirm, a
+  // preventive/care-plan "mark done", a snooze), so a cross-profile row's action targets
+  // that member. "acting" marks an action that ALWAYS writes to the acting profile no
+  // matter whose row it is (the condition-suggestion confirm — confirmConditionSuggestion
+  // targets the acting profile); the shared row scaffolding then renders it ONLY on the
+  // acting profile's own row (itemAffordanceVisible), never a wrong-target write on
+  // another member's row. Promotes the page-local `(!multi || isActing)` into a declared
+  // property so #1328's Tier-1 adopters inherit the gate instead of re-remembering it.
+  writeTarget?: WriteTarget;
   // Whether this item supports snooze/dismiss through the shared findings store
   // (issue #524). Date-scheduled due-signals and biomarker flags do (undefined is
   // treated as suppressible); the structural signals (review / failing integration)

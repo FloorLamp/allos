@@ -205,6 +205,12 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "migration 090 (#1076) one-shot category converge: re-derives category from canonical name for a fixed set of known analytes (Glucose→lab, PHQ-9…→instrument, PhenoAge/Biological Age→derived, Blood Type…→reference) across ALL profiles — a vocabulary-level classification fix, never reading one profile's data into another's",
   },
   {
+    file: "lib/migrations/versions/106-medical-record-report-category.ts",
+    includes:
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'medical_records'",
+    why: "migration 106 (#708) replay/partial-handle guard: a sqlite_master metadata probe (does the table carry the 'report' CHECK yet?) that reads schema, not rows — identical to migration 090's guard",
+  },
+  {
     file: "lib/migrations/versions/092-consolidate-imported-prescriptions.ts",
     includes: "JOIN medical_records r ON r.id = ii.source_record_id",
     why: "migration 092 (#1178) one-shot consolidation: enumerates each PAIRED (med, prescription-record) twin BY the source_record_id back-link the import wrote — the join key itself is the med↔record identity, and both rows share the same profile_id by construction (a med is projected within one profile's import). The per-row re-key/UPDATE it drives all carry the row's own profile_id; this SELECT never reads one profile's data into another's.",
@@ -226,6 +232,75 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     includes:
       "DELETE FROM starred_biomarkers WHERE canonical_name = ? COLLATE NOCASE",
     why: "migration 103 (see above): drops the now-redundant OLD-name pin left after an OR IGNORE collision — a global vocabulary cleanup by canonical name, not a per-profile read.",
+  },
+  // ── Positional-rule (#1208 fix 1) additions ─────────────────────────────────
+  // These NAME profile_id (so they passed the old "profile_id-anywhere" check) but
+  // only outside a WHERE/ON predicate — a select-list column or a GROUP BY key — so
+  // the tightened positional rule now flags them. Each is legitimately global or a
+  // token-resolution path, verified by hand.
+  {
+    file: "lib/integrations/connections.ts",
+    includes:
+      "DELETE FROM integration_sync_events WHERE at < datetime('now', ?)",
+    why: "pruneSyncEvents: a GLOBAL retention prune (one call per tick clears every profile's aged sync events, keeping the newest per (profile_id, provider)). profile_id appears only in the retained-newest GROUP BY subquery, never a predicate — deliberately profile-agnostic, mirroring sweepDeletedRows/sweepReplayedKeys.",
+  },
+  {
+    file: "lib/integrations/connections.ts",
+    includes:
+      "SELECT profile_id, config FROM integration_connections WHERE provider = 'health-connect'",
+    why: "resolveHealthConnectProfile: the token→profile resolver for the UNAUTHENTICATED Health Connect push ingest. The caller has no profile context; the presented bearer token IS the identity, constant-time-compared against every stored HC token to find WHOSE data the push lands under — inherently cross-profile, the getShareLinkByToken class. Its result then scopes every downstream write.",
+  },
+  {
+    file: "lib/integrations/connections.ts",
+    includes:
+      "SELECT profile_id FROM integration_connections WHERE provider = 'health-connect' AND status != 'disconnected'",
+    why: "recordUnmatchedHealthConnectPush: attributes a rotated/expired-token push to a profile ONLY when exactly one non-disconnected HC connection exists (else it skips). A cross-profile enumeration by design — the token didn't match, so there is no caller profile; profile_id is selected, not filtered.",
+  },
+  {
+    file: "lib/migrations/versions/038-food-habit-unique.ts",
+    includes:
+      "SELECT id, profile_id, scope_value FROM frequency_targets WHERE scope_kind = 'food_group'",
+    why: "migration 038 one-shot GLOBAL dedupe read: enumerates every profile's food-group frequency targets to collapse duplicates before adding the UNIQUE index — profile_id is carried in the select-list to re-key the dedupe per owner; the UPDATE/DELETE it drives are profile_id-scoped (already allowlisted above).",
+  },
+  {
+    file: "lib/migrations/versions/083-metric-sample-origin.ts",
+    includes:
+      "SELECT profile_id, natural_key FROM import_tombstones WHERE target_table = 'metric_samples'",
+    why: "migration 083 one-shot GLOBAL backfill read: reads every profile's metric-sample tombstones to stamp the new origin column — profile_id is carried in the select-list to re-key each row to its owner, never read across profiles.",
+  },
+  {
+    file: "lib/migrations/versions/092-consolidate-imported-prescriptions.ts",
+    includes: "FROM medical_records r WHERE r.category = 'prescription'",
+    why: "migration 092 one-shot GLOBAL consolidation read: enumerates every profile's imported prescription records; r.profile_id rides in the select-list so the per-row consolidation UPDATEs it drives stay keyed to each record's own owner (a med is projected within one profile's import).",
+  },
+  {
+    file: "lib/migrations/versions/101-recover-blank-name-prescriptions.ts",
+    includes: "FROM medical_records r WHERE r.${BLANK_RX_PRED}",
+    why: "migration 101 one-shot GLOBAL recovery read: enumerates every profile's blank-name prescription records to recover a name from their linked med; r.profile_id rides in the select-list so the recovery UPDATEs stay keyed to each record's own owner, never read across profiles.",
+  },
+];
+
+// db.exec() statements that legitimately touch an owned table without a profile_id
+// predicate (issue #1208 fix 2), keyed by file. Same SHORT-and-justified discipline
+// as ALLOW_SQL. Today this is only the three boot-task reset reaps.
+const ALLOW_EXEC: { file: string; includes: string; why: string }[] = [
+  {
+    file: "lib/migrations/boot-tasks.ts",
+    includes:
+      "UPDATE medical_documents SET extraction_status = 'failed', extraction_error = 'Extraction was interrupted (server restarted). Delete and re-upload to retry.' WHERE extraction_status IN ('processing','pending')",
+    why: "reapStuckExtractions boot reset: a GLOBAL maintenance reaper run once per boot that fails any document a dead process left mid-'processing'/'pending' past its lease — keyed by processing_started_at, never a profile's data (the runtime twin in lib/extraction-reaper.ts is likewise allowlisted).",
+  },
+  {
+    file: "lib/migrations/boot-tasks.ts",
+    includes:
+      "UPDATE import_jobs SET status = 'failed', error = 'Extraction was interrupted (server restarted). Discard and try again.', updated_at = datetime('now') WHERE status = 'processing'",
+    why: "boot reset of import jobs stranded in 'processing' by a restart/crash — GLOBAL maintenance keyed by the stale updated_at lease, deliberately profile-agnostic.",
+  },
+  {
+    file: "lib/migrations/boot-tasks.ts",
+    includes:
+      "UPDATE import_jobs SET status = 'failed', error = 'Saving this import was interrupted (server restarted).",
+    why: "boot reset of import jobs stranded mid-commit in 'committing' (#323) — GLOBAL maintenance keyed by the stale updated_at lease, deliberately profile-agnostic.",
   },
 ];
 
@@ -286,11 +361,16 @@ function sourceFiles(): string[] {
   });
 }
 
-// Extract the first argument of every `.prepare(` call. Returns either the string
-// literal's contents (kind "sql") or the raw expression text (kind "expr").
-function prepareArgs(src: string): { kind: "sql" | "expr"; text: string }[] {
+// Extract the first argument of every call matching `opener` (a global RegExp that
+// ends at the call's opening paren, e.g. /\.prepare\s*\(/g or /\.exec\s*\(/g).
+// Returns either the string literal's contents (kind "sql") or the raw expression
+// text (kind "expr").
+function firstStringArgs(
+  src: string,
+  opener: RegExp
+): { kind: "sql" | "expr"; text: string }[] {
   const out: { kind: "sql" | "expr"; text: string }[] = [];
-  const re = /\.prepare\s*\(/g;
+  const re = new RegExp(opener.source, "g");
   let m: RegExpExecArray | null;
   while ((m = re.exec(src))) {
     let i = m.index + m[0].length;
@@ -337,7 +417,44 @@ function prepareArgs(src: string): { kind: "sql" | "expr"; text: string }[] {
   return out;
 }
 
+// The `.prepare(` and `.exec(` argument extractors (both parametrize firstStringArgs).
+const prepareArgs = (src: string) => firstStringArgs(src, /\.prepare\s*\(/g);
+const execArgs = (src: string) => firstStringArgs(src, /\.exec\s*\(/g);
+
 const norm = (s: string) => s.replace(/\s+/g, " ").trim();
+
+// POSITIONAL profile_id check (issue #1208 fix 1). The old guard passed any
+// owned-table statement that merely MENTIONED `profile_id` anywhere — including as a
+// bare SELECT column (`SELECT profile_id FROM t WHERE id = ?` is an id-only lookup
+// across every profile) or a SET target or a GROUP BY key. This requires `profile_id`
+// to appear in a SCOPING position instead: either
+//   (a) an INSERT whose target column list names profile_id (the row is born scoped
+//       to a profile), or
+//   (b) a predicate — `[qualifier.]profile_id` immediately followed by a comparison /
+//       set-membership operator (`=`, `IN`, `IS`, `<`, `>`, `BETWEEN`, `LIKE`, …),
+//       located AFTER the statement's first WHERE/ON/USING keyword (so a SET-clause
+//       `profile_id = ?` before the WHERE, or a select-list/GROUP BY mention, does not
+//       count).
+// A statement that names an owned table but fails this must be allowlisted with a
+// justification, exactly like a statement that omits profile_id entirely.
+function scopedByProfileId(sql: string): boolean {
+  if (!/\bprofile_id\b/i.test(sql)) return false;
+  // (a) INSERT INTO <table> ( … profile_id … ) — born profile-scoped.
+  const ins = /\bINSERT\s+(?:OR\s+\w+\s+)?INTO\s+\w+\s*\(([^)]*)\)/i.exec(sql);
+  if (ins && /\bprofile_id\b/i.test(ins[1])) return true;
+  // (b) a predicate at/after the first WHERE/ON/USING.
+  const predIdx = sql.search(/\b(?:WHERE|ON|USING)\b/i);
+  if (predIdx >= 0) {
+    const tail = sql.slice(predIdx);
+    if (
+      /(?:^|[\s.(])profile_id\s*(?:=|<|>|!=|<>|IN\b|IS\b|BETWEEN\b|LIKE\b|GLOB\b)/i.test(
+        tail
+      )
+    )
+      return true;
+  }
+  return false;
+}
 
 describe("profile scoping: every owned-table query filters by profile_id", () => {
   const files = sourceFiles();
@@ -367,7 +484,7 @@ describe("profile scoping: every owned-table query filters by profile_id", () =>
         }
         const sql = norm(arg.text);
         if (!OWNED_RE.test(sql)) continue; // no owned table → nothing to enforce
-        if (/profile_id/.test(sql)) continue; // scoped
+        if (scopedByProfileId(sql)) continue; // profile_id in a scoping position
         const allowed = ALLOW_SQL.some(
           (a) => rel.endsWith(a.file) && sql.includes(a.includes)
         );
@@ -378,6 +495,112 @@ describe("profile scoping: every owned-table query filters by profile_id", () =>
     }
 
     expect(violations, `\n${violations.join("\n")}\n`).toEqual([]);
+  });
+
+  // db.exec() blind spot (issue #1208 fix 2). The scanner above only inspects
+  // `.prepare(` first-arguments; a `db.exec("…owned-table DML…")` was invisible to
+  // it. Extend the SAME owned-table + positional rule to `.exec(` string literals so a
+  // future owned-table db.exec write can't evade the guard.
+  //
+  // SCOPE: the numbered migrations in lib/migrations/versions/ are EXCLUDED from the
+  // exec scan. Their db.exec is schema DDL (CREATE/ALTER/DROP/INDEX) and one-shot
+  // GLOBAL data moves (copy-rebuilds, vocabulary backfills) by construction — a
+  // distinct, reviewed risk class from the runtime query/action surface where a
+  // cross-profile leak actually matters, and one already frozen by the immutable
+  // hash manifest (a shipped migration can't be edited). The .prepare scan above
+  // still covers those files' DML (their id-scoped one-shots are allowlisted). Every
+  // OTHER exec site — the boot-task reaps below, and any future query/action db.exec —
+  // is in scope; the boot reaps are legitimately global and carry allowlist entries.
+  it("has no owned-table db.exec() statement missing profile_id", () => {
+    const violations: string[] = [];
+
+    for (const file of files) {
+      const rel = path.relative(REPO, file).split(path.sep).join("/");
+      if (rel.startsWith("lib/migrations/versions/")) continue; // schema/one-shot DDL
+      const src = fs.readFileSync(file, "utf8");
+      for (const arg of execArgs(src)) {
+        if (arg.kind !== "sql") continue; // a computed exec arg can't be inspected
+        const sql = norm(arg.text);
+        if (!OWNED_RE.test(sql)) continue; // no owned table → nothing to enforce
+        if (scopedByProfileId(sql)) continue; // profile_id in a scoping position
+        const allowed = ALLOW_EXEC.some(
+          (a) => rel.endsWith(a.file) && sql.includes(a.includes)
+        );
+        if (!allowed) {
+          violations.push(`${rel}: ${sql}`);
+        }
+      }
+    }
+
+    expect(violations, `\n${violations.join("\n")}\n`).toEqual([]);
+  });
+});
+
+// UNIT cases for the two #1208 rules, pinned on inline source (no files) so the
+// tightened behavior is proven independently of the live tree.
+describe("profile-scoping scanner rules (issue #1208)", () => {
+  it("positional check: profile_id in the select-list is NOT scoped", () => {
+    // The motivating leak — an id-only lookup that happens to select profile_id.
+    expect(
+      scopedByProfileId("SELECT profile_id FROM medical_records WHERE id = ?")
+    ).toBe(false);
+    // A SET-clause profile_id (a cross-profile UPDATE filtered only by id) is NOT
+    // scoped — the WHERE carries no profile_id predicate.
+    expect(
+      scopedByProfileId("UPDATE metric_samples SET profile_id = ? WHERE id = ?")
+    ).toBe(false);
+    // A GROUP BY / ORDER BY mention is not a predicate.
+    expect(
+      scopedByProfileId(
+        "SELECT MAX(id) FROM integration_sync_events GROUP BY profile_id, provider"
+      )
+    ).toBe(false);
+  });
+
+  it("positional check: profile_id in a WHERE/ON predicate or INSERT column list IS scoped", () => {
+    expect(
+      scopedByProfileId(
+        "SELECT * FROM medical_records WHERE profile_id = ? AND id = ?"
+      )
+    ).toBe(true);
+    expect(scopedByProfileId("SELECT * FROM t WHERE profile_id IN (?,?)")).toBe(
+      true
+    );
+    // A JOIN-scoped child read reaches profile_id through the parent's ON condition.
+    expect(
+      scopedByProfileId(
+        "SELECT s.* FROM exercise_sets s JOIN activities a ON a.id = s.activity_id AND a.profile_id = ?"
+      )
+    ).toBe(true);
+    // An INSERT whose target column list names profile_id is born scoped.
+    expect(
+      scopedByProfileId(
+        "INSERT INTO metric_samples (profile_id, metric, value) VALUES (?, ?, ?)"
+      )
+    ).toBe(true);
+    // A cross-profile REASSIGN filters the source profile in its WHERE.
+    expect(
+      scopedByProfileId(
+        "UPDATE medical_records SET profile_id = ? WHERE profile_id = ? AND id = ?"
+      )
+    ).toBe(true);
+  });
+
+  it("db.exec scan: an owned-table exec without an allowlist entry is flagged", () => {
+    // Simulate the scan's per-statement decision the way the file loop applies it.
+    const flag = (sql: string) =>
+      OWNED_RE.test(norm(sql)) && !scopedByProfileId(norm(sql));
+    // An owned-table exec DML lacking a profile_id predicate is flagged (would need
+    // an ALLOW_EXEC entry or a profile_id WHERE to pass).
+    expect(
+      flag(
+        "UPDATE medical_documents SET extraction_status = 'failed' WHERE id = ?"
+      )
+    ).toBe(true);
+    // A scoped exec passes without any allowlist entry.
+    expect(
+      flag("DELETE FROM metric_samples WHERE profile_id = ? AND date = ?")
+    ).toBe(false);
   });
 });
 

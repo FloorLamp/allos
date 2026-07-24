@@ -51,9 +51,9 @@ describe("renderPreventiveMessage", () => {
     );
   });
 
-  it("keeps the informational disclaimer on every nudge", () => {
-    expect(renderPreventiveMessage("Ada", item(), 3).body).toContain(
-      "Informational only — not medical advice."
+  it("carries no disclaimer boilerplate — that lives on /disclaimer now (#1049)", () => {
+    expect(renderPreventiveMessage("Ada", item(), 3).body).not.toMatch(
+      /not medical advice/i
     );
   });
 

@@ -59,8 +59,8 @@ export default function CarePlanSection({ profileId }: { profileId: number }) {
         <div className="min-w-0 space-y-4">
           <CarePlanForm action={addCarePlanItem} />
           <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-            Informational only, not medical advice. Imported care-plan items
-            come from uploaded health records (Plan of Treatment section).
+            Imported care-plan items come from uploaded health records (Plan of
+            Treatment section).
           </p>
         </div>
       </div>

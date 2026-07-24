@@ -196,7 +196,7 @@ describe("formatting + keys", () => {
       item(2, "Ibuprofen"),
     ])[0];
     const detail = interactionDetail(hit);
-    expect(detail).toContain("discuss with your prescriber");
+    expect(detail).toContain("with your prescriber");
     expect(detail.toLowerCase()).not.toContain("stop taking");
   });
 });

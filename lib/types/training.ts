@@ -19,7 +19,15 @@ export interface Activity {
   type: ActivityType;
   title: string;
   notes: string | null;
+  // ACTIVE (moving/effort) minutes — the pace/volume/load source (issue #1202).
+  // Σ component active for cardio/sport; the session total for strength. NOT the
+  // wall-clock span (that's `elapsed_min`). See lib/activity-timing.ts.
   duration_min: number | null;
+  // ELAPSED (wall-clock) minutes when stored without full timestamps, or seeded
+  // from `end − start` (issue #1202, migration 106). Nullable — the read model
+  // (activityTiming) prefers this, else derives elapsed from start/end. Always
+  // ≥ `duration_min` when both are set (the elapsed ≥ active invariant).
+  elapsed_min: number | null;
   distance_km: number | null;
   intensity: string | null;
   start_time: string | null;

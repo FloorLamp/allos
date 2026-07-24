@@ -356,7 +356,7 @@ export function ulWarningDetail(
     w.basis === "supplemental"
       ? `Your supplements total about ${amt}/day of supplemental ${w.label} — above the ${ul} Tolerable Upper Intake Level (UL) for your age.`
       : `Your supplements alone total about ${amt}/day of ${w.label} — above the ${ul} Tolerable Upper Intake Level (UL) for total intake at your age, and food and drink add still more.`;
-  const base = `${lead} This is informational, not a diagnosis — discuss with your clinician before changing anything.`;
+  const base = `${lead} Discuss with your clinician before changing anything.`;
   return conditionCaveat ? `${base} ${conditionCaveat}` : base;
 }
 
@@ -439,7 +439,7 @@ export function rdaAdequacyDetail(a: RdaAdequacy): string {
   const rda = `${fmtAmount(a.rda)} ${a.unit}`;
   return (
     `Your supplements alone provide about ${amt}/day of ${a.label} — roughly ${a.sharePct}% of the ${rda}/day RDA for your age. ` +
-    `Food provides the rest, so a low share here does NOT mean a shortfall — it's just what your stack contributes. Informational, not medical advice.`
+    `Food provides the rest, so a low share here does NOT mean a shortfall — it's just what your stack contributes.`
   );
 }
 

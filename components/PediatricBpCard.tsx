@@ -46,8 +46,7 @@ export function PediatricBpCard({ ctx }: { ctx: PediatricBpContext | null }) {
             )}/${ordinal(95)} percentile for age, sex, and height, not adult cutoffs.`}
         {ctx.heightAssumed
           ? " No tracked height, so the 50th height percentile is assumed; log a height for a precise reading."
-          : ""}{" "}
-        Informational, not medical advice.
+          : ""}
       </p>
     </div>
   );

@@ -90,6 +90,10 @@ import {
   parseSymptomSeverityCallback,
   parseTempReply,
   parseTempReplyMarker,
+  parseWorkoutFinishCallback,
+  workoutDiscardAnswerText,
+  workoutFinishAnswerText,
+  type WorkoutFinishCallback,
   tempReplyMarker,
   SYMPTOM_SEVERITY_LABELS,
   type MoodCheckinCallback,
@@ -109,6 +113,11 @@ import {
   tapResolved,
   tapSkipAnswerText,
 } from "./callback-data";
+import { finishWorkoutSession, discardWorkoutSession } from "../workout-finish";
+import {
+  buildPostWorkoutFinishReminder,
+  postWorkoutFinishMarkerKey,
+} from "./workout-presence";
 import { collectWindowDoses, slotSessionForKeyboard } from "./supplements";
 import {
   notifiableWindowDoses,
@@ -180,6 +189,14 @@ export async function handleCallbackQuery(
   const escalation = parseEscalationCallback(cq.data);
   if (escalation) {
     await handleEscalationTap(cq, escalation);
+    return;
+  }
+
+  // Stale-workout nudge (#1205): 🏁 Finish workout / 🗑 Discard — resolve a quiet
+  // live draft in place through the shared finish/discard cores.
+  const workoutFinish = parseWorkoutFinishCallback(cq.data);
+  if (workoutFinish) {
+    await handleWorkoutFinishTap(cq, workoutFinish);
     return;
   }
 
@@ -896,6 +913,84 @@ async function handleEscalationTap(
   }
   await answerCallbackQuery(cq.id, escalationAckAnswerText(ack));
   await replaceMessage(cq, escalationAckCloseText(ack));
+}
+
+// Handle a stale-workout nudge "🏁 Finish workout" / "🗑 Discard" tap (#1205). Resolve
+// WHO the session belongs to from the chat (a family chat may map to several profiles;
+// the token's profile id disambiguates, cross-checked against the chat like every other
+// button), run the shared finishWorkoutSession/discardWorkoutSession core (which
+// re-verifies the activity is that profile's), and answer honestly from the typed
+// outcome — never an unconditional confirm (a re-tap on an already-finished session
+// says so). On a real finish: TRANSFORM this message in place into the #924
+// post-workout-dose summary (the SAME renderPostWorkoutFinishMessage the tick sends,
+// so the button- and tick-driven finishes can't disagree — #221), and set the #924
+// finish marker as delivered so the hourly tick sends no SECOND notification. With no
+// pending doses the message becomes a plain "Workout finished ✓". Rebuild rides the one
+// chokepoint (rebuildMessage), which re-applies the shared-chat "[Name] " prefix.
+async function handleWorkoutFinishTap(
+  cq: TelegramCallbackQuery,
+  token: WorkoutFinishCallback
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  const profileId =
+    chatId != null
+      ? resolveTapProfile(token, getProfilesByTelegramChatId(String(chatId)))
+      : null;
+  if (profileId == null) {
+    await answerCallbackQuery(cq.id, OUTDATED_MESSAGE_TEXT);
+    return;
+  }
+  const messageId = cq.message?.message_id;
+
+  if (token.action === "discard") {
+    const outcome = discardWorkoutSession(profileId, token.activityId);
+    await answerCallbackQuery(cq.id, workoutDiscardAnswerText(outcome));
+    if (chatId != null && messageId != null) {
+      await closeMessage(
+        chatId,
+        messageId,
+        replacementWithTitle(
+          cq.message?.text,
+          outcome.kind === "discarded"
+            ? "Draft discarded 🗑"
+            : OUTDATED_MESSAGE_TEXT
+        )
+      );
+    }
+    return;
+  }
+
+  const outcome = finishWorkoutSession(profileId, token.activityId);
+  await answerCallbackQuery(cq.id, workoutFinishAnswerText(outcome));
+  // Only a REAL finish transforms the message + suppresses the separate dispatch. An
+  // already-finished re-tap is a no-op (no re-edit surprise); an empty draft keeps its
+  // Finish/Discard buttons so the user can Discard; a not-found is left as-is.
+  if (outcome.kind !== "finished") return;
+  if (chatId == null || messageId == null) return;
+
+  const date = today(profileId);
+  // Mark the #924 finish nudge as already delivered (via THIS edit) so the hourly
+  // tick's separate post-workout dispatch doesn't fire a duplicate.
+  setProfileSetting(
+    profileId,
+    postWorkoutFinishMarkerKey(token.activityId),
+    date
+  );
+
+  // Transform into the finish summary: the pending post-workout doses with take/skip
+  // buttons, or — when nothing is pending — a plain finished confirmation (no dangling
+  // prompt). The dose buttons are the SAME tokens the scheduled reminder uses, handled
+  // by handleDoseTap.
+  const summary = buildPostWorkoutFinishReminder(profileId, date);
+  if (summary) {
+    await rebuildMessage(profileId, chatId, messageId, summary);
+  } else {
+    await closeMessage(
+      chatId,
+      messageId,
+      replacementWithTitle(cq.message?.text, "Workout finished ✅")
+    );
+  }
 }
 
 // Apply a single ✅ take or ⏭ skip tap: resolve the acting profile from the chat,

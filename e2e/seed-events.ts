@@ -41,6 +41,7 @@ import {
   E2E_LOGIN_EMPTY_TRAINING,
   E2E_LOGIN_SLEEP_EDIT,
   E2E_LOGIN_SLEEP_PHASE,
+  E2E_LOGIN_SLEEP_SEGMENTED,
   E2E_LOGIN_MENTAL,
   MENTAL_HEALTH_PROFILE,
   E2E_LOGIN_SUBSTANCE,
@@ -97,6 +98,7 @@ import {
   EMPTY_TRAINING_PROFILE,
   SLEEP_EDIT_PROFILE,
   SLEEP_PHASE_PROFILE,
+  SLEEP_SEGMENTED_PROFILE,
   HEALTH_CONNECT_PROFILE,
   NO_GEAR_PROFILE,
   FITNESS_PROFILE,
@@ -138,6 +140,9 @@ import {
   CONDITION_REVIEW_PROFILE,
   E2E_LOGIN_REASON,
   REASON_MODEL_PROFILE,
+  E2E_LOGIN_ASK,
+  ASK_RECORDS_PROFILE,
+  ASK_RECORDS_MED,
   E2E_LOGIN_PRESENCE,
   PRESENCE_PROFILE,
   E2E_LOGIN_NOTIF,
@@ -2642,6 +2647,47 @@ console.log(
   `e2e: seeded read-only late/daytime sleep-phase profile ${sleepPhaseId} (${SLEEP_PHASE_PROFILE}, #1190)`
 );
 
+// Dedicated, read-only SEGMENTED-night fixture (#1191/#1283). Every wake-day is a
+// biphasic 23:00→03:00 (4h) + 04:00→08:00 (4h) pair — neither block reaches the 6h
+// main-sleep floor — so the merge must read them as ONE ~8h night (bed 23:00 → wake
+// 08:00, no nap), the behavior f53892f shipped with no browser test for the rendered
+// hero/tile. Pin UTC so the wall-clock labels are explicit; the latest wake-day is
+// "today" so the hero + dashboard tile both render it. Rebuilt every seed; no browser
+// test writes or cleans this profile, so parallel / --repeat-each runs cannot contend.
+const sleepSegmentedId = fixtureProfileId(SLEEP_SEGMENTED_PROFILE);
+setTimezone(sleepSegmentedId, "UTC");
+db.prepare(`DELETE FROM metric_samples WHERE profile_id = ?`).run(
+  sleepSegmentedId
+);
+const sleepSegmentedToday = today(sleepSegmentedId);
+const insertSegmentedSleep = db.prepare(
+  `INSERT INTO metric_samples
+     (profile_id, source, metric, date, start_time, end_time, value)
+   VALUES (?, 'health-connect', 'sleep_min', ?, ?, ?, 240)`
+);
+for (let offset = 14; offset >= 0; offset--) {
+  const wakeDay = shiftDateStr(sleepSegmentedToday, -offset);
+  const bedDay = shiftDateStr(wakeDay, -1);
+  // First fragment: 23:00 the prior evening → 03:00 the wake-day (4h).
+  insertSegmentedSleep.run(
+    sleepSegmentedId,
+    wakeDay,
+    iso(zonedWallTimeToUtc("UTC", bedDay, "23:00")),
+    iso(zonedWallTimeToUtc("UTC", wakeDay, "03:00"))
+  );
+  // Second fragment after a 1h awake gap: 04:00 → 08:00 the same wake-day (4h).
+  insertSegmentedSleep.run(
+    sleepSegmentedId,
+    wakeDay,
+    iso(zonedWallTimeToUtc("UTC", wakeDay, "04:00")),
+    iso(zonedWallTimeToUtc("UTC", wakeDay, "08:00"))
+  );
+}
+seedMemberLogin(E2E_LOGIN_SLEEP_SEGMENTED, sleepSegmentedId, "read");
+console.log(
+  `e2e: seeded read-only segmented-night profile ${sleepSegmentedId} (${SLEEP_SEGMENTED_PROFILE}, #1191/#1283)`
+);
+
 // A dedicated, score-free ADULT profile for the mental-health-instruments spec (#716).
 // The spec administers PHQ-9/GAD-7 in-app, so it OWNS every write here. Idempotent:
 // hard-clear any instrument scores (and their per-item answers) on a reused server so
@@ -3687,6 +3733,32 @@ seedMemberLogin(E2E_LOGIN_NOTIF, notifProfileId, "write");
 console.log(
   `e2e: seeded reason-model fixture — profile ${reasonModelId} (#656)`
 );
+
+// ASK_RECORDS (#878, Phase 2): a dedicated adult profile whose records answer the
+// canonical Q&A example — "when did I last take antibiotics?". An antibiotics
+// medication (notes name it a course, so the deterministic search matches "antibiotics"
+// via notes) plus a matching urgent-care visit. The palette's "Ask about your records"
+// retrieves them and renders a LINKED answer (offline structured floor on the keyless
+// e2e DB). Idempotent: clear the seeded rows first so a reused server re-seeds cleanly.
+// Isolated + read-only so it's repeat-safe.
+const askRecordsId = fixtureProfileId(ASK_RECORDS_PROFILE);
+db.prepare(`DELETE FROM intake_items WHERE profile_id = ? AND name = ?`).run(
+  askRecordsId,
+  ASK_RECORDS_MED
+);
+db.prepare(
+  `DELETE FROM encounters WHERE profile_id = ? AND reason LIKE '%prescribed antibiotics%'`
+).run(askRecordsId);
+db.prepare(
+  `INSERT INTO intake_items (profile_id, name, kind, condition, priority, active, source, notes)
+   VALUES (?, ?, 'medication', 'daily', 'high', 1, 'manual', 'Antibiotics course for a sinus infection')`
+).run(askRecordsId, ASK_RECORDS_MED);
+db.prepare(
+  `INSERT INTO encounters (profile_id, date, type, reason)
+   VALUES (?, date('now', '-2 months'), 'Urgent care', 'Sinus infection — prescribed antibiotics')`
+).run(askRecordsId);
+seedMemberLogin(E2E_LOGIN_ASK, askRecordsId, "read");
+console.log(`e2e: seeded record-QA fixture — profile ${askRecordsId} (#878)`);
 
 // PROTEIN_QUICKADD_PROFILE (#824): a dedicated adult profile for the protein-grams
 // quick-add spec. Seeds a bodyweight (so the adequacy target scales) + a couple of

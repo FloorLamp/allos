@@ -128,7 +128,10 @@ test.describe("Skin lesions — add → view → track recheck → photo → fil
       editForm.getByRole("button", { name: "Save", exact: true })
     );
     await expect(page.getByText("Lesion updated")).toBeVisible();
-    await expect(card).toContainText("Unchanged since baseline.");
+    // Renders on the form's router.refresh() — a cold shard can outrun the default 5s (imaging/#1306 precedent).
+    await expect(card).toContainText("Unchanged since baseline.", {
+      timeout: 15_000,
+    });
 
     // Delete the observation and confirm the card is gone. The row's "Delete" button
     // opens the confirm dialog (a client toggle); the dialog's Delete fires the POST.

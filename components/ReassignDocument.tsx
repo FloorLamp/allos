@@ -14,16 +14,23 @@ export default function ReassignDocument({
   id,
   filename,
   destinations,
+  recordCount,
 }: {
   id: number;
   filename: string;
   // The login's accessible profiles OTHER than the document's current one.
   destinations: { id: number; name: string }[];
+  // How many records this document produced — named in the confirm so the scope of
+  // a cross-profile move is explicit (#1340).
+  recordCount: number;
 }) {
   const router = useRouter();
   const confirm = useConfirm();
   const [pending, start] = useTransition();
-  const [dest, setDest] = useState<number>(destinations[0]?.id ?? 0);
+  // Start with NO target selected (#1340): a pre-selected profile put an accidental
+  // cross-profile move of every imported row one click away. 0 = the "Choose
+  // profile…" placeholder; Move stays disabled until a real profile is chosen.
+  const [dest, setDest] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
 
   if (destinations.length === 0) return null;
@@ -31,10 +38,11 @@ export default function ReassignDocument({
   async function onMove() {
     const target = destinations.find((d) => d.id === dest);
     if (!target) return;
+    const records = `${recordCount} record${recordCount === 1 ? "" : "s"}`;
     const ok = await confirm({
       title: "Move document",
-      message: `Move “${filename}” and everything it imported to ${target.name}? This re-files the document and its records under that profile.`,
-      confirmLabel: "Move",
+      message: `Move “${filename}” and its ${records} to ${target.name}? This re-files the document and its records under that profile.`,
+      confirmLabel: `Move to ${target.name}`,
     });
     if (!ok) return;
     setError(null);
@@ -67,8 +75,10 @@ export default function ReassignDocument({
           value={dest}
           onChange={(e) => setDest(Number(e.target.value))}
           disabled={pending}
+          data-testid="reassign-dest"
           className="rounded-lg border border-black/10 bg-white px-2 py-1.5 text-sm text-slate-800 disabled:opacity-50 dark:border-white/10 dark:bg-ink-850 dark:text-slate-100"
         >
+          <option value={0}>Choose profile…</option>
           {destinations.map((d) => (
             <option key={d.id} value={d.id}>
               {d.name}

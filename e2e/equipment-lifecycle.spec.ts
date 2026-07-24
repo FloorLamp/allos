@@ -1,4 +1,21 @@
 import { test, expect } from "@playwright/test";
+import Database from "better-sqlite3";
+
+const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const NAME = "E2E Trap Bar";
+
+// Repeat-safe (#868): the add rejects a duplicate name (app/(app)/equipment/actions.ts
+// — "You already have equipment named …"), so a --repeat-each iteration that re-added
+// this marker would get that error instead of "Equipment added" and hang the first
+// assert. Delete just this marker (scoped, like imaging.spec) before + after every run.
+function cleanup() {
+  const db = new Database(DB_PATH);
+  try {
+    db.prepare("DELETE FROM equipment WHERE name = ?").run(NAME);
+  } finally {
+    db.close();
+  }
+}
 
 // #341: equipment lifecycle. The equipment manager (now the /equipment registry
 // index — issue #343) gains a Retire/Restore toggle (soft-retire, mirroring dose
@@ -6,6 +23,9 @@ import { test, expect } from "@playwright/test";
 // expanded, grouped category set. This drives the manager: add a piece of gear,
 // retire it (it stays listed with a "Retired" badge), then restore it — proving
 // the round-trip renders on the real page.
+test.beforeEach(cleanup);
+test.afterEach(cleanup);
+
 test("retire and restore equipment from the manager (#341)", async ({
   page,
 }) => {
@@ -37,7 +57,10 @@ test("retire and restore equipment from the manager (#341)", async ({
   const retiredRow = page
     .getByTestId("equipment-row")
     .filter({ hasText: "E2E Trap Bar" });
-  await expect(retiredRow).toHaveAttribute("data-retired", "1");
+  // Badge/attr flips on the toggle form's router.refresh() — cold-shard budget (imaging precedent).
+  await expect(retiredRow).toHaveAttribute("data-retired", "1", {
+    timeout: 15_000,
+  });
   await expect(retiredRow.getByText("Retired")).toBeVisible();
 
   // Restore it.
@@ -45,5 +68,5 @@ test("retire and restore equipment from the manager (#341)", async ({
   await expect(page.getByText("Restored E2E Trap Bar")).toBeVisible();
   await expect(
     page.getByTestId("equipment-row").filter({ hasText: "E2E Trap Bar" })
-  ).toHaveAttribute("data-retired", "0");
+  ).toHaveAttribute("data-retired", "0", { timeout: 15_000 });
 });

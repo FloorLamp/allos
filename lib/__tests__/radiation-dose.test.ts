@@ -288,7 +288,7 @@ describe("doseFramingNote — calm, and pediatric-aware", () => {
   it("is never alarmist (no 'too much' / limit-exceeded language)", () => {
     for (const note of [doseFramingNote(false), doseFramingNote(true)]) {
       expect(note.toLowerCase()).not.toContain("too much");
-      expect(note).toContain("Informational, not medical advice.");
+      expect(note).not.toContain("Informational, not medical advice.");
     }
   });
 
