@@ -919,6 +919,31 @@ export const SICK_PHOTO_PROFILE = "Sick Photo Link (e2e)";
 export const E2E_LOGIN_GRANTEDIT = "e2e_grantedit";
 export const GRANT_EDIT_PROFILE = "Grant Edit (e2e)";
 
+// #1374 — shared supply pools (the household medicine cabinet). A DEDICATED caregiver
+// login granted TWO dedicated profiles (write), each with its own daily medication
+// linked to ONE seeded shared bottle, plus a second bottle seeded LOW so the cabinet's
+// low state and the single pooled Upcoming finding render without waiting on a tick.
+// Spec-owned end to end (shared-supply-pool.spec.ts): nothing else reads these
+// profiles, these items, or these bottles, so the spec may exact-count its own rows and
+// confirm doses from both members without perturbing a neighbour. Synthetic, no PHI.
+export const E2E_LOGIN_SUPPLY = "e2e_supply";
+export const SUPPLY_PARENT_PROFILE = "Supply Parent (e2e)";
+export const SUPPLY_CHILD_PROFILE = "Supply Child (e2e)";
+// The shared bottle both members draw from — comfortably stocked, so the spec can watch
+// its count fall as each member confirms a dose.
+export const SUPPLY_SHARED_BOTTLE = "Shared Ibuprofen (e2e)";
+export const SUPPLY_PARENT_MED = "Supply Parent Ibuprofen (e2e)";
+export const SUPPLY_CHILD_MED = "Supply Child Ibuprofen (e2e)";
+// A second, deliberately LOW bottle both members also draw from — one bottle, so the
+// household must see exactly ONE low-stock finding, not one per linked member.
+export const SUPPLY_LOW_BOTTLE = "Low Shared Cetirizine (e2e)";
+export const SUPPLY_PARENT_LOW_MED = "Supply Parent Cetirizine (e2e)";
+export const SUPPLY_CHILD_LOW_MED = "Supply Child Cetirizine (e2e)";
+// A third bottle the EDIT case owns outright (one linked med on the parent), so
+// rewriting its count can never perturb the decrement case's arithmetic.
+export const SUPPLY_EDIT_BOTTLE = "Editable Shared Loratadine (e2e)";
+export const SUPPLY_PARENT_EDIT_MED = "Supply Parent Loratadine (e2e)";
+
 // #1421 — the in-app "What's new" page and its per-login unread dot. A DEDICATED
 // member login with its own profile, so the whats-new spec can clear this login's
 // `whats_new_seen_date` marker in beforeEach and prove the fresh-login dot →

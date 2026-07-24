@@ -103,6 +103,15 @@ const RECORDS: Group = {
     // Medications kept a Medical-group home of their own. The old combined
     // "/medicine" surface now redirects to the Supplements tab.
     { href: "/medications", label: "Medications", icon: IconPill },
+    // The household medicine cabinet (#1374): shared supply pools, one bottle per row.
+    // Multi-profile only — a single-profile instance has nobody to share a bottle with,
+    // so the leaf is a cosmetic hide over the page's own scope resolution.
+    {
+      href: "/supplies",
+      label: "Medicine cabinet",
+      icon: IconPill,
+      requiresMultiProfile: true,
+    },
     { href: "/medical/episodes", label: "Illness episodes", icon: IconVirus },
     // Cycle shows when cycle tracking is relevant for the active profile —
     // logged cycles always win; else female + premenopausal (explicit status or

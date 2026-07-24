@@ -224,6 +224,7 @@ export default async function MedicationDetailPage(props: {
             sideEffects={m.sideEffects}
             strip={m.strip}
             refillRate={m.refillRate}
+            poolChip={m.poolChip}
             todayStr={data.todayStr}
             nowIso={data.nowIso}
             trainingRestricted={data.trainingRestricted}

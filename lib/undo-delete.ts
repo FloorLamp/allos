@@ -306,6 +306,19 @@ export const UNDO_KINDS: Record<string, KindSpec> = {
             table: "encounters",
             onMissing: "null",
           },
+          // Shared supply pool link (#1374, migration 112): the household bottle this
+          // item draws from. Deleting the pool nulls only LIVE links, so a captured
+          // copy can still hold a since-deleted supply_id — a verbatim re-insert would
+          // violate the FK and abort the undo (the #375/#598 class). Restore with the
+          // link NULLed: the item comes back untracked rather than pointing at a bottle
+          // that no longer exists. `shared_supplies` is GLOBAL (no profile_id, the
+          // providers precedent), so it's probed by id alone.
+          {
+            column: "supply_id",
+            table: "shared_supplies",
+            onMissing: "null",
+            global: true,
+          },
           // Provenance link (#1051): the source prescription medical_records row a
           // medication was projected from. If that record was deleted since capture,
           // restore with source_record_id NULLed. Profile-owned, so probed WITH scope.

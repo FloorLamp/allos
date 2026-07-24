@@ -60,6 +60,12 @@ export function nutritionTabHref(tab: NutritionTab): AppRoute {
 // /medicine surface for their own Medical-group page.
 export const MEDICATIONS_HREF: AppRoute = "/medications";
 
+// The household medicine cabinet — the shared supply pools registry (#1374). ONE
+// household-level surface for both kinds (the #746 split is per-ITEM; a shared bottle
+// has no kind of its own), so every shared-bottle chip, pooled low-supply finding, and
+// pool nudge deep-links here rather than to a kind page.
+export const SUPPLIES_HREF: AppRoute = "/supplies";
+
 // The Illness episodes index (#856), which BECAME the cross-profile care-trail surface
 // (#1373 Part 2): the view-set banner drives whose data shows, a `?kind=` toggle drives
 // what shows. The old /household/history route was REMOVED — this const replaced

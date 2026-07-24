@@ -5,6 +5,7 @@
 // original name and signature.
 export * from "./intake/schedule";
 export * from "./intake/refill";
+export * from "./intake/supply-pool";
 export * from "./intake/adherence";
 export * from "./intake/pairs";
 export * from "./intake/warnings";

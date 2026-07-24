@@ -165,6 +165,16 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
   { prefix: "dose:", domain: "Due & scheduled", label: () => "Scheduled dose" },
   { prefix: "refill:", domain: "Due & scheduled", label: () => "Refill nudge" },
   {
+    // Shared supply pool low-stock (#1374). Registered HERE and not in
+    // RULE_FINDING_REGISTRY for the same reason `refill:` isn't: it is an Upcoming
+    // GENERATOR key, not a rule-findings builder output — the registry's reflection
+    // guards read builder output, and a namespace no builder emits would fail them
+    // (the surgery-bridge precedent). Id-keyed, so the label is domain-generic.
+    prefix: "pool-refill:",
+    domain: "Due & scheduled",
+    label: () => "Shared-supply refill nudge",
+  },
+  {
     prefix: "appointment:",
     domain: "Due & scheduled",
     label: () => "Appointment",
