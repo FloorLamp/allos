@@ -7,6 +7,7 @@ import type {
   ImportedCondition,
   ImportedEncounter,
   ImportedFamilyHistory,
+  ImportedImagingStudy,
   ImportedImmunization,
   ImportedProcedure,
   ImportedProvider,
@@ -162,7 +163,13 @@ export function parseCcdaDocument(xml: string): {
   }
   let doc: any;
   try {
-    doc = parser.parse(xml);
+    // CDA narrative uses <br/> for the visual line breaks inside a cell; the XML
+    // parser drops the empty tag and fuses the surrounding text runs into one string
+    // with no separator ("…aureusNo anaerobes…"). Convert each to a newline up front so
+    // the break survives into the text node: the collapsed name map normalizes it back
+    // to a space (lab/vital names stay single-line), while the report/impression BLOCK
+    // map (#708) keeps it as a real line break for NotesText's pre-wrap rendering.
+    doc = parser.parse(xml.replace(/<br\s*\/?>/gi, "\n"));
   } catch {
     throw new CdaError("Could not parse the CCD/CDA XML.");
   }
@@ -413,6 +420,7 @@ export function extractFromCcda(
   const familyHistory: ImportedFamilyHistory[] = [];
   const carePlanItems: ImportedCarePlanItem[] = [];
   const careGoals: ImportedCareGoal[] = [];
+  const imagingStudies: ImportedImagingStudy[] = [];
   // Sections a registered extractor claimed. The document-level note / visit-
   // diagnosis correlation below runs ONLY over the leftover (unclaimed) sections, so
   // a real content section that happens to be titled "… Notes" can never be
@@ -437,6 +445,7 @@ export function extractFromCcda(
     if (part.familyHistory) familyHistory.push(...part.familyHistory);
     if (part.carePlanItems) carePlanItems.push(...part.carePlanItems);
     if (part.careGoals) careGoals.push(...part.careGoals);
+    if (part.imagingStudies) imagingStudies.push(...part.imagingStudies);
   }
   // Correlate the document-level Reason for Visit / chief complaint onto the
   // encounter when the encounter carries none of its own. In an Epic per-visit CCD
@@ -556,6 +565,9 @@ export function extractFromCcda(
   const keptCareGoals = dedupe(careGoals).sort((a, b) =>
     (a.target_date ?? "").localeCompare(b.target_date ?? "")
   );
+  const keptImagingStudies = dedupe(imagingStudies).sort((a, b) =>
+    (a.study_date ?? "").localeCompare(b.study_date ?? "")
+  );
 
   // Import DEBUGGER report: coverage + section drops from the
   // walker, plus the per-kind `deduped` drops and the kept-vs-considered counts.
@@ -653,6 +665,7 @@ export function extractFromCcda(
     familyHistory: keptFamilyHistory,
     carePlanItems: keptCarePlanItems,
     careGoals: keptCareGoals,
+    imagingStudies: keptImagingStudies,
     demographics: enrichedDemographics,
     // Section-level providers (Care Teams) plus the header's serviceEvent
     // performers (the stated PCP / appointment provider). Per-reading performers
@@ -698,6 +711,7 @@ export function mergeImportResults(results: ImportResult[]): ImportResult {
   const familyHistory: ImportedFamilyHistory[] = [];
   const carePlanItems: ImportedCarePlanItem[] = [];
   const careGoals: ImportedCareGoal[] = [];
+  const imagingStudies: ImportedImagingStudy[] = [];
   const providers: ImportedProvider[] = [];
   let demographics: ImportDemographics | null = null;
   for (const r of results) {
@@ -710,6 +724,7 @@ export function mergeImportResults(results: ImportResult[]): ImportResult {
     familyHistory.push(...(r.familyHistory ?? []));
     carePlanItems.push(...(r.carePlanItems ?? []));
     careGoals.push(...(r.careGoals ?? []));
+    imagingStudies.push(...(r.imagingStudies ?? []));
     providers.push(...(r.providers ?? []));
     // Demographics come from the FIRST document that carries any (callers order
     // largest-first). NB: this is a whole-OBJECT pick, not a field-level merge — so
@@ -752,6 +767,9 @@ export function mergeImportResults(results: ImportResult[]): ImportResult {
   );
   const keptCareGoals = mergeDedupe(careGoals).sort((a, b) =>
     (a.target_date ?? "").localeCompare(b.target_date ?? "")
+  );
+  const keptImagingStudies = mergeDedupe(imagingStudies).sort((a, b) =>
+    (a.study_date ?? "").localeCompare(b.study_date ?? "")
   );
 
   // Merge the per-document reports: coverage + drops concat
@@ -850,6 +868,7 @@ export function mergeImportResults(results: ImportResult[]): ImportResult {
     familyHistory: keptFamilyHistory,
     carePlanItems: keptCarePlanItems,
     careGoals: keptCareGoals,
+    imagingStudies: keptImagingStudies,
     demographics,
     providers: dedupeProviders(providers).map((p) => ({
       name: p.name,

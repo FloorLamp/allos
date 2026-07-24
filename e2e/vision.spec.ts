@@ -51,7 +51,8 @@ test.describe("Optical prescriptions — add → view → edit → delete (#697)
     // It appears in the list with its factual per-eye identity.
     const list = page.getByTestId("optical-prescription-list");
     const row = list.getByRole("row").filter({ hasText: "-6.25" });
-    await expect(row).toBeVisible();
+    // Renders on the form's router.refresh() — a cold shard can outrun the default 5s (imaging/#1306 precedent).
+    await expect(row).toBeVisible({ timeout: 15_000 });
     await expect(row).toContainText("Glasses");
 
     // Edit it: change the OS (left eye) sphere — the second "Sphere" input — to a
@@ -63,7 +64,7 @@ test.describe("Optical prescriptions — add → view → edit → delete (#697)
     await expect(page.getByText("Prescription updated")).toBeVisible();
     await expect(
       list.getByRole("row").filter({ hasText: "-6.25" })
-    ).toContainText("OS -3.50");
+    ).toContainText("OS -3.50", { timeout: 15_000 });
 
     // Delete it and confirm it's gone. The confirm click MUST be scoped to the
     // dialog — the page carries a per-row Delete button for every seeded Rx too.

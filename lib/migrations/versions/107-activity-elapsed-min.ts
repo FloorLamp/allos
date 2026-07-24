@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 106 (issue #1202): formalize ACTIVE (moving) vs ELAPSED (clock-span)
+// Migration 107 (issue #1202): formalize ACTIVE (moving) vs ELAPSED (clock-span)
 // activity time. `activities.duration_min` STAYS the active/effort time — the
 // pace/volume/load source (zones.ts sums it as training minutes) — and is NOT
 // repurposed. Elapsed (the wall-clock span, which for a paused session exceeds
@@ -63,7 +63,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 106,
-  name: "106-activity-elapsed-min",
+  id: 107,
+  name: "107-activity-elapsed-min",
   up,
 };

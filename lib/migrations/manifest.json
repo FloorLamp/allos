@@ -104,5 +104,6 @@
   "103-canonical-name-abbreviation-consolidation.ts": "bbfe2a1cd1970c8992726b7cce7120a97fc6f11224dcf608ef3dda0d6bb960d3",
   "104-login-own-profile.ts": "fdf60f897384f8bde6f2ce66e6f2e561aae6bd1b2d8ff1214fafe9f92ae58121",
   "105-login-notification-channels.ts": "c41e5d92337fcd2e894c95ee95e6335de1fb850eaf1f719ba40af231e845b961",
-  "106-activity-elapsed-min.ts": "232f4cd7fc4c937a26bdbb313d468145da49fb6172e58290868822c60a803dc5"
+  "106-medical-record-report-category.ts": "cf5de11fe6cf09e7c7304454bbb2acf7ba52b6b05153db7111a065d17786d046",
+  "107-activity-elapsed-min.ts": "1ec7a507857e773117ea9c0c4c6d31398452fe22c4858f4ca8c6c31f21ddd8ab"
 }

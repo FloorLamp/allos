@@ -38,6 +38,7 @@ describe("task→tier mapping table", () => {
     expect(TASK_TIER.suggestions).toBe("light");
     expect(TASK_TIER["symptom-map"]).toBe("light");
     expect(TASK_TIER.explain).toBe("light");
+    expect(TASK_TIER.ask).toBe("light");
   });
 
   it("has a tier for every declared task class", () => {

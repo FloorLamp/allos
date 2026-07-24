@@ -29,6 +29,8 @@ describe("medical-categories: single source of truth", () => {
       "instrument",
       "derived",
       "reference",
+      // #708 narrative diagnostic reports (micro/path report bodies).
+      "report",
     ]);
   });
 

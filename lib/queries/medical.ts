@@ -307,6 +307,36 @@ export function getMedicalRecords(
   return getMedicalRecordsCached(profileId, medicalFiltersKey(filters));
 }
 
+// A narrative diagnostic report row (#708): the free-text body of a microbiology
+// culture / gram stain / cytopathology report, imported from a CCD/XDM Results-section
+// ED-valued observation. It carries its text in `notes` with no value/flag, so it never
+// trends — it's a dated document. Feeds Results → Reports only.
+export interface ReportRecord {
+  id: number;
+  date: string;
+  name: string;
+  notes: string | null;
+  loinc: string | null;
+  provider_name: string | null;
+  document_id: number | null;
+  source: string | null;
+}
+
+// Every `report`-category record for a profile, newest collection first. Profile-
+// scoped; the provider (performing lab/pathologist) is resolved for display.
+export function getReportRecords(profileId: number): ReportRecord[] {
+  return db
+    .prepare(
+      `SELECT id, date, name, notes, loinc, document_id, source,
+              (SELECT p.name FROM providers p WHERE p.id = medical_records.provider_id)
+                AS provider_name
+       FROM medical_records
+       WHERE profile_id = ? AND category = 'report'
+       ORDER BY date DESC, id DESC`
+    )
+    .all(profileId) as ReportRecord[];
+}
+
 // A currently-flagged biomarker reading — a biomarker family whose CURRENT
 // (latest-per-family) reading is out-of-range/non-optimal. The minimal shape the
 // digest/hero flagged surface consumes (canonical-preferred display name so links

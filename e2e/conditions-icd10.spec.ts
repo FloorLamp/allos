@@ -33,6 +33,7 @@ test("manual condition entry suggests an ICD-10-CM code the user can confirm (#1
 
   // The stored code renders in the conditions table.
   const row = section.getByRole("row", { name: /Asthma/ });
-  await expect(row).toBeVisible();
+  // Renders on the form's router.refresh() — a cold shard can outrun the default 5s (imaging/#1306 precedent).
+  await expect(row).toBeVisible({ timeout: 15_000 });
   await expect(row).toContainText("J45.909");
 });

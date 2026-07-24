@@ -58,7 +58,7 @@ test.describe("Care plan (#391)", () => {
     // The row now reads Completed on the page …
     await expect(
       page.locator("tr").filter({ hasText: "E2E orthotics fitting" })
-    ).toContainText("Completed");
+    ).toContainText("Completed", { timeout: 15_000 });
 
     // … and its Upcoming twin is gone (the closed status drops it from the feed).
     await page.goto("/upcoming");
