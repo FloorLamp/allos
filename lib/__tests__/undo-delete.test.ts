@@ -123,6 +123,16 @@ describe("undo-delete registry", () => {
       // #1050: the "prescribed at" visit link nulls on restore when its encounter
       // is gone.
       { column: "encounter_id", table: "encounters", onMissing: "null" },
+      // #1374: the shared supply pool link. Deleting a bottle nulls only LIVE links,
+      // so a captured copy can still hold a since-deleted supply_id — restore with the
+      // link NULLed (the item comes back untracked). shared_supplies is GLOBAL (no
+      // profile_id, the providers precedent), so the probe is by id alone.
+      {
+        column: "supply_id",
+        table: "shared_supplies",
+        onMissing: "null",
+        global: true,
+      },
       // #1051 provenance link + #1052 indication link: the source prescription
       // medical_records row and the treated condition both null on restore when
       // their target is gone. Profile-owned, probed WITH the profile_id scope.
