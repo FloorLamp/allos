@@ -858,3 +858,20 @@ export const MVBIO_RO_ANALYTE = "Biored Glucose (e2e)";
 // member always did, so the shared-profile write target is unchanged).
 export const E2E_LOGIN_VIEWONLY_READ = "e2e_viewonly_read";
 export const E2E_LOGIN_VIEWONLY_WRITE = "e2e_viewonly_write";
+
+// #1171 / #1241 — the daylight-outdoor-minutes trend chart AND the free-days setting.
+// A dedicated adult profile with a coarse home location (so the sun features are on)
+// and outdoor daytime activities on SEVERAL recent days, so the Trends → Vitals
+// "Sun / outdoor time" chart renders a real multi-day series. Also the host for the
+// free-days checkbox row on Settings → Profile (#1241): the setting spec toggles this
+// profile's own free_days, isolated so it never perturbs profile 1's shared sleep /
+// social-jetlag surfaces (the sleep-regularity spec pins profile 1's SRI). Synthetic,
+// no PHI.
+export const E2E_LOGIN_SUN = "e2e_sun";
+export const SUN_PROFILE = "Sun Outdoor (e2e)";
+// The negative-case sibling: a profile with an outdoor activity but NO home location,
+// so the sun features stay quietly OFF and the "Sun / outdoor time" chart is HIDDEN —
+// the data-gate proven with the outdoor signal present, isolated from profile 1 (which
+// DOES carry a seeded home location, so it can't serve as the home-less case).
+export const E2E_LOGIN_SUN_NOHOME = "e2e_sun_nohome";
+export const SUN_NOHOME_PROFILE = "Sun No Home (e2e)";

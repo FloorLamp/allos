@@ -175,6 +175,39 @@ export function setWeekMode(profileId: number, mode: WeekMode): void {
   setProfileSetting(profileId, "week_mode", mode);
 }
 
+// ---- Free days (per profile, issue #1241) ----
+// The days of the week (0=Sun … 6=Sat) the person is OFF work/school — their
+// "free days". Social-jetlag in lib/sleep-regularity splits nights into free-day
+// vs work-day wake-mornings; the weekend guess (Sat/Sun) is wrong for shift
+// workers/nurses, so this makes the partition per-profile. Default is Sat/Sun so
+// an existing profile's figure doesn't move. An EXPLICITLY empty set (the row
+// present with no days) is honored as "no free days"; only an ABSENT row falls
+// back to the default. Stored as a sorted comma-joined string in profile_settings.
+export const DEFAULT_FREE_DAYS: readonly number[] = [0, 6]; // Sun + Sat
+
+// Normalize an arbitrary day list to a sorted, de-duplicated array of valid
+// weekday indices (0..6). Pure — shared by the setter and any caller building the
+// stored value, so a bad input can never persist.
+export function normalizeFreeDays(days: number[]): number[] {
+  const set = new Set<number>();
+  for (const d of days) {
+    if (Number.isInteger(d) && d >= 0 && d <= 6) set.add(d);
+  }
+  return [...set].sort((a, b) => a - b);
+}
+
+export function getFreeDays(profileId: number): number[] {
+  const raw = getProfileSetting(profileId, "free_days");
+  if (raw == null) return [...DEFAULT_FREE_DAYS];
+  // An explicit empty string means "no free days" — honored, not defaulted.
+  if (raw.trim() === "") return [];
+  return normalizeFreeDays(raw.split(",").map((s) => Number(s.trim())));
+}
+
+export function setFreeDays(profileId: number, days: number[]): void {
+  setProfileSetting(profileId, "free_days", normalizeFreeDays(days).join(","));
+}
+
 // Pin-to-Trends — the profile's pinned Trends-Overview
 // tiles (metric + biomarker keys), stored as a JSON array in profile_settings
 // (same key/value precedent as active_situations / dashboard_layout). The list

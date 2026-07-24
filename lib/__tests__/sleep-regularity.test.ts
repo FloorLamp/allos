@@ -197,6 +197,59 @@ describe("computeSleepRegularity — companions", () => {
   });
 });
 
+describe("computeSleepRegularity — free-days split (#1241)", () => {
+  // A shift worker off Wed/Thu (dow 3/4): they sleep LATE (mid-sleep 05:00) on their
+  // real free mornings and on-schedule (mid-sleep 03:00) every other day, INCLUDING
+  // the weekend. Their true social jetlag is the 2h Wed/Thu shift — visible only when
+  // the split names Wed/Thu as free. 2026-01-02 is a Friday.
+  const shiftOffWedThu = consecutiveWakeDays("2026-01-02", 14).map((d) => {
+    const dow = new Date(d + "T00:00:00Z").getUTCDay();
+    const free = dow === 3 || dow === 4; // Wed / Thu wake-mornings
+    return free
+      ? { start: `${d}T01:00:00Z`, end: `${d}T09:00:00Z` } // mid-sleep 05:00
+      : utcNight(d, "23:00", "07:00"); // mid-sleep 03:00
+  });
+
+  it("splits on the provided free-day set, not the weekend", () => {
+    const r = computeSleepRegularity(shiftOffWedThu, "UTC", {
+      freeDays: [3, 4],
+    });
+    expect(r).not.toBeNull();
+    // Free (Wed/Thu) mid-sleep 05:00 vs work-day 03:00 → a 120-min shift.
+    expect(r!.socialJetlagMin).toBe(120);
+  });
+
+  it("the default (Sat/Sun) split cannot see a mid-week shift worker's jetlag", () => {
+    // Same nights, no override → default Sat/Sun. Sat/Sun mornings are on the 03:00
+    // (on-schedule) side, so the weekend-vs-weekday figure MISSES the real Wed/Thu
+    // shift entirely — a different, smaller number than the correct 120. This is the
+    // wrong-guess the setting fixes; the point is only that the split matters.
+    const r = computeSleepRegularity(shiftOffWedThu, "UTC");
+    expect(r).not.toBeNull();
+    expect(r!.socialJetlagMin).not.toBe(120);
+    expect(r!.socialJetlagMin!).toBeLessThan(120);
+  });
+
+  it("an empty free-day set yields null social jetlag (no free-day nights)", () => {
+    const r = computeSleepRegularity(shiftOffWedThu, "UTC", { freeDays: [] });
+    expect(r).not.toBeNull();
+    expect(r!.socialJetlagMin).toBeNull();
+  });
+
+  it("default Sat/Sun matches the historical figure for a weekend-late sleeper", () => {
+    // The classic weekend-late fixture (from the companions suite): Sat/Sun mid-sleep
+    // 05:00 vs weekday 03:00. With freeDays omitted the answer must stay exactly 120 —
+    // existing profiles' numbers don't move (#1241's default-unchanged guarantee).
+    const sessions = consecutiveWakeDays("2026-01-02", 14).map((d) => {
+      const dow = new Date(d + "T00:00:00Z").getUTCDay();
+      return dow === 0 || dow === 6
+        ? { start: `${d}T01:00:00Z`, end: `${d}T09:00:00Z` }
+        : utcNight(d, "23:00", "07:00");
+    });
+    expect(computeSleepRegularity(sessions, "UTC")!.socialJetlagMin).toBe(120);
+  });
+});
+
 describe("sriTrend", () => {
   it("emits a rolling point per gated wake-day, oldest→newest", () => {
     const sessions = consecutiveWakeDays("2026-01-02", 20).map((d) =>
