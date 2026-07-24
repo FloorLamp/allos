@@ -95,6 +95,11 @@ export interface DigestInput {
   // (issue #662 item 1) — the optional digest mention of the same "N situational
   // items now active" the situations bar shows. Optional/0 ⇒ the line is omitted.
   situationalActiveCount?: number;
+  // The DERIVED-context acknowledgment lines (#1292 Poor sleep, #1298 Period) — the
+  // SAME basis-aware lines the Supplements bar + check-in disclosure show, shared so a
+  // Telegram-first user isn't surprised by the extra due items (#662/#221). Each is a
+  // ready-to-render string; empty ⇒ no derived context is on / no keyed items.
+  derivedSituationLines?: string[];
   // Yesterday
   activities: DigestActivity[];
   // Supplement adherence yesterday, or null when nothing was due. `skipped`
@@ -190,6 +195,12 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     input.situationalActiveCount ?? 0
   );
   if (situationLine) todayLines.push(`🧭 ${situationLine}`);
+  // Derived-context acknowledgment (#1292/#1298): the SAME basis-aware lines the bar +
+  // check-in show ("Rough night (…) — N sleep-support items active today (auto)";
+  // "Period logged — N items active"), so the extra due items are never a surprise.
+  for (const line of input.derivedSituationLines ?? []) {
+    todayLines.push(`🌙 ${line}`);
+  }
   // The banded "what's due" summary + high-priority "why" lines, from the SAME
   // collectUpcoming formatter the Upcoming page/hero read. Doses are EXCLUDED from
   // the per-band counts (the glance line above already summarizes them) so a day of

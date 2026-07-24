@@ -35,6 +35,7 @@ import {
   getBiomarkerSeries,
   getNavRelevance,
   getSituationalDueCount,
+  getDerivedSituationLines,
   isAnxietyScaleRelevant,
 } from "@/lib/queries";
 import {
@@ -661,6 +662,11 @@ export default async function Dashboard() {
   const checkinSituations = has("symptom-log")
     ? (() => {
         const activeSet = new Set(getActiveSituations(profile.id));
+        // The DERIVED-context state lines (#1292/#1298): the SAME basis-aware lines the
+        // Supplements bar + digest render, shown here so the check-in disclosure
+        // surfaces the auto-on context (#1221 item 6). "Not today" (poor-sleep only,
+        // when derived) rides the shared override action.
+        const derived = getDerivedSituationLines(profile.id, on);
         return {
           options: nonIllnessSituationOptions(getSituations(profile.id)).map(
             (o) => ({ name: o.name, active: activeSet.has(o.name) })
@@ -668,6 +674,10 @@ export default async function Dashboard() {
           activationLine: situationActivationLine(
             getSituationalDueCount(profile.id)
           ),
+          derivedLines: [derived.poorSleep, derived.period].filter(
+            (l): l is string => l != null
+          ),
+          poorSleepOverridable: derived.poorSleepOverridable,
         };
       })()
     : null;

@@ -72,9 +72,9 @@ import {
   getUserSex,
   getUserAgeOn,
   profileAgeMonths,
-  getActiveSituations,
   getMentalHealthShareFull,
 } from "../../settings";
+import { getEffectiveActiveSituations } from "../derived-situations";
 import { sharedSurfaceDetail } from "../../appointment-sensitivity";
 import {
   CANONICAL_DISPLAY_UNITS,
@@ -169,7 +169,10 @@ function doseItems(profileId: number, today: string): UpcomingItem[] {
   const supplements = getSupplements(profileId);
   const doses = getSupplementDoses(profileId);
   const taken = getTakenDoseIds(profileId, today);
-  const activeSituations = new Set(getActiveSituations(profileId));
+  // Derived context (#1292/#1298) widens the active set so a Poor sleep / Period
+  // situational dose surfaces on Upcoming + the hero + the digest exactly while its
+  // derived context holds — the SAME effective set the Supplements bar uses.
+  const activeSituations = getEffectiveActiveSituations(profileId, today);
   const isWorkoutDay = getActivitiesByDate(profileId, today).length > 0;
   // #558: a pre_workout dose is pending on a predicted training day, before a
   // session is logged; the logged signal is the fallback when no cadence is known.

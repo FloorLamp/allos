@@ -728,3 +728,15 @@ export const OWN_OTHER_DOSE = "Own Other Vitamin";
 export const E2E_LOGIN_ASK = "e2e_ask";
 export const ASK_RECORDS_PROFILE = "Records QA (e2e)";
 export const ASK_RECORDS_MED = "Amoxicillin";
+
+// Derived situations (issues #1292/#1298). A member granted a dedicated adult FEMALE
+// (premenopausal → cycle-relevant) profile carrying a Period-keyed iron supplement and a
+// Poor-sleep-keyed magnesium, and a rough last-night sleep session so the DERIVED
+// poor-sleep context is measured-ON. Dedicated + isolated on purpose: the spec LOGS and
+// ENDS a period (its own idempotent inverse) and toggles the Poor sleep chip, so it must
+// never race the cycle-log spec's mutations on CYCLE_PROFILE. No open period is seeded,
+// so today starts a gap day (Period context off) until the spec logs one. Synthetic, no PHI.
+export const E2E_LOGIN_DERIVED = "e2e_derived_situ";
+export const DERIVED_SITU_PROFILE = "Derived Situations (e2e)";
+export const DERIVED_SITU_PERIOD_ITEM = "Iron Bisglycinate (e2e)";
+export const DERIVED_SITU_SLEEP_ITEM = "Magnesium Glycinate (e2e)";

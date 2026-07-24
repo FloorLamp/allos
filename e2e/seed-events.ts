@@ -149,6 +149,10 @@ import {
   E2E_LOGIN_ASK,
   ASK_RECORDS_PROFILE,
   ASK_RECORDS_MED,
+  E2E_LOGIN_DERIVED,
+  DERIVED_SITU_PROFILE,
+  DERIVED_SITU_PERIOD_ITEM,
+  DERIVED_SITU_SLEEP_ITEM,
   E2E_LOGIN_PRESENCE,
   PRESENCE_PROFILE,
   E2E_LOGIN_NOTIF,
@@ -3977,6 +3981,95 @@ seedMemberLogin(E2E_LOGIN_CYCLE, cycleProfileId, "write");
 console.log(
   `e2e: seeded cycle-log fixture — profile ${cycleProfileId} (${CYCLE_PROFILE}) (#714)`
 );
+
+// ── Derived situations fixture (#1292 Poor sleep, #1298 Period) ───────────────
+// A dedicated adult female (premenopausal → cycle-relevant) profile that carries a
+// Period-keyed iron supplement and a Poor-sleep-keyed magnesium, plus a rough last-night
+// sleep session so the DERIVED poor-sleep context is measured-ON. NO open period is
+// seeded, so today starts a gap day (Period context off) until the spec logs a period
+// (its own idempotent inverse). Hard-clear the fixture's cycles / intake / today sleep /
+// override rows first so a reused server re-seeds cleanly. Synthetic, no PHI.
+{
+  const dsId = fixtureProfileId(DERIVED_SITU_PROFILE);
+  const dsToday = today(dsId);
+  db.prepare(
+    `INSERT OR IGNORE INTO profile_settings (profile_id, key, value) VALUES (?, 'sex', 'female')`
+  ).run(dsId);
+  db.prepare(
+    `INSERT OR IGNORE INTO profile_settings (profile_id, key, value)
+     VALUES (?, 'reproductive_status', 'premenopausal')`
+  ).run(dsId);
+  // Idempotent reset for a reused server.
+  db.prepare(`DELETE FROM cycles WHERE profile_id = ?`).run(dsId);
+  db.prepare(`DELETE FROM intake_items WHERE profile_id = ?`).run(dsId);
+  db.prepare(`DELETE FROM situations WHERE profile_id = ?`).run(dsId);
+  db.prepare(
+    `DELETE FROM metric_samples WHERE profile_id = ? AND metric = 'sleep_min'`
+  ).run(dsId);
+  db.prepare(
+    `DELETE FROM upcoming_dismissals WHERE profile_id = ? AND signal_key LIKE 'poor-sleep-override:%'`
+  ).run(dsId);
+
+  // The two derived situations as inactive vocabulary rows (name-keyed; the derived
+  // resolver keys on the names, no manual activation needed).
+  const periodSit = Number(
+    db
+      .prepare(
+        `INSERT INTO situations (profile_id, name, active) VALUES (?, 'Period', 0)`
+      )
+      .run(dsId).lastInsertRowid
+  );
+  const sleepSit = Number(
+    db
+      .prepare(
+        `INSERT INTO situations (profile_id, name, active) VALUES (?, 'Poor sleep', 0)`
+      )
+      .run(dsId).lastInsertRowid
+  );
+
+  const keyedItem = (name: string, situation: string, sitId: number) => {
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, kind, condition, priority, situation, situation_id, active, as_needed)
+           VALUES (?, ?, 'supplement', 'situational', 'high', ?, ?, 1, 0)`
+        )
+        .run(dsId, name, situation, sitId).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, '1 cap', 'evening', 'any', 0)`
+    ).run(itemId);
+    return itemId;
+  };
+  keyedItem(DERIVED_SITU_PERIOD_ITEM, "Period", periodSit);
+  keyedItem(DERIVED_SITU_SLEEP_ITEM, "Poor sleep", sleepSit);
+
+  // A rough last-night sleep session (300 min = 5h < the 6h floor) so getSleepSignal
+  // trips and the measured poor-sleep context is ON, plus a few good baseline nights.
+  for (let i = 5; i >= 1; i--) {
+    const wake = shiftDateStr(dsToday, -i);
+    db.prepare(
+      `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+       VALUES (?, 'manual', 'sleep_min', ?, ?, ?, 480)`
+    ).run(dsId, wake, `${shiftDateStr(wake, -1)}T23:00`, `${wake}T07:00`);
+  }
+  db.prepare(
+    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+     VALUES (?, 'manual', 'sleep_min', ?, ?, ?, 300)`
+  ).run(
+    dsId,
+    dsToday,
+    `${shiftDateStr(dsToday, -1)}T23:00`,
+    `${dsToday}T04:00`
+  );
+
+  seedMemberLogin(E2E_LOGIN_DERIVED, dsId, "write");
+  console.log(
+    `e2e: seeded derived-situations fixture — profile ${dsId} (${DERIVED_SITU_PROFILE}) (#1292/#1298)`
+  );
+}
 
 // ── Dashboard daily-loop fixture (#1221) ──────────────────────────────────────
 // A dedicated adult female profile carrying one reading in every domain the four new
