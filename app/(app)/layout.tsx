@@ -8,7 +8,10 @@ import VersionWatcher from "@/components/VersionWatcher";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 import OfflineQueueProvider from "@/components/OfflineQueueProvider";
 import ProfileSwitchWatcher from "@/components/ProfileSwitchWatcher";
-import ProfileViewStrip from "@/components/ProfileViewStrip";
+import ProfileViewStrip, {
+  viewStripVisible,
+} from "@/components/ProfileViewStrip";
+import ShellChrome from "@/components/ShellChrome";
 import OnboardingReturnBanner from "@/components/OnboardingReturnBanner";
 import { getAppVersion } from "@/lib/version";
 import {
@@ -94,6 +97,10 @@ export default async function AppLayout({
   const inViewProfiles = scope.viewIds
     .map((id) => scope.profiles.find((p) => p.id === id))
     .filter((p): p is (typeof scope.profiles)[number] => p != null);
+  // Whether the view banner renders at all — the SAME predicate the strip itself
+  // uses (viewStripVisible), read here because the sticky chrome owns the top
+  // padding when the banner is present (issue #1416).
+  const showViewStrip = viewStripVisible(inViewProfiles);
   // Own-profile link (#1013): the acting profile's subject name when the login is
   // acting as someone OTHER than its own profile (null when acting as self / no
   // own-profile set). Threaded to the live workout editor + dock — the fastest-
@@ -254,35 +261,58 @@ export default async function AppLayout({
             min-w-0 lets this flex item shrink below its content's intrinsic width —
             without it, wide tables/rows blow the whole page out horizontally. */}
                   <main className="min-w-0 flex-1 overflow-x-clip">
-                    <MobileNav
-                      activityDates={timelineDates}
-                      version={version}
-                      active={session.profile}
-                      username={login.username}
-                      profiles={profiles}
-                      viewIds={scope.viewIds}
-                      restricted={restricted}
-                      isAdmin={isAdmin}
-                      multiProfile={multiProfile}
-                      foodLoggingRelevant={foodLoggingRelevant}
-                      hasIntakeItems={hasIntakeItems}
-                      relevance={relevance}
-                      reviewCount={reviewCount}
-                      readOnly={readOnly}
-                      whatsNewUnseen={whatsNewUnseen}
-                    />
+                    {/* The ONE sticky top chrome (issue #1416): the phone top
+                    bar and the multi-profile view banner ride together, hiding
+                    on scroll-down and returning on scroll-up, so "whose data am
+                    I looking at?" stays answerable mid-scroll instead of
+                    scrolling away with the content. On desktop the wrapper drops
+                    to `static` and the banner sits exactly where it always did.
+                    The banner is passed in (not rendered inside the container)
+                    so there is ONE strip in the DOM on every viewport — never a
+                    hidden md:* / md:hidden pair. */}
+                    <ShellChrome
+                      banner={
+                        showViewStrip ? (
+                          <ProfileViewStrip
+                            profiles={inViewProfiles}
+                            actingProfileId={scope.actingProfileId}
+                          />
+                        ) : null
+                      }
+                    >
+                      <MobileNav
+                        activityDates={timelineDates}
+                        version={version}
+                        active={session.profile}
+                        username={login.username}
+                        profiles={profiles}
+                        viewIds={scope.viewIds}
+                        restricted={restricted}
+                        isAdmin={isAdmin}
+                        multiProfile={multiProfile}
+                        foodLoggingRelevant={foodLoggingRelevant}
+                        hasIntakeItems={hasIntakeItems}
+                        relevance={relevance}
+                        reviewCount={reviewCount}
+                        readOnly={readOnly}
+                        whatsNewUnseen={whatsNewUnseen}
+                      />
+                    </ShellChrome>
                     {/* max(padding, safe-area inset) keeps content clear of the
               notch in landscape and the home indicator at the bottom now
-              that the viewport paints edge-to-edge (viewportFit cover). */}
+              that the viewport paints edge-to-edge (viewportFit cover).
+              Density (issue #1416, section A): pt-4 / 1rem gutters below `md`,
+              the unchanged pt-8 / 1.25rem from `md` up. The top padding is
+              dropped entirely when the view banner is showing — ShellChrome
+              already spends it above the banner, and doubling it would push the
+              page heading a third of the way down a phone screen. */}
                     <div
                       data-testid="app-content-container"
-                      className="mx-auto pt-8 pb-[max(2rem,env(safe-area-inset-bottom))] pl-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))] 3xl:max-w-[110rem]"
+                      className={`mx-auto pb-[max(2rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] md:pl-[max(1.25rem,env(safe-area-inset-left))] md:pr-[max(1.25rem,env(safe-area-inset-right))] 3xl:max-w-[110rem] ${
+                        showViewStrip ? "" : "pt-4 md:pt-8"
+                      }`}
                     >
                       <OnboardingReturnBanner show={showOnboardingReturn} />
-                      <ProfileViewStrip
-                        profiles={inViewProfiles}
-                        actingProfileId={scope.actingProfileId}
-                      />
                       {children}
                     </div>
                   </main>

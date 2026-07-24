@@ -7,6 +7,7 @@ import { openGlobalSearch } from "@/components/CommandPalette";
 import Wordmark from "@/components/Wordmark";
 import UserMenu from "@/components/UserMenu";
 import LogActivityButton from "@/components/LogActivityButton";
+import FrequentPages from "@/components/FrequentPages";
 import JournalCalendar from "@/components/JournalCalendar";
 import ThemeToggle from "@/components/ThemeToggle";
 import WhatsNewLink from "@/components/WhatsNewLink";
@@ -131,6 +132,12 @@ export default function SidebarContent({
         </kbd>
       </button>
       {!restricted && <LogActivityButton onClick={onNavigate} />}
+      {/* Most-visited shortcuts (issue #1416, section E3). Client-side visit
+      counts in localStorage — no schema change, no server round-trip — and it
+      lives in the SHARED content, so the desktop sidebar and the mobile drawer
+      offer the same jumps. Renders nothing until a page clears the "this is a
+      habit" floor, so a fresh login sees no empty section. */}
+      <FrequentPages onNavigate={onNavigate} />
       <JournalCalendar activeDates={activityDates} />
       <Nav
         restricted={restricted}

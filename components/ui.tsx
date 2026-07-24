@@ -13,10 +13,15 @@ export function PageHeader({
   subtitle?: React.ReactNode;
   action?: React.ReactNode;
 }) {
+  // Compact below `md` (issue #1416, section A/D): a phone gives the heading a
+  // smaller share of a much shorter screen, so the title drops to text-xl and
+  // the gap to the content below halves. Desktop is unchanged. One tokenized
+  // change here reaches all ~50 pages that render this — the reason the ad-hoc
+  // <h1> pages were converted rather than restyled in place.
   return (
-    <div className="mb-6 flex items-end justify-between gap-4">
+    <div className="mb-4 flex items-end justify-between gap-4 md:mb-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+        <h1 className="text-xl font-bold text-slate-900 md:text-2xl dark:text-slate-100">
           {title}
         </h1>
         {subtitle && (
