@@ -8,7 +8,10 @@ import { useToast } from "@/components/Toast";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { shouldQueueOffline } from "@/lib/offline/queue";
 import { activateIllnessForSymptoms } from "@/app/(app)/symptoms/actions";
-import { toggleSituation } from "@/app/(app)/nutrition/supplement-actions";
+import {
+  toggleSituation,
+  dismissDerivedPoorSleep,
+} from "@/app/(app)/nutrition/supplement-actions";
 import { logMood } from "@/app/(app)/mood/actions";
 import {
   MOOD_FACTORS,
@@ -130,6 +133,11 @@ export default function HowAreYouCard({
   situations?: {
     options: { name: string; active: boolean }[];
     activationLine: string | null;
+    // The DERIVED-context state lines (#1292 Poor sleep, #1298 Period) — computed, not
+    // toggled: rendered distinctly, non-toggleable, with a one-tap "Not today" that
+    // rides the shared override action (poor-sleep only, and only when derived).
+    derivedLines?: string[];
+    poorSleepOverridable?: boolean;
   } | null;
   // Whether the Calm (anxiety) scale is relevant for this profile (issue #1313's
   // relevance gate). SILENT: the scale renders or doesn't — no copy names the trigger.
@@ -236,6 +244,16 @@ export default function HowAreYouCard({
       const res = await toggleSituation(fd);
       if (res.ok) router.refresh();
       else setError(res.error);
+    });
+  }
+
+  // The poor-sleep "Not today" override (#1292): suppress the DERIVED contribution for
+  // today only, through the SAME shared action the Supplements bar uses (dismiss once,
+  // silence both). Independent of the coaching card's own snooze (#449).
+  function overridePoorSleep() {
+    startSit(async () => {
+      await dismissDerivedPoorSleep();
+      router.refresh();
     });
   }
 
@@ -401,6 +419,37 @@ export default function HowAreYouCard({
                   >
                     {situations.activationLine}
                   </p>
+                ) : null}
+              </div>
+            ) : null}
+            {/* DERIVED context (#1292/#1298): computed, non-toggleable state lines with
+                a distinct "Auto" tag, plus the poor-sleep "Not today" override. */}
+            {situations?.derivedLines && situations.derivedLines.length > 0 ? (
+              <div
+                className="space-y-1"
+                data-testid="checkin-derived-situations"
+              >
+                {situations.derivedLines.map((line, i) => (
+                  <div
+                    key={i}
+                    className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
+                  >
+                    <span className="badge bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+                      Auto
+                    </span>
+                    <span>{line}</span>
+                  </div>
+                ))}
+                {situations.poorSleepOverridable ? (
+                  <button
+                    type="button"
+                    data-testid="checkin-poor-sleep-override"
+                    disabled={sitPending}
+                    onClick={overridePoorSleep}
+                    className="badge cursor-pointer border border-slate-300 bg-transparent text-slate-500 hover:bg-slate-100 disabled:opacity-60 dark:border-slate-600 dark:text-slate-400 dark:hover:bg-ink-800"
+                  >
+                    Not today
+                  </button>
                 ) : null}
               </div>
             ) : null}
