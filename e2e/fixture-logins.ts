@@ -829,3 +829,16 @@ export const MVMEDS_SELF_PROFILE = "Meds Board Self (e2e)";
 export const MVMEDS_RO_PROFILE = "Meds Board RO (e2e)";
 export const MVMEDS_SELF_MED = "Board Lisinopril";
 export const MVMEDS_RO_MED = "Board Metformin";
+
+// View-only access (issue #33). Two dedicated member logins granted ONLY profile 1 (the
+// shared sample record the spec reads — its "Adherence Refill Med (e2e)" + the vitals
+// quick-add form), one per access LEVEL, so view-only-access.spec stops creating members
+// at runtime through Settings → Family (createLoginViaFamily/setGrantsViaFamily — an
+// onClick+router.refresh() create/grant that went stale under CI load, the #830/#1111
+// census flake that failed shard 4). Profile 1 is each login's SOLE grant, so it's the
+// active profile on sign-in (createSession picks accessibleProfiles[0]). The read login
+// proves a mutation is bounced server-side; the write login proves the same mutation
+// succeeds (it writes one vital to profile 1 — exactly what the runtime-created write
+// member always did, so the shared-profile write target is unchanged).
+export const E2E_LOGIN_VIEWONLY_READ = "e2e_viewonly_read";
+export const E2E_LOGIN_VIEWONLY_WRITE = "e2e_viewonly_write";
