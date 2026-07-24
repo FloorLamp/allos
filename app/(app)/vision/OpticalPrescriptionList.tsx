@@ -93,7 +93,9 @@ function buildColumns(
       header: "Source",
       headerClassName: "hidden sm:table-cell",
       cellClassName: "hidden whitespace-nowrap sm:table-cell",
-      cell: (rx) => <RecordProvenance source={rx.source} />,
+      cell: (rx) => (
+        <RecordProvenance source={rx.source} documentId={rx.document_id} />
+      ),
     },
   ];
 }

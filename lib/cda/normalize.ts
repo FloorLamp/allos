@@ -296,16 +296,73 @@ export function collectText(node: any, depth: number = 0): string {
   return "";
 }
 
+// Block-level narrative element keys → the separator joining sibling instances.
+// C-CDA narrative is STRUCTURED: <paragraph> blocks, <list><item> rows, <table><tr>
+// rows. `collectText` flattens all of them with a single space, so a multi-paragraph
+// note (conditions, allergies, visit notes) arrives as a run-on blob — the #1350
+// finding. `collectBlockText` (below) emits a newline at each such boundary instead,
+// so `normalizeBlockText` can keep the structure and `NotesText`'s pre-wrap render it
+// line-by-line. (<br/> is already a literal "\n" by parse time — parseCcdaDocument
+// rewrites it before the XML parse — so it needs no key here.)
+const BLOCK_NARRATIVE_JOIN: Record<string, string> = {
+  paragraph: "\n\n", // blank line between paragraphs
+  item: "\n", // one list item per line
+  tr: "\n", // one table row per line
+};
+
+// Block-aware sibling of `collectText`: identical for inline content (arrays and
+// nested elements join with a space, #text is emitted verbatim, attributes skipped),
+// but a block-level element (paragraph / list item / table row) contributes its text
+// wrapped in newline boundaries and its repeated siblings joined by the block
+// separator above. Callers pass the result through `normalizeBlockText` (collapses
+// only intra-line whitespace, keeps newlines) so the block structure survives to
+// `NotesText`. Used for narrative BODIES (report impressions, visit notes); the
+// single-line name/label paths keep plain `collectText`.
+export function collectBlockText(node: any, depth: number = 0): string {
+  if (node == null) return "";
+  if (typeof node === "string") return node;
+  if (typeof node === "number" || typeof node === "boolean")
+    return String(node);
+  if (depth >= MAX_XML_WALK_DEPTH) return ""; // depth cap (#135 item 5)
+  if (Array.isArray(node))
+    return node.map((n) => collectBlockText(n, depth + 1)).join(" ");
+  if (typeof node === "object") {
+    const parts: string[] = [];
+    for (const [k, v] of Object.entries(node)) {
+      if (k.startsWith("@_")) continue; // attributes aren't visible text
+      if (k === "#text") {
+        parts.push(String(v));
+        continue;
+      }
+      const blockSep = BLOCK_NARRATIVE_JOIN[k];
+      if (blockSep !== undefined) {
+        const joined = asArray(v)
+          .map((n) => collectBlockText(n, depth + 1))
+          .filter((s) => s !== "")
+          .join(blockSep);
+        if (joined) parts.push(`\n${joined}\n`);
+      } else {
+        parts.push(collectBlockText(v, depth + 1));
+      }
+    }
+    return parts.join(" ");
+  }
+  return "";
+}
+
 // Walk a section's <text> narrative once and index every element that carries an
 // `ID` attribute → its visible text, so an observation's
 // <text><reference value="#id"/> can be resolved to the printed cell in the narrative
 // <table>. (C-CDA narrative uses the uppercase `ID` attribute; removeNSPrefix + the @_
 // prefix make it `@_ID`.) `normalize` shapes each cell's collected text — the default
 // collapses ALL whitespace to single spaces (single-line names/labels); the block
-// variant below preserves line breaks.
+// variant below preserves line breaks. `collect` chooses the tree walk: `collectText`
+// (inline, space-joined) for the collapsed map, `collectBlockText` (block boundaries →
+// newlines) for the line-preserving block map.
 function collectNarrativeMap(
   textNode: any,
-  normalize: (raw: string) => string
+  normalize: (raw: string) => string,
+  collect: (node: any) => string = collectText
 ): Record<string, string> {
   const map: Record<string, string> = {};
   const walk = (node: any, depth: number): void => {
@@ -317,7 +374,7 @@ function collectNarrativeMap(
     }
     const id = node["@_ID"];
     if (typeof id === "string" && id && map[id] === undefined) {
-      const t = normalize(collectText(node));
+      const t = normalize(collect(node));
       if (t) map[id] = t;
     }
     for (const [k, v] of Object.entries(node)) {
@@ -344,7 +401,7 @@ export function buildNarrativeIdMap(textNode: any): Record<string, string> {
 // blank lines — the readable middle ground between the run-on collapse and raw
 // preformatted padding.
 export function buildNarrativeBlockMap(textNode: any): Record<string, string> {
-  return collectNarrativeMap(textNode, normalizeBlockText);
+  return collectNarrativeMap(textNode, normalizeBlockText, collectBlockText);
 }
 
 function normalizeBlockText(raw: string): string {
@@ -354,6 +411,16 @@ function normalizeBlockText(raw: string): string {
     .replace(/ *\n */g, "\n") // trim each line's edges
     .replace(/\n{3,}/g, "\n\n") // at most one blank line between blocks
     .trim();
+}
+
+// The line-preserving narrative of a node as ONE string: block-aware collection
+// (paragraph/list/table boundaries → newlines) + `normalizeBlockText` (collapses
+// only intra-line whitespace). The single entrypoint for a free-text note BODY
+// (e.g. CCD Progress Notes → a visit's `notes`, #1350) so multi-paragraph narrative
+// keeps its structure for `NotesText`'s pre-wrap rendering instead of arriving as a
+// run-on blob. Name/label paths keep the plain collapsed `collectText`.
+export function collectBlockNarrative(node: any): string {
+  return normalizeBlockText(collectBlockText(node));
 }
 
 // Derive the collapsed name map from an already-built BLOCK map — a per-value string
