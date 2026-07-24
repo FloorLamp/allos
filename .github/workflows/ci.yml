@@ -51,13 +51,17 @@ jobs:
       #    NEW moderate would show here as advisory-only.
       # 2. Blocking gate at high severity — a high/critical advisory FAILS the
       #    check job instead of scrolling past unnoticed. Moderates stay
-      #    advisory (step 1); highs are enforced.
+      #    advisory (step 1); highs are enforced. The gate runs through
+      #    scripts/audit-gate.mjs, which carries a small, justified,
+      #    issue-tracked allowlist for the rare advisory with NO installable
+      #    fix (the 2026-07-24 brace-expansion case, #1454) — a NEW
+      #    high/critical still fails the job exactly as before.
       - name: Audit dependencies (visibility)
         run: npm audit
         continue-on-error: true
 
       - name: Audit dependencies (blocking, high+)
-        run: npm audit --audit-level=high
+        run: node scripts/audit-gate.mjs
 
       # PHI guard: scan the whole tree for likely-real NPIs/phones/SSNs
       # using the pure detector in lib/phi-scan.ts. High-signal structural checks
