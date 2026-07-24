@@ -1,12 +1,53 @@
 import { test, expect, type Page } from "@playwright/test";
+import Database from "better-sqlite3";
+import path from "node:path";
 import { totp } from "../lib/totp";
-import { createLoginViaFamily, setGrantsViaFamily } from "./family-helpers";
+import { hashPasswordSync } from "../lib/password";
+import { E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
 // Optional TOTP 2FA (issue #23): enroll a login, then prove the login flow stops
 // at a second-factor step and completes with both a computed authenticator code
 // and a one-time recovery code. Uses a throwaway member login in fresh, cookie-
 // less contexts so it never touches the shared admin session the other specs
 // reuse (enabling/using 2FA here can't log anyone else out).
+
+// DB-seed a fresh member login granted profile 1 (write) and return its credentials.
+// This test MUTATES 2FA state (enroll, then consume a one-time recovery code), so it
+// needs a THROWAWAY login per run — it can't reuse a static seeded fixture. But it does
+// NOT need the Family UI to mint one: seeding directly replaces the former
+// createLoginViaFamily/setGrantsViaFamily pair, whose onClick+router.refresh() create/grant
+// went stale under CI load (the #830/#1111 census flake that failed shard 4). The username
+// is per-run-unique so a retry against the persistent e2e DB can't collide on the
+// NOCASE-unique username.
+let memberSeq = 0;
+
+function e2eDbPath(): string {
+  return (
+    process.env.ALLOS_DB_PATH ??
+    path.join(process.cwd(), "e2e", ".data", "e2e.db")
+  );
+}
+
+function seedMemberOnProfile1(): { username: string; password: string } {
+  const username = `e2e_2fa_${Date.now()}_${++memberSeq}`;
+  const db = new Database(e2eDbPath());
+  try {
+    db.pragma("busy_timeout = 5000");
+    const loginId = Number(
+      db
+        .prepare(
+          "INSERT INTO logins (username, password_hash, role) VALUES (?, ?, 'member')"
+        )
+        .run(username, hashPasswordSync(E2E_MEMBER_PASSWORD)).lastInsertRowid
+    );
+    db.prepare(
+      "INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, 1, 'write')"
+    ).run(loginId);
+  } finally {
+    db.close();
+  }
+  return { username, password: E2E_MEMBER_PASSWORD };
+}
 
 // Complete the second-factor step with a code for the NEXT 30s step. The replay
 // guard rejects any step at or before the last spent one (enrollment spends the
@@ -36,22 +77,14 @@ async function completeTotpLogin(page: Page, secret: string): Promise<void> {
 }
 
 test("2FA: enroll, then second-factor login with code and recovery code (#23)", async ({
-  page,
   browser,
 }) => {
-  // This test drives two hardened multi-step Family operations (create login, then
-  // grant a profile — each a fresh /settings/family navigation) BEFORE the 2FA enroll/
-  // login arc, so it needs the extended budget its sibling view-only-access already
-  // uses; without it the create+grant pair intermittently bumps the 30s default (seen
-  // at --repeat-each=3, CI-equivalent).
+  // The 2FA enroll/login arc still compiles the login/settings routes on first hit, so
+  // keep the extended budget.
   test.slow();
-  // As admin (shared session): create the member login + grant it the seeded profile
-  // so it has a usable session. Both steps go through the shared family helpers, which
-  // harden the onClick+router.refresh() create/grant against the hydration swallow and
-  // the toaster-poll false-settle (#830/#1111). createLoginViaFamily returns a
-  // per-run-unique username so a CI retry against the persistent DB can't collide.
-  const { username: user, password: pass } = await createLoginViaFamily(page);
-  await setGrantsViaFamily(page, user, { profileId: 1, access: "write" });
+  // DB-seed the throwaway member login + its profile-1 grant directly (no shared admin
+  // session, no Family UI) so the flaky create/grant render path can't stall the setup.
+  const { username: user, password: pass } = seedMemberOnProfile1();
 
   // As the member (fresh context): enroll in 2FA on Settings → Preferences.
   const enrollCtx = await browser.newContext({

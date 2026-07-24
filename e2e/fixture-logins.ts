@@ -802,3 +802,16 @@ export const SITUATION_IMPACT_PROFILE = "Situation Impact (e2e)";
 // but not required. Dedicated + isolated so the symptom write never perturbs a neighbor.
 export const E2E_LOGIN_WELLSYM = "e2e_wellsym";
 export const WELL_SYMPTOM_PROFILE = "Well Symptom (e2e)";
+
+// View-only access (issue #33). Two dedicated member logins granted ONLY profile 1 (the
+// shared sample record the spec reads — its "Adherence Refill Med (e2e)" + the vitals
+// quick-add form), one per access LEVEL, so view-only-access.spec stops creating members
+// at runtime through Settings → Family (createLoginViaFamily/setGrantsViaFamily — an
+// onClick+router.refresh() create/grant that went stale under CI load, the #830/#1111
+// census flake that failed shard 4). Profile 1 is each login's SOLE grant, so it's the
+// active profile on sign-in (createSession picks accessibleProfiles[0]). The read login
+// proves a mutation is bounced server-side; the write login proves the same mutation
+// succeeds (it writes one vital to profile 1 — exactly what the runtime-created write
+// member always did, so the shared-profile write target is unchanged).
+export const E2E_LOGIN_VIEWONLY_READ = "e2e_viewonly_read";
+export const E2E_LOGIN_VIEWONLY_WRITE = "e2e_viewonly_write";
