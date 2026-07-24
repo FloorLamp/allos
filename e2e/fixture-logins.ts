@@ -842,3 +842,14 @@ export const MVMEDS_RO_MED = "Board Metformin";
 // member always did, so the shared-profile write target is unchanged).
 export const E2E_LOGIN_VIEWONLY_READ = "e2e_viewonly_read";
 export const E2E_LOGIN_VIEWONLY_WRITE = "e2e_viewonly_write";
+
+// #1171 / #1241 — the daylight-outdoor-minutes trend chart AND the free-days setting.
+// A dedicated adult profile with a coarse home location (so the sun features are on)
+// and outdoor daytime activities on SEVERAL recent days, so the Trends → Vitals
+// "Sun / outdoor time" chart renders a real multi-day series. Also the host for the
+// free-days checkbox row on Settings → Profile (#1241): the setting spec toggles this
+// profile's own free_days, isolated so it never perturbs profile 1's shared sleep /
+// social-jetlag surfaces (the sleep-regularity spec pins profile 1's SRI). Synthetic,
+// no PHI.
+export const E2E_LOGIN_SUN = "e2e_sun";
+export const SUN_PROFILE = "Sun Outdoor (e2e)";
