@@ -1,6 +1,7 @@
 import { activityComponentSportNames } from "./activity-icon";
 import { shiftDateStr } from "./date";
-import { db } from "./db";
+import { db, today } from "./db";
+import type { MemberTimeline } from "./timeline-multi";
 import { encounterTypeDisplay } from "./encounter-kind";
 import { vaccineDisplayName } from "./immunization-catalog";
 import { medicationCourseEvents } from "./medication-history";
@@ -9,7 +10,7 @@ import {
   CONDITION_REPRESENTATIVE_IDS,
   ALLERGY_REPRESENTATIVE_IDS,
 } from "./queries/clinical";
-import { restrictedActivityTypeClause } from "./age-gate";
+import { restrictedActivityTypeClause, isTrainingRestricted } from "./age-gate";
 import type { MedStopReason } from "./types";
 import { summarizeExercise, type SetRow } from "./journal-format";
 import { getTimezone, type UnitPrefs } from "./settings";
@@ -69,6 +70,13 @@ export interface TimelineOptions {
   // visible — the type-aware successor to the old all-or-nothing
   // includeTrainingEvents=false. Ignored when includeTrainingEvents is false.
   restricted?: boolean;
+  // Multi-view Timeline (#1329): the profile whose day a per-day deep-link
+  // (`timelineDayHref` on symptom/practice events) should land on. Set ONLY by the
+  // cross-profile gather (getMultiProfileTimeline) to the member being gathered, so a
+  // day link carries whose day it is and the single-day view lands on the SUBJECT's
+  // day context — never a mixed-subject edit surface. Undefined (every single-view
+  // caller) leaves the link byte-identical.
+  dayLinkProfileId?: number;
 }
 
 export interface TimelinePage {
@@ -1093,7 +1101,7 @@ function collectEvents(
           parsed.map((p) => symptomLabel(p.key)),
           5
         ),
-        href: timelineDayHref(s.date),
+        href: timelineDayHref(s.date, options.dayLinkProfileId),
         tone: s.max_severity >= 3 ? "warn" : "default",
         detailItems: parsed.map((p) => ({
           label: symptomLabel(p.key),
@@ -1153,7 +1161,7 @@ function collectEvents(
         category: "practice",
         title: p.practice,
         subtitle: p.count === 1 ? "1 session" : `${p.count} sessions`,
-        href: timelineDayHref(p.date),
+        href: timelineDayHref(p.date, options.dayLinkProfileId),
         detailItems,
       },
       options
@@ -1224,6 +1232,39 @@ export function getTimelinePage(
   const limit = clampLimit(options.limit);
   const all = collectEvents(profileId, options, limit + 1);
   return { events: all.slice(0, limit), hasMore: all.length > limit };
+}
+
+// Cross-profile Timeline gather (issue #1329) — the list-first, LOOP-composed multi-view
+// read. It takes the resolved view-set (`scope.viewIds`, already ∩ accessible), never
+// imports lib/auth, and composes the EXISTING per-profile getTimelinePage over each
+// member. DELIBERATELY loop-composed, not set-based `profile_id IN` SQL: every member's
+// day bucketing is derived from that member's OWN today()/timezone (the per-profile-
+// context trap, #1096) and the per-table caps apply PER MEMBER (a chatty member can't
+// evict a quiet member's day — #304), which a shared-clock SQL read would violate. So
+// there is no new cross-profile SQL module to register — only a merge of per-profile
+// results (the pure merge lives in lib/timeline-multi.ts). Each member's per-day
+// deep-links carry that member's own profile id so the single-day view lands on the
+// SUBJECT's day context. `hasMore` is true when ANY member has more history.
+export function getMultiProfileTimeline(
+  viewIds: readonly number[],
+  options: Omit<TimelineOptions, "restricted" | "dayLinkProfileId"> = {}
+): { members: MemberTimeline[]; hasMore: boolean } {
+  const members: MemberTimeline[] = [];
+  let hasMore = false;
+  for (const pid of viewIds) {
+    const page = getTimelinePage(pid, {
+      ...options,
+      restricted: isTrainingRestricted(pid),
+      dayLinkProfileId: pid,
+    });
+    if (page.hasMore) hasMore = true;
+    members.push({
+      profileId: pid,
+      today: today(pid),
+      events: page.events.map((e) => ({ ...e, profileId: pid })),
+    });
+  }
+  return { members, hasMore };
 }
 
 export function getTimelineDates(

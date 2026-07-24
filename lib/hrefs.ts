@@ -137,8 +137,21 @@ export function medicationsFilterHref(filter: MedicationFilter): AppRoute {
 // The Timeline "jump to this day" link: filter the feed to a single day AND
 // scroll to that day's anchor. One place for the `/timeline?from=X&to=X#…`
 // pattern the sidebar calendar and the workout heatmap (#186) both build.
-export function timelineDayHref(date: string): AppRoute {
-  return `/timeline?from=${date}&to=${date}#timeline-day-${date}`;
+//
+// `subjectProfileId` (issue #1329) rides only on links built INSIDE the multi-view
+// timeline feed, where an event belongs to a specific in-view member and the day it
+// deep-links to is THAT member's local day. The single-day timeline view stays
+// single-SUBJECT (never a mixed-subject edit surface), so the param carries whose day
+// it is; omitted (the default, and every single-view caller) it renders byte-identical.
+export function timelineDayHref(
+  date: string,
+  subjectProfileId?: number
+): AppRoute {
+  // Inline the full `/timeline?…` literals (not a `${base}` variable) so Next's
+  // typedRoutes can still infer the route from the literal prefix at build time.
+  return subjectProfileId != null
+    ? `/timeline?from=${date}&to=${date}&subject=${subjectProfileId}#timeline-day-${date}`
+    : `/timeline?from=${date}&to=${date}#timeline-day-${date}`;
 }
 
 // The Data hub's deep-linkable sections. Source of truth for the union — the page

@@ -94,6 +94,13 @@ import {
   MULTI_SHARED_ALLERGY,
   MULTI_OWNER_GOAL,
   MULTI_SHARED_GOAL,
+  E2E_LOGIN_TL_MULTI,
+  TL_EAST_PROFILE,
+  TL_WEST_PROFILE,
+  TL_EAST_ACTIVITY,
+  TL_WEST_ACTIVITY,
+  TL_EAST_TZ,
+  TL_WEST_TZ,
   E2E_LOGIN_OWN,
   OWN_SELF_PROFILE,
   OWN_OTHER_PROFILE,
@@ -5255,6 +5262,60 @@ console.log(
   grantProfile(multiLoginId, multiSharedId, "write");
   console.log(
     `e2e: seeded multi-view fixture — ${E2E_LOGIN_MULTI} granted ${MULTI_OWNER_PROFILE} (${multiOwnerId}) + ${MULTI_SHARED_PROFILE} (${multiSharedId})`
+  );
+}
+
+// ── Multi-view Timeline: divergent-timezone day boundary (issue #1329) ─────────
+// A dedicated member (E2E_LOGIN_TL_MULTI) granted TWO adult profiles WRITE, each with a
+// per-profile timezone ~25h apart, so the SAME frozen instant is a DIFFERENT local
+// calendar date for each. Each profile carries ONE activity dated on ITS OWN today
+// (computed in its zone from the SAME clock the app freezes), so the merged multi-view
+// Timeline renders two separate "Today" day-groups with honest per-member divergence
+// badges. The timeline spec toggles WEST into the view-set and asserts both members'
+// today-badges + the subject chip on the non-acting row; single view stays unchanged.
+{
+  const eastId = fixtureProfileId(TL_EAST_PROFILE);
+  const westId = fixtureProfileId(TL_WEST_PROFILE);
+  const setTz = db.prepare(
+    `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'timezone', ?)
+       ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+  );
+  setTz.run(eastId, TL_EAST_TZ);
+  setTz.run(westId, TL_WEST_TZ);
+  // The frozen instant the app uses (ALLOS_TEST_NOW when set, else real now), so the
+  // seeded activity date == the app's today(profileId) at request time.
+  const seedNow = process.env.ALLOS_TEST_NOW
+    ? new Date(process.env.ALLOS_TEST_NOW)
+    : new Date();
+  const todayIn = (tz: string): string =>
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: tz,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(seedNow);
+  const seedTlActivity = (
+    profileId: number,
+    tz: string,
+    title: string
+  ): void => {
+    if (
+      !db
+        .prepare("SELECT 1 FROM activities WHERE profile_id = ? AND title = ?")
+        .get(profileId, title)
+    ) {
+      db.prepare(
+        `INSERT INTO activities (profile_id, date, type, title)
+         VALUES (?, ?, 'cardio', ?)`
+      ).run(profileId, todayIn(tz), title);
+    }
+  };
+  seedTlActivity(eastId, TL_EAST_TZ, TL_EAST_ACTIVITY);
+  seedTlActivity(westId, TL_WEST_TZ, TL_WEST_ACTIVITY);
+  const tlLoginId = seedMemberLogin(E2E_LOGIN_TL_MULTI, eastId, "write");
+  grantProfile(tlLoginId, westId, "write");
+  console.log(
+    `e2e: seeded timeline divergent-tz fixture — ${E2E_LOGIN_TL_MULTI} granted ${TL_EAST_PROFILE} (${eastId}, ${todayIn(TL_EAST_TZ)}) + ${TL_WEST_PROFILE} (${westId}, ${todayIn(TL_WEST_TZ)})`
   );
 }
 

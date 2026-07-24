@@ -15,6 +15,11 @@ import {
   MULTI_OWNER_ALLERGY,
   MULTI_SHARED_ALLERGY,
   MULTI_SHARED_GOAL,
+  E2E_LOGIN_TL_MULTI,
+  TL_EAST_PROFILE,
+  TL_WEST_PROFILE,
+  TL_EAST_ACTIVITY,
+  TL_WEST_ACTIVITY,
 } from "./fixture-logins";
 
 // Multi-profile viewing (issue #1096): the profile-menu view toggles + the thin
@@ -446,6 +451,156 @@ test.describe("Tier-1 record lists adopt multi-view (issue #1328)", () => {
     await expect(
       sharedGoalRow.getByTestId(`subject-chip-${sharedId}`)
     ).toBeVisible();
+
+    await page.context().close();
+  });
+});
+
+// ── Multi-view Timeline with a divergent-timezone day boundary (issue #1329) ───
+// A dedicated member (E2E_LOGIN_TL_MULTI) granted two profiles ~25h apart (UTC+13 EAST
+// vs UTC−12 WEST), each with ONE activity dated on ITS OWN today. Single view is
+// unchanged (owner-only, no chips, no divergence chrome); multi view merges both,
+// bucketing each member's activity into THEIR local day — so the SAME instant lands in
+// two separate "Today" day-groups, each carrying an honest per-member today badge, and
+// the non-acting member's row wears a subject chip. Spec-OWNED fixtures (read-only
+// viewing + the per-session view-set, so nothing persistent to reset).
+
+// Resolve the two timeline fixture profile ids (spec-owned, so a name lookup is stable).
+function timelineProfileIds(): { eastId: number; westId: number } {
+  const dbPath =
+    process.env.ALLOS_DB_PATH ??
+    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const db = new Database(dbPath);
+  try {
+    db.pragma("busy_timeout = 5000");
+    const idOf = (name: string): number =>
+      (
+        db.prepare("SELECT id FROM profiles WHERE name = ?").get(name) as {
+          id: number;
+        }
+      ).id;
+    return { eastId: idOf(TL_EAST_PROFILE), westId: idOf(TL_WEST_PROFILE) };
+  } finally {
+    db.close();
+  }
+}
+
+// Toggle the WEST profile into the view via the profile menu, then reload the timeline
+// so the multi-view feed renders with the popover closed (no stale overlay).
+async function enterTimelineMultiView(
+  page: Page,
+  westId: number
+): Promise<void> {
+  await page.goto("/timeline");
+  await openProfileMenu(page);
+  await settledClick(page, page.getByTestId(`view-toggle-${westId}`));
+  await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+  await page.goto("/timeline");
+  await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+}
+
+test.describe("Multi-view Timeline divergent-day (issue #1329)", () => {
+  test("single view unchanged; multi view merges both members with per-member Today badges + non-acting chip", async ({
+    browser,
+  }) => {
+    test.slow();
+    const { eastId, westId } = timelineProfileIds();
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_TL_MULTI,
+      password: E2E_MEMBER_PASSWORD,
+    });
+
+    // Acting profile is EAST (lowest id / first accessible).
+    await expect(page.getByTestId("user-menu-trigger")).toContainText(
+      TL_EAST_PROFILE
+    );
+
+    // Single view: only EAST's activity, no strip, no chips, no divergence chrome.
+    await page.goto("/timeline");
+    await expect(
+      page.getByText(TL_EAST_ACTIVITY, { exact: false })
+    ).toBeVisible();
+    await expect(
+      page.getByText(TL_WEST_ACTIVITY, { exact: false })
+    ).toHaveCount(0);
+    await expect(page.getByTestId("profile-view-strip")).toHaveCount(0);
+    await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(0);
+    await expect(
+      page.locator('[data-testid^="timeline-daymark-"]')
+    ).toHaveCount(0);
+    await expect(page.getByTestId("timeline-mode-toggle")).toHaveCount(0);
+
+    // Enter multi view (WEST toggled in).
+    await enterTimelineMultiView(page, westId);
+
+    // Both members' activities are merged in.
+    await expect(
+      page.getByText(TL_EAST_ACTIVITY, { exact: false })
+    ).toBeVisible();
+    await expect(
+      page.getByText(TL_WEST_ACTIVITY, { exact: false })
+    ).toBeVisible();
+
+    // The NON-acting (WEST) event wears a subject chip; the acting (EAST) event never
+    // does (its subject is implied by the view strip).
+    const westRow = page
+      .getByTestId("timeline-event")
+      .filter({ hasText: TL_WEST_ACTIVITY });
+    await expect(westRow.getByTestId(`subject-chip-${westId}`)).toBeVisible();
+    await expect(
+      page.locator(`[data-testid="subject-chip-${eastId}"]`)
+    ).toHaveCount(0);
+
+    // Divergent-day honesty: the SAME instant is a different local date for each, so
+    // BOTH members have a "Today" day-group, each badged with its own subject.
+    await expect(
+      page
+        .locator(`[data-testid="timeline-daymark-${eastId}"]`)
+        .filter({ hasText: "Today" })
+    ).toBeVisible();
+    await expect(
+      page
+        .locator(`[data-testid="timeline-daymark-${westId}"]`)
+        .filter({ hasText: "Today" })
+    ).toBeVisible();
+
+    await page.context().close();
+  });
+
+  test("by-person toggle groups the merged timeline under per-member sections", async ({
+    browser,
+  }) => {
+    test.slow();
+    const { eastId, westId } = timelineProfileIds();
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_TL_MULTI,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    await enterTimelineMultiView(page, westId);
+
+    // Default is interleaved (merged date bands, no per-member sections).
+    await expect(page.getByTestId("timeline-mode-toggle")).toBeVisible();
+    await expect(page.getByTestId("timeline-by-person")).toHaveCount(0);
+
+    // Switch to by-person: each member gets its own section with its own activity.
+    await followLink(
+      page,
+      page.getByTestId("timeline-mode-by-person"),
+      /group=by-person/
+    );
+    await expect(page.getByTestId("timeline-by-person")).toBeVisible();
+    const eastSection = page.getByTestId(`timeline-member-section-${eastId}`);
+    const westSection = page.getByTestId(`timeline-member-section-${westId}`);
+    await expect(eastSection).toContainText(TL_EAST_ACTIVITY);
+    await expect(westSection).toContainText(TL_WEST_ACTIVITY);
+
+    // Toggle back to interleaved.
+    await followLink(
+      page,
+      page.getByTestId("timeline-mode-interleaved"),
+      /\/timeline$/
+    );
+    await expect(page.getByTestId("timeline-by-person")).toHaveCount(0);
 
     await page.context().close();
   });
