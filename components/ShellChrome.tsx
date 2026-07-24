@@ -32,11 +32,15 @@ export default function ShellChrome({
   children: React.ReactNode;
   banner?: React.ReactNode;
 }) {
-  const hidden = useShellChrome();
+  const { hidden, ready } = useShellChrome();
   return (
     <div
       data-testid="shell-chrome"
       data-hidden={hidden ? "true" : "false"}
+      // The scroll listener only exists after hydration, so before it the chrome
+      // is simply always revealed (the safe state). Surfaced so a browser test
+      // can wait for the real behavior rather than race it.
+      data-ready={ready ? "true" : "false"}
       className="shell-chrome sticky top-0 z-30 md:static print:hidden"
     >
       {children}

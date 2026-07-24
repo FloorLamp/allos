@@ -40,6 +40,8 @@ import {
   E2E_LOGIN_COMPARE,
   E2E_LOGIN_DUP,
   E2E_LOGIN_EMPTY_TRAINING,
+  E2E_LOGIN_SHELL,
+  SHELL_PROFILE,
   E2E_LOGIN_SLEEP_EDIT,
   E2E_LOGIN_SLEEP_PHASE,
   E2E_LOGIN_SLEEP_SEGMENTED,
@@ -6147,5 +6149,17 @@ console.log(
   seedMemberLogin(E2E_LOGIN_INTRADAY, idId, "write");
   console.log(
     `e2e: seeded intraday-panel fixture — ${E2E_LOGIN_INTRADAY} granted ${INTRADAY_PROFILE} (${idId}); intraday day ${idToday}, quiet day ${idQuiet} (#1068)`
+  );
+}
+
+// Mobile shell fixture (#1416): an empty adult profile the shell spec logs ONE
+// body weight onto through the quick-log sheet. Boot only guarantees the isolated
+// write-granted login/profile exists; the spec asserts the row it wrote by VALUE,
+// never a count, so repeated runs need no reset.
+{
+  const shellId = fixtureProfileId(SHELL_PROFILE);
+  seedMemberLogin(E2E_LOGIN_SHELL, shellId, "write");
+  console.log(
+    `e2e: seeded mobile-shell fixture — ${E2E_LOGIN_SHELL} granted ${SHELL_PROFILE} (${shellId}) (#1416)`
   );
 }

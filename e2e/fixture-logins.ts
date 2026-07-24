@@ -946,3 +946,16 @@ export const INTRADAY_PROFILE = "Intraday (e2e)";
 export const INTRADAY_ACTIVITY = "Sunrise ride (e2e)";
 export const INTRADAY_TICK_DOC = "e2e-intraday-morning-panel.pdf";
 export const INTRADAY_TICK_TIME = "07:15";
+
+// #1416 — the mobile shell pass. A DEDICATED member login + adult profile whose
+// only job is to receive the ONE write the mobile shell spec makes: a body weight
+// logged by walking the phone bar's quick-log sheet → "Log weight" → the existing
+// Body quick-add form. Dedicated on purpose: the write proves the sheet reaches a
+// REAL existing form (not a mock), and a weigh-in landing on a shared profile would
+// move "latest weight" for the dashboard/coaching specs that assert it. Seeded with
+// nothing at all — the spec asserts only the row it wrote, never a count — so
+// --repeat-each and re-runs are safe. No birthdate → adult → never
+// training-restricted, so the bar renders its full action cluster.
+export const E2E_LOGIN_SHELL = "e2e_shell";
+export const SHELL_PROFILE = "Mobile Shell (e2e)";
+export const SHELL_WEIGHT_KG = "77.7";

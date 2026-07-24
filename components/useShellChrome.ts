@@ -19,9 +19,17 @@ import {
 // paints once a frame, and the machine returns the SAME object when nothing
 // changed so React bails out of most of those renders anyway.
 
-export function useShellChrome(): boolean {
+export function useShellChrome(): { hidden: boolean; ready: boolean } {
   const pathname = usePathname();
   const [state, setState] = useState(INITIAL_SHELL_CHROME);
+  // Flipped once the scroll listener is attached. The behavior is inherently
+  // hydration-gated (a server-rendered bar has no listener, so a scroll before
+  // hydration is simply not seen — the chrome stays revealed, which is the safe
+  // state), and surfacing that as `data-ready` lets a browser test wait for the
+  // real thing instead of racing it. Deliberately NOT a scroll-position sync on
+  // attach: arriving at a restored mid-page offset should show the chrome, not
+  // hide it.
+  const [ready, setReady] = useState(false);
 
   // A route change lands at (or near) the top with the chrome revealed —
   // carrying the previous page's hidden state across would open a new page with
@@ -40,11 +48,12 @@ export function useShellChrome(): boolean {
       });
     };
     window.addEventListener("scroll", onScroll, { passive: true });
+    setReady(true);
     return () => {
       window.removeEventListener("scroll", onScroll);
       if (frame) cancelAnimationFrame(frame);
     };
   }, []);
 
-  return state.hidden;
+  return { hidden: state.hidden, ready };
 }

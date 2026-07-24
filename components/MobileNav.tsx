@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -272,38 +273,47 @@ export default function MobileNav({
         </div>
       </header>
 
-      {drawer.mounted && (
-        <div className="fixed inset-0 z-40 md:hidden">
-          <div
-            className={`absolute inset-0 bg-black/40 backdrop-blur-sm ${backdropMotion}`}
-            onClick={() => setOpen(false)}
-            aria-hidden
-          />
-          <aside
-            className={`absolute inset-y-0 left-0 flex w-72 max-w-[85%] flex-col gap-4 overflow-y-auto border-r border-black/10 bg-white pt-[max(1rem,env(safe-area-inset-top))] pr-4 pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] dark:border-white/5 dark:bg-ink-950 ${panelMotion}`}
-          >
-            <SidebarContent
-              activityDates={activityDates}
-              version={version}
-              active={active}
-              username={username}
-              profiles={profiles}
-              viewIds={viewIds}
-              restricted={restricted}
-              isAdmin={isAdmin}
-              multiProfile={multiProfile}
-              foodLoggingRelevant={foodLoggingRelevant}
-              hasIntakeItems={hasIntakeItems}
-              relevance={relevance}
-              reviewCount={reviewCount}
-              readOnly={readOnly}
-              whatsNewUnseen={whatsNewUnseen}
-              onNavigate={() => setOpen(false)}
-              onClose={() => setOpen(false)}
+      {/* Portalled to <body> ON PURPOSE. The bar lives inside <ShellChrome>,
+      which TRANSFORMS itself to hide on scroll — and a transformed ancestor turns
+      `position: fixed` into "fixed relative to that ancestor", which would drag
+      the full-screen drawer along with the bar's slide. Rendering it at the body
+      keeps the overlay anchored to the viewport no matter what the chrome is
+      doing. (BottomSheet portals for the same reason.) */}
+      {drawer.mounted &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div className="fixed inset-0 z-40 md:hidden">
+            <div
+              className={`absolute inset-0 bg-black/40 backdrop-blur-sm ${backdropMotion}`}
+              onClick={() => setOpen(false)}
+              aria-hidden
             />
-          </aside>
-        </div>
-      )}
+            <aside
+              className={`absolute inset-y-0 left-0 flex w-72 max-w-[85%] flex-col gap-4 overflow-y-auto border-r border-black/10 bg-white pt-[max(1rem,env(safe-area-inset-top))] pr-4 pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] dark:border-white/5 dark:bg-ink-950 ${panelMotion}`}
+            >
+              <SidebarContent
+                activityDates={activityDates}
+                version={version}
+                active={active}
+                username={username}
+                profiles={profiles}
+                viewIds={viewIds}
+                restricted={restricted}
+                isAdmin={isAdmin}
+                multiProfile={multiProfile}
+                foodLoggingRelevant={foodLoggingRelevant}
+                hasIntakeItems={hasIntakeItems}
+                relevance={relevance}
+                reviewCount={reviewCount}
+                readOnly={readOnly}
+                whatsNewUnseen={whatsNewUnseen}
+                onNavigate={() => setOpen(false)}
+                onClose={() => setOpen(false)}
+              />
+            </aside>
+          </div>,
+          document.body
+        )}
 
       <QuickLogSheet
         open={sheetOpen}
