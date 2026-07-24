@@ -1,7 +1,34 @@
 import { test, expect } from "@playwright/test";
+import Database from "better-sqlite3";
 import { loginAs, followLink } from "./nav";
 import { settledClick, settledCheck, settledFill } from "./helpers";
-import { E2E_LOGIN_NOTIF, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import {
+  E2E_LOGIN_NOTIF,
+  E2E_LOGIN_CLOSURE_DQ,
+  CLOSURE_DQ_PROFILE,
+  E2E_MEMBER_PASSWORD,
+} from "./fixture-logins";
+
+const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+
+// Clear the CLOSURE_DQ profile's birthdate so the "Set a birthdate" data-quality gap is
+// active before the closure test (spec-owned). BLAST RADIUS: one attr on one dedicated
+// fixture profile.
+function resetClosureBirthdate(): void {
+  const db = new Database(DB_PATH);
+  try {
+    db.pragma("busy_timeout = 5000");
+    const row = db
+      .prepare("SELECT id FROM profiles WHERE name = ?")
+      .get(CLOSURE_DQ_PROFILE) as { id: number } | undefined;
+    if (row)
+      db.prepare(
+        "DELETE FROM profile_settings WHERE profile_id = ? AND key = 'birthdate'"
+      ).run(row.id);
+  } finally {
+    db.close();
+  }
+}
 
 // Settings IA overhaul (#928): the new tab strip, the anchor-nav Profile tab, the
 // Notifications tab that composes all three tiers + the kind × channel matrix, the
@@ -155,6 +182,74 @@ test.describe("Settings IA (#928) — member + matrix", () => {
       await expect(member.getByTestId("notification-matrix")).toBeVisible();
       await expect(member.getByText("Server", { exact: true })).toHaveCount(0);
     } finally {
+      await member.context().close();
+    }
+  });
+
+  test("muting the profile as the last unmuted managing login warns about the safety tier (#1324)", async ({
+    browser,
+  }) => {
+    test.slow();
+    const member = await loginAs(browser, {
+      username: E2E_LOGIN_NOTIF,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await member.goto("/settings/notifications");
+      const mute = member.getByTestId("profile-notify-mute");
+      await expect(mute).toBeVisible();
+
+      // NOTIF is this login's sole managing profile (no co-caregiver), so it is the
+      // last unmuted managing login: checking the mute box warns (warn, never block).
+      // State-relative + self-restoring so it stays repeat-each safe.
+      const wasChecked = await mute.isChecked();
+      await settledCheck(member, mute, true);
+      await expect(member.getByTestId("mute-safety-warning")).toBeVisible();
+      await expect(member.getByTestId("mute-safety-warning")).toContainText(
+        /safety reminders/i
+      );
+
+      // Un-muting clears the warning; leave the fixture as we found it.
+      await settledCheck(member, mute, false);
+      await expect(member.getByTestId("mute-safety-warning")).toHaveCount(0);
+      if (wasChecked) await settledCheck(member, mute, true);
+    } finally {
+      await member.context().close();
+    }
+  });
+
+  test("setting a birthdate on Profile settings clears the data-quality gap and toasts (#1305)", async ({
+    browser,
+  }) => {
+    test.slow();
+    resetClosureBirthdate();
+    const member = await loginAs(browser, {
+      username: E2E_LOGIN_CLOSURE_DQ,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    try {
+      await member.goto("/settings/profile");
+      const bd = member.getByTestId("profile-birthdate");
+      await expect(bd).toBeVisible();
+      // Wait for hydration so the controlled field's onChange (and the autosave it drives)
+      // is wired before filling — a pre-hydration fill would never save (#794 blur path).
+      await expect(async () => {
+        const hydrated = await bd.evaluate((el) =>
+          Object.keys(el).some(
+            (k) =>
+              k.startsWith("__reactFiber$") || k.startsWith("__reactProps$")
+          )
+        );
+        expect(hydrated, "birthdate field not hydrated yet").toBe(true);
+      }).toPass(); // topass-ok: hydration gate for the controlled DateField whose display reformats a valid ISO, so a value assertion can't express the wait (#794)
+      await bd.fill("1990-01-01");
+      // The settings autosave path returns the closure acknowledgment as a toast (#1305).
+      await expect(
+        member.getByTestId("toast").filter({ hasText: /That cleared/i })
+      ).toBeVisible();
+    } finally {
+      // Leave the profile gappy for the next repeat.
+      resetClosureBirthdate();
       await member.context().close();
     }
   });

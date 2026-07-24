@@ -65,6 +65,7 @@ import { PHENOAGE_INPUT_COUNT, PHENOAGE_INPUT_NAMES } from "./bio-age";
 import {
   detectDataQualityGaps,
   dataQualityDedupeKey,
+  DATA_QUALITY_PREFIX,
   type DataQualityInputs,
   type DataQualityGap,
 } from "./data-quality";
@@ -72,7 +73,11 @@ import { situationHistoryResolver } from "./trend-annotations";
 import { optimalStatus } from "./reference-range";
 import { decideSunExposure, SUN_EXPOSURE_WINDOW_WEEKS } from "./sun-exposure";
 import { decidePeriodontalObservation } from "./oral-health-observation";
-import { fitnessRetestDue, fitnessCheckSignalKey } from "./fitness-retest";
+import {
+  fitnessRetestDue,
+  fitnessCheckSignalKey,
+  FITNESS_CHECK_PREFIX,
+} from "./fitness-retest";
 import { getLatestFitnessAssessmentDate } from "./fitness-assessment";
 import { getMobilitySuggestions } from "./queries/mobility";
 import { getFitnessRetestCadenceDays } from "./settings";
@@ -355,6 +360,26 @@ export function buildDataQualityFindings(profileId: number): Finding[] {
     actionHref: gap.ctaHref,
     actionLabel: "Fix it",
   }));
+}
+
+// The finding snapshot for the closure loop (#1305): the builders whose findings a
+// satisfier WRITE can plausibly clear, gathered for the DECLARED prefixes only. Prefix-
+// scoped by construction — a satisfier declares 1–2 prefixes (never "all"), so only those
+// builders run; each is a cheap, profile-scoped read. dedupeKeys are format-independent,
+// so default date prefs are fine here. `withFindingClosure` (lib/finding-closure) calls
+// this bracketing the write and diffs the active set pre/post. A new satisfier adds its
+// prefix's builder to this dispatch (and declares the prefix at its action).
+export function closureFindingSnapshot(
+  profileId: number,
+  prefixes: readonly string[],
+  today: string
+): Finding[] {
+  const out: Finding[] = [];
+  if (prefixes.includes(FITNESS_CHECK_PREFIX))
+    out.push(...buildFitnessCheckFindings(profileId, today));
+  if (prefixes.includes(DATA_QUALITY_PREFIX))
+    out.push(...buildDataQualityFindings(profileId));
+  return out;
 }
 
 // `prefs` (#1020): the viewer's date shape for the dates some finding texts embed

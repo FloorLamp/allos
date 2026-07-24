@@ -14,10 +14,16 @@ export default function ProfileMuteToggle({
   profileId,
   profileName,
   muted,
+  lastUnmutedManaging,
 }: {
   profileId: number;
   profileName: string;
   muted: boolean;
+  // Whether THIS login is the last unmuted managing login for the profile (#1324):
+  // muting here would route the profile's safety tier (dose reminders / missed-dose
+  // escalation) to nobody. Server-computed over the same managing-login set the
+  // fan-out uses; independent of this login's own current mute state.
+  lastUnmutedManaging: boolean;
 }) {
   const router = useRouter();
   const [isMuted, setIsMuted] = useState(muted);
@@ -52,6 +58,16 @@ export default function ProfileMuteToggle({
         />
         Don’t send me notifications about {profileName}
       </label>
+      {isMuted && lastUnmutedManaging && (
+        <p
+          className="text-xs text-rose-600 dark:text-rose-400"
+          data-testid="mute-safety-warning"
+        >
+          You&rsquo;re the last caregiver still receiving {profileName}&rsquo;s
+          notifications — muting here sends their safety reminders (missed-dose
+          escalation) to nobody. You can still mute if you mean to.
+        </p>
+      )}
       <p className="text-xs text-slate-500 dark:text-slate-400">
         Silences every channel you receive for this profile — including safety
         reminders like missed-dose escalation. Only affects your login; other

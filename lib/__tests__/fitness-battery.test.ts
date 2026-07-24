@@ -7,6 +7,8 @@ import {
   VO2_METHODS,
   fitnessTest,
   SENIOR_BATTERY_MIN_AGE,
+  testEquipmentMissing,
+  equipmentMissingTestKeys,
 } from "@/lib/fitness-battery";
 import { FITNESS_NORM_MARKERS, hasFitnessNorms } from "@/lib/fitness-norms";
 import { hasHoldNorm } from "@/lib/fitness-hold-norms";
@@ -221,5 +223,27 @@ describe("fitnessTest lookup", () => {
   it("resolves a known key and refuses an unknown one", () => {
     expect(fitnessTest("vo2max")!.label).toBe("VO2 Max");
     expect(fitnessTest("nope")).toBeUndefined();
+  });
+});
+
+describe("equipment-missing gate (#1307)", () => {
+  const grip = fitnessTest("grip")!; // needs a hand dynamometer
+  const pushups = fitnessTest("pushups")!; // no equipment
+
+  it("a test with no equipment requirement is never missing", () => {
+    expect(testEquipmentMissing(pushups, [])).toBe(false);
+  });
+
+  it("flags a required-equipment test the profile doesn't own", () => {
+    expect(testEquipmentMissing(grip, [])).toBe(true);
+    expect(testEquipmentMissing(grip, ["treadmill"])).toBe(true);
+    // A substring match on the owned gear satisfies it.
+    expect(testEquipmentMissing(grip, ["hand dynamometer"])).toBe(false);
+  });
+
+  it("collects the missing keys across a battery", () => {
+    const keys = equipmentMissingTestKeys([grip, pushups], []);
+    expect(keys.has("grip")).toBe(true);
+    expect(keys.has("pushups")).toBe(false);
   });
 });

@@ -719,3 +719,12 @@ export const OWN_OTHER_DOSE = "Own Other Vitamin";
 export const E2E_LOGIN_ASK = "e2e_ask";
 export const ASK_RECORDS_PROFILE = "Records QA (e2e)";
 export const ASK_RECORDS_MED = "Amoxicillin";
+
+// Finding-closure toast on the settings autosave path (issue #1305). A dedicated member
+// whose SOLE (active) profile has SEX set but NO birthdate — so the structural
+// data-quality "Set a birthdate" gap fires, and setting a birthdate on Profile settings
+// clears it and toasts. The closure spec OWNS it and resets the birthdate at test start
+// (direct-DB), so --repeat-each stays clean and it never perturbs the DQ_GAPPY dashboard
+// fixtures (whose gappy state the data-quality spec asserts).
+export const E2E_LOGIN_CLOSURE_DQ = "e2e_closure_dq";
+export const CLOSURE_DQ_PROFILE = "Closure DQ (e2e)";

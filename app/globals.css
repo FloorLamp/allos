@@ -308,3 +308,29 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
     display: none !important;
   }
 }
+
+/* Fitness-check tile landing sweep (#1307). Applied by FitnessCheckView to the
+   just-saved tile as its new value lands on the grid — a brief scale/settle that
+   draws the eye to the tile that keeps the memory. The class is applied in JS only
+   when motion is allowed (prefers-reduced-motion suppresses it there), and this
+   media query is belt-and-braces so the keyframe never runs for a reduced-motion
+   viewer even if the class slips through. */
+@keyframes fitness-tile-land {
+  0% {
+    transform: scale(0.96);
+  }
+  55% {
+    transform: scale(1.03);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.fitness-tile-land {
+  animation: fitness-tile-land 480ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fitness-tile-land {
+    animation: none;
+  }
+}

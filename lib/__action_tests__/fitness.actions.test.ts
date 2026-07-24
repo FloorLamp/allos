@@ -7,7 +7,8 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
+import { db, today } from "@/lib/db";
+import { shiftDateStr } from "@/lib/date";
 import {
   saveFitnessTest,
   setFitnessCadence,
@@ -202,6 +203,45 @@ describe("saveFitnessTest — session grouping + re-entry", () => {
     expect(sets).toHaveLength(1);
     expect(sets[0].reps).toBe(34);
     expect(entryRows(session.id)).toHaveLength(1);
+  });
+});
+
+describe("saveFitnessTest — outcome + finding closure (#1305/#1307)", () => {
+  it("returns the per-test outcome moment (percentile/value)", async () => {
+    const { profile } = seedActor();
+    setDemographics(profile.id, "male", "1985-06-01");
+    const r = await saveFitnessTest(
+      fd({ testKey: "grip", value: 48, date: today(profile.id) })
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.outcome?.key).toBe("grip");
+      expect(r.outcome?.valueText).toContain("48");
+    }
+  });
+
+  it("toasts the retest-clock refresh when the save clears the overdue check finding", async () => {
+    const { profile } = seedActor();
+    setDemographics(profile.id, "male", "1985-06-01");
+    // Seed an overdue prior check (>90-day default) so the retest finding is active.
+    db.prepare(
+      "INSERT INTO fitness_assessments (profile_id, date) VALUES (?, ?)"
+    ).run(profile.id, shiftDateStr(today(profile.id), -120));
+    const r = await saveFitnessTest(
+      fd({ testKey: "grip", value: 48, date: today(profile.id) })
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.closureToast).toContain("retest clock restarts");
+  });
+
+  it("toasts nothing when the save clears no finding (the common case)", async () => {
+    const { profile } = seedActor();
+    setDemographics(profile.id, "male", "1985-06-01");
+    const r = await saveFitnessTest(
+      fd({ testKey: "grip", value: 48, date: today(profile.id) })
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.closureToast).toBeNull();
   });
 });
 

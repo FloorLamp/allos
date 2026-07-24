@@ -1,11 +1,129 @@
 import { test, expect } from "@playwright/test";
+import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
 import {
   E2E_LOGIN_FITNESS,
   E2E_LOGIN_FITNESS_SENIOR,
+  FITNESS_PROFILE,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
+
+const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+
+function withDb<T>(fn: (db: InstanceType<typeof Database>) => T): T {
+  const db = new Database(DB_PATH);
+  try {
+    db.pragma("busy_timeout = 5000");
+    return fn(db);
+  } finally {
+    db.close();
+  }
+}
+
+function fitnessProfileId(db: InstanceType<typeof Database>): number {
+  const row = db
+    .prepare("SELECT id FROM profiles WHERE name = ?")
+    .get(FITNESS_PROFILE) as { id: number } | undefined;
+  if (!row) throw new Error(`no seeded profile "${FITNESS_PROFILE}"`);
+  return row.id;
+}
+
+// Reset the FITNESS profile to its "retest is overdue" baseline (#1305): drop every
+// RECENT fitness-check session (keeping the seeded ~100-day-old grip check), so the next
+// recorded test flips the battery-level retest finding and the closure toast fires
+// deterministically under --repeat-each. BLAST RADIUS: only this spec-owned profile's
+// recent fitness_assessments (+ their entries). The seeded old check (the delta anchor)
+// and the natural-store readings are untouched.
+function resetRecentChecks(): void {
+  withDb((db) => {
+    const pid = fitnessProfileId(db);
+    db.prepare(
+      `DELETE FROM fitness_assessment_entries
+        WHERE assessment_id IN (
+          SELECT id FROM fitness_assessments
+           WHERE profile_id = ? AND date >= date('now','-30 days'))`
+    ).run(pid);
+    db.prepare(
+      `DELETE FROM fitness_assessments
+        WHERE profile_id = ? AND date >= date('now','-30 days')`
+    ).run(pid);
+  });
+}
+
+// Every adult-battery test key (kept literal — specs don't share the app's module graph).
+const ADULT_BATTERY = [
+  "vo2max",
+  "hrr",
+  "grip",
+  "pushups",
+  "chairstand",
+  "biglift",
+  "balance",
+  "sitreach",
+  "srt",
+  "deadhang",
+  "plank",
+  "bodyfat",
+  "restinghr",
+] as const;
+
+// The store kind + tier per test, mirroring lib/fitness-battery (literal here). Only the
+// shape the coverage ledger needs — enough to seed a measured entry.
+const TEST_META: Record<string, { tier: string; store: string; unit: string }> =
+  {
+    vo2max: { tier: "norms", store: "vital", unit: "mL/kg/min" },
+    hrr: { tier: "evidence", store: "vital", unit: "bpm" },
+    grip: { tier: "norms", store: "vital", unit: "kg" },
+    pushups: { tier: "norms", store: "set", unit: "reps" },
+    chairstand: { tier: "norms", store: "vital", unit: "reps" },
+    biglift: { tier: "standard", store: "set", unit: "kg" },
+    balance: { tier: "norms", store: "vital", unit: "seconds" },
+    sitreach: { tier: "norms", store: "vital", unit: "cm" },
+    srt: { tier: "evidence", store: "vital", unit: "score" },
+    deadhang: { tier: "self-norm", store: "set", unit: "seconds" },
+    plank: { tier: "self-norm", store: "set", unit: "seconds" },
+    bodyfat: { tier: "body", store: "body", unit: "%" },
+    restinghr: { tier: "body", store: "body", unit: "bpm" },
+  };
+
+// Seed the FITNESS battery to "all fresh EXCEPT `exceptKey`" (#1307): a today coverage-
+// ledger session with an entry for every test but one, so recording that last test in the
+// browser FLIPS the battery to complete and the finale summary renders. Spec-owned + reset
+// each run (drops recent sessions first). The entry snapshot alone marks a test measured;
+// the completion decision only needs a fresh value per test.
+function seedNearComplete(exceptKey: string): void {
+  resetRecentChecks();
+  withDb((db) => {
+    const pid = fitnessProfileId(db);
+    // Clear the exceptKey's AMBIENT natural-store reading too, so it stays genuinely
+    // outstanding across repeats — a prior repeat's recording of it (e.g. a "Push Up"
+    // set) would otherwise auto-count it and the battery would already be complete.
+    if (exceptKey === "pushups") {
+      db.prepare(
+        `DELETE FROM exercise_sets WHERE exercise = 'Push Up'
+           AND activity_id IN (SELECT id FROM activities WHERE profile_id = ?)`
+      ).run(pid);
+    }
+    const assessmentId = Number(
+      db
+        .prepare(
+          "INSERT INTO fitness_assessments (profile_id, date) VALUES (?, date('now'))"
+        )
+        .run(pid).lastInsertRowid
+    );
+    const ins = db.prepare(
+      `INSERT INTO fitness_assessment_entries
+         (assessment_id, test_key, tier, store, value, unit, raw_input)
+       VALUES (?, ?, ?, ?, ?, ?, NULL)`
+    );
+    for (const key of ADULT_BATTERY) {
+      if (key === exceptKey) continue;
+      const m = TEST_META[key];
+      ins.run(assessmentId, key, m.tier, m.store, 40, m.unit);
+    }
+  });
+}
 
 // Guided Fitness check — the #1132 heat-grid redesign over the #1129 auto-count data + the
 // #1135 rough hold band. Drives dedicated fixture profiles (isolated member logins) so
@@ -70,7 +188,8 @@ test.describe("Fitness check grid (#1129/#1132/#1135)", () => {
     ).toBeVisible();
 
     // Tap the grip tile → the entry modal opens → record a NEW grip value (prior seeded
-    // check was 44) → the tile updates and shows a +6 improvement delta.
+    // check was 44) → the in-place OUTCOME moment (#1307) renders before the modal closes,
+    // then the tile updates and shows a +6 improvement delta.
     await page.getByTestId("fitness-tile-grip").click();
     const gripModal = page.getByTestId("fitness-entry-grip");
     await expect(gripModal).toBeVisible();
@@ -79,12 +198,25 @@ test.describe("Fitness check grid (#1129/#1132/#1135)", () => {
     await gripModal.getByTestId("fitness-value-grip").fill("50");
     await settledClick(page, gripModal.getByTestId("fitness-submit-grip"));
 
+    // #1307: the outcome panel appears IN the modal (percentile + delta) before it closes.
+    await expect(page.getByTestId("fitness-outcome-grip")).toBeVisible();
+    await expect(page.getByTestId("fitness-outcome-marker-grip")).toContainText(
+      "percentile"
+    );
+    await expect(page.getByTestId("fitness-outcome-delta-grip")).toContainText(
+      "+6"
+    );
+
+    // Done closes the modal and refreshes the board.
+    await page.getByTestId("fitness-outcome-done-grip").click();
     await expect(gripModal).toBeHidden();
     const gripTile = page.getByTestId("fitness-tile-grip");
     await expect(gripTile).toContainText("50");
     await expect(page.getByTestId("fitness-delta-grip")).toContainText("+6");
     // Percentiles resolve (the profile has sex + birthdate).
     await expect(gripTile).toContainText("percentile");
+    // #1307: the just-saved tile carries the landing-sweep marker (motion allowed here).
+    await expect(gripTile).toHaveAttribute("data-landing", "true");
 
     await page.close();
   });
@@ -178,8 +310,11 @@ test.describe("Fitness check grid (#1129/#1132/#1135)", () => {
     const filled = await valueInput.inputValue();
     expect(Number(filled)).toBeGreaterThanOrEqual(1);
 
-    // Explicit submit (#794) records it through the same path manual entry uses.
+    // Explicit submit (#794) records it through the same path manual entry uses; the
+    // in-place outcome moment (#1307) shows before Done closes the modal.
     await settledClick(page, modal.getByTestId("fitness-submit-plank"));
+    await expect(page.getByTestId("fitness-outcome-plank")).toBeVisible();
+    await page.getByTestId("fitness-outcome-done-plank").click();
     await expect(modal).toBeHidden();
     await expect(page.getByTestId("fitness-tile-plank")).toContainText(filled);
 
@@ -221,6 +356,9 @@ test.describe("Fitness check grid (#1129/#1132/#1135)", () => {
     await expect(reps).toBeVisible();
     await reps.fill("18");
     await settledClick(page, modal.getByTestId("fitness-submit-chairstand"));
+    // The outcome moment (#1307) shows before Done closes the modal.
+    await expect(page.getByTestId("fitness-outcome-chairstand")).toBeVisible();
+    await page.getByTestId("fitness-outcome-done-chairstand").click();
     await expect(modal).toBeHidden();
     await expect(page.getByTestId("fitness-tile-chairstand")).toContainText(
       "18"
@@ -248,6 +386,121 @@ test.describe("Fitness check grid (#1129/#1132/#1135)", () => {
     await expect(page.getByTestId("fitness-tile-fourstage")).toBeVisible();
     await expect(page.getByTestId("fitness-tile-pushups")).toHaveCount(0);
     await expect(page.getByTestId("fitness-tile-deadhang")).toHaveCount(0);
+
+    await page.close();
+  });
+
+  // #1305 — the closure toast. The FITNESS profile's only seeded check is ~100 days old,
+  // so the battery-level retest finding is overdue; the FIRST save of a new check flips it
+  // (toast once), a SECOND save the same check finds nothing active (silent). resetRecent-
+  // Checks makes the "overdue" precondition deterministic under --repeat-each.
+  test("first save toasts the retest refresh; a second save toasts nothing", async ({
+    browser,
+  }) => {
+    resetRecentChecks();
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_FITNESS,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    test.slow();
+    await page.goto("/training?tab=fitness");
+    await expect(page.getByTestId("fitness-check")).toBeVisible();
+
+    // First save (grip) clears the overdue retest finding → the refresh toast.
+    await page.getByTestId("fitness-tile-grip").click();
+    await page
+      .getByTestId("fitness-entry-grip")
+      .getByTestId("fitness-value-grip")
+      .fill("50");
+    await settledClick(page, page.getByTestId("fitness-submit-grip"));
+    await expect(
+      page.getByTestId("toast").filter({ hasText: /retest clock restarts/i })
+    ).toBeVisible();
+    await page.getByTestId("fitness-outcome-done-grip").click();
+
+    // Reload to clear the live toast, so the "no new closure toast" check below can't see
+    // a lingering one. The retest finding is already cleared (grip recorded today).
+    await page.reload();
+    await expect(page.getByTestId("fitness-check")).toBeVisible();
+
+    // Second save (balance), same check → no retest finding active → no closure toast.
+    await page.getByTestId("fitness-tile-balance").click();
+    await page
+      .getByTestId("fitness-entry-balance")
+      .getByTestId("fitness-value-balance")
+      .fill("25");
+    await settledClick(page, page.getByTestId("fitness-submit-balance"));
+    await expect(page.getByTestId("fitness-outcome-balance")).toBeVisible();
+    await expect(
+      page.getByTestId("toast").filter({ hasText: /retest clock restarts/i })
+    ).toHaveCount(0);
+
+    await page.close();
+  });
+
+  // #1307 — the battery-completion finale. Seed the whole battery fresh EXCEPT push-ups
+  // (the one test with no seeded ambient reading on this fixture, so it's genuinely
+  // outstanding), so recording it in the browser lands the LAST outstanding test and flips
+  // the battery to complete → the completion summary card renders.
+  test("completing the last outstanding test renders the completion summary", async ({
+    browser,
+  }) => {
+    seedNearComplete("pushups");
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_FITNESS,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    test.slow();
+    await page.goto("/training?tab=fitness");
+    await expect(page.getByTestId("fitness-check")).toBeVisible();
+
+    // Not complete yet — the finale is absent before the last test lands.
+    await expect(page.getByTestId("fitness-completion-summary")).toHaveCount(0);
+
+    await page.getByTestId("fitness-tile-pushups").click();
+    await page
+      .getByTestId("fitness-entry-pushups")
+      .getByTestId("fitness-value-pushups")
+      .fill("30");
+    await settledClick(page, page.getByTestId("fitness-submit-pushups"));
+    await expect(page.getByTestId("fitness-outcome-pushups")).toBeVisible();
+    await page.getByTestId("fitness-outcome-done-pushups").click();
+
+    const summary = page.getByTestId("fitness-completion-summary");
+    await expect(summary).toBeVisible();
+    await expect(summary).toContainText(/Check complete/i);
+
+    await page.close();
+  });
+
+  // #1307 — prefers-reduced-motion suppresses the landing sweep. Same save path, but the
+  // just-saved tile must NOT carry the landing marker (instant fill, no sweep).
+  test("honors prefers-reduced-motion (no landing sweep)", async ({
+    browser,
+  }) => {
+    resetRecentChecks();
+    const page = await loginAs(
+      browser,
+      { username: E2E_LOGIN_FITNESS, password: E2E_MEMBER_PASSWORD },
+      { reducedMotion: "reduce" }
+    );
+    test.slow();
+    await page.goto("/training?tab=fitness");
+    await expect(page.getByTestId("fitness-check")).toBeVisible();
+
+    await page.getByTestId("fitness-tile-grip").click();
+    await page
+      .getByTestId("fitness-entry-grip")
+      .getByTestId("fitness-value-grip")
+      .fill("50");
+    await settledClick(page, page.getByTestId("fitness-submit-grip"));
+    await expect(page.getByTestId("fitness-outcome-grip")).toBeVisible();
+    await page.getByTestId("fitness-outcome-done-grip").click();
+
+    const gripTile = page.getByTestId("fitness-tile-grip");
+    await expect(gripTile).toContainText("50");
+    // The landing marker is suppressed under reduced motion.
+    await expect(gripTile).not.toHaveAttribute("data-landing", "true");
 
     await page.close();
   });

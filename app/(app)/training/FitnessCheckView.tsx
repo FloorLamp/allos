@@ -10,6 +10,8 @@ import {
   FitnessDomainGlyph,
   FitnessPictogram,
 } from "@/components/fitness-pictograms";
+import { useToast } from "@/components/Toast";
+import { Notice } from "@/components/Notice";
 import type { WeightUnit } from "@/lib/settings";
 import {
   BIG_LIFT_OPTIONS,
@@ -18,7 +20,29 @@ import {
 } from "@/lib/fitness-battery";
 import type { FitnessCheckModel } from "@/lib/fitness-check-model";
 import { buildFitnessTiles, type FitnessTile } from "@/lib/fitness-tile";
-import { saveFitnessTest, setFitnessCadence } from "./fitness-actions";
+import type {
+  FitnessOutcome,
+  BatteryCompletionSummary,
+} from "@/lib/fitness-outcome";
+import {
+  saveFitnessTest,
+  setFitnessCadence,
+  type SaveFitnessTestResult,
+} from "./fitness-actions";
+
+// Whether the viewer asked for reduced motion — gates the tile's landing sweep (#1307).
+// Read after mount (SSR-safe); Playwright's reducedMotion context option flips it.
+function usePrefersReducedMotion(): boolean {
+  const [reduce, setReduce] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReduce(mq.matches);
+    const on = () => setReduce(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return reduce;
+}
 
 const DOMAIN_LABEL: Record<string, string> = {
   endurance: "Endurance",
@@ -57,6 +81,24 @@ export default function FitnessCheckView({
   const openTile = openKey
     ? (tiles.find((t) => t.key === openKey) ?? null)
     : null;
+  const toast = useToast();
+  const reduceMotion = usePrefersReducedMotion();
+  // The battery-completion finale (#1307), shown once the last outstanding test lands, and
+  // the just-saved test key that gets the landing sweep. Both set from the action's typed
+  // result on save; the finale card is dismissible.
+  const [finale, setFinale] = useState<BatteryCompletionSummary | null>(null);
+  const [justSavedKey, setJustSavedKey] = useState<string | null>(null);
+
+  // One handler for a successful save (#1305/#1307): toast the closure acknowledgment (the
+  // first save of a new check), stash the completion finale, and mark the tile to animate.
+  function onSaved(
+    result: Extract<SaveFitnessTestResult, { ok: true }>,
+    key: string
+  ) {
+    if (result.closureToast) toast(result.closureToast);
+    setFinale(result.finale);
+    setJustSavedKey(key);
+  }
 
   return (
     <PageContainer width="full" data-testid="fitness-check">
@@ -94,6 +136,10 @@ export default function FitnessCheckView({
           )}
         </header>
 
+        {finale && (
+          <CompletionCard finale={finale} onDismiss={() => setFinale(null)} />
+        )}
+
         {model.domains.some((d) => d.percentile != null) && (
           <section className="rounded-xl border border-black/10 p-4 dark:border-white/10">
             <h3 className="mb-2 text-sm font-semibold">By domain</h3>
@@ -114,6 +160,9 @@ export default function FitnessCheckView({
               def={byKey.get(tile.key)!}
               equipmentNames={equipmentNames}
               onOpen={() => setOpenKey(tile.key)}
+              // The landing sweep on the just-saved tile — the success cue on the element
+              // that keeps the memory. Suppressed under prefers-reduced-motion (#1307).
+              landing={tile.key === justSavedKey && !reduceMotion}
             />
           ))}
         </div>
@@ -127,10 +176,57 @@ export default function FitnessCheckView({
           weightUnit={weightUnit}
           dateISO={dateISO}
           equipmentNames={equipmentNames}
+          onSaved={onSaved}
           onClose={() => setOpenKey(null)}
         />
       )}
     </PageContainer>
+  );
+}
+
+// The battery-completion finale (#1307) — factual, from the model's fitness age + per-test
+// deltas. No confetti-science; the numbers are the celebration. Dismissible.
+function CompletionCard({
+  finale,
+  onDismiss,
+}: {
+  finale: BatteryCompletionSummary;
+  onDismiss: () => void;
+}) {
+  const parts: string[] = [];
+  if (finale.improved > 0) parts.push(`${finale.improved} improved`);
+  if (finale.declined > 0) parts.push(`${finale.declined} declined`);
+  if (finale.fresh > 0) parts.push(`${finale.fresh} new`);
+  return (
+    <Notice
+      tone="emerald"
+      testid="fitness-completion-summary"
+      title="Check complete"
+      action={
+        <button
+          type="button"
+          onClick={onDismiss}
+          data-testid="fitness-completion-dismiss"
+          className="text-xs font-medium hover:underline"
+        >
+          Dismiss
+        </button>
+      }
+    >
+      <p aria-live="polite">
+        {finale.fitnessAge != null && (
+          <span data-testid="fitness-completion-age">
+            Fitness age <strong>{finale.fitnessAge}</strong>
+            {finale.priorFitnessAge != null &&
+            finale.priorFitnessAge !== finale.fitnessAge
+              ? ` (was ${finale.priorFitnessAge})`
+              : ""}
+          </span>
+        )}
+        {finale.fitnessAge != null && parts.length > 0 ? " · " : ""}
+        {parts.join(" · ")}
+      </p>
+    </Notice>
   );
 }
 
@@ -184,11 +280,13 @@ function Tile({
   def,
   equipmentNames,
   onOpen,
+  landing = false,
 }: {
   tile: FitnessTile;
   def: FitnessTestDef;
   equipmentNames: string[];
   onOpen: () => void;
+  landing?: boolean;
 }) {
   const missingEquipment =
     def.equipment != null &&
@@ -201,9 +299,12 @@ function Tile({
       data-testid={`fitness-tile-${tile.key}`}
       data-tone={tile.tone}
       data-basis={tile.basis}
-      className={`relative flex aspect-square flex-col justify-between rounded-xl border p-3 text-left transition hover:brightness-105 focus:outline-none focus:ring-2 focus:ring-brand-500 ${
+      data-landing={landing ? "true" : undefined}
+      className={`relative flex aspect-square flex-col justify-between rounded-xl border p-3 text-left transition-[background-color,border-color,color,transform] duration-500 hover:brightness-105 focus:outline-none focus:ring-2 focus:ring-brand-500 ${
         TONE_TILE[tile.tone]
-      } ${tile.stale ? "opacity-60 grayscale-[0.4]" : ""}`}
+      } ${tile.stale ? "opacity-60 grayscale-[0.4]" : ""} ${
+        landing ? "fitness-tile-land" : ""
+      }`}
     >
       <div className="flex items-start justify-between gap-1">
         <div className="flex min-w-0 items-start gap-1.5">
@@ -300,6 +401,7 @@ function EntryModal({
   weightUnit,
   dateISO,
   equipmentNames,
+  onSaved,
   onClose,
 }: {
   def: FitnessTestDef;
@@ -308,6 +410,10 @@ function EntryModal({
   weightUnit: WeightUnit;
   dateISO: string;
   equipmentNames: string[];
+  onSaved: (
+    result: Extract<SaveFitnessTestResult, { ok: true }>,
+    key: string
+  ) => void;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -317,6 +423,16 @@ function EntryModal({
   const [method, setMethod] = useState<string>(vo2Methods[0]?.key ?? "watch");
   const [fields, setFields] = useState<Record<string, string>>({});
   const [lift, setLift] = useState<string>(BIG_LIFT_OPTIONS[0]);
+  // The in-place outcome moment (#1307): on a successful save the form is replaced by the
+  // computed outcome (percentile/band/delta) until the user taps Done, which refreshes the
+  // board and closes. A null-outcome save (a self-trend residue) closes straight away.
+  const [outcome, setOutcome] = useState<FitnessOutcome | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  function done() {
+    onClose();
+    router.refresh();
+  }
 
   const setField = (k: string, v: string) =>
     setFields((f) => ({ ...f, [k]: v }));
@@ -333,11 +449,16 @@ function EntryModal({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      // Escape closes; once an outcome is showing, closing also refreshes the board.
+      if (e.key === "Escape") {
+        if (saved) done();
+        else onClose();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onClose, saved]);
 
   const missingEquipment =
     def.equipment != null &&
@@ -368,14 +489,21 @@ function EntryModal({
       setError(r.error);
       return;
     }
-    onClose();
-    router.refresh();
+    // Fire the parent's toast/finale/animation immediately, then present the in-place
+    // outcome moment. A save with no measurable outcome (self-trend) closes straight away.
+    onSaved(r, def.key);
+    if (r.outcome) {
+      setOutcome(r.outcome);
+      setSaved(true);
+    } else {
+      done();
+    }
   }
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4"
-      onClick={onClose}
+      onClick={saved ? done : onClose}
       role="presentation"
     >
       <div
@@ -397,7 +525,7 @@ function EntryModal({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={saved ? done : onClose}
             className="text-sm text-slate-500 hover:underline dark:text-slate-400"
             data-testid={`fitness-close-${def.key}`}
           >
@@ -405,6 +533,21 @@ function EntryModal({
           </button>
         </div>
 
+        {saved && outcome ? (
+          <OutcomePanel outcome={outcome} onDone={done} testKey={def.key} />
+        ) : (
+          renderForm()
+        )}
+      </div>
+    </div>
+  );
+
+  // Rendered inline (a plain function, not a `<Component/>`) so the timer + input state
+  // never remount on a parent re-render — a new component identity each render would reset
+  // the field-test timer mid-run.
+  function renderForm() {
+    return (
+      <>
         {tile.measured && tile.provenance && (
           <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
             Current: {tile.value} {tile.unit} · {tile.provenance.label}
@@ -636,7 +779,71 @@ function EntryModal({
             {pending ? "Saving…" : "Save"}
           </button>
         </form>
-      </div>
+      </>
+    );
+  }
+}
+
+// The in-place outcome moment (#1307): the percentile/band/delta the save earned, shown
+// before the board is refreshed. A formatter over the tile VM — never a second computation
+// (#221). aria-live so it's announced; Done refreshes the grid and closes.
+function OutcomePanel({
+  outcome,
+  onDone,
+  testKey,
+}: {
+  outcome: FitnessOutcome;
+  onDone: () => void;
+  testKey: string;
+}) {
+  return (
+    <div className="mt-2 space-y-3" data-testid={`fitness-outcome-${testKey}`}>
+      <Notice tone="emerald">
+        <div aria-live="polite">
+          <div className="text-lg font-bold">
+            {outcome.label}{" "}
+            <span className="font-semibold">{outcome.valueText}</span>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
+            <span
+              className="font-medium"
+              data-testid={`fitness-outcome-marker-${testKey}`}
+            >
+              {outcome.marker}
+            </span>
+            {outcome.deltaText && (
+              <span
+                data-testid={`fitness-outcome-delta-${testKey}`}
+                className={
+                  outcome.deltaArrow === "up"
+                    ? "text-emerald-700 dark:text-emerald-300"
+                    : "text-rose-700 dark:text-rose-300"
+                }
+              >
+                {outcome.deltaArrow === "up"
+                  ? "↑ "
+                  : outcome.deltaArrow === "down"
+                    ? "↓ "
+                    : ""}
+                {outcome.deltaText}
+              </span>
+            )}
+            {outcome.roughGuide && (
+              <span className="rounded bg-black/10 px-1 py-0.5 text-xs dark:bg-white/15">
+                rough guide
+              </span>
+            )}
+          </div>
+        </div>
+      </Notice>
+      <button
+        type="button"
+        onClick={onDone}
+        className="btn"
+        data-testid={`fitness-outcome-done-${testKey}`}
+      >
+        Done
+      </button>
     </div>
   );
 }
