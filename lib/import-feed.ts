@@ -21,6 +21,7 @@ import {
   jobTitle,
 } from "./import-log";
 import { dataSectionHref, importHref, type AppRoute } from "./hrefs";
+import { reconcileProduced, feedProducedDetail } from "./produced-count";
 
 // Structural shapes of the three source rows. Deliberately minimal (and mirrored
 // from lib/types IntegrationSyncEvent / lib/queries/imports.ts) so this module
@@ -53,7 +54,14 @@ export interface FeedDocument {
   patient_name: string | null;
   extraction_status: string;
   extraction_error: string | null;
+  // The row tally stamped at import time (#212).
   extracted_count: number;
+  // The rows that still trace back to this document RIGHT NOW — the same footprint
+  // re-counted live. Diverges from extracted_count once rows leave (delete / merge /
+  // reassign), which the feed detail reconciles against the snapshot (#1339). The
+  // query fills this only for DONE documents (the sole branch that shows a count);
+  // it's 0 for in-flight/failed rows and never read there.
+  live_count: number;
   uploaded_at: string;
 }
 
@@ -214,17 +222,14 @@ function documentDetail(doc: FeedDocument): { detail: string; muted: boolean } {
   const status = documentLogStatus(doc.extraction_status);
   switch (status) {
     case "done":
-      // "items", not "records": extracted_count tallies every clinical kind an
-      // import writes (encounters/conditions/allergies/…), not just lab records
-      // (#212).
-      return doc.extracted_count > 0
-        ? {
-            detail: `${doc.extracted_count} ${
-              doc.extracted_count === 1 ? "item" : "items"
-            }`,
-            muted: false,
-          }
-        : { detail: "no items", muted: true };
+      // "items", not "records": the tally spans every clinical kind an import
+      // writes (encounters/conditions/allergies/…), not just lab records (#212).
+      // The LIVE count is the truth; when rows have left the document since import,
+      // the snapshot rides along as "N of M items" so the feed can't contradict the
+      // detail page one click away (#1339). One pure model phrases both (#221).
+      return feedProducedDetail(
+        reconcileProduced(doc.extracted_count, doc.live_count)
+      );
     case "processing":
       return { detail: "extracting…", muted: true };
     case "failed":

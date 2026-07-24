@@ -6,7 +6,10 @@ import { useRouter } from "next/navigation";
 import { uploadMedicalDocument } from "@/app/(app)/medical/document-actions";
 import { useToast } from "@/components/Toast";
 import SubmitButton from "@/components/SubmitButton";
-import { MEDICAL_UPLOAD_BATCH_CAP } from "@/lib/upload-gate";
+import {
+  MEDICAL_UPLOAD_BATCH_CAP,
+  MEDICAL_UPLOAD_TOAST_KEY,
+} from "@/lib/upload-gate";
 
 // Upload form for medical documents. The submit button stays disabled until at
 // least one file is chosen. The file input is a large dashed drop zone for easy
@@ -92,7 +95,12 @@ export default function UploadForm({ demo = false }: { demo?: boolean }) {
       result.overflow > 0
         ? `${lead} Uploaded the first ${MEDICAL_UPLOAD_BATCH_CAP} files — add the remaining ${result.overflow} in another batch.`
         : lead;
+    // Post under the shared lifecycle key (#1315): this confirmation occupies the
+    // ONE upload slot, and the headless ExtractionToaster dismisses it and posts the
+    // per-document result the moment real extraction output arrives — so the toast
+    // upgrades in place instead of the two systems stacking.
     toast(message, {
+      key: MEDICAL_UPLOAD_TOAST_KEY,
       action: {
         label: "Track in Review",
         onClick: () => router.push("/data?section=review"),

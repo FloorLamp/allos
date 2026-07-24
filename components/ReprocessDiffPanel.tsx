@@ -27,10 +27,16 @@ export default function ReprocessDiffPanel({
   id,
   filename,
   disabled,
+  subtext,
 }: {
   id: number;
   filename: string;
   disabled?: boolean;
+  // Per-control explainer under "Preview changes" (#1340). Deterministic imports
+  // say the re-run is free and exact; AI documents carry the daily-extraction cost
+  // note. Selected upstream (lib/import-actions-copy.ts) so the copy can't drift
+  // from what renders.
+  subtext?: string;
 }) {
   const router = useRouter();
   const [previewing, startPreview] = useTransition();
@@ -88,6 +94,14 @@ export default function ReprocessDiffPanel({
             <IconRefresh className="h-4 w-4" />
             {previewing ? "Preparing preview…" : "Preview changes"}
           </button>
+          {subtext && (
+            <p
+              data-testid="preview-subtext"
+              className="text-xs text-slate-500 dark:text-slate-400"
+            >
+              {subtext}
+            </p>
+          )}
           {fallbackNote && (
             <p
               data-testid="reprocess-fallback-note"

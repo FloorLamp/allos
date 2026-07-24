@@ -32,6 +32,7 @@ import { PageHeader } from "@/components/ui";
 import { Notice } from "@/components/Notice";
 import ImportDetailActions from "@/components/ImportDetailActions";
 import RawDataViewer from "@/components/RawDataViewer";
+import DocumentPreview from "@/components/DocumentPreview";
 import ReassignDocument from "@/components/ReassignDocument";
 import ExtractedRecords from "@/components/ExtractedRecords";
 import CreateVisitFromRecord from "@/components/visit-links/CreateVisitFromRecord";
@@ -45,6 +46,12 @@ import {
   producedTotal,
   formatRawExtraction,
 } from "@/lib/import-log";
+import {
+  reconcileProduced,
+  detailReconciliationLine,
+} from "@/lib/produced-count";
+import { importActionExplainers } from "@/lib/import-actions-copy";
+import { isDeterministicReprocess } from "@/lib/reprocess-cost";
 import {
   buildImportTabs,
   resolveImportTab,
@@ -182,6 +189,12 @@ export default async function ImportDetailPage(props: {
   const counts = getDocumentProduced(profile.id, id);
   const strip = buildImportTabs(counts);
   const total = producedTotal(counts);
+  // Reconcile the extracted_count SNAPSHOT against the LIVE row count (#1339). When
+  // rows have left the document (delete / merge / reassign) the snapshot exceeds
+  // `total`, and the bare "produced no records" copy contradicts the count the feed
+  // shows — so surface the drift explicitly. Same pure model the Review feed uses.
+  const producedReconciliation = reconcileProduced(doc.extracted_count, total);
+  const reconciliationLine = detailReconciliationLine(producedReconciliation);
   const activeTab = resolveImportTab(strip.tabs, searchParams.tab);
   const mismatch = isProvenanceMismatch(doc.patient_name, [
     getUserFullName(profile.id),
@@ -213,6 +226,7 @@ export default async function ImportDetailPage(props: {
   const reconciliation = report?.reconciliation ?? null;
   const isTerminalIssue =
     doc.extraction_status === "failed" || doc.extraction_status === "skipped";
+  const hasExtractionError = isTerminalIssue && !!doc.extraction_error;
   // "Move to profile…" targets: the login's OTHER accessible profiles (admins see
   // all; members only their granted set). Shown only when there's somewhere to
   // move to (≥2 accessible profiles).
@@ -320,20 +334,25 @@ export default async function ImportDetailPage(props: {
           <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
             Provenance
           </h2>
+          {/* Absent-pillar rule (#489/#1340): show only the fields that carry a
+              value — File and Detected format are always known; document date,
+              source, and patient name render only when populated, so a record-less
+              doc isn't a wall of em-dashes. */}
           <ProvenanceRow label="File" value={doc.filename} />
           <ProvenanceRow
             label="Detected format"
             value={documentFormatLabel(doc)}
           />
-          <ProvenanceRow
-            label="Document date"
-            value={doc.document_date ?? "—"}
-          />
-          <ProvenanceRow label="Source" value={doc.source ?? "—"} />
-          <ProvenanceRow
-            label="Patient named in document"
-            value={doc.patient_name ?? "—"}
-          />
+          {doc.document_date && (
+            <ProvenanceRow label="Document date" value={doc.document_date} />
+          )}
+          {doc.source && <ProvenanceRow label="Source" value={doc.source} />}
+          {doc.patient_name && (
+            <ProvenanceRow
+              label="Patient named in document"
+              value={doc.patient_name}
+            />
+          )}
           {mismatch && (
             <Notice tone="amber" icon className="mt-3">
               This document names <strong>{doc.patient_name}</strong>, which
@@ -351,17 +370,30 @@ export default async function ImportDetailPage(props: {
             What it produced
           </h2>
           {total === 0 ? (
-            <p className="text-sm text-slate-500 dark:text-slate-400">
+            <p
+              className="text-sm text-slate-500 dark:text-slate-400"
+              data-testid="produced-summary"
+            >
               {doc.extraction_status === "processing"
                 ? "Extraction is still running…"
-                : "This import produced no records."}
+                : (reconciliationLine ?? "This import produced no records.")}
             </p>
           ) : (
-            <ImportTabStrip
-              docId={id}
-              tabs={strip.tabs}
-              activeKey={activeTab?.key}
-            />
+            <>
+              <ImportTabStrip
+                docId={id}
+                tabs={strip.tabs}
+                activeKey={activeTab?.key}
+              />
+              {reconciliationLine && (
+                <p
+                  className="mt-3 text-sm text-slate-500 dark:text-slate-400"
+                  data-testid="produced-reconciliation"
+                >
+                  {reconciliationLine}
+                </p>
+              )}
+            </>
           )}
         </div>
 
@@ -707,75 +739,63 @@ export default async function ImportDetailPage(props: {
             ) : null}
           </div>
           {canPreview ? (
-            isPdf ? (
-              <iframe
-                src={src}
-                title={doc.filename}
-                className="h-[80vh] w-full rounded-lg border border-black/10 dark:border-white/10"
-              />
-            ) : (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={src}
-                alt={doc.filename}
-                className="mx-auto max-h-[80vh] rounded-lg border border-black/10 dark:border-white/10"
-              />
-            )
-          ) : (
+            <DocumentPreview src={src} isPdf={isPdf} filename={doc.filename} />
+          ) : doc.stored_path ? (
+            // File is stored but this type can't inline-preview — one line with the
+            // open-original affordance, not a prose wall (#1340).
             <p className="text-sm text-slate-500 dark:text-slate-400">
               Inline preview isn’t available for this file type.{" "}
-              {doc.stored_path ? (
-                <a
-                  href={src}
-                  target="_blank"
-                  rel="noopener"
-                  className="text-brand-700 hover:underline dark:text-brand-400"
-                >
-                  Open the original
-                </a>
-              ) : (
-                "The original file is not stored."
-              )}
+              <a
+                href={src}
+                target="_blank"
+                rel="noopener"
+                className="text-brand-700 hover:underline dark:text-brand-400"
+              >
+                Open the original
+              </a>
+            </p>
+          ) : (
+            // Nothing to show at all — collapse to a single line (#1340).
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              The original file isn’t stored.
             </p>
           )}
         </div>
 
-        {/* Debug */}
-        <div className="card">
-          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-            Debug
-          </h2>
-          {isTerminalIssue && doc.extraction_error ? (
-            <div
-              className={`mb-3 rounded-lg border px-3 py-2 text-sm ${
-                doc.extraction_status === "failed"
-                  ? "border-rose-100 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300"
-                  : "border-black/10 bg-slate-50 text-slate-500 dark:border-white/10 dark:bg-ink-900 dark:text-slate-400"
-              }`}
-            >
-              {doc.extraction_error}
+        {/* Debug — dev-facing, so it's behind a collapsed disclosure and SELF-HIDES
+            when it has nothing to say (#1340): no card at all unless there's an
+            extraction error or a stored raw extraction to show. */}
+        {(hasExtractionError || raw) && (
+          <details className="card group" data-testid="debug-disclosure">
+            <summary className="cursor-pointer font-semibold text-slate-800 dark:text-slate-100">
+              Debug
+            </summary>
+            <div className="mt-3 space-y-3">
+              {hasExtractionError && (
+                <div
+                  className={`rounded-lg border px-3 py-2 text-sm ${
+                    doc.extraction_status === "failed"
+                      ? "border-rose-100 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300"
+                      : "border-black/10 bg-slate-50 text-slate-500 dark:border-white/10 dark:bg-ink-900 dark:text-slate-400"
+                  }`}
+                >
+                  {doc.extraction_error}
+                </div>
+              )}
+              {raw && (
+                <details className="group/raw">
+                  <summary className="cursor-pointer text-sm font-medium text-brand-700 hover:underline dark:text-brand-400">
+                    Raw extraction
+                  </summary>
+                  {/* The shared collapsible JSON/XML tree + copy (#1318) — a CCD/XDM
+                      raw renders as a foldable element tree, an AI extraction as a
+                      JSON tree, anything else as plain text. */}
+                  <RawDataViewer text={doc.raw_extraction ?? raw} />
+                </details>
+              )}
             </div>
-          ) : (
-            <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">
-              No extraction error.
-            </p>
-          )}
-          {raw ? (
-            <details className="group">
-              <summary className="cursor-pointer text-sm font-medium text-brand-700 hover:underline dark:text-brand-400">
-                Raw extraction
-              </summary>
-              {/* The shared collapsible JSON/XML tree + copy (#1318) — a CCD/XDM
-                  raw renders as a foldable element tree, an AI extraction as a JSON
-                  tree, anything else as plain text. */}
-              <RawDataViewer text={doc.raw_extraction ?? raw} />
-            </details>
-          ) : (
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              No raw extraction stored for this document.
-            </p>
-          )}
-        </div>
+          </details>
+        )}
 
         {/* Actions */}
         <div className="card">
@@ -786,13 +806,14 @@ export default async function ImportDetailPage(props: {
             id={doc.id}
             filename={doc.filename}
             hasRaw={!!doc.raw_extraction}
+            explainers={importActionExplainers({
+              deterministic: isDeterministicReprocess({
+                source: doc.source,
+                mime_type: doc.mime_type,
+              }),
+              hasRaw: !!doc.raw_extraction,
+            })}
           />
-          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-            “Preview changes” shows the diff before a fresh AI re-extraction
-            replaces this document’s imported records; “Re-apply saved
-            extraction” replays the saved result with no AI call; “Delete”
-            removes the document and every record it imported.
-          </p>
           {reassignTargets.length > 0 && (
             <div className="mt-4 border-t border-black/5 pt-4 dark:border-white/10">
               <h3 className="mb-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
@@ -815,6 +836,7 @@ export default async function ImportDetailPage(props: {
                   id={doc.id}
                   filename={doc.filename}
                   destinations={reassignTargets}
+                  recordCount={total}
                 />
               )}
             </div>

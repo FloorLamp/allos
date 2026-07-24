@@ -12,6 +12,7 @@ import {
   getImportLogDocuments,
   getImportLogJobs,
   getDocumentProduced,
+  getImportDocumentsFeed,
   getMedicalDocument,
   getDocumentVisits,
   getDocumentConditions,
@@ -30,6 +31,11 @@ import {
   countImportedDocumentRows,
 } from "@/lib/import-persist";
 import { producedTotal } from "@/lib/import-log";
+import {
+  reconcileProduced,
+  detailReconciliationLine,
+  feedProducedDetail,
+} from "@/lib/produced-count";
 import type { PersistInput } from "@/lib/import-shape";
 import { db } from "@/lib/db";
 
@@ -348,6 +354,63 @@ describe("getDocumentProduced", () => {
       )
       .get(docA, profileA) as { n: number };
     expect(total).toBe(row.n);
+  });
+
+  // #1339: rows leave a document (delete / merge / reassign) but the stored
+  // extracted_count SNAPSHOT doesn't follow. The Review feed's live_count and the
+  // detail's producedTotal must reflect what REMAINS, reconciled against the
+  // snapshot — while extracted_count itself stays the #212-tested tally (unchanged).
+  it("reconciles the extracted_count snapshot against the live count when rows leave", () => {
+    const drift = newDocument(profileA, "drift-labs.pdf");
+    persistDocumentImport(profileA, drift, makeInput());
+    const snapshot = (
+      db
+        .prepare(
+          "SELECT extracted_count AS n FROM medical_documents WHERE id = ? AND profile_id = ?"
+        )
+        .get(drift, profileA) as { n: number }
+    ).n;
+    const before = producedTotal(getDocumentProduced(profileA, drift));
+    expect(before).toBe(snapshot);
+    expect(snapshot).toBeGreaterThan(0);
+
+    // Simulate a user deleting this document's lab readings WITHOUT rewriting the
+    // snapshot (the #1339 drift): the two lab records leave.
+    db.prepare(
+      "DELETE FROM medical_records WHERE profile_id = ? AND document_id = ? AND category = 'lab'"
+    ).run(profileA, drift);
+
+    const live = producedTotal(getDocumentProduced(profileA, drift));
+    expect(live).toBe(before - 2);
+
+    // extracted_count is UNCHANGED — the tally binding (#212) is intact.
+    const stillSnapshot = (
+      db
+        .prepare(
+          "SELECT extracted_count AS n FROM medical_documents WHERE id = ? AND profile_id = ?"
+        )
+        .get(drift, profileA) as { n: number }
+    ).n;
+    expect(stillSnapshot).toBe(snapshot);
+
+    // The Review feed entry carries the LIVE footprint count for reconciliation.
+    const entry = getImportDocumentsFeed(profileA).find(
+      (e) => e.stream === "document" && e.doc.id === drift
+    );
+    expect(entry && entry.stream === "document").toBe(true);
+    if (entry && entry.stream === "document") {
+      expect(entry.doc.extracted_count).toBe(snapshot);
+      expect(entry.doc.live_count).toBe(live);
+      const r = reconcileProduced(
+        entry.doc.extracted_count,
+        entry.doc.live_count
+      );
+      expect(r.drifted).toBe(true);
+      expect(feedProducedDetail(r).detail).toBe(`${live} of ${snapshot} items`);
+      expect(detailReconciliationLine(r)).toBe(
+        `${snapshot} extracted · ${live} remain (2 deleted, merged, or reassigned)`
+      );
+    }
   });
 
   it("is profile-scoped: asking A about B's document finds nothing", () => {
