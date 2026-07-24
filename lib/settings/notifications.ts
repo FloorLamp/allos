@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { db, writeTx } from "../db";
 import type { NotificationKind } from "../notifications/types";
+import { profilesManagedByLogin } from "../notifications/managing-logins";
 import {
   parseDisabledKinds,
   serializeDisabledKinds,
@@ -271,32 +272,39 @@ export function setFoodNudgePointer(
 
 // Resolve every profile an inbound Telegram chat id may act as — chat → LOGIN →
 // in-scope profiles (issue #1072). A chat id now belongs to a LOGIN
-// (login_settings.telegram_chat_id), and that login manages a set of profiles via
-// explicit grants; a single family-group chat can be shared by several logins, so
-// this unions every managing login's in-scope, non-muted profiles. Inbound button
-// taps carry only a chat id, and the callback handler picks the one the button
-// token names (rejecting taps from a chat that can't act as that profile). The
-// grant/login tables are login-scoped (not profile-owned), so the profile filter
-// lives in the join, not a profile_id scope.
+// (login_settings.telegram_chat_id), and that login manages a set of profiles; a
+// single family-group chat can be shared by several logins, so this unions every
+// managing login's in-scope, non-muted profiles. Inbound button taps carry only a
+// chat id, and the callback handler picks the one the button token names (rejecting
+// taps from a chat that can't act as that profile).
+//
+// The "profiles this login manages" edge set is the SAME one the OUTBOUND fan-out
+// uses — `profilesManagedByLogin` (login_profiles grants UNION own_profile_id, the
+// inverse of managingLoginIdsForProfile) — so inbound and outbound can never
+// disagree (#1365). Before the unification this joined only login_profiles, so a
+// login whose access to a profile came solely via its own-profile association
+// (#1013) received that profile's notifications but had every inbound tap refused.
+// The per-(login, profile) mute (isProfileMutedForLogin — the same predicate the
+// fan-out consults) holds a muted profile out of a login's inbound scope too.
 export function getProfilesByTelegramChatId(chatId: string): number[] {
   const chat = chatId.trim();
   if (!chat) return [];
-  const rows = db
-    .prepare(
-      `SELECT DISTINCT lp.profile_id AS profile_id
-         FROM login_settings ls
-         JOIN login_profiles lp ON lp.login_id = ls.login_id
-        WHERE ls.key = 'telegram_chat_id' AND ls.value = ?
-          AND NOT EXISTS (
-            SELECT 1 FROM login_settings m
-             WHERE m.login_id = ls.login_id
-               AND m.key = 'notify_mute_profile_' || lp.profile_id
-               AND m.value = '1'
-          )
-        ORDER BY lp.profile_id`
-    )
-    .all(chat) as { profile_id: number }[];
-  return rows.map((r) => r.profile_id);
+  // The logins whose channel is this chat (a shared family chat can be several).
+  const loginIds = (
+    db
+      .prepare(
+        "SELECT login_id FROM login_settings WHERE key = 'telegram_chat_id' AND value = ?"
+      )
+      .all(chat) as { login_id: number }[]
+  ).map((r) => r.login_id);
+  const profileIds = new Set<number>();
+  for (const loginId of loginIds) {
+    for (const profileId of profilesManagedByLogin(loginId)) {
+      if (isProfileMutedForLogin(loginId, profileId)) continue;
+      profileIds.add(profileId);
+    }
+  }
+  return [...profileIds].sort((a, b) => a - b);
 }
 
 // Merged view (global bot config + this login's delivery channel), for the

@@ -22,6 +22,7 @@ import {
   getProfileSetting,
   setProfileSetting,
   setProfileMutedForLogin,
+  getProfilesByTelegramChatId,
 } from "@/lib/settings";
 import {
   managingLoginIdsForProfile,
@@ -61,6 +62,18 @@ function setProfileChannel(
       "telegram_notify_disabled_kinds",
       JSON.stringify(disabled)
     );
+}
+
+function setLoginChannel(loginId: number, chatId: string): void {
+  db.prepare(
+    "INSERT INTO login_settings (login_id, key, value) VALUES (?, 'telegram_enabled', '1'), (?, 'telegram_chat_id', ?)"
+  ).run(loginId, loginId, chatId);
+}
+function setOwnProfile(loginId: number, profileId: number): void {
+  db.prepare("UPDATE logins SET own_profile_id = ? WHERE id = ?").run(
+    profileId,
+    loginId
+  );
 }
 
 // A clean instance for each migration case: wipe the tables the migration reads/writes.
@@ -151,6 +164,75 @@ describe("channel migration — bootstrap admin continuity", () => {
     expect(resolveTelegramRecipients(p1)).toEqual([
       { loginId: admin, chatId: "5550500" },
     ]);
+  });
+});
+
+describe("channel migration — multi-admin household (#1365 gap 2)", () => {
+  // Two admin logins that each pointed a DIFFERENT profile's chat at their own
+  // personal chat. Migration 105 derives every admin's channel over the SAME set
+  // (all profiles), so the global majority chat wins for BOTH admins — one admin
+  // silently inherits the other's chat. This pins that KNOWN, immutable-migration
+  // behavior AND its safety net: because ≥2 distinct chats exist across the instance,
+  // the derivation is ambiguous for both admins, so BOTH are flagged for review and
+  // nudged to reconfigure on next login. (Migration 105 is shipped/one-shot and had
+  // already DELETED the per-profile source chats, and own_profile_id is unpopulated
+  // at migration time — migration 104 adds the column but never backfills it — so no
+  // corrective migration can re-derive the correct per-admin chat; the review nudge
+  // is the recovery path. See PR for the full argument.)
+  it("collapses distinct admins onto the majority chat but flags both for review", () => {
+    // Three profiles: two carry admin-A's personal chat, one carries admin-B's.
+    // Chat A is the global majority → wins for BOTH admins.
+    const pA1 = newProfile("Fam A1 (multi-admin)");
+    const pA2 = newProfile("Fam A2 (multi-admin)");
+    const pB1 = newProfile("Fam B1 (multi-admin)");
+    const adminA = newLogin("admin", "admin-a-multi");
+    const adminB = newLogin("admin", "admin-b-multi");
+    setProfileChannel(pA1, "5550301");
+    setProfileChannel(pA2, "5550301");
+    setProfileChannel(pB1, "5550302");
+
+    migrateChannels(db);
+
+    // Known collapse: BOTH admins get the instance-majority chat (A), not their own.
+    expect(getLoginTelegram(adminA).telegramChatId).toBe("5550301");
+    expect(getLoginTelegram(adminB).telegramChatId).toBe("5550301");
+    // Safety net: the ambiguity (≥2 distinct chats over the accessible set) flags
+    // BOTH admins to confirm their notification settings.
+    expect(getNotifyReviewNeeded(adminA)).toBe(true);
+    expect(getNotifyReviewNeeded(adminB)).toBe(true);
+  });
+});
+
+describe("inbound tap resolution — own_profile_id-only login (#1365 gap 1)", () => {
+  // A login whose access to a profile comes ONLY via own_profile_id (#1013), with no
+  // explicit login_profiles grant. Outbound fan-out already reaches it; inbound
+  // resolution must now agree so its dose-confirm taps / food logging are accepted.
+  it("resolves the profile for a chat whose login owns it via own_profile_id only", () => {
+    const me = newProfile("Me (inbound own)");
+    const login = newLogin("member", "own-inbound-login");
+    setOwnProfile(login, me); // NO login_profiles grant
+    setLoginChannel(login, "5550333");
+
+    // Both directions now agree on the own-profile-only login.
+    expect(managingLoginIdsForProfile(me)).toContain(login);
+    expect(getProfilesByTelegramChatId("5550333")).toEqual([me]);
+  });
+
+  it("unions own-profile and granted profiles, and honors the per-(login,profile) mute", () => {
+    const own = newProfile("Own (inbound union)");
+    const granted = newProfile("Granted (inbound union)");
+    const login = newLogin("member", "union-inbound-login");
+    setOwnProfile(login, own);
+    grant(login, granted);
+    setLoginChannel(login, "5550344");
+
+    expect(
+      getProfilesByTelegramChatId("5550344").sort((a, b) => a - b)
+    ).toEqual([own, granted].sort((a, b) => a - b));
+
+    // Muting the own profile for THIS login holds it out of inbound scope too.
+    setProfileMutedForLogin(login, own, true);
+    expect(getProfilesByTelegramChatId("5550344")).toEqual([granted]);
   });
 });
 
