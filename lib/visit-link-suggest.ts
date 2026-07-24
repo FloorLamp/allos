@@ -231,6 +231,41 @@ export function suggestForEpisode(
   return { candidates: inRange };
 }
 
+// The ENCOUNTER-side mirror of suggestForEpisode (#1350): from a visit's page, which
+// illness episode(s) does this visit fall inside? Same containment signal, inverted —
+// one encounter against many episodes. Same decision durability (the SAME
+// order-independent signature, so a decline made from either end silences both) and
+// the same #534 never-guess: 0 in range ⇒ nothing, exactly 1 ⇒ a single suggestion
+// (still user-accepted — a routine cleaning during a cold week is in-range but
+// unrelated), ≥2 ⇒ a picker, never a ranked guess. Already-linked episodes are
+// excluded by the caller before this runs.
+export interface EpisodeCandidate extends EpisodeRange {
+  situation: string;
+}
+
+export interface EncounterEpisodeSuggestion {
+  // A single in-range episode (the caller shows "During …, link this visit?").
+  episode?: EpisodeCandidate;
+  // OR ≥2 in-range episodes — a picker.
+  candidates?: EpisodeCandidate[];
+}
+
+export function suggestEpisodesForEncounter(
+  encounter: LinkableEncounter,
+  episodes: EpisodeCandidate[],
+  declinedSignatures: ReadonlySet<string>
+): EncounterEpisodeSuggestion | null {
+  const encToken = stableToken(encounter);
+  const inRange = episodes.filter(
+    (ep) =>
+      encounterInEpisodeRange(ep, encounter.date) &&
+      !declinedSignatures.has(visitLinkSignature(encToken, episodeToken(ep)))
+  );
+  if (inRange.length === 0) return null;
+  if (inRange.length === 1) return { episode: inRange[0] };
+  return { candidates: inRange };
+}
+
 // ── Manual "Link a visit…" picker ordering (#1196) ───────────────────────────────
 //
 // The episode Care line's manual override lists in-range visits first, then offers

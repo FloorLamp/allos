@@ -19,6 +19,7 @@ import {
   buildNarrativeIdMap,
   codeSystemLabel,
   codedDisplayName,
+  collectBlockNarrative,
   collectText,
   effTime,
   hl7Date,
@@ -626,7 +627,11 @@ export function clinicalNotesFromSections(
   const out: ClinicalNote[] = [];
   for (const s of sections) {
     if (!isClinicalNoteSection(s)) continue;
-    const text = collectText(s.raw?.text).replace(/\s+/g, " ").trim();
+    // Block-aware narrative (#1350): a Progress Notes body is structured
+    // (<paragraph>/<list>/<table>) — collect it with block boundaries → newlines
+    // and collapse only intra-line whitespace, so the note reaches NotesText with
+    // its paragraph/list structure intact instead of as a run-on blob.
+    const text = collectBlockNarrative(s.raw?.text);
     if (!text) continue;
     const authorNode =
       asArray(s.raw?.author)[0] ?? firstNoteEntryAuthor(s.entries);

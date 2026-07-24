@@ -214,6 +214,8 @@ import {
   DQ_ADULT_PROFILE,
   E2E_LOGIN_VISITLINKS,
   VISITLINKS_PROFILE,
+  E2E_LOGIN_ENCRICH,
+  ENCRICH_PROFILE,
   E2E_LOGIN_CREATEVISIT,
   CREATEVISIT_PROFILE,
   E2E_LOGIN_TOASTS,
@@ -4772,6 +4774,81 @@ console.log(
   seedMemberLogin(E2E_LOGIN_VISITLINKS, vlProfileId, "write");
   console.log(
     `e2e: seeded visit-link fixture — profile ${vlProfileId} (${VISITLINKS_PROFILE}) #1050/#1053`
+  );
+}
+
+// ── Encounter-detail enrichment (#1350/#1353) ─────────────────────────────────
+// A self-contained profile whose subject visit exercises every enrichment: a
+// same-provider prior visit (visit context), a completed appointment booked for it
+// (scheduling origin), an illness episode spanning the visit with NO link yet (the
+// encounter-side link suggestion → link → care trail), and a document-sourced + a
+// manual condition (RecordProvenance deep-link vs plain label). OWNS every row.
+{
+  const enId = fixtureProfileId(ENCRICH_PROFILE);
+  const EN_SUBJECT_DATE = "2026-06-18";
+  db.prepare(
+    `INSERT OR IGNORE INTO providers (name, type, dedup_key)
+     VALUES ('Dr. Enid Enrich (e2e)', 'individual', 'e2e:enid-enrich')`
+  ).run();
+  const enProviderId = (
+    db
+      .prepare("SELECT id FROM providers WHERE dedup_key = 'e2e:enid-enrich'")
+      .get() as { id: number }
+  ).id;
+  const existingSubject = db
+    .prepare(
+      "SELECT id FROM encounters WHERE profile_id = ? AND date = ? AND type = 'Office Visit'"
+    )
+    .get(enId, EN_SUBJECT_DATE) as { id: number } | undefined;
+  if (!existingSubject) {
+    // A same-provider prior visit earlier the same year → visit context reads
+    // "2nd visit with Dr. Enid Enrich · last one Feb 2026" and "2nd … this year".
+    db.prepare(
+      `INSERT INTO encounters (profile_id, date, type, class_code, reason, provider_id)
+       VALUES (?, '2026-02-10', 'Office Visit', 'AMB', 'Annual checkup', ?)`
+    ).run(enId, enProviderId);
+    const subjectId = Number(
+      db
+        .prepare(
+          `INSERT INTO encounters (profile_id, date, type, class_code, reason, provider_id)
+           VALUES (?, ?, 'Office Visit', 'AMB', 'Sinus congestion', ?)`
+        )
+        .run(enId, EN_SUBJECT_DATE, enProviderId).lastInsertRowid
+    );
+    // A completed appointment booked for the subject visit → scheduling origin.
+    db.prepare(
+      `INSERT INTO appointments (profile_id, scheduled_at, provider_id, status, encounter_id, title)
+       VALUES (?, '2026-06-10 09:30:00', ?, 'completed', ?, 'Sick visit')`
+    ).run(enId, enProviderId, subjectId);
+    // An illness episode spanning the subject visit, NO linked visit yet → the
+    // encounter-side "Link an illness episode?" suggestion.
+    db.prepare(
+      `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+       VALUES (?, 'sinus infection (e2e)', '2026-06-15', '2026-06-23')`
+    ).run(enId);
+    // A source document + a document-sourced condition and a manual condition →
+    // RecordProvenance deep-link vs plain label (#1353).
+    const docId = Number(
+      db
+        .prepare(
+          `INSERT INTO medical_documents
+             (profile_id, filename, stored_path, doc_type, extraction_status, extracted_count, document_date)
+           VALUES (?, 'visit-summary-e2e.xml', '/dev/null', 'ccd', 'done', 1, ?)`
+        )
+        .run(enId, EN_SUBJECT_DATE).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO conditions (profile_id, name, status, source, document_id)
+       VALUES (?, 'Acute sinusitis (e2e)', 'active', ?, ?)`
+    ).run(enId, `document:${docId}`, docId);
+    db.prepare(
+      `INSERT INTO conditions (profile_id, name, status, source)
+       VALUES (?, 'Seasonal allergies (e2e)', 'active', NULL)`
+    ).run(enId);
+  }
+  seedMemberLogin(E2E_LOGIN_ENCRICH, enId, "write");
+  console.log(
+    `e2e: seeded encounter-enrichment fixture — profile ${enId} (${ENCRICH_PROFILE}) #1350/#1353`
   );
 }
 

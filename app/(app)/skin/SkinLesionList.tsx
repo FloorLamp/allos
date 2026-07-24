@@ -112,7 +112,10 @@ function LesionRecordRow({
           className="text-xs text-slate-500 dark:text-slate-400"
         />
       ) : null}
-      <RecordProvenance source={record.source} />
+      <RecordProvenance
+        source={record.source}
+        documentId={record.document_id}
+      />
       <TrackSkinFollowUpControl
         recordId={record.id}
         offer={record.status !== "removed"}
