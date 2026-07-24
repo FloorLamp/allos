@@ -386,6 +386,21 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     fn: "deleteImagingStudy",
     why: "multi-view (#1328): deletes the ITEM's imaging study via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
+  // --- Multi-view Biomarkers table edits/deletes (issue #1331). Each merged row
+  // carries its OWN profileId, so an edit/delete on a non-acting member's reading
+  // targets the ROW's profile via gateItemProfile() → requireProfileWriteAccess. The
+  // paired addRecord keeps its plain requireWriteAccess() (a new reading always lands
+  // on the acting profile). ---
+  {
+    file: "app/(app)/medical/actions.ts",
+    fn: "updateRecord",
+    why: "multi-view (#1331): edits the ITEM's biomarker reading via gateItemProfile() → requireProfileWriteAccess(itemProfileId); the document subpage form posts no profile_id and falls back to the acting-profile gate",
+  },
+  {
+    file: "app/(app)/medical/actions.ts",
+    fn: "deleteRecord",
+    why: "multi-view (#1331): deletes the ITEM's biomarker reading via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
   // --- Multi-view Training Journal writes (issue #1330). A merged card carries its
   // subject's profile_id, so the save/delete/merge target the SUBJECT's profile via
   // the shared gateItemProfile() → requireProfileWriteAccess(itemProfileId) (a

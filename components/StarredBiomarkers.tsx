@@ -24,31 +24,55 @@ import BiomarkerScale from "./BiomarkerScale";
 // and on the dashboard. Each tile links to the biomarker detail page and shows
 // the latest value, an optimal-status chip (when known), and a sparkline.
 // Renders nothing when no biomarkers are starred.
+//
+// Multi-view (#1331): the starred lens is PER PROFILE (starred_biomarkers is
+// name-keyed per profile), so a caregiver viewing several members sees one labeled
+// card per member — pass that member's `profileId` + `subjectLabel`. Every range /
+// flag / staleness judgment then resolves in THAT member's own demographic context
+// (its sex, birthdate/age, reproductive status), never the acting profile's. Default
+// (no props) reads the acting profile via requireSession — single-view unchanged.
 export default async function StarredBiomarkers({
   title = "Starred biomarkers",
+  profileId,
+  subjectLabel,
 }: {
   title?: string;
+  profileId?: number;
+  subjectLabel?: string;
 }) {
-  const { profile } = await requireSession();
-  const starred = getStarredBiomarkers(profile.id);
+  const pid = profileId ?? (await requireSession()).profile.id;
+  const starred = getStarredBiomarkers(pid);
   if (starred.length === 0) return null;
-  const sex = getUserSex(profile.id);
+  const sex = getUserSex(pid);
   // Reproductive status (female physiology only) overrides the age proxy for the
   // reproductive-hormone ranges; a profile-level attribute, read once.
-  const reproductiveStatus = getUserReproductiveStatus(profile.id);
+  const reproductiveStatus = getUserReproductiveStatus(pid);
   // Age-banded ranges are judged against the subject's age on each reading's own
   // date (not today). Read the birthdate/stored-age once; derive per-tile age.
-  const birthdate = getUserBirthdate(profile.id);
-  const storedAge = getStoredAge(profile.id);
+  const birthdate = getUserBirthdate(pid);
+  const storedAge = getStoredAge(pid);
   const ageOn = (date: string | null) =>
     (birthdate && date ? ageFromBirthdate(birthdate, date) : null) ??
     storedAge ??
     null;
 
   return (
-    <div className="card mb-6" data-testid="starred-biomarkers">
+    <div
+      className="card mb-6"
+      data-testid={
+        profileId != null
+          ? `starred-biomarkers-${profileId}`
+          : "starred-biomarkers"
+      }
+    >
       <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-        ★ {title}{" "}
+        ★ {title}
+        {subjectLabel ? (
+          <span className="font-normal text-slate-500 dark:text-slate-400">
+            {" · "}
+            {subjectLabel}
+          </span>
+        ) : null}{" "}
         <span className="font-normal text-slate-500 dark:text-slate-400">
           ({starred.length})
         </span>
@@ -77,7 +101,7 @@ export default async function StarredBiomarkers({
           const stale = isBiomarkerStale(
             b.latest_date,
             b.latest_category,
-            today(profile.id),
+            today(pid),
             undefined,
             {
               name: b.canonical_name,
@@ -88,7 +112,7 @@ export default async function StarredBiomarkers({
             }
           );
           const ageDays = b.latest_date
-            ? daysBetween(b.latest_date, today(profile.id))
+            ? daysBetween(b.latest_date, today(pid))
             : null;
           const relative =
             ageDays == null
