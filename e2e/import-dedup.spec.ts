@@ -76,9 +76,9 @@ test.describe("Data → Review duplicate resolver", () => {
     await page.goto("/timeline?from=2026-07-07&to=2026-07-07");
     // Scope to the FEED row: the single-day view now also renders the intraday
     // panel (#1068), whose SVG carries a hidden <title>Afternoon Run</title> for
-    // the workout block — a page-wide getByText().first() resolves to that hidden
-    // title and fails toBeVisible (the consolidation-class selector break). The
-    // per-entry anchors the panel introduced are the stable feed-row hook.
+    // the workout block — a page-wide text locator's FIRST match resolves to that
+    // hidden title and fails toBeVisible (the consolidation-class selector break).
+    // The per-entry anchors the panel introduced are the stable feed-row hook.
     await expect(
       page
         .locator('[id^="timeline-entry-"]')
