@@ -77,7 +77,10 @@ import {
   normalizeTimelineRange,
   timelineCategoryFromParam,
   timelineDateFromParam,
+  timelineEntryAnchorId,
 } from "@/lib/timeline-format";
+import { getIntradayDay } from "@/lib/queries/intraday";
+import IntradayPanel from "@/components/IntradayPanel";
 import { formatLongDate } from "@/lib/format-date";
 import { EmptyState, MedicalValue, PageHeader } from "@/components/ui";
 import ActivityIcon from "@/components/ActivityIcon";
@@ -560,6 +563,16 @@ export default async function TimelinePage(props: {
   }
   const cyclePeriods = !multiFeed ? listCyclePeriods(daySubjectId) : [];
 
+  // The intraday panel (#1068) — the SINGLE-day view only. It is the day rotated
+  // 90°, so it reads the SAME resolved event list the feed below renders (never a
+  // second gather): whatever the category filter and the age restriction dropped
+  // is already gone, which makes "a hidden feed event can never appear as a tick"
+  // true by construction. Null when nothing on the day is intraday.
+  const intraday =
+    singleDaySelected && range.from && days.length > 0
+      ? getIntradayDay(daySubjectId, range.from, days[0].events)
+      : null;
+
   const latestDay = (multiFeed ? mergedDays : days)[0]?.date;
   const oldestDay = (multiFeed ? mergedDays : days).at(-1)?.date;
   const throughLabel =
@@ -888,8 +901,21 @@ export default async function TimelinePage(props: {
                   />
                 </div>
                 <div className="space-y-3 pl-4">
+                  {/* The intraday panel (#1068): the day rotated 90°, on the
+                      SINGLE-day view only — the scrolling feed gets no per-day
+                      chart. Null when nothing on the day is intraday, so an
+                      ordinary day renders no empty frame. */}
+                  {intraday && intraday.date === day.date && (
+                    <IntradayPanel model={intraday} formatPrefs={formatPrefs} />
+                  )}
                   {day.events.map((event) => (
-                    <div key={event.id} className="relative">
+                    <div
+                      key={event.id}
+                      // Per-entry anchor (#1068) so an intraday tick can scroll
+                      // the list to its entry. Offset for the sticky controls.
+                      id={timelineEntryAnchorId(event.id)}
+                      className="relative scroll-mt-[calc(13rem+env(safe-area-inset-top))] md:scroll-mt-44"
+                    >
                       <span className="absolute left-0 top-[1.875rem] h-px w-4 -translate-x-4 bg-black/10 dark:bg-white/10" />
                       <span className="absolute left-0 top-[1.5625rem] h-2.5 w-2.5 -translate-x-[1.3125rem] rounded-full border-2 border-white bg-brand-500 dark:border-ink-950" />
                       <EventCard
