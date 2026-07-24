@@ -11,9 +11,19 @@
 
 import { db } from "./db";
 import { foldActivityFieldsWithOverrides } from "./import-review/conflicts";
-import { ACTIVITY_FOLD_FIELDS } from "./import-review/detect";
+import { ACTIVITY_FOLD_FIELDS, orderDropsForFold } from "./import-review/detect";
 import { deletePairDecision } from "./queries/integrations";
 import type { MergeUndoContext } from "./undo-delete";
+
+// What writeActivityFold actually moved for one dropped row, returned so an undoable
+// caller (the Journal merge) can build a per-drop MergeUndoContext that inverts EXACTLY
+// what happened (#199/#200). `movedRouteId` is the drop's activity_routes id the fold
+// re-parented onto the keeper, or null when the keeper already had a route (so the
+// drop kept its own, captured as a child by the generic delete instead).
+export interface DropFoldMove {
+  dropId: number;
+  movedRouteId: number | null;
+}
 
 // Fold the DISCARDED row's gap-filling fields into the KEEPER — COALESCE(keep, drop)
 // per column, so the keeper's own values always win and the discarded row only fills
@@ -40,54 +50,82 @@ export function writeActivityFold(
   profileId: number,
   keepId: number,
   keep: Record<string, unknown>,
-  drop: Record<string, unknown>,
+  drops: Record<string, unknown>[],
   overrideFields: Iterable<string> = []
-): void {
-  const f = foldActivityFieldsWithOverrides(keep, drop, overrideFields);
-  // Session-level equipment link (#342): keeper-wins COALESCE like the fold fields —
-  // the keeper's gear stands, and the discarded row only fills a gap. Handled
-  // explicitly (not via ACTIVITY_FOLD_FIELDS) so the link stays out of the fold's
-  // richness scoring and conflict-preview UI, which are for measurement gap-fill.
-  const foldedEquipmentId =
-    (keep.equipment_id as number | null | undefined) ??
-    (drop.equipment_id as number | null | undefined) ??
+): DropFoldMove[] {
+  // Fold every drop into the keeper in a DETERMINISTIC order (by activityToken, #1081)
+  // so an N-way fold is reproducible across a re-sync. Each step is the same
+  // keeper-wins COALESCE gap-fill (foldActivityFieldsWithOverrides); the accumulated
+  // keeper only ever GAINS a value where it had a gap, so the fold is associative and
+  // the order only decides which drop fills a shared gap first. The per-field
+  // conflict overrides (#100) are a pairwise affordance — they apply to the FIRST
+  // drop in the order (the only meaningful case is a 2-row merge, drops.length === 1).
+  const ordered = orderDropsForFold(
+    drops as unknown as Parameters<typeof orderDropsForFold>[0]
+  ) as unknown as Record<string, unknown>[];
+  let folded: Record<string, unknown> = keep;
+  ordered.forEach((drop, i) => {
+    const step = foldActivityFieldsWithOverrides(
+      folded,
+      drop,
+      i === 0 ? overrideFields : []
+    );
+    folded = { ...folded, ...step };
+  });
+  const f = folded as Record<(typeof ACTIVITY_FOLD_FIELDS)[number], unknown>;
+  // Session-level equipment link (#342): keeper-wins COALESCE across the keeper then
+  // every drop in order — the keeper's gear stands, the drops only fill a gap.
+  // Handled explicitly (not via ACTIVITY_FOLD_FIELDS) so the link stays out of the
+  // fold's richness scoring and conflict-preview UI, which are for measurement gap-fill.
+  let foldedEquipmentId =
+    (keep.equipment_id as number | null | undefined) ?? null;
+  for (const drop of ordered) {
+    foldedEquipmentId =
+      foldedEquipmentId ?? (drop.equipment_id as number | null | undefined) ?? null;
+  }
+
+  // Re-parent every drop's children onto the keeper (#199, now for N drops). Track
+  // whether the keeper has a GPS route yet (activity_routes is UNIQUE(activity_id)):
+  // move a drop's route only when the keeper still has none, so the first drop with a
+  // route wins the keeper's slot and later drops keep their own (captured by the undo
+  // path). Return the actual per-drop route move so the undo context can invert
+  // EXACTLY what happened.
+  let keeperHasRoute =
+    db.prepare(`SELECT 1 FROM activity_routes WHERE activity_id = ?`).get(keepId) !=
     null;
-  // Re-parent the discarded row's sets onto the keeper (#199). exercise_sets is a
-  // child table (no profile_id of its own); the caller has already verified both
-  // activities belong to the acting profile, so scoping by activity_id is sufficient
-  // (mirrors saveActivity's own `WHERE activity_id = ?` set writes).
-  const dropId = drop.id;
-  if (typeof dropId === "number") {
+  const moves: DropFoldMove[] = [];
+  for (const drop of ordered) {
+    const dropId = drop.id;
+    if (typeof dropId !== "number") continue;
+    // exercise_sets is a child table (no profile_id of its own); the caller has
+    // verified every activity belongs to the acting profile, so scoping by
+    // activity_id is sufficient (mirrors saveActivity's own set writes).
     db.prepare(
       `UPDATE exercise_sets SET activity_id = ? WHERE activity_id = ?`
     ).run(keepId, dropId);
-    // Re-parent the discarded row's GPS route onto the keeper (#569), KEEPER-WINS:
-    // activity_routes is UNIQUE(activity_id), so a blind move would violate the
-    // constraint when the keeper already has a route. Move the drop's route only
-    // when the keeper has none; otherwise the drop keeps its route (it cascade-
-    // deletes with the drop, and is captured by the undo path). Mirrors the sets
-    // re-parent but respects the 1:1 constraint.
-    if (
-      !db
-        .prepare(`SELECT 1 FROM activity_routes WHERE activity_id = ?`)
-        .get(keepId)
-    ) {
-      db.prepare(
-        `UPDATE activity_routes SET activity_id = ? WHERE activity_id = ?`
-      ).run(keepId, dropId);
+    let movedRouteId: number | null = null;
+    if (!keeperHasRoute) {
+      const route = db
+        .prepare(`SELECT id FROM activity_routes WHERE activity_id = ?`)
+        .get(dropId) as { id: number } | undefined;
+      if (route) {
+        db.prepare(
+          `UPDATE activity_routes SET activity_id = ? WHERE activity_id = ?`
+        ).run(keepId, dropId);
+        movedRouteId = route.id;
+        keeperHasRoute = true;
+      }
     }
-    // Re-parent the discarded row's form-check video clips onto the keeper (#1224,
-    // #199) so a merge NEVER loses a clip — a blind move (many-per-activity, no
-    // uniqueness). activity_videos is profile-owned, so the WHERE names profile_id
-    // (unlike the child exercise_sets/activity_routes). The clips then follow the
-    // keeper; a merge-undo leaves them on the keeper rather than restoring them to
-    // the discarded row (a documented, clip-preserving deviation — the clip is never
-    // lost, only re-homed).
+    // Re-parent the drop's form-check video clips onto the keeper (#1224, #199) — a
+    // blind move (many-per-activity, no uniqueness). activity_videos is profile-owned,
+    // so the WHERE names profile_id (unlike the child exercise_sets/activity_routes).
     db.prepare(
       `UPDATE activity_videos SET activity_id = ?
         WHERE activity_id = ? AND profile_id = ?`
     ).run(keepId, dropId, profileId);
+    moves.push({ dropId, movedRouteId });
   }
+
   db.prepare(
     `UPDATE activities
         SET notes = ?, duration_min = ?, distance_km = ?, intensity = ?,
@@ -124,6 +162,7 @@ export function writeActivityFold(
     keepId,
     profileId
   );
+  return moves;
 }
 
 // Snapshot the keeper's PRE-fold state for a fully-invertible merge undo (#200):
@@ -152,26 +191,6 @@ export function dropSetIds(dropId: number): number[] {
       .prepare(`SELECT id FROM exercise_sets WHERE activity_id = ?`)
       .all(dropId) as { id: number }[]
   ).map((r) => r.id);
-}
-
-// The id of the discarded row's activity_routes row that writeActivityFold WILL
-// re-parent onto the keeper (#569) — i.e. non-null only when the drop has a route
-// AND the keeper has none (the keeper-wins condition). Captured BEFORE the fold and
-// stored in MergeUndoContext.movedRouteId so undo can move exactly that route back.
-// Returns null when the keeper already has a route (the drop's route then rides the
-// generic child capture instead) or the drop has none.
-export function movedRouteIdForMerge(
-  keepId: number,
-  dropId: number
-): number | null {
-  const keeperHasRoute = db
-    .prepare(`SELECT 1 FROM activity_routes WHERE activity_id = ?`)
-    .get(keepId);
-  if (keeperHasRoute) return null;
-  const dropRoute = db
-    .prepare(`SELECT id FROM activity_routes WHERE activity_id = ?`)
-    .get(dropId) as { id: number } | undefined;
-  return dropRoute?.id ?? null;
 }
 
 // INVERT an activity merge on undo (#199/#200): given the restored discarded row's
