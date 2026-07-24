@@ -201,6 +201,24 @@ export function setProfileMoodRecap(profileId: number, enabled: boolean): void {
   setProfileSetting(profileId, "mood_recap_enabled", enabled ? "1" : "0");
 }
 
+// The check-in "Calm" (anxiety) scale opt-in (issue #1313, signal 6) — the escape
+// hatch for a profile with no INFERABLE mental-health signal who nonetheless wants
+// the daily anxiety rating. Off by default; the other five gate signals (prior use,
+// GAD-7/PHQ-9 on record, an anxiety condition/med, a protocol outcome) reveal the
+// scale on their own, so this is only load-bearing for the un-inferable case. The
+// gate is SILENT (#716 law) — this stored flag is the ONLY place a "show the scale"
+// intent is ever written; the inference bit is derived per render and never stored.
+export function getAnxietyScaleOptIn(profileId: number): boolean {
+  return getProfileSetting(profileId, "anxiety_scale_enabled") === "1";
+}
+
+export function setAnxietyScaleOptIn(
+  profileId: number,
+  enabled: boolean
+): void {
+  setProfileSetting(profileId, "anxiety_scale_enabled", enabled ? "1" : "0");
+}
+
 // ---- Morning-digest sleep summary (issue #1117) — per-profile opt-in ----
 // Whether the morning digest includes a calm "how'd I sleep" section (last night's
 // MAIN overnight session vs baseline, stage breakdown, an SRI note, any nap on its

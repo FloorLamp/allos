@@ -35,6 +35,7 @@ import {
   getBiomarkerSeries,
   getNavRelevance,
   getSituationalDueCount,
+  isAnxietyScaleRelevant,
 } from "@/lib/queries";
 import {
   nonIllnessSituationOptions,
@@ -671,6 +672,13 @@ export default async function Dashboard() {
       })()
     : null;
 
+  // The check-in Calm (anxiety) scale relevance gate (issue #1313): the SILENT
+  // six-signal resolver (prior use, GAD-7/PHQ-9 on record, an anxiety condition/med, a
+  // protocol outcome, or the Settings opt-in). Only computed when the card renders.
+  const checkinAnxietyRelevant = has("symptom-log")
+    ? isAnxietyScaleRelevant(profile.id)
+    : false;
+
   // Data-aware empty set (issue #171): a data-aware widget whose domain has no data
   // yet renders an onboarding CTA instead of a blank card. Computed from the same
   // reads the widget consumes, so the CTA shows exactly when the widget would be
@@ -874,7 +882,9 @@ export default async function Dashboard() {
                 />
               ) : null
             }
+            medsCount={checkinPrnMeds.length}
             situations={checkinSituations}
+            anxietyRelevant={checkinAnxietyRelevant}
           />
         );
       default:

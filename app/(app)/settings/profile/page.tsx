@@ -15,6 +15,7 @@ import {
   getExcludedFoodGroups,
   getMentalHealthShareFull,
   getProfileCrisisResourcesOverride,
+  getAnxietyScaleOptIn,
 } from "@/lib/settings";
 import { formatCrisisResourcesText } from "@/lib/crisis-resources";
 import { requireSession } from "@/lib/auth";
@@ -30,6 +31,7 @@ import ProfileForm from "./ProfileForm";
 import ProfilePhotoCard from "./ProfilePhotoCard";
 import TrainingZonesForm from "./TrainingZonesForm";
 import RecommendationCadenceForm from "./RecommendationCadenceForm";
+import AnxietyScaleForm from "./AnxietyScaleForm";
 import DietaryPreferencesForm from "./DietaryPreferencesForm";
 import MentalHealthPrivacyForm from "./MentalHealthPrivacyForm";
 import CrisisResourcesEditor from "@/components/CrisisResourcesEditor";
@@ -133,6 +135,7 @@ export default async function ProfileSettingsPage() {
               cadence={getRecommendationCadence(profile.id)}
               isAdmin={isAdmin}
             />
+            <AnxietyScaleForm enabled={getAnxietyScaleOptIn(profile.id)} />
           </section>
           <section id="privacy" className="scroll-mt-4 space-y-6">
             <h2 className="section-label">Privacy &amp; support</h2>

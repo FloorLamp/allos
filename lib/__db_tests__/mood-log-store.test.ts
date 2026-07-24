@@ -40,7 +40,7 @@ describe("upsertMoodLog — the one idempotent per-day write core", () => {
         valence: 2,
         energy: 3,
         anxiety: 4,
-        factors: ["work", "sleep"],
+        factors: ["social", "work"],
         note: "long day",
       })
     ).toBe(true);
@@ -52,7 +52,8 @@ describe("upsertMoodLog — the one idempotent per-day write core", () => {
       valence: 2,
       energy: 3,
       anxiety: 4,
-      factors: ["sleep", "work"],
+      // Normalized to vocabulary order (#1311 shrank the set to work, social).
+      factors: ["work", "social"],
       notes: "long day",
     });
   });

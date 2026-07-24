@@ -80,29 +80,30 @@ test.describe("dashboard daily loop (#1221)", () => {
     ).toHaveAttribute("href", "/medical/cycles");
   });
 
-  test("the check-in card carries the folded 'Take any meds?' branch", async () => {
+  test("the check-in card carries the folded Act (meds) section", async () => {
     await page.goto("/");
     const checkin = page.getByRole("main").getByTestId("how-are-you-card");
     await expect(checkin).toBeVisible();
-    // The daily-loop profile owns one active PRN med and is well, so the meds branch
-    // renders; expanding it reveals the same PRN quick-log control.
-    const meds = checkin.getByTestId("checkin-meds");
+    // The daily-loop profile owns one active PRN med and is well, so the Act section
+    // (#1314) renders; expanding it reveals the same PRN quick-log control.
+    const meds = checkin.getByTestId("checkin-section-act");
     await expect(meds).toBeVisible();
-    await checkin.getByTestId("checkin-meds-toggle").click();
+    await checkin.getByTestId("checkin-section-act-toggle").click();
     await expect(checkin.getByTestId("quick-log-prn")).toBeVisible();
     // The fixture owns exactly one active PRN med, so the log control is unambiguous.
     await expect(checkin.getByTestId("prn-log-now")).toBeVisible();
   });
 
-  test("the 'Anything going on?' branch toggles a situation and the Supplements bar agrees (#1221 part 6)", async () => {
+  test("the Context section toggles a situation and the Supplements bar agrees (#1221 part 6 / #1311)", async () => {
     const SITUATION = "Deadline (e2e)";
     await page.goto("/");
     const checkin = page.getByRole("main").getByTestId("how-are-you-card");
     await expect(checkin).toBeVisible();
 
-    // Expand the collapsed disclosure and toggle the custom fixture situation ON.
-    await expect(checkin.getByTestId("checkin-situations")).toBeVisible();
-    await checkin.getByTestId("checkin-situations-toggle").click();
+    // Expand the merged "What's going on?" Context section and toggle the custom
+    // fixture situation (the sticky half) ON.
+    await expect(checkin.getByTestId("checkin-section-context")).toBeVisible();
+    await checkin.getByTestId("checkin-section-context-toggle").click();
     const chip = checkin.getByTestId(`checkin-situation-${SITUATION}`);
     await expect(chip).toBeVisible();
     await expect(chip).toHaveAttribute("aria-pressed", "false");

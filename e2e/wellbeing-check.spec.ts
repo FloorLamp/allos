@@ -6,8 +6,10 @@ import { createProfileViaFamily, switchToProfile } from "./family-helpers";
 //   1. no-episode — mood tap leads, the quiet "Not feeling well?" branch shows;
 //   2. one tap logs the day, persists, and a same-day re-tap UPDATES (idempotent
 //      per profile+date — one row, never a duplicate);
-//   3. expand — energy/anxiety + factor chips + note save and persist, and the
-//      mood series reaches the Trends → Body chart;
+//   3. expand — energy + note save and persist, and the mood series reaches the
+//      Trends → Body chart (the merged Context chip group and the relevance-gated
+//      Calm scale (#1311/#1313/#1314) are covered in e2e/checkin-card.spec.ts —
+//      a fresh profile here has no anxiety signal, so Calm is intentionally absent);
 //   4. active-episode — the illness cockpit takes the hero, the card defers with
 //      a quiet note, and the mood tap STILL works (the two coexist).
 //
@@ -100,7 +102,7 @@ test.describe("Daily wellbeing check (#992)", () => {
     );
   });
 
-  test("expand: energy/anxiety, factor chips, and note save — and reach the Trends chart", async ({
+  test("expand: energy and note save — and reach the Trends chart", async ({
     page,
   }) => {
     test.slow();
@@ -108,13 +110,14 @@ test.describe("Daily wellbeing check (#992)", () => {
     await page.goto("/");
 
     const card = page.getByTestId("how-are-you-card");
-    // Pick a valence (settled on the marker), then expand for the detail.
+    // Pick a valence (settled on the marker), then expand the Rate section detail.
     await tapMood(page, card, 3);
-    await card.getByTestId("mood-expand").click();
+    await card.getByTestId("checkin-section-rate-toggle").click();
     await expect(card.getByTestId("mood-detail")).toBeVisible();
+    // Energy is universal; Calm is relevance-gated (#1313) and absent for this fresh,
+    // signal-free profile — its presence/gating is covered in checkin-card.spec.ts.
+    await expect(card.getByTestId("mood-anxiety-4")).toHaveCount(0);
     await card.getByTestId("mood-energy-2").click();
-    await card.getByTestId("mood-anxiety-4").click();
-    await card.getByTestId("mood-factor-sleep").click();
     await card.getByTestId("mood-note").fill("short night");
     await card.getByTestId("mood-save").click();
     // The save settles when the server marker reflects the expanded fields.
@@ -133,16 +136,8 @@ test.describe("Daily wellbeing check (#992)", () => {
       "aria-pressed",
       "true"
     );
-    await card.getByTestId("mood-expand").click();
+    await card.getByTestId("checkin-section-rate-toggle").click();
     await expect(card.getByTestId("mood-energy-2")).toHaveAttribute(
-      "aria-pressed",
-      "true"
-    );
-    await expect(card.getByTestId("mood-anxiety-4")).toHaveAttribute(
-      "aria-pressed",
-      "true"
-    );
-    await expect(card.getByTestId("mood-factor-sleep")).toHaveAttribute(
       "aria-pressed",
       "true"
     );

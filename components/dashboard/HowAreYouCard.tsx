@@ -3,46 +3,51 @@
 import { useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import WidgetHeader from "@/components/dashboard/WidgetHeader";
+import CheckInSection from "@/components/dashboard/CheckInSection";
 import { useToast } from "@/components/Toast";
 import { useOfflineQueue } from "@/components/OfflineQueueProvider";
 import { shouldQueueOffline } from "@/lib/offline/queue";
 import { activateIllnessForSymptoms } from "@/app/(app)/symptoms/actions";
 import { toggleSituation } from "@/app/(app)/nutrition/supplement-actions";
 import { logMood } from "@/app/(app)/mood/actions";
-import { MOOD_LABELS, MOOD_FACTORS } from "@/lib/mood";
+import {
+  MOOD_FACTORS,
+  ANXIETY_CALM_LOW_LABEL,
+  ANXIETY_CALM_HIGH_LABEL,
+  anxietyDisplaySlot,
+  anxietyStoredValue,
+} from "@/lib/mood";
+import {
+  rateSummary,
+  contextGroup,
+  contextGroupHasChips,
+  contextSummary,
+  reportSummary,
+  actSummary,
+} from "@/lib/checkin-sections";
 import MoodValencePicker from "@/components/MoodValencePicker";
 
-// The unified daily check-in card (issue #992): ONE "How are you today?" shell
-// that composes TWO separate engines — the lightweight mood tap (this issue) and
-// the illness front door (#843's FeelingSickCard, folded in here) — without
-// blurring their contracts. Mood keeps its no-gamification / never-flagged /
-// calm-observation-only rules; illness keeps its episode machinery; no
-// illness-style escalation ever applies to a mood value. States:
+// The recomposed daily check-in card (issue #1314, over #992). The card's four
+// intents ARE its structure now, in fixed order under ONE CheckInSection grammar
+// (components/dashboard/CheckInSection.tsx) — each section renders a glanceable
+// one-liner at rest and opens only for input:
 //
-//   1. No active illness (the common case): leads with the one-tap mood row, with
-//      a QUIETER secondary "Not feeling well?" affordance that branches into the
-//      illness-episode flow (the same one-tap activation the old card had —
-//      explicit tap, never auto-activation, per the #560 bridge discipline).
-//   2. Active illness episode: the episode cockpit lives in the illness hero
-//      (#858) above the grid, so this card defers to it with a quiet note — and
-//      STILL offers the mood tap (mood during illness is useful signal), so the
-//      two coexist rather than one hiding the other.
-//   3. "Take any meds?" — the folded PRN quick-log branch (issue #1221). The old
-//      standalone `quick-log-prn` widget is retired; the check-in card now owns
-//      mood + illness + meds. The page passes the server-rendered PRN control node
-//      (`medsSlot`) ONLY on a well day with active PRN meds — when illness is active
-//      the hero cockpit already embeds the SAME logger (so the branch is omitted to
-//      avoid the duplicate the old availability gate hand-managed), and a profile
-//      with no active PRN meds simply gets no branch (a daily-ritual card stays calm,
-//      not a standing add-a-medication CTA — the Medications page owns onboarding).
-//   4. Extensible: a future subjective sleep-quality or psych check would join
-//      this shell as another row, not a new competing card.
+//   1. Rate    — the hero face row (one tap still completes the check-in) plus the
+//                expansion: Energy, the relevance-gated Calm (#1313), and a note.
+//   2. Context — the merged "What's going on?" chip group (#1311): sticky situations
+//                (setActiveSituations) ∪ today-only work/social day-factors (the mood
+//                -factor path). ONE rendering, two write paths correctly routed by
+//                chip variant; the #662 activation line survives.
+//   3. Report  — the illness door ("Not feeling well?" is a report, not a card-level
+//                sibling). Defers to the hero cockpit while an episode is active (the
+//                #858 hero owns the lifecycle — one lifecycle, one door).
+//   4. Act     — the PRN meds quick-log slot (#1221 fold-in), server-rendered.
 //
-// One tap logs the day's mood; "More detail" expands energy/anxiety + factor
-// chips + a note (the food-log one-tap ethos, #682). Writes go through the ONE
-// logMood action → upsertMoodLog core (idempotent per profile+date — a re-tap
-// updates today's row), and a tap that fails offline rides the quick-log queue
-// exactly like a weigh-in (issue #28), landing on the captured date.
+// The engines are unchanged — this is composition + gating, not new machinery: mood
+// writes still go through the ONE logMood → upsertMoodLog core (idempotent per
+// profile+date; an offline tap rides the quick-log queue), situations through the
+// shared toggleSituation, illness through activateIllnessForSymptoms. Mood keeps its
+// no-gamification / never-flagged / calm-observation-only contract.
 
 export interface TodayMood {
   valence: number;
@@ -101,7 +106,9 @@ export default function HowAreYouCard({
   mood,
   activeEpisode,
   medsSlot = null,
+  medsCount = 0,
   situations = null,
+  anxietyRelevant = false,
 }: {
   // The profile-local capture date — a queued offline tap lands on THIS day.
   date: string;
@@ -110,21 +117,23 @@ export default function HowAreYouCard({
   mood: TodayMood | null;
   // Whether the acting profile has an open illness episode (the hero is up).
   activeEpisode: boolean;
-  // The server-rendered PRN quick-log control (issue #1221), or null. The page passes
-  // it ONLY on a well day with active PRN meds — rendered on the server (so lib/clock's
-  // frozen-clock override applies) and threaded through this client boundary as an RSC
-  // node, exactly like the illness-hero cockpit body.
+  // The server-rendered PRN quick-log control (issue #1221), or null — passed ONLY on
+  // a well day with active PRN meds. Rendered on the server (so lib/clock's frozen
+  // clock applies) and threaded through this client boundary as an RSC node.
   medsSlot?: ReactNode;
-  // The "Anything going on?" situations entrypoint (issue #1221 part 6), or null. The
-  // NON-clinical situation chips (Travel / High stress / Poor sleep / custom — illness
-  // types excluded, that lifecycle is the illness door's) with each chip's active state,
-  // plus the shared #662 activation line. Generalizes what the illness branch already is
-  // — a hard-wired situation entrypoint — into a quiet, zero-footprint-when-unused
-  // disclosure.
+  // The count of active PRN meds behind `medsSlot`, for the Act section summary.
+  medsCount?: number;
+  // The merged Context group's sticky half (issue #1311): the NON-clinical situation
+  // chips (illness types excluded — that lifecycle is the illness door's) with each
+  // chip's active state, plus the shared #662 activation line. The day-factor half
+  // (work/social) is derived from MOOD_FACTORS + today's mood.factors below.
   situations?: {
     options: { name: string; active: boolean }[];
     activationLine: string | null;
   } | null;
+  // Whether the Calm (anxiety) scale is relevant for this profile (issue #1313's
+  // relevance gate). SILENT: the scale renders or doesn't — no copy names the trigger.
+  anxietyRelevant?: boolean;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -132,7 +141,9 @@ export default function HowAreYouCard({
   const [pending, start] = useTransition();
   const [sickPending, startSick] = useTransition();
   const [sitPending, startSit] = useTransition();
-  const [expanded, setExpanded] = useState(false);
+  const [rateExpanded, setRateExpanded] = useState(false);
+  const [contextExpanded, setContextExpanded] = useState(false);
+  const [actExpanded, setActExpanded] = useState(false);
 
   // Local mirrors of today's entry for instant feedback; the server row is the
   // source of truth on the next render (router.refresh after each save).
@@ -143,8 +154,9 @@ export default function HowAreYouCard({
   const [note, setNote] = useState(mood?.notes ?? "");
   const [error, setError] = useState<string | null>(null);
 
-  // Persist one check-in (tap or expanded save). A bare tap carries the already-
-  // stored expand fields along, so re-tapping a face never wipes today's detail.
+  // Persist one check-in (tap, expanded save, or a day-factor toggle while a mood is
+  // logged). A bare tap carries the already-stored expand fields along, so re-tapping
+  // a face never wipes today's detail.
   function save(next: {
     valence: number;
     energy: number | null;
@@ -197,16 +209,25 @@ export default function HowAreYouCard({
     save({ valence: n, energy, anxiety, factors, note });
   }
 
-  function toggleFactor(slug: string) {
-    setFactors((prev) =>
-      prev.includes(slug) ? prev.filter((f) => f !== slug) : [...prev, slug]
-    );
+  // Toggle a today-only day-factor (work/social — the surviving mood factors). Updates
+  // local state, and — when a mood is already logged — persists immediately through
+  // the SAME logMood core (carrying the existing valence). When no mood is logged yet
+  // the toggle stays local and rides the next mood save (valence is required to write
+  // a mood row); the visible "Just today" grouping tells the user it's a today-only tag.
+  function toggleDayFactor(slug: string) {
+    const nextFactors = factors.includes(slug)
+      ? factors.filter((f) => f !== slug)
+      : [...factors, slug];
+    setFactors(nextFactors);
+    if (valence != null) {
+      save({ valence, energy, anxiety, factors: nextFactors, note });
+    }
   }
 
-  // Toggle a non-clinical situation (issue #1221 part 6). Reuses the SAME
-  // setActiveSituations path as the Supplements bar via the shared toggleSituation action
-  // (transition events → chart annotations come free), then refreshes so the active chips +
-  // activation line update from the server (the dueness/bus truth).
+  // Toggle a sticky non-clinical situation (issue #1311's sticky half). Reuses the
+  // SAME setActiveSituations path as the Supplements bar via the shared toggleSituation
+  // action (transition events → chart annotations come free), then refreshes so the
+  // active chips + activation line update from the server (the dueness/bus truth).
   function toggleSit(name: string) {
     setError(null);
     startSit(async () => {
@@ -218,49 +239,65 @@ export default function HowAreYouCard({
     });
   }
 
+  // The Calm scale's on-screen value is the RELABELED display slot (#1313 axis fix:
+  // high = calm/good, matching Energy); stored `anxiety` semantics are unchanged.
+  const calmDisplay =
+    anxietyRelevant && anxiety != null ? anxietyDisplaySlot(anxiety) : null;
+
+  // The merged Context group model (#1311): sticky situations ∪ today-only day factors.
+  const group = contextGroup({
+    situations: situations?.options ?? [],
+    dayFactors: MOOD_FACTORS.map((f) => ({
+      slug: f.slug,
+      label: f.label,
+      active: factors.includes(f.slug),
+    })),
+  });
+  const showContext = contextGroupHasChips(group);
+
   return (
     <div className="card" data-testid="how-are-you-card">
       <WidgetHeader title="How are you today?" href="/trends?tab=body" />
 
-      {/* The one-tap mood row — the everyday default action. */}
-      <div className="flex flex-wrap items-center gap-2">
-        <MoodValencePicker value={valence} onChange={tap} disabled={pending} />
-        <span
-          className="text-xs text-slate-500 dark:text-slate-400"
-          data-testid="mood-status"
-        >
-          {valence != null
-            ? `Logged: ${MOOD_LABELS[valence - 1]}`
-            : "Tap to log your day."}
-        </span>
-        {/* Server-truth marker: rendered from the SERVER prop (not local state),
-            so it appears/updates only once the write committed and the refresh
-            round-tripped. The e2e settle hook on a page whose background action
-            POSTs make network-response waits ambiguous (see e2e/helpers.ts). */}
-        {mood ? (
-          <span
-            hidden
-            data-testid="mood-server-logged"
-            data-valence={mood.valence}
-            data-energy={mood.energy ?? ""}
-            data-anxiety={mood.anxiety ?? ""}
-            data-factors={mood.factors.join(",")}
-            data-note={mood.notes ?? ""}
-          />
-        ) : null}
-        <button
-          type="button"
-          data-testid="mood-expand"
-          aria-expanded={expanded}
-          onClick={() => setExpanded((e) => !e)}
-          className="ml-auto text-xs text-brand-600 hover:underline dark:text-brand-400"
-        >
-          {expanded ? "Less" : "More detail"}
-        </button>
-      </div>
-
-      {expanded ? (
-        <div className="mt-3 space-y-2" data-testid="mood-detail">
+      {/* RATE — the hero face row stays first in DOM; one tap completes the check-in,
+          and "More detail" reveals Energy, the gated Calm, and a note. */}
+      <CheckInSection
+        id="rate"
+        first
+        expanded={rateExpanded}
+        onToggle={() => setRateExpanded((e) => !e)}
+        toggleLabel="More detail"
+        header={
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <MoodValencePicker
+              value={valence}
+              onChange={tap}
+              disabled={pending}
+            />
+            <span
+              className="text-xs text-slate-500 dark:text-slate-400"
+              data-testid="mood-status"
+            >
+              {rateSummary({ valence, energy, calmDisplay })}
+            </span>
+            {/* Server-truth marker (from the SERVER prop, not local state): appears/
+                updates only once the write committed and the refresh round-tripped —
+                the e2e settle hook on this action-POST-heavy page (see e2e/helpers.ts). */}
+            {mood ? (
+              <span
+                hidden
+                data-testid="mood-server-logged"
+                data-valence={mood.valence}
+                data-energy={mood.energy ?? ""}
+                data-anxiety={mood.anxiety ?? ""}
+                data-factors={mood.factors.join(",")}
+                data-note={mood.notes ?? ""}
+              />
+            ) : null}
+          </div>
+        }
+      >
+        <div className="space-y-2" data-testid="mood-detail">
           <ScaleRow
             name="Energy"
             value={energy}
@@ -269,35 +306,23 @@ export default function HowAreYouCard({
             lowLabel="drained"
             highLabel="energized"
           />
-          <ScaleRow
-            name="Calm"
-            value={anxiety}
-            onPick={(n) => setAnxiety((prev) => (prev === n ? null : n))}
-            testPrefix="mood-anxiety"
-            lowLabel="calm"
-            highLabel="anxious"
-          />
-          <div className="flex flex-wrap items-center gap-1">
-            <span className="w-16 text-xs text-slate-500 dark:text-slate-400">
-              Factors
-            </span>
-            {MOOD_FACTORS.map((f) => (
-              <button
-                key={f.slug}
-                type="button"
-                data-testid={`mood-factor-${f.slug}`}
-                aria-pressed={factors.includes(f.slug)}
-                onClick={() => toggleFactor(f.slug)}
-                className={`badge cursor-pointer border ${
-                  factors.includes(f.slug)
-                    ? "border-brand-400 bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
-                    : "border-slate-300 bg-transparent text-slate-500 dark:border-slate-600 dark:text-slate-400"
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
+          {/* The relevance-gated Calm scale (#1313) — rendered only when the anxiety
+              domain is relevant to this profile. SILENT gate: no copy explains its
+              absence. Axis relabeled so high = calm (the good end), like Energy. */}
+          {anxietyRelevant ? (
+            <ScaleRow
+              name="Calm"
+              value={anxiety != null ? anxietyDisplaySlot(anxiety) : null}
+              onPick={(n) =>
+                setAnxiety((prev) =>
+                  prev === anxietyStoredValue(n) ? null : anxietyStoredValue(n)
+                )
+              }
+              testPrefix="mood-anxiety"
+              lowLabel={ANXIETY_CALM_LOW_LABEL}
+              highLabel={ANXIETY_CALM_HIGH_LABEL}
+            />
+          ) : null}
           <div className="flex items-center gap-2">
             <input
               type="text"
@@ -322,7 +347,7 @@ export default function HowAreYouCard({
             </button>
           </div>
         </div>
-      ) : null}
+      </CheckInSection>
 
       {error ? (
         <p className="mt-2 text-xs text-rose-600" data-testid="mood-error">
@@ -330,100 +355,137 @@ export default function HowAreYouCard({
         </p>
       ) : null}
 
-      {/* The illness branch — a separate engine behind the shared shell. */}
-      {activeEpisode ? (
-        <p
-          className="mt-3 border-t border-black/5 pt-2 text-xs text-slate-500 dark:border-white/5 dark:text-slate-400"
-          data-testid="mood-episode-note"
+      {/* CONTEXT — the merged "What's going on?" chip group (#1311): ONE group, two
+          write paths (sticky situations vs today-only day factors), the stickiness
+          difference made VISIBLE by the "Ongoing / Just today" split. */}
+      {showContext ? (
+        <CheckInSection
+          id="context"
+          label="What's going on?"
+          summary={contextSummary(group)}
+          expanded={contextExpanded}
+          onToggle={() => setContextExpanded((e) => !e)}
         >
-          Illness episode active — symptoms and temperature are tracked above.
-        </p>
-      ) : (
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-black/5 pt-2 dark:border-white/5">
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Not feeling well? Start tracking symptoms and temperature.
-          </p>
-          <button
-            type="button"
-            data-testid="feeling-sick-activate"
-            disabled={sickPending}
-            onClick={() =>
-              startSick(async () => {
-                await activateIllnessForSymptoms();
-                router.refresh();
-              })
-            }
-            className="badge cursor-pointer border border-dashed border-brand-400 bg-transparent text-brand-700 hover:bg-brand-50 disabled:opacity-50 dark:border-brand-700 dark:text-brand-300 dark:hover:bg-brand-950"
-          >
-            {sickPending ? "Starting…" : "I'm feeling sick"}
-          </button>
-        </div>
-      )}
-
-      {/* The "Take any meds?" branch — the folded PRN quick-log (issue #1221). The
-          page supplies the server-rendered control only on a well day with active PRN
-          meds; a calm disclosure keeps the everyday check-in uncluttered. */}
-      {medsSlot ? (
-        <details
-          className="mt-3 border-t border-black/5 pt-2 dark:border-white/5"
-          data-testid="checkin-meds"
-        >
-          <summary
-            data-testid="checkin-meds-toggle"
-            className="cursor-pointer text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
-          >
-            Take any meds?
-          </summary>
-          <div className="mt-2">{medsSlot}</div>
-        </details>
+          <div className="space-y-3">
+            {group.sticky.length > 0 ? (
+              <div>
+                <p className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                  Ongoing
+                </p>
+                <div
+                  className="flex flex-wrap items-center gap-1.5"
+                  data-testid="checkin-context-sticky"
+                >
+                  {group.sticky.map((c) => (
+                    <button
+                      key={c.key}
+                      type="button"
+                      data-testid={`checkin-situation-${c.key}`}
+                      aria-pressed={c.active}
+                      disabled={sitPending}
+                      onClick={() => toggleSit(c.key)}
+                      className={`badge cursor-pointer disabled:opacity-60 ${
+                        c.active
+                          ? "bg-brand-600 text-white"
+                          : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-700"
+                      }`}
+                    >
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+                {situations?.activationLine ? (
+                  <p
+                    className="mt-2 text-xs text-slate-500 dark:text-slate-400"
+                    data-testid="checkin-situation-activation"
+                  >
+                    {situations.activationLine}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+            {group.day.length > 0 ? (
+              <div>
+                <p className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                  Just today
+                </p>
+                <div
+                  className="flex flex-wrap items-center gap-1.5"
+                  data-testid="checkin-context-day"
+                >
+                  {group.day.map((c) => (
+                    <button
+                      key={c.key}
+                      type="button"
+                      data-testid={`checkin-day-factor-${c.key}`}
+                      aria-pressed={c.active}
+                      onClick={() => toggleDayFactor(c.key)}
+                      className={`badge cursor-pointer border ${
+                        c.active
+                          ? "border-brand-400 bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
+                          : "border-slate-300 bg-transparent text-slate-500 dark:border-slate-600 dark:text-slate-400"
+                      }`}
+                    >
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </CheckInSection>
       ) : null}
 
-      {/* The "Anything going on?" situations entrypoint (issue #1221 part 6) —
-          generalizing the illness branch (itself a hard-wired situation door) into a
-          quiet disclosure of the NON-clinical situation chips. Illness types are
-          excluded (that lifecycle is the illness door's). */}
-      {situations && situations.options.length > 0 ? (
-        <details
-          className="mt-3 border-t border-black/5 pt-2 dark:border-white/5"
-          data-testid="checkin-situations"
-        >
-          <summary
-            data-testid="checkin-situations-toggle"
-            className="cursor-pointer text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+      {/* REPORT — the illness door as this section's escalation. Non-expandable: the
+          door (or the defer-to-hero note) renders inline at rest. */}
+      <CheckInSection
+        id="report"
+        label="Report"
+        summary={reportSummary(activeEpisode)}
+        expandable={false}
+      >
+        {activeEpisode ? (
+          <p
+            className="text-xs text-slate-500 dark:text-slate-400"
+            data-testid="mood-episode-note"
           >
-            Anything going on?
-          </summary>
-          <div
-            className="mt-2 flex flex-wrap items-center gap-1.5"
-            data-testid="checkin-situations-chips"
-          >
-            {situations.options.map((o) => (
-              <button
-                key={o.name}
-                type="button"
-                data-testid={`checkin-situation-${o.name}`}
-                aria-pressed={o.active}
-                disabled={sitPending}
-                onClick={() => toggleSit(o.name)}
-                className={`badge cursor-pointer disabled:opacity-60 ${
-                  o.active
-                    ? "bg-brand-600 text-white"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-700"
-                }`}
-              >
-                {o.name}
-              </button>
-            ))}
-          </div>
-          {situations.activationLine ? (
-            <p
-              className="mt-2 text-xs text-slate-500 dark:text-slate-400"
-              data-testid="checkin-situation-activation"
-            >
-              {situations.activationLine}
+            Illness episode active — symptoms and temperature are tracked above.
+          </p>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Not feeling well? Start tracking symptoms and temperature.
             </p>
-          ) : null}
-        </details>
+            <button
+              type="button"
+              data-testid="feeling-sick-activate"
+              disabled={sickPending}
+              onClick={() =>
+                startSick(async () => {
+                  await activateIllnessForSymptoms();
+                  router.refresh();
+                })
+              }
+              className="badge cursor-pointer border border-dashed border-brand-400 bg-transparent text-brand-700 hover:bg-brand-50 disabled:opacity-50 dark:border-brand-700 dark:text-brand-300 dark:hover:bg-brand-950"
+            >
+              {sickPending ? "Starting…" : "I'm feeling sick"}
+            </button>
+          </div>
+        )}
+      </CheckInSection>
+
+      {/* ACT — the folded PRN quick-log (issue #1221). Shown only on a well day with
+          active PRN meds; a calm expandable keeps the everyday check-in uncluttered. */}
+      {medsSlot ? (
+        <CheckInSection
+          id="act"
+          label="Meds"
+          summary={actSummary(medsCount)}
+          expanded={actExpanded}
+          onToggle={() => setActExpanded((e) => !e)}
+        >
+          {medsSlot}
+        </CheckInSection>
       ) : null}
     </div>
   );

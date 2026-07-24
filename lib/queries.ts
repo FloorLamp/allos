@@ -19,6 +19,7 @@ export * from "./queries/coaching";
 export * from "./queries/nutrition";
 export * from "./queries/symptoms";
 export * from "./queries/mood";
+export * from "./queries/mood-anxiety";
 export * from "./queries/medical";
 export * from "./queries/visit-links";
 export * from "./queries/med-links";
