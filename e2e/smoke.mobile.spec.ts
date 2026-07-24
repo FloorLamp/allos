@@ -19,11 +19,15 @@ test("the mobile top bar renders and the desktop sidebar is hidden", async ({
 }) => {
   await page.goto("/");
 
-  // MobileNav's bar (md:hidden) — hamburger + wordmark + the "log activity" entry.
-  const hamburger = page.getByRole("button", { name: "Open menu" });
-  await expect(hamburger).toBeVisible();
+  // MobileNav's bar (md:hidden) — hamburger + the quick "log activity" entry.
+  // Scoped to the bar itself (the <header> holding the hamburger) so the dashboard's
+  // own "Log activity →" card button can't satisfy either assertion.
+  const bar = page.locator("header", {
+    has: page.getByRole("button", { name: "Open menu" }),
+  });
+  await expect(bar.getByRole("button", { name: "Open menu" })).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Log activity" })
+    bar.getByRole("button", { name: "Log activity", exact: true })
   ).toBeVisible();
 
   // The desktop sidebar's nav links exist only inside the (unmounted) drawer at
