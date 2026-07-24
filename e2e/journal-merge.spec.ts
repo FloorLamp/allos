@@ -20,10 +20,14 @@ test("merge two same-day activities from the Journal, then Undo (#64)", async ({
   // Open the keeper card's overflow (⋯) menu → "Merge with…" → pick the dupe.
   await keeperCard.getByRole("button", { name: "Activity actions" }).click();
   await page.getByTestId("merge-with").click();
+  // Multi-select (#1081): check the sibling to combine, keep the card (default keeper),
+  // then run the merge.
   await page
     .getByTestId("merge-target")
     .filter({ hasText: "Journal merge dupe" })
-    .click();
+    .getByTestId("merge-target-check")
+    .check();
+  await page.getByTestId("merge-run").click();
 
   // The discarded row is merged away; the keeper survives.
   await expect(page.getByText("Journal merge dupe")).toHaveCount(0);

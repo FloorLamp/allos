@@ -67,7 +67,13 @@ export default function ActivityCardMenu({
 }) {
   const [open, setOpen] = useState(false);
   const [picking, setPicking] = useState(false);
-  // The sibling whose merge is awaiting per-field conflict resolution, or null.
+  // Multi-select state (#1081): the sibling ids checked to absorb, and the chosen
+  // keeper across ALL members (this card + checked siblings). Default keeper = card.
+  const [checked, setChecked] = useState<Set<number>>(new Set());
+  const [keeperId, setKeeperId] = useState<number>(activity.id);
+  // The sibling whose merge is awaiting per-field conflict resolution, or null. Only
+  // the pairwise case (card keeper + one drop) opens the #100 dialog; the N-way
+  // multi-value picker is a fast-follow, so a 3+ merge is keeper-wins gap-fill.
   const [conflictFor, setConflictFor] = useState<MergeSibling | null>(null);
   const undoable = useUndoableDelete();
   const { openRepeat } = useActivityEditor();
@@ -76,12 +82,22 @@ export default function ActivityCardMenu({
     activity.id
   );
 
-  async function runMerge(dropId: number, overrideFields: string[]) {
+  function resetPicker() {
+    setPicking(false);
+    setChecked(new Set());
+    setKeeperId(activity.id);
+  }
+
+  async function runMerge(
+    keepId: number,
+    dropIds: number[],
+    overrideFields: string[]
+  ) {
     const fd = new FormData();
-    fd.set("keep_id", String(activity.id));
-    fd.set("drop_id", String(dropId));
+    fd.set("keep_id", String(keepId));
+    fd.set("drop_ids", JSON.stringify(dropIds));
     // Multi-view (#1330): target the subject's profile so the merge (keeper edit +
-    // sibling delete) write-gates on it; absent single-view falls back to acting.
+    // drop deletes) write-gates on it; absent single-view falls back to acting.
     if (activity.subjectProfileId != null)
       fd.set("profile_id", String(activity.subjectProfileId));
     if (overrideFields.length > 0)
@@ -91,22 +107,56 @@ export default function ActivityCardMenu({
     });
   }
 
-  function pick(sibling: MergeSibling) {
-    setOpen(false);
-    setPicking(false);
-    // Conflicts ⇒ open the preview; otherwise merge in one click (unchanged flow).
-    if (sibling.conflicts.length > 0) {
-      setConflictFor(sibling);
-      return;
+  // Toggle a sibling's inclusion; unchecking the current keeper falls back to the card.
+  function toggleChecked(id: number) {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+        if (keeperId === id) setKeeperId(activity.id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  // Choosing a sibling as keeper also includes it in the merge.
+  function chooseKeeper(id: number) {
+    setKeeperId(id);
+    if (id !== activity.id)
+      setChecked((prev) => new Set(prev).add(id));
+  }
+
+  function runPickerMerge() {
+    const includedSiblingIds = siblings
+      .filter((s) => checked.has(s.id))
+      .map((s) => s.id);
+    if (includedSiblingIds.length === 0) return;
+    const memberIds = [activity.id, ...includedSiblingIds];
+    const keep = memberIds.includes(keeperId) ? keeperId : activity.id;
+    const dropIds = memberIds.filter((id) => id !== keep);
+    // Pairwise + card keeper + a genuinely-conflicting drop → open the #100 preview;
+    // every other shape (multi-select, or a chosen-away card) merges keeper-wins.
+    if (keep === activity.id && dropIds.length === 1) {
+      const sib = siblings.find((s) => s.id === dropIds[0]);
+      if (sib && sib.conflicts.length > 0) {
+        setOpen(false);
+        setConflictFor(sib);
+        return;
+      }
     }
-    void runMerge(sibling.id, []);
+    setOpen(false);
+    resetPicker();
+    void runMerge(keep, dropIds, []);
   }
 
   async function confirmConflict(overrideFields: string[]) {
     const sibling = conflictFor;
     if (!sibling) return;
     setConflictFor(null);
-    await runMerge(sibling.id, overrideFields);
+    resetPicker();
+    await runMerge(activity.id, [sibling.id], overrideFields);
   }
 
   return (
@@ -116,30 +166,68 @@ export default function ActivityCardMenu({
         open={open}
         onOpenChange={(o) => {
           setOpen(o);
-          if (!o) setPicking(false);
+          if (!o) resetPicker();
         }}
       >
         {() =>
           picking ? (
             <div data-testid="merge-picker">
               <div className="px-3 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
-                Merge into this — pick one to absorb
+                Merge duplicates — check what to combine, pick the keeper
               </div>
               <div className="max-h-56 overflow-y-auto">
+                {/* The originating card is always a member (keeper by default). */}
+                <label
+                  data-testid="merge-keeper-card"
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200"
+                >
+                  <input
+                    type="radio"
+                    name={`merge-keeper-${activity.id}`}
+                    checked={keeperId === activity.id}
+                    onChange={() => chooseKeeper(activity.id)}
+                    aria-label="Keep this activity"
+                  />
+                  <span className="truncate" title={activity.title}>
+                    {activity.title}{" "}
+                    <span className="text-xs text-slate-400">(this)</span>
+                  </span>
+                </label>
                 {siblings.map((s) => (
-                  <button
+                  <label
                     key={s.id}
-                    type="button"
-                    role="menuitem"
                     data-testid="merge-target"
-                    className={`${MENU_ITEM} truncate`}
+                    className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200"
                     title={s.title}
-                    onClick={() => pick(s)}
                   >
-                    {s.title}
-                  </button>
+                    <input
+                      type="checkbox"
+                      data-testid="merge-target-check"
+                      checked={checked.has(s.id)}
+                      onChange={() => toggleChecked(s.id)}
+                      aria-label={`Combine ${s.title}`}
+                    />
+                    <input
+                      type="radio"
+                      name={`merge-keeper-${activity.id}`}
+                      data-testid="merge-target-keeper"
+                      checked={keeperId === s.id}
+                      onChange={() => chooseKeeper(s.id)}
+                      aria-label={`Keep ${s.title}`}
+                    />
+                    <span className="truncate">{s.title}</span>
+                  </label>
                 ))}
               </div>
+              <button
+                type="button"
+                data-testid="merge-run"
+                disabled={checked.size === 0}
+                className={`${MENU_ITEM} font-medium text-brand-600 disabled:opacity-40 dark:text-brand-400`}
+                onClick={runPickerMerge}
+              >
+                Merge {checked.size + 1} activities
+              </button>
             </div>
           ) : (
             <>

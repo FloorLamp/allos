@@ -12,6 +12,7 @@ import {
 } from "./normalize";
 import { HEALTH_CONNECT_ID, type ParsedPayload } from "./health-connect";
 import { queuePostWorkoutForFreshImports } from "@/lib/notifications/post-workout-imports";
+import { autoMergeActivityDuplicates } from "@/lib/import-review/auto-merge";
 
 const log = createLogger("health-connect-ingest");
 
@@ -85,6 +86,19 @@ export function ingestHealthConnectPayload(
       queuePostWorkoutForFreshImports(profileId);
     } catch (err) {
       log.error("post-workout arming failed after Health Connect ingest", {
+        profileId,
+        err,
+      });
+    }
+    // High-confidence auto-merge (#1081): a freshly-inserted HC activity that overlaps
+    // a Strava/manual row for the same session collapses immediately (through the same
+    // core + tombstone + decision path), so the duplicate never reaches Review. Runs
+    // AFTER every chunk committed, in its own transactions; ISOLATED like the arming
+    // above so a merge failure can't misreport an otherwise-successful ingest.
+    try {
+      autoMergeActivityDuplicates(profileId);
+    } catch (err) {
+      log.error("auto-merge failed after Health Connect ingest", {
         profileId,
         err,
       });

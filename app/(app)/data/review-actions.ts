@@ -314,6 +314,30 @@ export async function resolvePair(formData: FormData) {
   revalidatePath("/");
 }
 
+// KEEP ALL / DISMISS a whole duplicate CLUSTER (issue #1081): record the decision for
+// EVERY constituent pair signature (not a cluster-only key), so a re-formed sub-pair
+// stays suppressed via the pairwise re-detection. `kept-both` = the members are
+// genuinely distinct; `dismissed` = hide the false positive. No row change.
+export async function resolveActivityCluster(formData: FormData) {
+  const { profile } = await requireWriteAccess();
+  const decision = String(formData.get("decision") ?? "");
+  const pairSignatures = parseStringList(formData.get("pair_signatures"));
+  if (
+    (decision !== "kept-both" && decision !== "dismissed") ||
+    pairSignatures.length === 0
+  )
+    return;
+  for (const sig of pairSignatures)
+    recordPairDecision(
+      profile.id,
+      ACTIVITY_DOMAIN,
+      sig,
+      decision as PairDecision
+    );
+  revalidatePath("/data");
+  revalidatePath("/");
+}
+
 // --- Unit-mislabel correction (issue #761) -----------------------------------
 //
 // A numeric lab reading whose stored unit is a probable power-of-ten mislabel of

@@ -18,6 +18,7 @@ import {
 import { mapStravaActivity } from "./strava";
 import { writeRawPayload } from "./raw-log";
 import { queuePostWorkoutForFreshImports } from "@/lib/notifications/post-workout-imports";
+import { autoMergeActivityDuplicates } from "@/lib/import-review/auto-merge";
 import {
   upsertActivities,
   upsertActivityRoutes,
@@ -213,7 +214,21 @@ export async function runStravaSync(
   // today gets the delayed post-workout dose dispatch armed, so its doses aren't
   // bucket-slot-dependent. Only when the sync actually INSERTED rows — a pure
   // re-scan of known rows arms nothing.
-  if (upActivities.inserted > 0) queuePostWorkoutForFreshImports(profileId);
+  if (upActivities.inserted > 0) {
+    queuePostWorkoutForFreshImports(profileId);
+    // High-confidence auto-merge (#1081): a freshly-inserted Strava activity that
+    // overlaps a Health Connect / manual row for the same session collapses now
+    // (through the same core + tombstone + decision path), so the duplicate never
+    // reaches Review. Isolated so a merge failure can't fail the sync.
+    try {
+      autoMergeActivityDuplicates(profileId);
+    } catch (err) {
+      log.error("auto-merge failed after Strava sync", {
+        profileId,
+        err: String(err),
+      });
+    }
+  }
 
   // Advance the cursor to the newest activity we successfully processed, so the
   // next run's trailing window starts from there. (When truncated, newestStart
