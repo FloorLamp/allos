@@ -10,7 +10,7 @@
 // table.
 
 import { db } from "../db";
-import { documentSource } from "../body-metric-extract";
+import { documentSource, undeferredBodyMetrics } from "../body-metric-extract";
 import type {
   GenomicResultType,
   GenomicSignificance,
@@ -50,7 +50,7 @@ import {
 import { getMedMatchStates } from "./intake/medications";
 import { foldConsolidatedMeds } from "../medication-renewal";
 import { parsePrescription } from "../prescription-parse";
-import type { PersistRecord } from "../import-shape";
+import type { PersistInput, PersistRecord } from "../import-shape";
 
 export interface ImportLogDocumentRow {
   kind: "document";
@@ -925,4 +925,62 @@ export function foldConsolidatedMedsIntoSnapshot(
     derivedMeds,
     newStrengthByKey
   );
+}
+
+// A projected body metric / height / head-circ that a reprocess would DEFER — because
+// another source (a manual entry, a device integration, or ANOTHER document) already
+// covers that date's measure (the import-persist undeferredBodyMetrics + height/
+// head-circ "covered" probes) — is still proposed by the defer-blind
+// snapshotFromPersistInput, so it reads as a phantom "add" on EVERY reprocess of a
+// document whose weight / resting-HR / height / head-circ share a date with another
+// source. Reconcile the fresh (`next`) side with the SAME defer the commit applies:
+// probe coverage from every source EXCEPT this document's own (a reprocess clears the
+// document's rows before re-persisting, so its metrics never self-defer) and rebuild
+// next's metric arrays to what a reprocess would actually store — so an otherwise
+// unchanged document previews as unchanged instead of re-proposing deferred metrics.
+export function pruneDeferredMetricsFromSnapshot(
+  profileId: number,
+  docId: number,
+  next: ImportSnapshot,
+  input: PersistInput
+): void {
+  const source = documentSource(docId);
+  // `source IS NOT ?` counts every OTHER source (NULL-source paste rows included) but
+  // never this document's own rows — mirroring the post-clear state a reprocess probes.
+  const bmCoverage = db.prepare(
+    `SELECT MAX(weight_kg IS NOT NULL) AS w,
+            MAX(body_fat_pct IS NOT NULL) AS bf,
+            MAX(resting_hr IS NOT NULL) AS rhr
+       FROM body_metrics WHERE profile_id = ? AND date = ? AND source IS NOT ?`
+  );
+  next.bodyMetrics = undeferredBodyMetrics(input.bodyMetrics, (date) => {
+    const c = bmCoverage.get(profileId, date, source) as
+      { w: number | null; bf: number | null; rhr: number | null } | undefined;
+    return {
+      weight_kg: !!c?.w,
+      body_fat_pct: !!c?.bf,
+      resting_hr: !!c?.rhr,
+    };
+  }).map((b) =>
+    bodyMetricRow({
+      date: b.date,
+      weight_kg: b.weight_kg,
+      body_fat_pct: b.body_fat_pct,
+      resting_hr: b.resting_hr,
+    })
+  );
+
+  const sampleCovered = db.prepare(
+    `SELECT 1 FROM metric_samples
+       WHERE profile_id = ? AND metric = ? AND date = ? AND source IS NOT ? LIMIT 1`
+  );
+  next.heights = input.heights
+    .filter((h) => !sampleCovered.get(profileId, "height_cm", h.date, source))
+    .map((h) => sampleRow("h", h.date, h.height_cm));
+  next.headCircs = input.headCircs
+    .filter(
+      (h) =>
+        !sampleCovered.get(profileId, "head_circumference_cm", h.date, source)
+    )
+    .map((h) => sampleRow("hc", h.date, h.head_circumference_cm));
 }
