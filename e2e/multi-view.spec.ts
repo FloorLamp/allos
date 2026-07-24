@@ -1089,9 +1089,8 @@ test.describe("Multi-view Biomarkers table (issue #1331)", () => {
     ).toBeVisible();
 
     // The non-acting (read-only) member's rows carry its subject chip.
-    await expect(
-      page.getByTestId(`subject-chip-${roId}`).first()
-    ).toBeVisible();
+    const roChip = page.getByTestId(`subject-chip-${roId}`);
+    await expect(roChip.first()).toBeVisible(); // first-ok: spec-owned RO fixture, its rows all chip
 
     // Filter to the SHARED family: BOTH members' Vitamin D rows survive — the family
     // dedup never collapsed the two people into one series (per-member partitions).
