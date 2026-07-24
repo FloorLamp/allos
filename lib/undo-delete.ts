@@ -290,6 +290,15 @@ export const UNDO_KINDS: Record<string, KindSpec> = {
             table: "situations",
             onMissing: "null",
           },
+          // pause_situation_id → situations is the INVERSE situational link (migration
+          // 108, #1296) — the mirror of situation_id, same nullable-FK-to-situations
+          // shape and same reconciliation: a captured link to a since-hard-deleted
+          // situation restores NULLed. Profile-owned, probed WITH the profile_id scope.
+          {
+            column: "pause_situation_id",
+            table: "situations",
+            onMissing: "null",
+          },
           // Visit link (#1050): a medication "prescribed at" a visit whose encounter
           // was deleted since capture restores with the link NULLed.
           {

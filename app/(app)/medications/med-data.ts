@@ -67,7 +67,11 @@ import {
   type WeightUnit,
 } from "@/lib/settings";
 import { situationHistoryResolver } from "@/lib/trend-annotations";
-import { isDueOn, isPostWorkoutReady } from "@/lib/supplement-schedule";
+import {
+  isDueOn,
+  isPostWorkoutReady,
+  heldBySituation,
+} from "@/lib/supplement-schedule";
 import type { PediatricFormContext } from "@/lib/prn-dosing";
 import type {
   MedicationCourse,
@@ -124,6 +128,11 @@ export interface MedCardData {
   // Null for an unmonitored med or a discontinued one.
   monitoringNote: string | null;
   monitoringLabs: string[];
+  // The situation NAME currently HOLDING this medication (#1296), or null. A held med
+  // is suppressed from every due/reminder/escalation path (isDueOn returns false), so
+  // the row surfaces "Held — <situation> active" instead of silently vanishing — a
+  // held medication must be discoverable, not a silent reminder blackout.
+  heldBy: string | null;
   // Today's actual administration timestamp by scheduled dose id. Stored values stay
   // raw here so each surface can apply the login's global 12h/24h preference.
   takenDoseTimes: Record<number, string>;
@@ -374,6 +383,7 @@ export function loadMedicationsData(
       prnRedosePrimary: prn.redosePrimary,
       monitoringNote: monitoring?.text ?? null,
       monitoringLabs: monitoring?.labels ?? [],
+      heldBy: med.active ? heldBySituation(med, activeSituations) : null,
       takenDoseTimes: Object.fromEntries(
         doseIds.flatMap((doseId) => {
           const takenAt = takenTimes.get(doseId);

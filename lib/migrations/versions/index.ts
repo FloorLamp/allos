@@ -106,6 +106,7 @@ import { migration as m104 } from "./104-login-own-profile";
 import { migration as m105 } from "./105-login-notification-channels";
 import { migration as m106 } from "./106-medical-record-report-category";
 import { migration as m107 } from "./107-activity-elapsed-min";
+import { migration as m108 } from "./108-intake-pause-situation";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -221,4 +222,5 @@ export const MIGRATIONS: Migration[] = [
   m105,
   m106,
   m107,
+  m108,
 ];

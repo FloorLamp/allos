@@ -12,6 +12,7 @@ import type { BandGroup, UpcomingDomain } from "../upcoming";
 import { fmtWeight, fmtDistance } from "../units";
 import { intakeWindowNoun, intakeItemNoun } from "./supplement-format";
 import { situationActivationLine } from "../situations";
+import { heldSummaryLine } from "../supplement-schedule";
 import { buildUpcomingDigest } from "./upcoming-digest";
 import { sriPresentation } from "../sleep-regularity";
 
@@ -95,6 +96,13 @@ export interface DigestInput {
   // (issue #662 item 1) — the optional digest mention of the same "N situational
   // items now active" the situations bar shows. Optional/0 ⇒ the line is omitted.
   situationalActiveCount?: number;
+  // Count of active intake items currently HELD by a pause situation (#1296) — the
+  // digest's honest mention of "N items held by <situation>" so a forgotten-active
+  // pause situation is discoverable, never a silent reminder blackout. `heldSituation`
+  // names the situation for the line (the first when several hold). Optional/0 ⇒
+  // omitted.
+  heldCount?: number;
+  heldSituation?: string | null;
   // Yesterday
   activities: DigestActivity[];
   // Supplement adherence yesterday, or null when nothing was due. `skipped`
@@ -190,6 +198,14 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     input.situationalActiveCount ?? 0
   );
   if (situationLine) todayLines.push(`🧭 ${situationLine}`);
+  // Held-items mention (#1296): the visible held state in the morning message, via the
+  // one shared heldSummaryLine formatter — so a pause situation silencing reminders is
+  // never a silent blackout.
+  const heldLine =
+    input.heldSituation && (input.heldCount ?? 0) > 0
+      ? heldSummaryLine(input.heldCount ?? 0, input.heldSituation)
+      : null;
+  if (heldLine) todayLines.push(`⏸️ ${heldLine}`);
   // The banded "what's due" summary + high-priority "why" lines, from the SAME
   // collectUpcoming formatter the Upcoming page/hero read. Doses are EXCLUDED from
   // the per-band counts (the glance line above already summarizes them) so a day of

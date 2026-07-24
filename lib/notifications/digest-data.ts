@@ -26,6 +26,7 @@ import {
 } from "../sleep-regularity";
 import {
   countSituationalDue,
+  heldItemsBy,
   doseReminderNotifies,
   isDueOn,
 } from "../supplement-schedule";
@@ -323,11 +324,18 @@ export function gatherDigestInput(
     activeSituations: situationsOn(td),
   });
 
+  // Held items (#1296): active intake items currently suppressed by a pause situation,
+  // via the SAME heldItemsBy computation the Supplements/Medications rows and the badge
+  // use (#221). The digest names the first holding situation and counts the holds.
+  const held = heldItemsBy(active, situationsOn(td));
+
   return {
     profileName,
     openEpisodeLine,
     doseCount,
     situationalActiveCount,
+    heldCount: held.length,
+    heldSituation: held[0]?.situation ?? null,
     intakeKinds,
     todayGroups,
     activities,

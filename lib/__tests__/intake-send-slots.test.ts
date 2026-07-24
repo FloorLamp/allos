@@ -48,6 +48,8 @@ function supp(
     product: null,
     situation: null,
     situation_id: null,
+    pause_situation: null,
+    pause_situation_id: null,
     stack: null,
     critical: 0,
     escalate_after_min: null,

@@ -28,6 +28,7 @@ import { DORMANT_PRN_PREFIX } from "./dormant-prn";
 import { FOOD_TIMING_PREFIX } from "./food-drug-interactions";
 import { KEEP_APART_PREFIX } from "./intake-pairs";
 import { CONDITION_CONSIDERATION_PREFIX } from "./condition-training-considerations";
+import { SURGERY_BRIDGE_PREFIX } from "./surgery-bridge";
 
 // The domain GROUP a suppressed row renders under — the section's sub-headings.
 export type SuppressionDomain =
@@ -328,6 +329,14 @@ const EXTRA_ENTRIES: ResolverEntry[] = [
     prefix: CONDITION_CONSIDERATION_PREFIX,
     domain: "Suggestions",
     label: () => "Condition consideration",
+  },
+  {
+    // Pre-surgery / Post-op suggestion from a scheduled surgical visit (#1299) —
+    // suggest-only, dismissed per-procedure. `surgery-bridge:<phase>:<visitId>`.
+    prefix: SURGERY_BRIDGE_PREFIX,
+    domain: "Suggestions",
+    label: (t) =>
+      part(t, 0) === "post" ? "Post-op suggestion" : "Pre-surgery suggestion",
   },
 ];
 

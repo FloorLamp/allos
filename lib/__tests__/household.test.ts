@@ -44,6 +44,8 @@ function supp(overrides: Partial<Supplement> = {}): Supplement {
     condition: "daily",
     priority: "high",
     situation_id: null,
+    pause_situation: null,
+    pause_situation_id: null,
     brand: null,
     product: null,
     situation: null,

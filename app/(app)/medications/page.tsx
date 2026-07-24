@@ -183,6 +183,7 @@ export default async function MedicationsPage(props: {
                         refillRate={m.refillRate}
                         prnRedoseLine={m.prnRedoseLine}
                         monitoringNote={m.monitoringNote}
+                        heldBy={m.heldBy}
                         todayStr={data.todayStr}
                       />
                     ))}
