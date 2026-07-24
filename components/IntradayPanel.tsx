@@ -7,7 +7,7 @@
 // library, no client JS. The tick/block links are plain `<a href="#…">` fragments
 // (and one route link), so tapping works before hydration.
 import ActivityIcon from "@/components/ActivityIcon";
-import { chartBand, chartSeries } from "@/lib/chart-colors";
+import { chartBand, chartSeries, chartSleepStage } from "@/lib/chart-colors";
 import { ZONE_COLORS } from "@/lib/training-zones";
 import { formatClockValue, type DisplayFormatPrefs } from "@/lib/format-date";
 import type { IntradayModel, IntradayTick, SleepStage } from "@/lib/intraday";
@@ -34,14 +34,9 @@ const TONE_COLOR: Record<NonNullable<IntradayTick["tone"]>, string> = {
   bad: chartSeries.rose,
 };
 
-// Sleep stage sub-band shades (deep → awake). Distinct fills within the one sleep
-// block, on the blessed violet/slate families.
-const STAGE_COLOR: Record<SleepStage, string> = {
-  deep: "#6d28d9", // violet-700
-  rem: chartSeries.violet,
-  light: "#c4b5fd", // violet-300
-  awake: chartSeries.slate,
-};
+// Sleep stage sub-band shades come from the shared palette (chartSleepStage) — the
+// one place a stage color is allowed to live.
+const STAGE_COLOR: Record<SleepStage, string> = chartSleepStage;
 
 function x(minute: number): number {
   return (
