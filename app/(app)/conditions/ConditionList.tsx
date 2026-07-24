@@ -10,6 +10,8 @@ import { formatRecordDate } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
 import type { Condition } from "@/lib/types";
+import type { Stamped } from "@/lib/scope";
+import type { ListMultiView } from "@/lib/multi-view";
 
 function buildColumns(
   fmt: DisplayFormatPrefs,
@@ -84,9 +86,11 @@ function buildColumns(
 export default function ConditionList({
   items,
   treatedWith = {},
+  multiView,
 }: {
-  items: Condition[];
+  items: Stamped<Condition>[];
   treatedWith?: Record<number, string[]>;
+  multiView?: ListMultiView;
 }) {
   const columns = buildColumns(useFormatPrefs(), treatedWith);
   return (
@@ -94,8 +98,21 @@ export default function ConditionList({
       items={items}
       columns={columns}
       emptyMessage="No conditions match this filter."
+      multiView={
+        multiView
+          ? {
+              actingProfileId: multiView.actingProfileId,
+              subjectOf: (c) => c.subject,
+            }
+          : undefined
+      }
       renderEditForm={(c, done) => (
-        <ConditionForm action={updateCondition} condition={c} onDone={done} />
+        <ConditionForm
+          action={updateCondition}
+          condition={c}
+          profileId={multiView ? c.subject.profileId : undefined}
+          onDone={done}
+        />
       )}
       confirmDelete={(c) => ({
         title: "Delete condition",
@@ -104,6 +121,7 @@ export default function ConditionList({
       onDelete={async (c) => {
         const fd = new FormData();
         fd.set("id", String(c.id));
+        if (multiView) fd.set("profile_id", String(c.subject.profileId));
         await deleteCondition(fd);
       }}
     />

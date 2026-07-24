@@ -690,6 +690,15 @@ export const MULTI_OWNER_PROFILE = "Multi Owner (e2e)";
 export const MULTI_SHARED_PROFILE = "Multi Shared (e2e)";
 export const MULTI_OWNER_DOSE = "Multi Owner Vitamin";
 export const MULTI_SHARED_DOSE = "Multi Shared Vitamin";
+// Tier-1 multi-view record-list fixtures (issue #1328): one condition, allergy, and
+// health goal per multi profile, so the /records + /results record lists render a row
+// per profile — the acting (owner) row with NO chip, the shared row WITH a subject chip.
+export const MULTI_OWNER_CONDITION = "Multi Owner Asthma (e2e)";
+export const MULTI_SHARED_CONDITION = "Multi Shared Eczema (e2e)";
+export const MULTI_OWNER_ALLERGY = "Multi Owner Latex (e2e)";
+export const MULTI_SHARED_ALLERGY = "Multi Shared Pollen (e2e)";
+export const MULTI_OWNER_GOAL = "Multi Owner BP target (e2e)";
+export const MULTI_SHARED_GOAL = "Multi Shared A1c target (e2e)";
 
 // Own-profile link + not-self write affordances (issue #1013). A dedicated member
 // granted TWO adult profiles WRITE, with own_profile_id pointing at the FIRST — the
@@ -719,3 +728,15 @@ export const OWN_OTHER_DOSE = "Own Other Vitamin";
 export const E2E_LOGIN_ASK = "e2e_ask";
 export const ASK_RECORDS_PROFILE = "Records QA (e2e)";
 export const ASK_RECORDS_MED = "Amoxicillin";
+
+// Derived situations (issues #1292/#1298). A member granted a dedicated adult FEMALE
+// (premenopausal → cycle-relevant) profile carrying a Period-keyed iron supplement and a
+// Poor-sleep-keyed magnesium, and a rough last-night sleep session so the DERIVED
+// poor-sleep context is measured-ON. Dedicated + isolated on purpose: the spec LOGS and
+// ENDS a period (its own idempotent inverse) and toggles the Poor sleep chip, so it must
+// never race the cycle-log spec's mutations on CYCLE_PROFILE. No open period is seeded,
+// so today starts a gap day (Period context off) until the spec logs one. Synthetic, no PHI.
+export const E2E_LOGIN_DERIVED = "e2e_derived_situ";
+export const DERIVED_SITU_PROFILE = "Derived Situations (e2e)";
+export const DERIVED_SITU_PERIOD_ITEM = "Iron Bisglycinate (e2e)";
+export const DERIVED_SITU_SLEEP_ITEM = "Magnesium Glycinate (e2e)";

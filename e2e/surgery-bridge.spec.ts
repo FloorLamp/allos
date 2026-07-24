@@ -2,31 +2,28 @@ import { test, expect } from "@playwright/test";
 import { settledClick } from "./helpers";
 
 // Pre-surgery / Post-op suggest-only bridge (#1299): the producer for the #1296 pause.
-// This spec OWNS its fixtures (create-and-clean): it schedules a surgical visit a few
-// days out, then asserts the Nutrition → Supplements situations bar surfaces the
+// This spec OWNS its fixtures (create-and-clean): it schedules a surgical visit for
+// today, then asserts the Nutrition → Supplements situations bar surfaces the
 // suggestion chip ("activate Pre-surgery"), confirming activates the Pre-surgery
 // situation. It cancels every visit it scheduled and deactivates Pre-surgery afterward
 // so the shared-seed profile is left unchanged (robust across --repeat-each).
 
 const VISIT_TITLE = "E2E Arthroscopy";
 
-function isoInDays(days: number): string {
-  const d = new Date(Date.now() + days * 86_400_000);
-  return d.toISOString().slice(0, 10);
-}
-
-// Cancel every still-scheduled visit this spec created (best-effort, loop until none
-// remain) so repeated runs on the same seeded DB don't accumulate surgical visits.
+// Cancel every still-scheduled visit this spec created (loop until none remain) so
+// repeated runs on the same seeded DB don't accumulate surgical visits. Uses a plain
+// click + a retrying count-decrement (not settledClick, whose armed POST-wait races the
+// cancel's `startTransition` server action in fast production timing) — the row leaves
+// the upcoming section once its status settles to Cancelled.
 async function cancelOurVisits(page: import("@playwright/test").Page) {
   await page.goto("/records/history/visits");
-  for (let i = 0; i < 6; i++) {
-    const cancelBtn = page
-      .getByTestId("appointment-row")
-      .filter({ hasText: VISIT_TITLE })
-      .getByRole("button", { name: "Cancel appointment" })
-      .first(); // first-ok: loop-cancel of the visits THIS spec scheduled (unique title)
-    if ((await cancelBtn.count()) === 0) break;
-    await settledClick(page, cancelBtn);
+  const cancelBtns = page
+    .getByTestId("appointment-row")
+    .filter({ hasText: VISIT_TITLE })
+    .getByRole("button", { name: "Cancel appointment" });
+  for (let n = await cancelBtns.count(); n > 0; n--) {
+    await cancelBtns.first().click(); // first-ok: loop-cancel of the visits THIS spec scheduled (unique title)
+    await expect(cancelBtns).toHaveCount(n - 1);
   }
 }
 
@@ -38,14 +35,15 @@ test("a scheduled surgical visit suggests activating Pre-surgery", async ({
   // Start clean (a prior repeat may have left visits) so the held-count copy is stable.
   await cancelOurVisits(page);
 
-  // ── Schedule a surgical visit a few days out (inside the 7-day lead) ─────────
+  // ── Schedule a surgical visit for TODAY (the form's default date) ───────────
+  // Leave the DateField untouched: it defaults to the app's frozen "today", which is
+  // both a scheduled (non-past → appointment branch) visit AND trivially inside the
+  // 7-day lead window (0 days out). Deriving the date in the browser (isoInDays) would
+  // race the app's frozen/pinned-timezone clock in CI and mis-place the visit — the
+  // whole "date defaults to today" pattern the visits specs use avoids that.
   await page.goto("/records/history/visits");
   const addCard = page.getByTestId("visits-add");
   await expect(addCard).toBeVisible();
-  // A future date keeps the entry on the appointment (scheduling) branch.
-  await addCard.getByLabel("Date", { exact: true }).fill(isoInDays(3));
-  // Dismiss the DateField popover so it can't float over the title / Add button.
-  await page.keyboard.press("Escape");
   await addCard.getByLabel("Reason / title").fill(VISIT_TITLE);
   await settledClick(
     page,

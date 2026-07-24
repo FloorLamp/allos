@@ -1,4 +1,4 @@
-import { requireSession } from "@/lib/auth";
+import { requireScope } from "@/lib/scope";
 import BackgroundSection from "../../BackgroundSection";
 import FamilyHistorySection from "../../FamilyHistorySection";
 import CarePlanSection from "../../CarePlanSection";
@@ -13,7 +13,10 @@ export const dynamic = "force-dynamic";
 // Emergency Card settings moved to the Passport (#1087), so Background is just
 // Smoking + Risk factors and no longer carries the `#emergency-card` anchor.
 export default async function RecordsCareOverviewPage() {
-  const { profile } = await requireSession();
+  // Multi-view (#1328): one scope resolution threaded to the multi-view sections
+  // (Family history / Care plan / Health goals). Background stays acting-profile —
+  // it's person-level context, not a flat record list. Single view is byte-identical.
+  const scope = await requireScope();
   return (
     <div className="space-y-12">
       <section data-testid="records-background">
@@ -22,7 +25,7 @@ export default async function RecordsCareOverviewPage() {
           title="Background"
           subtitle="Smoking history and health risk factors — person-level context that tailors screening reminders."
         />
-        <BackgroundSection profileId={profile.id} />
+        <BackgroundSection profileId={scope.actingProfileId} />
       </section>
 
       <section data-testid="records-family-history">
@@ -31,7 +34,7 @@ export default async function RecordsCareOverviewPage() {
           title="Family history"
           subtitle="Conditions affecting your relatives — hereditary risk context, coded when imported from a health record. Add entries manually or import from uploaded records (CCD Family History section)."
         />
-        <FamilyHistorySection profileId={profile.id} />
+        <FamilyHistorySection scope={scope} />
       </section>
 
       <section data-testid="records-care-plan">
@@ -40,7 +43,7 @@ export default async function RecordsCareOverviewPage() {
           title="Care plan"
           subtitle="Planned & ordered care from your health records (Plan of Treatment / Care Plan section) — upcoming procedures, visits, tests, and orders. Add them manually or import from uploaded records."
         />
-        <CarePlanSection profileId={profile.id} />
+        <CarePlanSection scope={scope} />
       </section>
 
       <section data-testid="records-health-goals">
@@ -49,7 +52,7 @@ export default async function RecordsCareOverviewPage() {
           title="Health goals"
           subtitle="Clinical goals & targets from your health records (Goals section) — e.g. an A1c or blood-pressure target set by a provider. (Distinct from your personal fitness Goals.)"
         />
-        <HealthGoalsSection profileId={profile.id} />
+        <HealthGoalsSection scope={scope} />
       </section>
     </div>
   );

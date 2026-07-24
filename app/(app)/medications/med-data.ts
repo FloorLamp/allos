@@ -30,6 +30,7 @@ import {
   getPediatricFormContext,
   getPrnMedicationsForQuickLog,
   getMedicationFamilyStates,
+  getEffectiveActiveSituations,
 } from "@/lib/queries";
 import { redoseWindowStatus } from "@/lib/prn-redose";
 import { now as clockNow } from "@/lib/clock";
@@ -211,6 +212,11 @@ export function loadMedicationsData(
     activeSituations,
     getSituationEvents(profileId)
   );
+  // Derived context (#1292/#1298) widens the active set for TODAY's dueness only (a
+  // medication keyed to Poor sleep / Period goes due while the context holds); the
+  // history resolver above stays declared-only so it can't apply derived names to past
+  // days retroactively.
+  const effectiveSituations = getEffectiveActiveSituations(profileId, todayStr);
   const todaysActivities = getActivitiesByDate(profileId, todayStr);
   const isWorkoutDay = todaysActivities.length > 0;
   const predictedWorkoutDay = isPredictedWorkoutDay(profileId, todayStr);
@@ -225,7 +231,7 @@ export function loadMedicationsData(
   );
   const ctx = {
     isWorkoutDay,
-    activeSituations,
+    activeSituations: effectiveSituations,
     predictedWorkoutDay,
     postWorkoutReady,
   };
@@ -383,7 +389,10 @@ export function loadMedicationsData(
       prnRedosePrimary: prn.redosePrimary,
       monitoringNote: monitoring?.text ?? null,
       monitoringLabs: monitoring?.labels ?? [],
-      heldBy: med.active ? heldBySituation(med, activeSituations) : null,
+      // Consult the SAME effectiveSituations (declared ∪ derived, #1360) the med's
+      // dueness reads, so the "Held" badge and the due/reminder suppression agree — a
+      // pause link naming a derived context holds exactly while that context is active.
+      heldBy: med.active ? heldBySituation(med, effectiveSituations) : null,
       takenDoseTimes: Object.fromEntries(
         doseIds.flatMap((doseId) => {
           const takenAt = takenTimes.get(doseId);

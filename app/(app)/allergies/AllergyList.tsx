@@ -7,6 +7,8 @@ import RecordProvenance from "@/components/RecordProvenance";
 import StatusBadge from "@/components/StatusBadge";
 import NotesText from "@/components/NotesText";
 import type { Allergy } from "@/lib/types";
+import type { Stamped } from "@/lib/scope";
+import type { ListMultiView } from "@/lib/multi-view";
 
 const COLUMNS: RecordColumn<Allergy>[] = [
   {
@@ -47,14 +49,33 @@ const COLUMNS: RecordColumn<Allergy>[] = [
 // Manage stored allergy rows: edit in place or delete, on the shared RecordTable.
 // (The merged known-allergies view — documented + lab-derived — is rendered
 // read-only above by the page.)
-export default function AllergyList({ items }: { items: Allergy[] }) {
+export default function AllergyList({
+  items,
+  multiView,
+}: {
+  items: Stamped<Allergy>[];
+  multiView?: ListMultiView;
+}) {
   return (
     <RecordTable
       items={items}
       columns={COLUMNS}
       emptyMessage="No allergies recorded. Add one, or import a MyChart export."
+      multiView={
+        multiView
+          ? {
+              actingProfileId: multiView.actingProfileId,
+              subjectOf: (a) => a.subject,
+            }
+          : undefined
+      }
       renderEditForm={(a, done) => (
-        <AllergyForm action={updateAllergy} allergy={a} onDone={done} />
+        <AllergyForm
+          action={updateAllergy}
+          allergy={a}
+          profileId={multiView ? a.subject.profileId : undefined}
+          onDone={done}
+        />
       )}
       confirmDelete={(a) => ({
         title: "Delete allergy",
@@ -63,6 +84,7 @@ export default function AllergyList({ items }: { items: Allergy[] }) {
       onDelete={async (a) => {
         const fd = new FormData();
         fd.set("id", String(a.id));
+        if (multiView) fd.set("profile_id", String(a.subject.profileId));
         await deleteAllergy(fd);
       }}
     />

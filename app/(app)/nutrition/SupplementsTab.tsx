@@ -17,6 +17,9 @@ import {
   getSafetyScreeningCoverage,
   getGenomicVariants,
   getFindingSuppressions,
+  getEffectiveActiveSituations,
+  getDerivedSituationLines,
+  getNavRelevance,
 } from "@/lib/queries";
 import { activeByKey } from "@/lib/findings";
 import { intakeWarningsForSurface } from "@/lib/intake-warning-surface";
@@ -56,6 +59,7 @@ import {
   situationActivationLine,
   mergedSituationOptions,
 } from "@/lib/situations";
+import { withPeriodOption } from "@/lib/derived-situations";
 import {
   countSituationalDue,
   isDueOn,
@@ -98,6 +102,7 @@ import {
   activateSurgerySituation,
   clearSurgerySituation,
   dismissSurgeryBridge,
+  dismissDerivedPoorSleep,
 } from "./supplement-actions";
 import { getSurgeryBridgeSuggestions } from "@/lib/queries";
 import { BUILTIN_PRESURGERY_SITUATION } from "@/lib/surgery-bridge";
@@ -154,12 +159,25 @@ export default async function SupplementsTab() {
     todaysActivities.map((a) => a.end_time ?? a.start_time),
     nowMinutes
   );
+  // Derived context (#1292/#1298) widens the active set for TODAY's dueness only (a
+  // surfacing path) — the `situationsOn` history resolver above stays declared-only so
+  // it can't apply derived names to past days. A Poor sleep / Period item goes due
+  // exactly while its derived context holds.
+  const effectiveSituations = getEffectiveActiveSituations(
+    profile.id,
+    today(profile.id)
+  );
   const ctx = {
     isWorkoutDay,
-    activeSituations,
+    activeSituations: effectiveSituations,
     predictedWorkoutDay,
     postWorkoutReady,
   };
+  // The visible derived-context state lines (shared with the check-in + digest, #221)
+  // and whether the poor-sleep line carries the one-tap "Not today" override (only when
+  // DERIVED — a declared toggle is cleared by its chip, never the override, #1292).
+  const derivedLines = getDerivedSituationLines(profile.id, today(profile.id));
+  const showPoorSleepOverride = derivedLines.poorSleepOverridable;
   // When fitness tracking is restricted for this profile the workout/rest-day
   // concept is meaningless, so we drop the subtitle prefix and the workout/
   // rest-day schedule options (see lib/age-gate.ts).
@@ -212,8 +230,12 @@ export default async function SupplementsTab() {
   // it's suppressed from every due path (isDueOn returns false). Split it OUT of the
   // "not scheduled today" bucket into its own visible Held section — a held item is a
   // deliberate, discoverable suppression ("Held — Pre-surgery active"), never a silent
-  // absence, so a forgotten-active pause situation stays findable.
-  const isHeld = (s: Supplement) => !!heldBySituation(s, activeSituations);
+  // absence, so a forgotten-active pause situation stays findable. It consults the SAME
+  // effectiveSituations (declared ∪ derived, #1292/#1360) `isDueOn` reads, so the
+  // held/due/not-scheduled split stays consistent: a pause link naming a derived context
+  // (e.g. "Poor sleep") holds exactly while that context is active, and a declared
+  // surgery hold and a derived poor-sleep flow through the one union together.
+  const isHeld = (s: Supplement) => !!heldBySituation(s, effectiveSituations);
   const dueItems = itemsFor((s) => !isMed(s) && !!s.active && isDueOn(s, ctx));
   const heldItems = itemsFor((s) => !isMed(s) && !!s.active && isHeld(s));
   const notScheduled = itemsFor(
@@ -291,7 +313,12 @@ export default async function SupplementsTab() {
   // never disagree about the vocabulary (#221/#1177). Each option carries its #799
   // illness-type flag (`illnessType`) and whether it's a saved row (`inVocabulary`).
   const situationRows = getSituations(profile.id);
-  const situationChips = mergedSituationOptions(situationRows);
+  // The built-in "Period" derived situation (#1298) joins the option set ONLY when cycle
+  // tracking is relevant (the #1042 nav bit), so a profile can key iron/magnesium to it.
+  const situationChips = withPeriodOption(
+    mergedSituationOptions(situationRows),
+    getNavRelevance(profile.id).cycle
+  );
   // The item-form situation picker reads the SAME merged option set the bar renders
   // (#1177), passed through the SituationOptionsProvider below.
   const situationOptionNames = situationChips.map((o) => o.name);
@@ -485,6 +512,56 @@ export default async function SupplementsTab() {
             );
           })}
         </div>
+
+        {/* Derived-context state lines (#1292 Poor sleep, #1298 Period): computed from
+          the profile's own data, NOT a manual toggle — rendered distinctly and NON-
+          toggleable. The poor-sleep line carries a one-tap "Not today" that suppresses
+          only the DERIVED contribution for today (a declared toggle is cleared by its
+          chip above). The same lines appear on the check-in disclosure + digest. */}
+        {(derivedLines.poorSleep || derivedLines.period) && (
+          <div
+            className="-mt-2 mb-4 space-y-1"
+            data-testid="derived-situations"
+          >
+            {derivedLines.poorSleep && (
+              <div
+                className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
+                data-testid="derived-poor-sleep"
+              >
+                <span className="badge bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+                  Auto
+                </span>
+                <span>{derivedLines.poorSleep}</span>
+                {showPoorSleepOverride && (
+                  <form
+                    action={async () => {
+                      "use server";
+                      await dismissDerivedPoorSleep();
+                    }}
+                  >
+                    <SubmitButton
+                      data-testid="derived-poor-sleep-override"
+                      className="badge cursor-pointer border border-slate-300 bg-transparent text-slate-500 hover:bg-slate-100 disabled:opacity-60 dark:border-slate-600 dark:text-slate-400 dark:hover:bg-ink-800"
+                    >
+                      Not today
+                    </SubmitButton>
+                  </form>
+                )}
+              </div>
+            )}
+            {derivedLines.period && (
+              <div
+                className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400"
+                data-testid="derived-period"
+              >
+                <span className="badge bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300">
+                  Auto
+                </span>
+                <span>{derivedLines.period}</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Situation-activation acknowledgment (#662 item 1): a one-line confirmation
           that toggling a situation changed the shape of the due dose list, counted

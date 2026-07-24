@@ -18,6 +18,8 @@ import {
   getSleepRegularity,
   getSleepSessions,
   getMetricDailyTotals,
+  getEffectiveActiveSituations,
+  getDerivedSituationLines,
 } from "../queries";
 import { groupUpcoming } from "../upcoming";
 import {
@@ -319,15 +321,28 @@ export function gatherDigestInput(
   // because their situation is active, via the SAME dueness computation the dose
   // list uses (countSituationalDue → isDueOn). The situational branch ignores the
   // workout fields, so a minimal ctx (today's active set) is sufficient.
+  // Derived context (#1292/#1298) widens the active set for today, so a Poor sleep /
+  // Period item is counted due here exactly as it is on the bar. The derived state
+  // lines below carry the same basis-aware acknowledgment (#662) so a Telegram-first
+  // user isn't surprised by the extra due items.
+  const effectiveSituations = getEffectiveActiveSituations(profileId, td);
   const situationalActiveCount = countSituationalDue(active, {
     isWorkoutDay: false,
-    activeSituations: situationsOn(td),
+    activeSituations: effectiveSituations,
   });
+  const derivedLines = getDerivedSituationLines(profileId, td);
+  const derivedSituationLines = [
+    derivedLines.poorSleep,
+    derivedLines.period,
+  ].filter((l): l is string => l != null);
 
   // Held items (#1296): active intake items currently suppressed by a pause situation,
   // via the SAME heldItemsBy computation the Supplements/Medications rows and the badge
-  // use (#221). The digest names the first holding situation and counts the holds.
-  const held = heldItemsBy(active, situationsOn(td));
+  // use (#221). It reads the SAME effectiveSituations (declared ∪ derived, #1360) the
+  // dueness count above reads, so held and due compose on one union: a pause link naming
+  // a derived context holds exactly while it's active. The digest names the first
+  // holding situation and counts the holds.
+  const held = heldItemsBy(active, effectiveSituations);
 
   return {
     profileName,
@@ -336,6 +351,7 @@ export function gatherDigestInput(
     situationalActiveCount,
     heldCount: held.length,
     heldSituation: held[0]?.situation ?? null,
+    derivedSituationLines,
     intakeKinds,
     todayGroups,
     activities,

@@ -295,6 +295,19 @@ export default function SupplementForm({
             allowFreeText
             placeholder="e.g. Illness"
           />
+          {/* Discovery hint for the DERIVED situations (#1292/#1298): keying to Poor
+              sleep / Period goes live automatically — no manual toggle — from the
+              profile's own sleep / cycle data. */}
+          {/poor\s*sleep|period/i.test(situation.trim()) && (
+            <p
+              className="mt-1 text-xs text-slate-500 dark:text-slate-400"
+              data-testid="derived-situation-hint"
+            >
+              {/period/i.test(situation.trim())
+                ? "Goes live automatically on logged period days."
+                : "Goes live automatically on rough nights — no toggle needed."}
+            </p>
+          )}
         </div>
       )}
 

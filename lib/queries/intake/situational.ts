@@ -17,7 +17,8 @@ import {
   countSituationalDue,
   isPostWorkoutReady,
 } from "../../supplement-schedule";
-import { getActiveSituations, getTimezone } from "../../settings";
+import { getTimezone } from "../../settings";
+import { getEffectiveActiveSituations } from "../derived-situations";
 import { zonedDateParts } from "../../date";
 
 // The count of situational supplements currently DUE for the profile given its active
@@ -27,7 +28,9 @@ import { zonedDateParts } from "../../date";
 export function getSituationalDueCount(profileId: number): number {
   const on = today(profileId);
   const supplements = getSupplements(profileId);
-  const activeSituations = new Set(getActiveSituations(profileId));
+  // Derived context widens the active set (#1292/#1298): a Poor sleep / Period item
+  // counts as due exactly while its derived context holds — the SAME set the bar uses.
+  const activeSituations = getEffectiveActiveSituations(profileId, on);
   const todaysActivities = getActivitiesByDate(profileId, on);
   const isWorkoutDay = todaysActivities.length > 0;
   const predictedWorkoutDay = isPredictedWorkoutDay(profileId, on);

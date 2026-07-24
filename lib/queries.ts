@@ -28,6 +28,7 @@ export * from "./queries/appointments";
 export * from "./queries/intake";
 export * from "./queries/narratives";
 export * from "./queries/clinical";
+export * from "./queries/multi-view-lists";
 export * from "./queries/coverage";
 export * from "./queries/search";
 export * from "./queries/imports";
@@ -41,6 +42,7 @@ export * from "./queries/sun";
 export * from "./queries/providers";
 export * from "./queries/affiliations";
 export * from "./queries/nav-relevance";
+export * from "./queries/derived-situations";
 export * from "./queries/data-quality";
 export * from "./queries/surgery-bridge";
 // The shared, GLOBAL providers registry — not profile-scoped, but

@@ -27,11 +27,13 @@ import {
 } from "../illness-episode-store";
 import {
   deleteProfileSetting,
+  getActiveSituations,
   getProfileSetting,
   setProfileSetting,
   type DistanceUnit,
   type WeightUnit,
 } from "../settings";
+import { sameSituation, BUILTIN_POOR_SLEEP_SITUATION } from "../situations";
 import { availableEquipmentKinds } from "../equipment";
 import { getActiveRoutine, getRoutineCycleStatus } from "../routines";
 import { getInjuryConstraints } from "../injuries";
@@ -172,6 +174,12 @@ export function gatherCoachingInput(
     deloadWeek:
       getRoutineCycleStatus(profileId, todayStr)?.isDeloadWeek ?? false,
     sleep: getSleepSignal(profileId),
+    // The Poor sleep situation is DECLARED (manually toggled) — the rest-sleep trigger
+    // tilts on the UNIFIED verdict so a self-reported rough night reaches coaching too
+    // (#1292; the user wins over the data). Name-keyed via sameSituation (#560).
+    poorSleepDeclared: getActiveSituations(profileId).some((s) =>
+      sameSituation(s, BUILTIN_POOR_SLEEP_SITUATION)
+    ),
     restingHr: getRestingHrSignal(profileId),
     restEpisode: getRestEpisode(profileId),
     // "Training anyway" acknowledgment (#1150): when set for today, the rest slot

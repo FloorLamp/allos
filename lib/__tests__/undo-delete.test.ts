@@ -112,6 +112,14 @@ describe("undo-delete registry", () => {
       },
       { column: "document_id", table: "medical_documents", onMissing: "null" },
       { column: "situation_id", table: "situations", onMissing: "null" },
+      // #1296: the INVERSE situational link (pause_situation_id, migration 108) is the
+      // mirror of situation_id — the same nullable-FK-to-situations shape, nulled on
+      // restore when its target situation is gone. Profile-owned, probed WITH scope.
+      {
+        column: "pause_situation_id",
+        table: "situations",
+        onMissing: "null",
+      },
       // #1050: the "prescribed at" visit link nulls on restore when its encounter
       // is gone.
       { column: "encounter_id", table: "encounters", onMissing: "null" },

@@ -10,6 +10,11 @@ import {
   MULTI_SHARED_PROFILE,
   MULTI_OWNER_DOSE,
   MULTI_SHARED_DOSE,
+  MULTI_OWNER_CONDITION,
+  MULTI_SHARED_CONDITION,
+  MULTI_OWNER_ALLERGY,
+  MULTI_SHARED_ALLERGY,
+  MULTI_SHARED_GOAL,
 } from "./fixture-logins";
 
 // Multi-profile viewing (issue #1096): the profile-menu view toggles + the thin
@@ -284,6 +289,163 @@ test.describe("Multi-profile viewing (issue #1096)", () => {
     // And stays gone across a reload (the per-login "seen" flag persisted).
     await page.goto("/upcoming");
     await expect(page.getByTestId("multiview-hint")).toHaveCount(0);
+
+    await page.context().close();
+  });
+});
+
+// ── Tier-1 record lists adopt multi-view (issue #1328) ────────────────────────
+// The 8 flat record lists (Conditions/Allergies/Procedures/Family history/Care plan/
+// Health goals/Genomics/Imaging) render subject chips on non-acting rows + gate per-item
+// writes on the row's profile. Representative browser coverage over Conditions +
+// Allergies (loop-composed) and Health goals (set-based); the rest are pattern-identical
+// and covered by the DB tier. Spec-OWNED multi fixtures (E2E_LOGIN_MULTI's two profiles,
+// each seeded a condition/allergy/goal — see e2e/seed-events.ts). Read-only viewing +
+// the per-session view-set, so no persistent write to reset.
+
+// Resolve the two multi fixture profile ids (spec-owned, so a name lookup is stable).
+function multiProfileIds(): { ownerId: number; sharedId: number } {
+  const dbPath =
+    process.env.ALLOS_DB_PATH ??
+    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const db = new Database(dbPath);
+  try {
+    db.pragma("busy_timeout = 5000");
+    const idOf = (name: string): number =>
+      (
+        db.prepare("SELECT id FROM profiles WHERE name = ?").get(name) as {
+          id: number;
+        }
+      ).id;
+    return {
+      ownerId: idOf(MULTI_OWNER_PROFILE),
+      sharedId: idOf(MULTI_SHARED_PROFILE),
+    };
+  } finally {
+    db.close();
+  }
+}
+
+test.describe("Tier-1 record lists adopt multi-view (issue #1328)", () => {
+  test("Conditions: single-view shows no chips; multi-view chips the non-acting row only", async ({
+    browser,
+  }) => {
+    test.slow();
+    const { ownerId, sharedId } = multiProfileIds();
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_MULTI,
+      password: E2E_MEMBER_PASSWORD,
+    });
+
+    // Single view (acting = owner): owner's condition shows, no strip, no chips, and the
+    // shared profile's condition is absent — the byte-identical regression bar.
+    await page.goto("/records/problems");
+    await expect(
+      page.getByText(MULTI_OWNER_CONDITION, { exact: false })
+    ).toBeVisible();
+    await expect(
+      page.getByText(MULTI_SHARED_CONDITION, { exact: false })
+    ).toHaveCount(0);
+    await expect(page.getByTestId("profile-view-strip")).toHaveCount(0);
+    await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(0);
+
+    // Toggle the shared profile into view.
+    const trigger = page.getByTestId("user-menu-trigger");
+    await expect(trigger).toBeEnabled();
+    await trigger.click();
+    await expect(page.getByTestId("user-menu-popover")).toBeVisible();
+    await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));
+
+    // Multi view: the strip appears, the shared condition merges in with a subject chip
+    // on ITS row, and the acting (owner) row never carries a chip.
+    await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+    await expect(
+      page.getByText(MULTI_SHARED_CONDITION, { exact: false })
+    ).toBeVisible();
+    // Scope the chip check to the shared condition's own row (Conditions + Allergies
+    // both render on /records/problems, so the shared chip appears on more than one row).
+    const sharedConditionRow = page
+      .locator("tr")
+      .filter({ hasText: MULTI_SHARED_CONDITION });
+    await expect(
+      sharedConditionRow.getByTestId(`subject-chip-${sharedId}`)
+    ).toBeVisible();
+    await expect(
+      page.locator(`[data-testid="subject-chip-${ownerId}"]`)
+    ).toHaveCount(0);
+
+    await page.context().close();
+  });
+
+  test("Allergies: shared row gets a subject chip in multi-view", async ({
+    browser,
+  }) => {
+    test.slow();
+    const { ownerId, sharedId } = multiProfileIds();
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_MULTI,
+      password: E2E_MEMBER_PASSWORD,
+    });
+
+    await page.goto("/records/problems");
+    // The stored "Recorded allergies" table (single view: owner only, no chip). Scope to
+    // the table row — the substance also appears in the merged "Known allergies" card.
+    await expect(
+      page.locator("tr").filter({ hasText: MULTI_OWNER_ALLERGY })
+    ).toBeVisible();
+    await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(0);
+
+    const trigger = page.getByTestId("user-menu-trigger");
+    await expect(trigger).toBeEnabled();
+    await trigger.click();
+    await expect(page.getByTestId("user-menu-popover")).toBeVisible();
+    await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));
+
+    await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+    // The shared allergy's row carries the shared subject chip; the owner never does.
+    const sharedRow = page
+      .locator("tr")
+      .filter({ hasText: MULTI_SHARED_ALLERGY });
+    await expect(
+      sharedRow.getByTestId(`subject-chip-${sharedId}`)
+    ).toBeVisible();
+    await expect(
+      page.locator(`[data-testid="subject-chip-${ownerId}"]`)
+    ).toHaveCount(0);
+
+    await page.context().close();
+  });
+
+  test("Health goals (set-based reader): shared row gets a subject chip in multi-view", async ({
+    browser,
+  }) => {
+    test.slow();
+    const { sharedId } = multiProfileIds();
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_MULTI,
+      password: E2E_MEMBER_PASSWORD,
+    });
+
+    await page.goto("/records/care/overview");
+    await expect(page.getByTestId("profile-view-strip")).toHaveCount(0);
+    await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(0);
+
+    const trigger = page.getByTestId("user-menu-trigger");
+    await expect(trigger).toBeEnabled();
+    await trigger.click();
+    await expect(page.getByTestId("user-menu-popover")).toBeVisible();
+    await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));
+
+    await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+    await expect(
+      page.getByText(MULTI_SHARED_GOAL, { exact: false })
+    ).toBeVisible();
+    const sharedGoalRow = page
+      .locator("tr")
+      .filter({ hasText: MULTI_SHARED_GOAL });
+    await expect(
+      sharedGoalRow.getByTestId(`subject-chip-${sharedId}`)
+    ).toBeVisible();
 
     await page.context().close();
   });

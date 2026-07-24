@@ -67,8 +67,14 @@ describe("usesProfileIdInList: the companion-rule detector", () => {
 });
 
 describe("isCrossProfileSqlModule: registry membership (fixture-pinned)", () => {
-  it("the registry is empty today (no set-based reader has landed)", () => {
-    expect(CROSS_PROFILE_SQL_MODULES).toEqual([]);
+  it("registers exactly the #1328 Tier-1 set-based flat-list module", () => {
+    // The FIRST set-based cross-profile reader landed with #1328 (Health goals /
+    // Genomics / Imaging read the view-set with a bound `profile_id IN`); its module is
+    // the only registered entry. A NEW set-based reader adds its module here in the same
+    // PR as the scope.ids-fed reader it protects.
+    expect(CROSS_PROFILE_SQL_MODULES).toEqual([
+      "lib/queries/multi-view-lists.ts",
+    ]);
   });
 
   it("with a synthetic registry, matches by path suffix and nothing else", () => {
@@ -87,7 +93,10 @@ describe("isCrossProfileSqlModule: registry membership (fixture-pinned)", () => 
     expect(match("lib/household.ts")).toBe(false);
   });
 
-  it("returns false for every path against the (empty) real registry", () => {
+  it("matches the registered module by suffix and nothing else against the real registry", () => {
+    expect(isCrossProfileSqlModule("lib/queries/multi-view-lists.ts")).toBe(
+      true
+    );
     expect(isCrossProfileSqlModule("lib/queries/household/records.ts")).toBe(
       false
     );

@@ -59,6 +59,7 @@ import type {
 import { strOrNull } from "@/lib/parse";
 import { dismissFinding } from "@/lib/queries";
 import { SURGERY_BRIDGE_PREFIX } from "@/lib/surgery-bridge";
+import { poorSleepOverrideKey } from "@/lib/derived-situations";
 import { ADHERENCE_PREFIX } from "@/lib/adherence-patterns";
 import { FOOD_TIMING_PREFIX } from "@/lib/food-drug-interactions";
 import { KEEP_APART_PREFIX } from "@/lib/intake-pairs";
@@ -986,6 +987,23 @@ export async function dismissSurgeryBridge(
   if (!key.startsWith(SURGERY_BRIDGE_PREFIX))
     return formError("Couldn't dismiss that suggestion.");
   dismissFinding(profile.id, key);
+  revalidateIntake();
+  return formOk();
+}
+
+// The poor-sleep derived-context "Not today" override (#1292): suppress the DERIVED
+// contribution for TODAY only. Writes a date-scoped suppression row on the shared bus
+// (the same store the coaching-observation dismiss uses) under the registered
+// poor-sleep-override prefix — so getEffectiveActiveSituations stops widening the active
+// set with the measured Poor sleep name for today. Deliberately date-scoped: tomorrow's
+// derived context re-evaluates fresh (a stale override never silences a later rough
+// night). It suppresses only the derived contribution — a DECLARED Poor sleep toggle is
+// cleared by its chip, never this — and is INDEPENDENT of the coaching card's own snooze
+// (dismissing the supplement surfacing must not silence rest advice, #449). Auth-blind
+// core (dismissFinding) behind the requireWriteAccess gate.
+export async function dismissDerivedPoorSleep(): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  dismissFinding(profile.id, poorSleepOverrideKey(today(profile.id)));
   revalidateIntake();
   return formOk();
 }

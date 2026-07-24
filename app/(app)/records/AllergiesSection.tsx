@@ -4,6 +4,7 @@ import {
   getAllergiesView,
   getCrossReactivityNotes,
 } from "@/lib/queries";
+import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import AllergyForm from "@/app/(app)/allergies/AllergyForm";
 import AllergyList from "@/app/(app)/allergies/AllergyList";
 import { addAllergy } from "@/app/(app)/allergies/actions";
@@ -12,9 +13,21 @@ import { addAllergy } from "@/app/(app)/allergies/actions";
 // Allergies section + manual) merged with lab-derived allergen-specific IgE
 // sensitizations (read-time; RAST / ImmunoCAP), now the #allergies section of
 // /records. The merged view leads; the stored rows are managed below.
-export default function AllergiesSection({ profileId }: { profileId: number }) {
+//
+// Multi-view (#1328): the Tier-1 surface is the RECORDED allergies list — it reads the
+// whole view-set list-first (readForProfiles preserves each profile's cross-document
+// dedup) and gets subject chips + per-item write gates. The lab-DERIVED merged view and
+// cross-reactivity cards stay on the ACTING profile (the #1096 scope-limit — a per-
+// profile read-time derivation is never evaluated across members). Single view renders
+// byte-identical.
+export default function AllergiesSection({ scope }: { scope: ProfileScope }) {
+  const profileId = scope.actingProfileId;
+  const multi = scope.viewIds.length > 1;
   const view = getAllergiesView(profileId);
-  const stored = getAllergies(profileId);
+  const stored = stampSubjects(
+    scope,
+    readForProfiles(scope.viewIds, (pid) => getAllergies(pid))
+  );
   const crossReactivity = getCrossReactivityNotes(profileId);
 
   return (
@@ -109,7 +122,12 @@ export default function AllergiesSection({ profileId }: { profileId: number }) {
               ({stored.length})
             </span>
           </h3>
-          <AllergyList items={stored} />
+          <AllergyList
+            items={stored}
+            multiView={
+              multi ? { actingProfileId: scope.actingProfileId } : undefined
+            }
+          />
         </div>
       </div>
 

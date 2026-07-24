@@ -6,6 +6,8 @@ import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
 import NotesText from "@/components/NotesText";
 import type { FamilyHistory } from "@/lib/types";
+import type { Stamped } from "@/lib/scope";
+import type { ListMultiView } from "@/lib/multi-view";
 
 const COLUMNS: RecordColumn<FamilyHistory>[] = [
   {
@@ -54,18 +56,29 @@ const COLUMNS: RecordColumn<FamilyHistory>[] = [
 // delete, on the shared RecordTable. Rows arrive grouped by relative (query order).
 export default function FamilyHistoryList({
   items,
+  multiView,
 }: {
-  items: FamilyHistory[];
+  items: Stamped<FamilyHistory>[];
+  multiView?: ListMultiView;
 }) {
   return (
     <RecordTable
       items={items}
       columns={COLUMNS}
       emptyMessage="No family history yet. Add an entry, or import a MyChart / CCD health record to populate it."
+      multiView={
+        multiView
+          ? {
+              actingProfileId: multiView.actingProfileId,
+              subjectOf: (f) => f.subject,
+            }
+          : undefined
+      }
       renderEditForm={(f, done) => (
         <FamilyHistoryForm
           action={updateFamilyHistory}
           entry={f}
+          profileId={multiView ? f.subject.profileId : undefined}
           onDone={done}
         />
       )}
@@ -78,6 +91,7 @@ export default function FamilyHistoryList({
       onDelete={async (f) => {
         const fd = new FormData();
         fd.set("id", String(f.id));
+        if (multiView) fd.set("profile_id", String(f.subject.profileId));
         await deleteFamilyHistory(fd);
       }}
     />
