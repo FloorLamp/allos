@@ -31,20 +31,35 @@ const CCD = `<?xml version="1.0"?>
       <templateId root="2.16.840.1.113883.10.20.22.2.3.1"/>
       <code code="30954-2" codeSystem="2.16.840.1.113883.6.1"/>
       <title>Results</title>
-      <entry><observation classCode="OBS" moodCode="EVN">
-        <templateId root="2.16.840.1.113883.10.20.22.4.2"/>
-        <id root="1.2.3" extension="IMG-77"/>
-        <code code="18782-3" codeSystem="2.16.840.1.113883.6.1"><originalText>Radiology Study observation (narrative)</originalText></code>
-        <statusCode code="completed"/>
-        <effectiveTime><low value="20240301120000-0500"/></effectiveTime>
-        <value xsi:type="ST" nullFlavor="NA"/>
-        <methodCode code="4" codeSystem="1.2.840.114350.1.13.535.2.7.10.x"><originalText>Ultrasound</originalText></methodCode>
-        <targetSiteCode code="119" codeSystem="1.2.840.114350.1.13.535.2.7.10.y"><originalText>Breast</originalText>
-          <qualifier><name code="272741003" codeSystem="2.16.840.1.113883.6.96"/>
-            <value code="7771000" codeSystem="2.16.840.1.113883.6.96" xsi:type="CD" displayName="left"><originalText>left</originalText></value>
-          </qualifier>
-        </targetSiteCode>
-      </observation></entry>
+      <text>
+        <content ID="Imp">IMPRESSION: Left breast abscess. Recommend follow-up ultrasound.</content>
+      </text>
+      <entry><organizer classCode="BATTERY" moodCode="EVN">
+        <code code="38026-1" codeSystem="2.16.840.1.113883.6.1"/>
+        <effectiveTime value="20240301"/>
+        <component><observation classCode="OBS" moodCode="EVN">
+          <templateId root="2.16.840.1.113883.10.20.22.4.2"/>
+          <id root="1.2.3" extension="IMG-77"/>
+          <code code="18782-3" codeSystem="2.16.840.1.113883.6.1"><originalText>Radiology Study observation (narrative)</originalText></code>
+          <statusCode code="completed"/>
+          <effectiveTime><low value="20240301120000-0500"/></effectiveTime>
+          <value xsi:type="ST" nullFlavor="NA"/>
+          <methodCode code="4" codeSystem="1.2.840.114350.1.13.535.2.7.10.x"><originalText>Ultrasound</originalText></methodCode>
+          <targetSiteCode code="119" codeSystem="1.2.840.114350.1.13.535.2.7.10.y"><originalText>Breast</originalText>
+            <qualifier><name code="272741003" codeSystem="2.16.840.1.113883.6.96"/>
+              <value code="7771000" codeSystem="2.16.840.1.113883.6.96" xsi:type="CD" displayName="left"><originalText>left</originalText></value>
+            </qualifier>
+          </targetSiteCode>
+        </observation></component>
+        <component><observation classCode="OBS" moodCode="EVN">
+          <code codeSystem="2.16.840.1.113883.6.1" codeSystemName="LOINC" nullFlavor="UNK">
+            <translation code="IMP" codeSystem="1.2.840.114350.1.72.1.5220" codeSystemName="Epic.ResultText"/>
+          </code>
+          <statusCode code="completed"/>
+          <effectiveTime value="20240301"/>
+          <value xsi:type="ED"><reference value="#Imp"/></value>
+        </observation></component>
+      </organizer></entry>
       <entry><observation classCode="OBS" moodCode="EVN">
         <code code="718-7" codeSystem="2.16.840.1.113883.6.1" displayName="Hemoglobin"/>
         <effectiveTime value="20240301"/>
@@ -76,10 +91,10 @@ beforeAll(() => {
 });
 
 describe("CCD radiology-study → imaging_studies", () => {
-  it("persists the radiology observation as an imaging study (modality/site/laterality)", () => {
+  it("persists the radiology observation as an imaging study (modality/site/laterality + folded impression)", () => {
     const rows = db
       .prepare(
-        `SELECT modality, body_region, laterality, study_date, external_id
+        `SELECT modality, body_region, laterality, study_date, impression, external_id
            FROM imaging_studies WHERE profile_id = ? AND document_id = ?`
       )
       .all(profileId, docId) as {
@@ -87,6 +102,7 @@ describe("CCD radiology-study → imaging_studies", () => {
       body_region: string | null;
       laterality: string | null;
       study_date: string | null;
+      impression: string | null;
       external_id: string;
     }[];
     expect(rows).toHaveLength(1);
@@ -96,6 +112,11 @@ describe("CCD radiology-study → imaging_studies", () => {
       laterality: "left",
       study_date: "2024-03-01",
     });
+    // The radiologist's impression is folded from the organizer's Epic.ResultText IMP
+    // sibling (#708 follow-up) — the study observation's own value is nullFlavor.
+    expect(rows[0].impression).toBe(
+      "IMPRESSION: Left breast abscess. Recommend follow-up ultrasound."
+    );
     // The persist layer scopes the external_id with the document source; the stable
     // content key is the CDA imaging suffix.
     expect(rows[0].external_id).toMatch(/ccda:imaging:IMG-77$/);
