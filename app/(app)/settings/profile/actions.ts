@@ -40,6 +40,7 @@ import {
   setRecommendationCadence,
   setMentalHealthShareFull,
   setProfileCrisisResourcesOverride,
+  setAnxietyScaleOptIn,
 } from "@/lib/settings";
 import { parseCrisisResourcesText } from "@/lib/crisis-resources";
 import { parseCadence } from "@/lib/recommendation-run";
@@ -454,6 +455,20 @@ export async function saveMentalHealthShareFull(formData: FormData) {
     formData.get("mental_health_share_full") === "1" ||
     formData.get("mental_health_share_full") === "on";
   setMentalHealthShareFull(profile.id, on);
+  revalidatePath("/settings/profile");
+  revalidatePath("/");
+}
+
+// The check-in Calm (anxiety) scale opt-in (issue #1313, signal 6). Flipping it on is
+// the escape hatch that reveals the daily anxiety rating for a profile with no
+// inferable mental-health signal; the dashboard check-in card re-derives the gate on
+// its next render, so revalidate it.
+export async function saveAnxietyScaleOptIn(formData: FormData) {
+  const { profile } = await requireWriteAccess();
+  const on =
+    formData.get("anxiety_scale_enabled") === "1" ||
+    formData.get("anxiety_scale_enabled") === "on";
+  setAnxietyScaleOptIn(profile.id, on);
   revalidatePath("/settings/profile");
   revalidatePath("/");
 }

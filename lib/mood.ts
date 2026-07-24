@@ -36,18 +36,49 @@ export function moodLabel(valence: number): string {
   return MOOD_LABELS[valence - 1] ?? String(valence);
 }
 
-// The factor-chip vocabulary (#992's product list). Stored as a JSON array of
-// these slugs; anything off-vocabulary is dropped at normalization so the stored
-// blob is always a subset of this closed set.
+// The factor-chip vocabulary. Stored as a JSON array of these slugs; anything
+// off-vocabulary is dropped at normalization so the stored blob is always a subset
+// of this closed set.
+//
+// SHRUNK to work/social (issue #1311): the three former slugs `sleep`, `health`,
+// and `cycle` each had a situation/context TWIN on the same check-in card — Poor
+// sleep (declared/derived, #1292), the illness door, and Period (#1298) — so one
+// assertion had two disconnected entry points. Factors are display-only (verified:
+// lib/sleep-summary passes them through, telegram-callbacks preserves them, no
+// trends/coaching consumer keys on a slug), so the overlapping slugs left the
+// vocabulary AND the validation set outright — no migration, no legacy tolerance
+// (parseMoodFactors already filters to known slugs, so any stray stored value
+// simply stops rendering). `work` and `social` survive as the mood-only day-chips
+// the merged "What's going on?" group renders alongside the sticky situations.
 export const MOOD_FACTORS: readonly { slug: string; label: string }[] = [
-  { slug: "sleep", label: "Sleep" },
   { slug: "work", label: "Work" },
   { slug: "social", label: "Social" },
-  { slug: "health", label: "Health" },
-  { slug: "cycle", label: "Cycle" },
 ];
 
 const FACTOR_SLUGS = new Set(MOOD_FACTORS.map((f) => f.slug));
+
+// ---- Calm (anxiety) axis relabel (issue #1313 fold-in) -----------------------
+//
+// The Calm scale's DIRECTION was inverted relative to Energy: the stored `anxiety`
+// value is 1 = calm/good … 5 = anxious/bad, while Energy is 1 = drained/bad …
+// 5 = energized/good. The fix is PRESENTATION-only — store semantics are UNCHANGED
+// (`anxiety` stays anxiety; the normalizer/queries never see this map) — the UI maps
+// so the RIGHT (high) end is the good end (calm) on both scales. Display slot d ↔
+// stored value (6 − d): an involution, so display↔stored is the same map both ways.
+// These live in mood.ts (not mood-anxiety-gate.ts) so the client check-in card can
+// import the relabel without pulling the gate's drug-dataset dependency.
+export const ANXIETY_CALM_LOW_LABEL = "anxious"; // display slot 1 (left) = anxious
+export const ANXIETY_CALM_HIGH_LABEL = "calm"; // display slot 5 (right) = calm
+
+// Map a stored anxiety value to its DISPLAY slot (calm on the right). 6 − stored.
+export function anxietyDisplaySlot(stored: number): number {
+  return 6 - stored;
+}
+
+// Map a DISPLAY slot back to the stored anxiety value. Same 6 − x involution.
+export function anxietyStoredValue(displaySlot: number): number {
+  return 6 - displaySlot;
+}
 
 // A 1–5 scale value, or null for "not answered" (energy/anxiety are expand-only).
 function scaleOrNull(v: unknown): number | null | "invalid" {

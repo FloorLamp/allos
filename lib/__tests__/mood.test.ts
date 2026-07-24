@@ -48,15 +48,15 @@ describe("normalizeMoodInput", () => {
       valence: "2",
       energy: "3",
       anxiety: 5,
-      factors: ["work", "sleep", "work"],
+      factors: ["social", "work", "work"],
       note: "  long day  ",
     });
     expect(out).toEqual({
       valence: 2,
       energy: 3,
       anxiety: 5,
-      // Deduped, vocabulary order.
-      factors: ["sleep", "work"],
+      // Deduped, vocabulary order (work before social).
+      factors: ["work", "social"],
       note: "long day",
     });
   });
@@ -83,16 +83,33 @@ describe("normalizeMoodInput", () => {
 
   it("drops off-vocabulary factors instead of erroring (a stale chip never loses the tap)", () => {
     expect(
-      normalizeMoodInput({ valence: 3, factors: ["sleep", "weather", "x"] })
-    ).toMatchObject({ factors: ["sleep"] });
+      normalizeMoodInput({ valence: 3, factors: ["work", "weather", "x"] })
+    ).toMatchObject({ factors: ["work"] });
+  });
+
+  it("drops the retired sleep/health/cycle slugs (#1311 vocabulary shrink)", () => {
+    // The three former slugs left the vocabulary AND the validation set outright —
+    // their meaning is carried by Poor sleep / the illness door / Period — so a stray
+    // stored value simply stops rendering (no migration, no legacy tolerance).
+    expect(
+      normalizeMoodInput({
+        valence: 3,
+        factors: ["sleep", "health", "cycle", "work"],
+      })
+    ).toMatchObject({ factors: ["work"] });
   });
 });
 
 describe("parseMoodFactors", () => {
-  it("round-trips a stored blob and degrades malformed content to []", () => {
+  it("round-trips a stored blob and degrades malformed / retired content to []", () => {
+    expect(parseMoodFactors(JSON.stringify(["work", "social"]))).toEqual([
+      "work",
+      "social",
+    ]);
+    // A stored `cycle` (a retired #1311 slug) is filtered on parse — display of a
+    // dead slug simply stops, no throw.
     expect(parseMoodFactors(JSON.stringify(["work", "cycle"]))).toEqual([
       "work",
-      "cycle",
     ]);
     expect(parseMoodFactors(null)).toEqual([]);
     expect(parseMoodFactors("not json")).toEqual([]);

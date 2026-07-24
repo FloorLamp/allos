@@ -52,8 +52,8 @@ describe("logMood — one-tap + expanded save", () => {
       anxiety: 4,
       note: "rough one",
     });
+    form.append("factors", "social");
     form.append("factors", "work");
-    form.append("factors", "sleep");
     form.append("factors", "not-a-factor"); // dropped, never an error
     const res = await logMood(form);
     expect(res).toEqual({ ok: true });
@@ -65,7 +65,8 @@ describe("logMood — one-tap + expanded save", () => {
       valence: 2,
       energy: 3,
       anxiety: 4,
-      factors: ["sleep", "work"],
+      // Normalized to vocabulary order (#1311 shrank the set to work, social).
+      factors: ["work", "social"],
       notes: "rough one",
     });
   });
