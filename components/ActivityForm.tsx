@@ -30,6 +30,7 @@ import {
   minutesBetween,
   titleCase,
 } from "@/lib/activity-meta";
+import { activityTiming } from "@/lib/activity-timing";
 import { isCuratedActivity } from "@/lib/activities-catalog";
 import { biasByCompanions } from "@/lib/companions";
 import {
@@ -45,6 +46,7 @@ import {
   IconChevronUp,
   IconChevronDown,
   IconChevronRight,
+  IconFlagCheck,
 } from "@tabler/icons-react";
 import ActivityCombobox from "./ActivityCombobox";
 import PlateBuilderModal from "./PlateBuilderModal";
@@ -521,11 +523,27 @@ export default function ActivityForm({
         partNeedsDistance(p) && p.distance.trim() ? Number(p.distance) : null,
       duration_min: p.durationMin.trim() ? Number(p.durationMin) : null,
     })),
-    effectiveSessionDuration
+    effectiveSessionDuration,
+    overallDuration
   );
   const showRollup =
     namedParts.length >= 2 &&
     (rollup.distanceKm != null || rollup.durationMin != null);
+
+  // The formalized active·elapsed split (#1202), through the ONE model every surface
+  // reads — shown only when the wall-clock span genuinely exceeds the active/moving
+  // total (a paused run, a brick's transitions), so the user sees "45 active · 60
+  // elapsed (15 rest)" instead of one ambiguous number.
+  const sessionTiming = activityTiming({
+    durationMin: rollup.durationMin,
+    elapsedMin: rollup.elapsedMin,
+    startTime,
+    endTime,
+  });
+  const showTimeBreakdown =
+    sessionTiming.activeMin != null &&
+    sessionTiming.restMin != null &&
+    sessionTiming.restMin > 0;
 
   // Auto-computed calorie ESTIMATE for this (manual) draft: the MET dataset × this
   // profile's bodyweight × the activity's duration (issue #151). null when there's
@@ -648,6 +666,24 @@ export default function ActivityForm({
   // finalize the step promises — viewing the recap alone writes nothing.
   function saveRecapStep() {
     finishWorkout();
+  }
+
+  // Plain-form "Finish workout" (#1124): the in-app finish for NON-live logging.
+  // Stamp end = now and open the SAME SessionCompleteStep the live panel's Finish
+  // reaches (#221, one step, two entrypoints), so a plain-form logger gets the
+  // end-stamp + the session-effort capture without needing live/in-gym mode. Offered
+  // only in create mode on TODAY (a retro/edit "end = now" is wrong — the DateTimeFields
+  // "now" shortcut covers retro), once there's savable content and no end yet.
+  const canFinishInForm =
+    !isEdit &&
+    !liveMode &&
+    !showRecap &&
+    !endTime &&
+    date === todayStr(tz) &&
+    canSave;
+  function openFinishRecap() {
+    if (!endTime) setEndTime(nowHHMM(tz));
+    setShowRecap(true);
   }
 
   const moreDetailsSummary = activityDisclosureSummary({
@@ -1553,6 +1589,21 @@ export default function ActivityForm({
             </div>
           </section>
 
+          {/* Plain-form "Finish workout" (#1124): the in-app finish for non-live
+          create logging — stamps end = now and opens the shared SessionCompleteStep
+          (session-effort capture). Live mode has its own Finish in the panel above. */}
+          {canFinishInForm && (
+            <button
+              type="button"
+              onClick={openFinishRecap}
+              data-testid="plain-finish-workout"
+              className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-500 active:scale-95"
+            >
+              <IconFlagCheck className="h-4 w-4" />
+              Finish workout
+            </button>
+          )}
+
           <section
             data-testid="session-details"
             aria-labelledby="session-details-title"
@@ -1582,6 +1633,16 @@ export default function ActivityForm({
               onEndTime={setEndTime}
               onSessionDuration={setSessionDuration}
             />
+            {showTimeBreakdown && (
+              <p
+                data-testid="activity-time-breakdown"
+                className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400"
+              >
+                Active {sessionTiming.activeMin} min · Elapsed{" "}
+                {sessionTiming.elapsedMin} min ({sessionTiming.restMin} min
+                rest)
+              </p>
+            )}
             <div
               className={`mt-3 grid gap-x-4 gap-y-2 ${sessionEquipmentType != null ? "sm:grid-cols-2" : ""}`}
             >
