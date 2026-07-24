@@ -56,7 +56,7 @@ export function renderPreventiveMessage(
   );
   return {
     title: `🩺 Preventive care: ${who}${item.name}`,
-    body: `${item.name}: ${tag}${extra}\n\nInformational only — not medical advice.`,
+    body: `${item.name}: ${tag}${extra}`,
     actions,
     kind: "preventive",
   };

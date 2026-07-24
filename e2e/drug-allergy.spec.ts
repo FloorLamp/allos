@@ -106,7 +106,7 @@ test("shows the recorded-allergy warnings on /medications (same-class + cross-re
   await expect(classCard).toBeVisible();
   await expect(classCard).toContainText("Penicillin");
   await expect(classCard).toContainText("recorded reaction: hives");
-  await expect(classCard).toContainText("discuss with your prescriber");
+  await expect(classCard).toContainText("with your prescriber");
   await expect(classCard).toContainText("Source:");
 
   // Cross-class hit: cephalexin carries the possible-cross-reactivity framing.

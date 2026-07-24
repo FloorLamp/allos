@@ -87,7 +87,6 @@ export default function ProteinAdequacyCard({
         {(adequacy?.intake.basis ?? today?.todayIntake?.basis) !== "tracked"
           ? "A floor from your logged food-group servings plus any protein you logged directly — untracked foods add more. "
           : ""}
-        Informational, not medical or dietary advice.
       </p>
     </div>
   );

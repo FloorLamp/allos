@@ -234,9 +234,6 @@ export default async function MedicationDetailPage(props: {
         initialAction={initialAction}
         conditions={medConditions}
       />
-      <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">
-        For reference only — not medical advice.
-      </p>
     </PageContainer>
   );
 }

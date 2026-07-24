@@ -29,7 +29,7 @@ test("shows the seeded warfarin + ibuprofen interaction warning on /medications"
   await expect(warnings).toContainText("Ibuprofen");
   // Severity + the informational, never-prescriptive framing + a source citation.
   await expect(warnings).toContainText("Major");
-  await expect(warnings).toContainText("discuss with your");
+  await expect(warnings).toContainText("with your");
   await expect(warnings).toContainText("Source:");
 });
 

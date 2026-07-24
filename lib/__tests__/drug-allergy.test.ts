@@ -174,7 +174,7 @@ describe("crossCheckDrugAllergies (#1029)", () => {
     expect(drugAllergyTitle(hit)).toContain("Penicillin");
     // The recorded reaction reads as recorded; the guardrail is never prescriptive.
     expect(drugAllergyDetail(hit)).toContain("recorded reaction: hives");
-    expect(drugAllergyEvidence(hit)).toContain("discuss with your prescriber");
+    expect(drugAllergyEvidence(hit)).toContain("with your prescriber");
     expect(drugAllergyEvidence(hit)).toContain("not clearance");
     expect(drugAllergyEvidence(hit)).not.toContain("stop taking");
   });

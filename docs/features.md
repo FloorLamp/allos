@@ -93,3 +93,23 @@ Everything else still needs connectivity: this is a queue for a few one-tap logs
 not a general offline mode. Forms with server-derived state (anything that reads or
 computes against your existing data) stay online-only, and page navigation while
 offline still shows the reconnect screen.
+
+## Disclaimer
+
+The app's medical-disclaimer posture lives in ONE place — the **Disclaimer** page at
+`/disclaimer`, reachable from a persistent footer link in the sidebar (both viewports)
+and from **Settings → Preferences**. It states the whole thing plainly: informational,
+not medical advice; not a diagnosis; the bundled reference datasets are a curated
+subset, not clinical software (a quiet screen is never clearance); automated document
+extraction can be wrong; in an emergency call your local emergency number; and your
+records stay on your own instance. The canonical wording is maintained once in
+`lib/disclaimers.ts` and rendered only by that page: the ~40 hand-written inline
+disclaimer banners that used to drift across domain pages, and the disclaimer tails
+appended to finding/notification text, were **removed** — the domain surfaces carry no
+disclaimer prose at all. A pure source-scan guard (`lib/__tests__/disclaimers.test.ts`)
+fails the build if a disclaimer literal reappears anywhere under `app/`/`components/`,
+and pins that zero surfaces still import the canonical module. Two things deliberately
+stay: the crisis-resources line on the mental-health screening instruments (a
+non-dismissible safety surface shown at the moment of need — it renders crisis
+_resources_, not a disclaimer), and the point-of-action "discuss with your prescriber /
+pharmacist / clinician" clause a medication-safety finding carries as its action framing.

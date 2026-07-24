@@ -287,7 +287,7 @@ export function interactionTitle(hit: InteractionHit): string {
 export function interactionDetail(hit: InteractionHit): string {
   return (
     `${SEVERITY_LABEL[hit.severity]} interaction. ${hit.mechanism} ` +
-    `This is informational, not medical advice — discuss with your prescriber or ` +
-    `pharmacist before changing anything. Source: ${hit.source}.`
+    `Discuss with your prescriber or pharmacist before changing anything. ` +
+    `Source: ${hit.source}.`
   );
 }

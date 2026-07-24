@@ -45,8 +45,7 @@ export default function CrisisResources({
       )}
 
       <p className="text-slate-600 dark:text-slate-300">
-        Consider discussing how you’re feeling with a clinician. This is
-        informational, not medical advice.
+        Consider discussing how you’re feeling with a clinician.
       </p>
 
       {isAdmin && !configured && (

@@ -106,7 +106,7 @@ describe("formatSchoolReturnLine / schoolReturnCompactClause", () => {
     expect(line).toContain("last reading 99.1");
     expect(line).toContain("last ibuprofen 6:00pm");
     expect(line).toContain("24h");
-    expect(line).toMatch(/not medical advice/i);
+    expect(line).not.toMatch(/not medical advice/i);
   });
 
   it("renders the temperature in the viewer's unit", () => {

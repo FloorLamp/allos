@@ -54,7 +54,7 @@ export default function VisionSection({
       <div className="min-w-0 space-y-4">
         <OpticalPrescriptionForm action={addOpticalPrescription} />
         <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-          Informational only, not medical advice. OD = right eye, OS = left eye.
+          OD = right eye, OS = left eye.
         </p>
       </div>
     </div>

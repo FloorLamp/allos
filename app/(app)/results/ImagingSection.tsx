@@ -51,8 +51,8 @@ export default function ImagingSection({ profileId }: { profileId: number }) {
       <div className="min-w-0 space-y-4">
         <ImagingStudyForm action={addImagingStudy} />
         <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-          Informational only, not medical advice. Allos stores the imaging
-          report, not the images themselves (DICOM is out of scope).
+          Allos stores the imaging report, not the images themselves (DICOM is
+          out of scope).
         </p>
       </div>
     </div>

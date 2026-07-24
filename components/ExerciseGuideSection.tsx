@@ -57,7 +57,7 @@ export default function ExerciseGuideSection({
         How to
       </h3>
       <p className="mb-3 text-xs italic text-slate-500 dark:text-slate-400">
-        Form reference, not medical advice.
+        Form reference.
       </p>
 
       {muscles && (

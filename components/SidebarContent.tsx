@@ -172,6 +172,18 @@ export default function SidebarContent({
             )}
           </div>
         </div>
+        {/* Persistent footer link to the single Disclaimer surface (issue #1049).
+        Lives in the shared content so it renders on BOTH the desktop sidebar and
+        the mobile drawer (the responsive-surfaces rule) — the one always-reachable
+        pointer to the app's medical-disclaimer posture, replacing the ~40 inline
+        banners that used to hand-write it. */}
+        <Link
+          href="/disclaimer"
+          onClick={onNavigate}
+          className="px-2 text-xs text-slate-500 underline-offset-2 transition hover:text-slate-700 hover:underline dark:text-slate-400 dark:hover:text-slate-200"
+        >
+          Disclaimer
+        </Link>
       </div>
     </>
   );

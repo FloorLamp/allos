@@ -222,12 +222,12 @@ export function detectIllnessCareFindings(
 // "informational, not medical advice" tail. The Finding envelope keeps the source +
 // tail in its own `evidence` slot instead (see the builder).
 export function illnessCareFullDetail(f: IllnessCareFinding): string {
-  return `${f.detail} Source: ${f.source} Informational, not medical advice.`;
+  return `${f.detail} Source: ${f.source}`;
 }
 
 // The Finding.evidence line: the source + the non-negotiable disclaimer tail.
 export function illnessCareEvidence(f: IllnessCareFinding): string {
-  return `Source: ${f.source} Informational, not medical advice.`;
+  return `Source: ${f.source}`;
 }
 
 // ---- Nudge episode-dedup planning (pure) -----------------------------------

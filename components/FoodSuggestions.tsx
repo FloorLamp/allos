@@ -141,8 +141,7 @@ export default function FoodSuggestions({
                   </p>
                 )}
                 <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
-                  {s.evidence} Source: {s.source}. Informational, not medical
-                  advice.
+                  {s.evidence} Source: {s.source}.
                 </p>
               </div>
             </div>

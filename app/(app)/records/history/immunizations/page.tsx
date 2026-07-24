@@ -19,8 +19,7 @@ export default async function RecordsImmunizationsPage(props: {
   return (
     <div data-testid="records-immunizations">
       <SectionSubtitle>
-        Your vaccination record measured against a simplified CDC/ACIP schedule
-        — informational only, not medical advice.
+        Your vaccination record measured against a simplified CDC/ACIP schedule.
       </SectionSubtitle>
       <ImmunizationsSection
         profileId={profile.id}

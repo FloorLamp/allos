@@ -91,8 +91,7 @@ export default function SubstanceUseSection({
                   `${r.instrument} on ${r.date}: ${r.total} (${r.band.label.toLowerCase()})`
               )
               .join(" · ")}
-            . A screening score is not a diagnosis — it&rsquo;s a conversation
-            starter.
+            . A screening score is a conversation starter.
           </p>
         </Notice>
       ) : null}
