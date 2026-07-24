@@ -239,16 +239,20 @@ const nextConfig = {
     // sub-object that tunes them still lives under `experimental`.
     serverActions: {
       // Server Action body cap. Next defaults this to 1MB, which would silently
-      // reject the large uploads `uploadMedicalDocument` explicitly permits before
-      // the action runs. Set to 65MB (64MB + 1MB): the largest permitted upload is a
-      // 64MB deterministic health record (`MAX_HEALTH_BYTES`, lib/upload-gate.ts,
-      // re-exported from lib/medical-pipeline.ts), whose multipart body is the file
-      // bytes PLUS boundary/field overhead. The 1MB of headroom keeps the app's own
-      // per-path gates (32MB AI / 64MB health) authoritative, so an over-size file
-      // hits its friendly `insertFailedDoc` audit path instead of an opaque framework
-      // rejection. This lockstep is guarded by
-      // lib/__tests__/upload-size-lockstep.test.ts (issue #696) — bump both together.
-      bodySizeLimit: "65mb",
+      // reject the large uploads `uploadMedicalDocument` / the video-capture actions
+      // explicitly permit before the action runs. Set to 101MB (100MB + 1MB): the
+      // largest permitted upload is now a 100MB video clip (`MAX_VIDEO_BYTES`,
+      // lib/video/policy.ts — the product-documented 60s/100MB cap, #1224), which sits
+      // ABOVE the 64MB deterministic health record (`MAX_HEALTH_BYTES`,
+      // lib/upload-gate.ts). This figure is a FLOOR derived from the largest permitted
+      // upload, not a fixed ceiling — it tracks whichever app cap is biggest, plus the
+      // multipart boundary/field overhead. The 1MB of headroom keeps the app's own
+      // per-path gates (32MB AI / 64MB health / 100MB video) authoritative, so an
+      // over-size file hits its friendly in-app reject path instead of an opaque
+      // framework rejection. This lockstep is guarded by
+      // lib/__tests__/upload-size-lockstep.test.ts (issues #696/#1364) — bump this,
+      // proxyClientMaxBodySize, and the governing app cap together.
+      bodySizeLimit: "101mb",
     },
     // SECOND, EARLIER body cap that `bodySizeLimit` above does NOT cover. Next 16
     // clones the request body for middleware (this app has a middleware.ts whose
@@ -257,13 +261,13 @@ const nextConfig = {
     // it `console.warn`s and TRUNCATES the body to the first 10MB, then hands the
     // truncated stream to the Server Action. An over-10MB health-record upload
     // (e.g. a multi-document MyChart XDM) then arrives as a broken multipart whose
-    // file field is cut off, so `uploadMedicalDocument` sees an empty File and
-    // silently returns — an upload that "fails" with no error row and only a
-    // buried framework warning. Keep it in lockstep with `bodySizeLimit` above (65MB)
-    // so the app's own per-path gates (32MB AI / 64MB health, lib/upload-gate.ts)
-    // stay the single authoritative limit. Guarded by
-    // lib/__tests__/upload-size-lockstep.test.ts (issue #696).
-    proxyClientMaxBodySize: "65mb",
+    // file field is cut off, so `uploadMedicalDocument` (or a video action) sees an
+    // empty File and silently returns — an upload that "fails" with no error row and
+    // only a buried framework warning. Keep it in lockstep with `bodySizeLimit` above
+    // (101MB) so the app's own per-path gates (32MB AI / 64MB health / 100MB video,
+    // lib/upload-gate.ts + lib/video/policy.ts) stay the single authoritative limit.
+    // Guarded by lib/__tests__/upload-size-lockstep.test.ts (issues #696/#1364).
+    proxyClientMaxBodySize: "101mb",
   },
 };
 

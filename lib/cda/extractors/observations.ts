@@ -316,6 +316,22 @@ function codedLabel(node: any): string | null {
   return typeof dn === "string" && dn.trim() ? dn.trim() : null;
 }
 
+// SNOMED CT "Laterality" (qualifier-value hierarchy) — the <name code> that marks a
+// targetSiteCode <qualifier> as the LATERALITY qualifier specifically.
+const SNOMED_LATERALITY = "272741003";
+
+// A C-CDA <targetSiteCode> can legally carry several <qualifier> entries (a
+// view/approach/orientation qualifier alongside laterality), in any order. Pick the
+// one whose <name> is SNOMED 272741003 (Laterality) rather than array position (#1366)
+// — matching how the file's other coded extractions key off the qualifying code, not
+// the slot — so a study whose first qualifier is a non-laterality view/projection still
+// recovers its stated laterality instead of silently dropping it.
+function lateralityQualifier(targetSiteCode: any): any | undefined {
+  return asArray(targetSiteCode?.qualifier).find(
+    (q) => q?.name?.["@_code"] === SNOMED_LATERALITY
+  );
+}
+
 function firstObsIdExt(obs: any): string | null {
   for (const id of asArray(obs?.id)) {
     if (id?.["@_nullFlavor"] != null) continue;
@@ -336,8 +352,9 @@ function mapImagingStudy(obs: any): ImportedImagingStudy | null {
   if (!date && !idExt) return null;
   const modality = normalizeModality(codedLabel(obs?.methodCode));
   const site = codedLabel(obs?.targetSiteCode);
-  const qualifier = asArray(obs?.targetSiteCode?.qualifier)[0];
-  const laterality = normalizeLaterality(codedLabel(qualifier?.value));
+  const laterality = normalizeLaterality(
+    codedLabel(lateralityQualifier(obs?.targetSiteCode)?.value)
+  );
   return {
     modality,
     body_region: site,

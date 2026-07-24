@@ -32,7 +32,8 @@ import {
   getMoodOnDate,
   getProteinToday,
   getMetricDailyTotals,
-  getBiomarkerSeries,
+  getLatestBiomarkerTrendPoints,
+  getLatestBodyMetricDailyPoints,
   getNavRelevance,
   getSituationalDueCount,
   getDerivedSituationLines,
@@ -590,16 +591,21 @@ export default async function Dashboard() {
   // helper (#221). Null components self-omit; an all-null model is the data-aware CTA.
   let vitalsModel: VitalsLatestModel | null = null;
   if (has("vitals-latest")) {
-    const systolic = getBiomarkerSeries(profile.id, "Blood Pressure Systolic")
-      .filter((r) => r.value_num != null)
-      .map((r) => ({ date: r.date, value: Math.round(r.value_num as number) }));
-    const diastolic = getBiomarkerSeries(profile.id, "Blood Pressure Diastolic")
-      .filter((r) => r.value_num != null)
-      .map((r) => ({ date: r.date, value: Math.round(r.value_num as number) }));
-    const restingHrSeries = getBodyMetricDailySeries(
+    // The card reads only the last two points (latestTrend), so pull just the trend
+    // tail rather than the whole BP/resting-HR history (#1367): getLatestBiomarkerTrendPoints
+    // and getLatestBodyMetricDailyPoints return the exact same two points the full
+    // series' tail would, without materializing years of synced readings per render.
+    const systolic = getLatestBiomarkerTrendPoints(
       profile.id,
-      "resting_hr",
-      ALL_ROWS
+      "Blood Pressure Systolic"
+    ).map((r) => ({ date: r.date, value: Math.round(r.value_num as number) }));
+    const diastolic = getLatestBiomarkerTrendPoints(
+      profile.id,
+      "Blood Pressure Diastolic"
+    ).map((r) => ({ date: r.date, value: Math.round(r.value_num as number) }));
+    const restingHrSeries = getLatestBodyMetricDailyPoints(
+      profile.id,
+      "resting_hr"
     ).map((w) => ({ date: w.date, value: Math.round(w.value) }));
     const sysLatest = latestTrend(systolic);
     const diaLatest = latestTrend(diastolic);
