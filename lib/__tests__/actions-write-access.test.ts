@@ -54,6 +54,11 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     why: "read-only: cross-domain search of the active profile",
   },
   {
+    file: "app/(app)/search-actions.ts",
+    fn: "askRecordsAction",
+    why: "read-only (#878): retrieves the active profile's OWN rows (profile-scoped search) and narrates a grounded answer via the AI resolver; computes no fact and writes nothing, so login-scoped requireSession() is the right gate",
+  },
+  {
     file: "app/(app)/upcoming/actions.ts",
     fn: "explainFindingAction",
     why: "read-only (#878): narrates a finding's OWN reason payload via the AI resolver; computes no fact and writes nothing, so login-scoped requireSession() is the right gate",

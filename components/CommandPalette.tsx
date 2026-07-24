@@ -20,6 +20,7 @@ import {
   IconPill,
   IconScale,
   IconSearch,
+  IconSparkles,
   IconStethoscope,
   IconTarget,
   IconVaccine,
@@ -28,7 +29,13 @@ import ModalShell from "@/components/ModalShell";
 import { useLockBodyScroll } from "@/components/useLockBodyScroll";
 import { useToast } from "@/components/Toast";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
-import { runGlobalSearch } from "@/app/(app)/search-actions";
+import {
+  runGlobalSearch,
+  askRecordsAction,
+  type AskRecordsResult,
+} from "@/app/(app)/search-actions";
+import { DOMAIN_LABEL, type RecordCitation } from "@/lib/record-qa";
+import NotesText from "@/components/NotesText";
 import { paletteQuickLog } from "@/app/(app)/palette-actions";
 import { logMedicationAdministration } from "@/app/(app)/medications/actions";
 import { refillMedication } from "@/app/(app)/medications/actions";
@@ -126,6 +133,16 @@ export default function CommandPalette({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
+  // Grounded record Q&A (#878, Phase 2): the answer for the current question, or null
+  // until the user asks. Pointer-only (never part of the arrow/Enter flat list), so the
+  // existing keyboard navigation is untouched.
+  const [asking, setAsking] = useState(false);
+  const [ask, setAsk] = useState<Extract<
+    AskRecordsResult,
+    { ok: true }
+  > | null>(null);
+  const [askError, setAskError] = useState<string | null>(null);
+
   const q = query.trim();
 
   // Derived synchronously from the query: the quick-log preview (or null) and the
@@ -185,8 +202,18 @@ export default function CommandPalette({
       setHighlight(0);
       setLoading(false);
       setCommitting(false);
+      setAsk(null);
+      setAskError(null);
+      setAsking(false);
     }
   }, [open]);
+
+  // A stale answer must not linger over an edited question — clear it whenever the
+  // query changes, so the panel only ever shows the answer to the CURRENT text.
+  useEffect(() => {
+    setAsk(null);
+    setAskError(null);
+  }, [q]);
 
   // Debounced fetch. A per-request token drops stale responses so a slow earlier
   // query can't overwrite a newer one's results.
@@ -229,6 +256,26 @@ export default function CommandPalette({
   }, [highlight]);
 
   const close = useCallback(() => setOpen(false), []);
+
+  // Ask the grounded record Q&A about the current query (#878, Phase 2). Read-only:
+  // it retrieves the active profile's own matching rows and narrates a linked answer
+  // (or, keyless, the same rows with an honest offline line; empty retrieval → a hard
+  // "nothing found"). Pointer-only, so the arrow/Enter navigation stays untouched.
+  const runAsk = useCallback(async () => {
+    const question = q;
+    if (!question || asking) return;
+    setAsking(true);
+    setAskError(null);
+    try {
+      const fd = new FormData();
+      fd.set("question", question);
+      const res = await askRecordsAction(fd);
+      if (res.ok) setAsk(res);
+      else setAskError(res.error);
+    } finally {
+      setAsking(false);
+    }
+  }, [q, asking]);
 
   const go = useCallback(
     (href: AppRoute) => {
@@ -407,6 +454,81 @@ export default function CommandPalette({
           aria-label="Results"
           className="mt-3 min-h-0 flex-1 overflow-y-auto"
         >
+          {/* Ask your records (#878, Phase 2) — grounded Q&A over the active profile's
+              OWN rows. Pointer-only: a trigger to narrate a linked answer, and the
+              answer panel. Never part of the arrow/Enter list. */}
+          {q !== "" && (
+            <div className="mb-2" data-testid="ask-records">
+              <div className="px-2 pb-1 pt-2 section-label">Ask</div>
+              <button
+                type="button"
+                onClick={() => void runAsk()}
+                disabled={asking}
+                data-testid="ask-records-trigger"
+                className={`${rowClass(false)} disabled:cursor-not-allowed disabled:opacity-60`}
+              >
+                <IconSparkles className="h-4 w-4 shrink-0 opacity-70" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">
+                    Ask about your records
+                  </span>
+                  <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
+                    {asking
+                      ? "Looking through your records…"
+                      : `Answer “${q}” from your own records`}
+                  </span>
+                </span>
+              </button>
+
+              {askError && (
+                <p className="mt-1 px-2 text-xs text-rose-600 dark:text-rose-400">
+                  {askError}
+                </p>
+              )}
+
+              {ask && (
+                <div
+                  data-testid="ask-records-panel"
+                  className="mt-1 rounded-lg border border-black/10 bg-slate-50 p-3 dark:border-white/10 dark:bg-ink-850"
+                >
+                  <NotesText
+                    notes={ask.answer}
+                    as="div"
+                    data-testid="ask-records-answer"
+                    className="text-sm text-slate-700 dark:text-slate-200"
+                  />
+                  {ask.citations.length > 0 && (
+                    <ul className="mt-2 space-y-1">
+                      {ask.citations.map((c: RecordCitation) => (
+                        <li key={c.index}>
+                          <button
+                            type="button"
+                            onClick={() => go(c.href)}
+                            data-testid="ask-records-citation"
+                            className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left text-xs text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-800"
+                          >
+                            <span className="shrink-0 rounded bg-slate-200 px-1 font-mono text-xs text-slate-600 dark:bg-ink-700 dark:text-slate-300">
+                              {c.index}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate">
+                              <span className="font-medium">{c.title}</span>
+                              <span className="text-slate-500 dark:text-slate-400">
+                                {" · "}
+                                {DOMAIN_LABEL[c.domain]}
+                                {c.date ? ` · ${c.date}` : ""}
+                              </span>
+                            </span>
+                            <IconArrowRight className="h-3.5 w-3.5 shrink-0 opacity-50" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Quick log — the inline `weight 82.5` fast path. */}
           {quickLog && (
             <div className="mb-2">

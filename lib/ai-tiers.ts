@@ -60,8 +60,12 @@ export type AiTaskClass =
   | "suggestions"
   // Free-text symptom mapping onto the vocabulary (#877). Light.
   | "symptom-map"
-  // "Why is this flagged?" narration over the reason model (#878). Light.
-  | "explain";
+  // "Why is this flagged?" narration over the reason model (#878, Phase 1). Light.
+  | "explain"
+  // Grounded record Q&A over the profile's OWN retrieved rows (#878, Phase 2): a
+  // bounded retrieval (capped citation set) narrated with links. Light — the retrieval
+  // is capped, so it never needs long-context Heavy.
+  | "ask";
 
 export const AI_TASK_CLASSES: readonly AiTaskClass[] = [
   "extraction",
@@ -71,6 +75,7 @@ export const AI_TASK_CLASSES: readonly AiTaskClass[] = [
   "suggestions",
   "symptom-map",
   "explain",
+  "ask",
 ] as const;
 
 // The task→tier mapping table (exported + unit-tested). Extensible to per-task
@@ -84,6 +89,7 @@ export const TASK_TIER: Record<AiTaskClass, TierName> = {
   suggestions: "light",
   "symptom-map": "light",
   explain: "light",
+  ask: "light",
 };
 
 // Tasks that require an image-capable (vision) model. Extraction reads PDFs/images;
