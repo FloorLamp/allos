@@ -17,6 +17,7 @@ import { preventiveRuleByKey } from "@/lib/preventive-catalog";
 import { resolveFollowUpCore } from "@/lib/followup-write";
 import { formError, formOk, type FormResult } from "@/lib/types";
 import { requireSession } from "@/lib/auth";
+import { dismissMultiviewHint } from "@/lib/settings";
 import { explainFinding } from "@/lib/explain-finding";
 import type { Reason } from "@/lib/reasons";
 
@@ -167,6 +168,17 @@ export async function resolveFollowUp(formData: FormData): Promise<FormResult> {
   revalidatePath("/results");
   revalidatePath("/records");
   revalidatePath("/");
+  return formOk();
+}
+
+// Dismiss the one-time multi-profile viewing hint on Upcoming (issue #1327 fix 7).
+// Login-scoped discoverability, not a per-profile write — so it gates on requireSession
+// (any live login may dismiss its OWN hint) and stores the "seen" flag against the
+// login, never a profile. Idempotent; revalidates so the banner drops immediately.
+export async function dismissMultiviewHintAction(): Promise<FormResult> {
+  const { login } = await requireSession();
+  dismissMultiviewHint(login.id);
+  revalidatePath("/upcoming");
   return formOk();
 }
 

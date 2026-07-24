@@ -65,5 +65,10 @@ export function conditionReviewItems(profileId: number): UpcomingItem[] {
     dueText: "Review",
     actionLabel: "Review",
     conditionSuggestion: { name: s.name, code: s.code },
+    // The "Add to conditions" confirm (confirmConditionSuggestion) writes to the ACTING
+    // profile, not the row's subject — so on a multi-view page the shared row scaffolding
+    // renders it ONLY on the acting profile's own row (issue #1327 fix 5). Declaring the
+    // target here replaces the page-local `(!multi || isActing)` special case.
+    writeTarget: "acting" as const,
   }));
 }
