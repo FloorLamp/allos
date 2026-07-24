@@ -67,6 +67,28 @@ export interface TimelineEvent {
   // document"), NEVER a causal claim; the primary `href` stays the event's own
   // source record. AppRoute-typed like every internal link (#285).
   linkedRefs?: { label: string; href: AppRoute }[];
+  // The event's raw LOCAL clock window (issue #1068), carried on the event so the
+  // Timeline day view's intraday panel can draw it as a span from the SAME event
+  // set the feed lists — one gather, two formatters, never a second per-layer
+  // query. Set only where the source row genuinely has a window (activities);
+  // absent everywhere else, which is exactly what data-gates the block layer. The
+  // span itself is resolved by the ONE canonical `activityWindow()` computation
+  // (lib/training-zones), the same one the training-zone aggregation uses.
+  clockWindow?: {
+    date: string;
+    start_time: string | null;
+    end_time: string | null;
+    duration_min: number | null;
+  };
+}
+
+// The DOM id of a rendered feed entry (issue #1068). The intraday panel's ticks
+// and blocks link to `#<anchor>`, so tapping one scrolls the list below to that
+// entry — chart as map, list as detail. Event ids carry ':' separators (and
+// document/exercise names can carry anything), so everything outside the
+// fragment-safe set collapses to '-'.
+export function timelineEntryAnchorId(eventId: string): string {
+  return `timeline-entry-${eventId.replace(/[^A-Za-z0-9_-]+/g, "-")}`;
 }
 
 export interface TimelineDay {
