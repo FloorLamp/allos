@@ -87,6 +87,53 @@ describe("extractionToPersistInput (AI path)", () => {
     });
   });
 
+  it("coerces a `report` row into the narrative shape (value → notes, value/value_num/unit null)", () => {
+    // The model classifies a narrative finding (an ECG/stress-test interpretation) as
+    // `report` and puts the text in `value`; the Results → Reports surface reads `notes`
+    // with a NULL value, so the adapter folds it over — otherwise the report renders
+    // with an empty body (#708 follow-up).
+    const [r] = extractionToPersistInput(
+      doneExtraction({
+        results: [
+          mkResult({
+            category: "report",
+            name: "ECG Interpretation",
+            value: "Sinus bradycardia. Otherwise normal ECG.",
+            value_num: 55, // must be dropped — a report is not a valued analyte
+            unit: "bpm",
+            notes: null,
+          }),
+        ],
+      }),
+      "2024-02-01"
+    ).records;
+    expect(r.category).toBe("report");
+    expect(r.value).toBeNull();
+    expect(r.value_num).toBeNull();
+    expect(r.unit).toBeNull();
+    expect(r.notes).toBe("Sinus bradycardia. Otherwise normal ECG.");
+  });
+
+  it("folds a report row's value AND notes into one body", () => {
+    const [r] = extractionToPersistInput(
+      doneExtraction({
+        results: [
+          mkResult({
+            category: "report",
+            name: "Exercise Stress Test",
+            value: "Negative",
+            notes: "No chest pain or significant ST-T changes",
+          }),
+        ],
+      }),
+      "2024-02-01"
+    ).records;
+    expect(r.value).toBeNull();
+    expect(r.notes).toBe(
+      "Negative — No chest pain or significant ST-T changes"
+    );
+  });
+
   it("drops a non-finite value_num and defaults canonical to the name", () => {
     const [r] = extractionToPersistInput(
       doneExtraction({

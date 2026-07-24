@@ -526,18 +526,35 @@ export function extractionToPersistInput(
             },
           ]
         : null;
+    // A `report` row is a narrative document (#708 — an ECG/stress-test/imaging
+    // interpretation the model classified as `report`), not a valued analyte: its text
+    // belongs in `notes` with a NULL value, matching the CDA report shape that
+    // Results → Reports reads (getReportRecords renders `notes`). The model puts the
+    // narrative in `value` (the natural result field), so fold value+notes into one
+    // body here — otherwise the report renders with an empty body.
+    const isReport = r.category === "report";
+    const reportBody = isReport
+      ? [r.value, r.notes]
+          .map((s) => (s == null ? "" : String(s).trim()))
+          .filter(Boolean)
+          .join(" — ") || null
+      : null;
     return {
       category: r.category,
       name: r.name,
       canonical: r.canonical_name || r.name,
-      value: rx?.strength ?? r.value,
-      value_num: Number.isFinite(r.value_num) ? r.value_num : null,
-      unit: r.unit,
+      value: isReport ? null : (rx?.strength ?? r.value),
+      value_num: isReport
+        ? null
+        : Number.isFinite(r.value_num)
+          ? r.value_num
+          : null,
+      unit: isReport ? null : r.unit,
       date: isRealIsoDate(r.collected_date) ? r.collected_date! : fallbackDate,
       reference_range: r.reference_range,
       flag: r.flag,
       panel: r.panel,
-      notes: rx ? sigNote : r.notes,
+      notes: isReport ? reportBody : rx ? sigNote : r.notes,
       source: null,
       external_id: null,
       loinc: null,
