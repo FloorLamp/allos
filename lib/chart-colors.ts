@@ -40,3 +40,15 @@ export const chartBand = {
 } as const;
 
 export type ChartSeriesToken = keyof typeof chartSeries;
+
+// Sleep-stage sub-band fills (issue #1068's intraday panel, and any later stage
+// chart). A single-hue depth ramp on the blessed violet family — deep is the
+// darkest, light the palest — with awake dropping to the neutral so it reads as
+// "not asleep" rather than another depth. Lives here, beside the rest of the
+// palette, so a second surface can't invent its own stage colors.
+export const chartSleepStage = {
+  deep: "#6d28d9", // violet-700
+  rem: chartSeries.violet, // violet-500
+  light: "#c4b5fd", // violet-300
+  awake: chartSeries.slate, // slate-500
+} as const;
