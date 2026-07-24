@@ -51,6 +51,7 @@ export default function MedicationRow({
   refillRate,
   prnRedoseLine = null,
   monitoringNote = null,
+  heldBy = null,
   todayStr,
 }: {
   med: Supplement;
@@ -63,6 +64,9 @@ export default function MedicationRow({
   // The "Requires monitoring: …" note (issue #995) — the curated labs a clinician
   // typically watches while on this drug. Informational; absent for unmonitored meds.
   monitoringNote?: string | null;
+  // The situation NAME currently holding this med (#1296), or null. Shown as a
+  // "Held — <situation> active" badge so the suppressed reminder is discoverable.
+  heldBy?: string | null;
   // The app's configured today, so the refill badge can project the run-out DATE
   // and the one-tap "Refilled" action shows on the low-supply state (#852 item 3).
   todayStr: string;
@@ -154,6 +158,14 @@ export default function MedicationRow({
             {med.critical === 1 && (
               <span className="badge bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
                 Critical
+              </span>
+            )}
+            {heldBy && (
+              <span
+                data-testid={`med-held-${med.id}`}
+                className="badge bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+              >
+                Held — {heldBy} active
               </span>
             )}
             {!current && (

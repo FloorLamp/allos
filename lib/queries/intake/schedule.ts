@@ -33,6 +33,7 @@ export function getSupplements(profileId: number): Supplement[] {
     .prepare(
       `SELECT intake_items.*,
               COALESCE(situations.name, intake_items.situation) AS situation,
+              pause_situations.name AS pause_situation,
               (SELECT p.name FROM providers p WHERE p.id = intake_items.provider_id)
                 AS provider_name,
               (SELECT c.name FROM conditions c
@@ -43,6 +44,9 @@ export function getSupplements(profileId: number): Supplement[] {
          LEFT JOIN situations
                 ON situations.id = intake_items.situation_id
                AND situations.profile_id = intake_items.profile_id
+         LEFT JOIN situations AS pause_situations
+                ON pause_situations.id = intake_items.pause_situation_id
+               AND pause_situations.profile_id = intake_items.profile_id
         WHERE intake_items.profile_id = ? ORDER BY active DESC, name`
     )
     .all(profileId) as Supplement[];
@@ -61,6 +65,7 @@ export function getMedication(
     .prepare(
       `SELECT intake_items.*,
               COALESCE(situations.name, intake_items.situation) AS situation,
+              pause_situations.name AS pause_situation,
               (SELECT p.name FROM providers p WHERE p.id = intake_items.provider_id)
                 AS provider_name,
               (SELECT c.name FROM conditions c
@@ -71,6 +76,9 @@ export function getMedication(
          LEFT JOIN situations
                 ON situations.id = intake_items.situation_id
                AND situations.profile_id = intake_items.profile_id
+         LEFT JOIN situations AS pause_situations
+                ON pause_situations.id = intake_items.pause_situation_id
+               AND pause_situations.profile_id = intake_items.profile_id
         WHERE intake_items.id = ? AND intake_items.profile_id = ?
           AND intake_items.kind = 'medication'`
     )

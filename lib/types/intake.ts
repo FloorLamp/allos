@@ -46,6 +46,15 @@ export interface Supplement {
   // or legacy/unmatched rows.
   situation: string | null;
   situation_id: number | null;
+  // The INVERSE situational link (issue #1296): while `pause_situation` is active,
+  // this item is HELD — not due on any surfacing path (Upcoming, dose strips,
+  // reminders, digest), regardless of its `condition`. `pause_situation` is the
+  // display label (joined from the linked row's name on read); `pause_situation_id`
+  // links the id-keyed `situations` row (migration 108, the mirror of situation_id).
+  // NULL when the item isn't situationally paused. An item may carry BOTH links
+  // (on-during A, paused-during B) — held beats due (see heldBySituation / isDueOn).
+  pause_situation: string | null;
+  pause_situation_id: number | null;
   // Optional "stack" label grouping supplements taken together (e.g. "D3 + K2");
   // members render adjacently in their time bucket. Free text.
   stack: string | null;

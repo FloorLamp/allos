@@ -28,6 +28,7 @@ import {
 } from "../sleep-regularity";
 import {
   countSituationalDue,
+  heldItemsBy,
   doseReminderNotifies,
   isDueOn,
 } from "../supplement-schedule";
@@ -335,11 +336,21 @@ export function gatherDigestInput(
     derivedLines.period,
   ].filter((l): l is string => l != null);
 
+  // Held items (#1296): active intake items currently suppressed by a pause situation,
+  // via the SAME heldItemsBy computation the Supplements/Medications rows and the badge
+  // use (#221). It reads the SAME effectiveSituations (declared ∪ derived, #1360) the
+  // dueness count above reads, so held and due compose on one union: a pause link naming
+  // a derived context holds exactly while it's active. The digest names the first
+  // holding situation and counts the holds.
+  const held = heldItemsBy(active, effectiveSituations);
+
   return {
     profileName,
     openEpisodeLine,
     doseCount,
     situationalActiveCount,
+    heldCount: held.length,
+    heldSituation: held[0]?.situation ?? null,
     derivedSituationLines,
     intakeKinds,
     todayGroups,

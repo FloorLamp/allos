@@ -175,7 +175,10 @@ test.describe("Combobox migration (#1176/#1177)", () => {
     });
     await nameField.fill(SUPP);
     await addCard.getByLabel("When").selectOption("situational");
-    const situation = addCard.getByRole("combobox", { name: "Situation" });
+    const situation = addCard.getByRole("combobox", {
+      name: "Situation",
+      exact: true,
+    });
     await situation.fill(CUSTOM_SITUATION);
     await addCard
       .getByRole("listbox")
@@ -193,7 +196,9 @@ test.describe("Combobox migration (#1176/#1177)", () => {
     // would never surface it. A fuzzy fragment finds it.
     await nameField.fill("another");
     await addCard.getByLabel("When").selectOption("situational");
-    await addCard.getByRole("combobox", { name: "Situation" }).fill("E2EMig");
+    await addCard
+      .getByRole("combobox", { name: "Situation", exact: true })
+      .fill("E2EMig");
     await expect(
       addCard
         .getByRole("listbox")

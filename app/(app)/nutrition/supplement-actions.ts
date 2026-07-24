@@ -58,6 +58,7 @@ import type {
 } from "@/lib/types";
 import { strOrNull } from "@/lib/parse";
 import { dismissFinding } from "@/lib/queries";
+import { SURGERY_BRIDGE_PREFIX } from "@/lib/surgery-bridge";
 import { poorSleepOverrideKey } from "@/lib/derived-situations";
 import { ADHERENCE_PREFIX } from "@/lib/adherence-patterns";
 import { FOOD_TIMING_PREFIX } from "@/lib/food-drug-interactions";
@@ -90,6 +91,11 @@ function fields(formData: FormData) {
     ? (priorityRaw as SupplementPriority)
     : "high";
   const situation = condition === "situational" ? str("situation") : null;
+  // The INVERSE situational link (issue #1296) — "pause this item WHILE X is active".
+  // Independent of `condition`: a plain `daily` medication can be held during
+  // Pre-surgery, so it's read unconditionally (not gated on condition === situational).
+  // A blank field clears the link.
+  const pauseSituation = str("pause_situation");
   // Med → indication link (#1052): the condition this medication treats, chosen from
   // the "For condition…" picker (a conditions-list select). Medications only; a blank
   // value or a supplement clears it. Ownership is validated in the action before it's
@@ -183,6 +189,7 @@ function fields(formData: FormData) {
     condition,
     priority,
     situation,
+    pauseSituation,
     critical: critical ? 1 : 0,
     escalateAfterMin,
     escalateChatId,
@@ -372,16 +379,23 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
     const situationId = f.situation
       ? resolveSituationId(profile.id, f.situation)
       : null;
+    // Resolve the INVERSE pause link (#1296), creating the situation ROW if this is a
+    // new label — the same get-or-create as the on-link, so a Pre-surgery pause and a
+    // Pre-surgery on-link converge on ONE vocabulary row.
+    const pauseSituationId = f.pauseSituation
+      ? resolveSituationId(profile.id, f.pauseSituation)
+      : null;
     const info = db
       .prepare(
         `INSERT INTO intake_items
-           (name, notes, condition, priority, brand, product, situation, situation_id, stack,
+           (name, notes, condition, priority, brand, product, situation, situation_id,
+            pause_situation_id, stack,
             critical, escalate_after_min, escalate_chat_id,
             quantity_on_hand, qty_per_dose,
             kind, prescriber, pharmacy, rx_number, rx, as_needed,
             min_interval_hours, max_daily_count, redose_notice,
             rxcui, rxcui_ingredients, provider_id, indication_condition_id, source, profile_id)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?)`
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?)`
       )
       .run(
         name,
@@ -392,6 +406,7 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
         f.product,
         f.situation,
         situationId,
+        pauseSituationId,
         f.stack,
         f.critical,
         f.escalateAfterMin,
@@ -557,10 +572,16 @@ export async function updateSupplement(
     const situationId = f.situation
       ? resolveSituationId(profile.id, f.situation)
       : null;
+    // Re-resolve the INVERSE pause link on edit (#1296) so a re-typed/changed label
+    // re-keys to (or creates) the matching situation ROW; null clears it.
+    const pauseSituationId = f.pauseSituation
+      ? resolveSituationId(profile.id, f.pauseSituation)
+      : null;
     db.prepare(
       `UPDATE intake_items
          SET name = ?, notes = ?, condition = ?, priority = ?, brand = ?,
-             product = ?, situation = ?, situation_id = ?, stack = ?,
+             product = ?, situation = ?, situation_id = ?, pause_situation_id = ?,
+             stack = ?,
              critical = ?, escalate_after_min = ?, escalate_chat_id = ?,
              quantity_on_hand = ?, qty_per_dose = ?,
              kind = ?, prescriber = ?, pharmacy = ?, rx_number = ?, rx = ?, as_needed = ?,
@@ -577,6 +598,7 @@ export async function updateSupplement(
       f.product,
       f.situation,
       situationId,
+      pauseSituationId,
       f.stack,
       f.critical,
       f.escalateAfterMin,
@@ -915,6 +937,56 @@ export async function toggleSituation(formData: FormData): Promise<FormResult> {
   if (active.has(situation)) active.delete(situation);
   else active.add(situation);
   setActiveSituations(profile.id, [...active]);
+  revalidateIntake();
+  return formOk();
+}
+
+// Accept a surgery-bridge suggestion (issue #1299): ACTIVATE the named situation
+// (Pre-surgery / Post-op) idempotently — the consented producer for #1296's pause.
+// Distinct from toggleSituation (which flips): accepting the same chip twice is a
+// no-op, never an accidental deactivation. Suggest-only — this runs only from the
+// user's confirm, never derived-auto.
+export async function activateSurgerySituation(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const situation = String(formData.get("situation") ?? "").trim();
+  if (!situation) return formError("Couldn't find that situation.");
+  const active = new Set(getActiveSituations(profile.id));
+  active.add(situation);
+  setActiveSituations(profile.id, [...active]);
+  revalidateIntake();
+  return formOk();
+}
+
+// Clear a surgery-bridge situation (issue #1299): DEACTIVATE the named situation
+// (the "clear Pre-surgery — N items resume" half of the post-op transition). The hold
+// lifts automatically the moment the situation deactivates (#1296), so held items
+// resume the same day. Idempotent — clearing an already-inactive situation is a no-op.
+export async function clearSurgerySituation(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const situation = String(formData.get("situation") ?? "").trim();
+  if (!situation) return formError("Couldn't find that situation.");
+  const active = new Set(getActiveSituations(profile.id));
+  active.delete(situation);
+  setActiveSituations(profile.id, [...active]);
+  revalidateIntake();
+  return formOk();
+}
+
+// Dismiss ONE surgery-bridge suggestion per-procedure (issue #1299 / #203): stores the
+// visit-id+phase key on the shared suppression bus so dismissing this surgery's chip
+// never silences next year's (ids never recycle; a deleted visit leaves a dead row).
+export async function dismissSurgeryBridge(
+  formData: FormData
+): Promise<FormResult> {
+  const { profile } = await requireWriteAccess();
+  const key = String(formData.get("key") ?? "").trim();
+  if (!key.startsWith(SURGERY_BRIDGE_PREFIX))
+    return formError("Couldn't dismiss that suggestion.");
+  dismissFinding(profile.id, key);
   revalidateIntake();
   return formOk();
 }
