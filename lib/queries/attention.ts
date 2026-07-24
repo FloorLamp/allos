@@ -17,9 +17,12 @@ import {
   buildFlaggedItem,
   attentionCardItems,
   mergeAttentionPageGroups,
+  groupAttentionByPerson,
+  emptyMemberIds,
   type AttentionIntegration,
   type AttentionPageGroup,
   type MemberAttention,
+  type MemberSection,
   type ProfiledUpcomingItem,
 } from "../attention";
 import { getNewlyFlaggedBiomarkers } from "../notifications/digest-data";
@@ -258,12 +261,26 @@ export interface MultiProfileAttention {
   // Per-member models (each carries the member's own `today`), preserved so the
   // pure merge can band each in its own context — the trap.
   members: MemberAttention[];
-  // The merged, page-grouped view (items carry `profileId` for subject stamping).
+  // The merged, page-grouped view — the INTERLEAVED mode (items carry `profileId`
+  // for subject stamping).
   groups: AttentionPageGroup[];
-  // Total item count across the whole view-set (the page's "N total" badge).
+  // The BY-PERSON mode (issue #1327 fix 2): one section per in-view member, each with
+  // that member's own page bands, INCLUDING empty members (for their "All caught up").
+  memberSections: MemberSection[];
+  // The in-view members with nothing due (issue #1327 fix 3), in view order — the
+  // interleaved mode appends one calm "All caught up: <name>" line per id.
+  emptyMemberIds: number[];
+  // Total item count across the whole view-set (the page's view-set badge).
   total: number;
 }
 
+// PERF NOTE (issue #1327 fix 8, deliberately deferred): the Upcoming page runs ~2×N
+// sequential full per-member gathers — collectMultiProfileAttention here AND
+// collectMultiProfileSuppressed below each loop collectAttentionModel /
+// collectSuppressedAttention over every member, and those independently recompute
+// collectUpcoming / flaggedInWindow / the suppression set. Fine at family scale (a
+// household is a handful of profiles); if it ever matters, share the per-member gather
+// between the two entry points. Recorded so nobody rediscovers it in production.
 export function collectMultiProfileAttention(
   viewIds: readonly number[],
   units: UpcomingDisplayUnits = CANONICAL_DISPLAY_UNITS
@@ -282,7 +299,13 @@ export function collectMultiProfileAttention(
     total += items.length;
     members.push({ profileId: pid, today: now, items });
   }
-  return { members, groups: mergeAttentionPageGroups(members), total };
+  return {
+    members,
+    groups: mergeAttentionPageGroups(members),
+    memberSections: groupAttentionByPerson(members),
+    emptyMemberIds: emptyMemberIds(members),
+    total,
+  };
 }
 
 // A suppressed-attention entry tagged with its owning profile, so the multi-view
