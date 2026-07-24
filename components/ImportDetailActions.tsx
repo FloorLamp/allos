@@ -10,6 +10,7 @@ import {
   reprocessDocumentFromRaw,
 } from "@/app/(app)/medical/document-actions";
 import type { ReprocessFromRawResult } from "@/lib/medical-pipeline";
+import type { ImportActionExplainers } from "@/lib/import-actions-copy";
 
 // The re-run + delete actions on the import-detail page (#1071). Re-extraction
 // is preview-first ONLY (ReprocessDiffPanel: "Preview changes" → "Save changes")
@@ -26,10 +27,16 @@ export default function ImportDetailActions({
   id,
   filename,
   hasRaw = false,
+  explainers,
 }: {
   id: number;
   filename: string;
   hasRaw?: boolean;
+  // Per-control explainer copy, selected upstream by the deterministic-vs-AI ×
+  // hasRaw matrix (lib/import-actions-copy.ts, #1340). Each rendered button carries
+  // its own subtext; the orphan paragraph that narrated all three verbs — including
+  // a re-apply that often wasn't rendered — is gone.
+  explainers: ImportActionExplainers;
 }) {
   const router = useRouter();
   const confirm = useConfirm();
@@ -107,40 +114,51 @@ export default function ImportDetailActions({
         id={id}
         filename={filename}
         disabled={deleting || reimporting}
+        subtext={explainers.preview}
       />
-      {hasRaw && (
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={onReimportFromRaw}
-            disabled={deleting || reimporting}
-            data-testid="reimport-from-raw"
-            className="btn-ghost inline-flex items-center gap-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+      {hasRaw && explainers.reapply && (
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={onReimportFromRaw}
+              disabled={deleting || reimporting}
+              data-testid="reimport-from-raw"
+              className="btn-ghost inline-flex items-center gap-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <IconRefresh className="h-4 w-4" />
+              {reimporting ? "Re-applying…" : "Re-apply saved extraction"}
+            </button>
+            {rawResult && (
+              <span className={`text-sm ${rawTone}`}>{rawResult.message}</span>
+            )}
+          </div>
+          <p
+            data-testid="reapply-subtext"
+            className="text-xs text-slate-500 dark:text-slate-400"
           >
-            <IconRefresh className="h-4 w-4" />
-            {reimporting ? "Re-applying…" : "Re-apply saved extraction"}
-          </button>
-          <span className="text-xs text-slate-500 dark:text-slate-400">
-            Which should I use? “Preview changes” re-runs the AI (costs a daily
-            extraction) when the extraction itself was wrong; “Re-apply saved
-            extraction” replays the saved result — no AI call — when only the
-            import was off.
-          </span>
-          {rawResult && (
-            <span className={`text-sm ${rawTone}`}>{rawResult.message}</span>
-          )}
+            {explainers.reapply}
+          </p>
         </div>
       )}
-      <button
-        type="button"
-        onClick={onDelete}
-        disabled={deleting || reimporting}
-        data-testid="delete-document"
-        className="btn-ghost inline-flex items-center gap-1.5 text-sm text-rose-600 hover:text-rose-700 disabled:opacity-50 dark:text-rose-400"
-      >
-        <IconTrash className="h-4 w-4" />
-        {deleting ? "Deleting…" : "Delete"}
-      </button>
+      <div className="space-y-1">
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={deleting || reimporting}
+          data-testid="delete-document"
+          className="btn-ghost inline-flex items-center gap-1.5 text-sm text-rose-600 hover:text-rose-700 disabled:opacity-50 dark:text-rose-400"
+        >
+          <IconTrash className="h-4 w-4" />
+          {deleting ? "Deleting…" : "Delete"}
+        </button>
+        <p
+          data-testid="delete-subtext"
+          className="text-xs text-slate-500 dark:text-slate-400"
+        >
+          {explainers.delete}
+        </p>
+      </div>
     </div>
   );
 }

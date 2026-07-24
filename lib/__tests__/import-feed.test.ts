@@ -44,6 +44,9 @@ function doc(over: Partial<FeedDocument> = {}): FeedDocument {
     extraction_status: "done",
     extraction_error: null,
     extracted_count: 12,
+    // Default: no drift (live matches the snapshot) so existing cases keep asserting
+    // the plain "N items" phrasing. Drift cases override live_count (#1339).
+    live_count: 12,
     uploaded_at: "2026-07-08 09:00:00",
     ...over,
   };
@@ -137,7 +140,7 @@ describe("feedItemView — sync", () => {
 describe("feedItemView — document", () => {
   it("links to the detail page and shows the produced count when done", () => {
     const v = feedItemView(
-      documentEntry(doc({ extracted_count: 12 })),
+      documentEntry(doc({ extracted_count: 12, live_count: 12 })),
       providerName
     );
     expect(v.tone).toBe("ok");
@@ -151,7 +154,7 @@ describe("feedItemView — document", () => {
 
   it("renders a single produced item as '1 item' (not '1 items')", () => {
     const v = feedItemView(
-      documentEntry(doc({ extracted_count: 1 })),
+      documentEntry(doc({ extracted_count: 1, live_count: 1 })),
       providerName
     );
     expect(v.detail).toBe("1 item");
@@ -160,11 +163,32 @@ describe("feedItemView — document", () => {
 
   it("reads a done-but-empty extraction as a muted 'no items'", () => {
     const v = feedItemView(
-      documentEntry(doc({ extracted_count: 0 })),
+      documentEntry(doc({ extracted_count: 0, live_count: 0 })),
       providerName
     );
     expect(v.detail).toBe("no items");
     expect(v.detailMuted).toBe(true);
+  });
+
+  // #1339: rows leave a document (delete / merge / reassign) but the extracted_count
+  // snapshot doesn't follow — so the feed shows the LIVE count with the snapshot as
+  // context ("N of M items") instead of a bare, now-wrong "M items".
+  it("reconciles a fully-drained document as a muted 'M of N' (not the snapshot)", () => {
+    const v = feedItemView(
+      documentEntry(doc({ extracted_count: 7, live_count: 0 })),
+      providerName
+    );
+    expect(v.detail).toBe("0 of 7 items");
+    expect(v.detailMuted).toBe(true);
+  });
+
+  it("reconciles a partially-drifted document as 'live of extracted'", () => {
+    const v = feedItemView(
+      documentEntry(doc({ extracted_count: 33, live_count: 32 })),
+      providerName
+    );
+    expect(v.detail).toBe("32 of 33 items");
+    expect(v.detailMuted).toBe(false);
   });
 
   it("marks a failed upload with the error tone (issue #58 rejections)", () => {
