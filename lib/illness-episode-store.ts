@@ -110,6 +110,44 @@ export function getEpisodeRowForDate(
   );
 }
 
+// The id of the OPEN illness episode that COVERS `date` (started_at ≤ date, ended_at
+// NULL), or null. The default-association source when a symptom is logged (#1093): a
+// symptom logged while an episode is open rolls up under it. Only OPEN episodes qualify
+// — a backfilled/closed episode never retro-claims a freshly logged symptom (that would
+// re-attach on any past-date edit). Profile-scoped.
+export function openEpisodeIdForDate(
+  profileId: number,
+  date: string
+): number | null {
+  const row = db
+    .prepare(
+      `SELECT id FROM illness_episodes
+        WHERE profile_id = ?
+          AND (started_at IS NULL OR started_at <= ?)
+          AND ended_at IS NULL
+        ORDER BY started_at IS NULL, started_at DESC, id DESC
+        LIMIT 1`
+    )
+    .get(profileId, date) as { id: number } | undefined;
+  return row?.id ?? null;
+}
+
+// True when `episodeId` is an illness episode owned by `profileId` — the ownership gate
+// the symptom-episode attach uses so a forged cross-profile id is rejected at the data
+// layer (belt-and-suspenders to the action's write-access gate). Profile-scoped.
+export function episodeExistsForProfile(
+  profileId: number,
+  episodeId: number
+): boolean {
+  return (
+    db
+      .prepare(
+        `SELECT 1 FROM illness_episodes WHERE id = ? AND profile_id = ?`
+      )
+      .get(episodeId, profileId) != null
+  );
+}
+
 // The current OPEN row of a named situation (ended_at IS NULL), or null. NOCASE-matched
 // on the situation name so casing/whitespace variants resolve to the same episode.
 export function getOpenEpisodeRow(
@@ -309,6 +347,13 @@ export function deleteEpisodeRow(profileId: number, id: number): boolean {
     // decisions, and its stopped-med reversal records (#1140 Part B), before dropping the
     // row (their FKs to illness_episodes carry no ON DELETE).
     clearEpisodeVisitLinks(profileId, id);
+    // #1093 row-side-state: symptoms OUTLIVE the grouping — null their back-link before
+    // dropping the episode (foreign_keys=ON would otherwise reject the delete). The
+    // symptom-days themselves (and their photos) stay.
+    db.prepare(
+      `UPDATE symptom_logs SET episode_id = NULL
+        WHERE episode_id = ? AND profile_id = ?`
+    ).run(id, profileId);
     db.prepare(
       `DELETE FROM episode_stopped_meds WHERE episode_id = ? AND profile_id = ?`
     ).run(id, profileId);
@@ -406,6 +451,14 @@ export function mergeEpisodeRows(
     // onto the keeper (de-duping), and re-parent its stopped-med reversal records
     // (#1140 Part B), before the loser row is dropped.
     reparentEpisodeVisitLinks(profileId, keepId, dropId);
+    // #1093 row-side-state: re-parent the loser's symptoms onto the keeper (the same
+    // children-move-to-keeper treatment as visit-links + stopped-meds), so the merged
+    // episode's reverse query still gathers them and foreign_keys=ON meets a clean graph
+    // when the loser row is dropped.
+    db.prepare(
+      `UPDATE symptom_logs SET episode_id = ?
+        WHERE episode_id = ? AND profile_id = ?`
+    ).run(keepId, dropId, profileId);
     db.prepare(
       `UPDATE OR IGNORE episode_stopped_meds SET episode_id = ?
         WHERE episode_id = ? AND profile_id = ?`

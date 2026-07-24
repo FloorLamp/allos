@@ -14,6 +14,7 @@ import EpisodeIdentityBanner from "@/components/illness/EpisodeIdentityBanner";
 import {
   getSymptomSeveritiesOnDate,
   getSymptomNotesOnDate,
+  getSymptomsOnDate,
   getSymptomLogOrder,
   getCustomSymptomNames,
   getPrnMedicationsForQuickLog,
@@ -34,7 +35,7 @@ import {
   getUnitPrefs,
 } from "@/lib/settings";
 import IllnessMedicationLogger from "@/components/illness/IllnessMedicationLogger";
-import { SYMPTOMS } from "@/lib/symptoms";
+import { SYMPTOMS, symptomLabel } from "@/lib/symptoms";
 import { isRealIsoDate } from "@/lib/date";
 import { episodeAlternateLogDate } from "@/lib/illness-episode-format";
 import { getEpisodeInRangeEvents } from "@/lib/illness-episode-events";
@@ -227,6 +228,16 @@ export default async function EpisodePage(props: {
   const altLogDate =
     episodeAlternateLogDate(assembled.ongoing, rangeStart, logDate) ??
     undefined;
+  // #1093: the symptom-days already logged for the upload date — the options a new photo
+  // can be TAGGED to, so a photo binds to its specific symptom log (symptom_log_id) and
+  // two same-day symptoms keep distinct photo sets. Empty ⇒ the picker shows "Whole day"
+  // only (a day photo, no link).
+  const photoSymptomOptions = canWrite
+    ? getSymptomsOnDate(profileId, logDate).map((s) => ({
+        key: s.symptom,
+        label: symptomLabel(s.symptom),
+      }))
+    : [];
   const hasCareContext = showStaleNudge != null || comparison != null;
   const hasUpdateWorkspace = canWrite;
 
@@ -406,9 +417,11 @@ export default async function EpisodePage(props: {
                   id: p.id,
                   date: p.date,
                   symptom: p.symptom,
+                  symptomLabel: p.symptom ? symptomLabel(p.symptom) : null,
                   caption: p.caption,
                 }))}
                 uploadDate={logDate}
+                symptomOptions={photoSymptomOptions}
                 canWrite={canWrite}
                 profileId={target}
               />

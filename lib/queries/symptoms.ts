@@ -110,6 +110,31 @@ export function getSymptomLogOrder(
   return rankByRecentFrequency(catalog, rows, today(profileId));
 }
 
+export interface EpisodeSymptomLog {
+  id: number;
+  date: string;
+  symptom: string;
+  severity: number;
+  note: string | null;
+}
+
+// The symptom-day logs EXPLICITLY linked to an episode (#1093 reverse query), worst-first
+// within a day, newest day first. This keys on the `episode_id` back-link (the explicit
+// association), NOT date-range membership — so it returns exactly the symptoms attached to
+// this episode and reflects a detach. Profile-scoped by the symptom_logs filter.
+export function getEpisodeSymptomLogs(
+  profileId: number,
+  episodeId: number
+): EpisodeSymptomLog[] {
+  return db
+    .prepare(
+      `SELECT id, date, symptom, severity, note FROM symptom_logs
+        WHERE profile_id = ? AND episode_id = ?
+        ORDER BY date DESC, severity DESC, symptom COLLATE NOCASE`
+    )
+    .all(profileId, episodeId) as EpisodeSymptomLog[];
+}
+
 export interface SymptomDayRollup {
   date: string;
   count: number;
