@@ -94,6 +94,10 @@ import {
   MULTI_SHARED_ALLERGY,
   MULTI_OWNER_GOAL,
   MULTI_SHARED_GOAL,
+  MULTI_OWNER_VISIT,
+  MULTI_SHARED_VISIT,
+  MULTI_OWNER_VACCINE,
+  MULTI_SHARED_VACCINE,
   E2E_LOGIN_OWN,
   OWN_SELF_PROFILE,
   OWN_OTHER_PROFILE,
@@ -5251,6 +5255,37 @@ console.log(
   seedMultiAllergy(multiSharedId, MULTI_SHARED_ALLERGY);
   seedMultiGoal(multiOwnerId, MULTI_OWNER_GOAL);
   seedMultiGoal(multiSharedId, MULTI_SHARED_GOAL);
+  // Tier-1b bespoke-list multi-view fixtures (#1359): a past visit (encounter) + a
+  // recorded immunization dose per profile, so the Visits "Past" list and the
+  // Immunizations "All recorded doses" list each render one row per profile.
+  const seedMultiVisit = (profileId: number, type: string): void => {
+    if (
+      !db
+        .prepare("SELECT 1 FROM encounters WHERE profile_id = ? AND type = ?")
+        .get(profileId, type)
+    ) {
+      db.prepare(
+        "INSERT INTO encounters (profile_id, date, type, source) VALUES (?, '2026-02-15', ?, NULL)"
+      ).run(profileId, type);
+    }
+  };
+  const seedMultiVaccine = (profileId: number, vaccine: string): void => {
+    if (
+      !db
+        .prepare(
+          "SELECT 1 FROM immunizations WHERE profile_id = ? AND vaccine = ?"
+        )
+        .get(profileId, vaccine)
+    ) {
+      db.prepare(
+        "INSERT INTO immunizations (profile_id, date, vaccine, source) VALUES (?, '2026-01-20', ?, NULL)"
+      ).run(profileId, vaccine);
+    }
+  };
+  seedMultiVisit(multiOwnerId, MULTI_OWNER_VISIT);
+  seedMultiVisit(multiSharedId, MULTI_SHARED_VISIT);
+  seedMultiVaccine(multiOwnerId, MULTI_OWNER_VACCINE);
+  seedMultiVaccine(multiSharedId, MULTI_SHARED_VACCINE);
   const multiLoginId = seedMemberLogin(E2E_LOGIN_MULTI, multiOwnerId, "write");
   grantProfile(multiLoginId, multiSharedId, "write");
   console.log(

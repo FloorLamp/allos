@@ -7,6 +7,7 @@ import {
   getPickerProviders,
   getCarePlanItems,
 } from "@/lib/queries";
+import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import { isCarePlanItemOpen } from "@/lib/care-plan-upcoming";
 import type { CarePlanMatchItem } from "@/lib/care-plan-appointment";
 import { isRealIsoDate } from "@/lib/date";
@@ -34,19 +35,33 @@ function one(v: string | string[] | undefined): string | null {
 // (different shapes and lifecycles). Book/palette deep links land here via the
 // query params (title/kind/date/new), which ride the ONE /records URL.
 export default function VisitsSection({
-  profileId,
+  scope,
   searchParams,
   showHousehold,
 }: {
-  profileId: number;
+  scope: ProfileScope;
   searchParams: { [key: string]: string | string[] | undefined };
   // The login can reach 2+ profiles — the SAME predicate that gates the Household
   // strip/nav — so a single-profile login never sees the household affordance.
   showHousehold: boolean;
 }) {
+  // Multi-view (#1359): the "Past" encounters list is a flat, per-profile-deduped
+  // dated fact — read the whole view-set list-first (readForProfiles loops the
+  // representative-id dedup per profile) + stamp subject identity, so non-acting rows
+  // carry a subject chip and per-item write gate. Everything ELSE on this surface —
+  // the Upcoming appointments split (today()-derived scheduled/settled), the care-plan
+  // match offers, and the Add-visit booking form — stays ACTING-ONLY: it is either
+  // per-profile-context-derived (the #1096 scope-limit: today()/dueness must not be
+  // evaluated in another member's context) or write-centric (a single write target).
+  // The "Household view →" link remains the full merged cross-profile entry point.
+  const profileId = scope.actingProfileId;
+  const multi = scope.viewIds.length > 1;
   const now = today(profileId);
   const appointments = getAppointments(profileId);
-  const encounters = getEncounters(profileId);
+  const encounters = stampSubjects(
+    scope,
+    readForProfiles(scope.viewIds, (pid) => getEncounters(pid))
+  );
   // Open care-plan items a completed appointment can offer to close (issue #658).
   // Pared to the fields the pure matcher needs; the client computes the per-
   // appointment matches so the offer mirrors the preventive/log-visit CTAs.
@@ -181,7 +196,13 @@ export default function VisitsSection({
             . Imported visits come from uploaded health records (CCD Encounters
             section).
           </p>
-          <EncounterList items={encounters} defaultDate={now} />
+          <EncounterList
+            items={encounters}
+            defaultDate={now}
+            multiView={
+              multi ? { actingProfileId: scope.actingProfileId } : undefined
+            }
+          />
         </section>
       </div>
     </ProviderOptionsProvider>
