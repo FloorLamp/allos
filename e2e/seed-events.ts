@@ -259,6 +259,8 @@ import {
   NWAY_PROFILE,
   E2E_LOGIN_GRANTEDIT,
   GRANT_EDIT_PROFILE,
+  E2E_LOGIN_WHATSNEW,
+  WHATS_NEW_PROFILE,
 } from "./fixture-logins";
 import { seedNwayMergeFixture } from "./nway-merge-fixture";
 import {
@@ -5997,5 +5999,19 @@ console.log(
   seedMemberLogin(E2E_LOGIN_GRANTEDIT, grantEditId, "write");
   console.log(
     `e2e: seeded grant-edit fixture — login ${E2E_LOGIN_GRANTEDIT} granted profile ${grantEditId} (${GRANT_EDIT_PROFILE}) (#1412)`
+  );
+}
+
+// ── #1421 "What's new" fixture ───────────────────────────────────────────────
+// A dedicated member login + profile for the release-notes spec. The page's content
+// comes from the checked-in lib/release-notes.json, so this fixture carries NO health
+// data — it exists purely to own a LOGIN whose `whats_new_seen_date` marker the spec
+// can clear and re-assert per iteration without touching any other session's dot.
+// Idempotent for a reused dev server (fixtureProfileId + seedMemberLogin both upsert).
+{
+  const whatsNewId = fixtureProfileId(WHATS_NEW_PROFILE);
+  seedMemberLogin(E2E_LOGIN_WHATSNEW, whatsNewId, "write");
+  console.log(
+    `e2e: seeded what's-new fixture — login ${E2E_LOGIN_WHATSNEW} granted profile ${whatsNewId} (${WHATS_NEW_PROFILE}) (#1421)`
   );
 }

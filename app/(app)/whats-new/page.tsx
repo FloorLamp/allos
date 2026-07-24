@@ -69,7 +69,10 @@ export default async function WhatsNewPage() {
         title="What's new"
         subtitle={
           <>
-            Changes included in this build. Running <AppVersion />
+            Changes included in this build. Running{" "}
+            <span data-testid="whats-new-version">
+              <AppVersion />
+            </span>
             {"."}
           </>
         }
@@ -102,7 +105,7 @@ export default async function WhatsNewPage() {
                       <div className="flex flex-wrap items-center gap-2">
                         {chip && (
                           <span
-                            className={`rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${chip.className}`}
+                            className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${chip.className}`}
                           >
                             {chip.label}
                           </span>

@@ -918,3 +918,14 @@ export const SICK_PHOTO_PROFILE = "Sick Photo Link (e2e)";
 // also proves the own-profile autosave from a known start. Synthetic, no PHI.
 export const E2E_LOGIN_GRANTEDIT = "e2e_grantedit";
 export const GRANT_EDIT_PROFILE = "Grant Edit (e2e)";
+
+// #1421 — the in-app "What's new" page and its per-login unread dot. A DEDICATED
+// member login with its own profile, so the whats-new spec can clear this login's
+// `whats_new_seen_date` marker in beforeEach and prove the fresh-login dot →
+// visit → cleared transition repeatably (--repeat-each would otherwise see the
+// marker its own first iteration wrote). Isolated because the marker is
+// LOGIN-scoped: driving it on the shared admin storageState would flip the dot for
+// every other spec's session. Carries no health data at all — the page reads the
+// checked-in release-notes file, not the DB.
+export const E2E_LOGIN_WHATSNEW = "e2e_whatsnew";
+export const WHATS_NEW_PROFILE = "Whats New (e2e)";
