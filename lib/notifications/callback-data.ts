@@ -6,6 +6,10 @@ import type {
   EscalationAckOutcome,
   PracticeLogOutcome,
 } from "../types";
+import type {
+  DiscardWorkoutOutcome,
+  FinishWorkoutOutcome,
+} from "../workout-finish";
 import type { FoodLogOutcome } from "../food-log-write";
 import type { ProteinAddOutcome } from "../protein-log-write";
 import { formatRecordDate } from "../record-format";
@@ -539,6 +543,83 @@ export function practiceDoneAnswerText(outcome: PracticeLogOutcome): string {
       : `Logged — ${outcome.count} sessions today`;
   }
   return "Couldn't log that session.";
+}
+
+// ---- Workout finish/discard over Telegram (the stale-nudge buttons, #1205) ----
+// The "⏱️ Still working out?" nudge's "Finish workout" / "Discard" buttons carry the
+// ACTIVITY id (plus the profile id as a cross-check, resolved against the chat like a
+// dose tap). "wofinish:<profileId>:<activityId>" stamps end = now through the shared
+// finishWorkoutSession core; "wodiscard:<profileId>:<activityId>" deletes the abandoned
+// draft. Both re-verify ownership on write (id AND profile_id), so the token id is a
+// cross-check, never trusted alone. The handler answers from the typed outcome union —
+// never an unconditional confirm (a re-tap on an already-finished session is honest).
+
+export type WorkoutFinishAction = "finish" | "discard";
+
+export interface WorkoutFinishCallback {
+  profileId: number;
+  activityId: number;
+  action: WorkoutFinishAction;
+}
+
+// The single source of truth for the button token (the nudge mints it, the parser
+// reads it) so the prefix can't drift between send and handle.
+export function workoutFinishCallback(
+  profileId: number,
+  activityId: number,
+  action: WorkoutFinishAction
+): string {
+  return `wo${action}:${profileId}:${activityId}`;
+}
+
+// Parse a "wofinish:<profileId>:<activityId>" / "wodiscard:<profileId>:<activityId>"
+// token. Malformed (wrong prefix, bad ids) → null.
+export function parseWorkoutFinishCallback(
+  data: unknown
+): WorkoutFinishCallback | null {
+  if (typeof data !== "string") return null;
+  let action: WorkoutFinishAction;
+  if (data.startsWith("wofinish:")) action = "finish";
+  else if (data.startsWith("wodiscard:")) action = "discard";
+  else return null;
+  const [, profStr, actStr] = data.split(":");
+  const profileId = Number(profStr);
+  const activityId = Number(actStr);
+  if (!profileId || !activityId) return null;
+  return { profileId, activityId, action };
+}
+
+// The Telegram toast for a "Finish workout" tap, per the typed finishWorkoutSession
+// outcome. Honest per outcome (the markDoseTaken contract): a re-tap on an
+// already-finished session, or an empty draft, is answered as such — never a false
+// "finished".
+export function workoutFinishAnswerText(outcome: FinishWorkoutOutcome): string {
+  switch (outcome.kind) {
+    case "finished":
+      return "Workout finished ✅";
+    case "already-finished":
+      return "Already finished ✅";
+    case "empty-draft":
+      return "Nothing logged yet — add a set or discard the draft.";
+    case "not-found":
+    default:
+      return "This session is out of date. Open the app.";
+  }
+}
+
+// The Telegram toast for a "Discard" tap, per the typed discardWorkoutSession outcome.
+export function workoutDiscardAnswerText(
+  outcome: DiscardWorkoutOutcome
+): string {
+  switch (outcome.kind) {
+    case "discarded":
+      return "Draft discarded 🗑";
+    case "already-finished":
+      return "Already finished — nothing to discard.";
+    case "not-found":
+    default:
+      return "This session is out of date. Open the app.";
+  }
 }
 
 export interface FoodLogCallback {

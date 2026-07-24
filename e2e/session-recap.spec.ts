@@ -48,6 +48,75 @@ async function deleteOpenDraft(page: Page) {
     .click();
 }
 
+// Open the PLAIN (non-live) create form via "New activity", log one complete set,
+// and title it, so the plain-form Finish (#1124) can be exercised.
+async function startPlainSession(page: Page, title: string) {
+  await page.goto("/training");
+  await page
+    .getByRole("main")
+    .getByRole("button", { name: "New activity" })
+    .click();
+  await expect(page.getByTestId("activity-form")).toBeVisible();
+  // Not live: no live control strip in the plain create form.
+  await expect(page.getByTestId("live-workout-panel")).toHaveCount(0);
+  await pickActivity(page, "Barbell Bench Press");
+  await page.getByTestId("set1-weight").fill("60");
+  await page.getByTestId("set1-reps-stepper").locator("input").fill("5");
+  await expect(
+    page.getByRole("button", { name: "Delete", exact: true })
+  ).toBeVisible();
+  await page.getByLabel("Activity name").fill(title);
+}
+
+test("plain-form Finish stamps end and opens the shared Session complete step; effort round-trips (#1124)", async ({
+  page,
+}) => {
+  test.slow();
+  const title = "E2E Plain Finish";
+  await startPlainSession(page, title);
+
+  // The plain-form Finish button is offered for a today create (not live) — tap it.
+  await expect(page.getByTestId("plain-finish-workout")).toBeVisible();
+  await page.getByTestId("plain-finish-workout").click();
+
+  // It reaches the SAME SessionCompleteStep the live panel's Finish reaches (#221,
+  // the ungating) — one component, two entrypoints.
+  const step = page.getByTestId("session-complete-step");
+  await expect(step).toBeVisible();
+  await expect(step.getByTestId("session-recap")).toContainText("working set");
+  await step.getByRole("button", { name: "Hard" }).click();
+
+  // Save stamps the end time + effort through the plain form's auto-save.
+  const saved = page.waitForResponse(
+    (r) => r.request().method() === "POST" && r.ok(),
+    { timeout: 15000 }
+  );
+  await page.getByTestId("recap-save").click();
+  await expect(page.getByTestId("session-complete-step")).toHaveCount(0);
+  await saved;
+
+  // On edit the effort round-tripped to activities.intensity, proving the finish
+  // persisted the just-finished session.
+  await page.goto("/training?tab=log");
+  const card = page
+    .locator('[id^="activity-"]')
+    .filter({ hasText: title })
+    .first(); // first-ok: the activity card THIS spec created (filtered by its unique title)
+  await expect(card).toBeVisible();
+  await card
+    .getByRole("button", { name: new RegExp(title) })
+    .first() // first-ok: the title button in the scoped card
+    .click();
+  await expect(page.getByRole("button", { name: "Hard" })).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+  // The plain finish button is create-only: an edit surface never shows it.
+  await expect(page.getByTestId("plain-finish-workout")).toHaveCount(0);
+
+  await deleteOpenDraft(page);
+});
+
 test("live Finish opens the Session complete recap step; Back returns to the editor (#924)", async ({
   page,
 }) => {

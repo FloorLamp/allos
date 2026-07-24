@@ -49,6 +49,7 @@ import {
 } from "./supplement-format";
 import { PRIORITY_ORDER } from "../supplement-schedule";
 import { dispatch } from "./index";
+import { workoutFinishCallback } from "./callback-data";
 import type { NotificationAction, NotificationMessage } from "./types";
 import { createLogger } from "../log";
 import { formatMedicationDoseProduct } from "../medication-dose-format";
@@ -268,15 +269,34 @@ export function staleWorkoutMarkerKey(activityId: number): string {
   return `${STALE_WORKOUT_MARKER_PREFIX}${activityId}`;
 }
 
+// The stale-session nudge (#560), now ACTIONABLE (#1205): a "🏁 Finish workout" and
+// "🗑 Discard" inline button that resolve the stale draft in place (the two-way
+// principle — one idempotent, low-risk state change through the shared
+// finishWorkoutSession/discardWorkoutSession cores; the tokens carry ids only), plus
+// the "Open workout" deep-link that non-Telegram channels (Web Push / Home Assistant,
+// which can't do a stateful callback) fall back to. The buttons need the activity id
+// to act on and the profile id as the resolve-against-chat cross-check.
 export function renderStaleWorkoutMessage(
+  profileId: number,
+  activityId: number,
   profileName: string,
   deepLinkBase = ""
 ): NotificationMessage {
   const who = profileName ? ` — ${profileName}` : "";
   const base = deepLinkBase.replace(/\/$/, "");
-  const actions: NotificationAction[] | undefined = base
-    ? [{ label: "Open workout", url: `${base}/training` }]
-    : undefined;
+  const actions: NotificationAction[] = [
+    {
+      label: "🏁 Finish workout",
+      data: workoutFinishCallback(profileId, activityId, "finish"),
+      row: "finish",
+    },
+    {
+      label: "🗑 Discard",
+      data: workoutFinishCallback(profileId, activityId, "discard"),
+      row: "finish",
+    },
+  ];
+  if (base) actions.push({ label: "Open workout", url: `${base}/training` });
   return {
     title: `⏱️ Still working out?${who}`,
     body: "Your session has been quiet for a while. Finish it or discard the draft — nothing was ended automatically.",
@@ -306,7 +326,12 @@ export async function runStaleWorkoutSuggest(
   const date = today(profileId);
   const results = await dispatch(
     profileId,
-    renderStaleWorkoutMessage(profileName, getPublicUrl())
+    renderStaleWorkoutMessage(
+      profileId,
+      presence.activityId,
+      profileName,
+      getPublicUrl()
+    )
   );
   if (results.length === 0) return { failed: false };
   const delivered = results.some((r) => r.ok);
