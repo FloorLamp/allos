@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { loginAs } from "./nav";
+import { followLink } from "./helpers";
 import {
   E2E_LOGIN_INTRADAY,
   E2E_MEMBER_PASSWORD,
@@ -63,8 +64,10 @@ test.describe("Timeline intraday panel (#1068)", () => {
 
       const target = member.locator(href!);
       await expect(target).toContainText(INTRADAY_TICK_DOC);
-      await morningTick.click();
-      await expect(member).toHaveURL(new RegExp(`${href!.slice(1)}$`));
+      // followLink, not a bare click: the fragment navigation is subject to the
+      // same pre-hydration swallow as any other link (#500/#830), so the helper
+      // retries until the URL commits AND holds.
+      await followLink(member, morningTick, new RegExp(`${href!.slice(1)}$`));
       await expect(target).toBeInViewport();
     } finally {
       await member.context().close();
