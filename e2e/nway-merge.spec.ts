@@ -102,13 +102,19 @@ test.describe("N-way activity merge (#1081)", () => {
       await expect(page.getByText("NW sib A")).toBeVisible();
       await expect(page.getByText("NW sib B")).toBeVisible();
 
-      // Open the originating card's overflow menu → "Merge with…".
+      // Scroll the card to the top so the (taller) downward overflow menu — checkboxes
+      // + keeper select + Merge button — has full room below the trigger.
+      await cardEl.evaluate((el) => el.scrollIntoView({ block: "start" }));
+      // Open the originating card's overflow menu → "Merge with…" → switch to the
+      // multi-select / keeper-select mode.
       await cardEl.getByRole("button", { name: "Activity actions" }).click();
       await page.getByTestId("merge-with").click();
+      await page.getByTestId("merge-multi-toggle").click();
 
       const picker = page.getByTestId("merge-picker");
-      // Combine both siblings, and choose "NW sib A" as the KEEPER (a sibling) — which
-      // makes the originating card itself a drop.
+      // Combine sibling B, and choose "NW sib A" as the KEEPER (a sibling) via the
+      // keeper select — which makes the originating card itself a drop (choosing a
+      // sibling keeper also includes it).
       await settledCheck(
         page,
         picker
@@ -117,14 +123,9 @@ test.describe("N-way activity merge (#1081)", () => {
           .getByTestId("merge-target-check"),
         true
       );
-      await settledCheck(
-        page,
-        picker
-          .getByTestId("merge-target")
-          .filter({ hasText: "NW sib A" })
-          .getByTestId("merge-target-keeper"),
-        true
-      );
+      await page
+        .getByTestId("merge-keeper-select")
+        .selectOption({ label: "NW sib A" });
       await settledClick(page, page.getByTestId("merge-run"));
 
       // The sibling keeper remains; the originating card and the other sibling are gone.

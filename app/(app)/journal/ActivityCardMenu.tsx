@@ -67,8 +67,13 @@ export default function ActivityCardMenu({
 }) {
   const [open, setOpen] = useState(false);
   const [picking, setPicking] = useState(false);
-  // Multi-select state (#1081): the sibling ids checked to absorb, and the chosen
-  // keeper across ALL members (this card + checked siblings). Default keeper = card.
+  // Multi-select mode (#1081). The picker DEFAULTS to the quick single-pick list (this
+  // card keeper, one sibling — the #64 flow); a toggle reveals the full keeper-radio
+  // multi-select across all members. Kept as an opt-in mode so the quick path (and its
+  // browser tests) stay a single click.
+  const [multiMode, setMultiMode] = useState(false);
+  // Multi-select state: the sibling ids checked to absorb, and the chosen keeper across
+  // ALL members (this card + checked siblings). Default keeper = card.
   const [checked, setChecked] = useState<Set<number>>(new Set());
   const [keeperId, setKeeperId] = useState<number>(activity.id);
   // The sibling whose merge is awaiting per-field conflict resolution, or null. Only
@@ -84,8 +89,21 @@ export default function ActivityCardMenu({
 
   function resetPicker() {
     setPicking(false);
+    setMultiMode(false);
     setChecked(new Set());
     setKeeperId(activity.id);
+  }
+
+  // Quick single-pick (the #64 flow): absorb ONE sibling into THIS card (card keeper),
+  // opening the #100 conflict preview first when the two rows disagree.
+  function pick(sibling: MergeSibling) {
+    setOpen(false);
+    resetPicker();
+    if (sibling.conflicts.length > 0) {
+      setConflictFor(sibling);
+      return;
+    }
+    void runMerge(activity.id, [sibling.id], []);
   }
 
   async function runMerge(
@@ -172,62 +190,96 @@ export default function ActivityCardMenu({
         {() =>
           picking ? (
             <div data-testid="merge-picker">
-              <div className="px-3 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
-                Merge duplicates — check what to combine, pick the keeper
-              </div>
-              <div className="max-h-56 overflow-y-auto">
-                {/* The originating card is always a member (keeper by default). */}
-                <label
-                  data-testid="merge-keeper-card"
-                  className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200"
-                >
-                  <input
-                    type="radio"
-                    name={`merge-keeper-${activity.id}`}
-                    checked={keeperId === activity.id}
-                    onChange={() => chooseKeeper(activity.id)}
-                    aria-label="Keep this activity"
-                  />
-                  <span className="truncate" title={activity.title}>
-                    {activity.title}{" "}
-                    <span className="text-xs text-slate-400">(this)</span>
-                  </span>
-                </label>
-                {siblings.map((s) => (
-                  <label
-                    key={s.id}
-                    data-testid="merge-target"
-                    className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200"
-                    title={s.title}
+              {!multiMode ? (
+                <>
+                  {/* Quick single-pick list (#64): click a sibling to absorb it into
+                      THIS card. Unchanged one-click flow. */}
+                  <div className="px-3 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
+                    Merge into this — pick one to absorb
+                  </div>
+                  <div className="max-h-56 overflow-y-auto">
+                    {siblings.map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        role="menuitem"
+                        data-testid="merge-target"
+                        className={`${MENU_ITEM} truncate`}
+                        title={s.title}
+                        onClick={() => pick(s)}
+                      >
+                        {s.title}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    data-testid="merge-multi-toggle"
+                    className={`${MENU_ITEM} font-medium text-brand-600 dark:text-brand-400`}
+                    onClick={() => setMultiMode(true)}
                   >
-                    <input
-                      type="checkbox"
-                      data-testid="merge-target-check"
-                      checked={checked.has(s.id)}
-                      onChange={() => toggleChecked(s.id)}
-                      aria-label={`Combine ${s.title}`}
-                    />
-                    <input
-                      type="radio"
-                      name={`merge-keeper-${activity.id}`}
-                      data-testid="merge-target-keeper"
-                      checked={keeperId === s.id}
-                      onChange={() => chooseKeeper(s.id)}
-                      aria-label={`Keep ${s.title}`}
-                    />
-                    <span className="truncate">{s.title}</span>
-                  </label>
-                ))}
-              </div>
-              <button
-                type="button"
-                data-testid="merge-run"
-                disabled={checked.size === 0}
-                className={`${MENU_ITEM} font-medium text-brand-600 disabled:opacity-40 dark:text-brand-400`}
-                onClick={runPickerMerge}
-              >
-                Merge {checked.size + 1} activities
-              </button>
+                    Combine several / choose keeper…
+                  </button>
+                </>
+              ) : (
+                <>
+                  {/* Multi-select (#1081): check what to combine, then choose the
+                      keeper across ALL members (this card + siblings) from the select.
+                      A native <select> (not a radio group) is the keeper control — it's
+                      one reliable value with no per-row control interplay. */}
+                  <div className="px-3 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
+                    Combine — check duplicates, then choose the keeper
+                  </div>
+                  <div className="max-h-40 overflow-y-auto">
+                    {siblings.map((s) => (
+                      <div
+                        key={s.id}
+                        data-testid="merge-target"
+                        className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200"
+                        title={s.title}
+                      >
+                        <input
+                          type="checkbox"
+                          data-testid="merge-target-check"
+                          checked={checked.has(s.id)}
+                          onChange={() => toggleChecked(s.id)}
+                          aria-label={`Combine ${s.title}`}
+                        />
+                        <span className="truncate">{s.title}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="px-3 py-1.5">
+                    <label className="text-xs text-slate-500 dark:text-slate-400">
+                      Keep
+                      <select
+                        data-testid="merge-keeper-select"
+                        value={keeperId}
+                        onChange={(e) => chooseKeeper(Number(e.target.value))}
+                        className="mt-1 block w-full rounded border border-black/10 bg-white px-1.5 py-1 text-sm text-slate-700 dark:border-white/10 dark:bg-ink-800 dark:text-slate-200"
+                      >
+                        <option value={activity.id}>
+                          {activity.title} (this)
+                        </option>
+                        {siblings.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.title}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <button
+                    type="button"
+                    data-testid="merge-run"
+                    disabled={checked.size === 0}
+                    className={`${MENU_ITEM} font-medium text-brand-600 disabled:opacity-40 dark:text-brand-400`}
+                    onClick={runPickerMerge}
+                  >
+                    Merge {checked.size + 1} activities
+                  </button>
+                </>
+              )}
             </div>
           ) : (
             <>

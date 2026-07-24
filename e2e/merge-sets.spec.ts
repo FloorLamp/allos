@@ -28,13 +28,10 @@ test("merging re-parents the discarded row's sets onto the keeper, shown in the 
   // Open the keeper card's overflow (⋯) menu → "Merge with…" → pick the dupe.
   await keeperCard.getByRole("button", { name: "Activity actions" }).click();
   await page.getByTestId("merge-with").click();
-  // Check the sibling to combine (card stays keeper), then run.
   await page
     .getByTestId("merge-target")
     .filter({ hasText: "Set merge dupe" })
-    .getByTestId("merge-target-check")
-    .check();
-  await page.getByTestId("merge-run").click();
+    .click();
 
   // Because the durations disagree, the conflict preview opens — and it now spells
   // out how many logged sets will move onto the keeper (#199).

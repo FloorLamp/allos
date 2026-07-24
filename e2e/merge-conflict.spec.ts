@@ -23,14 +23,10 @@ test("merge preview lets you override a conflicting field to the discarded value
   // Open the keeper card's overflow (⋯) menu → "Merge with…" → pick the dupe.
   await keeperCard.getByRole("button", { name: "Activity actions" }).click();
   await page.getByTestId("merge-with").click();
-  // Check the sibling to combine (card stays keeper), then run — a single conflicting
-  // drop with the card as keeper still opens the #100 preview.
   await page
     .getByTestId("merge-target")
     .filter({ hasText: "Conflict merge dupe" })
-    .getByTestId("merge-target-check")
-    .check();
-  await page.getByTestId("merge-run").click();
+    .click();
 
   // Because the two rows disagree on duration, the conflict preview opens instead of
   // an immediate merge. It lists exactly the duration conflict as two options.
