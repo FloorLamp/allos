@@ -6,6 +6,7 @@ import {
   isSyntheticNpi,
   isLikelyRealPhone,
   isLikelyRealSsn,
+  denylistRegex,
   ALLOW_MARKER,
 } from "@/lib/phi-scan";
 
@@ -152,6 +153,43 @@ describe("denylist", () => {
 
   it("does nothing without a denylist", () => {
     expect(scanText("seen at Fictional Clinic today")).toHaveLength(0);
+  });
+
+  it("supports a /regex/ term so a common-word name matches only precisely", () => {
+    // `/\bReed\b/` flags the name but NOT the substring inside another word — the
+    // whole point of regex support (a literal "reed" substring would flag "greed").
+    // Names here are SYNTHETIC placeholders (never a real person's).
+    const dl = ["/\\bReed\\b/"];
+    expect(scanText("Reed's export", { denylist: dl })).toHaveLength(1);
+    expect(scanText("the greed ledger", { denylist: dl })).toHaveLength(0);
+    expect(
+      scanText("Reed's export", { denylist: dl })[0].snippetRedacted
+    ).not.toContain("Reed");
+  });
+
+  it("honors regex flags (case-sensitive by default) so 'Bay' ≠ 'bay'", () => {
+    const dl = ["/\\bBay\\b/"]; // no `i` flag → case-sensitive
+    expect(scanText("import Bay's record", { denylist: dl })).toHaveLength(1);
+    expect(scanText("walking along the bay", { denylist: dl })).toHaveLength(0);
+  });
+
+  it("flags a name only in a PHI-shaped context, not every mention", () => {
+    const dl = ["/Cole(?='s (record|chart)|, )/"];
+    expect(scanText("Cole's record here", { denylist: dl })).toHaveLength(1);
+    expect(scanText("the coleslaw recipe", { denylist: dl })).toHaveLength(0);
+  });
+
+  it("an invalid /regex/ compiles to null (no throw) and does not match", () => {
+    expect(denylistRegex("/[/")).toBeNull();
+    // Falls through to literal handling; the raw "/[/"" text isn't in the content.
+    expect(() => scanText("some content", { denylist: ["/[/"] })).not.toThrow();
+  });
+
+  it("a literal term still matches case-insensitively (back-compat)", () => {
+    const [finding] = scanText("at CORNELL today", {
+      denylist: ["cornell"],
+    });
+    expect(finding.kind).toBe("denylist");
   });
 });
 
