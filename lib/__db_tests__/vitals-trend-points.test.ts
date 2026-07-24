@@ -15,8 +15,8 @@ import {
   getLatestBiomarkerTrendPoints,
   getBodyMetricDailySeries,
   getLatestBodyMetricDailyPoints,
-  ALL_ROWS,
 } from "@/lib/queries";
+import { ALL_ROWS } from "@/lib/trends";
 import { latestTrend } from "@/lib/latest-trend";
 import { seedProfile, type SeededProfile } from "./fixtures";
 
@@ -26,7 +26,7 @@ function addBp(canonical: string, date: string, value: number | null) {
   db.prepare(
     `INSERT INTO medical_records
        (profile_id, date, category, name, value, unit, canonical_name, value_num)
-     VALUES (?, ?, 'vital', ?, ?, 'mmHg', ?, ?)`
+     VALUES (?, ?, 'vitals', ?, ?, 'mmHg', ?, ?)`
   ).run(
     p.profileId,
     date,
