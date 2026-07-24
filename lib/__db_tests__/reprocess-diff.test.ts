@@ -13,6 +13,7 @@ import {
   getReprocessSnapshot,
   previewReconcileFlags,
   foldConsolidatedMedsIntoSnapshot,
+  pruneDeferredMetricsFromSnapshot,
   getMedMatchStates,
 } from "@/lib/queries";
 import {
@@ -667,5 +668,68 @@ describe("intra-batch canonical collapse (end-to-end)", () => {
       input.records
     );
     expect(computeImportDiff(current, next).hasChanges).toBe(false);
+  });
+});
+
+// Deferred body metrics / height / head-circ (the reprocess phantom-add fix): when a
+// weight / height / head-circ shares a date with a metric ALREADY held by another
+// source, a reprocess DEFERS it (never overwrites) — so it isn't stored under this
+// document, yet the defer-blind fresh snapshot keeps proposing it. Without the prune
+// it reads as a phantom "add" on every reprocess; pruneDeferredMetricsFromSnapshot
+// reconciles `next` with the same defer the commit applies.
+describe("reprocess-diff — deferred body metrics don't phantom-add", () => {
+  it("prunes a metric another document already covers for the date", () => {
+    const pid = newProfile("DEFER");
+    const doc1 = newDocument(pid, "one.ccd");
+    const doc2 = newDocument(pid, "two.ccd");
+    // doc1 lands the weight/height/head-circ for DATE; doc2's identical metrics defer.
+    persistDocumentImport(pid, doc1, makeInput());
+    persistDocumentImport(pid, doc2, makeInput());
+
+    // doc2 holds NO body_metrics/metric_samples rows (all deferred to doc1).
+    expect(
+      (
+        db
+          .prepare(
+            "SELECT COUNT(*) AS n FROM body_metrics WHERE profile_id = ? AND source = ?"
+          )
+          .get(pid, `document:${doc2}`) as { n: number }
+      ).n
+    ).toBe(0);
+
+    const input = makeInput();
+    const current = getReprocessSnapshot(pid, doc2);
+    const next = snapshotFromPersistInput(input);
+
+    // Without the prune, the fresh side re-proposes the deferred metrics → phantom add.
+    const naive = computeImportDiff(current, next);
+    const entity = (d: typeof naive, name: string) =>
+      (d.entities ?? []).find((e) => e.entity === name);
+    expect(entity(naive, "bodyMetrics")?.added.length ?? 0).toBeGreaterThan(0);
+    expect(entity(naive, "heights")?.added.length ?? 0).toBeGreaterThan(0);
+    expect(entity(naive, "headCircs")?.added.length ?? 0).toBeGreaterThan(0);
+
+    // With the prune, an unchanged reprocess previews clean for the deferred metrics.
+    pruneDeferredMetricsFromSnapshot(pid, doc2, next, input);
+    const fixed = computeImportDiff(current, next);
+    expect(entity(fixed, "bodyMetrics")?.added.length ?? 0).toBe(0);
+    expect(entity(fixed, "heights")?.added.length ?? 0).toBe(0);
+    expect(entity(fixed, "headCircs")?.added.length ?? 0).toBe(0);
+  });
+
+  it("does NOT prune a metric only this document covers (a genuine reading survives)", () => {
+    const pid = newProfile("DEFER-SOLO");
+    const doc = newDocument(pid, "solo.ccd");
+    persistDocumentImport(pid, doc, makeInput());
+    const input = makeInput();
+    const current = getReprocessSnapshot(pid, doc);
+    const next = snapshotFromPersistInput(input);
+    // Only this document holds the metric, so the prune must leave `next` intact and
+    // the reprocess previews clean (current already has the same rows).
+    pruneDeferredMetricsFromSnapshot(pid, doc, next, input);
+    expect(computeImportDiff(current, next).hasChanges).toBe(false);
+    expect(next.bodyMetrics.length).toBe(1);
+    expect(next.heights.length).toBe(1);
+    expect(next.headCircs.length).toBe(1);
   });
 });
