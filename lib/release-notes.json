@@ -4,6 +4,27 @@
       "date": "2026-07-24",
       "entries": [
         {
+          "pr": 1432,
+          "title": "Release notes, right here in the app",
+          "body": "This page is new. It ships with the app itself, so after an update you can see what changed without leaving Allos — even offline. The small dot on the What's new link marks notes you haven't read yet and clears when you visit.",
+          "kind": "feature",
+          "issues": [1421]
+        },
+        {
+          "pr": 1436,
+          "title": "Steadier phone-at-the-gym flow",
+          "body": "During a live workout the screen now stays awake only while the workout is actually in front of you — minimizing it to the dock releases the screen again (previously the phone could stay awake indefinitely). The rest timer's finish and each set check-off also give a short vibration cue on phones that support it, skipped when reduced motion is on.",
+          "kind": "fix",
+          "issues": [1422]
+        },
+        {
+          "pr": 1430,
+          "title": "A day at a glance on the Timeline",
+          "body": "Opening a single day on the Timeline now shows the day on a clock: your heart-rate curve, sleep and workout blocks, and small tick marks for the day's timed events. Tapping a tick jumps to that entry in the list below. The panel appears only when the day has that kind of data.",
+          "kind": "feature",
+          "issues": [1068]
+        },
+        {
           "pr": 1419,
           "title": "Merge duplicate workouts in one step",
           "body": "The same workout arriving from more than one source can now be merged as a whole group — the cluster card on Data → Review, or several entries selected together in the Journal. After a sync, near-certain duplicates are merged for you; every automatic merge is listed so you can look at what it did and undo it.",
