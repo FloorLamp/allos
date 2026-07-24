@@ -14,11 +14,15 @@ import type { Procedure, FormResult } from "@/lib/types";
 export default function ProcedureForm({
   action,
   procedure,
+  profileId,
   onDone,
   prefillName,
 }: {
   action: (formData: FormData) => Promise<FormResult>;
   procedure?: Procedure;
+  // Multi-view (#1328): the row's OWN profile, posted so an edit on a non-acting
+  // member's row targets that member (gateItemProfile). Undefined in single view.
+  profileId?: number;
   onDone?: () => void;
   // Deep-link prefill (#1083, mirrors #662): a preventive procedure-screening row/nudge
   // lands on the procedures page with `?new=1&name=<procedure>`; the add form seeds the
@@ -63,6 +67,9 @@ export default function ProcedureForm({
         </h2>
       )}
       {editing && <input type="hidden" name="id" value={procedure!.id} />}
+      {profileId != null && (
+        <input type="hidden" name="profile_id" value={profileId} />
+      )}
       <div>
         <label className="label" htmlFor={`proc-name-${uid}`}>
           Procedure

@@ -1,4 +1,4 @@
-import { requireSession } from "@/lib/auth";
+import { requireScope } from "@/lib/scope";
 import GenomicsSection from "../GenomicsSection";
 
 export const dynamic = "force-dynamic";
@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 // pharmacogenomic reports. Raw consumer-genotype files (23andMe / Ancestry / VCF)
 // aren't parsed. Content component moved, not rewritten.
 export default async function ResultsGenomicsPage() {
-  const { profile } = await requireSession();
+  const scope = await requireScope();
   return (
     <div data-testid="results-genomics">
       <p className="mb-6 text-sm text-slate-500 dark:text-slate-400">
@@ -16,7 +16,7 @@ export default async function ResultsGenomicsPage() {
         Raw consumer-genotype files (23andMe / Ancestry / VCF) aren&apos;t
         parsed.
       </p>
-      <GenomicsSection profileId={profile.id} />
+      <GenomicsSection scope={scope} />
     </div>
   );
 }

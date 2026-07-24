@@ -13,6 +13,8 @@ import {
   significanceLabel,
 } from "@/lib/genomic-variant";
 import type { GenomicVariant } from "@/lib/types";
+import type { Stamped } from "@/lib/scope";
+import type { ListMultiView } from "@/lib/multi-view";
 
 const buildColumns = (
   fmt: DisplayFormatPrefs
@@ -63,8 +65,10 @@ const buildColumns = (
 // RecordTable. Predictive variants are shown factually — no risk text here.
 export default function GenomicVariantList({
   items,
+  multiView,
 }: {
-  items: GenomicVariant[];
+  items: Stamped<GenomicVariant>[];
+  multiView?: ListMultiView;
 }) {
   return (
     <div data-testid="genomic-variant-list">
@@ -72,10 +76,19 @@ export default function GenomicVariantList({
         items={items}
         columns={buildColumns(useFormatPrefs())}
         emptyMessage="No genomic variants yet. Add one, or upload a clinical genetics / PGx report to import your results."
+        multiView={
+          multiView
+            ? {
+                actingProfileId: multiView.actingProfileId,
+                subjectOf: (v) => v.subject,
+              }
+            : undefined
+        }
         renderEditForm={(v, done) => (
           <GenomicVariantForm
             action={updateGenomicVariant}
             variant={v}
+            profileId={multiView ? v.subject.profileId : undefined}
             onDone={done}
           />
         )}
@@ -86,6 +99,7 @@ export default function GenomicVariantList({
         onDelete={async (v) => {
           const fd = new FormData();
           fd.set("id", String(v.id));
+          if (multiView) fd.set("profile_id", String(v.subject.profileId));
           await deleteGenomicVariant(fd);
         }}
       />

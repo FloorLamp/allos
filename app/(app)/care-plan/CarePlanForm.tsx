@@ -14,10 +14,14 @@ import type { CarePlanItem, FormResult } from "@/lib/types";
 export default function CarePlanForm({
   action,
   item,
+  profileId,
   onDone,
 }: {
   action: (formData: FormData) => Promise<FormResult>;
   item?: CarePlanItem;
+  // Multi-view (#1328): the row's OWN profile, posted so an edit on a non-acting
+  // member's row targets that member (gateItemProfile). Undefined in single view.
+  profileId?: number;
   onDone?: () => void;
 }) {
   const router = useRouter();
@@ -58,6 +62,9 @@ export default function CarePlanForm({
         </h2>
       )}
       {editing && <input type="hidden" name="id" value={item!.id} />}
+      {profileId != null && (
+        <input type="hidden" name="profile_id" value={profileId} />
+      )}
       <div>
         <label className="label" htmlFor={`cp-desc-${uid}`}>
           Planned item

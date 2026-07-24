@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getConditions, getMedicationsByIndication } from "@/lib/queries";
+import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import ConditionForm from "@/app/(app)/conditions/ConditionForm";
 import ConditionList from "@/app/(app)/conditions/ConditionList";
 import { addCondition } from "@/app/(app)/conditions/actions";
@@ -17,21 +18,36 @@ const FILTERS = [
 // filter, now the #conditions section of /records. The status filter rides the
 // `?cond=` query param — namespaced away from Immunizations' `?status=` filter,
 // which shares this page — with the section anchor preserved on each link.
+//
+// Multi-view (#1328): reads the whole view-set list-first (readForProfiles loops the
+// per-profile reader so each profile's document-dedup CTE stays scoped correctly),
+// stamps subject identity, and threads `multiView` to the list so non-acting rows
+// carry a subject chip and per-item write gate. Single view (viewIds = [acting])
+// renders byte-identical.
 export default function ConditionsSection({
-  profileId,
+  scope,
   cond,
 }: {
-  profileId: number;
+  scope: ProfileScope;
   cond?: string;
 }) {
   const status: ConditionStatus | undefined =
     cond === "active" || cond === "resolved" || cond === "inactive"
       ? cond
       : undefined;
-  const rows = getConditions(profileId, status ? { status } : {});
+  const multi = scope.viewIds.length > 1;
+  const rows = stampSubjects(
+    scope,
+    readForProfiles(scope.viewIds, (pid) =>
+      getConditions(pid, status ? { status } : {})
+    )
+  );
   // Med → indication inverse view (#1052): condition id → treating med names, so the
-  // list can show a "Treated with:" sub-line. One query for the whole list (no N+1).
-  const treatedWith = Object.fromEntries(getMedicationsByIndication(profileId));
+  // list can show a "Treated with:" sub-line. Condition ids are globally unique, so
+  // merging the per-profile maps across the view-set is collision-free.
+  const treatedWith = Object.fromEntries(
+    scope.viewIds.flatMap((pid) => [...getMedicationsByIndication(pid)])
+  );
   const active = cond ?? "all";
 
   return (
@@ -59,7 +75,13 @@ export default function ConditionsSection({
             );
           })}
         </div>
-        <ConditionList items={rows} treatedWith={treatedWith} />
+        <ConditionList
+          items={rows}
+          treatedWith={treatedWith}
+          multiView={
+            multi ? { actingProfileId: scope.actingProfileId } : undefined
+          }
+        />
       </div>
 
       <div className="min-w-0 space-y-4">

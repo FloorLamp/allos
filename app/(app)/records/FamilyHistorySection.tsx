@@ -1,4 +1,5 @@
 import { getFamilyHistory } from "@/lib/queries";
+import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import FamilyHistoryForm from "@/app/(app)/family-history/FamilyHistoryForm";
 import FamilyHistoryList from "@/app/(app)/family-history/FamilyHistoryList";
 import { addFamilyHistory } from "@/app/(app)/family-history/actions";
@@ -10,16 +11,25 @@ import { addFamilyHistory } from "@/app/(app)/family-history/actions";
 // FamilyMemberHistory resource, plus manual add/edit/delete. One row per
 // (relative, condition) pair.
 export default function FamilyHistorySection({
-  profileId,
+  scope,
 }: {
-  profileId: number;
+  scope: ProfileScope;
 }) {
-  const entries = getFamilyHistory(profileId);
+  const multi = scope.viewIds.length > 1;
+  const entries = stampSubjects(
+    scope,
+    readForProfiles(scope.viewIds, (pid) => getFamilyHistory(pid))
+  );
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       <div className="min-w-0 space-y-4 lg:col-span-2">
-        <FamilyHistoryList items={entries} />
+        <FamilyHistoryList
+          items={entries}
+          multiView={
+            multi ? { actingProfileId: scope.actingProfileId } : undefined
+          }
+        />
       </div>
 
       <div className="min-w-0 space-y-4">
