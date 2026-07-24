@@ -87,6 +87,7 @@ export function FindingCard({
   children,
   dismissKey,
   dismissLabel,
+  dismissable = true,
 }: {
   tone: FindingTone;
   testid: string;
@@ -103,6 +104,12 @@ export function FindingCard({
   children?: ReactNode;
   dismissKey: string;
   dismissLabel: string;
+  // Whether to render the dismiss-via-bus control (#1373). A NON-acting multi-view
+  // Medications board shows a member's own warnings read-only: the dismiss action
+  // carries no cross-profile target seam, so offering it here would suppress on the
+  // WRONG profile — the dismiss stays acting-only (act as the member to dismiss).
+  // Default true keeps every existing caller byte-identical.
+  dismissable?: boolean;
 }) {
   const t = TEXT[tone];
   return (
@@ -123,7 +130,9 @@ export function FindingCard({
           ) : null}
           <p className="font-semibold">{title}</p>
         </div>
-        <DismissFindingButton dedupeKey={dismissKey} label={dismissLabel} />
+        {dismissable && (
+          <DismissFindingButton dedupeKey={dismissKey} label={dismissLabel} />
+        )}
       </div>
       <p className={`mt-0.5 ${t.detail}`}>{detail}</p>
       {children}

@@ -38,6 +38,7 @@ export default function DoseStatusControl({
   variant,
   label,
   compact = false,
+  profileId,
 }: {
   doseId: number;
   taken: boolean;
@@ -45,6 +46,13 @@ export default function DoseStatusControl({
   variant: DoseVariant;
   label?: string;
   compact?: boolean;
+  // The profile this dose belongs to (#858/#1373). Set on a multi-view Medications
+  // board so a caregiver confirms a household member's scheduled dose without
+  // switching — the action gates on the TARGET (requireProfileWriteAccess). Absent on
+  // the acting board / single-view / Supplements row, so those stay byte-identical.
+  // A cross-profile write always goes online (the offline replay has no target-profile
+  // seam), so it's never queued.
+  profileId?: number;
 }) {
   // null = follow the server-provided props; a value = optimistic override held
   // after an offline queue (there's no revalidate to refresh it).
@@ -69,8 +77,38 @@ export default function DoseStatusControl({
     );
   }
 
+  // The online write (used by both the acting path and every cross-profile write).
+  async function submit(target: "taken" | "skipped" | "clear") {
+    setBusy(true);
+    const fd = new FormData();
+    fd.set("dose_id", String(doseId));
+    fd.set("status", target);
+    // #858/#1373: target the row's own profile so a caregiver confirms a household
+    // member's dose from its board; absent on the acting board (byte-identical).
+    if (profileId != null) fd.set("profileId", String(profileId));
+    try {
+      await setDoseStatus(fd);
+      setOptimistic(null);
+      router.refresh();
+      return true;
+    } catch {
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function apply(target: "taken" | "skipped" | "clear") {
     if (busy) return;
+    // Cross-profile writes (#1373) are never queued — the offline replay route carries
+    // no target profileId, so it would replay against the acting profile. Go straight
+    // online; if the network drops, surface a retry toast rather than mis-target.
+    if (profileId != null) {
+      const ok = await submit(target);
+      if (!ok)
+        toast("Couldn't update this dose. Try again.", { tone: "error" });
+      return;
+    }
     const online =
       typeof navigator === "undefined" || navigator.onLine !== false;
 

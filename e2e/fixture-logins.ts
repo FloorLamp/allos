@@ -802,3 +802,18 @@ export const SITUATION_IMPACT_PROFILE = "Situation Impact (e2e)";
 // but not required. Dedicated + isolated so the symptom write never perturbs a neighbor.
 export const E2E_LOGIN_WELLSYM = "e2e_wellsym";
 export const WELL_SYMPTOM_PROFILE = "Well Symptom (e2e)";
+
+// #1373 Part 1 — multi-view Medications regimen boards. A caregiver granted its OWN
+// base profile (WRITE, the lowest-id grant → the acting profile on sign-in) plus a
+// second member profile READ-ONLY, each carrying one due-today scheduled medication.
+// So the boards spec proves, in isolation: single-view is byte-identical (one board, no
+// subject header, the write base's controls live), multi-view stacks a board per member
+// behind the leading "Today across everyone" strip, and the read-only member's board is
+// view-only (RO badge, no dose-confirm control). Read-mostly (the spec only reads +
+// toggles the view-set), so concurrent workers never contend and it never perturbs the
+// shared medication fixtures.
+export const E2E_LOGIN_MVMEDS = "e2e_mvmeds";
+export const MVMEDS_SELF_PROFILE = "Meds Board Self (e2e)";
+export const MVMEDS_RO_PROFILE = "Meds Board RO (e2e)";
+export const MVMEDS_SELF_MED = "Board Lisinopril";
+export const MVMEDS_RO_MED = "Board Metformin";
