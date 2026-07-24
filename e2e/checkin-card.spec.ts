@@ -147,13 +147,28 @@ test.describe("Check-in card recomposition (#1314/#1311/#1313)", () => {
     await expect(card.getByTestId("mood-anxiety-1")).toHaveCount(0);
     await expect(card).not.toContainText(/anxiety|Calm/i);
 
-    // Flip the Settings → Profile opt-in (signal 6). Autosave-on-change is SILENT
-    // (an empty/toggle save is valid), so confirm the PERSISTED effect before leaving
-    // the page (the email-auth precedent): reload and assert the box stayed checked.
+    // Flip the Settings → Profile opt-in (signal 6). The form autosaves on change, but
+    // settledCheck only guarantees the box reached React STATE — NOT that the fire-and-
+    // forget Server Action POST committed (the documented settledCheck gap); a bare
+    // reload can beat that write. Settle on the AnxietyScaleForm's OWN "Saved" check
+    // instead: SaveStatus shows it only after this card's action fully resolves (write
+    // + revalidate + router.refresh), so it's a form-owned signal immune to the
+    // settings page's other POSTs and to any read-after-write timing. THEN reload and
+    // confirm the persisted opt-in.
     await page.goto("/settings/profile");
-    await settledCheck(page, page.getByTestId("anxiety-scale-enabled"), true);
-    await page.reload();
-    await expect(page.getByTestId("anxiety-scale-enabled")).toBeChecked();
+    const optIn = page.getByTestId("anxiety-scale-enabled");
+    await settledCheck(page, optIn, true);
+    await expect(
+      page.getByTestId("anxiety-scale-form").getByLabel("Saved")
+    ).toBeVisible({ timeout: 15_000 });
+    // Confirm the persisted opt-in; retry the reload so any residual read-after-write
+    // timing self-heals (the setting is committed and idempotent, so re-reading is safe).
+    await expect(async () => {
+      await page.reload();
+      await expect(page.getByTestId("anxiety-scale-enabled")).toBeChecked({
+        timeout: 3_000,
+      });
+    }).toPass({ timeout: 20_000 }); // topass-ok: re-read the reloaded opt-in until the committed autosave shows — idempotent setting, safe to re-read
 
     // Back on the dashboard the Calm scale now appears, relabeled so high = calm (the
     // good end), matching Energy's direction (#1313 axis fix).
