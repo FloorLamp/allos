@@ -13,7 +13,7 @@ import {
   classifyUpsert,
   tallyUpsert,
 } from "./sync-log";
-import type { UpsertCounts } from "./sync-log";
+import type { UpsertCounts, SyncRowSink } from "./sync-log";
 import { loadImportTombstones } from "./tombstones";
 import {
   bodyMetricTombstoneKey,
@@ -176,7 +176,8 @@ export interface IngestCounts {
 export function upsertBodyMetrics(
   profileId: number,
   rows: NormBodyMetric[],
-  source: string
+  source: string,
+  sink?: SyncRowSink
 ): UpsertCounts {
   // Pre-image on the (profile_id, date, source) natural key — now a DB UNIQUE index
   // (#133), which also lets the write below use ON CONFLICT DO UPDATE. `edited` is
@@ -251,7 +252,7 @@ export function upsertBodyMetrics(
       tallyUpsert(counts, disposition);
       continue;
     }
-    upsert.run(
+    const info = upsert.run(
       profileId,
       r.date,
       post.weight_kg,
@@ -260,6 +261,13 @@ export function upsertBodyMetrics(
       source
     );
     tallyUpsert(counts, disposition);
+    // Per-row provenance (#1333): the affected row id is the pre-image row's id on an
+    // update, else the freshly-inserted rowid. Only inserted/updated reach here.
+    sink?.push({
+      target_table: "body_metrics",
+      target_id: mine ? mine.id : Number(info.lastInsertRowid),
+      disposition,
+    });
   }
   return counts;
 }
@@ -295,13 +303,16 @@ export const BODY_METRIC_SAMPLE_MEASURES = [
 export function upsertMetricSamples(
   profileId: number,
   rows: NormMetricSample[],
-  source: string
+  source: string,
+  sink?: SyncRowSink
 ): UpsertCounts {
   // Pre-image on the natural key the ON CONFLICT below merges on, so a re-send of
   // the rolling window that lands the same value/date is counted unchanged rather
-  // than a write (info.changes can't see that the values matched).
+  // than a write (info.changes can't see that the values matched). `id` is carried so
+  // an update's provenance row (#1333) names the existing row rather than relying on
+  // lastInsertRowid (unreliable for an ON CONFLICT DO UPDATE).
   const find = db.prepare(
-    "SELECT value, date, end_time, activity_external_id FROM metric_samples WHERE profile_id = ? AND metric = ? AND source = ? AND origin IS ? AND start_time = ?"
+    "SELECT id, value, date, end_time, activity_external_id FROM metric_samples WHERE profile_id = ? AND metric = ? AND source = ? AND origin IS ? AND start_time = ?"
   );
   const stmt = db.prepare(
     `INSERT INTO metric_samples
@@ -334,6 +345,7 @@ export function upsertMetricSamples(
       r.start_time
     ) as
       | {
+          id: number;
           value: number;
           date: string;
           end_time: string;
@@ -362,7 +374,7 @@ export function upsertMetricSamples(
       tallyUpsert(counts, classifyUpsert(true, true));
       continue;
     }
-    stmt.run(
+    const info = stmt.run(
       profileId,
       source,
       r.origin ?? null,
@@ -380,7 +392,17 @@ export function upsertMetricSamples(
       found.end_time === r.end_time &&
       (r.activity_external_id == null ||
         found.activity_external_id === r.activity_external_id);
-    tallyUpsert(counts, classifyUpsert(!!found, equal));
+    const disposition = classifyUpsert(!!found, equal);
+    tallyUpsert(counts, disposition);
+    // Per-row provenance (#1333) — only the value-changing dispositions. An update
+    // names the pre-image row's id; an insert uses the fresh rowid.
+    if (disposition !== "unchanged") {
+      sink?.push({
+        target_table: "metric_samples",
+        target_id: found ? found.id : Number(info.lastInsertRowid),
+        disposition,
+      });
+    }
   }
   return counts;
 }
@@ -455,7 +477,8 @@ const VITAL_COMPARE_COLS: string[] = [
 export function upsertVitals(
   profileId: number,
   rows: NormVital[],
-  source: string
+  source: string,
+  sink?: SyncRowSink
 ): { ids: number[]; counts: UpsertCounts } {
   const find = db.prepare(
     `SELECT id, edited, date, category, name, value, value_num, unit, canonical_name
@@ -526,6 +549,15 @@ export function upsertVitals(
       }
       tallyUpsert(counts, disposition);
       ids.push(found.id);
+      // Per-row provenance (#1333) — record only a value-changing update, not a
+      // no-op re-send (unchanged).
+      if (disposition === "updated") {
+        sink?.push({
+          target_table: "medical_records",
+          target_id: found.id,
+          disposition,
+        });
+      }
     } else {
       const info = insert.run(
         profileId,
@@ -539,8 +571,14 @@ export function upsertVitals(
         source,
         r.external_id
       );
-      ids.push(Number(info.lastInsertRowid));
+      const newId = Number(info.lastInsertRowid);
+      ids.push(newId);
       tallyUpsert(counts, classifyUpsert(false, false));
+      sink?.push({
+        target_table: "medical_records",
+        target_id: newId,
+        disposition: "inserted",
+      });
     }
   }
   return { ids, counts };
@@ -564,7 +602,8 @@ const ACTIVITY_BASE_COLS = [
 export function upsertActivities(
   profileId: number,
   rows: NormActivity[],
-  source: string
+  source: string,
+  sink?: SyncRowSink
 ): UpsertCounts {
   const metricCols = ACTIVITY_METRIC_COLS.join(", ");
   const metricSet = ACTIVITY_METRIC_COLS.map((c) => `${c} = ?`).join(", ");
@@ -658,13 +697,21 @@ export function upsertActivities(
         );
       }
       tallyUpsert(counts, disposition);
+      // Per-row provenance (#1333) — record only a value-changing update.
+      if (disposition === "updated") {
+        sink?.push({
+          target_table: "activities",
+          target_id: found.id,
+          disposition,
+        });
+      }
     } else if (tombstoned.has(r.external_id)) {
       // No live row AND a tombstone for this external_id: the user merged/deleted it —
       // skip the resurrecting insert and count it suppressed.
       counts.suppressed++;
       continue;
     } else {
-      insert.run(
+      const info = insert.run(
         profileId,
         r.date,
         r.type,
@@ -679,6 +726,11 @@ export function upsertActivities(
         r.external_id
       );
       tallyUpsert(counts, classifyUpsert(false, false));
+      sink?.push({
+        target_table: "activities",
+        target_id: Number(info.lastInsertRowid),
+        disposition: "inserted",
+      });
     }
   }
   return counts;

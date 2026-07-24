@@ -39,6 +39,31 @@ export function emptyCounts(): UpsertCounts {
   return { inserted: 0, updated: 0, unchanged: 0, suppressed: 0, edited: 0 };
 }
 
+// Per-row sync provenance (issue #1333): a single record an upsert PERSISTED, so a
+// Connected-sources event row can drill into WHICH records a sync wrote and deep-link
+// to them. Only the value-changing dispositions are recorded — an `unchanged` re-send
+// of the rolling window is deliberately not captured (an hourly push re-states a 48h
+// window whose rows are almost all unchanged; persisting them would explode the
+// store). `target_table` is one of the four user-meaningful tables (hr_minutes has no
+// row id, activity_routes drills into its parent — both excluded per #1212). Pure
+// data shape, so it lives here in the accounting module the upserts already import;
+// the impure writer is recordSyncRows (connections.ts) and the reader is
+// getSyncRowProvenance (lib/queries/integrations.ts).
+export type ProvenanceTable =
+  "activities" | "body_metrics" | "metric_samples" | "medical_records";
+
+export interface ProvenanceEntry {
+  target_table: ProvenanceTable;
+  target_id: number;
+  disposition: "inserted" | "updated";
+}
+
+// An accumulator the keyed upserts append to as they persist rows. Optional at every
+// call site: a caller that doesn't want provenance (or a legacy path) passes nothing
+// and the upsert behaves exactly as before. The caller links the collected entries to
+// the sync event's id after recordSyncEvent returns it.
+export type SyncRowSink = ProvenanceEntry[];
+
 // The ONE source-dedup disposition (#14/#674): the shared classification every keyed
 // upsert makes after a pre-image lookup on its source-inclusive natural key. A
 // natural key that finds no live row is a brand-new `inserted`; a key that finds a

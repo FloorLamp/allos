@@ -38,10 +38,11 @@ test.describe("mobile clipped-content audit (#1063)", () => {
       await phone(page);
       await page.goto("/integrations/health-connect");
       await expect(page.getByTestId("health-connect-status")).toBeVisible();
-      // The card's whole purpose on a phone: the copy affordances are on-screen.
-      await expect(
-        page.getByRole("button", { name: "Copy" }).nth(1)
-      ).toBeVisible();
+      // The card's whole purpose on a phone: the copy affordance is on-screen (not
+      // pushed off past the viewport edge). Since #1209's reveal-once, a connected
+      // read-only view shows NO bearer token — only the endpoint-URL row — so there
+      // is a SINGLE Copy button (the endpoint), not the former endpoint+token pair.
+      await expect(page.getByRole("button", { name: "Copy" })).toBeVisible();
       await expectNoClippedContent(page);
     } finally {
       await page.context().close();

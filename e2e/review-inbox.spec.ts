@@ -84,6 +84,37 @@ test.describe("Data → Review import inbox", () => {
     await expect(viewer.getByText(/"Steps"/)).toBeVisible();
   });
 
+  test("the sync provenance drill-in lists written records with working deep links (#1333)", async ({
+    page,
+  }) => {
+    await page.goto("/data?section=review");
+    const review = page.getByTestId("review-inbox");
+    const hcCard = review.getByTestId("source-health-connect");
+    await expect(hcCard).toBeVisible();
+
+    // The healthy Health Connect sync wrote records (seed provenance rows), so the
+    // card carries a "What this wrote" drill-in. It's behind a <details> with the
+    // same pre-hydration swallow as the raw viewer — re-click until the list loads.
+    const drill = hcCard.getByText("What this wrote", { exact: false });
+    await expect(drill).toBeVisible();
+    const provRun = hcCard.getByRole("link", { name: /HC provenance run/ });
+    await expect(async () => {
+      if (!(await provRun.isVisible())) await drill.click();
+      await expect(provRun).toBeVisible({ timeout: 4000 });
+    }).toPass({ timeout: 20_000 }); // topass-ok: re-click the <details> until the provenance list loads — SSR satisfies the earlier asserts, so the discrete onToggle can be swallowed pre-hydration
+
+    // The inserted run carries a "new" disposition badge — scoped to the run's own
+    // link (spec-owned fixture) so it's an exact, single match, no ordinal.
+    await expect(provRun.getByText("new", { exact: true })).toBeVisible();
+    await expect(provRun).toHaveAttribute(
+      "href",
+      /\/timeline\?from=2026-07-08/
+    );
+    // The deep link navigates to that record's timeline day.
+    await provRun.click();
+    await expect(page).toHaveURL(/\/timeline\?from=2026-07-08/);
+  });
+
   test("shows a removed source's history with a Reconnect link, and hides never-set-up sources (issue #294)", async ({
     page,
   }) => {

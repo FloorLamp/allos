@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Migration } from "../runner";
 
-// Migration 109 (issue #1093): close the two OPEN illness-domain cross-links the
+// Migration 111 (issue #1093): close the two OPEN illness-domain cross-links the
 // cross-link audit found (the episode↔visit edge shipped separately as #1053, migration
 // 082). Two nullable back-links, both added as NEW columns:
 //
@@ -66,7 +66,7 @@ export function up(db: Database.Database): void {
 }
 
 export const migration: Migration = {
-  id: 109,
-  name: "109-symptom-episode-photo-links",
+  id: 111,
+  name: "111-symptom-episode-photo-links",
   up,
 };
