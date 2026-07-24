@@ -141,9 +141,7 @@ export function episodeExistsForProfile(
 ): boolean {
   return (
     db
-      .prepare(
-        `SELECT 1 FROM illness_episodes WHERE id = ? AND profile_id = ?`
-      )
+      .prepare(`SELECT 1 FROM illness_episodes WHERE id = ? AND profile_id = ?`)
       .get(episodeId, profileId) != null
   );
 }

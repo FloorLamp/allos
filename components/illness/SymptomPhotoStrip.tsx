@@ -131,7 +131,7 @@ export default function SymptomPhotoStrip({
                 {p.symptomLabel && (
                   <span
                     data-testid={`symptom-photo-symptom-${p.id}`}
-                    className="mb-1 inline-block rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-ink-800 dark:text-slate-300"
+                    className="mb-1 inline-block rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600 dark:bg-ink-800 dark:text-slate-300"
                   >
                     {p.symptomLabel}
                   </span>
