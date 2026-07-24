@@ -75,3 +75,18 @@ export function getMoodOnDate(profileId: number, date: string): MoodLog | null {
     .get(profileId, date) as MoodLogRow | undefined;
   return row ? toMoodLog(row) : null;
 }
+
+// Whether the profile has EVER logged an anxiety rating — the "prior use" signal of
+// the check-in Calm-scale relevance gate (issue #1313, signal 1: continuity trumps
+// inference, so a profile that's used the scale keeps it). Kept here in the mood
+// store's read layer (not the gate resolver) so the mood_logs table stays store-
+// private — a plain read, never a flag/retest/streak engine (the #992 contract).
+export function hasPriorAnxietyLog(profileId: number): boolean {
+  return (
+    db
+      .prepare(
+        `SELECT 1 FROM mood_logs WHERE profile_id = ? AND anxiety IS NOT NULL LIMIT 1`
+      )
+      .get(profileId) != null
+  );
+}
