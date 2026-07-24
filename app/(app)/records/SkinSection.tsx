@@ -1,10 +1,10 @@
 import {
   getSkinLesions,
   getSkinLesionFollowUps,
-  getProviderNames,
+  getPickerProviders,
 } from "@/lib/queries";
 import { getLesionPhotos } from "@/lib/skin-photo-write";
-import ProviderDatalist from "@/components/ProviderDatalist";
+import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import SkinLesionForm from "@/app/(app)/skin/SkinLesionForm";
 import SkinLesionList from "@/app/(app)/skin/SkinLesionList";
 import { addSkinLesion } from "@/app/(app)/skin/actions";
@@ -24,20 +24,24 @@ export default function SkinSection({ profileId }: { profileId: number }) {
   const photos = getLesionPhotos(profileId);
 
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
-      {/* Shared provider picker options for the add + edit forms (#1088). */}
-      <ProviderDatalist names={getProviderNames()} />
-      <div className="min-w-0 space-y-4 lg:col-span-2">
-        <SkinLesionList items={records} followUps={followUps} photos={photos} />
-      </div>
+    <ProviderOptionsProvider providers={getPickerProviders()}>
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="min-w-0 space-y-4 lg:col-span-2">
+          <SkinLesionList
+            items={records}
+            followUps={followUps}
+            photos={photos}
+          />
+        </div>
 
-      <div className="min-w-0 space-y-4">
-        <SkinLesionForm action={addSkinLesion} />
-        <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-          This is a self-monitoring record for you and your dermatologist — it
-          tracks and compares lesions, it does not assess them.
-        </p>
+        <div className="min-w-0 space-y-4">
+          <SkinLesionForm action={addSkinLesion} />
+          <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
+            This is a self-monitoring record for you and your dermatologist — it
+            tracks and compares lesions, it does not assess them.
+          </p>
+        </div>
       </div>
-    </div>
+    </ProviderOptionsProvider>
   );
 }

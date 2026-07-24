@@ -1,5 +1,5 @@
-import { getProcedures, getProviderNames } from "@/lib/queries";
-import ProviderDatalist from "@/components/ProviderDatalist";
+import { getProcedures, getPickerProviders } from "@/lib/queries";
+import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import ProcedureForm from "@/app/(app)/procedures/ProcedureForm";
 import ProcedureList from "@/app/(app)/procedures/ProcedureList";
 import { addProcedure } from "@/app/(app)/procedures/actions";
@@ -19,12 +19,9 @@ export default function ProceduresSection({
   prefillName?: string;
 }) {
   const procedures = getProcedures(profileId);
-  const providerNames = getProviderNames();
 
   return (
-    <>
-      {/* Shared provider picker options for the add + edit forms. */}
-      <ProviderDatalist names={providerNames} />
+    <ProviderOptionsProvider providers={getPickerProviders()}>
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="min-w-0 space-y-4 lg:col-span-2">
           <ProcedureList items={procedures} />
@@ -38,6 +35,6 @@ export default function ProceduresSection({
           </p>
         </div>
       </div>
-    </>
+    </ProviderOptionsProvider>
   );
 }

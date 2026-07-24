@@ -4,12 +4,13 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
+import ProviderCombobox from "@/components/ProviderCombobox";
 import { useToast } from "@/components/Toast";
 import type { CarePlanItem, FormResult } from "@/lib/types";
 
 // Shared add/edit care-plan form. Add mode: no `item`. Edit mode: pass the row + an
 // `onDone` callback (renders a hidden id + a Cancel button). The provider is a
-// create-on-type input backed by the page's shared <datalist id="provider-names">.
+// create-on-type ProviderCombobox (#1176) over the section's shared registry rows.
 export default function CarePlanForm({
   action,
   item,
@@ -136,12 +137,10 @@ export default function CarePlanForm({
         <label className="label" htmlFor={`cp-provider-${uid}`}>
           Provider
         </label>
-        {/* Create-on-type from the shared registry via <datalist id="provider-names">. */}
-        <input
+        {/* Create-on-type from the shared registry (ProviderCombobox, #1176). */}
+        <ProviderCombobox
           id={`cp-provider-${uid}`}
           name="provider"
-          list="provider-names"
-          className="input"
           defaultValue={item?.provider_name ?? ""}
           placeholder="e.g. Dr. Smith"
         />

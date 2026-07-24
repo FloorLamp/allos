@@ -2,6 +2,7 @@
 
 import type { Dispatch, SetStateAction } from "react";
 import { IconPlus, IconX } from "@tabler/icons-react";
+import Combobox from "@/components/Combobox";
 import {
   TIME_BUCKETS,
   FOOD_TIMINGS,
@@ -24,23 +25,20 @@ export const emptyDose = (): DoseState => ({
 });
 
 // The dose-rows editor shared by both intake forms (#846): one or more amount /
-// time-of-day / food-timing rows with add + remove. `dosageOptions` feeds a datalist
-// of amount suggestions — the supplement catalog's dosages for a supplement, the OTC
-// label strengths for a medication (each form supplies its own source; the editor is
-// kind-blind). `datalistId` is unique per form so multiple forms on a page don't
-// collide.
+// time-of-day / food-timing rows with add + remove. `dosageOptions` feeds the amount
+// Combobox's suggestions (#1177) — the supplement catalog's dosages for a supplement,
+// the OTC label strengths for a medication (each form supplies its own source; the
+// editor is kind-blind). Free text is always allowed (a custom amount).
 export default function DoseRowsEditor({
   doses,
   setDoses,
   dosageOptions,
-  datalistId,
   amountPlaceholder = "amount",
   singleAmountOnly = false,
 }: {
   doses: DoseState[];
   setDoses: Dispatch<SetStateAction<DoseState[]>>;
   dosageOptions: string[];
-  datalistId: string;
   amountPlaceholder?: string;
   // PRN ⇒ amount-only mode (#851 item 9): a PRN medication carries exactly ONE
   // amount-only dose (plus its with-food relation) — no time-of-day slots, no split,
@@ -57,24 +55,19 @@ export default function DoseRowsEditor({
     return (
       <div className="sm:col-span-2" data-testid="prn-dose-row">
         <div className="mb-2 section-label">Dose</div>
-        <datalist id={datalistId}>
-          {dosageOptions.map((o) => (
-            <option key={o} value={o} />
-          ))}
-        </datalist>
         <div className="grid gap-2 sm:grid-cols-2">
-          <input
-            list={datalistId}
+          <Combobox
+            ariaLabel="Amount"
             value={d.amount}
-            onChange={(e) =>
+            onChange={(v) =>
               setDoses((ds) => {
                 const first = ds[0] ?? emptyDose();
-                return [{ ...first, amount: e.target.value, time_of_day: "" }];
+                return [{ ...first, amount: v, time_of_day: "" }];
               })
             }
-            className="input"
+            options={dosageOptions}
+            allowFreeText
             placeholder={amountPlaceholder}
-            aria-label="Amount"
           />
           <select
             value={d.food_timing}
@@ -110,11 +103,6 @@ export default function DoseRowsEditor({
   return (
     <div className="sm:col-span-2">
       <div className="mb-2 section-label">Doses</div>
-      <datalist id={datalistId}>
-        {dosageOptions.map((d) => (
-          <option key={d} value={d} />
-        ))}
-      </datalist>
       <div className="space-y-2">
         {doses.map((d, i) => (
           <div
@@ -125,13 +113,13 @@ export default function DoseRowsEditor({
                 : "sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.25fr)]"
             }`}
           >
-            <input
-              list={datalistId}
+            <Combobox
+              ariaLabel="Amount"
               value={d.amount}
-              onChange={(e) => setDose(i, { amount: e.target.value })}
-              className="input"
+              onChange={(v) => setDose(i, { amount: v })}
+              options={dosageOptions}
+              allowFreeText
               placeholder={amountPlaceholder}
-              aria-label="Amount"
             />
             <select
               value={d.time_of_day || "Anytime"}

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import SubmitButton from "@/components/SubmitButton";
+import Combobox from "@/components/Combobox";
 import type { OverrideKind } from "@/lib/immunization-status";
 import { setImmunizationOverride, clearImmunizationOverride } from "../actions";
 
@@ -33,6 +34,7 @@ export default function OverrideControls({
   const router = useRouter();
   const toast = useToast();
   const [kind, setKind] = useState<OverrideKind>(current?.kind ?? "immune");
+  const [reason, setReason] = useState(current?.reason ?? "");
   const reasons = kind === "immune" ? IMMUNE_REASONS : DECLINED_REASONS;
 
   async function save(formData: FormData) {
@@ -118,19 +120,16 @@ export default function OverrideControls({
           <label className="label" htmlFor="override-reason">
             Reason (optional)
           </label>
-          <input
+          <Combobox
             id="override-reason"
             name="reason"
-            list="override-reasons"
-            className="input"
-            defaultValue={current?.reason ?? ""}
+            ariaLabel="Reason"
+            value={reason}
+            onChange={setReason}
+            options={reasons}
+            allowFreeText
             placeholder="e.g. Prior infection"
           />
-          <datalist id="override-reasons">
-            {reasons.map((r) => (
-              <option key={r} value={r} />
-            ))}
-          </datalist>
         </div>
         <div>
           <label className="label" htmlFor="override-note">

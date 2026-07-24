@@ -1,13 +1,13 @@
 import {
   getCarePlanItems,
-  getProviderNames,
+  getPickerProviders,
   getContrastSafetyWarnings,
   getFindingSuppressions,
 } from "@/lib/queries";
 import { activeByKey } from "@/lib/findings";
 import { contrastTitle, contrastDetail } from "@/lib/contrast-safety";
 import { today } from "@/lib/db";
-import ProviderDatalist from "@/components/ProviderDatalist";
+import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import { Notice } from "@/components/Notice";
 import CarePlanForm from "@/app/(app)/care-plan/CarePlanForm";
 import CarePlanList from "@/app/(app)/care-plan/CarePlanList";
@@ -21,7 +21,6 @@ import { addCarePlanItem } from "@/app/(app)/care-plan/actions";
 // "Goals" (/goals).
 export default function CarePlanSection({ profileId }: { profileId: number }) {
   const items = getCarePlanItems(profileId);
-  const providerNames = getProviderNames();
 
   // Contrast-safety notes (issue #701): a planned contrast imaging study meeting a
   // contrast/iodine/gadolinium allergy or a renal (CKD) contraindication on file. The
@@ -36,9 +35,7 @@ export default function CarePlanSection({ profileId }: { profileId: number }) {
   );
 
   return (
-    <>
-      {/* Shared provider picker options for the add + edit forms. */}
-      <ProviderDatalist names={providerNames} />
+    <ProviderOptionsProvider providers={getPickerProviders()}>
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="min-w-0 space-y-4 lg:col-span-2">
           {contrastNotes.length > 0 && (
@@ -67,6 +64,6 @@ export default function CarePlanSection({ profileId }: { profileId: number }) {
           </p>
         </div>
       </div>
-    </>
+    </ProviderOptionsProvider>
   );
 }

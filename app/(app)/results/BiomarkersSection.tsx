@@ -2,7 +2,7 @@ import {
   getMedicalRecords,
   getDerivedBiomarkerReadings,
   getCanonicalAutocomplete,
-  getProviderNames,
+  getPickerProviders,
 } from "@/lib/queries";
 import { today } from "@/lib/db";
 import { EmptyState } from "@/components/ui";
@@ -18,7 +18,8 @@ import BioAgeHero from "@/components/BioAgeHero";
 import TrajectoryFindings from "./TrajectoryFindings";
 import BiomarkersTable from "@/components/BiomarkersTable";
 import RecordForm from "@/components/RecordForm";
-import ProviderDatalist from "@/components/ProviderDatalist";
+import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
+import { CanonicalNamesProvider } from "@/components/CanonicalNamesContext";
 import { addRecord } from "@/app/(app)/medical/actions";
 import {
   BIOMARKER_CATEGORIES,
@@ -111,73 +112,75 @@ export default function BiomarkersSection({
   const now = today(profileId);
 
   return (
-    <div>
-      {/* Shared datalists for the record forms' autocomplete inputs: canonical
-          names for the canonical-name field, and the provider registry for the
-          inline editor's "Performed by" field (mirrors the document view). */}
-      <datalist id="canonical-names">
-        {canonicalOptions.map((n) => (
-          <option key={n} value={n} />
-        ))}
-      </datalist>
-      <ProviderDatalist names={getProviderNames()} />
-
-      {/* Forward-looking trajectory rules (#41), the ONE thing #1164 moved from the
+    <ProviderOptionsProvider providers={getPickerProviders()}>
+      <CanonicalNamesProvider names={canonicalOptions}>
+        <div>
+          {/* Forward-looking trajectory rules (#41), the ONE thing #1164 moved from the
           deleted Trends → Biomarkers tab: a "what's changing" area that warns BEFORE a
           single-value flag catches a range crossing. A full-history standing read, so
           it ignores the browser's filters. Renders nothing when no trajectory fires. */}
-      <TrajectoryFindings />
+          <TrajectoryFindings />
 
-      {/* Biological-age hero (#209): the derived PhenoAge index (#157) surfaced as a
+          {/* Biological-age hero (#209): the derived PhenoAge index (#157) surfaced as a
           headline "how am I aging" result, pinned above the analyte table. Adult-
           gated; renders nothing for child profiles. The derived table row remains. */}
-      <BioAgeHero />
+          <BioAgeHero />
 
-      <StarredBiomarkers />
+          <StarredBiomarkers />
 
-      <MedicalFilters
-        category={active}
-        panel={panel}
-        range={range}
-        q={q}
-        current={current}
-      />
+          <MedicalFilters
+            category={active}
+            panel={panel}
+            range={range}
+            q={q}
+            current={current}
+          />
 
-      {pageData.total === 0 ? (
-        <EmptyState
-          message={
-            active || panel || range || q || current
-              ? "No records match these filters."
-              : "No records yet. Import documents from the Data page (Data → Import), or add one below."
-          }
-        />
-      ) : (
-        <BiomarkersTable
-          records={pageData.rows}
-          now={now}
-          filters={{ category: active, panel, range, q, sort, dir, current }}
-          pagination={{
-            total: pageData.total,
-            page: pageData.page,
-            pageCount: pageData.pageCount,
-            pageSize: pageData.pageSize,
-          }}
-        />
-      )}
+          {pageData.total === 0 ? (
+            <EmptyState
+              message={
+                active || panel || range || q || current
+                  ? "No records match these filters."
+                  : "No records yet. Import documents from the Data page (Data → Import), or add one below."
+              }
+            />
+          ) : (
+            <BiomarkersTable
+              records={pageData.rows}
+              now={now}
+              filters={{
+                category: active,
+                panel,
+                range,
+                q,
+                sort,
+                dir,
+                current,
+              }}
+              pagination={{
+                total: pageData.total,
+                page: pageData.page,
+                pageCount: pageData.pageCount,
+                pageSize: pageData.pageSize,
+              }}
+            />
+          )}
 
-      <div className="card mb-6" id="add-result">
-        <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-          Add medical record
-        </h2>
-        <RecordForm
-          mode="add"
-          action={addRecord}
-          categories={BIOMARKER_CATEGORIES}
-          defaultDate={now}
-          defaultCategory={active ?? "lab"}
-          defaultName={searchParams.name?.trim() || undefined}
-        />
-      </div>
-    </div>
+          <div className="card mb-6" id="add-result">
+            <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+              Add medical record
+            </h2>
+            <RecordForm
+              mode="add"
+              action={addRecord}
+              categories={BIOMARKER_CATEGORIES}
+              defaultDate={now}
+              defaultCategory={active ?? "lab"}
+              defaultName={searchParams.name?.trim() || undefined}
+            />
+          </div>
+        </div>
+      </CanonicalNamesProvider>
+    </ProviderOptionsProvider>
   );
 }

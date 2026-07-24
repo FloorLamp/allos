@@ -162,15 +162,13 @@ export default async function ProviderDetailPage(props: {
   const affiliationSuggestions = getSuggestedAffiliations(profile.id).filter(
     (s) => s.individualId === id || s.organizationId === id
   );
-  const counterpartNames = getProviders()
-    .filter(
-      (p) =>
-        p.type === counterpartType &&
-        p.archived === 0 &&
-        p.id !== id &&
-        !affiliateIds.has(p.id)
-    )
-    .map((p) => p.name);
+  const counterpartProviders = getProviders().filter(
+    (p) =>
+      p.type === counterpartType &&
+      p.archived === 0 &&
+      p.id !== id &&
+      !affiliateIds.has(p.id)
+  );
 
   const allProviders = isAdmin ? getProviders() : [];
   const candidates = isAdmin
@@ -218,7 +216,7 @@ export default async function ProviderDetailPage(props: {
         providerType={provider.type}
         affiliates={affiliates}
         suggestions={affiliationSuggestions}
-        counterpartNames={counterpartNames}
+        counterpartProviders={counterpartProviders}
         canEdit={isAdmin}
       />
 

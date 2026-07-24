@@ -13,6 +13,7 @@ import {
 } from "@tabler/icons-react";
 import SubmitButton from "@/components/SubmitButton";
 import OpenInMaps from "@/components/OpenInMaps";
+import Combobox from "@/components/Combobox";
 import { useToast } from "@/components/Toast";
 import { NUCC_LABEL_OPTIONS } from "@/lib/nucc-taxonomy";
 import type { Provider } from "@/lib/types";
@@ -31,6 +32,9 @@ export default function ProviderIdentityCard({
 }) {
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Specialty is a controlled Combobox (#1177) over the curated NUCC labels — fuzzy
+  // search across the hundreds-long taxonomy, free text preserved.
+  const [specialty, setSpecialty] = useState(provider.specialty ?? "");
   const router = useRouter();
   const toast = useToast();
 
@@ -108,20 +112,17 @@ export default function ProviderIdentityCard({
           <label className="label" htmlFor="prov-specialty">
             Specialty
           </label>
-          {/* Free text + a datalist of curated NUCC labels (#1056). */}
-          <input
+          {/* Fuzzy Combobox over the curated NUCC labels (#1056/#1177). */}
+          <Combobox
             id="prov-specialty"
             name="specialty"
-            className="input"
-            list="nucc-specialty-labels"
-            defaultValue={provider.specialty ?? ""}
+            ariaLabel="Specialty"
+            value={specialty}
+            onChange={setSpecialty}
+            options={NUCC_LABEL_OPTIONS}
+            allowFreeText
             placeholder="e.g. Cardiology"
           />
-          <datalist id="nucc-specialty-labels">
-            {NUCC_LABEL_OPTIONS.map((l) => (
-              <option key={l} value={l} />
-            ))}
-          </datalist>
           {/* Round-trip the imported NUCC code so an untouched edit keeps it. */}
           <input
             type="hidden"

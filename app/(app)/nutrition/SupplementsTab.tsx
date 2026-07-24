@@ -73,6 +73,7 @@ import { compareDoseDay, type DoseDayEntry } from "@/lib/dose-order";
 import type { Supplement, SupplementDose } from "@/lib/types";
 import { EmptyState } from "@/components/ui";
 import SubmitButton from "@/components/SubmitButton";
+import { SituationOptionsProvider } from "@/components/SituationOptionsContext";
 import EditableSupplementRow from "./EditableSupplementRow";
 import DismissSuggestionButton from "./DismissSuggestionButton";
 import {
@@ -278,6 +279,9 @@ export default async function SupplementsTab() {
   // illness-type flag (`illnessType`) and whether it's a saved row (`inVocabulary`).
   const situationRows = getSituations(profile.id);
   const situationChips = mergedSituationOptions(situationRows);
+  // The item-form situation picker reads the SAME merged option set the bar renders
+  // (#1177), passed through the SituationOptionsProvider below.
+  const situationOptionNames = situationChips.map((o) => o.name);
 
   // One-way condition bridge (#560 part 2): an ACTIVE acute illness/injury condition
   // suggests its matching clinical situation, so a sick user doesn't flip two toggles
@@ -386,334 +390,336 @@ export default async function SupplementsTab() {
   );
 
   return (
-    <div>
-      {/* This tab lives under the Nutrition page header, so it carries only a
+    <SituationOptionsProvider options={situationOptionNames}>
+      <div>
+        {/* This tab lives under the Nutrition page header, so it carries only a
           compact status line (workout-day label + taken count) rather than its
           own PageHeader. */}
-      <p
-        data-testid="supplements-status"
-        className="mb-4 text-sm text-slate-500 dark:text-slate-400"
-      >
-        {trainingRestricted
-          ? `${takenCount}/${dueItems.length} taken.`
-          : `${workoutDaySubtitleLabel(predictedWorkoutDay, isWorkoutDay)} — ${takenCount}/${dueItems.length} taken.`}
-      </p>
+        <p
+          data-testid="supplements-status"
+          className="mb-4 text-sm text-slate-500 dark:text-slate-400"
+        >
+          {trainingRestricted
+            ? `${takenCount}/${dueItems.length} taken.`
+            : `${workoutDaySubtitleLabel(predictedWorkoutDay, isWorkoutDay)} — ${takenCount}/${dueItems.length} taken.`}
+        </p>
 
-      {/* Situations bar */}
-      <div
-        className="mb-4 flex flex-wrap items-center gap-2"
-        data-testid="situations-bar"
-      >
-        <span className="section-label">Situations</span>
-        {situationChips.map((sit) => {
-          const on = activeSituations.has(sit.name);
-          // A real vocabulary row can opt into being an illness-type symptom container
-          // (#799); a suggested-but-unsaved chip has no row yet, so no toggle.
-          const isRow = sit.inVocabulary;
-          const illnessOn = sit.illnessType;
-          return (
-            <div key={sit.name} className="flex items-center gap-1">
+        {/* Situations bar */}
+        <div
+          className="mb-4 flex flex-wrap items-center gap-2"
+          data-testid="situations-bar"
+        >
+          <span className="section-label">Situations</span>
+          {situationChips.map((sit) => {
+            const on = activeSituations.has(sit.name);
+            // A real vocabulary row can opt into being an illness-type symptom container
+            // (#799); a suggested-but-unsaved chip has no row yet, so no toggle.
+            const isRow = sit.inVocabulary;
+            const illnessOn = sit.illnessType;
+            return (
+              <div key={sit.name} className="flex items-center gap-1">
+                <form
+                  action={async (fd) => {
+                    "use server";
+                    await toggleSituation(fd);
+                  }}
+                >
+                  <input type="hidden" name="situation" value={sit.name} />
+                  <SubmitButton
+                    aria-pressed={on}
+                    className={`badge cursor-pointer disabled:opacity-60 ${
+                      on
+                        ? "bg-brand-600 text-white"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-700"
+                    }`}
+                  >
+                    {sit.name}
+                  </SubmitButton>
+                </form>
+                {isRow && (
+                  <form
+                    action={async (fd) => {
+                      "use server";
+                      await toggleSituationIllnessType(fd);
+                    }}
+                  >
+                    <input type="hidden" name="situation" value={sit.name} />
+                    <SubmitButton
+                      aria-pressed={illnessOn}
+                      title={
+                        illnessOn
+                          ? "Illness — symptom logging on"
+                          : "Mark as illness (enables symptom logging)"
+                      }
+                      data-testid={`situation-illness-${sit.name}`}
+                      className={`badge cursor-pointer px-1.5 disabled:opacity-60 ${
+                        illnessOn
+                          ? "bg-orange-500 text-white"
+                          : "bg-transparent text-slate-400 hover:text-orange-500"
+                      }`}
+                    >
+                      🤒
+                    </SubmitButton>
+                  </form>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Situation-activation acknowledgment (#662 item 1): a one-line confirmation
+          that toggling a situation changed the shape of the due dose list, counted
+          from the SAME dueness computation the list uses (never a second count). */}
+        {situationActivationLine(countSituationalDue(supplements, ctx)) && (
+          <p
+            className="-mt-2 mb-4 text-xs text-slate-500 dark:text-slate-400"
+            data-testid="situation-activation"
+          >
+            {situationActivationLine(countSituationalDue(supplements, ctx))}
+          </p>
+        )}
+
+        {/* Condition bridge (#560 part 2): suggest a clinical situation implied by an
+          active illness/injury condition, so it isn't a second manual toggle. */}
+        {bridgeSuggestions.length > 0 && (
+          <div
+            className="mb-4 flex flex-wrap items-center gap-2"
+            data-testid="situation-bridge"
+          >
+            <span className="text-xs text-slate-500 dark:text-slate-400">
+              Suggested from your conditions:
+            </span>
+            {bridgeSuggestions.map((sit) => (
               <form
                 action={async (fd) => {
                   "use server";
                   await toggleSituation(fd);
                 }}
+                key={sit}
               >
-                <input type="hidden" name="situation" value={sit.name} />
+                <input type="hidden" name="situation" value={sit} />
                 <SubmitButton
-                  aria-pressed={on}
-                  className={`badge cursor-pointer disabled:opacity-60 ${
-                    on
-                      ? "bg-brand-600 text-white"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-700"
-                  }`}
+                  data-testid={`situation-bridge-${sit}`}
+                  className="badge cursor-pointer border border-dashed border-brand-400 bg-transparent text-brand-700 hover:bg-brand-50 disabled:opacity-60 dark:border-brand-700 dark:text-brand-300 dark:hover:bg-brand-950"
                 >
-                  {sit.name}
+                  + {sit}
                 </SubmitButton>
               </form>
-              {isRow && (
-                <form
-                  action={async (fd) => {
-                    "use server";
-                    await toggleSituationIllnessType(fd);
-                  }}
-                >
-                  <input type="hidden" name="situation" value={sit.name} />
-                  <SubmitButton
-                    aria-pressed={illnessOn}
-                    title={
-                      illnessOn
-                        ? "Illness — symptom logging on"
-                        : "Mark as illness (enables symptom logging)"
-                    }
-                    data-testid={`situation-illness-${sit.name}`}
-                    className={`badge cursor-pointer px-1.5 disabled:opacity-60 ${
-                      illnessOn
-                        ? "bg-orange-500 text-white"
-                        : "bg-transparent text-slate-400 hover:text-orange-500"
-                    }`}
-                  >
-                    🤒
-                  </SubmitButton>
-                </form>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Situation-activation acknowledgment (#662 item 1): a one-line confirmation
-          that toggling a situation changed the shape of the due dose list, counted
-          from the SAME dueness computation the list uses (never a second count). */}
-      {situationActivationLine(countSituationalDue(supplements, ctx)) && (
-        <p
-          className="-mt-2 mb-4 text-xs text-slate-500 dark:text-slate-400"
-          data-testid="situation-activation"
-        >
-          {situationActivationLine(countSituationalDue(supplements, ctx))}
-        </p>
-      )}
-
-      {/* Condition bridge (#560 part 2): suggest a clinical situation implied by an
-          active illness/injury condition, so it isn't a second manual toggle. */}
-      {bridgeSuggestions.length > 0 && (
-        <div
-          className="mb-4 flex flex-wrap items-center gap-2"
-          data-testid="situation-bridge"
-        >
-          <span className="text-xs text-slate-500 dark:text-slate-400">
-            Suggested from your conditions:
-          </span>
-          {bridgeSuggestions.map((sit) => (
-            <form
-              action={async (fd) => {
-                "use server";
-                await toggleSituation(fd);
-              }}
-              key={sit}
-            >
-              <input type="hidden" name="situation" value={sit} />
-              <SubmitButton
-                data-testid={`situation-bridge-${sit}`}
-                className="badge cursor-pointer border border-dashed border-brand-400 bg-transparent text-brand-700 hover:bg-brand-50 disabled:opacity-60 dark:border-brand-700 dark:text-brand-300 dark:hover:bg-brand-950"
-              >
-                + {sit}
-              </SubmitButton>
-            </form>
-          ))}
-        </div>
-      )}
-
-      {/* Stack-total UL warnings (issue #148) */}
-      {ulWarnings.length > 0 && (
-        <div className="mb-4 space-y-2" data-testid="ul-warnings">
-          {ulWarnings.map((w) => (
-            <FindingCard
-              key={w.key}
-              testid={`ul-warning-${w.key}`}
-              tone="amber"
-              title={ulWarningTitle(w)}
-              detail={ulWarningDetail(w, w.conditionCaveat)}
-              evidence={`From: ${ulWarningEvidence(w)}`}
-              dismissKey={dietaryLimitSignalKey(w.key)}
-              dismissLabel={`Dismiss ${ulWarningTitle(w)}`}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Stack RDA-adequacy (issue #578) — calm, informational; distinct from the
-          amber UL hazard blocks (slate, not a warning). Links to food-first sources. */}
-      {rdaAdequacy.length > 0 && (
-        <div className="mb-4 space-y-2" data-testid="rda-adequacy">
-          {rdaAdequacy.map((a) => {
-            const foods = foodSourcesForDriNutrient(a.key, excludedGroups);
-            return (
-              <FindingCard
-                key={a.key}
-                testid={`rda-adequacy-${a.key}`}
-                tone="slate"
-                icon={false}
-                title={rdaAdequacyTitle(a)}
-                detail={rdaAdequacyDetail(a)}
-                evidence={`From: ${rdaAdequacyEvidence(a)}`}
-                dismissKey={rdaAdequacySignalKey(a.key)}
-                dismissLabel={`Dismiss ${rdaAdequacyTitle(a)}`}
-              >
-                {foods.length > 0 && (
-                  <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
-                    Food sources: {foods.join("; ")}.
-                  </p>
-                )}
-              </FindingCard>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Supplement-related interaction warnings. Cross-kind findings also render on
-          Medications with the same dedupeKey, so dismissing either twin silences both.
-          Medication-only interaction and PGx findings stay on Medications. */}
-      <IntakeWarnings
-        interactionWarnings={interactionWarnings}
-        pgxWarnings={pgxWarnings}
-        coverage={safetyCoverage}
-      />
-
-      {/* Adherence-pattern observations (issue #45, domain 3) */}
-      <div className="mb-4">
-        <AdherenceFindings />
-      </div>
-
-      {supplementItems.length === 0 ? (
-        <EmptyState message="No supplements yet. Add one below. Medications live on their own page." />
-      ) : (
-        <div className="space-y-6">
-          {TIME_BUCKETS.map((bucket) => {
-            const items = byBucket.get(bucket);
-            if (!items || items.length === 0) return null;
-            const warnings = bucketWarnings(items);
-            return (
-              <section key={bucket}>
-                <h2 className="mb-2 section-label">{bucket}</h2>
-                {warnings.map((w) => (
-                  <Notice
-                    key={w.key}
-                    tone="amber"
-                    icon
-                    className="mb-2"
-                    action={
-                      <DismissFindingButton
-                        dedupeKey={w.key}
-                        label={`Dismiss: ${w.text}`}
-                      />
-                    }
-                  >
-                    {w.text}
-                  </Notice>
-                ))}
-                <div className="space-y-3">
-                  {items.map((it) => renderRow(it, true))}
-                </div>
-              </section>
-            );
-          })}
-
-          {notScheduled.length > 0 && (
-            <details>
-              <summary className="cursor-pointer section-label">
-                Not scheduled today ({notScheduled.length})
-              </summary>
-              <div className="mt-2 space-y-3">
-                {notScheduled.map((it) => renderRow(it, false))}
-              </div>
-            </details>
-          )}
-
-          {paused.length > 0 && (
-            <details>
-              <summary className="cursor-pointer section-label">
-                Paused ({paused.length})
-              </summary>
-              <div className="mt-2 space-y-3">
-                {paused.map((it) => renderRow(it, false))}
-              </div>
-            </details>
-          )}
-        </div>
-      )}
-
-      {/* AI suggestions */}
-      <details className="card mb-4 mt-6" open={suggestions.length > 0}>
-        <summary className="cursor-pointer font-semibold text-slate-800 dark:text-slate-100">
-          AI suggestions{suggestions.length ? ` (${suggestions.length})` : ""}
-        </summary>
-        <SuggestionsForm />
-        {suggestions.length === 0 ? (
-          <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
-            No pending suggestions. Generate some from your recent labs or a
-            note above. Requires AI to be configured (ANTHROPIC_API_KEY or
-            AI_BASE_URL).
-          </p>
-        ) : (
-          <div className="mt-4 space-y-3">
-            {[...suggestions]
-              .sort(
-                (a, b) =>
-                  PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority]
-              )
-              .map((sug) => (
-                <div
-                  key={sug.id}
-                  className="rounded-lg border border-black/10 p-3 dark:border-white/10"
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium text-slate-800 dark:text-slate-100">
-                      {sug.name}
-                    </span>
-                    {sug.dosage && (
-                      <span className="text-sm text-slate-500 dark:text-slate-400">
-                        · {sug.dosage}
-                      </span>
-                    )}
-                    <span className={`badge ${priorityClass(sug.priority)}`}>
-                      {PRIORITY_LABELS[sug.priority]}
-                    </span>
-                    {sug.condition !== "daily" && (
-                      <span className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300">
-                        {CONDITION_LABELS[sug.condition]}
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                    {sug.rationale}
-                  </p>
-                  {sug.source_detail && (
-                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                      {sug.source_detail}
-                    </p>
-                  )}
-                  <div className="mt-2 flex items-center gap-3 text-xs">
-                    <form
-                      action={async (fd) => {
-                        "use server";
-                        await acceptSuggestion(fd);
-                      }}
-                    >
-                      <input type="hidden" name="id" value={sug.id} />
-                      <SubmitButton
-                        pendingLabel="Adding…"
-                        className="font-medium text-brand-700 hover:underline disabled:opacity-60 dark:text-brand-400"
-                      >
-                        Add to schedule
-                      </SubmitButton>
-                    </form>
-                    <DismissSuggestionButton id={sug.id} name={sug.name} />
-                  </div>
-                </div>
-              ))}
+            ))}
           </div>
         )}
-      </details>
 
-      {/* Add supplement — always expanded, like the other "Add entry" forms
-          (e.g. Body Metrics). Medications are added on the Medications page. */}
-      <div className="card mt-6" data-testid="add-supplement-card">
-        <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-          Add supplement
-        </h2>
-        <SupplementForm
-          action={addSupplement}
-          allSupplements={supplements}
-          stackItems={stackItems}
-          pgxVariants={pgxVariants}
-          trainingRestricted={trainingRestricted}
+        {/* Stack-total UL warnings (issue #148) */}
+        {ulWarnings.length > 0 && (
+          <div className="mb-4 space-y-2" data-testid="ul-warnings">
+            {ulWarnings.map((w) => (
+              <FindingCard
+                key={w.key}
+                testid={`ul-warning-${w.key}`}
+                tone="amber"
+                title={ulWarningTitle(w)}
+                detail={ulWarningDetail(w, w.conditionCaveat)}
+                evidence={`From: ${ulWarningEvidence(w)}`}
+                dismissKey={dietaryLimitSignalKey(w.key)}
+                dismissLabel={`Dismiss ${ulWarningTitle(w)}`}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Stack RDA-adequacy (issue #578) — calm, informational; distinct from the
+          amber UL hazard blocks (slate, not a warning). Links to food-first sources. */}
+        {rdaAdequacy.length > 0 && (
+          <div className="mb-4 space-y-2" data-testid="rda-adequacy">
+            {rdaAdequacy.map((a) => {
+              const foods = foodSourcesForDriNutrient(a.key, excludedGroups);
+              return (
+                <FindingCard
+                  key={a.key}
+                  testid={`rda-adequacy-${a.key}`}
+                  tone="slate"
+                  icon={false}
+                  title={rdaAdequacyTitle(a)}
+                  detail={rdaAdequacyDetail(a)}
+                  evidence={`From: ${rdaAdequacyEvidence(a)}`}
+                  dismissKey={rdaAdequacySignalKey(a.key)}
+                  dismissLabel={`Dismiss ${rdaAdequacyTitle(a)}`}
+                >
+                  {foods.length > 0 && (
+                    <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
+                      Food sources: {foods.join("; ")}.
+                    </p>
+                  )}
+                </FindingCard>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Supplement-related interaction warnings. Cross-kind findings also render on
+          Medications with the same dedupeKey, so dismissing either twin silences both.
+          Medication-only interaction and PGx findings stay on Medications. */}
+        <IntakeWarnings
+          interactionWarnings={interactionWarnings}
+          pgxWarnings={pgxWarnings}
+          coverage={safetyCoverage}
         />
-      </div>
 
-      {interactionWarnings.length === 0 && pgxWarnings.length === 0 ? (
-        <IntakeSafetyScope coverage={safetyCoverage} className="mt-6" />
-      ) : null}
-    </div>
+        {/* Adherence-pattern observations (issue #45, domain 3) */}
+        <div className="mb-4">
+          <AdherenceFindings />
+        </div>
+
+        {supplementItems.length === 0 ? (
+          <EmptyState message="No supplements yet. Add one below. Medications live on their own page." />
+        ) : (
+          <div className="space-y-6">
+            {TIME_BUCKETS.map((bucket) => {
+              const items = byBucket.get(bucket);
+              if (!items || items.length === 0) return null;
+              const warnings = bucketWarnings(items);
+              return (
+                <section key={bucket}>
+                  <h2 className="mb-2 section-label">{bucket}</h2>
+                  {warnings.map((w) => (
+                    <Notice
+                      key={w.key}
+                      tone="amber"
+                      icon
+                      className="mb-2"
+                      action={
+                        <DismissFindingButton
+                          dedupeKey={w.key}
+                          label={`Dismiss: ${w.text}`}
+                        />
+                      }
+                    >
+                      {w.text}
+                    </Notice>
+                  ))}
+                  <div className="space-y-3">
+                    {items.map((it) => renderRow(it, true))}
+                  </div>
+                </section>
+              );
+            })}
+
+            {notScheduled.length > 0 && (
+              <details>
+                <summary className="cursor-pointer section-label">
+                  Not scheduled today ({notScheduled.length})
+                </summary>
+                <div className="mt-2 space-y-3">
+                  {notScheduled.map((it) => renderRow(it, false))}
+                </div>
+              </details>
+            )}
+
+            {paused.length > 0 && (
+              <details>
+                <summary className="cursor-pointer section-label">
+                  Paused ({paused.length})
+                </summary>
+                <div className="mt-2 space-y-3">
+                  {paused.map((it) => renderRow(it, false))}
+                </div>
+              </details>
+            )}
+          </div>
+        )}
+
+        {/* AI suggestions */}
+        <details className="card mb-4 mt-6" open={suggestions.length > 0}>
+          <summary className="cursor-pointer font-semibold text-slate-800 dark:text-slate-100">
+            AI suggestions{suggestions.length ? ` (${suggestions.length})` : ""}
+          </summary>
+          <SuggestionsForm />
+          {suggestions.length === 0 ? (
+            <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
+              No pending suggestions. Generate some from your recent labs or a
+              note above. Requires AI to be configured (ANTHROPIC_API_KEY or
+              AI_BASE_URL).
+            </p>
+          ) : (
+            <div className="mt-4 space-y-3">
+              {[...suggestions]
+                .sort(
+                  (a, b) =>
+                    PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority]
+                )
+                .map((sug) => (
+                  <div
+                    key={sug.id}
+                    className="rounded-lg border border-black/10 p-3 dark:border-white/10"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium text-slate-800 dark:text-slate-100">
+                        {sug.name}
+                      </span>
+                      {sug.dosage && (
+                        <span className="text-sm text-slate-500 dark:text-slate-400">
+                          · {sug.dosage}
+                        </span>
+                      )}
+                      <span className={`badge ${priorityClass(sug.priority)}`}>
+                        {PRIORITY_LABELS[sug.priority]}
+                      </span>
+                      {sug.condition !== "daily" && (
+                        <span className="badge bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300">
+                          {CONDITION_LABELS[sug.condition]}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                      {sug.rationale}
+                    </p>
+                    {sug.source_detail && (
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        {sug.source_detail}
+                      </p>
+                    )}
+                    <div className="mt-2 flex items-center gap-3 text-xs">
+                      <form
+                        action={async (fd) => {
+                          "use server";
+                          await acceptSuggestion(fd);
+                        }}
+                      >
+                        <input type="hidden" name="id" value={sug.id} />
+                        <SubmitButton
+                          pendingLabel="Adding…"
+                          className="font-medium text-brand-700 hover:underline disabled:opacity-60 dark:text-brand-400"
+                        >
+                          Add to schedule
+                        </SubmitButton>
+                      </form>
+                      <DismissSuggestionButton id={sug.id} name={sug.name} />
+                    </div>
+                  </div>
+                ))}
+            </div>
+          )}
+        </details>
+
+        {/* Add supplement — always expanded, like the other "Add entry" forms
+          (e.g. Body Metrics). Medications are added on the Medications page. */}
+        <div className="card mt-6" data-testid="add-supplement-card">
+          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+            Add supplement
+          </h2>
+          <SupplementForm
+            action={addSupplement}
+            allSupplements={supplements}
+            stackItems={stackItems}
+            pgxVariants={pgxVariants}
+            trainingRestricted={trainingRestricted}
+          />
+        </div>
+
+        {interactionWarnings.length === 0 && pgxWarnings.length === 0 ? (
+          <IntakeSafetyScope coverage={safetyCoverage} className="mt-6" />
+        ) : null}
+      </div>
+    </SituationOptionsProvider>
   );
 }

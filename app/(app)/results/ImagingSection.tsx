@@ -1,11 +1,11 @@
 import {
   getImagingStudies,
   getImagingStudyFollowUps,
-  getProviderNames,
+  getPickerProviders,
   createVisitOffers,
 } from "@/lib/queries";
 import { getUserAge } from "@/lib/settings";
-import ProviderDatalist from "@/components/ProviderDatalist";
+import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import CreateVisitFromRecord from "@/components/visit-links/CreateVisitFromRecord";
 import { today } from "@/lib/db";
 import { cumulativeDose } from "@/lib/radiation-dose";
@@ -36,25 +36,25 @@ export default function ImagingSection({ profileId }: { profileId: number }) {
   const createVisitOffersList = createVisitOffers(profileId, "imaging");
 
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
-      {/* Shared provider picker options for the add + edit forms (#1088). */}
-      <ProviderDatalist names={getProviderNames()} />
-      <div className="min-w-0 space-y-4 lg:col-span-2">
-        <CreateVisitFromRecord
-          profileId={profileId}
-          offers={createVisitOffersList}
-        />
-        <RadiationDoseCard cum={dose} pediatric={pediatric} />
-        <ImagingStudyList items={studies} followUps={followUps} />
-      </div>
+    <ProviderOptionsProvider providers={getPickerProviders()}>
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="min-w-0 space-y-4 lg:col-span-2">
+          <CreateVisitFromRecord
+            profileId={profileId}
+            offers={createVisitOffersList}
+          />
+          <RadiationDoseCard cum={dose} pediatric={pediatric} />
+          <ImagingStudyList items={studies} followUps={followUps} />
+        </div>
 
-      <div className="min-w-0 space-y-4">
-        <ImagingStudyForm action={addImagingStudy} />
-        <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-          Allos stores the imaging report, not the images themselves (DICOM is
-          out of scope).
-        </p>
+        <div className="min-w-0 space-y-4">
+          <ImagingStudyForm action={addImagingStudy} />
+          <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
+            Allos stores the imaging report, not the images themselves (DICOM is
+            out of scope).
+          </p>
+        </div>
       </div>
-    </div>
+    </ProviderOptionsProvider>
   );
 }

@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
+import ProviderCombobox from "@/components/ProviderCombobox";
 import { useToast } from "@/components/Toast";
 import { OPTICAL_KINDS, kindLabel } from "@/lib/optical-prescription";
 import type { OpticalPrescription, OpticalKind, FormResult } from "@/lib/types";
@@ -228,12 +229,11 @@ export default function OpticalPrescriptionForm({
         <label className="label" htmlFor={`rx-provider-${uid}`}>
           Prescriber
         </label>
-        {/* Create-on-type from the shared registry via <datalist id="provider-names">. */}
-        <input
+        {/* Create-on-type from the shared registry (ProviderCombobox, #1176). */}
+        <ProviderCombobox
           id={`rx-provider-${uid}`}
           name="provider"
-          list="provider-names"
-          className="input"
+          ariaLabel="Prescriber"
           defaultValue={rx?.provider_name ?? ""}
           placeholder="e.g. Dr. Nguyen (optometrist)"
         />

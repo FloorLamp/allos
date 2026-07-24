@@ -1,5 +1,6 @@
 import { requireSession } from "@/lib/auth";
-import { getProviderNames, getConditions } from "@/lib/queries";
+import { getPickerProviders, getConditions } from "@/lib/queries";
+import { mergedSituationOptions } from "@/lib/situations";
 import { loadMedicationsData } from "./med-data";
 import MedicationsTodayPanel from "./MedicationsTodayPanel";
 import MedicationRow from "./MedicationRow";
@@ -7,11 +8,16 @@ import MedicationListActions from "./MedicationListActions";
 import DormantPrnSweep from "./DormantPrnSweep";
 import MedicationAddWorkspace from "./MedicationAddWorkspace";
 import IntakeWarnings, { IntakeSafetyScope } from "@/components/IntakeWarnings";
-import ProviderDatalist from "@/components/ProviderDatalist";
+import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
+import { SituationOptionsProvider } from "@/components/SituationOptionsContext";
 import { addSupplement } from "@/app/(app)/nutrition/supplement-actions";
 import CardGroup, { CardGroupSection } from "@/components/CardGroup";
 import PageContainer from "@/components/PageContainer";
-import { getDisplayFormatPrefs, getUnitPrefs } from "@/lib/settings";
+import {
+  getDisplayFormatPrefs,
+  getUnitPrefs,
+  getSituations,
+} from "@/lib/settings";
 import {
   MEDICATIONS_HREF,
   MEDICATION_FILTERS,
@@ -64,6 +70,9 @@ export default async function MedicationsPage(props: {
     id: c.id,
     name: c.name,
   }));
+  const situationOptions = mergedSituationOptions(
+    getSituations(profile.id)
+  ).map((o) => o.name);
   const medCount = data.current.length + data.past.length;
   // The unconfirmed slice mirrors getMedicationsMissingRxcuiCount's predicate.
   const shownCurrent =
@@ -90,158 +99,160 @@ export default async function MedicationsPage(props: {
 
   return (
     <PageContainer width="reading" className="mx-auto">
-      {/* Provider picker options for the medication add/edit forms. */}
-      <ProviderDatalist names={getProviderNames()} />
-      <MedicationAddWorkspace
-        subtitle={
-          medCount === 0
-            ? "Track prescriptions, over-the-counter medications, doses, and refills."
-            : subtitle
-        }
-        action={addSupplement}
-        allSupplements={data.allSupplements}
-        stackItems={data.stackItems}
-        pgxVariants={data.pgxVariants}
-        trainingRestricted={data.trainingRestricted}
-        pediatric={data.pediatric}
-        age={data.age}
-        todayStr={data.todayStr}
-        conditions={medConditions}
-      />
+      <ProviderOptionsProvider providers={getPickerProviders()}>
+        <SituationOptionsProvider options={situationOptions}>
+          <MedicationAddWorkspace
+            subtitle={
+              medCount === 0
+                ? "Track prescriptions, over-the-counter medications, doses, and refills."
+                : subtitle
+            }
+            action={addSupplement}
+            allSupplements={data.allSupplements}
+            stackItems={data.stackItems}
+            pgxVariants={data.pgxVariants}
+            trainingRestricted={data.trainingRestricted}
+            pediatric={data.pediatric}
+            age={data.age}
+            todayStr={data.todayStr}
+            conditions={medConditions}
+          />
 
-      <div className="space-y-5">
-        {/* 1. Today panel (leads). */}
-        <MedicationsTodayPanel
-          scheduled={data.current}
-          prnToday={data.prnToday}
-          taken={data.taken}
-          skipped={data.skipped}
-          nowHhmm={data.nowHhmm}
-          nowIso={data.nowIso}
-          timeFormat={formatPrefs.timeFormat}
-          timezone={data.tz}
-        />
+          <div className="space-y-5">
+            {/* 1. Today panel (leads). */}
+            <MedicationsTodayPanel
+              scheduled={data.current}
+              prnToday={data.prnToday}
+              taken={data.taken}
+              skipped={data.skipped}
+              nowHhmm={data.nowHhmm}
+              nowIso={data.nowIso}
+              timeFormat={formatPrefs.timeFormat}
+              timezone={data.tz}
+            />
 
-        {/* 2. Safety strip — medication-related interaction, PGx, and ototoxic
+            {/* 2. Safety strip — medication-related interaction, PGx, and ototoxic
             warnings. Cross-kind interactions also appear on Supplements; medication-only
             findings stay here. */}
-        <IntakeWarnings
-          interactionWarnings={data.interactionWarnings}
-          pgxWarnings={data.pgxWarnings}
-          ototoxicWarnings={data.ototoxicWarnings}
-          allergyWarnings={data.allergyWarnings}
-          coverage={data.coverage}
-        />
+            <IntakeWarnings
+              interactionWarnings={data.interactionWarnings}
+              pgxWarnings={data.pgxWarnings}
+              ototoxicWarnings={data.ototoxicWarnings}
+              allergyWarnings={data.allergyWarnings}
+              coverage={data.coverage}
+            />
 
-        {/* 3. Current medications stay primary. Past medications use their own muted,
+            {/* 3. Current medications stay primary. Past medications use their own muted,
             collapsed surface below so the two states are distinguishable at a glance.
             Under the needs-rxcui filter the list narrows to the unconfirmed slice
             (same predicate as the data-quality gather: active, no/blank rxcui). */}
-        {filter === "needs-rxcui" && (
-          <p
-            className="mb-3 flex flex-wrap items-center gap-2 text-sm text-slate-600 dark:text-slate-300"
-            data-testid="medications-filter-notice"
-          >
-            Showing medications without a confirmed RxNorm code — open each one
-            and use “Find RxNorm code”.
-            <Link
-              href={MEDICATIONS_HREF}
-              className="font-medium text-brand-700 hover:underline dark:text-brand-300"
-            >
-              Show all
-            </Link>
-          </p>
-        )}
-        <CardGroup
-          title="Current medications"
-          description={`${shownCurrent.length}${filter ? ` of ${data.current.length}` : ""} active medication${shownCurrent.length === 1 ? "" : "s"} · Dose schedules, refill status, and recent adherence.`}
-          action={
-            data.current.length > 0 ? <MedicationListActions /> : undefined
-          }
-          data-testid="medication-list"
-        >
-          <CardGroupSection>
-            {shownCurrent.length > 0 ? (
-              <div className="divide-y divide-black/5 dark:divide-white/5">
-                {shownCurrent.map((m) => (
-                  <MedicationRow
-                    key={m.med.id}
-                    med={m.med}
-                    doses={m.doses}
-                    courses={m.courses}
-                    sideEffects={m.sideEffects}
-                    strip={m.strip}
-                    refillRate={m.refillRate}
-                    prnRedoseLine={m.prnRedoseLine}
-                    monitoringNote={m.monitoringNote}
-                    todayStr={data.todayStr}
-                  />
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                {filter === "needs-rxcui"
-                  ? "Every current medication has a confirmed RxNorm code."
-                  : "No current medications yet."}
+            {filter === "needs-rxcui" && (
+              <p
+                className="mb-3 flex flex-wrap items-center gap-2 text-sm text-slate-600 dark:text-slate-300"
+                data-testid="medications-filter-notice"
+              >
+                Showing medications without a confirmed RxNorm code — open each
+                one and use “Find RxNorm code”.
+                <Link
+                  href={MEDICATIONS_HREF}
+                  className="font-medium text-brand-700 hover:underline dark:text-brand-300"
+                >
+                  Show all
+                </Link>
               </p>
             )}
-          </CardGroupSection>
-        </CardGroup>
-
-        {data.past.length > 0 && !filter ? (
-          <details className="card group" data-testid="past-medications">
-            <summary className="-m-2 flex w-[calc(100%+1rem)] cursor-pointer list-none items-center justify-between gap-4 rounded-lg p-2 outline-none transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500/40 [&::-webkit-details-marker]:hidden dark:hover:bg-ink-850">
-              <span className="min-w-0">
-                <span className="block text-base font-semibold text-slate-700 dark:text-slate-200">
-                  Past medications
-                </span>
-                <span className="mt-1 block text-sm text-slate-500 dark:text-slate-400">
-                  {data.past.length} completed or stopped
-                </span>
-              </span>
-              <IconChevronDown className="h-4 w-4 shrink-0 text-slate-500 transition-transform group-open:rotate-180 dark:text-slate-400" />
-            </summary>
-            <div className="mt-5 divide-y divide-black/5 border-t border-black/5 pt-1 dark:divide-white/5 dark:border-white/5">
-              {data.past.map((m) => (
-                <MedicationRow
-                  key={m.med.id}
-                  med={m.med}
-                  doses={m.doses}
-                  courses={m.courses}
-                  sideEffects={m.sideEffects}
-                  strip={m.strip}
-                  refillRate={m.refillRate}
-                  prnRedoseLine={m.prnRedoseLine}
-                  todayStr={data.todayStr}
-                />
-              ))}
-            </div>
-          </details>
-        ) : null}
-
-        {/* 4. Maintenance suggestions share one review surface instead of floating rows. */}
-        {hasReviewItems ? (
-          <CardGroup
-            title="Review medication list"
-            description="Resolve medications that may no longer be current."
-            data-testid="medication-review"
-          >
-            {(data.dormantPrn.length > 0 ||
-              data.dismissedDormantPrn.length > 0) && (
+            <CardGroup
+              title="Current medications"
+              description={`${shownCurrent.length}${filter ? ` of ${data.current.length}` : ""} active medication${shownCurrent.length === 1 ? "" : "s"} · Dose schedules, refill status, and recent adherence.`}
+              action={
+                data.current.length > 0 ? <MedicationListActions /> : undefined
+              }
+              data-testid="medication-list"
+            >
               <CardGroupSection>
-                <DormantPrnSweep
-                  suggestions={data.dormantPrn}
-                  dismissed={data.dismissedDormantPrn}
-                />
+                {shownCurrent.length > 0 ? (
+                  <div className="divide-y divide-black/5 dark:divide-white/5">
+                    {shownCurrent.map((m) => (
+                      <MedicationRow
+                        key={m.med.id}
+                        med={m.med}
+                        doses={m.doses}
+                        courses={m.courses}
+                        sideEffects={m.sideEffects}
+                        strip={m.strip}
+                        refillRate={m.refillRate}
+                        prnRedoseLine={m.prnRedoseLine}
+                        monitoringNote={m.monitoringNote}
+                        todayStr={data.todayStr}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    {filter === "needs-rxcui"
+                      ? "Every current medication has a confirmed RxNorm code."
+                      : "No current medications yet."}
+                  </p>
+                )}
               </CardGroupSection>
-            )}
-          </CardGroup>
-        ) : null}
+            </CardGroup>
 
-        {!hasSafetyWarnings ? (
-          <IntakeSafetyScope coverage={data.coverage} />
-        ) : null}
-      </div>
+            {data.past.length > 0 && !filter ? (
+              <details className="card group" data-testid="past-medications">
+                <summary className="-m-2 flex w-[calc(100%+1rem)] cursor-pointer list-none items-center justify-between gap-4 rounded-lg p-2 outline-none transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500/40 [&::-webkit-details-marker]:hidden dark:hover:bg-ink-850">
+                  <span className="min-w-0">
+                    <span className="block text-base font-semibold text-slate-700 dark:text-slate-200">
+                      Past medications
+                    </span>
+                    <span className="mt-1 block text-sm text-slate-500 dark:text-slate-400">
+                      {data.past.length} completed or stopped
+                    </span>
+                  </span>
+                  <IconChevronDown className="h-4 w-4 shrink-0 text-slate-500 transition-transform group-open:rotate-180 dark:text-slate-400" />
+                </summary>
+                <div className="mt-5 divide-y divide-black/5 border-t border-black/5 pt-1 dark:divide-white/5 dark:border-white/5">
+                  {data.past.map((m) => (
+                    <MedicationRow
+                      key={m.med.id}
+                      med={m.med}
+                      doses={m.doses}
+                      courses={m.courses}
+                      sideEffects={m.sideEffects}
+                      strip={m.strip}
+                      refillRate={m.refillRate}
+                      prnRedoseLine={m.prnRedoseLine}
+                      todayStr={data.todayStr}
+                    />
+                  ))}
+                </div>
+              </details>
+            ) : null}
+
+            {/* 4. Maintenance suggestions share one review surface instead of floating rows. */}
+            {hasReviewItems ? (
+              <CardGroup
+                title="Review medication list"
+                description="Resolve medications that may no longer be current."
+                data-testid="medication-review"
+              >
+                {(data.dormantPrn.length > 0 ||
+                  data.dismissedDormantPrn.length > 0) && (
+                  <CardGroupSection>
+                    <DormantPrnSweep
+                      suggestions={data.dormantPrn}
+                      dismissed={data.dismissedDormantPrn}
+                    />
+                  </CardGroupSection>
+                )}
+              </CardGroup>
+            ) : null}
+
+            {!hasSafetyWarnings ? (
+              <IntakeSafetyScope coverage={data.coverage} />
+            ) : null}
+          </div>
+        </SituationOptionsProvider>
+      </ProviderOptionsProvider>
     </PageContainer>
   );
 }
