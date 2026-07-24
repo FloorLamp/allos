@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import path from "node:path";
-import { settledClick } from "./helpers";
+import { settledClick, followLink, expectNoClippedContent } from "./helpers";
 import { loginAs } from "./nav";
 import {
   E2E_MEMBER_PASSWORD,
@@ -51,6 +51,30 @@ function resetMultiFixture(): { ownerId: number; sharedId: number } {
       ).run(name, pid);
     }
     return { ownerId, sharedId };
+  } finally {
+    db.close();
+  }
+}
+
+// Reset the multi login's one-time multiview-hint "seen" flag (login_settings) so the
+// hint test is repeat-safe (#868 fixture ownership) — dismissing it persists, and a
+// re-run/retry would otherwise never see the hint. Same short-lived busy-timeout
+// connection as resetMultiFixture.
+function resetMultiviewHint(): void {
+  const dbPath =
+    process.env.ALLOS_DB_PATH ??
+    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const db = new Database(dbPath);
+  try {
+    db.pragma("busy_timeout = 5000");
+    const login = db
+      .prepare("SELECT id FROM logins WHERE username = ?")
+      .get(E2E_LOGIN_MULTI) as { id: number } | undefined;
+    if (login) {
+      db.prepare(
+        "DELETE FROM login_settings WHERE login_id = ? AND key = 'hint_multiview_seen'"
+      ).run(login.id);
+    }
   } finally {
     db.close();
   }
@@ -132,6 +156,134 @@ test.describe("Multi-profile viewing (issue #1096)", () => {
     await settledClick(page, page.getByTestId(`view-chip-remove-${sharedId}`));
     await expect(page.getByTestId("profile-view-strip")).toHaveCount(0);
     await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(0);
+
+    await page.context().close();
+  });
+
+  // Add the shared profile to the view via the profile menu (shared setup for the
+  // presentation tests below). The view-set persists on the session, so a fresh
+  // navigation reloads multi-view with the profile menu popover closed — no stale
+  // overlay to intercept a later click. Returns after the multi-view strip is showing.
+  async function enterMultiView(page: Page, sharedId: number): Promise<void> {
+    await page.goto("/upcoming");
+    await openProfileMenu(page);
+    await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));
+    await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+    await page.goto("/upcoming");
+    await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+  }
+
+  test("chips only on non-acting rows + phone-width title integrity (issue #1327 fix 1)", async ({
+    browser,
+  }) => {
+    test.slow();
+    const { ownerId, sharedId } = resetMultiFixture();
+
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_MULTI,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    await enterMultiView(page, sharedId);
+
+    // Chip only NON-acting rows: the shared (non-acting) profile's dose row carries a
+    // chip; the owner's own (acting) rows NEVER do — the strip already names who's
+    // acting. (Each profile has several due rows here, so scope the positive check to a
+    // named row and assert the owner's chip is absent anywhere.)
+    const sharedRowDesktop = page
+      .locator('[data-testid^="upcoming-item-"]')
+      .filter({ hasText: MULTI_SHARED_DOSE });
+    await expect(
+      sharedRowDesktop.getByTestId(`subject-chip-${sharedId}`)
+    ).toBeVisible();
+    await expect(
+      page.locator(`[data-testid="subject-chip-${ownerId}"]`)
+    ).toHaveCount(0);
+
+    // Phone width: the chip drops to its own line and the title is NOT crushed to an
+    // ellipsis (the "C…" regression). Assert the non-acting row's title is not
+    // truncated (its content fits its box) and nothing overflows the clipped shell.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/upcoming");
+    const sharedRow = page
+      .locator('[data-testid^="upcoming-item-"]')
+      .filter({ hasText: MULTI_SHARED_DOSE });
+    await expect(sharedRow).toBeVisible();
+    await expect(
+      sharedRow.getByTestId(`subject-chip-${sharedId}`)
+    ).toBeVisible();
+    const titleLink = sharedRow.getByRole("link", {
+      name: MULTI_SHARED_DOSE,
+      exact: false,
+    });
+    const truncated = await titleLink.evaluate(
+      (el) => el.scrollWidth > el.clientWidth + 1
+    );
+    expect(truncated, "title crushed to an ellipsis at 390px").toBe(false);
+    await expectNoClippedContent(page);
+
+    await page.context().close();
+  });
+
+  test("by-person toggle groups the merged list under per-member headers (issue #1327 fix 2)", async ({
+    browser,
+  }) => {
+    test.slow();
+    const { ownerId, sharedId } = resetMultiFixture();
+
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_MULTI,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    await enterMultiView(page, sharedId);
+
+    // Default is interleaved (date bands, no per-member sections).
+    await expect(page.getByTestId("upcoming-mode-toggle")).toBeVisible();
+    await expect(page.getByTestId("by-person-view")).toHaveCount(0);
+
+    // Switch to by-person: each member gets its own section with its own dose.
+    await followLink(
+      page,
+      page.getByTestId("mode-by-person"),
+      /group=by-person/
+    );
+    await expect(page.getByTestId("by-person-view")).toBeVisible();
+    const ownerSection = page.getByTestId(`member-section-${ownerId}`);
+    const sharedSection = page.getByTestId(`member-section-${sharedId}`);
+    await expect(ownerSection).toBeVisible();
+    await expect(sharedSection).toBeVisible();
+    await expect(ownerSection).toContainText(MULTI_OWNER_DOSE);
+    await expect(sharedSection).toContainText(MULTI_SHARED_DOSE);
+
+    // Toggle back to interleaved.
+    await followLink(page, page.getByTestId("mode-interleaved"), /\/upcoming$/);
+    await expect(page.getByTestId("by-person-view")).toHaveCount(0);
+
+    await page.context().close();
+  });
+
+  test("one-time multiview hint dismisses once and stays gone (issue #1327 fix 7)", async ({
+    browser,
+  }) => {
+    test.slow();
+    resetMultiFixture();
+    resetMultiviewHint();
+
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_MULTI,
+      password: E2E_MEMBER_PASSWORD,
+    });
+
+    // Single-view default with a multi-profile login → the discoverability hint shows.
+    await page.goto("/upcoming");
+    await expect(page.getByTestId("multiview-hint")).toBeVisible();
+
+    // Dismiss it — the hint disappears.
+    await settledClick(page, page.getByTestId("multiview-hint-dismiss"));
+    await expect(page.getByTestId("multiview-hint")).toHaveCount(0);
+
+    // And stays gone across a reload (the per-login "seen" flag persisted).
+    await page.goto("/upcoming");
+    await expect(page.getByTestId("multiview-hint")).toHaveCount(0);
 
     await page.context().close();
   });
