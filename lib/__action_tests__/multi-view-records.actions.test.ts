@@ -16,7 +16,28 @@ import {
   deleteCondition,
 } from "@/app/(app)/conditions/actions";
 import { updateCareGoal, deleteCareGoal } from "@/app/(app)/care-goals/actions";
+import { updateRecord, deleteRecord } from "@/app/(app)/medical/actions";
 import { createLogin, createProfile, actAs, fd } from "./harness";
+
+function seedRecord(profileId: number, name: string): number {
+  return Number(
+    db
+      .prepare(
+        `INSERT INTO medical_records
+           (profile_id, date, category, name, value, unit, canonical_name, value_num)
+         VALUES (?, '2024-05-01', 'lab', ?, '42', 'ng/mL', ?, 42)`
+      )
+      .run(profileId, name, name).lastInsertRowid
+  );
+}
+
+function recordName(id: number): string | undefined {
+  return (
+    db.prepare("SELECT name FROM medical_records WHERE id = ?").get(id) as
+      | { name: string }
+      | undefined
+  )?.name;
+}
 
 function seedCondition(profileId: number, name: string): number {
   return Number(
@@ -126,5 +147,80 @@ describe("Tier-1 multi-view record writes gate the ITEM's profile (#1328)", () =
     expect(
       db.prepare("SELECT id FROM care_goals WHERE id = ?").get(goalId)
     ).toBeUndefined();
+  });
+});
+
+describe("Multi-view Biomarkers table writes gate the ITEM's profile (#1331)", () => {
+  it("updateRecord with posted profile_id edits the ITEM's reading, not the acting one", async () => {
+    const login = createLogin({ role: "admin" });
+    const acting = createProfile("Acting", login.id);
+    const other = createProfile("Other", login.id);
+    actAs(login, acting);
+    const recId = seedRecord(other.id, "Vitamin D");
+
+    const res = await updateRecord(
+      fd({
+        id: recId,
+        date: "2024-05-01",
+        name: "Vitamin D (updated)",
+        category: "lab",
+        profile_id: other.id,
+      })
+    );
+    expect(res.ok).toBe(true);
+    expect(recordName(recId)).toBe("Vitamin D (updated)");
+    // The reading stayed on the OTHER profile — the acting profile got nothing.
+    const actingRows = db
+      .prepare("SELECT COUNT(*) AS n FROM medical_records WHERE profile_id = ?")
+      .get(acting.id) as { n: number };
+    expect(actingRows.n).toBe(0);
+  });
+
+  it("deleteRecord with posted profile_id deletes the ITEM's reading", async () => {
+    const login = createLogin({ role: "admin" });
+    const acting = createProfile("Acting", login.id);
+    const other = createProfile("Other", login.id);
+    actAs(login, acting);
+    const recId = seedRecord(other.id, "Ferritin");
+
+    const { undoId } = await deleteRecord(
+      fd({ id: recId, profile_id: other.id })
+    );
+    expect(undoId).not.toBeNull();
+    expect(recordName(recId)).toBeUndefined();
+  });
+
+  it("refuses an edit targeting an UNGRANTED profile before any write", async () => {
+    const login = createLogin({ role: "member" });
+    const acting = createProfile("Member self", login.id);
+    const stranger = createProfile("Stranger");
+    actAs(login, acting);
+    const recId = seedRecord(stranger.id, "Glucose");
+
+    await expect(
+      updateRecord(
+        fd({
+          id: recId,
+          date: "2024-05-01",
+          name: "Hacked",
+          category: "lab",
+          profile_id: stranger.id,
+        })
+      )
+    ).rejects.toThrow();
+    expect(recordName(recId)).toBe("Glucose");
+  });
+
+  it("with NO profile_id falls back to the acting profile (single-view path)", async () => {
+    const login = createLogin({ role: "admin" });
+    const acting = createProfile("Acting", login.id);
+    actAs(login, acting);
+    const recId = seedRecord(acting.id, "HDL");
+
+    const res = await updateRecord(
+      fd({ id: recId, date: "2024-05-01", name: "HDL (edited)", category: "lab" })
+    );
+    expect(res.ok).toBe(true);
+    expect(recordName(recId)).toBe("HDL (edited)");
   });
 });
