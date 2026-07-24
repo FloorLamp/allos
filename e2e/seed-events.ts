@@ -162,6 +162,8 @@ import {
   E2E_LOGIN_HH_VIEWER,
   E2E_LOGIN_ILLNESS_CAREGIVER,
   E2E_LOGIN_ILLNESS_RO,
+  E2E_LOGIN_VIEWONLY_READ,
+  E2E_LOGIN_VIEWONLY_WRITE,
   E2E_LOGIN_CONDREV,
   CONDITION_REVIEW_PROFILE,
   E2E_LOGIN_REASON,
@@ -3653,6 +3655,12 @@ if (rileyId) {
     "e2e: seeded household-rollup + illness-episode caregiver fixtures (#868)"
   );
 }
+
+// View-only access (#33): two dedicated logins granted ONLY profile 1, one per access
+// level, replacing view-only-access.spec's runtime Family-UI member creation (the
+// #830/#1111 census flake). Profile 1 is each login's sole grant → its active profile.
+seedMemberLogin(E2E_LOGIN_VIEWONLY_READ, 1, "read");
+seedMemberLogin(E2E_LOGIN_VIEWONLY_WRITE, 1, "write");
 
 // ── Household visit + illness history fixtures (#1009) ────────────────────────
 // A caregiver granted a well parent + a currently-sick child, each carrying PAST

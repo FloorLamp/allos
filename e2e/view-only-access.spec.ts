@@ -1,5 +1,10 @@
-import { test, expect, type Browser, type Page } from "@playwright/test";
-import { createLoginViaFamily, setGrantsViaFamily } from "./family-helpers";
+import { test, expect } from "@playwright/test";
+import { loginAs } from "./nav";
+import {
+  E2E_MEMBER_PASSWORD,
+  E2E_LOGIN_VIEWONLY_READ,
+  E2E_LOGIN_VIEWONLY_WRITE,
+} from "./fixture-logins";
 
 // View-only access (issue #33). A profile grant now carries an access LEVEL:
 // 'write' (read + edit — the historical behavior) or 'read' (view-only). These
@@ -8,59 +13,25 @@ import { createLoginViaFamily, setGrantsViaFamily } from "./family-helpers";
 //      "read-only" badge, but a mutating Server Action is REJECTED server-side
 //      (requireWriteAccess() redirects to the app root before any write);
 //   2. a write member is unaffected — the same mutation succeeds.
-// The default specs run authenticated as admin (storageState); here we create the
-// member logins through the real Family UI, then sign in as them in fresh,
-// cookie-less contexts.
-
-// Create a member login granted the seeded profile (id 1, which carries the full
-// sample record) at the given access level, driving the Settings → Family screen
-// through the shared family helpers (which harden the onClick+router.refresh()
-// create/grant against the hydration swallow and toaster-poll false-settle —
-// #830/#1111). Returns the credentials.
-async function createMember(
-  adminPage: Page,
-  access: "read" | "write"
-): Promise<{ username: string; password: string }> {
-  const creds = await createLoginViaFamily(adminPage, {
-    username: `${access}er${Date.now()}${Math.floor(Math.random() * 1000)}`,
-  });
-  await setGrantsViaFamily(adminPage, creds.username, {
-    profileId: 1,
-    access,
-  });
-  return creds;
-}
-
-// Sign in as the given credentials in a brand-new, explicitly cookie-less context
-// (so it does NOT inherit the admin storageState). Returns the member's page.
-async function loginAs(
-  browser: Browser,
-  creds: { username: string; password: string }
-): Promise<Page> {
-  const ctx = await browser.newContext({
-    storageState: { cookies: [], origins: [] },
-  });
-  const page = await ctx.newPage();
-  await page.goto("/login");
-  await page.fill('input[name="username"]', creds.username);
-  await page.fill('input[name="password"]', creds.password);
-  await page.click('button[type="submit"]');
-  await page.waitForURL((u) => !u.pathname.startsWith("/login"), {
-    timeout: 20_000,
-  });
-  return page;
-}
+// The two members are DEDICATED, seeded logins (e2e/seed-events.ts + fixture-logins.ts),
+// each granted ONLY profile 1 (the shared sample record) at its access level — so profile
+// 1 is its sole/active profile on sign-in. This replaces the former runtime member
+// creation through the Family UI (createLoginViaFamily/setGrantsViaFamily), whose
+// onClick+router.refresh() create/grant went stale under CI load — the #830/#1111 census
+// flake. We sign in as each in a fresh, cookie-less context (loginAs) so it never touches
+// the shared admin storageState.
 
 test.describe("View-only access (issue #33)", () => {
   test("a read-only member sees data but a mutation is rejected server-side", async ({
-    page,
     browser,
   }) => {
-    // Local `next dev` compiles the family/login/trends routes on first hit.
+    // Local `next dev` compiles the login/trends/medications routes on first hit.
     test.slow();
 
-    const viewer = await createMember(page, "read");
-    const memberPage = await loginAs(browser, viewer);
+    const memberPage = await loginAs(browser, {
+      username: E2E_LOGIN_VIEWONLY_READ,
+      password: E2E_MEMBER_PASSWORD,
+    });
 
     // READ works: the profile menu shows the "read-only" badge, and the profile's
     // data renders (the Trends → Body vitals quick-add form is present).
@@ -109,13 +80,14 @@ test.describe("View-only access (issue #33)", () => {
   });
 
   test("a write member is unaffected — the same mutation succeeds", async ({
-    page,
     browser,
   }) => {
     test.slow();
 
-    const editor = await createMember(page, "write");
-    const memberPage = await loginAs(browser, editor);
+    const memberPage = await loginAs(browser, {
+      username: E2E_LOGIN_VIEWONLY_WRITE,
+      password: E2E_MEMBER_PASSWORD,
+    });
 
     await memberPage.goto("/trends?tab=body");
     // A write grant shows NO read-only badge.
