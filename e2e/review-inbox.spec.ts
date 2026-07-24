@@ -140,13 +140,26 @@ test.describe("Data → Review import inbox", () => {
     await page.goto("/data?section=review");
     const feed = page.getByTestId("import-feed");
 
-    // The successfully-extracted document appears with its produced-item count
-    // and links to its /import/[id] verify/detail view. "items", not "records":
-    // the tally spans every clinical kind an import writes (#212).
+    // The successfully-extracted document links to its /import/[id] verify/detail
+    // view. The seed's e2e-labs.pdf carries an extracted_count SNAPSHOT of 7 but
+    // NO live rows — the #1339 drift — so the feed shows the reconciled "0 of 7
+    // items" (live of extracted), never a bare "7 items" that would contradict the
+    // detail page one click away. "items", not "records": the tally spans every
+    // clinical kind an import writes (#212).
     const docLink = feed.getByRole("link", { name: "e2e-labs.pdf" });
     await expect(docLink).toBeVisible();
     await expect(docLink).toHaveAttribute("href", /\/import\/\d+/);
-    await expect(feed.getByText("7 items", { exact: true })).toBeVisible();
+    // Scope to e2e-labs.pdf's own row: it shows the reconciled "0 of 7 items", never
+    // a bare "7 items" that reads as a current count. (Other seed docs legitimately
+    // show "N items" when their live count matches the snapshot, so don't assert a
+    // page-wide absence of "7 items".)
+    const labsRow = feed
+      .getByRole("listitem")
+      .filter({ hasText: "e2e-labs.pdf" });
+    await expect(
+      labsRow.getByText("0 of 7 items", { exact: true })
+    ).toBeVisible();
+    await expect(labsRow.getByText("7 items", { exact: true })).toHaveCount(0);
 
     // A rejected upload (inserted straight into a terminal 'failed' state — the
     // path the toast bug missed) still surfaces in the feed.
@@ -168,6 +181,15 @@ test.describe("Data → Review import inbox", () => {
     await expect(
       page.getByRole("link", { name: "Back to Review" })
     ).toBeVisible({ timeout: 15_000 });
+    // The detail page reconciles the SAME two numbers (#1339/#221): the snapshot
+    // vs what remains, naming why the rows are gone — not the bare, contradictory
+    // "This import produced no records."
+    await expect(page.getByTestId("produced-summary")).toHaveText(
+      "7 extracted · 0 remain (7 deleted, merged, or reassigned)"
+    );
+    await expect(
+      page.getByText("This import produced no records.")
+    ).toHaveCount(0);
   });
 
   test("the re-run-extraction-on-all button previews the AI cost before confirming", async ({

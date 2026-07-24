@@ -23,6 +23,8 @@ import type {
 } from "../types/medical";
 import {
   interleaveImportLog,
+  producedTotal,
+  documentLogStatus,
   type DocumentProducedCounts,
 } from "../import-log";
 import {
@@ -127,7 +129,20 @@ export function getImportDocumentsFeed(
   profileId: number,
   limit = 40
 ): FeedEntry[] {
-  const documents = getImportLogDocuments(profileId).map(documentEntry);
+  const documents = getImportLogDocuments(profileId).map((d) =>
+    documentEntry({
+      ...d,
+      // The LIVE footprint count, so the feed reconciles the extracted_count
+      // snapshot against what remains (#1339). Only DONE documents render a count,
+      // so skip the ~18-COUNT footprint read for in-flight/failed rows (it would be
+      // 0 anyway). producedTotal(getDocumentProduced) is the SAME footprint the
+      // detail page sums, so the two surfaces can't disagree.
+      live_count:
+        documentLogStatus(d.extraction_status) === "done"
+          ? producedTotal(getDocumentProduced(profileId, d.id))
+          : 0,
+    })
+  );
   const jobs = getImportLogJobs(profileId).map(jobEntry);
   return mergeFeed([...documents, ...jobs]).slice(0, limit);
 }

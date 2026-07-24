@@ -37,6 +37,15 @@ export const MULTIPART_OVERHEAD_MARGIN = 1024 * 1024; // 1MiB
 // the client form and the server action share one number.
 export const MEDICAL_UPLOAD_BATCH_CAP = 20;
 
+// The keyed toast slot the medical-upload lifecycle occupies (#1315). UploadForm
+// posts its "Uploaded — reading in the background" confirmation under this key; the
+// headless ExtractionToaster dismisses it the moment the first real extraction
+// result arrives and posts its own per-document toast, so the slot UPGRADES in
+// place instead of the two systems stacking. One fixed key (not a per-batch id):
+// this is a single-user surface where a second concurrent upload batch isn't a real
+// scenario, and the poller has no way to observe a per-batch id anyway.
+export const MEDICAL_UPLOAD_TOAST_KEY = "medical-upload";
+
 // Cheap, PRE-BUFFER signals that an upload MIGHT be a deterministic health record
 // (CCD/CDA XML, MyChart XDM zip, SMART Health Card, FHIR bundle) — derived only
 // from the filename extension and the client-declared MIME type, both known from
