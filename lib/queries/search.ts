@@ -7,9 +7,16 @@ import { vaccineDisplayName } from "../immunization-catalog";
 import {
   matchTier,
   rankAndGroup,
+  flattenHits,
   type SearchGroup,
   type SearchHit,
 } from "../search-rank";
+import {
+  extractQueryTerms,
+  buildRetrievalSet,
+  MAX_CITATIONS,
+  type RecordCitation,
+} from "../record-qa";
 import type { SupplementKind } from "../types";
 import { ENCOUNTER_REPRESENTATIVE_IDS } from "./medical";
 import {
@@ -755,4 +762,36 @@ export function searchAll(profileId: number, rawQuery: string): SearchGroup[] {
   }
 
   return rankAndGroup(hits, query, PER_DOMAIN_CAP);
+}
+
+// The DETERMINISTIC retrieval seam for grounded record Q&A (issue #878, Phase 2). Turn
+// a natural-language question into a capped, numbered citation set for the ACTIVE
+// profile — the model never touches the DB. Pure `extractQueryTerms` picks the salient
+// search terms; each runs the SAME profile-scoped `searchAll` fan-out every surface
+// uses (so profile scoping is inherited, not re-implemented — no new `.prepare`); the
+// per-term hits are unioned (de-duped by the hit's stable key), pages are dropped (they
+// aren't records), and the pure `buildRetrievalSet` numbers the top MAX_CITATIONS.
+// profileId comes from the session's active profile (see the server action) — the
+// prompt built downstream carries ONLY these rows, so there is no cross-profile leak.
+export function retrieveRecordCitations(
+  profileId: number,
+  question: string
+): RecordCitation[] {
+  const terms = extractQueryTerms(question);
+  if (terms.length === 0) return [];
+  const seen = new Set<string>();
+  const hits: SearchHit[] = [];
+  for (const term of terms) {
+    for (const hit of flattenHits(searchAll(profileId, term))) {
+      // Pages are navigation targets, not the person's records — never a citation.
+      if (hit.domain === "page") continue;
+      if (seen.has(hit.key)) continue;
+      seen.add(hit.key);
+      hits.push(hit);
+    }
+    // Enough candidates gathered — the ranker already ordered each term's hits, so
+    // stop fanning out once we can fill the cap.
+    if (hits.length >= MAX_CITATIONS) break;
+  }
+  return buildRetrievalSet(hits);
 }

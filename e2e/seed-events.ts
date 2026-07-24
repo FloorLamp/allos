@@ -138,6 +138,9 @@ import {
   CONDITION_REVIEW_PROFILE,
   E2E_LOGIN_REASON,
   REASON_MODEL_PROFILE,
+  E2E_LOGIN_ASK,
+  ASK_RECORDS_PROFILE,
+  ASK_RECORDS_MED,
   E2E_LOGIN_PRESENCE,
   PRESENCE_PROFILE,
   E2E_LOGIN_NOTIF,
@@ -3687,6 +3690,32 @@ seedMemberLogin(E2E_LOGIN_NOTIF, notifProfileId, "write");
 console.log(
   `e2e: seeded reason-model fixture — profile ${reasonModelId} (#656)`
 );
+
+// ASK_RECORDS (#878, Phase 2): a dedicated adult profile whose records answer the
+// canonical Q&A example — "when did I last take antibiotics?". An antibiotics
+// medication (notes name it a course, so the deterministic search matches "antibiotics"
+// via notes) plus a matching urgent-care visit. The palette's "Ask about your records"
+// retrieves them and renders a LINKED answer (offline structured floor on the keyless
+// e2e DB). Idempotent: clear the seeded rows first so a reused server re-seeds cleanly.
+// Isolated + read-only so it's repeat-safe.
+const askRecordsId = fixtureProfileId(ASK_RECORDS_PROFILE);
+db.prepare(`DELETE FROM intake_items WHERE profile_id = ? AND name = ?`).run(
+  askRecordsId,
+  ASK_RECORDS_MED
+);
+db.prepare(
+  `DELETE FROM encounters WHERE profile_id = ? AND reason LIKE '%prescribed antibiotics%'`
+).run(askRecordsId);
+db.prepare(
+  `INSERT INTO intake_items (profile_id, name, kind, condition, priority, active, source, notes)
+   VALUES (?, ?, 'medication', 'daily', 'high', 1, 'manual', 'Antibiotics course for a sinus infection')`
+).run(askRecordsId, ASK_RECORDS_MED);
+db.prepare(
+  `INSERT INTO encounters (profile_id, date, type, reason)
+   VALUES (?, date('now', '-2 months'), 'Urgent care', 'Sinus infection — prescribed antibiotics')`
+).run(askRecordsId);
+seedMemberLogin(E2E_LOGIN_ASK, askRecordsId, "read");
+console.log(`e2e: seeded record-QA fixture — profile ${askRecordsId} (#878)`);
 
 // PROTEIN_QUICKADD_PROFILE (#824): a dedicated adult profile for the protein-grams
 // quick-add spec. Seeds a bodyweight (so the adequacy target scales) + a couple of

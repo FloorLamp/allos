@@ -52,9 +52,13 @@ export type AiFeature =
   // Free-text symptom mapping (issue #877): a typed/Telegram sentence mapped onto the
   // EXISTING symptom vocabulary. Extraction only — suggest-only, never a write.
   | "symptom-map"
-  // A "why is this flagged?" explainer (issue #878): light-tier narration over a
-  // finding's OWN typed reason payload. Narrates, never computes a fact or judges.
-  | "explain";
+  // A "why is this flagged?" explainer (issue #878, Phase 1): light-tier narration over
+  // a finding's OWN typed reason payload. Narrates, never computes a fact or judges.
+  | "explain"
+  // Grounded record Q&A (issue #878, Phase 2): light-tier narration over the profile's
+  // OWN retrieved rows, answering with citations. Retrieves + phrases, never computes a
+  // fact; an empty retrieval is a hard "nothing found" refusal (logged skipped).
+  | "ask";
 export type AiStatus = "ok" | "skipped" | "failed";
 
 export interface AiEvent {
