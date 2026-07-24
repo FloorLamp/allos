@@ -10,6 +10,8 @@ import { formatRecordDate } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
 import type { CareGoal } from "@/lib/types";
+import type { Stamped } from "@/lib/scope";
+import type { ListMultiView } from "@/lib/multi-view";
 
 const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<CareGoal>[] => [
   {
@@ -45,14 +47,33 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<CareGoal>[] => [
 ];
 
 // Manage stored care-goal rows: edit in place or delete, on the shared RecordTable.
-export default function CareGoalList({ items }: { items: CareGoal[] }) {
+export default function CareGoalList({
+  items,
+  multiView,
+}: {
+  items: Stamped<CareGoal>[];
+  multiView?: ListMultiView;
+}) {
   return (
     <RecordTable
       items={items}
       columns={buildColumns(useFormatPrefs())}
       emptyMessage="No health goals yet. Add one, or import a MyChart / CCD health record to populate goals set in your records."
+      multiView={
+        multiView
+          ? {
+              actingProfileId: multiView.actingProfileId,
+              subjectOf: (g) => g.subject,
+            }
+          : undefined
+      }
       renderEditForm={(g, done) => (
-        <CareGoalForm action={updateCareGoal} goal={g} onDone={done} />
+        <CareGoalForm
+          action={updateCareGoal}
+          goal={g}
+          profileId={multiView ? g.subject.profileId : undefined}
+          onDone={done}
+        />
       )}
       confirmDelete={(g) => ({
         title: "Delete health goal",
@@ -61,6 +82,7 @@ export default function CareGoalList({ items }: { items: CareGoal[] }) {
       onDelete={async (g) => {
         const fd = new FormData();
         fd.set("id", String(g.id));
+        if (multiView) fd.set("profile_id", String(g.subject.profileId));
         await deleteCareGoal(fd);
       }}
     />

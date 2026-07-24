@@ -88,6 +88,12 @@ import {
   MULTI_SHARED_PROFILE,
   MULTI_OWNER_DOSE,
   MULTI_SHARED_DOSE,
+  MULTI_OWNER_CONDITION,
+  MULTI_SHARED_CONDITION,
+  MULTI_OWNER_ALLERGY,
+  MULTI_SHARED_ALLERGY,
+  MULTI_OWNER_GOAL,
+  MULTI_SHARED_GOAL,
   E2E_LOGIN_OWN,
   OWN_SELF_PROFILE,
   OWN_OTHER_PROFILE,
@@ -5090,6 +5096,51 @@ console.log(
   };
   seedMultiDose(multiOwnerId, MULTI_OWNER_DOSE);
   seedMultiDose(multiSharedId, MULTI_SHARED_DOSE);
+  // Tier-1 multi-view record-list fixtures (#1328): a condition, allergy, and health
+  // goal per profile so the /records + /results record lists render one row per profile.
+  const seedMultiRecords = (profileId: number, tag: string): void => {
+    if (
+      !db
+        .prepare("SELECT 1 FROM conditions WHERE profile_id = ? AND name = ?")
+        .get(profileId, tag)
+    ) {
+      db.prepare(
+        "INSERT INTO conditions (profile_id, name, status, source) VALUES (?, ?, 'active', NULL)"
+      ).run(profileId, tag);
+    }
+  };
+  const seedMultiAllergy = (profileId: number, substance: string): void => {
+    if (
+      !db
+        .prepare(
+          "SELECT 1 FROM allergies WHERE profile_id = ? AND substance = ?"
+        )
+        .get(profileId, substance)
+    ) {
+      db.prepare(
+        "INSERT INTO allergies (profile_id, substance, status, source) VALUES (?, ?, 'active', NULL)"
+      ).run(profileId, substance);
+    }
+  };
+  const seedMultiGoal = (profileId: number, description: string): void => {
+    if (
+      !db
+        .prepare(
+          "SELECT 1 FROM care_goals WHERE profile_id = ? AND description = ?"
+        )
+        .get(profileId, description)
+    ) {
+      db.prepare(
+        "INSERT INTO care_goals (profile_id, description, source) VALUES (?, ?, NULL)"
+      ).run(profileId, description);
+    }
+  };
+  seedMultiRecords(multiOwnerId, MULTI_OWNER_CONDITION);
+  seedMultiRecords(multiSharedId, MULTI_SHARED_CONDITION);
+  seedMultiAllergy(multiOwnerId, MULTI_OWNER_ALLERGY);
+  seedMultiAllergy(multiSharedId, MULTI_SHARED_ALLERGY);
+  seedMultiGoal(multiOwnerId, MULTI_OWNER_GOAL);
+  seedMultiGoal(multiSharedId, MULTI_SHARED_GOAL);
   const multiLoginId = seedMemberLogin(E2E_LOGIN_MULTI, multiOwnerId, "write");
   grantProfile(multiLoginId, multiSharedId, "write");
   console.log(

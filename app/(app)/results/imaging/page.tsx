@@ -1,4 +1,4 @@
-import { requireSession } from "@/lib/auth";
+import { requireScope } from "@/lib/scope";
 import ImagingSection from "../ImagingSection";
 
 export const dynamic = "force-dynamic";
@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 // measurements (DEXA T-scores, calcium score) still live on Biomarkers. Content
 // component moved, not rewritten.
 export default async function ResultsImagingPage() {
-  const { profile } = await requireSession();
+  const scope = await requireScope();
   return (
     <div data-testid="results-imaging">
       <p className="mb-6 text-sm text-slate-500 dark:text-slate-400">
@@ -16,7 +16,7 @@ export default async function ResultsImagingPage() {
         report. Numeric imaging measurements (DEXA T-scores, calcium score)
         still live in Biomarkers.
       </p>
-      <ImagingSection profileId={profile.id} />
+      <ImagingSection scope={scope} />
     </div>
   );
 }

@@ -18,12 +18,15 @@ import {
 import { formatMsv } from "@/lib/radiation-dose";
 import type { ImagingFollowUpSummary } from "@/lib/queries";
 import type { ImagingStudy, ImagingModality } from "@/lib/types";
+import type { Stamped } from "@/lib/scope";
+import type { ListMultiView } from "@/lib/multi-view";
 
 // Columns as a factory so the Follow-up cell can read the per-study follow-up map
 // (issue #700) without a module-level global.
 function buildColumns(
   followUps: Map<number, ImagingFollowUpSummary>,
-  fmt: DisplayFormatPrefs
+  fmt: DisplayFormatPrefs,
+  multiView?: ListMultiView
 ): RecordColumn<ImagingStudy>[] {
   return [
     ...baseColumns(fmt),
@@ -31,9 +34,19 @@ function buildColumns(
       header: "Follow-up",
       headerClassName: "hidden md:table-cell",
       cellClassName: "hidden md:table-cell",
-      cell: (s) => (
-        <TrackFollowUpControl studyId={s.id} existing={followUps.get(s.id)} />
-      ),
+      cell: (s) => {
+        // Follow-ups are an acting-profile-derived feature (#1328 scope-limit): the
+        // followUps map + trackImagingFollowUp both target the acting profile, so a
+        // non-acting member's row shows no track control (a "—") to avoid a wrong-
+        // profile follow-up write. Single view / acting rows keep the control.
+        const pid = (s as { profileId?: number }).profileId;
+        if (multiView && pid != null && pid !== multiView.actingProfileId) {
+          return <span className="text-slate-400">—</span>;
+        }
+        return (
+          <TrackFollowUpControl studyId={s.id} existing={followUps.get(s.id)} />
+        );
+      },
     },
   ];
 }
@@ -127,9 +140,11 @@ const baseColumns = (fmt: DisplayFormatPrefs): RecordColumn<ImagingStudy>[] => [
 export default function ImagingStudyList({
   items,
   followUps = [],
+  multiView,
 }: {
-  items: ImagingStudy[];
+  items: Stamped<ImagingStudy>[];
   followUps?: ImagingFollowUpSummary[];
+  multiView?: ListMultiView;
 }) {
   const [modality, setModality] = useState<ImagingModality | "">("");
   const [region, setRegion] = useState("");
@@ -143,8 +158,8 @@ export default function ImagingStudyList({
   }, [followUps]);
   const fmt = useFormatPrefs();
   const columns = useMemo(
-    () => buildColumns(followUpByStudy, fmt),
-    [followUpByStudy, fmt]
+    () => buildColumns(followUpByStudy, fmt, multiView),
+    [followUpByStudy, fmt, multiView]
   );
 
   const filtered = useMemo(() => {
@@ -184,10 +199,19 @@ export default function ImagingStudyList({
         items={filtered}
         columns={columns}
         emptyMessage="No imaging studies yet. Add one, or upload a radiology report to import it."
+        multiView={
+          multiView
+            ? {
+                actingProfileId: multiView.actingProfileId,
+                subjectOf: (s) => s.subject,
+              }
+            : undefined
+        }
         renderEditForm={(s, done) => (
           <ImagingStudyForm
             action={updateImagingStudy}
             study={s}
+            profileId={multiView ? s.subject.profileId : undefined}
             onDone={done}
           />
         )}
@@ -198,6 +222,7 @@ export default function ImagingStudyList({
         onDelete={async (s) => {
           const fd = new FormData();
           fd.set("id", String(s.id));
+          if (multiView) fd.set("profile_id", String(s.subject.profileId));
           await deleteImagingStudy(fd);
         }}
       />

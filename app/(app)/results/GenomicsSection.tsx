@@ -1,4 +1,5 @@
-import { getGenomicVariants } from "@/lib/queries";
+import { getGenomicVariantsForProfiles } from "@/lib/queries";
+import { stampSubjects, type ProfileScope } from "@/lib/scope";
 import GenomicVariantForm from "@/app/(app)/genomics/GenomicVariantForm";
 import GenomicVariantList from "@/app/(app)/genomics/GenomicVariantList";
 import { addGenomicVariant } from "@/app/(app)/genomics/actions";
@@ -11,13 +12,26 @@ import { addGenomicVariant } from "@/app/(app)/genomics/actions";
 // panel) via AI extraction, or added manually. Stored FACTUALLY — a genomic
 // result never goes stale, never nags for retest, and carries no risk
 // interpretation here.
-export default function GenomicsSection({ profileId }: { profileId: number }) {
-  const variants = getGenomicVariants(profileId);
+// Multi-view (#1328): genomic_variants is a truly-flat, durable list (no dedup CTE, no
+// per-profile derivation), so it reads the view-set with the SET-BASED
+// getGenomicVariantsForProfiles (the registered cross-profile module). Subject chips +
+// per-item write gates via the stamped rows; single view is byte-identical.
+export default function GenomicsSection({ scope }: { scope: ProfileScope }) {
+  const multi = scope.viewIds.length > 1;
+  const variants = stampSubjects(
+    scope,
+    getGenomicVariantsForProfiles(scope.viewIds)
+  );
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       <div className="min-w-0 space-y-4 lg:col-span-2">
-        <GenomicVariantList items={variants} />
+        <GenomicVariantList
+          items={variants}
+          multiView={
+            multi ? { actingProfileId: scope.actingProfileId } : undefined
+          }
+        />
       </div>
 
       <div className="min-w-0 space-y-4">

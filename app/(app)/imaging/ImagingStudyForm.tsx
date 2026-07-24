@@ -22,10 +22,14 @@ import type { ImagingStudy, FormResult } from "@/lib/types";
 export default function ImagingStudyForm({
   action,
   study,
+  profileId,
   onDone,
 }: {
   action: (formData: FormData) => Promise<FormResult>;
   study?: ImagingStudy;
+  // Multi-view (#1328): the row's OWN profile, posted so an edit on a non-acting
+  // member's row targets that member (gateItemProfile). Undefined in single view.
+  profileId?: number;
   onDone?: () => void;
 }) {
   const router = useRouter();
@@ -67,6 +71,9 @@ export default function ImagingStudyForm({
         </h2>
       )}
       {editing && <input type="hidden" name="id" value={study!.id} />}
+      {profileId != null && (
+        <input type="hidden" name="profile_id" value={profileId} />
+      )}
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="label" htmlFor={`is-modality-${uid}`}>

@@ -31,10 +31,14 @@ const RELATIONS = [
 export default function FamilyHistoryForm({
   action,
   entry,
+  profileId,
   onDone,
 }: {
   action: (formData: FormData) => Promise<FormResult>;
   entry?: FamilyHistory;
+  // Multi-view (#1328): the row's OWN profile, posted so an edit on a non-acting
+  // member's row targets that member (gateItemProfile). Undefined in single view.
+  profileId?: number;
   onDone?: () => void;
 }) {
   const router = useRouter();
@@ -81,6 +85,9 @@ export default function FamilyHistoryForm({
         </h2>
       )}
       {editing && <input type="hidden" name="id" value={entry!.id} />}
+      {profileId != null && (
+        <input type="hidden" name="profile_id" value={profileId} />
+      )}
       <div>
         <label className="label" htmlFor={`fh-relation-${uid}`}>
           Relative

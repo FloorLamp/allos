@@ -1,5 +1,6 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
+import { gateItemProfile } from "@/app/(app)/gate-item";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
@@ -73,7 +74,9 @@ export async function addGenomicVariant(
 export async function updateGenomicVariant(
   formData: FormData
 ): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  // Multi-view (#1328): gate + target the ROW's own profile; single-view falls back
+  // to the acting profile.
+  const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
   const gene = String(formData.get("gene") ?? "").trim();
   if (!id) return formError("Couldn't find that variant.");
@@ -97,7 +100,7 @@ export async function updateGenomicVariant(
     dateOrNull(formData.get("report_date")),
     str(formData, "notes"),
     id,
-    profile.id
+    profileId
   );
   revalidateGenomics();
   return formOk();
@@ -106,12 +109,12 @@ export async function updateGenomicVariant(
 export async function deleteGenomicVariant(
   formData: FormData
 ): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that variant.");
   db.prepare(
     "DELETE FROM genomic_variants WHERE id = ? AND profile_id = ?"
-  ).run(id, profile.id);
+  ).run(id, profileId);
   revalidateGenomics();
   return formOk();
 }

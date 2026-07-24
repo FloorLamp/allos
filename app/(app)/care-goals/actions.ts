@@ -1,5 +1,6 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
+import { gateItemProfile } from "@/app/(app)/gate-item";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
@@ -46,7 +47,9 @@ export async function addCareGoal(formData: FormData): Promise<FormResult> {
 }
 
 export async function updateCareGoal(formData: FormData): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  // Multi-view (#1328): gate + target the ROW's own profile; single-view falls back
+  // to the acting profile.
+  const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
   const description = String(formData.get("description") ?? "").trim();
   if (!id) return formError("Couldn't find that goal.");
@@ -64,19 +67,19 @@ export async function updateCareGoal(formData: FormData): Promise<FormResult> {
     str(formData, "status"),
     str(formData, "notes"),
     id,
-    profile.id
+    profileId
   );
   revalidateCareGoals();
   return formOk();
 }
 
 export async function deleteCareGoal(formData: FormData): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that goal.");
   db.prepare("DELETE FROM care_goals WHERE id = ? AND profile_id = ?").run(
     id,
-    profile.id
+    profileId
   );
   revalidateCareGoals();
   return formOk();

@@ -1,4 +1,4 @@
-import { requireSession } from "@/lib/auth";
+import { requireScope } from "@/lib/scope";
 import ProceduresSection from "../../ProceduresSection";
 import { SectionSubtitle } from "../../SectionHeader";
 
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export default async function RecordsProceduresPage(props: {
   searchParams: Promise<{ new?: string | string[]; name?: string | string[] }>;
 }) {
-  const { profile } = await requireSession();
+  const scope = await requireScope();
   // Deep-link add-form prefill (#1083, mirrors #662): a preventive procedure-screening
   // row/nudge lands here with `?new=1&name=<procedure>`. Seed the add form's name.
   const sp = await props.searchParams;
@@ -23,7 +23,7 @@ export default async function RecordsProceduresPage(props: {
         imported from a health record. Add them manually or import from uploaded
         records (CCD Procedures section).
       </SectionSubtitle>
-      <ProceduresSection profileId={profile.id} prefillName={prefillName} />
+      <ProceduresSection scope={scope} prefillName={prefillName} />
     </div>
   );
 }

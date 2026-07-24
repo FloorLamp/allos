@@ -1,5 +1,6 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
+import { gateItemProfile } from "@/app/(app)/gate-item";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
@@ -92,7 +93,9 @@ export async function addImagingStudy(formData: FormData): Promise<FormResult> {
 export async function updateImagingStudy(
   formData: FormData
 ): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  // Multi-view (#1328): gate + target the ROW's own profile; single-view falls back
+  // to the acting profile.
+  const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that study.");
   // Keep each loaded provider link unless its typed name actually changed (#601).
@@ -129,7 +132,7 @@ export async function updateImagingStudy(
     orderingProviderId,
     readingProviderId,
     id,
-    profile.id
+    profileId
   );
   revalidateImaging();
   return formOk();
@@ -138,7 +141,7 @@ export async function updateImagingStudy(
 export async function deleteImagingStudy(
   formData: FormData
 ): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that study.");
   // Row-ops side-state (#199-#203, #700): a follow-up may link this study as its
@@ -146,10 +149,10 @@ export async function deleteImagingStudy(
   // a REFERENCES FK with no ON DELETE. NULL those links FIRST (degrading a follow-up
   // to a generic care-plan item, keeping a resolution's outcome text) so the delete
   // can't trip the care_plan_items FK.
-  unlinkFollowUpsForImagingStudy(profile.id, id);
+  unlinkFollowUpsForImagingStudy(profileId, id);
   db.prepare("DELETE FROM imaging_studies WHERE id = ? AND profile_id = ?").run(
     id,
-    profile.id
+    profileId
   );
   revalidateImaging();
   return formOk();

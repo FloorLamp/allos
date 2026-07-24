@@ -54,7 +54,14 @@ export function profileIdsIn(ids: readonly number[]): string {
 // here IN THE SAME PR, right next to the `scope.ids`-fed reader it protects. Keeping
 // this empty until then makes the guarantee mechanical: the set-based shape cannot
 // spread without a reviewed registry edit.
-export const CROSS_PROFILE_SQL_MODULES: readonly string[] = [];
+export const CROSS_PROFILE_SQL_MODULES: readonly string[] = [
+  // #1328: the Tier-1 multi-view flat-list readers (Health goals / Genomics /
+  // Imaging) — each a durable dated fact read straight from its table with a bound
+  // `profile_id IN (…)` view-set, ids fed only from a resolved scope.viewIds. The
+  // deduped / age-derived Tier-1 lists stay loop-composed (readForProfiles) and never
+  // reach the set-based shape, so they don't register here.
+  "lib/queries/multi-view-lists.ts",
+];
 
 // True when a repo-relative path is a registered cross-profile module. Suffix match
 // (like the profile-scoping allowlist) so a nested path resolves.

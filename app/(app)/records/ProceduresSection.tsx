@@ -1,4 +1,5 @@
 import { getProcedures, getPickerProviders } from "@/lib/queries";
+import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import ProcedureForm from "@/app/(app)/procedures/ProcedureForm";
 import ProcedureList from "@/app/(app)/procedures/ProcedureList";
@@ -11,20 +12,29 @@ import { addProcedure } from "@/app/(app)/procedures/actions";
 // shows its name, code, performed date, and performing provider (resolved from
 // the shared registry).
 export default function ProceduresSection({
-  profileId,
+  scope,
   prefillName,
 }: {
-  profileId: number;
+  scope: ProfileScope;
   // Deep-link add-form prefill (#1083) forwarded to the add form.
   prefillName?: string;
 }) {
-  const procedures = getProcedures(profileId);
+  const multi = scope.viewIds.length > 1;
+  const procedures = stampSubjects(
+    scope,
+    readForProfiles(scope.viewIds, (pid) => getProcedures(pid))
+  );
 
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="min-w-0 space-y-4 lg:col-span-2">
-          <ProcedureList items={procedures} />
+          <ProcedureList
+            items={procedures}
+            multiView={
+              multi ? { actingProfileId: scope.actingProfileId } : undefined
+            }
+          />
         </div>
 
         <div className="min-w-0 space-y-4">
