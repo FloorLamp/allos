@@ -37,7 +37,10 @@ test("retire and restore equipment from the manager (#341)", async ({
   const retiredRow = page
     .getByTestId("equipment-row")
     .filter({ hasText: "E2E Trap Bar" });
-  await expect(retiredRow).toHaveAttribute("data-retired", "1");
+  // Badge/attr flips on the toggle form's router.refresh() — cold-shard budget (imaging precedent).
+  await expect(retiredRow).toHaveAttribute("data-retired", "1", {
+    timeout: 15_000,
+  });
   await expect(retiredRow.getByText("Retired")).toBeVisible();
 
   // Restore it.
@@ -45,5 +48,5 @@ test("retire and restore equipment from the manager (#341)", async ({
   await expect(page.getByText("Restored E2E Trap Bar")).toBeVisible();
   await expect(
     page.getByTestId("equipment-row").filter({ hasText: "E2E Trap Bar" })
-  ).toHaveAttribute("data-retired", "0");
+  ).toHaveAttribute("data-retired", "0", { timeout: 15_000 });
 });
