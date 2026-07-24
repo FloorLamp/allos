@@ -11,6 +11,9 @@ import {
   FitnessPictogram,
 } from "@/components/fitness-pictograms";
 import { useToast } from "@/components/Toast";
+// The shared reduced-motion read (#1307) — gates the tile's landing sweep here and the
+// haptic cues in the live-workout tree (#1422); one media-query subscription, not two.
+import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
 import { Notice } from "@/components/Notice";
 import type { WeightUnit } from "@/lib/settings";
 import {
@@ -29,20 +32,6 @@ import {
   setFitnessCadence,
   type SaveFitnessTestResult,
 } from "./fitness-actions";
-
-// Whether the viewer asked for reduced motion — gates the tile's landing sweep (#1307).
-// Read after mount (SSR-safe); Playwright's reducedMotion context option flips it.
-function usePrefersReducedMotion(): boolean {
-  const [reduce, setReduce] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setReduce(mq.matches);
-    const on = () => setReduce(mq.matches);
-    mq.addEventListener("change", on);
-    return () => mq.removeEventListener("change", on);
-  }, []);
-  return reduce;
-}
 
 const DOMAIN_LABEL: Record<string, string> = {
   endurance: "Endurance",

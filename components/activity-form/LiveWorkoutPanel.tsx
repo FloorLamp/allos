@@ -27,10 +27,14 @@ export default function LiveWorkoutPanel({
   // Not-self stamp (issue #1013): the running session belongs to the acting profile;
   // when that isn't the login's own profile, name it on the live control strip so a
   // set logged in the wrong record is caught at the point of action.
-  const { subjectName } = useActivityEditor();
+  const { subjectName, minimized } = useActivityEditor();
 
   // Keep the screen awake for the phone-at-the-gym surface — the shared hook (#1275).
-  useWakeLock();
+  // Only while the session is actually on screen (#1422): minimizing to the dock keeps
+  // this panel MOUNTED (so the rest timer keeps ticking), so an unmount-tied lock would
+  // outlive the pocketed session and hold the phone awake indefinitely. The hook also
+  // drops it while the tab is backgrounded and re-acquires on return.
+  useWakeLock(!minimized);
 
   return (
     <div

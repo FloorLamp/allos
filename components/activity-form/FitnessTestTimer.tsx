@@ -10,6 +10,7 @@ import {
 } from "@tabler/icons-react";
 import { FitnessPictogram } from "@/components/fitness-pictograms";
 import { useWakeLock } from "@/components/useWakeLock";
+import { useHaptics } from "@/components/useHaptics";
 import { formatSeconds } from "@/lib/duration";
 import {
   IDLE_TIMER,
@@ -68,6 +69,7 @@ export default function FitnessTestTimer({
   const announcedFinalRef = useRef(false);
   const [announce, setAnnounce] = useState("");
   const audioRef = useRef<AudioContext | null>(null);
+  const haptic = useHaptics();
 
   // Keep the screen awake only while the takeover is open (holding a plank / a stance).
   useWakeLock(expanded);
@@ -99,12 +101,10 @@ export default function FitnessTestTimer({
     } catch {
       // AudioContext unavailable/blocked — the visual "Time" cue stands in.
     }
-    try {
-      navigator.vibrate?.([120, 60, 120]);
-    } catch {
-      // Vibration API absent (desktop) — no-op.
-    }
-  }, []);
+    // Same shared double-pulse the rest timer ends on (#1422) — one pattern table, one
+    // reduced-motion gate, not a second hand-copied literal.
+    haptic("timer-complete");
+  }, [haptic]);
 
   const finish = useCallback(() => {
     const at = Date.now();
