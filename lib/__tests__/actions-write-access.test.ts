@@ -386,6 +386,32 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     fn: "deleteImagingStudy",
     why: "multi-view (#1328): deletes the ITEM's imaging study via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
+  // --- Tier-1b bespoke lists (issue #1359) — the flat SUB-lists of the Visits and
+  // Immunizations surfaces adopt multi-view (Past encounters / All recorded doses);
+  // their edit/delete gate the ROW's own profile through the same gateItemProfile()
+  // helper. The surrounding acting-only apparatus (appointment booking, the age-derived
+  // schedule assessment) is untouched, and the add* actions keep plain
+  // requireWriteAccess(). ---
+  {
+    file: "app/(app)/encounters/actions.ts",
+    fn: "updateEncounter",
+    why: "multi-view (#1359): edits the ITEM's visit via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
+  {
+    file: "app/(app)/encounters/actions.ts",
+    fn: "deleteEncounter",
+    why: "multi-view (#1359): deletes the ITEM's visit via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
+  {
+    file: "app/(app)/immunizations/actions.ts",
+    fn: "updateImmunization",
+    why: "multi-view (#1359): edits the ITEM's immunization dose via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
+  {
+    file: "app/(app)/immunizations/actions.ts",
+    fn: "deleteImmunization",
+    why: "multi-view (#1359): deletes the ITEM's immunization dose via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
 ];
 
 function walk(dir: string, out: string[]) {

@@ -1,5 +1,6 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
+import { gateItemProfile } from "@/app/(app)/gate-item";
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
@@ -65,7 +66,10 @@ export async function addImmunization(formData: FormData): Promise<FormResult> {
 export async function updateImmunization(
   formData: FormData
 ): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  // Multi-view (#1359): gate + target the ROW's own profile (gateItemProfile), so an
+  // edit on a non-acting member's dose lands on that member; single-view falls back
+  // to the acting profile.
+  const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
   const date = String(formData.get("date") ?? "").trim();
   const vaccineRaw = String(formData.get("vaccine") ?? "").trim();
@@ -88,23 +92,15 @@ export async function updateImmunization(
     .prepare(
       "SELECT vaccine FROM immunizations WHERE id = ? AND profile_id = ?"
     )
-    .get(id, profile.id) as { vaccine: string } | undefined;
+    .get(id, profileId) as { vaccine: string } | undefined;
   db.prepare(
     `UPDATE immunizations SET date = ?, vaccine = ?, dose_label = ?, notes = ?, provider_id = ?
      WHERE id = ? AND profile_id = ?`
-  ).run(
-    date,
-    codeFor(vaccineRaw),
-    doseLabel,
-    notes,
-    providerId,
-    id,
-    profile.id
-  );
+  ).run(date, codeFor(vaccineRaw), doseLabel, notes, providerId, id, profileId);
   // Clear the dismissals of any component code the re-code left un-backed. The
   // sweep reads the post-update remaining doses, so an unchanged code (or one still
   // credited by a sibling dose) is a no-op.
-  if (prev) sweepImmunizationDismissals(profile.id, [prev.vaccine]);
+  if (prev) sweepImmunizationDismissals(profileId, [prev.vaccine]);
   revalidateImmunizations();
   return formOk();
 }
@@ -112,7 +108,7 @@ export async function updateImmunization(
 export async function deleteImmunization(
   formData: FormData
 ): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that immunization.");
   // Read the dose's vaccine before deleting so we can tell which component codes
@@ -121,17 +117,17 @@ export async function deleteImmunization(
     .prepare(
       "SELECT vaccine FROM immunizations WHERE id = ? AND profile_id = ?"
     )
-    .get(id, profile.id) as { vaccine: string } | undefined;
+    .get(id, profileId) as { vaccine: string } | undefined;
   db.prepare("DELETE FROM immunizations WHERE id = ? AND profile_id = ?").run(
     id,
-    profile.id
+    profileId
   );
   // If this was the last dose backing a vaccine code, clear that code's due-nudge
   // dismissal — the key is the reusable vaccine code, so a stale row would silence
   // the nudge again after the immunization is re-added later (issue #203). The sweep
   // is scoped to the codes this dose actually un-backed, so a never-recorded
   // vaccine's dismissal (no backing dose ever) is left intact.
-  if (row) sweepImmunizationDismissals(profile.id, [row.vaccine]);
+  if (row) sweepImmunizationDismissals(profileId, [row.vaccine]);
   revalidateImmunizations();
   return formOk();
 }

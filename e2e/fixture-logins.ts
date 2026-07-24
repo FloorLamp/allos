@@ -699,6 +699,14 @@ export const MULTI_OWNER_ALLERGY = "Multi Owner Latex (e2e)";
 export const MULTI_SHARED_ALLERGY = "Multi Shared Pollen (e2e)";
 export const MULTI_OWNER_GOAL = "Multi Owner BP target (e2e)";
 export const MULTI_SHARED_GOAL = "Multi Shared A1c target (e2e)";
+// Tier-1b bespoke-list multi-view fixtures (issue #1359): one past visit (encounter)
+// and one recorded immunization dose per multi profile, so the Visits "Past" list and
+// the Immunizations "All recorded doses" list each render a row per profile — the
+// acting (owner) row with NO chip, the shared row WITH a subject chip.
+export const MULTI_OWNER_VISIT = "Multi Owner Physical (e2e)";
+export const MULTI_SHARED_VISIT = "Multi Shared Checkup (e2e)";
+export const MULTI_OWNER_VACCINE = "influenza";
+export const MULTI_SHARED_VACCINE = "tdap";
 
 // Own-profile link + not-self write affordances (issue #1013). A dedicated member
 // granted TWO adult profiles WRITE, with own_profile_id pointing at the FIRST — the
