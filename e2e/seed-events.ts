@@ -149,6 +149,8 @@ import {
   SICK_SELF_PROFILE,
   E2E_LOGIN_SICK_COLLAPSE,
   SICK_COLLAPSE_PROFILE,
+  E2E_LOGIN_SICK_PHOTO,
+  SICK_PHOTO_PROFILE,
   E2E_LOGIN_SITCOACH,
   SITCOACH_PROFILE,
   E2E_LOGIN_ILLNESS_CARE,
@@ -3520,6 +3522,15 @@ seedSickEpisode(sickKidBId, {});
 seedMemberLogin(E2E_LOGIN_SICK_SELF, sickSelfId);
 // SICK_COLLAPSE: a separate sick-solo login for the collapse-persistence test.
 seedMemberLogin(E2E_LOGIN_SICK_COLLAPSE, sickCollapseId);
+
+// SICK_PHOTO (#1093): a dedicated sick-solo login whose episode cockpit the
+// symptom-photo-link spec drives — attaching a photo TAGGED to a specific symptom log.
+// Isolated so its exact-count / delete-all photo assertions never race the shared
+// profile-1 episode. seedSickEpisode logs cough + fever today, so the photo strip's
+// symptom selector has options.
+const sickPhotoId = fixtureProfileId(SICK_PHOTO_PROFILE);
+seedSickEpisode(sickPhotoId, { activateSituation: true });
+seedMemberLogin(E2E_LOGIN_SICK_PHOTO, sickPhotoId);
 
 // ── Situation-aware coaching fixture (#837 / #662 item 1) ─────────────────────
 // A dedicated sick profile WITH training history + one situational supplement, so the

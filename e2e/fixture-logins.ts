@@ -875,3 +875,13 @@ export const SUN_PROFILE = "Sun Outdoor (e2e)";
 // DOES carry a seeded home location, so it can't serve as the home-less case).
 export const E2E_LOGIN_SUN_NOHOME = "e2e_sun_nohome";
 export const SUN_NOHOME_PROFILE = "Sun No Home (e2e)";
+
+// #1093 — the symptom↔photo cross-link. A dedicated sick-solo login with an OPEN illness
+// episode (seedSickEpisode logs cough + fever TODAY), so its episode cockpit's photo strip
+// offers those symptoms in the "Symptom (optional)" selector. symptom-photo-link.spec logs
+// in as this login and attaches a photo TAGGED to a specific symptom, proving the photo
+// binds to its log (the symptom label chip renders on the thumbnail). Isolated + owns its
+// own photos so it can exact-count / delete-all without touching the shared profile-1
+// episode the round3 spec drives. Synthetic, no PHI.
+export const E2E_LOGIN_SICK_PHOTO = "e2e_sick_photo";
+export const SICK_PHOTO_PROFILE = "Sick Photo Link (e2e)";
