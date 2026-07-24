@@ -6019,6 +6019,8 @@ console.log(
   seedMemberLogin(E2E_LOGIN_WHATSNEW, whatsNewId, "write");
   console.log(
     `e2e: seeded what's-new fixture — login ${E2E_LOGIN_WHATSNEW} granted profile ${whatsNewId} (${WHATS_NEW_PROFILE}) (#1421)`
+  );
+}
 
 // ── Intraday panel fixture (issue #1068) ─────────────────────────────────────
 // The Timeline single-day view's intraday panel — the day rotated 90°. A dedicated
