@@ -20,6 +20,9 @@ export interface ActivityEditData {
   title: string;
   date: string;
   duration_min: number | null;
+  // ELAPSED (wall-clock) minutes (issue #1202) — preloads the form's active·elapsed
+  // summary; the form still derives elapsed from start/end when this is null.
+  elapsed_min?: number | null;
   distance_km: number | null;
   intensity: string | null;
   start_time: string | null;

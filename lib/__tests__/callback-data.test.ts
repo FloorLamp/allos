@@ -10,6 +10,10 @@ import {
   parseRefillCallback,
   parseSkipCallback,
   parseTakeCallback,
+  parseWorkoutFinishCallback,
+  workoutFinishCallback,
+  workoutFinishAnswerText,
+  workoutDiscardAnswerText,
   preventiveAnswerText,
   preventiveCloseText,
   refillAnswerText,
@@ -529,5 +533,48 @@ describe("replacementWithTitle", () => {
     expect(ada).not.toBe(ben);
     expect(ada).toContain("[Ada]");
     expect(ben).toContain("[Ben]");
+  });
+});
+
+// Workout finish/discard tokens (the stale-nudge buttons, #1205).
+describe("parseWorkoutFinishCallback", () => {
+  it("round-trips a finish token (build → parse)", () => {
+    expect(
+      parseWorkoutFinishCallback(workoutFinishCallback(3, 42, "finish"))
+    ).toEqual({ profileId: 3, activityId: 42, action: "finish" });
+  });
+  it("round-trips a discard token", () => {
+    expect(
+      parseWorkoutFinishCallback(workoutFinishCallback(3, 42, "discard"))
+    ).toEqual({ profileId: 3, activityId: 42, action: "discard" });
+  });
+  it("rejects a foreign prefix / bad ids", () => {
+    expect(parseWorkoutFinishCallback("take:3:42:1:2026-07-01")).toBeNull();
+    expect(parseWorkoutFinishCallback("wofinish:0:42")).toBeNull();
+    expect(parseWorkoutFinishCallback("wofinish:3:0")).toBeNull();
+    expect(parseWorkoutFinishCallback(null)).toBeNull();
+  });
+});
+
+describe("workoutFinishAnswerText / workoutDiscardAnswerText", () => {
+  it("answers honestly per outcome — never a false confirm", () => {
+    expect(
+      workoutFinishAnswerText({ kind: "finished", activityId: 1 })
+    ).toContain("finished");
+    expect(
+      workoutFinishAnswerText({ kind: "already-finished", activityId: 1 })
+    ).toContain("Already finished");
+    expect(
+      workoutFinishAnswerText({ kind: "empty-draft", activityId: 1 })
+    ).toContain("Nothing logged");
+    expect(workoutFinishAnswerText({ kind: "not-found" })).toContain(
+      "out of date"
+    );
+    expect(
+      workoutDiscardAnswerText({ kind: "discarded", activityId: 1 })
+    ).toContain("discarded");
+    expect(
+      workoutDiscardAnswerText({ kind: "already-finished", activityId: 1 })
+    ).toContain("Already finished");
   });
 });

@@ -33,6 +33,10 @@ import {
   submittedDistanceUnit,
 } from "@/lib/units";
 import { minutesBetween, compositeRollup } from "@/lib/activity-meta";
+import {
+  finishWorkoutSession,
+  type FinishWorkoutOutcome,
+} from "@/lib/workout-finish";
 import { isRealIsoDate } from "@/lib/date";
 import { isTrainingRestricted, isActivityTypeAllowed } from "@/lib/age-gate";
 import { regionForExercise, type MuscleRegion } from "@/lib/lifts";
@@ -225,9 +229,11 @@ export async function saveActivity(
     });
   const componentsJson = components.length ? JSON.stringify(components) : null;
 
-  // Roll the legs up into the parent's distance/duration via the shared
-  // compositeRollup (issue #313): sum-of-parts distance (">0 else null") and
-  // clock-time-wins duration.
+  // Roll the legs up into the parent's distance + the two formalized times via the
+  // shared compositeRollup (#313/#1202): sum-of-parts distance, ACTIVE duration
+  // (Σ legs for cardio, the entered total for strength — the clock span is no longer
+  // preferred, so a benign edit can't flip a paused import's active up to its
+  // rest-inflated elapsed), and ELAPSED (the clock span, kept only when ≥ active).
   const clockDurationMin =
     startTime && endTime ? minutesBetween(startTime, endTime) : null;
   const enteredDurationValue = num(formData.get("duration_min"));
@@ -235,9 +241,10 @@ export async function saveActivity(
     enteredDurationValue != null && enteredDurationValue > 0
       ? enteredDurationValue
       : null;
-  const { distanceKm, durationMin, hasStrength } = compositeRollup(
+  const { distanceKm, durationMin, elapsedMin, hasStrength } = compositeRollup(
     components,
-    clockDurationMin ?? enteredDurationMin
+    clockDurationMin ?? enteredDurationMin,
+    clockDurationMin
   );
   const explicitComponentDuration = components.reduce(
     (total, component) => total + (component.duration_min ?? 0),
@@ -287,7 +294,7 @@ export async function saveActivity(
       if (!owned) return null;
       db.prepare(
         `UPDATE activities
-         SET date = ?, type = ?, title = ?, notes = ?, duration_min = ?, distance_km = ?,
+         SET date = ?, type = ?, title = ?, notes = ?, duration_min = ?, elapsed_min = ?, distance_km = ?,
              intensity = ?, start_time = ?, end_time = ?, components = ?,
              equipment_id = ?,
              -- Estimated calories (issue #151): only for MANUAL rows (source +
@@ -309,6 +316,7 @@ export async function saveActivity(
         title,
         notes,
         durationMin,
+        elapsedMin,
         distanceKm,
         intensity,
         startTime,
@@ -345,8 +353,8 @@ export async function saveActivity(
       const res = db
         .prepare(
           `INSERT INTO activities
-             (date, type, title, notes, duration_min, distance_km, intensity, start_time, end_time, components, equipment_id, est_calories, profile_id)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+             (date, type, title, notes, duration_min, elapsed_min, distance_km, intensity, start_time, end_time, components, equipment_id, est_calories, profile_id)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
         )
         .run(
           date,
@@ -354,6 +362,7 @@ export async function saveActivity(
           title,
           notes,
           durationMin,
+          elapsedMin,
           distanceKm,
           intensity,
           startTime,
@@ -418,6 +427,26 @@ export async function saveActivity(
   revalidateActivitySurfaces();
   // Return the row id so the auto-saving form can switch from create to update.
   return { ok: true, id: activityId };
+}
+
+// Headless "Finish workout" (#1124/#1205, #221): stamp end = now on a live draft
+// through the SHARED finishWorkoutSession core — the request-path sibling of the
+// notification-finish (which calls the same core from the notify process). Stamping a
+// today-session's end arms the ~60s post-workout dose dispatch, exactly like a form
+// save does, so an at-app finish still delivers due post-workout doses. The auth +
+// cross-profile gate lives HERE (requireWriteAccess); the lib core is auth-blind.
+export async function finishWorkout(
+  activityId: number
+): Promise<FinishWorkoutOutcome> {
+  const { profile } = await requireWriteAccess();
+  if (!Number.isInteger(activityId) || activityId <= 0)
+    return { kind: "not-found" };
+  const outcome = finishWorkoutSession(profile.id, activityId);
+  if (outcome.kind === "finished") {
+    queuePostWorkoutDispatch(profile.id, activityId);
+    revalidateActivitySurfaces();
+  }
+  return outcome;
 }
 
 // Record the user's bodyweight (entered in their preferred unit) as a body-metrics
