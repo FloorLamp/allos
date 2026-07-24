@@ -6,16 +6,19 @@ import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
 import StatusBadge from "@/components/StatusBadge";
 import NotesText from "@/components/NotesText";
+import RecordEncounterLink from "@/components/RecordEncounterLink";
 import { formatRecordDate } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
+import type { LinkedEncounterRef } from "@/lib/queries";
 import type { Condition } from "@/lib/types";
 import type { Stamped } from "@/lib/scope";
 import type { ListMultiView } from "@/lib/multi-view";
 
 function buildColumns(
   fmt: DisplayFormatPrefs,
-  treatedWith: Record<number, string[]>
+  treatedWith: Record<number, string[]>,
+  diagnosedAt: Record<number, LinkedEncounterRef>
 ): RecordColumn<Condition>[] {
   return [
     {
@@ -28,6 +31,14 @@ function buildColumns(
             notes={c.notes}
             className="ml-2 text-xs font-normal text-slate-400"
           />
+          {/* "Diagnosed at: <visit>" (#1355) — the linked encounter, absent-pillar. */}
+          {diagnosedAt[c.id] ? (
+            <RecordEncounterLink
+              label="Diagnosed at"
+              encounter={diagnosedAt[c.id]}
+              testid={`condition-diagnosed-at-${c.id}`}
+            />
+          ) : null}
           {/* Med → indication inverse view (#1052): the medications recorded as
               treating this condition. A formatter over the ONE link, no inference. */}
           {treatedWith[c.id]?.length ? (
@@ -88,13 +99,15 @@ function buildColumns(
 export default function ConditionList({
   items,
   treatedWith = {},
+  diagnosedAt = {},
   multiView,
 }: {
   items: Stamped<Condition>[];
   treatedWith?: Record<number, string[]>;
+  diagnosedAt?: Record<number, LinkedEncounterRef>;
   multiView?: ListMultiView;
 }) {
-  const columns = buildColumns(useFormatPrefs(), treatedWith);
+  const columns = buildColumns(useFormatPrefs(), treatedWith, diagnosedAt);
   return (
     <RecordTable
       items={items}

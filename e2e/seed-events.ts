@@ -18,6 +18,7 @@ import {
 } from "../lib/date";
 import { writeRawPayload } from "../lib/integrations/raw-log";
 import { upsertConnection } from "../lib/integrations/connections";
+import { hashShareToken } from "../lib/share-token";
 import { seedDupReviewPair } from "./dup-review-fixture";
 import { EDIT_LOCK_SIGNATURE } from "./edit-lock-fixture";
 import {
@@ -170,6 +171,11 @@ import {
   E2E_LOGIN_ILLNESS_RO,
   E2E_LOGIN_VIEWONLY_READ,
   E2E_LOGIN_VIEWONLY_WRITE,
+  E2E_LOGIN_RECS_ENRICH,
+  RECS_ENRICH_PROFILE,
+  RECS_ENRICH_ALLERGY_MED,
+  RECS_ENRICH_PGX_MED,
+  RECS_ENRICH_PROCEDURE,
   E2E_LOGIN_CONDREV,
   CONDITION_REVIEW_PROFILE,
   E2E_LOGIN_REASON,
@@ -249,6 +255,8 @@ import {
   SUN_NOHOME_PROFILE,
   E2E_LOGIN_NWAY,
   NWAY_PROFILE,
+  E2E_LOGIN_GRANTEDIT,
+  GRANT_EDIT_PROFILE,
 } from "./fixture-logins";
 import { seedNwayMergeFixture } from "./nway-merge-fixture";
 import {
@@ -426,6 +434,55 @@ db.prepare(
   PROFILE_ID,
   "2026-07-08 07:00:00"
 );
+
+// ---- #1333 per-row provenance drill-in fixture -----------------------------
+// Attach integration_sync_rows to the healthy Health Connect event above so its
+// Connected-sources card renders the "What this wrote" drill-in with resolvable deep
+// links. Uniquely anchored: a dedicated activity + body-metric (distinctive titles/
+// date) owned by PROFILE_ID and never asserted on by count elsewhere. The rows record
+// one inserted + one updated disposition (the only two recorded — unchanged is not).
+{
+  const hcEventId = (
+    db
+      .prepare(
+        `SELECT id FROM integration_sync_events
+          WHERE profile_id = ? AND provider = 'health-connect' AND at = '2026-07-08 07:00:00'`
+      )
+      .get(PROFILE_ID) as { id: number } | undefined
+  )?.id;
+  if (hcEventId) {
+    db.prepare(
+      `DELETE FROM activities WHERE profile_id = ? AND title = 'HC provenance run'`
+    ).run(PROFILE_ID);
+    const provActId = Number(
+      db
+        .prepare(
+          `INSERT INTO activities
+             (profile_id, date, type, title, duration_min, distance_km, source, external_id)
+           VALUES (?, '2026-07-08', 'cardio', 'HC provenance run', 32, 5.2, 'health-connect', 'hc:prov:run:1')`
+        )
+        .run(PROFILE_ID).lastInsertRowid
+    );
+    db.prepare(
+      `DELETE FROM body_metrics WHERE profile_id = ? AND date = '2026-07-08' AND source = 'health-connect'`
+    ).run(PROFILE_ID);
+    const provBodyId = Number(
+      db
+        .prepare(
+          `INSERT INTO body_metrics (profile_id, date, weight_kg, source)
+           VALUES (?, '2026-07-08', 79.4, 'health-connect')`
+        )
+        .run(PROFILE_ID).lastInsertRowid
+    );
+    const insRow = db.prepare(
+      `INSERT INTO integration_sync_rows (event_id, target_table, target_id, disposition)
+       VALUES (?, ?, ?, ?)`
+    );
+    insRow.run(hcEventId, "activities", provActId, "inserted");
+    insRow.run(hcEventId, "body_metrics", provBodyId, "updated");
+  }
+}
+
 // Four consecutive hourly Strava no-op re-scans (05:00–08:00) → one collapsed line.
 for (const hour of ["05", "06", "07", "08"]) {
   ins.run(
@@ -2229,19 +2286,21 @@ seedMemberLogin(E2E_LOGIN_STRAVA, stravaReauthId);
 const healthConnectId = fixtureProfileId(HEALTH_CONNECT_PROFILE);
 seedMemberLogin(E2E_LOGIN_HC, healthConnectId);
 
-// #1063 — a dedicated Health Connect profile seeded already CONNECTED with a
-// long, synthetic DB-backed token, so the mobile-overflow spec renders the
-// endpoint/token card read-only (never generating or rotating — those mutations
-// belong to the E2E_LOGIN_HC spec above and would race a concurrent reader).
+// #1063 — a dedicated Health Connect profile seeded already CONNECTED so the
+// mobile-overflow spec renders the endpoint card read-only (never generating or
+// rotating — those mutations belong to the E2E_LOGIN_HC spec above and would race a
+// concurrent reader). Since #1209 the token is HASHED at rest, so we seed only its
+// SHA-256 (`tokenHash`), not a plaintext — `connected` gates on `hasToken`, which
+// reads `tokenHash`. The plaintext is never re-shown (reveal-once), so the wide
+// element under test at phone width is the endpoint-URL row, not the token.
 const mobileHcId = fixtureProfileId(MOBILE_HC_PROFILE);
 upsertConnection(mobileHcId, "health-connect", {
   status: "connected",
   config: {
-    // Synthetic 64-char token of hex characters (real generated tokens are 48
-    // hex chars), so the row is provably wider than a 360px viewport without
-    // wrapping. Deliberately LOW-entropy ("e2e0" × 16) — a random-looking hex
-    // string trips the gitleaks generic-api-key rule even when fake.
-    token: "e2e0".repeat(16),
+    // The stored hash of a synthetic value (a real generate stores the same shape:
+    // sha256 hex). Deliberately derived from a LOW-entropy input so no random-looking
+    // literal appears — the value here is a 64-char hex HASH computed at seed time.
+    tokenHash: hashShareToken("e2e0".repeat(16)),
     tokenCreatedAt: utcSqlString(
       new Date(clockNow().getTime() - 24 * 3600 * 1000)
     ),
@@ -5761,6 +5820,69 @@ console.log(
   );
 }
 
+// ── Records-surface enrichment sweep (issues #1354 + #1355) ───────────────────
+// A dedicated member login + ADULT profile carrying the exact fixtures the enrichment
+// lines read (own login/profile so no contraindication/PGx finding perturbs another
+// spec's medications/allergies counts):
+//   • #1354 allergy↔med: a Penicillin allergy + an active Amoxicillin med → a
+//     drug-allergy CLASS contraindication surfaces on the allergy row (deep-links to
+//     the med).
+//   • #1354 PGx↔med: a CYP2C19 poor-metabolizer variant + an active Clopidogrel med →
+//     a PGx hit surfaces on the variant row.
+//   • #1355 "Performed at": a procedure linked to an encounter (with a provider).
+{
+  const reId = fixtureProfileId(RECS_ENRICH_PROFILE);
+  const activeMed = (name: string): number =>
+    Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items (profile_id, name, kind, active, as_needed, source)
+           VALUES (?, ?, 'medication', 1, 0, 'manual')`
+        )
+        .run(reId, name).lastInsertRowid
+    );
+  if (
+    !db
+      .prepare("SELECT 1 FROM allergies WHERE profile_id = ? AND substance = ?")
+      .get(reId, "Penicillin")
+  ) {
+    activeMed(RECS_ENRICH_ALLERGY_MED);
+    activeMed(RECS_ENRICH_PGX_MED);
+    db.prepare(
+      `INSERT INTO allergies (profile_id, substance, reaction, status, source)
+       VALUES (?, 'Penicillin', 'hives', 'active', 'manual')`
+    ).run(reId);
+    db.prepare(
+      `INSERT INTO genomic_variants
+         (profile_id, gene, star_allele, result_type, interpretation, source)
+       VALUES (?, 'CYP2C19', '*2/*2', 'pharmacogenomic', 'Poor metabolizer', 'manual')`
+    ).run(reId);
+    const provId = Number(
+      db
+        .prepare(
+          "INSERT INTO providers (name, type, dedup_key) VALUES ('Dr. Reyes (e2e)', 'individual', 'dk:e2e-recs-enrich-reyes')"
+        )
+        .run().lastInsertRowid
+    );
+    const encId = Number(
+      db
+        .prepare(
+          `INSERT INTO encounters (profile_id, date, type, class_code, provider_id, source)
+           VALUES (?, '2026-04-12', 'Orthopedic Surgery', 'AMB', ?, 'manual')`
+        )
+        .run(reId, provId).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO procedures (profile_id, name, date, encounter_id, source)
+       VALUES (?, ?, '2026-04-12', ?, 'manual')`
+    ).run(reId, RECS_ENRICH_PROCEDURE, encId);
+  }
+  seedMemberLogin(E2E_LOGIN_RECS_ENRICH, reId, "write");
+  console.log(
+    `e2e: seeded records-enrichment fixture — ${E2E_LOGIN_RECS_ENRICH} granted ${RECS_ENRICH_PROFILE} (${reId}) (#1354/#1355)`
+  );
+}
+
 // ── Sun / outdoor + free-days fixtures (issues #1171, #1241) ───────────────────
 // A dedicated adult profile with a coarse home location (sun features ON) and outdoor
 // DAYTIME activities on several recent days, so Trends → Vitals renders the "Sun /
@@ -5829,5 +5951,19 @@ console.log(
   seedMemberLogin(E2E_LOGIN_NWAY, nwayId, "write");
   console.log(
     `e2e: seeded N-way merge fixture — profile ${nwayId} (${NWAY_PROFILE}) (#1081)`
+  );
+}
+
+// ── #1412 grant-matrix collapse fixture ──────────────────────────────────────
+// A dedicated member login granted ONE dedicated profile (write). The family-grants
+// spec (e2e/family-grants.spec.ts) opens Settings → Family as admin, drives this
+// login's collapsed grant-summary row + Edit disclosure, and flips its grant level —
+// isolated so it never perturbs another spec's grant set. Idempotent for a reused dev
+// server (fixtureProfileId + seedMemberLogin both upsert).
+{
+  const grantEditId = fixtureProfileId(GRANT_EDIT_PROFILE);
+  seedMemberLogin(E2E_LOGIN_GRANTEDIT, grantEditId, "write");
+  console.log(
+    `e2e: seeded grant-edit fixture — login ${E2E_LOGIN_GRANTEDIT} granted profile ${grantEditId} (${GRANT_EDIT_PROFILE}) (#1412)`
   );
 }

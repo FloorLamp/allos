@@ -6,6 +6,7 @@ import {
   getStravaCursor,
   recordSync,
   recordSyncEvent,
+  recordSyncRows,
   setStravaCursor,
 } from "./connections";
 import {
@@ -14,6 +15,7 @@ import {
   emptyCounts,
   dateWindow,
   type UpsertCounts,
+  type ProvenanceEntry,
 } from "./sync-log";
 import { mapStravaActivity } from "./strava";
 import { writeRawPayload } from "./raw-log";
@@ -186,10 +188,18 @@ export async function runStravaSync(
 
   let upActivities: UpsertCounts = emptyCounts();
   let upSamples: UpsertCounts = emptyCounts();
+  // Per-row provenance (#1333): the inserted/updated rows this run wrote, linked to
+  // the success event below.
+  const provenance: ProvenanceEntry[] = [];
   try {
     writeTx(() => {
-      upActivities = upsertActivities(profileId, acts, STRAVA_ID);
-      upSamples = upsertMetricSamples(profileId, samples, STRAVA_ID);
+      upActivities = upsertActivities(profileId, acts, STRAVA_ID, provenance);
+      upSamples = upsertMetricSamples(
+        profileId,
+        samples,
+        STRAVA_ID,
+        provenance
+      );
       // Routes resolve their parent activity by external_id, so this must run after
       // upsertActivities (same tx). Idempotent; not folded into the sync tally — a
       // route is a side artifact of the activity it belongs to, not its own record.
@@ -272,7 +282,7 @@ export async function runStravaSync(
       STRAVA_ID,
       JSON.stringify(rawItems)
     );
-    recordSyncEvent(profileId, STRAVA_ID, {
+    const eventId = recordSyncEvent(profileId, STRAVA_ID, {
       ok: true,
       windowStart: win.start,
       windowEnd: win.end,
@@ -286,6 +296,7 @@ export async function runStravaSync(
       skipped: tally.skipped,
       raw_ref: rawRef,
     });
+    recordSyncRows(eventId, provenance);
   }
   if (truncated) {
     log.info("strava sync truncated (detail-call cap / rate limit)", {

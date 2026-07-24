@@ -3,7 +3,9 @@ import type { IntegrationSyncEvent } from "@/lib/types";
 import {
   currentlyFailingProviders,
   shouldShowConnectedSource,
+  type ProvenanceTable,
 } from "@/lib/integrations/sync-log";
+import { timelineDayHref, biomarkerViewHref, type AppRoute } from "@/lib/hrefs";
 import { INTEGRATIONS } from "@/lib/integrations/registry";
 import {
   getConnection,
@@ -462,4 +464,114 @@ export function getSyncEventRawRef(
     )
     .get(id, profileId) as { raw_ref: string | null } | undefined;
   return row?.raw_ref ?? null;
+}
+
+// ---- Per-row sync provenance drill-in (issue #1333) -------------------------
+
+// One record a sync inserted/updated, resolved to a human label + a typed deep link
+// to the surface that owns it (#285). `deleted` marks a target that no longer resolves
+// (the record was later removed) — its link still points at the day/list, but the label
+// says so. `date` is the record's own date, used to build the timeline-day link.
+export interface SyncRowLink {
+  id: number;
+  targetTable: ProvenanceTable;
+  targetId: number;
+  disposition: "inserted" | "updated";
+  date: string | null;
+  label: string;
+  href: AppRoute;
+  deleted: boolean;
+}
+
+// The records a single sync event wrote, newest-persisted first, each resolved to a
+// deep link. PROFILE-SCOPED at both ends: the event must belong to `profileId` (the
+// join naming e.profile_id), and every target lookup filters the owned table by
+// profile_id too, so one profile can never resolve another's records by id. Legacy
+// events (before #1333) have no provenance rows and return []; the caller then shows
+// the pre-existing inert window text. Only inserted/updated rows were ever recorded
+// (the volume cap — see recordSyncRows), so this never lists an unchanged re-send.
+export function getSyncRowProvenance(
+  profileId: number,
+  eventId: number
+): SyncRowLink[] {
+  const rows = db
+    .prepare(
+      `SELECT r.id, r.target_table, r.target_id, r.disposition
+         FROM integration_sync_rows r
+         JOIN integration_sync_events e ON e.id = r.event_id
+        WHERE r.event_id = ? AND e.profile_id = ?
+        ORDER BY r.id`
+    )
+    .all(eventId, profileId) as {
+    id: number;
+    target_table: ProvenanceTable;
+    target_id: number;
+    disposition: "inserted" | "updated";
+  }[];
+
+  // Per-table, profile-scoped resolvers (literal SQL so the profile-scoping guard can
+  // read the profile_id filter directly). Each returns the record's date + a label, or
+  // undefined when the row was since deleted.
+  const findActivity = db.prepare(
+    "SELECT date, title, type FROM activities WHERE id = ? AND profile_id = ?"
+  );
+  const findBody = db.prepare(
+    "SELECT date FROM body_metrics WHERE id = ? AND profile_id = ?"
+  );
+  const findSample = db.prepare(
+    "SELECT date, metric FROM metric_samples WHERE id = ? AND profile_id = ?"
+  );
+  const findRecord = db.prepare(
+    "SELECT date, name, canonical_name FROM medical_records WHERE id = ? AND profile_id = ?"
+  );
+
+  const out: SyncRowLink[] = [];
+  for (const r of rows) {
+    let date: string | null = null;
+    let label = "";
+    let href: AppRoute = timelineDayHref(""); // replaced below
+    let deleted = false;
+    if (r.target_table === "activities") {
+      const rec = findActivity.get(r.target_id, profileId) as
+        { date: string; title: string | null; type: string | null } | undefined;
+      deleted = !rec;
+      date = rec?.date ?? null;
+      label = rec?.title || rec?.type || "Activity";
+      href = date ? timelineDayHref(date) : timelineDayHref("");
+    } else if (r.target_table === "body_metrics") {
+      const rec = findBody.get(r.target_id, profileId) as
+        { date: string } | undefined;
+      deleted = !rec;
+      date = rec?.date ?? null;
+      label = "Body metrics";
+      href = date ? timelineDayHref(date) : timelineDayHref("");
+    } else if (r.target_table === "metric_samples") {
+      const rec = findSample.get(r.target_id, profileId) as
+        { date: string; metric: string } | undefined;
+      deleted = !rec;
+      date = rec?.date ?? null;
+      label = rec?.metric ?? "Metric";
+      href = date ? timelineDayHref(date) : timelineDayHref("");
+    } else {
+      // medical_records → Results (biomarker view when canonical, else the list).
+      const rec = findRecord.get(r.target_id, profileId) as
+        | { date: string; name: string | null; canonical_name: string | null }
+        | undefined;
+      deleted = !rec;
+      date = rec?.date ?? null;
+      label = rec?.name || rec?.canonical_name || "Lab result";
+      href = biomarkerViewHref(rec?.canonical_name ?? null, rec?.name ?? null);
+    }
+    out.push({
+      id: r.id,
+      targetTable: r.target_table,
+      targetId: r.target_id,
+      disposition: r.disposition,
+      date,
+      label,
+      href,
+      deleted,
+    });
+  }
+  return out;
 }

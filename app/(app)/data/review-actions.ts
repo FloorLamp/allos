@@ -1,9 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireWriteAccess } from "@/lib/auth";
+import { requireWriteAccess, requireSession } from "@/lib/auth";
 import { db, writeTx } from "@/lib/db";
-import { recordPairDecision } from "@/lib/queries";
+import {
+  recordPairDecision,
+  getSyncRowProvenance,
+  type SyncRowLink,
+} from "@/lib/queries";
 import {
   ACTIVITY_DOMAIN,
   BODY_METRIC_DOMAIN,
@@ -70,6 +74,18 @@ const EDIT_LOCK_REVALIDATE: Record<string, string[]> = {
   body_metrics: ["/data", "/trends", "/"],
   medical_records: ["/data", "/results", "/biomarkers/view", "/"],
 };
+
+// Read the per-row provenance for one sync event (issue #1333): the records that sync
+// inserted/updated, resolved to deep links. A pure READ, so it gates on requireSession
+// (any accessible profile may inspect its own sync history) and is PROFILE-SCOPED —
+// getSyncRowProvenance filters both the event and every target by the session profile,
+// so an event id from another profile returns []. Called lazily by the drill-in on
+// expand, mirroring the raw-payload viewer's on-open fetch.
+export async function loadSyncRows(eventId: number): Promise<SyncRowLink[]> {
+  const { profile } = await requireSession();
+  if (!Number.isInteger(eventId)) return [];
+  return getSyncRowProvenance(profile.id, eventId);
+}
 
 // Clear the user-edit lock on one imported row so the next sync resumes updating it
 // (issue #659 — the undo-inverts-side-state convention applied to the lock). This is

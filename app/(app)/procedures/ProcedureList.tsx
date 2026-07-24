@@ -6,14 +6,19 @@ import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
 import ProviderName from "@/components/ProviderName";
 import NotesText from "@/components/NotesText";
+import RecordEncounterLink from "@/components/RecordEncounterLink";
 import { formatRecordDate } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
+import type { LinkedEncounterRef } from "@/lib/queries";
 import type { Procedure } from "@/lib/types";
 import type { Stamped } from "@/lib/scope";
 import type { ListMultiView } from "@/lib/multi-view";
 
-const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Procedure>[] => [
+const buildColumns = (
+  fmt: DisplayFormatPrefs,
+  performedAt: Record<number, LinkedEncounterRef>
+): RecordColumn<Procedure>[] => [
   {
     header: "Procedure",
     cellClassName: "font-medium text-slate-800 dark:text-slate-100",
@@ -24,6 +29,14 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Procedure>[] => [
           notes={p.notes}
           className="ml-2 text-xs font-normal text-slate-400"
         />
+        {/* "Performed at: <visit>" (#1355) — the linked encounter, absent-pillar. */}
+        {performedAt[p.id] ? (
+          <RecordEncounterLink
+            label="Performed at"
+            encounter={performedAt[p.id]}
+            testid={`procedure-performed-at-${p.id}`}
+          />
+        ) : null}
       </>
     ),
   },
@@ -73,15 +86,17 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Procedure>[] => [
 // Manage stored procedure rows: edit in place or delete, on the shared RecordTable.
 export default function ProcedureList({
   items,
+  performedAt = {},
   multiView,
 }: {
   items: Stamped<Procedure>[];
+  performedAt?: Record<number, LinkedEncounterRef>;
   multiView?: ListMultiView;
 }) {
   return (
     <RecordTable
       items={items}
-      columns={buildColumns(useFormatPrefs())}
+      columns={buildColumns(useFormatPrefs(), performedAt)}
       emptyMessage="No procedures yet. Add one, or import a MyChart / CCD health record to populate your surgical history."
       multiView={
         multiView

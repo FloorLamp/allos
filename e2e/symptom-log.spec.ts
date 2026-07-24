@@ -19,6 +19,13 @@ async function logAndConfirm(
   key: string,
   level: number
 ): Promise<void> {
+  // The write-bearing taps (picker add, severity chip) MUST be settled: a bare
+  // .click() followed by the reload below can abort its own Server-Action POST
+  // before it commits, so every retry of this loop repeats the same self-race and
+  // the 40s window can spin without ever persisting (#1400 — the census failure).
+  // The picker TOGGLE stays a bare click: it's client-only and fires no POST for
+  // settledTap to await.
+  const tap = settledTap(page);
   await expect(async () => {
     let bar = page.getByTestId("symptom-log-bar").first(); // first-ok: the acting profile's own symptom bar (top of the dashboard) — order-agnostic
     if ((await bar.getByTestId(`symptom-${key}`).count()) === 0) {
@@ -26,14 +33,14 @@ async function logAndConfirm(
         await bar.getByTestId("symptom-add-picker-toggle").click();
       }
       const pick = bar.getByTestId(`symptom-pick-${key}`);
-      if ((await pick.count()) > 0) await pick.click();
+      if ((await pick.count()) > 0) await tap(pick);
     }
     const chip = bar.getByTestId(`symptom-${key}-sev-${level}`);
     if (
       (await chip.count()) > 0 &&
       (await chip.getAttribute("aria-pressed")) !== "true"
     ) {
-      await chip.click();
+      await tap(chip);
     }
     await page.reload();
     bar = page.getByTestId("symptom-log-bar").first(); // first-ok: the acting profile's own symptom bar (top of the dashboard) — order-agnostic

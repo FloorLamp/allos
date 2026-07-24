@@ -2,28 +2,27 @@ import { test, expect, type Page } from "@playwright/test";
 import { loginAs } from "./nav";
 import { E2E_LOGIN_HC, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 
-// /integrations/health-connect (issue #391, gap 4). The push-based ingest token is
-// managed here (generate → rotate → disconnect). This drives an isolated member on
-// a dedicated, connection-less fixture profile — so it never connects profile 1's
-// Health Connect, whose UNconnected state the review-inbox spec relies on — and
-// proves that rotating the token actually changes the displayed value.
+// /integrations/health-connect (issue #391, gap 4; hash-at-rest reveal-once #1209).
+// The push-based ingest token is managed here (generate → rotate → disconnect). The
+// token is HASHED at rest, so its plaintext is shown EXACTLY ONCE — at generate/
+// rotate — and a plain reload of a connected profile shows NO token, just a Rotate
+// button. This drives an isolated member on a dedicated, connection-less fixture
+// profile — so it never connects profile 1's Health Connect, whose UNconnected state
+// the review-inbox spec relies on — and proves that rotating mints a new value.
 
-// Reveal the (single, secret) Bearer-token field and read its value. The endpoint
-// field is the other font-mono code; it's the one that carries the http(s) URL, so
-// the token is the code WITHOUT it. A rotate re-renders the field masked, so reveal
-// again each read.
-async function readToken(page: Page): Promise<string> {
+// Reveal the (single, secret) Bearer-token field just shown by a generate/rotate and
+// read its value. The field carries a dedicated testid (health-connect-token), so it's
+// unambiguous even though the page also renders font-mono <code> cells in the
+// recommended-settings table. A rotate re-renders the field masked, so reveal again.
+async function readRevealedToken(page: Page): Promise<string> {
   const reveal = page.getByRole("button", { name: "Reveal" });
-  if (await reveal.count()) await reveal.first().click(); // first-ok: reveals the token (guarded by count; this integration has one token) — order-agnostic
-  const tokenCode = page
-    .locator("code.font-mono")
-    .filter({ hasNotText: "http" });
-  const text = await tokenCode.first().textContent(); // first-ok: this integration's single token code — order-agnostic
+  if (await reveal.count()) await reveal.first().click(); // first-ok: reveals the just-minted token (guarded by count; this integration has one token) — order-agnostic
+  const text = await page.getByTestId("health-connect-token").textContent();
   return (text ?? "").trim();
 }
 
 test.describe("Health Connect integration (#391)", () => {
-  test("generating then rotating the token changes the displayed value", async ({
+  test("token is shown once at generate/rotate and rotating mints a fresh value", async ({
     browser,
   }) => {
     // Local `next dev` compiles the route on first hit.
@@ -45,16 +44,21 @@ test.describe("Health Connect integration (#391)", () => {
 
       // Enable it if this profile isn't already connected (retry-safe against a
       // reused DB): the generate button only shows in the disconnected state.
-      const generate = member.getByRole("button", {
-        name: "Generate token & enable",
-      });
+      const generate = member.getByTestId("health-connect-generate");
       if (await generate.count()) {
         await generate.click();
       }
 
-      // Connected: a status badge + a Bearer token now render.
+      // Connected: a status badge renders. Reveal-once means a plain connected view
+      // may show no token — so ROTATE to get a freshly-revealed one (retry-safe: a
+      // rotate always mints + reveals a value regardless of prior state).
       await expect(member.getByTestId("health-connect-status")).toBeVisible();
-      const first = await readToken(member);
+      const tokenField = member.getByTestId("health-connect-token");
+
+      await member.getByTestId("health-connect-rotate").click();
+      // Wait for the reveal-once token field to appear, then read it.
+      await expect(tokenField).toBeVisible({ timeout: 15_000 });
+      const first = await readRevealedToken(member);
       expect(first.length).toBeGreaterThan(10);
 
       // #1212: sync history is deduped to ONE surface (Review → Connected
@@ -66,19 +70,26 @@ test.describe("Health Connect integration (#391)", () => {
       await expect(historyLink).toHaveAttribute("href", "/data?section=review");
       await expect(member.getByText("Recent activity")).toHaveCount(0);
 
-      // Rotate → a fresh token replaces the old one on the page. Wait for the
-      // revalidated render to actually swap the displayed value away from the old
-      // token before reading (the action call resolves before the RSC refresh
-      // lands), then reveal + read the new one.
-      const tokenCode = member
-        .locator("code.font-mono")
-        .filter({ hasNotText: "http" });
-      const code = tokenCode.first(); // first-ok: this integration's single token code, asserted changed after rotate — order-agnostic
+      // Rotate again → a fresh token replaces the revealed one. The displayed value
+      // updates from the action's return (no RSC roundtrip), so wait for it to swap
+      // away from the previous token, then reveal + read the new one. Reveal first so
+      // the field shows the plaintext (not the mask) before comparing.
       await member.getByTestId("health-connect-rotate").click();
-      await expect(code).not.toHaveText(first, { timeout: 15_000 });
-      const second = await readToken(member);
+      const revealBtn = member.getByRole("button", { name: "Reveal" });
+      if (await revealBtn.count()) await revealBtn.first().click(); // first-ok: reveals the single token field — order-agnostic
+      await expect(tokenField).not.toHaveText(first, { timeout: 15_000 });
+      const second = await readRevealedToken(member);
       expect(second.length).toBeGreaterThan(10);
       expect(second).not.toBe(first);
+
+      // Reveal-once: on a fresh reload the token field is gone entirely (only the
+      // endpoint URL remains); the panel points the user at Rotate instead.
+      await member.goto("/integrations/health-connect");
+      await expect(member.getByTestId("health-connect-status")).toBeVisible();
+      await expect(
+        member.getByText("only shown at the moment it", { exact: false })
+      ).toBeVisible();
+      await expect(member.getByTestId("health-connect-token")).toHaveCount(0);
     } finally {
       await member.context().close();
     }

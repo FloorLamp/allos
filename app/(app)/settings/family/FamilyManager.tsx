@@ -7,7 +7,7 @@ import PhotoPicker from "@/components/PhotoPicker";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { NOTICE_TONE } from "@/components/Notice";
 import { membersLosingAllAccess } from "@/lib/family-deletion";
-import type { Access } from "@/lib/grants";
+import { grantCountSummary, type Access } from "@/lib/grants";
 import {
   deletionErasesText,
   grantFormEntries,
@@ -773,38 +773,106 @@ function GrantsCard({
           Add a profile first.
         </p>
       ) : (
-        <div className="space-y-3">
-          {logins.map((a) => {
-            // The profiles this login may act as — the choices for its own-profile
-            // (#1013): an admin reaches every profile, a member only its grants. The
-            // server (setOwnProfileForLogin) re-checks this constraint.
-            const reachable =
-              a.role === "admin"
-                ? profiles
-                : profiles.filter((p) => (grants[a.id] ?? []).includes(p.id));
-            return (
-              <div key={a.id} className="space-y-2">
-                {a.role === "admin" ? (
-                  <div className="flex flex-wrap items-center gap-2 rounded-lg border border-black/10 p-3 dark:border-white/10">
-                    <span className="font-medium text-slate-800 dark:text-slate-100">
-                      {a.username}
-                    </span>
-                    <span className="text-xs text-slate-500 dark:text-slate-400">
-                      — all profiles (admin)
-                    </span>
-                  </div>
-                ) : (
-                  <GrantsRow
-                    login={a}
-                    profiles={profiles}
-                    granted={grants[a.id] ?? []}
-                    access={access[a.id] ?? {}}
-                  />
-                )}
-                <OwnProfileRow login={a} profiles={reachable} />
-              </div>
-            );
-          })}
+        <div className="space-y-2">
+          {logins.map((a) => (
+            <GrantsSummaryRow
+              key={a.id}
+              login={a}
+              profiles={profiles}
+              granted={grants[a.id] ?? []}
+              access={access[a.id] ?? {}}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// One compact, at-rest row per login (issue #1412). Renders O(1) controls when
+// collapsed — a username · role · "N of M profiles" summary (admins read "— all
+// profiles (admin)") plus an Edit disclosure — so the whole card is O(logins), not
+// the old O(logins × profiles) grid. Expanding ONE login lazily mounts its
+// per-profile grant toggles (members only) + its own-profile <select>, so hydration
+// is bounded by how many rows the admin actually opens rather than the fixture
+// scale. The write model is untouched: the mounted GrantsRow/OwnProfileRow are the
+// same controls, still saving through setGrants (grantSignature guard, #467) and the
+// own-profile autosave (#1013). Once opened a row STAYS mounted on collapse (state
+// kept, just hidden) so a half-edited grid isn't discarded by a fat-fingered toggle
+// of the disclosure; the perf win is that unopened rows never mount at all.
+function GrantsSummaryRow({
+  login,
+  profiles,
+  granted,
+  access,
+}: {
+  login: Login;
+  profiles: Profile[];
+  granted: number[];
+  access: Record<number, Access>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [everOpened, setEverOpened] = useState(false);
+  const isAdmin = login.role === "admin";
+  // The profiles this login may act as — the choices for its own-profile (#1013): an
+  // admin reaches every profile, a member only its grants. The server
+  // (setOwnProfileForLogin) re-checks this constraint.
+  const reachable = isAdmin
+    ? profiles
+    : profiles.filter((p) => granted.includes(p.id));
+
+  return (
+    <div
+      data-testid={`grant-summary-${login.username}`}
+      className="rounded-lg border border-black/10 p-3 dark:border-white/10"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-medium text-slate-800 dark:text-slate-100">
+          {login.username}
+        </span>
+        <span
+          className={`badge ${
+            isAdmin
+              ? "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300"
+              : "bg-slate-100 text-slate-600 dark:bg-ink-800 dark:text-slate-300"
+          }`}
+        >
+          {login.role}
+        </span>
+        <span
+          data-testid={`grant-count-${login.username}`}
+          className="text-xs text-slate-500 dark:text-slate-400"
+        >
+          {isAdmin
+            ? "— all profiles (admin)"
+            : grantCountSummary(granted, profiles.length)}
+        </span>
+        <button
+          type="button"
+          data-testid={`grant-edit-${login.username}`}
+          onClick={() => {
+            setEverOpened(true);
+            setOpen((v) => !v);
+          }}
+          aria-expanded={open}
+          className="btn-ghost ml-auto"
+        >
+          {open ? "Done" : "Edit"}
+        </button>
+      </div>
+      {everOpened && (
+        <div className={open ? "block" : "hidden"}>
+          <div className="mt-3 space-y-2 border-t border-black/10 pt-3 dark:border-white/10">
+            {!isAdmin && (
+              <GrantsRow
+                login={login}
+                profiles={profiles}
+                granted={granted}
+                access={access}
+              />
+            )}
+            <OwnProfileRow login={login} profiles={reachable} />
+          </div>
         </div>
       )}
     </div>
@@ -917,13 +985,7 @@ function GrantsRow({
   }
 
   return (
-    <div
-      className="rounded-lg border border-black/10 p-3 dark:border-white/10"
-      data-testid={`grant-row-${login.username}`}
-    >
-      <div className="mb-2 font-medium text-slate-800 dark:text-slate-100">
-        {login.username}
-      </div>
+    <div data-testid={`grant-row-${login.username}`}>
       <div className="space-y-2">
         {profiles.map((p) => {
           const isGranted = selected.has(p.id);
@@ -937,6 +999,7 @@ function GrantsRow({
               <label className="flex min-w-[8rem] items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
                 <input
                   type="checkbox"
+                  data-testid={`grant-toggle-${login.username}-${p.id}`}
                   checked={isGranted}
                   onChange={() => toggle(p.id)}
                   className="h-4 w-4 accent-brand-600 focus:ring-brand-500"
@@ -963,6 +1026,7 @@ function GrantsRow({
           type="button"
           onClick={save}
           disabled={pending}
+          data-testid={`grant-save-${login.username}`}
           className="btn-ghost"
         >
           Save access

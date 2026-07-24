@@ -859,6 +859,21 @@ export const MVBIO_RO_ANALYTE = "Biored Glucose (e2e)";
 export const E2E_LOGIN_VIEWONLY_READ = "e2e_viewonly_read";
 export const E2E_LOGIN_VIEWONLY_WRITE = "e2e_viewonly_write";
 
+// Records-surface enrichment sweep (issues #1354 + #1355). A dedicated member login +
+// ADULT profile carrying the exact fixtures the enrichment lines read, so no spec ever
+// exact-count-asserts a shared-seed row: a Penicillin allergy + an active Amoxicillin
+// medication (a drug-allergy CLASS contraindication → the allergy-row cross-link and its
+// deep-link to the med), a CYP2C19 poor-metabolizer variant + an active Clopidogrel
+// medication (a PGx hit → the variant-row "Affects:" line), and a procedure linked to an
+// encounter (the #1355 "Performed at:" visit line). Its OWN login/profile so the
+// contraindication + PGx findings never perturb another spec's medications/allergies
+// counts, and the fixture ids are uniquely anchored (own describe in the spec).
+export const E2E_LOGIN_RECS_ENRICH = "e2e_recs_enrich";
+export const RECS_ENRICH_PROFILE = "Records Enrich (e2e)";
+export const RECS_ENRICH_ALLERGY_MED = "Amoxicillin 500 mg (e2e)";
+export const RECS_ENRICH_PGX_MED = "Clopidogrel (e2e)";
+export const RECS_ENRICH_PROCEDURE = "Knee arthroscopy (e2e)";
+
 // #1171 / #1241 — the daylight-outdoor-minutes trend chart AND the free-days setting.
 // A dedicated adult profile with a coarse home location (so the sun features are on)
 // and outdoor daytime activities on SEVERAL recent days, so the Trends → Vitals
@@ -884,3 +899,12 @@ export const SUN_NOHOME_PROFILE = "Sun No Home (e2e)";
 // multi-select merge. Synthetic data only.
 export const E2E_LOGIN_NWAY = "e2e_nway";
 export const NWAY_PROFILE = "N-Way Merge (e2e)";
+
+// #1412 — the Family grant-matrix collapse. A DEDICATED member login granted ONE
+// dedicated profile (write), so the family-grants spec can drive its collapsed
+// summary row, expand it, and flip its grant level through setGrants WITHOUT
+// perturbing any other spec's grant set (view-only-access pins profile 1's members;
+// this login is nobody else's dependency). own_profile_id is left null so the spec
+// also proves the own-profile autosave from a known start. Synthetic, no PHI.
+export const E2E_LOGIN_GRANTEDIT = "e2e_grantedit";
+export const GRANT_EDIT_PROFILE = "Grant Edit (e2e)";
