@@ -264,7 +264,7 @@ function collectEvents(
     const activityBounds = exact("date");
     const activities = db
       .prepare(
-        `SELECT id, date, type, title, duration_min, distance_km, intensity, start_time, notes, source, components
+        `SELECT id, date, type, title, duration_min, distance_km, intensity, start_time, end_time, notes, source, components
            FROM activities
           WHERE profile_id = ?${restrictedActivityTypeClause(
             restricted
@@ -281,6 +281,7 @@ function collectEvents(
       distance_km: number | null;
       intensity: string | null;
       start_time: string | null;
+      end_time: string | null;
       notes: string | null;
       source: string | null;
       components: string | null;
@@ -310,6 +311,15 @@ function collectEvents(
           detail: a.notes,
           href: journalActivityHref(a.id),
           sortTime: a.start_time,
+          // The raw local window inputs for the intraday panel's workout block
+          // (#1068) — resolved through the canonical activityWindow(), so an
+          // activity with no start (or no derivable end) simply has no block.
+          clockWindow: {
+            date: a.date,
+            start_time: a.start_time,
+            end_time: a.end_time,
+            duration_min: a.duration_min,
+          },
           meta: a.source ? [a.source] : undefined,
           detailItems: setSummaries.get(a.id),
           iconType: a.type,

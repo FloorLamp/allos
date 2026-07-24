@@ -35,3 +35,4 @@ export * from "./settings/calendar-feed";
 export * from "./settings/crisis";
 export * from "./settings/onboarding";
 export * from "./settings/hints";
+export * from "./settings/whats-new";

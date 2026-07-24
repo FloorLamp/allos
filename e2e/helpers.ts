@@ -356,6 +356,35 @@ export async function expectNoClippedContent(page: Page): Promise<void> {
   expect(offenders, offenders.join("\n")).toEqual([]);
 }
 
+// Open MobileNav's slide-in drawer and return it (issue #1420 — the `mobile`
+// Playwright project's one shared interaction). The drawer is the phone shell's
+// only route to the app's navigation: below `md` the desktop sidebar is hidden and
+// the drawer's <aside> isn't even MOUNTED until the hamburger is tapped
+// (components/MobileNav.tsx renders it behind `{open && …}`), so a mobile spec that
+// needs a nav link has to open it first.
+//
+// The tap fires NO Server Action and NO navigation — it's a pure `setOpen(true)`
+// client toggle — so neither settledClick nor followLink applies, and a tap landing
+// in the pre-hydration window (#500/#830) is silently swallowed with nothing to
+// await. This is decision-tree case 4: re-tap until the drawer mounts, guarded on
+// its visibility. Re-tapping is safe because the hamburger only ever sets `open`
+// TRUE (it never toggles), so a late tap can't close what a prior one opened.
+export async function openMobileDrawer(page: Page): Promise<Locator> {
+  // The drawer <aside> is identified by the close (✕) button that ONLY it renders
+  // (SidebarContent's `onClose` prop is set for the drawer, not the desktop
+  // sidebar), so this can never resolve to the hidden desktop sidebar.
+  const drawer = page.locator("aside", {
+    has: page.getByRole("button", { name: "Close menu" }),
+  });
+  await expect(async () => {
+    if (!(await drawer.isVisible())) {
+      await page.getByRole("button", { name: "Open menu" }).click();
+    }
+    await expect(drawer).toBeVisible({ timeout: 1000 });
+  }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-tap the hamburger past the pre-hydration swallow — a pure client toggle with no POST/navigation to settle on; set-true-only, so a late tap can't re-close it
+  return drawer;
+}
+
 // Playwright surfaces a click on a link that a prior iteration already navigated
 // away from as an "element is not attached to the DOM" / "detached" error. That
 // is the ONE race followLink is allowed to swallow (the next URL check passes);

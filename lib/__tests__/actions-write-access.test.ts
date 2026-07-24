@@ -90,6 +90,11 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     why: "login-scoped: dismisses the caller's OWN one-time multi-view discoverability hint (a 'seen' flag in login_settings, #1327), not profile-owned data — same shape as saveUnitPrefs, so requireSession() is the right gate; no demo-gating needed (a harmless per-login UI flag)",
   },
   {
+    file: "app/(app)/whats-new/actions.ts",
+    fn: "markWhatsNewSeenAction",
+    why: "login-scoped: records that the caller's OWN login has opened the bundled release notes (a date marker in login_settings, #1421), not profile-owned data — same shape as saveUnitPrefs/dismissMultiviewHintAction, so requireSession() is the right gate; no demo-gating needed (a harmless per-login UI marker)",
+  },
+  {
     file: "app/(app)/settings/actions.ts",
     fn: "changeOwnPassword",
     why: "login-scoped: changes the caller's own password (demo-gated, #278)",

@@ -270,6 +270,13 @@ import {
   NWAY_PROFILE,
   E2E_LOGIN_GRANTEDIT,
   GRANT_EDIT_PROFILE,
+  E2E_LOGIN_WHATSNEW,
+  WHATS_NEW_PROFILE,
+  E2E_LOGIN_INTRADAY,
+  INTRADAY_PROFILE,
+  INTRADAY_ACTIVITY,
+  INTRADAY_TICK_DOC,
+  INTRADAY_TICK_TIME,
 } from "./fixture-logins";
 import { seedNwayMergeFixture } from "./nway-merge-fixture";
 import {
@@ -6086,5 +6093,148 @@ console.log(
   grantProfile(supplyLoginId, supplyChildId, "write");
   console.log(
     `e2e: seeded shared-supply-pool fixture — ${E2E_LOGIN_SUPPLY} granted ${SUPPLY_PARENT_PROFILE} (${supplyParentId}) + ${SUPPLY_CHILD_PROFILE} (${supplyChildId}); bottles ${sharedBottleId}/${lowBottleId} (#1374)`
+  );
+}
+
+// ── #1421 "What's new" fixture ───────────────────────────────────────────────
+// A dedicated member login + profile for the release-notes spec. The page's content
+// comes from the checked-in lib/release-notes.json, so this fixture carries NO health
+// data — it exists purely to own a LOGIN whose `whats_new_seen_date` marker the spec
+// can clear and re-assert per iteration without touching any other session's dot.
+// Idempotent for a reused dev server (fixtureProfileId + seedMemberLogin both upsert).
+{
+  const whatsNewId = fixtureProfileId(WHATS_NEW_PROFILE);
+  seedMemberLogin(E2E_LOGIN_WHATSNEW, whatsNewId, "write");
+  console.log(
+    `e2e: seeded what's-new fixture — login ${E2E_LOGIN_WHATSNEW} granted profile ${whatsNewId} (${WHATS_NEW_PROFILE}) (#1421)`
+  );
+}
+
+// ── Intraday panel fixture (issue #1068) ─────────────────────────────────────
+// The Timeline single-day view's intraday panel — the day rotated 90°. A dedicated
+// profile so the panel's layers are deterministic without perturbing profile 1 (whose
+// hr_minutes exist ONLY inside the zone-ride window that training-zones.spec pins).
+//
+// TODAY carries every layer: an overnight sleep session that STARTED before midnight
+// (clipped at the left edge, never re-attributed) with one deep-stage sub-band,
+// per-minute HR from midnight through mid-morning with a workout spike, a windowed
+// cardio activity (the workout block), and two clock-timed document uploads (the tick
+// rail). Because the day is today, the now-marker renders too.
+//
+// THREE DAYS BACK carries only a weigh-in — a real feed event with NO clock time — so
+// the same profile proves the data gate: the day renders, the panel does not.
+//
+// Timezone discipline (#1417): the profile INHERITS the run's pinned instance timezone
+// (frozen local ~13:00), so every absolute instant here is built through
+// zonedWallTimeToUtc(getTimezone(id), …). hr_minutes.ts is profile-LOCAL by design
+// (#94), so those are seeded as wall-clock minute strings — exactly what the ingest
+// writes. Idempotent: this profile's fixture rows are cleared first.
+{
+  const idId = fixtureProfileId(INTRADAY_PROFILE);
+  const idTz = getTimezone(idId);
+  const idToday = today(idId);
+  const idPrev = shiftDateStr(idToday, -1);
+  const idQuiet = shiftDateStr(idToday, -3);
+  const idInstant = (day: string, hhmm: string) =>
+    utcSqlString(zonedWallTimeToUtc(idTz, day, hhmm));
+  const idIso = (day: string, hhmm: string) =>
+    zonedWallTimeToUtc(idTz, day, hhmm).toISOString();
+
+  db.prepare("DELETE FROM hr_minutes WHERE profile_id = ?").run(idId);
+  db.prepare("DELETE FROM metric_samples WHERE profile_id = ?").run(idId);
+  db.prepare("DELETE FROM activities WHERE profile_id = ?").run(idId);
+  db.prepare("DELETE FROM medical_documents WHERE profile_id = ?").run(idId);
+  db.prepare("DELETE FROM body_metrics WHERE profile_id = ?").run(idId);
+
+  // Layer 1 — per-minute HR. Overnight rest sampled every 5 minutes (00:00–06:55),
+  // then continuous minutes through the ride: an easy warm-up, the 08:00–09:00 effort,
+  // and the recovery tail. Wear stops at 09:30, so the line simply ends there.
+  const insIdHr = db.prepare(
+    `INSERT INTO hr_minutes (profile_id, ts, bpm, bpm_min, bpm_max, n, source)
+     VALUES (?, ?, ?, ?, ?, 6, 'health-connect')`
+  );
+  const idHrStamp = (minute: number) =>
+    `${idToday}T${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(
+      minute % 60
+    ).padStart(2, "0")}`;
+  for (let m = 0; m < 7 * 60; m += 5) {
+    insIdHr.run(idId, idHrStamp(m), 52, 48, 57);
+  }
+  for (let m = 7 * 60; m <= 9 * 60 + 30; m++) {
+    const bpm = m < 8 * 60 ? 78 : m < 9 * 60 ? 138 : 92;
+    insIdHr.run(idId, idHrStamp(m), bpm, bpm - 4, bpm + 5);
+  }
+
+  // Layer 2 — the overnight session (23:20 → 06:35) plus one windowed deep stage.
+  const insIdSample = db.prepare(
+    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+     VALUES (?, 'health-connect', ?, ?, ?, ?, ?)`
+  );
+  insIdSample.run(
+    idId,
+    "sleep_min",
+    idToday,
+    idIso(idPrev, "23:20"),
+    idIso(idToday, "06:35"),
+    435
+  );
+  insIdSample.run(
+    idId,
+    "sleep_deep_min",
+    idToday,
+    idIso(idToday, "01:10"),
+    idIso(idToday, "02:20"),
+    70
+  );
+
+  // Layer 3 — the windowed workout block.
+  db.prepare(
+    `INSERT INTO activities
+       (profile_id, date, type, title, duration_min, distance_km, intensity,
+        start_time, end_time, components, source, external_id)
+     VALUES (?, ?, 'cardio', ?, 60, 22, 'moderate', '08:00', '09:00', ?, 'manual',
+             'e2e:intraday-ride')`
+  ).run(
+    idId,
+    idToday,
+    INTRADAY_ACTIVITY,
+    JSON.stringify([
+      { name: "Cycling", type: "cardio", distance_km: 22, duration_min: 60 },
+    ])
+  );
+
+  // Layer 4 — clock-timed feed events for the tick rail. Two document uploads at
+  // known LOCAL wall times (the timeline derives an event's clock time from
+  // uploaded_at in the profile's zone), one of them in a terminal failed state so a
+  // tone-colored tick is exercised alongside a neutral one.
+  const insIdDoc = db.prepare(
+    `INSERT INTO medical_documents
+       (profile_id, filename, stored_path, mime_type, size_bytes, doc_type,
+        extraction_status, extracted_count, uploaded_at)
+     VALUES (?, ?, '', 'application/pdf', 2048, 'Lab report', ?, ?, ?)`
+  );
+  insIdDoc.run(
+    idId,
+    INTRADAY_TICK_DOC,
+    "done",
+    3,
+    idInstant(idToday, INTRADAY_TICK_TIME)
+  );
+  insIdDoc.run(
+    idId,
+    "e2e-intraday-evening-panel.pdf",
+    "failed",
+    0,
+    idInstant(idToday, "19:40")
+  );
+
+  // The data-gate day: one weigh-in, no clock time anywhere.
+  db.prepare(
+    "INSERT INTO body_metrics (profile_id, date, weight_kg, source) VALUES (?, ?, 74.2, 'manual')"
+  ).run(idId, idQuiet);
+
+  seedMemberLogin(E2E_LOGIN_INTRADAY, idId, "write");
+  console.log(
+    `e2e: seeded intraday-panel fixture — ${E2E_LOGIN_INTRADAY} granted ${INTRADAY_PROFILE} (${idId}); intraday day ${idToday}, quiet day ${idQuiet} (#1068)`
   );
 }

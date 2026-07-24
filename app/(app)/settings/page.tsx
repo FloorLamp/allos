@@ -1,4 +1,13 @@
-import { getUnitPrefs, getDisplayFormatPrefs } from "@/lib/settings";
+import {
+  getUnitPrefs,
+  getDisplayFormatPrefs,
+  getWhatsNewSeenDate,
+} from "@/lib/settings";
+import {
+  hasUnseenNotes,
+  loadReleaseNotes,
+  newestNoteDate,
+} from "@/lib/release-notes";
 import {
   requireSession,
   listLoginSessions,
@@ -11,6 +20,7 @@ import { getLoginTotpState, countUnusedRecoveryCodes } from "@/lib/two-factor";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui";
 import AppVersion from "@/components/AppVersion";
+import WhatsNewLink from "@/components/WhatsNewLink";
 import SettingsTabs from "./SettingsTabs";
 import UnitPrefsForm from "./UnitPrefsForm";
 import OwnProfileForm from "./OwnProfileForm";
@@ -43,6 +53,11 @@ export default async function SettingsPage() {
   const ownProfileId = ownProfileForLogin(login.id);
   const sessions = await listLoginSessions(login.id);
   const twofaEnabled = getLoginTotpState(login.id).enabled;
+  // Same ONE unread comparison the app shell uses for the sidebar dot (#1421).
+  const whatsNewUnseen = hasUnseenNotes(
+    newestNoteDate(loadReleaseNotes()),
+    getWhatsNewSeenDate(login.id)
+  );
   const recoveryRemaining = twofaEnabled
     ? countUnusedRecoveryCodes(login.id)
     : 0;
@@ -74,6 +89,11 @@ export default async function SettingsPage() {
         <span>
           Version <AppVersion />
         </span>
+        <span aria-hidden>·</span>
+        {/* The bundled release notes sit right next to the version they describe
+        (issue #1421); the dot is the same login-scoped unread verdict the sidebar
+        footer shows, and opening the page clears it. */}
+        <WhatsNewLink unseen={whatsNewUnseen} />
         <span aria-hidden>·</span>
         <Link
           href="/disclaimer"

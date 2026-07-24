@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import path from "node:path";
 import { followLink, openCommandPalette } from "./nav";
@@ -43,6 +43,21 @@ const ROUTES = [
   "/settings",
 ];
 
+// The app shell renders ONE of two navigation surfaces depending on viewport, so
+// the "this is the app, not a Next error boundary" anchor has to follow suit
+// (issue #1420 — this spec now runs in the `mobile` project too): the desktop
+// sidebar is `hidden md:flex` (app/(app)/layout.tsx) and MobileNav's top bar is
+// `md:hidden`, and the drawer holding the sidebar's links isn't even mounted
+// until the hamburger is tapped. Below the Tailwind `md` breakpoint (768px) the
+// anchor is that hamburger; at desktop widths it stays the sidebar's Data link
+// (exact:true avoids the Import tab's provider links that also contain "Data").
+function appShellAnchor(page: Page): Locator {
+  const width = page.viewportSize()?.width ?? Number.POSITIVE_INFINITY;
+  return width < 768
+    ? page.getByRole("button", { name: "Open menu" })
+    : page.getByRole("link", { name: "Data", exact: true });
+}
+
 // #181: with ALLOS_DEMO_MODE unset (the default webServer env), demo mode is fully
 // inert — the persistent demo banner must be absent on both the login page and an
 // authenticated page, and the login page shows no demo-credentials card. The
@@ -60,12 +75,9 @@ for (const route of ROUTES) {
   test(`renders ${route}`, async ({ page }) => {
     const resp = await page.goto(route);
     expect(resp?.status(), `HTTP status for ${route}`).toBeLessThan(400);
-    // The shared sidebar (Data nav link) proves the app shell rendered rather
-    // than a Next error boundary / 500 page. exact:true avoids matching the
-    // Import tab's provider links that also contain "Data".
-    await expect(
-      page.getByRole("link", { name: "Data", exact: true })
-    ).toBeVisible();
+    // The viewport's navigation surface proves the app shell rendered rather
+    // than a Next error boundary / 500 page (see appShellAnchor).
+    await expect(appShellAnchor(page)).toBeVisible();
     await expect(page.getByText("Application error")).toHaveCount(0);
   });
 }
