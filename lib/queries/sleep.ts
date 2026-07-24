@@ -32,6 +32,7 @@ import {
   getActiveSituations,
   getTimezone,
   getSituationEvents,
+  getFreeDays,
 } from "../settings";
 import { doseAdherenceSince } from "../adherence-patterns";
 import { indexTakenByDose } from "../supplement-adherence";
@@ -404,7 +405,10 @@ export function getSleepRegularity(
   return computeSleepRegularity(
     getSleepSessions(profileId),
     getTimezone(profileId),
-    opts
+    // Resolve the profile's free-day set for the social-jetlag split (#1241) — an
+    // explicit opts.freeDays (tests) wins; otherwise the stored setting (Sat/Sun
+    // default) drives it. The pure core stays auth-blind: the setting is data.
+    { freeDays: getFreeDays(profileId), ...opts }
   );
 }
 
@@ -413,7 +417,10 @@ export function getSleepRegularityTrend(
   profileId: number,
   opts?: SleepRegularityOptions
 ): { date: string; sri: number }[] {
-  return sriTrend(getSleepSessions(profileId), getTimezone(profileId), opts);
+  return sriTrend(getSleepSessions(profileId), getTimezone(profileId), {
+    freeDays: getFreeDays(profileId),
+    ...opts,
+  });
 }
 
 // The "regularity dropped since travel" insight note, or null. Reuses the trend

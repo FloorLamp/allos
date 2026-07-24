@@ -71,3 +71,18 @@ export function getDaylightOutdoorMinutesTotal(
     total += m;
   return total;
 }
+
+// The daylight-outdoor-minutes TREND series (#1171): one {date, value} point per
+// day in `dates` that has minutes, sorted ascending — the shape the Trends chart
+// takes. A pure FORMATTER over getDaylightOutdoorMinutesByDay (#221, no new engine):
+// every point is exactly the DaylightChip / coaching value for that day, so the
+// chart can never drift from the chip or the average. Empty when the profile has no
+// home location (sun features quietly off — the source returns an empty map).
+export function getDaylightOutdoorMinutesSeries(
+  profileId: number,
+  dates: string[]
+): { date: string; value: number }[] {
+  return [...getDaylightOutdoorMinutesByDay(profileId, dates).entries()]
+    .map(([date, value]) => ({ date, value }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}

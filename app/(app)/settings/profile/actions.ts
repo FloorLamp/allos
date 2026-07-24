@@ -35,6 +35,7 @@ import {
   setWeekStart,
   isValidWeekMode,
   setWeekMode,
+  setFreeDays,
   setMaxHrOverride,
   setZone2WeeklyTargetMin,
   setRecommendationCadence,
@@ -275,6 +276,24 @@ export async function saveTrainingZones(formData: FormData) {
 // canonical catalog slugs (dropping any unknown slug), so a forged post can't store junk;
 // an empty set clears the row (Omnivore). Revalidates the nutrition surfaces the set
 // filters/demotes.
+// Free days (#1241): the per-profile off-day set that drives the social-jetlag
+// split in the Sleep Regularity card. A 7-checkbox row on Settings → Profile
+// autosaves through this action; the submitted `free_days` values are the checked
+// weekday indices (0=Sun … 6=Sat). An empty submission is an explicit "no free
+// days" (honored, not defaulted) — the form always renders all seven checkboxes,
+// so a present submission can never accidentally wipe an intended value.
+export async function saveFreeDays(formData: FormData) {
+  const { profile } = await requireWriteAccess();
+  const days = formData
+    .getAll("free_days")
+    .map((v) => Number(String(v)))
+    .filter((n) => Number.isInteger(n));
+  setFreeDays(profile.id, days);
+  revalidatePath("/settings/profile");
+  revalidatePath("/trends");
+  return { ok: true };
+}
+
 export async function saveDietaryPreferences(formData: FormData) {
   const { profile } = await requireWriteAccess();
   const slugs = formData.getAll("excluded").map((v) => String(v));

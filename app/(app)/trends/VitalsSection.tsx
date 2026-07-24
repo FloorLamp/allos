@@ -6,8 +6,10 @@ import {
   getBiomarkerSeries,
   getBodyMetricDailySeries,
   getMetricDailyTotals,
+  getDaylightOutdoorMinutesSeries,
 } from "@/lib/queries";
-import { getUnitPrefs } from "@/lib/settings";
+import { getUnitPrefs, getHomeLocation } from "@/lib/settings";
+import { lastNDates, daysBetweenDateStr } from "@/lib/date";
 import { HRV_METRIC } from "@/lib/vitals-input";
 import { ALL_ROWS, filterSeriesByRange } from "@/lib/trends";
 import { chartSeries } from "@/lib/chart-colors";
@@ -89,6 +91,25 @@ export default async function VitalsSection({ range }: { range: DateRange }) {
     })),
     range
   );
+  // Sun / outdoor time (#1171): a trend over the SAME getDaylightOutdoorMinutes
+  // computation the DaylightChip and the coaching average read (#221 — the chart is
+  // a formatter, no second engine). Data-gated on a home location: with none, sun
+  // features are quietly off (the series query returns []) so the card never renders
+  // — mirroring the empty-map behavior of the source. The window is the shared
+  // range, defaulting to a trailing 90 days when open and capped so the underlying
+  // date IN(...) stays bounded.
+  const home = getHomeLocation(profile.id);
+  let sun: Point[] = [];
+  if (home) {
+    const to = range.to ?? today(profile.id);
+    const MAX_SERIES_DAYS = 366;
+    const span = range.from
+      ? Math.min((daysBetweenDateStr(range.from, to) ?? 0) + 1, MAX_SERIES_DAYS)
+      : 90;
+    const dates = lastNDates(to, Math.max(span, 1));
+    sun = getDaylightOutdoorMinutesSeries(profile.id, dates);
+  }
+
   // Temperature: acute — the most recent readings only, newest kept, oldest first.
   const tempRows = getBiomarkerSeries(profile.id, "Body Temperature")
     .filter((r) => r.value_num != null)
@@ -106,6 +127,7 @@ export default async function VitalsSection({ range }: { range: DateRange }) {
     respiratory.length > 0 ||
     restingHr.length > 0 ||
     hrv.length > 0 ||
+    sun.length > 0 ||
     temperature.length > 0;
 
   return (
@@ -205,6 +227,26 @@ export default async function VitalsSection({ range }: { range: DateRange }) {
                 data={hrv}
                 label="HRV"
                 unit=" ms"
+                color={chartSeries.amber}
+                heightClass="h-48"
+              />
+            </div>
+          )}
+
+          {sun.length > 0 && (
+            <div className="card" data-testid="vitals-sun-outdoor">
+              <h3 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+                Sun / outdoor time
+              </h3>
+              <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+                Daylight minutes from your outdoor sessions, scoped to the solar
+                day at your home location. The same figure the day view&rsquo;s
+                sun chip shows.
+              </p>
+              <LineChartCard
+                data={sun}
+                label="Outdoor daylight"
+                unit=" min"
                 color={chartSeries.amber}
                 heightClass="h-48"
               />

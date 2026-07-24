@@ -9,6 +9,7 @@ import {
   getSkinType,
   getWeekStart,
   getWeekMode,
+  getFreeDays,
   getMaxHrOverride,
   getZone2WeeklyTargetMin,
   getRecommendationCadence,
@@ -33,6 +34,7 @@ import TrainingZonesForm from "./TrainingZonesForm";
 import RecommendationCadenceForm from "./RecommendationCadenceForm";
 import AnxietyScaleForm from "./AnxietyScaleForm";
 import DietaryPreferencesForm from "./DietaryPreferencesForm";
+import FreeDaysForm from "./FreeDaysForm";
 import MentalHealthPrivacyForm from "./MentalHealthPrivacyForm";
 import CrisisResourcesEditor from "@/components/CrisisResourcesEditor";
 import { saveProfileCrisisResources } from "./actions";
@@ -105,6 +107,7 @@ export default async function ProfileSettingsPage() {
               homeLng={home?.lng ?? null}
               skinType={getSkinType(profile.id)}
             />
+            <FreeDaysForm freeDays={getFreeDays(profile.id)} />
           </section>
           {trainingShown && (
             <section id="training" className="scroll-mt-4 space-y-6">

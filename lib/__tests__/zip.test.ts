@@ -97,18 +97,27 @@ describe("readZip aggregate caps", () => {
     expect(() => readZip(buildZip(many))).toThrow(/too many entries/i);
   });
 
-  it("refuses when the total decompressed size crosses the aggregate cap", () => {
-    // MAX_TOTAL_BYTES is 256 MiB. Six highly-compressible 48 MiB members (each under
-    // the 64 MiB per-entry cap) sum to 288 MiB — the aggregate tally trips before
-    // the whole archive is materialized. One shared source buffer keeps the test's
-    // own memory bounded (~48 MiB); the compressed archive is tiny.
-    const chunk = Buffer.alloc(48 * 1024 * 1024, 0x78); // 48 MiB of 'x'
-    const members = Array.from({ length: 6 }, (_, i) => ({
-      name: `big${i}.bin`,
-      data: chunk,
-    }));
-    expect(() => readZip(buildZip(members))).toThrow(/total size/i);
-  });
+  it(
+    "refuses when the total decompressed size crosses the aggregate cap",
+    () => {
+      // MAX_TOTAL_BYTES is 256 MiB. Six highly-compressible 48 MiB members (each under
+      // the 64 MiB per-entry cap) sum to 288 MiB — the aggregate tally trips before
+      // the whole archive is materialized. One shared source buffer keeps the test's
+      // own memory bounded (~48 MiB); the compressed archive is tiny.
+      const chunk = Buffer.alloc(48 * 1024 * 1024, 0x78); // 48 MiB of 'x'
+      const members = Array.from({ length: 6 }, (_, i) => ({
+        name: `big${i}.bin`,
+        data: chunk,
+      }));
+      expect(() => readZip(buildZip(members))).toThrow(/total size/i);
+    },
+    // This case deflates/inflates ~288 MiB. In isolation it finishes in well under a
+    // second, but under FULL parallel vitest load on a busy machine the CPU-bound
+    // zlib work can starve past the 5 s default and flake the local gate (#1349; CI's
+    // fresh runners never reproduce it). A generous per-test timeout removes the
+    // starvation window without weakening the assertion.
+    30_000
+  );
 
   it("still accepts a normal small multi-entry package", () => {
     const out = readZip(
