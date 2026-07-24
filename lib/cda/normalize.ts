@@ -298,10 +298,15 @@ export function collectText(node: any, depth: number = 0): string {
 
 // Walk a section's <text> narrative once and index every element that carries an
 // `ID` attribute → its visible text, so an observation's
-// <text><reference value="#id"/> can be resolved to the printed analyte name in
-// the narrative <table>. (C-CDA narrative uses the uppercase `ID` attribute;
-// removeNSPrefix + the @_ prefix make it `@_ID`.)
-export function buildNarrativeIdMap(textNode: any): Record<string, string> {
+// <text><reference value="#id"/> can be resolved to the printed cell in the narrative
+// <table>. (C-CDA narrative uses the uppercase `ID` attribute; removeNSPrefix + the @_
+// prefix make it `@_ID`.) `normalize` shapes each cell's collected text — the default
+// collapses ALL whitespace to single spaces (single-line names/labels); the block
+// variant below preserves line breaks.
+function collectNarrativeMap(
+  textNode: any,
+  normalize: (raw: string) => string
+): Record<string, string> {
   const map: Record<string, string> = {};
   const walk = (node: any, depth: number): void => {
     if (node == null || typeof node !== "object") return;
@@ -312,7 +317,7 @@ export function buildNarrativeIdMap(textNode: any): Record<string, string> {
     }
     const id = node["@_ID"];
     if (typeof id === "string" && id && map[id] === undefined) {
-      const t = collectText(node).replace(/\s+/g, " ").trim();
+      const t = normalize(collectText(node));
       if (t) map[id] = t;
     }
     for (const [k, v] of Object.entries(node)) {
@@ -322,6 +327,51 @@ export function buildNarrativeIdMap(textNode: any): Record<string, string> {
   };
   walk(textNode, 0);
   return map;
+}
+
+// The collapsed narrative map (default): every run of whitespace → one space, so a
+// name/label resolved from a <reference> is a clean single line.
+export function buildNarrativeIdMap(textNode: any): Record<string, string> {
+  return collectNarrativeMap(textNode, (raw) =>
+    raw.replace(/\s+/g, " ").trim()
+  );
+}
+
+// The block narrative map (#708): PRESERVES line breaks so a multi-line report body /
+// radiology impression renders line-by-line through NotesText's `whitespace-pre-wrap`.
+// The <br/>→newline preprocess (parseCcdaDocument) put a real "\n" at each break; here
+// we collapse only spaces/tabs (not newlines), trim each line, and cap consecutive
+// blank lines — the readable middle ground between the run-on collapse and raw
+// preformatted padding.
+export function buildNarrativeBlockMap(textNode: any): Record<string, string> {
+  return collectNarrativeMap(textNode, normalizeBlockText);
+}
+
+function normalizeBlockText(raw: string): string {
+  return raw
+    .replace(/\r\n?/g, "\n")
+    .replace(/[ \t\f\v]+/g, " ") // collapse horizontal whitespace, keep newlines
+    .replace(/ *\n */g, "\n") // trim each line's edges
+    .replace(/\n{3,}/g, "\n\n") // at most one blank line between blocks
+    .trim();
+}
+
+// Derive the collapsed name map from an already-built BLOCK map — a per-value string
+// collapse (all whitespace → one space), NOT a second tree walk. A caller that needs
+// BOTH shapes (the Results extractor: block bodies + collapsed names) builds the
+// narrative index ONCE via buildNarrativeBlockMap and derives the collapsed map here,
+// so the expensive collectText walk isn't paid twice. `collapse(normalizeBlock(t))`
+// equals the plain-collapse buildNarrativeIdMap would produce (block normalization
+// only touches whitespace, which the final collapse subsumes).
+export function collapseNarrativeMap(
+  blocks: Record<string, string>
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [id, text] of Object.entries(blocks)) {
+    const collapsed = text.replace(/\s+/g, " ").trim();
+    if (collapsed) out[id] = collapsed;
+  }
+  return out;
 }
 
 // Resolve a node that is either inline text or a <reference value="#id"/> into a
