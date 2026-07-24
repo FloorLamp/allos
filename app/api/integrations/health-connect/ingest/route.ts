@@ -7,7 +7,9 @@ import {
   recordUnmatchedHealthConnectPush,
   recordSync,
   recordSyncEvent,
+  recordSyncRows,
 } from "@/lib/integrations/connections";
+import type { ProvenanceEntry } from "@/lib/integrations/sync-log";
 import {
   summarizeSplit,
   dateWindow,
@@ -201,13 +203,14 @@ export async function POST(req: Request) {
   let counts: IngestCounts;
   let split: UpsertCounts;
   let vitalIds: number[] = [];
+  let provenance: ProvenanceEntry[] = [];
   try {
     // Chunked write path (#1064): each record type is upserted in bounded per-chunk
     // IMMEDIATE transactions, so the connection is never blocked longer than one chunk
     // and a mid-batch failure leaves the committed chunks in place (the next rolling-
     // window push re-covers the rest). Every chunk's split still folds into the ONE
     // recordSyncEvent below (the #14 accounting is per-push, not per-chunk).
-    ({ counts, split, vitalIds } = ingestHealthConnectPayload(
+    ({ counts, split, vitalIds, provenance } = ingestHealthConnectPayload(
       INGEST_PROFILE_ID,
       parsed,
       HEALTH_CONNECT_ID
@@ -274,7 +277,7 @@ export async function POST(req: Request) {
   // recordSyncEvent never throws, so it can't affect ingest.
   const tally = summarizeSplit(split, parsed.skipped);
   const win = payloadWindow(parsed);
-  recordSyncEvent(INGEST_PROFILE_ID, HEALTH_CONNECT_ID, {
+  const eventId = recordSyncEvent(INGEST_PROFILE_ID, HEALTH_CONNECT_ID, {
     ok: true,
     windowStart: win.start,
     windowEnd: win.end,
@@ -289,6 +292,9 @@ export async function POST(req: Request) {
     details: serializeHealthConnectSyncDetails(parsed.details),
     raw_ref: rawRef,
   });
+  // Per-row provenance drill-in (#1333): link the inserted/updated records to this
+  // event. Best-effort — never throws into the ingest.
+  recordSyncRows(eventId, provenance);
   log.info("health-connect ingest", summary);
 
   // Refresh the views the imported data feeds into. (`/medical` and `/import`

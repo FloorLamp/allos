@@ -6,6 +6,7 @@ import type {
   IntegrationConnectionStatus,
 } from "@/lib/types";
 import { matchTokenToProfile, type TokenCandidate } from "./token-match";
+import { hashShareToken } from "@/lib/share-token";
 import { isAuthRefreshFailure } from "./auth-failure";
 import {
   expiresAtFromChoice,
@@ -15,6 +16,7 @@ import {
 } from "@/lib/token-lifecycle";
 import { daysAgoModifier, SYNC_EVENTS_RETENTION_DAYS } from "@/lib/retention";
 import { boundSyncDetailsJson } from "./sync-details";
+import type { ProvenanceEntry } from "./sync-log";
 
 // Generic per-provider connection state, backed by integration_connections. Holds
 // the push token for Health Connect and OAuth tokens for Strava (Garmin later).
@@ -205,38 +207,71 @@ export function recordSyncEvent(
   profileId: number,
   provider: string,
   ev: SyncEventInput
-): void {
+): number | null {
   try {
-    db.prepare(
-      `INSERT INTO integration_sync_events
+    const info = db
+      .prepare(
+        `INSERT INTO integration_sync_events
          (profile_id, provider, at, ok, window_start, window_end,
           received, written, inserted, updated, unchanged, suppressed, edited, skipped,
           details, raw_ref, error)
        VALUES (?, ?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(
-      profileId,
-      provider,
-      ev.ok ? 1 : 0,
-      ev.windowStart ?? null,
-      ev.windowEnd ?? null,
-      ev.received ?? null,
-      ev.written ?? null,
-      ev.inserted ?? null,
-      ev.updated ?? null,
-      ev.unchanged ?? null,
-      ev.suppressed ?? null,
-      ev.edited ?? null,
-      ev.skipped ?? null,
-      boundSyncDetailsJson(ev.details),
-      ev.raw_ref ?? null,
-      ev.error ? ev.error.slice(0, 500) : null
-    );
+      )
+      .run(
+        profileId,
+        provider,
+        ev.ok ? 1 : 0,
+        ev.windowStart ?? null,
+        ev.windowEnd ?? null,
+        ev.received ?? null,
+        ev.written ?? null,
+        ev.inserted ?? null,
+        ev.updated ?? null,
+        ev.unchanged ?? null,
+        ev.suppressed ?? null,
+        ev.edited ?? null,
+        ev.skipped ?? null,
+        boundSyncDetailsJson(ev.details),
+        ev.raw_ref ?? null,
+        ev.error ? ev.error.slice(0, 500) : null
+      );
+    // The event id lets the caller link its per-row provenance (#1333).
+    return Number(info.lastInsertRowid);
   } catch (err) {
     // Swallow: debug logging can never be allowed to break the ingest it observes.
     log.error("recordSyncEvent failed", {
       provider,
       err: String(err),
     });
+    return null;
+  }
+}
+
+// Persist the per-row provenance for a sync (issue #1333): one integration_sync_rows
+// row per record the sync inserted/updated, linked to the event by id. BEST-EFFORT
+// like recordSyncEvent — provenance is a debug/drill-in convenience that must never
+// break or slow the ingest it observes, so it never throws into the caller. Called
+// AFTER recordSyncEvent returns the event id (which requires the event insert to have
+// succeeded); a null id or empty batch is a no-op. Retention is inherited: the rows
+// carry an ON DELETE CASCADE FK to the event, so the #388 sync-event sweep prunes
+// them with their parent.
+export function recordSyncRows(
+  eventId: number | null,
+  rows: ProvenanceEntry[]
+): void {
+  if (eventId == null || rows.length === 0) return;
+  try {
+    const insert = db.prepare(
+      `INSERT INTO integration_sync_rows (event_id, target_table, target_id, disposition)
+       VALUES (?, ?, ?, ?)`
+    );
+    writeTx(() => {
+      for (const r of rows) {
+        insert.run(eventId, r.target_table, r.target_id, r.disposition);
+      }
+    });
+  } catch (err) {
+    log.error("recordSyncRows failed", { err: String(err) });
   }
 }
 
@@ -283,23 +318,25 @@ function readConfig(
 }
 
 // ---- Health Connect push token ----
+//
+// Hash-at-rest (issue #1209): the DB stores only the SHA-256 of the ingest token
+// (config key `tokenHash`), never the plaintext — matching every other minted secret
+// (session/share-link/calendar-feed tokens, 2FA recovery codes). A presented bearer
+// is hashed and matched against the stored hash (see resolveHealthConnectProfile), so
+// a DB read (backup, snapshot) yields no usable credential. The plaintext is returned
+// exactly ONCE at generate/rotate (generateHealthConnectToken) and shown once by the
+// setup page — the old "re-copy the same token" affordance became a Rotate button.
+// The HEALTH_CONNECT_TOKEN env fallback is out of scope (operator config, not a
+// minted credential): its plaintext stays displayable since the operator set it.
 
-// The active ingest token: the DB connection's token, falling back to the
-// HEALTH_CONNECT_TOKEN env var for headless setups. Null when neither is set.
-export function getHealthConnectToken(profileId: number): string | null {
-  const fromDb = readConfig(getConnection(profileId, "health-connect")).token;
-  if (typeof fromDb === "string" && fromDb) return fromDb;
-  const env = process.env.HEALTH_CONNECT_TOKEN;
-  return env && env.trim() ? env.trim() : null;
-}
-
-// Token lifecycle metadata for the setup UI (issue #24). The Health Connect token
-// is stored raw (unlike the calendar feed's hash) because the setup page re-shows
-// it so a user can re-copy it into the phone exporter; the env fallback carries no
-// lifecycle (it's config, not a minted token).
+// Token lifecycle metadata for the setup UI (issue #24). Carries only WHETHER a
+// DB-backed token exists (`hasToken`) plus its lifecycle stamps — never the plaintext,
+// which the DB no longer stores (#1209). `envToken` is the plaintext of the env
+// fallback ONLY (source === "env"): it's operator config, so re-showing it is fine.
 export interface HealthConnectTokenInfo {
-  token: string | null;
+  hasToken: boolean; // a token is configured (DB hash or env fallback)
   source: "db" | "env" | "none";
+  envToken: string | null; // env fallback plaintext (source === "env"); null otherwise
   createdAt: string | null; // ISO 8601, DB token only
   lastUsedAt: string | null; // ISO 8601, throttled write on ingest
   expiresAt: string | null; // ISO 8601 or null (never)
@@ -313,11 +350,12 @@ export function getHealthConnectTokenInfo(
   profileId: number
 ): HealthConnectTokenInfo {
   const cfg = readConfig(getConnection(profileId, "health-connect"));
-  const dbToken = str(cfg.token);
-  if (dbToken) {
+  const dbHash = str(cfg.tokenHash);
+  if (dbHash) {
     return {
-      token: dbToken,
+      hasToken: true,
       source: "db",
+      envToken: null,
       createdAt: str(cfg.tokenCreatedAt),
       lastUsedAt: str(cfg.tokenLastUsedAt),
       expiresAt: str(cfg.tokenExpiresAt),
@@ -326,26 +364,30 @@ export function getHealthConnectTokenInfo(
   const env = process.env.HEALTH_CONNECT_TOKEN;
   if (env && env.trim()) {
     return {
-      token: env.trim(),
+      hasToken: true,
       source: "env",
+      envToken: env.trim(),
       createdAt: null,
       lastUsedAt: null,
       expiresAt: null,
     };
   }
   return {
-    token: null,
+    hasToken: false,
     source: "none",
+    envToken: null,
     createdAt: null,
     lastUsedAt: null,
     expiresAt: null,
   };
 }
 
-// Generate (or rotate) a fresh token, mark the connection connected, and return
-// it. `expiry` (issue #24) records an optional absolute expiry; "never" (default)
-// preserves the historical no-expiry behaviour. A fresh mint replaces the whole
-// config, dropping any prior last-used stamp.
+// Generate (or rotate) a fresh token, store only its SHA-256, mark the connection
+// connected, and return the RAW token exactly once (#1209 — it's never stored, so it
+// can't be shown again; rotating = calling this again, which immediately invalidates
+// the old value). `expiry` (issue #24) records an optional absolute expiry; "never"
+// (default) preserves the historical no-expiry behaviour. A fresh mint replaces the
+// whole config, dropping any prior last-used stamp.
 export function generateHealthConnectToken(
   profileId: number,
   expiry: TokenExpiryChoice = "never"
@@ -355,7 +397,7 @@ export function generateHealthConnectToken(
   upsertConnection(profileId, "health-connect", {
     status: "connected",
     config: {
-      token,
+      tokenHash: hashShareToken(token),
       tokenCreatedAt: new Date(now).toISOString(),
       tokenExpiresAt: expiresAtFromChoice(expiry, now),
     },
@@ -369,7 +411,7 @@ export function generateHealthConnectToken(
 export function recordHealthConnectUse(profileId: number): void {
   const conn = getConnection(profileId, "health-connect");
   const cfg = readConfig(conn);
-  if (!str(cfg.token)) return; // env fallback / no token: nothing to stamp
+  if (!str(cfg.tokenHash)) return; // env fallback / no token: nothing to stamp
   if (!shouldRecordUse(str(cfg.tokenLastUsedAt), Date.now())) return;
   upsertConnection(profileId, "health-connect", {
     config: { ...cfg, tokenLastUsedAt: new Date().toISOString() },
@@ -402,26 +444,34 @@ export function resolveHealthConnectProfile(
     )
     .all() as { profile_id: number; config: string | null }[];
   const nowMs = Date.now();
+  // Match on the SHA-256 hash, never the plaintext (#1209): every candidate token is
+  // the stored hash and the presented bearer is hashed before comparison. The
+  // constant-time equality in token-match still holds — hashes are equal-length, so
+  // no timing distinguishes a near-miss. The DB stores no plaintext to leak.
   const candidates: TokenCandidate[] = [];
   for (const r of rows) {
     const cfg = readConfig({ config: r.config } as IntegrationConnection);
-    const token = cfg.token;
-    if (typeof token === "string" && token) {
+    const tokenHash = cfg.tokenHash;
+    if (typeof tokenHash === "string" && tokenHash) {
       // An expired token (issue #24) is treated as if it doesn't exist: it never
       // becomes a candidate, so a presented expired token yields the same "no
       // match" (401) as a bogus one — no oracle distinguishes the two.
       if (isTokenExpired(str(cfg.tokenExpiresAt), nowMs)) continue;
-      candidates.push({ profileId: r.profile_id, token });
+      candidates.push({ profileId: r.profile_id, token: tokenHash });
     }
   }
   const env = process.env.HEALTH_CONNECT_TOKEN?.trim();
   // The env-token fallback maps to profile 1, but only while profile 1 still
   // exists — an admin can delete it (profile deletion), and ingesting under a
-  // missing profile would violate the profile_id FK on every write.
+  // missing profile would violate the profile_id FK on every write. Hashed too so
+  // it compares against the same hashed presented value.
   if (env && profileOneExists()) {
-    candidates.push({ profileId: 1, token: env });
+    candidates.push({ profileId: 1, token: hashShareToken(env) });
   }
-  const matched = matchTokenToProfile(presented, candidates);
+  const matched = matchTokenToProfile(
+    presented ? hashShareToken(presented) : null,
+    candidates
+  );
   if (matched !== null) {
     recordHealthConnectUse(matched);
     // A good push self-clears a prior rotated/expired-token failure (#607): flip the
@@ -450,7 +500,7 @@ function clearHealthConnectReauth(profileId: number): void {
 // candidacy, so its pushes 401 with nothing to attribute a sync event to).
 export function isHealthConnectTokenExpired(profileId: number): boolean {
   const cfg = readConfig(getConnection(profileId, "health-connect"));
-  if (!str(cfg.token)) return false;
+  if (!str(cfg.tokenHash)) return false;
   return isTokenExpired(str(cfg.tokenExpiresAt), Date.now());
 }
 

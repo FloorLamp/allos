@@ -16,6 +16,15 @@ import {
 import RelativeTime from "@/components/RelativeTime";
 import RawPayloadViewer from "@/components/RawPayloadViewer";
 import SyncNowButton from "@/components/SyncNowButton";
+import SyncRowsDrilldown from "@/components/SyncRowsDrilldown";
+
+// Records a sync actually wrote (inserted + updated) — the count the provenance
+// drill-in (#1333) can resolve to deep links. Unchanged re-sends aren't recorded, so
+// this is exactly what the drill-in lists. A failure or an all-unchanged sync is 0.
+function writtenCount(ev: IntegrationSyncEvent): number {
+  if (!ev.ok) return 0;
+  return (ev.inserted ?? 0) + (ev.updated ?? 0);
+}
 
 // Data → Review, "Connected sources" (issue #208): the RECURRING import streams —
 // Health Connect, Strava — where the question is "is it healthy now", so each
@@ -143,6 +152,9 @@ function SourceCard({
         </p>
       )}
       {latest && <SyncDetails ev={latest} />}
+      {latest && writtenCount(latest) > 0 && (
+        <SyncRowsDrilldown eventId={latest.id} count={writtenCount(latest)} />
+      )}
 
       <div className="mt-3 flex flex-wrap items-center gap-3">
         {source.canSyncNow ? (
@@ -201,6 +213,9 @@ function SourceCard({
                 </div>
                 {isAdmin && ev.raw_ref && <RawPayloadViewer id={ev.id} />}
                 <SyncDetails ev={ev} />
+                {writtenCount(ev) > 0 && (
+                  <SyncRowsDrilldown eventId={ev.id} count={writtenCount(ev)} />
+                )}
               </li>
             ))}
           </ul>
