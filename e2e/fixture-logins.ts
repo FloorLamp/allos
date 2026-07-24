@@ -842,3 +842,18 @@ export const MVMEDS_RO_MED = "Board Metformin";
 // member always did, so the shared-profile write target is unchanged).
 export const E2E_LOGIN_VIEWONLY_READ = "e2e_viewonly_read";
 export const E2E_LOGIN_VIEWONLY_WRITE = "e2e_viewonly_write";
+
+// Records-surface enrichment sweep (issues #1354 + #1355). A dedicated member login +
+// ADULT profile carrying the exact fixtures the enrichment lines read, so no spec ever
+// exact-count-asserts a shared-seed row: a Penicillin allergy + an active Amoxicillin
+// medication (a drug-allergy CLASS contraindication → the allergy-row cross-link and its
+// deep-link to the med), a CYP2C19 poor-metabolizer variant + an active Clopidogrel
+// medication (a PGx hit → the variant-row "Affects:" line), and a procedure linked to an
+// encounter (the #1355 "Performed at:" visit line). Its OWN login/profile so the
+// contraindication + PGx findings never perturb another spec's medications/allergies
+// counts, and the fixture ids are uniquely anchored (own describe in the spec).
+export const E2E_LOGIN_RECS_ENRICH = "e2e_recs_enrich";
+export const RECS_ENRICH_PROFILE = "Records Enrich (e2e)";
+export const RECS_ENRICH_ALLERGY_MED = "Amoxicillin 500 mg (e2e)";
+export const RECS_ENRICH_PGX_MED = "Clopidogrel (e2e)";
+export const RECS_ENRICH_PROCEDURE = "Knee arthroscopy (e2e)";
