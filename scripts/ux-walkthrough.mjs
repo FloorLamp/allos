@@ -890,6 +890,89 @@ trailer<</Size 4/Root 1 0 R>>
 }
 
 // ---------------------------------------------------------------------------
+// Journey: upload a synthetic CCD and watch the STRUCTURED import path land
+// real records (unlike the PDF journey's store-only path, CCD parsing is
+// deterministic — no API key needed). The fixture reuses the section/entry
+// shapes the repo's own CDA test fixtures prove parseable (Results 30954-2,
+// Immunizations 11369-6); every value is synthetic (fictional LOINCs, Test
+// Patient) per the no-PHI rule.
+const CCD_FIXTURE = `<?xml version="1.0"?>
+<ClinicalDocument xmlns="urn:hl7-org:v3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <effectiveTime value="20260601"/>
+  <recordTarget><patientRole><patient>
+    <name><given>Test</given><family>Patient</family></name>
+    <birthTime value="19900101"/>
+  </patient></patientRole></recordTarget>
+  <component><structuredBody>
+    <component><section>
+      <templateId root="2.16.840.1.113883.10.20.22.2.3.1"/>
+      <code code="30954-2" codeSystem="2.16.840.1.113883.6.1"/>
+      <title>Results</title>
+      <entry><observation classCode="OBS" moodCode="EVN">
+        <code code="99999-9" codeSystem="2.16.840.1.113883.6.1" codeSystemName="LOINC" displayName="Esoteric Marker XYZ"/>
+        <effectiveTime value="20260601"/>
+        <value xsi:type="PQ" value="88.0" unit="U/mL"/>
+        <interpretationCode code="H" codeSystem="2.16.840.1.113883.5.83"/>
+        <referenceRange><observationRange>
+          <value xsi:type="IVL_PQ"><low value="10.0" unit="U/mL"/><high value="40.0" unit="U/mL"/></value>
+        </observationRange></referenceRange>
+      </observation></entry>
+    </section></component>
+    <component><section>
+      <code code="11369-6" codeSystem="2.16.840.1.113883.6.1"/>
+      <title>Immunizations</title>
+      <entry><substanceAdministration classCode="SBADM" moodCode="EVN">
+        <effectiveTime value="20250410"/>
+        <consumable><manufacturedProduct><manufacturedMaterial>
+          <code code="08" codeSystem="2.16.840.1.113883.12.292"/>
+        </manufacturedMaterial></manufacturedProduct></consumable>
+      </substanceAdministration></entry>
+    </section></component>
+  </structuredBody></component>
+</ClinicalDocument>`;
+
+async function ccdJourney(browser) {
+  const { ctx, page } = await adminPage(browser);
+  const ccdPath = path.join(SHOTS, "fixture-ccd.xml");
+  fs.writeFileSync(ccdPath, CCD_FIXTURE);
+  await visit(page, "/data", 1500);
+  await page
+    .getByRole("tab", { name: /File Upload/ })
+    .or(page.getByRole("link", { name: /File Upload/ }))
+    .or(page.getByRole("button", { name: /File Upload/ }))
+    .first()
+    .click()
+    .catch(() => log("ccd: File Upload tab not found — trying inline form"));
+  await page.waitForTimeout(1000);
+  const input = page.getByTestId("medical-upload-input");
+  if (!(await input.count())) {
+    log("ccd: medical-upload-input not found — check shots");
+    await shot(page, "ccd-no-input");
+    return ctx.close();
+  }
+  await input.setInputFiles(ccdPath);
+  await page.waitForTimeout(500);
+  await page.getByTestId("medical-upload-submit").click();
+  await page.waitForTimeout(1500);
+  await shot(page, "ccd-uploaded");
+  // The structured import runs server-side; the lab should surface on the
+  // Results → Biomarkers list under its (synthetic) display name.
+  await visit(page, "/results?tab=biomarkers", 1500);
+  const landed = await checkVisible(
+    page,
+    () => page.getByText("Esoteric Marker XYZ"),
+    "ccd: imported lab NOT on Results → Biomarkers — the structured import may have failed",
+    15
+  );
+  await shot(page, "ccd-results-after");
+  if (landed) log("ccd: structured import landed (lab visible on Results)");
+  // Bonus probe, non-fatal: the immunization row (CVX 08) on History.
+  await visit(page, "/records/history/immunizations", 1500);
+  await shot(page, "ccd-immunizations-after");
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------------------
 const journeys = {
   onboarding: onboardingJourney,
   invite: inviteJourney,
@@ -900,6 +983,7 @@ const journeys = {
   dose: doseJourney,
   profiles: profilesJourney,
   upload: uploadJourney,
+  ccd: ccdJourney,
 };
 const args = process.argv.slice(2);
 const serve = args.includes("--serve");
