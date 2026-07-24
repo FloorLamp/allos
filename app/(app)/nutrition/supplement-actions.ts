@@ -1,5 +1,5 @@
 "use server";
-import { requireWriteAccess } from "@/lib/auth";
+import { requireWriteAccess, requireProfileWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
 import { db, today, writeTx } from "@/lib/db";
@@ -828,8 +828,23 @@ function applyDoseStatus(
 
 // Set a single dose's status for today to an explicit target — the web
 // tri-state's write path (taken / skipped / clear). #232
+//
+// Cross-profile (#858/#1373): a multi-view Medications board confirms a household
+// member's scheduled dose without switching the acting profile — the board posts an
+// explicit `profileId`, and the write gates on the TARGET via requireProfileWriteAccess
+// (the #31 cross-profile gate) instead of the active-profile requireWriteAccess. Absent
+// (the acting board / single-view / Supplements row), the active profile is used, so
+// those callers are byte-identical. applyDoseStatus scopes the dose to that profile, so
+// a dose the target doesn't own is a safe no-op.
 export async function setDoseStatus(formData: FormData): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const targetProfile = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(targetProfile) && targetProfile > 0) {
+    await requireProfileWriteAccess(targetProfile);
+    profileId = targetProfile;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
   const doseId = Number(formData.get("dose_id"));
   const target = String(formData.get("status") ?? "");
   if (
@@ -838,7 +853,7 @@ export async function setDoseStatus(formData: FormData): Promise<FormResult> {
   ) {
     return formError("Couldn't update this dose.");
   }
-  applyDoseStatus(profile.id, doseId, today(profile.id), target);
+  applyDoseStatus(profileId, doseId, today(profileId), target);
   revalidateIntake();
   return formOk();
 }

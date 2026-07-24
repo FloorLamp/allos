@@ -13,6 +13,7 @@ export default function ScheduledDoseAction({
   takenTime = null,
   readOnly = false,
   compactActions = false,
+  profileId,
 }: {
   doseId: number;
   doseLabel: string;
@@ -22,6 +23,9 @@ export default function ScheduledDoseAction({
   takenTime?: string | null;
   readOnly?: boolean;
   compactActions?: boolean;
+  // #858/#1373: the dose's owning profile, for a cross-profile confirm on a
+  // multi-view Medications board. Absent on the acting board (byte-identical).
+  profileId?: number;
 }) {
   return (
     <div
@@ -69,6 +73,7 @@ export default function ScheduledDoseAction({
           variant="pill"
           label={taken ? "Taken" : "Mark taken"}
           compact={compactActions}
+          profileId={profileId}
         />
       )}
     </div>

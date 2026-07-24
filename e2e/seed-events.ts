@@ -88,6 +88,11 @@ import {
   MULTI_SHARED_PROFILE,
   MULTI_OWNER_DOSE,
   MULTI_SHARED_DOSE,
+  E2E_LOGIN_MVMEDS,
+  MVMEDS_SELF_PROFILE,
+  MVMEDS_RO_PROFILE,
+  MVMEDS_SELF_MED,
+  MVMEDS_RO_MED,
   MULTI_OWNER_CONDITION,
   MULTI_SHARED_CONDITION,
   MULTI_OWNER_ALLERGY,
@@ -5331,6 +5336,42 @@ console.log(
   grantProfile(multiLoginId, multiSharedId, "write");
   console.log(
     `e2e: seeded multi-view fixture — ${E2E_LOGIN_MULTI} granted ${MULTI_OWNER_PROFILE} (${multiOwnerId}) + ${MULTI_SHARED_PROFILE} (${multiSharedId})`
+  );
+}
+
+// ── Multi-view Medications regimen boards (issue #1373 Part 1) ─────────────────
+// E2E_LOGIN_MVMEDS: a base profile (WRITE, acting) + a second profile READ-ONLY, each
+// with one due-today SCHEDULED medication (kind='medication', a daily dose, no taken
+// log) so both boards render Today content and both feed the leading strip. The self
+// profile is created FIRST so it holds the lower id → the login lands acting as it.
+{
+  const mvSelfId = fixtureProfileId(MVMEDS_SELF_PROFILE);
+  const mvRoId = fixtureProfileId(MVMEDS_RO_PROFILE);
+  const seedBoardMed = (profileId: number, name: string): void => {
+    if (
+      !db
+        .prepare("SELECT 1 FROM intake_items WHERE profile_id = ? AND name = ?")
+        .get(profileId, name)
+    ) {
+      const med = db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, kind, condition, priority, active, as_needed, source)
+           VALUES (?, ?, 'medication', 'daily', 'high', 1, 0, 'manual')`
+        )
+        .run(profileId, name);
+      db.prepare(
+        `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+         VALUES (?, '1 tablet', '08:00', 'any', 0)`
+      ).run(Number(med.lastInsertRowid));
+    }
+  };
+  seedBoardMed(mvSelfId, MVMEDS_SELF_MED);
+  seedBoardMed(mvRoId, MVMEDS_RO_MED);
+  const mvLoginId = seedMemberLogin(E2E_LOGIN_MVMEDS, mvSelfId, "write");
+  grantProfile(mvLoginId, mvRoId, "read");
+  console.log(
+    `e2e: seeded medications-board fixture — ${E2E_LOGIN_MVMEDS} granted ${MVMEDS_SELF_PROFILE} (${mvSelfId}, write) + ${MVMEDS_RO_PROFILE} (${mvRoId}, read)`
   );
 }
 
