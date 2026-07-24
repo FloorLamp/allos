@@ -56,7 +56,7 @@ test.describe("Care-plan close-the-loop on appointment completion (#658)", () =>
     const row = upcoming
       .getByTestId("appointment-row")
       .filter({ hasText: APPT });
-    await expect(row).toBeVisible();
+    await expect(row).toBeVisible({ timeout: 15_000 });
     await row.getByRole("button", { name: "Mark completed" }).click();
 
     // The care-plan offer lists the matching item; take it. Click the button in

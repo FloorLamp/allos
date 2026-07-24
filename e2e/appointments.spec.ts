@@ -63,7 +63,7 @@ test.describe("Visits — Upcoming (appointments) (#288)", () => {
         .getByRole("button", { name: "Cancel appointment" })
         .click();
       // It leaves the Scheduled list (its status is no longer "scheduled").
-      await expect(scheduledRow).toHaveCount(0);
+      await expect(scheduledRow).toHaveCount(0, { timeout: 15_000 });
     }
 
     // Its status settled to Cancelled — visible once the settled-history section

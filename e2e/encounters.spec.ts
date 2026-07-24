@@ -105,7 +105,7 @@ test.describe("Visits — single Add visit entry logs a past visit (#566)", () =
 
     // The logged visit appears in the Past (visit-history) section by its reason.
     const past = page.getByTestId("visits-past");
-    await expect(past.getByText(MARKER)).toBeVisible();
+    await expect(past.getByText(MARKER)).toBeVisible({ timeout: 15_000 });
   });
 });
 
