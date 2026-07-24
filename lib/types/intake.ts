@@ -71,6 +71,14 @@ export interface Supplement {
   // (defaults to 1). Decremented on the "taken" path; drives "≈N days left".
   quantity_on_hand: number | null;
   qty_per_dose: number;
+  // Shared supply pool link (issue #1374, migration 112). NULL = this item keeps its
+  // own private `quantity_on_hand` (today's behaviour, unchanged). When set, the item
+  // draws from a household-shared `shared_supplies` bottle: its own quantity_on_hand is
+  // NULL, every dose confirm decrements the POOL by this item's qty_per_dose, and the
+  // "≈N days left" it shows is the POOLED projection across every linked member.
+  // `supply_name` is joined on read for the shared-bottle chip (null when unlinked).
+  supply_id: number | null;
+  supply_name?: string | null;
   // The number of units the item was LAST refilled by (issue #852 item 3), NULL until
   // the first "Refilled" one-tap records it. Remembered so subsequent refills reuse the
   // size without re-asking; NOT the on-hand counter.

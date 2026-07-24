@@ -39,7 +39,10 @@ export function getSupplements(profileId: number): Supplement[] {
               (SELECT c.name FROM conditions c
                 WHERE c.id = intake_items.indication_condition_id
                   AND c.profile_id = intake_items.profile_id)
-                AS indication_condition_name
+                AS indication_condition_name,
+              (SELECT ss.name FROM shared_supplies ss
+                WHERE ss.id = intake_items.supply_id)
+                AS supply_name
          FROM intake_items
          LEFT JOIN situations
                 ON situations.id = intake_items.situation_id
@@ -71,7 +74,10 @@ export function getMedication(
               (SELECT c.name FROM conditions c
                 WHERE c.id = intake_items.indication_condition_id
                   AND c.profile_id = intake_items.profile_id)
-                AS indication_condition_name
+                AS indication_condition_name,
+              (SELECT ss.name FROM shared_supplies ss
+                WHERE ss.id = intake_items.supply_id)
+                AS supply_name
          FROM intake_items
          LEFT JOIN situations
                 ON situations.id = intake_items.situation_id
