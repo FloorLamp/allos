@@ -11,6 +11,11 @@ import ProfileSwitchWatcher from "@/components/ProfileSwitchWatcher";
 import ProfileViewStrip from "@/components/ProfileViewStrip";
 import OnboardingReturnBanner from "@/components/OnboardingReturnBanner";
 import { getAppVersion } from "@/lib/version";
+import {
+  hasUnseenNotes,
+  loadReleaseNotes,
+  newestNoteDate,
+} from "@/lib/release-notes";
 import { TimezoneProvider } from "@/components/TimezoneProvider";
 import { WeekStartProvider } from "@/components/WeekStartProvider";
 import { FormatPrefsProvider } from "@/components/FormatPrefsProvider";
@@ -20,6 +25,7 @@ import {
   getDisplayFormatPrefs,
   getTimezone,
   getWeekStart,
+  getWhatsNewSeenDate,
 } from "@/lib/settings";
 import { getUserAge } from "@/lib/settings/profile-attrs";
 import { getEquipment } from "@/lib/equipment";
@@ -157,6 +163,15 @@ export default async function AppLayout({
       ? Date.now() - presence.sinceMin * 60_000
       : null;
   const version = getAppVersion();
+  // Unopened bundled release notes for this LOGIN (issue #1421) — the ONE pure
+  // comparison (hasUnseenNotes over the newest bundled note date vs the login's
+  // stored seen marker), resolved once here and threaded into the shared sidebar
+  // content so both viewports render the same calm dot. Login-scoped, so it does
+  // not change when the acting profile does.
+  const whatsNewUnseen = hasUnseenNotes(
+    newestNoteDate(loadReleaseNotes()),
+    getWhatsNewSeenDate(login.id)
+  );
   // Gates any admin-only nav entries in both surfaces.
   const isAdmin = login.role === "admin";
   // The Household overview is cross-profile; show it only when the caller can
@@ -231,6 +246,7 @@ export default async function AppLayout({
                       relevance={relevance}
                       reviewCount={reviewCount}
                       readOnly={readOnly}
+                      whatsNewUnseen={whatsNewUnseen}
                     />
                   </aside>
                   {/* clip (not hidden) so it doesn't force overflow-y to auto, which
@@ -253,6 +269,7 @@ export default async function AppLayout({
                       relevance={relevance}
                       reviewCount={reviewCount}
                       readOnly={readOnly}
+                      whatsNewUnseen={whatsNewUnseen}
                     />
                     {/* max(padding, safe-area inset) keeps content clear of the
               notch in landscape and the home indicator at the bottom now

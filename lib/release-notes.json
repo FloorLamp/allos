@@ -1,0 +1,68 @@
+{
+  "days": [
+    {
+      "date": "2026-07-24",
+      "entries": [
+        {
+          "pr": 1419,
+          "title": "Merge duplicate workouts in one step",
+          "body": "The same workout arriving from more than one source can now be merged as a whole group — the cluster card on Data → Review, or several entries selected together in the Journal. After a sync, near-certain duplicates are merged for you; every automatic merge is listed so you can look at what it did and undo it.",
+          "issues": [1081]
+        },
+        {
+          "pr": 1415,
+          "title": "Symptoms and photos gather onto the illness episode",
+          "body": "A symptom logged while an illness episode is open now attaches to that episode by itself, and a photo can be tagged to the specific symptom entry it shows. The episode page pulls it all together, so a sick week reads as one story instead of scattered entries.",
+          "kind": "feature",
+          "issues": [1093]
+        },
+        {
+          "pr": 1414,
+          "title": "Faster family access editor",
+          "body": "The login-by-profile access grid now opens as one compact summary row per login, and the grant controls load only when you start editing that row. A household with many logins and profiles reaches the screen far quicker.",
+          "kind": "perf",
+          "issues": [1412]
+        },
+        {
+          "pr": 1393,
+          "title": "Health Connect token stored hashed, plus per-sync record details",
+          "body": "The token your phone uses to push Health Connect data is now stored hashed. It is shown once when you create it and can be replaced at any time with Rotate. Each recorded sync can also be opened to see exactly which records it added and which it updated.",
+          "kind": "security",
+          "issues": [1209, 1333]
+        },
+        {
+          "pr": 1391,
+          "title": "Sun and outdoor time on Trends",
+          "body": "Trends → Vitals now charts daylight and outdoor time alongside your other vitals. A per-profile setting for which days are free of a fixed schedule sharpens the social jetlag reading for anyone whose week is not Monday to Friday.",
+          "kind": "feature",
+          "issues": [1171, 1241]
+        },
+        {
+          "pr": 1390,
+          "title": "Allergies and gene results name the medications they affect",
+          "body": "An allergy row now lists the active medications it conflicts with, and a pharmacogenomic variant row lists the medications it affects — the same warnings, and the same dismissals, already shown on the medication side. Procedures and conditions also link back to the visit they came from.",
+          "kind": "feature",
+          "issues": [1354]
+        },
+        {
+          "pr": 1388,
+          "title": "Report narratives now visible",
+          "body": "Narrative text read out of a report — ECG, stress test, imaging — is now shown on Results → Reports instead of being stored where nothing displayed it.",
+          "kind": "fix",
+          "issues": []
+        },
+        {
+          "pr": 1387,
+          "title": "Biomarkers for several people at once",
+          "body": "Results → Biomarkers can now show more than one household member together, each with their own section, reference ranges and starred markers.",
+          "kind": "feature",
+          "issues": [1331]
+        }
+      ],
+      "operatorNotes": [
+        "Health Connect ingest tokens can no longer be re-displayed after this upgrade. Use Rotate on the Health Connect page to mint a new one; phones already paired keep working with their existing token.",
+        "Database migrations 109–111 apply automatically on the first boot after upgrading."
+      ]
+    }
+  ]
+}
