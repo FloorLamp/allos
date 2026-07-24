@@ -14,25 +14,39 @@ import { E2E_LOGIN_GRANTEDIT, GRANT_EDIT_PROFILE } from "./fixture-logins";
 // Spec-OWNED fixture: E2E_LOGIN_GRANTEDIT, a dedicated member granted ONE dedicated
 // profile (GRANT_EDIT_PROFILE), nobody else's dependency — so flipping its grant
 // level / own-profile here can't perturb another spec. Driven as the shared ADMIN
-// storageState (the family screen is admin-only). Every mutation is driven to a
-// FIXED end state (settledCheck true, level "read", own-profile → the granted
-// profile), so --repeat-each replays are idempotent.
+// storageState (the family screen is admin-only). Grant edits are driven to a FIXED
+// end state (settledCheck true, level "read") and the own-profile edit always flips to
+// a value DIFFERENT from the login's current one (read from the DB), so --repeat-each
+// replays stay deterministic.
 
-// Resolve the dedicated profile's id from the isolated e2e DB (short-lived
-// connection, busy timeout) — grant-cell testids are keyed by profile id, and ids
-// depend on seed order. The own-profile.spec precedent.
-function grantEditProfileId(): number {
+// Resolve the dedicated profile's id AND the login's current own_profile_id from the
+// isolated e2e DB (short-lived connection, busy timeout). grant-cell testids are keyed
+// by profile id (seed-order-dependent), and the own-profile test reads the CURRENT
+// own_profile_id so it can always change it to a DIFFERENT value — a controlled
+// <select>'s onChange (the autosave) fires only on a real change, so re-selecting the
+// value it already holds (on a --repeat-each replay) would be a silent no-op. The
+// own-profile.spec precedent for the DB read.
+function grantEditFixture(): {
+  profileId: number;
+  ownProfileId: number | null;
+} {
   const dbPath =
     process.env.ALLOS_DB_PATH ??
     path.join(process.cwd(), "e2e", ".data", "e2e.db");
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");
-    return (
+    const profileId = (
       db
         .prepare("SELECT id FROM profiles WHERE name = ?")
         .get(GRANT_EDIT_PROFILE) as { id: number }
     ).id;
+    const ownProfileId = (
+      db
+        .prepare("SELECT own_profile_id AS o FROM logins WHERE username = ?")
+        .get(E2E_LOGIN_GRANTEDIT) as { o: number | null }
+    ).o;
+    return { profileId, ownProfileId };
   } finally {
     db.close();
   }
@@ -80,7 +94,7 @@ test.describe("Family grant matrix collapses to summary rows (#1412)", () => {
     page,
   }) => {
     test.slow();
-    const profileId = grantEditProfileId();
+    const { profileId } = grantEditFixture();
     await page.goto("/settings/family");
     await expandGrantEdit(page);
 
@@ -94,13 +108,18 @@ test.describe("Family grant matrix collapses to summary rows (#1412)", () => {
       .getByTestId(`grant-access-${E2E_LOGIN_GRANTEDIT}-${profileId}`)
       .selectOption("read");
     // settledClick + a widened banner timeout: the save races the setGrants POST under
-    // full-suite load, and "Access updated." renders only once it lands (grantSignature
-    // guard #467 unchanged — the loaded snapshot still matches, so the save succeeds).
+    // full-suite load, and the banner renders only once it lands (grantSignature guard
+    // #467 unchanged — the loaded snapshot still matches, so the save succeeds). On the
+    // FIRST run the level flips write→read → "Access updated."; on a --repeat-each replay
+    // the level is already read → setGrants short-circuits to "No changes." — both are
+    // green success banners, and the reload check below is the durable persistence proof.
     await settledClick(
       page,
       grantRow.getByTestId(`grant-save-${E2E_LOGIN_GRANTEDIT}`)
     );
-    await expect(grantRow.getByText("Access updated.")).toBeVisible({
+    await expect(
+      grantRow.getByText(/Access updated\.|No changes\./)
+    ).toBeVisible({
       timeout: 15_000,
     });
 
@@ -117,26 +136,31 @@ test.describe("Family grant matrix collapses to summary rows (#1412)", () => {
     page,
   }) => {
     test.slow();
-    const profileId = grantEditProfileId();
+    const { profileId, ownProfileId } = grantEditFixture();
+    // Always change to a DIFFERENT value than the login currently holds, so the
+    // controlled <select>'s onChange (the autosave) fires on every run: none↔the
+    // granted profile. The reachable options are the login's granted profiles, so the
+    // granted profile is always selectable.
+    const target = ownProfileId === profileId ? "none" : String(profileId);
     await page.goto("/settings/family");
     await expandGrantEdit(page);
 
-    // The own-profile <select> is now inside the disclosure; its options are the
-    // login's granted profiles. Point it at the granted profile — autosaves on change.
+    // The own-profile <select> is now inside the disclosure (lazily mounted, #1013).
+    // Selecting a new value autosaves — no Save button.
     const own = page.getByTestId(`own-profile-${E2E_LOGIN_GRANTEDIT}`);
     await expect(own).toBeVisible();
-    await own.selectOption(String(profileId));
+    await own.selectOption(target);
     await expect(
       page
         .getByTestId(`grant-summary-${E2E_LOGIN_GRANTEDIT}`)
         .getByText("Own profile updated.")
     ).toBeVisible({ timeout: 15_000 });
 
-    // Persistence across a fresh load + re-expand.
+    // Persistence across a fresh load + re-expand — proves the autosave hit the DB.
     await page.goto("/settings/family");
     await expandGrantEdit(page);
     await expect(
       page.getByTestId(`own-profile-${E2E_LOGIN_GRANTEDIT}`)
-    ).toHaveValue(String(profileId));
+    ).toHaveValue(target);
   });
 });
