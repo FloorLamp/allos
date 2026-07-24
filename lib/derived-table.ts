@@ -147,6 +147,110 @@ export function prepareTableRecords(
   return filtered.sort(comparator(opts.sort, opts.dir ?? "asc"));
 }
 
+// ── Multi-view (issue #1331) ──────────────────────────────────────────────────
+//
+// When several profiles are read into view, the Biomarkers table is a MERGE of
+// PER-MEMBER partitions. The load-bearing invariant: is_latest / the `current`
+// filter / the family dedup are recomputed PER (profile, family), NEVER across
+// members — a family collapse must never merge two people's readings into one
+// series (the per-profile-context trap the issue calls out). Single view never
+// touches these functions: its path (getMedicalRecords → prepareTableRecords →
+// paginateRecords) is unchanged and byte-identical; the multi-view path is
+// structurally additive.
+
+export type WithProfile<T> = T & { profileId: number };
+
+// The multi-view is_latest/dedup partition identity: (profileId, family). The
+// family half is the SAME #482 identity familyGroupKey uses in single view, so
+// within one member the grouping is byte-identical; the profileId prefix keeps
+// every member's partition DISJOINT (a NUL separator can't appear in a numeric
+// profileId or a lowercased family key), so no cross-member collapse is possible.
+function mvFamilyKey(
+  r: WithProfile<{ name: string; canonical_name: string | null }>
+): string {
+  return `${r.profileId}\u0000${familyGroupKey(r)}`;
+}
+
+// The multi-view DISPLAY grouping identity: (profileId, display name). Mirrors the
+// single-view table's canonical-or-raw nameKey grouping but scoped per member, so
+// two members' same-named rows land in DISTINCT contiguous groups (each keeps its
+// own name heading + subject chip) instead of collapsing into one heading. The
+// BiomarkersTable keys groupContiguous on this in multi-view.
+export function multiViewGroupKey(
+  r: WithProfile<{ name: string; canonical_name: string | null }>
+): string {
+  return `${r.profileId}\u0000${tableNameKey(r)}`;
+}
+
+// The multi-view comparator: the SUBJECT dimension (profileId) is woven in right
+// AFTER the primary sort key and BEFORE its secondary tie-breaks, so a member's rows
+// of the same analyte stay CONTIGUOUS (one heading + one chip per member) instead of
+// interleaving with another member's rows of the same name — which happens if
+// profileId is only a final tie-break (date-desc would slot the other member's
+// reading between a member's two readings, splitting the group). Different analytes
+// still interleave across members by the primary key; the trailing id keeps it stable.
+function mvComparator(
+  sort: MedicalSortColumn | undefined,
+  dir: SortDirection
+): (a: WithProfile<MedicalRecord>, b: WithProfile<MedicalRecord>) => number {
+  const d = dir === "desc" ? -1 : 1;
+  const name = (r: MedicalRecord) => tableNameKey(r);
+  const subj = (a: WithProfile<MedicalRecord>, b: WithProfile<MedicalRecord>) =>
+    a.profileId - b.profileId;
+  if (sort === "panel") {
+    return (a, b) => {
+      const pa = a.panel,
+        pb = b.panel;
+      if ((pa == null) !== (pb == null)) return pa == null ? 1 : -1; // nulls last
+      if (pa != null && pb != null) {
+        const c = d * nocase(pa, pb);
+        if (c) return c;
+      }
+      return subj(a, b) || nocase(name(a), name(b)) || a.id - b.id;
+    };
+  }
+  if (sort === "date") {
+    return (a, b) =>
+      d * nocase(a.date, b.date) ||
+      subj(a, b) ||
+      nocase(name(a), name(b)) ||
+      a.id - b.id;
+  }
+  // name sort (the default) + the no-sort fallback both order by name then subject.
+  return (a, b) =>
+    d * nocase(name(a), name(b)) ||
+    subj(a, b) ||
+    -nocase(a.date, b.date) || // date DESC within a member's analyte
+    b.id - a.id;
+}
+
+// Merge the per-member stored+derived partitions into the final multi-view table
+// list. Recomputes is_latest per (profile, family) over the combined set (so a
+// derived analyte's newest reading flags current within its OWN member, never
+// against another's), applies the `current` filter over that per-member latest, then
+// orders with the subject dimension woven into the sort key (mvComparator) for a
+// readable, stably-paginated merge. Pure — no DB, no auth. Rows keep their
+// `profileId` tag so stampSubjects can attach subject identity for the chip.
+export function prepareMultiViewTableRecords(
+  stored: WithProfile<MedicalRecord>[],
+  derived: WithProfile<MedicalRecord>[],
+  opts: { sort?: MedicalSortColumn; dir?: SortDirection; current?: boolean }
+): WithProfile<MedicalRecord>[] {
+  const combined = [...stored, ...derived];
+  // latestByGroup keyed per (profile, family) — same ordering rule as single view
+  // (newest date wins, id descending tie-break), isolated within each member.
+  const best = latestByGroup(combined, mvFamilyKey);
+  const latest = new Map([...best].map(([k, r]) => [k, r.id]));
+  const withLatest = combined.map((r) => ({
+    ...r,
+    is_latest: latest.get(mvFamilyKey(r)) === r.id ? 1 : 0,
+  }));
+  const filtered = opts.current
+    ? withLatest.filter((r) => r.is_latest === 1)
+    : withLatest;
+  return filtered.sort(mvComparator(opts.sort, opts.dir ?? "asc"));
+}
+
 // How many biomarker rows the table ships (and renders) per page. The full
 // content-deduped list is built server-side (prepareTableRecords over the single
 // getMedicalRecords dedup pass), but only ONE page is serialized into the client
@@ -154,9 +258,10 @@ export function prepareTableRecords(
 // instead of shipping every deduped row (#114: 2,594 rows ≈ 2.97 MB unbounded).
 export const BIOMARKER_PAGE_SIZE = 50;
 
-export interface TablePage {
-  // The rows to render for the current page.
-  rows: MedicalRecord[];
+export interface TablePage<T = MedicalRecord> {
+  // The rows to render for the current page. Generic so the multi-view path can
+  // paginate profile-tagged rows (WithProfile<MedicalRecord>) without losing the tag.
+  rows: T[];
   // Total rows across all pages (for the "N of M" footer and pager math).
   total: number;
   // The resolved 1-based page (clamped into [1, pageCount]).
@@ -171,11 +276,11 @@ export interface TablePage {
 // Pure — no DB; this only bounds what the client component receives, not the DB
 // read (the window-CTE dedup still runs once in getMedicalRecords). An empty list
 // reads as page 1 of 1.
-export function paginateRecords(
-  records: MedicalRecord[],
+export function paginateRecords<T = MedicalRecord>(
+  records: T[],
   page: number,
   pageSize: number = BIOMARKER_PAGE_SIZE
-): TablePage {
+): TablePage<T> {
   const total = records.length;
   const count = pageSize > 0 ? Math.max(1, Math.ceil(total / pageSize)) : 1;
   const clamped = Number.isFinite(page) && page >= 1 ? Math.floor(page) : 1;

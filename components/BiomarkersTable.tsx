@@ -19,6 +19,27 @@ import {
 } from "@/lib/reference-range";
 import { BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
 import { biomarkerViewHref, importHref, type AppRoute } from "@/lib/hrefs";
+import SubjectChip from "./SubjectChip";
+import { subjectChipVisible, itemAffordanceVisible } from "@/lib/multi-view";
+import { multiViewGroupKey } from "@/lib/derived-table";
+import type { SubjectInfo } from "@/lib/scope";
+
+// A table row in multi-view carries its owning profile + stamped subject identity
+// (stampSubjects); single-view rows omit both. The subject powers the leading chip
+// column and the per-row write gate, and profileId re-keys grouping per member so
+// two members' same-named analytes never collapse into one heading (#1331).
+type TableRecord = MedicalRecord & {
+  profileId?: number;
+  subject?: SubjectInfo;
+};
+
+// Present ONLY when more than one profile is in view (#1331): the acting profile
+// (its own rows imply the subject, so they get no chip) + the flag that turns on the
+// leading Profile column and the subject-scoped grouping/write-targeting. Absent in
+// single view → the table renders byte-identical.
+export interface BiomarkersMultiView {
+  actingProfileId: number;
+}
 
 // The active-filter context threaded through to build the panel/category filter
 // links (each preserves the current sort/range/etc., matching the server-built
@@ -172,29 +193,55 @@ function BiomarkerRow({
   stale,
   now,
   filters,
+  multiView,
 }: {
-  r: MedicalRecord;
+  r: TableRecord;
   isStart: boolean;
   isEnd: boolean;
   stale: boolean;
   now: string;
   filters: FilterCtx;
+  multiView?: BiomarkersMultiView;
 }) {
   const [editing, setEditing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const confirm = useConfirm();
   const undoable = useUndoableDelete();
 
+  // Multi-view (#1331): the row's own subject powers the leading chip + the write
+  // gate. A chip shows only on a NON-acting member's row; the edit/delete affordance
+  // is gated on the SUBJECT's write access (a read-only-granted member's rows show
+  // no buttons), and each write posts the row's OWN profile_id so it targets the
+  // subject, never the acting profile. Single view leaves all of this off.
+  const isActing =
+    !multiView || r.subject?.profileId === multiView.actingProfileId;
+  const canWrite = multiView
+    ? itemAffordanceVisible("item", {
+        isActing,
+        subjectCanWrite: r.subject?.access === "write",
+      })
+    : true;
+  const showChip =
+    !!multiView && !!r.subject && subjectChipVisible({ multi: true, isActing });
+  const writeProfileId = multiView ? r.profileId : undefined;
+  // The leading subject cell (multi-view only), rendered first in every row.
+  const subjectCell = multiView ? (
+    <td className="td align-top">
+      {showChip && r.subject ? <SubjectChip subject={r.subject} /> : null}
+    </td>
+  ) : null;
+
   if (editing) {
     return (
       <tr className="border-b border-black/5 bg-slate-50/60 dark:border-white/10 dark:bg-ink-900/60">
-        <td colSpan={8} className="px-3 py-3">
+        <td colSpan={multiView ? 9 : 8} className="px-3 py-3">
           <RecordForm
             mode="edit"
             record={r}
             action={updateRecord}
             onDone={() => setEditing(false)}
             categories={BIOMARKER_CATEGORIES}
+            writeProfileId={writeProfileId}
           />
         </td>
       </tr>
@@ -210,6 +257,7 @@ function BiomarkerRow({
       <tr
         className={isEnd ? "border-b border-black/5 dark:border-white/10" : ""}
       >
+        {subjectCell}
         <td className="td">{isStart ? nameCell({ ...r, stale }) : null}</td>
         <td className="td hidden md:table-cell">
           <span className="text-slate-300 dark:text-slate-600">—</span>
@@ -235,6 +283,7 @@ function BiomarkerRow({
   }
   return (
     <tr className={isEnd ? "border-b border-black/5 dark:border-white/10" : ""}>
+      {subjectCell}
       <td className="td">{isStart ? nameCell({ ...r, stale }) : null}</td>
       <td className="td hidden md:table-cell">
         {r.panel ? (
@@ -283,54 +332,61 @@ function BiomarkerRow({
       </td>
       <td className="td">{dateCell(r, now, !!r.is_latest)}</td>
       <td className="td">
-        <div className="flex items-center justify-end">
-          <OverflowMenu
-            label="Record actions"
-            open={menuOpen}
-            onOpenChange={setMenuOpen}
-          >
-            {({ close }) => (
-              <>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setEditing(true);
-                    close();
-                  }}
-                  className={MENU_ITEM}
-                >
-                  Edit
-                </button>
-                {/* Plain button (not a form action): confirm() opens a modal the
+        {/* Multi-view (#1331): a row whose SUBJECT is read-only-granted shows no
+            edit/delete; single-view rows are always the acting profile. */}
+        {canWrite ? (
+          <div className="flex items-center justify-end">
+            <OverflowMenu
+              label="Record actions"
+              open={menuOpen}
+              onOpenChange={setMenuOpen}
+            >
+              {({ close }) => (
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setEditing(true);
+                      close();
+                    }}
+                    className={MENU_ITEM}
+                  >
+                    Edit
+                  </button>
+                  {/* Plain button (not a form action): confirm() opens a modal the
                     user must answer, which would deadlock inside a form-action
                     transition. */}
-                <button
-                  type="button"
-                  role="menuitem"
-                  className={MENU_ITEM_DANGER}
-                  onClick={async () => {
-                    const ok = await confirm({
-                      title: "Delete record",
-                      message: `Delete “${r.name}”? You can undo this.`,
-                      confirmLabel: "Delete",
-                      danger: true,
-                    });
-                    if (!ok) return;
-                    close();
-                    const fd = new FormData();
-                    fd.set("id", String(r.id));
-                    await undoable(deleteRecord, fd, {
-                      deletedMessage: "Record deleted.",
-                    });
-                  }}
-                >
-                  Delete
-                </button>
-              </>
-            )}
-          </OverflowMenu>
-        </div>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={MENU_ITEM_DANGER}
+                    onClick={async () => {
+                      const ok = await confirm({
+                        title: "Delete record",
+                        message: `Delete “${r.name}”? You can undo this.`,
+                        confirmLabel: "Delete",
+                        danger: true,
+                      });
+                      if (!ok) return;
+                      close();
+                      const fd = new FormData();
+                      fd.set("id", String(r.id));
+                      // Multi-view: target the ROW's subject profile (gateItemProfile).
+                      if (writeProfileId)
+                        fd.set("profile_id", String(writeProfileId));
+                      await undoable(deleteRecord, fd, {
+                        deletedMessage: "Record deleted.",
+                      });
+                    }}
+                  >
+                    Delete
+                  </button>
+                </>
+              )}
+            </OverflowMenu>
+          </div>
+        ) : null}
       </td>
     </tr>
   );
@@ -354,13 +410,25 @@ export default function BiomarkersTable({
   now,
   filters,
   pagination,
+  multiView,
 }: {
-  records: MedicalRecord[];
+  records: TableRecord[];
   now: string;
   filters: FilterCtx;
   pagination?: Pagination;
+  // Present ONLY when more than one profile is in view (#1331) — turns on the
+  // leading Profile column, the subject-scoped grouping, and per-row write
+  // targeting. Omitted in single view → byte-identical render.
+  multiView?: BiomarkersMultiView;
 }) {
   const { category, panel, range, q, sort, dir, current } = filters;
+  // In multi-view group by (profile, display name) so two members' same-named
+  // analytes stay in DISTINCT groups (each keeps its heading + chip); single view
+  // groups by display name alone, unchanged.
+  const groupKey = (r: TableRecord) =>
+    multiView && r.profileId != null
+      ? multiViewGroupKey({ ...r, profileId: r.profileId })
+      : nameKey(r);
   // Preserve the active filters/sort when moving between pages; page 1 drops `p`.
   const pageHref = (n: number) =>
     qs({
@@ -379,6 +447,11 @@ export default function BiomarkersTable({
         <table className="w-full">
           <thead>
             <tr className="border-b border-black/5 dark:border-white/10">
+              {multiView && (
+                <th className="th sticky top-0 z-10 bg-white dark:bg-ink-900">
+                  Profile
+                </th>
+              )}
               <SortableHeader column="name" label="Name" defaultSort="name" />
               {/* Panel, Notes and Category hide below `md` so the table fits a
               phone without side-scrolling; panel/category stay reachable through
@@ -418,7 +491,7 @@ export default function BiomarkersTable({
             {/* Group adjacent readings of the same biomarker via the shared
             contiguous-group helper: the name shows once per group (on the start
             row) and a bottom border falls only at group ends. */}
-            {groupContiguous(records, nameKey).map(
+            {groupContiguous(records, groupKey).map(
               ({ row: r, isGroupStart, isGroupEnd }) => {
                 // Flag the group as stale off its latest reading — the row carrying
                 // is_latest holds the newest date, so its staleness is the
@@ -427,13 +500,20 @@ export default function BiomarkersTable({
                   !!r.is_latest && isBiomarkerStale(r.date, r.category, now);
                 return (
                   <BiomarkerRow
-                    key={r.id}
+                    // In multi-view two members can share a derived row id (negative,
+                    // per-profile), so key on (profileId, id), not id alone.
+                    key={
+                      multiView && r.profileId != null
+                        ? `${r.profileId}:${r.id}`
+                        : r.id
+                    }
                     r={r}
                     isStart={isGroupStart}
                     isEnd={isGroupEnd}
                     stale={stale}
                     now={now}
                     filters={filters}
+                    multiView={multiView}
                   />
                 );
               }

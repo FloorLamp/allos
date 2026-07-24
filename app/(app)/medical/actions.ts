@@ -5,6 +5,7 @@
 // longer collides with the humble record form. This file holds only the manual
 // biomarker-record write path: addRecord / updateRecord / deleteRecord.
 import { requireWriteAccess } from "@/lib/auth";
+import { gateItemProfile } from "@/app/(app)/gate-item";
 
 import { revalidatePath } from "next/cache";
 import { db, writeTx } from "@/lib/db";
@@ -103,9 +104,14 @@ export async function addRecord(formData: FormData): Promise<FormResult> {
   return formOk();
 }
 
-// Edit a single extracted/manual record (used on the document subpage).
+// Edit a single extracted/manual record (used on the document subpage + the
+// Biomarkers table). Multi-view (#1331): gate + target the ROW's own profile via
+// gateItemProfile — the Biomarkers table posts each row's profile_id, so an edit on
+// a non-acting member's reading writes to that member (bouncing a read-only /
+// ungranted grant). With no profile_id (single view / the document subpage form) it
+// falls back to the acting-profile requireWriteAccess gate — byte-identical.
 export async function updateRecord(formData: FormData): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that record.");
   const date = String(formData.get("date") ?? "").trim();
@@ -156,7 +162,7 @@ export async function updateRecord(formData: FormData): Promise<FormResult> {
     .prepare(
       "SELECT canonical_name, name FROM medical_records WHERE id = ? AND profile_id = ?"
     )
-    .get(id, profile.id) as
+    .get(id, profileId) as
     { canonical_name: string | null; name: string } | undefined;
   const oldCanonical = prev ? prev.canonical_name?.trim() || prev.name : null;
 
@@ -184,19 +190,19 @@ export async function updateRecord(formData: FormData): Promise<FormResult> {
     canonical,
     providerId,
     id,
-    profile.id
+    profileId
   );
   // Re-derive the non-optimal flag for this row (the editor sets only clinical
   // flags; non-optimal follows the value vs the canonical optimal band).
-  reconcileFlags(profile.id, [id]);
+  reconcileFlags(profileId, [id]);
   // A canonical rename re-keys this reading's group: migrate any star + retest
   // dismissal to the new name (the delete path already sweeps stars — the edit
   // path didn't), then sweep whatever the rename orphaned (a name-collision under
   // the new name leaves the old row for the sweep to drop). Guarded on an actual
   // name change so a plain value/date edit stays a no-op.
   if (oldCanonical && oldCanonical.toLowerCase() !== canonical.toLowerCase()) {
-    migrateRenamedBiomarker(profile.id, oldCanonical, canonical);
-    cleanupOrphanBiomarkerKeyedState(profile.id);
+    migrateRenamedBiomarker(profileId, oldCanonical, canonical);
+    cleanupOrphanBiomarkerKeyedState(profileId);
   }
   revalidateMedical();
   return formOk();
@@ -205,12 +211,15 @@ export async function updateRecord(formData: FormData): Promise<FormResult> {
 export async function deleteRecord(
   formData: FormData
 ): Promise<{ undoId: number | null }> {
-  const { profile } = await requireWriteAccess();
+  // Multi-view (#1331): the Biomarkers table posts the row's profile_id, so a delete
+  // on a non-acting member's reading targets that member (gateItemProfile bounces a
+  // read-only / ungranted grant); no profile_id falls back to the acting-profile gate.
+  const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
   if (!id) return { undoId: null };
   // Capture into the undo holding table and delete in one transaction (issue #30)
   // so the record can be restored from the toast.
-  const undoId = captureDelete("biomarker-record", profile.id, id);
+  const undoId = captureDelete("biomarker-record", profileId, id);
   // Deleting the last reading for a starred biomarker would leave the star
   // pointing at nothing (an empty pinned tile), and its `biomarker:<name>` retest
   // snooze pointing at a gone reading — sweep BOTH name-keyed side-stores so
@@ -218,7 +227,7 @@ export async function deleteRecord(
   // stale row (issues #203/#327).
   // NOTE (consciously scoped out of undo): a star/dismissal orphan-cleaned here is
   // NOT re-created on Undo — the reading returns but the pinned-tile star stays gone.
-  cleanupOrphanBiomarkerKeyedState(profile.id);
+  cleanupOrphanBiomarkerKeyedState(profileId);
   revalidateMedical();
   return { undoId };
 }
