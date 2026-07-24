@@ -138,7 +138,7 @@ describe("mergeActivities — same-profile only", () => {
     const res = await mergeActivities(
       fd({ keep_id: keep, drop_id: drop, profile_id: shared.id })
     );
-    expect(res.undoId).not.toBeNull();
+    expect(res.undoIds.length).toBeGreaterThan(0);
     // The dropped row is gone; the keeper survives.
     expect(
       db.prepare("SELECT 1 FROM activities WHERE id = ?").get(drop)
@@ -156,7 +156,7 @@ describe("mergeActivities — same-profile only", () => {
     const res = await mergeActivities(
       fd({ keep_id: keep, drop_id: drop, profile_id: shared.id })
     );
-    expect(res.undoId).toBeNull();
+    expect(res.undoIds).toHaveLength(0);
     // Both rows still present — nothing folded or deleted.
     expect(
       db.prepare("SELECT 1 FROM activities WHERE id = ?").get(keep)

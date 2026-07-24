@@ -12,8 +12,8 @@ import { captureDelete, restoreDeletedRow } from "@/lib/undo-delete-db";
 import {
   writeActivityFold,
   snapshotKeeperFold,
+  // (movedRouteIdForMerge removed in #1081 — writeActivityFold returns the move)
   dropSetIds,
-  movedRouteIdForMerge,
 } from "@/lib/merge-activity";
 
 // A synthetic public-park loop polyline (canonical Google example vector, remote CA
@@ -165,10 +165,10 @@ describe("merge keeper-wins + undo moves the route back (#569)", () => {
 
     const keeperBefore = snapshotKeeperFold(keep);
     const movedSetIds = dropSetIds(dropId);
-    const movedRouteId = movedRouteIdForMerge(keepId, dropId);
-    expect(movedRouteId).not.toBeNull();
 
-    writeActivityFold(profileId, keepId, keep, drop);
+    const moves = writeActivityFold(profileId, keepId, keep, [drop]);
+    const movedRouteId = moves[0].movedRouteId;
+    expect(movedRouteId).not.toBeNull();
     // Keeper-wins: the route is now on the keeper.
     expect(
       getRoutePolylinesForActivities(profileId, [keepId]).get(keepId)
@@ -208,15 +208,15 @@ describe("merge keeper-wins + undo moves the route back (#569)", () => {
       [route("strava:k2", POLY), route("strava:d2", POLY2)],
       "strava"
     );
-    expect(movedRouteIdForMerge(keepId, dropId)).toBeNull();
-
     const keep = db
       .prepare("SELECT * FROM activities WHERE id = ?")
       .get(keepId) as Record<string, unknown>;
     const drop = db
       .prepare("SELECT * FROM activities WHERE id = ?")
       .get(dropId) as Record<string, unknown>;
-    writeActivityFold(profileId, keepId, keep, drop);
+    const moves = writeActivityFold(profileId, keepId, keep, [drop]);
+    // Keeper already had a route, so nothing moved for the drop.
+    expect(moves[0].movedRouteId).toBeNull();
     // Keeper keeps its OWN route; the drop's stays on the drop (until it's deleted).
     expect(
       getRoutePolylinesForActivities(profileId, [keepId]).get(keepId)

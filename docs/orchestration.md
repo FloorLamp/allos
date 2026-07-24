@@ -5,7 +5,9 @@ Status: **living** · process documentation for agent-orchestrated development s
 An operational runbook for an agent session that orchestrates development on this
 repo: triage issues, dispatch coding agents, review every PR, own e2e, merge.
 Distilled from a session that merged 98 PRs / closed ~215 issues with zero reverts,
-extended after a second session (69 merges, zero reverts, migrations 098–108).
+extended after a second session (69 merges, zero reverts, migrations 098–108) and a
+third (10+ merges, zero reverts, migrations 109–112, the #1392/#1417 census
+root-causes, and the release-notes pipeline below).
 
 ## Operating contract
 
@@ -45,19 +47,20 @@ What that means in practice:
 
 ## Environment facts (hard-won — trust these)
 
-| Thing            | Fact                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Node             | Node 24 required, but the path varies by container image: newer images `export PATH=/opt/nvm/versions/node/v24.18.0/bin:$PATH` (check `ls /opt/nvm/versions/node/`), older images `/opt/node24/bin`. The bare `node` on PATH may be v22 — wrong ABI for prebuilt better-sqlite3. Verify with `node -e "require('better-sqlite3')"` before dispatching; `npm rebuild better-sqlite3` fixes a wrong-ABI worktree.                                                                                                                                                                                                                                                                                                                                                 |
-| node_modules     | Keep ONE canonical worktree (e.g. `wt-408`) with installed deps. Every new worktree: `cp -al $SCRATCH/wt-408/node_modules <wt>/node_modules` (hardlinks, ~instant).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| Worktrees        | All agent work in `git worktree add $SCRATCH/wt-<name> -b <branch> origin/main`. Never let an agent touch the main checkout. Remove worktrees + delete local branches after merge; disk is a fixed allowance.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| GitHub REST      | `TOKEN="${GH_TOKEN:-$GITHUB_TOKEN}"` + curl for EVERYTHING except merge. Issue read: `GET /repos/OWNER/REPO/issues/N` (+ `/comments`). Open PR: `POST /repos/OWNER/REPO/pulls` (`{title,head,base,body}`). Reviews: `POST /pulls/N/reviews` with `event=COMMENT`. Check-runs/status: `GET /commits/SHA/check-runs`. Do NOT reach for `mcp__github__create_pull_request`/`issue_read`/`list_issues` — MCP is merge-only.                                                                                                                                                                                                                                                                                                                                         |
-| Actions rerun    | The rerun API 403s for this token. Retrigger CI with an empty commit instead.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| Local e2e        | Assign each WORKTREE a fixed port PAIR (`E2E_PORT`/`E2E_DEMO_PORT`: 5400/5401, 5600/5601, 5800/5801, …) at dispatch — zero collisions since adopting pairs. `ALLOS_DB_PATH` isolation is handled by the Playwright config. In some containers local `next dev` boot TIMES OUT — run CI-parity instead: `rm -rf .next && npm run build` once, then `CI=1 ANTHROPIC_API_KEY= E2E_PORT=<p> E2E_DEMO_PORT=<p+1> npx playwright test e2e/auth.setup.ts <specs> --repeat-each=3 --retries=0 --reporter=list`, with `rm -rf e2e/.data` + `lsof -ti :<p> -ti :<p+1> \| xargs -r kill` first. **FULL suites: always CI-mode** (see e2e discipline — dev-mode full suites swap the box and mass-fail).                                                                    |
-| Raw Playwright   | A hand-rolled debug script (`chromium.launch()` outside the test runner) may want a headless-shell version the container doesn't have — launch with `executablePath: "/opt/pw-browsers/chromium-<ver>/chrome-linux/chrome"` (check `ls /opt/pw-browsers`). Kill any manually-booted `next dev` before a suite run: it holds the `.next` dev-server lock for that worktree AND its memory counts against the suite (see below).                                                                                                                                                                                                                                                                                                                                  |
-| REST merge       | `PUT /pulls/N/merge` can 403 through the agent proxy — merge ONLY via `mcp__github__merge_pull_request` (squash).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| CI shape         | Per PR (since 2026-07-21): `check` (~4 min), `e2e-changed` (the PR's changed specs at `--repeat-each=3 --retries=0`; skips when no spec changed — infra blast radius is the matrix's job), and a 4-way sharded `e2e` matrix (full suite at retries=0 since #1160 — the suite is clean enough that the retry safety-net was dropped so a flaky spec can't hide; fresh runner + fresh servers per shard). Every push costs a full round — batch fixes before pushing. On-demand full-suite gate for ANY branch: dispatch `.github/workflows/e2e-full.yml` (fresh runners, defaults retries=0; `repeat_each` up to 3). Each full-suite shard posts a pass-on-retry flake report to its job summary — read it after green runs; those are confirmed flakes to file. |
-| CI watchers      | A background check-runs watcher MUST require the full check count registered (≥8 on this repo) before concluding GREEN — a fresh push registers `gitleaks` first and alone for a window, and a watcher sampling then declares a false green. And a CONFLICT-DIRTY PR starts NO CI at all (the `pull_request` runs need the merge ref GitHub can't build) — a watcher stuck at "1–2 runs registered" for many polls means check `mergeable` on the PR, not wait longer.                                                                                                                                                                                                                                                                                          |
-| Issue auto-close | GitHub only parses `Fixes #N` **one keyword per line** in the PR body. Slash-separated lists silently don't close anything. Verify closure after every merge.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Thing            | Fact                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Node             | Node 24 required, but the path varies by container image: newer images `export PATH=/opt/nvm/versions/node/v24.18.0/bin:$PATH` (check `ls /opt/nvm/versions/node/`), older images `/opt/node24/bin`. Some images ship NO node 24 at all (only /opt/node20-22) — install it: `export NVM_DIR=/opt/nvm && . /opt/nvm/nvm.sh && nvm install 24` (~30s, survives for the session). The bare `node` on PATH may be v22 — wrong ABI for prebuilt better-sqlite3. Verify with `node -e "require('better-sqlite3')"` before dispatching; `npm rebuild better-sqlite3` fixes a wrong-ABI worktree.                                                                                                                                                                                                                  |
+| node_modules     | Keep ONE canonical tree with installed deps (a worktree like `wt-408`, or the main checkout itself — third session used `/home/user/allos/node_modules` after a fresh `npm ci`). Every new worktree: `cp -al <canonical>/node_modules <wt>/node_modules` (hardlinks, ~instant).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Worktrees        | All agent work in `git worktree add $SCRATCH/wt-<name> -b <branch> origin/main`. Never let an agent touch the main checkout. Remove worktrees + delete local branches after merge; disk is a fixed allowance.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| GitHub REST      | `TOKEN="${GH_TOKEN:-$GITHUB_TOKEN}"` + curl for EVERYTHING except merge. Issue read: `GET /repos/OWNER/REPO/issues/N` (+ `/comments`). Open PR: `POST /repos/OWNER/REPO/pulls` (`{title,head,base,body}`). Reviews: `POST /pulls/N/reviews` with `event=COMMENT`. Check-runs/status: `GET /commits/SHA/check-runs`. Do NOT reach for `mcp__github__create_pull_request`/`issue_read`/`list_issues` — MCP is merge-only.                                                                                                                                                                                                                                                                                                                                                                                    |
+| Actions rerun    | The rerun API 403s for this token — and so does `workflow_dispatch` (so `e2e-full.yml` CANNOT be dispatched from a session; the migration-PR full-suite gate falls back to the PR's own 4-way sharded matrix, which runs the whole suite at retries=0 on fresh runners for that exact push — the runbook's "ultimate authority" anyway). Retrigger CI with an empty commit instead.                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Local e2e        | Assign each WORKTREE a fixed port PAIR (`E2E_PORT`/`E2E_DEMO_PORT`: 5400/5401, 5600/5601, 5800/5801, …) at dispatch — zero collisions since adopting pairs. AVOID 6000–6099: Next.js refuses X11-reserved ports (an agent lost a round discovering port 6000 won't boot). `ALLOS_DB_PATH` isolation is handled by the Playwright config. In some containers local `next dev` boot TIMES OUT — run CI-parity instead: `rm -rf .next && npm run build` once, then `CI=1 ANTHROPIC_API_KEY= E2E_PORT=<p> E2E_DEMO_PORT=<p+1> npx playwright test e2e/auth.setup.ts <specs> --repeat-each=3 --retries=0 --reporter=list`, with `rm -rf e2e/.data` + `lsof -ti :<p> -ti :<p+1> \| xargs -r kill` first. **FULL suites: always CI-mode** (see e2e discipline — dev-mode full suites swap the box and mass-fail). |
+| Raw Playwright   | A hand-rolled debug script (`chromium.launch()` outside the test runner) may want a headless-shell version the container doesn't have — launch with `executablePath: "/opt/pw-browsers/chromium-<ver>/chrome-linux/chrome"` (check `ls /opt/pw-browsers`). Kill any manually-booted `next dev` before a suite run: it holds the `.next` dev-server lock for that worktree AND its memory counts against the suite (see below).                                                                                                                                                                                                                                                                                                                                                                             |
+| REST merge       | `PUT /pulls/N/merge` can 403 through the agent proxy — merge ONLY via `mcp__github__merge_pull_request` (squash).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| CI shape         | Per PR (since 2026-07-21): `check` (~4 min), `e2e-changed` (the PR's changed specs at `--repeat-each=3 --retries=0`; skips when no spec changed — infra blast radius is the matrix's job), and a 4-way sharded `e2e` matrix (full suite at retries=0 since #1160 — the suite is clean enough that the retry safety-net was dropped so a flaky spec can't hide; fresh runner + fresh servers per shard). Every push costs a full round — batch fixes before pushing. On-demand full-suite gate for ANY branch: dispatch `.github/workflows/e2e-full.yml` (fresh runners, defaults retries=0; `repeat_each` up to 3). Each full-suite shard posts a pass-on-retry flake report to its job summary — read it after green runs; those are confirmed flakes to file.                                            |
+| CI watchers      | A background check-runs watcher MUST require the full check count registered (≥8 on this repo) before concluding GREEN — a fresh push registers `gitleaks` first and alone for a window, and a watcher sampling then declares a false green. And a CONFLICT-DIRTY PR starts NO CI at all (the `pull_request` runs need the merge ref GitHub can't build) — a watcher stuck at "1–2 runs registered" for many polls means check `mergeable` on the PR, not wait longer.                                                                                                                                                                                                                                                                                                                                     |
+| Issue auto-close | GitHub only parses `Fixes #N` **one keyword per line** in the PR body. Slash-separated lists silently don't close anything. Verify closure after every merge.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| gitleaks         | CI's gitleaks runs `git --log-opts="--all"` over ALL fetched refs — a secret-shaped literal committed to ANY branch reds EVERY PR's gitleaks job repo-wide until that branch's history is rewritten (squash to one clean commit + `--force-with-lease`; fixing the tip alone is NOT enough). High-entropy synthetic token literals in test fixtures are the trigger (entropy ≥ ~3.5 trips `generic-api-key`) — dispatch briefs now mandate low-entropy fixture values (`e2e-hc-token-test-value-1`, words+digits, never random hex).                                                                                                                                                                                                                                                                       |
 
 ## Container-restart resilience (the dominant failure mode)
 
@@ -171,7 +174,30 @@ learned by losing work to it:
    not apply.
 6. **After merge:** remove worktree, delete local branch, confirm the linked
    issues actually closed (close manually with a comment if not), update the
-   task list.
+   task list, and **update the release notes** (below).
+
+## Release notes (standing owner directive, 2026-07-24)
+
+Every merge updates release notes in TWO places, both curated by the
+orchestrator in plain product language (what the user/operator sees, never
+internal jargon):
+
+- **The external notes page** — a Claude artifact ("Allos release notes",
+  republish the same file path to keep the URL) digesting each merge-day:
+  feature entries newest-first, an **Operator notes** callout for anything a
+  self-hoster must know (migrations auto-applying, behavior changes like the
+  #1209 reveal-once token), and e2e/CI-internal merges folded into a quiet
+  collapsible.
+- **The in-app What's-new page (#1421)** — `lib/release-notes.json`, checked in
+  and rendered at `/whats-new` (ships WITH the image so a `docker compose pull`
+  shows its own notes offline). This file is ORCHESTRATOR BOOKKEEPING, like the
+  migration slot map: feature PRs never touch it (so it can't become a merge
+  magnet); the orchestrator commits curated entries at merge time (or batched
+  at wind-down for a fast train). Purely-internal merges (spec fixes, CI
+  plumbing) are OMITTED from the in-app file — it's user-facing.
+
+Keep the two in lockstep — same entries, same wording — so they never drift
+(one-question-one-computation applied to prose).
 
 ## Dispatch prompt template
 
@@ -194,6 +220,13 @@ Every agent prompt must contain, verbatim where marked:
   pattern-shaped literal (a SHA-256 golden's digit substring once formed a
   Luhn-valid NPI; the fix is the scanner's own same-line `phi-scan-ok` marker
   with a justification)
+- NO high-entropy random-looking string literals in tests/fixtures (synthetic
+  tokens included) — CI gitleaks reds the WHOLE repo's PRs on one (see
+  Environment facts); use low-entropy words+digits values
+- Any e2e fixture whose feature groups by profile-LOCAL date/time MUST build
+  instants via zonedWallTimeToUtc(getTimezone(profileId), day, "HH:MM") — never
+  naive `${day}THH:MM` strings; the seed pins a ROTATING per-run instance
+  timezone (e2e/pinned-timezone.ts) and naive strings parse host-UTC (#1417)
 - Run YOUR changed e2e specs locally at CI parity on your assigned port pair:
   --repeat-each=3 --retries=0 (retry-masking must not land a flaky spec).
   Do NOT run the full suite — the orchestrator owns full-suite runs.
@@ -243,9 +276,12 @@ it later from the issue number is guesswork.
 > on demand. Use the dispatch workflow where this section previously required a
 > LOCAL CI-parity full-suite run (migration PRs, big UI merges) — it is the
 > "CI on a fresh runner is the ultimate authority" conclusion below,
-> institutionalized. The local-run guidance that follows (memory bounds,
-> sharding, degradation triage) is retained for the rare case a local full run
-> is still needed (e.g. no pushable branch yet).
+> institutionalized. **Caveat (2026-07-24): the dispatch API 403s for session
+> tokens** — when you can't dispatch it, the PR's own sharded `e2e` matrix (the
+> whole suite, retries=0, fresh runners, that exact push) satisfies the gate;
+> say so in the merge comment. The local-run guidance that follows (memory
+> bounds, sharding, degradation triage) is retained for the rare case a local
+> full run is still needed (e.g. no pushable branch yet).
 
 - **Split ownership: agents verify their own changed specs (CI-parity,
   `--repeat-each=3 --retries=0`, their assigned port pair); only the
@@ -414,8 +450,13 @@ python… ; done` CI-poll loop running in the background was starving the
   persists the empty/stale value SILENTLY (no error, often a valid save). `e2e/helpers.ts`
   now has `settledFill` (waits for React's `__reactFiber$`/`__reactProps$` markers
   before filling) for exactly this — Settings save-from-state cards and autosave-on-blur
-  fields. Its checkbox analog (a pre-hydration `.check()` that reverts) is still
-  unhelpered — a `settledCheck` is the open follow-up (`food-telegram` line-26 flake).
+  fields. Its checkbox analog `settledCheck` has since shipped too — use it for any
+  controlled checkbox. Related self-race (#1400): a retry loop that bare-`.click()`s a
+  write-bearing control and then immediately `page.reload()`s can ABORT its own
+  Server-Action POST — every retry repeats the abort, so the loop spins for its whole
+  window while the DB never changes (or changes and the assertion reads stale).
+  Settle write-bearing taps (settledTap/settledClick) BEFORE any reload inside a
+  retry loop; client-only toggles (no POST) stay bare clicks.
 
 - **Flake exoneration protocol (retries=0 means green means green — keep it
   honest).** A CI e2e failure may only be dismissed as a flake with ALL of:
@@ -428,6 +469,13 @@ python… ; done` CI-poll loop running in the background was starving the
   a census issue with both run links; three specs earned census issues this
   way and two turned out to be real races. Never merge past a red on "it's
   probably flaky" without the protocol's artifacts in the PR thread.
+  **Base-comparison carve-out (the workhorse form, 5× on 2026-07-24):** run the
+  exact failing spec on CLEAN MAIN at the same conditions/hour — an identical
+  local failure on main proves the red pre-existing, and the PR merges with
+  those artifacts + a mechanism comment. The local run often out-diagnoses CI:
+  a "flake" that reproduces 3/3 on main is a DEFECT (census → root-cause → fix
+  PR), which is how both #1400 (self-racing retry loop) and #1417 (naive
+  fixture timestamps vs the pinned zone) fell the same day.
 
 **Known failure classes** (every one recurred at least once):
 
@@ -488,7 +536,16 @@ python… ; done` CI-poll loop running in the background was starving the
    in the FUTURE (`grep getUTCHours lib/__db_tests__`; derive a row's date AND
    time from ONE instant). (A `BUILD=1` when checking out an OLDER commit in a
    reused worktree is the downgrade guard, not a build break — `rm data/allos.db*`
-   and rebuild.)
+   and rebuild.) **Pinned-rotating-timezone variant (2026-07-24, #1417):** the e2e
+   seed pins the instance timezone PER RUN from the start hour
+   (`e2e/pinned-timezone.ts`, frozen local ~13:00), so a fixture that writes NAIVE
+   local-less timestamps (`${day}T04:00` — parsed host-UTC by `new Date()`) into a
+   feature that groups by profile-LOCAL date/time fails deterministically for a
+   BAND of start hours (derived-situations red for every run starting ≥18:00 UTC:
+   the rough night's wake-day slid back a local day and merged under the previous
+   night's main session). Triage tell: same spec red on multiple unrelated branches
+   with green runs earlier the same day. Fix at the fixture: `zonedWallTimeToUtc`
+   through the profile tz — the seed's own #1110 sleep-page block is the precedent.
 9. **Persisted channel config turns event-driven dispatches into marker
    pollution** — the delivery-health marker is GLOBAL (one `notify_lifecycle`
    row), and `notify-delivery-error.spec.ts` asserts the seeded fixture
@@ -513,6 +570,19 @@ python… ; done` CI-poll loop running in the background was starving the
     mutation has committed before you navigate away to check its effect. (The
     create-visit-from-record spec flaked exactly this in CI while passing local
     `--repeat-each`.)
+11. **Fixture-population page scale (2026-07-24, #1392/#1412)** — a page that
+    renders a row/control PER FIXTURE ENTITY degrades monotonically as every new
+    spec adds its dedicated login/profile: `/settings/family`'s grant matrix hit
+    91×91 ≈ 8,281 controls / 5.16 MB HTML, and the family-UI helpers' row probes
+    starved on client parse+hydration — the real root cause behind the long
+    #830/#1111 "createLoginViaFamily flake" census (creates always LANDED in the
+    DB; only the render starved). Tells: the failure worsens over months, CI is
+    intermittent while a slower container is deterministic, and a fresh authed
+    curl shows the row server-side in <1s. Fixes, in order: product (render
+    O(entities) at rest — the #1412 collapse killed the class), then fixture
+    budget (seed enrichment fixtures as PROFILES WITHOUT LOGINS when the spec
+    only needs a profile — every login grows this page forever). Timeout bumps
+    measurably did NOT help (0/3 at 20s windows) — don't reach for them here.
 
 ## Review checklist
 

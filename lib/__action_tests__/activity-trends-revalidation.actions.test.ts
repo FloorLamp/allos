@@ -86,9 +86,10 @@ describe("activity writes revalidate /trends (#333)", () => {
     const keepId = insertActivity(profile.id, { title: "Keeper" });
     const dropId = insertActivity(profile.id, { title: "Drop" });
 
-    const { undoId } = await mergeActivities(
+    const { undoIds } = await mergeActivities(
       fd({ keep_id: keepId, drop_id: dropId })
     );
+    const undoId = undoIds[0] ?? null;
 
     expect(undoId).not.toBeNull();
     expect(revalidatedPaths()).toEqual(new Set(["/training", "/trends", "/"]));

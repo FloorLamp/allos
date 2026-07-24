@@ -15,12 +15,14 @@ import { HEALTH_CONNECT_ID } from "@/lib/integrations/health-connect";
 import {
   findActivityDuplicates,
   findBodyMetricConflicts,
+  clusterActivityDuplicates,
   undecidedPairs,
   suppressingSignatures,
   ACTIVITY_DOMAIN,
   BODY_METRIC_DOMAIN,
   type ActivityDupInput,
   type ActivityDupPair,
+  type ActivityDupCluster,
   type BodyMetricConflictInput,
   type BodyMetricConflictPair,
   type PairDecision,
@@ -315,6 +317,16 @@ export function getActivityDuplicates(
   );
 }
 
+// Undecided duplicate activity rows CLUSTERED into connected groups (#1081): the
+// pairwise detections above grouped by transitive closure, so a session that landed
+// as 3–4 duplicate rows surfaces as ONE cluster card instead of C(n,2) pair cards. A
+// 2-row cluster is the pairwise case. Profile-scoped (via getActivityDuplicates).
+export function getActivityDuplicateClusters(
+  profileId: number
+): ActivityDupCluster<ActivityDupRow>[] {
+  return clusterActivityDuplicates(getActivityDuplicates(profileId));
+}
+
 // Undecided body-metric conflict pairs for the Review inbox. Profile-scoped.
 export function getBodyMetricConflicts(
   profileId: number
@@ -333,8 +345,11 @@ export function getBodyMetricConflicts(
 // Total unresolved detected pairs (activities + body metrics) — the detection half
 // of the review badge count. Profile-scoped.
 export function getReviewPairCount(profileId: number): number {
+  // Activities are counted by CLUSTER (#1081): a session that landed as 3–4 duplicate
+  // rows is ONE thing to resolve, so it contributes one to the badge (not C(n,2)). A
+  // 2-row cluster still counts one, so the pairwise case is unchanged.
   return (
-    getActivityDuplicates(profileId).length +
+    getActivityDuplicateClusters(profileId).length +
     getBodyMetricConflicts(profileId).length
   );
 }
