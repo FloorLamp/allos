@@ -8,6 +8,7 @@ import {
   getIllnessCoachingContext,
   getJournalWeekSummary,
   getRecentDatedExercises,
+  getReportedBurden,
   getRestAck,
   getRestEpisode,
   getRestingHrSignal,
@@ -160,6 +161,9 @@ export default async function OverviewSection() {
     poorSleepDeclared: getActiveSituations(profile.id).some((s) =>
       sameSituation(s, BUILTIN_POOR_SLEEP_SITUATION)
     ),
+    // Today's reported burden (#1300): the SAME shared verdict the dashboard/Telegram read,
+    // so this card tilts toward an easier session in lockstep (#221).
+    reportedBurden: getReportedBurden(profile.id, todayStr),
     restingHr: getRestingHrSignal(profile.id),
     restEpisode: getRestEpisode(profile.id),
     // "Training anyway" acknowledgment (#1150): the SAME per-day marker the dashboard

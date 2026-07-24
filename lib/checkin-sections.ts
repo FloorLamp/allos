@@ -111,9 +111,18 @@ export function contextSummary(group: ContextGroup): string {
 // ---- Report summary ----------------------------------------------------------
 
 // The Report section's collapsed one-liner. While an episode is active the section
-// defers to the hero cockpit; otherwise it's the calm well-day rest state.
-export function reportSummary(activeEpisode: boolean): string {
-  return activeEpisode ? "Illness tracked above." : "Feeling well.";
+// defers to the hero cockpit; otherwise it's the calm well-day rest state — unless the
+// user has already logged well-day symptoms today (#1300), in which case it names the
+// count (a symptom log requires no illness). Formatter over the same day's rows the
+// well-day quick-log edits (#221).
+export function reportSummary(
+  activeEpisode: boolean,
+  symptomCount = 0
+): string {
+  if (activeEpisode) return "Illness tracked above.";
+  if (symptomCount > 0)
+    return `${symptomCount} symptom${symptomCount === 1 ? "" : "s"} logged.`;
+  return "Feeling well.";
 }
 
 // ---- Act (PRN meds) summary --------------------------------------------------

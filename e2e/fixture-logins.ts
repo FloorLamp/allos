@@ -749,3 +749,21 @@ export const E2E_LOGIN_DERIVED = "e2e_derived_situ";
 export const DERIVED_SITU_PROFILE = "Derived Situations (e2e)";
 export const DERIVED_SITU_PERIOD_ITEM = "Iron Bisglycinate (e2e)";
 export const DERIVED_SITU_SLEEP_ITEM = "Magnesium Glycinate (e2e)";
+
+// Situation-window analytics (issue #1297). A member granted a dedicated adult profile
+// carrying a DECLARED "Travel" transition window (a past start→stop pair) with real weight
+// + resting-HR readings across the during days AND the surrounding baseline, so the Trends →
+// Insights tab renders the pooled "Situation impact" card for Travel — plus a one-day
+// "High stress" toggle that has too little windowed history to render (the absent-pillar
+// negative case). Dedicated + read-only so the pooled deltas stay stable under --repeat-each.
+export const E2E_LOGIN_SITIMPACT = "e2e_sitimpact";
+export const SITUATION_IMPACT_PROFILE = "Situation Impact (e2e)";
+
+// Well-day symptom logging + the reported-burden coaching tilt (issue #1300). A member
+// granted a dedicated adult profile with a small strength history (so coaching has content,
+// not the empty state) and NO illness / NO rest signals — a clean WELL profile. The spec
+// logs a severe symptom from the check-in Report entry and asserts the coaching card tilts
+// toward an easier session naming the symptom, with the suggest-only illness bridge present
+// but not required. Dedicated + isolated so the symptom write never perturbs a neighbor.
+export const E2E_LOGIN_WELLSYM = "e2e_wellsym";
+export const WELL_SYMPTOM_PROFILE = "Well Symptom (e2e)";

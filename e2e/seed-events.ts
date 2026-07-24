@@ -209,7 +209,15 @@ import {
   SUPPRESSED_PROFILE,
   E2E_LOGIN_VIDEO,
   VIDEO_PROFILE,
+  E2E_LOGIN_SITIMPACT,
+  SITUATION_IMPACT_PROFILE,
+  E2E_LOGIN_WELLSYM,
+  WELL_SYMPTOM_PROFILE,
 } from "./fixture-logins";
+import {
+  diffSituations,
+  serializeSituationEvents,
+} from "../lib/trend-annotations";
 import { adoptTemplate, activateRoutine } from "../lib/routines";
 import { getTimezone, setInstanceTimezone, setTimezone } from "../lib/settings";
 import { pinnedTimezone } from "./pinned-timezone";
@@ -5312,5 +5320,89 @@ console.log(
   );
   console.log(
     `e2e: seeded own-profile fixture — ${E2E_LOGIN_OWN} own=${OWN_SELF_PROFILE} (${ownSelfId}), other=${OWN_OTHER_PROFILE} (${ownOtherId})`
+  );
+}
+
+// ── Situation-window analytics fixture (#1297) ────────────────────────────────
+// A dedicated adult profile with a DECLARED "Travel" transition window (start day-14 →
+// stop day-9, so during = [day-14, day-10], baseline = [day-19, day-15]) carrying real
+// weight + resting-HR readings on the during AND baseline days, so Trends → Insights renders
+// the pooled "Situation impact" card for Travel. A one-day "High stress" toggle has too
+// little windowed history to render (the absent-pillar negative case). Read-only in the
+// spec, so the pooled deltas stay stable under --repeat-each. Idempotent; synthetic only.
+{
+  const siId = fixtureProfileId(SITUATION_IMPACT_PROFILE);
+  const siToday = today(siId);
+  db.prepare(
+    `DELETE FROM body_metrics WHERE profile_id = ? AND notes = 'e2e:sit-impact'`
+  ).run(siId);
+
+  const travelStart = shiftDateStr(siToday, -14);
+  const travelStop = shiftDateStr(siToday, -9);
+  const stressStart = shiftDateStr(siToday, -3);
+  const stressStop = shiftDateStr(siToday, -2);
+  const events = [
+    ...diffSituations([], ["Travel"], travelStart),
+    ...diffSituations(["Travel"], [], travelStop),
+    ...diffSituations([], ["High stress"], stressStart),
+    ...diffSituations(["High stress"], [], stressStop),
+  ];
+  setProfileSetting(
+    siId,
+    "situation_events",
+    serializeSituationEvents([], events)
+  );
+
+  const insSi = db.prepare(
+    `INSERT INTO body_metrics (profile_id, date, weight_kg, resting_hr, notes)
+     VALUES (?, ?, ?, ?, 'e2e:sit-impact')`
+  );
+  // Baseline [day-19, day-15]: weight 80.0, resting HR 50. During [day-14, day-10]: weight
+  // 80.8 (+0.8 kg), resting HR 56 (+6 bpm — "worse", lower_better). Enough on each side to
+  // clear the pooled 3-sample floor.
+  for (let d = -19; d <= -15; d++)
+    insSi.run(siId, shiftDateStr(siToday, d), 80.0, 50);
+  for (let d = -14; d <= -10; d++)
+    insSi.run(siId, shiftDateStr(siToday, d), 80.8, 56);
+
+  seedMemberLogin(E2E_LOGIN_SITIMPACT, siId, "read");
+  console.log(
+    `e2e: seeded situation-impact fixture — profile ${siId} (${SITUATION_IMPACT_PROFILE}) (#1297)`
+  );
+}
+
+// ── Well-day symptom + reported-burden coaching tilt fixture (#1300) ───────────
+// A dedicated adult WELL profile (no illness, no rest signals) with a small strength history
+// so coaching has content — the spec logs a severe symptom from the check-in Report entry
+// and asserts the coaching card tilts toward an easier session naming the symptom, with the
+// suggest-only illness bridge present but not required. Isolated so the symptom write never
+// perturbs a neighbor coaching fixture. Idempotent; synthetic only.
+{
+  const wsId = fixtureProfileId(WELL_SYMPTOM_PROFILE);
+  const wsToday = today(wsId);
+  db.prepare(
+    `DELETE FROM activities WHERE profile_id = ? AND external_id = 'e2e:well-symptom'`
+  ).run(wsId);
+  db.prepare(`DELETE FROM symptom_logs WHERE profile_id = ?`).run(wsId);
+  db.prepare(`DELETE FROM mood_logs WHERE profile_id = ?`).run(wsId);
+
+  // One old strength day, well outside any streak/load window, so the engine evaluates
+  // recovery at all (rest presupposes a training context) but no schedule-based rest fires.
+  const wsAid = Number(
+    db
+      .prepare(
+        `INSERT INTO activities (profile_id, date, type, title, duration_min, intensity, source, external_id)
+         VALUES (?, ?, 'strength', 'Well Symptom context lift', 40, 'hard', 'manual', 'e2e:well-symptom')`
+      )
+      .run(wsId, shiftDateStr(wsToday, -10)).lastInsertRowid
+  );
+  db.prepare(
+    `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps)
+     VALUES (?, 'Back Squat', 1, 100, 5)`
+  ).run(wsAid);
+
+  seedMemberLogin(E2E_LOGIN_WELLSYM, wsId, "write");
+  console.log(
+    `e2e: seeded well-symptom fixture — profile ${wsId} (${WELL_SYMPTOM_PROFILE}) (#1300)`
   );
 }
