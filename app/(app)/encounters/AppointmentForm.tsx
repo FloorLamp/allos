@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
+import ProviderCombobox from "@/components/ProviderCombobox";
 import { useToast } from "@/components/Toast";
 import { useFocusFormOnParam } from "@/components/useFocusFormOnParam";
 import {
@@ -17,8 +18,8 @@ import type { Appointment, FormResult } from "@/lib/types";
 // seeds a NEW (create) form from a completed visit for a follow-up — same
 // provider/reason/location, blank (defaultDate) date — and is ignored in edit
 // mode. The date is required; the optional time is folded into scheduled_at
-// ("YYYY-MM-DD HH:MM") on submit. Provider is a create-on-type input backed by the
-// page's shared <datalist id="provider-names">.
+// ("YYYY-MM-DD HH:MM") on submit. Provider is a create-on-type ProviderCombobox
+// (#1176) over the section's shared registry rows.
 export default function AppointmentForm({
   action,
   appointment,
@@ -178,12 +179,10 @@ export default function AppointmentForm({
         <label className="label" htmlFor={`appt-provider-${uid}`}>
           Provider
         </label>
-        {/* Create-on-type from the shared registry via <datalist id="provider-names">. */}
-        <input
+        {/* Create-on-type from the shared registry (ProviderCombobox, #1176). */}
+        <ProviderCombobox
           id={`appt-provider-${uid}`}
           name="provider"
-          list="provider-names"
-          className="input"
           defaultValue={appointment?.provider_name ?? prefill?.provider ?? ""}
           placeholder="e.g. Example Medical Center, Dr. Smith"
         />

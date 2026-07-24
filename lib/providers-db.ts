@@ -192,6 +192,19 @@ export function getProviderNames(): string[] {
   ).map((r) => r.name);
 }
 
+// The rows that seed the shared ProviderCombobox (issue #1176) — id/name/type so the
+// picker can render individual/organization icons and by-id disambiguated labels,
+// unlike getProviderNames (which loses both). Archived providers are excluded from
+// suggestions, same as getProviderNames; a user can still type an exact archived name.
+export function getPickerProviders(): Provider[] {
+  return db
+    .prepare(
+      `SELECT ${PROVIDER_COLUMNS}
+         FROM providers WHERE archived = 0 ORDER BY name COLLATE NOCASE`
+    )
+    .all() as Provider[];
+}
+
 // Archive / un-archive a provider (issue #1057). Instance-level lifecycle flag; the
 // GLOBAL mutation is admin-gated at the action. Archiving NEVER touches history —
 // every FK'd record keeps its link and renders the provider name as before.

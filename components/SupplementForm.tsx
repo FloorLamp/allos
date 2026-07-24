@@ -3,6 +3,8 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import SupplementCombobox from "@/components/SupplementCombobox";
+import Combobox from "@/components/Combobox";
+import { useSituationOptions } from "@/components/SituationOptionsContext";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import RxNormAffordance from "@/components/intake/RxNormAffordance";
@@ -28,7 +30,6 @@ import {
   CONDITION_LABELS,
   PRIORITIES,
   PRIORITY_LABELS,
-  SUGGESTED_SITUATIONS,
   defaultFoodTiming,
 } from "@/lib/supplement-schedule";
 import type {
@@ -85,6 +86,8 @@ export default function SupplementForm({
   const [name, setName] = useState(s?.name ?? "");
   const rx = useIntakeRxcui(s);
   const [condition, setCondition] = useState(s?.condition ?? "daily");
+  const [situation, setSituation] = useState(s?.situation ?? "");
+  const situationOptions = useSituationOptions();
   const [brand, setBrand] = useState(s?.brand ?? "");
   const [critical, setCritical] = useState(s?.critical === 1);
   const [error, setError] = useState<string | null>(null);
@@ -152,6 +155,7 @@ export default function SupplementForm({
       setName("");
       rx.reset();
       setCondition("daily");
+      setSituation("");
       setBrand("");
       // The critical checkbox sits outside the reset form, so clear it by hand (#627).
       setCritical(false);
@@ -255,19 +259,16 @@ export default function SupplementForm({
           <label className="label" htmlFor={`supp-situation-${fid}`}>
             Situation
           </label>
-          <input
+          <Combobox
             id={`supp-situation-${fid}`}
             name="situation"
-            list="situation-options"
-            defaultValue={s?.situation ?? ""}
-            className="input"
+            ariaLabel="Situation"
+            value={situation}
+            onChange={setSituation}
+            options={situationOptions}
+            allowFreeText
             placeholder="e.g. Illness"
           />
-          <datalist id="situation-options">
-            {SUGGESTED_SITUATIONS.map((x) => (
-              <option key={x} value={x} />
-            ))}
-          </datalist>
         </div>
       )}
 
@@ -309,7 +310,6 @@ export default function SupplementForm({
         doses={doses}
         setDoses={setDoses}
         dosageOptions={entry?.dosages ?? []}
-        datalistId={`dosage-options-${fid}`}
       />
 
       <KeepApartPairsEditor

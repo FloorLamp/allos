@@ -22,6 +22,7 @@ export default function Combobox({
   ariaLabel,
   badge,
   badgeFor,
+  iconFor,
   allowFreeText = false,
   emptyLabel = "No matches",
   freeTextLabel,
@@ -43,6 +44,11 @@ export default function Combobox({
   ariaLabel?: string;
   badge?: React.ReactNode;
   badgeFor?: (option: string) => React.ReactNode;
+  // Leading-icon slot (#1176): rendered BEFORE the label, in a left flex cluster so
+  // the icon sits flush-left and the label still ellipsizes. `badgeFor` stays the
+  // TRAILING (right-hand) slot. The provider picker uses this for the
+  // individual/organization icon; additive, so existing callers are unaffected.
+  iconFor?: (option: string) => React.ReactNode;
   allowFreeText?: boolean;
   emptyLabel?: string;
   // Renders the free-text row for the current query; default: Use "<query>".
@@ -77,12 +83,32 @@ export default function Combobox({
     !options.some((o) => o.toLowerCase() === q);
 
   useEffect(() => {
-    const onDoc = (e: MouseEvent) => {
+    // Dismiss on pointerdown OUTSIDE the combobox root. pointerdown fires before the
+    // click completes, so a click aimed at a control next to the combobox finds the
+    // (absolutely-positioned, overlapping) dropdown already closed — it can't intercept
+    // the click. An option/clear press is INSIDE the root (and preventDefaults), so it
+    // still picks. (#1176/#1177 — the native datalist popover auto-closed; this one
+    // must too, or its overlay eats the next control's click.)
+    const onDoc = (e: PointerEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node))
         setOpen(false);
     };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
+    // Also dismiss when a control OUTSIDE the combobox commits a value — e.g. the
+    // <select> next to a dose-amount field. A `change` on a sibling means the user
+    // moved on; closing here keeps the overlay from lingering over the next control
+    // even when the move didn't route through a pointerdown/blur the combobox sees
+    // (a programmatic selectOption dispatches only `change`). The combobox's OWN input
+    // change (on blur) is inside the root, so it's skipped.
+    const onChange = (e: Event) => {
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
+    };
+    document.addEventListener("pointerdown", onDoc);
+    document.addEventListener("change", onChange, true);
+    return () => {
+      document.removeEventListener("pointerdown", onDoc);
+      document.removeEventListener("change", onChange, true);
+    };
   }, []);
 
   function pick(v: string) {
@@ -122,7 +148,16 @@ export default function Combobox({
           setOpen(true);
           if (selectOnFocus) event.currentTarget.select();
         }}
-        onBlur={onInputBlur}
+        onBlur={() => {
+          // Close the dropdown when focus leaves the input — tabbing away, or
+          // focusing a sibling control (e.g. a <select> next to the field, which a
+          // programmatic selectOption focuses WITHOUT a pointerdown). Without this the
+          // overlay would linger over the next control and swallow its click (#1177).
+          // An option/clear press keeps focus (its mousedown preventDefaults), so this
+          // never fires mid-selection.
+          setOpen(false);
+          onInputBlur?.();
+        }}
         onKeyDown={(e) => {
           if (!open) return;
           if (e.key === "ArrowDown") {
@@ -171,7 +206,11 @@ export default function Combobox({
       {value && !disabled && (
         <button
           type="button"
-          aria-label={`Clear ${ariaLabel ?? "selection"}`}
+          // Accessible name kept to a bare "Clear" (not "Clear <field>"): the field's
+          // own label already names the control, and embedding the field name here made
+          // the clear button a SECOND match for getByLabel(field) / screen-reader field
+          // lookups now that the input carries an aria-label (#1177).
+          aria-label="Clear"
           title="Clear"
           className="absolute inset-y-0 right-0 z-10 flex w-10 items-center justify-center rounded-r-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500 dark:text-slate-400 dark:hover:bg-ink-800 dark:hover:text-slate-300"
           onMouseDown={(event) => event.preventDefault()}
@@ -211,7 +250,10 @@ export default function Combobox({
                       : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-ink-800"
                   }`}
                 >
-                  <span className="truncate">{o}</span>
+                  <span className="flex min-w-0 items-center gap-2">
+                    {iconFor?.(o)}
+                    <span className="truncate">{o}</span>
+                  </span>
                   {badgeFor?.(o)}
                 </button>
               </li>

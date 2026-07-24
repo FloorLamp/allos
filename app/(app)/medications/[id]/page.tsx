@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { IconArrowLeft } from "@tabler/icons-react";
 import { getAccessibleProfiles, requireSession } from "@/lib/auth";
 import {
-  getProviderNames,
+  getPickerProviders,
   getMedicationDoseHistory,
   resolveMedicationAcrossProfiles,
   encounterForRecord,
@@ -17,10 +17,16 @@ import {
   formatGivenAtClockWithRelativeAge,
 } from "@/lib/administration-format";
 import { MEDICATIONS_HREF } from "@/lib/hrefs";
-import { getDisplayFormatPrefs, getUnitPrefs } from "@/lib/settings";
+import {
+  getDisplayFormatPrefs,
+  getUnitPrefs,
+  getSituations,
+} from "@/lib/settings";
+import { mergedSituationOptions } from "@/lib/situations";
 import { PageHeader } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
-import ProviderDatalist from "@/components/ProviderDatalist";
+import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
+import { SituationOptionsProvider } from "@/components/SituationOptionsContext";
 import ProfileIdentityBanner from "@/components/ProfileIdentityBanner";
 import {
   loadMedicationsData,
@@ -148,6 +154,9 @@ export default async function MedicationDetailPage(props: {
     id: c.id,
     name: c.name,
   }));
+  const situationOptions = mergedSituationOptions(getSituations(profileId)).map(
+    (o) => o.name
+  );
 
   return (
     <PageContainer
@@ -155,85 +164,90 @@ export default async function MedicationDetailPage(props: {
       className="mx-auto"
       data-testid="medication-detail"
     >
-      {canWrite ? <ProviderDatalist names={getProviderNames()} /> : null}
-      <div className="mb-4">
-        <ProfileIdentityBanner
-          profile={subject}
-          crossProfile={crossProfile}
-          testIdPrefix="medication"
-        />
-      </div>
-      {!crossProfile ? (
-        <Link
-          href={MEDICATIONS_HREF}
-          className="mb-2 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-brand-600 dark:text-slate-400 dark:hover:text-brand-400"
-        >
-          <IconArrowLeft className="h-4 w-4" />
-          Back to medications
-        </Link>
-      ) : null}
-      <PageHeader title={m.med.name} subtitle={m.med.brand ?? undefined} />
-      {crossProfile ? (
-        <p
-          className="mb-4 text-sm text-slate-500 dark:text-slate-400"
-          data-testid="medication-cross-profile-note"
-        >
-          Viewing {subject.name}&apos;s medication. Act as {subject.name} to
-          make changes or view their full medication list.
-        </p>
-      ) : null}
-      {prescribedAt ? (
-        <p
-          className="mb-4 text-sm text-slate-600 dark:text-slate-300"
-          data-testid="medication-prescribed-at"
-        >
-          Prescribed at:{" "}
-          <Link
-            href={encounterHref(prescribedAt.id)}
-            className="font-medium text-brand-700 hover:underline dark:text-brand-300"
-          >
-            {prescribedAt.type || "Visit"},{" "}
-            {formatRecordDate(prescribedAt.date, "", formatPrefs)}
-            {prescribedAt.providerName ? ` — ${prescribedAt.providerName}` : ""}
-          </Link>
-        </p>
-      ) : null}
-      <MedicationCard
-        supplement={m.med}
-        doses={m.doses}
-        allSupplements={data.allSupplements}
-        stackItems={data.stackItems}
-        pgxVariants={data.pgxVariants}
-        pairs={m.pairs}
-        takenDoseIds={data.taken}
-        skippedDoseIds={data.skipped}
-        due={m.due}
-        courses={m.courses}
-        sideEffects={m.sideEffects}
-        strip={m.strip}
-        refillRate={m.refillRate}
-        todayStr={data.todayStr}
-        nowIso={data.nowIso}
-        trainingRestricted={data.trainingRestricted}
-        suppressedFoodKeys={data.suppressedFoodKeys}
-        prnDayLabel={m.prnDayLabel}
-        prnAdministrations={m.prnAdministrations}
-        doseHistory={doseHistory}
-        prnRedoseLine={m.prnRedoseLine}
-        prnRedosePrimary={m.prnRedosePrimary}
-        monitoringLabs={m.monitoringLabs}
-        pediatric={data.pediatric}
-        age={data.age}
-        adherenceCalendar={calendar}
-        takenDoseTimes={m.takenDoseTimes}
-        timezone={data.tz}
-        historyMinDate={historyMinDate}
-        historyMaxDate={historyMaxDate}
-        defaultHistoryTime={data.nowHhmm}
-        canWrite={canWrite}
-        initialAction={initialAction}
-        conditions={medConditions}
-      />
+      <ProviderOptionsProvider providers={getPickerProviders()}>
+        <SituationOptionsProvider options={situationOptions}>
+          <div className="mb-4">
+            <ProfileIdentityBanner
+              profile={subject}
+              crossProfile={crossProfile}
+              testIdPrefix="medication"
+            />
+          </div>
+          {!crossProfile ? (
+            <Link
+              href={MEDICATIONS_HREF}
+              className="mb-2 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-brand-600 dark:text-slate-400 dark:hover:text-brand-400"
+            >
+              <IconArrowLeft className="h-4 w-4" />
+              Back to medications
+            </Link>
+          ) : null}
+          <PageHeader title={m.med.name} subtitle={m.med.brand ?? undefined} />
+          {crossProfile ? (
+            <p
+              className="mb-4 text-sm text-slate-500 dark:text-slate-400"
+              data-testid="medication-cross-profile-note"
+            >
+              Viewing {subject.name}&apos;s medication. Act as {subject.name} to
+              make changes or view their full medication list.
+            </p>
+          ) : null}
+          {prescribedAt ? (
+            <p
+              className="mb-4 text-sm text-slate-600 dark:text-slate-300"
+              data-testid="medication-prescribed-at"
+            >
+              Prescribed at:{" "}
+              <Link
+                href={encounterHref(prescribedAt.id)}
+                className="font-medium text-brand-700 hover:underline dark:text-brand-300"
+              >
+                {prescribedAt.type || "Visit"},{" "}
+                {formatRecordDate(prescribedAt.date, "", formatPrefs)}
+                {prescribedAt.providerName
+                  ? ` — ${prescribedAt.providerName}`
+                  : ""}
+              </Link>
+            </p>
+          ) : null}
+          <MedicationCard
+            supplement={m.med}
+            doses={m.doses}
+            allSupplements={data.allSupplements}
+            stackItems={data.stackItems}
+            pgxVariants={data.pgxVariants}
+            pairs={m.pairs}
+            takenDoseIds={data.taken}
+            skippedDoseIds={data.skipped}
+            due={m.due}
+            courses={m.courses}
+            sideEffects={m.sideEffects}
+            strip={m.strip}
+            refillRate={m.refillRate}
+            todayStr={data.todayStr}
+            nowIso={data.nowIso}
+            trainingRestricted={data.trainingRestricted}
+            suppressedFoodKeys={data.suppressedFoodKeys}
+            prnDayLabel={m.prnDayLabel}
+            prnAdministrations={m.prnAdministrations}
+            doseHistory={doseHistory}
+            prnRedoseLine={m.prnRedoseLine}
+            prnRedosePrimary={m.prnRedosePrimary}
+            monitoringLabs={m.monitoringLabs}
+            pediatric={data.pediatric}
+            age={data.age}
+            adherenceCalendar={calendar}
+            takenDoseTimes={m.takenDoseTimes}
+            timezone={data.tz}
+            historyMinDate={historyMinDate}
+            historyMaxDate={historyMaxDate}
+            defaultHistoryTime={data.nowHhmm}
+            canWrite={canWrite}
+            initialAction={initialAction}
+            conditions={medConditions}
+          />
+        </SituationOptionsProvider>
+      </ProviderOptionsProvider>
     </PageContainer>
   );
 }

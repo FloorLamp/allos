@@ -4,6 +4,9 @@ import { useRef, useState } from "react";
 import DateField from "./DateField";
 import EditLockNotice from "./EditLockNotice";
 import SubmitButton from "./SubmitButton";
+import Combobox from "./Combobox";
+import ProviderCombobox from "./ProviderCombobox";
+import { useCanonicalNames } from "./CanonicalNamesContext";
 import { useToast } from "./Toast";
 import { useFocusFormOnParam } from "./useFocusFormOnParam";
 import { MEDICAL_CATEGORIES } from "@/lib/medical-categories";
@@ -22,8 +25,9 @@ const FLAGS = ["normal", "high", "low", "abnormal"] as const;
 // flag-reconciling write path.
 //
 // It renders a bare <form> (no card) so a table cell can host the edit variant;
-// the add caller wraps it in its own card. The `canonical-names` / `provider-names`
-// <datalist>s are provided by the host page.
+// the add caller wraps it in its own card. The canonical-name suggestions come from
+// the host page's CanonicalNamesProvider; the "Performed by" picker is the shared
+// ProviderCombobox (#1176/#1177) over the section's ProviderOptionsProvider rows.
 export default function RecordForm({
   action,
   mode,
@@ -56,6 +60,10 @@ export default function RecordForm({
   const editing = mode === "edit";
   const uid = record?.id ?? "new";
   const [error, setError] = useState<string | null>(null);
+  // The canonical-name field is a controlled Combobox (#1177), so form.reset() can't
+  // clear it — the add path resets this state explicitly on a successful save.
+  const canonicalNames = useCanonicalNames();
+  const [canonical, setCanonical] = useState(record?.canonical_name ?? "");
 
   // The add form focuses itself when reached from the palette's "Add biomarker
   // record" (issue #29); the inline row editors (edit mode) opt out.
@@ -82,6 +90,7 @@ export default function RecordForm({
       // Add: the server action revalidates the list; clear the form for the next
       // entry and confirm the save.
       formRef.current?.reset();
+      setCanonical("");
       toast("Record saved");
     }
   }
@@ -167,12 +176,14 @@ export default function RecordForm({
         <label className="label" htmlFor={`rec-${uid}-canonical`}>
           Canonical name
         </label>
-        <input
+        <Combobox
           id={`rec-${uid}-canonical`}
           name="canonical_name"
-          list="canonical-names"
-          defaultValue={record?.canonical_name ?? ""}
-          className="input"
+          ariaLabel="Canonical name"
+          value={canonical}
+          onChange={setCanonical}
+          options={canonicalNames}
+          allowFreeText
           placeholder="defaults to name"
         />
       </div>
@@ -228,14 +239,12 @@ export default function RecordForm({
           <label className="label" htmlFor={`rec-${uid}-provider`}>
             Performed by
           </label>
-          {/* Provider picker: create-on-type from the shared registry
-              via the host page's <datalist id="provider-names">. */}
-          <input
+          {/* Provider picker: create-on-type ProviderCombobox (#1176) over the
+              section's shared registry rows. */}
+          <ProviderCombobox
             id={`rec-${uid}-provider`}
             name="provider"
-            list="provider-names"
             defaultValue={record?.provider_name ?? ""}
-            className="input"
             placeholder="e.g. Quest Diagnostics"
           />
           {/* Round-trip the loaded link so an untouched field keeps its id (#601). */}

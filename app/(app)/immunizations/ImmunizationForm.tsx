@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import Combobox from "@/components/Combobox";
+import ProviderCombobox from "@/components/ProviderCombobox";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
 import { PICKER_NAMES, vaccineDisplayName } from "@/lib/immunization-catalog";
@@ -132,13 +133,12 @@ export default function ImmunizationForm({
         >
           Administered by
         </label>
-        {/* Provider picker: free text with create-on-type from the
-            shared registry via the page's <datalist id="provider-names">. */}
-        <input
+        {/* Provider picker: create-on-type ProviderCombobox (#1176) over the
+            section's shared registry rows. */}
+        <ProviderCombobox
           id={`imm-provider-${immunization?.id ?? "new"}`}
           name="provider"
-          list="provider-names"
-          className="input"
+          ariaLabel="Administered by"
           defaultValue={immunization?.provider_name ?? ""}
           placeholder="e.g. Example Medical Center, Dr. Smith"
         />

@@ -4,14 +4,14 @@ import { HOUSEHOLD_HISTORY_HREF } from "@/lib/hrefs";
 import {
   getAppointments,
   getEncounters,
-  getProviderNames,
+  getPickerProviders,
   getCarePlanItems,
 } from "@/lib/queries";
 import { isCarePlanItemOpen } from "@/lib/care-plan-upcoming";
 import type { CarePlanMatchItem } from "@/lib/care-plan-appointment";
 import { isRealIsoDate } from "@/lib/date";
 import { isAppointmentKind } from "@/lib/preventive-appointment";
-import ProviderDatalist from "@/components/ProviderDatalist";
+import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import { EmptyState } from "@/components/ui";
 import AddVisitEntry from "@/app/(app)/encounters/AddVisitEntry";
 import AppointmentList from "@/app/(app)/encounters/AppointmentList";
@@ -47,7 +47,6 @@ export default function VisitsSection({
   const now = today(profileId);
   const appointments = getAppointments(profileId);
   const encounters = getEncounters(profileId);
-  const providerNames = getProviderNames();
   // Open care-plan items a completed appointment can offer to close (issue #658).
   // Pared to the fields the pure matcher needs; the client computes the per-
   // appointment matches so the offer mirrors the preventive/log-visit CTAs.
@@ -88,104 +87,103 @@ export default function VisitsSection({
   ).length;
 
   return (
-    <div className="space-y-10">
-      {/* Shared provider picker options for every add + edit form on the page. */}
-      <ProviderDatalist names={providerNames} />
+    <ProviderOptionsProvider providers={getPickerProviders()}>
+      <div className="space-y-10">
+        {showHousehold && (
+          <div className="-mt-2">
+            <Link
+              href={HOUSEHOLD_HISTORY_HREF}
+              className="text-sm font-medium text-sky-700 hover:underline dark:text-sky-300"
+              data-testid="household-view-link"
+            >
+              Household view →
+            </Link>
+          </div>
+        )}
 
-      {showHousehold && (
-        <div className="-mt-2">
-          <Link
-            href={HOUSEHOLD_HISTORY_HREF}
-            className="text-sm font-medium text-sky-700 hover:underline dark:text-sky-300"
-            data-testid="household-view-link"
-          >
-            Household view →
-          </Link>
-        </div>
-      )}
-
-      {/* Upcoming — the appointments surface. */}
-      <section data-testid="visits-upcoming">
-        <h3 className="mb-3 section-label">Upcoming</h3>
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="min-w-0 space-y-6 lg:col-span-2">
-            <section>
-              <h4 className="mb-2 flex items-center gap-2 section-label">
-                Scheduled
-                {scheduled.length > 0 && (
-                  <span className="text-slate-500 dark:text-slate-400">
-                    ({upcomingCount} upcoming)
-                  </span>
-                )}
-              </h4>
-              {scheduled.length === 0 ? (
-                <EmptyState message="No scheduled appointments. Add one to see it here and on Upcoming." />
-              ) : (
-                <AppointmentList
-                  items={scheduled}
-                  defaultDate={now}
-                  carePlanItems={openCarePlanItems}
-                />
-              )}
-            </section>
-
-            {settled.length > 0 && (
-              <details className="card">
-                <summary className="cursor-pointer font-semibold text-slate-800 dark:text-slate-100">
-                  Completed &amp; cancelled{" "}
-                  <span className="text-sm font-normal text-slate-400">
-                    ({settled.length})
-                  </span>
-                </summary>
-                <div className="mt-3">
+        {/* Upcoming — the appointments surface. */}
+        <section data-testid="visits-upcoming">
+          <h3 className="mb-3 section-label">Upcoming</h3>
+          <div className="grid gap-6 lg:grid-cols-3">
+            <div className="min-w-0 space-y-6 lg:col-span-2">
+              <section>
+                <h4 className="mb-2 flex items-center gap-2 section-label">
+                  Scheduled
+                  {scheduled.length > 0 && (
+                    <span className="text-slate-500 dark:text-slate-400">
+                      ({upcomingCount} upcoming)
+                    </span>
+                  )}
+                </h4>
+                {scheduled.length === 0 ? (
+                  <EmptyState message="No scheduled appointments. Add one to see it here and on Upcoming." />
+                ) : (
                   <AppointmentList
-                    items={settled}
+                    items={scheduled}
                     defaultDate={now}
                     carePlanItems={openCarePlanItems}
                   />
-                </div>
-              </details>
-            )}
-          </div>
+                )}
+              </section>
 
-          <div className="min-w-0 space-y-4">
-            {/* The single "Add visit" entry (issue #566): one affordance that
+              {settled.length > 0 && (
+                <details className="card">
+                  <summary className="cursor-pointer font-semibold text-slate-800 dark:text-slate-100">
+                    Completed &amp; cancelled{" "}
+                    <span className="text-sm font-normal text-slate-400">
+                      ({settled.length})
+                    </span>
+                  </summary>
+                  <div className="mt-3">
+                    <AppointmentList
+                      items={settled}
+                      defaultDate={now}
+                      carePlanItems={openCarePlanItems}
+                    />
+                  </div>
+                </details>
+              )}
+            </div>
+
+            <div className="min-w-0 space-y-4">
+              {/* The single "Add visit" entry (issue #566): one affordance that
                 branches on tense — a future/today date books an appointment, a past
                 date logs an encounter — so the user never has to know "which form?".
                 Kept inside the Upcoming section so every existing deep link (#85
                 Book CTA, #29 command palette, calendar feed) lands here on the
                 appointment branch, exactly as before. */}
-            <AddVisitEntry
-              createAppointment={createAppointment}
-              addEncounter={addEncounter}
-              defaultDate={bookPrefill ? prefillDate : now}
-              today={now}
-              prefill={bookPrefill}
-              focusNew={focusNew}
-            />
+              <AddVisitEntry
+                createAppointment={createAppointment}
+                addEncounter={addEncounter}
+                defaultDate={bookPrefill ? prefillDate : now}
+                today={now}
+                prefill={bookPrefill}
+                focusNew={focusNew}
+              />
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Past — the encounters / visit-history surface. Its add form is now the
+        {/* Past — the encounters / visit-history surface. Its add form is now the
           single "Add visit" entry above (toggle to "Already happened"), so this
           section is history-only. */}
-      <section data-testid="visits-past">
-        <h3 className="mb-3 section-label">Past</h3>
-        <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
-          To log a visit that already happened, use{" "}
-          <span className="font-medium text-slate-500 dark:text-slate-400">
-            Add visit
-          </span>{" "}
-          above and switch it to{" "}
-          <span className="font-medium text-slate-500 dark:text-slate-400">
-            Already happened
-          </span>
-          . Imported visits come from uploaded health records (CCD Encounters
-          section).
-        </p>
-        <EncounterList items={encounters} defaultDate={now} />
-      </section>
-    </div>
+        <section data-testid="visits-past">
+          <h3 className="mb-3 section-label">Past</h3>
+          <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+            To log a visit that already happened, use{" "}
+            <span className="font-medium text-slate-500 dark:text-slate-400">
+              Add visit
+            </span>{" "}
+            above and switch it to{" "}
+            <span className="font-medium text-slate-500 dark:text-slate-400">
+              Already happened
+            </span>
+            . Imported visits come from uploaded health records (CCD Encounters
+            section).
+          </p>
+          <EncounterList items={encounters} defaultDate={now} />
+        </section>
+      </div>
+    </ProviderOptionsProvider>
   );
 }

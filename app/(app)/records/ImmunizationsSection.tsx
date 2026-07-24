@@ -4,9 +4,9 @@ import {
   getImmunizations,
   getImmunityTiters,
   getImmunizationOverrides,
-  getProviderNames,
+  getPickerProviders,
 } from "@/lib/queries";
-import ProviderDatalist from "@/components/ProviderDatalist";
+import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import { getUserBirthdate, getUserSex, getStoredAge } from "@/lib/settings";
 import { getRiskFactors } from "@/lib/queries/upcoming/risk";
 import { immunizationPriorityFor } from "@/lib/risk-stratification";
@@ -106,7 +106,6 @@ export default function ImmunizationsSection({
   const hasAge = ageMonths != null;
 
   const records = getImmunizations(profileId);
-  const providerNames = getProviderNames();
   const titers = getImmunityTiters(profileId);
   const overrides = getImmunizationOverrides(profileId);
   const summary = assessSchedule(
@@ -164,249 +163,254 @@ export default function ImmunizationsSection({
     : "Add your date of birth in Settings to see age-based recommendations.";
 
   return (
-    <div>
-      {/* Shared provider picker options for the add + edit forms. */}
-      <ProviderDatalist names={providerNames} />
-
-      {/* Section status line + at-a-glance counts (the old PageHeader subtitle +
+    <ProviderOptionsProvider providers={getPickerProviders()}>
+      <div>
+        {/* Section status line + at-a-glance counts (the old PageHeader subtitle +
           action, inlined so the merged /records SectionHeader stays generic). */}
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <p className="text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>
-        <div className="hidden gap-2 sm:flex">
-          <Summary count={summary.overdueCount} label="Overdue" tone="rose" />
-          <Summary count={summary.dueCount} label="Due" tone="amber" />
-          <Summary
-            count={summary.unknownCount}
-            label="No record"
-            tone="slate"
-          />
+        <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            {subtitle}
+          </p>
+          <div className="hidden gap-2 sm:flex">
+            <Summary count={summary.overdueCount} label="Overdue" tone="rose" />
+            <Summary count={summary.dueCount} label="Due" tone="amber" />
+            <Summary
+              count={summary.unknownCount}
+              label="No record"
+              tone="slate"
+            />
+          </div>
         </div>
-      </div>
 
-      {!hasAge && (
-        <Notice tone="amber" className="mb-5">
-          No date of birth or age is set for this profile, so age-based
-          recommendations (due / overdue / next dose) cannot be computed. You
-          can still record and review doses below.{" "}
-          <Link href="/settings/profile" className="font-medium underline">
-            Set date of birth
-          </Link>
-          .
-        </Notice>
-      )}
-      {hasAge && !birthdate && (
-        <Notice tone="slate" className="mb-5">
-          Recommendations use the stored age for this profile. Add a date of
-          birth to place recorded doses on the schedule grid by age-at-dose.{" "}
-          <Link href="/settings/profile" className="font-medium underline">
-            Set date of birth
-          </Link>
-          .
-        </Notice>
-      )}
+        {!hasAge && (
+          <Notice tone="amber" className="mb-5">
+            No date of birth or age is set for this profile, so age-based
+            recommendations (due / overdue / next dose) cannot be computed. You
+            can still record and review doses below.{" "}
+            <Link href="/settings/profile" className="font-medium underline">
+              Set date of birth
+            </Link>
+            .
+          </Notice>
+        )}
+        {hasAge && !birthdate && (
+          <Notice tone="slate" className="mb-5">
+            Recommendations use the stored age for this profile. Add a date of
+            birth to place recorded doses on the schedule grid by age-at-dose.{" "}
+            <Link href="/settings/profile" className="font-medium underline">
+              Set date of birth
+            </Link>
+            .
+          </Notice>
+        )}
 
-      {/* Master table: one row per tracked vaccine, sortable + status-filterable,
+        {/* Master table: one row per tracked vaccine, sortable + status-filterable,
       each row drilling into the per-vaccine detail view. */}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Vaccines
-        </h2>
-        <ImmunizationStatusFilter value={statusFilter} />
-      </div>
-      {rows.length === 0 ? (
-        <EmptyState message="No vaccines match this filter." />
-      ) : (
-        <div className="card mb-6 overflow-hidden p-0">
-          <div className="max-h-[70vh] overflow-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-black/5 dark:border-white/10">
-                  <SortableHeader
-                    column="vaccine"
-                    label="Vaccine"
-                    defaultSort="status"
-                  />
-                  <SortableHeader
-                    column="status"
-                    label="Status"
-                    defaultSort="status"
-                  />
-                  {/* Last dose / Doses / Next due hide below their breakpoints so
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-semibold text-slate-800 dark:text-slate-100">
+            Vaccines
+          </h2>
+          <ImmunizationStatusFilter value={statusFilter} />
+        </div>
+        {rows.length === 0 ? (
+          <EmptyState message="No vaccines match this filter." />
+        ) : (
+          <div className="card mb-6 overflow-hidden p-0">
+            <div className="max-h-[70vh] overflow-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-black/5 dark:border-white/10">
+                    <SortableHeader
+                      column="vaccine"
+                      label="Vaccine"
+                      defaultSort="status"
+                    />
+                    <SortableHeader
+                      column="status"
+                      label="Status"
+                      defaultSort="status"
+                    />
+                    {/* Last dose / Doses / Next due hide below their breakpoints so
                   the table fits a phone; they stay on the detail view, and the
                   key facts fold under the name cell on small screens. */}
-                  <SortableHeader
-                    column="last"
-                    label="Last dose"
-                    defaultSort="status"
-                    defaultDir="desc"
-                    className="hidden sm:table-cell"
-                  />
-                  <SortableHeader
-                    column="doses"
-                    label="Doses"
-                    defaultSort="status"
-                    className="hidden md:table-cell"
-                  />
-                  <SortableHeader
-                    column="next"
-                    label="Next due"
-                    defaultSort="status"
-                    className="hidden md:table-cell"
-                  />
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((a) => {
-                  const badge = statusBadge(a);
-                  const risk = riskByCode.get(a.code);
-                  const prioritized = (risk?.priority ?? 0) > 0;
-                  const riskReason = risk?.reasons.join(", ") ?? "";
-                  return (
-                    <tr
-                      key={a.code}
-                      className="border-b border-black/5 last:border-0 dark:border-white/10"
-                    >
-                      <td className="td">
-                        <Link
-                          href={`/immunizations/${a.code}`}
-                          className="font-medium text-brand-700 hover:underline dark:text-brand-400"
-                          title={`View ${a.name}`}
-                        >
-                          {a.name}
-                        </Link>
-                        {prioritized && (
-                          <div
-                            data-testid={`immunization-prioritized-${a.code}`}
-                            className="mt-0.5 text-xs font-medium text-amber-700 dark:text-amber-400"
-                          >
-                            Prioritized — {riskReason}
-                          </div>
-                        )}
-                        <div className="text-xs text-slate-500 sm:hidden dark:text-slate-400">
-                          {a.detail}
-                          {a.nextLabel ? ` · ${a.nextLabel}` : ""}
-                        </div>
-                      </td>
-                      <td className="td">
-                        <span className={`badge ${badge.cls}`}>
-                          {badge.text}
-                        </span>
-                      </td>
-                      <td className="td hidden whitespace-nowrap text-slate-600 sm:table-cell dark:text-slate-300">
-                        {a.lastDate ?? "—"}
-                      </td>
-                      <td className="td hidden text-slate-600 md:table-cell dark:text-slate-300">
-                        {a.dosesReceived}
-                        {a.dosesRequired != null ? ` / ${a.dosesRequired}` : ""}
-                      </td>
-                      <td className="td hidden text-slate-500 md:table-cell dark:text-slate-400">
-                        {a.nextLabel ?? "—"}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      <div className="mb-6">
-        <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-          CDC recommended schedule
-        </h2>
-        <ScheduleGrid
-          records={records.map((r) => ({
-            vaccine: r.vaccine,
-            date: r.date,
-            dose_label: r.dose_label,
-            notes: r.notes,
-            source: r.source,
-          }))}
-          birthdate={birthdate}
-          ageMonths={ageMonths}
-          assessments={summary.assessments}
-        />
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="min-w-0 space-y-6 lg:col-span-2">
-          <div className="card">
-            <h3 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-              Immunity titers
-            </h3>
-            {titers.length === 0 ? (
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                No antibody/titer results yet. They appear here automatically
-                when a lab report with immunity markers (e.g. Hepatitis B
-                Surface Antibody, Measles IgG) is added under{" "}
-                <Link href="/results/biomarkers" className="underline">
-                  Biomarkers
-                </Link>
-                .
-              </p>
-            ) : (
-              <div className="divide-y divide-black/5 dark:divide-white/5">
-                {titers.map((t) => (
-                  <div
-                    key={t.marker}
-                    className="flex items-center justify-between gap-3 py-2"
-                  >
-                    <div className="min-w-0">
-                      <Link
-                        href={`/biomarkers/view?name=${encodeURIComponent(t.marker)}`}
-                        className="truncate text-sm font-medium text-slate-800 hover:underline dark:text-slate-100"
+                    <SortableHeader
+                      column="last"
+                      label="Last dose"
+                      defaultSort="status"
+                      defaultDir="desc"
+                      className="hidden sm:table-cell"
+                    />
+                    <SortableHeader
+                      column="doses"
+                      label="Doses"
+                      defaultSort="status"
+                      className="hidden md:table-cell"
+                    />
+                    <SortableHeader
+                      column="next"
+                      label="Next due"
+                      defaultSort="status"
+                      className="hidden md:table-cell"
+                    />
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((a) => {
+                    const badge = statusBadge(a);
+                    const risk = riskByCode.get(a.code);
+                    const prioritized = (risk?.priority ?? 0) > 0;
+                    const riskReason = risk?.reasons.join(", ") ?? "";
+                    return (
+                      <tr
+                        key={a.code}
+                        className="border-b border-black/5 last:border-0 dark:border-white/10"
                       >
-                        {t.marker}
-                      </Link>
-                      <div className="text-xs text-slate-500 dark:text-slate-400">
-                        {t.value ?? "—"} {t.unit ?? ""}
-                        {t.date ? ` · ${t.date}` : ""}
-                      </div>
-                    </div>
-                    <span className={`badge shrink-0 ${TITER_BADGE[t.status]}`}>
-                      {TITER_TEXT[t.status]}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
+                        <td className="td">
+                          <Link
+                            href={`/immunizations/${a.code}`}
+                            className="font-medium text-brand-700 hover:underline dark:text-brand-400"
+                            title={`View ${a.name}`}
+                          >
+                            {a.name}
+                          </Link>
+                          {prioritized && (
+                            <div
+                              data-testid={`immunization-prioritized-${a.code}`}
+                              className="mt-0.5 text-xs font-medium text-amber-700 dark:text-amber-400"
+                            >
+                              Prioritized — {riskReason}
+                            </div>
+                          )}
+                          <div className="text-xs text-slate-500 sm:hidden dark:text-slate-400">
+                            {a.detail}
+                            {a.nextLabel ? ` · ${a.nextLabel}` : ""}
+                          </div>
+                        </td>
+                        <td className="td">
+                          <span className={`badge ${badge.cls}`}>
+                            {badge.text}
+                          </span>
+                        </td>
+                        <td className="td hidden whitespace-nowrap text-slate-600 sm:table-cell dark:text-slate-300">
+                          {a.lastDate ?? "—"}
+                        </td>
+                        <td className="td hidden text-slate-600 md:table-cell dark:text-slate-300">
+                          {a.dosesReceived}
+                          {a.dosesRequired != null
+                            ? ` / ${a.dosesRequired}`
+                            : ""}
+                        </td>
+                        <td className="td hidden text-slate-500 md:table-cell dark:text-slate-400">
+                          {a.nextLabel ?? "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
+        )}
 
-          <details className="card">
-            <summary className="cursor-pointer font-semibold text-slate-800 dark:text-slate-100">
-              All recorded doses{" "}
-              <span className="text-sm font-normal text-slate-400">
-                ({records.length})
-              </span>
-            </summary>
-            <div className="mt-3">
-              {records.length === 0 ? (
-                <EmptyState
-                  message="No immunizations recorded yet. Add one with the form, or import a MyChart export."
-                  action={{
-                    href: dataSectionHref("import"),
-                    label: "Go to Import",
-                  }}
-                />
+        <div className="mb-6">
+          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+            CDC recommended schedule
+          </h2>
+          <ScheduleGrid
+            records={records.map((r) => ({
+              vaccine: r.vaccine,
+              date: r.date,
+              dose_label: r.dose_label,
+              notes: r.notes,
+              source: r.source,
+            }))}
+            birthdate={birthdate}
+            ageMonths={ageMonths}
+            assessments={summary.assessments}
+          />
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-3">
+          <div className="min-w-0 space-y-6 lg:col-span-2">
+            <div className="card">
+              <h3 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
+                Immunity titers
+              </h3>
+              {titers.length === 0 ? (
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  No antibody/titer results yet. They appear here automatically
+                  when a lab report with immunity markers (e.g. Hepatitis B
+                  Surface Antibody, Measles IgG) is added under{" "}
+                  <Link href="/results/biomarkers" className="underline">
+                    Biomarkers
+                  </Link>
+                  .
+                </p>
               ) : (
-                <ImmunizationHistory items={records} defaultDate={now} />
+                <div className="divide-y divide-black/5 dark:divide-white/5">
+                  {titers.map((t) => (
+                    <div
+                      key={t.marker}
+                      className="flex items-center justify-between gap-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <Link
+                          href={`/biomarkers/view?name=${encodeURIComponent(t.marker)}`}
+                          className="truncate text-sm font-medium text-slate-800 hover:underline dark:text-slate-100"
+                        >
+                          {t.marker}
+                        </Link>
+                        <div className="text-xs text-slate-500 dark:text-slate-400">
+                          {t.value ?? "—"} {t.unit ?? ""}
+                          {t.date ? ` · ${t.date}` : ""}
+                        </div>
+                      </div>
+                      <span
+                        className={`badge shrink-0 ${TITER_BADGE[t.status]}`}
+                      >
+                        {TITER_TEXT[t.status]}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
-          </details>
-        </div>
 
-        <div className="min-w-0 space-y-4">
-          <ImmunizationForm action={addImmunization} defaultDate={now} />
-          <MyChartImport />
-          <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-            Simplified schedule. The tracked schedule is a practical subset of
-            the CDC/ACIP recommendations and does not model risk conditions,
-            pregnancy, or shared-decision cases.
-          </p>
+            <details className="card">
+              <summary className="cursor-pointer font-semibold text-slate-800 dark:text-slate-100">
+                All recorded doses{" "}
+                <span className="text-sm font-normal text-slate-400">
+                  ({records.length})
+                </span>
+              </summary>
+              <div className="mt-3">
+                {records.length === 0 ? (
+                  <EmptyState
+                    message="No immunizations recorded yet. Add one with the form, or import a MyChart export."
+                    action={{
+                      href: dataSectionHref("import"),
+                      label: "Go to Import",
+                    }}
+                  />
+                ) : (
+                  <ImmunizationHistory items={records} defaultDate={now} />
+                )}
+              </div>
+            </details>
+          </div>
+
+          <div className="min-w-0 space-y-4">
+            <ImmunizationForm action={addImmunization} defaultDate={now} />
+            <MyChartImport />
+            <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
+              Simplified schedule. The tracked schedule is a practical subset of
+              the CDC/ACIP recommendations and does not model risk conditions,
+              pregnancy, or shared-decision cases.
+            </p>
+          </div>
         </div>
       </div>
-    </div>
+    </ProviderOptionsProvider>
   );
 }
 

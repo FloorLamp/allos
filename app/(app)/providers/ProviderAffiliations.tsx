@@ -5,8 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { IconLink, IconX, IconPlus } from "@tabler/icons-react";
 import SubmitButton from "@/components/SubmitButton";
+import ProviderCombobox from "@/components/ProviderCombobox";
 import { useToast } from "@/components/Toast";
-import type { ProviderType } from "@/lib/types";
+import type { Provider, ProviderType } from "@/lib/types";
 import type {
   AffiliatedProviderRef,
   AffiliationSuggestionView,
@@ -29,14 +30,16 @@ export default function ProviderAffiliations({
   providerType,
   affiliates,
   suggestions,
-  counterpartNames,
+  counterpartProviders,
   canEdit,
 }: {
   providerId: number;
   providerType: ProviderType;
   affiliates: AffiliatedProviderRef[];
   suggestions: AffiliationSuggestionView[];
-  counterpartNames: string[];
+  // The opposite-type registry rows the manual picker offers (already filtered to
+  // the counterpart type, un-archived, minus this provider and its linked peers).
+  counterpartProviders: Provider[];
   canEdit: boolean;
 }) {
   const router = useRouter();
@@ -45,7 +48,6 @@ export default function ProviderAffiliations({
   const counterpartType: ProviderType =
     providerType === "individual" ? "organization" : "individual";
   const heading = providerType === "individual" ? "Practices at" : "People";
-  const distinctNames = Array.from(new Set(counterpartNames));
 
   async function run(
     action: (fd: FormData) => Promise<{ error?: string }>,
@@ -192,22 +194,17 @@ export default function ProviderAffiliations({
             <label className="label" htmlFor="affiliation-name">
               Affiliated with…
             </label>
-            <input
+            <ProviderCombobox
               id="affiliation-name"
               name="name"
-              list="affiliation-names"
-              className="input"
+              ariaLabel="Affiliated with"
+              providers={counterpartProviders}
               placeholder={
                 counterpartType === "organization"
                   ? "e.g. Sample Care East"
                   : "e.g. Dr. Chen"
               }
             />
-            <datalist id="affiliation-names">
-              {distinctNames.map((n) => (
-                <option key={n} value={n} />
-              ))}
-            </datalist>
           </div>
           <SubmitButton className="btn inline-flex items-center gap-1.5">
             <IconPlus className="h-4 w-4" stroke={1.75} />

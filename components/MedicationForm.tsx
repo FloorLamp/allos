@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import SupplementCombobox from "@/components/SupplementCombobox";
+import Combobox from "@/components/Combobox";
+import ProviderCombobox from "@/components/ProviderCombobox";
+import { useSituationOptions } from "@/components/SituationOptionsContext";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
 import { useToast } from "@/components/Toast";
@@ -40,10 +43,7 @@ import {
   type PediatricFormContext,
 } from "@/lib/prn-dosing";
 import { resolveIntakePrefill, type PrefillField } from "@/lib/intake-prefill";
-import {
-  CONDITION_LABELS,
-  SUGGESTED_SITUATIONS,
-} from "@/lib/supplement-schedule";
+import { CONDITION_LABELS } from "@/lib/supplement-schedule";
 import type {
   FormResult,
   Supplement,
@@ -152,6 +152,8 @@ export default function MedicationForm({
   const [name, setName] = useState(s?.name ?? "");
   const rx = useIntakeRxcui(s);
   const [condition, setCondition] = useState(s?.condition ?? "daily");
+  const [situation, setSituation] = useState(s?.situation ?? "");
+  const situationOptions = useSituationOptions();
   const [brand, setBrand] = useState(s?.brand ?? "");
   const [brandOptions, setBrandOptions] = useState<string[]>(MED_BRAND_OPTIONS);
   // Rx / OTC (#851 items 1–2). A prescription (rxFlag=1) reveals the prescriber/
@@ -402,6 +404,7 @@ export default function MedicationForm({
       setName("");
       rx.reset();
       setCondition("daily");
+      setSituation("");
       setBrand("");
       setBrandOptions(MED_BRAND_OPTIONS);
       setRxFlag(false);
@@ -601,19 +604,16 @@ export default function MedicationForm({
               <label className="label" htmlFor={`med-situation-${fid}`}>
                 Situation
               </label>
-              <input
+              <Combobox
                 id={`med-situation-${fid}`}
                 name="situation"
-                list="situation-options"
-                defaultValue={s?.situation ?? ""}
-                className="input"
+                ariaLabel="Situation"
+                value={situation}
+                onChange={setSituation}
+                options={situationOptions}
+                allowFreeText
                 placeholder="e.g. Illness"
               />
-              <datalist id="situation-options">
-                {SUGGESTED_SITUATIONS.map((x) => (
-                  <option key={x} value={x} />
-                ))}
-              </datalist>
             </div>
           )}
         </div>
@@ -838,14 +838,13 @@ export default function MedicationForm({
               <label className="label" htmlFor={`med-provider-${fid}`}>
                 Provider / pharmacy
               </label>
-              {/* Provider picker: create-on-type from the shared registry via the
-                  page's <datalist id="provider-names">. */}
-              <input
+              {/* Provider picker: create-on-type ProviderCombobox (#1176) over the
+                  page's shared registry rows. */}
+              <ProviderCombobox
                 id={`med-provider-${fid}`}
                 name="provider"
-                list="provider-names"
+                ariaLabel="Provider / pharmacy"
                 defaultValue={s?.provider_name ?? ""}
-                className="input"
                 placeholder="e.g. Sample Care East"
               />
               {/* Round-trip the loaded link so an untouched field keeps its id (#601). */}
@@ -1008,7 +1007,6 @@ export default function MedicationForm({
           doses={doses}
           setDoses={setDosesTouched}
           dosageOptions={medDosageOptions}
-          datalistId={`dosage-options-${fid}`}
           amountPlaceholder="e.g. 200 mg"
           singleAmountOnly={asNeeded}
         />

@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import DateField from "@/components/DateField";
 import SubmitButton from "@/components/SubmitButton";
+import ProviderCombobox from "@/components/ProviderCombobox";
 import { useToast } from "@/components/Toast";
 import {
   IMAGING_MODALITIES,
@@ -215,12 +216,11 @@ export default function ImagingStudyForm({
           <label className="label" htmlFor={`is-ordering-${uid}`}>
             Ordering provider
           </label>
-          {/* Create-on-type from the shared registry via <datalist id="provider-names">. */}
-          <input
+          {/* Create-on-type from the shared registry (ProviderCombobox, #1176). */}
+          <ProviderCombobox
             id={`is-ordering-${uid}`}
             name="ordering_provider"
-            list="provider-names"
-            className="input"
+            ariaLabel="Ordering provider"
             defaultValue={study?.ordering_provider_name ?? ""}
             placeholder="e.g. Dr. Lee"
           />
@@ -243,11 +243,10 @@ export default function ImagingStudyForm({
           <label className="label" htmlFor={`is-reading-${uid}`}>
             Reading radiologist
           </label>
-          <input
+          <ProviderCombobox
             id={`is-reading-${uid}`}
             name="reading_provider"
-            list="provider-names"
-            className="input"
+            ariaLabel="Reading radiologist"
             defaultValue={study?.reading_provider_name ?? ""}
             placeholder="e.g. Dr. Osei"
           />
