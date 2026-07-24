@@ -4,10 +4,13 @@
 // and shared by the form's presentational sub-components under this directory.
 
 import type { ActivityType } from "@/lib/types";
+import { parseComponents } from "@/lib/types";
 import type { UnitPrefs } from "@/lib/settings";
 import { isTimed } from "@/lib/lifts";
 import { formatSeconds } from "@/lib/duration";
-import { round, kgTo } from "@/lib/units";
+import { round, kgTo, kmTo } from "@/lib/units";
+import { isCuratedActivity } from "@/lib/activities-catalog";
+import { legacyActivityName } from "@/lib/activity-meta";
 import { sideCompleteBy, sidePartialBy } from "@/lib/activity-validate";
 import { cachedDateTimeFormat, dateStrInTz } from "@/lib/date";
 import type { ImportedActivityMetrics } from "@/lib/activity-import-details";
@@ -369,6 +372,81 @@ export function groupEditSets(
     });
   }
   return byName;
+}
+
+// Reconstruct the form's initial `parts` state from the row it opens on — a stored
+// activity being edited, or a "Log again"/"Repeat last" prefill (issue #127; the
+// #1207 extraction of ActivityForm's inline useState initializer). Pure so it is
+// unit-testable and can't diverge from the save/reconstruct round-trip: a structured
+// `components` blob loads the typed parts (strength parts joined back to their sets),
+// else a strength row groups its sets, else a legacy cardio/sport row derives its
+// single part from the freeform title. `isKnown` is the picker-vocabulary predicate
+// (from the form's name classifier) used to recover a legacy part's name.
+export function initialPartsFromSeed(
+  seed: ActivityEditData | null,
+  units: UnitPrefs,
+  isKnown: (name: string) => boolean
+): PartEntry[] {
+  if (!seed) return [blankPart()];
+  if (seed.components) {
+    // Shared parseComponents (issue #334): a stored components string is always
+    // a valid non-empty array (saveActivity writes NULL for an empty list), so
+    // this loads the structured parts; a malformed blob yields [] here.
+    const grouped = groupEditSets(seed.sets, units.weightUnit);
+    return parseComponents(seed.components).map((c) => {
+      if (c.type === "strength") {
+        const g = grouped.find(
+          (e) => e.name.toLowerCase() === c.name.toLowerCase()
+        );
+        // Spread the reconstructed part wholesale (keeping the component's
+        // casing for the name) so new EditedPart fields can't be missed.
+        return g
+          ? { ...blankPart(), ...g, name: c.name }
+          : { ...blankPart(), name: c.name };
+      }
+      // Any non-curated cardio/sport name is a custom activity: load it
+      // committed and typed as stored, whether or not the suggestions
+      // know it yet — so its chips and distance field survive re-edits.
+      const custom = !isCuratedActivity(c.name);
+      return {
+        ...blankPart(),
+        name: c.name,
+        custom,
+        customType: custom ? c.type : null,
+        distance:
+          c.distance_km != null
+            ? String(round(kmTo(c.distance_km, units.distanceUnit), 2))
+            : "",
+        durationMin: c.duration_min != null ? String(c.duration_min) : "",
+      };
+    });
+  }
+  if (seed.type === "strength") {
+    const g = groupEditSets(seed.sets, units.weightUnit);
+    return (g.length ? g : [blankPart()]).map((e) => ({
+      ...blankPart(),
+      ...e,
+    }));
+  }
+  // Legacy cardio/sport rows (no components): the part name is derived
+  // from the freeform title (see legacyActivityName); a non-curated one
+  // loads as a custom part typed by the row — editable instead of
+  // permanently blocked.
+  const name = legacyActivityName(seed.title, isKnown);
+  const custom = !isCuratedActivity(name);
+  return [
+    {
+      ...blankPart(),
+      name,
+      custom,
+      customType: custom ? seed.type : null,
+      distance:
+        seed.distance_km != null
+          ? String(round(kmTo(seed.distance_km, units.distanceUnit), 2))
+          : "",
+      durationMin: seed.duration_min != null ? String(seed.duration_min) : "",
+    },
+  ];
 }
 
 // What makes a strength set "count" / what pauses auto-save as half-filled:

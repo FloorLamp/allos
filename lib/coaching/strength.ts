@@ -1,6 +1,7 @@
 // Training coaching — strength: double-progression next-set targets and
 // strength personal records. Pure and client-safe — no DB/network.
 import { isTimed, liftInfo } from "../lifts";
+import { plateauBreakAdvice, plateauBreakClause } from "../plateau-advice";
 import { judgeTargets } from "../journal-format";
 import { estimate1RM } from "../strength";
 import { dispWeight, kgTo, toKg, round } from "../units";
@@ -421,13 +422,17 @@ export function suggestNextSet(
     if (hard) {
       // Near-failure and still under the floor: the load is too heavy to build
       // reps under. Hold it and repeat the same effort; if it keeps stalling,
-      // the plateau vocabulary points at a deload or a variation swap.
+      // point at the SHARED plateau-break advice (#1203/#221) — the same ~10%
+      // deload magnitude and named variations the plateau finding and inline
+      // hint carry, so the advice can't drift across surfaces.
       return {
         weightKg: last.weightKg,
         reps: last.reps,
         bodyweight: false,
         targetReps: null,
-        rationale: `RPE ${fmtRpe(rpe!)} and still under ${low} reps — hold this load and repeat; if it keeps stalling, deload or change the variation`,
+        rationale: `RPE ${fmtRpe(rpe!)} and still under ${low} reps — hold this load and repeat; if it keeps stalling, try ${plateauBreakClause(
+          plateauBreakAdvice(s.exercise)
+        )}`,
       };
     }
     return {

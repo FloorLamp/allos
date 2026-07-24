@@ -875,7 +875,10 @@ export default function StrengthSets({
         >
           <span className="flex items-start gap-1.5 text-slate-600 dark:text-slate-300">
             <IconTrendingDown className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-            <span>Flat ~6 weeks — consider a deload or a variation.</span>
+            {/* The SHARED plateau-break advice (#1203): the ~10% deload magnitude
+                + named variations, phrased identically to the finding/next-set
+                surfaces, pre-rendered by the one-computation helper. */}
+            <span>{plateauHint.hintText}</span>
           </span>
           <button
             type="button"
