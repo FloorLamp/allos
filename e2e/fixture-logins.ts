@@ -541,6 +541,16 @@ export const HA_NOTIFY_PROFILE = "HA Notify (e2e)";
 export const E2E_LOGIN_VISITLINKS = "e2e_visitlinks";
 export const VISITLINKS_PROFILE = "Visit Links (e2e)";
 
+// A member granted a dedicated profile for the encounter-detail enrichment spec
+// (#1350/#1353). Seeds a self-contained subject visit with a same-provider prior
+// visit (visit context), a completed appointment booked for it (scheduling origin),
+// an illness episode spanning the visit with NO linked visit yet (the encounter-side
+// "link an episode" suggestion → link → care trail), and a document-sourced + a manual
+// condition (the RecordProvenance deep-link vs plain label). OWNS every row so the
+// suite's shared-seed counts and --repeat-each stay clean.
+export const E2E_LOGIN_ENCRICH = "e2e_encrich";
+export const ENCRICH_PROFILE = "Encounter Enrichment (e2e)";
+
 // A member granted TWO dedicated profiles for the profile-switch toaster spec
 // (#296), so its ACTIVE-PROFILE switching runs in its OWN cookie context and can
 // never strand the shared admin storageState on a fixture profile — the shard-3
