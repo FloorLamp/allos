@@ -37,11 +37,17 @@ export default function RecordForm({
   defaultDate,
   defaultCategory,
   defaultName,
+  writeProfileId,
 }: {
   action: (formData: FormData) => Promise<FormResult>;
   mode: "add" | "edit";
   // The row being edited (edit mode). Its columns seed the field defaults.
   record?: MedicalRecord;
+  // Multi-view (#1331): the SUBJECT profile this edit targets. Posted as a hidden
+  // `profile_id` so updateRecord's gateItemProfile() writes the row's own member,
+  // not the acting profile. Omitted in single view (the default) → no hidden field,
+  // gateItemProfile falls back to the acting-profile gate — byte-identical.
+  writeProfileId?: number;
   // Called after a successful submit — the row editor closes on it.
   onDone?: () => void;
   // Category <select> options. Defaults to the full enum; the Biomarkers page
@@ -98,6 +104,9 @@ export default function RecordForm({
   return (
     <form ref={formRef} action={handle} className="grid gap-3 sm:grid-cols-4">
       {editing && <input type="hidden" name="id" value={record!.id} />}
+      {editing && writeProfileId != null && (
+        <input type="hidden" name="profile_id" value={writeProfileId} />
+      )}
       <div>
         <label className="label" htmlFor={`rec-${uid}-date`}>
           Date

@@ -93,6 +93,12 @@ import {
   MVMEDS_RO_PROFILE,
   MVMEDS_SELF_MED,
   MVMEDS_RO_MED,
+  E2E_LOGIN_MVBIO,
+  MVBIO_SELF_PROFILE,
+  MVBIO_RO_PROFILE,
+  MVBIO_SHARED_ANALYTE,
+  MVBIO_SELF_ANALYTE,
+  MVBIO_RO_ANALYTE,
   MULTI_OWNER_CONDITION,
   MULTI_SHARED_CONDITION,
   MULTI_OWNER_ALLERGY,
@@ -5510,6 +5516,46 @@ console.log(
   grantProfile(mvLoginId, mvRoId, "read");
   console.log(
     `e2e: seeded medications-board fixture — ${E2E_LOGIN_MVMEDS} granted ${MVMEDS_SELF_PROFILE} (${mvSelfId}, write) + ${MVMEDS_RO_PROFILE} (${mvRoId}, read)`
+  );
+}
+
+// ── Multi-view Biomarkers (Results) table (issue #1331) ───────────────────────
+// E2E_LOGIN_MVBIO: a base profile (WRITE, acting) + a second profile READ-ONLY. Both
+// carry the SHARED "Vitamin D" analyte family with DIFFERENT values/dates (so the
+// merged table proves per-member is_latest never crosses), plus one uniquely-named
+// analyte each so the spec can assert each member's data merged in. The self profile
+// is created FIRST so it holds the lower id → the login lands acting as it.
+{
+  const bioSelfId = fixtureProfileId(MVBIO_SELF_PROFILE);
+  const bioRoId = fixtureProfileId(MVBIO_RO_PROFILE);
+  const seedBioReading = (
+    profileId: number,
+    canonical: string,
+    date: string,
+    value: number,
+    unit: string
+  ): void => {
+    db.prepare(
+      `DELETE FROM medical_records WHERE profile_id = ? AND canonical_name = ? AND date = ?`
+    ).run(profileId, canonical, date);
+    db.prepare(
+      `INSERT INTO medical_records
+         (profile_id, date, category, name, value, value_num, unit, canonical_name, source)
+       VALUES (?, ?, 'lab', ?, ?, ?, ?, ?, 'manual')`
+    ).run(profileId, date, canonical, String(value), value, unit, canonical);
+  };
+  // Shared family: self's newest is 2024-06 (55), the read-only member's is 2024-03
+  // (42) — each member's own newest must flag is_latest independently.
+  seedBioReading(bioSelfId, MVBIO_SHARED_ANALYTE, "2024-01-01", 30, "ng/mL");
+  seedBioReading(bioSelfId, MVBIO_SHARED_ANALYTE, "2024-06-01", 55, "ng/mL");
+  seedBioReading(bioRoId, MVBIO_SHARED_ANALYTE, "2024-03-01", 42, "ng/mL");
+  // A uniquely-named analyte per member so the spec can prove both members' rows merge.
+  seedBioReading(bioSelfId, MVBIO_SELF_ANALYTE, "2024-05-01", 120, "ng/mL");
+  seedBioReading(bioRoId, MVBIO_RO_ANALYTE, "2024-05-01", 95, "mg/dL");
+  const bioLoginId = seedMemberLogin(E2E_LOGIN_MVBIO, bioSelfId, "write");
+  grantProfile(bioLoginId, bioRoId, "read");
+  console.log(
+    `e2e: seeded biomarkers-table fixture — ${E2E_LOGIN_MVBIO} granted ${MVBIO_SELF_PROFILE} (${bioSelfId}, write) + ${MVBIO_RO_PROFILE} (${bioRoId}, read)`
   );
 }
 
