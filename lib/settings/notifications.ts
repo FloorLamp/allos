@@ -220,15 +220,22 @@ export function setAnxietyScaleOptIn(
   setProfileSetting(profileId, "anxiety_scale_enabled", enabled ? "1" : "0");
 }
 
-// ---- Morning-digest sleep summary (issue #1117) — per-profile opt-in ----
+// ---- Morning-digest sleep summary (issue #1117) — per-profile, ON by default (#1378) ----
 // Whether the morning digest includes a calm "how'd I sleep" section (last night's
 // MAIN overnight session vs baseline, stage breakdown, an SRI note, any nap on its
-// own line). OFF by default (opt-in, the #992 non-judgmental posture), so an
-// existing digest never sprouts a sleep line unasked. A `digest_sleep_enabled`
-// "1"/"0" flag in profile_settings, mirroring mood_checkin_enabled. The section
-// still collapses when there's no fresh sleep data even when enabled.
+// own line). ON by default whenever the digest is enabled (issue #1378): a user who
+// deliberately enabled the morning digest has already asked to be briefed, and last
+// night's sleep is the most morning-shaped content the app has — the old second opt-in
+// (#992's over-cautious posture) hid the section from most digest users. So this is
+// absent-means-ON: the toggle is now an opt-OUT. A stored "0" still means off; the key
+// absent (never touched) now reads on. This is the ONE place the default lives — the
+// Settings UI toggle and the digest gather (gatherDigestSleep) both read it, so the
+// default can't drift (#221). The freshness + no-data gates in gatherDigestSleep are
+// UNCHANGED: the section still collapses when there's no fresh sleep data even when on,
+// so a profile without a sleep source sees zero new noise. A `digest_sleep_enabled`
+// "1"/"0" flag in profile_settings.
 export function getProfileSleepDigest(profileId: number): boolean {
-  return getProfileSetting(profileId, "digest_sleep_enabled") === "1";
+  return getProfileSetting(profileId, "digest_sleep_enabled") !== "0";
 }
 
 export function setProfileSleepDigest(

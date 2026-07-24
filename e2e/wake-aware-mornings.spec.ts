@@ -20,6 +20,14 @@ test.describe("wake-aware mornings (issue #1117)", () => {
     });
     await expect(card).toBeVisible();
 
+    // #1378: the sleep summary is now an opt-OUT (on by default with the digest) — the copy
+    // reflects last night's sleep. (The default-on read is pinned in the pure/action/DB
+    // tiers; this spec RESETS the toggle at the end, so the shared profile-1 checkbox state
+    // isn't stable across --repeat-each and can't be asserted here per e2e hygiene, #868.)
+    await expect(
+      page.getByText("Include last night’s sleep summary")
+    ).toBeVisible();
+
     const morning = page.getByTestId("supp-morning-hour");
     const digest = page.getByTestId("digest-hour");
     const save = card.getByRole("button", { name: "Save" });
@@ -39,7 +47,8 @@ test.describe("wake-aware mornings (issue #1117)", () => {
     await page.reload();
     await expect(page.getByTestId("supp-morning-hour")).toHaveValue("9");
 
-    // Switch the Morning slot + the digest to Auto, and opt into the sleep summary.
+    // Switch the Morning slot + the digest to Auto, and set the sleep summary on (it's the
+    // opt-out default as of #1378; check() pins that it round-trips as an explicit "1").
     await page.getByTestId("supp-morning-hour").selectOption("auto");
     await page.getByTestId("digest-hour").selectOption("auto");
     await page.getByTestId("digest-sleep-enabled").check();
