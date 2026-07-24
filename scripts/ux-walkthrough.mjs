@@ -639,13 +639,21 @@ async function liveWorkoutJourney(browser) {
     .first()
     .click();
   await page.waitForTimeout(800);
+  // A set needs BOTH weight and reps or the editor flags "Finish or clear the
+  // highlighted set" and the session won't save it (learned from the shots).
   const weight = page.getByTestId("set1-weight");
   if (await weight.count()) await weight.fill("60");
+  await page
+    .getByTestId("set1-reps-stepper")
+    .getByRole("spinbutton")
+    .fill("5")
+    .catch(() => log("live-workout: reps input not found"));
   await shot(page, "live-set-logged");
   await page
-    .getByRole("button", { name: "+ Add set" })
+    .getByRole("button", { name: /Add set/ })
+    .first()
     .click()
-    .catch(() => log("live-workout: '+ Add set' not found"));
+    .catch(() => log("live-workout: 'Add set' not found"));
   await page.waitForTimeout(800);
   await shot(page, "live-rest-timer");
   await page.getByTestId("finish-workout").click();
@@ -782,10 +790,21 @@ async function profilesJourney(browser) {
     await page.keyboard.press("Escape");
   }
 
-  // -- Read-only member: set jordan's grant on profile 2 to read-only.
-  await visit(page, "/settings/family", 1500);
-  const cell = page.getByTestId("grant-cell-jordan-2");
-  const level = cell.locator("select");
+  // -- Read-only member: set jordan's grant on profile 2 to read-only. The
+  //    Access card collapses each login's matrix behind an Edit button — expand
+  //    it first (grant-access-* selects don't exist until then).
+  const openGrantEditor = async () => {
+    await visit(page, "/settings/family", 1500);
+    if (!(await page.getByTestId("grant-access-jordan-2").count()))
+      await page
+        .getByRole("button", { name: "Edit" })
+        .last()
+        .click()
+        .catch(() => {});
+    await page.waitForTimeout(800);
+    return page.getByTestId("grant-access-jordan-2");
+  };
+  let level = await openGrantEditor();
   if (!(await level.count())) {
     log("read-only: grant level select not found — skipping read-only leg");
     await shot(page, "readonly-no-select");
@@ -813,13 +832,12 @@ async function profilesJourney(browser) {
   await memberCtx.close();
 
   // Restore write access so later runs keep their fixtures.
-  await visit(page, "/settings/family", 1500);
-  await page
-    .getByTestId("grant-cell-jordan-2")
-    .locator("select")
-    .selectOption("write");
-  await page.getByRole("button", { name: "Save access" }).click();
-  await page.waitForTimeout(1200);
+  level = await openGrantEditor();
+  if (await level.count()) {
+    await level.selectOption("write");
+    await page.getByRole("button", { name: "Save access" }).click();
+    await page.waitForTimeout(1200);
+  } else log("read-only: could not restore write grant — restore manually");
   await ctx.close();
 }
 
@@ -860,7 +878,8 @@ trailer<</Size 4/Root 1 0 R>>
   await input.setInputFiles(pdfPath);
   await page.waitForTimeout(500);
   await shot(page, "upload-file-chosen");
-  await page.getByRole("button", { name: "Upload" }).click();
+  // testid, not name — the "File Upload (incl. CSV)" tab also matches "Upload".
+  await page.getByTestId("medical-upload-submit").click();
   await checkVisible(
     page,
     () => page.getByText(/Upload received|fixture-upload/),
