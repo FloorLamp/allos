@@ -201,3 +201,10 @@ export function stampSubjects<T extends { profileId: number }>(
     };
   });
 }
+
+// ── Loop-composition (#1328) ──────────────────────────────────────────────────
+
+// readForProfiles is the PURE loop-composition helper — it lives in lib/multi-view.ts
+// (no DB, unit-testable) and is re-exported here so a Section can pull it alongside
+// stampSubjects from the one scope module.
+export { readForProfiles } from "./multi-view";

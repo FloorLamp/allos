@@ -10,6 +10,8 @@ import { formatRecordDate } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
 import type { Procedure } from "@/lib/types";
+import type { Stamped } from "@/lib/scope";
+import type { ListMultiView } from "@/lib/multi-view";
 
 const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Procedure>[] => [
   {
@@ -67,14 +69,33 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Procedure>[] => [
 ];
 
 // Manage stored procedure rows: edit in place or delete, on the shared RecordTable.
-export default function ProcedureList({ items }: { items: Procedure[] }) {
+export default function ProcedureList({
+  items,
+  multiView,
+}: {
+  items: Stamped<Procedure>[];
+  multiView?: ListMultiView;
+}) {
   return (
     <RecordTable
       items={items}
       columns={buildColumns(useFormatPrefs())}
       emptyMessage="No procedures yet. Add one, or import a MyChart / CCD health record to populate your surgical history."
+      multiView={
+        multiView
+          ? {
+              actingProfileId: multiView.actingProfileId,
+              subjectOf: (p) => p.subject,
+            }
+          : undefined
+      }
       renderEditForm={(p, done) => (
-        <ProcedureForm action={updateProcedure} procedure={p} onDone={done} />
+        <ProcedureForm
+          action={updateProcedure}
+          procedure={p}
+          profileId={multiView ? p.subject.profileId : undefined}
+          onDone={done}
+        />
       )}
       confirmDelete={(p) => ({
         title: "Delete procedure",
@@ -83,6 +104,7 @@ export default function ProcedureList({ items }: { items: Procedure[] }) {
       onDelete={async (p) => {
         const fd = new FormData();
         fd.set("id", String(p.id));
+        if (multiView) fd.set("profile_id", String(p.subject.profileId));
         await deleteProcedure(fd);
       }}
     />

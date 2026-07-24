@@ -6,6 +6,7 @@ import {
 } from "@/lib/queries";
 import { activeByKey } from "@/lib/findings";
 import { contrastTitle, contrastDetail } from "@/lib/contrast-safety";
+import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import { today } from "@/lib/db";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import { Notice } from "@/components/Notice";
@@ -19,8 +20,18 @@ import { addCarePlanItem } from "@/app/(app)/care-plan/actions";
 // 18776-5) or a FHIR CarePlan resource, plus manual add/edit/delete. NB: this is
 // CLINICAL care planned in the record — distinct from the user's own fitness
 // "Goals" (/goals).
-export default function CarePlanSection({ profileId }: { profileId: number }) {
-  const items = getCarePlanItems(profileId);
+// Multi-view (#1328): the care-plan LIST reads the view-set list-first (loop-composed;
+// each profile's provider-joined rows in its own planned-date order) and gets subject
+// chips + per-item write gates. The contrast-safety notes are a per-profile read-time
+// derivation (today()/suppression bus) and stay on the ACTING profile — the #1096
+// scope-limit. Single view is byte-identical.
+export default function CarePlanSection({ scope }: { scope: ProfileScope }) {
+  const profileId = scope.actingProfileId;
+  const multi = scope.viewIds.length > 1;
+  const items = stampSubjects(
+    scope,
+    readForProfiles(scope.viewIds, (pid) => getCarePlanItems(pid))
+  );
 
   // Contrast-safety notes (issue #701): a planned contrast imaging study meeting a
   // contrast/iodine/gadolinium allergy or a renal (CKD) contraindication on file. The
@@ -53,7 +64,12 @@ export default function CarePlanSection({ profileId }: { profileId: number }) {
               ))}
             </div>
           )}
-          <CarePlanList items={items} />
+          <CarePlanList
+            items={items}
+            multiView={
+              multi ? { actingProfileId: scope.actingProfileId } : undefined
+            }
+          />
         </div>
 
         <div className="min-w-0 space-y-4">

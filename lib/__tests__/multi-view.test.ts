@@ -4,6 +4,7 @@ import {
   subjectChipVisible,
   viewCountLabel,
   parseViewMode,
+  readForProfiles,
 } from "@/lib/multi-view";
 
 // Pure-tier coverage for the shared multi-view RENDERING RULES (lib/multi-view.ts, issue
@@ -85,5 +86,32 @@ describe("parseViewMode (issue #1327 fix 2 — the ordering toggle)", () => {
 
   it("selects by-person on the explicit value", () => {
     expect(parseViewMode("by-person")).toBe("by-person");
+  });
+});
+
+describe("readForProfiles (issue #1328 — loop-composition for the Tier-1 lists)", () => {
+  it("tags each row with the profile it came from, in view order", () => {
+    const reader = (pid: number) => [
+      { id: pid * 10 + 1 },
+      { id: pid * 10 + 2 },
+    ];
+    const rows = readForProfiles([2, 5], reader);
+    expect(rows).toEqual([
+      { id: 21, profileId: 2 },
+      { id: 22, profileId: 2 },
+      { id: 51, profileId: 5 },
+      { id: 52, profileId: 5 },
+    ]);
+  });
+
+  it("single-view (ids = [acting]) returns exactly the per-profile reader's rows, tagged", () => {
+    const reader = (pid: number) => [{ name: `row-${pid}` }];
+    expect(readForProfiles([7], reader)).toEqual([
+      { name: "row-7", profileId: 7 },
+    ]);
+  });
+
+  it("an empty view-set yields no rows", () => {
+    expect(readForProfiles([], () => [{ id: 1 }])).toEqual([]);
   });
 });
