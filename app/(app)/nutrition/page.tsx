@@ -32,10 +32,10 @@ export default async function NutritionPage(props: {
   const activePanel = tab === "supplements" ? <SupplementsTab /> : <FoodTab />;
 
   return (
-    <div>
+    <div className="mx-auto w-full xl:max-w-6xl" data-testid="nutrition-page">
       <PageHeader
         title="Nutrition"
-        subtitle="Food-group servings and your supplement schedule — one habit-tier home."
+        subtitle="Log food groups, review your week, and manage supplements."
       />
       <NavTabs
         paramKey="tab"

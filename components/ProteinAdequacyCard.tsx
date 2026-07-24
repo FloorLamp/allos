@@ -83,11 +83,6 @@ export default function ProteinAdequacyCard({
         </dl>
       )}
       {quickAdd && <div className="mt-3">{quickAdd}</div>}
-      <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-        {(adequacy?.intake.basis ?? today?.todayIntake?.basis) !== "tracked"
-          ? "A floor from your logged food-group servings plus any protein you logged directly — untracked foods add more. "
-          : ""}
-      </p>
     </div>
   );
 }

@@ -29,7 +29,11 @@ test("situations bar toggles the id-keyed situation and gates its supplement", a
   // today" — a COLLAPSED <details> (app/(app)/nutrition/SupplementsTab.tsx), so expand it via
   // its summary before asserting the row (contents aren't visible while closed).
   await illness.click();
-  await expect(illness).toHaveAttribute("aria-pressed", "false");
+  const changedBar = page.getByTestId("situations-bar");
+  await changedBar.getByTestId("situation-options-toggle").click();
+  await expect(
+    changedBar.getByRole("button", { name: "Illness", exact: true })
+  ).toHaveAttribute("aria-pressed", "false");
   const notScheduled = page
     .locator("details")
     .filter({ hasText: /Not scheduled today/ });
@@ -39,16 +43,14 @@ test("situations bar toggles the id-keyed situation and gates its supplement", a
 
   // Active state persists across a reload (it's a real row, not request state).
   await page.reload();
+  const reloadedBar = page.getByTestId("situations-bar");
+  await reloadedBar.getByTestId("situation-options-toggle").click();
   await expect(
-    page.getByTestId("situations-bar").getByRole("button", {
-      name: "Illness",
-      exact: true,
-    })
+    reloadedBar.getByRole("button", { name: "Illness", exact: true })
   ).toHaveAttribute("aria-pressed", "false");
 
   // Toggle back ON to restore the seeded state.
-  await page
-    .getByTestId("situations-bar")
+  await reloadedBar
     .getByRole("button", { name: "Illness", exact: true })
     .click();
   await expect(

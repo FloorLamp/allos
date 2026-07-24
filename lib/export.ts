@@ -1008,8 +1008,8 @@ export const DATASETS: ExportDataset[] = [
     key: "food_log_events",
     label: "Food log events",
     table: "food_log_events",
-    columns: ["date", "group_key", "logged_at"],
-    select: `SELECT id, date, group_key, logged_at
+    columns: ["date", "group_key", "logged_at", "meal_slot"],
+    select: `SELECT id, date, group_key, logged_at, meal_slot
        FROM food_log_events WHERE profile_id = ? ORDER BY logged_at DESC`,
     countSql: `SELECT COUNT(*) AS n FROM food_log_events WHERE profile_id = ?`,
   }),

@@ -157,18 +157,19 @@ test.describe("Nutrition trio", () => {
         await expect(presetSelect).toHaveValue("vegetarian", { timeout: WAIT });
         await expect(page.getByLabel("Saved")).toBeVisible({ timeout: WAIT });
 
-        // On the Food tab, the suggestions summary now carries the muted preference note
-        // (#980 item 4) — the demote/substitute is explicable on-surface, like the #950
-        // slot chip is for ordering.
+        // The minimized sidebar badge expands to show the muted preference note
+        // (#980 item 4) — the demote/substitute is explicable on-surface without making
+        // the collapsed state tall.
         await page.goto("/nutrition?tab=food");
+        await page.getByTestId("nutrition-suggestions-summary").click();
         const prefNote = page.getByTestId("suggestions-preference-note");
         await expect(prefNote).toBeVisible({ timeout: WAIT });
         await expect(prefNote).toContainText(/vegetarian-friendly/i);
+        await expect(prefNote).toHaveCSS("font-style", "normal");
 
         // The flagged low-omega-3 suggestion now leads with a plant source (nuts/seeds),
         // not fish — substitution, never blocked. The suggestions block is a native
-        // <details> (a pure client toggle — no Server Action).
-        await page.getByTestId("nutrition-suggestions-summary").click();
+        // The disclosure is a pure client toggle — no Server Action.
         const suggestions = page.getByTestId("nutrition-suggestions");
         await expect(suggestions).toContainText(/walnut|flax|chia|algae/i, {
           timeout: WAIT,
@@ -176,6 +177,10 @@ test.describe("Nutrition trio", () => {
 
         // An excluded group (fatty fish) is still reachable in the log bar — demoted,
         // never removed. Its row + log control are present and clickable.
+        const fishRow = page.getByTestId("food-group-fatty_fish");
+        if (!(await fishRow.isVisible())) {
+          await page.getByTestId("food-more-groups-summary").click();
+        }
         await expect(page.getByTestId("food-group-fatty_fish")).toBeVisible({
           timeout: WAIT,
         });

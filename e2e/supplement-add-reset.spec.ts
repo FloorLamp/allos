@@ -18,6 +18,11 @@ test("add-mode form clears the critical flag for the next item (issue #627)", as
   const addCard = page
     .locator("div.card")
     .filter({ hasText: "Add supplement" });
+  await addCard.getByTestId("supplement-add-toggle").click();
+  await addCard
+    .getByTestId("supplement-more-options")
+    .locator("summary")
+    .click();
 
   const critical = addCard.getByTestId("supp-critical-new");
 

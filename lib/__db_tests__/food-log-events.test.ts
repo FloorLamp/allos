@@ -12,7 +12,7 @@ import { describe, it, expect } from "vitest";
 import { db, today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { logFoodServingCore, undoFoodServingCore } from "@/lib/food-log-write";
-import { getFoodGroupLogOrder } from "@/lib/queries";
+import { getFoodGroupLogOrder, getFoodMealDays } from "@/lib/queries";
 
 function makeProfile(name: string): { profileId: number; anchor: string } {
   const profileId = Number(
@@ -25,10 +25,15 @@ function makeProfile(name: string): { profileId: number; anchor: string } {
 function events(profileId: number) {
   return db
     .prepare(
-      `SELECT group_key, date, logged_at FROM food_log_events
+      `SELECT group_key, date, logged_at, meal_slot FROM food_log_events
         WHERE profile_id = ? ORDER BY id`
     )
-    .all(profileId) as { group_key: string; date: string; logged_at: string }[];
+    .all(profileId) as {
+    group_key: string;
+    date: string;
+    logged_at: string;
+    meal_slot: string | null;
+  }[];
 }
 
 function counter(profileId: number, group: string, date: string): number {
@@ -79,6 +84,54 @@ describe("food_log_events ledger atomicity (#950)", () => {
     ).not.toThrow();
     expect(counter(profileId, "legumes", anchor)).toBe(1); // decremented anyway
     expect(events(profileId)).toHaveLength(0); // nothing to pop
+  });
+
+  it("stores, reads, and removes a backfilled serving in its explicit meal", () => {
+    const { profileId, anchor } = makeProfile("food-events-backfill");
+    const backfillDate = shiftDateStr(anchor, -3);
+    const tapTime = `${anchor}T20:00:00Z`;
+
+    logFoodServingCore(profileId, "berries", backfillDate, tapTime, "Morning");
+
+    expect(events(profileId)[0]).toMatchObject({
+      date: backfillDate,
+      meal_slot: "Morning",
+      logged_at: tapTime,
+    });
+    const [day] = getFoodMealDays(profileId, [backfillDate]);
+    expect(day.counts.berries).toBe(1);
+    expect(day.slotCounts.Morning.berries).toBe(1);
+    expect(day.slotCounts.Evening.berries).toBeUndefined();
+
+    undoFoodServingCore(profileId, "berries", backfillDate, "Morning");
+    expect(counter(profileId, "berries", backfillDate)).toBe(0);
+    expect(events(profileId)).toEqual([]);
+  });
+
+  it("a slot-scoped undo never removes a serving from another meal", () => {
+    const { profileId, anchor } = makeProfile("food-events-slot-undo");
+    logFoodServingCore(
+      profileId,
+      "legumes",
+      anchor,
+      `${anchor}T20:00:00Z`,
+      "Evening"
+    );
+
+    const untouched = undoFoodServingCore(
+      profileId,
+      "legumes",
+      anchor,
+      "Morning"
+    );
+    expect(untouched).toEqual({
+      kind: "undone",
+      servings: 1,
+      mealSlot: "Morning",
+      mealServings: 0,
+    });
+    expect(counter(profileId, "legumes", anchor)).toBe(1);
+    expect(events(profileId)).toHaveLength(1);
   });
 });
 

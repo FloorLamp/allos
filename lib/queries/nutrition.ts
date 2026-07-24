@@ -21,7 +21,6 @@ import {
   getWeekMode,
   getWeekStart,
 } from "../settings";
-import { zonedDateParts } from "../date";
 import { trailingWeeks } from "../week-window";
 import type { DisplayFormatPrefs } from "../format-date";
 import {
@@ -29,14 +28,14 @@ import {
   HABIT_TREND_WEEKS,
   type HabitWeekCell,
 } from "../food-habit-trend";
+import { type FoodSlot } from "../food-slot";
 import {
-  foodSlotBoundaries,
-  foodSlotForHhmm,
-  type FoodSlot,
-  type FoodSlotBoundaries,
-} from "../food-slot";
+  foodSlotForProfileInstant,
+  profileFoodSlotBoundaries,
+} from "../profile-food-slot";
 import { blendFoodOrder } from "../food-rank";
 import {
+  foodEventWindow,
   foodEventsInWindow,
   slotServingCounts,
   type FoodLedgerEvent,
@@ -128,6 +127,78 @@ export function getFoodServingsOnDate(
   return m;
 }
 
+export interface FoodMealDay {
+  date: string;
+  counts: Record<string, number>;
+  slotCounts: Record<FoodSlot, Record<string, number>>;
+}
+
+// Recent meal history for the Food page: the daily source-of-truth counters plus the
+// per-serving event ledger grouped into Morning/Midday/Evening. Explicit meal_slot
+// values power backfills; older/tap-only events retain the timestamp fallback. Two
+// range reads cover the whole picker rather than issuing one query per day and slot.
+export function getFoodMealDays(
+  profileId: number,
+  dates: readonly string[]
+): FoodMealDay[] {
+  if (dates.length === 0) return [];
+  const ordered = [...dates].sort();
+  const from = ordered[0];
+  const to = ordered[ordered.length - 1];
+  const byDate = new Map<string, FoodMealDay>(
+    dates.map((date) => [
+      date,
+      {
+        date,
+        counts: {},
+        slotCounts: { Morning: {}, Midday: {}, Evening: {} },
+      },
+    ])
+  );
+
+  const totals = db
+    .prepare(
+      `SELECT date, group_key, servings FROM food_log
+        WHERE profile_id = ? AND date >= ? AND date <= ? AND servings > 0`
+    )
+    .all(profileId, from, to) as {
+    date: string;
+    group_key: string;
+    servings: number;
+  }[];
+  for (const row of totals) {
+    const day = byDate.get(row.date);
+    if (day) day.counts[row.group_key] = row.servings;
+  }
+
+  const events = db
+    .prepare(
+      `SELECT group_key AS name, date, logged_at, meal_slot FROM food_log_events
+        WHERE profile_id = ? AND date >= ? AND date <= ?
+        ORDER BY logged_at, id`
+    )
+    .all(profileId, from, to) as FoodLedgerEvent[];
+  const boundaries = profileFoodSlotBoundaries(profileId);
+  const tz = getTimezone(profileId);
+  for (const event of events) {
+    // The reserved protein ranking event is not a food-group serving and has its own
+    // grams surface, so it must never appear as a mystery meal chip.
+    if (!foodGroupBySlug(event.name)) continue;
+    const day = byDate.get(event.date);
+    if (!day) continue;
+    const slot = foodEventWindow(
+      event.logged_at,
+      tz,
+      boundaries,
+      event.meal_slot
+    );
+    const slotCounts = day.slotCounts[slot];
+    slotCounts[event.name] = (slotCounts[event.name] ?? 0) + 1;
+  }
+
+  return dates.map((date) => byDate.get(date)!);
+}
+
 // The profile's food-log rows on/after `since` (inclusive), as FoodLogEntry[] for the
 // pure rollup. Profile-scoped.
 export function getFoodLogEntries(
@@ -207,35 +278,11 @@ export function foodLogToday(profileId: number): string {
   return today(profileId);
 }
 
-// The profile's configured food-slot boundaries (issue #950), read from the RAW
-// notify slot-hour settings so "unconfigured" is genuinely detected (getNotifySchedule
-// would already have substituted the DEFAULT hours, which we can't tell from a user's
-// choice). A fully configured schedule re-anchors the buckets to its midpoints; an
-// unset/partial one falls back to the fixed 11:00/15:00 defaults (foodSlotBoundaries).
-// Reads only the per-profile settings tier (not owned data), so the profile-scoping
-// guard is unaffected.
-function profileFoodSlotBoundaries(profileId: number): FoodSlotBoundaries {
-  const raw = (key: string): number | null => {
-    const v = getProfileSetting(profileId, key);
-    if (v == null || v === "") return null;
-    const n = Number(v);
-    return Number.isInteger(n) && n >= 0 && n <= 23 ? n : null;
-  };
-  return foodSlotBoundaries({
-    // Mirrors SUPP_HOUR_KEYS in lib/settings/notifications.ts (the food nudge rides the
-    // same morning/midday/evening supplement slots, #682).
-    morning: raw("notify_supp_morning_hour"),
-    midday: raw("notify_supp_midday_hour"),
-    evening: raw("notify_supp_evening_hour"),
-  });
-}
-
 // The food slot a UTC instant falls into for a profile (its timezone + configured
 // boundaries). The ONE derivation both surfaces use, so the web bar's slot chip and
 // the ranking can never disagree. Profile-scoped reads only the settings tier.
 export function foodSlotForInstant(profileId: number, instant: Date): FoodSlot {
-  const { hhmm } = zonedDateParts(getTimezone(profileId), instant);
-  return foodSlotForHhmm(hhmm, profileFoodSlotBoundaries(profileId));
+  return foodSlotForProfileInstant(profileId, instant);
 }
 
 // The profile's CURRENT food slot (wall-clock now, in its timezone). The Food tab
@@ -324,7 +371,7 @@ function gatherFoodRankingSignals(
     const tz = getTimezone(profileId);
     const events = db
       .prepare(
-        `SELECT group_key AS name, date, logged_at FROM food_log_events
+        `SELECT group_key AS name, date, logged_at, meal_slot FROM food_log_events
           WHERE profile_id = ? AND date >= ?`
       )
       .all(profileId, since) as FoodLedgerEvent[];
@@ -398,7 +445,7 @@ export function getFoodSlotServingsOnDate(
   const tz = getTimezone(profileId);
   const events = db
     .prepare(
-      `SELECT group_key AS name, date, logged_at FROM food_log_events
+      `SELECT group_key AS name, date, logged_at, meal_slot FROM food_log_events
         WHERE profile_id = ? AND date = ?`
     )
     .all(profileId, date) as FoodLedgerEvent[];

@@ -64,11 +64,6 @@ export default function FiberAdequacyCard({
           </dd>
         </div>
       </dl>
-      <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-        {intake.basis !== "tracked"
-          ? "A floor from your logged food-group servings plus any fiber supplements you confirmed — untracked foods add more. "
-          : ""}
-      </p>
     </div>
   );
 }

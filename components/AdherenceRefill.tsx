@@ -153,7 +153,10 @@ export function AdherenceSummaryLine({ strip }: { strip: AdherenceDot[] }) {
       )}
       {adherence.pct !== null && (
         <span className="text-slate-500 dark:text-slate-400">
-          {adherence.pct}% adherence
+          {Number.isInteger(adherence.takenDays + adherence.partialDays * 0.5)
+            ? adherence.takenDays + adherence.partialDays * 0.5
+            : (adherence.takenDays + adherence.partialDays * 0.5).toFixed(1)}
+          /{adherence.applicableDays} due days followed · {adherence.pct}%
         </span>
       )}
       {adherence.skippedDays > 0 && (

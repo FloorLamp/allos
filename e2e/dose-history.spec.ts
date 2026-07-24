@@ -22,6 +22,7 @@ test("dosage restructure keeps the taken history at its original amount", async 
   const addCard = page
     .locator("div.card")
     .filter({ hasText: "Add supplement" });
+  await addCard.getByTestId("supplement-add-toggle").click();
   await addCard.getByLabel("Name").fill(name);
   await addCard.getByLabel("Amount").first().fill("500 mg"); // first-ok: the first dose's Amount field in the add form this spec fills
   await addCard.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the first dose's Time-of-day field in the add form this spec fills

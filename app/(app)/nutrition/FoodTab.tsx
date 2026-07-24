@@ -1,10 +1,9 @@
-import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { getDisplayFormatPrefs } from "@/lib/settings";
 import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import {
-  getFoodServingsOnDate,
+  getFoodMealDays,
   getWeeklyFoodRollup,
   getFoodSuggestions,
   getFoodGroupLogOrder,
@@ -15,14 +14,16 @@ import {
   getProteinLoggedGrams,
   getProteinQuickAddPreset,
 } from "@/lib/queries";
+import { formatWeekdayDate } from "@/lib/format-date";
 import {
   getUserAge,
   getExcludedFoodGroups,
 } from "@/lib/settings/profile-attrs";
 import { preferenceSuggestionNote } from "@/lib/dietary-preferences";
 import { isFoodLoggingRelevant } from "@/lib/life-stage";
+import { FOOD_SLOTS, type FoodSlot } from "@/lib/food-slot";
 import { EmptyState } from "@/components/ui";
-import FoodLogBar from "./FoodLogBar";
+import FoodLogBar, { type FoodLogDay } from "./FoodLogBar";
 import ProteinQuickAdd from "./ProteinQuickAdd";
 import WeeklyHabits from "./WeeklyHabits";
 import { trackFoodHabit } from "./actions";
@@ -31,6 +32,8 @@ import FoodSuggestions from "@/components/FoodSuggestions";
 import NutrientsCard from "@/components/NutrientsCard";
 import ProteinAdequacyCard from "@/components/ProteinAdequacyCard";
 import FiberAdequacyCard from "@/components/FiberAdequacyCard";
+import NutritionSnapshot from "./NutritionSnapshot";
+import FoodSuggestionsLayout from "./FoodSuggestionsLayout";
 
 // The Food tab of the Nutrition umbrella (#746): the food-group serving log (issue
 // #579) — the INPUT half of nutrition.
@@ -40,6 +43,7 @@ import FiberAdequacyCard from "@/components/FiberAdequacyCard";
 
 export default async function FoodTab() {
   const { login, profile } = await requireSession();
+  const formatPrefs = getDisplayFormatPrefs(login.id);
 
   // Infant profiles (< 1 y) log milk/formula, not the adult food-group catalog, so
   // the serving logger is meaningless for them (issue #591). Show a calm note instead
@@ -59,17 +63,24 @@ export default async function FoodTab() {
   }
 
   const date = today(profile.id);
-  // Yesterday is loggable too (#748 item 1) — the honest "forgot to log at dinner"
-  // backfill. Deliberately today/yesterday only: a full date picker invites
-  // retro-fabricating streaks. Both days' current servings are loaded so the toggle
-  // shows the right counts without a round-trip.
-  const yesterday = shiftDateStr(date, -1);
-  const initial: Record<string, number> = {};
-  for (const [slug, n] of getFoodServingsOnDate(profile.id, date))
-    initial[slug] = n;
-  const initialYesterday: Record<string, number> = {};
-  for (const [slug, n] of getFoodServingsOnDate(profile.id, yesterday))
-    initialYesterday[slug] = n;
+  // A deliberately bounded recent-meal picker: today plus the previous six days.
+  // This is enough to recover a missed meal without turning the one-tap habit log into
+  // an unrestricted historical editor. Each day's daily counters and meal-slot ledger
+  // arrive together, so changing day/meal is instant on the client.
+  const recentDates = Array.from({ length: 7 }, (_, i) =>
+    shiftDateStr(date, -i)
+  );
+  const mealDays: FoodLogDay[] = getFoodMealDays(profile.id, recentDates).map(
+    (day, i) => ({
+      ...day,
+      label:
+        i === 0
+          ? "Today"
+          : i === 1
+            ? "Yesterday"
+            : formatWeekdayDate(day.date, formatPrefs),
+    })
+  );
   const rollup = getWeeklyFoodRollup(profile.id);
   const suggestions = getFoodSuggestions(profile.id);
   // Goal-scaled protein adequacy (#767): the ONE gather the coaching finding also reads.
@@ -89,51 +100,63 @@ export default async function FoodTab() {
   // in its timezone. Drives the slot-aware ranking AND the bar's slot chip — the SAME
   // derivation, so the label and the order can never disagree.
   const slot = currentFoodSlot(profile.id);
-  // Catalog pre-ordered so the profile's staples lead within each tier (#591), now
-  // slot-aware so the current window's staples lead (fish at lunch, #950).
-  const groups = getFoodGroupLogOrder(profile.id, slot);
+  // One learned order per meal. Switching the selected slot on the client changes both
+  // the button counts and the ordering without a round-trip.
+  const groupsBySlot = Object.fromEntries(
+    FOOD_SLOTS.map((meal) => [meal, getFoodGroupLogOrder(profile.id, meal)])
+  ) as Record<FoodSlot, ReturnType<typeof getFoodGroupLogOrder>>;
   // Preference legibility (#980 item 4): a muted "showing <pattern>-friendly sources" note
   // for the suggestions summary, so #975's demote/substitute is explicable on-surface.
-  // Null (no chrome) when no preference is set. The link at the log bar's foot below points
-  // at where you set them.
-  const preferenceNote = preferenceSuggestionNote(
-    getExcludedFoodGroups(profile.id)
-  );
+  // Null (no chrome) when no preference is set. Editing stays on the profile-settings
+  // surface that owns the full preset + exclusion form.
+  const excludedGroups = getExcludedFoodGroups(profile.id);
+  const preferenceNote = preferenceSuggestionNote(excludedGroups);
 
   return (
     <div>
-      {suggestions.length > 0 && (
-        // Collapsed by default (#591): the labs-driven suggestions used to push the
-        // logger below the fold on every visit. A native <details> keeps it one
-        // compact line until the user opens it. The container keeps the
-        // nutrition-suggestions testid; the biomarker-detail surface stays as-is.
-        <details
-          data-testid="nutrition-suggestions"
-          className="card mb-6 border-l-4 border-l-emerald-300 dark:border-l-emerald-700"
-        >
-          <summary
-            data-testid="nutrition-suggestions-summary"
-            className="flex cursor-pointer list-none items-center gap-2 font-semibold text-slate-800 dark:text-slate-100"
+      {/* min-w-0 on both grid cells: a grid item defaults to min-width:auto
+          (min-content), so the single mobile column would otherwise grow to the
+          widest row's intrinsic width and overflow — <main>'s overflow-x-clip
+          then silently clips the +/- log controls off the right edge. min-w-0
+      lets the column shrink to the viewport so each card's own
+      truncate/flex handling takes over. */}
+      <FoodSuggestionsLayout
+        today={date}
+        days={mealDays}
+        suggestionCount={suggestions.length}
+        logger={
+          // Act: the one-tap log bar. On mobile this grid cell leads (bar → Today →
+          // This week); on desktop it's the left column beside the sidebar.
+          <div
+            data-testid="food-log-shell"
+            className="min-w-0 lg:rounded-xl lg:border lg:border-white/60 lg:bg-white/55 lg:p-5 lg:shadow-lg lg:shadow-slate-300/40 lg:backdrop-blur-2xl lg:backdrop-saturate-150 dark:lg:border-white/10 dark:lg:bg-ink-800/45 dark:lg:shadow-black/30"
           >
-            <span className="flex-1">
-              Food suggestions from your labs
-              <span className="ml-1.5 font-normal text-slate-500 dark:text-slate-400">
-                · {suggestions.length}
-              </span>
-              {preferenceNote && (
-                <span
-                  data-testid="suggestions-preference-note"
-                  className="ml-1.5 font-normal italic text-slate-500 dark:text-slate-400"
-                >
-                  · {preferenceNote}
-                </span>
-              )}
-            </span>
-            <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
-              Show
-            </span>
-          </summary>
-          <div className="mt-3">
+            <FoodLogBar
+              today={date}
+              days={mealDays}
+              groupsBySlot={groupsBySlot}
+              excludedGroups={excludedGroups}
+              slot={slot}
+              afterQuick={
+                <NutritionSnapshot
+                  proteinToday={proteinToday}
+                  proteinAdequacy={proteinAdequacy}
+                  fiberAdequacy={fiberAdequacy}
+                />
+              }
+            />
+          </div>
+        }
+        suggestionContent={
+          <>
+            {preferenceNote && (
+              <p
+                data-testid="suggestions-preference-note"
+                className="mb-2 px-1 text-sm text-slate-500 dark:text-slate-400"
+              >
+                {preferenceNote}
+              </p>
+            )}
             <FoodSuggestions
               suggestions={suggestions}
               trackAction={async (fd) => {
@@ -141,46 +164,13 @@ export default async function FoodTab() {
                 await trackFoodHabit(fd);
               }}
             />
-          </div>
-        </details>
-      )}
-
-      {/* min-w-0 on both grid cells: a grid item defaults to min-width:auto
-          (min-content), so the single mobile column would otherwise grow to the
-          widest row's intrinsic width and overflow — <main>'s overflow-x-clip
-          then silently clips the +/- log controls off the right edge. min-w-0
-          lets the column shrink to the viewport so each card's own
-          truncate/flex handling takes over. */}
-      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-        {/* Act: the one-tap log bar. On mobile this grid cell leads (bar → Today → This
-            week); on desktop it's the left column beside the sidebar. */}
-        <div className="card min-w-0">
-          <FoodLogBar
-            today={date}
-            yesterday={yesterday}
-            initial={initial}
-            initialYesterday={initialYesterday}
-            groups={groups}
-            slot={slot}
-          />
-          {/* A quiet link to where dietary preferences are set (#980 item 4), so the
-              demote/substitute the suggestions summary notes is one tap from editable. */}
-          <div className="mt-4 border-t border-black/5 pt-3 dark:border-white/5">
-            <Link
-              href="/settings/nutrition"
-              data-testid="food-preferences-link"
-              className="text-xs text-slate-500 transition hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-            >
-              Dietary preferences
-            </Link>
-          </div>
-        </div>
-
-        {/* Sidebar regrouped by time horizon (#980 item 3): Today above This week. */}
-        <div className="min-w-0 space-y-6 self-start">
-          {/* Today: today's feedback — the nutrients card, pairing with the log bar's
-              #950 slot chip. */}
-          {(proteinToday || proteinAdequacy || fiberAdequacy) && (
+          </>
+        }
+        todaySidebar={
+          // Today's feedback — the nutrients card, pairing with the log bar's #950
+          // slot chip. The client layout swaps this out for a selected-day meal
+          // summary while backfilling an older date.
+          (proteinToday || proteinAdequacy || fiberAdequacy) && (
             <section
               data-testid="nutrition-today-section"
               className="space-y-3"
@@ -205,10 +195,11 @@ export default async function FoodTab() {
                 )}
               </NutrientsCard>
             </section>
-          )}
-
-          {/* This week: weekly reflection — the rollup and the (trend-deepened, #954)
-              habits card. */}
+          )
+        }
+        weeklySidebar={
+          // Weekly reflection remains visible for every selected date because it is
+          // explicitly labeled as a weekly context rather than a daily one.
           <section data-testid="nutrition-week-section" className="space-y-3">
             <h2 className="section-label">This week</h2>
             <div className="card">
@@ -217,13 +208,10 @@ export default async function FoodTab() {
               </h3>
               <FoodWeeklyRollup rollup={rollup} />
             </div>
-            <WeeklyHabits
-              profileId={profile.id}
-              formatPrefs={getDisplayFormatPrefs(login.id)}
-            />
+            <WeeklyHabits profileId={profile.id} formatPrefs={formatPrefs} />
           </section>
-        </div>
-      </div>
+        }
+      />
     </div>
   );
 }

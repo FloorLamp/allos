@@ -13,6 +13,17 @@ export default function NutrientsCard({ children }: { children: ReactNode }) {
         Today&rsquo;s nutrients
       </h2>
       <div className="space-y-5">{children}</div>
+      <details className="group mt-5 border-t border-black/5 pt-3 text-xs text-slate-500 dark:border-white/5 dark:text-slate-400">
+        <summary className="cursor-pointer font-medium text-slate-600 dark:text-slate-300">
+          How estimates work
+        </summary>
+        <p className="mt-2 leading-relaxed">
+          Estimates combine logged food-group servings, directly logged protein,
+          and confirmed supplements. When not everything is tracked, the result
+          is a minimum rather than a complete intake total. Informational, not
+          medical or dietary advice.
+        </p>
+      </details>
     </div>
   );
 }

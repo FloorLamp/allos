@@ -439,6 +439,76 @@ export default async function SupplementsTab() {
     />
   );
 
+  const renderSituationChip = (sit: (typeof situationChips)[number]) => {
+    const on = activeSituations.has(sit.name);
+    const isRow = sit.inVocabulary;
+    const illnessOn = sit.illnessType;
+    return (
+      <div key={sit.name} className="flex items-center gap-1">
+        <form
+          action={async (fd) => {
+            "use server";
+            await toggleSituation(fd);
+          }}
+        >
+          <input type="hidden" name="situation" value={sit.name} />
+          <SubmitButton
+            aria-pressed={on}
+            className={`badge cursor-pointer disabled:opacity-60 ${
+              on
+                ? "bg-brand-600 text-white"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-700"
+            }`}
+          >
+            {sit.name}
+          </SubmitButton>
+        </form>
+        {isRow && (
+          <form
+            action={async (fd) => {
+              "use server";
+              await toggleSituationIllnessType(fd);
+            }}
+          >
+            <input type="hidden" name="situation" value={sit.name} />
+            <SubmitButton
+              aria-pressed={illnessOn}
+              title={
+                illnessOn
+                  ? "Illness — symptom logging on"
+                  : "Mark as illness (enables symptom logging)"
+              }
+              data-testid={`situation-illness-${sit.name}`}
+              className={`badge cursor-pointer px-1.5 disabled:opacity-60 ${
+                illnessOn
+                  ? "bg-orange-500 text-white"
+                  : "bg-transparent text-slate-400 hover:text-orange-500"
+              }`}
+            >
+              🤒
+            </SubmitButton>
+          </form>
+        )}
+      </div>
+    );
+  };
+
+  const activeSituationChips = situationChips.filter((sit) =>
+    activeSituations.has(sit.name)
+  );
+  const inactiveSituationChips = situationChips.filter(
+    (sit) => !activeSituations.has(sit.name)
+  );
+  const dayContext = trainingRestricted
+    ? null
+    : workoutDaySubtitleLabel(predictedWorkoutDay, isWorkoutDay);
+  const statusLine =
+    dueItems.length === 0
+      ? `Nothing scheduled today${dayContext ? ` · ${dayContext}` : ""}`
+      : takenCount === dueItems.length
+        ? `All done for today${dayContext ? ` · ${dayContext}` : ""}`
+        : `${takenCount} of ${dueItems.length} taken${dayContext ? ` · ${dayContext}` : ""}`;
+
   return (
     <SituationOptionsProvider options={situationOptionNames}>
       <div>
@@ -449,72 +519,32 @@ export default async function SupplementsTab() {
           data-testid="supplements-status"
           className="mb-4 text-sm text-slate-500 dark:text-slate-400"
         >
-          {trainingRestricted
-            ? `${takenCount}/${dueItems.length} taken.`
-            : `${workoutDaySubtitleLabel(predictedWorkoutDay, isWorkoutDay)} — ${takenCount}/${dueItems.length} taken.`}
+          {statusLine}
         </p>
 
-        {/* Situations bar */}
+        {/* Active situations stay visible; the inactive vocabulary is an occasional
+          "adjust today" action and remains one disclosure away. */}
         <div
           className="mb-4 flex flex-wrap items-center gap-2"
           data-testid="situations-bar"
         >
-          <span className="section-label">Situations</span>
-          {situationChips.map((sit) => {
-            const on = activeSituations.has(sit.name);
-            // A real vocabulary row can opt into being an illness-type symptom container
-            // (#799); a suggested-but-unsaved chip has no row yet, so no toggle.
-            const isRow = sit.inVocabulary;
-            const illnessOn = sit.illnessType;
-            return (
-              <div key={sit.name} className="flex items-center gap-1">
-                <form
-                  action={async (fd) => {
-                    "use server";
-                    await toggleSituation(fd);
-                  }}
-                >
-                  <input type="hidden" name="situation" value={sit.name} />
-                  <SubmitButton
-                    aria-pressed={on}
-                    className={`badge cursor-pointer disabled:opacity-60 ${
-                      on
-                        ? "bg-brand-600 text-white"
-                        : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-700"
-                    }`}
-                  >
-                    {sit.name}
-                  </SubmitButton>
-                </form>
-                {isRow && (
-                  <form
-                    action={async (fd) => {
-                      "use server";
-                      await toggleSituationIllnessType(fd);
-                    }}
-                  >
-                    <input type="hidden" name="situation" value={sit.name} />
-                    <SubmitButton
-                      aria-pressed={illnessOn}
-                      title={
-                        illnessOn
-                          ? "Illness — symptom logging on"
-                          : "Mark as illness (enables symptom logging)"
-                      }
-                      data-testid={`situation-illness-${sit.name}`}
-                      className={`badge cursor-pointer px-1.5 disabled:opacity-60 ${
-                        illnessOn
-                          ? "bg-orange-500 text-white"
-                          : "bg-transparent text-slate-400 hover:text-orange-500"
-                      }`}
-                    >
-                      🤒
-                    </SubmitButton>
-                  </form>
-                )}
+          <span className="section-label">Adjust today</span>
+          {activeSituationChips.map(renderSituationChip)}
+          {inactiveSituationChips.length > 0 && (
+            <details className="group" data-testid="situation-options">
+              <summary
+                data-testid="situation-options-toggle"
+                className="badge cursor-pointer list-none border border-black/10 bg-white/70 text-slate-600 transition hover:bg-white [&::-webkit-details-marker]:hidden dark:border-white/10 dark:bg-ink-850 dark:text-slate-300 dark:hover:bg-ink-750"
+              >
+                {activeSituationChips.length > 0
+                  ? "Change"
+                  : "Choose situations"}
+              </summary>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {inactiveSituationChips.map(renderSituationChip)}
               </div>
-            );
-          })}
+            </details>
+          )}
         </div>
 
         {/* Derived-context state lines (#1292 Poor sleep, #1298 Period): computed from
@@ -759,7 +789,7 @@ export default async function SupplementsTab() {
         </div>
 
         {supplementItems.length === 0 ? (
-          <EmptyState message="No supplements yet. Add one below. Medications live on their own page." />
+          <EmptyState message="No supplements yet. Add one when you're ready. Medications live on their own page." />
         ) : (
           <div className="space-y-6">
             {TIME_BUCKETS.map((bucket) => {
@@ -835,17 +865,23 @@ export default async function SupplementsTab() {
           </div>
         )}
 
+        {interactionWarnings.length === 0 && pgxWarnings.length === 0 ? (
+          <IntakeSafetyScope coverage={safetyCoverage} className="mt-6" />
+        ) : null}
+
         {/* AI suggestions */}
-        <details className="card mb-4 mt-6" open={suggestions.length > 0}>
+        <details className="card group mb-4 mt-6" open={suggestions.length > 0}>
           <summary className="cursor-pointer font-semibold text-slate-800 dark:text-slate-100">
-            AI suggestions{suggestions.length ? ` (${suggestions.length})` : ""}
+            {suggestions.length
+              ? `Supplement suggestions (${suggestions.length})`
+              : "Get supplement suggestions"}
           </summary>
           <SuggestionsForm />
           {suggestions.length === 0 ? (
             <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
-              No pending suggestions. Generate some from your recent labs or a
-              note above. Requires AI to be configured (ANTHROPIC_API_KEY or
-              AI_BASE_URL).
+              Generate optional ideas from recent labs or add context about how
+              you&rsquo;re feeling. Suggestions appear here for review before
+              anything is added to your schedule.
             </p>
           ) : (
             <div className="mt-4 space-y-3">
@@ -908,24 +944,43 @@ export default async function SupplementsTab() {
           )}
         </details>
 
-        {/* Add supplement — always expanded, like the other "Add entry" forms
-          (e.g. Body metrics). Medications are added on the Medications page. */}
+        {/* Adding is occasional; today's dose list remains the resting surface. The
+          form opens inline when requested and keeps its full safety/write behavior. */}
         <div className="card mt-6" data-testid="add-supplement-card">
-          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-            Add supplement
-          </h2>
-          <SupplementForm
-            action={addSupplement}
-            allSupplements={supplements}
-            stackItems={stackItems}
-            pgxVariants={pgxVariants}
-            trainingRestricted={trainingRestricted}
-          />
+          <details className="group">
+            <summary
+              data-testid="supplement-add-toggle"
+              className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden"
+            >
+              <span>
+                <span className="block font-semibold text-slate-800 dark:text-slate-100">
+                  Add supplement
+                </span>
+                <span className="mt-0.5 block text-sm font-normal text-slate-500 dark:text-slate-400">
+                  Start with a name, dose, and time.
+                </span>
+              </span>
+              <span className="text-sm font-medium text-brand-700 group-open:hidden dark:text-brand-300">
+                Open
+              </span>
+              <span className="hidden text-sm font-medium text-slate-500 group-open:inline dark:text-slate-400">
+                Close
+              </span>
+            </summary>
+            <div
+              data-testid="supplement-add-panel"
+              className="mt-5 border-t border-black/5 pt-5 dark:border-white/5"
+            >
+              <SupplementForm
+                action={addSupplement}
+                allSupplements={supplements}
+                stackItems={stackItems}
+                pgxVariants={pgxVariants}
+                trainingRestricted={trainingRestricted}
+              />
+            </div>
+          </details>
         </div>
-
-        {interactionWarnings.length === 0 && pgxWarnings.length === 0 ? (
-          <IntakeSafetyScope coverage={safetyCoverage} className="mt-6" />
-        ) : null}
       </div>
     </SituationOptionsProvider>
   );

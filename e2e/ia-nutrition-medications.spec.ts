@@ -48,6 +48,18 @@ test("Nutrition is a Food | Supplements tab umbrella (#746)", async ({
   await expect(page.getByTestId("supplements-status")).toBeVisible();
   await expect(page.getByTestId("food-log-bar")).toHaveCount(0);
 
+  // Creation is secondary to today's doses: the form rests closed, then opens to
+  // the short name/dose/time path with advanced metadata behind its own disclosure.
+  const addCard = page.getByTestId("add-supplement-card");
+  await expect(addCard.getByTestId("supplement-add-panel")).toBeHidden();
+  await addCard.getByTestId("supplement-add-toggle").click();
+  await expect(addCard.getByTestId("supplement-add-panel")).toBeVisible();
+  await expect(addCard.getByLabel("Name")).toBeVisible();
+  await expect(addCard.getByLabel("Amount").first()).toBeVisible(); // first-ok: first basic dose row in the scoped add form
+  await expect(
+    addCard.getByTestId("supplement-more-options")
+  ).not.toHaveAttribute("open", "");
+
   // Back to Food (NavTabs Next <Link> → followLink, #889 sweep).
   await followLink(page, page.getByRole("tab", { name: "Food" }), /tab=food/);
   await expect(page.getByTestId("food-log-bar")).toBeVisible();

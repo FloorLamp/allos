@@ -3,6 +3,7 @@ import {
   MONTHS_LONG,
   MONTHS_SHORT,
   WEEKDAYS_LONG,
+  WEEKDAYS_SHORT,
 } from "./date";
 
 // ---- Display-format preferences (login tier, issue #964) ----
@@ -229,6 +230,29 @@ export function formatDateWithYear(
     d.getMonth() + 1,
     d.getDate(),
     { monthStyle: "short", year: true }
+  );
+}
+
+// Compact weekday + date label for selectors and other dense calendar contexts:
+// "Wed, Jul 22" (mdy), "Wed, 22 Jul" (dmy), or "Wed, 2026-07-22" (iso).
+// Like the other date helpers, it uses the fixed English calendar tables and keeps
+// the year only when the date falls outside the current calendar year.
+export function formatWeekdayDate(
+  iso: string,
+  prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
+): string {
+  const d = new Date(iso + "T00:00:00");
+  if (Number.isNaN(d.getTime())) return iso;
+  return formatDateShape(
+    prefs.dateFormat,
+    d.getFullYear(),
+    d.getMonth() + 1,
+    d.getDate(),
+    {
+      monthStyle: "short",
+      weekday: WEEKDAYS_SHORT[d.getDay()],
+      year: d.getFullYear() !== new Date().getFullYear(),
+    }
   );
 }
 
