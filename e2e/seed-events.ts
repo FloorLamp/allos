@@ -94,6 +94,10 @@ import {
   MULTI_SHARED_ALLERGY,
   MULTI_OWNER_GOAL,
   MULTI_SHARED_GOAL,
+  MULTI_ACTIVITY_DATE,
+  MULTI_OWNER_ACTIVITY_A,
+  MULTI_OWNER_ACTIVITY_B,
+  MULTI_SHARED_ACTIVITY,
   E2E_LOGIN_OWN,
   OWN_SELF_PROFILE,
   OWN_OTHER_PROFILE,
@@ -5251,6 +5255,28 @@ console.log(
   seedMultiAllergy(multiSharedId, MULTI_SHARED_ALLERGY);
   seedMultiGoal(multiOwnerId, MULTI_OWNER_GOAL);
   seedMultiGoal(multiSharedId, MULTI_SHARED_GOAL);
+  // Multi-view Training Journal (#1330): manual cardio activities so /training's Log
+  // feed renders a merged, subject-stamped card feed. Idempotent per (profile, title).
+  const seedMultiActivity = (profileId: number, title: string): void => {
+    if (
+      !db
+        .prepare(
+          "SELECT 1 FROM activities WHERE profile_id = ? AND date = ? AND title = ?"
+        )
+        .get(profileId, MULTI_ACTIVITY_DATE, title)
+    ) {
+      db.prepare(
+        `INSERT INTO activities (profile_id, date, type, title, duration_min)
+         VALUES (?, ?, 'cardio', ?, 30)`
+      ).run(profileId, MULTI_ACTIVITY_DATE, title);
+    }
+  };
+  // Owner: two same-day rows (a same-profile merge candidate for each other).
+  seedMultiActivity(multiOwnerId, MULTI_OWNER_ACTIVITY_A);
+  seedMultiActivity(multiOwnerId, MULTI_OWNER_ACTIVITY_B);
+  // Shared: one same-day row — a cross-profile card (subject chip), never an owner
+  // card's merge sibling.
+  seedMultiActivity(multiSharedId, MULTI_SHARED_ACTIVITY);
   const multiLoginId = seedMemberLogin(E2E_LOGIN_MULTI, multiOwnerId, "write");
   grantProfile(multiLoginId, multiSharedId, "write");
   console.log(

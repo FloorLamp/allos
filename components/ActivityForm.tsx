@@ -534,6 +534,12 @@ export default function ActivityForm({
 
     const fd = new FormData();
     if (savedId != null) fd.set("id", String(savedId));
+    // Multi-view (#1330): a merged EDIT card carries its subject's profile id, so the
+    // save targets the SUBJECT's profile (gateItemProfile → requireProfileWriteAccess).
+    // Absent on a single-view edit and on every create/repeat prefill (which write to
+    // the acting profile), so those keep the requireWriteAccess fallback.
+    if (editData?.subjectProfileId != null)
+      fd.set("profile_id", String(editData.subjectProfileId));
     // Carry the unit each weight/distance was CAPTURED in (issue #630) so the
     // action converts with the render-time unit, not whatever the login's stored
     // pref happens to be when this (possibly long-debounced) auto-save lands.
@@ -749,6 +755,10 @@ export default function ActivityForm({
     try {
       const fd = new FormData();
       fd.set("id", String(id));
+      // Multi-view (#1330): delete the subject's activity on ITS profile (gateItemProfile
+      // → requireProfileWriteAccess); absent single-view falls back to the acting profile.
+      if (editData?.subjectProfileId != null)
+        fd.set("profile_id", String(editData.subjectProfileId));
       // Don't let the unmount flush re-create the row we just deleted.
       autosave.markDeleted();
       // Capture-and-delete with an Undo toast (issue #30). undoable() runs the

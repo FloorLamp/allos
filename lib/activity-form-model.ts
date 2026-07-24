@@ -19,6 +19,13 @@ import type { RoutineSession } from "@/lib/workout-recommendation";
 
 export interface ActivityEditData {
   id: number;
+  // The profile this activity BELONGS to (issue #1330). Present only on a merged
+  // multi-view EDIT card so the editor's save/delete targets the subject's profile
+  // (buildFormData posts it → gateItemProfile → requireProfileWriteAccess). Absent on
+  // a single-view edit and on every CREATE/repeat prefill (a new/repeated activity
+  // always lands on the ACTING profile) — buildRepeatPrefill/buildRoutineSessionPrefill
+  // deliberately drop it, so "Log again" on someone else's card logs it as YOURS.
+  subjectProfileId?: number;
   type: ActivityType;
   title: string;
   date: string;
@@ -93,6 +100,10 @@ export function buildRepeatPrefill(
 ): ActivityEditData {
   return {
     ...source,
+    // A repeat CREATES a new row on the ACTING profile (issue #1330): drop any
+    // subject stamp the source card carried, so repeating another member's workout
+    // logs it as yours, never a cross-profile write.
+    subjectProfileId: undefined,
     // id is retained only so the editor can key a fresh remount off it; the form
     // ignores it in prefill mode (savableId reads editData/createdId, not this).
     date: todayDate,

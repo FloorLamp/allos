@@ -15,6 +15,9 @@ import {
   MULTI_OWNER_ALLERGY,
   MULTI_SHARED_ALLERGY,
   MULTI_SHARED_GOAL,
+  MULTI_OWNER_ACTIVITY_A,
+  MULTI_OWNER_ACTIVITY_B,
+  MULTI_SHARED_ACTIVITY,
 } from "./fixture-logins";
 
 // Multi-profile viewing (issue #1096): the profile-menu view toggles + the thin
@@ -446,6 +449,173 @@ test.describe("Tier-1 record lists adopt multi-view (issue #1328)", () => {
     await expect(
       sharedGoalRow.getByTestId(`subject-chip-${sharedId}`)
     ).toBeVisible();
+
+    await page.context().close();
+  });
+});
+
+// ── Multi-view Training Journal (issue #1330) ─────────────────────────────────
+// The Journal's Log feed becomes a MERGED, subject-stamped card feed across the
+// view-set: non-acting cards carry a subject chip, cross-profile merge candidates
+// never pair (two people's activities are never duplicates), and "Log again" on
+// another member's card logs it as YOURS (writeTarget: acting). Spec-OWNED fixtures
+// (E2E_LOGIN_MULTI's two profiles, each seeded manual activities — see
+// e2e/seed-events.ts). The log-again test writes a persistent row on the acting
+// (owner) profile, so it resets that artifact for --repeat-each safety.
+
+// Delete the log-again artifact (a copy of the shared activity created on the owner
+// profile) so a re-run/retry starts clean, and return the two profile ids.
+function resetMultiJournal(): { ownerId: number; sharedId: number } {
+  const { ownerId, sharedId } = multiProfileIds();
+  const dbPath =
+    process.env.ALLOS_DB_PATH ??
+    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const db = new Database(dbPath);
+  try {
+    db.pragma("busy_timeout = 5000");
+    // The owner should own ONLY its two seeded rows; a prior log-again run may have
+    // added a copy of the shared activity's title on the owner — remove it.
+    db.prepare("DELETE FROM activities WHERE profile_id = ? AND title = ?").run(
+      ownerId,
+      MULTI_SHARED_ACTIVITY
+    );
+  } finally {
+    db.close();
+  }
+  return { ownerId, sharedId };
+}
+
+// Count the owner's activities carrying the shared activity's title — nonzero only
+// after a "Log again" landed the shared card's session on the acting (owner) profile.
+function ownerCopiesOfSharedActivity(ownerId: number): number {
+  const dbPath =
+    process.env.ALLOS_DB_PATH ??
+    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const db = new Database(dbPath);
+  try {
+    db.pragma("busy_timeout = 5000");
+    return (
+      db
+        .prepare(
+          "SELECT COUNT(*) AS c FROM activities WHERE profile_id = ? AND title = ?"
+        )
+        .get(ownerId, MULTI_SHARED_ACTIVITY) as { c: number }
+    ).c;
+  } finally {
+    db.close();
+  }
+}
+
+test.describe("Multi-view Training Journal (issue #1330)", () => {
+  test("merged feed + subject chips + single-view unchanged + cross-profile merge never pairs", async ({
+    browser,
+  }) => {
+    test.slow();
+    const { ownerId, sharedId } = resetMultiJournal();
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_MULTI,
+      password: E2E_MEMBER_PASSWORD,
+    });
+
+    // Single view (acting = owner): the owner's two cards show; the shared member's
+    // card is absent, no strip, no chips — the byte-identical regression bar.
+    await page.goto("/training");
+    await expect(
+      page
+        .locator('[id^="activity-"]')
+        .filter({ hasText: MULTI_OWNER_ACTIVITY_A })
+    ).toBeVisible();
+    await expect(
+      page
+        .locator('[id^="activity-"]')
+        .filter({ hasText: MULTI_OWNER_ACTIVITY_B })
+    ).toBeVisible();
+    await expect(page.getByText(MULTI_SHARED_ACTIVITY)).toHaveCount(0);
+    await expect(page.getByTestId("profile-view-strip")).toHaveCount(0);
+    await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(0);
+
+    // Toggle the shared profile into view via the profile menu.
+    await openProfileMenu(page);
+    await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));
+    await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+
+    // Multi view: the merged feed now carries the shared member's card WITH a subject
+    // chip on ITS card; the acting (owner) cards never carry a chip.
+    await page.goto("/training");
+    const sharedCard = page
+      .locator('[id^="activity-"]')
+      .filter({ hasText: MULTI_SHARED_ACTIVITY });
+    await expect(sharedCard).toBeVisible();
+    await expect(
+      sharedCard.getByTestId(`subject-chip-${sharedId}`)
+    ).toBeVisible();
+    // The owner's own cards are still there, without a chip anywhere on the feed.
+    await expect(
+      page
+        .locator('[id^="activity-"]')
+        .filter({ hasText: MULTI_OWNER_ACTIVITY_A })
+    ).toBeVisible();
+    await expect(
+      page.locator(`[data-testid="subject-chip-${ownerId}"]`)
+    ).toHaveCount(0);
+
+    // Cross-profile merge never pairs: the owner's Alpha card merge picker offers its
+    // same-DAY same-PROFILE sibling (Bravo) but NEVER the shared member's same-day card.
+    const ownerCard = page
+      .locator('[id^="activity-"]')
+      .filter({ hasText: MULTI_OWNER_ACTIVITY_A });
+    await ownerCard.getByRole("button", { name: "Activity actions" }).click();
+    await page.getByTestId("merge-with").click();
+    await expect(
+      page
+        .getByTestId("merge-target")
+        .filter({ hasText: MULTI_OWNER_ACTIVITY_B })
+    ).toBeVisible();
+    await expect(
+      page
+        .getByTestId("merge-target")
+        .filter({ hasText: MULTI_SHARED_ACTIVITY })
+    ).toHaveCount(0);
+
+    await page.context().close();
+  });
+
+  test("Log again on another member's card logs it as yours (writeTarget: acting)", async ({
+    browser,
+  }) => {
+    test.slow();
+    const { ownerId, sharedId } = resetMultiJournal();
+    expect(ownerCopiesOfSharedActivity(ownerId)).toBe(0);
+
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_MULTI,
+      password: E2E_MEMBER_PASSWORD,
+    });
+
+    // Enter multi-view, then open the Journal.
+    await page.goto("/training");
+    await openProfileMenu(page);
+    await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));
+    await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+    await page.goto("/training");
+
+    const sharedCard = page
+      .locator('[id^="activity-"]')
+      .filter({ hasText: MULTI_SHARED_ACTIVITY });
+    await expect(sharedCard).toBeVisible();
+
+    // "Log again" on the SHARED member's card: opens a create prefill that auto-saves
+    // a NEW session — on the ACTING (owner) profile, never the shared subject.
+    await sharedCard.getByRole("button", { name: "Activity actions" }).click();
+    await page.getByTestId("log-again").click();
+    // The editor opens (docked beside the feed on desktop / overlay on mobile).
+    await expect(page.getByTestId("activity-form")).toBeVisible();
+
+    // The auto-save lands the repeated session on the OWNER — proving the write
+    // targeted the actor, not the shared subject whose card it came from.
+    await expect
+      .poll(() => ownerCopiesOfSharedActivity(ownerId), { timeout: 15000 })
+      .toBe(1);
 
     await page.context().close();
   });
