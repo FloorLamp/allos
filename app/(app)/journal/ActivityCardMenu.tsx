@@ -46,6 +46,7 @@ export default function ActivityCardMenu({
   keeperLabel,
   editLocked,
   units,
+  canWrite = true,
 }: {
   // The full card activity — the source for "Log again".
   activity: ActivityEditData;
@@ -57,6 +58,12 @@ export default function ActivityCardMenu({
   // the deliberate re-enable action lives here rather than lengthening the card.
   editLocked: boolean;
   units: UnitPrefs;
+  // Whether the acting login may write to THIS card's subject profile (issue #1330).
+  // Merge (edits the keeper + deletes the sibling) and resume-sync (clears the edit
+  // lock) are subject-writes, so they're hidden on a read-only-granted member's card.
+  // "Log again" survives regardless — it CREATES on the acting profile, never the
+  // subject, so repeating a read-only member's workout logs it as yours.
+  canWrite?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [picking, setPicking] = useState(false);
@@ -73,6 +80,10 @@ export default function ActivityCardMenu({
     const fd = new FormData();
     fd.set("keep_id", String(activity.id));
     fd.set("drop_id", String(dropId));
+    // Multi-view (#1330): target the subject's profile so the merge (keeper edit +
+    // sibling delete) write-gates on it; absent single-view falls back to acting.
+    if (activity.subjectProfileId != null)
+      fd.set("profile_id", String(activity.subjectProfileId));
     if (overrideFields.length > 0)
       fd.set("overrides", JSON.stringify(overrideFields));
     await undoable(mergeActivities, fd, {
@@ -144,7 +155,7 @@ export default function ActivityCardMenu({
               >
                 Log again
               </button>
-              {siblings.length > 0 && (
+              {canWrite && siblings.length > 0 && (
                 <button
                   type="button"
                   role="menuitem"
@@ -155,7 +166,7 @@ export default function ActivityCardMenu({
                   Merge with…
                 </button>
               )}
-              {editLocked && (
+              {canWrite && editLocked && (
                 <button
                   type="button"
                   role="menuitem"

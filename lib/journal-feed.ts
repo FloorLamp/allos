@@ -17,9 +17,14 @@ import {
 import { getEquipment } from "./equipment";
 import { getActivityVideosForActivities } from "./activity-video-write";
 import { buildJournalCards, type DayGroup } from "./journal-card";
+import { mergeJournalDayGroups } from "./journal-multi-view";
 import type { DatedWeight } from "./calorie-estimate";
 import type { UnitPrefs } from "./settings";
-import { DEFAULT_FORMAT_PREFS, type DisplayFormatPrefs } from "./format-date";
+import {
+  DEFAULT_FORMAT_PREFS,
+  formatLongDate,
+  type DisplayFormatPrefs,
+} from "./format-date";
 import { today as todayFn, yesterday as yesterdayFn } from "./db";
 import { getProfileZoneModel } from "./queries/zones";
 
@@ -94,4 +99,37 @@ export function buildJournalFeedPage(
   });
 
   return { groups, nextBefore: page.nextBefore };
+}
+
+// Assemble the MULTI-VIEW Journal feed (issue #1330): the newest window of each
+// in-view member's cards, merged into ONE day-grouped feed with every card stamped
+// with its subject profile (activity.subjectProfileId). Loop-composed — each member's
+// window is built by the per-profile buildJournalFeedPage (with THAT member's own
+// today/yesterday labels, route/video/equipment gathers) — then merged and RE-LABELED
+// by the viewer's (acting) clock so a date reads one way in the merged feed (the
+// per-profile-context rule, mergeJournalDayGroups). Multi-view is a recent-window
+// overview: only the newest page per member is gathered (no cross-member "Load more"
+// cursor), so the page passes initialCursor=null and hides the pager. The server
+// component then stamps subject NAME/photo/access identity (lib/scope stampSubjects)
+// and each member's own restriction onto the cards. In single view the caller uses
+// buildJournalFeedPage directly, so nothing here touches the single-profile path.
+export function buildMultiViewJournalGroups(
+  viewIds: readonly number[],
+  actingProfileId: number,
+  units: UnitPrefs,
+  formatPrefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS
+): DayGroup[] {
+  const members = viewIds.map((profileId) => ({
+    profileId,
+    groups: buildJournalFeedPage(profileId, null, units, formatPrefs).groups,
+  }));
+  const today = todayFn(actingProfileId);
+  const yesterday = yesterdayFn(actingProfileId);
+  return mergeJournalDayGroups(members, (date) =>
+    date === today
+      ? "Today"
+      : date === yesterday
+        ? "Yesterday"
+        : formatLongDate(date, formatPrefs)
+  );
 }
