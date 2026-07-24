@@ -182,15 +182,55 @@ export function multiViewGroupKey(
   return `${r.profileId}\u0000${tableNameKey(r)}`;
 }
 
+// The multi-view comparator: the SUBJECT dimension (profileId) is woven in right
+// AFTER the primary sort key and BEFORE its secondary tie-breaks, so a member's rows
+// of the same analyte stay CONTIGUOUS (one heading + one chip per member) instead of
+// interleaving with another member's rows of the same name — which happens if
+// profileId is only a final tie-break (date-desc would slot the other member's
+// reading between a member's two readings, splitting the group). Different analytes
+// still interleave across members by the primary key; the trailing id keeps it stable.
+function mvComparator(
+  sort: MedicalSortColumn | undefined,
+  dir: SortDirection
+): (a: WithProfile<MedicalRecord>, b: WithProfile<MedicalRecord>) => number {
+  const d = dir === "desc" ? -1 : 1;
+  const name = (r: MedicalRecord) => tableNameKey(r);
+  const subj = (a: WithProfile<MedicalRecord>, b: WithProfile<MedicalRecord>) =>
+    a.profileId - b.profileId;
+  if (sort === "panel") {
+    return (a, b) => {
+      const pa = a.panel,
+        pb = b.panel;
+      if ((pa == null) !== (pb == null)) return pa == null ? 1 : -1; // nulls last
+      if (pa != null && pb != null) {
+        const c = d * nocase(pa, pb);
+        if (c) return c;
+      }
+      return subj(a, b) || nocase(name(a), name(b)) || a.id - b.id;
+    };
+  }
+  if (sort === "date") {
+    return (a, b) =>
+      d * nocase(a.date, b.date) ||
+      subj(a, b) ||
+      nocase(name(a), name(b)) ||
+      a.id - b.id;
+  }
+  // name sort (the default) + the no-sort fallback both order by name then subject.
+  return (a, b) =>
+    d * nocase(name(a), name(b)) ||
+    subj(a, b) ||
+    -nocase(a.date, b.date) || // date DESC within a member's analyte
+    b.id - a.id;
+}
+
 // Merge the per-member stored+derived partitions into the final multi-view table
 // list. Recomputes is_latest per (profile, family) over the combined set (so a
 // derived analyte's newest reading flags current within its OWN member, never
-// against another's), applies the `current` filter over that per-member latest,
-// then orders for a stable merged pagination: the active sort column first (the
-// single-view comparator), then the SUBJECT dimension (profileId, id) as a final
-// tie-break so the page order is deterministic even when two members' derived rows
-// share a negative id. Pure — no DB, no auth. Rows keep their `profileId` tag so
-// stampSubjects can attach subject identity for the chip.
+// against another's), applies the `current` filter over that per-member latest, then
+// orders with the subject dimension woven into the sort key (mvComparator) for a
+// readable, stably-paginated merge. Pure — no DB, no auth. Rows keep their
+// `profileId` tag so stampSubjects can attach subject identity for the chip.
 export function prepareMultiViewTableRecords(
   stored: WithProfile<MedicalRecord>[],
   derived: WithProfile<MedicalRecord>[],
@@ -208,10 +248,7 @@ export function prepareMultiViewTableRecords(
   const filtered = opts.current
     ? withLatest.filter((r) => r.is_latest === 1)
     : withLatest;
-  const base = comparator(opts.sort, opts.dir ?? "asc");
-  return filtered.sort(
-    (a, b) => base(a, b) || a.profileId - b.profileId || a.id - b.id
-  );
+  return filtered.sort(mvComparator(opts.sort, opts.dir ?? "asc"));
 }
 
 // How many biomarker rows the table ships (and renders) per page. The full

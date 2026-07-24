@@ -392,6 +392,41 @@ describe("prepareMultiViewTableRecords", () => {
     expect(b.map((r) => r.profileId)).toEqual([10, 20]);
   });
 
+  it("keeps each member's same-analyte readings CONTIGUOUS (subject woven into the sort key, not a final tie-break)", () => {
+    // Regression: with profileId only a FINAL tie-break, date-desc slots member 20's
+    // March reading BETWEEN member 10's June and January rows, splitting 10's group
+    // into two headings. The subject dimension must sort ABOVE the date tie-break.
+    const stored = [
+      tagged(10, {
+        id: 1,
+        name: "Vitamin D",
+        canonical_name: "Vitamin D",
+        date: "2024-01-01",
+      }),
+      tagged(10, {
+        id: 2,
+        name: "Vitamin D",
+        canonical_name: "Vitamin D",
+        date: "2024-06-01",
+      }),
+      tagged(20, {
+        id: 3,
+        name: "Vitamin D",
+        canonical_name: "Vitamin D",
+        date: "2024-03-01",
+      }),
+    ];
+    const out = prepareMultiViewTableRecords(stored, [], {
+      sort: "name",
+      dir: "asc",
+    });
+    // Group by (profile, name) the way the table does — each member appears in ONE
+    // contiguous run, so the sequence of group keys has exactly two runs, not three.
+    const keys = out.map((r) => multiViewGroupKey(r));
+    const runs = keys.filter((k, i) => i === 0 || keys[i - 1] !== k).length;
+    expect(runs).toBe(2);
+  });
+
   it("a single-profile view yields the same rows a single-view merge would (additive)", () => {
     const stored = [
       tagged(10, {
