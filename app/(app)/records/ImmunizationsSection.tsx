@@ -7,6 +7,7 @@ import {
   getPickerProviders,
 } from "@/lib/queries";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
+import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import { getUserBirthdate, getUserSex, getStoredAge } from "@/lib/settings";
 import { getRiskFactors } from "@/lib/queries/upcoming/risk";
 import { immunizationPriorityFor } from "@/lib/risk-stratification";
@@ -88,12 +89,21 @@ function sortValue(
 // query params on the ONE /records URL; the per-vaccine detail page
 // (/immunizations/[vaccine]) survives at its own route.
 export default function ImmunizationsSection({
-  profileId,
+  scope,
   searchParams,
 }: {
-  profileId: number;
+  scope: ProfileScope;
   searchParams: { sort?: string; dir?: string; status?: string };
 }) {
+  // Multi-view (#1359): the SCHEDULE assessment (master vaccine table, grid, status
+  // counts, titers, next-up subtitle) is AGE-DERIVED and stays ACTING-ONLY — the
+  // #1096 per-profile-context trap restated for immunizations: another member's
+  // schedule position must be computed in THEIR age context, never the acting
+  // member's, so it is never cross-composed here. Only the flat "All recorded doses"
+  // list below reads the whole view-set (each member's doses numbered in their OWN
+  // sequence — see ImmunizationHistory). Single view is byte-identical.
+  const profileId = scope.actingProfileId;
+  const multi = scope.viewIds.length > 1;
   const now = today(profileId);
   const birthdate = getUserBirthdate(profileId);
   const sex = getUserSex(profileId);
@@ -106,6 +116,14 @@ export default function ImmunizationsSection({
   const hasAge = ageMonths != null;
 
   const records = getImmunizations(profileId);
+  // The flat "All recorded doses" list reads the whole view-set (loop-composed — the
+  // per-profile dedup CTE must stay scoped) + stamped subject identity, so non-acting
+  // rows carry a chip and per-item write gate. In single view this is exactly
+  // `records` (stamped), so the list renders byte-identical.
+  const recordedDoses = stampSubjects(
+    scope,
+    readForProfiles(scope.viewIds, (pid) => getImmunizations(pid))
+  );
   const titers = getImmunityTiters(profileId);
   const overrides = getImmunizationOverrides(profileId);
   const summary = assessSchedule(
@@ -380,11 +398,11 @@ export default function ImmunizationsSection({
               <summary className="cursor-pointer font-semibold text-slate-800 dark:text-slate-100">
                 All recorded doses{" "}
                 <span className="text-sm font-normal text-slate-400">
-                  ({records.length})
+                  ({recordedDoses.length})
                 </span>
               </summary>
               <div className="mt-3">
-                {records.length === 0 ? (
+                {recordedDoses.length === 0 ? (
                   <EmptyState
                     message="No immunizations recorded yet. Add one with the form, or import a MyChart export."
                     action={{
@@ -393,7 +411,15 @@ export default function ImmunizationsSection({
                     }}
                   />
                 ) : (
-                  <ImmunizationHistory items={records} defaultDate={now} />
+                  <ImmunizationHistory
+                    items={recordedDoses}
+                    defaultDate={now}
+                    multiView={
+                      multi
+                        ? { actingProfileId: scope.actingProfileId }
+                        : undefined
+                    }
+                  />
                 )}
               </div>
             </details>

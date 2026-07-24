@@ -21,6 +21,8 @@ import {
 } from "@/lib/encounter-kind";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
 import type { Encounter } from "@/lib/types";
+import type { Stamped } from "@/lib/scope";
+import type { ListMultiView } from "@/lib/multi-view";
 
 // The canonical kind of one encounter (#1233) — the ONE identity function every
 // surface keys on, never a per-surface string match.
@@ -166,9 +168,14 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [
 export default function EncounterList({
   items,
   defaultDate,
+  multiView,
 }: {
-  items: Encounter[];
+  items: Stamped<Encounter>[];
   defaultDate: string;
+  // Multi-view (#1359): present only when several profiles are in view — RecordTable
+  // then chips each non-acting row and gates its edit/delete on that member. Omitted
+  // in single view → byte-identical.
+  multiView?: ListMultiView;
 }) {
   const fmt = useFormatPrefs();
   // Canonical-kind filter (#1233): "show ED visits" and friends, keyed on the ONE
@@ -213,10 +220,19 @@ export default function EncounterList({
         items={shown}
         columns={buildColumns(fmt)}
         emptyMessage="No visits yet. Add one, or import a MyChart / CCD health record to populate your visit history."
+        multiView={
+          multiView
+            ? {
+                actingProfileId: multiView.actingProfileId,
+                subjectOf: (e) => e.subject,
+              }
+            : undefined
+        }
         renderEditForm={(e, done) => (
           <EncounterForm
             action={updateEncounter}
             encounter={e}
+            profileId={multiView ? e.subject.profileId : undefined}
             onDone={done}
             defaultDate={defaultDate}
           />
@@ -228,6 +244,7 @@ export default function EncounterList({
         onDelete={async (e) => {
           const fd = new FormData();
           fd.set("id", String(e.id));
+          if (multiView) fd.set("profile_id", String(e.subject.profileId));
           await deleteEncounter(fd);
         }}
       />

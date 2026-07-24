@@ -1,5 +1,6 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
+import { gateItemProfile } from "@/app/(app)/gate-item";
 import { revalidatePath } from "next/cache";
 import { db, writeTx } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
@@ -65,7 +66,10 @@ export async function addEncounter(formData: FormData): Promise<FormResult> {
 }
 
 export async function updateEncounter(formData: FormData): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  // Multi-view (#1359): gate + target the ROW's own profile (gateItemProfile), so an
+  // edit on a non-acting member's visit lands on that member; single-view falls back
+  // to the acting profile.
+  const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
   const date = dateOrNull(formData.get("date"));
   if (!id) return formError("Couldn't find that visit.");
@@ -98,14 +102,14 @@ export async function updateEncounter(formData: FormData): Promise<FormResult> {
     locationId,
     str(formData, "notes"),
     id,
-    profile.id
+    profileId
   );
   revalidateEncounters();
   return formOk();
 }
 
 export async function deleteEncounter(formData: FormData): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that visit.");
   writeTx(() => {
@@ -115,14 +119,14 @@ export async function deleteEncounter(formData: FormData): Promise<FormResult> {
     // preserved, just unlinked — otherwise the FK would block the delete.
     db.prepare(
       "UPDATE appointments SET encounter_id = NULL WHERE encounter_id = ? AND profile_id = ?"
-    ).run(id, profile.id);
+    ).run(id, profileId);
     // Row-ops side-state (#1050/#1053): NULL every record/med/condition/procedure/
     // imaging/immunization/episode back-link to this visit before deleting it — those
     // encounter_id FKs carry no ON DELETE, so the FK would otherwise block the delete.
-    nullEncounterLinks(profile.id, id);
+    nullEncounterLinks(profileId, id);
     db.prepare("DELETE FROM encounters WHERE id = ? AND profile_id = ?").run(
       id,
-      profile.id
+      profileId
     );
   });
   revalidateEncounters();

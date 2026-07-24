@@ -1,4 +1,4 @@
-import { requireSession, getAccessibleProfiles } from "@/lib/auth";
+import { requireScope } from "@/lib/scope";
 import VisitsSection from "../../VisitsSection";
 import { SectionSubtitle } from "../../SectionHeader";
 
@@ -11,10 +11,13 @@ export default async function RecordsVisitsPage(props: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const searchParams = await props.searchParams;
-  const { profile } = await requireSession();
+  // Multi-view (#1359): resolve the cross-profile scope once — the Past encounters
+  // list reads its own view-set; the appointment/booking apparatus stays acting-only.
+  // Single view is byte-identical to the former requireSession()/profile.id path.
+  const scope = await requireScope();
   // Widen-to-household link — shown only when the login can reach 2+ profiles
   // (the SAME predicate that gates the Household strip/nav).
-  const showHousehold = (await getAccessibleProfiles()).length > 1;
+  const showHousehold = scope.profiles.length > 1;
   return (
     <div data-testid="records-visits">
       <SectionSubtitle>
@@ -23,7 +26,7 @@ export default async function RecordsVisitsPage(props: {
         and notes.
       </SectionSubtitle>
       <VisitsSection
-        profileId={profile.id}
+        scope={scope}
         searchParams={searchParams}
         showHousehold={showHousehold}
       />

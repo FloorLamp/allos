@@ -1,7 +1,13 @@
 import { requireSession } from "@/lib/auth";
-import { getDisplayFormatPrefs } from "@/lib/settings";
+import { getDisplayFormatPrefs, getUnitPrefs } from "@/lib/settings";
 import { today } from "@/lib/db";
-import { getInsights, getRecentNarratives, RECAP_KINDS } from "@/lib/queries";
+import {
+  getInsights,
+  getRecentNarratives,
+  getSituationImpacts,
+  RECAP_KINDS,
+} from "@/lib/queries";
+import SituationImpactCards from "./SituationImpactCards";
 import { ALL_ROWS, filterSeriesByRange } from "@/lib/trends";
 import { formatLongDate, type DisplayFormatPrefs } from "@/lib/format-date";
 import { periodLabel } from "@/lib/recap-narrative";
@@ -47,8 +53,19 @@ export default async function InsightsSection({ range }: { range: DateRange }) {
   // recap is a standing summary, so show the most recent few regardless of window.
   const recaps = getRecentNarratives(profile.id, RECAP_KINDS, 6);
 
+  // Situation-window impact cards (#1297): pooled protocol-compare over the declared
+  // transition log. Standing summaries like the recaps (not range-windowed) — the pooling
+  // spans a situation's whole windowed history — so they lead the tab regardless of range.
+  const situationImpacts = getSituationImpacts(
+    profile.id,
+    today(profile.id),
+    getUnitPrefs(login.id).weightUnit
+  );
+
   return (
     <div className="space-y-6">
+      <SituationImpactCards impacts={situationImpacts} />
+
       {/* ---- Weekly / monthly AI recap (issue #20) ---- */}
       <section className="space-y-4">
         <form
