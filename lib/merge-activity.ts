@@ -11,7 +11,10 @@
 
 import { db } from "./db";
 import { foldActivityFieldsWithOverrides } from "./import-review/conflicts";
-import { ACTIVITY_FOLD_FIELDS, orderDropsForFold } from "./import-review/detect";
+import {
+  ACTIVITY_FOLD_FIELDS,
+  orderDropsForFold,
+} from "./import-review/detect";
 import { deletePairDecision } from "./queries/integrations";
 import type { MergeUndoContext } from "./undo-delete";
 
@@ -81,7 +84,9 @@ export function writeActivityFold(
     (keep.equipment_id as number | null | undefined) ?? null;
   for (const drop of ordered) {
     foldedEquipmentId =
-      foldedEquipmentId ?? (drop.equipment_id as number | null | undefined) ?? null;
+      foldedEquipmentId ??
+      (drop.equipment_id as number | null | undefined) ??
+      null;
   }
 
   // Re-parent every drop's children onto the keeper (#199, now for N drops). Track
@@ -91,8 +96,9 @@ export function writeActivityFold(
   // path). Return the actual per-drop route move so the undo context can invert
   // EXACTLY what happened.
   let keeperHasRoute =
-    db.prepare(`SELECT 1 FROM activity_routes WHERE activity_id = ?`).get(keepId) !=
-    null;
+    db
+      .prepare(`SELECT 1 FROM activity_routes WHERE activity_id = ?`)
+      .get(keepId) != null;
   const moves: DropFoldMove[] = [];
   for (const drop of ordered) {
     const dropId = drop.id;

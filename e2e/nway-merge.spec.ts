@@ -2,7 +2,11 @@ import { test, expect } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { settledClick, settledCheck } from "./helpers";
-import { E2E_LOGIN_NWAY, NWAY_PROFILE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import {
+  E2E_LOGIN_NWAY,
+  NWAY_PROFILE,
+  E2E_MEMBER_PASSWORD,
+} from "./fixture-logins";
 import { seedNwayMergeFixture } from "./nway-merge-fixture";
 
 // Issue #1081 — N-way activity duplicate merge on BOTH surfaces, on a DEDICATED member

@@ -33,9 +33,9 @@ export function seedNwayMergeFixture(
   db.prepare(
     `DELETE FROM activities WHERE profile_id = ? AND title IN (${placeholders})`
   ).run(profileId, ...allTitles);
-  db.prepare(
-    `DELETE FROM import_pair_decisions WHERE profile_id = ?`
-  ).run(profileId);
+  db.prepare(`DELETE FROM import_pair_decisions WHERE profile_id = ?`).run(
+    profileId
+  );
 
   const ins = db.prepare(
     `INSERT INTO activities
@@ -45,12 +45,78 @@ export function seedNwayMergeFixture(
   );
 
   // REVIEW cluster: three overlapping cross-source rows, same distance/duration.
-  ins.run(profileId, reviewDate, "NW review manual", 30, 5, "08:00", "08:30", null, null, null);
-  ins.run(profileId, reviewDate, "NW review strava", 30, 5, "08:01", "08:31", 150, "strava", "strava:nw-1");
-  ins.run(profileId, reviewDate, "NW review hc", 30, 5, "08:02", "08:32", 148, "health-connect", "hc:nw-1");
+  ins.run(
+    profileId,
+    reviewDate,
+    "NW review manual",
+    30,
+    5,
+    "08:00",
+    "08:30",
+    null,
+    null,
+    null
+  );
+  ins.run(
+    profileId,
+    reviewDate,
+    "NW review strava",
+    30,
+    5,
+    "08:01",
+    "08:31",
+    150,
+    "strava",
+    "strava:nw-1"
+  );
+  ins.run(
+    profileId,
+    reviewDate,
+    "NW review hc",
+    30,
+    5,
+    "08:02",
+    "08:32",
+    148,
+    "health-connect",
+    "hc:nw-1"
+  );
 
   // JOURNAL group: three same-day manual rows (no source, so no conflict dialogs).
-  ins.run(profileId, journalDate, "NW card", 40, 6, "17:00", "17:40", null, null, null);
-  ins.run(profileId, journalDate, "NW sib A", 41, 6, "17:01", "17:41", null, null, null);
-  ins.run(profileId, journalDate, "NW sib B", 42, 6, "17:02", "17:42", null, null, null);
+  ins.run(
+    profileId,
+    journalDate,
+    "NW card",
+    40,
+    6,
+    "17:00",
+    "17:40",
+    null,
+    null,
+    null
+  );
+  ins.run(
+    profileId,
+    journalDate,
+    "NW sib A",
+    41,
+    6,
+    "17:01",
+    "17:41",
+    null,
+    null,
+    null
+  );
+  ins.run(
+    profileId,
+    journalDate,
+    "NW sib B",
+    42,
+    6,
+    "17:02",
+    "17:42",
+    null,
+    null,
+    null
+  );
 }

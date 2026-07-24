@@ -142,8 +142,7 @@ export default function ActivityCardMenu({
   // Choosing a sibling as keeper also includes it in the merge.
   function chooseKeeper(id: number) {
     setKeeperId(id);
-    if (id !== activity.id)
-      setChecked((prev) => new Set(prev).add(id));
+    if (id !== activity.id) setChecked((prev) => new Set(prev).add(id));
   }
 
   function runPickerMerge() {

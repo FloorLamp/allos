@@ -14,7 +14,11 @@ import { mergeActivityCluster } from "@/app/(app)/data/review-actions";
 import { mergeActivities } from "@/app/(app)/journal/actions";
 import { undoDeletes } from "@/app/(app)/undo/actions";
 import { getPairDecisions } from "@/lib/queries";
-import { ACTIVITY_DOMAIN, pairSignature, activityToken } from "@/lib/import-review/detect";
+import {
+  ACTIVITY_DOMAIN,
+  pairSignature,
+  activityToken,
+} from "@/lib/import-review/detect";
 import { createLogin, createProfile, actAs, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
@@ -136,7 +140,10 @@ describe("mergeActivities — non-card keeper + N-way undo (#1081)", () => {
     actAs(login, profile);
 
     // Originating card + two siblings, same day.
-    const card = insertActivity(profile.id, { title: "card", notes: "card-notes" });
+    const card = insertActivity(profile.id, {
+      title: "card",
+      notes: "card-notes",
+    });
     insertSet(card, "card-set");
     const sib1 = insertActivity(profile.id, {
       title: "sib1",
@@ -165,7 +172,9 @@ describe("mergeActivities — non-card keeper + N-way undo (#1081)", () => {
     expect(alive(sib2)).toBe(false);
     expect(alive(sib1)).toBe(true);
     expect(setCount(sib1)).toBe(3);
-    const keeper = db.prepare("SELECT * FROM activities WHERE id = ?").get(sib1) as Record<string, unknown>;
+    const keeper = db
+      .prepare("SELECT * FROM activities WHERE id = ?")
+      .get(sib1) as Record<string, unknown>;
     expect(keeper.notes).toBe("card-notes"); // gap-filled from a drop
     expect(keeper.edited).toBe(1);
 
@@ -174,16 +183,22 @@ describe("mergeActivities — non-card keeper + N-way undo (#1081)", () => {
     const { restored } = await undoDeletes(undoIds);
     expect(restored).toBe(2);
     expect(setCount(sib1)).toBe(1); // sib1's own set only
-    const keeperAfter = db.prepare("SELECT * FROM activities WHERE id = ?").get(sib1) as Record<string, unknown>;
+    const keeperAfter = db
+      .prepare("SELECT * FROM activities WHERE id = ?")
+      .get(sib1) as Record<string, unknown>;
     expect(keeperAfter.notes).toBeNull(); // pre-fold restore
     // The originating card is back (restored under a new id, same title + set).
     const restoredCard = db
-      .prepare("SELECT id FROM activities WHERE profile_id = ? AND title = 'card'")
+      .prepare(
+        "SELECT id FROM activities WHERE profile_id = ? AND title = 'card'"
+      )
       .get(profile.id) as { id: number } | undefined;
     expect(restoredCard).toBeTruthy();
     expect(setCount(restoredCard!.id)).toBe(1);
     const restoredSib2 = db
-      .prepare("SELECT 1 FROM activities WHERE profile_id = ? AND title = 'sib2'")
+      .prepare(
+        "SELECT 1 FROM activities WHERE profile_id = ? AND title = 'sib2'"
+      )
       .get(profile.id);
     expect(restoredSib2).toBeTruthy();
   });

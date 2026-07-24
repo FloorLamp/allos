@@ -43,9 +43,7 @@ export default function ActivityClusterControls({
   const [pending, startTransition] = useTransition();
 
   function submitMerge() {
-    const dropIds = members
-      .map((m) => m.id)
-      .filter((id) => id !== keeperId);
+    const dropIds = members.map((m) => m.id).filter((id) => id !== keeperId);
     if (dropIds.length === 0) return;
     const fd = new FormData();
     fd.set("keep_id", String(keeperId));

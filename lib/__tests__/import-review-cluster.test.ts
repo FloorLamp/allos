@@ -13,7 +13,9 @@ import {
 
 // Build a candidate activity row; every duplicate lives in the SAME (date, type)
 // bucket. Overlapping clock windows drive the HIGH cross-source detection.
-function row(over: Partial<ActivityDupInput> & { id: number }): ActivityDupInput {
+function row(
+  over: Partial<ActivityDupInput> & { id: number }
+): ActivityDupInput {
   return {
     date: "2026-07-07",
     type: "cardio",
@@ -32,9 +34,27 @@ describe("clusterActivityDuplicates (#1081)", () => {
   it("collapses four cross-source overlapping rows into ONE cluster of 4", () => {
     const rows = [
       row({ id: 1, source: null }), // manual
-      row({ id: 2, source: "strava", external_id: "strava:x", start_time: "08:01", end_time: "08:31" }),
-      row({ id: 3, source: "health-connect", external_id: "hc:x", start_time: "08:02", end_time: "08:32" }),
-      row({ id: 4, source: "oura", external_id: "oura:x", start_time: "08:03", end_time: "08:33" }),
+      row({
+        id: 2,
+        source: "strava",
+        external_id: "strava:x",
+        start_time: "08:01",
+        end_time: "08:31",
+      }),
+      row({
+        id: 3,
+        source: "health-connect",
+        external_id: "hc:x",
+        start_time: "08:02",
+        end_time: "08:32",
+      }),
+      row({
+        id: 4,
+        source: "oura",
+        external_id: "oura:x",
+        start_time: "08:03",
+        end_time: "08:33",
+      }),
     ];
     const clusters = clusterActivityDuplicates(findActivityDuplicates(rows));
     expect(clusters).toHaveLength(1);
@@ -47,9 +67,21 @@ describe("clusterActivityDuplicates (#1081)", () => {
   it("keeps two distinct non-overlapping sessions as TWO clusters", () => {
     const rows = [
       row({ id: 1, source: null, start_time: "08:00", end_time: "08:30" }),
-      row({ id: 2, source: "strava", external_id: "s:am", start_time: "08:02", end_time: "08:32" }),
+      row({
+        id: 2,
+        source: "strava",
+        external_id: "s:am",
+        start_time: "08:02",
+        end_time: "08:32",
+      }),
       row({ id: 3, source: null, start_time: "18:00", end_time: "18:30" }),
-      row({ id: 4, source: "strava", external_id: "s:pm", start_time: "18:01", end_time: "18:31" }),
+      row({
+        id: 4,
+        source: "strava",
+        external_id: "s:pm",
+        start_time: "18:01",
+        end_time: "18:31",
+      }),
     ];
     const clusters = clusterActivityDuplicates(findActivityDuplicates(rows));
     expect(clusters).toHaveLength(2);
@@ -60,14 +92,26 @@ describe("clusterActivityDuplicates (#1081)", () => {
     const before = clusterActivityDuplicates(
       findActivityDuplicates([
         row({ id: 1, source: null }),
-        row({ id: 2, source: "strava", external_id: "strava:x", start_time: "08:01", end_time: "08:31" }),
+        row({
+          id: 2,
+          source: "strava",
+          external_id: "strava:x",
+          start_time: "08:01",
+          end_time: "08:31",
+        }),
       ])
     );
     // The Strava row is re-inserted under a DIFFERENT id but the same external_id.
     const after = clusterActivityDuplicates(
       findActivityDuplicates([
         row({ id: 1, source: null }),
-        row({ id: 99, source: "strava", external_id: "strava:x", start_time: "08:01", end_time: "08:31" }),
+        row({
+          id: 99,
+          source: "strava",
+          external_id: "strava:x",
+          start_time: "08:01",
+          end_time: "08:31",
+        }),
       ])
     );
     expect(before[0].signature).toBe(after[0].signature);
@@ -85,8 +129,19 @@ describe("preferActivityKeeperId reduce (#1081)", () => {
   });
 
   it("breaks a sourced tie by richness, then lowest id", () => {
-    const rich = row({ id: 5, source: "strava", external_id: "s:a", avg_hr: 150 } as Partial<ActivityDupInput> & { id: number });
-    const lean = row({ id: 2, source: "oura", external_id: "o:a", duration_min: null, distance_km: null });
+    const rich = row({
+      id: 5,
+      source: "strava",
+      external_id: "s:a",
+      avg_hr: 150,
+    } as Partial<ActivityDupInput> & { id: number });
+    const lean = row({
+      id: 2,
+      source: "oura",
+      external_id: "o:a",
+      duration_min: null,
+      distance_km: null,
+    });
     // rich has more populated fold fields → wins despite the higher id.
     expect(preferActivityKeeperId([lean, rich])).toBe(5);
   });
@@ -104,8 +159,20 @@ describe("orderDropsForFold (#1081)", () => {
 describe("autoMergeCluster (#1081)", () => {
   const overlappingCrossSource = [
     row({ id: 1, source: null }),
-    row({ id: 2, source: "strava", external_id: "strava:x", start_time: "08:01", end_time: "08:31" }),
-    row({ id: 3, source: "health-connect", external_id: "hc:x", start_time: "08:02", end_time: "08:32" }),
+    row({
+      id: 2,
+      source: "strava",
+      external_id: "strava:x",
+      start_time: "08:01",
+      end_time: "08:31",
+    }),
+    row({
+      id: 3,
+      source: "health-connect",
+      external_id: "hc:x",
+      start_time: "08:02",
+      end_time: "08:32",
+    }),
   ];
 
   it("fires on an unambiguous cross-source overlapping cluster, keeper = sourced+richest", () => {
@@ -119,8 +186,20 @@ describe("autoMergeCluster (#1081)", () => {
 
   it("bails when the cluster is same-source only (no cross-source provenance)", () => {
     const sameSource = [
-      row({ id: 1, source: "strava", external_id: "strava:a", start_time: "08:00", end_time: "08:30" }),
-      row({ id: 2, source: "strava", external_id: "strava:b", start_time: "08:01", end_time: "08:31" }),
+      row({
+        id: 1,
+        source: "strava",
+        external_id: "strava:a",
+        start_time: "08:00",
+        end_time: "08:30",
+      }),
+      row({
+        id: 2,
+        source: "strava",
+        external_id: "strava:b",
+        start_time: "08:01",
+        end_time: "08:31",
+      }),
     ];
     expect(autoMergeCluster(sameSource)).toBeNull();
   });
@@ -136,7 +215,14 @@ describe("autoMergeCluster (#1081)", () => {
   it("bails on a MATERIAL distance/duration conflict (silent data loss)", () => {
     const conflicting = [
       row({ id: 1, source: null, distance_km: 5 }),
-      row({ id: 2, source: "strava", external_id: "strava:x", distance_km: 8, start_time: "08:01", end_time: "08:31" }),
+      row({
+        id: 2,
+        source: "strava",
+        external_id: "strava:x",
+        distance_km: 8,
+        start_time: "08:01",
+        end_time: "08:31",
+      }),
     ];
     expect(autoMergeCluster(conflicting)).toBeNull();
   });
@@ -144,7 +230,14 @@ describe("autoMergeCluster (#1081)", () => {
   it("bails when TWO members are edit-locked (ambiguous)", () => {
     const twoEdited = [
       row({ id: 1, source: null, edited: 1 }),
-      row({ id: 2, source: "strava", external_id: "strava:x", edited: 1, start_time: "08:01", end_time: "08:31" }),
+      row({
+        id: 2,
+        source: "strava",
+        external_id: "strava:x",
+        edited: 1,
+        start_time: "08:01",
+        end_time: "08:31",
+      }),
     ];
     expect(autoMergeCluster(twoEdited)).toBeNull();
   });
@@ -152,7 +245,13 @@ describe("autoMergeCluster (#1081)", () => {
   it("keeps the single edit-locked member as keeper (explicit user intent)", () => {
     const oneEdited = [
       row({ id: 1, source: null, edited: 1 }), // manual, but hand-edited
-      row({ id: 2, source: "strava", external_id: "strava:x", start_time: "08:01", end_time: "08:31" }),
+      row({
+        id: 2,
+        source: "strava",
+        external_id: "strava:x",
+        start_time: "08:01",
+        end_time: "08:31",
+      }),
     ];
     const d = autoMergeCluster(oneEdited);
     expect(d).not.toBeNull();

@@ -612,8 +612,8 @@ export function clusterActivityDuplicates<T extends ActivityDupInput>(
       ? "high"
       : "medium";
     const reason =
-      (clusterPairs.find((p) => p.confidence === confidence) ??
-        clusterPairs[0])?.reason ?? "";
+      (clusterPairs.find((p) => p.confidence === confidence) ?? clusterPairs[0])
+        ?.reason ?? "";
     clusters.push({
       signature: members
         .map((m) => activityToken(m))
@@ -672,10 +672,7 @@ function hasMaterialConflict(members: ActivityDupInput[]): boolean {
   for (const f of ["duration_min", "distance_km"] as const) {
     const vals = members
       .map((m) => m[f])
-      .filter(
-        (v): v is number =>
-          typeof v === "number" && hasFoldValue(f, v)
-      );
+      .filter((v): v is number => typeof v === "number" && hasFoldValue(f, v));
     if (vals.length < 2) continue;
     const lo = Math.min(...vals);
     const hi = Math.max(...vals);
@@ -730,7 +727,8 @@ export function autoMergeCluster<T extends ActivityDupInput>(
   // Edit-lock protection.
   const edited = members.filter(isEditedMember);
   if (edited.length > 1) return null;
-  const keepId = edited.length === 1 ? edited[0].id : autoMergeKeeperId(members);
+  const keepId =
+    edited.length === 1 ? edited[0].id : autoMergeKeeperId(members);
   return {
     keepId,
     dropIds: members.filter((m) => m.id !== keepId).map((m) => m.id),

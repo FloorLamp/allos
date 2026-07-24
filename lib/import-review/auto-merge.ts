@@ -27,13 +27,17 @@ import {
 } from "@/lib/import-review/detect";
 import { writeActivityFold } from "@/lib/merge-activity";
 import { writeImportTombstoneForRow } from "@/lib/integrations/tombstones";
-import { recordPairDecision, getPairDecisions } from "@/lib/queries/integrations";
+import {
+  recordPairDecision,
+  getPairDecisions,
+} from "@/lib/queries/integrations";
 
 const log = createLogger("auto-merge");
 
 // A full candidate row: the detection fields plus `edited` and every fold field the
 // auto decision reads (richness / material-conflict). `SELECT *` supplies them all.
-type FullActivityRow = ActivityDupInput & Record<string, unknown> & { id: number };
+type FullActivityRow = ActivityDupInput &
+  Record<string, unknown> & { id: number };
 
 // Load the profile's duplicate-candidate activity rows in FULL (SELECT *) — the auto
 // decision needs `edited` + all fold fields, unlike the pruned display loader. Same
@@ -81,8 +85,7 @@ export function autoMergeActivityDuplicates(profileId: number): number {
         const keep = db
           .prepare("SELECT * FROM activities WHERE id = ? AND profile_id = ?")
           .get(decision.keepId, profileId) as
-          | Record<string, unknown>
-          | undefined;
+          Record<string, unknown> | undefined;
         if (!keep) return 0;
         const drops: Record<string, unknown>[] = [];
         for (const id of decision.dropIds) {

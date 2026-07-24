@@ -13,7 +13,10 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { db } from "@/lib/db";
 import { writeActivityFold } from "@/lib/merge-activity";
 import { autoMergeActivityDuplicates } from "@/lib/import-review/auto-merge";
-import { upsertActivities, type NormActivity } from "@/lib/integrations/normalize";
+import {
+  upsertActivities,
+  type NormActivity,
+} from "@/lib/integrations/normalize";
 import { getActivityDuplicateClusters, getPairDecisions } from "@/lib/queries";
 import { ACTIVITY_DOMAIN } from "@/lib/import-review/detect";
 
@@ -100,17 +103,30 @@ describe("writeActivityFold — N-way core (#1081/#199)", () => {
     const d3 = insertActivity({ title: "d3" });
     insertSet(d3, "Row");
 
-    const keep = db.prepare("SELECT * FROM activities WHERE id = ?").get(keepId) as Record<string, unknown>;
+    const keep = db
+      .prepare("SELECT * FROM activities WHERE id = ?")
+      .get(keepId) as Record<string, unknown>;
     const drops = [d1, d2, d3].map(
-      (id) => db.prepare("SELECT * FROM activities WHERE id = ?").get(id) as Record<string, unknown>
+      (id) =>
+        db.prepare("SELECT * FROM activities WHERE id = ?").get(id) as Record<
+          string,
+          unknown
+        >
     );
     const moves = writeActivityFold(profileId, keepId, keep, drops);
     expect(moves).toHaveLength(3);
 
     // All four rows' sets are now on the keeper (#199 across N children).
-    expect(count("SELECT COUNT(*) c FROM exercise_sets WHERE activity_id = ?", keepId)).toBe(4);
+    expect(
+      count(
+        "SELECT COUNT(*) c FROM exercise_sets WHERE activity_id = ?",
+        keepId
+      )
+    ).toBe(4);
     // Gap-fill: keeper had notes ("own") → keeper wins; avg_hr was null → filled from d1.
-    const merged = db.prepare("SELECT * FROM activities WHERE id = ?").get(keepId) as Record<string, unknown>;
+    const merged = db
+      .prepare("SELECT * FROM activities WHERE id = ?")
+      .get(keepId) as Record<string, unknown>;
     expect(merged.notes).toBe("own");
     expect(merged.avg_hr).toBe(150);
     expect(merged.max_hr).toBe(180);
@@ -147,17 +163,31 @@ describe("autoMergeActivityDuplicates (#1081)", () => {
     expect(dropped).toBe(2);
 
     // One activity survives — the sourced+richest Strava keeper.
-    expect(count("SELECT COUNT(*) c FROM activities WHERE profile_id = ?", profileId)).toBe(1);
+    expect(
+      count("SELECT COUNT(*) c FROM activities WHERE profile_id = ?", profileId)
+    ).toBe(1);
     const survivor = db
       .prepare("SELECT * FROM activities WHERE profile_id = ?")
       .get(profileId) as Record<string, unknown>;
     expect(survivor.external_id).toBe("strava:1");
     // All three sets rode onto the keeper.
-    expect(count("SELECT COUNT(*) c FROM exercise_sets WHERE activity_id = ?", survivor.id)).toBe(3);
+    expect(
+      count(
+        "SELECT COUNT(*) c FROM exercise_sets WHERE activity_id = ?",
+        survivor.id
+      )
+    ).toBe(3);
     // The dropped Health Connect row is tombstoned (the manual row needs none).
-    expect(count("SELECT COUNT(*) c FROM import_tombstones WHERE profile_id = ? AND target_table = 'activities' AND natural_key = 'hc:1'", profileId)).toBe(1);
+    expect(
+      count(
+        "SELECT COUNT(*) c FROM import_tombstones WHERE profile_id = ? AND target_table = 'activities' AND natural_key = 'hc:1'",
+        profileId
+      )
+    ).toBe(1);
     // A merged decision was recorded for each constituent pair.
-    const decisions = [...getPairDecisions(profileId, ACTIVITY_DOMAIN).values()];
+    const decisions = [
+      ...getPairDecisions(profileId, ACTIVITY_DOMAIN).values(),
+    ];
     expect(decisions.length).toBeGreaterThanOrEqual(2);
     expect(decisions.every((d) => d === "merged")).toBe(true);
     // No cluster remains in Review.
@@ -176,7 +206,9 @@ describe("autoMergeActivityDuplicates (#1081)", () => {
       end_time: "08:32",
     };
     upsertActivities(profileId, [hcNorm], "health-connect");
-    expect(count("SELECT COUNT(*) c FROM activities WHERE profile_id = ?", profileId)).toBe(1);
+    expect(
+      count("SELECT COUNT(*) c FROM activities WHERE profile_id = ?", profileId)
+    ).toBe(1);
   });
 
   it("LEAVES a materially-conflicting cluster for manual Review", () => {
@@ -193,7 +225,9 @@ describe("autoMergeActivityDuplicates (#1081)", () => {
     const dropped = autoMergeActivityDuplicates(profileId);
     expect(dropped).toBe(0);
     // Both rows survive and the cluster still surfaces for a human.
-    expect(count("SELECT COUNT(*) c FROM activities WHERE profile_id = ?", profileId)).toBe(2);
+    expect(
+      count("SELECT COUNT(*) c FROM activities WHERE profile_id = ?", profileId)
+    ).toBe(2);
     expect(getActivityDuplicateClusters(profileId)).toHaveLength(1);
   });
 });
