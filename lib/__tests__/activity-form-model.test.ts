@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   blankPart,
   buildRepeatPrefill,
+  initialPartsFromSeed,
   partIntent,
   partTotal,
   groupEditSets,
@@ -12,6 +13,17 @@ import {
   type PartEntry,
   type RepeatSourceSet,
 } from "@/components/activity-form/model";
+import type { UnitPrefs } from "@/lib/settings";
+
+const UNITS: UnitPrefs = {
+  weightUnit: "kg",
+  distanceUnit: "km",
+  temperatureUnit: "C",
+};
+// The picker-vocabulary predicate the form passes in; the catalog names count as
+// known, everything else is a free-text custom.
+const KNOWN = new Set(["bench press", "running", "cycling"]);
+const isKnown = (n: string) => KNOWN.has(n.trim().toLowerCase());
 
 // A stored set with sensible defaults; override only the fields a case cares
 // about. Shape mirrors ActivityEditData["sets"][number].
@@ -411,5 +423,118 @@ describe("repeatSessionFill", () => {
       "kg"
     );
     expect(sets[0].rpe).toBeNull();
+  });
+});
+
+describe("initialPartsFromSeed", () => {
+  const base: ActivityEditData = {
+    id: 1,
+    type: "strength",
+    title: "Push",
+    date: "2026-06-01",
+    duration_min: null,
+    distance_km: null,
+    intensity: null,
+    start_time: null,
+    end_time: null,
+    components: null,
+    notes: null,
+    source: null,
+    edited: null,
+    created_at: "2026-06-01 07:00:00",
+    updated_at: "2026-06-01 07:00:00",
+    calorie_kcal: null,
+    calorie_estimated: undefined,
+    route_polyline: null,
+    sets: [],
+  };
+
+  it("returns a single blank part with no seed (fresh create)", () => {
+    const parts = initialPartsFromSeed(null, UNITS, isKnown);
+    expect(parts).toHaveLength(1);
+    expect(parts[0].name).toBe("");
+    expect(parts[0].sets).toHaveLength(1);
+  });
+
+  it("loads structured components: a strength part joined back to its sets", () => {
+    const parts = initialPartsFromSeed(
+      {
+        ...base,
+        components: '[{"name":"Bench Press","type":"strength"}]',
+        sets: [
+          storedSet({
+            set_number: 1,
+            exercise: "Bench Press",
+            weight_kg: 80,
+            reps: 5,
+          }),
+        ],
+      },
+      UNITS,
+      isKnown
+    );
+    expect(parts).toHaveLength(1);
+    expect(parts[0].name).toBe("Bench Press");
+    expect(parts[0].sets[0]).toMatchObject({ weight: "80", reps: "5" });
+  });
+
+  it("loads a non-curated cardio component as a custom, typed part", () => {
+    const parts = initialPartsFromSeed(
+      {
+        ...base,
+        type: "cardio",
+        components:
+          '[{"name":"Zorbing Sprints","type":"cardio","distance_km":4,"duration_min":50}]',
+      },
+      UNITS,
+      isKnown
+    );
+    expect(parts).toHaveLength(1);
+    expect(parts[0]).toMatchObject({
+      name: "Zorbing Sprints",
+      custom: true,
+      customType: "cardio",
+      distance: "4",
+      durationMin: "50",
+    });
+  });
+
+  it("groups a legacy strength row (no components) by exercise", () => {
+    const parts = initialPartsFromSeed(
+      {
+        ...base,
+        components: null,
+        sets: [
+          storedSet({
+            set_number: 1,
+            exercise: "Bench Press",
+            weight_kg: 80,
+            reps: 5,
+          }),
+          storedSet({
+            set_number: 2,
+            exercise: "Bench Press",
+            weight_kg: 80,
+            reps: 4,
+          }),
+        ],
+      },
+      UNITS,
+      isKnown
+    );
+    expect(parts).toHaveLength(1);
+    expect(parts[0].name).toBe("Bench Press");
+    expect(parts[0].sets).toHaveLength(2);
+  });
+
+  it("derives a legacy cardio row's part from its title via isKnown", () => {
+    const parts = initialPartsFromSeed(
+      { ...base, type: "cardio", title: "Morning Running", distance_km: 5 },
+      UNITS,
+      isKnown
+    );
+    expect(parts).toHaveLength(1);
+    expect(parts[0].name).toBe("Running");
+    expect(parts[0].distance).toBe("5");
   });
 });

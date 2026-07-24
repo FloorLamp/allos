@@ -138,6 +138,10 @@ describe("buildActivePlateauHints (#923)", () => {
     expect(hints[0].supersedes).toBe(
       `${TRAINING_OBS_PREFIX}plateau:skullcrusher`
     );
+    // The pre-rendered inline copy carries the shared plateau-break advice (#1203):
+    // the ~10% deload magnitude and named same-muscle variations.
+    expect(hints[0].hintText).toContain("~10%");
+    expect(hints[0].hintText).toMatch(/variation \(/);
   });
 
   it("a dismissal on the shared bus removes it (dismiss once, silence everywhere)", () => {

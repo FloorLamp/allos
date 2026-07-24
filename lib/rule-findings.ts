@@ -140,6 +140,7 @@ import {
   PLATEAU_WINDOW_DAYS,
   type TrainingObservation,
 } from "./training-observations";
+import { plateauInlineHint } from "./plateau-advice";
 import { coverageFromSets } from "./muscle-coverage";
 import {
   detectVolumeShortfalls,
@@ -830,6 +831,10 @@ export interface PlateauFormHint {
   exerciseKey: string;
   dedupeKey: string;
   supersedes: string;
+  // The rendered one-liner (#1203) — the SHARED plateau-break advice (same ~10%
+  // deload magnitude + named variations as the finding/next-set surfaces), built by
+  // the one-computation helper so the inline hint is a pure formatter over it.
+  hintText: string;
 }
 
 // The active plateau hints for a profile (#923). Runs the SAME plateau detection +
@@ -863,6 +868,7 @@ export function buildActivePlateauHints(
       exerciseKey: exerciseHistoryKey(o.exercise!),
       dedupeKey: o.key,
       supersedes: o.legacyKey,
+      hintText: plateauInlineHint(o.exercise!),
     }));
 }
 
