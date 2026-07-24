@@ -134,11 +134,57 @@ export default defineConfig({
     {
       name: "chromium",
       dependencies: ["setup"],
-      // Exclude the demo spec (it targets the separate demo server/baseURL below).
-      testIgnore: [/auth\.setup\.ts/, /demo\.spec\.ts/],
+      // Exclude the demo spec (it targets the separate demo server/baseURL below)
+      // and the phone-viewport specs (they belong to the `mobile` project below —
+      // this project's testMatch admits EVERYTHING, so without this a
+      // `--project`-less invocation like the CI e2e-changed lane's
+      // `npx playwright test <spec>` would also run a `*.mobile.spec.ts` at
+      // 1280×900, where the mobile shell legitimately doesn't render).
+      testIgnore: [/auth\.setup\.ts/, /demo\.spec\.ts/, /\.mobile\.spec\.ts$/],
       use: {
         browserName: "chromium",
         viewport: { width: 1280, height: 900 },
+        storageState: "e2e/.auth/state.json",
+      },
+    },
+    // Phone-viewport project (issue #1420). Same seeded-DB webServer and same
+    // auth.setup.ts storage state as `chromium` — only the viewport (iPhone-class
+    // 390×844) and `hasTouch` differ, so the mobile shell (MobileNav's top bar +
+    // drawer, bottom sheets, touch targets) finally has regression coverage
+    // instead of being exercised only by the handful of specs that hand-set a
+    // phone viewport via `test.use`.
+    //
+    // OPT-IN, NOT A DUPLICATE OF THE SUITE. `testMatch` admits exactly two
+    // things: `smoke.spec.ts` (the broad "every primary surface renders" sweep,
+    // which is worth having at both viewports) and any spec named
+    // `*.mobile.spec.ts`. The naming convention was chosen over a `@mobile` tag
+    // because it needs no per-test annotation, it is visible in `ls e2e/`, and
+    // the CI `e2e-changed` lane's `^e2e/.*\.spec\.ts$` glob picks a changed
+    // mobile spec up automatically (it runs `npx playwright test <specs>` with no
+    // `--project` filter, so the spec lands in this project by its name alone).
+    // A new mobile feature lands its spec as `<feature>.mobile.spec.ts`; the rest
+    // of the suite stays desktop-only, so the sharded CI matrix grows by the
+    // mobile spec count, not by a second full suite.
+    //
+    // That name-based routing takes BOTH halves: this testMatch, and `chromium`'s
+    // `testIgnore` above. A `--project`-less run (the e2e-changed lane, the sharded
+    // matrix) runs a spec in EVERY project whose filters admit it, and `chromium`
+    // admits everything — so without the ignore a mobile spec would also run at
+    // 1280×900 and fail deterministically. (`demo` needs no such guard: its
+    // testMatch only admits `demo.spec.ts`, which no `*.mobile.spec.ts` name
+    // contains.)
+    //
+    // The #868 e2e-hygiene rules apply here UNCHANGED — spec-owned fixtures,
+    // settled interactions from e2e/helpers.ts, no waitForTimeout/networkidle, no
+    // unmarked `.first()`, retries: 0. See docs/internals/e2e-hygiene.md.
+    {
+      name: "mobile",
+      dependencies: ["setup"],
+      testMatch: /\/(smoke|[^/]+\.mobile)\.spec\.ts$/,
+      use: {
+        browserName: "chromium",
+        viewport: { width: 390, height: 844 },
+        hasTouch: true,
         storageState: "e2e/.auth/state.json",
       },
     },
