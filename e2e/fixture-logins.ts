@@ -394,9 +394,11 @@ export const CYCLE_PROFILE = "Cycle Log (e2e)";
 
 // ── Household visit + illness history fixtures (#1009) ────────────────────────
 // A caregiver granted TWO dedicated profiles — a well parent and a currently-sick
-// child — each carrying PAST visits + illness episodes so the merged household
-// history (/household/history) has real cross-profile content to interleave and
-// tag by person. Spec-owned + isolated on purpose: the merged-history / episode-card
+// child — each carrying PAST visits + illness episodes so the merged care trail
+// (/medical/episodes, the view-set surface #1373 Part 2 that superseded the removed
+// /household/history) has real cross-profile content to interleave and tag by person.
+// The child's Cold also carries a LINKED urgent-care visit + a prescribed course for the
+// care-trail nesting cases. Spec-owned + isolated on purpose: the care-trail / episode-card
 // / promotion specs only READ these fixtures, so concurrent workers never contend,
 // and their dedicated profiles never perturb the illness-hero fixtures' cockpit
 // assertions. The child's episodes are shaped for the episode-card cases: a CLOSED

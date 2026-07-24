@@ -3656,7 +3656,7 @@ if (rileyId) {
 
 // ── Household visit + illness history fixtures (#1009) ────────────────────────
 // A caregiver granted a well parent + a currently-sick child, each carrying PAST
-// visits + illness episodes, so /household/history has real cross-profile content to
+// visits + illness episodes, so /medical/episodes (the #1373 care trail) has real cross-profile content to
 // merge and tag by person. The child's CLOSED "Flu" overlaps the parent's Flu (the
 // episode-card present case); the child's OPEN "Cold" makes the household currently
 // sick (dashboard promotion); the parent's far-past "Chickenpox" overlaps nobody (the
@@ -3680,17 +3680,28 @@ if (rileyId) {
     situation: string,
     startedAt: string,
     endedAt: string | null
-  ): void => {
-    db.prepare(
-      `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+  ): number => {
+    const r = db
+      .prepare(
+        `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
        VALUES (?, ?, ?, ?)`
-    ).run(pid, situation, startedAt, endedAt);
+      )
+      .run(pid, situation, startedAt, endedAt);
+    return Number(r.lastInsertRowid);
   };
-  const addEncounter = (pid: number, date: string, type: string): void => {
-    db.prepare(
-      `INSERT INTO encounters (profile_id, date, type, source)
-       VALUES (?, ?, ?, 'manual')`
-    ).run(pid, date, type);
+  const addEncounter = (
+    pid: number,
+    date: string,
+    type: string,
+    providerId: number | null = null
+  ): number => {
+    const r = db
+      .prepare(
+        `INSERT INTO encounters (profile_id, date, type, provider_id, source)
+       VALUES (?, ?, ?, ?, 'manual')`
+      )
+      .run(pid, date, type, providerId);
+    return Number(r.lastInsertRowid);
   };
 
   // Parent: a past visit, a Flu that overlaps the child's, and a far-past Chickenpox.
@@ -3703,10 +3714,52 @@ if (rileyId) {
     shiftDateStr(on, -295)
   );
 
-  // Child: a past visit, a Flu overlapping the parent's, and an OPEN Cold (sick now).
+  // Child: a routine (UNLINKED) past visit, a Flu overlapping the parent's, and an OPEN
+  // Cold (sick now). The Cold carries the care-trail nesting fixtures (#1373 Part 2): a
+  // LINKED urgent-care visit + a prescribed medication course whose prescriber matches
+  // that visit's provider (the provable chain).
   addEncounter(hhChildId, shiftDateStr(on, -10), "Sick visit");
   addEpisode(hhChildId, "Flu", shiftDateStr(on, -28), shiftDateStr(on, -24));
-  addEpisode(hhChildId, "Cold", shiftDateStr(on, -2), null);
+  const coldId = addEpisode(hhChildId, "Cold", shiftDateStr(on, -2), null);
+
+  // #1373 care-trail nesting fixture: an urgent-care visit (Dr. Ng) on Cold day 2, linked
+  // to the Cold episode, plus an Amoxicillin course started the same day whose prescriber
+  // provider is Dr. Ng — so the course reads "prescribed at the Day-2 urgent-care visit".
+  const ngProviderId = Number(
+    db
+      .prepare(
+        `INSERT INTO providers (name, type, dedup_key)
+         VALUES ('Dr. Ng', 'individual', 'e2e-hhhist-ng')`
+      )
+      .run().lastInsertRowid
+  );
+  const urgentCareId = addEncounter(
+    hhChildId,
+    shiftDateStr(on, -1),
+    "Urgent care",
+    ngProviderId
+  );
+  db.prepare(
+    `INSERT INTO episode_encounters (profile_id, episode_id, encounter_id)
+     VALUES (?, ?, ?)`
+  ).run(hhChildId, coldId, urgentCareId);
+  const amoxId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items
+           (profile_id, name, kind, priority, active, as_needed, rx)
+         VALUES (?, 'Amoxicillin', 'medication', 'high', 1, 0, 1)`
+      )
+      .run(hhChildId).lastInsertRowid
+  );
+  db.prepare(
+    `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+     VALUES (?, '250 mg', 'Morning', 'any', 0)`
+  ).run(amoxId);
+  db.prepare(
+    `INSERT INTO medication_courses (item_id, started_on, stopped_on, provider_id)
+     VALUES (?, ?, NULL, ?)`
+  ).run(amoxId, shiftDateStr(on, -1), ngProviderId);
 
   const hhLoginId = seedMemberLogin(E2E_LOGIN_HHHIST, hhParentId);
   grantProfile(hhLoginId, hhChildId);

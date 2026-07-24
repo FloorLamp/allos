@@ -1,6 +1,7 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import path from "node:path";
+import { settledClick, followLink } from "./helpers";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_HHHIST,
@@ -10,18 +11,20 @@ import {
   HH_HISTORY_CHILD_PROFILE,
 } from "./fixture-logins";
 
-// The merged household visit + illness history (issue #1009). Against the seeded
-// household-history fixtures (a caregiver granted a well parent + a currently-sick
-// child, each carrying past visits + illness episodes — see e2e/seed-events.ts):
-//   1. the merged timeline renders both people's rows, and the per-person toggle
-//      narrows to one person;
-//   2. the dashboard promotion link appears while a member is currently sick, and the
-//      widen-to-household links render on Visits + Illness episodes;
-//   3. the episode page shows the household-context card for an overlapping episode
+// The consolidated care-trail surface (#1373 Part 2): /medical/episodes BECAME the
+// view-set-driven household illness + visit trail (superseding the removed
+// /household/history). Against the seeded household-history fixtures (a caregiver granted
+// a well parent + a currently-sick child, the child's Cold carrying a LINKED urgent-care
+// visit + a prescribed Amoxicillin course — see e2e/seed-events.ts):
+//   1. single-view shows the acting profile's episodes; toggling the child INTO the view
+//      (the #1096 session-global view-set) merges both members, the swimlane band + stats
+//      strip appear, the child's Cold nests its linked visit + course (chain shown), and
+//      the ?kind= toggle reveals the unlinked routine visit only in illness+visits;
+//   2. the episode page still shows the household-context card for an overlapping episode
 //      and omits it for a lonely one;
-//   4. a single-accessible-profile login sees NO household affordances and is bounced
-//      off /household/history;
-//   5. a read-only caregiver still reads the merged history.
+//   3. a single-profile login has no household affordances and reads its own episodes
+//      (the old /household/history bounce is gone — the route no longer exists);
+//   4. a read-only caregiver still reads the merged trail.
 // The default specs run as admin (storageState); these sign in as the seeded member
 // logins in fresh, cookie-less contexts.
 
@@ -54,6 +57,19 @@ function episodeId(profileName: string, situation: string): number {
   }
 }
 
+function profileId(name: string): number {
+  const db = dbHandle();
+  try {
+    const row = db
+      .prepare("SELECT id FROM profiles WHERE name = ?")
+      .get(name) as { id: number } | undefined;
+    if (!row) throw new Error(`no profile ${name}`);
+    return row.id;
+  } finally {
+    db.close();
+  }
+}
+
 async function loginAs(
   browser: Browser,
   username: string
@@ -72,51 +88,81 @@ async function loginAs(
   return { page, close: () => ctx.close() };
 }
 
-test.describe("Household visit + illness history (issue #1009)", () => {
-  test("a multi-profile caregiver sees the merged timeline, per-person toggle, promotion, and widen links", async ({
+// Toggle a profile INTO the session view-set via the profile menu's eye toggle (the
+// #1096 mechanism the banner drives). The view-set persists on the session, so a later
+// navigation reloads multi-view.
+async function addToView(page: Page, targetProfileId: number): Promise<void> {
+  const trigger = page.getByTestId("user-menu-trigger");
+  await expect(trigger).toBeEnabled();
+  await trigger.click();
+  await expect(page.getByTestId("user-menu-popover")).toBeVisible();
+  await settledClick(page, page.getByTestId(`view-toggle-${targetProfileId}`));
+  await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+}
+
+test.describe("Care-trail surface (#1373 Part 2)", () => {
+  test("caregiver merges the view-set → band, stats, nested linked visit + course, kind toggle", async ({
     browser,
   }) => {
     test.slow();
     const { page, close } = await loginAs(browser, E2E_LOGIN_HHHIST);
+    const childId = profileId(HH_HISTORY_CHILD_PROFILE);
 
-    // Merged view: reachable via the Household header, both profiles present as filter
-    // chips, and rows for both people.
-    await page.goto("/household/history");
-    await expect(page.getByTestId("household-history-list")).toBeVisible();
-    await expect(
-      page.getByTestId("household-history-filter-all")
-    ).toBeVisible();
-    // Two accessible profiles → two per-person filter chips beside "Everyone".
-    const chips = page
-      .getByTestId("household-history-filter")
-      .getByRole("button");
-    await expect(chips).toHaveCount(3);
-
-    // Rows are tagged by person — both the parent's and the child's appear.
-    const rows = page.getByTestId("household-history-row");
-    const parentRows = rows.filter({ hasText: HH_HISTORY_PARENT_PROFILE });
-    const childRows = rows.filter({ hasText: HH_HISTORY_CHILD_PROFILE });
-    await expect(parentRows.first()).toBeVisible(); // first-ok: filtered to the parent profile's rows (this spec's own household member) — order-agnostic
-    await expect(childRows.first()).toBeVisible(); // first-ok: filtered to the child profile's rows (this spec's own household member) — order-agnostic
-
-    // Per-person toggle: filter to the child → only the child's rows remain.
-    const childChip = page
-      .getByTestId("household-history-filter")
-      .getByRole("button", { name: HH_HISTORY_CHILD_PROFILE });
-    await childChip.click();
-    await expect(childRows.first()).toBeVisible(); // first-ok: filtered to the child profile's rows after the per-person toggle — order-agnostic
-    await expect(parentRows).toHaveCount(0);
-
-    // Dashboard promotion: the household is currently sick (the child's open Cold), so
-    // the calm promotion link surfaces.
-    await page.goto("/");
-    await expect(page.getByTestId("household-history-promo")).toBeVisible();
-
-    // Widen-to-household links on the per-person history surfaces.
-    await page.goto("/records/history/visits");
-    await expect(page.getByTestId("household-view-link")).toBeVisible();
+    // Single-view default: the acting parent's episodes, the kind toggle, no view strip.
     await page.goto("/medical/episodes");
-    await expect(page.getByTestId("household-view-link")).toBeVisible();
+    await expect(page.getByTestId("care-trail-kind-toggle")).toBeVisible();
+    await expect(page.getByTestId("care-trail-list")).toBeVisible();
+    await expect(page.getByTestId("profile-view-strip")).toHaveCount(0);
+    // The child's Cold is not in view yet.
+    await expect(
+      page.getByTestId("care-trail-row").filter({ hasText: "Cold" })
+    ).toHaveCount(0);
+
+    // Toggle the child into the view → merged trail.
+    await addToView(page, childId);
+    await page.goto("/medical/episodes");
+
+    // Multi-view chrome: the swimlane band with two lanes + the per-member stats strip.
+    await expect(page.getByTestId("care-trail-band")).toBeVisible();
+    await expect(page.getByTestId("care-trail-lane")).toHaveCount(2);
+    await expect(page.getByTestId("care-trail-stats")).toBeVisible();
+
+    // The child's Cold nests its LINKED urgent-care visit + the prescribed course, with
+    // the provable prescriber↔visit chain.
+    const coldRow = page
+      .getByTestId("care-trail-row")
+      .filter({ hasText: "Cold" });
+    await expect(coldRow).toBeVisible();
+    await expect(coldRow.getByTestId("care-trail-link-count")).toContainText(
+      "1 linked visit"
+    );
+    await expect(coldRow.getByTestId("care-trail-linked-visit")).toContainText(
+      "Urgent care"
+    );
+    const course = coldRow.getByTestId("care-trail-course");
+    await expect(course).toContainText("Amoxicillin");
+    await expect(course.getByTestId("care-trail-course-chain")).toContainText(
+      "prescribed at the"
+    );
+
+    // Illness mode hides the unlinked routine visits (no standalone visit rows).
+    await expect(
+      page.locator('[data-testid="care-trail-row"][data-kind="visit"]')
+    ).toHaveCount(0);
+
+    // illness+visits reveals the unlinked routine visits as standalone rows.
+    await followLink(
+      page,
+      page.getByTestId("care-trail-kind-visits"),
+      /kind=visits/
+    );
+    await expect(
+      page.locator('[data-testid="care-trail-row"][data-kind="visit"]').first() // first-ok: asserts an unlinked standalone visit row now renders — order-agnostic presence
+    ).toBeVisible();
+    // The linked urgent-care visit STAYS nested (never a standalone row) in both modes.
+    await expect(coldRow.getByTestId("care-trail-linked-visit")).toContainText(
+      "Urgent care"
+    );
 
     await close();
   });
@@ -143,7 +189,7 @@ test.describe("Household visit + illness history (issue #1009)", () => {
     await close();
   });
 
-  test("a single-profile login sees no household affordances and is bounced off the history URL", async ({
+  test("a single-profile login has no household affordances and reads its own episodes", async ({
     browser,
   }) => {
     test.slow();
@@ -152,26 +198,30 @@ test.describe("Household visit + illness history (issue #1009)", () => {
 
     await page.goto("/records/history/visits");
     await expect(page.getByTestId("household-view-link")).toHaveCount(0);
-    await page.goto("/medical/episodes");
-    await expect(page.getByTestId("household-view-link")).toHaveCount(0);
 
-    // The page's own server gate bounces a direct visit to the dashboard.
-    await page.goto("/household/history");
-    await page.waitForURL((u) => u.pathname === "/", { timeout: 20_000 });
+    // The episodes surface renders their own trail — no view strip, no bounce (the old
+    // /household/history route is gone).
+    await page.goto("/medical/episodes");
+    await expect(page.getByTestId("care-trail-kind-toggle")).toBeVisible();
+    await expect(page.getByTestId("profile-view-strip")).toHaveCount(0);
 
     await close();
   });
 
-  test("a read-only caregiver still reads the merged household history", async ({
+  test("a read-only caregiver still reads the merged care trail", async ({
     browser,
   }) => {
     test.slow();
     const { page, close } = await loginAs(browser, E2E_LOGIN_HHHIST_RO);
+    const childId = profileId(HH_HISTORY_CHILD_PROFILE);
 
-    await page.goto("/household/history");
-    await expect(page.getByTestId("household-history-list")).toBeVisible();
+    await addToView(page, childId);
+    await page.goto("/medical/episodes");
+    await expect(page.getByTestId("care-trail-list")).toBeVisible();
+    await expect(page.getByTestId("care-trail-lane")).toHaveCount(2);
+    // Both members' episodes read (the child's Cold + the parent's Flu).
     await expect(
-      page.getByTestId("household-history-row").first() // first-ok: asserts a household-history row renders — order-agnostic presence
+      page.getByTestId("care-trail-row").filter({ hasText: "Cold" })
     ).toBeVisible();
 
     await close();
