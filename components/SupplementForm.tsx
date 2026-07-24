@@ -31,7 +31,9 @@ import {
   PRIORITIES,
   PRIORITY_LABELS,
   defaultFoodTiming,
+  pauseLinkNeedsConfirm,
 } from "@/lib/supplement-schedule";
+import { useConfirm } from "@/components/ConfirmDialog";
 import type {
   FormResult,
   Supplement,
@@ -87,7 +89,11 @@ export default function SupplementForm({
   const rx = useIntakeRxcui(s);
   const [condition, setCondition] = useState(s?.condition ?? "daily");
   const [situation, setSituation] = useState(s?.situation ?? "");
+  const [pauseSituation, setPauseSituation] = useState(
+    s?.pause_situation ?? ""
+  );
   const situationOptions = useSituationOptions();
+  const confirm = useConfirm();
   const [brand, setBrand] = useState(s?.brand ?? "");
   const [critical, setCritical] = useState(s?.critical === 1);
   const [error, setError] = useState<string | null>(null);
@@ -137,6 +143,25 @@ export default function SupplementForm({
     formData.set("doses", JSON.stringify(doses));
     formData.set("pairs", JSON.stringify(pairRows));
     const label = name.trim() || "Supplement";
+    // Consent gate (#1296): a situational hold on a mandatory-priority item silences
+    // its reminders while the situation is active — confirm before linking it.
+    const pause = pauseSituation.trim();
+    const priority = String(formData.get("priority") ?? "high");
+    if (
+      pause &&
+      pause !== (s?.pause_situation ?? "") &&
+      pauseLinkNeedsConfirm({
+        kind: "supplement",
+        priority: priority as Supplement["priority"],
+      })
+    ) {
+      const ok = await confirm({
+        title: "Pause reminders?",
+        message: `This will silence reminders for ${label} while ${pause} is active. Link the pause?`,
+        confirmLabel: "Link pause",
+      });
+      if (!ok) return;
+    }
     let result: FormResult;
     try {
       result = await action(formData);
@@ -156,6 +181,7 @@ export default function SupplementForm({
       rx.reset();
       setCondition("daily");
       setSituation("");
+      setPauseSituation("");
       setBrand("");
       // The critical checkbox sits outside the reset form, so clear it by hand (#627).
       setCritical(false);
@@ -284,6 +310,28 @@ export default function SupplementForm({
           )}
         </div>
       )}
+
+      {/* Pause during… — the INVERSE situational link (#1296): hold this item while
+        the chosen situation is active (Pre-surgery stops fish oil / vitamin E).
+        Independent of the "When" condition; always available. */}
+      <div className="sm:col-span-2">
+        <label className="label" htmlFor={`supp-pause-${fid}`}>
+          Pause during (optional)
+        </label>
+        <Combobox
+          id={`supp-pause-${fid}`}
+          name="pause_situation"
+          ariaLabel="Pause during situation"
+          value={pauseSituation}
+          onChange={setPauseSituation}
+          options={situationOptions}
+          allowFreeText
+          placeholder="e.g. Pre-surgery"
+        />
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          Held (not due) while this situation is active — you can still log it.
+        </p>
+      </div>
 
       <div>
         <label className="label">Brand</label>

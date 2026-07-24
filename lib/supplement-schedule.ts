@@ -101,8 +101,29 @@ export function availableConditions(
 // This only ever gates workout-conditioned items — `daily` (the safety tier for
 // scheduled meds) is unconditional, so no ordinary medication reminder becomes
 // workout-dependent.
+// The INVERSE situational condition (issue #1296): the situation NAME currently
+// HOLDING this item, or null. An item is held while its `pause_situation` is in the
+// active set — regardless of its `condition` (a `daily` medication paused during
+// Pre-surgery is held). "Held" gates SURFACING only (the ledger is untouched, #558),
+// so markDoseTaken still accepts a held item (you can log reality); it's this decision
+// that keeps it off every due/reminder/digest path. Pure so the badge on the row and
+// the dueness engine agree about "what's held" (one computation, #221). NULL
+// pause_situation (or an item with no link) is never held.
+export function heldBySituation(
+  supp: { pause_situation?: string | null },
+  activeSituations: ReadonlySet<string>
+): string | null {
+  return supp.pause_situation != null &&
+    activeSituations.has(supp.pause_situation)
+    ? supp.pause_situation
+    : null;
+}
+
 export function isDueOn(
-  supp: Pick<Supplement, "condition" | "situation"> & { as_needed?: number },
+  supp: Pick<Supplement, "condition" | "situation"> & {
+    as_needed?: number;
+    pause_situation?: string | null;
+  },
   ctx: {
     isWorkoutDay: boolean;
     activeSituations: Set<string>;
@@ -113,6 +134,12 @@ export function isDueOn(
     postWorkoutReady?: boolean;
   }
 ): boolean {
+  // Held BEATS due (issue #1296): a situational hold suppresses the item on every
+  // surfacing path before any condition is evaluated — including a `daily` med and a
+  // situational-ON item whose on-situation is ALSO active (on-during A, paused-during
+  // B → held). The active set is the SAME one the on-condition reads, so a pause
+  // situation's active state flows in without a second lookup.
+  if (heldBySituation(supp, ctx.activeSituations)) return false;
   if (supp.as_needed) return false;
   // "Is today a training day?" — predicted cadence when known, else logged reality.
   const trainingToday = ctx.predictedWorkoutDay ?? ctx.isWorkoutDay;
@@ -150,6 +177,75 @@ export function countSituationalDue(
     (s) =>
       (s.active ?? true) && s.condition === "situational" && isDueOn(s, ctx)
   ).length;
+}
+
+// One item HELD by an active pause situation (issue #1296) — the row's item plus the
+// situation NAME doing the holding. `heldItemsBy` groups them so the visible held
+// state (the "Held — Pre-surgery active" badge, the digest "N items held" count, the
+// resume acknowledgment) all read ONE computation and can never disagree (#221). Only
+// ACTIVE items are considered — a manually-paused item (active 0) is already off every
+// surface, so surfacing it as "held" would be misleading. PRN items count: a PRN med a
+// surgeon says to stop IS meaningfully held even though it's never scheduled-due.
+export interface HeldItem<T> {
+  item: T;
+  situation: string;
+}
+
+export function heldItemsBy<
+  T extends { active?: number | boolean; pause_situation?: string | null },
+>(items: readonly T[], activeSituations: ReadonlySet<string>): HeldItem<T>[] {
+  const out: HeldItem<T>[] = [];
+  for (const item of items) {
+    if (!(item.active ?? true)) continue;
+    const situation = heldBySituation(item, activeSituations);
+    if (situation) out.push({ item, situation });
+  }
+  return out;
+}
+
+// The count of active items a given (or any) situation is holding. Pure formatter
+// source for the digest line and the badge summary.
+export function countHeldItems<
+  T extends { active?: number | boolean; pause_situation?: string | null },
+>(items: readonly T[], activeSituations: ReadonlySet<string>): number {
+  return heldItemsBy(items, activeSituations).length;
+}
+
+// The one-line "N items held by <situation>" summary (issue #1296) — the visible,
+// discoverable held state so a forgotten-active pause situation is never a silent
+// reminder blackout. Null when nothing is held. Pure.
+export function heldSummaryLine(
+  count: number,
+  situation: string
+): string | null {
+  if (count <= 0) return null;
+  return `${count} ${count === 1 ? "item" : "items"} held by ${situation}`;
+}
+
+// The deactivation reconcile ACKNOWLEDGMENT (issue #1296): when a pause situation
+// clears, the same acknowledgment pattern as episode-med-reconcile — "Pre-surgery
+// cleared — N items resume today." Resumption is AUTOMATIC (the hold is gone the moment
+// the situation deactivates), so this is an acknowledgment, not a decision. Null when
+// the situation held nothing (nothing to acknowledge). Pure.
+export function heldResumeAcknowledgment(
+  situation: string,
+  resumingCount: number
+): string | null {
+  if (resumingCount <= 0) return null;
+  const items = resumingCount === 1 ? "item resumes" : "items resume";
+  return `${situation} cleared — ${resumingCount} ${items} today`;
+}
+
+// Whether linking a pause situation to this item warrants a CONFIRM at link time
+// (issue #1296): a situational hold on a MEDICATION or a `mandatory`-priority item
+// will silence its reminders while the situation is active, so the form asks first
+// ("this will silence reminders for X while Y is active — sure?"). An ordinary
+// supplement paused during a fasting day needs no confirm. Pure predicate so the form
+// and any test agree on which links are consented.
+export function pauseLinkNeedsConfirm(
+  item: Pick<Supplement, "kind" | "priority">
+): boolean {
+  return item.kind === "medication" || item.priority === "mandatory";
 }
 
 // Whether an item's dose amounts count toward the DAILY Tolerable Upper Intake

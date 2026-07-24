@@ -43,7 +43,11 @@ import {
   type PediatricFormContext,
 } from "@/lib/prn-dosing";
 import { resolveIntakePrefill, type PrefillField } from "@/lib/intake-prefill";
-import { CONDITION_LABELS } from "@/lib/supplement-schedule";
+import {
+  CONDITION_LABELS,
+  pauseLinkNeedsConfirm,
+} from "@/lib/supplement-schedule";
+import { useConfirm } from "@/components/ConfirmDialog";
 import type {
   FormResult,
   Supplement,
@@ -153,7 +157,11 @@ export default function MedicationForm({
   const rx = useIntakeRxcui(s);
   const [condition, setCondition] = useState(s?.condition ?? "daily");
   const [situation, setSituation] = useState(s?.situation ?? "");
+  const [pauseSituation, setPauseSituation] = useState(
+    s?.pause_situation ?? ""
+  );
   const situationOptions = useSituationOptions();
+  const confirm = useConfirm();
   const [brand, setBrand] = useState(s?.brand ?? "");
   const [brandOptions, setBrandOptions] = useState<string[]>(MED_BRAND_OPTIONS);
   // Rx / OTC (#851 items 1–2). A prescription (rxFlag=1) reveals the prescriber/
@@ -386,6 +394,21 @@ export default function MedicationForm({
     formData.set("doses", JSON.stringify(doses));
     formData.set("pairs", JSON.stringify(pairRows));
     const label = name.trim() || "Medication";
+    // Consent gate (#1296): a situational hold on a MEDICATION silences its
+    // (possibly-critical) reminders while the situation is active — confirm first.
+    const pause = pauseSituation.trim();
+    if (
+      pause &&
+      pause !== (s?.pause_situation ?? "") &&
+      pauseLinkNeedsConfirm({ kind: "medication", priority: "high" })
+    ) {
+      const ok = await confirm({
+        title: "Pause reminders?",
+        message: `This will silence reminders for ${label} while ${pause} is active. Link the pause?`,
+        confirmLabel: "Link pause",
+      });
+      if (!ok) return;
+    }
     let result: FormResult;
     try {
       result = await action(formData);
@@ -405,6 +428,7 @@ export default function MedicationForm({
       rx.reset();
       setCondition("daily");
       setSituation("");
+      setPauseSituation("");
       setBrand("");
       setBrandOptions(MED_BRAND_OPTIONS);
       setRxFlag(false);
@@ -616,6 +640,29 @@ export default function MedicationForm({
               />
             </div>
           )}
+
+          {/* Pause during… — the INVERSE situational link (#1296): hold this
+            medication while the chosen situation is active (Pre-surgery stops
+            blood-thinning meds). Independent of the condition; always available. */}
+          <div>
+            <label className="label" htmlFor={`med-pause-${fid}`}>
+              Pause during (optional)
+            </label>
+            <Combobox
+              id={`med-pause-${fid}`}
+              name="pause_situation"
+              ariaLabel="Pause during situation"
+              value={pauseSituation}
+              onChange={setPauseSituation}
+              options={situationOptions}
+              allowFreeText
+              placeholder="e.g. Pre-surgery"
+            />
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Held (not due) while active — reminders pause; you can still log
+              it.
+            </p>
+          </div>
         </div>
 
         {medInfo && (

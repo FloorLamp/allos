@@ -71,6 +71,7 @@ import {
   CONDITION_LABELS,
   priorityClass,
   workoutDaySubtitleLabel,
+  heldBySituation,
   type TimeBucket,
 } from "@/lib/supplement-schedule";
 import { compareDoseDay, type DoseDayEntry } from "@/lib/dose-order";
@@ -98,8 +99,13 @@ import {
   toggleSituation,
   toggleSituationIllnessType,
   acceptSuggestion,
+  activateSurgerySituation,
+  clearSurgerySituation,
+  dismissSurgeryBridge,
   dismissDerivedPoorSleep,
 } from "./supplement-actions";
+import { getSurgeryBridgeSuggestions } from "@/lib/queries";
+import { BUILTIN_PRESURGERY_SITUATION } from "@/lib/surgery-bridge";
 
 export const dynamic = "force-dynamic";
 
@@ -220,9 +226,20 @@ export default async function SupplementsTab() {
   // Supplement-kind items only — this tab's empty state keys on these, not the
   // full intake list (a profile with only medications is empty HERE, #746).
   const supplementItems = supplements.filter((s) => !isMed(s));
+  // A situational HOLD (#1296): the item is active but its pause_situation is on, so
+  // it's suppressed from every due path (isDueOn returns false). Split it OUT of the
+  // "not scheduled today" bucket into its own visible Held section — a held item is a
+  // deliberate, discoverable suppression ("Held — Pre-surgery active"), never a silent
+  // absence, so a forgotten-active pause situation stays findable. It consults the SAME
+  // effectiveSituations (declared ∪ derived, #1292/#1360) `isDueOn` reads, so the
+  // held/due/not-scheduled split stays consistent: a pause link naming a derived context
+  // (e.g. "Poor sleep") holds exactly while that context is active, and a declared
+  // surgery hold and a derived poor-sleep flow through the one union together.
+  const isHeld = (s: Supplement) => !!heldBySituation(s, effectiveSituations);
   const dueItems = itemsFor((s) => !isMed(s) && !!s.active && isDueOn(s, ctx));
+  const heldItems = itemsFor((s) => !isMed(s) && !!s.active && isHeld(s));
   const notScheduled = itemsFor(
-    (s) => !isMed(s) && !!s.active && !isDueOn(s, ctx)
+    (s) => !isMed(s) && !!s.active && !isDueOn(s, ctx) && !isHeld(s)
   );
   const paused = itemsFor((s) => !isMed(s) && !s.active);
 
@@ -313,6 +330,12 @@ export default async function SupplementsTab() {
     getConditions(profile.id, { status: "active" }).map((c) => c.name),
     [...activeSituations]
   );
+
+  // Pre-surgery / Post-op bridge (#1299): a scheduled surgical visit inside its lead
+  // window suggests activating Pre-surgery (the producer for the #1296 pause capability),
+  // and after the date passes, clearing it / activating Post-op. Suggest-only, dismissed
+  // per-procedure. The chip carries the actual held-count from the #1296 links.
+  const surgeryBridge = getSurgeryBridgeSuggestions(profile.id);
 
   const suggestions = getPendingSuggestions(profile.id);
   const pairsFor = (suppId: number) =>
@@ -582,6 +605,94 @@ export default async function SupplementsTab() {
           </div>
         )}
 
+        {/* Pre-surgery / Post-op bridge (#1299): a scheduled surgical visit inside its
+          lead window suggests activating Pre-surgery — the consented producer for the
+          #1296 pause. The chip carries what it will do ("Surgery scheduled … — activate
+          Pre-surgery? N items will be held"). Dismissible per-procedure. */}
+        {surgeryBridge.map((card) => {
+          const { suggestion: sug, activateSituation, heldCount } = card;
+          const dateLabel = sug.scheduledDate;
+          const isPre = sug.phase === "pre";
+          const copy = isPre
+            ? `Surgery scheduled ${dateLabel} — activate ${activateSituation}?${
+                heldCount > 0
+                  ? ` ${heldCount} item${heldCount === 1 ? "" : "s"} will be held.`
+                  : ""
+              }`
+            : `Surgery date ${dateLabel} passed — ${
+                sug.presurgeryActive
+                  ? `clear ${BUILTIN_PRESURGERY_SITUATION}${
+                      heldCount > 0
+                        ? ` (${heldCount} item${heldCount === 1 ? "" : "s"} resume)`
+                        : ""
+                    }? `
+                  : ""
+              }Activate ${activateSituation}?`;
+          return (
+            <div
+              key={card.dismissKey}
+              className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-brand-400 p-2 dark:border-brand-700"
+              data-testid={`surgery-bridge-${sug.phase}-${sug.visitId}`}
+            >
+              <span className="text-xs text-slate-600 dark:text-slate-300">
+                {copy}
+              </span>
+              <form
+                action={async (fd) => {
+                  "use server";
+                  await activateSurgerySituation(fd);
+                }}
+              >
+                <input
+                  type="hidden"
+                  name="situation"
+                  value={activateSituation}
+                />
+                <SubmitButton
+                  data-testid={`surgery-bridge-activate-${sug.visitId}`}
+                  className="badge cursor-pointer bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-60"
+                >
+                  Activate {activateSituation}
+                </SubmitButton>
+              </form>
+              {!isPre && sug.presurgeryActive && (
+                <form
+                  action={async (fd) => {
+                    "use server";
+                    await clearSurgerySituation(fd);
+                  }}
+                >
+                  <input
+                    type="hidden"
+                    name="situation"
+                    value={BUILTIN_PRESURGERY_SITUATION}
+                  />
+                  <SubmitButton
+                    data-testid={`surgery-bridge-clear-${sug.visitId}`}
+                    className="badge cursor-pointer border border-slate-300 bg-transparent text-slate-600 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-600 dark:text-slate-300"
+                  >
+                    Clear {BUILTIN_PRESURGERY_SITUATION}
+                  </SubmitButton>
+                </form>
+              )}
+              <form
+                action={async (fd) => {
+                  "use server";
+                  await dismissSurgeryBridge(fd);
+                }}
+              >
+                <input type="hidden" name="key" value={card.dismissKey} />
+                <SubmitButton
+                  data-testid={`surgery-bridge-dismiss-${sug.visitId}`}
+                  className="badge cursor-pointer bg-transparent text-slate-500 hover:text-slate-700 disabled:opacity-60 dark:text-slate-400"
+                >
+                  Dismiss
+                </SubmitButton>
+              </form>
+            </div>
+          );
+        })}
+
         {/* Stack-total UL warnings (issue #148) */}
         {ulWarnings.length > 0 && (
           <div className="mb-4 space-y-2" data-testid="ul-warnings">
@@ -676,6 +787,25 @@ export default async function SupplementsTab() {
                 </section>
               );
             })}
+
+            {heldItems.length > 0 && (
+              <section data-testid="held-section">
+                <p className="section-label">Held ({heldItems.length})</p>
+                <div className="mt-2 space-y-3">
+                  {heldItems.map((it) => (
+                    <div
+                      key={it.dose.id}
+                      data-testid={`held-item-${it.supplement.id}`}
+                    >
+                      <span className="badge mb-1 inline-block bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                        Held — {it.supplement.pause_situation} active
+                      </span>
+                      {renderRow(it, false)}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
 
             {notScheduled.length > 0 && (
               <details>

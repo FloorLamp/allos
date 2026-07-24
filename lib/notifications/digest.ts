@@ -12,6 +12,7 @@ import type { BandGroup, UpcomingDomain } from "../upcoming";
 import { fmtWeight, fmtDistance } from "../units";
 import { intakeWindowNoun, intakeItemNoun } from "./supplement-format";
 import { situationActivationLine } from "../situations";
+import { heldSummaryLine } from "../supplement-schedule";
 import { buildUpcomingDigest } from "./upcoming-digest";
 import { sriPresentation } from "../sleep-regularity";
 
@@ -95,6 +96,13 @@ export interface DigestInput {
   // (issue #662 item 1) — the optional digest mention of the same "N situational
   // items now active" the situations bar shows. Optional/0 ⇒ the line is omitted.
   situationalActiveCount?: number;
+  // Count of active intake items currently HELD by a pause situation (#1296) — the
+  // digest's honest mention of "N items held by <situation>" so a forgotten-active
+  // pause situation is discoverable, never a silent reminder blackout. `heldSituation`
+  // names the situation for the line (the first when several hold). Optional/0 ⇒
+  // omitted.
+  heldCount?: number;
+  heldSituation?: string | null;
   // The DERIVED-context acknowledgment lines (#1292 Poor sleep, #1298 Period) — the
   // SAME basis-aware lines the Supplements bar + check-in disclosure show, shared so a
   // Telegram-first user isn't surprised by the extra due items (#662/#221). Each is a
@@ -195,6 +203,14 @@ export function buildDigest(input: DigestInput): DigestModel | null {
     input.situationalActiveCount ?? 0
   );
   if (situationLine) todayLines.push(`🧭 ${situationLine}`);
+  // Held-items mention (#1296): the visible held state in the morning message, via the
+  // one shared heldSummaryLine formatter — so a pause situation silencing reminders is
+  // never a silent blackout.
+  const heldLine =
+    input.heldSituation && (input.heldCount ?? 0) > 0
+      ? heldSummaryLine(input.heldCount ?? 0, input.heldSituation)
+      : null;
+  if (heldLine) todayLines.push(`⏸️ ${heldLine}`);
   // Derived-context acknowledgment (#1292/#1298): the SAME basis-aware lines the bar +
   // check-in show ("Rough night (…) — N sleep-support items active today (auto)";
   // "Period logged — N items active"), so the extra due items are never a surprise.
