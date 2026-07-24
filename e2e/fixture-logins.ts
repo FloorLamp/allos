@@ -929,3 +929,20 @@ export const GRANT_EDIT_PROFILE = "Grant Edit (e2e)";
 // checked-in release-notes file, not the DB.
 export const E2E_LOGIN_WHATSNEW = "e2e_whatsnew";
 export const WHATS_NEW_PROFILE = "Whats New (e2e)";
+
+// #1068 — the Timeline day view's intraday panel. A DEDICATED member login + adult
+// profile carrying a full INTRADAY day: an overnight sleep session that starts before
+// midnight (so its block is clipped, not re-attributed) with one deep-stage window,
+// per-minute HR across the morning including a workout spike, a windowed cardio
+// activity (the workout block), and two clock-timed document uploads (the tick rail).
+// A SECOND day (three days back) carries only a day-grained weigh-in, so the same
+// profile proves the panel's data gate — the day renders, the panel does not. The
+// intraday day is TODAY, so the now-marker renders too. Dedicated on purpose: the
+// panel keys on hr_minutes, which profile 1 has only inside the zone-ride window
+// (training-zones.spec pins that day's zone totals), and a full day of all-day wear
+// would change those numbers. Synthetic, no PHI.
+export const E2E_LOGIN_INTRADAY = "e2e_intraday";
+export const INTRADAY_PROFILE = "Intraday (e2e)";
+export const INTRADAY_ACTIVITY = "Sunrise ride (e2e)";
+export const INTRADAY_TICK_DOC = "e2e-intraday-morning-panel.pdf";
+export const INTRADAY_TICK_TIME = "07:15";

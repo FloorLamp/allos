@@ -74,7 +74,17 @@ test.describe("Data → Review duplicate resolver", () => {
     // Only the kept (Afternoon Run) activity survives on that day; the merged-away
     // manual "Morning run" row is actually deleted, not just hidden.
     await page.goto("/timeline?from=2026-07-07&to=2026-07-07");
-    await expect(page.getByText("Afternoon Run").first()).toBeVisible(); // first-ok: the kept activity after the merge THIS test performed on the day it owns — deterministic
+    // Scope to the FEED row: the single-day view now also renders the intraday
+    // panel (#1068), whose SVG carries a hidden <title>Afternoon Run</title> for
+    // the workout block — a page-wide text locator's FIRST match resolves to that
+    // hidden title and fails toBeVisible (the consolidation-class selector break).
+    // The per-entry anchors the panel introduced are the stable feed-row hook.
+    await expect(
+      page
+        .locator('[id^="timeline-entry-"]')
+        .filter({ hasText: "Afternoon Run" })
+        .first() // first-ok: the kept activity's feed row after the merge THIS test performed on the day it owns — deterministic
+    ).toBeVisible();
     await expect(page.getByText("Morning run")).toHaveCount(0);
 
     // The badge drops by exactly one — the merged pair is gone, everything else (the two
