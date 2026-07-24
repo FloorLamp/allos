@@ -5,8 +5,9 @@ import { settledClick } from "./helpers";
 // This spec OWNS its fixtures (create-and-clean): it schedules a surgical visit for
 // today, then asserts the Nutrition → Supplements situations bar surfaces the
 // suggestion chip ("activate Pre-surgery"), confirming activates the Pre-surgery
-// situation. It cancels every visit it scheduled and deactivates Pre-surgery afterward
-// so the shared-seed profile is left unchanged (robust across --repeat-each).
+// situation. An afterEach cancels every visit it scheduled and deactivates
+// Pre-surgery — on the failure path too — so the shared-seed profile is left
+// unchanged (robust across --repeat-each and across a mid-test red).
 
 const VISIT_TITLE = "E2E Arthroscopy";
 
@@ -15,17 +16,52 @@ const VISIT_TITLE = "E2E Arthroscopy";
 // click + a retrying count-decrement (not settledClick, whose armed POST-wait races the
 // cancel's `startTransition` server action in fast production timing) — the row leaves
 // the upcoming section once its status settles to Cancelled.
-async function cancelOurVisits(page: import("@playwright/test").Page) {
-  await page.goto("/records/history/visits");
-  const cancelBtns = page
+// The still-SCHEDULED rows this spec created. A cancelled visit stays on the page in
+// the settled/history list, so a bare title filter would keep counting a previous
+// --repeat-each pass's leftovers; the live Cancel button is what marks a row as still
+// scheduled (and it's the same thing the bridge query selects on).
+function ourScheduledRows(page: import("@playwright/test").Page) {
+  return page
     .getByTestId("appointment-row")
     .filter({ hasText: VISIT_TITLE })
-    .getByRole("button", { name: "Cancel appointment" });
+    .filter({ has: page.getByRole("button", { name: "Cancel appointment" }) });
+}
+
+async function cancelOurVisits(page: import("@playwright/test").Page) {
+  await page.goto("/records/history/visits");
+  const cancelBtns = ourScheduledRows(page).getByRole("button", {
+    name: "Cancel appointment",
+  });
   for (let n = await cancelBtns.count(); n > 0; n--) {
     await cancelBtns.first().click(); // first-ok: loop-cancel of the visits THIS spec scheduled (unique title)
     await expect(cancelBtns).toHaveCount(n - 1);
   }
 }
+
+// Deactivate Pre-surgery if this spec left it on. The situations bar renders the
+// built-in chip only once it is active OR suggested, so a plain count check drives
+// the toggle. Runs from afterEach, so a mid-test FAILURE can never hand the shared
+// seed profile an active Pre-surgery — which would suppress the very suggestion this
+// spec (and its next run in the same shard) asserts (`surgeryBridgeSuggestion`
+// returns null in the "pre" branch while Pre-surgery is active), i.e. turn one red
+// into a cascading one.
+async function clearPresurgery(page: import("@playwright/test").Page) {
+  await page.goto("/nutrition?tab=supplements");
+  const toggle = page
+    .getByTestId("situations-bar")
+    .getByRole("button", { name: "Pre-surgery", exact: true });
+  if ((await toggle.count()) === 0) return;
+  if ((await toggle.getAttribute("aria-pressed")) !== "true") return;
+  await settledClick(page, toggle);
+  await expect(toggle).not.toHaveAttribute("aria-pressed", "true");
+}
+
+// Leave the shared seed profile exactly as found even when the test body throws
+// (#868 fixture ownership: a spec owns — and unwinds — its own writes).
+test.afterEach(async ({ page }) => {
+  await clearPresurgery(page);
+  await cancelOurVisits(page);
+});
 
 test("a scheduled surgical visit suggests activating Pre-surgery", async ({
   page,
@@ -49,6 +85,16 @@ test("a scheduled surgical visit suggests activating Pre-surgery", async ({
     page,
     addCard.getByRole("button", { name: "Add", exact: true })
   );
+  // Settle on the DURABLE server-rendered row before navigating away (#1437).
+  // Every app page carries steady background Server-Action POST traffic — the
+  // app-wide import + extraction watchers each poll on a 6s timer, and both POST to
+  // the CURRENT route URL, so `settledClick`'s armed same-origin POST wait can
+  // resolve on a bystander poll while the create is still in flight (the hazard
+  // helpers.ts documents). The `goto` below would then ABORT the create — measured:
+  // the appointment never lands, the chip never renders, and the failure reads
+  // "element(s) not found" exactly as CI saw twice. Asserting the row here holds the
+  // page still until the write is durable, and the poll can't fake it.
+  await expect(ourScheduledRows(page)).toHaveCount(1);
 
   // ── The bridge chip appears on the Supplements situations bar ───────────────
   await page.goto("/nutrition?tab=supplements");
@@ -67,12 +113,6 @@ test("a scheduled surgical visit suggests activating Pre-surgery", async ({
       .getByRole("button", { name: "Pre-surgery", exact: true })
   ).toHaveAttribute("aria-pressed", "true");
 
-  // ── Clean up: deactivate Pre-surgery, cancel the visit(s) ───────────────────
-  await settledClick(
-    page,
-    page
-      .getByTestId("situations-bar")
-      .getByRole("button", { name: "Pre-surgery", exact: true })
-  );
-  await cancelOurVisits(page);
+  // Cleanup (deactivate Pre-surgery, cancel the visit) is the afterEach above — it
+  // runs on the failure path too, and its own settles are navigation-free.
 });
