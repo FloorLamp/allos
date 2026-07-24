@@ -359,18 +359,48 @@ async function workflowsJourney(browser) {
   await shot(page, "workflow-log-activity-editor");
   const form = page.getByTestId("activity-form");
   if (await form.count()) {
-    await form
-      .locator("input")
-      .first()
-      .fill("Walking")
-      .catch(() => {});
+    // The form's FIRST input is the session title — the activity picker is the
+    // "What did you do?" combobox, and its suggestion must be COMMITTED
+    // (Enter / option click) or Done just closes an empty draft; the editor
+    // shows "Not saved — Add an activity to start" until one is added
+    // (verified the hard way: activities table stayed empty).
+    const box = form.getByPlaceholder(/What did you do/);
+    await box.fill("Walking").catch(() => {});
     await page.waitForTimeout(800);
     await shot(page, "workflow-log-activity-filled");
+    // Scope to the editor — an unscoped role=option match hits the sidebar
+    // calendar's native <select> options.
+    const option = form.locator('[role="option"], [role="listbox"] li').first();
+    if (await option.count()) await option.click();
+    else await box.press("Enter");
+    await page.waitForTimeout(800);
+    // A cardio part needs a distance or duration before the draft saves
+    // ("Not saved — Enter a distance, duration, or a start & end time").
+    await form
+      .getByTestId("cardio-duration")
+      .fill("30")
+      .catch(() => {});
+    await page.waitForTimeout(800);
+    await shot(page, "workflow-log-activity-committed");
     const done = page.getByRole("button", { name: "Done" });
     if (await done.count()) {
       await done.first().click();
       await page.waitForTimeout(1200);
       await shot(page, "workflow-log-activity-done");
+      // Honest completion check: the new activity should be visible on the
+      // Training journal. A missing entry means the log did NOT save — say so.
+      await page.goto(`${BASE}/training`);
+      await page.waitForTimeout(1200);
+      await shot(page, "workflow-log-activity-journal");
+      const visible = await page
+        .getByText(/Walking/i)
+        .first()
+        .isVisible()
+        .catch(() => false);
+      if (!visible)
+        log(
+          "log-activity: 'Walking' NOT visible on /training — the log likely did not save; check shots"
+        );
     } else {
       log("log-activity: no Done button found — left editor open (see shots)");
       await page.keyboard.press("Escape");
