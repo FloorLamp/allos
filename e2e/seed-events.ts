@@ -247,6 +247,8 @@ import {
   SUN_PROFILE,
   E2E_LOGIN_SUN_NOHOME,
   SUN_NOHOME_PROFILE,
+  E2E_LOGIN_GRANTEDIT,
+  GRANT_EDIT_PROFILE,
 } from "./fixture-logins";
 import {
   diffSituations,
@@ -5810,5 +5812,19 @@ console.log(
 
   console.log(
     `e2e: seeded sun/outdoor + free-days fixture — profile ${sunId} (${SUN_PROFILE}), no-home ${sunNoHomeId} (${SUN_NOHOME_PROFILE}) (#1171/#1241)`
+  );
+}
+
+// ── #1412 grant-matrix collapse fixture ──────────────────────────────────────
+// A dedicated member login granted ONE dedicated profile (write). The family-grants
+// spec (e2e/family-grants.spec.ts) opens Settings → Family as admin, drives this
+// login's collapsed grant-summary row + Edit disclosure, and flips its grant level —
+// isolated so it never perturbs another spec's grant set. Idempotent for a reused dev
+// server (fixtureProfileId + seedMemberLogin both upsert).
+{
+  const grantEditId = fixtureProfileId(GRANT_EDIT_PROFILE);
+  seedMemberLogin(E2E_LOGIN_GRANTEDIT, grantEditId, "write");
+  console.log(
+    `e2e: seeded grant-edit fixture — login ${E2E_LOGIN_GRANTEDIT} granted profile ${grantEditId} (${GRANT_EDIT_PROFILE}) (#1412)`
   );
 }

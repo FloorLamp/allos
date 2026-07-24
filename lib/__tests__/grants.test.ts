@@ -7,6 +7,7 @@ import {
   diffGrantAccess,
   formatGrantDiff,
   grantSignature,
+  grantCountSummary,
 } from "../grants";
 
 describe("normalizeGrantSelection", () => {
@@ -233,5 +234,27 @@ describe("grantSignature (issue #467 optimistic concurrency)", () => {
     ]);
     const loaded = grantSignature([{ profileId: 1, access: "write" }]);
     expect(stored).toBe(loaded);
+  });
+});
+
+describe("grantCountSummary (issue #1412)", () => {
+  it("reads 'N of M profiles' from the granted-id list", () => {
+    expect(grantCountSummary([2, 5], 6)).toBe("2 of 6 profiles");
+    expect(grantCountSummary([], 4)).toBe("0 of 4 profiles");
+    expect(grantCountSummary([3, 3], 3)).toBe("1 of 3 profiles"); // dedups ids
+  });
+
+  it("matches the editor's granted set (one computation)", () => {
+    // The same granted list the grid loads (initialGrantSelection keys on it) and
+    // the summary counts, so N can never disagree with the number of checked cells.
+    const granted = [1, 4, 9];
+    const grid = new Map(granted.map((id) => [id, "write" as const]));
+    expect(grantCountSummary(granted, 12)).toBe(`${grid.size} of 12 profiles`);
+  });
+
+  it("pluralizes on the total and clamps a stale over-long list", () => {
+    expect(grantCountSummary([1], 1)).toBe("1 of 1 profile");
+    expect(grantCountSummary([1, 2, 3], 2)).toBe("2 of 2 profiles"); // clamp, no "3 of 2"
+    expect(grantCountSummary([], 0)).toBe("0 of 0 profiles");
   });
 });

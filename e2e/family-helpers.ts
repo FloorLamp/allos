@@ -216,6 +216,13 @@ export async function setGrantsViaFamily(
   grant: { profileId: number; access: Access }
 ): Promise<void> {
   await page.goto("/settings/family");
+  // #1412: the grant grid is now collapsed at rest — the per-profile controls mount
+  // only after the login's Edit disclosure is opened. It's a pure client toggle (no
+  // Server Action, so settledClick would hang waiting for a POST); a plain click plus
+  // the durable grant-row visibility assertion below IS the wait.
+  const grantSummary = page.getByTestId(`grant-summary-${username}`);
+  await expect(grantSummary).toBeVisible();
+  await grantSummary.getByTestId(`grant-edit-${username}`).click();
   const grantRow = page.getByTestId(`grant-row-${username}`);
   await expect(grantRow).toBeVisible();
   const cell = grantRow.getByTestId(
