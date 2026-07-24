@@ -75,6 +75,11 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     why: "login-scoped: date/time display prefs keyed by login.id, not profile data (#964)",
   },
   {
+    file: "app/(app)/upcoming/actions.ts",
+    fn: "dismissMultiviewHintAction",
+    why: "login-scoped: dismisses the caller's OWN one-time multi-view discoverability hint (a 'seen' flag in login_settings, #1327), not profile-owned data — same shape as saveUnitPrefs, so requireSession() is the right gate; no demo-gating needed (a harmless per-login UI flag)",
+  },
+  {
     file: "app/(app)/settings/actions.ts",
     fn: "changeOwnPassword",
     why: "login-scoped: changes the caller's own password (demo-gated, #278)",
