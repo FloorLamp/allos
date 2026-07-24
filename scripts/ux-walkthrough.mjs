@@ -308,10 +308,25 @@ async function pagesJourney(browser) {
     });
     const page = await ctx.newPage();
     page.setDefaultTimeout(45_000);
-    // No stored admin session → sign in once.
+    // No stored admin session → sign in once. VERIFY it took: a silently
+    // failed login here once produced 58 byte-identical /login screenshots
+    // that looked like a completed census — abort loudly instead.
     await page.goto(`${BASE}/`);
-    if (page.url().includes("login"))
+    for (
+      let attempt = 0;
+      page.url().includes("login") && attempt < 3;
+      attempt++
+    ) {
       await signIn(page, ADMIN_USER, ADMIN_PASS);
+      await page.goto(`${BASE}/`);
+    }
+    if (page.url().includes("login")) {
+      log(
+        `FAILED (${tag}): could not authenticate — skipping this viewport's census entirely`
+      );
+      await ctx.close();
+      continue;
+    }
     for (const route of routes.sort()) {
       const slug = route === "/" ? "home" : route.slice(1).replace(/\//g, "-");
       try {
