@@ -17,6 +17,7 @@ import {
   removeSymptomCore,
   renameCustomSymptomCore,
   deleteCustomSymptomCore,
+  setSymptomEpisodeCore,
 } from "@/lib/symptom-log-write";
 import {
   getActiveSituations,
@@ -188,6 +189,42 @@ export async function removeSymptom(
     return { ok: false, error: "Couldn't find that symptom." };
   revalidateSymptoms();
   return { ok: true, symptom: outcome.symptom, severity: 0 };
+}
+
+// Attach a logged symptom-day to an illness episode, or detach it (#1093). A symptom
+// logged while an episode was open auto-associates (logSymptomCore); this is the explicit
+// "easy detach" (or re-attach) affordance. `episodeId` <= 0 or absent detaches (null);
+// a positive id attaches. Cross-profile gated inline (the #858 pattern) so the write-
+// access scanner sees a literal requireWriteAccess; the core re-checks episode ownership
+// so a forged cross-profile episode id is rejected at the data layer too.
+export async function setSymptomEpisode(
+  formData: FormData
+): Promise<SymptomLogResult> {
+  const target = Number(formData.get("profileId"));
+  let profileId: number;
+  if (Number.isInteger(target) && target > 0) {
+    await requireProfileWriteAccess(target);
+    profileId = target;
+  } else {
+    profileId = (await requireWriteAccess()).profile.id;
+  }
+  const symptom = String(formData.get("symptom") ?? "");
+  const rawEpisode = Number(formData.get("episodeId"));
+  const episodeId =
+    Number.isInteger(rawEpisode) && rawEpisode > 0 ? rawEpisode : null;
+  const outcome = setSymptomEpisodeCore(
+    profileId,
+    symptom,
+    parseDate(formData, profileId),
+    episodeId
+  );
+  if (outcome.kind === "bad-episode")
+    return { ok: false, error: "That episode is no longer available." };
+  if (outcome.kind !== "ok")
+    return { ok: false, error: "Couldn't update that symptom." };
+  revalidateSymptoms();
+  revalidatePath("/medical/episodes/[id]", "page");
+  return { ok: true, symptom, severity: 0 };
 }
 
 // Rename a custom symptom across all its log rows (#203 hygiene).
