@@ -6,6 +6,7 @@ import {
   getSupplementLogsInRange,
   getSupplementPairs,
   getRefillRates,
+  getPoolChips,
   getPendingSuggestions,
   getActivitiesByDate,
   getActivityDates,
@@ -345,6 +346,7 @@ export default async function SupplementsTab() {
   // item has enough history, else the scheduled-dose-count estimate. Threaded to
   // each row so the badge reflects real consumption and can name its basis.
   const refillRates = getRefillRates(profile.id);
+  const poolChips = getPoolChips(profile.id);
 
   // Stack-total UL warnings (issue #148): nutrients whose active-stack daily
   // supplemental intake exceeds the NIH Tolerable Upper Intake Level for this
@@ -431,6 +433,7 @@ export default async function SupplementsTab() {
       strip={stripFor(it.supplement)}
       trainingRestricted={trainingRestricted}
       refillRate={refillRates.get(it.supplement.id) ?? null}
+      poolChip={poolChips.get(it.supplement.id) ?? null}
       suppressedFoodKeys={suppressedFoodKeys}
     />
   );

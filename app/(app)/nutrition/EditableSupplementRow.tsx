@@ -10,8 +10,10 @@ import type { AdherenceDot } from "@/lib/supplement-adherence";
 import type { DoseRate } from "@/lib/refill";
 import {
   RefillBadge,
+  SharedSupplyChip,
   AdherenceSummaryLine,
 } from "@/components/AdherenceRefill";
+import type { PoolChipData } from "@/lib/queries/intake";
 import SupplementForm from "@/components/SupplementForm";
 import FoodGuidance from "@/components/FoodGuidance";
 import NotesText from "@/components/NotesText";
@@ -45,6 +47,7 @@ export default function EditableSupplementRow({
   strip,
   trainingRestricted,
   refillRate,
+  poolChip = null,
   suppressedFoodKeys = [],
 }: {
   supplement: Supplement;
@@ -60,6 +63,9 @@ export default function EditableSupplementRow({
   strip: AdherenceDot[];
   trainingRestricted: boolean;
   refillRate: DoseRate | null;
+  // The shared-bottle chip when this item draws from a pool (#1374) — it REPLACES
+  // the per-item refill badge, since a linked item keeps no private count.
+  poolChip?: PoolChipData | null;
   // Active food-timing dismissals for this profile (#435), threaded to FoodGuidance.
   suppressedFoodKeys?: string[];
 }) {
@@ -170,12 +176,16 @@ export default function EditableSupplementRow({
                 {s.stack}
               </span>
             )}
-            <RefillBadge
-              quantityOnHand={s.quantity_on_hand}
-              qtyPerDose={s.qty_per_dose}
-              refillRate={refillRate}
-              doseCount={doses.length}
-            />
+            {poolChip ? (
+              <SharedSupplyChip pool={poolChip} />
+            ) : (
+              <RefillBadge
+                quantityOnHand={s.quantity_on_hand}
+                qtyPerDose={s.qty_per_dose}
+                refillRate={refillRate}
+                doseCount={doses.length}
+              />
+            )}
             {isMed && (
               <span className="badge bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300">
                 Rx

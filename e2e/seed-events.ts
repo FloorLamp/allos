@@ -91,6 +91,17 @@ import {
   MULTI_SHARED_PROFILE,
   MULTI_OWNER_DOSE,
   MULTI_SHARED_DOSE,
+  E2E_LOGIN_SUPPLY,
+  SUPPLY_PARENT_PROFILE,
+  SUPPLY_CHILD_PROFILE,
+  SUPPLY_SHARED_BOTTLE,
+  SUPPLY_PARENT_MED,
+  SUPPLY_CHILD_MED,
+  SUPPLY_LOW_BOTTLE,
+  SUPPLY_PARENT_LOW_MED,
+  SUPPLY_CHILD_LOW_MED,
+  SUPPLY_EDIT_BOTTLE,
+  SUPPLY_PARENT_EDIT_MED,
   E2E_LOGIN_MVMEDS,
   MVMEDS_SELF_PROFILE,
   MVMEDS_RO_PROFILE,
@@ -6006,6 +6017,84 @@ console.log(
   seedMemberLogin(E2E_LOGIN_GRANTEDIT, grantEditId, "write");
   console.log(
     `e2e: seeded grant-edit fixture — login ${E2E_LOGIN_GRANTEDIT} granted profile ${grantEditId} (${GRANT_EDIT_PROFILE}) (#1412)`
+  );
+}
+
+// ── #1374 shared supply pools fixture ────────────────────────────────────────
+// One caregiver login granted TWO dedicated profiles, each carrying a daily
+// medication linked to a shared bottle. Two bottles: a well-stocked one (the spec
+// confirms a dose from EACH member and watches ONE count fall), and a deliberately
+// LOW one (so exactly ONE pooled low-supply finding surfaces per bottle, not one per
+// linked member). Spec-owned; idempotent for a reused dev server.
+{
+  const supplyParentId = fixtureProfileId(SUPPLY_PARENT_PROFILE);
+  const supplyChildId = fixtureProfileId(SUPPLY_CHILD_PROFILE);
+  const upsertBottle = (name: string, qty: number): number => {
+    const existing = db
+      .prepare("SELECT id FROM shared_supplies WHERE name = ?")
+      .get(name) as { id: number } | undefined;
+    if (existing) return existing.id;
+    return Number(
+      db
+        .prepare(
+          "INSERT INTO shared_supplies (name, strength, form, quantity_on_hand) VALUES (?, '200 mg', 'tablet', ?)"
+        )
+        .run(name, qty).lastInsertRowid
+    );
+  };
+  const upsertLinkedMed = (
+    profileId: number,
+    name: string,
+    supplyId: number
+  ): void => {
+    const existing = db
+      .prepare("SELECT id FROM intake_items WHERE profile_id = ? AND name = ?")
+      .get(profileId, name) as { id: number } | undefined;
+    if (existing) {
+      db.prepare(
+        "UPDATE intake_items SET supply_id = ?, quantity_on_hand = NULL WHERE id = ?"
+      ).run(supplyId, existing.id);
+      return;
+    }
+    const itemId = Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items
+             (profile_id, name, kind, condition, priority, active, as_needed, source,
+              quantity_on_hand, qty_per_dose, supply_id)
+           VALUES (?, ?, 'medication', 'daily', 'high', 1, 0, 'manual', NULL, 1, ?)`
+        )
+        .run(profileId, name, supplyId).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, '1 tablet', '08:00', 'any', 0)`
+    ).run(itemId);
+  };
+
+  const sharedBottleId = upsertBottle(SUPPLY_SHARED_BOTTLE, 60);
+  upsertLinkedMed(supplyParentId, SUPPLY_PARENT_MED, sharedBottleId);
+  upsertLinkedMed(supplyChildId, SUPPLY_CHILD_MED, sharedBottleId);
+
+  // 4 units, two daily consumers at 1 unit/day → 2 days left, well under the
+  // 10-day default threshold.
+  const lowBottleId = upsertBottle(SUPPLY_LOW_BOTTLE, 4);
+  upsertLinkedMed(supplyParentId, SUPPLY_PARENT_LOW_MED, lowBottleId);
+  upsertLinkedMed(supplyChildId, SUPPLY_CHILD_LOW_MED, lowBottleId);
+
+  // The edit case's own bottle: one linked med on the parent, so rewriting its
+  // count never perturbs the decrement case's arithmetic.
+  const editBottleId = upsertBottle(SUPPLY_EDIT_BOTTLE, 75);
+  upsertLinkedMed(supplyParentId, SUPPLY_PARENT_EDIT_MED, editBottleId);
+
+  const supplyLoginId = seedMemberLogin(
+    E2E_LOGIN_SUPPLY,
+    supplyParentId,
+    "write"
+  );
+  grantProfile(supplyLoginId, supplyChildId, "write");
+  console.log(
+    `e2e: seeded shared-supply-pool fixture — ${E2E_LOGIN_SUPPLY} granted ${SUPPLY_PARENT_PROFILE} (${supplyParentId}) + ${SUPPLY_CHILD_PROFILE} (${supplyChildId}); bottles ${sharedBottleId}/${lowBottleId} (#1374)`
   );
 }
 

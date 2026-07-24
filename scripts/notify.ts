@@ -62,6 +62,7 @@ import {
 } from "../lib/notifications/workout-presence";
 import { flushPostWorkoutDispatches } from "../lib/notifications/post-workout-queue";
 import { runRefills } from "../lib/notifications/refill";
+import { runPoolRefills } from "../lib/notifications/supply-pool";
 import { runPreventive } from "../lib/notifications/preventive";
 import { runIllnessCare } from "../lib/notifications/illness-care";
 import { runEaseBack } from "../lib/notifications/ease-back";
@@ -758,6 +759,33 @@ async function tick() {
       });
       anyFailed = true;
     }
+  }
+
+  // Shared supply pools (#1374): GLOBAL, once per tick — deliberately NOT inside the
+  // per-profile loop. A pooled bottle is ONE subject with ONE episode marker, so a
+  // per-profile pass would nudge the same bottle once per linked member (the exact bug
+  // pools exist to fix). Delivery still rides the login-scoped fan-out: the pass picks
+  // the minimum set of linked profiles that reaches every managing login. Waking-window
+  // and profile-local-date decisions stay per-profile-composed (the callbacks below),
+  // never evaluated in another member's context.
+  try {
+    const pr = await runPoolRefills(
+      (profileId) => today(profileId),
+      (profileId) => {
+        const s = getNotifySchedule(profileId);
+        return inWakingWindow(
+          hourInTz(getTimezone(profileId), new Date()),
+          s.wakingStartHour,
+          s.wakingEndHour
+        );
+      }
+    );
+    if (pr.failed) anyFailed = true;
+  } catch (e) {
+    log.error("shared supply pool check failed", {
+      err: e instanceof Error ? e : String(e),
+    });
+    anyFailed = true;
   }
 
   // Nightly SQLite backup (#131): global, so it runs once per tick (not per

@@ -39,19 +39,42 @@ const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 //
 // GLOBAL tables are intentionally absent, so a statement touching only one of them
 // is never flagged: logins, profiles, login_profiles, sessions, login_attempts,
-// global settings, canonical_biomarkers, and — added later — `providers`.
+// global settings, canonical_biomarkers, `providers`, and — added later —
+// `shared_supplies`.
 // The providers registry is shared across the whole family/instance (a family sees
 // one "Quest Diagnostics"), modeled like logins/profiles: the per-record LINK
 // (immunizations/medical_records/intake_items.provider_id) lives on a profile-owned
 // row and is therefore covered by the rule via those tables, but the shared
 // `providers` row it points at is global and its data layer (lib/providers-db) is
 // deliberately not profile-scoped.
+// `shared_supplies` (#1374) is the same shape one domain over — the household medicine
+// cabinet. A family owns ONE bottle of ibuprofen, so the bottle row is instance-shared,
+// carries no profile_id, and stays out of OWNED_TABLES; the per-record LINK
+// (`intake_items.supply_id`) lives on a profile-owned row and IS covered through that
+// table, while its data layer (lib/queries/intake/supply-pool) is deliberately not
+// profile-scoped.
 const OWNED_RE = new RegExp(`\\b(${OWNED_TABLES.join("|")})\\b`);
 
 // Statements that legitimately touch an owned table without profile_id, keyed by
 // the file they live in (so an unrelated file can't ride the exemption). Each is
 // matched as a normalized-SQL substring. Keep this list SHORT and justified.
 const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
+  {
+    file: "app/(app)/supplies/actions.ts",
+    includes: "SELECT profile_id FROM intake_items WHERE id = ?",
+    why: "requireItemWriteAccess (#1374): the ONE lookup that RESOLVES which profile an item belongs to so the action can gate on it — filtering by profile_id here would presuppose the answer. Reads only the id→profile_id mapping and immediately feeds it to requireProfileWriteAccess; the gate is the protection, not the filter (the app/(app)/gate-item.ts shape)",
+  },
+  {
+    file: "lib/queries/intake/supply-pool.ts",
+    includes: "FROM intake_items WHERE supply_id = ?",
+    why: "poolMembers (#1374): a shared bottle's takers are DIFFERENT PEOPLE by construction, so pool membership is cross-profile on purpose. It is an ACCOUNTING read (who draws from this bottle → the pooled decrement/projection/alert), never a display read: the id is a household-shared shared_supplies row, and every surface that NAMES members filters this through the caller's ProfileScope before rendering",
+  },
+  {
+    file: "lib/queries/intake/supply-pool.ts",
+    includes:
+      "UPDATE intake_items SET supply_id = NULL, quantity_on_hand = ? WHERE id = ? AND profile_id = ?",
+    why: "deleteSharedSupply (#1374): unlinks each member row it just read from poolMembers — the statement itself IS profile-scoped (id AND profile_id); listed only because the surrounding function's membership read is the cross-profile one above",
+  },
   {
     file: "lib/queries/medical.ts",
     includes: "UPDATE medical_records SET flag = ? WHERE id = ?",

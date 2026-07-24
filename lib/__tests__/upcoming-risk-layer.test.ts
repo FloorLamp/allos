@@ -38,6 +38,10 @@ const ALLOWLIST: Record<string, string> = {
     "must not recompute their priority); the only dynamic axis is time-urgency " +
     "via the existing dose/escalation lattice, not this layer",
   refillItems: "supply run-out math — not a risk-ranked due signal",
+  poolRefillItems:
+    "shared supply pool run-out math (#1374) — the pooled twin of refillItems, " +
+    "summing every linked member's consumption; still supply arithmetic, not a " +
+    "risk-ranked due signal",
   dietaryLimitItems: "standing UL warning — informational, not risk-ranked",
   prnMaxItems:
     "PRN over-daily-max care finding (#798) — a per-day count vs the user's OWN " +

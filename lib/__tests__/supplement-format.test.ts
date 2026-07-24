@@ -41,6 +41,7 @@ function supp(
     escalate_chat_id: null,
     quantity_on_hand: null,
     qty_per_dose: 1,
+    supply_id: null,
     last_fill_size: null,
     kind,
     prescriber: null,

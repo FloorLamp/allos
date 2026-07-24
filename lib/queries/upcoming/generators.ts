@@ -32,12 +32,14 @@ import {
   timelineDayHref,
   MEDICATIONS_HREF,
   INSTRUMENTS_HREF,
+  SUPPLIES_HREF,
 } from "../../hrefs";
 import { getInstrumentStates } from "../../instrument-records";
 import { mentalHealthCrisisKey, severityBand } from "../../mental-health";
 import { crisisFindingLine } from "../../crisis-resources";
 import { getResolvedCrisisResources } from "../../settings";
-import { refillSignalKey } from "../../refill-nudge";
+import { refillSignalKey, poolRefillSignalKey } from "../../refill-nudge";
+import { getPoolView, poolIdsForProfiles } from "../intake/supply-pool";
 import { trainingSignalKey } from "../../workout-nudge";
 import { practiceSignalKey } from "../../practice";
 import { getActiveEndurancePlans } from "../../endurance-plans";
@@ -257,6 +259,36 @@ function refillItems(profileId: number, today: string): UpcomingItem[] {
         daysLeft <= 0 ? "Out of supply" : `≈${daysLeft} days of supply left`,
       href: intakeHref(s.kind),
       dueDate: shiftDateStr(today, daysLeft),
+    });
+  }
+  return items;
+}
+
+// Shared supply pools running low (#1374) — the pooled twin of refillItems. A POOLED
+// item never appears above: linking clears its private `quantity_on_hand`, so the
+// per-item `tracked` filter skips it by construction and one bottle can never surface
+// twice. The finding is keyed on the POOL (`pool-refill:<supplyId>`, the same key the
+// notify tick dedupes on), so every linked member's Upcoming row names ONE subject;
+// dismissing lands on the dismissing member's own suppression bus (the bus table is
+// profile-scoped), while the PUSH treats any linked member's dismissal as freezing the
+// whole episode. Days-left is the POOLED projection — the summed consumption of every
+// linked member's item — not this member's share.
+function poolRefillItems(profileId: number, today: string): UpcomingItem[] {
+  const items: UpcomingItem[] = [];
+  for (const supplyId of poolIdsForProfiles([profileId])) {
+    const pool = getPoolView(supplyId);
+    if (!pool || !pool.low || pool.daysLeft == null) continue;
+    items.push({
+      key: poolRefillSignalKey(pool.id),
+      domain: "refill",
+      title: pool.name,
+      detail:
+        (pool.daysLeft <= 0
+          ? "Shared bottle — out of supply"
+          : `Shared bottle — ≈${pool.daysLeft} days left across everyone`) +
+        (pool.members.length > 1 ? ` (${pool.members.length} people)` : ""),
+      href: SUPPLIES_HREF,
+      dueDate: shiftDateStr(today, pool.daysLeft),
     });
   }
   return items;
@@ -1070,6 +1102,7 @@ const rawUpcoming = cache(function rawUpcoming(
     ...doseItems(profileId, today),
     ...prnMaxItems(profileId, today),
     ...refillItems(profileId, today),
+    ...poolRefillItems(profileId, today),
     ...dietaryLimitItems(profileId, today),
     ...illnessCareItems(profileId, today),
     ...conditionReviewItems(profileId),
@@ -1157,7 +1190,10 @@ export function collectHouseholdRollup(
   const live = (item: UpcomingItem) => !isItemSuppressed(map, item, today);
   return {
     dueDoses: doseItems(profileId, today).filter(live),
-    lowRefills: refillItems(profileId, today).filter(live),
+    lowRefills: [
+      ...refillItems(profileId, today),
+      ...poolRefillItems(profileId, today),
+    ].filter(live),
     nextAppointment: pickNextAppointment(
       appointmentItems(profileId, { shared: true }).filter(live)
     ),

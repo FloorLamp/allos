@@ -67,6 +67,15 @@ import { fileURLToPath } from "node:url";
 //        so a NEW inline sequence fails. The helper module is SKIPPED (not
 //        allowlisted) for these three — it OWNS the markers by design.
 //
+// A SIXTH check (the fixture-LOGIN budget, issue #1392) — not a count-freeze but a
+// per-fixture rule:
+//
+//   (vi) Every `E2E_LOGIN_*` constant seeded by e2e/fixture-logins.ts must be
+//        referenced by a spec AND used in a sign-in position, else carry a written
+//        justification. The seeded login population is MONOTONIC — each one is a
+//        permanent Settings → Family row — and that ratchet is what grew the family
+//        page into the #830/#1111/#1392 census family. See LOGIN_NO_SIGNIN_ALLOW.
+//
 // NOT mechanically enforced here (documented rule only — see
 // docs/internals/e2e-hygiene.md): exact-count assertions against SHARED-SEED
 // fixture rows ("2 today", "≥ 2 episode rows"). Detecting those syntactically
@@ -173,6 +182,41 @@ const FIRST_ALLOW: Record<string, number> = {};
 // that ONE blessed helper (family-helpers.ts). The freeze stays at ZERO: a NEW unmarked
 // .toPass( on any e2e/*.ts fails.
 const TOPASS_ALLOW: Record<string, number> = {};
+
+// ── (vi) The fixture-LOGIN budget (issue #1392) ──────────────────────────────
+// Every seeded fixture login is a PERMANENT row on Settings → Family and a
+// permanent member of the grant matrix. That population is monotonic — it only
+// ever grows — and at ~90 logins it grew the family page into the #830/#1111/#1392
+// census family (a 5 MB matrix render that starved the durable-row probes until the
+// #1412 collapse capped the page at O(logins)). The product fix removed the cliff;
+// this guard removes the RATCHET, per the issue's remaining "fixture-budget" lane.
+//
+// The rule: a fixture LOGIN is seeded only when a spec SIGNS IN as it (a separate
+// cookie context is the only way to drive a non-profile-1 active profile without
+// mutating the shared admin storageState's server-side active profile — see the
+// e2e/fixture-logins.ts header) or when the login itself is the SUBJECT (access
+// control / the family screen). A fixture that only needs an isolated PROFILE takes
+// `fixtureProfileId(name)` alone and no login — a profile is free here, a login is not.
+//
+// Mechanically: every `E2E_LOGIN_*` constant in e2e/fixture-logins.ts must appear in
+// at least one e2e/*.spec.ts (a login no spec references at all is dead weight) AND
+// be used in a sign-in position (`loginAs(...)` / `creds(...)` / `username:`), unless
+// it carries a written justification below. The check is textual, so a new sign-in
+// wrapper may need an allowlist line — that's the point: adding a login stays a
+// deliberate, justified act rather than a reflex.
+const LOGIN_CONST_RE = /export const (E2E_LOGIN_[A-Z0-9_]+) = "([^"]+)"/g;
+const FIXTURE_LOGINS_FILE = "fixture-logins.ts";
+// A constant used within this many characters after a sign-in opener counts as
+// "signed in as" (covers the multi-line `loginAs(browser, { username: X, … })` form).
+const SIGNIN_WINDOW_RE = /(?:loginAs\(|creds\(|username:)[\s\S]{0,200}/g;
+// Fixture logins that are deliberately never signed in as, with WHY. Keep this list
+// short — each entry is a login the family page carries forever.
+const LOGIN_NO_SIGNIN_ALLOW: Record<string, string> = {
+  E2E_LOGIN_SLEEP_EDIT:
+    "template login: sleep-page clones its scrypt hash into per-test logins it creates and drives itself",
+  E2E_LOGIN_GRANTEDIT:
+    "access-control subject: family-grants drives its grant row / own-profile select AS THE ADMIN (#1412)",
+};
 
 function specFiles(): { name: string; text: string }[] {
   return fs
@@ -332,6 +376,62 @@ describe("e2e suite hygiene guard (issue #868)", () => {
         `onClick+refresh hydration swallow / toaster false-settle (#830/#1111). Use ` +
         `setGrantsViaFamily from e2e/family-helpers.ts; see docs/internals/e2e-hygiene.md.`,
     });
+  });
+
+  it("every seeded fixture login is signed in as by a spec (the #1392 fixture-login budget)", () => {
+    const src = fs.readFileSync(
+      path.join(E2E_DIR, FIXTURE_LOGINS_FILE),
+      "utf8"
+    );
+    const constants = [...src.matchAll(LOGIN_CONST_RE)].map((m) => m[1]);
+    // The constants file is the population's source of truth; an empty read means
+    // the regex (or the file) moved, which must fail loudly rather than pass vacuously.
+    expect(constants.length).toBeGreaterThan(0);
+
+    const files = specFiles().filter((f) => f.name !== FIXTURE_LOGINS_FILE);
+    const violations: string[] = [];
+
+    for (const name of constants) {
+      const use = new RegExp(`\\b${name}\\b`);
+      const referencedBy = files.filter((f) => use.test(f.text));
+      const signsIn = files.some((f) =>
+        (f.text.match(SIGNIN_WINDOW_RE) ?? []).some((w) => use.test(w))
+      );
+      const why = LOGIN_NO_SIGNIN_ALLOW[name];
+      if (signsIn) {
+        if (why)
+          violations.push(
+            `${name}: allowlisted as never-signed-in, but a spec now signs in as it — ` +
+              `remove its LOGIN_NO_SIGNIN_ALLOW entry in lib/__tests__/e2e-hygiene.test.ts.`
+          );
+        continue;
+      }
+      if (why) continue;
+      violations.push(
+        referencedBy.length === 0
+          ? `${name}: seeded in e2e/fixture-logins.ts but NO e2e spec references it — ` +
+              `delete the login (and its seedMemberLogin call); a dead login is a permanent ` +
+              `Settings → Family row (#1392).`
+          : `${name}: referenced by ${referencedBy
+              .map((f) => f.name)
+              .join(", ")} but never signed in as (loginAs/creds/username:). ` +
+              `A fixture that only needs an isolated PROFILE takes fixtureProfileId(name) ` +
+              `and NO login — the login population is monotonic and grows the family ` +
+              `grant matrix forever (#1392). If this login IS the subject (access control) ` +
+              `or a sign-in wrapper hides the use, add it to LOGIN_NO_SIGNIN_ALLOW in ` +
+              `lib/__tests__/e2e-hygiene.test.ts with a reason; see docs/internals/e2e-hygiene.md.`
+      );
+    }
+
+    for (const name of Object.keys(LOGIN_NO_SIGNIN_ALLOW)) {
+      if (!constants.includes(name))
+        violations.push(
+          `${name}: allowlisted in LOGIN_NO_SIGNIN_ALLOW but no longer exists in ` +
+            `e2e/fixture-logins.ts — remove its entry.`
+        );
+    }
+
+    expect(violations, violations.join("\n")).toEqual([]);
   });
 
   it("the blessed interaction module exists and exports settledClick + followLink", () => {

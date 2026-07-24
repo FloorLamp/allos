@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { IconFlame } from "@tabler/icons-react";
 import {
   adherenceSummary,
@@ -10,6 +11,7 @@ import {
   runOutDateStr,
   type DoseRate,
 } from "@/lib/refill";
+import { SUPPLIES_HREF } from "@/lib/hrefs";
 import { formatMonthDay } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 
@@ -74,6 +76,48 @@ export function RefillBadge({
         · {refillBasis}
       </span>
     </span>
+  );
+}
+
+// The shared-bottle chip (#1374). REPLACES the per-item RefillBadge when the item
+// draws from a pool — a linked item has no private count, and the honest number is the
+// POOLED one ("≈9 days across everyone"), because this member's doses are only part of
+// the drain. Shared by the supplement row and the medication row/card so all three read
+// the same computation. Renders nothing when the item isn't pooled.
+export function SharedSupplyChip({
+  pool,
+}: {
+  pool: {
+    supplyId: number;
+    name: string;
+    daysLeft: number | null;
+    memberCount: number;
+    low: boolean;
+  } | null;
+}) {
+  if (!pool) return null;
+  const across = pool.memberCount > 1 ? " across everyone" : "";
+  const days =
+    pool.daysLeft == null
+      ? "shared bottle"
+      : pool.daysLeft <= 0
+        ? `out of supply${across}`
+        : `≈${pool.daysLeft} day${pool.daysLeft === 1 ? "" : "s"}${across}`;
+  return (
+    <Link
+      href={SUPPLIES_HREF}
+      data-testid="shared-supply-chip"
+      className={`badge whitespace-nowrap ${
+        pool.low
+          ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+          : "bg-slate-100 text-slate-500 dark:bg-ink-800 dark:text-slate-400"
+      }`}
+      title={`Shared supply — ${pool.name}, drawn from by ${pool.memberCount} tracked item${
+        pool.memberCount === 1 ? "" : "s"
+      }`}
+    >
+      {pool.low ? "Low · " : ""}Shared · {days}
+    </Link>
   );
 }
 
