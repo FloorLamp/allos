@@ -890,3 +890,12 @@ export const SUN_PROFILE = "Sun Outdoor (e2e)";
 // DOES carry a seeded home location, so it can't serve as the home-less case).
 export const E2E_LOGIN_SUN_NOHOME = "e2e_sun_nohome";
 export const SUN_NOHOME_PROFILE = "Sun No Home (e2e)";
+
+// #1412 — the Family grant-matrix collapse. A DEDICATED member login granted ONE
+// dedicated profile (write), so the family-grants spec can drive its collapsed
+// summary row, expand it, and flip its grant level through setGrants WITHOUT
+// perturbing any other spec's grant set (view-only-access pins profile 1's members;
+// this login is nobody else's dependency). own_profile_id is left null so the spec
+// also proves the own-profile autosave from a known start. Synthetic, no PHI.
+export const E2E_LOGIN_GRANTEDIT = "e2e_grantedit";
+export const GRANT_EDIT_PROFILE = "Grant Edit (e2e)";
