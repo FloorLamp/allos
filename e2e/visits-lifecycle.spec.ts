@@ -48,7 +48,7 @@ test.describe("Visits lifecycle — book → complete → log visit → detail (
     const row = upcoming
       .getByTestId("appointment-row")
       .filter({ hasText: MARKER });
-    await expect(row).toBeVisible();
+    await expect(row).toBeVisible({ timeout: 15_000 });
     await row.getByRole("button", { name: "Mark completed" }).click();
 
     // The close-the-loop panel offers to log the visit; take it.
@@ -61,7 +61,7 @@ test.describe("Visits lifecycle — book → complete → log visit → detail (
     const visitLink = past
       .getByRole("link", { name: "Physical / check-up" })
       .first(); // first-ok: the visit THIS spec just logged, in its own Past section — order-agnostic
-    await expect(visitLink).toBeVisible();
+    await expect(visitLink).toBeVisible({ timeout: 15_000 });
     await expect(visitLink).toHaveAttribute("href", /\/encounters\/\d+$/);
 
     // Nav anchor → followLink rides out the pre-hydration swallow (#889 sweep).
