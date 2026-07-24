@@ -299,11 +299,12 @@ export default function ProfileNotificationSettings({
             ))}
           </select>
 
-          {/* Sleep summary (#1117) — opt-in, off by default. Adds a calm
-                "how'd I sleep" section (last night vs baseline, stages, an SRI
-                note, any nap on its own line) to the morning digest. Best around
-                the wake-derived hour; the hourly tick means "the hour you usually
-                wake", not to-the-minute. */}
+          {/* Sleep summary (#1117) — ON by default when the digest is enabled
+                (#1378), so it's an opt-OUT. Adds a calm "how'd I sleep" section
+                (last night vs baseline, stages, an SRI note, any nap on its own
+                line) to the morning digest. Best around the wake-derived hour;
+                the hourly tick means "the hour you usually wake", not
+                to-the-minute. */}
           <label className="mt-3 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
             <input
               type="checkbox"
@@ -312,13 +313,14 @@ export default function ProfileNotificationSettings({
               className="h-4 w-4 accent-brand-600"
               data-testid="digest-sleep-enabled"
             />
-            Include a sleep summary
+            Include last night’s sleep summary
           </label>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            A gentle recap of last night’s sleep vs your baseline — never a
-            score to beat. Needs a sleep integration; it’s skipped when there’s
-            no recent sleep data. Arrives around your usual wake hour (the
-            reminder tick is hourly, so it’s that hour, not to the minute).
+            On by default with the morning digest — uncheck to leave it out. A
+            gentle recap of last night’s sleep vs your baseline, never a score
+            to beat. Needs a sleep integration; it’s skipped when there’s no
+            recent sleep data. Arrives around your usual wake hour (the reminder
+            tick is hourly, so it’s that hour, not to the minute).
           </p>
         </div>
 

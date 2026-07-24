@@ -171,8 +171,13 @@ describe("setNotifySchedule — no blind-write pollution (#1117)", () => {
   });
 });
 
-describe("gatherDigestSleep — opt-in + freshness (#1117)", () => {
-  it("returns null when the sleep summary is off (default)", () => {
+describe("gatherDigestSleep — default-on + freshness (#1117/#1378)", () => {
+  it("is ON by default (#1378) with fresh data; an explicit '0' opts out", () => {
+    // #1378: absent key means on — a digest user with a fresh main night gets the
+    // section without a second opt-in (wakeProfile has fresh sleep data).
+    expect(gatherDigestSleep(wakeProfile)).not.toBeNull();
+    // Explicit opt-out ("0") still silences it.
+    setProfileSleepDigest(wakeProfile, false);
     expect(gatherDigestSleep(wakeProfile)).toBeNull();
   });
 

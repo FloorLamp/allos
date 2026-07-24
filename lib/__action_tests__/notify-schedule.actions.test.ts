@@ -88,15 +88,18 @@ describe("saveNotificationPrefs — wake-aware fields (#1117)", () => {
     expect(sched.digestHour).toBeNull();
   });
 
-  it("toggles the sleep-summary opt-in", async () => {
+  it("sleep summary is ON by default (#1378) and the toggle is an opt-OUT", async () => {
     const login = createLogin();
-    const profile = createProfile("sleep-optin", login.id);
+    const profile = createProfile("sleep-optout", login.id);
     actAs(login, profile);
 
-    expect(getProfileSleepDigest(profile.id)).toBe(false);
-    await saveNotificationPrefs(prefsForm({ digest_sleep_enabled: "1" }));
+    // #1378: absent key means on — a fresh profile gets the sleep section by default.
     expect(getProfileSleepDigest(profile.id)).toBe(true);
+    // Opting out stores "0" and turns it off.
     await saveNotificationPrefs(prefsForm({ digest_sleep_enabled: "0" }));
     expect(getProfileSleepDigest(profile.id)).toBe(false);
+    // Opting back in stores "1" and turns it on.
+    await saveNotificationPrefs(prefsForm({ digest_sleep_enabled: "1" }));
+    expect(getProfileSleepDigest(profile.id)).toBe(true);
   });
 });

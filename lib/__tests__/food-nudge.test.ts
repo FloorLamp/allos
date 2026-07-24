@@ -174,6 +174,7 @@ describe("renderFoodNudge", () => {
 });
 
 // ---- #1073: reserved __protein__ pseudo-group renders the "+Xg protein" button ----
+// #1379: it now also carries the #1016 slot-scoped "(n)" suffix like every sibling.
 describe("renderFoodNudge protein pseudo-group (#1073)", () => {
   // A ranked list with __protein__ at position 1 (within the default 6-button window).
   const withProtein = [RANKED[0], PROTEIN_NUDGE_KEY, ...RANKED.slice(1)];
@@ -199,24 +200,42 @@ describe("renderFoodNudge protein pseudo-group (#1073)", () => {
     );
   });
 
-  it("the protein button carries NO serving count and never joins the food tally", () => {
-    // Even if a slot/day map somehow held the reserved key, it must not become a serving.
+  it("carries the SLOT-scoped (n) suffix like its siblings (#1379), never the day tally", () => {
+    // #1379 reverses the original #1073 no-suffix decision: the button now shows the SLOT
+    // count (2 this slot) exactly like a food group — not the day total (3), which stays on
+    // the protein line. The reserved key is STILL filtered out of the food-serving tally.
     const msg = renderFoodNudge(
       1,
       "Evening",
       DATE,
       withProtein,
-      new Map([[PROTEIN_NUDGE_KEY, 5]]),
-      new Map([[PROTEIN_NUDGE_KEY, 5]]),
+      new Map([[PROTEIN_NUDGE_KEY, 2]]), // slot: 2 protein logs this evening slot
+      new Map([[PROTEIN_NUDGE_KEY, 3]]), // day map would say 3 — must NOT drive the button
       { proteinPresetGrams: 25 }
     );
     const proteinBtn = (msg.actions ?? []).find((a) =>
       a.data?.startsWith("foodprotein:")
     );
-    expect(proteinBtn?.label).toBe("＋25g protein"); // never "(5)"
+    expect(proteinBtn?.label).toBe("＋25g protein (2)"); // slot count, not the day's 3
     // The tally line is empty (no real food group logged) — the reserved key is filtered.
     expect(msg.body).not.toContain("✓ Today:");
     expect(msg.body).not.toContain("__protein__");
+  });
+
+  it("shows a bare button (no suffix) when nothing's been logged this slot (#1379)", () => {
+    const msg = renderFoodNudge(
+      1,
+      "Evening",
+      DATE,
+      withProtein,
+      new Map(), // no slot logs
+      new Map(),
+      { proteinPresetGrams: 25 }
+    );
+    const proteinBtn = (msg.actions ?? []).find((a) =>
+      a.data?.startsWith("foodprotein:")
+    );
+    expect(proteinBtn?.label).toBe("＋25g protein"); // 0 → bare, matches the sibling matrix
   });
 
   it("falls back to the default preset grams when none is supplied", () => {

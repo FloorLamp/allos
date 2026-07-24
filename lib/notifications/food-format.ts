@@ -179,11 +179,22 @@ export function renderFoodNudge(
   const actions: NotificationAction[] = [];
   visible.forEach((key, i) => {
     // The reserved protein pseudo-group (#1073) → the "+Xg protein" button (its own token,
-    // its own write core). It carries NO serving-count suffix — its contribution is the
-    // day's protein grams, shown on the protein line, never a serving "(n)".
+    // its own write core). It now carries the SAME #1016 slot-scoped "(n)" suffix as every
+    // food-group sibling (issue #1379, REVERSING the original #1073 no-suffix decision): a
+    // bare button was the only count-less one on the keyboard and read as inconsistency —
+    // a user who tapped +Xg twice this slot saw every OTHER button acknowledge its taps and
+    // this one not. The count is "n protein logs THIS slot" (not grams) — the exact sibling
+    // meaning, so the keyboard has one count language; the day's total grams stay on their
+    // own protein line (the two express taps vs grams). The count needs no extra read: a
+    // protein tap writes a __protein__ row to food_log_events with a real logged_at
+    // (addProteinGramsCore), so slotServingCounts already tallies it into slotServings under
+    // PROTEIN_NUDGE_KEY — the count is slot-precise, and the callback rebuild re-reads it so
+    // a tap ticks its own button immediately.
     if (isProteinNudgeKey(key)) {
+      const base = proteinNudgeButtonLabel(presetGrams);
+      const n = slotServings.get(key) ?? 0;
       actions.push({
-        label: proteinNudgeButtonLabel(presetGrams),
+        label: n > 0 ? `${base} (${n})` : base,
         data: foodProteinCallbackData(profileId, window, date, presetGrams),
         row: rowFor(i),
       });
