@@ -222,9 +222,7 @@ function BiomarkerRow({
       })
     : true;
   const showChip =
-    !!multiView &&
-    !!r.subject &&
-    subjectChipVisible({ multi: true, isActing });
+    !!multiView && !!r.subject && subjectChipVisible({ multi: true, isActing });
   const writeProfileId = multiView ? r.profileId : undefined;
   // The leading subject cell (multi-view only), rendered first in every row.
   const subjectCell = multiView ? (

@@ -30,6 +30,12 @@ import {
   MVMEDS_RO_PROFILE,
   MVMEDS_SELF_MED,
   MVMEDS_RO_MED,
+  E2E_LOGIN_MVBIO,
+  MVBIO_SELF_PROFILE,
+  MVBIO_RO_PROFILE,
+  MVBIO_SHARED_ANALYTE,
+  MVBIO_SELF_ANALYTE,
+  MVBIO_RO_ANALYTE,
 } from "./fixture-logins";
 
 // Multi-profile viewing (issue #1096): the profile-menu view toggles + the thin
@@ -984,6 +990,126 @@ test.describe("Medications multi-view regimen boards (issue #1373)", () => {
 
     // The acting (write) board keeps its live dose-confirm control.
     await expect(selfBoard.getByTestId("dose-status").first()).toBeVisible(); // first-ok: spec-owned board-scoped Today panel
+
+    await page.context().close();
+  });
+});
+
+// Multi-view Biomarkers (Results) table (issue #1331). The results table becomes a
+// MERGE of per-(profile, family) partitions when several profiles are in view:
+// is_latest/dedup are per member (a shared "Vitamin D" family never crosses), rows
+// are subject-stamped, and the read-only member's rows show no edit/delete. Spec-OWNED
+// fixture (E2E_LOGIN_MVBIO granted a WRITE base profile + a READ-ONLY second profile,
+// each with a shared + a unique analyte — see e2e/seed-events.ts). Read-only in this
+// spec (only reads + toggles the view-set), so it never races a neighbor and stays
+// repeat-safe. Fresh cookie-less context (loginAs) so it drives the member's own session.
+test.describe("Multi-view Biomarkers table (issue #1331)", () => {
+  function mvBioIds(): { selfId: number; roId: number } {
+    const dbPath =
+      process.env.ALLOS_DB_PATH ??
+      path.join(process.cwd(), "e2e", ".data", "e2e.db");
+    const db = new Database(dbPath);
+    try {
+      db.pragma("busy_timeout = 5000");
+      const idOf = (name: string): number =>
+        (
+          db.prepare("SELECT id FROM profiles WHERE name = ?").get(name) as {
+            id: number;
+          }
+        ).id;
+      return {
+        selfId: idOf(MVBIO_SELF_PROFILE),
+        roId: idOf(MVBIO_RO_PROFILE),
+      };
+    } finally {
+      db.close();
+    }
+  }
+
+  async function toggleIntoView(page: Page, id: number): Promise<void> {
+    await openProfileMenu(page);
+    await settledClick(page, page.getByTestId(`view-toggle-${id}`));
+    await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+  }
+
+  test("single-view: only the acting member's readings, no Profile column, no chip", async ({
+    browser,
+  }) => {
+    test.slow();
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_MVBIO,
+      password: E2E_MEMBER_PASSWORD,
+    });
+
+    await page.goto("/results/biomarkers");
+    await expect(page.getByTestId("results-biomarkers")).toBeVisible();
+    // The acting (self) member's unique analyte renders.
+    await expect(
+      page.getByText(MVBIO_SELF_ANALYTE, { exact: false }).first() // first-ok: spec-owned analyte, one row
+    ).toBeVisible();
+    // No leading Profile column and no subject chips in single view.
+    await expect(
+      page.getByRole("columnheader", { name: "Profile" })
+    ).toHaveCount(0);
+    await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(0);
+    // The read-only member's unique analyte is NOT in view.
+    await expect(
+      page.getByText(MVBIO_RO_ANALYTE, { exact: false })
+    ).toHaveCount(0);
+
+    await page.context().close();
+  });
+
+  test("multi-view: both members' shared family merges, chip + no write on the read-only rows", async ({
+    browser,
+  }) => {
+    test.slow();
+    const { roId } = mvBioIds();
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_MVBIO,
+      password: E2E_MEMBER_PASSWORD,
+    });
+
+    await toggleIntoView(page, roId);
+    // The view-set persists on the session — re-navigate for a deterministic reload.
+    await page.goto("/results/biomarkers");
+    await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+
+    // The leading Profile column appears in multi-view.
+    await expect(
+      page.getByRole("columnheader", { name: "Profile" })
+    ).toBeVisible();
+
+    // Both members' unique analytes are merged into the one table.
+    await expect(
+      page.getByText(MVBIO_SELF_ANALYTE, { exact: false }).first() // first-ok: spec-owned analyte, one row
+    ).toBeVisible();
+    await expect(
+      page.getByText(MVBIO_RO_ANALYTE, { exact: false }).first() // first-ok: spec-owned analyte, one row
+    ).toBeVisible();
+
+    // The non-acting (read-only) member's rows carry its subject chip.
+    await expect(
+      page.getByTestId(`subject-chip-${roId}`).first()
+    ).toBeVisible();
+
+    // Filter to the SHARED family: BOTH members' Vitamin D rows survive — the family
+    // dedup never collapsed the two people into one series (per-member partitions).
+    await page.goto("/results/biomarkers?q=vitamin+d");
+    await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: MVBIO_SHARED_ANALYTE, exact: true })
+    ).toHaveCount(2);
+
+    // The read-only member's row shows NO edit/delete affordance; a self row does.
+    const roRow = page.locator("tr", {
+      has: page.getByTestId(`subject-chip-${roId}`),
+    });
+    await expect(roRow.getByTestId("overflow-menu-trigger")).toHaveCount(0);
+    // At least one write affordance exists (on the acting member's own rows).
+    await expect(
+      page.getByTestId("overflow-menu-trigger").first() // first-ok: acting member's own write rows
+    ).toBeVisible();
 
     await page.context().close();
   });

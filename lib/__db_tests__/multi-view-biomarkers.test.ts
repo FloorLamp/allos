@@ -11,7 +11,11 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { db } from "@/lib/db";
-import { getMedicalRecords, getDerivedBiomarkerReadings, reconcileFlags } from "@/lib/queries";
+import {
+  getMedicalRecords,
+  getDerivedBiomarkerReadings,
+  reconcileFlags,
+} from "@/lib/queries";
 import { setUserSex } from "@/lib/settings";
 import {
   filterDerivedForTable,
@@ -26,7 +30,8 @@ let female: number;
 
 function mkProfile(name: string): number {
   return Number(
-    db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name).lastInsertRowid
+    db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
+      .lastInsertRowid
   );
 }
 
@@ -66,7 +71,9 @@ function mergedTable(
       excludeCategories: NON_BIOMARKER_CATEGORIES,
     }).map((r) => ({ ...r, profileId: id }))
   );
-  return prepareMultiViewTableRecords(stored, derived, { current: opts.current });
+  return prepareMultiViewTableRecords(stored, derived, {
+    current: opts.current,
+  });
 }
 
 beforeAll(() => {

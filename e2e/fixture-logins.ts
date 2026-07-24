@@ -817,3 +817,19 @@ export const MVMEDS_SELF_PROFILE = "Meds Board Self (e2e)";
 export const MVMEDS_RO_PROFILE = "Meds Board RO (e2e)";
 export const MVMEDS_SELF_MED = "Board Lisinopril";
 export const MVMEDS_RO_MED = "Board Metformin";
+
+// #1331 — multi-view Biomarkers (Results) table. A caregiver granted its OWN base
+// profile (WRITE, the lowest-id grant → the acting profile on sign-in) plus a second
+// member profile READ-ONLY. Both carry the SHARED "Vitamin D" analyte family with
+// DIFFERENT values/dates, plus a uniquely-named analyte each, so the merged results
+// table proves, in isolation: single-view is byte-identical (no Profile column, no
+// chip, only the acting member's readings), multi-view merges per-member partitions
+// (both members' Vitamin D rows survive — is_latest never crosses), the non-acting
+// member's rows carry a subject chip, and the read-only member's rows show no
+// edit/delete affordance. Read-only in the spec (only reads + toggles the view-set).
+export const E2E_LOGIN_MVBIO = "e2e_mvbio";
+export const MVBIO_SELF_PROFILE = "Bio Board Self (e2e)";
+export const MVBIO_RO_PROFILE = "Bio Board RO (e2e)";
+export const MVBIO_SHARED_ANALYTE = "Vitamin D";
+export const MVBIO_SELF_ANALYTE = "Bioself Ferritin (e2e)";
+export const MVBIO_RO_ANALYTE = "Biored Glucose (e2e)";

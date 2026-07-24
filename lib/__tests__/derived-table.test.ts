@@ -229,14 +229,30 @@ function tagged(
 
 describe("multiViewGroupKey", () => {
   it("distinguishes two members' identically-named analytes", () => {
-    const a = tagged(10, { id: 1, name: "Vitamin D", canonical_name: "Vitamin D" });
-    const b = tagged(20, { id: 2, name: "Vitamin D", canonical_name: "Vitamin D" });
+    const a = tagged(10, {
+      id: 1,
+      name: "Vitamin D",
+      canonical_name: "Vitamin D",
+    });
+    const b = tagged(20, {
+      id: 2,
+      name: "Vitamin D",
+      canonical_name: "Vitamin D",
+    });
     expect(multiViewGroupKey(a)).not.toBe(multiViewGroupKey(b));
   });
 
   it("keeps one member's same-named readings in one group", () => {
-    const a1 = tagged(10, { id: 1, name: "Ferritin", canonical_name: "Ferritin" });
-    const a2 = tagged(10, { id: 2, name: "Ferritin", canonical_name: "Ferritin" });
+    const a1 = tagged(10, {
+      id: 1,
+      name: "Ferritin",
+      canonical_name: "Ferritin",
+    });
+    const a2 = tagged(10, {
+      id: 2,
+      name: "Ferritin",
+      canonical_name: "Ferritin",
+    });
     expect(multiViewGroupKey(a1)).toBe(multiViewGroupKey(a2));
   });
 });
@@ -247,15 +263,32 @@ describe("prepareMultiViewTableRecords", () => {
     // member 20's newest is 2024-03. Each member's own newest is is_latest, and NO
     // cross-member row is flagged.
     const stored = [
-      tagged(10, { id: 1, name: "Vitamin D", canonical_name: "Vitamin D", date: "2024-01-01" }),
-      tagged(10, { id: 2, name: "Vitamin D", canonical_name: "Vitamin D", date: "2024-06-01" }),
-      tagged(20, { id: 3, name: "Vitamin D", canonical_name: "Vitamin D", date: "2024-03-01" }),
+      tagged(10, {
+        id: 1,
+        name: "Vitamin D",
+        canonical_name: "Vitamin D",
+        date: "2024-01-01",
+      }),
+      tagged(10, {
+        id: 2,
+        name: "Vitamin D",
+        canonical_name: "Vitamin D",
+        date: "2024-06-01",
+      }),
+      tagged(20, {
+        id: 3,
+        name: "Vitamin D",
+        canonical_name: "Vitamin D",
+        date: "2024-03-01",
+      }),
     ];
     const out = prepareMultiViewTableRecords(stored, [], {});
     const latest = out.filter((r) => r.is_latest === 1);
     // Exactly one latest per member: member 10's June row (id 2), member 20's March row (id 3).
     expect(new Set(latest.map((r) => r.id))).toEqual(new Set([2, 3]));
-    expect(latest.every((r) => r.profileId === 10 || r.profileId === 20)).toBe(true);
+    expect(latest.every((r) => r.profileId === 10 || r.profileId === 20)).toBe(
+      true
+    );
     // Both members' families survive — never collapsed into a single series.
     expect(out.length).toBe(3);
   });
@@ -264,8 +297,22 @@ describe("prepareMultiViewTableRecords", () => {
     // Same family, same date, same value — WITHIN a member these would dedup, but
     // across members they are two distinct people's readings and BOTH must survive.
     const stored = [
-      tagged(10, { id: 1, name: "Vitamin D", canonical_name: "Vitamin D", date: "2024-06-01", value: "42", value_num: 42 }),
-      tagged(20, { id: 2, name: "Vitamin D", canonical_name: "Vitamin D", date: "2024-06-01", value: "42", value_num: 42 }),
+      tagged(10, {
+        id: 1,
+        name: "Vitamin D",
+        canonical_name: "Vitamin D",
+        date: "2024-06-01",
+        value: "42",
+        value_num: 42,
+      }),
+      tagged(20, {
+        id: 2,
+        name: "Vitamin D",
+        canonical_name: "Vitamin D",
+        date: "2024-06-01",
+        value: "42",
+        value_num: 42,
+      }),
     ];
     const out = prepareMultiViewTableRecords(stored, [], {});
     expect(out.length).toBe(2);
@@ -274,9 +321,24 @@ describe("prepareMultiViewTableRecords", () => {
 
   it("`current` keeps the latest reading PER member", () => {
     const stored = [
-      tagged(10, { id: 1, name: "Ferritin", canonical_name: "Ferritin", date: "2024-01-01" }),
-      tagged(10, { id: 2, name: "Ferritin", canonical_name: "Ferritin", date: "2024-05-01" }),
-      tagged(20, { id: 3, name: "Ferritin", canonical_name: "Ferritin", date: "2024-02-01" }),
+      tagged(10, {
+        id: 1,
+        name: "Ferritin",
+        canonical_name: "Ferritin",
+        date: "2024-01-01",
+      }),
+      tagged(10, {
+        id: 2,
+        name: "Ferritin",
+        canonical_name: "Ferritin",
+        date: "2024-05-01",
+      }),
+      tagged(20, {
+        id: 3,
+        name: "Ferritin",
+        canonical_name: "Ferritin",
+        date: "2024-02-01",
+      }),
     ];
     const out = prepareMultiViewTableRecords(stored, [], { current: true });
     expect(out.map((r) => r.id).sort()).toEqual([2, 3]);
@@ -286,8 +348,14 @@ describe("prepareMultiViewTableRecords", () => {
     // Derived rows carry per-profile NEGATIVE ids, so two members can each have a
     // derived reading with id -1. The (profile, family) partition must keep them apart.
     const derivedRows = [
-      { ...derived(-1, "eGFR", "2024-04-01"), profileId: 10 } as WithProfile<MedicalRecord>,
-      { ...derived(-1, "eGFR", "2024-04-01"), profileId: 20 } as WithProfile<MedicalRecord>,
+      {
+        ...derived(-1, "eGFR", "2024-04-01"),
+        profileId: 10,
+      } as WithProfile<MedicalRecord>,
+      {
+        ...derived(-1, "eGFR", "2024-04-01"),
+        profileId: 20,
+      } as WithProfile<MedicalRecord>,
     ];
     const out = prepareMultiViewTableRecords([], derivedRows, {});
     expect(out.length).toBe(2);
@@ -299,21 +367,50 @@ describe("prepareMultiViewTableRecords", () => {
   it("orders deterministically with the subject dimension as a stable tie-break", () => {
     // Same name + date across members → the profileId tie-break makes the order stable.
     const stored = [
-      tagged(20, { id: 5, name: "Glucose", canonical_name: "Glucose", date: "2024-06-01" }),
-      tagged(10, { id: 6, name: "Glucose", canonical_name: "Glucose", date: "2024-06-01" }),
+      tagged(20, {
+        id: 5,
+        name: "Glucose",
+        canonical_name: "Glucose",
+        date: "2024-06-01",
+      }),
+      tagged(10, {
+        id: 6,
+        name: "Glucose",
+        canonical_name: "Glucose",
+        date: "2024-06-01",
+      }),
     ];
-    const a = prepareMultiViewTableRecords(stored, [], { sort: "name", dir: "asc" });
-    const b = prepareMultiViewTableRecords([...stored].reverse(), [], { sort: "name", dir: "asc" });
+    const a = prepareMultiViewTableRecords(stored, [], {
+      sort: "name",
+      dir: "asc",
+    });
+    const b = prepareMultiViewTableRecords([...stored].reverse(), [], {
+      sort: "name",
+      dir: "asc",
+    });
     expect(a.map((r) => r.profileId)).toEqual([10, 20]);
     expect(b.map((r) => r.profileId)).toEqual([10, 20]);
   });
 
   it("a single-profile view yields the same rows a single-view merge would (additive)", () => {
     const stored = [
-      tagged(10, { id: 1, name: "Vitamin D", canonical_name: "Vitamin D", date: "2024-01-01" }),
-      tagged(10, { id: 2, name: "Vitamin D", canonical_name: "Vitamin D", date: "2024-06-01" }),
+      tagged(10, {
+        id: 1,
+        name: "Vitamin D",
+        canonical_name: "Vitamin D",
+        date: "2024-01-01",
+      }),
+      tagged(10, {
+        id: 2,
+        name: "Vitamin D",
+        canonical_name: "Vitamin D",
+        date: "2024-06-01",
+      }),
     ];
-    const mv = prepareMultiViewTableRecords(stored, [], { sort: "name", dir: "asc" });
+    const mv = prepareMultiViewTableRecords(stored, [], {
+      sort: "name",
+      dir: "asc",
+    });
     const single = prepareTableRecords(
       stored.map((r) => ({ ...r })),
       [],

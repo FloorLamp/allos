@@ -34,8 +34,7 @@ function seedRecord(profileId: number, name: string): number {
 function recordName(id: number): string | undefined {
   return (
     db.prepare("SELECT name FROM medical_records WHERE id = ?").get(id) as
-      | { name: string }
-      | undefined
+      { name: string } | undefined
   )?.name;
 }
 
@@ -218,7 +217,12 @@ describe("Multi-view Biomarkers table writes gate the ITEM's profile (#1331)", (
     const recId = seedRecord(acting.id, "HDL");
 
     const res = await updateRecord(
-      fd({ id: recId, date: "2024-05-01", name: "HDL (edited)", category: "lab" })
+      fd({
+        id: recId,
+        date: "2024-05-01",
+        name: "HDL (edited)",
+        category: "lab",
+      })
     );
     expect(res.ok).toBe(true);
     expect(recordName(recId)).toBe("HDL (edited)");
