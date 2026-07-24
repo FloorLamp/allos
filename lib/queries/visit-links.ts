@@ -407,6 +407,30 @@ export function encounterForRecord(
   );
 }
 
+// Batch inverse of encounterForRecord (issue #1355): the linked encounter for EVERY
+// row of `domain` that carries an encounter_id, keyed by record id — the SAME JOIN
+// encounterForRecord runs (one computation), gathered in one query so a records list
+// ("Performed at: …" / "Diagnosed at: …") avoids the N+1. Profile-scoped through the
+// t.profile_id filter; a row with no linked encounter is simply absent from the map.
+export function encountersForRecords(
+  profileId: number,
+  domain: Exclude<VisitLinkDomain, "episode">
+): Record<number, LinkedEncounterRef> {
+  const table = RECORD_DOMAINS[domain].table;
+  const rows = db
+    .prepare(
+      `SELECT t.id AS recordId, e.id, e.date, e.type, p.name AS providerName
+         FROM ${table} t
+         JOIN encounters e ON e.id = t.encounter_id AND e.profile_id = t.profile_id
+         LEFT JOIN providers p ON p.id = e.provider_id
+        WHERE t.profile_id = ?`
+    )
+    .all(profileId) as (LinkedEncounterRef & { recordId: number })[];
+  const out: Record<number, LinkedEncounterRef> = {};
+  for (const { recordId, ...ref } of rows) out[recordId] = ref;
+  return out;
+}
+
 // The "From this visit" section: rows already linked to this encounter, grouped by
 // kind, for the encounter detail page.
 export interface VisitLinkedRow {
