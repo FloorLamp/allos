@@ -29,6 +29,8 @@ export default function MedicationsTodayPanel({
   nowIso,
   timeFormat,
   timezone,
+  profileId,
+  canWrite = true,
 }: {
   // The current, due, SCHEDULED (non-PRN) meds with their doses.
   scheduled: MedCardData[];
@@ -49,11 +51,22 @@ export default function MedicationsTodayPanel({
   nowIso: string;
   timeFormat: TimeFormat;
   timezone: string;
+  // The board's owning profile (#1373 multi-view). On a non-acting board every dose
+  // confirm / PRN log targets THIS profile via the #858 gate; absent on the acting
+  // board / single-view, so the panel is byte-identical.
+  profileId?: number;
+  // Whether the viewer may write this member's doses. A read-only member's board is
+  // view-only: scheduled rows show status without the check-off control, and the
+  // PRN log rows (a pure write affordance) are omitted. Default true (acting board /
+  // single-view) keeps the panel byte-identical.
+  canWrite?: boolean;
 }) {
   const dueScheduled = scheduled.filter(
     (d) => d.med.as_needed !== 1 && d.due && d.doses.length > 0
   );
-  if (dueScheduled.length === 0 && prnToday.length === 0) return null;
+  // PRN log rows are a pure write affordance; a read-only board omits them.
+  const showPrn = canWrite && prnToday.length > 0;
+  if (dueScheduled.length === 0 && !showPrn) return null;
 
   const byId = new Map(dueScheduled.map((d) => [d.med.id, d]));
   const model = buildTodayPanelModel(
@@ -147,6 +160,8 @@ export default function MedicationsTodayPanel({
                     taken={isTaken}
                     skipped={skipped.has(dose.id)}
                     compactActions
+                    readOnly={!canWrite}
+                    profileId={profileId}
                   />
                 }
                 variant="embedded"
@@ -155,21 +170,23 @@ export default function MedicationsTodayPanel({
           });
         })}
 
-        {prnToday.map((m) => (
-          <QuickLogPrnControl
-            key={m.id}
-            itemId={m.id}
-            name={m.name}
-            doseAmount={m.amount}
-            product={m.product}
-            dayLabel={m.dayLabel}
-            redoseLine={m.redoseLine}
-            redosePrimary={m.redosePrimary}
-            linkToDetail
-            rowVariant="embedded"
-            compactActions
-          />
-        ))}
+        {showPrn &&
+          prnToday.map((m) => (
+            <QuickLogPrnControl
+              key={m.id}
+              itemId={m.id}
+              name={m.name}
+              doseAmount={m.amount}
+              product={m.product}
+              dayLabel={m.dayLabel}
+              redoseLine={m.redoseLine}
+              redosePrimary={m.redosePrimary}
+              linkToDetail
+              rowVariant="embedded"
+              compactActions
+              profileId={profileId}
+            />
+          ))}
       </div>
     </section>
   );

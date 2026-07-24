@@ -53,6 +53,7 @@ export default function MedicationRow({
   monitoringNote = null,
   heldBy = null,
   todayStr,
+  canWrite = true,
 }: {
   med: Supplement;
   doses: SupplementDose[];
@@ -70,6 +71,13 @@ export default function MedicationRow({
   // The app's configured today, so the refill badge can project the run-out DATE
   // and the one-tap "Refilled" action shows on the low-supply state (#852 item 3).
   todayStr: string;
+  // Whether the viewer may write this medication (#1373 multi-view). The deep
+  // management affordances (refill, edit/stop/restart/delete overflow menu) all target
+  // the ACTING profile and carry no cross-profile seam, so on a NON-acting member's
+  // board the row is view-only: the whole write column is dropped and the row stays a
+  // read link into (its own profile's) detail. Default true keeps the acting board /
+  // single-view byte-identical.
+  canWrite?: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [restarting, setRestarting] = useState(false);
@@ -231,76 +239,78 @@ export default function MedicationRow({
           )}
           <AdherenceSummaryLine strip={strip} />
         </Link>
-        <div className="flex shrink-0 items-center gap-1 text-xs">
-          {lowSupply && (
-            <RefillButton
-              itemId={med.id}
-              hasLastFill={med.last_fill_size != null}
-              lastFillSize={med.last_fill_size}
-            />
-          )}
-          <OverflowMenu
-            label="Medication actions"
-            open={menuOpen}
-            onOpenChange={setMenuOpen}
-          >
-            {({ close }) => (
-              <>
-                <Link
-                  href={medicationEditHref(med.id)}
-                  role="menuitem"
-                  className={MENU_ITEM}
-                  onClick={close}
-                >
-                  Edit
-                </Link>
-                {current ? (
+        {canWrite && (
+          <div className="flex shrink-0 items-center gap-1 text-xs">
+            {lowSupply && (
+              <RefillButton
+                itemId={med.id}
+                hasLastFill={med.last_fill_size != null}
+                lastFillSize={med.last_fill_size}
+              />
+            )}
+            <OverflowMenu
+              label="Medication actions"
+              open={menuOpen}
+              onOpenChange={setMenuOpen}
+            >
+              {({ close }) => (
+                <>
                   <Link
-                    href={`${medicationHref(med.id)}?action=stop`}
+                    href={medicationEditHref(med.id)}
                     role="menuitem"
                     className={MENU_ITEM}
                     onClick={close}
                   >
-                    Stop medication
+                    Edit
                   </Link>
-                ) : (
+                  {current ? (
+                    <Link
+                      href={`${medicationHref(med.id)}?action=stop`}
+                      role="menuitem"
+                      className={MENU_ITEM}
+                      onClick={close}
+                    >
+                      Stop medication
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className={MENU_ITEM}
+                      data-testid="medication-row-restart"
+                      disabled={restarting}
+                      onClick={() => void onRestart(close)}
+                    >
+                      {restarting ? "Restarting…" : "Restart medication"}
+                    </button>
+                  )}
                   <button
                     type="button"
                     role="menuitem"
-                    className={MENU_ITEM}
-                    data-testid="medication-row-restart"
-                    disabled={restarting}
-                    onClick={() => void onRestart(close)}
+                    className={MENU_ITEM_DANGER}
+                    onClick={async () => {
+                      const ok = await confirm({
+                        title: "Delete medication",
+                        message: `Delete “${med.name}” and its whole history? You can undo this.`,
+                        confirmLabel: "Delete",
+                        danger: true,
+                      });
+                      if (!ok) return;
+                      close();
+                      const fd = new FormData();
+                      fd.set("id", String(med.id));
+                      await undoable(deleteSupplement, fd, {
+                        deletedMessage: "Medication deleted.",
+                      });
+                    }}
                   >
-                    {restarting ? "Restarting…" : "Restart medication"}
+                    Delete
                   </button>
-                )}
-                <button
-                  type="button"
-                  role="menuitem"
-                  className={MENU_ITEM_DANGER}
-                  onClick={async () => {
-                    const ok = await confirm({
-                      title: "Delete medication",
-                      message: `Delete “${med.name}” and its whole history? You can undo this.`,
-                      confirmLabel: "Delete",
-                      danger: true,
-                    });
-                    if (!ok) return;
-                    close();
-                    const fd = new FormData();
-                    fd.set("id", String(med.id));
-                    await undoable(deleteSupplement, fd, {
-                      deletedMessage: "Medication deleted.",
-                    });
-                  }}
-                >
-                  Delete
-                </button>
-              </>
-            )}
-          </OverflowMenu>
-        </div>
+                </>
+              )}
+            </OverflowMenu>
+          </div>
+        )}
       </div>
     </div>
   );

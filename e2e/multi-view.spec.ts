@@ -25,6 +25,11 @@ import {
   TL_WEST_ACTIVITY,
   MULTI_OWNER_VISIT,
   MULTI_SHARED_VISIT,
+  E2E_LOGIN_MVMEDS,
+  MVMEDS_SELF_PROFILE,
+  MVMEDS_RO_PROFILE,
+  MVMEDS_SELF_MED,
+  MVMEDS_RO_MED,
 } from "./fixture-logins";
 
 // Multi-profile viewing (issue #1096): the profile-menu view toggles + the thin
@@ -879,6 +884,106 @@ test.describe("Tier-1b bespoke lists adopt multi-view (issue #1359)", () => {
     await expect(
       page.locator(`[data-testid="subject-chip-${ownerId}"]`)
     ).toHaveCount(0);
+
+    await page.context().close();
+  });
+});
+
+// Multi-view Medications regimen boards (issue #1373 Part 1). Spec-OWNED fixtures
+// (E2E_LOGIN_MVMEDS granted a WRITE base profile + a READ-ONLY second profile, each
+// with one due-today scheduled medication — see e2e/seed-events.ts). Read-only in this
+// spec (only reads + toggles the view-set), so it never races a neighbor and stays
+// repeat-safe. Fresh cookie-less context (loginAs) so it drives the member's own session.
+test.describe("Medications multi-view regimen boards (issue #1373)", () => {
+  function mvMedsIds(): { selfId: number; roId: number } {
+    const dbPath =
+      process.env.ALLOS_DB_PATH ??
+      path.join(process.cwd(), "e2e", ".data", "e2e.db");
+    const db = new Database(dbPath);
+    try {
+      db.pragma("busy_timeout = 5000");
+      const idOf = (name: string): number =>
+        (
+          db.prepare("SELECT id FROM profiles WHERE name = ?").get(name) as {
+            id: number;
+          }
+        ).id;
+      return {
+        selfId: idOf(MVMEDS_SELF_PROFILE),
+        roId: idOf(MVMEDS_RO_PROFILE),
+      };
+    } finally {
+      db.close();
+    }
+  }
+
+  async function toggleIntoView(page: Page, id: number): Promise<void> {
+    await openProfileMenu(page);
+    await settledClick(page, page.getByTestId(`view-toggle-${id}`));
+    await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+  }
+
+  test("single-view renders ONE board with no subject header (byte-identical structure)", async ({
+    browser,
+  }) => {
+    test.slow();
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_MVMEDS,
+      password: E2E_MEMBER_PASSWORD,
+    });
+
+    await page.goto("/medications");
+    // The acting (self) medication renders. No multi-view board WRAPPERS / headers and
+    // no leading strip in single-view — the byte-identical bar (one board, no header).
+    await expect(
+      page.getByText(MVMEDS_SELF_MED, { exact: false }).first() // first-ok: spec-owned med, appears in Today + Current on the one board
+    ).toBeVisible();
+    await expect(page.locator('[data-testid^="med-board-"]')).toHaveCount(0);
+    await expect(page.getByTestId("med-today-everyone")).toHaveCount(0);
+    // Its own dose check-off control is live (write on the acting profile).
+    await expect(page.getByTestId("dose-status").first()).toBeVisible(); // first-ok: spec-owned single-board Today panel
+    // The read-only member's med is NOT in view.
+    await expect(page.getByText(MVMEDS_RO_MED, { exact: false })).toHaveCount(
+      0
+    );
+
+    await page.context().close();
+  });
+
+  test("multi-view stacks a board per member behind the leading strip; the read-only board is view-only", async ({
+    browser,
+  }) => {
+    test.slow();
+    const { selfId, roId } = mvMedsIds();
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_MVMEDS,
+      password: E2E_MEMBER_PASSWORD,
+    });
+
+    await toggleIntoView(page, roId);
+    // The view-set persists on the session — re-navigate for a deterministic reload.
+    await page.goto("/medications");
+    await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+
+    // The merged "Today across everyone" strip leads the page.
+    await expect(page.getByTestId("med-today-everyone")).toBeVisible();
+
+    // One board per in-view member, acting (self) first.
+    const selfBoard = page.getByTestId(`med-board-${selfId}`);
+    const roBoard = page.getByTestId(`med-board-${roId}`);
+    await expect(selfBoard).toBeVisible();
+    await expect(roBoard).toBeVisible();
+
+    // The read-only member's board wears the RO badge and shows NO dose-confirm control.
+    await expect(page.getByTestId(`med-board-ro-${roId}`)).toBeVisible();
+    await expect(roBoard.getByTestId("dose-status")).toHaveCount(0);
+    // Its medication still renders (read).
+    await expect(
+      roBoard.getByText(MVMEDS_RO_MED, { exact: false }).first() // first-ok: spec-owned board-scoped med, appears in Today + Current
+    ).toBeVisible();
+
+    // The acting (write) board keeps its live dose-confirm control.
+    await expect(selfBoard.getByTestId("dose-status").first()).toBeVisible(); // first-ok: spec-owned board-scoped Today panel
 
     await page.context().close();
   });

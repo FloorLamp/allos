@@ -65,12 +65,18 @@ export default function IntakeWarnings({
   ototoxicWarnings = [],
   allergyWarnings = [],
   coverage = null,
+  dismissable = true,
 }: {
   interactionWarnings: InteractionHit[];
   pgxWarnings: PgxHit[];
   ototoxicWarnings?: OtotoxicHit[];
   allergyWarnings?: DrugAllergyHit[];
   coverage?: SafetyCoverageModel | null;
+  // #1373 multi-view: a NON-acting member's board renders that member's own safety
+  // strip (the SAME dedupeKeys), but read-only — the dismiss bus has no cross-profile
+  // target, so the dismiss control is dropped (act as the member to dismiss). Default
+  // true keeps the acting board / single-view / Supplements strip byte-identical.
+  dismissable?: boolean;
 }) {
   const total =
     interactionWarnings.length +
@@ -147,6 +153,7 @@ export default function IntakeWarnings({
                 evidence={drugAllergyEvidence(hit)}
                 dismissKey={hit.dedupeKey}
                 dismissLabel={`Dismiss ${hit.medName} allergy note`}
+                dismissable={dismissable}
               />
             ))}
           </div>
@@ -173,6 +180,7 @@ export default function IntakeWarnings({
                 evidence={`Discuss with your prescriber or pharmacist. Source: ${hit.source}`}
                 dismissKey={hit.dedupeKey}
                 dismissLabel={`Dismiss ${interactionTitle(hit)} interaction`}
+                dismissable={dismissable}
               />
             ))}
           </div>
@@ -206,6 +214,7 @@ export default function IntakeWarnings({
                 evidence={`Informational — discuss with your prescriber before any change; do not stop or switch a medication based on this alone. Source: ${hit.source}`}
                 dismissKey={hit.dedupeKey}
                 dismissLabel={`Dismiss ${pgxTitle(hit)} pharmacogenomic note`}
+                dismissable={dismissable}
               />
             ))}
           </div>
@@ -232,6 +241,7 @@ export default function IntakeWarnings({
                 evidence={`A general note about the medication class, not a recommendation to change anything; discuss any hearing or balance concern with your prescriber. Source: ${hit.citation}`}
                 dismissKey={hit.dedupeKey}
                 dismissLabel={`Dismiss ${ototoxicTitle(hit)} hearing-safety note`}
+                dismissable={dismissable}
               />
             ))}
           </div>
