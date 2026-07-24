@@ -149,6 +149,8 @@ import {
   E2E_LOGIN_ASK,
   ASK_RECORDS_PROFILE,
   ASK_RECORDS_MED,
+  E2E_LOGIN_CLOSURE_DQ,
+  CLOSURE_DQ_PROFILE,
   E2E_LOGIN_DERIVED,
   DERIVED_SITU_PROFILE,
   DERIVED_SITU_PERIOD_ITEM,
@@ -3769,6 +3771,21 @@ db.prepare(
 ).run(askRecordsId);
 seedMemberLogin(E2E_LOGIN_ASK, askRecordsId, "read");
 console.log(`e2e: seeded record-QA fixture — profile ${askRecordsId} (#878)`);
+
+// #1305 finding-closure toast (settings autosave path): a sole gappy profile with SEX set
+// but NO birthdate, so ONLY the "Set a birthdate" data-quality gap is the salient clear.
+// The closure spec resets the birthdate at test start (direct-DB), so its write never
+// sticks across repeats and it never perturbs the DQ dashboard fixtures.
+const closureDqId = fixtureProfileId(CLOSURE_DQ_PROFILE);
+db.prepare(
+  `DELETE FROM profile_settings WHERE profile_id = ? AND key = 'birthdate'`
+).run(closureDqId);
+db.prepare(
+  `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'sex', 'male')
+     ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+).run(closureDqId);
+seedMemberLogin(E2E_LOGIN_CLOSURE_DQ, closureDqId, "write");
+console.log(`e2e: seeded closure-DQ fixture — profile ${closureDqId} (#1305)`);
 
 // PROTEIN_QUICKADD_PROFILE (#824): a dedicated adult profile for the protein-grams
 // quick-add spec. Seeds a bodyweight (so the adequacy target scales) + a couple of

@@ -16,9 +16,13 @@ export { followLink } from "./helpers";
 // shared admin session that every other spec relies on.
 export async function loginAs(
   browser: Browser,
-  creds: { username: string; password: string }
+  creds: { username: string; password: string },
+  // Optional context overrides — e.g. `{ reducedMotion: "reduce" }` for the fitness-check
+  // landing-sweep suppression test (#1307). The storageState is always reset to anonymous.
+  contextOptions: Parameters<Browser["newContext"]>[0] = {}
 ): Promise<Page> {
   const ctx = await browser.newContext({
+    ...contextOptions,
     storageState: { cookies: [], origins: [] },
   });
   const page = await ctx.newPage();

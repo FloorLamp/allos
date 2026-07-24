@@ -8,6 +8,7 @@ import DateField from "@/components/DateField";
 import SaveStatus from "@/components/SaveStatus";
 import TimezoneSelect from "@/components/TimezoneSelect";
 import { useSaveStatus, useFlushOnHide } from "@/components/useSaveStatus";
+import { useToast } from "@/components/Toast";
 import type { ReproductiveStatus, Sex } from "@/lib/types";
 
 // Biological sex, birthdate/age, and timezone — all PROFILE-scoped (properties of
@@ -48,6 +49,7 @@ export default function ProfileForm({
   skinType: number | null;
 }) {
   const router = useRouter();
+  const toast = useToast();
   const [fullName, setFullName] = useState(initialFullName ?? "");
   const [sex, setSex] = useState<Sex | "">(initialSex ?? "");
   // Reproductive (menopausal) status — shown for female profiles only. Cleared when
@@ -121,7 +123,10 @@ export default function ProfileForm({
     // Carry the current skin type so a save of another field never wipes it.
     fd.set("skin_type", next.skinType ?? skinType);
     runSave(async () => {
-      await saveProfileSettings(fd);
+      const res = await saveProfileSettings(fd);
+      // Close the findings loop (#1305): if this save satisfied a structural data-quality
+      // gap, acknowledge it via the shared toast — the settings autosave path (#794).
+      if (res?.closureToast) toast(res.closureToast);
       router.refresh();
     });
   }
@@ -236,6 +241,7 @@ export default function ProfileForm({
           <div>
             <label className="label">Birthdate</label>
             <DateField
+              data-testid="profile-birthdate"
               value={birthdate}
               max={dateStrInTz(timezone)}
               onChange={(v) => {

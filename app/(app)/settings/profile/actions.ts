@@ -44,6 +44,9 @@ import {
 } from "@/lib/settings";
 import { parseCrisisResourcesText } from "@/lib/crisis-resources";
 import { parseCadence } from "@/lib/recommendation-run";
+import { withFindingClosure, formatClosureToast } from "@/lib/finding-closure";
+import { closureFindingSnapshot } from "@/lib/rule-findings";
+import { DATA_QUALITY_PREFIX } from "@/lib/data-quality";
 import { parseHome } from "@/lib/home-location";
 import { parseSkinType } from "@/lib/uv-dose";
 import { reconcileFlags } from "@/lib/queries";
@@ -66,8 +69,29 @@ import type { ReproductiveStatus, Sex } from "@/lib/types";
 // Biological sex, birthdate/age, and timezone are properties of the tracked
 // person, so they're keyed by profile.id. Any login acting as the profile may
 // edit them (members included).
-export async function saveProfileSettings(formData: FormData) {
+export async function saveProfileSettings(
+  formData: FormData
+): Promise<{ closureToast: string | null }> {
   const { profile } = await requireWriteAccess();
+
+  // Close the findings loop (#1305): a birthdate/sex/reproductive-status fill here can
+  // satisfy a structural data-quality gap ("Set a birthdate"), so bracket the write and
+  // report which gap finding it cleared. The prefix is scoped to data-quality — other
+  // fields (timezone, home location, …) diff nothing and toast nothing (the common case).
+  const { cleared } = withFindingClosure(
+    profile.id,
+    [DATA_QUALITY_PREFIX],
+    (pid, todayISO) =>
+      closureFindingSnapshot(pid, [DATA_QUALITY_PREFIX], todayISO),
+    () => saveProfileSettingsCore(profile.id, formData)
+  );
+  return { closureToast: formatClosureToast(cleared) };
+}
+
+// The auth-blind write core (profileId-first) — every persisted field + the reconcile/
+// revalidate side effects. Extracted so the finding-closure wrapper can bracket it (#1305).
+function saveProfileSettingsCore(profileId: number, formData: FormData): void {
+  const profile = { id: profileId };
 
   // Biological sex: drives sex-specific optimal biomarker bands. When it
   // changes, re-derive the stored non-optimal flags so the records table and

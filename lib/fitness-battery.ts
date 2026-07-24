@@ -564,6 +564,32 @@ export function fitnessTest(key: string): FitnessTestDef | undefined {
   return BY_KEY.get(key);
 }
 
+// Whether a battery test's required equipment is absent from the profile's owned gear —
+// the one rule the entry modal's "no equipment" hint AND the battery-completion
+// denominator (#1307) share, so a test the user can't perform never counts against
+// "check complete". `equipmentNames` is the profile's owned equipment, lower-cased. A
+// test with no equipment requirement is never missing. Pure.
+export function testEquipmentMissing(
+  def: FitnessTestDef,
+  equipmentNames: readonly string[]
+): boolean {
+  if (def.equipment == null) return false;
+  const needs = def.equipment.needs.toLowerCase();
+  return !equipmentNames.some((n) => n.includes(needs));
+}
+
+// The set of battery test keys the profile lacks equipment for (#1307) — held OUT of the
+// completion denominator. `equipmentNames` is the profile's owned gear, lower-cased.
+export function equipmentMissingTestKeys(
+  battery: readonly FitnessTestDef[],
+  equipmentNames: readonly string[]
+): Set<string> {
+  const out = new Set<string>();
+  for (const def of battery)
+    if (testEquipmentMissing(def, equipmentNames)) out.add(def.key);
+  return out;
+}
+
 // The age threshold at which the battery swaps to the senior (Senior Fitness Test /
 // STEADI) variant. Re-exported from the one age model so it can't drift.
 export const SENIOR_BATTERY_MIN_AGE = OLDER_ADULT_MIN_AGE;

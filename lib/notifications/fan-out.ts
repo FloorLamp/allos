@@ -70,6 +70,45 @@ export function dedupeRecipientsByChat(
   return out;
 }
 
+// Would muting `actingLoginId` leave NO unmuted managing login for this profile? The
+// "last unmuted managing login" predicate (#1324) — the mute-path analog of the
+// notification matrix's all-off-safety warning. When every OTHER managing login is
+// already muted, this login is the sole remaining unmuted caregiver, so muting it here
+// routes the profile's SAFETY tier (dose reminders / missed-dose escalation) to nobody.
+// Pure — unit-tested. Warn, never block: the caller may genuinely want it (a single-
+// caregiver household that deliberately mutes).
+export function isLastUnmutedManagingLogin(
+  managingLoginIds: readonly number[],
+  mutedLoginIds: ReadonlySet<number>,
+  actingLoginId: number
+): boolean {
+  // A login that doesn't manage the profile can't be its last unmuted caregiver.
+  if (!managingLoginIds.includes(actingLoginId)) return false;
+  // Muting `actingLoginId` empties the unmuted set iff every other managing login is
+  // already muted.
+  return managingLoginIds.every(
+    (id) => id === actingLoginId || mutedLoginIds.has(id)
+  );
+}
+
+// Whether muting this profile for THIS login would silence the profile's safety tier for
+// everyone (#1324) — the DB resolution over the SAME managing-login set the fan-out uses.
+// Consults each OTHER managing login's mute state (this login's own current mute state is
+// irrelevant: the question is what remains once it mutes). The matrix's all-off-safety
+// warning re-homed on the per-(login, profile) mute path.
+export function wouldMuteSilenceSafety(
+  loginId: number,
+  profileId: number
+): boolean {
+  const managing = managingLoginIdsForProfile(profileId);
+  const mutedOthers = new Set(
+    managing.filter(
+      (id) => id !== loginId && isProfileMutedForLogin(id, profileId)
+    )
+  );
+  return isLastUnmutedManagingLogin(managing, mutedOthers, loginId);
+}
+
 // Every Telegram recipient a message ABOUT `profileId` should reach: each managing
 // login that (a) has Telegram enabled with a chat id and (b) has NOT muted this
 // profile, deduped by resolved chat id. This is the delivery audience the Telegram

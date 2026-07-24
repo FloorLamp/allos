@@ -187,6 +187,16 @@ export interface RecapInput {
   // then. A gentle summary only, never a delta/score-to-beat (the no-gamification
   // contract), which is why it deliberately carries no previous-window comparison.
   mood?: { avgValence: number; daysLogged: number } | null;
+  // A fitness check COMPLETED within the window (#1307) — the same battery-completion
+  // event the check page's finale summarizes, surfaced once as a recap line so the
+  // dashboard card and the Telegram recap say it identically (#221). Null/omitted when no
+  // check completed in the window. `fitnessAge`/`priorFitnessAge` come straight off the
+  // completed check's model; a null fitness age still yields the "completed" line (VO2
+  // wasn't part of the check) without the age clause.
+  fitnessCheck?: {
+    fitnessAge: number | null;
+    priorFitnessAge: number | null;
+  } | null;
 }
 
 export interface RecapLine {
@@ -443,6 +453,21 @@ export function buildWeeklyRecap(input: RecapInput): WeeklyRecap {
       value: `${input.goalsCompleted.length}`,
       delta: input.goalsCompleted.slice(0, 3).join(", "),
     });
+  }
+
+  // Fitness check completed this window (#1307) — factual, from the completed check's
+  // fitness age. The prior age is shown only when it differs (an honest "was 36").
+  if (input.fitnessCheck != null) {
+    const { fitnessAge, priorFitnessAge } = input.fitnessCheck;
+    const value =
+      fitnessAge != null
+        ? `fitness age ${fitnessAge}${
+            priorFitnessAge != null && priorFitnessAge !== fitnessAge
+              ? `, was ${priorFitnessAge}`
+              : ""
+          }`
+        : "battery refreshed";
+    lines.push({ key: "fitness-check", label: "Fitness check", value });
   }
 
   const isEmpty =
