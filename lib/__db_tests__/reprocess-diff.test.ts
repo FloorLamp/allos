@@ -732,4 +732,43 @@ describe("reprocess-diff — deferred body metrics don't phantom-add", () => {
     expect(next.heights.length).toBe(1);
     expect(next.headCircs.length).toBe(1);
   });
+
+  it("keeps a body-metric row that adds an uncovered measure (per-measure defer)", () => {
+    const pid = newProfile("DEFER-PARTIAL");
+    // Another source already has the date's WEIGHT (but no resting-HR).
+    db.prepare(
+      "INSERT INTO body_metrics (date, weight_kg, resting_hr, source, profile_id) VALUES (?,?,?,NULL,?)"
+    ).run(DATE, 80, null, pid);
+    const doc = newDocument(pid, "partial.ccd");
+    const bm = {
+      date: DATE,
+      weight_kg: 82,
+      body_fat_pct: null,
+      resting_hr: 60,
+    };
+    const only = { bodyMetrics: [bm], heights: [], headCircs: [] };
+    persistDocumentImport(pid, doc, makeInput(only));
+    // Weight is covered, but the row still ADDS resting-HR, so it is NOT deferred —
+    // it persists under this document.
+    expect(
+      (
+        db
+          .prepare(
+            "SELECT COUNT(*) AS n FROM body_metrics WHERE profile_id = ? AND source = ?"
+          )
+          .get(pid, `document:${doc}`) as { n: number }
+      ).n
+    ).toBe(1);
+
+    const input = makeInput(only);
+    const current = getReprocessSnapshot(pid, doc);
+    const next = snapshotFromPersistInput(input);
+    // The prune must NOT drop a partially-covered row (it survives the commit too).
+    pruneDeferredMetricsFromSnapshot(pid, doc, next, input);
+    expect(next.bodyMetrics.length).toBe(1);
+    const bmDiff = (computeImportDiff(current, next).entities ?? []).find(
+      (e) => e.entity === "bodyMetrics"
+    );
+    expect((bmDiff?.added.length ?? 0) + (bmDiff?.changed.length ?? 0)).toBe(0);
+  });
 });
