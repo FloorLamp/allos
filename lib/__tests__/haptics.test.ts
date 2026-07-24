@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { HAPTIC_PATTERNS, hapticPattern, type HapticEvent } from "@/lib/haptics";
+import {
+  HAPTIC_PATTERNS,
+  hapticPattern,
+  type HapticEvent,
+} from "@/lib/haptics";
 
 describe("hapticPattern", () => {
   it("gives a set check-off a single short tick", () => {
