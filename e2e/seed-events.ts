@@ -150,6 +150,8 @@ import {
   SICK_SELF_PROFILE,
   E2E_LOGIN_SICK_COLLAPSE,
   SICK_COLLAPSE_PROFILE,
+  E2E_LOGIN_SICK_PHOTO,
+  SICK_PHOTO_PROFILE,
   E2E_LOGIN_SITCOACH,
   SITCOACH_PROFILE,
   E2E_LOGIN_ILLNESS_CARE,
@@ -3583,6 +3585,15 @@ seedMemberLogin(E2E_LOGIN_SICK_SELF, sickSelfId);
 // SICK_COLLAPSE: a separate sick-solo login for the collapse-persistence test.
 seedMemberLogin(E2E_LOGIN_SICK_COLLAPSE, sickCollapseId);
 
+// SICK_PHOTO (#1093): a dedicated sick-solo login whose episode cockpit the
+// symptom-photo-link spec drives — attaching a photo TAGGED to a specific symptom log.
+// Isolated so its exact-count / delete-all photo assertions never race the shared
+// profile-1 episode. seedSickEpisode logs cough + fever today, so the photo strip's
+// symptom selector has options.
+const sickPhotoId = fixtureProfileId(SICK_PHOTO_PROFILE);
+seedSickEpisode(sickPhotoId, { activateSituation: true });
+seedMemberLogin(E2E_LOGIN_SICK_PHOTO, sickPhotoId);
+
 // ── Situation-aware coaching fixture (#837 / #662 item 1) ─────────────────────
 // A dedicated sick profile WITH training history + one situational supplement, so the
 // dashboard coaching widget shows the illness HELD note (coaching has gap nags to hold,
@@ -4228,12 +4239,33 @@ console.log(
 
   // A rough last-night sleep session (300 min = 5h < the 6h floor) so getSleepSignal
   // trips and the measured poor-sleep context is ON, plus a few good baseline nights.
+  //
+  // CRITICAL (#1110 pinned instance timezone — the sleep-page fixture's lesson,
+  // re-learned here): mainSleepNights groups sessions by the profile-LOCAL calendar
+  // date of each session END, so these windows MUST be built through the profile
+  // timezone (zonedWallTimeToUtc), NOT naive `T23:00` strings. A naive string parses
+  // as host-local (UTC on runners) while the pinned Etc/GMT±N zone rotates with the
+  // run's start hour — for offsets ≥ +5 (runs starting ≥ 18:00 UTC) the rough
+  // night's 04:00 end slid back a wake-day, merged under the previous 480-min night,
+  // and the derived poor-sleep context read OFF for the whole evening band
+  // (derived-situations.spec red 18:00–23:59 UTC; the #1417 census).
+  const dsTz = getTimezone(dsId);
+  const dsSleepIso = (day: string, hm: string) =>
+    zonedWallTimeToUtc(dsTz, day, hm).toISOString();
+  db.prepare(
+    `DELETE FROM metric_samples WHERE profile_id = ? AND metric = 'sleep_min'`
+  ).run(dsId);
   for (let i = 5; i >= 1; i--) {
     const wake = shiftDateStr(dsToday, -i);
     db.prepare(
       `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
        VALUES (?, 'manual', 'sleep_min', ?, ?, ?, 480)`
-    ).run(dsId, wake, `${shiftDateStr(wake, -1)}T23:00`, `${wake}T07:00`);
+    ).run(
+      dsId,
+      wake,
+      dsSleepIso(shiftDateStr(wake, -1), "23:00"),
+      dsSleepIso(wake, "07:00")
+    );
   }
   db.prepare(
     `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
@@ -4241,8 +4273,8 @@ console.log(
   ).run(
     dsId,
     dsToday,
-    `${shiftDateStr(dsToday, -1)}T23:00`,
-    `${dsToday}T04:00`
+    dsSleepIso(shiftDateStr(dsToday, -1), "23:00"),
+    dsSleepIso(dsToday, "04:00")
   );
 
   seedMemberLogin(E2E_LOGIN_DERIVED, dsId, "write");

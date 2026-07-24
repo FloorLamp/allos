@@ -109,6 +109,7 @@ import { migration as m107 } from "./107-activity-elapsed-min";
 import { migration as m108 } from "./108-intake-pause-situation";
 import { migration as m109 } from "./109-health-connect-token-hash";
 import { migration as m110 } from "./110-integration-sync-rows";
+import { migration as m111 } from "./111-symptom-episode-photo-links";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -227,4 +228,5 @@ export const MIGRATIONS: Migration[] = [
   m108,
   m109,
   m110,
+  m111,
 ];

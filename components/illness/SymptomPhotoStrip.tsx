@@ -15,7 +15,15 @@ export interface SymptomPhotoView {
   id: number;
   date: string;
   symptom: string | null;
+  // The display label of the symptom this photo documents (#1093), or null for a
+  // whole-day photo. Shown as a chip so two same-day symptoms' photos read apart.
+  symptomLabel: string | null;
   caption: string | null;
+}
+
+export interface PhotoSymptomOption {
+  key: string;
+  label: string;
 }
 
 // The dated symptom-photo strip on the episode page (issue #859 item 4). Camera-first
@@ -26,11 +34,15 @@ export interface SymptomPhotoView {
 export default function SymptomPhotoStrip({
   photos,
   uploadDate,
+  symptomOptions = [],
   canWrite,
   profileId,
 }: {
   photos: SymptomPhotoView[];
   uploadDate: string;
+  // The symptoms logged on the upload date (#1093) — a new photo can be TAGGED to one so
+  // it binds to that specific symptom log. Empty ⇒ only the "Whole day" option shows.
+  symptomOptions?: PhotoSymptomOption[];
   canWrite: boolean;
   // The cross-profile write target (issue #879) — set on a household member's episode
   // page so each photo write gates on THAT profile (requireProfileWriteAccess). Absent
@@ -42,6 +54,7 @@ export default function SymptomPhotoStrip({
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const [caption, setCaption] = useState("");
+  const [photoSymptom, setPhotoSymptom] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [captionDraft, setCaptionDraft] = useState("");
 
@@ -52,6 +65,7 @@ export default function SymptomPhotoStrip({
       fd.set("photo", file);
       fd.set("date", uploadDate);
       if (caption.trim()) fd.set("caption", caption.trim());
+      if (photoSymptom) fd.set("symptom", photoSymptom);
       if (profileId != null) fd.set("profileId", String(profileId));
       const res = await uploadSymptomPhotoAction(fd);
       if (fileRef.current) fileRef.current.value = "";
@@ -60,6 +74,7 @@ export default function SymptomPhotoStrip({
         return;
       }
       setCaption("");
+      setPhotoSymptom("");
       toast("Photo attached.");
       router.refresh();
     });
@@ -113,6 +128,14 @@ export default function SymptomPhotoStrip({
                 />
               </a>
               <figcaption className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+                {p.symptomLabel && (
+                  <span
+                    data-testid={`symptom-photo-symptom-${p.id}`}
+                    className="mb-1 inline-block rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600 dark:bg-ink-800 dark:text-slate-300"
+                  >
+                    {p.symptomLabel}
+                  </span>
+                )}
                 <div className="flex items-center justify-between gap-1">
                   <span className="truncate">{p.date}</span>
                   {canWrite && (
@@ -223,6 +246,27 @@ export default function SymptomPhotoStrip({
             className="hidden"
             onChange={(e) => onPick(e.target.files?.[0])}
           />
+          {symptomOptions.length > 0 && (
+            <div>
+              <label className="label mb-0" htmlFor="episode-photo-symptom">
+                Symptom (optional)
+              </label>
+              <select
+                id="episode-photo-symptom"
+                data-testid="symptom-photo-symptom-select"
+                value={photoSymptom}
+                onChange={(e) => setPhotoSymptom(e.target.value)}
+                className="input mt-1 h-9 w-40 text-sm"
+              >
+                <option value="">Whole day</option>
+                {symptomOptions.map((s) => (
+                  <option key={s.key} value={s.key}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
             <label className="label mb-0" htmlFor="episode-photo-caption">
               Caption (optional)

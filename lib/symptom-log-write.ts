@@ -18,6 +18,11 @@ import {
   isCustomSymptomKey,
   normalizeSymptomName,
 } from "./symptoms";
+import {
+  openEpisodeIdForDate,
+  episodeExistsForProfile,
+} from "./illness-episode-store";
+import { deletePhotosForSymptomLog } from "./symptom-photo-write";
 
 // Typed result so a caller answers from what ACTUALLY happened (the markDoseTaken
 // contract, #232) rather than unconditionally confirming.
@@ -61,18 +66,57 @@ export function logSymptomCore(
   if (!symptom || !isValidSeverity(severity)) return { kind: "invalid" };
   const noteVal = normalizeNote(note);
   return writeTx(() => {
+    // #1093: a symptom logged while an illness episode is OPEN default-associates to it,
+    // so the episode gathers its own evidence. Set only on INSERT — the ON CONFLICT path
+    // leaves an existing row's episode_id untouched, so a prior detach (episode_id NULL)
+    // survives a re-tap and this never clobbers a hand-set link.
+    const episodeId = openEpisodeIdForDate(profileId, date);
     db.prepare(
-      `INSERT INTO symptom_logs (profile_id, date, symptom, severity, note)
-       VALUES (?, ?, ?, ?, ?)
+      `INSERT INTO symptom_logs (profile_id, date, symptom, severity, note, episode_id)
+       VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT (profile_id, date, symptom)
        DO UPDATE SET severity = MAX(symptom_logs.severity, excluded.severity),
                      note = COALESCE(excluded.note, symptom_logs.note)`
-    ).run(profileId, date, symptom, severity, noteVal);
+    ).run(profileId, date, symptom, severity, noteVal, episodeId);
     return {
       kind: "logged" as const,
       symptom,
       severity: severityOf(profileId, date, symptom) ?? severity,
     };
+  });
+}
+
+// Typed result of an attach/detach — the symptom-day link to an episode (#1093).
+export type SymptomEpisodeOutcome =
+  | { kind: "ok"; episodeId: number | null }
+  | { kind: "no-row" } // no logged symptom-day to (de)associate
+  | { kind: "bad-episode" } // the target episode isn't this profile's
+  | { kind: "invalid" };
+
+// Attach a logged symptom-day to an episode, or detach it (episodeId null). The explicit
+// "easy detach" the #1093 default-association implies: a caregiver who logged a symptom
+// during an episode it doesn't belong to can unlink it. Refuses to touch a symptom-day
+// that isn't logged, and refuses an episode id that isn't this profile's (belt-and-
+// suspenders to the action's write-access gate). Single IMMEDIATE transaction (#468).
+export function setSymptomEpisodeCore(
+  profileId: number,
+  symptomInput: string,
+  date: string,
+  episodeId: number | null
+): SymptomEpisodeOutcome {
+  const symptom = resolveSymptomKey(symptomInput);
+  if (!symptom) return { kind: "invalid" };
+  if (episodeId != null && !episodeExistsForProfile(profileId, episodeId))
+    return { kind: "bad-episode" };
+  return writeTx(() => {
+    const info = db
+      .prepare(
+        `UPDATE symptom_logs SET episode_id = ?
+          WHERE profile_id = ? AND date = ? AND symptom = ?`
+      )
+      .run(episodeId, profileId, date, symptom);
+    if (info.changes === 0) return { kind: "no-row" };
+    return { kind: "ok" as const, episodeId };
   });
 }
 
@@ -168,6 +212,16 @@ export function removeSymptomCore(
   const symptom = resolveSymptomKey(symptomInput);
   if (!symptom) return { kind: "invalid" };
   return writeTx(() => {
+    // #1093 row-side-state: a deleted symptom log takes its photos (rows + files). Look
+    // up the row id first so its bound photos go before it (foreign_keys=ON would reject
+    // dropping a log a photo still references).
+    const row = db
+      .prepare(
+        `SELECT id FROM symptom_logs
+          WHERE profile_id = ? AND date = ? AND symptom = ?`
+      )
+      .get(profileId, date, symptom) as { id: number } | undefined;
+    if (row) deletePhotosForSymptomLog(profileId, row.id);
     const info = db
       .prepare(
         `DELETE FROM symptom_logs
@@ -215,6 +269,27 @@ export function renameCustomSymptomCore(
           AND date IN (SELECT date FROM symptom_logs
                         WHERE profile_id = ? AND symptom = ?)`
     ).run(oldKey, profileId, newKey, profileId, oldKey);
+    // #1093 row-side-state: the colliding old rows are about to be DROPPED — re-parent
+    // their photos onto the surviving same-date new-key row first (foreign_keys=ON would
+    // reject dropping a log a photo still references, and #203 says re-parent, never
+    // cascade-drop). The non-colliding old rows keep their id through the re-key below, so
+    // their photos survive untouched.
+    db.prepare(
+      `UPDATE symptom_photos
+          SET symptom_log_id = (
+                SELECT n.id FROM symptom_logs n
+                 WHERE n.profile_id = ? AND n.symptom = ?
+                   AND n.date = (SELECT o.date FROM symptom_logs o
+                                  WHERE o.id = symptom_photos.symptom_log_id)
+              )
+        WHERE profile_id = ?
+          AND symptom_log_id IN (
+                SELECT o.id FROM symptom_logs o
+                 WHERE o.profile_id = ? AND o.symptom = ?
+                   AND o.date IN (SELECT date FROM symptom_logs
+                                   WHERE profile_id = ? AND symptom = ?)
+              )`
+    ).run(profileId, newKey, profileId, profileId, oldKey, profileId, newKey);
     db.prepare(
       `DELETE FROM symptom_logs
         WHERE profile_id = ? AND symptom = ?
@@ -223,6 +298,12 @@ export function renameCustomSymptomCore(
     ).run(profileId, oldKey, profileId, newKey);
     db.prepare(
       `UPDATE symptom_logs SET symptom = ?
+        WHERE profile_id = ? AND symptom = ?`
+    ).run(newKey, profileId, oldKey);
+    // #203 name-keyed hygiene: re-key the photos' denormalized `symptom` label too, so a
+    // renamed custom symptom's photos don't keep pointing display copy at the dead name.
+    db.prepare(
+      `UPDATE symptom_photos SET symptom = ?
         WHERE profile_id = ? AND symptom = ?`
     ).run(newKey, profileId, oldKey);
     return { kind: "ok" as const };
@@ -239,6 +320,14 @@ export function deleteCustomSymptomCore(
   if (!key) return { kind: "invalid" };
   if (!isCustomSymptomKey(key)) return { kind: "not-custom" };
   writeTx(() => {
+    // #1093 row-side-state: take each log row's photos (rows + files) before the logs go
+    // (foreign_keys=ON). Every row under this custom key is being removed.
+    const rows = db
+      .prepare(
+        `SELECT id FROM symptom_logs WHERE profile_id = ? AND symptom = ?`
+      )
+      .all(profileId, key) as { id: number }[];
+    for (const r of rows) deletePhotosForSymptomLog(profileId, r.id);
     db.prepare(
       `DELETE FROM symptom_logs WHERE profile_id = ? AND symptom = ?`
     ).run(profileId, key);

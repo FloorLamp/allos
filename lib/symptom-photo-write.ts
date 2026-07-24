@@ -55,6 +55,7 @@ export interface SymptomPhotoRow {
   id: number;
   date: string;
   symptom: string | null;
+  symptom_log_id: number | null;
   mime_type: string | null;
   caption: string | null;
   created_at: string;
@@ -85,6 +86,21 @@ export function attachSymptomPhotoCore(
   const sym = symptom?.trim() ? symptom.trim() : null;
   const cap = caption?.trim() ? caption.trim().slice(0, 500) : null;
 
+  // #1093: bind the photo to the SPECIFIC symptom-day log it illustrates when one is
+  // named AND already logged for this (profile, date) — so two symptoms logged the same
+  // day keep DISTINCT photo sets. A whole-day photo (no symptom) or a not-yet-logged
+  // symptom carries a NULL link; the `date` still places it on the day.
+  const logId = sym
+    ? ((
+        db
+          .prepare(
+            `SELECT id FROM symptom_logs
+              WHERE profile_id = ? AND date = ? AND symptom = ?`
+          )
+          .get(profileId, date, sym) as { id: number } | undefined
+      )?.id ?? null)
+    : null;
+
   // Per-profile dedup: a re-upload of the identical image reuses the existing row.
   const existing = db
     .prepare(
@@ -112,13 +128,14 @@ export function attachSymptomPhotoCore(
     const info = db
       .prepare(
         `INSERT INTO symptom_photos
-           (profile_id, date, symptom, stored_path, content_hash, mime_type, size_bytes, caption)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+           (profile_id, date, symptom, symptom_log_id, stored_path, content_hash, mime_type, size_bytes, caption)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         profileId,
         date,
         sym,
+        logId,
         storedPath,
         contentHash,
         mime,
@@ -130,6 +147,8 @@ export function attachSymptomPhotoCore(
 }
 
 // The photos attached in a date window (episode strip). Newest first. Profile-scoped.
+// Carries `symptom_log_id` (#1093) so the strip can label a photo with the symptom it
+// documents and two same-day symptoms show apart.
 export function getSymptomPhotosInRange(
   profileId: number,
   from: string,
@@ -137,12 +156,62 @@ export function getSymptomPhotosInRange(
 ): SymptomPhotoRow[] {
   return db
     .prepare(
-      `SELECT id, date, symptom, mime_type, caption, created_at
+      `SELECT id, date, symptom, symptom_log_id, mime_type, caption, created_at
          FROM symptom_photos
         WHERE profile_id = ? AND date >= ? AND date <= ?
         ORDER BY date DESC, id DESC`
     )
     .all(profileId, from, to) as SymptomPhotoRow[];
+}
+
+// The photos bound to ONE symptom-day log (#1093 reverse query). Newest first. Two
+// symptoms logged the same day resolve to DISTINCT sets — the payoff of the specific
+// symptom_log_id link over the old profile+date-only key. Profile-scoped.
+export function getSymptomPhotosForLog(
+  profileId: number,
+  symptomLogId: number
+): SymptomPhotoRow[] {
+  return db
+    .prepare(
+      `SELECT id, date, symptom, symptom_log_id, mime_type, caption, created_at
+         FROM symptom_photos
+        WHERE profile_id = ? AND symptom_log_id = ?
+        ORDER BY date DESC, id DESC`
+    )
+    .all(profileId, symptomLogId) as SymptomPhotoRow[];
+}
+
+// Delete every photo bound to a symptom-day log — rows AND their on-disk files (#1093
+// row-side-state: a deleted symptom log takes its photos, and foreign_keys=ON requires
+// the referencing rows gone before the log row can be dropped). Path-contained unlink,
+// like deleteSymptomPhotoCore. Composes INSIDE a caller's writeTx (the symptom-log delete
+// paths) — never opens its own. Returns the number of photo rows removed.
+export function deletePhotosForSymptomLog(
+  profileId: number,
+  symptomLogId: number
+): number {
+  const rows = db
+    .prepare(
+      `SELECT id, stored_path FROM symptom_photos
+        WHERE profile_id = ? AND symptom_log_id = ?`
+    )
+    .all(profileId, symptomLogId) as { id: number; stored_path: string }[];
+  if (rows.length === 0) return 0;
+  db.prepare(
+    `DELETE FROM symptom_photos WHERE profile_id = ? AND symptom_log_id = ?`
+  ).run(profileId, symptomLogId);
+  const root = path.resolve(SYMPTOM_PHOTO_DIR);
+  for (const r of rows) {
+    const abs = path.resolve(process.cwd(), r.stored_path);
+    if (abs.startsWith(root + path.sep) && fs.existsSync(abs)) {
+      try {
+        fs.unlinkSync(abs);
+      } catch {
+        // A missing/locked file must not fail the row delete.
+      }
+    }
+  }
+  return rows.length;
 }
 
 // Update only the user-authored caption. Empty text clears it; the same 500-character
