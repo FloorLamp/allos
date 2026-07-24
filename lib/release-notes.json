@@ -4,6 +4,13 @@
       "date": "2026-07-24",
       "entries": [
         {
+          "pr": 1439,
+          "title": "Share one bottle across the household",
+          "body": "A medication or supplement can now link to a shared bottle in the new household cabinet. Everyone's doses draw from the same count — each person at their own dose size — days-remaining reflects the whole household's pace, and a low bottle raises exactly one alert, never one per person. Items you don't share keep their private counts.",
+          "kind": "feature",
+          "issues": [1374]
+        },
+        {
           "pr": 1432,
           "title": "Release notes, right here in the app",
           "body": "This page is new. It ships with the app itself, so after an update you can see what changed without leaving Allos — even offline. The small dot on the What's new link marks notes you haven't read yet and clears when you visit.",
