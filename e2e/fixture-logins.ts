@@ -875,3 +875,12 @@ export const SUN_PROFILE = "Sun Outdoor (e2e)";
 // DOES carry a seeded home location, so it can't serve as the home-less case).
 export const E2E_LOGIN_SUN_NOHOME = "e2e_sun_nohome";
 export const SUN_NOHOME_PROFILE = "Sun No Home (e2e)";
+
+// #1081 — N-way activity duplicate merge (Review cluster card + Journal multi-merge).
+// A dedicated ADULT member profile, isolated from profile 1 so the merge specs (which
+// CONSUME their rows) never race a neighbor's blast radius. The spec re-seeds BOTH its
+// fixtures from a shared seeder in beforeEach (repeat-safe, #868): a 3-row cross-source
+// duplicate CLUSTER for the Review card, and a 3-row same-day group for the Journal
+// multi-select merge. Synthetic data only.
+export const E2E_LOGIN_NWAY = "e2e_nway";
+export const NWAY_PROFILE = "N-Way Merge (e2e)";
