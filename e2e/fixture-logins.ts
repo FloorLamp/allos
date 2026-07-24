@@ -718,6 +718,23 @@ export const MULTI_SHARED_VISIT = "Multi Shared Checkup (e2e)";
 export const MULTI_OWNER_VACCINE = "influenza";
 export const MULTI_SHARED_VACCINE = "tdap";
 
+// Multi-view Timeline with a DIVERGENT-timezone day boundary (issue #1329). A dedicated
+// member granted TWO adult profiles WRITE whose per-profile timezones sit ~25h apart
+// (Etc/GMT-13 = UTC+13 vs Etc/GMT+12 = UTC−12), so the SAME frozen instant is a
+// DIFFERENT local calendar date for each — the honest divergent-day header the spec
+// asserts. Each profile carries ONE activity dated on ITS OWN today (computed in its
+// zone at seed time), so the merged feed shows two separate "Today" day-groups, one per
+// member. EAST is created first (lower id → the member's ACTING profile on login).
+// Dedicated timezones on purpose: mutating a shared profile's tz would skew every
+// dueness/today-seeded neighbor spec. Synthetic, no PHI.
+export const E2E_LOGIN_TL_MULTI = "e2e_tl_multi";
+export const TL_EAST_PROFILE = "Timeline East (e2e)";
+export const TL_WEST_PROFILE = "Timeline West (e2e)";
+export const TL_EAST_ACTIVITY = "TL East morning run";
+export const TL_WEST_ACTIVITY = "TL West evening swim";
+export const TL_EAST_TZ = "Etc/GMT-13"; // UTC+13
+export const TL_WEST_TZ = "Etc/GMT+12"; // UTC−12
+
 // Own-profile link + not-self write affordances (issue #1013). A dedicated member
 // granted TWO adult profiles WRITE, with own_profile_id pointing at the FIRST — the
 // login's declared "self". Each carries a due-today dose + one weigh-in, so the

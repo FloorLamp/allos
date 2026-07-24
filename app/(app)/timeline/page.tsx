@@ -22,9 +22,11 @@ import {
   IconBandage,
   IconRun,
   IconSparkles,
+  IconUsers,
+  IconLayoutList,
   type TablerIcon,
 } from "@tabler/icons-react";
-import { requireSession } from "@/lib/auth";
+import { requireScope, stampSubjects, type SubjectInfo } from "@/lib/scope";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import { today } from "@/lib/db";
 import {
@@ -35,15 +37,29 @@ import {
 } from "@/lib/settings";
 import DaylightChip from "@/components/DaylightChip";
 import CyclePhaseChip from "@/components/CyclePhaseChip";
+import Avatar from "@/components/Avatar";
+import SubjectChip from "@/components/SubjectChip";
 import { listCyclePeriods } from "@/lib/cycle-store";
 import { cyclePhaseOnDate, periodOnDate } from "@/lib/cycle";
 import {
   getTimelinePage,
+  getMultiProfileTimeline,
   TIMELINE_CATEGORIES,
   timelineCategoryLabel,
   type TimelineCategory,
   type TimelineEvent,
 } from "@/lib/timeline";
+import {
+  mergeMemberTimelines,
+  byPersonTimelines,
+  type ProfiledTimelineEvent,
+  type DayMark,
+} from "@/lib/timeline-multi";
+import {
+  subjectChipVisible,
+  parseViewMode,
+  type ViewMode,
+} from "@/lib/multi-view";
 import { getUvDoseForDay } from "@/lib/queries/weather";
 import {
   getDaylightOutdoorMinutesByDay,
@@ -135,6 +151,13 @@ const MAX_SHOW = 1000;
 
 const TRAINING_CATEGORIES = new Set<TimelineCategory>(["activity", "goal"]);
 
+// The relative-day badge copy for a divergent day (issue #1329). Honest, per member.
+const RELATIVE_LABEL: Record<DayMark["relative"], string> = {
+  today: "Today",
+  yesterday: "Yesterday",
+  tomorrow: "Tomorrow",
+};
+
 function filterHref(
   category?: TimelineCategory,
   range: { from?: string; to?: string } = {},
@@ -154,6 +177,16 @@ function parseShow(value: string | string[] | undefined): number {
   const n = Number(first);
   if (!Number.isFinite(n)) return DEFAULT_SHOW;
   return Math.min(Math.max(Math.trunc(n), DEFAULT_SHOW), MAX_SHOW);
+}
+
+// A day-deep-link's `subject` param (issue #1329): whose day a single-day view lands on.
+// Positive-integer profile ids only; anything else → undefined (falls back to acting).
+function parseSubjectParam(
+  value: string | string[] | undefined
+): number | undefined {
+  const first = Array.isArray(value) ? value[0] : value;
+  const n = Number(first);
+  return Number.isInteger(n) && n > 0 ? n : undefined;
 }
 
 function EventCard({
@@ -307,73 +340,216 @@ function EventCard({
   );
 }
 
+// The divergent-day header marks (issue #1329): when a calendar date is one member's
+// "today" and another's "tomorrow" (timezone divergence — travel / midnight straddle),
+// the header carries per-member relative badges rather than pretending one boundary.
+// Rendered ONLY on divergent days (marks non-empty), so an aligned day / single view
+// shows nothing extra. On-element identity (#531): each badge names its subject.
+function DayMarks({
+  marks,
+  subjectByProfile,
+}: {
+  marks: DayMark[];
+  subjectByProfile: Map<number, SubjectInfo>;
+}) {
+  return (
+    <div
+      data-testid="timeline-day-divergence"
+      className="mt-1 flex flex-wrap gap-1"
+    >
+      {marks.map((mark) => {
+        const subject = subjectByProfile.get(mark.profileId);
+        const name = subject?.name ?? `Profile ${mark.profileId}`;
+        return (
+          <span
+            key={mark.profileId}
+            data-testid={`timeline-daymark-${mark.profileId}`}
+            className="inline-flex items-center gap-1 rounded-full border border-brand-200 bg-brand-50 px-1.5 py-0.5 text-xs font-medium text-brand-700 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-300"
+          >
+            {subject && (
+              <Avatar
+                profile={{
+                  id: subject.profileId,
+                  name: subject.name,
+                  photo_path: subject.photoPath,
+                  photo_version: subject.photoVersion,
+                }}
+                size="sm"
+              />
+            )}
+            {RELATIVE_LABEL[mark.relative]} · {name}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+// One event row in a timeline day column, with an optional subject chip (issue #1329)
+// when the event belongs to a NON-acting member in a multi-view feed — the acting
+// profile's own rows are implied by the view strip and get no chip (subjectChipVisible).
+function TimelineEventRow({
+  event,
+  defaultOpen,
+  subject,
+}: {
+  event: TimelineEvent;
+  defaultOpen: boolean;
+  subject: SubjectInfo | null;
+}) {
+  return (
+    <div className="relative" data-testid="timeline-event">
+      <span className="absolute left-0 top-[1.875rem] h-px w-4 -translate-x-4 bg-black/10 dark:bg-white/10" />
+      <span className="absolute left-0 top-[1.5625rem] h-2.5 w-2.5 -translate-x-[1.3125rem] rounded-full border-2 border-white bg-brand-500 dark:border-ink-950" />
+      {subject && (
+        <div className="mb-1.5">
+          <SubjectChip subject={subject} />
+        </div>
+      )}
+      <EventCard event={event} defaultOpen={defaultOpen} />
+    </div>
+  );
+}
+
 export default async function TimelinePage(props: {
   searchParams: Promise<{
     category?: string | string[];
     from?: string | string[];
     to?: string | string[];
     show?: string | string[];
+    subject?: string | string[];
+    group?: string | string[];
   }>;
 }) {
   const searchParams = await props.searchParams;
-  const { login, profile } = await requireSession();
-  const units = getUnitPrefs(login.id);
-  const formatPrefs = getDisplayFormatPrefs(login.id);
-  const trainingRestricted = isTrainingRestricted(profile.id);
-  // Home location + timezone for the per-day sunrise/sunset daylight chips (#570).
-  // Absent home location → the chip renders nothing.
-  const home = getHomeLocation(profile.id);
-  const profileTimezone = getTimezone(profile.id);
-  const visibleCategories = trainingRestricted
+  // The cross-profile scope (issue #1329 / #1096): the persisted view-set (∩ accessible).
+  // In the common single-view case `viewIds` is just the acting profile and the page
+  // renders exactly as before; when the user has toggled other profiles into view, the
+  // full feed merges each member's timeline — bucketed in THAT member's own timezone-
+  // local days (the per-profile-context trap) — with honest divergent-day headers.
+  const scope = await requireScope();
+  const { loginId, actingProfileId, viewIds } = scope;
+  const multi = viewIds.length > 1;
+
+  const units = getUnitPrefs(loginId);
+  const formatPrefs = getDisplayFormatPrefs(loginId);
+  // Category pills + the training-category drop follow the ACTING profile's restriction
+  // (the viewer's anchor); each in-view member's own restriction is applied inside the
+  // per-member gather, so a restricted member simply contributes no training events.
+  const actingRestricted = isTrainingRestricted(actingProfileId);
+  const visibleCategories = actingRestricted
     ? TIMELINE_CATEGORIES.filter((c) => !TRAINING_CATEGORIES.has(c))
     : TIMELINE_CATEGORIES;
   const requestedCategory = timelineCategoryFromParam(searchParams.category);
   const category =
-    trainingRestricted && requestedCategory
+    actingRestricted && requestedCategory
       ? TRAINING_CATEGORIES.has(requestedCategory)
         ? undefined
         : requestedCategory
       : requestedCategory;
   const from = timelineDateFromParam(searchParams.from);
   const to = timelineDateFromParam(searchParams.to);
-  const todayStr = today(profile.id);
   const show = parseShow(searchParams.show);
-  // The default and "All time" views leave the upper bound OPEN (no injected
-  // today cap) so future-dated events — a goal's target date, an upcoming visit —
-  // are visible; they sort to the top of the newest-first feed. Only an explicit
-  // user-set from/to bounds the window.
+  // The default and "All time" views leave the upper bound OPEN (no injected today
+  // cap) so future-dated events are visible. Only an explicit user-set from/to bounds
+  // the window.
   const range = normalizeTimelineRange(from, to);
-  const { events, hasMore } = getTimelinePage(profile.id, {
-    category,
-    startDate: range.from,
-    endDate: range.to,
-    limit: show,
-    units,
-    restricted: trainingRestricted,
-  });
-  const days = groupTimelineDays(events);
-  // Daylight-outdoor minutes per visible day (issue #571) — the same
-  // getDaylightOutdoorMinutesByDay computation the coaching observation averages.
-  // One query over the rendered days; empty when no home location is set.
-  const daylightOutdoor = home
-    ? getDaylightOutdoorMinutesByDay(
-        profile.id,
-        days.map((d) => d.date)
-      )
-    : new Map<string, number>();
-  // Per-day LIVE UV enrichment (#1172) for the DaylightChip — the SAME UV-dose
-  // computation (getUvDoseForDay) every UV surface formats. Computed only for days
-  // that actually logged outdoor daylight time, and only surfaced when the source is
-  // live (measured) UV, so with no integration / offline the chip degrades to
-  // minutes-only. Bounded: the visible day window.
+  const singleDaySelected = Boolean(
+    range.from && range.to && range.from === range.to
+  );
+
+  // The single-day timeline view stays SINGLE-SUBJECT (issue #1329 — never a mixed-
+  // subject edit surface): a day-deep-link built inside the multi-view feed carries a
+  // `subject` param naming whose local day it is, so the day view lands on THAT member's
+  // day context. Honored only in multi-view for an in-view member; otherwise (and in
+  // single view) the acting profile is the subject, byte-identical to before.
+  const subjectParam = parseSubjectParam(searchParams.subject);
+  const daySubjectId =
+    multi &&
+    singleDaySelected &&
+    subjectParam != null &&
+    viewIds.includes(subjectParam)
+      ? subjectParam
+      : actingProfileId;
+  const viewingOtherSubject = daySubjectId !== actingProfileId;
+  const daySubjectName = scope.profiles.find(
+    (p) => p.id === daySubjectId
+  )?.name;
+
+  // The multi-view MERGED feed renders only when several profiles are in view AND we're
+  // not on a single-day (single-subject) view.
+  const multiFeed = multi && !singleDaySelected;
+  const viewMode: ViewMode = multiFeed
+    ? parseViewMode(searchParams.group)
+    : "interleaved";
+
+  // Per-subject context (the single-subject branch): home/timezone/cycle/today all key
+  // on the subject whose day we're rendering (acting in the common case).
+  const trainingRestricted = isTrainingRestricted(daySubjectId);
+  const home = getHomeLocation(daySubjectId);
+  const profileTimezone = getTimezone(daySubjectId);
+  const todayStr = today(daySubjectId);
+
+  // Single-subject gather (single view, or a deep-linked subject's day). The multi feed
+  // uses the cross-profile gather below instead.
+  const singlePage = multiFeed
+    ? { events: [] as TimelineEvent[], hasMore: false }
+    : getTimelinePage(daySubjectId, {
+        category,
+        startDate: range.from,
+        endDate: range.to,
+        limit: show,
+        units,
+        restricted: trainingRestricted,
+      });
+  const days = groupTimelineDays(singlePage.events);
+
+  // Cross-profile gather (issue #1329): loop-composed per member, each bucketed in its
+  // own timezone-local days. Subject identity resolved ONCE through stampSubjects (#534).
+  const multiGather = multiFeed
+    ? getMultiProfileTimeline(viewIds, {
+        category,
+        startDate: range.from,
+        endDate: range.to,
+        limit: show,
+        units,
+      })
+    : { members: [], hasMore: false };
+  const mergedDays = multiFeed ? mergeMemberTimelines(multiGather.members) : [];
+  const memberSections = multiFeed
+    ? byPersonTimelines(multiGather.members)
+    : [];
+  const subjectByProfile = new Map<number, SubjectInfo>();
+  if (multi) {
+    for (const s of stampSubjects(
+      scope,
+      viewIds.map((id) => ({ profileId: id }))
+    )) {
+      subjectByProfile.set(s.profileId, s.subject);
+    }
+  }
+  const hasMore = multiFeed ? multiGather.hasMore : singlePage.hasMore;
+  const hasAnyEvents = multiFeed
+    ? multiGather.members.some((m) => m.events.length > 0)
+    : days.length > 0;
+
+  // Daylight/cycle/UV chips are ACTING/subject body-context; ambiguous on a shared
+  // multi-feed day, so they render only in the single-subject branch (#1329).
+  const daylightOutdoor =
+    !multiFeed && home
+      ? getDaylightOutdoorMinutesByDay(
+          daySubjectId,
+          days.map((d) => d.date)
+        )
+      : new Map<string, number>();
   const uvByDay = new Map<
     string,
     { uvMinutes: number | null; peakUvIndex: number | null }
   >();
-  if (home) {
+  if (!multiFeed && home) {
     for (const [date, mins] of daylightOutdoor) {
       if (mins <= 0) continue;
-      const dose = getUvDoseForDay(profile.id, date);
+      const dose = getUvDoseForDay(daySubjectId, date);
       if (dose && dose.uvSource === "live") {
         uvByDay.set(date, {
           uvMinutes: dose.uvMinutes,
@@ -382,15 +558,10 @@ export default async function TimelinePage(props: {
       }
     }
   }
-  // Recorded periods for the derived cycle phase + period marker on each day header
-  // (issue #714). One profile-scoped read; the pure cyclePhaseOnDate/periodOnDate
-  // derivations resolve per day. Empty (chip renders nothing) until periods are logged.
-  const cyclePeriods = listCyclePeriods(profile.id);
-  const singleDaySelected = Boolean(
-    range.from && range.to && range.from === range.to
-  );
-  const latestDay = days[0]?.date;
-  const oldestDay = days.at(-1)?.date;
+  const cyclePeriods = !multiFeed ? listCyclePeriods(daySubjectId) : [];
+
+  const latestDay = (multiFeed ? mergedDays : days)[0]?.date;
+  const oldestDay = (multiFeed ? mergedDays : days).at(-1)?.date;
   const throughLabel =
     range.to === todayStr
       ? "Through today"
@@ -480,30 +651,47 @@ export default async function TimelinePage(props: {
         </div>
       </div>
 
+      {/* Multi-view merged feed: the interleaved | by-person toggle (issue #1327 fix 2,
+          restated for timelines #1329). Only meaningful when several profiles are in view. */}
+      {multiFeed && <ModeToggle mode={viewMode} category={category} />}
+
+      {/* A deep-linked non-acting subject's day view (issue #1329): name whose day this
+          is so the single-subject context is explicit. */}
+      {viewingOtherSubject && daySubjectName && (
+        <div
+          data-testid="timeline-subject-day-banner"
+          className="mb-4 flex items-center gap-2 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-800 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-200"
+        >
+          <IconUsers className="h-4 w-4 shrink-0" stroke={1.75} />
+          Viewing {daySubjectName}’s day.
+        </div>
+      )}
+
       {/* Retro symptom entry (#799): on a single selected day, offer the one-tap symptom
-          bar so a past sick day can be filled in — the Timeline day-view entry point. When
-          no illness-type situation is active it offers the suggest-only "Mark as illness"
-          bridge (direction A of the two-way bridge). */}
-      {singleDaySelected && range.from && (
+          bar. It writes to the ACTING profile, so it's shown only when the day being
+          viewed IS the acting profile's (never a mixed-subject / wrong-profile write —
+          #1329). When no illness-type situation is active it offers the suggest-only
+          "Mark as illness" bridge (direction A of the two-way bridge). */}
+      {singleDaySelected && range.from && !viewingOtherSubject && (
         <div className="card mb-5" data-testid="timeline-symptom-entry">
           <h2 className="mb-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
             Log symptoms for {formatLongDate(range.from, formatPrefs)}
           </h2>
           <SymptomLogBar
             date={range.from}
-            initial={getSymptomSeveritiesOnDate(profile.id, range.from)}
-            initialNotes={getSymptomNotesOnDate(profile.id, range.from)}
+            initial={getSymptomSeveritiesOnDate(daySubjectId, range.from)}
+            initialNotes={getSymptomNotesOnDate(daySubjectId, range.from)}
             symptoms={SYMPTOMS}
-            customNames={getCustomSymptomNames(profile.id)}
-            rankedKeys={getSymptomLogOrder(profile.id)}
-            suggestActivateIllness={!hasActiveIllnessSituation(profile.id)}
+            customNames={getCustomSymptomNames(daySubjectId)}
+            rankedKeys={getSymptomLogOrder(daySubjectId)}
+            suggestActivateIllness={!hasActiveIllnessSituation(daySubjectId)}
             temperatureUnit={units.temperatureUnit}
             textIntakeEnabled={isTaskConfigured("symptom-map")}
           />
         </div>
       )}
 
-      {days.length === 0 ? (
+      {!hasAnyEvents ? (
         <EmptyState
           message={
             category
@@ -511,6 +699,149 @@ export default async function TimelinePage(props: {
               : "No timeline events yet."
           }
         />
+      ) : multiFeed && viewMode === "by-person" ? (
+        <div className="space-y-8" data-testid="timeline-by-person">
+          {memberSections.map((section) => {
+            const subject = subjectByProfile.get(section.profileId) ?? null;
+            const name = subject?.name ?? `Profile ${section.profileId}`;
+            return (
+              <section
+                key={section.profileId}
+                data-testid={`timeline-member-section-${section.profileId}`}
+              >
+                <div className="mb-2 flex items-center gap-2 border-b border-black/5 pb-1 dark:border-white/5">
+                  {subject && (
+                    <Avatar
+                      profile={{
+                        id: subject.profileId,
+                        name: subject.name,
+                        photo_path: subject.photoPath,
+                        photo_version: subject.photoVersion,
+                      }}
+                      size="sm"
+                    />
+                  )}
+                  <span className="font-semibold text-slate-800 dark:text-slate-100">
+                    {name}
+                  </span>
+                </div>
+                {section.empty ? (
+                  <div
+                    data-testid={`timeline-member-empty-${section.profileId}`}
+                    className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-500 dark:bg-ink-850 dark:text-slate-400"
+                  >
+                    No timeline events yet.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {section.days.map((day) => (
+                      <div key={day.date}>
+                        <div className="mb-2 flex items-center gap-2 whitespace-nowrap text-sm font-semibold text-slate-800 dark:text-slate-100">
+                          <IconNotes
+                            className="h-4 w-4 text-brand-600 dark:text-brand-400"
+                            stroke={1.75}
+                          />
+                          {formatLongDate(day.date, formatPrefs)}
+                        </div>
+                        <div className="space-y-3 pl-4">
+                          {day.events.map((event) => (
+                            <TimelineEventRow
+                              key={`${event.profileId}:${event.id}`}
+                              event={event}
+                              defaultOpen={false}
+                              subject={null}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            );
+          })}
+        </div>
+      ) : multiFeed ? (
+        <div id="timeline-feed" className="relative">
+          <div className="absolute bottom-0 left-0 top-0 hidden w-px bg-black/10 md:left-[14.75rem] md:block dark:bg-white/10" />
+          <div className="space-y-0">
+            {mergedDays.map((day, index) => (
+              <section
+                key={day.date}
+                id={`timeline-day-${day.date}`}
+                className="relative grid scroll-mt-[calc(13rem+env(safe-area-inset-top))] gap-3 py-6 first:pt-0 md:grid-cols-[14rem_1fr] md:scroll-mt-44"
+              >
+                {index > 0 && (
+                  <div
+                    className="absolute left-0 right-0 top-0 h-px bg-black/10 dark:bg-white/10"
+                    style={{
+                      maskImage:
+                        "linear-gradient(to right, transparent, black 2rem, black calc(100% - 2rem), transparent)",
+                      WebkitMaskImage:
+                        "linear-gradient(to right, transparent, black 2rem, black calc(100% - 2rem), transparent)",
+                    }}
+                  />
+                )}
+                <div className="md:sticky md:top-4 md:self-start">
+                  <div className="flex items-center gap-2 whitespace-nowrap text-sm font-semibold text-slate-800 dark:text-slate-100">
+                    <IconNotes
+                      className="h-4 w-4 text-brand-600 dark:text-brand-400"
+                      stroke={1.75}
+                    />
+                    {formatLongDate(day.date, formatPrefs)}
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    {day.events.length} event
+                    {day.events.length === 1 ? "" : "s"}
+                  </div>
+                  {day.marks.length > 0 && (
+                    <DayMarks
+                      marks={day.marks}
+                      subjectByProfile={subjectByProfile}
+                    />
+                  )}
+                </div>
+                <div className="space-y-3 pl-4">
+                  {day.events.map((event: ProfiledTimelineEvent) => {
+                    const showChip = subjectChipVisible({
+                      multi,
+                      isActing: event.profileId === actingProfileId,
+                    });
+                    return (
+                      <TimelineEventRow
+                        key={`${event.profileId}:${event.id}`}
+                        event={event}
+                        defaultOpen={false}
+                        subject={
+                          showChip
+                            ? (subjectByProfile.get(event.profileId) ?? null)
+                            : null
+                        }
+                      />
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
+          </div>
+
+          {hasMore &&
+            (show < MAX_SHOW ? (
+              <div className="flex justify-center pb-2 pt-4">
+                <TimelineFilterLink
+                  href={filterHref(category, range, show + SHOW_STEP)}
+                  className="rounded-full border border-black/10 bg-white/70 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-white dark:border-white/10 dark:bg-ink-900/70 dark:text-slate-200 dark:hover:bg-ink-850"
+                >
+                  Load more
+                </TimelineFilterLink>
+              </div>
+            ) : (
+              <p className="pb-2 pt-4 text-center text-sm text-slate-500 dark:text-slate-400">
+                Showing the latest {MAX_SHOW} events — narrow the date range to
+                see more.
+              </p>
+            ))}
+        </div>
       ) : (
         <div id="timeline-feed" className="relative">
           <div className="absolute bottom-0 left-0 top-0 hidden w-px bg-black/10 md:left-[14.75rem] md:block dark:bg-white/10" />
@@ -590,6 +921,59 @@ export default async function TimelinePage(props: {
             ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// The interleaved | by-person ordering toggle for the merged multi-view feed (issue
+// #1327 fix 2 / #1329). Two server-rendered <Link>s (native <a href> that work
+// pre-hydration, #830) — no permanent client chrome. Only rendered in multi-view. The
+// links preserve the active category filter so toggling mode doesn't reset it.
+function ModeToggle({
+  mode,
+  category,
+}: {
+  mode: ViewMode;
+  category?: TimelineCategory;
+}) {
+  const sp = new URLSearchParams();
+  if (category) sp.set("category", category);
+  const byDateQs = sp.toString();
+  sp.set("group", "by-person");
+  const byPersonQs = sp.toString();
+  const byDateHref = (
+    byDateQs ? `/timeline?${byDateQs}` : "/timeline"
+  ) as AppRoute;
+  const byPersonHref = `/timeline?${byPersonQs}` as AppRoute;
+  const base =
+    "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition";
+  const on =
+    "bg-brand-100 text-brand-700 dark:bg-brand-500/20 dark:text-brand-300";
+  const off =
+    "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-750";
+  return (
+    <div
+      data-testid="timeline-mode-toggle"
+      className="mb-4 inline-flex items-center gap-1 rounded-xl border border-black/10 p-1 dark:border-white/10"
+    >
+      <Link
+        href={byDateHref}
+        data-testid="timeline-mode-interleaved"
+        aria-pressed={mode === "interleaved"}
+        className={`${base} ${mode === "interleaved" ? on : off}`}
+      >
+        <IconLayoutList className="h-4 w-4" stroke={1.75} />
+        By date
+      </Link>
+      <Link
+        href={byPersonHref}
+        data-testid="timeline-mode-by-person"
+        aria-pressed={mode === "by-person"}
+        className={`${base} ${mode === "by-person" ? on : off}`}
+      >
+        <IconUsers className="h-4 w-4" stroke={1.75} />
+        By person
+      </Link>
     </div>
   );
 }
