@@ -248,6 +248,10 @@ import {
   SITUATION_IMPACT_PROFILE,
   E2E_LOGIN_WELLSYM,
   WELL_SYMPTOM_PROFILE,
+  E2E_LOGIN_SUN,
+  SUN_PROFILE,
+  E2E_LOGIN_SUN_NOHOME,
+  SUN_NOHOME_PROFILE,
 } from "./fixture-logins";
 import {
   diffSituations,
@@ -5819,5 +5823,60 @@ console.log(
   seedMemberLogin(E2E_LOGIN_RECS_ENRICH, reId, "write");
   console.log(
     `e2e: seeded records-enrichment fixture — ${E2E_LOGIN_RECS_ENRICH} granted ${RECS_ENRICH_PROFILE} (${reId}) (#1354/#1355)`
+  );
+}
+
+// ── Sun / outdoor + free-days fixtures (issues #1171, #1241) ───────────────────
+// A dedicated adult profile with a coarse home location (sun features ON) and outdoor
+// DAYTIME activities on several recent days, so Trends → Vitals renders the "Sun /
+// outdoor time" chart over a real multi-day series. The free-days setting spec (#1241)
+// also drives this profile's Settings → Profile checkbox row. Isolated from profile 1
+// so neither the chart reads nor the free_days toggle perturb the shared sleep specs.
+{
+  const sunId = fixtureProfileId(SUN_PROFILE);
+  const sunTz = "America/New_York";
+  const setSunPS = db.prepare(
+    `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, ?, ?)
+       ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+  );
+  setSunPS.run(sunId, "home_lat", "40.7");
+  setSunPS.run(sunId, "home_lng", "-74");
+  setSunPS.run(sunId, "timezone", sunTz);
+  const sunToday = new Intl.DateTimeFormat("en-CA", {
+    timeZone: sunTz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  // Outdoor midday walks on four distinct recent days (avg_temp_c present = the
+  // persisted outdoor signal), each safely inside the daylight window → four chart
+  // points. Idempotent by external_id for a reused dev server.
+  const insSunWalk = db.prepare(
+    `INSERT INTO activities
+       (profile_id, date, type, title, start_time, end_time, avg_temp_c, source, external_id)
+     SELECT ?, ?, 'cardio', 'Outdoor walk', '10:00', '11:30', 19, 'manual', ?
+      WHERE NOT EXISTS (SELECT 1 FROM activities WHERE external_id = ?)`
+  );
+  for (const back of [0, 3, 7, 12]) {
+    const d = shiftDateStr(sunToday, -back);
+    const ext = `e2e:sun-walk-${back}`;
+    insSunWalk.run(sunId, d, ext, ext);
+  }
+  seedMemberLogin(E2E_LOGIN_SUN, sunId, "write");
+
+  // The home-less negative case: an outdoor walk today but NO home location, so the
+  // sun features stay off and the chart is hidden even though the outdoor signal exists.
+  const sunNoHomeId = fixtureProfileId(SUN_NOHOME_PROFILE);
+  const nhExt = "e2e:sun-nohome-walk";
+  db.prepare(
+    `INSERT INTO activities
+       (profile_id, date, type, title, start_time, end_time, avg_temp_c, source, external_id)
+     SELECT ?, ?, 'cardio', 'Outdoor walk', '10:00', '11:30', 19, 'manual', ?
+      WHERE NOT EXISTS (SELECT 1 FROM activities WHERE external_id = ?)`
+  ).run(sunNoHomeId, sunToday, nhExt, nhExt);
+  seedMemberLogin(E2E_LOGIN_SUN_NOHOME, sunNoHomeId, "write");
+
+  console.log(
+    `e2e: seeded sun/outdoor + free-days fixture — profile ${sunId} (${SUN_PROFILE}), no-home ${sunNoHomeId} (${SUN_NOHOME_PROFILE}) (#1171/#1241)`
   );
 }

@@ -381,6 +381,11 @@ export interface SleepRegularityOptions {
   // Minimum recorded nights within the window below which SRI is not emitted
   // (sparse data makes it meaningless). Default 14.
   minNights?: number;
+  // "Free days" — the wake-day weekday indices (0=Sun … 6=Sat) treated as free-day
+  // mornings for the social-jetlag split (#1241). Defaults to Sat/Sun (weekend), so
+  // a caller that doesn't pass it gets the historical figure unchanged. A profile
+  // with a non-weekend work schedule (shift worker, nurse) passes its own set.
+  freeDays?: readonly number[];
 }
 
 export interface SleepRegularity {
@@ -396,8 +401,9 @@ export interface SleepRegularity {
   // Standard deviation (minutes) of clock bedtime / waketime across the nights.
   bedtimeSdMin: number;
   waketimeSdMin: number;
-  // Social jetlag: absolute weekend-vs-weekday mid-sleep shift (minutes), or null
-  // when the window lacks at least one weekday AND one weekend night.
+  // Social jetlag: absolute free-day-vs-work-day mid-sleep shift (minutes), or null
+  // when the window lacks at least one work-day AND one free-day night. "Free days"
+  // default to Sat/Sun; a profile can override the set (#1241).
   socialJetlagMin: number | null;
 }
 
@@ -638,27 +644,29 @@ export function computeSleepRegularity(
   const bedtimeSdMin = circularSdMinutes(nights.map((n) => n.bedMin));
   const waketimeSdMin = circularSdMinutes(nights.map((n) => n.wakeMin));
 
-  // Social jetlag: the circular distance between the weekend and weekday mean mid-
-  // sleep clock. A night is "weekend" when its wake-day is Saturday or Sunday
-  // (free-day mornings). Mid-sleep is bedtime + half the sleep duration reduced to a
-  // clock minute; circular means/distance keep it well-defined for a daytime sleeper
-  // whose mid-sleep sits near noon (the old fixed anchor's fold — #1190).
-  const weekendMid: number[] = [];
-  const weekdayMid: number[] = [];
+  // Social jetlag: the circular distance between the free-day and work-day mean mid-
+  // sleep clock. A night is a "free day" when its wake-day is in the profile's free-
+  // day set — Sat/Sun by default (#1241), overridable for a non-weekend schedule.
+  // Mid-sleep is bedtime + half the sleep duration reduced to a clock minute;
+  // circular means/distance keep it well-defined for a daytime sleeper whose mid-
+  // sleep sits near noon (the old fixed anchor's fold — #1190).
+  const freeDays = new Set(opts.freeDays ?? [0, 6]);
+  const freeMid: number[] = [];
+  const workMid: number[] = [];
   for (const n of nights) {
     const mid =
       (((n.bedMin + n.durationMin / 2) % EPOCHS_PER_DAY) + EPOCHS_PER_DAY) %
       EPOCHS_PER_DAY;
     const dow = weekdayOfDateStr(n.wakeDay); // 0=Sun … 6=Sat
-    if (dow === 0 || dow === 6) weekendMid.push(mid);
-    else weekdayMid.push(mid);
+    if (freeDays.has(dow)) freeMid.push(mid);
+    else workMid.push(mid);
   }
   const socialJetlagMin =
-    weekendMid.length > 0 && weekdayMid.length > 0
+    freeMid.length > 0 && workMid.length > 0
       ? Math.abs(
           signedDeltaMinutes(
-            circularMeanMinutes(weekendMid),
-            circularMeanMinutes(weekdayMid)
+            circularMeanMinutes(freeMid),
+            circularMeanMinutes(workMid)
           )
         )
       : null;
