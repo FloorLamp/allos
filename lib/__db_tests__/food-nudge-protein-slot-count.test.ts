@@ -86,14 +86,12 @@ function cqWithFoodButtons(
     "fruit",
     "other_vegetables",
   ];
-  const rows = slugs
-    .slice(0, foodButtonCount)
-    .map((s) => [
-      {
-        text: s,
-        callback_data: foodLogCallbackData(profileId, window, date, s),
-      },
-    ]);
+  const rows = slugs.slice(0, foodButtonCount).map((s) => [
+    {
+      text: s,
+      callback_data: foodLogCallbackData(profileId, window, date, s),
+    },
+  ]);
   return {
     id: "cbq-slot",
     data,
