@@ -869,3 +869,9 @@ export const E2E_LOGIN_VIEWONLY_WRITE = "e2e_viewonly_write";
 // no PHI.
 export const E2E_LOGIN_SUN = "e2e_sun";
 export const SUN_PROFILE = "Sun Outdoor (e2e)";
+// The negative-case sibling: a profile with an outdoor activity but NO home location,
+// so the sun features stay quietly OFF and the "Sun / outdoor time" chart is HIDDEN —
+// the data-gate proven with the outdoor signal present, isolated from profile 1 (which
+// DOES carry a seeded home location, so it can't serve as the home-less case).
+export const E2E_LOGIN_SUN_NOHOME = "e2e_sun_nohome";
+export const SUN_NOHOME_PROFILE = "Sun No Home (e2e)";

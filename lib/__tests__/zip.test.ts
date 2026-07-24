@@ -108,8 +108,7 @@ describe("readZip aggregate caps", () => {
       data: chunk,
     }));
     expect(() => readZip(buildZip(members))).toThrow(/total size/i);
-  }, // This case deflates/inflates ~288 MiB. In isolation it finishes in well under a
-  // second, but under FULL parallel vitest load on a busy machine the CPU-bound
+  }, // second, but under FULL parallel vitest load on a busy machine the CPU-bound // This case deflates/inflates ~288 MiB. In isolation it finishes in well under a
   // zlib work can starve past the 5 s default and flake the local gate (#1349; CI's
   // fresh runners never reproduce it). A generous per-test timeout removes the
   // starvation window without weakening the assertion.

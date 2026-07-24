@@ -245,6 +245,8 @@ import {
   WELL_SYMPTOM_PROFILE,
   E2E_LOGIN_SUN,
   SUN_PROFILE,
+  E2E_LOGIN_SUN_NOHOME,
+  SUN_NOHOME_PROFILE,
 } from "./fixture-logins";
 import {
   diffSituations,
@@ -5793,7 +5795,20 @@ console.log(
     insSunWalk.run(sunId, d, ext, ext);
   }
   seedMemberLogin(E2E_LOGIN_SUN, sunId, "write");
+
+  // The home-less negative case: an outdoor walk today but NO home location, so the
+  // sun features stay off and the chart is hidden even though the outdoor signal exists.
+  const sunNoHomeId = fixtureProfileId(SUN_NOHOME_PROFILE);
+  const nhExt = "e2e:sun-nohome-walk";
+  db.prepare(
+    `INSERT INTO activities
+       (profile_id, date, type, title, start_time, end_time, avg_temp_c, source, external_id)
+     SELECT ?, ?, 'cardio', 'Outdoor walk', '10:00', '11:30', 19, 'manual', ?
+      WHERE NOT EXISTS (SELECT 1 FROM activities WHERE external_id = ?)`
+  ).run(sunNoHomeId, sunToday, nhExt, nhExt);
+  seedMemberLogin(E2E_LOGIN_SUN_NOHOME, sunNoHomeId, "write");
+
   console.log(
-    `e2e: seeded sun/outdoor + free-days fixture — profile ${sunId} (${SUN_PROFILE}) (#1171/#1241)`
+    `e2e: seeded sun/outdoor + free-days fixture — profile ${sunId} (${SUN_PROFILE}), no-home ${sunNoHomeId} (${SUN_NOHOME_PROFILE}) (#1171/#1241)`
   );
 }
