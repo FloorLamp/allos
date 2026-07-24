@@ -177,6 +177,43 @@ export function poolIdsForProfiles(profileIds: readonly number[]): number[] {
   return [...out].sort((a, b) => a - b);
 }
 
+// The shared-bottle CHIP a linked item's row/card renders in place of the per-item
+// "≈N days left" badge — the pooled projection across EVERYONE, which is the whole
+// point (this member's own doses are only part of the drain). Keyed by item id so a
+// list surface can look up per row, mirroring how getRefillRates is threaded.
+export interface PoolChipData {
+  supplyId: number;
+  name: string;
+  daysLeft: number | null;
+  memberCount: number;
+  low: boolean;
+}
+
+export function getPoolChips(profileId: number): Map<number, PoolChipData> {
+  const out = new Map<number, PoolChipData>();
+  const rows = db
+    .prepare(
+      `SELECT id, supply_id FROM intake_items
+        WHERE profile_id = ? AND supply_id IS NOT NULL`
+    )
+    .all(profileId) as { id: number; supply_id: number }[];
+  const views = new Map<number, PoolView | null>();
+  for (const r of rows) {
+    if (!views.has(r.supply_id))
+      views.set(r.supply_id, getPoolView(r.supply_id));
+    const pool = views.get(r.supply_id);
+    if (!pool) continue;
+    out.set(r.id, {
+      supplyId: pool.id,
+      name: pool.name,
+      daysLeft: pool.daysLeft,
+      memberCount: pool.members.length,
+      low: pool.low,
+    });
+  }
+  return out;
+}
+
 // ── Writes (auth-blind cores) ────────────────────────────────────────────────
 
 export interface SharedSupplyFields {

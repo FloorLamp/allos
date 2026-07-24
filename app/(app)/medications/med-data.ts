@@ -14,6 +14,8 @@ import {
   getSupplementLogsInRange,
   getSupplementPairs,
   getRefillRates,
+  getPoolChips,
+  type PoolChipData,
   getActivitiesByDate,
   getActivityDates,
   isPredictedWorkoutDay,
@@ -110,6 +112,9 @@ export interface MedCardData {
   sideEffects: MedicationSideEffect[];
   strip: AdherenceDot[];
   refillRate: DoseRate | null;
+  // The shared supply pool this med draws from, if any (#1374) — the chip that
+  // REPLACES the per-item refill badge, carrying the POOLED days-left.
+  poolChip: PoolChipData | null;
   due: boolean;
   pairs: SupplementPair[];
   prnDayLabel: string | null;
@@ -261,6 +266,7 @@ export function loadMedicationsData(
   }
 
   const refillRates = getRefillRates(profileId);
+  const poolChips = getPoolChips(profileId);
   const pairs = getSupplementPairs(profileId);
   const pairsFor = (suppId: number) =>
     pairs.filter((p) => p.a_id === suppId || p.b_id === suppId);
@@ -381,6 +387,7 @@ export function loadMedicationsData(
         takenByDose
       ),
       refillRate: refillRates.get(med.id) ?? null,
+      poolChip: poolChips.get(med.id) ?? null,
       due: medDue(med),
       pairs: pairsFor(med.id),
       prnDayLabel: prn.label,

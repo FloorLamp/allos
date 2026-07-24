@@ -40,24 +40,30 @@ const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 // GLOBAL tables are intentionally absent, so a statement touching only one of them
 // is never flagged: logins, profiles, login_profiles, sessions, login_attempts,
 // global settings, canonical_biomarkers, `providers`, and — added later —
-// `shared_supplies` (#1374). The shared-supplies registry is the household medicine
-// cabinet: a family owns ONE bottle of ibuprofen, so the bottle row is modeled exactly
-// like `providers` — instance-shared, no profile_id, absent from OWNED_TABLES. The
-// per-record LINK (`intake_items.supply_id`) lives on a profile-owned row and IS
-// covered by the rule through that table; the shared row it points at is global, and
-// its data layer (lib/queries/intake/supply-pool) is deliberately not profile-scoped.
+// `shared_supplies`.
 // The providers registry is shared across the whole family/instance (a family sees
 // one "Quest Diagnostics"), modeled like logins/profiles: the per-record LINK
 // (immunizations/medical_records/intake_items.provider_id) lives on a profile-owned
 // row and is therefore covered by the rule via those tables, but the shared
 // `providers` row it points at is global and its data layer (lib/providers-db) is
 // deliberately not profile-scoped.
+// `shared_supplies` (#1374) is the same shape one domain over — the household medicine
+// cabinet. A family owns ONE bottle of ibuprofen, so the bottle row is instance-shared,
+// carries no profile_id, and stays out of OWNED_TABLES; the per-record LINK
+// (`intake_items.supply_id`) lives on a profile-owned row and IS covered through that
+// table, while its data layer (lib/queries/intake/supply-pool) is deliberately not
+// profile-scoped.
 const OWNED_RE = new RegExp(`\\b(${OWNED_TABLES.join("|")})\\b`);
 
 // Statements that legitimately touch an owned table without profile_id, keyed by
 // the file they live in (so an unrelated file can't ride the exemption). Each is
 // matched as a normalized-SQL substring. Keep this list SHORT and justified.
 const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
+  {
+    file: "app/(app)/supplies/actions.ts",
+    includes: "SELECT profile_id FROM intake_items WHERE id = ?",
+    why: "requireItemWriteAccess (#1374): the ONE lookup that RESOLVES which profile an item belongs to so the action can gate on it — filtering by profile_id here would presuppose the answer. Reads only the id→profile_id mapping and immediately feeds it to requireProfileWriteAccess; the gate is the protection, not the filter (the app/(app)/gate-item.ts shape)",
+  },
   {
     file: "lib/queries/intake/supply-pool.ts",
     includes: "FROM intake_items WHERE supply_id = ?",

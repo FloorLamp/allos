@@ -259,6 +259,38 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     fn: "confirmDoseAction",
     why: "acts on a NON-active target profile; gates via requireProfileWriteAccess(targetId), which asserts the target is accessible AND write — the active-profile requireWriteAccess() would authorize the wrong profile",
   },
+  // --- Shared supply pools (issue #1374) — a `shared_supplies` row is household-
+  // shared and has NO owning profile, so the active-profile requireWriteAccess()
+  // would authorize the wrong subject. Pool EDITS gate on the pool's MEMBERSHIP
+  // (requirePoolWriteAccess: write access to ≥1 linked profile, falling back to
+  // requireProfileWriteAccess for the refusal path, and to requireWriteAccess for an
+  // orphaned pool that links nobody); LINK/UNLINK gate on the ITEM's own profile
+  // (requireItemWriteAccess → requireProfileWriteAccess). ---
+  {
+    file: "app/(app)/supplies/actions.ts",
+    fn: "listSharedSupplyOptions",
+    why: "read-only (#1374): lists the shared bottles the caller's accessible profiles already draw from (plus member-less orphans) for the item form's picker; writes nothing, so the requireScope()/requireSession() boundary is the right gate",
+  },
+  {
+    file: "app/(app)/supplies/actions.ts",
+    fn: "updatePoolAction",
+    why: "#1374: edits a household-shared pool with no owning profile; gates via requirePoolWriteAccess(poolId) → write access to at least ONE linked profile (requireProfileWriteAccess on the refusal path)",
+  },
+  {
+    file: "app/(app)/supplies/actions.ts",
+    fn: "deletePoolAction",
+    why: "#1374: deletes a household-shared pool; same requirePoolWriteAccess(poolId) membership gate as updatePoolAction",
+  },
+  {
+    file: "app/(app)/supplies/actions.ts",
+    fn: "linkItemAction",
+    why: "#1374: links a NON-active profile's item into a shared bottle; gates via requireItemWriteAccess(itemId) → requireProfileWriteAccess(itemProfileId), so the item's own profile authorizes it",
+  },
+  {
+    file: "app/(app)/supplies/actions.ts",
+    fn: "unlinkItemAction",
+    why: "#1374: unlinks the ITEM's row from its pool; same requireItemWriteAccess(itemId) → requireProfileWriteAccess(itemProfileId) gate as linkItemAction",
+  },
   // --- Multi-view Upcoming per-item writes (issue #1096) — each row carries its
   // OWN profileId, so the write must target the ITEM's profile, not the acting one.
   // All gate through the shared gateItemProfile() helper, which calls

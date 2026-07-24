@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { Supplement } from "@/lib/types";
+import SharedSupplyPicker from "./SharedSupplyPicker";
 
 // The optional refill-tracking block shared by both intake forms (#846): units on
 // hand + units per dose, driving "≈N days left" and the low-supply nudge. Applies to
@@ -18,6 +19,10 @@ export default function RefillTracking({
   const s = supplement;
   const loadedQty =
     s?.quantity_on_hand != null ? Math.max(0, s.quantity_on_hand) : "";
+  // A POOLED item (#1374) keeps NO private count — the shared bottle holds it — so the
+  // per-item quantity field is hidden entirely and the shared-supply control below is
+  // the whole story. Leaving both visible is how a household ends up double-counting.
+  const pooled = s?.supply_id != null;
   const tracked = s?.quantity_on_hand != null;
   const [enabled, setEnabled] = useState(tracked);
   return (
@@ -25,7 +30,9 @@ export default function RefillTracking({
       data-testid="refill-tracking"
       className="sm:col-span-2 border-t border-black/5 pt-4 dark:border-white/5"
     >
-      <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+      <label
+        className={`${pooled ? "hidden " : ""}flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200`}
+      >
         <input
           type="checkbox"
           checked={enabled}
@@ -39,8 +46,8 @@ export default function RefillTracking({
         you’re running low.
       </p>
       <div
-        className={`${enabled ? "grid" : "hidden"} mt-3 grid-cols-1 gap-3 sm:grid-cols-2`}
-        aria-hidden={!enabled}
+        className={`${enabled && !pooled ? "grid" : "hidden"} mt-3 grid-cols-1 gap-3 sm:grid-cols-2`}
+        aria-hidden={!enabled || pooled}
       >
         <div>
           <label className="label" htmlFor={`intake-qty-${fid}`}>
@@ -75,7 +82,7 @@ export default function RefillTracking({
           />
         </div>
       </div>
-      {!enabled && (
+      {(!enabled || pooled) && (
         <>
           <input type="hidden" name="quantity_on_hand" value="" />
           <input
@@ -88,6 +95,12 @@ export default function RefillTracking({
       {/* The value the form LOADED with, so updateSupplement can compare-and-set
           the concurrently-decremented on-hand counter (#467). */}
       <input type="hidden" name="quantity_on_hand_loaded" value={loadedQty} />
+      <SharedSupplyPicker
+        itemId={s?.id}
+        itemName={s?.name ?? ""}
+        supplyId={s?.supply_id ?? null}
+        supplyName={s?.supply_name ?? null}
+      />
     </div>
   );
 }

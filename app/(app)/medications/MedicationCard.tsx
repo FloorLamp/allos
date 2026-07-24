@@ -38,8 +38,10 @@ import { formatGivenAtClockWithRelativeAge } from "@/lib/administration-format";
 import { getMedicationInfo } from "@/lib/medication-info";
 import {
   RefillBadge,
+  SharedSupplyChip,
   AdherenceSummaryLine,
 } from "@/components/AdherenceRefill";
+import type { PoolChipData } from "@/lib/queries/intake";
 import RefillButton from "@/components/medications/RefillButton";
 import AdherenceCalendar from "@/components/medications/AdherenceCalendar";
 import ScheduledDoseAction from "@/components/medications/ScheduledDoseAction";
@@ -93,6 +95,7 @@ export default function MedicationCard({
   sideEffects,
   strip,
   refillRate,
+  poolChip = null,
   todayStr,
   nowIso,
   trainingRestricted,
@@ -130,6 +133,8 @@ export default function MedicationCard({
   // adherence summary + "≈N days left" badge as the supplement row (#747 parity).
   strip: AdherenceDot[];
   refillRate: DoseRate | null;
+  // The shared-bottle chip when this med draws from a pool (#1374).
+  poolChip?: PoolChipData | null;
   todayStr: string;
   nowIso: string;
   trainingRestricted: boolean;
@@ -319,13 +324,17 @@ export default function MedicationCard({
                   Critical
                 </span>
               )}
-              <RefillBadge
-                quantityOnHand={s.quantity_on_hand}
-                qtyPerDose={s.qty_per_dose}
-                refillRate={refillRate}
-                doseCount={doses.length}
-                todayStr={todayStr}
-              />
+              {poolChip ? (
+                <SharedSupplyChip pool={poolChip} />
+              ) : (
+                <RefillBadge
+                  quantityOnHand={s.quantity_on_hand}
+                  qtyPerDose={s.qty_per_dose}
+                  refillRate={refillRate}
+                  doseCount={doses.length}
+                  todayStr={todayStr}
+                />
+              )}
             </div>
             <div className="mt-4">
               <div className="section-label">

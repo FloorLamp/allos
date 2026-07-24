@@ -22,8 +22,10 @@ import { medicationEditHref, medicationHref } from "@/lib/hrefs";
 import { formatMedicationDoseLine } from "@/lib/medication-dose-format";
 import {
   RefillBadge,
+  SharedSupplyChip,
   AdherenceSummaryLine,
 } from "@/components/AdherenceRefill";
+import type { PoolChipData } from "@/lib/queries/intake";
 import RefillButton from "@/components/medications/RefillButton";
 import RxOtcBadge from "@/components/RxOtcBadge";
 import OverflowMenu, {
@@ -49,6 +51,7 @@ export default function MedicationRow({
   sideEffects,
   strip,
   refillRate,
+  poolChip = null,
   prnRedoseLine = null,
   monitoringNote = null,
   heldBy = null,
@@ -61,6 +64,8 @@ export default function MedicationRow({
   sideEffects: MedicationSideEffect[];
   strip: AdherenceDot[];
   refillRate: DoseRate | null;
+  // The shared-bottle chip when this med draws from a pool (#1374).
+  poolChip?: PoolChipData | null;
   prnRedoseLine?: string | null;
   // The "Requires monitoring: …" note (issue #995) — the curated labs a clinician
   // typically watches while on this drug. Informational; absent for unmonitored meds.
@@ -186,13 +191,17 @@ export default function MedicationRow({
                 {unresolved} side effect{unresolved === 1 ? "" : "s"}
               </span>
             )}
-            <RefillBadge
-              quantityOnHand={med.quantity_on_hand}
-              qtyPerDose={med.qty_per_dose}
-              refillRate={refillRate}
-              doseCount={doses.length}
-              todayStr={todayStr}
-            />
+            {poolChip ? (
+              <SharedSupplyChip pool={poolChip} />
+            ) : (
+              <RefillBadge
+                quantityOnHand={med.quantity_on_hand}
+                qtyPerDose={med.qty_per_dose}
+                refillRate={refillRate}
+                doseCount={doses.length}
+                todayStr={todayStr}
+              />
+            )}
           </div>
           <div
             data-testid="medication-dose-summary"
