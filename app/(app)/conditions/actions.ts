@@ -1,5 +1,6 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
+import { gateItemProfile } from "@/app/(app)/gate-item";
 import { revalidatePath } from "next/cache";
 import { db, writeTx } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
@@ -47,7 +48,10 @@ export async function addCondition(formData: FormData): Promise<FormResult> {
 }
 
 export async function updateCondition(formData: FormData): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  // Multi-view (#1328): gate + target the ROW's own profile (gateItemProfile), so an
+  // edit on a non-acting member's row lands on that member; single-view falls back to
+  // the acting profile.
+  const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
   const name = String(formData.get("name") ?? "").trim();
   if (!id) return formError("Couldn't find that condition.");
@@ -64,7 +68,7 @@ export async function updateCondition(formData: FormData): Promise<FormResult> {
        SET name = ?, code = ?, code_system = ?, status = ?,
            onset_date = ?, resolved_date = ?, notes = ?
      WHERE id = ? AND profile_id = ?`
-  ).run(name, code, codeSystem, status, onset, resolved, notes, id, profile.id);
+  ).run(name, code, codeSystem, status, onset, resolved, notes, id, profileId);
   revalidateConditions();
   return formOk();
 }
@@ -90,7 +94,7 @@ export async function confirmConditionSuggestion(
 }
 
 export async function deleteCondition(formData: FormData): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that condition.");
   writeTx(() => {
@@ -100,10 +104,10 @@ export async function deleteCondition(formData: FormData): Promise<FormResult> {
     db.prepare(
       `UPDATE intake_items SET indication_condition_id = NULL
         WHERE indication_condition_id = ? AND profile_id = ?`
-    ).run(id, profile.id);
+    ).run(id, profileId);
     db.prepare("DELETE FROM conditions WHERE id = ? AND profile_id = ?").run(
       id,
-      profile.id
+      profileId
     );
   });
   revalidateConditions();

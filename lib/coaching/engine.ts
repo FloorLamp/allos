@@ -5,6 +5,7 @@ import { formatRelativeDate } from "../format-date";
 import { shiftDateStr } from "../date";
 import { currentStreak } from "../streak";
 import { classifyPolarization, type PolarizedSplit } from "../training-zones";
+import { measureRoughNight } from "../derived-situations";
 import {
   recommendNextWorkout,
   routineLoadingCadence,
@@ -282,6 +283,12 @@ export interface CoachingInput {
   // "rest today". Never changes whether rest fires or its trigger logic. Absent ⇒
   // false (the prior "today" phrasing when no session has happened yet).
   workoutActive?: boolean;
+  // The Poor sleep situation is DECLARED (manually toggled) for the profile (#1292).
+  // The rest-sleep trigger tilts on the UNIFIED verdict — declared OR measured — so a
+  // self-reported rough night ("data says fine but I feel wrecked"; a no-wearable
+  // profile) reaches coaching too (the user wins over the data; duration isn't quality).
+  // Absent/false ⇒ the measured path only, byte-for-byte the pre-#1292 behavior.
+  poorSleepDeclared?: boolean;
   weightUnit?: WeightUnit; // for the next-set target text; default "kg"
   thresholds?: Partial<CoachingThresholds>;
 }
@@ -490,26 +497,20 @@ export function restReasons(
 
   const reasons: RestReason[] = [];
 
-  // Poor sleep — only when sleep data exists. When a personal night-to-night
-  // spread is known, the deficit that counts as "poor" widens to at least
-  // `multiplier × spread`, so a variable sleeper needs a real drop (not just a
-  // normal off-night) to be flagged. The absolute floor stays fixed — a
-  // genuinely short night is worth a nudge regardless of how variable you are.
+  // Poor sleep — only when sleep data exists. The threshold evaluation is the shared
+  // measureRoughNight (#1292 extraction) — the SAME rough-night computation the derived
+  // poor-sleep context resolver reads, so coaching and dueness can never disagree about
+  // what a rough night is. When a personal night-to-night spread is known, the deficit
+  // that counts as "poor" widens to at least `multiplier × spread`, so a variable
+  // sleeper needs a real drop; the absolute floor stays fixed. The copy (measured path)
+  // is byte-for-byte the pre-extraction output.
+  let sleepFired = false;
   if (sleep) {
-    const effDeficit =
-      sleep.baselineSpreadMin != null && sleep.baselineSpreadMin > 0
-        ? Math.max(
-            th.sleepDeficitMin,
-            th.variabilitySpreadMultiplier * sleep.baselineSpreadMin
-          )
-        : th.sleepDeficitMin;
-    const belowBaseline =
-      sleep.baselineMin > 0 &&
-      sleep.lastNightMin <= sleep.baselineMin - effDeficit;
-    const belowFloor = sleep.lastNightMin < th.sleepFloorMin;
-    if (belowBaseline || belowFloor) {
+    const m = measureRoughNight(sleep, th);
+    if (m.fired) {
+      sleepFired = true;
       reasons.push(
-        belowBaseline
+        m.belowBaseline
           ? {
               id: "rest-sleep",
               reasonCore: `You slept ${hoursText(sleep.lastNightMin)} last night, below your ~${hoursText(
@@ -528,6 +529,17 @@ export function restReasons(
             }
       );
     }
+  }
+  // Declared rough night (#1292): the user flagged Poor sleep even though the measured
+  // signal didn't fire (or hasn't synced). The user wins over the data — a self-report
+  // reaches coaching — with basis-aware copy that never invents figures.
+  if (!sleepFired && input.poorSleepDeclared) {
+    reasons.push({
+      id: "rest-sleep",
+      reasonCore: "You flagged a rough night",
+      todayTail: " — consider a rest or light day to recover.",
+      also: "you flagged a rough night",
+    });
   }
 
   // Elevated resting HR — only when data exists. Same variance-aware widening:

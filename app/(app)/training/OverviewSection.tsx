@@ -50,7 +50,11 @@ import { getInjuries, getInjuryConstraints } from "@/lib/injuries";
 import MobilitySection from "./MobilitySection";
 import { getConditionConsiderations } from "@/lib/queries";
 import { getActiveSituations } from "@/lib/settings/profile-attrs";
-import { isBuiltInInjurySituation } from "@/lib/situations";
+import {
+  isBuiltInInjurySituation,
+  sameSituation,
+  BUILTIN_POOR_SLEEP_SITUATION,
+} from "@/lib/situations";
 import { excludedRegionLabel } from "@/lib/injury-model";
 import { getEndurancePlanCards, getEnduranceArm } from "@/lib/queries";
 import TodaysSessionCard from "./TodaysSessionCard";
@@ -151,6 +155,11 @@ export default async function OverviewSection() {
     deloadWeek:
       getRoutineCycleStatus(profile.id, todayStr)?.isDeloadWeek ?? false,
     sleep: getSleepSignal(profile.id),
+    // Declared Poor sleep tilts the rest rec on the unified verdict (#1292) — the SAME
+    // signal the dashboard/Telegram surfaces read, so this card agrees (#221).
+    poorSleepDeclared: getActiveSituations(profile.id).some((s) =>
+      sameSituation(s, BUILTIN_POOR_SLEEP_SITUATION)
+    ),
     restingHr: getRestingHrSignal(profile.id),
     restEpisode: getRestEpisode(profile.id),
     // "Training anyway" acknowledgment (#1150): the SAME per-day marker the dashboard

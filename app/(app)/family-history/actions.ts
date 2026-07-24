@@ -1,5 +1,6 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
+import { gateItemProfile } from "@/app/(app)/gate-item";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { formError, formOk, type FormResult } from "@/lib/types";
@@ -62,7 +63,9 @@ export async function addFamilyHistory(
 export async function updateFamilyHistory(
   formData: FormData
 ): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  // Multi-view (#1328): gate + target the ROW's own profile; single-view falls back
+  // to the acting profile.
+  const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
   const condition = String(formData.get("condition") ?? "").trim();
   if (!id) return formError("Couldn't find that entry.");
@@ -81,7 +84,7 @@ export async function updateFamilyHistory(
     boolInt(formData.get("deceased")),
     str(formData, "notes"),
     id,
-    profile.id
+    profileId
   );
   revalidateFamilyHistory();
   return formOk();
@@ -90,12 +93,12 @@ export async function updateFamilyHistory(
 export async function deleteFamilyHistory(
   formData: FormData
 ): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that entry.");
   db.prepare("DELETE FROM family_history WHERE id = ? AND profile_id = ?").run(
     id,
-    profile.id
+    profileId
   );
   revalidateFamilyHistory();
   return formOk();

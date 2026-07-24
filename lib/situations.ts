@@ -137,6 +137,14 @@ export function isBuiltInIllnessSituation(name: string): boolean {
   return sameSituation(name, BUILTIN_ILLNESS_SITUATION);
 }
 
+// The built-in "Poor sleep" situation (issue #1292) — a DERIVED situation: a situational
+// supplement keys on it, but it turns on from last night's sleep vs baseline (the shared
+// rough-night computation) OR a manual toggle, never a machine-written `situations` row.
+// It already ships as a SUGGESTED_SITUATION; this constant is the name-keyed identity the
+// derived-context resolver + coaching gather use (via sameSituation). No illness_type, no
+// episodes. The rules + formatters live in lib/derived-situations.ts.
+export const BUILTIN_POOR_SLEEP_SITUATION = "Poor sleep";
+
 // The built-in "Injury" situation name — the situation the injury bridge (#838) suggests
 // when a profile logs an injury but no "Injury" situation is active. Suggest-only, like
 // the condition/symptom bridges: the user confirms, never auto-activated.

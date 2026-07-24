@@ -1,5 +1,6 @@
 "use server";
 import { requireWriteAccess } from "@/lib/auth";
+import { gateItemProfile } from "@/app/(app)/gate-item";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
@@ -55,7 +56,9 @@ export async function addProcedure(formData: FormData): Promise<FormResult> {
 }
 
 export async function updateProcedure(formData: FormData): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  // Multi-view (#1328): gate + target the ROW's own profile; single-view falls back
+  // to the acting profile.
+  const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
   const name = String(formData.get("name") ?? "").trim();
   if (!id) return formError("Couldn't find that procedure.");
@@ -78,19 +81,19 @@ export async function updateProcedure(formData: FormData): Promise<FormResult> {
     providerId,
     str(formData, "notes"),
     id,
-    profile.id
+    profileId
   );
   revalidateProcedures();
   return formOk();
 }
 
 export async function deleteProcedure(formData: FormData): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
+  const profileId = await gateItemProfile(formData);
   const id = Number(formData.get("id"));
   if (!id) return formError("Couldn't find that procedure.");
   db.prepare("DELETE FROM procedures WHERE id = ? AND profile_id = ?").run(
     id,
-    profile.id
+    profileId
   );
   revalidateProcedures();
   return formOk();

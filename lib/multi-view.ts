@@ -21,6 +21,40 @@
 // #1013 wrong-profile-write risk this removes.
 export type WriteTarget = "item" | "acting";
 
+// The per-list multi-view context a Section threads DOWN to its record List (#1328).
+// Present ONLY when more than one profile is in view (viewIds.length > 1); undefined in
+// single view, so the List renders byte-identical. A List forwards `actingProfileId` to
+// RecordTable's `multiView` prop (leading subject column + the write-affordance gate)
+// and, when present, posts each row's OWN `profile_id` on its edit/delete so the write
+// targets the row's subject (gateItemProfile), not the acting profile.
+export interface ListMultiView {
+  actingProfileId: number;
+}
+
+// Compose a cross-profile flat list by LOOPING an existing per-profile reader over the
+// view-set and TAGGING each row with the profile it came from (so stampSubjects can
+// attach subject identity). The profileIds-list-first shape (#1095) for a Tier-1 record
+// list whose per-profile reader carries logic that must stay per-profile-scoped — a
+// cross-document representative-id dedup CTE (Conditions/Allergies/Procedures/Family
+// history collapse duplicate documents PER profile; a cross-profile `profile_id IN` read
+// would wrongly collapse two members' identical rows into one) or a per-profile
+// `today()`/age derivation (the #1096 scope-limit). Rows keep each member's own within-
+// profile order, concatenated in view order; a single-view call (ids = [acting]) yields
+// exactly the per-profile reader's result, so the page renders byte-identical. The
+// truly-flat, un-deduped, non-derived lists instead use the set-based `profile_id IN`
+// readers in lib/queries/multi-view-lists.ts.
+//
+// PURE: the reader is injected, so this function itself touches no DB — the caller's
+// reader does. That keeps this unit-testable with a fake reader.
+export function readForProfiles<T>(
+  ids: readonly number[],
+  reader: (profileId: number) => T[]
+): (T & { profileId: number })[] {
+  return ids.flatMap((id) =>
+    reader(id).map((row) => ({ ...row, profileId: id }))
+  );
+}
+
 // Whether an item's inline write affordance may render on a given row.
 //   • "item"   → gate on the SUBJECT's write access (a read-only-granted member's rows
 //                show no write buttons — the #858 per-item access rule generalized).

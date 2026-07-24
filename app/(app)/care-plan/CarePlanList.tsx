@@ -11,6 +11,8 @@ import { formatRecordDate, titleCase } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import type { DisplayFormatPrefs } from "@/lib/format-date";
 import type { CarePlanItem } from "@/lib/types";
+import type { Stamped } from "@/lib/scope";
+import type { ListMultiView } from "@/lib/multi-view";
 
 const buildColumns = (
   fmt: DisplayFormatPrefs
@@ -63,14 +65,33 @@ const buildColumns = (
 ];
 
 // Manage stored care-plan rows: edit in place or delete, on the shared RecordTable.
-export default function CarePlanList({ items }: { items: CarePlanItem[] }) {
+export default function CarePlanList({
+  items,
+  multiView,
+}: {
+  items: Stamped<CarePlanItem>[];
+  multiView?: ListMultiView;
+}) {
   return (
     <RecordTable
       items={items}
       columns={buildColumns(useFormatPrefs())}
       emptyMessage="No care-plan items yet. Add one, or import a MyChart / CCD health record to populate your planned care."
+      multiView={
+        multiView
+          ? {
+              actingProfileId: multiView.actingProfileId,
+              subjectOf: (c) => c.subject,
+            }
+          : undefined
+      }
       renderEditForm={(c, done) => (
-        <CarePlanForm action={updateCarePlanItem} item={c} onDone={done} />
+        <CarePlanForm
+          action={updateCarePlanItem}
+          item={c}
+          profileId={multiView ? c.subject.profileId : undefined}
+          onDone={done}
+        />
       )}
       confirmDelete={(c) => ({
         title: "Delete care-plan item",
@@ -79,6 +100,7 @@ export default function CarePlanList({ items }: { items: CarePlanItem[] }) {
       onDelete={async (c) => {
         const fd = new FormData();
         fd.set("id", String(c.id));
+        if (multiView) fd.set("profile_id", String(c.subject.profileId));
         await deleteCarePlanItem(fd);
       }}
     />

@@ -299,6 +299,93 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     fn: "restoreItem",
     why: "multi-view (#1096): restores on the ITEM's suppression bus via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
+  // --- Tier-1 multi-view record-list edits/deletes (issue #1328) — each row carries
+  // its OWN profileId, so an edit/delete on a non-acting member's row must target the
+  // ROW's profile, not the acting one. All gate through the shared gateItemProfile()
+  // helper (app/(app)/gate-item.ts), which calls requireProfileWriteAccess(itemProfileId)
+  // (a read-only-granted / ungranted member is bounced) and falls back to
+  // requireWriteAccess() for a single-view form. The paired add* action keeps its plain
+  // requireWriteAccess() (a new row always lands on the acting profile). ---
+  {
+    file: "app/(app)/conditions/actions.ts",
+    fn: "updateCondition",
+    why: "multi-view (#1328): edits the ITEM's condition via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
+  {
+    file: "app/(app)/conditions/actions.ts",
+    fn: "deleteCondition",
+    why: "multi-view (#1328): deletes the ITEM's condition via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
+  {
+    file: "app/(app)/allergies/actions.ts",
+    fn: "updateAllergy",
+    why: "multi-view (#1328): edits the ITEM's allergy via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
+  {
+    file: "app/(app)/allergies/actions.ts",
+    fn: "deleteAllergy",
+    why: "multi-view (#1328): deletes the ITEM's allergy via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
+  {
+    file: "app/(app)/procedures/actions.ts",
+    fn: "updateProcedure",
+    why: "multi-view (#1328): edits the ITEM's procedure via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
+  {
+    file: "app/(app)/procedures/actions.ts",
+    fn: "deleteProcedure",
+    why: "multi-view (#1328): deletes the ITEM's procedure via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
+  {
+    file: "app/(app)/family-history/actions.ts",
+    fn: "updateFamilyHistory",
+    why: "multi-view (#1328): edits the ITEM's family-history entry via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
+  {
+    file: "app/(app)/family-history/actions.ts",
+    fn: "deleteFamilyHistory",
+    why: "multi-view (#1328): deletes the ITEM's family-history entry via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
+  {
+    file: "app/(app)/care-plan/actions.ts",
+    fn: "updateCarePlanItem",
+    why: "multi-view (#1328): edits the ITEM's care-plan item via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
+  {
+    file: "app/(app)/care-plan/actions.ts",
+    fn: "deleteCarePlanItem",
+    why: "multi-view (#1328): deletes the ITEM's care-plan item via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
+  {
+    file: "app/(app)/care-goals/actions.ts",
+    fn: "updateCareGoal",
+    why: "multi-view (#1328): edits the ITEM's health goal via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
+  {
+    file: "app/(app)/care-goals/actions.ts",
+    fn: "deleteCareGoal",
+    why: "multi-view (#1328): deletes the ITEM's health goal via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
+  {
+    file: "app/(app)/genomics/actions.ts",
+    fn: "updateGenomicVariant",
+    why: "multi-view (#1328): edits the ITEM's genomic variant via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
+  {
+    file: "app/(app)/genomics/actions.ts",
+    fn: "deleteGenomicVariant",
+    why: "multi-view (#1328): deletes the ITEM's genomic variant via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
+  {
+    file: "app/(app)/imaging/actions.ts",
+    fn: "updateImagingStudy",
+    why: "multi-view (#1328): edits the ITEM's imaging study via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
+  {
+    file: "app/(app)/imaging/actions.ts",
+    fn: "deleteImagingStudy",
+    why: "multi-view (#1328): deletes the ITEM's imaging study via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
 ];
 
 function walk(dir: string, out: string[]) {

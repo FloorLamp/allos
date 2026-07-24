@@ -139,6 +139,10 @@ const REGISTRY_LABELS: Record<string, (tail: string) => string> = {
     const n = titleize(t.replace(/[_-]/g, " "));
     return n ? `Data quality — ${n}` : "Data quality gap";
   },
+  "poor-sleep-override:": (t) =>
+    part(t, 0)
+      ? `Poor-sleep context off — ${part(t, 0)}`
+      : "Poor-sleep context off",
   "illness-care:": () => "Illness care reminder",
   "temp-red-flag:": () => "Temperature red flag",
   "condition-review:": () => "Condition suggestion",

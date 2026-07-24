@@ -12,10 +12,14 @@ import type { Allergy, FormResult } from "@/lib/types";
 export default function AllergyForm({
   action,
   allergy,
+  profileId,
   onDone,
 }: {
   action: (formData: FormData) => Promise<FormResult>;
   allergy?: Allergy;
+  // Multi-view (#1328): the row's OWN profile, posted so an edit on a non-acting
+  // member's row targets that member (gateItemProfile). Undefined in single view.
+  profileId?: number;
   onDone?: () => void;
 }) {
   const router = useRouter();
@@ -56,6 +60,9 @@ export default function AllergyForm({
         </h2>
       )}
       {editing && <input type="hidden" name="id" value={allergy!.id} />}
+      {profileId != null && (
+        <input type="hidden" name="profile_id" value={profileId} />
+      )}
       <div>
         <label className="label" htmlFor={`allergy-substance-${uid}`}>
           Substance
