@@ -144,6 +144,11 @@ export interface FitnessCheckModel {
   results: FitnessTestResult[];
   domains: FitnessDomainSummary[];
   headlineFitnessAge: FitnessAgeResult | null; // from the endurance VO2 test, when measured
+  // The VO2 fitness age from the check STRICTLY BEFORE the one the headline reflects
+  // (#1307), so the battery-completion finale can say "fitness age 34 (was 36)". Null
+  // when there's no prior VO2 check (or VO2 isn't measured). One computation — the same
+  // fitnessAge() the headline uses, over the prior check's value.
+  priorHeadlineFitnessAge: FitnessAgeResult | null;
 }
 
 // The domain display order for the per-domain bars.
@@ -440,6 +445,29 @@ export function buildFitnessCheckModel(
     sessions.find((s) => latestSession && s.date < latestSession.date)?.date ??
     null;
 
+  // Prior-check headline fitness age (#1307): the VO2 fitness age from the check strictly
+  // before the current VO2's date, via the SAME fitnessAge() the headline uses. Null when
+  // VO2 isn't measured, has no norms marker, or there's no earlier VO2 check.
+  let priorHeadlineFitnessAge: FitnessAgeResult | null = null;
+  const vo2Def = battery.find((d) => d.key === "vo2max");
+  if (vo2Def?.normsMarker && vo2?.value != null) {
+    const curEntry = newestSessionEntryOnOrBefore(sessions, "vo2max");
+    if (curEntry) {
+      const prevEntry = newestSessionEntryOnOrBefore(
+        sessions,
+        "vo2max",
+        curEntry.date
+      );
+      if (prevEntry)
+        priorHeadlineFitnessAge = fitnessAge(
+          vo2Def.normsMarker,
+          prevEntry.value,
+          sex,
+          age
+        );
+    }
+  }
+
   return {
     latestDate: latestSession?.date ?? null,
     priorDate: priorSessionDate,
@@ -449,5 +477,6 @@ export function buildFitnessCheckModel(
     domains,
     // Headline fitness age stays VO2-only — a rough self-norm band never moves it (#1135).
     headlineFitnessAge: vo2?.fitnessAge ?? null,
+    priorHeadlineFitnessAge,
   };
 }

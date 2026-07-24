@@ -37,6 +37,51 @@ function baseInput(over: Partial<RecapInput> = {}): RecapInput {
   };
 }
 
+describe("fitness-check recap line (#1307)", () => {
+  it("names a completed check with fitness age + prior (was 36)", () => {
+    const recap = buildWeeklyRecap(
+      baseInput({ fitnessCheck: { fitnessAge: 34, priorFitnessAge: 36 } })
+    );
+    const line = recap.lines.find((l) => l.key === "fitness-check");
+    expect(line?.value).toBe("fitness age 34, was 36");
+  });
+
+  it("drops the 'was' clause when the prior age matches or is absent", () => {
+    const same = buildWeeklyRecap(
+      baseInput({ fitnessCheck: { fitnessAge: 34, priorFitnessAge: 34 } })
+    );
+    expect(same.lines.find((l) => l.key === "fitness-check")?.value).toBe(
+      "fitness age 34"
+    );
+    const noPrior = buildWeeklyRecap(
+      baseInput({ fitnessCheck: { fitnessAge: 34, priorFitnessAge: null } })
+    );
+    expect(noPrior.lines.find((l) => l.key === "fitness-check")?.value).toBe(
+      "fitness age 34"
+    );
+  });
+
+  it("shows 'battery refreshed' when the check has no fitness age (no VO2)", () => {
+    const recap = buildWeeklyRecap(
+      baseInput({ fitnessCheck: { fitnessAge: null, priorFitnessAge: null } })
+    );
+    expect(recap.lines.find((l) => l.key === "fitness-check")?.value).toBe(
+      "battery refreshed"
+    );
+  });
+
+  it("omits the line when no check completed in the window (null/absent)", () => {
+    expect(
+      buildWeeklyRecap(baseInput()).lines.find((l) => l.key === "fitness-check")
+    ).toBeUndefined();
+    expect(
+      buildWeeklyRecap(baseInput({ fitnessCheck: null })).lines.find(
+        (l) => l.key === "fitness-check"
+      )
+    ).toBeUndefined();
+  });
+});
+
 describe("recapWindow", () => {
   it("is a trailing seven days ending on today, with a prior seven-day window", () => {
     expect(recapWindow(TODAY)).toEqual({

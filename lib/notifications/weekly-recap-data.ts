@@ -54,6 +54,9 @@ import {
 } from "../settings";
 import { situationHistoryResolver } from "../trend-annotations";
 import { illnessDaysInWindow } from "../illness-episode-store";
+import { getLatestFitnessAssessmentDate } from "../fitness-assessment";
+import { assembleFitnessCheckModel } from "../fitness-check-assemble";
+import { batteryCompletion } from "../fitness-outcome";
 import type { WeightUnit } from "../settings";
 import { dispatch } from "./index";
 import { createLogger } from "../log";
@@ -280,6 +283,22 @@ export function gatherRecapInput(
       return {
         avgValence: logs.reduce((acc, m) => acc + m.valence, 0) / logs.length,
         daysLogged: logs.length,
+      };
+    })(),
+    // Fitness check completed this window (#1307): the most recent check landed inside
+    // the window AND the battery is now complete (the SAME batteryCompletion definition
+    // the check page's finale uses). Reports the completed check's fitness age; null when
+    // no check completed in the window (line omitted).
+    fitnessCheck: (() => {
+      const lastCheck = getLatestFitnessAssessmentDate(profileId);
+      if (!lastCheck || !inWindow(lastCheck, win.start, win.end)) return null;
+      const { model, equipmentMissingKeys } =
+        assembleFitnessCheckModel(profileId);
+      if (!batteryCompletion(model.results, equipmentMissingKeys).complete)
+        return null;
+      return {
+        fitnessAge: model.headlineFitnessAge?.fitnessAge ?? null,
+        priorFitnessAge: model.priorHeadlineFitnessAge?.fitnessAge ?? null,
       };
     })(),
   };

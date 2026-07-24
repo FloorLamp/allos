@@ -11,7 +11,10 @@ import { revalidatePath } from "next/cache";
 import { requireWriteAccess } from "@/lib/auth";
 import { today } from "@/lib/db";
 import { isRealIsoDate } from "@/lib/date";
-import { saveFitnessEntry } from "@/lib/fitness-assessment";
+import {
+  saveFitnessEntry,
+  type FitnessEntryOutcome,
+} from "@/lib/fitness-assessment";
 import { fitnessTest, computeVo2, type Vo2Method } from "@/lib/fitness-battery";
 import { heartRateRecovery, sittingRisingResult } from "@/lib/vo2-field-tests";
 import { estimate1RM } from "@/lib/strength";
@@ -20,8 +23,36 @@ import { toKg, kgTo } from "@/lib/units";
 import { getUserSex, getUserAgeOn, getUnitPrefs } from "@/lib/settings";
 import { setFitnessRetestCadenceDays } from "@/lib/settings";
 import { getLatestBodyMetric } from "@/lib/queries";
+import { assembleFitnessCheckModel } from "@/lib/fitness-check-assemble";
+import { buildFitnessTiles } from "@/lib/fitness-tile";
+import {
+  buildFitnessOutcome,
+  batteryCompletion,
+  batteryCompletionSummary,
+  type FitnessOutcome,
+  type BatteryCompletionSummary,
+} from "@/lib/fitness-outcome";
+import { withFindingClosure, formatClosureToast } from "@/lib/finding-closure";
+import { closureFindingSnapshot } from "@/lib/rule-findings";
+import { FITNESS_CHECK_PREFIX } from "@/lib/fitness-retest";
 
-export type SaveFitnessTestResult = { ok: true } | { ok: false; error: string };
+// The per-test outcome moment (#1307) + finding-closure toast (#1305) ride back on the
+// typed success result: `outcome` is the just-saved test's percentile/band/delta (null if
+// the save didn't resolve a measured tile — e.g. a self-trend residue), `finale` is the
+// battery-completion summary ONLY on the save that FLIPS the battery to complete, and
+// `closureToast` is the honest one-line acknowledgment when this save cleared a fitness
+// finding (the first save of a new check — later saves clear nothing and toast nothing).
+export type SaveFitnessTestResult =
+  | {
+      ok: true;
+      outcome: FitnessOutcome | null;
+      finale: BatteryCompletionSummary | null;
+      closureToast: string | null;
+    }
+  | { ok: false; error: string };
+
+// A bare success/failure shape for the sibling cadence action (no outcome/finale).
+export type SaveResult = { ok: true } | { ok: false; error: string };
 
 function num(fd: FormData, key: string): number | null {
   const v = fd.get(key);
@@ -127,21 +158,62 @@ export async function saveFitnessTest(
   if (value == null || !Number.isFinite(value))
     return { ok: false, error: "invalid value" };
 
-  const outcome = saveFitnessEntry(profile.id, {
-    date,
-    testKey,
-    value,
-    rawInput,
-    note,
-    liftName,
-    reps,
-    weightKg,
-    durationSec,
-  });
+  // Battery completion BEFORE the write, so the finale fires only on the save that FLIPS
+  // it to complete (#1307) — not on every save once complete.
+  const before = assembleFitnessCheckModel(profile.id);
+  const wasComplete = batteryCompletion(
+    before.model.results,
+    before.equipmentMissingKeys
+  ).complete;
+
+  // Wrap the write in the finding-closure loop (#1305): the FIRST save of a new check
+  // clears the "Fitness check due" retest finding (battery-level, keyed on the last-check
+  // date), so it toasts once; later saves this check find nothing active and stay silent.
+  const prefixes = [FITNESS_CHECK_PREFIX];
+  const { result: outcome, cleared } = withFindingClosure(
+    profile.id,
+    prefixes,
+    (pid, todayISO) => closureFindingSnapshot(pid, prefixes, todayISO),
+    (): FitnessEntryOutcome =>
+      saveFitnessEntry(profile.id, {
+        date,
+        testKey,
+        value,
+        rawInput,
+        note,
+        liftName,
+        reps,
+        weightKg,
+        durationSec,
+      })
+  );
   if (!outcome.ok) return { ok: false, error: outcome.error };
 
+  // Rebuild the model AFTER the write for the outcome moment + finale — the SAME assembler
+  // the page section uses, so the modal's outcome and the grid tile can never disagree.
+  const after = assembleFitnessCheckModel(profile.id);
+  const savedTile = buildFitnessTiles(after.model.results).find(
+    (t) => t.key === testKey
+  );
+  const testOutcome =
+    savedTile && savedTile.measured ? buildFitnessOutcome(savedTile) : null;
+  const nowComplete = batteryCompletion(
+    after.model.results,
+    after.equipmentMissingKeys
+  ).complete;
+  const finale =
+    !wasComplete && nowComplete
+      ? batteryCompletionSummary(after.model, after.equipmentMissingKeys)
+      : null;
+  const closureToast = formatClosureToast(cleared, {
+    // Multi-step honesty (#1305): the fitness retest finding is battery-level, so the
+    // flip means the clock reset — not that the whole check is done.
+    [FITNESS_CHECK_PREFIX]:
+      "Fitness check refreshed — retest clock restarts today.",
+  });
+
   revalidatePath("/training");
-  return { ok: true };
+  return { ok: true, outcome: testOutcome, finale, closureToast };
 }
 
 function methodInputs(
@@ -164,9 +236,7 @@ function methodInputs(
 
 // Set the per-profile retest cadence (days) that drives the coaching-tier "check due"
 // nudge. Profile-scoped write.
-export async function setFitnessCadence(
-  fd: FormData
-): Promise<SaveFitnessTestResult> {
+export async function setFitnessCadence(fd: FormData): Promise<SaveResult> {
   const { profile } = await requireWriteAccess();
   const days = num(fd, "days");
   if (days == null || days <= 0)

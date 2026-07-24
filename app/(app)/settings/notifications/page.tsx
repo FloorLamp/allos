@@ -23,7 +23,10 @@ import {
   isPushConfigured,
   countPushSubscriptionsForLogin,
 } from "@/lib/notifications/push";
-import { resolveTelegramRecipients } from "@/lib/notifications/fan-out";
+import {
+  resolveTelegramRecipients,
+  wouldMuteSilenceSafety,
+} from "@/lib/notifications/fan-out";
 import { isValidWebhookUrl } from "@/lib/notifications/home-assistant-core";
 import { PageHeader } from "@/components/ui";
 import SettingsTabs from "../SettingsTabs";
@@ -134,6 +137,7 @@ export default async function NotificationsSettingsPage() {
             profileId={profile.id}
             profileName={profile.name}
             muted={isProfileMutedForLogin(login.id, profile.id)}
+            lastUnmutedManaging={wouldMuteSilenceSafety(login.id, profile.id)}
           />
           <HomeAssistantNotificationSettings config={ha} />
         </>

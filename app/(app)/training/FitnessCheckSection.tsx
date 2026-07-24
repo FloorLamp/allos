@@ -1,19 +1,8 @@
 import { requireSession } from "@/lib/auth";
-import { today } from "@/lib/db";
 import { getUserSex, getUserAge, getUnitPrefs } from "@/lib/settings";
-import { getLatestBodyMetric } from "@/lib/queries";
 import { getEquipment } from "@/lib/equipment";
-import {
-  batteryForAge,
-  usesSeniorBattery,
-  VO2_METHODS,
-} from "@/lib/fitness-battery";
-import {
-  getFitnessAssessments,
-  getAmbientFitnessReadings,
-} from "@/lib/fitness-assessment";
-import { getFitnessRetestCadenceDays } from "@/lib/settings";
-import { buildFitnessCheckModel } from "@/lib/fitness-check-model";
+import { usesSeniorBattery, VO2_METHODS } from "@/lib/fitness-battery";
+import { assembleFitnessCheckModel } from "@/lib/fitness-check-assemble";
 import FitnessCheckView from "./FitnessCheckView";
 
 // The guided Fitness check (issue #834). Adult-gated like the rest of the training hub —
@@ -24,26 +13,15 @@ import FitnessCheckView from "./FitnessCheckView";
 // hands the ONE pure model to the client.
 export default async function FitnessCheckSection() {
   const { login, profile } = await requireSession();
-  const dateISO = today(profile.id);
   const sex = getUserSex(profile.id);
   const age = getUserAge(profile.id);
-  const bodyweightKg = getLatestBodyMetric(profile.id, "weight");
   const weightUnit = getUnitPrefs(login.id).weightUnit;
-
-  const battery = batteryForAge(age);
   const senior = usesSeniorBattery(age);
-  const sessions = getFitnessAssessments(profile.id, 12);
-  const ambient = getAmbientFitnessReadings(profile.id, battery);
-  const cadenceDays = getFitnessRetestCadenceDays(profile.id);
-  const model = buildFitnessCheckModel(
-    battery,
-    sessions,
-    ambient,
-    sex,
-    age,
-    bodyweightKg,
-    dateISO,
-    cadenceDays
+
+  // The ONE assembler both this section and the save action (post-write outcome +
+  // finale) share, so the two never drift (#1307).
+  const { model, battery, cadenceDays, dateISO } = assembleFitnessCheckModel(
+    profile.id
   );
   const equipmentNames = getEquipment(profile.id).map((e) =>
     e.name.toLowerCase()
