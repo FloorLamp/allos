@@ -11,7 +11,6 @@ import {
   writeActivityFold,
   snapshotKeeperFold,
   dropSetIds,
-  movedRouteIdForMerge,
 } from "@/lib/merge-activity";
 import { recordPairDecision } from "@/lib/queries";
 import {
@@ -491,29 +490,30 @@ export async function logBodyweight(
 // keeper (writeActivityFold, keeper edited=1), record a durable 'merged' decision
 // keyed on the stable pair signature, then delete the discarded row.
 //
-// The keeper is the card the user acted on; the picked sibling is absorbed + removed.
-// UNLIKE the review resolver, the delete routes through captureDelete so the merge is
-// UNDOABLE from a toast (issue #30).
+// The keeper is user-chosen (issue #1081): the keeper radio spans the originating card
+// + the checked siblings, so picking a SIBLING as keeper absorbs the originating card
+// itself. UNLIKE the review resolver, each dropped row routes through captureDelete so
+// the whole N-way merge is UNDOABLE from a toast (issue #30).
 //
-// FULLY-INVERTIBLE undo (issues #199/#200): the merge carries a MergeUndoContext into
-// the undo payload — the pre-fold keeper snapshot, the ids of the discarded row's
-// re-parented sets (#199), and the pair signature — so undoing the merge doesn't just
-// re-insert the discarded row, it also moves those sets back off the keeper, restores
-// the keeper's pre-fold fields (undoing the gap-fills that would otherwise
-// double-count, the inherited `components` array chief among them), and clears the
-// recorded 'merged' decision so the un-merged pair resurfaces in Review. Undo returns
-// to the true pre-merge state — no data lost, no data duplicated, no pair suppressed.
+// FULLY-INVERTIBLE undo (issues #199/#200), now across N drops: every dropped row is
+// captured with its OWN MergeUndoContext — the shared pre-fold keeper snapshot, that
+// drop's re-parented set ids (#199) + moved route id (#569), and the keeper↔drop pair
+// signature — so undoing (via the batch undoDeletes) re-inserts every dropped row,
+// moves each one's sets back off the keeper, restores the keeper's pre-fold fields
+// (idempotent across the N tokens — the same snapshot), and clears every recorded
+// 'merged' decision so the un-merged pairs resurface in Review. The undo of a
+// chosen-away originating card brings it back exactly like any other drop.
 //
 // Same-profile + same-day are enforced server-side (the untrusted form ids), even
 // though the UI only ever offers same-day siblings.
 export async function mergeActivities(
   formData: FormData
-): Promise<{ undoId: number | null }> {
-  // Merging edits the keeper and deletes the discarded row — a write (issue #33).
+): Promise<{ undoIds: number[] }> {
+  // Merging edits the keeper and deletes the discarded rows — a write (issue #33).
   // Multi-view (#1330): a merge on a subject's card carries that subject's
   // `profile_id`, so gateItemProfile() write-gates + targets the subject's profile.
-  // Both keep_id/drop_id are re-verified `AND profile_id = ?` below against THIS
-  // resolved profile, so a cross-profile pair is refused by construction — two
+  // Every keep_id/drop id is re-verified `AND profile_id = ?` below against THIS
+  // resolved profile, so a cross-profile member is refused by construction — two
   // people's activities are never duplicates of each other. Single-view merge (no
   // profile_id) falls back to the acting profile.
   const profileId = await gateItemProfile(formData);
@@ -522,62 +522,111 @@ export async function mergeActivities(
   // is not offered on the restricted profile's lightweight activity log; keep it
   // fully gated for a restricted profile (#489) so the un-surfaced action can't be
   // reached out-of-band.
-  if (isTrainingRestricted(profile.id)) return { undoId: null };
+  if (isTrainingRestricted(profile.id)) return { undoIds: [] };
   const keepId = Number(formData.get("keep_id"));
-  const dropId = Number(formData.get("drop_id"));
-  if (!keepId || !dropId || keepId === dropId) return { undoId: null };
+  // drop_ids is a JSON array (the multi-select); a single drop_id is still accepted
+  // for the pairwise callers and the in-flight-form back-compat.
+  const dropIds = parseMergeDropIds(formData).filter((id) => id !== keepId);
+  if (!keepId || dropIds.length === 0) return { undoIds: [] };
   // Conflict-preview overrides (issue #100): validated to real fold-field names
   // only — the value for each is taken from the re-read discarded row, never the
-  // client. Empty for the common (no-conflict) one-click merge.
+  // client. Empty for the common (no-conflict) one-click merge; applies to the first
+  // drop in the fold order (the pairwise case).
   const overrideFields = parseOverrideFields(formData.get("overrides"));
 
-  let undoId: number | null = null;
+  let undoIds: number[] = [];
   const ok = writeTx((): boolean => {
     const keep = db
       .prepare("SELECT * FROM activities WHERE id = ? AND profile_id = ?")
       .get(keepId, profile.id) as Record<string, unknown> | undefined;
-    const drop = db
-      .prepare("SELECT * FROM activities WHERE id = ? AND profile_id = ?")
-      .get(dropId, profile.id) as Record<string, unknown> | undefined;
-    // Both must be the acting profile's and share a day — a manual merge only makes
-    // sense within one day (the detector buckets by day too).
-    if (!keep || !drop || keep.date !== drop.date) return false;
+    if (!keep) return false;
+    const drops: Record<string, unknown>[] = [];
+    for (const id of dropIds) {
+      const drop = db
+        .prepare("SELECT * FROM activities WHERE id = ? AND profile_id = ?")
+        .get(id, profile.id) as Record<string, unknown> | undefined;
+      // Every drop must be the acting profile's and share the keeper's day — a manual
+      // merge only makes sense within one day (the detector buckets by day too).
+      if (drop && drop.date === keep.date) drops.push(drop);
+    }
+    if (drops.length === 0) return false;
 
     // Snapshot the invert-undo context BEFORE the fold mutates anything (#199/#200):
-    // the keeper's pre-fold fields, and the discarded row's set ids before
-    // writeActivityFold re-parents them onto the keeper.
+    // the keeper's pre-fold fields (shared across drops), and each drop's set ids
+    // before writeActivityFold re-parents them onto the keeper.
     const keeperBefore = snapshotKeeperFold(keep);
-    const movedSetIds = dropSetIds(dropId);
-    // Which route (if any) the fold will re-parent onto the keeper (#569) — captured
-    // BEFORE the fold so undo can move exactly that route back.
-    const movedRouteId = movedRouteIdForMerge(keepId, dropId);
+    const setIdsByDrop = new Map<number, number[]>();
+    for (const drop of drops)
+      setIdsByDrop.set(drop.id as number, dropSetIds(drop.id as number));
 
-    writeActivityFold(profile.id, keepId, keep, drop, overrideFields);
-    const signature = pairSignature(
-      activityToken(keep as { id: number; external_id: string | null }),
-      activityToken(drop as { id: number; external_id: string | null })
+    // The N-way core folds every drop into the keeper and re-parents their children,
+    // returning the ACTUAL per-drop route move so each undo context inverts exactly
+    // what happened (#569).
+    const moves = writeActivityFold(
+      profile.id,
+      keepId,
+      keep,
+      drops,
+      overrideFields
     );
-    recordPairDecision(profile.id, ACTIVITY_DOMAIN, signature, "merged");
-    // Capture-and-delete the discarded row. Its sets have already been re-parented
-    // onto the keeper (#199), so nothing set-related cascades here; the merge context
-    // rides in the payload so undo fully inverts the merge (#200).
-    undoId = captureDelete("activity", profile.id, dropId, {
-      keeperId: keepId,
-      domain: ACTIVITY_DOMAIN,
-      signature,
-      keeperBefore,
-      movedSetIds,
-      movedRouteId,
-    });
+    const movedRouteByDrop = new Map(
+      moves.map((m) => [m.dropId, m.movedRouteId])
+    );
+
+    const tokens: number[] = [];
+    for (const drop of drops) {
+      const signature = pairSignature(
+        activityToken(keep as { id: number; external_id: string | null }),
+        activityToken(drop as { id: number; external_id: string | null })
+      );
+      recordPairDecision(profile.id, ACTIVITY_DOMAIN, signature, "merged");
+      // Capture-and-delete this dropped row. Its sets/route have already been
+      // re-parented onto the keeper (#199/#569), so nothing set-related cascades; the
+      // per-drop merge context rides in the payload so undo fully inverts (#200).
+      const undoId = captureDelete("activity", profile.id, drop.id as number, {
+        keeperId: keepId,
+        domain: ACTIVITY_DOMAIN,
+        signature,
+        keeperBefore,
+        movedSetIds: setIdsByDrop.get(drop.id as number) ?? [],
+        movedRouteId: movedRouteByDrop.get(drop.id as number) ?? null,
+      });
+      if (undoId != null) tokens.push(undoId);
+    }
+    undoIds = tokens;
     return true;
   });
-  if (!ok) return { undoId: null };
+  if (!ok) return { undoIds: [] };
 
-  // Refresh every activity-reading surface the folded/deleted row feeds — the
+  // Refresh every activity-reading surface the folded/deleted rows feed — the
   // Journal feed on /training, the /trends fitness chart + heatmap, and the
   // dashboard rollups (same surfaces deleteActivity refreshes).
   revalidateActivitySurfaces();
-  return { undoId };
+  return { undoIds };
+}
+
+// Parse the Journal merge's drop ids: the multi-select `drop_ids` JSON array, or a
+// single legacy `drop_id`. Positive integers only, deduped; the caller re-verifies
+// each `AND profile_id = ?`, so this is shape validation, not an auth check.
+function parseMergeDropIds(formData: FormData): number[] {
+  const seen = new Set<number>();
+  const raw = formData.get("drop_ids");
+  let list: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      list = JSON.parse(raw);
+    } catch {
+      list = null;
+    }
+  }
+  if (Array.isArray(list))
+    for (const x of list) {
+      const n = Number(x);
+      if (Number.isInteger(n) && n > 0) seen.add(n);
+    }
+  const single = Number(formData.get("drop_id"));
+  if (Number.isInteger(single) && single > 0) seen.add(single);
+  return [...seen];
 }
 
 // Load an older window of the Journal feed (issue #451). The Training → Log surface

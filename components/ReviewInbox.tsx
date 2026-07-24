@@ -18,7 +18,7 @@ import type {
 } from "@/lib/queries/integrations";
 import type { UnitMislabelReview as UnitMislabelReviewRow } from "@/lib/queries/medical";
 import type {
-  ActivityDupPair,
+  ActivityDupCluster,
   BodyMetricConflictPair,
 } from "@/lib/import-review/detect";
 
@@ -45,7 +45,7 @@ export default function ReviewInbox({
   sources,
   feed,
   knownNames,
-  activityPairs = [],
+  activityClusters = [],
   bodyMetricPairs = [],
   unitMislabels = [],
   units,
@@ -58,8 +58,9 @@ export default function ReviewInbox({
   feed: FeedEntry[];
   // The active profile's own name(s), for the document provenance-mismatch flag.
   knownNames: (string | null | undefined)[];
-  // Detected, still-unresolved duplicate/conflict pairs (issue #10).
-  activityPairs?: ActivityDupPair<ActivityDupRow>[];
+  // Detected, still-unresolved duplicate ACTIVITY clusters (#10/#1081) + body-metric
+  // conflict pairs.
+  activityClusters?: ActivityDupCluster<ActivityDupRow>[];
   bodyMetricPairs?: BodyMetricConflictPair<BodyMetricConflictRow>[];
   // Probable power-of-ten unit mislabels (issue #761), each a one-click correction.
   unitMislabels?: UnitMislabelReviewRow[];
@@ -72,7 +73,7 @@ export default function ReviewInbox({
   return (
     <div className="space-y-6" data-testid="review-inbox">
       <DuplicateReview
-        activityPairs={activityPairs}
+        activityClusters={activityClusters}
         bodyMetricPairs={bodyMetricPairs}
         units={units}
       />
