@@ -67,6 +67,8 @@ import { getScheduledAppointments } from "../appointments";
 import { isCarePlanItemOpen } from "../../care-plan-upcoming";
 import { getIntakeSafetyContext } from "./safety";
 import { parseRxcuiIngredients } from "../../rxnorm";
+import { activeByKey } from "../../findings";
+import { getFindingSuppressions } from "../upcoming/suppressions";
 import { contributesToDailyLimit } from "../../supplement-schedule";
 import { getSupplements, getSupplementDoses } from "./schedule";
 
@@ -358,6 +360,56 @@ export function getDrugAllergyWarnings(profileId: number): DrugAllergyHit[] {
     }));
   if (meds.length === 0) return [];
   return crossCheckDrugAllergies(ctx.allergyRecords, meds);
+}
+
+// Record-side inverse of getDrugAllergyWarnings (issue #1354): the SAME drug-allergy
+// hits the /medications + Supplements safety strips render, grouped by ALLERGY row id
+// so the Allergies record surface can show, on each allergy row, the active medications
+// it contraindicates ("Contraindicated with your active meds: …"). No second
+// computation — it reuses getDrugAllergyWarnings and filters through the SAME findings
+// bus the meds board uses (getFindingSuppressions + activeByKey), so a dismiss on the
+// meds side hides the record-side line too ("dismiss once, silence everywhere") and the
+// record surface is never MORE dismissible than its meds-side twin. Profile-scoped
+// through the underlying reads; no new SQL. A row with no hits is simply absent from the
+// map (absent-pillar — the surface renders nothing extra).
+export function getAllergyMedCrossLinks(
+  profileId: number
+): Record<number, DrugAllergyHit[]> {
+  const active = activeByKey(
+    getDrugAllergyWarnings(profileId),
+    (hit) => hit.dedupeKey,
+    getFindingSuppressions(profileId),
+    today(profileId)
+  );
+  const byAllergy: Record<number, DrugAllergyHit[]> = {};
+  for (const hit of active) {
+    (byAllergy[hit.allergyId] ??= []).push(hit);
+  }
+  return byAllergy;
+}
+
+// Record-side inverse of getPgxWarnings (issue #1354): the SAME pharmacogenomic hits the
+// meds surfaces render, grouped by VARIANT row id so the Genomics record surface can
+// show, on each PGx variant row, the active medications it affects (factually — the med
+// name + the cited phenotype consequence, never invented risk prose). No second
+// computation — it reuses getPgxWarnings and filters through the SAME findings bus, so a
+// dismiss on the meds side hides the record-side line too. Only pharmacogenomic variants
+// produce hits (getPgxWarnings already filters to result_type='pharmacogenomic'). A
+// variant with no hits is absent from the map (absent-pillar).
+export function getPgxMedCrossLinks(
+  profileId: number
+): Record<number, PgxHit[]> {
+  const active = activeByKey(
+    getPgxWarnings(profileId),
+    (hit) => hit.dedupeKey,
+    getFindingSuppressions(profileId),
+    today(profileId)
+  );
+  const byVariant: Record<number, PgxHit[]> = {};
+  for (const hit of active) {
+    (byVariant[hit.variantId] ??= []).push(hit);
+  }
+  return byVariant;
 }
 
 // Safety-screening coverage summary (issue #1032): how much of the ACTIVE stack the

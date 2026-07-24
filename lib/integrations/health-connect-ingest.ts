@@ -1,7 +1,12 @@
 import { writeTx } from "@/lib/db";
 import { createLogger } from "@/lib/log";
 import { chunk, INGEST_CHUNK_SIZE } from "@/lib/ingest-bounds";
-import { emptyCounts, foldCounts, type UpsertCounts } from "./sync-log";
+import {
+  emptyCounts,
+  foldCounts,
+  type UpsertCounts,
+  type ProvenanceEntry,
+} from "./sync-log";
 import {
   upsertActivities,
   upsertBodyMetrics,
@@ -39,6 +44,9 @@ export interface ChunkedIngestResult {
   // Ids of the vitals rows touched across every chunk, for the post-commit
   // reconcileFlags/canonical-name pass the caller runs after all chunks land.
   vitalIds: number[];
+  // Per-row provenance (#1333) accumulated across every chunk — the caller links it
+  // to the sync event id after recordSyncEvent (which needs the whole push's split).
+  provenance: ProvenanceEntry[];
 }
 
 const total = (c: UpsertCounts): number => c.inserted + c.updated + c.unchanged;
@@ -55,13 +63,21 @@ export function ingestHealthConnectPayload(
   let activities = emptyCounts();
   let vitals = emptyCounts();
   const vitalIds: number[] = [];
+  // Per-row provenance (#1333) accumulated across every chunk. The upserts append the
+  // inserted/updated rows they persist; the id captured is committed by the chunk's
+  // writeTx, so it's a stable target for the drill-in links.
+  const provenance: ProvenanceEntry[] = [];
 
   for (const slice of chunk(parsed.bodyMetrics, chunkSize)) {
-    const c = writeTx(() => upsertBodyMetrics(profileId, slice, source));
+    const c = writeTx(() =>
+      upsertBodyMetrics(profileId, slice, source, provenance)
+    );
     bodyMetrics = foldCounts([bodyMetrics, c]);
   }
   for (const slice of chunk(parsed.samples, chunkSize)) {
-    const c = writeTx(() => upsertMetricSamples(profileId, slice, source));
+    const c = writeTx(() =>
+      upsertMetricSamples(profileId, slice, source, provenance)
+    );
     samples = foldCounts([samples, c]);
   }
   for (const slice of chunk(parsed.hrMinutes, chunkSize)) {
@@ -69,7 +85,9 @@ export function ingestHealthConnectPayload(
     hrMinutes = foldCounts([hrMinutes, c]);
   }
   for (const slice of chunk(parsed.activities, chunkSize)) {
-    const c = writeTx(() => upsertActivities(profileId, slice, source));
+    const c = writeTx(() =>
+      upsertActivities(profileId, slice, source, provenance)
+    );
     activities = foldCounts([activities, c]);
   }
   // The no-finish fallback for imports (#1154 §B2): a just-ingested session dated
@@ -91,7 +109,7 @@ export function ingestHealthConnectPayload(
     }
   }
   for (const slice of chunk(parsed.vitals, chunkSize)) {
-    const r = writeTx(() => upsertVitals(profileId, slice, source));
+    const r = writeTx(() => upsertVitals(profileId, slice, source, provenance));
     vitals = foldCounts([vitals, r.counts]);
     vitalIds.push(...r.ids);
   }
@@ -106,5 +124,6 @@ export function ingestHealthConnectPayload(
     },
     split: foldCounts([bodyMetrics, samples, hrMinutes, activities, vitals]),
     vitalIds,
+    provenance,
   };
 }

@@ -1,4 +1,7 @@
-import { getGenomicVariantsForProfiles } from "@/lib/queries";
+import {
+  getGenomicVariantsForProfiles,
+  getPgxMedCrossLinks,
+} from "@/lib/queries";
 import { stampSubjects, type ProfileScope } from "@/lib/scope";
 import GenomicVariantForm from "@/app/(app)/genomics/GenomicVariantForm";
 import GenomicVariantList from "@/app/(app)/genomics/GenomicVariantList";
@@ -22,12 +25,20 @@ export default function GenomicsSection({ scope }: { scope: ProfileScope }) {
     scope,
     getGenomicVariantsForProfiles(scope.viewIds)
   );
+  // Bidirectional safety cross-link (#1354): variantId → the active meds this PGx
+  // variant affects, the SAME pharmacogenomic findings the /medications safety strip
+  // shows, through the SAME dismissal bus. Variant ids are globally unique, so merging
+  // the per-profile maps across the view-set is collision-free.
+  const affectedMeds = Object.fromEntries(
+    scope.viewIds.flatMap((pid) => Object.entries(getPgxMedCrossLinks(pid)))
+  );
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       <div className="min-w-0 space-y-4 lg:col-span-2">
         <GenomicVariantList
           items={variants}
+          affectedMeds={affectedMeds}
           multiView={
             multi ? { actingProfileId: scope.actingProfileId } : undefined
           }

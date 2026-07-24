@@ -3,6 +3,7 @@ import {
   getAllergies,
   getAllergiesView,
   getCrossReactivityNotes,
+  getAllergyMedCrossLinks,
 } from "@/lib/queries";
 import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import AllergyForm from "@/app/(app)/allergies/AllergyForm";
@@ -29,6 +30,14 @@ export default function AllergiesSection({ scope }: { scope: ProfileScope }) {
     readForProfiles(scope.viewIds, (pid) => getAllergies(pid))
   );
   const crossReactivity = getCrossReactivityNotes(profileId);
+  // Bidirectional safety cross-link (#1354): allergyId → the active meds it
+  // contraindicates, the SAME drug-allergy findings the /medications safety strip shows,
+  // through the SAME dismissal bus. Allergy ids are globally unique, so merging the
+  // per-profile maps across the view-set is collision-free (same pattern as the
+  // conditions "Treated with" map).
+  const contraindications = Object.fromEntries(
+    scope.viewIds.flatMap((pid) => Object.entries(getAllergyMedCrossLinks(pid)))
+  );
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
@@ -124,6 +133,7 @@ export default function AllergiesSection({ scope }: { scope: ProfileScope }) {
           </h3>
           <AllergyList
             items={stored}
+            contraindications={contraindications}
             multiView={
               multi ? { actingProfileId: scope.actingProfileId } : undefined
             }

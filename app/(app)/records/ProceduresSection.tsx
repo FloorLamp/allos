@@ -1,4 +1,8 @@
-import { getProcedures, getPickerProviders } from "@/lib/queries";
+import {
+  getProcedures,
+  getPickerProviders,
+  encountersForRecords,
+} from "@/lib/queries";
 import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import ProcedureForm from "@/app/(app)/procedures/ProcedureForm";
@@ -24,6 +28,14 @@ export default function ProceduresSection({
     scope,
     readForProfiles(scope.viewIds, (pid) => getProcedures(pid))
   );
+  // "Performed at: <visit>" (#1355): procedure id → its linked encounter, the SAME
+  // encounter link the detail/visit surfaces read (encountersForRecords). Procedure ids
+  // are globally unique, so merging the per-profile maps is collision-free.
+  const performedAt = Object.fromEntries(
+    scope.viewIds.flatMap((pid) =>
+      Object.entries(encountersForRecords(pid, "procedure"))
+    )
+  );
 
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
@@ -31,6 +43,7 @@ export default function ProceduresSection({
         <div className="min-w-0 space-y-4 lg:col-span-2">
           <ProcedureList
             items={procedures}
+            performedAt={performedAt}
             multiView={
               multi ? { actingProfileId: scope.actingProfileId } : undefined
             }

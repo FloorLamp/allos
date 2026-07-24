@@ -8,6 +8,7 @@ import {
   setWithingsCursor,
   recordSync,
   recordSyncEvent,
+  recordSyncRows,
 } from "./connections";
 import {
   summarizeSplit,
@@ -15,6 +16,7 @@ import {
   emptyCounts,
   dateWindow,
   type UpsertCounts,
+  type ProvenanceEntry,
 } from "./sync-log";
 import {
   WITHINGS_MEAS_TYPES,
@@ -274,13 +276,25 @@ export async function runWithingsSync(
   let upVitals: UpsertCounts = emptyCounts();
   let upSamples: UpsertCounts = emptyCounts();
   let vitalIds: number[] = [];
+  // Per-row provenance (#1333): inserted/updated rows this run wrote, linked below.
+  const provenance: ProvenanceEntry[] = [];
   try {
     writeTx(() => {
-      upBody = upsertBodyMetrics(profileId, bodyMetrics, WITHINGS_ID);
-      const v = upsertVitals(profileId, vitals, WITHINGS_ID);
+      upBody = upsertBodyMetrics(
+        profileId,
+        bodyMetrics,
+        WITHINGS_ID,
+        provenance
+      );
+      const v = upsertVitals(profileId, vitals, WITHINGS_ID, provenance);
       upVitals = v.counts;
       vitalIds = v.ids;
-      upSamples = upsertMetricSamples(profileId, samples, WITHINGS_ID);
+      upSamples = upsertMetricSamples(
+        profileId,
+        samples,
+        WITHINGS_ID,
+        provenance
+      );
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -355,7 +369,7 @@ export async function runWithingsSync(
       WITHINGS_ID,
       JSON.stringify(rawItems)
     );
-    recordSyncEvent(profileId, WITHINGS_ID, {
+    const eventId = recordSyncEvent(profileId, WITHINGS_ID, {
       ok: true,
       windowStart: win.start,
       windowEnd: win.end,
@@ -369,6 +383,7 @@ export async function runWithingsSync(
       skipped: tally.skipped,
       raw_ref: rawRef,
     });
+    recordSyncRows(eventId, provenance);
   }
   if (truncated) {
     log.info("withings sync truncated (page cap / rate limit)", {
