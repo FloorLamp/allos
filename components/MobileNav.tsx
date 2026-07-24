@@ -33,6 +33,7 @@ export default function MobileNav({
   relevance = DEFAULT_NAV_RELEVANCE,
   reviewCount = 0,
   readOnly = false,
+  whatsNewUnseen = false,
 }: {
   activityDates: string[];
   // Resolved on the server (git/env) and passed in — this client component
@@ -68,6 +69,9 @@ export default function MobileNav({
   reviewCount?: number;
   // Active profile shared read-only with this login (issue #33) — badge hint.
   readOnly?: boolean;
+  // Unopened bundled release notes for this login (issue #1421); threaded into the
+  // shared SidebarContent so the drawer shows the same calm "What's new" dot.
+  whatsNewUnseen?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
@@ -170,6 +174,7 @@ export default function MobileNav({
               relevance={relevance}
               reviewCount={reviewCount}
               readOnly={readOnly}
+              whatsNewUnseen={whatsNewUnseen}
               onNavigate={() => setOpen(false)}
               onClose={() => setOpen(false)}
             />

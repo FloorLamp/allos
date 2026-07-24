@@ -62,6 +62,11 @@ interface ActivityEditorApi {
   // Whether an editor is currently open, and what it's editing — so a page can
   // hand the editor a column to dock into and react to it being active.
   open: boolean;
+  // Collapsed to the dock bar but still MOUNTED (the rest timer keeps ticking).
+  // Exposed so the live panel can drop its screen wake lock while the session is
+  // pocketed (#1422) — "open" alone can't express that, and the mount-tied release
+  // never fires here by design.
+  minimized: boolean;
   editData: ActivityEditData | null;
   // Register a DOM node for the editor to render into inline instead of the
   // overlay. Pass null to unregister.
@@ -253,10 +258,20 @@ export default function ActivityEditorProvider({
         setOpen(false);
       },
       open,
+      minimized,
       editData,
       registerDock,
     }),
-    [open, editData, registerDock, tz, lastActivity, restricted, subjectName]
+    [
+      open,
+      minimized,
+      editData,
+      registerDock,
+      tz,
+      lastActivity,
+      restricted,
+      subjectName,
+    ]
   );
 
   // Resume the acting profile's active session in the live editor from the dock —

@@ -1,6 +1,6 @@
 # E2E suite hygiene — fixtures, settled interactions, retries=0 lane
 
-Status: **partial** (infrastructure shipped — helpers module, hygiene guard incl. the `.first()`/`.toPass(` count-freezes and the #1392 fixture-login budget, changed-spec CI lane, the frozen app clock #990, the sharded CI e2e matrix, retries=0 end-to-end #1160, the on-demand + weekly-census full-suite workflow, pass-on-retry flake telemetry; suite-wide migration of the grandfathered `.first()`/`.toPass(` offenders is the remaining follow-up, per #868)
+Status: **partial** (infrastructure shipped — helpers module, hygiene guard incl. the `.first()`/`.toPass(` count-freezes and the #1392 fixture-login budget, changed-spec CI lane, the frozen app clock #990, the sharded CI e2e matrix, retries=0 end-to-end #1160, the on-demand + weekly-census full-suite workflow, pass-on-retry flake telemetry, the opt-in `mobile` phone-viewport project #1420; suite-wide migration of the grandfathered `.first()`/`.toPass(` offenders is the remaining follow-up, per #868)
 
 Maintainer documentation for the Playwright suite's reliability discipline (issue
 #868). The user-facing "how to run e2e" note lives in AGENTS.md's browser-e2e
@@ -411,6 +411,63 @@ pain they replace):
     retry. The telemetry step stays wired: an on-demand `e2e-full.yml` census
     dispatched at `--retries=1` still surfaces pass-on-retry tests through the same
     script, and at the default `retries: 0` it reports an accurate empty.
+
+## The `mobile` project — opt-in phone-viewport coverage (#1420)
+
+Every project used to run at 1280×900, so the mobile shell (`MobileNav`'s top bar
+and slide-in drawer, bottom sheets, touch targets) had no regression coverage
+except in the handful of specs that hand-set a phone viewport via `test.use`. The
+`mobile` project (playwright.config.ts) closes that: iPhone-class **390×844**,
+`hasTouch: true`, same seeded-DB webServer and same `auth.setup.ts` storage state
+as `chromium` — nothing else differs.
+
+**It is opt-in, not a second copy of the suite.** Its `testMatch` admits exactly
+two things:
+
+- `smoke.spec.ts` — the broad "every primary surface renders" sweep, worth having
+  at both viewports (it is the only spec that runs in BOTH projects); and
+- any spec named **`*.mobile.spec.ts`**.
+
+The naming convention was chosen over a `@mobile` tag because it needs no
+per-test annotation, it is visible in `ls e2e/`, and CI needs no new filter: the
+`e2e-changed` lane globs `^e2e/.*\.spec\.ts$` and runs `npx playwright test
+<specs>` with **no `--project` filter**, so a changed `*.mobile.spec.ts` lands in
+this project automatically (and a changed `smoke.spec.ts` runs in both). The
+sharded full matrix likewise runs `npm run test:e2e`, so the mobile project rides
+along and its handful of tests distribute across the four shards — the suite grows
+by the mobile spec count, never by a mobile clone of the whole thing.
+
+That routing takes BOTH halves of the config, and the second half is easy to
+forget: a `--project`-less run executes a spec in **every** project whose filters
+admit it, and `chromium`'s `testMatch` admits everything — so `chromium` carries
+`testIgnore: /\.mobile\.spec\.ts$/`, without which every mobile spec would ALSO
+run at 1280×900 and fail deterministically in CI (it did, on the first push of
+#1420). `demo` needs no such guard: its `testMatch` only admits `demo.spec.ts`.
+**Verify a mobile spec the way CI invokes it — with no `--project` flag.** A local
+`--project=mobile` run masks this class of misrouting exactly.
+
+**Writing a mobile spec.** Name it `<feature>.mobile.spec.ts` and set NO viewport
+(the project owns it — a `test.use({ viewport })` inside would defeat the point).
+Every rule in this doc applies unchanged: spec-owned fixtures, settled
+interactions from `e2e/helpers.ts`, no `waitForTimeout`/`networkidle`, no unmarked
+`.first()`/`.toPass(`, `retries: 0`. One mobile-specific helper lives in the
+blessed module: **`openMobileDrawer(page)`** — the drawer's `<aside>` is not even
+mounted until the hamburger is tapped, and that tap fires no action and no
+navigation (a pure `setOpen(true)`), so it is decision-tree case 4 (a marked
+re-tap loop, safe because the hamburger only ever sets `open` true). Use it rather
+than re-rolling the tap.
+
+`e2e/smoke.mobile.spec.ts` is the reference spec (bar renders, hamburger mounts
+the drawer, the drawer carries the shared `<SidebarContent>` nav, a drawer link
+navigates). Acceptance was verified the way the issue asked: hiding the hamburger
+(`display: none`) fails 14 tests in this project and none in the desktop ones.
+
+Note the one shared-spec accommodation: `smoke.spec.ts`'s "the app shell rendered,
+not a Next error boundary" anchor is now viewport-conditional (`appShellAnchor`) —
+the desktop sidebar is `hidden md:flex` and its links live in the unmounted drawer
+on a phone, so below `md` the anchor is the hamburger instead of the sidebar's
+Data link. That is the shape to copy if another dual-viewport spec needs one: pick
+the anchor from `page.viewportSize()`, don't fork the spec.
 
 ## Follow-up (out of scope for the infra PR)
 

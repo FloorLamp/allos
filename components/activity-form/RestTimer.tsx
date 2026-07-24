@@ -7,6 +7,7 @@ import {
   IconRotateClockwise,
 } from "@tabler/icons-react";
 import { formatSeconds } from "@/lib/duration";
+import { useHaptics } from "@/components/useHaptics";
 import {
   REST_PRESETS_SEC,
   REST_STEP_SEC,
@@ -41,6 +42,8 @@ export default function RestTimer({
   const lastAutoRef = useRef(autoStartKey);
   // A single lazily-created AudioContext for the end-of-rest chime.
   const audioRef = useRef<AudioContext | null>(null);
+  // The shared haptic adapter (#1422) — pattern choice + reduced-motion suppression.
+  const haptic = useHaptics();
 
   // Re-default the target to the lift while idle (not mid-countdown): a fresh
   // exercise gets its own rest, but an in-progress rest is left alone.
@@ -79,12 +82,10 @@ export default function RestTimer({
     } catch {
       // AudioContext unavailable/blocked — the visual "Rest done" cue stands in.
     }
-    try {
-      navigator.vibrate?.([120, 60, 120]);
-    } catch {
-      // Vibration API absent (desktop) — no-op.
-    }
-  }, []);
+    // The end-of-rest double-pulse — distinguishable through a pocket from the
+    // set-logged tick, and suppressed under prefers-reduced-motion (#1422).
+    haptic("timer-complete");
+  }, [haptic]);
 
   const start = useCallback(
     (seconds?: number) => {

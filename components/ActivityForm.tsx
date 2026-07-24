@@ -24,6 +24,7 @@ import { useTimezone } from "@/components/TimezoneProvider";
 import { useToast } from "@/components/Toast";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { useUndoableDelete } from "@/components/useUndoableDelete";
+import { useHaptics } from "@/components/useHaptics";
 import {
   type ActivityEditData,
   todayStr,
@@ -252,6 +253,8 @@ export default function ActivityForm({
   // on every set check-off to auto-start the rest timer.
   const [liveMode, setLiveMode] = useState(live && !isEdit);
   const [restStartKey, setRestStartKey] = useState(0);
+  // The shared haptic adapter (#1422) — the set-logged tick below goes through it.
+  const haptic = useHaptics();
   // The live-mode "Session complete" step (#924): Finish opens the recap step
   // instead of collapsing straight to the plain form. It's the ONLY live-gated
   // renderer — reachable only from the live panel's Finish, so retro/plain-form
@@ -270,9 +273,15 @@ export default function ActivityForm({
     equipmentList,
     isKnown,
     customFlags,
-    // A set check-off starts the live-mode rest timer (#340).
+    // A set check-off starts the live-mode rest timer (#340) and fires a short haptic
+    // tick (#1422) — the phone-in-pocket confirmation that the set registered, distinct
+    // from the rest timer's end-of-rest double-pulse. Live mode only: the tick means
+    // "your set landed, rest is running", which is exactly what plain-form retro logging
+    // isn't doing.
     onSetCheckedOff: () => {
-      if (liveMode) setRestStartKey((n) => n + 1);
+      if (!liveMode) return;
+      setRestStartKey((n) => n + 1);
+      haptic("set-logged");
     },
   });
   const {
