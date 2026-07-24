@@ -27,6 +27,26 @@ export function getAppointments(profileId: number): Appointment[] {
     .all(profileId) as Appointment[];
 }
 
+// The appointment that was scheduled for THIS encounter (#288 completed→linked, or
+// the import-time appointment↔encounter match) — the visit's scheduling origin, for
+// the encounter page's provenance chain ("Scheduled Jun 10 → attended Jun 18",
+// #1350). Profile-scoped; null when the visit had no booked appointment. Newest
+// booking wins if several ever linked (they shouldn't).
+export function appointmentForEncounter(
+  profileId: number,
+  encounterId: number
+): Appointment | null {
+  return (
+    (db
+      .prepare(
+        `SELECT ${SELECT_COLS} FROM appointments
+         WHERE profile_id = ? AND encounter_id = ?
+         ORDER BY scheduled_at DESC, id DESC LIMIT 1`
+      )
+      .get(profileId, encounterId) as Appointment | undefined) ?? null
+  );
+}
+
 // Only the still-scheduled appointments (completed/cancelled drop off), soonest
 // first — the forward-looking set the Upcoming aggregation bands. A past-and-
 // still-scheduled row is included on purpose so it can surface as Overdue.

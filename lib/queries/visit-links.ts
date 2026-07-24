@@ -1,4 +1,5 @@
-import { db, writeTx } from "../db";
+import { db, today, writeTx } from "../db";
+import { shiftDateStr } from "../date";
 import { ENCOUNTER_REPRESENTATIVE_IDS } from "./medical";
 import {
   type LinkableEncounter,
@@ -7,6 +8,7 @@ import {
   type EncounterFromVisit,
   type EpisodeRange,
   type EpisodeVisitSuggestion,
+  type EncounterEpisodeSuggestion,
   type VisitLinkDomain,
   type CreateVisitDomain,
   type CreateVisitCandidate,
@@ -16,6 +18,7 @@ import {
   suggestForRecord,
   suggestForEncounter,
   suggestForEpisode,
+  suggestEpisodesForEncounter,
   shouldOfferCreateVisit,
   CREATE_VISIT_DOMAINS,
   CREATE_VISIT_ENCOUNTER_KEY,
@@ -763,6 +766,80 @@ export function episodeForLinkedEncounter(
       )
       .get(encounterId, profileId) as EncounterEpisodeRef | undefined) ?? null
   );
+}
+
+// The full SET of illness episodes this visit is linked to (#1198/#1350) — EVERY
+// linked episode, not just the most recent, for the encounter page's care trail (a
+// multi-visit illness reads chronologically). Ordered earliest-first. Distinct from
+// episodeForLinkedEncounter, the singular back-link kept for one-episode callers.
+export interface LinkedEpisodeRef {
+  id: number;
+  situation: string;
+  started_at: string | null;
+  ended_at: string | null;
+}
+
+export function episodesForEncounter(
+  profileId: number,
+  encounterId: number
+): LinkedEpisodeRef[] {
+  return db
+    .prepare(
+      `SELECT ie.id, ie.situation, ie.started_at, ie.ended_at
+         FROM episode_encounters le
+         JOIN illness_episodes ie ON ie.id = le.episode_id AND ie.profile_id = le.profile_id
+        WHERE le.encounter_id = ? AND le.profile_id = ?
+        ORDER BY ie.started_at, ie.id`
+    )
+    .all(encounterId, profileId) as LinkedEpisodeRef[];
+}
+
+// The encounter-side "Link an illness episode…" suggestion (#1350): which episode(s)
+// contain this visit's date, excluding those already linked and any declined pair.
+// The inverse of suggestionForEpisode — the SAME containment signal and the SAME
+// decline durability (the order-independent signature means a decline from either end
+// silences both). An episode's active range is [started_at, ended_at) — ended_at is
+// the EXCLUSIVE stop day — so its inclusive last active day is ended_at − 1 (today for
+// an open episode), matching assembleIllnessEpisode's `to`.
+export function episodeSuggestionForEncounter(
+  profileId: number,
+  encounterId: number
+): EncounterEpisodeSuggestion | null {
+  const enc = db
+    .prepare(
+      `SELECT e.id, e.external_id, e.date,
+              e.provider_id AS providerId,
+              e.location_provider_id AS locationProviderId
+         FROM encounters e WHERE e.id = ? AND e.profile_id = ?`
+    )
+    .get(encounterId, profileId) as LinkableEncounter | undefined;
+  if (!enc) return null;
+  const linked = new Set(
+    episodesForEncounter(profileId, encounterId).map((e) => e.id)
+  );
+  const asOf = today(profileId);
+  const episodes = (
+    db
+      .prepare(
+        `SELECT id, situation, started_at, ended_at
+           FROM illness_episodes WHERE profile_id = ?`
+      )
+      .all(profileId) as {
+      id: number;
+      situation: string;
+      started_at: string | null;
+      ended_at: string | null;
+    }[]
+  )
+    .filter((e) => !linked.has(e.id))
+    .map((e) => ({
+      id: e.id,
+      situation: e.situation,
+      start: e.started_at,
+      lastActiveDay: e.ended_at ? shiftDateStr(e.ended_at, -1) : asOf,
+    }));
+  const declined = getDeclinedSignatures(profileId);
+  return suggestEpisodesForEncounter(enc, episodes, declined);
 }
 
 // ADD a visit to an episode's set (#1198) — INSERT a link row (idempotent, never an

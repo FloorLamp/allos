@@ -97,13 +97,14 @@ test.describe("record ↔ visit / episode ↔ visit linking (#1050/#1053)", () =
       visitList.getByRole("button", { name: "Unlink" })
     ).toBeVisible();
 
-    // And the visit shows the "During illness episode … day N" back-link.
+    // And the visit's episode care trail (#1350) shows this episode with the shared
+    // status line, linking back into the episode view.
     await followLink(
       page,
       page.getByTestId("episode-care-link"),
       /\/encounters\/\d+/
     );
-    await expect(page.getByTestId("encounter-episode-backlink")).toContainText(
+    await expect(page.getByTestId("encounter-episode-trail")).toContainText(
       "During illness episode: sinus infection"
     );
   });
