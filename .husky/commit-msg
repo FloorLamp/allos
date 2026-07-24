@@ -1,0 +1,5 @@
+# PHI guard for the commit MESSAGE (#1363). phi-scan otherwise reads only file
+# contents; a message is prose in permanent git history, an un-guarded leak vector
+# (a name/finding once shipped in a commit message). Scans structural PHI (NPI /
+# phone / SSN) + any .phi-denylist term in the drafted message. $1 is the message file.
+npm run --silent phi-scan -- --message "$1"

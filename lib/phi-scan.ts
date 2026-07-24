@@ -223,19 +223,60 @@ export function scanLine(
   const lower = text.toLowerCase();
   for (const term of denylist) {
     if (!term) continue;
-    const idx = lower.indexOf(term.toLowerCase());
-    if (idx !== -1) {
-      // Redact the actual-cased substring so no real value survives.
-      const actual = text.slice(idx, idx + term.length);
-      findings.push({
-        kind: "denylist",
-        line: lineNo,
-        snippetRedacted: redactLine(text, actual, "denylist"),
-      });
+    const re = denylistRegex(term);
+    if (re) {
+      // Regex term (`/pattern/flags`): precise matching so a name that is also a
+      // common word (e.g. `\bMercer\b` bounded, or `Reed(?=['.]| [A-Z])`) doesn't flag
+      // every incidental occurrence. Zero-width matches are skipped.
+      for (const m of text.matchAll(re)) {
+        if (!m[0]) continue;
+        findings.push({
+          kind: "denylist",
+          line: lineNo,
+          snippetRedacted: redactLine(text, m[0], "denylist"),
+        });
+      }
+    } else {
+      // Literal term: case-insensitive substring (back-compat).
+      const idx = lower.indexOf(term.toLowerCase());
+      if (idx !== -1) {
+        // Redact the actual-cased substring so no real value survives.
+        const actual = text.slice(idx, idx + term.length);
+        findings.push({
+          kind: "denylist",
+          line: lineNo,
+          snippetRedacted: redactLine(text, actual, "denylist"),
+        });
+      }
     }
   }
 
   return findings;
+}
+
+// A `.phi-denylist` entry written as `/pattern/flags` is a REGEX (precise, to avoid
+// the false positives a bare common-word name causes as a substring); anything else is
+// a literal. Compiled once per distinct term (the scanner calls scanLine per line).
+// `g` is forced on so matchAll enumerates every hit; an invalid pattern compiles to
+// null and falls back to literal handling (the runner surfaces it). NOTE: a
+// user-authored regex runs against file/message content — a pathological pattern is a
+// self-inflicted ReDoS on your own machine, so keep denylist patterns simple.
+const DENYLIST_RE_CACHE = new Map<string, RegExp | null>();
+export function denylistRegex(term: string): RegExp | null {
+  const cached = DENYLIST_RE_CACHE.get(term);
+  if (cached !== undefined) return cached;
+  let re: RegExp | null = null;
+  const m = /^\/(.+)\/([a-z]*)$/s.exec(term);
+  if (m) {
+    try {
+      const flags = new Set([...m[2], "g"]);
+      re = new RegExp(m[1], [...flags].join(""));
+    } catch {
+      re = null;
+    }
+  }
+  DENYLIST_RE_CACHE.set(term, re);
+  return re;
 }
 
 /** Scan a full text blob, returning findings across all lines. */
