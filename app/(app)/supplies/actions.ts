@@ -6,6 +6,7 @@ import {
   requireWriteAccess,
   requireProfileWriteAccess,
   accessForProfile,
+  canAccessProfile,
 } from "@/lib/auth";
 import { requireScope } from "@/lib/scope";
 import { db } from "@/lib/db";
@@ -60,10 +61,15 @@ async function requirePoolWriteAccess(supplyId: number): Promise<void> {
     await requireWriteAccess();
     return;
   }
+  // REACHABILITY FIRST, then access — the requireProfileWriteAccess order, and it
+  // matters: accessForProfile returns "write" for a profile a member was never
+  // granted at all (it only distinguishes read from write WITHIN the accessible set),
+  // so consulting it alone would hand every member every household bottle.
   const writable = members.some(
     (m) =>
+      canAccessProfile(session, m.profileId) &&
       accessForProfile(session.login.id, session.login.role, m.profileId) ===
-      "write"
+        "write"
   );
   // Reuse the canonical per-profile gate for the refusal path so the redirect
   // behaviour (and its demo/read-only handling) is identical to every other write.
