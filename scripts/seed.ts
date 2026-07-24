@@ -1848,6 +1848,34 @@ imgIns.run(
   "Numeric T-scores trend as scan biomarkers"
 );
 
+// ── Narrative diagnostic reports (#708) ──────────────────────────────────────
+// The free-text body of a microbiology culture / gram stain report, as recovered from
+// a CCD/XDM Results-section ED-valued observation (lib/cda/extractors/observations.ts).
+// Stored as `report` medical_records rows — the text rides in `notes` with value NULL,
+// so they never trend or flag; they surface on Results → Reports, not the biomarker
+// catalog. Synthetic organism/findings text, no real PHI.
+const reportIns = db.prepare(
+  `INSERT INTO medical_records
+     (profile_id, date, category, name, value, notes, loinc, canonical_name, source, external_id)
+   VALUES (1, ?, 'report', ?, NULL, ?, ?, ?, 'document:seed', ?)`
+);
+reportIns.run(
+  daysAgo(30),
+  "Final Report",
+  "Many Escherichia coli (greater than 100,000 CFU/mL). No anaerobes isolated to date. Susceptible to nitrofurantoin and ceftriaxone.",
+  "34574-4",
+  "Final Report",
+  "seed:report:culture-1"
+);
+reportIns.run(
+  daysAgo(30),
+  "Gram Stain Report",
+  "Few gram-negative rods. Moderate white blood cells seen.",
+  "11502-2",
+  "Gram Stain Report",
+  "seed:report:gram-1"
+);
+
 // ── Optical prescriptions (#697) ─────────────────────────────────────────────
 // Synthetic eyeglass / contact-lens prescriptions. Two dated glasses Rx (an older
 // and a newer, sphere trending slightly more myopic so the Vision page's

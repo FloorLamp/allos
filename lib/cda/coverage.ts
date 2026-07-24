@@ -22,6 +22,7 @@ import {
   mapAllergy,
   mapCondition,
   isRadiologyStudyObs,
+  isReportNarrativeObs,
   mapImmunization,
   mapMedication,
   mapObservation,
@@ -243,9 +244,16 @@ function collectSectionDrops(
   if (key === "results" || key === "vitals" || key === "functionalStatus") {
     const cat = key === "vitals" ? "vitals" : "lab";
     for (const o of observationNodesOf(section.entries)) {
-      // A radiology-study observation is CONSUMED into imaging_studies (its
-      // nullFlavor lab value would otherwise read as a no_value/null_flavor drop).
-      if (isRadiologyStudyObs(o) || mapObservation(o, cat, ids)) continue;
+      // A radiology-study observation is CONSUMED into imaging_studies, and a
+      // narrative report observation (ED-valued culture/gram-stain/cytology) is
+      // CONSUMED into a `report` record — neither is a dropped lab (their nullFlavor /
+      // ED value would otherwise read as a no_value/null_flavor drop).
+      if (
+        isRadiologyStudyObs(o) ||
+        isReportNarrativeObs(o) ||
+        mapObservation(o, cat, ids)
+      )
+        continue;
       drops.push(classifyObservationDrop(o, cat, ids, title));
     }
   } else if (key === "immunizations") {
@@ -295,6 +303,10 @@ function collectSectionDrops(
 export function unmappedLoincsFromRecords(records: ImportedRecord[]) {
   return tallyUnmappedLoincs(
     records
+      // A `report` row carries a report LOINC (34574-4/11502-2/33718-8) that is
+      // deliberately NOT an analyte — it must never surface as an "add to
+      // LOINC_TO_CANONICAL" suggestion (#708).
+      .filter((r) => r.category !== "report")
       .filter((r) => isUnmappedLabLoinc(r.loinc))
       // unit is catalog identity (it rides into the "Report unmapped code"
       // prefill) — never the measured value itself.

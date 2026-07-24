@@ -103,5 +103,6 @@
   "102-session-view-profiles.ts": "ba5a7da82eadc13847216b6a1b8318077f88909e0c87501aede311c5b6f233de",
   "103-canonical-name-abbreviation-consolidation.ts": "bbfe2a1cd1970c8992726b7cce7120a97fc6f11224dcf608ef3dda0d6bb960d3",
   "104-login-own-profile.ts": "fdf60f897384f8bde6f2ce66e6f2e561aae6bd1b2d8ff1214fafe9f92ae58121",
-  "105-login-notification-channels.ts": "c41e5d92337fcd2e894c95ee95e6335de1fb850eaf1f719ba40af231e845b961"
+  "105-login-notification-channels.ts": "c41e5d92337fcd2e894c95ee95e6335de1fb850eaf1f719ba40af231e845b961",
+  "106-medical-record-report-category.ts": "cf5de11fe6cf09e7c7304454bbb2acf7ba52b6b05153db7111a065d17786d046"
 }

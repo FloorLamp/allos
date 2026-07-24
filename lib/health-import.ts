@@ -6,6 +6,7 @@ import type {
   ImagingLaterality,
   ImagingModality,
   MedicalCategory,
+  MedicalFlag,
   MedStopReason,
   OpticalKind,
   ProviderType,
@@ -82,6 +83,19 @@ export interface ImportedRecord {
   // used to route body-height readings into metric_samples (lib/height-extract).
   // Optional — extractors that don't resolve a LOINC leave it unset.
   loinc?: string | null;
+  // Free-text body of a narrative report record (category === 'report', #708): the
+  // resolved microbiology culture / gram stain / cytopathology report text. Set ONLY
+  // on report records — every analyte/vital reading leaves it unset, and the persist
+  // layer maps it into medical_records.notes.
+  notes?: string | null;
+  // The reading's OWN reference range + abnormal flag as stated by the SOURCE lab
+  // (CCD `<referenceRange>` + `<interpretationCode>`), captured on `lab` records so an
+  // analyte with no canonical band still shows the lab's normal range and its H/L/A
+  // interpretation. `flag` seeds medical_records.flag (reconcileFlags then refines a
+  // MAPPED lab against the canonical band and leaves an UNMAPPED lab's source flag
+  // intact); `reference_range` is stored for display + the unit-mislabel cross-check.
+  reference_range?: string | null;
+  flag?: MedicalFlag | null;
   // The performing provider/organization (CCD observation `<performer>`, e.g.
   // "QUEST"), when carried. Resolved into the shared registry and linked via
   // medical_records.provider_id.

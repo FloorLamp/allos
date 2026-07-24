@@ -163,7 +163,13 @@ export function parseCcdaDocument(xml: string): {
   }
   let doc: any;
   try {
-    doc = parser.parse(xml);
+    // CDA narrative uses <br/> for the visual line breaks inside a cell; the XML
+    // parser drops the empty tag and fuses the surrounding text runs into one string
+    // with no separator ("…aureusNo anaerobes…"). Convert each to a newline up front so
+    // the break survives into the text node: the collapsed name map normalizes it back
+    // to a space (lab/vital names stay single-line), while the report/impression BLOCK
+    // map (#708) keeps it as a real line break for NotesText's pre-wrap rendering.
+    doc = parser.parse(xml.replace(/<br\s*\/?>/gi, "\n"));
   } catch {
     throw new CdaError("Could not parse the CCD/CDA XML.");
   }
