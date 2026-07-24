@@ -15,6 +15,8 @@ import {
   MULTI_OWNER_ALLERGY,
   MULTI_SHARED_ALLERGY,
   MULTI_SHARED_GOAL,
+  MULTI_OWNER_VISIT,
+  MULTI_SHARED_VISIT,
 } from "./fixture-logins";
 
 // Multi-profile viewing (issue #1096): the profile-menu view toggles + the thin
@@ -446,6 +448,112 @@ test.describe("Tier-1 record lists adopt multi-view (issue #1328)", () => {
     await expect(
       sharedGoalRow.getByTestId(`subject-chip-${sharedId}`)
     ).toBeVisible();
+
+    await page.context().close();
+  });
+});
+
+// ── Tier-1b bespoke lists adopt multi-view (issue #1359) ──────────────────────
+// Two flat SUB-lists of otherwise-bespoke surfaces convert: the Visits "Past"
+// encounters list (/records/history/visits) and the Immunizations "All recorded
+// doses" list (/records/history/immunizations). The surrounding acting-only apparatus
+// (appointment booking; the age-derived schedule assessment) is untouched. Each list
+// chips non-acting rows + gates per-item writes on the row's profile. Representative
+// browser coverage over BOTH conversions; the DB/action tiers cover the readers/gates.
+// Spec-OWNED multi fixtures (E2E_LOGIN_MULTI's two profiles, each seeded one past visit
+// + one recorded dose — see e2e/seed-events.ts). Read-only viewing + the per-session
+// view-set, so no persistent write to reset.
+test.describe("Tier-1b bespoke lists adopt multi-view (issue #1359)", () => {
+  // Toggle the shared profile into the view via the profile menu's eye toggle.
+  async function toggleSharedIntoView(
+    page: Page,
+    sharedId: number
+  ): Promise<void> {
+    const trigger = page.getByTestId("user-menu-trigger");
+    await expect(trigger).toBeEnabled();
+    await trigger.click();
+    await expect(page.getByTestId("user-menu-popover")).toBeVisible();
+    await settledClick(page, page.getByTestId(`view-toggle-${sharedId}`));
+    await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+  }
+
+  test("Visits (Past encounters): single-view no chip; multi-view chips the non-acting visit row only", async ({
+    browser,
+  }) => {
+    test.slow();
+    const { ownerId, sharedId } = multiProfileIds();
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_MULTI,
+      password: E2E_MEMBER_PASSWORD,
+    });
+
+    // Single view (acting = owner): owner's past visit shows in the Past list, no strip,
+    // no chips, and the shared profile's visit is absent — the byte-identical bar.
+    await page.goto("/records/history/visits");
+    await expect(
+      page.locator("tr").filter({ hasText: MULTI_OWNER_VISIT })
+    ).toBeVisible();
+    await expect(
+      page.getByText(MULTI_SHARED_VISIT, { exact: false })
+    ).toHaveCount(0);
+    await expect(page.getByTestId("profile-view-strip")).toHaveCount(0);
+    await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(0);
+
+    await toggleSharedIntoView(page, sharedId);
+
+    // Multi view: the shared visit merges into the Past list with a subject chip on ITS
+    // row; the acting (owner) visit row never carries a chip.
+    await expect(
+      page.getByText(MULTI_SHARED_VISIT, { exact: false })
+    ).toBeVisible();
+    const sharedRow = page
+      .locator("tr")
+      .filter({ hasText: MULTI_SHARED_VISIT });
+    await expect(
+      sharedRow.getByTestId(`subject-chip-${sharedId}`)
+    ).toBeVisible();
+    await expect(
+      page.locator(`[data-testid="subject-chip-${ownerId}"]`)
+    ).toHaveCount(0);
+
+    await page.context().close();
+  });
+
+  test("Immunizations (recorded doses): shared dose row gets a subject chip; schedule stays acting-only", async ({
+    browser,
+  }) => {
+    test.slow();
+    const { ownerId, sharedId } = multiProfileIds();
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_MULTI,
+      password: E2E_MEMBER_PASSWORD,
+    });
+
+    // Expand "All recorded doses" (collapsed by default) — single view: no chips.
+    await page.goto("/records/history/immunizations");
+    await page
+      .locator("summary")
+      .filter({ hasText: "All recorded doses" })
+      .click();
+    await expect(page.locator('[data-testid^="subject-chip-"]')).toHaveCount(0);
+
+    await toggleSharedIntoView(page, sharedId);
+
+    // The view-set persists on the session — re-navigate for a deterministic reload
+    // (details reset to collapsed), then expand once so the open state is unambiguous.
+    await page.goto("/records/history/immunizations");
+    await expect(page.getByTestId("profile-view-strip")).toBeVisible();
+    await page
+      .locator("summary")
+      .filter({ hasText: "All recorded doses" })
+      .click();
+    // The shared profile's recorded dose carries the shared subject chip (only the
+    // recorded-doses list chips rows — the age-derived schedule table above never
+    // does, so it stays the acting profile's own schedule). The owner never chips.
+    await expect(page.getByTestId(`subject-chip-${sharedId}`)).toBeVisible();
+    await expect(
+      page.locator(`[data-testid="subject-chip-${ownerId}"]`)
+    ).toHaveCount(0);
 
     await page.context().close();
   });

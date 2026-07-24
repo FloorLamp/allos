@@ -15,6 +15,7 @@ import type { Encounter, FormResult } from "@/lib/types";
 export default function EncounterForm({
   action,
   encounter,
+  profileId,
   onDone,
   defaultDate,
   date,
@@ -23,6 +24,9 @@ export default function EncounterForm({
 }: {
   action: (formData: FormData) => Promise<FormResult>;
   encounter?: Encounter;
+  // Multi-view (#1359): the row's OWN profile, posted so an edit on a non-acting
+  // member's visit targets that member (gateItemProfile). Undefined in single view.
+  profileId?: number;
   onDone?: () => void;
   defaultDate: string;
   // When the single "Add visit" wrapper (issue #566) owns the date, it passes it
@@ -79,6 +83,9 @@ export default function EncounterForm({
         </h2>
       )}
       {editing && <input type="hidden" name="id" value={encounter!.id} />}
+      {profileId != null && (
+        <input type="hidden" name="profile_id" value={profileId} />
+      )}
       <div>
         <label className="label" htmlFor={`enc-type-${uid}`}>
           Visit type
