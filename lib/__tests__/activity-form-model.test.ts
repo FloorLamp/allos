@@ -104,6 +104,15 @@ describe("buildRepeatPrefill", () => {
     p.sets[0].weight_kg = 999;
     expect(source.sets[0].weight_kg).toBe(80);
   });
+
+  it("drops the subject stamp so a repeat writes to the ACTING profile (#1330)", () => {
+    // Repeating another member's card must log it as YOURS — never a cross-profile
+    // write. The prefill carries no subjectProfileId, so the save falls back to the
+    // acting-profile requireWriteAccess gate.
+    const withSubject: ActivityEditData = { ...source, subjectProfileId: 77 };
+    const p = buildRepeatPrefill(withSubject, "2026-07-09");
+    expect(p.subjectProfileId).toBeUndefined();
+  });
 });
 
 describe("partIntent", () => {

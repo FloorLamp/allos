@@ -386,6 +386,26 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     fn: "deleteImagingStudy",
     why: "multi-view (#1328): deletes the ITEM's imaging study via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
   },
+  // --- Multi-view Training Journal writes (issue #1330). A merged card carries its
+  // subject's profile_id, so the save/delete/merge target the SUBJECT's profile via
+  // the shared gateItemProfile() → requireProfileWriteAccess(itemProfileId) (a
+  // read-only-granted / ungranted member is bounced). No profile_id (a CREATE, or a
+  // single-view form) falls back to requireWriteAccess() on the acting profile. ---
+  {
+    file: "app/(app)/journal/actions.ts",
+    fn: "saveActivity",
+    why: "multi-view (#1330): creates on the acting profile, or edits the ITEM's activity on its subject profile, via gateItemProfile() → requireProfileWriteAccess(itemProfileId); login is read only for the viewer's unit prefs",
+  },
+  {
+    file: "app/(app)/journal/actions.ts",
+    fn: "deleteActivity",
+    why: "multi-view (#1330): deletes the ITEM's activity on its subject profile via gateItemProfile() → requireProfileWriteAccess(itemProfileId)",
+  },
+  {
+    file: "app/(app)/journal/actions.ts",
+    fn: "mergeActivities",
+    why: "multi-view (#1330): folds a same-profile same-day pair on the ITEM's subject profile via gateItemProfile() → requireProfileWriteAccess(itemProfileId); cross-profile pairs are refused by the AND profile_id re-check",
+  },
   // --- Tier-1b bespoke lists (issue #1359) — the flat SUB-lists of the Visits and
   // Immunizations surfaces adopt multi-view (Past encounters / All recorded doses);
   // their edit/delete gate the ROW's own profile through the same gateItemProfile()

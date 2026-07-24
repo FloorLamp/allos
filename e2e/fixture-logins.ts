@@ -699,6 +699,16 @@ export const MULTI_OWNER_ALLERGY = "Multi Owner Latex (e2e)";
 export const MULTI_SHARED_ALLERGY = "Multi Shared Pollen (e2e)";
 export const MULTI_OWNER_GOAL = "Multi Owner BP target (e2e)";
 export const MULTI_SHARED_GOAL = "Multi Shared A1c target (e2e)";
+// Multi-view Training Journal fixtures (issue #1330): manual activities so the Log
+// feed renders a MERGED card feed across the two profiles. The owner (acting) has TWO
+// same-day cardio activities (a same-PROFILE merge candidate for each other); the
+// shared member has ONE activity on the SAME day — a cross-profile row that renders a
+// subject chip and must NEVER appear as an owner card's merge sibling. All on one day
+// so the newest-window merge covers them. Synthetic, no PHI.
+export const MULTI_ACTIVITY_DATE = "2026-06-15";
+export const MULTI_OWNER_ACTIVITY_A = "MV Owner Ride Alpha";
+export const MULTI_OWNER_ACTIVITY_B = "MV Owner Ride Bravo";
+export const MULTI_SHARED_ACTIVITY = "MV Shared Swim";
 // Tier-1b bespoke-list multi-view fixtures (issue #1359): one past visit (encounter)
 // and one recorded immunization dose per multi profile, so the Visits "Past" list and
 // the Immunizations "All recorded doses" list each render a row per profile — the

@@ -19,7 +19,8 @@ import { zonePresentation } from "@/lib/training-zones";
 // existing `./JournalCard` import path keeps working.
 import type { DisplayPart } from "@/lib/journal-card";
 import ActivityVideoStrip from "@/components/activity/ActivityVideoStrip";
-import type { JournalCardVideo } from "@/lib/journal-card";
+import Avatar from "@/components/Avatar";
+import type { JournalCardVideo, JournalCardSubject } from "@/lib/journal-card";
 import ActivityCardMenu, { type MergeSibling } from "./ActivityCardMenu";
 
 export type { DisplayPart };
@@ -57,6 +58,8 @@ export default function JournalCard({
   units,
   videos = [],
   canWrite = false,
+  subject,
+  actingProfileId,
   onSelectExercise,
   onSelectCardio,
   onSelectSport,
@@ -101,6 +104,14 @@ export default function JournalCard({
   // Whether the acting login can write to this activity's profile — gates the
   // clip upload/delete affordances (the server actions re-gate regardless).
   canWrite?: boolean;
+  // Subject identity for a merged multi-view card (issue #1330); absent in single
+  // view. A NON-acting subject's card renders a subject chip; a read-only-granted
+  // subject's card renders view-only (no edit/merge/clip affordances — the server
+  // re-gates regardless). Every write still targets the subject's own profile.
+  subject?: JournalCardSubject;
+  // The acting profile id (multi-view only), so the card knows whether it is the
+  // acting profile's own row (chips show on non-acting rows; #1327 fix 1).
+  actingProfileId?: number;
   // When provided, a strength exercise name becomes a button that opens its
   // detail (progression/benchmarks/goals) in the history right column.
   onSelectExercise?: (exercise: string) => void;
@@ -114,6 +125,17 @@ export default function JournalCard({
 }) {
   const { openEdit, open, editData } = useActivityEditor();
   const [notesExpanded, setNotesExpanded] = useState(false);
+  // Multi-view per-card gating (issue #1330). In single view (no subject) every
+  // affordance renders exactly as before. In multi view: a read-only-granted subject's
+  // card is view-only (edit/merge/clip hidden), and a non-acting subject's card shows a
+  // subject chip. Every edit/delete still TARGETS the subject's own profile (the
+  // activity carries subjectProfileId), so the server write-gates it regardless.
+  const isActing =
+    subject == null ||
+    (actingProfileId != null && subject.profileId === actingProfileId);
+  const subjectCanWrite = subject == null ? true : subject.canWrite;
+  const videoCanWrite = subject == null ? canWrite : subject.canWrite;
+  const showChip = subject != null && !isActing;
   // Highlight the card whose activity is open in the docked editor, so it's
   // clear which feed row the right-column form belongs to. (On mobile the
   // editor is a full-screen overlay, so the ring is only ever seen on desktop.)
@@ -187,13 +209,22 @@ export default function JournalCard({
                 sportNames={activityComponentSportNames(activity.components)}
               />
               <div className="min-w-0">
-                <button
-                  type="button"
-                  onClick={() => openEdit(activity)}
-                  className="text-left font-semibold text-slate-800 hover:text-brand-600 dark:text-slate-100 dark:hover:text-brand-400"
-                >
-                  {activity.title}
-                </button>
+                {subjectCanWrite ? (
+                  <button
+                    type="button"
+                    onClick={() => openEdit(activity)}
+                    className="text-left font-semibold text-slate-800 hover:text-brand-600 dark:text-slate-100 dark:hover:text-brand-400"
+                  >
+                    {activity.title}
+                  </button>
+                ) : (
+                  // Read-only subject (issue #1330): the title is not an edit button —
+                  // this member's card is view-only. The write action stays gated
+                  // server-side regardless.
+                  <span className="block font-semibold text-slate-800 dark:text-slate-100">
+                    {activity.title}
+                  </span>
+                )}
                 {summary.length > 0 && (
                   <div
                     data-testid="activity-summary"
@@ -251,13 +282,39 @@ export default function JournalCard({
                 )}
               </div>
             </div>
-            <div className="flex shrink-0 items-center">
+            <div className="flex shrink-0 items-center gap-2">
+              {/* Subject chip on a non-acting member's card (issue #1330 / #1327 fix 1):
+                  on-element identity naming whose card this is, with a read-only badge
+                  when the caller can't write to that member. */}
+              {showChip && subject && (
+                <span
+                  data-testid={`subject-chip-${subject.profileId}`}
+                  className="flex min-w-0 items-center gap-1 rounded-full border border-black/10 bg-slate-50 py-0.5 pl-0.5 pr-2 text-xs font-medium text-slate-600 dark:border-white/10 dark:bg-ink-850 dark:text-slate-300"
+                >
+                  <Avatar
+                    profile={{
+                      id: subject.profileId,
+                      name: subject.name,
+                      photo_path: subject.photoPath,
+                      photo_version: subject.photoVersion,
+                    }}
+                    size="sm"
+                  />
+                  <span className="truncate">{subject.name}</span>
+                  {!subject.canWrite && (
+                    <span className="shrink-0 rounded-full bg-amber-100 px-1 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                      RO
+                    </span>
+                  )}
+                </span>
+              )}
               <ActivityCardMenu
                 activity={activity}
                 siblings={mergeSiblings}
                 keeperLabel={keeperLabel}
                 editLocked={provenance.editLocked}
                 units={units}
+                canWrite={subjectCanWrite}
               />
             </div>
           </div>
@@ -266,17 +323,25 @@ export default function JournalCard({
               and make the whole line open the editor where the same blocker and
               field highlights point at the fix. Rose, to stand apart from the
               amber missed-target markers. */}
-          {fault && (
-            <button
-              type="button"
-              onClick={() => openEdit(activity)}
-              title="Open to fix"
-              className="mt-2 flex items-center gap-1.5 text-left text-xs font-medium text-rose-600 hover:underline dark:text-rose-400"
-            >
-              <IconAlertTriangle className="h-4 w-4 shrink-0" stroke={2} />
-              <span>Can’t be saved as-is — {fault}</span>
-            </button>
-          )}
+          {fault &&
+            (subjectCanWrite ? (
+              <button
+                type="button"
+                onClick={() => openEdit(activity)}
+                title="Open to fix"
+                className="mt-2 flex items-center gap-1.5 text-left text-xs font-medium text-rose-600 hover:underline dark:text-rose-400"
+              >
+                <IconAlertTriangle className="h-4 w-4 shrink-0" stroke={2} />
+                <span>Can’t be saved as-is — {fault}</span>
+              </button>
+            ) : (
+              // Read-only subject (issue #1330): surface the warning without the
+              // editor-opening button.
+              <div className="mt-2 flex items-center gap-1.5 text-xs font-medium text-rose-600 dark:text-rose-400">
+                <IconAlertTriangle className="h-4 w-4 shrink-0" stroke={2} />
+                <span>Can’t be saved as-is — {fault}</span>
+              </div>
+            ))}
           {hasRouteCompanion && (
             <div data-testid="activity-details" className="mt-3">
               <div className="min-w-0">
@@ -534,7 +599,7 @@ export default function JournalCard({
           hasLocation: v.hasLocation,
           durationSec: v.durationSec,
         }))}
-        canWrite={canWrite}
+        canWrite={videoCanWrite}
       />
 
       <ActivityProvenance

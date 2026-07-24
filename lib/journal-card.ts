@@ -70,8 +70,27 @@ export type DisplayPart =
   | { kind: "cardio"; name: string; detail: string }
   | { kind: "sport"; name: string; detail: string };
 
+// The subject identity a merged multi-view card carries (issue #1330). A
+// serializable projection of lib/scope's SubjectInfo (name/photo/access) plus the
+// member's own training-restriction, stamped onto each card by HistorySection so the
+// client card renders the subject chip and gates its write affordances per member.
+// ABSENT in single view — the card renders byte-identical.
+export interface JournalCardSubject {
+  profileId: number;
+  name: string;
+  photoPath: string | null;
+  photoVersion: number;
+  // subject.access === "write": a read-only-granted member's cards render view-only.
+  canWrite: boolean;
+  // The member's OWN age gate (isTrainingRestricted): a restricted member's cards
+  // render without the adult fitness surfaces (per member, never the acting profile).
+  restricted: boolean;
+}
+
 export interface JournalCardData {
   activity: ActivityEditData;
+  // Subject identity for a merged multi-view card (issue #1330); absent in single view.
+  subject?: JournalCardSubject;
   timeText: string | null;
   durationText: string | null;
   distanceText: string | null;

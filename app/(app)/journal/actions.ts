@@ -1,5 +1,6 @@
 "use server";
 import { requireSession, requireWriteAccess } from "@/lib/auth";
+import { gateItemProfile } from "@/app/(app)/gate-item";
 
 import { revalidatePath } from "next/cache";
 import { db, today, writeTx } from "@/lib/db";
@@ -156,7 +157,15 @@ function revalidateActivitySurfaces() {
 export async function saveActivity(
   formData: FormData
 ): Promise<SaveActivityOutcome> {
-  const { login, profile } = await requireWriteAccess();
+  // Multi-view (#1330): an EDIT card carries its subject's `profile_id`, so
+  // gateItemProfile() → requireProfileWriteAccess targets (and write-gates) the
+  // SUBJECT's profile — a read-only-granted / ungranted member is bounced. A CREATE
+  // (no profile_id) falls back to requireWriteAccess() on the acting profile, so a new
+  // activity always lands on the acting profile. `login` (for the viewer's unit prefs)
+  // is the acting login regardless. Everything below keys on the resolved target.
+  const { login } = await requireSession();
+  const targetProfileId = await gateItemProfile(formData);
+  const profile = { id: targetProfileId };
   const id = formData.get("id") ? Number(formData.get("id")) : null;
   const type = String(formData.get("type")) as ActivityType;
   // Training-restriction gate — now TYPE-AWARE (#489, evolving #488). A profile
@@ -501,7 +510,14 @@ export async function mergeActivities(
   formData: FormData
 ): Promise<{ undoId: number | null }> {
   // Merging edits the keeper and deletes the discarded row — a write (issue #33).
-  const { profile } = await requireWriteAccess();
+  // Multi-view (#1330): a merge on a subject's card carries that subject's
+  // `profile_id`, so gateItemProfile() write-gates + targets the subject's profile.
+  // Both keep_id/drop_id are re-verified `AND profile_id = ?` below against THIS
+  // resolved profile, so a cross-profile pair is refused by construction — two
+  // people's activities are never duplicates of each other. Single-view merge (no
+  // profile_id) falls back to the acting profile.
+  const profileId = await gateItemProfile(formData);
+  const profile = { id: profileId };
   // Merge is an adult-analytics affordance (the Journal duplicate-review flow) and
   // is not offered on the restricted profile's lightweight activity log; keep it
   // fully gated for a restricted profile (#489) so the un-surfaced action can't be
@@ -585,7 +601,12 @@ export async function loadJournalPage(
 export async function deleteActivity(
   formData: FormData
 ): Promise<{ undoId: number | null }> {
-  const { profile } = await requireWriteAccess();
+  // Multi-view (#1330): a card's delete carries its subject's `profile_id`, so
+  // gateItemProfile() write-gates + targets the row's own profile (a read-only /
+  // ungranted member is bounced); single-view delete (no profile_id) falls back to
+  // the acting profile. Everything below is scoped by this target profile id.
+  const profileId = await gateItemProfile(formData);
+  const profile = { id: profileId };
   const id = Number(formData.get("id"));
   if (!id) return { undoId: null };
   // Type-aware restriction (#489): a restricted profile owns only sport/cardio

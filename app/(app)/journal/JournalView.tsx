@@ -38,7 +38,17 @@ import type { ActiveDaysStrip as ActiveDaysStripData } from "@/lib/workout-heatm
 // (HistorySection) keep their paths.
 import type { JournalCardData, DayGroup } from "@/lib/journal-card";
 import { appendDayGroups, reconcileJournalPaging } from "@/lib/journal-card";
+import { journalFitnessSurfacesVisible } from "@/lib/journal-multi-view";
 export type { JournalCardData, DayGroup };
+
+// The Journal's per-list multi-view context (issue #1330). Present ONLY when more
+// than one profile is in view; undefined in single view, so the feed renders
+// byte-identical. Carries the acting profile id — the card layer re-keys each card's
+// affordances to its own subject (edit → subject profile; chip on non-acting rows;
+// fitness surfaces per the subject's own age gate).
+export interface JournalMultiView {
+  actingProfileId: number;
+}
 
 export interface TargetChip {
   label: string;
@@ -92,6 +102,7 @@ export default function JournalView({
   showWeeklyTargets = true,
   sex,
   canWriteVideos = false,
+  multiView,
 }: {
   // The NEWEST page of day groups, refreshed by the server on every auto-save (issue
   // #451). Older windows are fetched on demand and held in local state below.
@@ -116,6 +127,10 @@ export default function JournalView({
   // Whether the acting login can write to the feed's profile — gates the per-card
   // form-check video affordances (#1224). The server actions re-gate regardless.
   canWriteVideos?: boolean;
+  // Multi-view context (issue #1330): present only when >1 profile is in view. Each
+  // card carries its own `subject` (stamped upstream) and the card layer re-keys its
+  // affordances to that subject; undefined in single view (byte-identical).
+  multiView?: JournalMultiView;
 }) {
   const {
     open,
@@ -332,11 +347,24 @@ export default function JournalView({
     </p>
   );
 
-  // Manual-merge targets per day (issue #64): all same-day activities keyed by date,
-  // from the UNFILTERED groups so a type/search filter can't hide a legitimate
-  // duplicate from the merge picker. Each card's own id is excluded at render.
-  // Carries each row's provenance label + fold values so the conflict preview
-  // (issue #100) can be computed per keeper/sibling pair at render.
+  const multi = multiView != null;
+  // Manual-merge scope key (issue #64 / #1330): same-day siblings, and in multi-view
+  // ALSO same-SUBJECT — a merge folds two rows of ONE profile, and two members'
+  // activities are never duplicates of each other. Keyed by date alone in single view
+  // (byte-identical); by `date#subjectProfileId` in multi so a card only ever offers
+  // its own profile's same-day siblings.
+  const mergeGroupKey = useCallback(
+    (date: string, card: JournalCardData): string =>
+      multi && card.subject != null
+        ? `${date}#${card.subject.profileId}`
+        : date,
+    [multi]
+  );
+  // Manual-merge targets per scope (issue #64): all same-day (same-subject in
+  // multi-view) activities, from the UNFILTERED groups so a type/search filter can't
+  // hide a legitimate duplicate from the merge picker. Each card's own id is excluded
+  // at render. Carries each row's provenance label + fold values so the conflict
+  // preview (issue #100) can be computed per keeper/sibling pair at render.
   const mergeTargetsByDate = useMemo(() => {
     const m = new Map<
       string,
@@ -349,19 +377,21 @@ export default function JournalView({
       }[]
     >();
     for (const g of groups) {
-      m.set(
-        g.date,
-        g.cards.map((c) => ({
+      for (const c of g.cards) {
+        const key = mergeGroupKey(g.date, c);
+        const arr = m.get(key) ?? [];
+        arr.push({
           id: c.activity.id,
           title: c.activity.title,
           sourceLabel: c.provenance.label,
           foldValues: c.foldValues,
           setCount: c.activity.sets?.length ?? 0,
-        }))
-      );
+        });
+        m.set(key, arr);
+      }
     }
     return m;
-  }, [groups]);
+  }, [groups, mergeGroupKey]);
 
   // Workout-history deep links can target a day or specific activity. A
   // day older than the visible window (or hidden by a filter) wouldn't be in the
@@ -813,51 +843,84 @@ export default function JournalView({
                     {g.label}
                   </h2>
                   <div className="space-y-3">
-                    {g.cards.map((c) => (
-                      <JournalCard
-                        key={c.activity.id}
-                        activity={c.activity}
-                        timeText={c.timeText}
-                        durationText={c.durationText}
-                        distanceText={c.distanceText}
-                        speedText={c.speedText}
-                        heartRateText={c.heartRateText}
-                        calorieText={c.calorieText}
-                        metrics={c.metrics}
-                        gear={c.gear}
-                        parts={c.parts}
-                        fault={c.fault}
-                        provenance={c.provenance}
-                        routePolyline={c.routePolyline}
-                        // Manual-merge targets: the OTHER activities logged this
-                        // same day (issue #64), from the unfiltered day group, each
-                        // with the per-field conflicts vs this keeper (issue #100).
-                        mergeSiblings={(mergeTargetsByDate.get(g.date) ?? [])
-                          .filter((o) => o.id !== c.activity.id)
-                          .map((o): MergeSibling => ({
-                            id: o.id,
-                            title: o.title,
-                            sourceLabel: o.sourceLabel,
-                            conflicts: detectFieldConflicts(
-                              c.foldValues,
-                              o.foldValues
-                            ),
-                            setCount: o.setCount,
-                          }))}
-                        keeperLabel={c.provenance.label}
-                        units={units}
-                        videos={c.videos}
-                        canWrite={canWriteVideos}
-                        onSelectExercise={(name) =>
-                          showDetail("exercise", name)
-                        }
-                        onSelectCardio={(name) => showDetail("cardio", name)}
-                        onSelectSport={(name) => showDetail("sport", name)}
-                        onFilterTag={(kind, value) =>
-                          setTagFilter({ kind, value })
-                        }
-                      />
-                    ))}
+                    {g.cards.map((c) => {
+                      // Per-member (issue #1330): a card's adult fitness drill-ins
+                      // (exercise/cardio/sport detail) show only for the ACTING
+                      // profile's own, un-restricted cards — the acting profile's
+                      // detail panel is what's loaded, and a subject's own age gate
+                      // governs its cards. Single view → isActing true, so byte-
+                      // identical (drill-ins on every card).
+                      const isActing =
+                        !multi ||
+                        c.subject == null ||
+                        (multiView != null &&
+                          c.subject.profileId === multiView.actingProfileId);
+                      const fitness = journalFitnessSurfacesVisible({
+                        isActing,
+                        subjectRestricted: c.subject?.restricted ?? false,
+                      });
+                      return (
+                        <JournalCard
+                          key={c.activity.id}
+                          activity={c.activity}
+                          timeText={c.timeText}
+                          durationText={c.durationText}
+                          distanceText={c.distanceText}
+                          speedText={c.speedText}
+                          heartRateText={c.heartRateText}
+                          calorieText={c.calorieText}
+                          metrics={c.metrics}
+                          gear={c.gear}
+                          parts={c.parts}
+                          fault={c.fault}
+                          provenance={c.provenance}
+                          routePolyline={c.routePolyline}
+                          subject={c.subject}
+                          actingProfileId={multiView?.actingProfileId}
+                          // Manual-merge targets: the OTHER activities logged this
+                          // same day (issue #64) AND (multi-view) same subject, from
+                          // the unfiltered scope group, each with the per-field
+                          // conflicts vs this keeper (issue #100).
+                          mergeSiblings={(
+                            mergeTargetsByDate.get(mergeGroupKey(g.date, c)) ??
+                            []
+                          )
+                            .filter((o) => o.id !== c.activity.id)
+                            .map((o): MergeSibling => ({
+                              id: o.id,
+                              title: o.title,
+                              sourceLabel: o.sourceLabel,
+                              conflicts: detectFieldConflicts(
+                                c.foldValues,
+                                o.foldValues
+                              ),
+                              setCount: o.setCount,
+                            }))}
+                          keeperLabel={c.provenance.label}
+                          units={units}
+                          videos={c.videos}
+                          canWrite={canWriteVideos}
+                          onSelectExercise={
+                            fitness
+                              ? (name) => showDetail("exercise", name)
+                              : undefined
+                          }
+                          onSelectCardio={
+                            fitness
+                              ? (name) => showDetail("cardio", name)
+                              : undefined
+                          }
+                          onSelectSport={
+                            fitness
+                              ? (name) => showDetail("sport", name)
+                              : undefined
+                          }
+                          onFilterTag={(kind, value) =>
+                            setTagFilter({ kind, value })
+                          }
+                        />
+                      );
+                    })}
                   </div>
                 </section>
               ))}
