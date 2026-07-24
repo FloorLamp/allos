@@ -19,11 +19,15 @@ const OPTIONS = PICKER_NAMES;
 export default function ImmunizationForm({
   action,
   immunization,
+  profileId,
   onDone,
   defaultDate,
 }: {
   action: (formData: FormData) => Promise<FormResult>;
   immunization?: Immunization;
+  // Multi-view (#1359): the row's OWN profile, posted so an edit on a non-acting
+  // member's dose targets that member (gateItemProfile). Undefined in single view.
+  profileId?: number;
   onDone?: () => void;
   defaultDate: string;
 }) {
@@ -70,6 +74,9 @@ export default function ImmunizationForm({
         </h2>
       )}
       {editing && <input type="hidden" name="id" value={immunization!.id} />}
+      {profileId != null && (
+        <input type="hidden" name="profile_id" value={profileId} />
+      )}
       <div>
         <label className="label">Vaccine</label>
         <Combobox

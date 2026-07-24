@@ -105,6 +105,31 @@ describe("logSymptom — worst-severity re-log", () => {
   });
 });
 
+describe("well-day symptom log (#1300) — no situation required or created", () => {
+  it("logs a symptom with NO illness/situation activated or implied", async () => {
+    const login = createLogin();
+    const profile = createProfile("wellday", login.id);
+    actAs(login, profile);
+
+    // A well user with severe cramps and no illness/situation at all.
+    expect(hasActiveIllnessSituation(profile.id)).toBe(false);
+    const res = await logSymptom(
+      fd({ symptom: "cramps", severity: 3, date: DATE })
+    );
+    expect(res).toMatchObject({ ok: true, symptom: "cramps", severity: 3 });
+
+    // The symptom row exists — but NO situation vocabulary row and NO illness episode were
+    // created; logging a symptom must not require, imply, or activate any situation.
+    expect(rows(profile.id)).toHaveLength(1);
+    expect(getSituations(profile.id)).toEqual([]);
+    expect(hasActiveIllnessSituation(profile.id)).toBe(false);
+    const episodes = db
+      .prepare("SELECT COUNT(*) c FROM illness_episodes WHERE profile_id = ?")
+      .get(profile.id) as { c: number };
+    expect(episodes.c).toBe(0);
+  });
+});
+
 describe("removeSymptom", () => {
   it("clears the day's row", async () => {
     const login = createLogin();

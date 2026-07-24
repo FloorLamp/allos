@@ -1,4 +1,4 @@
-import { requireSession } from "@/lib/auth";
+import { requireScope } from "@/lib/scope";
 import ImmunizationsSection from "../../ImmunizationsSection";
 import { SectionSubtitle } from "../../SectionHeader";
 
@@ -15,14 +15,17 @@ export default async function RecordsImmunizationsPage(props: {
   searchParams: Promise<{ sort?: string; dir?: string; status?: string }>;
 }) {
   const searchParams = await props.searchParams;
-  const { profile } = await requireSession();
+  // Multi-view (#1359): resolve the cross-profile scope once — the flat recorded-doses
+  // list reads its own view-set; the age-derived schedule assessment stays acting-only.
+  // Single view is byte-identical to the former requireSession()/profile.id path.
+  const scope = await requireScope();
   return (
     <div data-testid="records-immunizations">
       <SectionSubtitle>
         Your vaccination record measured against a simplified CDC/ACIP schedule.
       </SectionSubtitle>
       <ImmunizationsSection
-        profileId={profile.id}
+        scope={scope}
         searchParams={{
           sort: one(searchParams.sort),
           dir: one(searchParams.dir),

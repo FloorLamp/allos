@@ -112,6 +112,8 @@ export default function HowAreYouCard({
   medsCount = 0,
   situations = null,
   anxietyRelevant = false,
+  symptomSlot = null,
+  symptomCount = 0,
 }: {
   // The profile-local capture date — a queued offline tap lands on THIS day.
   date: string;
@@ -142,6 +144,14 @@ export default function HowAreYouCard({
   // Whether the Calm (anxiety) scale is relevant for this profile (issue #1313's
   // relevance gate). SILENT: the scale renders or doesn't — no copy names the trigger.
   anxietyRelevant?: boolean;
+  // The server-rendered well-day symptom quick-log (issue #1300) — a compact SymptomLogBar,
+  // passed ONLY on a well day (no open episode). Rendered on the server so its data reads
+  // apply, and revealed behind the Report section's "Log a symptom" toggle so logging a
+  // symptom never requires, implies, or activates any illness/situation. Null while an
+  // episode is active (the hero cockpit owns symptom logging then).
+  symptomSlot?: ReactNode;
+  // The count of symptoms already logged today, for the Report summary line (#1300).
+  symptomCount?: number;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -152,6 +162,9 @@ export default function HowAreYouCard({
   const [rateExpanded, setRateExpanded] = useState(false);
   const [contextExpanded, setContextExpanded] = useState(false);
   const [actExpanded, setActExpanded] = useState(false);
+  // Well-day symptom quick-log reveal (#1300) — closed by default so a well day gains no
+  // permanent footprint and the symptom bar is absent from the DOM until asked for.
+  const [symptomExpanded, setSymptomExpanded] = useState(false);
 
   // Local mirrors of today's entry for instant feedback; the server row is the
   // source of truth on the next render (router.refresh after each save).
@@ -485,12 +498,15 @@ export default function HowAreYouCard({
         </CheckInSection>
       ) : null}
 
-      {/* REPORT — the illness door as this section's escalation. Non-expandable: the
-          door (or the defer-to-hero note) renders inline at rest. */}
+      {/* REPORT — the illness door as this section's escalation, PLUS the well-day symptom
+          quick-log (#1300). Non-expandable: the door (or the defer-to-hero note) renders
+          inline at rest. The well-day symptom log sits behind its own "Log a symptom"
+          reveal so the symptom bar is absent from the DOM until asked for — logging a
+          symptom never requires, implies, or activates any illness/situation. */}
       <CheckInSection
         id="report"
         label="Report"
-        summary={reportSummary(activeEpisode)}
+        summary={reportSummary(activeEpisode, symptomCount)}
         expandable={false}
       >
         {activeEpisode ? (
@@ -501,24 +517,51 @@ export default function HowAreYouCard({
             Illness episode active — symptoms and temperature are tracked above.
           </p>
         ) : (
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Not feeling well? Start tracking symptoms and temperature.
-            </p>
-            <button
-              type="button"
-              data-testid="feeling-sick-activate"
-              disabled={sickPending}
-              onClick={() =>
-                startSick(async () => {
-                  await activateIllnessForSymptoms();
-                  router.refresh();
-                })
-              }
-              className="badge cursor-pointer border border-dashed border-brand-400 bg-transparent text-brand-700 hover:bg-brand-50 disabled:opacity-50 dark:border-brand-700 dark:text-brand-300 dark:hover:bg-brand-950"
-            >
-              {sickPending ? "Starting…" : "I'm feeling sick"}
-            </button>
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Not feeling well? Start tracking symptoms and temperature.
+              </p>
+              <button
+                type="button"
+                data-testid="feeling-sick-activate"
+                disabled={sickPending}
+                onClick={() =>
+                  startSick(async () => {
+                    await activateIllnessForSymptoms();
+                    router.refresh();
+                  })
+                }
+                className="badge cursor-pointer border border-dashed border-brand-400 bg-transparent text-brand-700 hover:bg-brand-50 disabled:opacity-50 dark:border-brand-700 dark:text-brand-300 dark:hover:bg-brand-950"
+              >
+                {sickPending ? "Starting…" : "I'm feeling sick"}
+              </button>
+            </div>
+            {/* Well-day symptom quick-log (#1300): a symptom (cramps, a headache) with no
+                illness required. Behind a reveal so the everyday well card stays calm; the
+                bar's own suggest-only "Mark as illness" bridge renders after a log. */}
+            {symptomSlot ? (
+              <div>
+                <button
+                  type="button"
+                  data-testid="checkin-symptom-toggle"
+                  aria-expanded={symptomExpanded}
+                  onClick={() => setSymptomExpanded((e) => !e)}
+                  className="text-xs text-brand-600 hover:underline dark:text-brand-400"
+                >
+                  {symptomExpanded
+                    ? "Hide symptom log"
+                    : symptomCount > 0
+                      ? "Edit symptoms"
+                      : "Log a symptom"}
+                </button>
+                {symptomExpanded ? (
+                  <div className="mt-2" data-testid="checkin-symptom-log">
+                    {symptomSlot}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         )}
       </CheckInSection>
