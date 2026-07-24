@@ -35,7 +35,8 @@ test.describe("Equipment manager (#391)", () => {
     // ("15 kg" by default; "15 lb" if a sibling spec left the unit on lb — either
     // way the round-tripped number is what was entered).
     const row = page.getByTestId("equipment-row").filter({ hasText: name });
-    await expect(row).toBeVisible();
+    // Renders on the form's router.refresh() — a cold shard can outrun the default 5s (imaging/#1306 precedent).
+    await expect(row).toBeVisible({ timeout: 15_000 });
     await expect(row).toContainText(/15\s*(kg|lb)/);
   });
 

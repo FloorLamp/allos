@@ -48,7 +48,8 @@ test.describe("Genomic variants — add → view → edit → delete (#709)", ()
     // It appears in the list with its factual identity + reported classification.
     const list = page.getByTestId("genomic-variant-list");
     const row = list.getByRole("row").filter({ hasText: GENE });
-    await expect(row).toBeVisible();
+    // Renders on the form's router.refresh() — a cold shard can outrun the default 5s (imaging/#1306 precedent).
+    await expect(row).toBeVisible({ timeout: 15_000 });
     await expect(row).toContainText("Likely pathogenic");
     await expect(row).toContainText("Hereditary risk");
 
@@ -61,7 +62,8 @@ test.describe("Genomic variants — add → view → edit → delete (#709)", ()
     await editForm.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByText("Variant updated")).toBeVisible();
     await expect(list.getByRole("row").filter({ hasText: GENE })).toContainText(
-      "Pathogenic"
+      "Pathogenic",
+      { timeout: 15_000 }
     );
 
     // Delete it and confirm it's gone. The confirm click MUST be scoped to the

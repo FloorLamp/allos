@@ -77,7 +77,10 @@ test.describe("Finding follow-up loop — track → legible upcoming → resolve
       sourceRow.getByRole("button", { name: "Track follow-up" })
     );
     // The study row now shows the tracked follow-up's state.
-    await expect(sourceRow.getByText(/Follow-up:/)).toBeVisible();
+    // Sibling specs (skin, dental) already budget this identical tracked-state read at 15s.
+    await expect(sourceRow.getByText(/Follow-up:/)).toBeVisible({
+      timeout: 15_000,
+    });
 
     // 3) It surfaces on Upcoming — LEGIBLE: named for its source finding (#656 reason).
     await page.goto("/upcoming");
