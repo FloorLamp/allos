@@ -170,6 +170,11 @@ import {
   E2E_LOGIN_ILLNESS_RO,
   E2E_LOGIN_VIEWONLY_READ,
   E2E_LOGIN_VIEWONLY_WRITE,
+  E2E_LOGIN_RECS_ENRICH,
+  RECS_ENRICH_PROFILE,
+  RECS_ENRICH_ALLERGY_MED,
+  RECS_ENRICH_PGX_MED,
+  RECS_ENRICH_PROCEDURE,
   E2E_LOGIN_CONDREV,
   CONDITION_REVIEW_PROFILE,
   E2E_LOGIN_REASON,
@@ -5755,6 +5760,69 @@ console.log(
   seedMemberLogin(E2E_LOGIN_WELLSYM, wsId, "write");
   console.log(
     `e2e: seeded well-symptom fixture — profile ${wsId} (${WELL_SYMPTOM_PROFILE}) (#1300)`
+  );
+}
+
+// ── Records-surface enrichment sweep (issues #1354 + #1355) ───────────────────
+// A dedicated member login + ADULT profile carrying the exact fixtures the enrichment
+// lines read (own login/profile so no contraindication/PGx finding perturbs another
+// spec's medications/allergies counts):
+//   • #1354 allergy↔med: a Penicillin allergy + an active Amoxicillin med → a
+//     drug-allergy CLASS contraindication surfaces on the allergy row (deep-links to
+//     the med).
+//   • #1354 PGx↔med: a CYP2C19 poor-metabolizer variant + an active Clopidogrel med →
+//     a PGx hit surfaces on the variant row.
+//   • #1355 "Performed at": a procedure linked to an encounter (with a provider).
+{
+  const reId = fixtureProfileId(RECS_ENRICH_PROFILE);
+  const activeMed = (name: string): number =>
+    Number(
+      db
+        .prepare(
+          `INSERT INTO intake_items (profile_id, name, kind, active, as_needed, source)
+           VALUES (?, ?, 'medication', 1, 0, 'manual')`
+        )
+        .run(reId, name).lastInsertRowid
+    );
+  if (
+    !db
+      .prepare("SELECT 1 FROM allergies WHERE profile_id = ? AND substance = ?")
+      .get(reId, "Penicillin")
+  ) {
+    activeMed(RECS_ENRICH_ALLERGY_MED);
+    activeMed(RECS_ENRICH_PGX_MED);
+    db.prepare(
+      `INSERT INTO allergies (profile_id, substance, reaction, status, source)
+       VALUES (?, 'Penicillin', 'hives', 'active', 'manual')`
+    ).run(reId);
+    db.prepare(
+      `INSERT INTO genomic_variants
+         (profile_id, gene, star_allele, result_type, interpretation, source)
+       VALUES (?, 'CYP2C19', '*2/*2', 'pharmacogenomic', 'Poor metabolizer', 'manual')`
+    ).run(reId);
+    const provId = Number(
+      db
+        .prepare(
+          "INSERT INTO providers (name, type, dedup_key) VALUES ('Dr. Reyes (e2e)', 'individual', 'dk:e2e-recs-enrich-reyes')"
+        )
+        .run().lastInsertRowid
+    );
+    const encId = Number(
+      db
+        .prepare(
+          `INSERT INTO encounters (profile_id, date, type, class_code, provider_id, source)
+           VALUES (?, '2026-04-12', 'Orthopedic Surgery', 'AMB', ?, 'manual')`
+        )
+        .run(reId, provId).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO procedures (profile_id, name, date, encounter_id, source)
+       VALUES (?, ?, '2026-04-12', ?, 'manual')`
+    ).run(reId, RECS_ENRICH_PROCEDURE, encId);
+  }
+  seedMemberLogin(E2E_LOGIN_RECS_ENRICH, reId, "write");
+  console.log(
+    `e2e: seeded records-enrichment fixture — ${E2E_LOGIN_RECS_ENRICH} granted ${RECS_ENRICH_PROFILE} (${reId}) (#1354/#1355)`
   );
 }
 

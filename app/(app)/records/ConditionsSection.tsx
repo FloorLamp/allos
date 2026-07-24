@@ -1,5 +1,9 @@
 import Link from "next/link";
-import { getConditions, getMedicationsByIndication } from "@/lib/queries";
+import {
+  getConditions,
+  getMedicationsByIndication,
+  encountersForRecords,
+} from "@/lib/queries";
 import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import ConditionForm from "@/app/(app)/conditions/ConditionForm";
 import ConditionList from "@/app/(app)/conditions/ConditionList";
@@ -48,6 +52,14 @@ export default function ConditionsSection({
   const treatedWith = Object.fromEntries(
     scope.viewIds.flatMap((pid) => [...getMedicationsByIndication(pid)])
   );
+  // "Diagnosed at: <visit>" (#1355): condition id → its linked encounter, joining the
+  // "Treated with:" line so a row reads diagnosis → visit → treatment. Condition ids are
+  // globally unique, so merging the per-profile maps is collision-free.
+  const diagnosedAt = Object.fromEntries(
+    scope.viewIds.flatMap((pid) =>
+      Object.entries(encountersForRecords(pid, "condition"))
+    )
+  );
   const active = cond ?? "all";
 
   return (
@@ -78,6 +90,7 @@ export default function ConditionsSection({
         <ConditionList
           items={rows}
           treatedWith={treatedWith}
+          diagnosedAt={diagnosedAt}
           multiView={
             multi ? { actingProfileId: scope.actingProfileId } : undefined
           }
