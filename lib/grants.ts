@@ -117,6 +117,22 @@ export function grantSignature(grants: readonly GrantInput[]): string {
     .join(",");
 }
 
+// The collapsed Family grant-row summary for a member login (issue #1412): the
+// "N of M profiles" line the at-rest row shows before its per-profile controls are
+// expanded. Derived from the SAME granted-id list the editor loads and writes
+// (one computation — the summary and the expanded grid can never disagree). `total`
+// is the number of profiles the matrix would offer; N is the granted count, clamped
+// to [0, total] so a stale/over-long grant list can't read "5 of 3". Pluralizes on
+// the total.
+export function grantCountSummary(
+  granted: readonly number[],
+  total: number
+): string {
+  const m = Math.max(0, total);
+  const n = Math.min(new Set(granted).size, m);
+  return `${n} of ${m} ${m === 1 ? "profile" : "profiles"}`;
+}
+
 // A compact, PHI-free audit detail for a grant change: additions as
 // `+<id>:<access>`, level changes as `~<id>:<access>`, removals as `-<id>`.
 export function formatGrantDiff(diff: {
