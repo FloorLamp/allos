@@ -368,6 +368,15 @@ sharded full matrix likewise runs `npm run test:e2e`, so the mobile project ride
 along and its handful of tests distribute across the four shards — the suite grows
 by the mobile spec count, never by a mobile clone of the whole thing.
 
+That routing takes BOTH halves of the config, and the second half is easy to
+forget: a `--project`-less run executes a spec in **every** project whose filters
+admit it, and `chromium`'s `testMatch` admits everything — so `chromium` carries
+`testIgnore: /\.mobile\.spec\.ts$/`, without which every mobile spec would ALSO
+run at 1280×900 and fail deterministically in CI (it did, on the first push of
+#1420). `demo` needs no such guard: its `testMatch` only admits `demo.spec.ts`.
+**Verify a mobile spec the way CI invokes it — with no `--project` flag.** A local
+`--project=mobile` run masks this class of misrouting exactly.
+
 **Writing a mobile spec.** Name it `<feature>.mobile.spec.ts` and set NO viewport
 (the project owns it — a `test.use({ viewport })` inside would defeat the point).
 Every rule in this doc applies unchanged: spec-owned fixtures, settled
