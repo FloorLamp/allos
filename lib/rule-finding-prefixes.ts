@@ -45,6 +45,7 @@ import { MOBILITY_SUGGEST_PREFIX } from "./mobility-suggest";
 import { MOOD_OBS_PREFIX, SLEEP_MOOD_PREFIX } from "./mood-observation";
 import { MED_DUP_PREFIX } from "./medication-family";
 import { DATA_QUALITY_PREFIX } from "./data-quality";
+import { POOR_SLEEP_OVERRIDE_PREFIX } from "./derived-situations";
 import type { ReasonCode } from "./reasons";
 
 // The two reach tiers (#449). CARE is push: Upcoming + the non-hideable Needs-attention
@@ -264,6 +265,19 @@ export const RULE_FINDING_REGISTRY: readonly RuleFindingRegistryEntry[] = [
     prefix: MENTAL_HEALTH_PREFIX,
     tier: "care",
     builder: "mentalHealthCrisisItems",
+    reasons: [],
+  },
+  {
+    // The poor-sleep derived-context "Not today" override (#1292). NOT a finding
+    // builder — it is a date-scoped SUPPRESSION-ONLY key stored on the shared bus so
+    // the override write action (dismissDerivedPoorSleep) passes the same
+    // dedupeKeyHasKnownPrefix guard every dismiss action uses. Registered here (with a
+    // display mapping in suppression-display) so it's guardable + restorable; no builder
+    // emits it, so the reflection guards over builder OUTPUT never see it. COACHING tier
+    // — the poor-sleep dueness widening is calm context, never a push/hero.
+    prefix: POOR_SLEEP_OVERRIDE_PREFIX,
+    tier: "coaching",
+    builder: "dismissDerivedPoorSleep (suppression-only, no finding builder)",
     reasons: [],
   },
 ];

@@ -18,6 +18,8 @@ import {
   getSleepRegularity,
   getSleepSessions,
   getMetricDailyTotals,
+  getEffectiveActiveSituations,
+  getDerivedSituationLines,
 } from "../queries";
 import { groupUpcoming } from "../upcoming";
 import {
@@ -318,16 +320,27 @@ export function gatherDigestInput(
   // because their situation is active, via the SAME dueness computation the dose
   // list uses (countSituationalDue → isDueOn). The situational branch ignores the
   // workout fields, so a minimal ctx (today's active set) is sufficient.
+  // Derived context (#1292/#1298) widens the active set for today, so a Poor sleep /
+  // Period item is counted due here exactly as it is on the bar. The derived state
+  // lines below carry the same basis-aware acknowledgment (#662) so a Telegram-first
+  // user isn't surprised by the extra due items.
+  const effectiveSituations = getEffectiveActiveSituations(profileId, td);
   const situationalActiveCount = countSituationalDue(active, {
     isWorkoutDay: false,
-    activeSituations: situationsOn(td),
+    activeSituations: effectiveSituations,
   });
+  const derivedLines = getDerivedSituationLines(profileId, td);
+  const derivedSituationLines = [
+    derivedLines.poorSleep,
+    derivedLines.period,
+  ].filter((l): l is string => l != null);
 
   return {
     profileName,
     openEpisodeLine,
     doseCount,
     situationalActiveCount,
+    derivedSituationLines,
     intakeKinds,
     todayGroups,
     activities,

@@ -16,6 +16,7 @@ import {
   isPredictedWorkoutDay,
   inferWorkoutSchedule,
   getSupplementLogsInRange,
+  getEffectiveActiveSituations,
 } from "../queries";
 import {
   getActiveSituations,
@@ -126,7 +127,12 @@ function gatherWindowDoses(
   const nowMinutes = isForToday ? currentMinutesOfDay(profileId) : null;
   const ctx = {
     isWorkoutDay: activitiesToday.length > 0,
-    activeSituations,
+    // Derived context (#1292/#1298) widens the active set for TODAY only (a surfacing
+    // path); a past-day reminder scores against the declared set (the history resolver
+    // above owns retroactive membership, so it must NOT see derived names).
+    activeSituations: isForToday
+      ? getEffectiveActiveSituations(profileId, date)
+      : activeSituations,
     predictedWorkoutDay: isPredictedWorkoutDay(profileId, date),
     postWorkoutReady: isPostWorkoutReady(
       activitiesToday.map((a) => a.end_time ?? a.start_time),
