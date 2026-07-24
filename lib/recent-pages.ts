@@ -43,6 +43,7 @@ export const TRACKED_PAGES: TrackedPage[] = [
   { href: "/records", label: "Health record" },
   { href: "/results", label: "Results" },
   { href: "/medications", label: "Medications" },
+  { href: "/supplies", label: "Medicine cabinet" },
   { href: "/medical/episodes", label: "Illness episodes" },
   { href: "/medical/cycles", label: "Cycle" },
   { href: "/profile", label: "Passport" },
