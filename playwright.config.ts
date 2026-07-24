@@ -134,8 +134,13 @@ export default defineConfig({
     {
       name: "chromium",
       dependencies: ["setup"],
-      // Exclude the demo spec (it targets the separate demo server/baseURL below).
-      testIgnore: [/auth\.setup\.ts/, /demo\.spec\.ts/],
+      // Exclude the demo spec (it targets the separate demo server/baseURL below)
+      // and the phone-viewport specs (they belong to the `mobile` project below —
+      // this project's testMatch admits EVERYTHING, so without this a
+      // `--project`-less invocation like the CI e2e-changed lane's
+      // `npx playwright test <spec>` would also run a `*.mobile.spec.ts` at
+      // 1280×900, where the mobile shell legitimately doesn't render).
+      testIgnore: [/auth\.setup\.ts/, /demo\.spec\.ts/, /\.mobile\.spec\.ts$/],
       use: {
         browserName: "chromium",
         viewport: { width: 1280, height: 900 },
@@ -160,6 +165,14 @@ export default defineConfig({
     // A new mobile feature lands its spec as `<feature>.mobile.spec.ts`; the rest
     // of the suite stays desktop-only, so the sharded CI matrix grows by the
     // mobile spec count, not by a second full suite.
+    //
+    // That name-based routing takes BOTH halves: this testMatch, and `chromium`'s
+    // `testIgnore` above. A `--project`-less run (the e2e-changed lane, the sharded
+    // matrix) runs a spec in EVERY project whose filters admit it, and `chromium`
+    // admits everything — so without the ignore a mobile spec would also run at
+    // 1280×900 and fail deterministically. (`demo` needs no such guard: its
+    // testMatch only admits `demo.spec.ts`, which no `*.mobile.spec.ts` name
+    // contains.)
     //
     // The #868 e2e-hygiene rules apply here UNCHANGED — spec-owned fixtures,
     // settled interactions from e2e/helpers.ts, no waitForTimeout/networkidle, no
