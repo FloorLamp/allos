@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
-import { undoDelete } from "@/app/(app)/undo/actions";
+import { undoDelete, undoDeletes } from "@/app/(app)/undo/actions";
 
 // How long the Undo toast stays up (ms). The holding row itself lives ~24h, but the
 // toast is the only affordance, so it lingers well past the default success toast.
@@ -22,16 +22,27 @@ export function useUndoableDelete() {
   const router = useRouter();
 
   return async function run(
-    action: (fd: FormData) => Promise<{ undoId: number | null }>,
+    action: (
+      fd: FormData
+    ) => Promise<{ undoId: number | null } | { undoIds: number[] }>,
     fd: FormData,
     opts: { deletedMessage: string }
   ): Promise<void> {
-    const { undoId } = await action(fd);
+    const result = await action(fd);
+    // An action may return a single token (`undoId`, the common delete) or a batch
+    // (`undoIds`, an N-way merge that deletes several rows under one toast, #1081).
+    // Normalize to a token list.
+    const tokens =
+      "undoIds" in result
+        ? result.undoIds
+        : result.undoId == null
+          ? []
+          : [result.undoId];
     // Reflect the delete immediately (revalidatePath in the action marks the RSC
     // cache stale; refresh re-renders it).
     router.refresh();
 
-    if (undoId == null) {
+    if (tokens.length === 0) {
       // Nothing was deleted (already gone) — a plain confirmation, no Undo.
       toast(opts.deletedMessage);
       return;
@@ -43,7 +54,12 @@ export function useUndoableDelete() {
         label: "Undo",
         onClick: () => {
           void (async () => {
-            const { ok } = await undoDelete(undoId);
+            // A single token uses the single-restore action; a batch restores every
+            // dropped row (each in its own transaction) under one Undo.
+            const ok =
+              tokens.length === 1
+                ? (await undoDelete(tokens[0])).ok
+                : (await undoDeletes(tokens)).restored > 0;
             if (ok) {
               toast("Restored.");
               router.refresh();

@@ -56,6 +56,11 @@ export interface ActivityDupInput {
   distance_km: number | null;
   start_time: string | null;
   end_time: string | null;
+  // The user-edit lock (activities.edited, #133). READ but NOT used to gate
+  // DETECTION (see the note above); the AUTO-merge path (issue #1081) does consult it
+  // to protect a hand-edited member. Optional so the detect-only callers that don't
+  // load it still typecheck.
+  edited?: number | null;
 }
 
 export interface ActivityDupPair<
@@ -517,4 +522,215 @@ export function preferActivityKeeper(
   const rb = activityRichness(b);
   if (ra !== rb) return ra > rb ? a.id : b.id;
   return a.id <= b.id ? a.id : b.id;
+}
+
+// ── N-way clustering + generalized keeper (issue #1081) ───────────────────────
+
+// A connected group of duplicate rows — the transitive closure of the pairwise
+// detections within one (date, type) bucket. Four cross-source rows that pairwise
+// match land in ONE cluster (instead of C(4,2)=6 pair cards); two genuinely distinct
+// non-overlapping same-day sessions were never paired, so they stay TWO clusters.
+export interface ActivityDupCluster<
+  T extends ActivityDupInput = ActivityDupInput,
+> {
+  // Stable cluster signature: the sorted join of ALL members' activityTokens. It
+  // re-derives identically after a merge+re-sync (the survivor keeps its token, a
+  // re-inserted integration row keeps its external_id-derived token), so a re-formed
+  // cluster is recognizable. For a 2-row cluster it equals the pair signature.
+  signature: string;
+  // Highest constituent pair confidence (high beats medium).
+  confidence: PairConfidence;
+  // Member rows, deduped, deterministic order (by activityToken).
+  members: T[];
+  // The constituent detected PAIR signatures — recorded as `merged` decisions so a
+  // partially re-formed cluster still re-surfaces via the pairwise re-detection
+  // (never a cluster-only key the pair detector can't see). Sorted for stability.
+  pairSignatures: string[];
+  // A short human hint (from the highest-confidence constituent pair).
+  reason: string;
+  // The bucket date (every member shares date + type).
+  date: string;
+}
+
+// Group pairwise detections into connected components (union-find over shared row
+// membership). Pure — the caller feeds it the same pairs findActivityDuplicates
+// returns. Deterministic order: high confidence first, then date desc, then signature.
+export function clusterActivityDuplicates<T extends ActivityDupInput>(
+  pairs: ActivityDupPair<T>[]
+): ActivityDupCluster<T>[] {
+  const parent = new Map<number, number>();
+  const rowById = new Map<number, T>();
+  const ensure = (x: number): void => {
+    if (!parent.has(x)) parent.set(x, x);
+  };
+  const find = (x: number): number => {
+    let root = x;
+    while (parent.get(root) !== root) root = parent.get(root) as number;
+    let cur = x;
+    while (parent.get(cur) !== root) {
+      const next = parent.get(cur) as number;
+      parent.set(cur, root);
+      cur = next;
+    }
+    return root;
+  };
+  const union = (a: number, b: number): void => {
+    ensure(a);
+    ensure(b);
+    parent.set(find(a), find(b));
+  };
+  for (const p of pairs) {
+    rowById.set(p.a.id, p.a);
+    rowById.set(p.b.id, p.b);
+    union(p.a.id, p.b.id);
+  }
+
+  const membersByRoot = new Map<number, Map<number, T>>();
+  for (const id of parent.keys()) {
+    const root = find(id);
+    let m = membersByRoot.get(root);
+    if (!m) membersByRoot.set(root, (m = new Map()));
+    m.set(id, rowById.get(id) as T);
+  }
+  const pairsByRoot = new Map<number, ActivityDupPair<T>[]>();
+  for (const p of pairs) {
+    const root = find(p.a.id);
+    const arr = pairsByRoot.get(root);
+    if (arr) arr.push(p);
+    else pairsByRoot.set(root, [p]);
+  }
+
+  const clusters: ActivityDupCluster<T>[] = [];
+  for (const [root, memberMap] of membersByRoot) {
+    const members = [...memberMap.values()].sort((a, b) =>
+      activityToken(a).localeCompare(activityToken(b))
+    );
+    const clusterPairs = pairsByRoot.get(root) ?? [];
+    const confidence: PairConfidence = clusterPairs.some(
+      (p) => p.confidence === "high"
+    )
+      ? "high"
+      : "medium";
+    const reason =
+      (clusterPairs.find((p) => p.confidence === confidence) ?? clusterPairs[0])
+        ?.reason ?? "";
+    clusters.push({
+      signature: members
+        .map((m) => activityToken(m))
+        .sort()
+        .join("|"),
+      confidence,
+      members,
+      pairSignatures: clusterPairs.map((p) => p.signature).sort(),
+      reason,
+      date: members[0].date,
+    });
+  }
+  const rank: Record<PairConfidence, number> = { high: 0, medium: 1 };
+  clusters.sort(
+    (x, y) =>
+      rank[x.confidence] - rank[y.confidence] ||
+      y.date.localeCompare(x.date) ||
+      x.signature.localeCompare(y.signature)
+  );
+  return clusters;
+}
+
+// The default keeper across N members — the pairwise preferActivityKeeper reduced to
+// a single winner (sourced desc → richness desc → lowest id). Since that order is
+// total (ids are unique), the reduce is order-independent. The manual UI (Review +
+// Journal) seeds its keeper selection with this but always lets the user override.
+export function preferActivityKeeperId<
+  T extends Pick<ActivityDupInput, "id" | "source">,
+>(members: T[]): number {
+  return members.reduce((best, m) =>
+    preferActivityKeeper(best, m) === best.id ? best : m
+  ).id;
+}
+
+// Deterministic order to fold drops into the keeper: by activityToken, so the fold
+// result is reproducible across a re-sync (raw ids aren't). Pure.
+export function orderDropsForFold<T extends ActivityDupInput>(drops: T[]): T[] {
+  return [...drops].sort((a, b) =>
+    activityToken(a).localeCompare(activityToken(b))
+  );
+}
+
+// ── High-confidence auto-merge decision (issue #1081) ─────────────────────────
+
+// Whether a member is edit-locked (activities.edited, #133) — a deliberate user
+// hand-edit the auto path must protect. Truthy `edited` only.
+function isEditedMember(m: ActivityDupInput): boolean {
+  return !!m.edited;
+}
+
+// Does the cluster carry a MATERIAL disagreement on a magnitude fold-field (distance
+// or duration) — i.e. members that differ beyond PROXIMITY_TOLERANCE? The keeper rule
+// decides WHICH row survives, not WHETHER the numbers agree; when they don't, an
+// unattended auto-merge would silently drop real data, so we bail to manual Review.
+function hasMaterialConflict(members: ActivityDupInput[]): boolean {
+  for (const f of ["duration_min", "distance_km"] as const) {
+    const vals = members
+      .map((m) => m[f])
+      .filter((v): v is number => typeof v === "number" && hasFoldValue(f, v));
+    if (vals.length < 2) continue;
+    const lo = Math.min(...vals);
+    const hi = Math.max(...vals);
+    if (!withinTolerance(lo, hi, PROXIMITY_TOLERANCE)) return true;
+  }
+  return false;
+}
+
+// The auto-merge keeper across N members with the auto-specific hardenings over the
+// human default (a person can't watch an unattended merge, and can't override):
+//   - tiebreak on the STABLE activityToken (source+external_id), not the raw id, so
+//     two runs / a concurrent tick agree;
+//   - otherwise the same sourced-desc → richness-desc order as the manual default.
+function autoMergeKeeperId<T extends ActivityDupInput>(members: T[]): number {
+  return members.reduce((best, m) => {
+    const bSourced = best.source != null;
+    const mSourced = m.source != null;
+    if (bSourced !== mSourced) return bSourced ? best : m;
+    const rb = activityRichness(best);
+    const rm = activityRichness(m);
+    if (rb !== rm) return rb > rm ? best : m;
+    return activityToken(best) <= activityToken(m) ? best : m;
+  }).id;
+}
+
+// The keeper + drops for an AUTO-merge, or null when the cluster must wait for a
+// human. Fires ONLY on the unambiguous case: a cross-source group whose clock windows
+// genuinely overlap (one person can't run two timed sessions at once), with no
+// material fold-field conflict, and no more than one edit-locked member. When exactly
+// one member is edit-locked it is KEPT (explicit user intent wins the keeper slot);
+// two or more edit-locked members is ambiguous → manual. Pure.
+export interface ClusterAutoMerge {
+  keepId: number;
+  dropIds: number[];
+}
+export function autoMergeCluster<T extends ActivityDupInput>(
+  members: T[]
+): ClusterAutoMerge | null {
+  if (members.length < 2) return null;
+  // Cross-source group only — two provenances must be present.
+  const provs = new Set(members.map((m) => provenance(m.source)));
+  if (provs.size < 2) return null;
+  // Every member has a clock window AND all windows mutually overlap.
+  const windows = members.map((m) => activityWindow(m));
+  if (windows.some((w) => w == null)) return null;
+  for (let i = 0; i < windows.length; i++)
+    for (let j = i + 1; j < windows.length; j++)
+      if (!windowsOverlap(windows[i] as TimeWindow, windows[j] as TimeWindow))
+        return null;
+  // No silent data loss: bail on a material distance/duration disagreement.
+  if (hasMaterialConflict(members)) return null;
+  // Edit-lock protection.
+  const edited = members.filter(isEditedMember);
+  if (edited.length > 1) return null;
+  const keepId =
+    edited.length === 1 ? edited[0].id : autoMergeKeeperId(members);
+  return {
+    keepId,
+    dropIds: members.filter((m) => m.id !== keepId).map((m) => m.id),
+  };
 }

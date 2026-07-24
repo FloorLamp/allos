@@ -114,9 +114,10 @@ describe("mergeActivities", () => {
       external_id: "strava:1",
     });
 
-    const { undoId } = await mergeActivities(
+    const { undoIds } = await mergeActivities(
       fd({ keep_id: keepId, drop_id: dropId })
     );
+    const undoId = undoIds[0] ?? null;
 
     const keep = activityRow(keepId)!;
     expect(keep.notes).toBe("hard effort"); // keeper wins
@@ -153,13 +154,14 @@ describe("mergeActivities", () => {
       distance_km: 5.1,
     });
 
-    const { undoId } = await mergeActivities(
+    const { undoIds } = await mergeActivities(
       fd({
         keep_id: keepId,
         drop_id: dropId,
         overrides: JSON.stringify(["duration_min"]),
       })
     );
+    const undoId = undoIds[0] ?? null;
 
     const keep = activityRow(keepId)!;
     expect(keep.duration_min).toBe(51); // overridden → discarded row's value
@@ -206,9 +208,10 @@ describe("mergeActivities", () => {
     const keepId = insertActivity(profile.id, { title: "Keep" });
     const dropId = insertActivity(profile.id, { title: "Drop" });
 
-    const { undoId } = await mergeActivities(
+    const { undoIds } = await mergeActivities(
       fd({ keep_id: keepId, drop_id: dropId })
     );
+    const undoId = undoIds[0] ?? null;
     expect(activityRow(dropId)).toBeUndefined();
 
     const { ok } = await undoDelete(undoId!);
@@ -282,9 +285,10 @@ describe("mergeActivities", () => {
       dropId
     );
 
-    const { undoId } = await mergeActivities(
+    const { undoIds } = await mergeActivities(
       fd({ keep_id: keepId, drop_id: dropId })
     );
+    const undoId = undoIds[0] ?? null;
 
     // Post-merge: the keeper absorbed the drop's components + distance and both sets.
     const mergedKeep = activityRow(keepId)!;
@@ -354,9 +358,10 @@ describe("mergeActivities", () => {
       dropId
     );
 
-    const { undoId } = await mergeActivities(
+    const { undoIds } = await mergeActivities(
       fd({ keep_id: keepId, drop_id: dropId })
     );
+    const undoId = undoIds[0] ?? null;
     // The keeper's gap was filled from the drop.
     expect(activityRow(keepId)!.equipment_id).toBe(bikeId);
 
@@ -381,9 +386,10 @@ describe("mergeActivities", () => {
     const keepId = insertActivity(profile.id, { date: "2026-05-01" });
     const dropId = insertActivity(profile.id, { date: "2026-05-02" });
 
-    const { undoId } = await mergeActivities(
+    const { undoIds } = await mergeActivities(
       fd({ keep_id: keepId, drop_id: dropId })
     );
+    const undoId = undoIds[0] ?? null;
     expect(undoId).toBeNull();
     expect(activityRow(keepId)).toBeDefined();
     expect(activityRow(dropId)).toBeDefined(); // untouched
@@ -399,9 +405,10 @@ describe("mergeActivities", () => {
     const dropId = insertActivity(profileB.id, { title: "B-drop" });
 
     actAs(login, profileA);
-    const { undoId } = await mergeActivities(
+    const { undoIds } = await mergeActivities(
       fd({ keep_id: keepId, drop_id: dropId })
     );
+    const undoId = undoIds[0] ?? null;
 
     expect(undoId).toBeNull();
     expect(activityRow(keepId)).toBeDefined();

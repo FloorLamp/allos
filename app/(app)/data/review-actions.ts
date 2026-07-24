@@ -26,6 +26,44 @@ import {
   type UnitMislabelUndo,
 } from "@/lib/unit-mislabel-correction";
 
+// Parse a JSON array of positive integer ids from a form field (the cluster merge's
+// drop_ids). Anything malformed / non-numeric is dropped; duplicates collapsed. The
+// action re-verifies every id `AND profile_id = ?` before touching a row, so this is
+// only shape validation, never an auth check.
+function parseIdList(raw: FormDataEntryValue | null): number[] {
+  let list: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      list = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(list)) return [];
+  const seen = new Set<number>();
+  for (const x of list) {
+    const n = Number(x);
+    if (Number.isInteger(n) && n > 0) seen.add(n);
+  }
+  return [...seen];
+}
+
+// Parse a JSON array of non-empty strings (the cluster's constituent pair signatures).
+function parseStringList(raw: FormDataEntryValue | null): string[] {
+  let list: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      list = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(list)) return [];
+  const seen = new Set<string>();
+  for (const x of list) if (typeof x === "string" && x.trim()) seen.add(x);
+  return [...seen];
+}
+
 // The imported tables that carry a user-edit lock (`edited`, #133): the sync upserts
 // leave a locked row untouched. Maps each to the surfaces that render the row, for
 // revalidation after the lock is cleared. Whitelisted KEYS only ever reach the SQL
@@ -124,8 +162,9 @@ export async function mergeActivityPair(formData: FormData) {
     // writeActivityFold both folds the gap-filling fields AND re-parents the
     // discarded row's exercise_sets onto the keeper (#199), so the plain cascade
     // delete below can no longer take typed-in sets down with it — the sets now
-    // belong to the keeper before its parent row is removed.
-    writeActivityFold(profile.id, keepId, keep, drop, overrideFields);
+    // belong to the keeper before its parent row is removed. (The N-way core takes a
+    // drops[] list; a pair is the drops.length === 1 case.)
+    writeActivityFold(profile.id, keepId, keep, [drop], overrideFields);
     db.prepare("DELETE FROM activities WHERE id = ? AND profile_id = ?").run(
       dropId,
       profile.id
@@ -136,6 +175,60 @@ export async function mergeActivityPair(formData: FormData) {
     // merged-away duplicate stays gone. No-op for a manual absorbed row.
     writeImportTombstoneForRow(profile.id, "activities", drop);
     recordPairDecision(profile.id, ACTIVITY_DOMAIN, signature, "merged");
+    return true;
+  });
+  if (!ok) return;
+  revalidateActivitySurfaces();
+}
+
+// MERGE a whole duplicate CLUSTER (issue #1081): fold N discarded rows into the
+// user-chosen keeper through the SAME N-way core writeActivityFold, tombstone each
+// dropped integration row, and record a `merged` decision for EVERY constituent pair
+// signature (not a cluster-only key — the pairwise re-detector must still recognize a
+// partially re-formed cluster). Like mergeActivityPair this Review-side merge is a
+// plain cascade delete, NOT undoable. Every id is re-verified to belong to the acting
+// profile before anything is touched; a 2-row cluster is the pairwise case.
+export async function mergeActivityCluster(formData: FormData) {
+  const { profile } = await requireWriteAccess();
+  const keepId = Number(formData.get("keep_id"));
+  const dropIds = parseIdList(formData.get("drop_ids")).filter(
+    (id) => id !== keepId
+  );
+  const pairSignatures = parseStringList(formData.get("pair_signatures"));
+  if (!keepId || dropIds.length === 0 || pairSignatures.length === 0) return;
+  const overrideFields = parseOverrideFields(formData.get("overrides"));
+
+  const ok = writeTx(() => {
+    const keep = db
+      .prepare("SELECT * FROM activities WHERE id = ? AND profile_id = ?")
+      .get(keepId, profile.id) as Record<string, unknown> | undefined;
+    if (!keep) return false;
+    const drops: Record<string, unknown>[] = [];
+    for (const id of dropIds) {
+      const drop = db
+        .prepare("SELECT * FROM activities WHERE id = ? AND profile_id = ?")
+        .get(id, profile.id) as Record<string, unknown> | undefined;
+      // A stale card (a drop already merged/deleted by a concurrent action) just
+      // drops out; the rest still fold. If nothing survives, bail.
+      if (drop) drops.push(drop);
+    }
+    if (drops.length === 0) return false;
+
+    writeActivityFold(profile.id, keepId, keep, drops, overrideFields);
+    for (const drop of drops) {
+      db.prepare("DELETE FROM activities WHERE id = ? AND profile_id = ?").run(
+        drop.id as number,
+        profile.id
+      );
+      // Re-import tombstone per dropped integration row (#507) — permanent (this
+      // resolver isn't undoable), no-op for a manual absorbed row.
+      writeImportTombstoneForRow(profile.id, "activities", drop);
+    }
+    // Record a durable 'merged' decision for EVERY constituent pair signature, so a
+    // resync that reconstitutes part of the cluster stays suppressed via the pairwise
+    // re-detection (#1081 — never a cluster-only key).
+    for (const sig of pairSignatures)
+      recordPairDecision(profile.id, ACTIVITY_DOMAIN, sig, "merged");
     return true;
   });
   if (!ok) return;
@@ -233,6 +326,30 @@ export async function resolvePair(formData: FormData) {
     signature,
     decision as PairDecision
   );
+  revalidatePath("/data");
+  revalidatePath("/");
+}
+
+// KEEP ALL / DISMISS a whole duplicate CLUSTER (issue #1081): record the decision for
+// EVERY constituent pair signature (not a cluster-only key), so a re-formed sub-pair
+// stays suppressed via the pairwise re-detection. `kept-both` = the members are
+// genuinely distinct; `dismissed` = hide the false positive. No row change.
+export async function resolveActivityCluster(formData: FormData) {
+  const { profile } = await requireWriteAccess();
+  const decision = String(formData.get("decision") ?? "");
+  const pairSignatures = parseStringList(formData.get("pair_signatures"));
+  if (
+    (decision !== "kept-both" && decision !== "dismissed") ||
+    pairSignatures.length === 0
+  )
+    return;
+  for (const sig of pairSignatures)
+    recordPairDecision(
+      profile.id,
+      ACTIVITY_DOMAIN,
+      sig,
+      decision as PairDecision
+    );
   revalidatePath("/data");
   revalidatePath("/");
 }

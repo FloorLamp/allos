@@ -17,7 +17,7 @@ import {
   getImportDocumentsFeed,
   getConnectedSources,
   getImportIssues,
-  getActivityDuplicates,
+  getActivityDuplicateClusters,
   getBodyMetricConflicts,
   getUnitMislabelReviews,
 } from "@/lib/queries";
@@ -63,13 +63,13 @@ export default async function DataPage(
   // active section, so it's always computed. The heavier per-section data is built
   // only for the active section below.
   const importIssues = getImportIssues(profile.id);
-  const activityPairs = getActivityDuplicates(profile.id);
+  const activityClusters = getActivityDuplicateClusters(profile.id);
   const bodyMetricPairs = getBodyMetricConflicts(profile.id);
   // Probable power-of-ten unit mislabels (issue #761) — each a one-click Review card.
   const unitMislabels = getUnitMislabelReviews(profile.id);
   const reviewCount =
     importIssues.length +
-    activityPairs.length +
+    activityClusters.length +
     bodyMetricPairs.length +
     unitMislabels.length;
 
@@ -95,7 +95,7 @@ export default async function DataPage(
         feed={getImportDocumentsFeed(profile.id)}
         // The profile's own name(s), for the document provenance-mismatch flag.
         knownNames={[getUserFullName(profile.id), profile.name]}
-        activityPairs={activityPairs}
+        activityClusters={activityClusters}
         bodyMetricPairs={bodyMetricPairs}
         unitMislabels={unitMislabels}
         units={units}

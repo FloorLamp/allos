@@ -5,14 +5,17 @@ import { getIntegration } from "@/lib/integrations/registry";
 import { fmtDistance, fmtWeight } from "@/lib/units";
 import {
   preferActivityKeeper,
-  ACTIVITY_DOMAIN,
+  preferActivityKeeperId,
   BODY_METRIC_DOMAIN,
-  type ActivityDupPair,
+  type ActivityDupCluster,
   type BodyMetricConflictPair,
 } from "@/lib/import-review/detect";
 import { detectFieldConflicts } from "@/lib/import-review/conflicts";
 import { disambiguationLabels } from "@/lib/import-review/disambiguate";
 import ActivityMergeControls from "@/components/ActivityMergeControls";
+import ActivityClusterControls, {
+  type ClusterMemberView,
+} from "@/components/ActivityClusterControls";
 import type {
   ActivityDupRow,
   BodyMetricConflictRow,
@@ -196,16 +199,17 @@ function PairActions({
 }
 
 export default function DuplicateReview({
-  activityPairs,
+  activityClusters,
   bodyMetricPairs,
   units,
 }: {
-  activityPairs: ActivityDupPair<ActivityDupRow>[];
+  activityClusters: ActivityDupCluster<ActivityDupRow>[];
   bodyMetricPairs: BodyMetricConflictPair<BodyMetricConflictRow>[];
   units: UnitPrefs;
 }) {
-  if (activityPairs.length === 0 && bodyMetricPairs.length === 0) return null;
-  const total = activityPairs.length + bodyMetricPairs.length;
+  if (activityClusters.length === 0 && bodyMetricPairs.length === 0)
+    return null;
+  const total = activityClusters.length + bodyMetricPairs.length;
 
   return (
     <div className="card" data-testid="duplicate-review">
@@ -221,57 +225,98 @@ export default function DuplicateReview({
       </div>
 
       <ul className="mt-3 space-y-3">
-        {activityPairs.map((pair) => {
-          const keepId = preferActivityKeeper(pair.a, pair.b);
-          const keeper = pair.a.id === keepId ? pair.a : pair.b;
-          const other = pair.a.id === keepId ? pair.b : pair.a;
-          // Keeper = A, other = B. Label by source when they differ, else A/B with
-          // an on-card badge (#531).
-          const dis = disambiguationLabels(
-            sourceLabel(keeper.source),
-            sourceLabel(other.source)
+        {activityClusters.map((cluster) => {
+          // A 2-row cluster renders EXACTLY as the pairwise case (unchanged #10/#100
+          // UI): the token-sorted members are a/b, the default keeper via the shared
+          // rule, conflict preview per keeper. A 3+ member cluster (#1081) collapses
+          // C(n,2) pair cards into one keeper-radio card.
+          if (cluster.members.length <= 2) {
+            const a = cluster.members[0];
+            const b = cluster.members[1];
+            const keepId = preferActivityKeeper(a, b);
+            const keeper = a.id === keepId ? a : b;
+            const other = a.id === keepId ? b : a;
+            const dis = disambiguationLabels(
+              sourceLabel(keeper.source),
+              sourceLabel(other.source)
+            );
+            return (
+              <li
+                key={`act:${cluster.signature}`}
+                data-testid="dup-activity-pair"
+                className="rounded-lg border border-black/10 p-3 dark:border-white/10"
+              >
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <ConfidenceChip confidence={cluster.confidence} />
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    {cluster.date} · {cluster.reason}
+                  </span>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <RowSummary
+                    source={keeper.source}
+                    title={keeper.title}
+                    facts={activityFacts(keeper, units)}
+                    isKeeper
+                    badge={dis.usedFallback ? "A" : undefined}
+                  />
+                  <RowSummary
+                    source={other.source}
+                    title={other.title}
+                    facts={activityFacts(other, units)}
+                    isKeeper={false}
+                    badge={dis.usedFallback ? "B" : undefined}
+                  />
+                </div>
+                <ActivityMergeControls
+                  signature={cluster.signature}
+                  aId={keeper.id}
+                  bId={other.id}
+                  aLabel={dis.a}
+                  bLabel={dis.b}
+                  // Oriented with the default keeper as A; the dialog flips values
+                  // for the "keep other" button (issue #100).
+                  conflicts={detectFieldConflicts(
+                    keeper as unknown as Record<string, unknown>,
+                    other as unknown as Record<string, unknown>
+                  )}
+                  units={units}
+                />
+              </li>
+            );
+          }
+
+          // N ≥ 3: cluster card. Label by source; when two members' source labels
+          // collide, fall back to ordinal on-card badges (#531).
+          const labels = cluster.members.map((m) => sourceLabel(m.source));
+          const collision = new Set(labels).size < labels.length;
+          const memberViews: ClusterMemberView[] = cluster.members.map(
+            (m, i) => ({
+              id: m.id,
+              sourceLabel: labels[i],
+              title: m.title,
+              facts: activityFacts(m, units),
+              badge: collision ? String(i + 1) : undefined,
+            })
           );
           return (
             <li
-              key={`act:${pair.signature}`}
-              data-testid="dup-activity-pair"
+              key={`act:${cluster.signature}`}
+              data-testid="dup-activity-cluster"
               className="rounded-lg border border-black/10 p-3 dark:border-white/10"
             >
               <div className="mb-2 flex flex-wrap items-center gap-2">
-                <ConfidenceChip confidence={pair.confidence} />
+                <ConfidenceChip confidence={cluster.confidence} />
                 <span className="text-xs text-slate-500 dark:text-slate-400">
-                  {pair.a.date} · {pair.reason}
+                  {cluster.date} · {cluster.members.length} copies ·{" "}
+                  {cluster.reason}
                 </span>
               </div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <RowSummary
-                  source={keeper.source}
-                  title={keeper.title}
-                  facts={activityFacts(keeper, units)}
-                  isKeeper
-                  badge={dis.usedFallback ? "A" : undefined}
-                />
-                <RowSummary
-                  source={other.source}
-                  title={other.title}
-                  facts={activityFacts(other, units)}
-                  isKeeper={false}
-                  badge={dis.usedFallback ? "B" : undefined}
-                />
-              </div>
-              <ActivityMergeControls
-                signature={pair.signature}
-                aId={keeper.id}
-                bId={other.id}
-                aLabel={dis.a}
-                bLabel={dis.b}
-                // Oriented with the default keeper as A; the dialog flips values
-                // for the "keep other" button (issue #100).
-                conflicts={detectFieldConflicts(
-                  keeper as unknown as Record<string, unknown>,
-                  other as unknown as Record<string, unknown>
-                )}
-                units={units}
+              <ActivityClusterControls
+                clusterSignature={cluster.signature}
+                pairSignatures={cluster.pairSignatures}
+                members={memberViews}
+                defaultKeeperId={preferActivityKeeperId(cluster.members)}
               />
             </li>
           );
