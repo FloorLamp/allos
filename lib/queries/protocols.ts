@@ -378,7 +378,9 @@ export function getProtocolOutcomeOptions(profileId: number): OutcomeOption[] {
 
 // Resolve one outcome key to its labeled series for a profile. Returns null when
 // the key doesn't parse. Body weight is converted to the login's display unit.
-function resolveOutcomeSeries(
+// Exported so the situation-window analytics (#1297) build the SAME series over the
+// SAME registry — a new window source, not a forked resolver (#221).
+export function resolveOutcomeSeries(
   profileId: number,
   key: string,
   weightUnit: WeightUnit

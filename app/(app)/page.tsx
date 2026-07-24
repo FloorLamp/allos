@@ -37,6 +37,11 @@ import {
   getSituationalDueCount,
   getDerivedSituationLines,
   isAnxietyScaleRelevant,
+  getSymptomsOnDate,
+  getSymptomSeveritiesOnDate,
+  getSymptomNotesOnDate,
+  getCustomSymptomNames,
+  getSymptomLogOrder,
 } from "@/lib/queries";
 import {
   nonIllnessSituationOptions,
@@ -141,6 +146,9 @@ import VitalsLatestWidget, {
 import CyclePhaseWidget from "@/components/dashboard/CyclePhaseWidget";
 import ActiveProtocolWidget from "@/components/dashboard/ActiveProtocolWidget";
 import HowAreYouCard from "@/components/dashboard/HowAreYouCard";
+import SymptomLogBar from "./symptoms/SymptomLogBar";
+import { SYMPTOMS } from "@/lib/symptoms";
+import { isTaskConfigured } from "@/lib/ai-resolve";
 import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
 import OnboardingResumeCard from "@/components/dashboard/OnboardingResumeCard";
 import OnboardingChecklist from "@/components/dashboard/OnboardingChecklist";
@@ -637,6 +645,16 @@ export default async function Dashboard() {
       ? getPrnMedicationsForQuickLog(profile.id)
       : [];
 
+  // symptom-log well-day entry (#1300): a compact SymptomLogBar behind the check-in card's
+  // Report reveal, so a well user (severe cramps, a headache) can log symptoms with NO
+  // illness required. Shown ONLY on a WELL day — while illness is active the hero cockpit
+  // above owns symptom logging (so we omit it to avoid the duplicate). Same store + the
+  // suggest-only illness bridge as the Timeline bar (no temperature/day-toggle here).
+  const showWellSymptoms = has("symptom-log") && !activeSick;
+  const wellSymptomCount = showWellSymptoms
+    ? getSymptomsOnDate(profile.id, on).length
+    : 0;
+
   // active-protocols (issue #660): the ongoing N-of-1 experiments, each a formatter
   // over the SAME detail-page computations (comparison + adherence). Opt-in widget;
   // self-hides (available=false below) when nothing is ongoing.
@@ -895,6 +913,25 @@ export default async function Dashboard() {
             medsCount={checkinPrnMeds.length}
             situations={checkinSituations}
             anxietyRelevant={checkinAnxietyRelevant}
+            symptomCount={wellSymptomCount}
+            symptomSlot={
+              showWellSymptoms ? (
+                <SymptomLogBar
+                  date={on}
+                  initial={getSymptomSeveritiesOnDate(profile.id, on)}
+                  initialNotes={getSymptomNotesOnDate(profile.id, on)}
+                  symptoms={SYMPTOMS}
+                  customNames={getCustomSymptomNames(profile.id)}
+                  rankedKeys={getSymptomLogOrder(profile.id)}
+                  suggestActivateIllness={
+                    !hasActiveIllnessSituation(profile.id)
+                  }
+                  showTitle={false}
+                  temperatureUnit={units.temperatureUnit}
+                  textIntakeEnabled={isTaskConfigured("symptom-map")}
+                />
+              ) : null
+            }
           />
         );
       default:

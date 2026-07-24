@@ -1,6 +1,14 @@
 import { test, expect, type Page, type Locator } from "@playwright/test";
-import { settledCheck } from "./helpers";
+import Database from "better-sqlite3";
+import path from "node:path";
+import { settledCheck, settledClick } from "./helpers";
 import { createProfileViaFamily, switchToProfile } from "./family-helpers";
+import { loginAs } from "./nav";
+import {
+  E2E_LOGIN_WELLSYM,
+  E2E_MEMBER_PASSWORD,
+  WELL_SYMPTOM_PROFILE,
+} from "./fixture-logins";
 
 // The recomposed "How are you today?" check-in card (issues #1314 / #1311 / #1313).
 // Covers the four-section CheckInSection grammar, the merged "What's going on?" chip
@@ -178,5 +186,94 @@ test.describe("Check-in card recomposition (#1314/#1311/#1313)", () => {
     await expect(card.getByTestId("mood-detail")).toContainText("calm");
     await expect(card.getByTestId("mood-detail")).toContainText("anxious");
     expect(name).toContain("checkincalm");
+  });
+});
+
+// Well-day symptom logging + the reported-burden coaching tilt (#1300). Driven against the
+// dedicated WELL_SYMPTOM_PROFILE (a well profile with a small strength history and no
+// illness / rest signals) so the tilt is purely the logged symptom and the write never
+// perturbs a neighbor fixture. Signs in as its own member context (loginAs), independent of
+// the admin storageState the recomposition tests use.
+
+// The fixture's symptom / mood / coaching rows, reset before each test so --repeat-each
+// starts clean (#868 fixture ownership) — the same direct-DB reset coaching-rest-card uses.
+function resetWellSymptomState(): void {
+  const dbPath =
+    process.env.ALLOS_DB_PATH ??
+    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const db = new Database(dbPath);
+  try {
+    db.pragma("busy_timeout = 5000");
+    const row = db
+      .prepare("SELECT id FROM profiles WHERE name = ?")
+      .get(WELL_SYMPTOM_PROFILE) as { id: number } | undefined;
+    if (row) {
+      db.prepare("DELETE FROM symptom_logs WHERE profile_id = ?").run(row.id);
+      db.prepare("DELETE FROM mood_logs WHERE profile_id = ?").run(row.id);
+      db.prepare(
+        "DELETE FROM upcoming_dismissals WHERE profile_id = ? AND signal_key LIKE 'coaching:%'"
+      ).run(row.id);
+    }
+  } finally {
+    db.close();
+  }
+}
+
+test.describe("Well-day symptom logging + burden tilt (#1300)", () => {
+  test.beforeEach(() => resetWellSymptomState());
+
+  test("logging a severe symptom from the check-in Report entry tilts coaching, no illness required", async ({
+    browser,
+  }) => {
+    test.slow();
+    const page = await loginAs(browser, {
+      username: E2E_LOGIN_WELLSYM,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    await page.goto("/");
+
+    const card = page.getByTestId("how-are-you-card");
+    await expect(card).toBeVisible();
+
+    // A mood tap hydrates the card and settles the server round-trip (idempotent per-day
+    // upsert) — a stable start before the client toggles below.
+    await tapMood(page, card, 3);
+
+    // The Report section's illness door renders inline at rest (a well day) — the symptom
+    // bar is NOT in the DOM until the well-day reveal is opened.
+    await expect(card.getByTestId("feeling-sick-activate")).toBeVisible();
+    await expect(card.getByTestId("symptom-log-bar")).toHaveCount(0);
+
+    // Open the well-day symptom quick-log (client toggles) and log a SEVERE symptom.
+    await card.getByTestId("checkin-symptom-toggle").click();
+    const bar = card.getByTestId("symptom-log-bar");
+    await expect(bar).toBeVisible();
+    await bar.getByTestId("symptom-add-picker-toggle").click();
+    await expect(bar.getByTestId("symptom-add-picker")).toBeVisible();
+    // The pick logs at severity 1; raise it to 3 (severe). Both are Server Actions.
+    await settledClick(page, bar.getByTestId("symptom-pick-headache"));
+    await settledClick(page, bar.getByTestId("symptom-headache-sev-3"));
+    await expect(bar.getByTestId("symptom-headache-sev-3")).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+
+    // The suggest-only illness bridge renders — present, but NOT required (logging a
+    // symptom activated no illness/situation).
+    await expect(bar.getByTestId("symptom-illness-bridge")).toBeVisible();
+    await expect(card.getByTestId("feeling-sick-activate")).toBeVisible();
+
+    // The coaching card tilts toward an easier session, naming the actual report — retry the
+    // reload so the router.refresh read-after-write settles (idempotent read).
+    const coachingCard = page.locator(".card", {
+      has: page.getByTestId("coaching-snooze"),
+    });
+    await expect(async () => {
+      await page.reload();
+      await expect(coachingCard).toContainText("severe headache", {
+        timeout: 3_000,
+      });
+    }).toPass({ timeout: 20_000 }); // topass-ok: re-read the reloaded coaching card until the tilt reflects the committed symptom log — idempotent read
+    await expect(coachingCard).toContainText("easier session");
   });
 });

@@ -33,6 +33,10 @@ import {
   type NextSetSeed,
 } from "./strength";
 import { coachingHeldReason, type Reason } from "../reasons";
+import {
+  reportedBurdenTiltCopy,
+  type ReportedBurden,
+} from "../reported-burden";
 
 // ---- Rule-based coaching engine ----
 //
@@ -289,6 +293,13 @@ export interface CoachingInput {
   // profile) reaches coaching too (the user wins over the data; duration isn't quality).
   // Absent/false ⇒ the measured path only, byte-for-byte the pre-#1292 behavior.
   poorSleepDeclared?: boolean;
+  // Today's reported burden (#1300) — the shared computeReportedBurden verdict over the
+  // day's logged symptom severities + the Energy tap. When it tilts, restReasons adds a
+  // basis-aware rest-tilt reason ("You logged severe cramps today …"). DELIBERATELY held
+  // under an open illness episode (the #837 hold outranks it — the tilt must not
+  // double-speak under a hold), and it collapses with the poor-sleep tilt into ONE rest
+  // rec (both are rest reasons). Absent/null ⇒ no burden tilt (the prior behavior).
+  reportedBurden?: ReportedBurden | null;
   weightUnit?: WeightUnit; // for the next-set target text; default "kg"
   thresholds?: Partial<CoachingThresholds>;
 }
@@ -599,6 +610,24 @@ export function restReasons(
         reasonCore: `You've trained ${active} of the last ${th.overtrainingWindowDays} days`,
         todayTail: " — consider a rest or light day.",
         also: `trained ${active} of the last ${th.overtrainingWindowDays} days`,
+      });
+    }
+  }
+
+  // Reported burden (#1300): the day's self-reported symptom severity / low energy tilts
+  // toward an easier session, with basis-aware copy naming the actual report. Gated OUT
+  // under an open illness HOLD — that #837 hold already pauses routine nudges and speaks to
+  // recovery, so the tilt must not double-speak under it (precedence: hold outranks tilt).
+  // Rides as just another rest reason, so it collapses with poor-sleep into ONE rest rec.
+  const held = illnessCoachingMode(input.illness, input.today).mode === "held";
+  if (!held && input.reportedBurden) {
+    const copy = reportedBurdenTiltCopy(input.reportedBurden);
+    if (copy) {
+      reasons.push({
+        id: "rest-symptom",
+        reasonCore: copy.reasonCore,
+        todayTail: copy.todayTail,
+        also: copy.also,
       });
     }
   }

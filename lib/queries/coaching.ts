@@ -43,6 +43,7 @@ import {
   matchConditionConsiderations,
   type ConditionConsideration,
 } from "../condition-training-considerations";
+import { getReportedBurden } from "./reported-burden";
 
 // How many recent nights / days to average for a recovery baseline. Long enough
 // to be a stable personal norm, short enough to reflect the current block.
@@ -180,6 +181,11 @@ export function gatherCoachingInput(
     poorSleepDeclared: getActiveSituations(profileId).some((s) =>
       sameSituation(s, BUILTIN_POOR_SLEEP_SITUATION)
     ),
+    // Today's reported burden (#1300): the shared computeReportedBurden verdict over the
+    // day's logged symptoms + the Energy tap, threaded so the dashboard card, the Training
+    // overview, and the Telegram nudge all tilt (or don't) identically (#221). The illness
+    // hold / injury temper / poor-sleep collapse are all resolved inside the pure engine.
+    reportedBurden: getReportedBurden(profileId, todayStr),
     restingHr: getRestingHrSignal(profileId),
     restEpisode: getRestEpisode(profileId),
     // "Training anyway" acknowledgment (#1150): when set for today, the rest slot

@@ -211,6 +211,118 @@ export function compareOutcome(
   };
 }
 
+// ---- Pooled multi-window comparison (situation-window analytics, #1297) ----
+//
+// The protocol engine compares ONE intervention window; a SITUATION recurs, so its
+// impact is the pooling of MANY windows (each Travel trip, each High-stress spell) —
+// same math, a new window source (#221: one compare engine, two window sources). A
+// pooled comparison unions every window's during-days and compares them against the
+// pooled baseline (each window's equal-length pre-span), and a ONE-window situation
+// reproduces compareOutcome exactly (the reuse pin).
+
+// A resolved during-window for pooled comparison: [start, end] inclusive, `end` already
+// clamped to `today` for a still-open situation window.
+export interface DuringWindow {
+  start: string;
+  end: string;
+}
+
+// The equal-length baseline span immediately before a during-window's start — the SAME
+// baseline rule compareProtocol applies (span = the window's inclusive length), lifted
+// to per-window so each window carries its own local before-picture. Pure.
+export function baselineFor(w: DuringWindow): WindowRange {
+  const span = (daysBetweenDateStr(w.start, w.end) ?? 0) + 1;
+  return {
+    start: shiftDateStr(w.start, -span),
+    end: shiftDateStr(w.start, -1),
+  };
+}
+
+export interface PooledCompareOptions {
+  // Pooled minimum-data gates: the during / baseline sample floors below which the
+  // shift is deemed insufficient (the regularityTravelInsight "clean signal" posture —
+  // no fake precision off two readings). Default DEFAULT_POOLED_MIN.
+  minDuring?: number;
+  minBaseline?: number;
+}
+
+export const DEFAULT_POOLED_MIN = 3;
+
+// Pool an outcome's during-samples (the union of every window) against the pooled
+// baseline (the union of each window's equal-length pre-span, MINUS any date that is
+// itself a during-day, so overlapping/adjacent windows never let a during-day double as
+// baseline) and report the honest mean/median shift with per-window pooling collapsed to
+// the two pooled counts. A single window with a clean pre-span reproduces compareOutcome's
+// stats exactly (the reuse pin). Pure — membership is a lexical date comparison.
+export function compareOutcomePooled(
+  series: OutcomeSeries,
+  windows: readonly DuringWindow[],
+  opts: PooledCompareOptions = {}
+): OutcomeComparison {
+  const direction = series.direction ?? "neutral";
+  const unit = series.unit ?? null;
+  const minDuring = opts.minDuring ?? DEFAULT_POOLED_MIN;
+  const minBaseline = opts.minBaseline ?? DEFAULT_POOLED_MIN;
+
+  const inAny = (d: string, ranges: readonly WindowRange[]) =>
+    ranges.some((w) => d >= w.start && d <= w.end);
+
+  const duringRanges: WindowRange[] = windows.map((w) => ({
+    start: w.start,
+    end: w.end,
+  }));
+  const baselineRanges: WindowRange[] = windows.map(baselineFor);
+
+  const duringSamples = series.samples.filter((s) =>
+    inAny(s.date, duringRanges)
+  );
+  const baselineSamples = series.samples.filter(
+    (s) => inAny(s.date, baselineRanges) && !inAny(s.date, duringRanges)
+  );
+
+  const baseline = statsFor(baselineSamples);
+  const intervention = statsFor(duringSamples);
+
+  const meanDelta =
+    intervention.mean != null && baseline.mean != null
+      ? intervention.mean - baseline.mean
+      : null;
+  const medianDelta =
+    intervention.median != null && baseline.median != null
+      ? intervention.median - baseline.median
+      : null;
+
+  const insufficient =
+    intervention.n < minDuring || baseline.n < minBaseline || meanDelta == null;
+  const betterness = judge(direction, insufficient ? null : meanDelta);
+
+  const winCount = windows.length;
+  const winLabel = `${winCount} ${winCount === 1 ? "window" : "windows"}`;
+  let framing: string;
+  if (insufficient || meanDelta == null) {
+    framing = `Not enough readings to compare (baseline n=${baseline.n}, during n=${intervention.n}).`;
+  } else if (meanDelta === 0) {
+    framing = `${series.label} unchanged across ${winLabel} (n=${intervention.n} during vs ${baseline.n} baseline).`;
+  } else {
+    const unitStr = unit ? ` ${unit}` : "";
+    framing = `${series.label} ${fmtDelta(meanDelta)}${unitStr} across ${winLabel} (n=${intervention.n} during vs ${baseline.n} baseline).`;
+  }
+
+  return {
+    key: series.key,
+    label: series.label,
+    unit,
+    direction,
+    baseline,
+    intervention,
+    meanDelta,
+    medianDelta,
+    betterness,
+    insufficient,
+    framing,
+  };
+}
+
 // Compare a protocol's whole outcome set. The intervention window is
 // [startDate, endDate ?? today]; the baseline is the equal-length window ending
 // the day before startDate. Both windows are inclusive; sample membership is a
