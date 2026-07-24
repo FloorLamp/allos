@@ -659,6 +659,31 @@ export const getBiomarkerSeries = cache(function getBiomarkerSeries(
     .all(profileId, profileId, biomarkerFamily(canonical)) as MedicalRecord[];
 });
 
+// The latest two numeric readings of a biomarker family, oldest→newest — the exact
+// tail getBiomarkerSeries's caller reads to compute a trend delta (#1367). The
+// dashboard vitals card only needs the last two points latestTrend consumes, not the
+// whole history, so this bounds the query with `ORDER BY date DESC LIMIT 2` instead of
+// materializing years of synced BP readings on every render. Filtering
+// `value_num IS NOT NULL` here matches the card's `.filter(r => r.value_num != null)`,
+// so the two rows returned are IDENTICAL to the tail of the filtered full series — a
+// pure query-bound optimization, no display change. Same DEDUP/family collapse as
+// getBiomarkerSeries; the DESC+reverse tie-break (date, then id) mirrors its ASC order.
+export function getLatestBiomarkerTrendPoints(
+  profileId: number,
+  canonical: string
+): MedicalRecord[] {
+  const rows = db
+    .prepare(
+      `WITH ${DEDUP_IDS_CTE}
+       SELECT * FROM medical_records
+       WHERE profile_id = ? AND ${BIOMARKER_FAMILY_KEY} = ? COLLATE NOCASE
+         AND ${IN_DEDUPED} AND value_num IS NOT NULL
+       ORDER BY date DESC, id DESC LIMIT 2`
+    )
+    .all(profileId, profileId, biomarkerFamily(canonical)) as MedicalRecord[];
+  return rows.reverse();
+}
+
 // Every canonically-named reading for a profile in ONE deduped pass, ordered so
 // each analyte's rows are contiguous and oldest-first — the bulk companion to
 // getBiomarkerSeries for callers that need EVERY analyte's series (the trajectory

@@ -24,9 +24,21 @@ function radObs(opts: {
   method?: string;
   site?: string;
   laterality?: string;
+  // A non-laterality qualifier (a view/projection/approach coded by some OTHER
+  // SNOMED concept) rendered BEFORE the laterality qualifier, so the laterality
+  // entry is NOT qualifier[0] — the #1366 non-laterality-first shape.
+  view?: string;
   low?: string;
   negated?: boolean;
 }): string {
+  const lateralityQual = opts.laterality
+    ? `<qualifier><name code="272741003" codeSystem="2.16.840.1.113883.6.96"/><value xsi:type="CD" displayName="${opts.laterality}"><originalText>${opts.laterality}</originalText></value></qualifier>`
+    : "";
+  // A projection/view qualifier keyed by a DIFFERENT SNOMED name code (260686004,
+  // "Method") — not the 272741003 laterality concept — placed first.
+  const viewQual = opts.view
+    ? `<qualifier><name code="260686004" codeSystem="2.16.840.1.113883.6.96"/><value xsi:type="CD" displayName="${opts.view}"><originalText>${opts.view}</originalText></value></qualifier>`
+    : "";
   return `<entry><observation classCode="OBS" moodCode="EVN"${opts.negated ? ' negationInd="true"' : ""}>
     <templateId root="2.16.840.1.113883.10.20.22.4.2"/>
     ${opts.id ? `<id root="1.2.3" extension="${opts.id}"/>` : ""}
@@ -37,11 +49,7 @@ function radObs(opts: {
     ${opts.method ? `<methodCode code="4" codeSystem="1.2.840.x"><originalText>${opts.method}</originalText></methodCode>` : ""}
     ${
       opts.site
-        ? `<targetSiteCode code="119" codeSystem="1.2.840.y"><originalText>${opts.site}</originalText>${
-            opts.laterality
-              ? `<qualifier><name code="272741003" codeSystem="2.16.840.1.113883.6.96"/><value xsi:type="CD" displayName="${opts.laterality}"><originalText>${opts.laterality}</originalText></value></qualifier>`
-              : ""
-          }</targetSiteCode>`
+        ? `<targetSiteCode code="119" codeSystem="1.2.840.y"><originalText>${opts.site}</originalText>${viewQual}${lateralityQual}</targetSiteCode>`
         : ""
     }
   </observation></entry>`;
@@ -89,6 +97,29 @@ describe("CDA radiology-study extractor", () => {
     expect(r.imagingStudies![0]).toMatchObject({
       modality: "x-ray",
       laterality: "bilateral",
+    });
+  });
+
+  it("reads laterality by SNOMED 272741003, not qualifier position (#1366)", () => {
+    // A view/projection qualifier is qualifier[0]; the actual laterality qualifier
+    // is qualifier[1]. Positional reading would import laterality:null; the coded
+    // filter recovers "right".
+    const r = parseCcda(
+      resultsDoc(
+        radObs({
+          id: "IMG-LAT",
+          method: "X-ray",
+          site: "Knee",
+          view: "AP projection",
+          laterality: "right",
+          low: "20240220",
+        })
+      )
+    );
+    expect(r.imagingStudies).toHaveLength(1);
+    expect(r.imagingStudies![0]).toMatchObject({
+      body_region: "Knee",
+      laterality: "right",
     });
   });
 

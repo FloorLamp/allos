@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { MAX_HEALTH_BYTES, MULTIPART_OVERHEAD_MARGIN } from "../upload-gate";
+import { MAX_VIDEO_BYTES } from "../video/policy";
 
 // SOURCE-SCAN tier (issue #696). f9926a0 introduced a cross-file numeric
 // invariant the code comments call load-bearing: next.config.js's two transport
@@ -39,20 +40,35 @@ function configSize(source: string, key: string): number {
   return parseSize(m![1]);
 }
 
-describe("upload-size lockstep (issue #696)", () => {
+describe("upload-size lockstep (issues #696/#1364)", () => {
   const source = fs.readFileSync(CONFIG, "utf8");
 
-  // The transport cap must clear the largest permitted upload (MAX_HEALTH_BYTES)
-  // by at least the multipart-framing margin, or Next mangles the body first.
-  const floor = MAX_HEALTH_BYTES + MULTIPART_OVERHEAD_MARGIN;
+  // The transport cap must clear the LARGEST permitted upload by at least the
+  // multipart-framing margin, or Next mangles the body first. There are two upload
+  // paths bound by these transport caps — deterministic health records
+  // (MAX_HEALTH_BYTES, 64MB) and video clips (MAX_VIDEO_BYTES, 100MB, #1364) — and a
+  // plain "use server" video action is fully bound by them just like the medical
+  // upload, so the governing floor is whichever app cap is biggest plus the margin.
+  const largestUpload = Math.max(MAX_HEALTH_BYTES, MAX_VIDEO_BYTES);
+  const floor = largestUpload + MULTIPART_OVERHEAD_MARGIN;
 
-  it("serverActions.bodySizeLimit stays >= MAX_HEALTH_BYTES + overhead margin", () => {
+  it("serverActions.bodySizeLimit stays >= the largest app upload cap + overhead margin", () => {
     expect(configSize(source, "bodySizeLimit")).toBeGreaterThanOrEqual(floor);
   });
 
-  it("experimental.proxyClientMaxBodySize stays >= MAX_HEALTH_BYTES + overhead margin", () => {
+  it("experimental.proxyClientMaxBodySize stays >= the largest app upload cap + overhead margin", () => {
     expect(configSize(source, "proxyClientMaxBodySize")).toBeGreaterThanOrEqual(
       floor
+    );
+  });
+
+  it("both transport caps clear MAX_VIDEO_BYTES + overhead margin (#1364)", () => {
+    const videoFloor = MAX_VIDEO_BYTES + MULTIPART_OVERHEAD_MARGIN;
+    expect(configSize(source, "bodySizeLimit")).toBeGreaterThanOrEqual(
+      videoFloor
+    );
+    expect(configSize(source, "proxyClientMaxBodySize")).toBeGreaterThanOrEqual(
+      videoFloor
     );
   });
 
