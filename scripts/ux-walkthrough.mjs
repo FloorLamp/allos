@@ -17,12 +17,22 @@
 //
 //   node scripts/ux-walkthrough.mjs onboarding invite pages workflows
 //
+// Or let the harness own the server lifecycle (scratch DB, boot, poll-ready,
+// teardown; UX_SEED=1 seeds first for a data-rich census):
+//
+//   node scripts/ux-walkthrough.mjs --serve onboarding pages
+//
 // Journeys: `onboarding` (fresh-install wizard, admin), `invite` (email invite →
 // set-password → member first sign-in), `pages` (screenshot every static
 // app/(app) route at desktop AND mobile widths — the visual census), `workflows`
-// (starter set of common user actions; extend by copying the shape in
-// workflowsJourney). Run `onboarding` first on a fresh DB — it saves the admin
-// session the later journeys reuse.
+// (quick-log starter set: search, activity, check-in, food, weight, medication),
+// `live` (live workout mode: start → set → finish → verify), `dismiss` (dismiss
+// a finding, verify it stays dismissed across reload), `dose` (confirm a dose,
+// verify persistence), `profiles` (switch acting profile + the read-only member
+// experience), `upload` (medical document upload, offline path). Run
+// `onboarding` first on a fresh DB — it saves the admin session the later
+// journeys reuse. Every run writes an index.html contact sheet next to the
+// shots.
 //
 // Notes discovered the hard way:
 //   - EMAIL_TEST_CAPTURE (lib/email.ts) is the deterministic mailbox: every send
@@ -41,6 +51,8 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
+import { spawn, spawnSync } from "node:child_process";
 import { chromium } from "@playwright/test";
 
 const BASE = process.env.UX_BASE || "http://localhost:3111";
@@ -59,13 +71,99 @@ const INVITEE = {
 };
 
 fs.mkdirSync(SHOTS, { recursive: true });
-let shotSeq = 0;
-const shot = (page, name) =>
-  page.screenshot({
-    path: path.join(SHOTS, `${String(shotSeq++).padStart(2, "0")}-${name}.png`),
-    fullPage: true,
-  });
 const log = (...a) => console.log("[ux]", ...a);
+
+// Contact-sheet manifest: every shot lands here; writeContactSheet() renders an
+// index.html of thumbnails at the end of the run so 100+ captures are reviewable.
+const manifest = [];
+let shotSeq = 0;
+// Duplicate-capture tripwire: N consecutive byte-identical screenshots almost
+// always means an unauthenticated session or a stuck page (it once meant 58
+// copies of /login that read as a completed census) — warn loudly.
+const recentHashes = [];
+async function shot(page, name) {
+  const file = `${String(shotSeq++).padStart(2, "0")}-${name}.png`;
+  const p = path.join(SHOTS, file);
+  await page.screenshot({ path: p, fullPage: true });
+  manifest.push({ file, name });
+  recentHashes.push(
+    crypto.createHash("md5").update(fs.readFileSync(p)).digest("hex")
+  );
+  if (recentHashes.length > 4) recentHashes.shift();
+  if (recentHashes.length === 4 && new Set(recentHashes).size === 1)
+    log(
+      `WARNING: last 4 screenshots are byte-identical (at ${name}) — unauthenticated session or stuck page?`
+    );
+}
+
+function writeContactSheet() {
+  if (!manifest.length) return;
+  const items = manifest
+    .map(
+      (m) =>
+        `<figure><a href="${m.file}"><img loading="lazy" src="${m.file}" alt="${m.name}"></a><figcaption>${m.file}</figcaption></figure>`
+    )
+    .join("\n");
+  fs.writeFileSync(
+    path.join(SHOTS, "index.html"),
+    `<!doctype html><meta charset="utf-8"><title>ux-walkthrough shots</title>
+<style>body{font-family:system-ui;margin:1rem;background:#f5f5f4}
+main{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1rem}
+figure{margin:0;background:#fff;border-radius:8px;padding:8px;box-shadow:0 1px 3px rgb(0 0 0/.15)}
+img{width:100%;height:220px;object-fit:cover;object-position:top;border-radius:4px}
+figcaption{font-size:12px;color:#555;padding-top:6px;word-break:break-all}</style>
+<h1>ux-walkthrough — ${manifest.length} captures</h1><main>${items}</main>`
+  );
+  log(`contact sheet: ${path.join(SHOTS, "index.html")}`);
+}
+
+// goto-and-settle. The dev server needs a beat after navigation for hydration
+// and streamed data; one tunable knob instead of scattered waitForTimeouts.
+async function visit(page, route, ms = 1200) {
+  await page.goto(`${BASE}${route}`);
+  await page.waitForTimeout(ms);
+}
+
+// The honest-completion primitive: poll for a condition, log LOUDLY on failure.
+// `locate` is a () => Locator so it re-resolves each attempt.
+async function checkVisible(page, locate, failMsg, tries = 8) {
+  for (let i = 0; i < tries; i++) {
+    if (
+      await locate()
+        .first()
+        .isVisible()
+        .catch(() => false)
+    )
+      return true;
+    await page.waitForTimeout(1000);
+  }
+  log(failMsg);
+  return false;
+}
+
+// Authenticated-context factory: reuses the saved admin storage state when one
+// exists, verifies the session actually works (retrying the sign-in), and
+// THROWS on failure so no journey ever drives unauthenticated (the guard the
+// census taught us to want). Returns { ctx, page }; caller closes ctx.
+async function adminPage(browser, viewport = { width: 1280, height: 900 }) {
+  const state = path.join(SHOTS, "admin-state.json");
+  const ctx = await browser.newContext({
+    viewport,
+    storageState: fs.existsSync(state) ? state : undefined,
+  });
+  const page = await ctx.newPage();
+  page.setDefaultTimeout(45_000);
+  await page.goto(`${BASE}/`);
+  for (let i = 0; page.url().includes("login") && i < 3; i++) {
+    await signIn(page, ADMIN_USER, ADMIN_PASS);
+    await page.goto(`${BASE}/`);
+  }
+  if (page.url().includes("login")) {
+    await ctx.close();
+    throw new Error("adminPage: could not authenticate after 3 attempts");
+  }
+  return { ctx, page };
+}
 
 async function signIn(page, username, password) {
   await page.goto(`${BASE}/login`);
@@ -347,15 +445,7 @@ async function pagesJourney(browser) {
 // keep each step honest (log loudly when a step can't complete rather than
 // silently skipping — this is a seeing tool, a blind spot must be visible).
 async function workflowsJourney(browser) {
-  const state = path.join(SHOTS, "admin-state.json");
-  const ctx = await browser.newContext({
-    viewport: { width: 1280, height: 900 },
-    storageState: fs.existsSync(state) ? state : undefined,
-  });
-  const page = await ctx.newPage();
-  page.setDefaultTimeout(30_000);
-  await page.goto(`${BASE}/`);
-  if (page.url().includes("login")) await signIn(page, ADMIN_USER, ADMIN_PASS);
+  const { ctx, page } = await adminPage(browser);
 
   // Workflow: global search (the palette deep-links everywhere).
   await page
@@ -523,18 +613,330 @@ async function workflowsJourney(browser) {
 }
 
 // ---------------------------------------------------------------------------
+// Journey: live workout mode (#340) — start, log a set, finish, verify saved.
+async function liveWorkoutJourney(browser) {
+  const { ctx, page } = await adminPage(browser);
+  await visit(page, "/training");
+  const start = page.getByRole("main").getByTestId("start-workout");
+  if (!(await start.count())) {
+    log("live-workout: no Start workout button on /training — check shots");
+    await shot(page, "live-no-start");
+    return ctx.close();
+  }
+  await start.click();
+  await page.waitForTimeout(1000);
+  await shot(page, "live-panel-open");
+  if (!(await page.getByTestId("live-workout-panel").count())) {
+    log("live-workout: live panel did not open — check shots");
+    return ctx.close();
+  }
+  // Pick an exercise (commit the combobox suggestion), log one set.
+  await page.getByPlaceholder(/What did you do/).fill("Back Squat");
+  await page
+    .getByRole("listbox")
+    .getByRole("button")
+    .filter({ hasText: "Back Squat" })
+    .first()
+    .click();
+  await page.waitForTimeout(800);
+  const weight = page.getByTestId("set1-weight");
+  if (await weight.count()) await weight.fill("60");
+  await shot(page, "live-set-logged");
+  await page
+    .getByRole("button", { name: "+ Add set" })
+    .click()
+    .catch(() => log("live-workout: '+ Add set' not found"));
+  await page.waitForTimeout(800);
+  await shot(page, "live-rest-timer");
+  await page.getByTestId("finish-workout").click();
+  await page.waitForTimeout(800);
+  await shot(page, "live-finish-step");
+  const save = page.getByTestId("recap-save");
+  if (await save.count()) await save.click();
+  await page.waitForTimeout(1500);
+  await shot(page, "live-after-save");
+  await visit(page, "/training");
+  await checkVisible(
+    page,
+    () => page.getByText("Back Squat"),
+    "live-workout: 'Back Squat' NOT on the journal after finish — session may not have saved"
+  );
+  await shot(page, "live-journal-after");
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------------------
+// Journey: dismiss a coaching observation and verify the dismissal STICKS
+// across a reload — the dedupeKey dismissal bus is the app's most load-bearing
+// invariant ("dismiss once, silence everywhere").
+async function dismissFindingJourney(browser) {
+  const { ctx, page } = await adminPage(browser);
+  await visit(page, "/", 2000);
+  const dismiss = page.getByRole("button", { name: /^Dismiss / }).first();
+  if (!(await dismiss.count())) {
+    log(
+      "dismiss-finding: no dismissible finding on the dashboard — check shots"
+    );
+    await shot(page, "dismiss-none-available");
+    return ctx.close();
+  }
+  const label = await dismiss.getAttribute("aria-label");
+  await dismiss.scrollIntoViewIfNeeded();
+  await shot(page, "dismiss-before");
+  await dismiss.click();
+  await page.waitForTimeout(1500);
+  await shot(page, "dismiss-after");
+  if (await page.getByRole("button", { name: label, exact: true }).count())
+    log(`dismiss-finding: "${label}" still present after dismissing`);
+  await visit(page, "/", 2000);
+  await shot(page, "dismiss-after-reload");
+  if (await page.getByRole("button", { name: label, exact: true }).count())
+    log(
+      `dismiss-finding: "${label}" CAME BACK after reload — dismissal did not persist`
+    );
+  else log(`dismiss-finding: "${label}" dismissed and stayed dismissed`);
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------------------
+// Journey: confirm a dose from the Medications Today panel and verify the
+// state change persists across a reload. dose-take toggles taken/not-taken;
+// a prior same-day run may have left it taken — that's handled, not hidden.
+async function doseJourney(browser) {
+  const { ctx, page } = await adminPage(browser);
+  await visit(page, "/medications", 1500);
+  const take = page.getByTestId("dose-take").first();
+  if (!(await take.count())) {
+    log("dose-confirm: no dose-take control on /medications — check shots");
+    await shot(page, "dose-none-available");
+    return ctx.close();
+  }
+  const before = await take.getAttribute("aria-label");
+  if (before === "Mark not taken")
+    log("dose-confirm: dose already taken today (prior run) — toggling anyway");
+  await shot(page, "dose-before");
+  await take.click();
+  await page.waitForTimeout(1500);
+  await shot(page, "dose-after");
+  const after = await page
+    .getByTestId("dose-take")
+    .first()
+    .getAttribute("aria-label");
+  if (after === before)
+    log(
+      `dose-confirm: aria-label did not change ("${before}") — tap may not have registered`
+    );
+  await visit(page, "/medications", 1500);
+  const persisted = await page
+    .getByTestId("dose-take")
+    .first()
+    .getAttribute("aria-label");
+  await shot(page, "dose-after-reload");
+  if (persisted === before)
+    log(
+      "dose-confirm: state REVERTED after reload — the write did not persist"
+    );
+  else log(`dose-confirm: persisted ("${before}" → "${persisted}")`);
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------------------
+// Journey: profile switching + the read-only experience. As admin: switch the
+// acting profile and verify the data actually changes. Then flip the member's
+// grant to read-only, sign in as them, verify the read-only badge, restore.
+async function profilesJourney(browser) {
+  const { ctx, page } = await adminPage(browser);
+
+  // -- Switch acting profile: medications differ per profile (Ibuprofen
+  //    belongs to profile 1), so the list is the data-isolation probe.
+  await visit(page, "/medications", 1500);
+  await shot(page, "profiles-acting-admin");
+  await page.getByTestId("user-menu-trigger").first().click();
+  await page.waitForTimeout(600);
+  await shot(page, "profiles-menu-open");
+  const switchTo = page.getByTestId("switch-to-2");
+  if (await switchTo.count()) {
+    await switchTo.click();
+    await page.waitForTimeout(2000);
+    await visit(page, "/medications", 1500);
+    await shot(page, "profiles-acting-jordan");
+    if (
+      await page
+        .getByText("Ibuprofen")
+        .first()
+        .isVisible()
+        .catch(() => false)
+    )
+      log(
+        "profile-switch: Ibuprofen still visible while acting as profile 2 — DATA LEAK, investigate immediately"
+      );
+    else
+      log("profile-switch: profile 2 sees no profile-1 medications (correct)");
+    // switch back
+    await page.getByTestId("user-menu-trigger").first().click();
+    await page.waitForTimeout(600);
+    await page.getByTestId("switch-to-1").click();
+    await page.waitForTimeout(1500);
+  } else {
+    log("profile-switch: switch-to-2 not in the profile menu — check shots");
+    await page.keyboard.press("Escape");
+  }
+
+  // -- Read-only member: set jordan's grant on profile 2 to read-only.
+  await visit(page, "/settings/family", 1500);
+  const cell = page.getByTestId("grant-cell-jordan-2");
+  const level = cell.locator("select");
+  if (!(await level.count())) {
+    log("read-only: grant level select not found — skipping read-only leg");
+    await shot(page, "readonly-no-select");
+    return ctx.close();
+  }
+  await level.selectOption("read");
+  await page.getByRole("button", { name: "Save access" }).click();
+  await page.waitForTimeout(1500);
+  await shot(page, "readonly-grant-set");
+
+  const memberCtx = await browser.newContext({
+    viewport: { width: 1280, height: 900 },
+  });
+  const member = await memberCtx.newPage();
+  member.setDefaultTimeout(45_000);
+  await signIn(member, INVITEE.username, INVITEE.password);
+  await member.waitForTimeout(1500);
+  await shot(member, "readonly-member-home");
+  if (await member.getByTestId("read-only-badge").count())
+    log("read-only: badge visible for the read-only member (correct)");
+  else
+    log(
+      "read-only: read-only-badge NOT visible for a member with a read grant — check shots"
+    );
+  await memberCtx.close();
+
+  // Restore write access so later runs keep their fixtures.
+  await visit(page, "/settings/family", 1500);
+  await page
+    .getByTestId("grant-cell-jordan-2")
+    .locator("select")
+    .selectOption("write");
+  await page.getByRole("button", { name: "Save access" }).click();
+  await page.waitForTimeout(1200);
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------------------
+// Journey: upload a medical document (offline path — with no ANTHROPIC_API_KEY
+// the documented degradation is stored-but-not-extracted).
+async function uploadJourney(browser) {
+  const { ctx, page } = await adminPage(browser);
+  // Minimal one-page PDF fixture, generated on the fly (synthetic, no PHI).
+  const pdfPath = path.join(SHOTS, "fixture-upload.pdf");
+  fs.writeFileSync(
+    pdfPath,
+    `%PDF-1.4
+1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj
+2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj
+3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]>>endobj
+xref
+0 4
+0000000000 65535 f
+trailer<</Size 4/Root 1 0 R>>
+%%EOF`
+  );
+  await visit(page, "/data", 1500);
+  await page
+    .getByRole("tab", { name: /File Upload/ })
+    .or(page.getByRole("link", { name: /File Upload/ }))
+    .or(page.getByRole("button", { name: /File Upload/ }))
+    .first()
+    .click()
+    .catch(() => log("upload: File Upload tab not found — trying inline form"));
+  await page.waitForTimeout(1000);
+  const input = page.getByTestId("medical-upload-input");
+  if (!(await input.count())) {
+    log("upload: medical-upload-input not found — check shots");
+    await shot(page, "upload-no-input");
+    return ctx.close();
+  }
+  await input.setInputFiles(pdfPath);
+  await page.waitForTimeout(500);
+  await shot(page, "upload-file-chosen");
+  await page.getByRole("button", { name: "Upload" }).click();
+  await checkVisible(
+    page,
+    () => page.getByText(/Upload received|fixture-upload/),
+    "upload: no receipt message or document listing appeared — upload may have failed"
+  );
+  await shot(page, "upload-after");
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------------------
 const journeys = {
   onboarding: onboardingJourney,
   invite: inviteJourney,
   pages: pagesJourney,
   workflows: workflowsJourney,
+  live: liveWorkoutJourney,
+  dismiss: dismissFindingJourney,
+  dose: doseJourney,
+  profiles: profilesJourney,
+  upload: uploadJourney,
 };
-const picked = process.argv.slice(2).filter((a) => journeys[a]);
+const args = process.argv.slice(2);
+const serve = args.includes("--serve");
+const picked = args.filter((a) => journeys[a]);
 if (!picked.length) {
   console.error(
-    `usage: node scripts/ux-walkthrough.mjs <journey...>\njourneys: ${Object.keys(journeys).join(", ")}`
+    `usage: node scripts/ux-walkthrough.mjs [--serve] <journey...>\njourneys: ${Object.keys(journeys).join(", ")}
+--serve boots the dev server itself on a scratch DB (ALLOS_DB_PATH, default /tmp/ux-walkthrough.db; UX_SEED=1 seeds it first) and tears it down after.`
   );
   process.exit(1);
+}
+
+// --serve: own the server lifecycle — scratch-DB env, boot, poll ready, and
+// tear down in finally. NEVER defaults to the real data/allos.db.
+let server = null;
+if (serve) {
+  const dbPath = process.env.ALLOS_DB_PATH || "/tmp/ux-walkthrough.db";
+  const port = new URL(BASE).port || "3111";
+  const env = {
+    ...process.env,
+    ALLOS_DB_PATH: dbPath,
+    ADMIN_USERNAME: ADMIN_USER,
+    ADMIN_PASSWORD: ADMIN_PASS,
+    EMAIL_TEST_CAPTURE: MAIL_FILE,
+    PORT: port,
+  };
+  if (process.env.UX_SEED === "1") {
+    log("seeding scratch DB…");
+    const r = spawnSync("npx", ["tsx", "scripts/seed.ts"], {
+      env,
+      stdio: "inherit",
+    });
+    if (r.status !== 0)
+      log("WARNING: seed exited non-zero — continuing unseeded");
+  }
+  log(`starting dev server on :${port} (db: ${dbPath})…`);
+  server = spawn("npm", ["run", "dev"], {
+    env,
+    stdio: "ignore",
+    detached: true,
+  });
+  let ready = false;
+  // First compile can take minutes on a slow filesystem — poll patiently.
+  for (let i = 0; i < 120 && !ready; i++) {
+    await new Promise((r) => setTimeout(r, 5000));
+    ready = await fetch(`${BASE}/login`)
+      .then((r) => r.status === 200)
+      .catch(() => false);
+  }
+  if (!ready) {
+    try {
+      process.kill(-server.pid);
+    } catch {}
+    throw new Error("--serve: dev server never became ready");
+  }
+  log("server ready");
 }
 
 const browser = await chromium.launch({
@@ -547,5 +949,12 @@ try {
   }
 } finally {
   await browser.close();
+  writeContactSheet();
+  if (server) {
+    try {
+      process.kill(-server.pid);
+    } catch {}
+    log("dev server stopped");
+  }
 }
 log("screenshots in", SHOTS);

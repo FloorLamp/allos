@@ -33,9 +33,22 @@ PORT=3111 npm run dev
 
 ## 2. Drive the journeys
 
+Easiest: let the harness own the server lifecycle (`--serve` boots the dev
+server on the scratch DB, polls readiness, and tears it down; `UX_SEED=1`
+runs `scripts/seed.ts` first for a data-rich census):
+
 ```bash
-node scripts/ux-walkthrough.mjs onboarding invite pages workflows
+node scripts/ux-walkthrough.mjs --serve onboarding invite pages workflows
 ```
+
+Or run against an already-running server (section 1) without `--serve`.
+
+Journeys: `onboarding`, `invite`, `pages` (all-routes census, both widths),
+`workflows` (search + quick-logs), `live` (live workout mode), `dismiss`
+(finding dismissal persistence), `dose` (dose confirm persistence),
+`profiles` (acting-profile switch + read-only member), `upload` (medical
+document, offline path). Every run writes an `index.html` contact sheet next
+to the shots for fast human review.
 
 - Run `onboarding` first on a fresh DB — it saves the admin session state the
   later journeys reuse.
