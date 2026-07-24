@@ -19,8 +19,12 @@
 // dedup half (dedupeRecipientsByChat) is unit-tested; the DB resolution is covered
 // in the DB tier.
 
-import { db } from "../db";
 import { getLoginTelegram, isProfileMutedForLogin } from "../settings";
+import { managingLoginIdsForProfile } from "./managing-logins";
+
+// Re-exported so existing importers of the fan-out keep their path (#1365 moved the
+// edge-set definition into ./managing-logins so the inbound direction shares it).
+export { managingLoginIdsForProfile } from "./managing-logins";
 
 // A resolved Telegram delivery recipient: the login whose channel carries the
 // message and the chat id it lands in. One per DISTINCT chat after dedup — a
@@ -29,25 +33,6 @@ import { getLoginTelegram, isProfileMutedForLogin } from "../settings";
 export interface TelegramRecipient {
   loginId: number;
   chatId: string;
-}
-
-// The logins that MANAGE a profile for the purpose of notification fan-out:
-// explicit login_profiles grants UNION the login whose OWN profile this is
-// (`logins.own_profile_id`, #1013). Admin role is deliberately NOT a source here —
-// see the module header. A login sees its own profile's notifications even without
-// an explicit self-grant (the #1013 own-profile association is the caregiver's own
-// tracked self). Ordered by login id so "first login wins" in the chat dedup is
-// stable and distinct so a login granted AND owning the profile appears once.
-export function managingLoginIdsForProfile(profileId: number): number[] {
-  const rows = db
-    .prepare(
-      `SELECT login_id FROM login_profiles WHERE profile_id = ?
-       UNION
-       SELECT id AS login_id FROM logins WHERE own_profile_id = ?
-       ORDER BY login_id`
-    )
-    .all(profileId, profileId) as { login_id: number }[];
-  return rows.map((r) => r.login_id);
 }
 
 // Collapse a recipient list to ONE entry per distinct, non-empty chat id (issue
