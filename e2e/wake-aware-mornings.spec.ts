@@ -20,10 +20,10 @@ test.describe("wake-aware mornings (issue #1117)", () => {
     });
     await expect(card).toBeVisible();
 
-    // #1378: the sleep summary is ON by default (an opt-OUT) — the toggle reads checked
-    // before this spec touches it (profile 1 never stored an explicit choice), and the copy
-    // reflects last night's sleep.
-    await expect(page.getByTestId("digest-sleep-enabled")).toBeChecked();
+    // #1378: the sleep summary is now an opt-OUT (on by default with the digest) — the copy
+    // reflects last night's sleep. (The default-on read is pinned in the pure/action/DB
+    // tiers; this spec RESETS the toggle at the end, so the shared profile-1 checkbox state
+    // isn't stable across --repeat-each and can't be asserted here per e2e hygiene, #868.)
     await expect(
       page.getByText("Include last night’s sleep summary")
     ).toBeVisible();
@@ -47,8 +47,8 @@ test.describe("wake-aware mornings (issue #1117)", () => {
     await page.reload();
     await expect(page.getByTestId("supp-morning-hour")).toHaveValue("9");
 
-    // Switch the Morning slot + the digest to Auto. The sleep summary is on by default
-    // (#1378); check() is a no-op here but pins that it round-trips as an explicit "1".
+    // Switch the Morning slot + the digest to Auto, and set the sleep summary on (it's the
+    // opt-out default as of #1378; check() pins that it round-trips as an explicit "1").
     await page.getByTestId("supp-morning-hour").selectOption("auto");
     await page.getByTestId("digest-hour").selectOption("auto");
     await page.getByTestId("digest-sleep-enabled").check();
