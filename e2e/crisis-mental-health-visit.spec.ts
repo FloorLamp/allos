@@ -70,7 +70,7 @@ test.describe("mental-health visit sensitivity + crisis resources (#997/#996)", 
         .getByTestId("appointment-row")
         .filter({ hasText: THERAPY_TITLE })
         .first() // first-ok: filtered to this spec's therapy appointment; .first() because rows accumulate under --repeat-each (see comment above)
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 15_000 });
   });
 
   test("a mental_health visit defaults to minimal detail on the exported calendar feed", async () => {

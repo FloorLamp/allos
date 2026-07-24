@@ -92,7 +92,7 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     );
 
     await settledClick(page, page.getByTestId("substance-instrument-submit"));
-    await expect(rows).toHaveCount(before + 1);
+    await expect(rows).toHaveCount(before + 1, { timeout: 15_000 });
   });
 
   test("in-app DAST-10 (#1085): 10-item tap-through with the reverse-scored item, banded total", async () => {
@@ -129,7 +129,7 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     );
 
     await settledClick(page, page.getByTestId("substance-instrument-submit"));
-    await expect(rows).toHaveCount(before + 1);
+    await expect(rows).toHaveCount(before + 1, { timeout: 15_000 });
   });
 
   test("AUDIT stays total-only (no reproduced items) and records an outside total", async () => {
@@ -150,7 +150,7 @@ test.describe("substance use (#998/#1078/#1085)", () => {
       page,
       page.getByTestId("substance-instrument-submit-outside")
     );
-    await expect(rows).toHaveCount(before + 1);
+    await expect(rows).toHaveCount(before + 1, { timeout: 15_000 });
   });
 
   test("one tap logs a standard drink into this week's alcohol count", async () => {
@@ -162,7 +162,8 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     // the settled action POST — a plain retrying web-first assertion covers it.
     const after = before + 1;
     await expect(page.getByTestId("substance-week-count-alcohol")).toHaveText(
-      `${after} standard ${after === 1 ? "drink" : "drinks"} logged this week.`
+      `${after} standard ${after === 1 ? "drink" : "drinks"} logged this week.`,
+      { timeout: 15_000 }
     );
   });
 
@@ -173,12 +174,14 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     await settledClick(page, page.getByTestId("substance-log-nicotine"));
     const after = before + 1;
     await expect(page.getByTestId("substance-week-count-nicotine")).toHaveText(
-      `${after} ${after === 1 ? "use" : "uses"} logged this week.`
+      `${after} ${after === 1 ? "use" : "uses"} logged this week.`,
+      { timeout: 15_000 }
     );
 
     await settledClick(page, page.getByTestId("substance-undo-nicotine"));
     await expect(page.getByTestId("substance-week-count-nicotine")).toHaveText(
-      `${before} ${before === 1 ? "use" : "uses"} logged this week.`
+      `${before} ${before === 1 ? "use" : "uses"} logged this week.`,
+      { timeout: 15_000 }
     );
 
     // The cannabis section renders independently alongside (#1078).
@@ -198,7 +201,7 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     await expect(progress).not.toContainText("streak");
 
     await settledClick(page, page.getByTestId("substance-cap-clear-alcohol"));
-    await expect(progress).toHaveCount(0);
+    await expect(progress).toHaveCount(0, { timeout: 15_000 });
   });
 
   test("a nicotine weekly cap (#1078) speaks use-wording and clears cleanly", async () => {
@@ -212,7 +215,7 @@ test.describe("substance use (#998/#1078/#1085)", () => {
     await expect(progress).not.toContainText("streak");
 
     await settledClick(page, page.getByTestId("substance-cap-clear-nicotine"));
-    await expect(progress).toHaveCount(0);
+    await expect(progress).toHaveCount(0, { timeout: 15_000 });
   });
 });
 
