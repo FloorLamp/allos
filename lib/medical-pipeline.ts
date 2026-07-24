@@ -46,6 +46,7 @@ import {
   getMedicalDocument,
   getReprocessSnapshot,
   foldConsolidatedMedsIntoSnapshot,
+  pruneDeferredMetricsFromSnapshot,
   previewReconcileFlags,
   cleanupOrphanBiomarkerKeyedState,
 } from "@/lib/queries";
@@ -1471,6 +1472,12 @@ export async function previewReprocessById(
     next.medications,
     extracted.input.records
   );
+  // Deferred body metrics / height / head-circ: a weight, resting-HR, height, or
+  // head-circ that a reprocess would DEFER (another source already covers that date's
+  // measure) is proposed by the defer-blind fresh snapshot, so it reads as a phantom
+  // "add" on every reprocess. Prune those from `next` so an unchanged document previews
+  // as unchanged.
+  pruneDeferredMetricsFromSnapshot(profileId, id, next, extracted.input);
   // Stash the reduced input under a single-use token so the confirmed apply commits
   // exactly what the user is reviewing. The staleness key pins the document row's
   // current state; the apply refuses the cached input if it has since changed.
