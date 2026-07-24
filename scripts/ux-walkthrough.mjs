@@ -408,6 +408,102 @@ async function workflowsJourney(browser) {
   } else {
     log("log-activity: editor did not open — check shots");
   }
+
+  // Workflow: daily check-in (tap a mood on the dashboard card).
+  await page.goto(`${BASE}/`);
+  await page.waitForTimeout(2000);
+  const checkin = page.getByTestId("how-are-you-card");
+  if (await checkin.count()) {
+    await checkin.scrollIntoViewIfNeeded();
+    await shot(page, "workflow-checkin-before");
+    await checkin.getByTestId("mood-tap-4").click();
+    await page.waitForTimeout(1500);
+    await shot(page, "workflow-checkin-after");
+    if (!(await checkin.getByTestId("mood-server-logged").count()))
+      log("checkin: mood tap did not reach the server — check shots");
+  } else {
+    log("checkin: how-are-you-card not on dashboard — check shots");
+  }
+
+  // Workflow: log a food group serving (Nutrition → Food tab one-tap bar).
+  await page.goto(`${BASE}/nutrition`);
+  await page.waitForTimeout(1500);
+  const foodBar = page.getByTestId("food-log-bar");
+  if (await foodBar.count()) {
+    await shot(page, "workflow-food-before");
+    await page.getByTestId("log-nuts_seeds").click();
+    await page.waitForTimeout(1500);
+    await shot(page, "workflow-food-after");
+    // The undo affordance only exists once today's serving is recorded.
+    if (!(await page.getByTestId("undo-nuts_seeds").count()))
+      log(
+        "log-food: no undo affordance after logging — the serving may not have saved"
+      );
+  } else {
+    log("log-food: food-log-bar not found — check shots");
+  }
+
+  // Workflow: log a weight (Trends → Body quick-add).
+  await page.goto(`${BASE}/trends?tab=body`);
+  await page.waitForTimeout(1500);
+  const weight = page.locator("#bm-weight");
+  if (await weight.count()) {
+    await weight.scrollIntoViewIfNeeded();
+    await shot(page, "workflow-weight-before");
+    await weight.fill("82");
+    await page.getByRole("button", { name: "Save entry" }).click();
+    // The history row lands after the server revalidation round-trips — poll
+    // instead of a single racy check (a false "not saved" here cried wolf once).
+    let saved = false;
+    for (let i = 0; i < 8 && !saved; i++) {
+      await page.waitForTimeout(1000);
+      saved = await page
+        .getByText(/82(\.\d)?\s*kg/)
+        .first()
+        .isVisible()
+        .catch(() => false);
+    }
+    await shot(page, "workflow-weight-after");
+    if (!saved)
+      log(
+        "log-weight: 82 kg not visible after save — the entry may not have saved"
+      );
+  } else {
+    log("log-weight: quick-add weight field not found — check shots");
+  }
+
+  // Workflow: quick-add a medication (Medications → Add medication → Quick add).
+  await page.goto(`${BASE}/medications`);
+  await page.waitForTimeout(1500);
+  await shot(page, "workflow-med-before");
+  const medToggle = page.getByTestId("medication-add-toggle");
+  if (await medToggle.count()) {
+    await medToggle.click();
+    await page.waitForTimeout(800);
+    const quick = page.getByTestId("quick-add-medication");
+    if (await quick.count()) {
+      await quick.getByPlaceholder(/Ibuprofen/).fill("Ibuprofen");
+      await quick.getByTestId("quick-add-amount").fill("200 mg");
+      await shot(page, "workflow-med-filled");
+      await quick.getByRole("button", { name: "Quick add" }).click();
+      await page.waitForTimeout(2000);
+      await shot(page, "workflow-med-added");
+      const visible = await page
+        .getByText("Ibuprofen")
+        .first()
+        .isVisible()
+        .catch(() => false);
+      if (!visible)
+        log(
+          "add-medication: Ibuprofen not visible after Quick add — may not have saved"
+        );
+    } else {
+      log("add-medication: quick-add form did not open — check shots");
+    }
+  } else {
+    log("add-medication: Add medication toggle not found — check shots");
+  }
+
   await ctx.close();
 }
 
