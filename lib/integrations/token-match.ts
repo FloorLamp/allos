@@ -3,7 +3,10 @@ import crypto from "node:crypto";
 // Pure token → profile resolution (no DB/network), so it can be unit-tested.
 // Consumed by resolveHealthConnectProfile() in connections.ts, which builds the
 // candidate list from the DB (each profile's connection token, plus the
-// HEALTH_CONNECT_TOKEN env fallback mapped to profile 1).
+// HEALTH_CONNECT_TOKEN env fallback mapped to profile 1). The values compared are
+// opaque secrets: since #1209 the caller passes the SHA-256 HASH of each stored
+// token and of the presented bearer, never the plaintext — this module doesn't care
+// which, it just does a constant-time equality over equal-length strings.
 
 export interface TokenCandidate {
   profileId: number;

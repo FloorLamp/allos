@@ -7,6 +7,7 @@ import {
   setOuraCursor,
   recordSync,
   recordSyncEvent,
+  recordSyncRows,
   markConnectionNeedsReauth,
 } from "./connections";
 import { isAuthRefreshFailure } from "./auth-failure";
@@ -16,6 +17,7 @@ import {
   emptyCounts,
   dateWindow,
   type UpsertCounts,
+  type ProvenanceEntry,
 } from "./sync-log";
 import {
   mapOuraSleep,
@@ -295,11 +297,13 @@ export async function runOuraSync(
   let upActivities: UpsertCounts = emptyCounts();
   let upBody: UpsertCounts = emptyCounts();
   let upSamples: UpsertCounts = emptyCounts();
+  // Per-row provenance (#1333): inserted/updated rows this run wrote, linked below.
+  const provenance: ProvenanceEntry[] = [];
   try {
     writeTx(() => {
-      upActivities = upsertActivities(profileId, acts, OURA_ID);
-      upBody = upsertBodyMetrics(profileId, bodyMetrics, OURA_ID);
-      upSamples = upsertMetricSamples(profileId, samples, OURA_ID);
+      upActivities = upsertActivities(profileId, acts, OURA_ID, provenance);
+      upBody = upsertBodyMetrics(profileId, bodyMetrics, OURA_ID, provenance);
+      upSamples = upsertMetricSamples(profileId, samples, OURA_ID, provenance);
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -363,7 +367,7 @@ export async function runOuraSync(
       OURA_ID,
       JSON.stringify(rawItems)
     );
-    recordSyncEvent(profileId, OURA_ID, {
+    const eventId = recordSyncEvent(profileId, OURA_ID, {
       ok: true,
       windowStart: win.start,
       windowEnd: win.end,
@@ -377,6 +381,7 @@ export async function runOuraSync(
       skipped: tally.skipped,
       raw_ref: rawRef,
     });
+    recordSyncRows(eventId, provenance);
   }
   if (truncated) {
     log.info("oura sync truncated (page cap / rate limit)", {

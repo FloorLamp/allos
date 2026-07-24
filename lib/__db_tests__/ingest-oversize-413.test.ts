@@ -13,6 +13,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { db } from "@/lib/db";
 import { POST } from "@/app/api/integrations/health-connect/ingest/route";
 import { getLatestSyncEventPerProvider } from "@/lib/queries";
+import { hashShareToken } from "@/lib/share-token";
 
 let profileId: number;
 const TOKEN = "hc-oversize-token-xyz";
@@ -25,10 +26,13 @@ beforeAll(() => {
     db.prepare("INSERT INTO profiles (name) VALUES ('HC-OVERSIZE')").run()
       .lastInsertRowid
   );
+  // Store only the token HASH at rest (#1209); the presented bearer is matched by
+  // hashing it. The 413 path runs before auth, but a valid token is still needed to
+  // reach it — a bad token would 401 first.
   db.prepare(
     `INSERT INTO integration_connections (profile_id, provider, status, config)
      VALUES (?, 'health-connect', 'connected', ?)`
-  ).run(profileId, JSON.stringify({ token: TOKEN }));
+  ).run(profileId, JSON.stringify({ tokenHash: hashShareToken(TOKEN) }));
 });
 
 afterAll(() => {

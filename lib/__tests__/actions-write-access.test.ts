@@ -49,6 +49,11 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     why: "read-only: per-document extraction status snapshot",
   },
   {
+    file: "app/(app)/data/review-actions.ts",
+    fn: "loadSyncRows",
+    why: "read-only (#1333): resolves one sync event's per-row provenance (getSyncRowProvenance) for the Connected-sources drill-in — profile-scoped read, writes nothing, so login-scoped requireSession() is the right gate",
+  },
+  {
     file: "app/(app)/search-actions.ts",
     fn: "runGlobalSearch",
     why: "read-only: cross-domain search of the active profile",

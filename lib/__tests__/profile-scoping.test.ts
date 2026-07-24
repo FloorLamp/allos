@@ -263,6 +263,12 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "migration 038 one-shot GLOBAL dedupe read: enumerates every profile's food-group frequency targets to collapse duplicates before adding the UNIQUE index — profile_id is carried in the select-list to re-key the dedupe per owner; the UPDATE/DELETE it drives are profile_id-scoped (already allowlisted above).",
   },
   {
+    file: "lib/migrations/versions/109-health-connect-token-hash.ts",
+    includes:
+      "SELECT profile_id, config FROM integration_connections WHERE provider = 'health-connect' AND config IS NOT NULL",
+    why: "migration 109 one-shot GLOBAL hash-in-place read (#1209): enumerates every profile's raw-stored Health Connect token to replace it with its SHA-256 — profile_id is carried in the select-list to re-key the UPDATE to each row's owner (the UPDATE is provider + profile_id scoped), never reading one profile's data into another's.",
+  },
+  {
     file: "lib/migrations/versions/083-metric-sample-origin.ts",
     includes:
       "SELECT profile_id, natural_key FROM import_tombstones WHERE target_table = 'metric_samples'",

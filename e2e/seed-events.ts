@@ -18,6 +18,7 @@ import {
 } from "../lib/date";
 import { writeRawPayload } from "../lib/integrations/raw-log";
 import { upsertConnection } from "../lib/integrations/connections";
+import { hashShareToken } from "../lib/share-token";
 import { seedDupReviewPair } from "./dup-review-fixture";
 import { EDIT_LOCK_SIGNATURE } from "./edit-lock-fixture";
 import {
@@ -423,6 +424,55 @@ db.prepare(
   PROFILE_ID,
   "2026-07-08 07:00:00"
 );
+
+// ---- #1333 per-row provenance drill-in fixture -----------------------------
+// Attach integration_sync_rows to the healthy Health Connect event above so its
+// Connected-sources card renders the "What this wrote" drill-in with resolvable deep
+// links. Uniquely anchored: a dedicated activity + body-metric (distinctive titles/
+// date) owned by PROFILE_ID and never asserted on by count elsewhere. The rows record
+// one inserted + one updated disposition (the only two recorded — unchanged is not).
+{
+  const hcEventId = (
+    db
+      .prepare(
+        `SELECT id FROM integration_sync_events
+          WHERE profile_id = ? AND provider = 'health-connect' AND at = '2026-07-08 07:00:00'`
+      )
+      .get(PROFILE_ID) as { id: number } | undefined
+  )?.id;
+  if (hcEventId) {
+    db.prepare(
+      `DELETE FROM activities WHERE profile_id = ? AND title = 'HC provenance run'`
+    ).run(PROFILE_ID);
+    const provActId = Number(
+      db
+        .prepare(
+          `INSERT INTO activities
+             (profile_id, date, type, title, duration_min, distance_km, source, external_id)
+           VALUES (?, '2026-07-08', 'cardio', 'HC provenance run', 32, 5.2, 'health-connect', 'hc:prov:run:1')`
+        )
+        .run(PROFILE_ID).lastInsertRowid
+    );
+    db.prepare(
+      `DELETE FROM body_metrics WHERE profile_id = ? AND date = '2026-07-08' AND source = 'health-connect'`
+    ).run(PROFILE_ID);
+    const provBodyId = Number(
+      db
+        .prepare(
+          `INSERT INTO body_metrics (profile_id, date, weight_kg, source)
+           VALUES (?, '2026-07-08', 79.4, 'health-connect')`
+        )
+        .run(PROFILE_ID).lastInsertRowid
+    );
+    const insRow = db.prepare(
+      `INSERT INTO integration_sync_rows (event_id, target_table, target_id, disposition)
+       VALUES (?, ?, ?, ?)`
+    );
+    insRow.run(hcEventId, "activities", provActId, "inserted");
+    insRow.run(hcEventId, "body_metrics", provBodyId, "updated");
+  }
+}
+
 // Four consecutive hourly Strava no-op re-scans (05:00–08:00) → one collapsed line.
 for (const hour of ["05", "06", "07", "08"]) {
   ins.run(
@@ -2226,19 +2276,21 @@ seedMemberLogin(E2E_LOGIN_STRAVA, stravaReauthId);
 const healthConnectId = fixtureProfileId(HEALTH_CONNECT_PROFILE);
 seedMemberLogin(E2E_LOGIN_HC, healthConnectId);
 
-// #1063 — a dedicated Health Connect profile seeded already CONNECTED with a
-// long, synthetic DB-backed token, so the mobile-overflow spec renders the
-// endpoint/token card read-only (never generating or rotating — those mutations
-// belong to the E2E_LOGIN_HC spec above and would race a concurrent reader).
+// #1063 — a dedicated Health Connect profile seeded already CONNECTED so the
+// mobile-overflow spec renders the endpoint card read-only (never generating or
+// rotating — those mutations belong to the E2E_LOGIN_HC spec above and would race a
+// concurrent reader). Since #1209 the token is HASHED at rest, so we seed only its
+// SHA-256 (`tokenHash`), not a plaintext — `connected` gates on `hasToken`, which
+// reads `tokenHash`. The plaintext is never re-shown (reveal-once), so the wide
+// element under test at phone width is the endpoint-URL row, not the token.
 const mobileHcId = fixtureProfileId(MOBILE_HC_PROFILE);
 upsertConnection(mobileHcId, "health-connect", {
   status: "connected",
   config: {
-    // Synthetic 64-char token of hex characters (real generated tokens are 48
-    // hex chars), so the row is provably wider than a 360px viewport without
-    // wrapping. Deliberately LOW-entropy ("e2e0" × 16) — a random-looking hex
-    // string trips the gitleaks generic-api-key rule even when fake.
-    token: "e2e0".repeat(16),
+    // The stored hash of a synthetic value (a real generate stores the same shape:
+    // sha256 hex). Deliberately derived from a LOW-entropy input so no random-looking
+    // literal appears — the value here is a 64-char hex HASH computed at seed time.
+    tokenHash: hashShareToken("e2e0".repeat(16)),
     tokenCreatedAt: utcSqlString(
       new Date(clockNow().getTime() - 24 * 3600 * 1000)
     ),
