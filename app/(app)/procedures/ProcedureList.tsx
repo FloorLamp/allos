@@ -64,7 +64,9 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Procedure>[] => [
     header: "Source",
     headerClassName: "hidden sm:table-cell",
     cellClassName: "hidden whitespace-nowrap sm:table-cell",
-    cell: (p) => <RecordProvenance source={p.source} />,
+    cell: (p) => (
+      <RecordProvenance source={p.source} documentId={p.document_id} />
+    ),
   },
 ];
 

@@ -168,6 +168,8 @@ import {
   E2E_LOGIN_HH_VIEWER,
   E2E_LOGIN_ILLNESS_CAREGIVER,
   E2E_LOGIN_ILLNESS_RO,
+  E2E_LOGIN_VIEWONLY_READ,
+  E2E_LOGIN_VIEWONLY_WRITE,
   E2E_LOGIN_CONDREV,
   CONDITION_REVIEW_PROFILE,
   E2E_LOGIN_REASON,
@@ -220,6 +222,8 @@ import {
   DQ_ADULT_PROFILE,
   E2E_LOGIN_VISITLINKS,
   VISITLINKS_PROFILE,
+  E2E_LOGIN_ENCRICH,
+  ENCRICH_PROFILE,
   E2E_LOGIN_CREATEVISIT,
   CREATEVISIT_PROFILE,
   E2E_LOGIN_TOASTS,
@@ -3658,9 +3662,15 @@ if (rileyId) {
   );
 }
 
+// View-only access (#33): two dedicated logins granted ONLY profile 1, one per access
+// level, replacing view-only-access.spec's runtime Family-UI member creation (the
+// #830/#1111 census flake). Profile 1 is each login's sole grant → its active profile.
+seedMemberLogin(E2E_LOGIN_VIEWONLY_READ, 1, "read");
+seedMemberLogin(E2E_LOGIN_VIEWONLY_WRITE, 1, "write");
+
 // ── Household visit + illness history fixtures (#1009) ────────────────────────
 // A caregiver granted a well parent + a currently-sick child, each carrying PAST
-// visits + illness episodes, so /household/history has real cross-profile content to
+// visits + illness episodes, so /medical/episodes (the #1373 care trail) has real cross-profile content to
 // merge and tag by person. The child's CLOSED "Flu" overlaps the parent's Flu (the
 // episode-card present case); the child's OPEN "Cold" makes the household currently
 // sick (dashboard promotion); the parent's far-past "Chickenpox" overlaps nobody (the
@@ -3684,17 +3694,28 @@ if (rileyId) {
     situation: string,
     startedAt: string,
     endedAt: string | null
-  ): void => {
-    db.prepare(
-      `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+  ): number => {
+    const r = db
+      .prepare(
+        `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
        VALUES (?, ?, ?, ?)`
-    ).run(pid, situation, startedAt, endedAt);
+      )
+      .run(pid, situation, startedAt, endedAt);
+    return Number(r.lastInsertRowid);
   };
-  const addEncounter = (pid: number, date: string, type: string): void => {
-    db.prepare(
-      `INSERT INTO encounters (profile_id, date, type, source)
-       VALUES (?, ?, ?, 'manual')`
-    ).run(pid, date, type);
+  const addEncounter = (
+    pid: number,
+    date: string,
+    type: string,
+    providerId: number | null = null
+  ): number => {
+    const r = db
+      .prepare(
+        `INSERT INTO encounters (profile_id, date, type, provider_id, source)
+       VALUES (?, ?, ?, ?, 'manual')`
+      )
+      .run(pid, date, type, providerId);
+    return Number(r.lastInsertRowid);
   };
 
   // Parent: a past visit, a Flu that overlaps the child's, and a far-past Chickenpox.
@@ -3707,10 +3728,52 @@ if (rileyId) {
     shiftDateStr(on, -295)
   );
 
-  // Child: a past visit, a Flu overlapping the parent's, and an OPEN Cold (sick now).
+  // Child: a routine (UNLINKED) past visit, a Flu overlapping the parent's, and an OPEN
+  // Cold (sick now). The Cold carries the care-trail nesting fixtures (#1373 Part 2): a
+  // LINKED urgent-care visit + a prescribed medication course whose prescriber matches
+  // that visit's provider (the provable chain).
   addEncounter(hhChildId, shiftDateStr(on, -10), "Sick visit");
   addEpisode(hhChildId, "Flu", shiftDateStr(on, -28), shiftDateStr(on, -24));
-  addEpisode(hhChildId, "Cold", shiftDateStr(on, -2), null);
+  const coldId = addEpisode(hhChildId, "Cold", shiftDateStr(on, -2), null);
+
+  // #1373 care-trail nesting fixture: an urgent-care visit (Dr. Ng) on Cold day 2, linked
+  // to the Cold episode, plus an Amoxicillin course started the same day whose prescriber
+  // provider is Dr. Ng — so the course reads "prescribed at the Day-2 urgent-care visit".
+  const ngProviderId = Number(
+    db
+      .prepare(
+        `INSERT INTO providers (name, type, dedup_key)
+         VALUES ('Dr. Ng', 'individual', 'e2e-hhhist-ng')`
+      )
+      .run().lastInsertRowid
+  );
+  const urgentCareId = addEncounter(
+    hhChildId,
+    shiftDateStr(on, -1),
+    "Urgent care",
+    ngProviderId
+  );
+  db.prepare(
+    `INSERT INTO episode_encounters (profile_id, episode_id, encounter_id)
+     VALUES (?, ?, ?)`
+  ).run(hhChildId, coldId, urgentCareId);
+  const amoxId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items
+           (profile_id, name, kind, priority, active, as_needed, rx)
+         VALUES (?, 'Amoxicillin', 'medication', 'high', 1, 0, 1)`
+      )
+      .run(hhChildId).lastInsertRowid
+  );
+  db.prepare(
+    `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+     VALUES (?, '250 mg', 'Morning', 'any', 0)`
+  ).run(amoxId);
+  db.prepare(
+    `INSERT INTO medication_courses (item_id, started_on, stopped_on, provider_id)
+     VALUES (?, ?, NULL, ?)`
+  ).run(amoxId, shiftDateStr(on, -1), ngProviderId);
 
   const hhLoginId = seedMemberLogin(E2E_LOGIN_HHHIST, hhParentId);
   grantProfile(hhLoginId, hhChildId);
@@ -4778,6 +4841,81 @@ console.log(
   seedMemberLogin(E2E_LOGIN_VISITLINKS, vlProfileId, "write");
   console.log(
     `e2e: seeded visit-link fixture — profile ${vlProfileId} (${VISITLINKS_PROFILE}) #1050/#1053`
+  );
+}
+
+// ── Encounter-detail enrichment (#1350/#1353) ─────────────────────────────────
+// A self-contained profile whose subject visit exercises every enrichment: a
+// same-provider prior visit (visit context), a completed appointment booked for it
+// (scheduling origin), an illness episode spanning the visit with NO link yet (the
+// encounter-side link suggestion → link → care trail), and a document-sourced + a
+// manual condition (RecordProvenance deep-link vs plain label). OWNS every row.
+{
+  const enId = fixtureProfileId(ENCRICH_PROFILE);
+  const EN_SUBJECT_DATE = "2026-06-18";
+  db.prepare(
+    `INSERT OR IGNORE INTO providers (name, type, dedup_key)
+     VALUES ('Dr. Enid Enrich (e2e)', 'individual', 'e2e:enid-enrich')`
+  ).run();
+  const enProviderId = (
+    db
+      .prepare("SELECT id FROM providers WHERE dedup_key = 'e2e:enid-enrich'")
+      .get() as { id: number }
+  ).id;
+  const existingSubject = db
+    .prepare(
+      "SELECT id FROM encounters WHERE profile_id = ? AND date = ? AND type = 'Office Visit'"
+    )
+    .get(enId, EN_SUBJECT_DATE) as { id: number } | undefined;
+  if (!existingSubject) {
+    // A same-provider prior visit earlier the same year → visit context reads
+    // "2nd visit with Dr. Enid Enrich · last one Feb 2026" and "2nd … this year".
+    db.prepare(
+      `INSERT INTO encounters (profile_id, date, type, class_code, reason, provider_id)
+       VALUES (?, '2026-02-10', 'Office Visit', 'AMB', 'Annual checkup', ?)`
+    ).run(enId, enProviderId);
+    const subjectId = Number(
+      db
+        .prepare(
+          `INSERT INTO encounters (profile_id, date, type, class_code, reason, provider_id)
+           VALUES (?, ?, 'Office Visit', 'AMB', 'Sinus congestion', ?)`
+        )
+        .run(enId, EN_SUBJECT_DATE, enProviderId).lastInsertRowid
+    );
+    // A completed appointment booked for the subject visit → scheduling origin.
+    db.prepare(
+      `INSERT INTO appointments (profile_id, scheduled_at, provider_id, status, encounter_id, title)
+       VALUES (?, '2026-06-10 09:30:00', ?, 'completed', ?, 'Sick visit')`
+    ).run(enId, enProviderId, subjectId);
+    // An illness episode spanning the subject visit, NO linked visit yet → the
+    // encounter-side "Link an illness episode?" suggestion.
+    db.prepare(
+      `INSERT INTO illness_episodes (profile_id, situation, started_at, ended_at)
+       VALUES (?, 'sinus infection (e2e)', '2026-06-15', '2026-06-23')`
+    ).run(enId);
+    // A source document + a document-sourced condition and a manual condition →
+    // RecordProvenance deep-link vs plain label (#1353).
+    const docId = Number(
+      db
+        .prepare(
+          `INSERT INTO medical_documents
+             (profile_id, filename, stored_path, doc_type, extraction_status, extracted_count, document_date)
+           VALUES (?, 'visit-summary-e2e.xml', '/dev/null', 'ccd', 'done', 1, ?)`
+        )
+        .run(enId, EN_SUBJECT_DATE).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO conditions (profile_id, name, status, source, document_id)
+       VALUES (?, 'Acute sinusitis (e2e)', 'active', ?, ?)`
+    ).run(enId, `document:${docId}`, docId);
+    db.prepare(
+      `INSERT INTO conditions (profile_id, name, status, source)
+       VALUES (?, 'Seasonal allergies (e2e)', 'active', NULL)`
+    ).run(enId);
+  }
+  seedMemberLogin(E2E_LOGIN_ENCRICH, enId, "write");
+  console.log(
+    `e2e: seeded encounter-enrichment fixture — profile ${enId} (${ENCRICH_PROFILE}) #1350/#1353`
   );
 }
 

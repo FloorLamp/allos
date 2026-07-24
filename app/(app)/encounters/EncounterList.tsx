@@ -158,7 +158,9 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<Encounter>[] => [
     header: "Source",
     headerClassName: "hidden sm:table-cell",
     cellClassName: "hidden whitespace-nowrap sm:table-cell",
-    cell: (e) => <RecordProvenance source={e.source} />,
+    cell: (e) => (
+      <RecordProvenance source={e.source} documentId={e.document_id} />
+    ),
   },
 ];
 

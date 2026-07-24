@@ -42,7 +42,9 @@ const COLUMNS: RecordColumn<Allergy>[] = [
     header: "Source",
     headerClassName: "hidden sm:table-cell",
     cellClassName: "hidden whitespace-nowrap sm:table-cell",
-    cell: (a) => <RecordProvenance source={a.source} />,
+    cell: (a) => (
+      <RecordProvenance source={a.source} documentId={a.document_id} />
+    ),
   },
 ];
 

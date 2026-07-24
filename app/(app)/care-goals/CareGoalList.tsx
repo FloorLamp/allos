@@ -42,7 +42,9 @@ const buildColumns = (fmt: DisplayFormatPrefs): RecordColumn<CareGoal>[] => [
     header: "Source",
     headerClassName: "hidden sm:table-cell",
     cellClassName: "hidden whitespace-nowrap sm:table-cell",
-    cell: (g) => <RecordProvenance source={g.source} />,
+    cell: (g) => (
+      <RecordProvenance source={g.source} documentId={g.document_id} />
+    ),
   },
 ];
 

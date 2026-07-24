@@ -35,6 +35,8 @@ import type {
   MedicalRecord,
 } from "../types";
 import type { PersistInput } from "../import-shape";
+import { encounterKind } from "../encounter-kind";
+import { visitContext, type VisitContext } from "../visit-context";
 
 // ---- Medical ----
 export type MedicalSortColumn = "name" | "panel" | "date";
@@ -1466,5 +1468,41 @@ export function getEncounter(profileId: number, id: number): Encounter | null {
           WHERE e.id = ? AND e.profile_id = ?`
       )
       .get(id, profileId) as Encounter | undefined) ?? null
+  );
+}
+
+// Visit context (#1350): this visit's same-provider continuity + same-kind-this-year
+// cadence, for the encounter page's hero. Gathers the subject visit + every OTHER
+// deduped visit, maps each to its coarse kind (#1319), and hands the pure engine the
+// ordinal math. Returns null when the visit doesn't exist or has no continuity to show
+// (a genuine first visit stays silent — the #489 absent-pillar rule).
+export function visitContextForEncounter(
+  profileId: number,
+  encounterId: number
+): VisitContext | null {
+  const current = getEncounter(profileId, encounterId);
+  if (!current) return null;
+  const kindOf = (e: Encounter) =>
+    encounterKind({
+      classCode: e.class_code,
+      code: e.code,
+      codeSystem: e.code_system,
+      type: e.type,
+    });
+  const others = getEncounters(profileId)
+    .filter((e) => e.id !== encounterId)
+    .map((e) => ({
+      date: e.date,
+      providerId: e.provider_id,
+      kind: kindOf(e),
+    }));
+  return visitContext(
+    {
+      date: current.date,
+      providerId: current.provider_id,
+      providerName: current.provider_name,
+      kind: kindOf(current),
+    },
+    others
   );
 }

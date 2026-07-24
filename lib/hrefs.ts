@@ -60,11 +60,23 @@ export function nutritionTabHref(tab: NutritionTab): AppRoute {
 // /medicine surface for their own Medical-group page.
 export const MEDICATIONS_HREF: AppRoute = "/medications";
 
-// The merged cross-profile household visit + illness history (#1009). A static
-// route shared across ≥4 surfaces (the Household header, the dashboard illness
-// promotion, and the widen-to-household links on Visits + Illness episodes), so it's
-// a named const — one edit re-checks every caller — rather than a re-typed literal.
-export const HOUSEHOLD_HISTORY_HREF: AppRoute = "/household/history";
+// The Illness episodes index (#856), which BECAME the cross-profile care-trail surface
+// (#1373 Part 2): the view-set banner drives whose data shows, a `?kind=` toggle drives
+// what shows. The old /household/history route was REMOVED — this const replaced
+// HOUSEHOLD_HISTORY_HREF; the household header, the dashboard illness promotion, and the
+// widen-to-household links on Visits all point here now (one edit re-checks every caller).
+export const EPISODES_HREF: AppRoute = "/medical/episodes";
+
+// The two-state content toggle on the episodes care trail (#1373): `illness` (default —
+// episodes + their nested linked visits + courses) and `illness+visits` (adds the
+// unlinked routine visits). Kept in lib/hrefs so the toggle links stay compile-checked.
+// The URL param value for the second state is `visits` (NOT `illness+visits`): a literal
+// `+` in a query string decodes to a SPACE, so the readable value stays URL-safe.
+export function episodesKindHref(kind: "illness" | "illness+visits"): AppRoute {
+  return kind === "illness"
+    ? "/medical/episodes"
+    : "/medical/episodes?kind=visits";
+}
 
 // The mental-health instrument surface (#716) — PHQ-9/GAD-7 scores. Lives on the
 // Health record's Specialty › Mental health tab (#1079, was the #mental-health

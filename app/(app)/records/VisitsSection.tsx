@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { today } from "@/lib/db";
-import { HOUSEHOLD_HISTORY_HREF } from "@/lib/hrefs";
+import { EPISODES_HREF } from "@/lib/hrefs";
 import {
   getAppointments,
   getEncounters,
@@ -107,11 +107,11 @@ export default function VisitsSection({
         {showHousehold && (
           <div className="-mt-2">
             <Link
-              href={HOUSEHOLD_HISTORY_HREF}
+              href={EPISODES_HREF}
               className="text-sm font-medium text-sky-700 hover:underline dark:text-sky-300"
               data-testid="household-view-link"
             >
-              Household view →
+              Illness episodes →
             </Link>
           </div>
         )}

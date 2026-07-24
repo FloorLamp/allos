@@ -129,7 +129,9 @@ const baseColumns = (fmt: DisplayFormatPrefs): RecordColumn<ImagingStudy>[] => [
     header: "Source",
     headerClassName: "hidden sm:table-cell",
     cellClassName: "hidden whitespace-nowrap sm:table-cell",
-    cell: (s) => <RecordProvenance source={s.source} />,
+    cell: (s) => (
+      <RecordProvenance source={s.source} documentId={s.document_id} />
+    ),
   },
 ];
 

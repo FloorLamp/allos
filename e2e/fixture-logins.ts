@@ -394,9 +394,11 @@ export const CYCLE_PROFILE = "Cycle Log (e2e)";
 
 // ── Household visit + illness history fixtures (#1009) ────────────────────────
 // A caregiver granted TWO dedicated profiles — a well parent and a currently-sick
-// child — each carrying PAST visits + illness episodes so the merged household
-// history (/household/history) has real cross-profile content to interleave and
-// tag by person. Spec-owned + isolated on purpose: the merged-history / episode-card
+// child — each carrying PAST visits + illness episodes so the merged care trail
+// (/medical/episodes, the view-set surface #1373 Part 2 that superseded the removed
+// /household/history) has real cross-profile content to interleave and tag by person.
+// The child's Cold also carries a LINKED urgent-care visit + a prescribed course for the
+// care-trail nesting cases. Spec-owned + isolated on purpose: the care-trail / episode-card
 // / promotion specs only READ these fixtures, so concurrent workers never contend,
 // and their dedicated profiles never perturb the illness-hero fixtures' cockpit
 // assertions. The child's episodes are shaped for the episode-card cases: a CLOSED
@@ -540,6 +542,16 @@ export const HA_NOTIFY_PROFILE = "HA Notify (e2e)";
 // entirely on its OWN profile (never a shared-seed row, so --repeat-each stays clean).
 export const E2E_LOGIN_VISITLINKS = "e2e_visitlinks";
 export const VISITLINKS_PROFILE = "Visit Links (e2e)";
+
+// A member granted a dedicated profile for the encounter-detail enrichment spec
+// (#1350/#1353). Seeds a self-contained subject visit with a same-provider prior
+// visit (visit context), a completed appointment booked for it (scheduling origin),
+// an illness episode spanning the visit with NO linked visit yet (the encounter-side
+// "link an episode" suggestion → link → care trail), and a document-sourced + a manual
+// condition (the RecordProvenance deep-link vs plain label). OWNS every row so the
+// suite's shared-seed counts and --repeat-each stay clean.
+export const E2E_LOGIN_ENCRICH = "e2e_encrich";
+export const ENCRICH_PROFILE = "Encounter Enrichment (e2e)";
 
 // A member granted TWO dedicated profiles for the profile-switch toaster spec
 // (#296), so its ACTIVE-PROFILE switching runs in its OWN cookie context and can
@@ -833,3 +845,16 @@ export const MVBIO_RO_PROFILE = "Bio Board RO (e2e)";
 export const MVBIO_SHARED_ANALYTE = "Vitamin D";
 export const MVBIO_SELF_ANALYTE = "Bioself Ferritin (e2e)";
 export const MVBIO_RO_ANALYTE = "Biored Glucose (e2e)";
+
+// View-only access (issue #33). Two dedicated member logins granted ONLY profile 1 (the
+// shared sample record the spec reads — its "Adherence Refill Med (e2e)" + the vitals
+// quick-add form), one per access LEVEL, so view-only-access.spec stops creating members
+// at runtime through Settings → Family (createLoginViaFamily/setGrantsViaFamily — an
+// onClick+router.refresh() create/grant that went stale under CI load, the #830/#1111
+// census flake that failed shard 4). Profile 1 is each login's SOLE grant, so it's the
+// active profile on sign-in (createSession picks accessibleProfiles[0]). The read login
+// proves a mutation is bounced server-side; the write login proves the same mutation
+// succeeds (it writes one vital to profile 1 — exactly what the runtime-created write
+// member always did, so the shared-profile write target is unchanged).
+export const E2E_LOGIN_VIEWONLY_READ = "e2e_viewonly_read";
+export const E2E_LOGIN_VIEWONLY_WRITE = "e2e_viewonly_write";
