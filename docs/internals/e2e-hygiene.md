@@ -1,6 +1,6 @@
 # E2E suite hygiene — fixtures, settled interactions, retries=0 lane
 
-Status: **partial** (infrastructure shipped — helpers module, hygiene guard incl. the `.first()` and `.toPass(` count-freezes, changed-spec CI lane, the frozen app clock #990, the sharded CI e2e matrix, retries=0 end-to-end #1160, the on-demand + weekly-census full-suite workflow, pass-on-retry flake telemetry, the opt-in `mobile` phone-viewport project #1420; suite-wide migration of the grandfathered `.first()`/`.toPass(` offenders is the remaining follow-up, per #868)
+Status: **partial** (infrastructure shipped — helpers module, hygiene guard incl. the `.first()`/`.toPass(` count-freezes and the #1392 fixture-login budget, changed-spec CI lane, the frozen app clock #990, the sharded CI e2e matrix, retries=0 end-to-end #1160, the on-demand + weekly-census full-suite workflow, pass-on-retry flake telemetry, the opt-in `mobile` phone-viewport project #1420; suite-wide migration of the grandfathered `.first()`/`.toPass(` offenders is the remaining follow-up, per #868)
 
 Maintainer documentation for the Playwright suite's reliability discipline (issue
 #868). The user-facing "how to run e2e" note lives in AGENTS.md's browser-e2e
@@ -229,6 +229,75 @@ did not change its state` (the `food-telegram` line-26 flake). `settledCheck` wa
 for the same hydration markers, then `setChecked(checked)` (idempotent — a no-op
 when already in the target state, so it subsumes a `if (!await box.isChecked())`
 guard) and confirms it holds. Its text-input sibling stays `settledFill`.
+
+### The bystander-poll false-settle is APP-WIDE, and a following `goto` LOSES the write (#1437)
+
+The `settledClick` caveat first written for the Family screen (#1111) is not
+family-specific. **Every** app page mounts two headless watchers —
+`ImportJobsToaster` and `ExtractionToaster` — and each polls a Server Action on a
+6-second timer. Server Actions POST to the CURRENT route URL, so from Playwright's
+side those are indistinguishable from the action a click fires. Measured while idle
+on `/records/history/visits`: **2 POSTs every 6s**, on every authenticated route.
+
+`settledClick` arms a same-origin POST wait, so it can resolve on one of those polls
+while the click's own action is still in flight. Usually harmless — the follow-up
+retrying `expect` absorbs the lag. It is NOT harmless when the next line NAVIGATES:
+
+```ts
+await settledClick(
+  page,
+  addCard.getByRole("button", { name: "Add", exact: true })
+);
+await page.goto("/nutrition?tab=supplements"); // ← aborts the in-flight create
+```
+
+A `goto`/`reload` right after a false-settle aborts the pending action request and
+the write is **lost, not late**. Reproduced deterministically by delaying the action
+POST: the row never lands, and the spec then fails at some LATER assertion about a
+downstream surface ("element(s) not found"), which reads like a rendering/timing bug
+on a page that is in fact perfectly correct — the appointment simply does not exist.
+That is the #1437 census red (`surgery-bridge.spec.ts`), twice, at `retries: 0`.
+
+**Rule:** when a settled click is followed by a NAVIGATION, settle on the durable
+**server-rendered marker the completed mutation produces** before navigating —
+
+```ts
+await settledClick(page, addBtn);
+await expect(ourScheduledRows(page)).toHaveCount(1); // holds the page until it commits
+await page.goto("/nutrition?tab=supplements");
+```
+
+The assertion's own retry is the wait, it can't be faked by a poll, and — crucially —
+nothing navigates away while the action is still in flight. Same shape as the
+`mood-server-logged` precedent in `helpers.ts`. Keep spec CLEANUP under this rule
+too: a cleanup click followed by a `goto` can drop the cleanup and hand the next spec
+a mutated shared profile.
+
+### The fixture-LOGIN budget (#1392)
+
+The seeded fixture population is **monotonic**: every dedicated fixture login is a
+permanent row on Settings → Family and a permanent member of the grant matrix. That
+ratchet is what grew the family page into the #830/#1111/#1392 census family (a 5 MB
+`O(logins × profiles)` render that starved the durable-row probes until the #1412
+collapse capped it at `O(logins)`). The product fix removed the cliff; this rule
+removes the ratchet.
+
+**Seed a fixture LOGIN only when a spec signs in as it, or when the login itself is
+the subject** (access control, the family screen). A separate login is the only way
+to drive a non-profile-1 active profile in its OWN cookie context without mutating the
+shared admin `storageState`'s server-side active profile — that is a real need and it
+stays. But a fixture that only wants an **isolated profile** takes
+`fixtureProfileId(name)` in `seed-events.ts` and **no login**: a profile is cheap here,
+a login is not.
+
+Enforced by the hygiene guard's sixth check: every `E2E_LOGIN_*` constant in
+`e2e/fixture-logins.ts` must be referenced by a spec AND used in a sign-in position
+(`loginAs(` / `creds(` / `username:`). A deliberate exception carries a written reason
+in `LOGIN_NO_SIGNIN_ALLOW` (today: the sleep-page hash-clone TEMPLATE login and the
+`#1412` grant-matrix subject login). A login no spec references at all fails as dead
+weight. Census of the population when the guard landed: **94 login constants, 92
+signed in as, 2 justified exceptions, 0 droppable** — the budget's job is the next 94,
+not this one.
 
 ## Fix (c) — the changed-spec CI lane at retries=0
 
