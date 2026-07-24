@@ -1,9 +1,16 @@
-import { test, expect, type Page, type Locator } from "@playwright/test";
+import {
+  test,
+  expect,
+  type Page,
+  type Locator,
+  type Browser,
+} from "@playwright/test";
 import Database from "better-sqlite3";
 import path from "node:path";
-import { followLink } from "./nav";
-import { createProfileViaFamily, switchToProfile } from "./family-helpers";
+import { followLink, loginAs } from "./nav";
 import { settledClick } from "./helpers";
+import { hashPasswordSync } from "../lib/password";
+import { E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import {
   medicationRow,
   medicationList,
@@ -17,18 +24,70 @@ import {
 //      ibuprofen pre-checked → confirm moves it to Past (course closed, illness_resolved).
 //   2. The dormant-PRN sweep: a PRN med with no dose in 90+ days is offered "move to past"
 //      on /medications; one tap retires it.
-// Fixture-owned + repeat-safe: each test acts on a profile it creates (an admin can act as
-// any profile), and afterEach restores the shared session to the default admin profile so
-// the switch never leaks into a later spec (CI runs one worker sharing the session).
+// Member-isolated + repeat-safe: each test signs in as a DEDICATED write-granted member
+// whose SOLE (therefore active) profile is a fresh, spec-owned profile it seeds — so it
+// drives its OWN cookie context and never switches (or has to restore) the shared admin
+// session's active profile. That shared-session switch — and the afterEach that walked it
+// back to admin via switchProfileAction — was the residual #1323 switchProfile-class flake:
+// a switch POST that false-settled on a bystander toaster poll left the header trigger on
+// the wrong profile, failing the next assertion. Removing the switch removes the flake.
 
-let profileSeq = 0;
-const ADMIN_PROFILE = "admin";
+let seq = 0;
 
 function e2eDbPath(): string {
   return (
     process.env.ALLOS_DB_PATH ??
     path.join(process.cwd(), "e2e", ".data", "e2e.db")
   );
+}
+
+interface MemberProfile {
+  page: Page;
+  profileName: string;
+  profileId: number;
+}
+
+// Sign in as a dedicated, write-granted member whose SOLE (therefore active — createSession
+// picks accessibleProfiles[0]) profile is a fresh profile this test owns. A DB-seeded profile
+// carries NO onboarding row, so the member lands straight on the dashboard (no /onboarding
+// gate). The optional `seed` runs inside the SAME connection, after the profile INSERT and
+// before the grant, so the member's first render already sees the planted fixtures. The
+// caller drives the returned member page and closes its context at the end.
+async function signInAsFreshMember(
+  browser: Browser,
+  label: string,
+  seed?: (db: Database.Database, profileId: number) => void
+): Promise<MemberProfile> {
+  const n = ++seq;
+  const profileName = `${label}-${Date.now()}-${n}`;
+  const username = `e2e_recon_${Date.now()}_${n}`;
+  const db = new Database(e2eDbPath());
+  let profileId: number;
+  try {
+    db.pragma("busy_timeout = 5000");
+    profileId = Number(
+      db.prepare("INSERT INTO profiles (name) VALUES (?)").run(profileName)
+        .lastInsertRowid
+    );
+    if (seed) seed(db, profileId);
+    const loginId = Number(
+      db
+        .prepare(
+          "INSERT INTO logins (username, password_hash, role) VALUES (?, ?, 'member')"
+        )
+        .run(username, hashPasswordSync(E2E_MEMBER_PASSWORD)).lastInsertRowid
+    );
+    db.prepare(
+      "INSERT INTO login_profiles (login_id, profile_id, access) VALUES (?, ?, 'write')"
+    ).run(loginId, profileId);
+  } finally {
+    db.close();
+  }
+  const page = await loginAs(browser, {
+    username,
+    password: E2E_MEMBER_PASSWORD,
+  });
+  return { page, profileName, profileId };
 }
 
 // Pick a medication from the quick-add combobox (click the option so the resolver
@@ -49,19 +108,12 @@ async function pickMedication(
   await option.click();
 }
 
-test.afterEach(async ({ page }) => {
-  await page.goto("/");
-  const trigger = page.getByTestId("user-menu-trigger");
-  if ((await trigger.textContent())?.includes(ADMIN_PROFILE)) return;
-  await switchToProfile(page, ADMIN_PROFILE);
-});
-
 test.describe("Episode-end medication reconciliation (#880)", () => {
   test("quick-add ibuprofen during the illness → end episode → accept → med moves to Past", async ({
-    page,
+    browser,
   }) => {
     test.slow();
-    await createProfileViaFamily(page, "recon");
+    const { page } = await signInAsFreshMember(browser, "recon");
 
     // 1) Feeling sick — one tap opens the illness (and the full cockpit).
     await page.goto("/");
@@ -112,13 +164,15 @@ test.describe("Episode-end medication reconciliation (#880)", () => {
     await expect(
       medicationList(page).getByTestId("medication-row")
     ).toHaveCount(0);
+
+    await page.context().close();
   });
 
   test("reopen restores the med the end stopped (#1140 Part B)", async ({
-    page,
+    browser,
   }) => {
     test.slow();
-    await createProfileViaFamily(page, "reopen");
+    const { page } = await signInAsFreshMember(browser, "reopen");
 
     // Get sick, quick-add ibuprofen during the illness, log a dose.
     await page.goto("/");
@@ -178,46 +232,41 @@ test.describe("Episode-end medication reconciliation (#880)", () => {
         hasText: "Ibuprofen",
       })
     ).toBeVisible();
+
+    await page.context().close();
   });
 
   test("edit-form End date moves a med to Past and the row Restart brings it back (#1140 Parts C/D)", async ({
-    page,
+    browser,
   }) => {
     test.slow();
-    // Seed a fresh profile with one ACTIVE medication directly (an admin acts as any
-    // profile) — deterministic, no add-form combobox in the way.
-    const profileName = `medlife-${Date.now()}-${++profileSeq}`;
+    // Seed a fresh profile with one ACTIVE medication directly (member isolation seeds it
+    // in the same connection as the profile) — deterministic, no add-form combobox.
     const medName = "Endstopil";
-    const db = new Database(e2eDbPath());
-    try {
-      db.pragma("busy_timeout = 5000");
-      const pid = Number(
-        db.prepare("INSERT INTO profiles (name) VALUES (?)").run(profileName)
-          .lastInsertRowid
-      );
-      const itemId = Number(
-        db
-          .prepare(
-            `INSERT INTO intake_items
+    const { page } = await signInAsFreshMember(
+      browser,
+      "medlife",
+      (db, pid) => {
+        const itemId = Number(
+          db
+            .prepare(
+              `INSERT INTO intake_items
                (profile_id, name, active, kind, condition, priority, as_needed, rx,
                 quantity_on_hand, qty_per_dose, created_at)
              VALUES (?, ?, 1, 'medication', 'daily', 'high', 0, 1, 30, 1, '2025-06-01 12:00:00')`
-          )
-          .run(pid, medName).lastInsertRowid
-      );
-      db.prepare(
-        `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+            )
+            .run(pid, medName).lastInsertRowid
+        );
+        db.prepare(
+          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
          VALUES (?, '10 mg', 'morning', 'any', 0)`
-      ).run(itemId);
-      db.prepare(
-        `INSERT INTO medication_courses (item_id, started_on, stopped_on)
+        ).run(itemId);
+        db.prepare(
+          `INSERT INTO medication_courses (item_id, started_on, stopped_on)
          VALUES (?, '2025-06-01', NULL)`
-      ).run(itemId);
-    } finally {
-      db.close();
-    }
-    await page.goto("/");
-    await switchToProfile(page, profileName);
+        ).run(itemId);
+      }
+    );
 
     // Part D: the edit form carries an End date field. Set it → the med moves to Past.
     await page.goto("/medications");
@@ -229,12 +278,19 @@ test.describe("Episode-end medication reconciliation (#880)", () => {
     const endField = page.getByTestId("med-end-date");
     await expect(endField).toBeVisible();
     await endField.fill("2025-08-15");
-    // settledClick: await the save POST before the next goto so its in-flight
-    // action/refresh can't interleave into goto("/medications") on a cold shard (#1323).
+    // settledClick awaits the save POST — but NOT the client nav its success handler
+    // fires: the edit form opened via `?action=edit` runs onDone → closeInitialAction →
+    // router.replace(/medications/{id}) (stripping the query) right after the POST that
+    // settledClick returns on. That soft replace is still in flight when the next
+    // goto("/medications") runs, and the App Router resolves the hard-goto-vs-soft-replace
+    // collision onto "/" — stranding the test off /medications (the #1323 "navigated to /"
+    // signature). Await the replace LANDING (query gone, URL back to the bare detail)
+    // before navigating away, so no client nav races the goto.
     await settledClick(
       page,
       page.getByRole("main").getByRole("button", { name: "Save", exact: true })
     );
+    await expect(page).toHaveURL(/\/medications\/\d+$/);
 
     await page.goto("/medications");
     await pastMedications(page).locator("summary").click();
@@ -250,50 +306,43 @@ test.describe("Episode-end medication reconciliation (#880)", () => {
         hasText: medName,
       })
     ).toBeVisible();
+
+    await page.context().close();
   });
 
   test("dormant-PRN sweep: a PRN med unused for 90+ days can be moved to Past", async ({
-    page,
+    browser,
   }) => {
     test.slow();
 
-    // Seed a fresh profile with a long-dormant OTC PRN med directly in the e2e DB (a med
-    // created 90+ days ago with no dose can't be produced through today's quick-add). An
-    // admin can act as any profile, so we switch to it via the UI. Short-lived connection
-    // + busy timeout so it never contends with the running server on the WAL DB.
-    const profileName = `dormant-${Date.now()}-${++profileSeq}`;
+    // Seed a fresh profile with a long-dormant OTC PRN med directly (a med created 90+
+    // days ago with no dose can't be produced through today's quick-add). Seeded in the
+    // same connection as the profile, so the member's first render already sees it.
     const medName = "Dormancitol";
-    const db = new Database(e2eDbPath());
-    try {
-      db.pragma("busy_timeout = 5000");
-      const pid = Number(
-        db.prepare("INSERT INTO profiles (name) VALUES (?)").run(profileName)
-          .lastInsertRowid
-      );
-      const itemId = Number(
-        db
-          .prepare(
-            `INSERT INTO intake_items
-               (profile_id, name, active, kind, condition, priority, as_needed, rx,
-                quantity_on_hand, qty_per_dose, created_at)
-             VALUES (?, ?, 1, 'medication', 'daily', 'high', 1, 0, 10, 1, '2025-01-01 12:00:00')`
-          )
-          .run(pid, medName).lastInsertRowid
-      );
-      db.prepare(
-        `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
-         VALUES (?, '400 mg', 'any', 'any', 0)`
-      ).run(itemId);
-      db.prepare(
-        `INSERT INTO medication_courses (item_id, started_on, stopped_on)
-         VALUES (?, '2025-01-01', NULL)`
-      ).run(itemId);
-    } finally {
-      db.close();
-    }
-
-    await page.goto("/");
-    await switchToProfile(page, profileName);
+    const { page } = await signInAsFreshMember(
+      browser,
+      "dormant",
+      (db, pid) => {
+        const itemId = Number(
+          db
+            .prepare(
+              `INSERT INTO intake_items
+                 (profile_id, name, active, kind, condition, priority, as_needed, rx,
+                  quantity_on_hand, qty_per_dose, created_at)
+               VALUES (?, ?, 1, 'medication', 'daily', 'high', 1, 0, 10, 1, '2025-01-01 12:00:00')`
+            )
+            .run(pid, medName).lastInsertRowid
+        );
+        db.prepare(
+          `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+           VALUES (?, '400 mg', 'any', 'any', 0)`
+        ).run(itemId);
+        db.prepare(
+          `INSERT INTO medication_courses (item_id, started_on, stopped_on)
+           VALUES (?, '2025-01-01', NULL)`
+        ).run(itemId);
+      }
+    );
 
     // The sweep card offers the dormant med.
     await page.goto("/medications");
@@ -312,5 +361,7 @@ test.describe("Episode-end medication reconciliation (#880)", () => {
     ).toHaveCount(0);
     await pastMedications(page).locator("summary").click();
     await expect(medicationRow(page, medName)).toBeVisible();
+
+    await page.context().close();
   });
 });
