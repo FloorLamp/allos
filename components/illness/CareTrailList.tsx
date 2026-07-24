@@ -130,6 +130,14 @@ function EpisodeRow({
   const range = `${formatRecordDate(ep.firstDay, "—", prefs)} – ${
     ep.ongoing ? "ongoing" : formatRecordDate(ep.lastActiveDay, "—", prefs)
   }`;
+  // The outcome hint — the same derivation the former flat index used.
+  const outcome =
+    ep.outcome ??
+    (ep.promotedConditionName
+      ? `Condition: ${ep.promotedConditionName}`
+      : ep.ongoing
+        ? "Ongoing"
+        : "Self-resolved");
   return (
     <li>
       <div
@@ -141,7 +149,7 @@ function EpisodeRow({
         <Link
           href={episodeHref(ep.episodeId)}
           className="block transition hover:opacity-90"
-          data-testid="care-trail-episode-link"
+          data-testid="episode-index-row"
         >
           <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
             <span className="flex items-center gap-2 font-semibold text-slate-800 dark:text-slate-100">
@@ -177,6 +185,9 @@ function EpisodeRow({
                 {ep.linkedVisitCount === 1 ? "" : "s"}
               </span>
             )}
+            <span className="ml-auto font-medium text-slate-600 dark:text-slate-300">
+              {outcome}
+            </span>
           </div>
         </Link>
         {(ep.linkedVisits.length > 0 || ep.courses.length > 0) && (

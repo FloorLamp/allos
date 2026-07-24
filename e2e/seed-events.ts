@@ -3654,7 +3654,7 @@ if (rileyId) {
 
 // ── Household visit + illness history fixtures (#1009) ────────────────────────
 // A caregiver granted a well parent + a currently-sick child, each carrying PAST
-// visits + illness episodes, so /household/history has real cross-profile content to
+// visits + illness episodes, so /medical/episodes (the #1373 care trail) has real cross-profile content to
 // merge and tag by person. The child's CLOSED "Flu" overlaps the parent's Flu (the
 // episode-card present case); the child's OPEN "Cold" makes the household currently
 // sick (dashboard promotion); the parent's far-past "Chickenpox" overlaps nobody (the

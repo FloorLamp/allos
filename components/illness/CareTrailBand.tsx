@@ -1,6 +1,4 @@
-import Link from "next/link";
 import Avatar, { type AvatarProfile } from "@/components/Avatar";
-import { episodeHref, encounterHref } from "@/lib/hrefs";
 import type { Swimlane } from "@/lib/care-trail-swimlane";
 
 // The care-trail "at-a-glance band" (#1373 Part 2): trailing-window per-member swimlanes,
@@ -9,10 +7,13 @@ import type { Swimlane } from "@/lib/care-trail-swimlane";
 // overlap ("Riley then Sam two days later") reads as geometry. Pure CSS over the
 // pre-computed layout model (lib/care-trail-swimlane.ts); no client JS.
 //
-// House dataviz rules: never color-only — every bar/marker carries a title tooltip and
-// the lane its member label; theme-aware in both modes; the band lives in its own
-// overflow-x container so the PAGE body never scrolls horizontally (#1063). Collapses
-// (renders nothing) for sparse data — the caller checks `swimlane.hasData`.
+// The band is a purely VISUAL overview — non-interactive by design (the grouped list below
+// owns navigation), so its tiny absolutely-positioned bars/markers never intercept a click
+// on, or compete for the accessible name of, the list's episode links. House dataviz rules:
+// never color-only — every bar/marker carries a title tooltip and the lane its member
+// label; theme-aware both modes; the band lives in its own overflow-x container so the PAGE
+// body never scrolls horizontally (#1063). Collapses (renders nothing) for sparse data —
+// the caller checks `swimlane.hasData`.
 
 // Peak-severity tint for an episode bar: hotter fever → warmer bar. Fever-free episodes
 // stay a neutral illness tint. Labels/tooltips carry the real meaning (never color-only).
@@ -66,19 +67,16 @@ export default function CareTrailBand({
                   <span className="truncate">{subject?.name ?? "—"}</span>
                 </div>
                 {/* The lane track. Episode bars are absolutely positioned by percent;
-                the baseline holds unlinked visit markers. */}
+                the baseline holds unlinked visit markers. Non-interactive overview. */}
                 <div className="relative h-8 flex-1 rounded bg-slate-100 dark:bg-ink-800">
                   {/* baseline */}
                   <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-slate-200 dark:bg-ink-700" />
                   {lane.episodes.map((bar) => (
-                    <Link
+                    <span
                       key={`e-${bar.episodeId}`}
-                      href={episodeHref(bar.episodeId)}
                       data-testid="care-trail-bar"
                       data-episode-id={bar.episodeId}
-                      title={`${bar.situation}${
-                        bar.ongoing ? " (ongoing)" : ""
-                      }`}
+                      title={`${bar.situation}${bar.ongoing ? " (ongoing)" : ""}`}
                       className={`absolute top-1 flex h-3 items-center rounded-sm ${barTone(
                         bar.maxTempF
                       )} ${bar.ongoing ? "ring-1 ring-inset ring-white/70" : ""}`}
@@ -89,7 +87,6 @@ export default function CareTrailBand({
                     >
                       {/* linked visit markers ON the bar */}
                       {bar.visitMarkers.map((m) => {
-                        // position relative to the bar's own width
                         const rel =
                           bar.widthPct > 0
                             ? ((m.pct - bar.leftPct) / bar.widthPct) * 100
@@ -109,7 +106,7 @@ export default function CareTrailBand({
                           />
                         );
                       })}
-                    </Link>
+                    </span>
                   ))}
                   {/* course sub-bars, beneath their episode bar */}
                   {lane.episodes.flatMap((bar) =>
@@ -133,9 +130,8 @@ export default function CareTrailBand({
                   )}
                   {/* unlinked visit markers on the baseline */}
                   {lane.visitMarkers.map((m) => (
-                    <Link
+                    <span
                       key={`uv-${m.encounterId}`}
-                      href={encounterHref(m.encounterId)}
                       data-testid="care-trail-visit-marker"
                       data-linked="false"
                       title={`Visit${m.type ? ` — ${m.type}` : ""}`}

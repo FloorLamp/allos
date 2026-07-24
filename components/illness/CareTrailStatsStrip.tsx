@@ -23,16 +23,14 @@ export default function CareTrailStatsStrip({
 }) {
   if (stats.length === 0) return null;
   return (
-    <div
-      className="flex flex-wrap gap-2"
-      data-testid="care-trail-stats"
-    >
+    <div className="flex flex-wrap gap-2" data-testid="care-trail-stats">
       {stats.map((s) => {
         const subject = subjectById.get(s.profileId);
         const parts: string[] = [
           `${s.episodesThisYear} episode${s.episodesThisYear === 1 ? "" : "s"} this year`,
         ];
-        if (s.avgDurationDays != null) parts.push(`avg ${s.avgDurationDays} days`);
+        if (s.avgDurationDays != null)
+          parts.push(`avg ${s.avgDurationDays} days`);
         const last = monthName(s.lastMonth);
         if (last) parts.push(`last: ${last}`);
         return (

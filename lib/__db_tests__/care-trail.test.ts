@@ -57,7 +57,11 @@ function addEpisode(
       .run(profileId, situation, startedAt, endedAt).lastInsertRowid
   );
 }
-function linkVisit(profileId: number, episodeId: number, encounterId: number): void {
+function linkVisit(
+  profileId: number,
+  episodeId: number,
+  encounterId: number
+): void {
   db.prepare(
     `INSERT INTO episode_encounters (profile_id, episode_id, encounter_id)
      VALUES (?, ?, ?)`
@@ -107,12 +111,23 @@ describe("care-trail gather — nesting, chain, not-in-view exclusion, single-vi
     // Member A: a Cold [now-6 .. now-1] closed, with a LINKED urgent-care visit on day 2
     // (now-5) and a prescribed Amoxicillin course started the same day, prescribed by the
     // same provider (Dr. Ng) → the provable chain. Plus an UNLINKED dental visit.
-    coldId = addEpisode(a, "Cold", shiftDateStr(now, -6), shiftDateStr(now, -1));
+    coldId = addEpisode(
+      a,
+      "Cold",
+      shiftDateStr(now, -6),
+      shiftDateStr(now, -1)
+    );
     urgentCareId = addEncounter(a, shiftDateStr(now, -5), "Urgent care", ng);
     linkVisit(a, coldId, urgentCareId);
     dentalId = addEncounter(a, shiftDateStr(now, -3), "Dental");
     const amox = addMedication(a, "Amoxicillin");
-    addCourse(amox, shiftDateStr(now, -5), shiftDateStr(now, 1), "completed_course", ng);
+    addCourse(
+      amox,
+      shiftDateStr(now, -5),
+      shiftDateStr(now, 1),
+      "completed_course",
+      ng
+    );
 
     // Member B: a lone Flu, no links/courses (for the not-in-view + single-view pins).
     addEpisode(b, "Flu", shiftDateStr(now, -20), shiftDateStr(now, -16));
@@ -120,7 +135,11 @@ describe("care-trail gather — nesting, chain, not-in-view exclusion, single-vi
 
   it("nests the linked visit + course under the episode; holds the unlinked visit apart", () => {
     const gather = gatherCareTrail([a, b]);
-    const build = buildCareTrail(gather.episodes, gather.visits, gather.courses);
+    const build = buildCareTrail(
+      gather.episodes,
+      gather.visits,
+      gather.courses
+    );
 
     const cold = build.episodes.find((e) => e.episodeId === coldId)!;
     expect(cold).toBeTruthy();
@@ -145,7 +164,11 @@ describe("care-trail gather — nesting, chain, not-in-view exclusion, single-vi
 
   it("toggle: illness hides the unlinked visit; illness+visits shows it interleaved", () => {
     const gather = gatherCareTrail([a, b]);
-    const build = buildCareTrail(gather.episodes, gather.visits, gather.courses);
+    const build = buildCareTrail(
+      gather.episodes,
+      gather.visits,
+      gather.courses
+    );
 
     const illness = careTrailRows(build, "illness");
     expect(

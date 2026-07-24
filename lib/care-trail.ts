@@ -18,7 +18,10 @@
 
 import { episodeDayNumber } from "./illness-episode-format";
 import { daysBetweenDateStr } from "./date";
-import { classifyEpisodeMed, type EpisodeMedClass } from "./episode-med-reconcile";
+import {
+  classifyEpisodeMed,
+  type EpisodeMedClass,
+} from "./episode-med-reconcile";
 import { stopReasonLabel } from "./medication-history";
 import type { MedStopReason } from "./types";
 
@@ -34,6 +37,10 @@ export interface CareTrailEpisodeInput {
   dayCount: number | null;
   maxTempF: number | null;
   symptomLabels: string[];
+  // The user-owned outcome annotation, or a derived condition hint — the same field the
+  // former flat index rendered ("Self-resolved" / "Condition: …" / "Ongoing").
+  outcome: string | null;
+  promotedConditionName: string | null;
   // The episode-relative membership window (resolved per member, in its own timezone):
   // rangeStart = firstDay (null = before the change-log floor); rangeEndInclusive = the
   // last active day, or today() for an open episode. Fed straight to classifyEpisodeMed
@@ -119,6 +126,8 @@ export interface CareTrailEpisode {
   dayCount: number | null;
   maxTempF: number | null;
   symptomLabels: string[];
+  outcome: string | null;
+  promotedConditionName: string | null;
   linkedVisits: CareTrailLinkedVisit[];
   courses: CareTrailNestedCourse[];
   linkedVisitCount: number;
@@ -145,9 +154,13 @@ export const CARE_TRAIL_KINDS: readonly CareTrailKind[] = [
   "illness+visits",
 ];
 
-// Normalize an untrusted ?kind= value to the two-state toggle; default `illness`.
+// Normalize an untrusted ?kind= value to the two-state toggle; default `illness`. The URL
+// param carries `visits` for the illness+visits state (a literal `+` decodes to a space),
+// but the internal state value stays `illness+visits`.
 export function normalizeCareTrailKind(v: unknown): CareTrailKind {
-  return v === "illness+visits" ? "illness+visits" : "illness";
+  return v === "visits" || v === "illness+visits"
+    ? "illness+visits"
+    : "illness";
 }
 
 // ── Course state honesty (existing vocabulary only) ───────────────────────────
@@ -194,7 +207,9 @@ function buildEpisode(
   const linkedVisits: CareTrailLinkedVisit[] = ep.linkedEncounterIds
     .map((eid) => visitsByEncounterId.get(eid))
     .filter((v): v is CareTrailVisitInput => v != null)
-    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.encounterId - b.encounterId))
+    .sort((a, b) =>
+      a.date < b.date ? -1 : a.date > b.date ? 1 : a.encounterId - b.encounterId
+    )
     .map((v) => ({
       encounterId: v.encounterId,
       date: v.date,
@@ -256,13 +271,12 @@ function buildEpisode(
     });
   }
   // Courses in start order (earliest first) so they read down the illness narrative.
-  nestedCourses.sort(
-    (a, b) =>
-      (a.startedOn ?? "") < (b.startedOn ?? "")
-        ? -1
-        : (a.startedOn ?? "") > (b.startedOn ?? "")
-          ? 1
-          : a.courseId - b.courseId
+  nestedCourses.sort((a, b) =>
+    (a.startedOn ?? "") < (b.startedOn ?? "")
+      ? -1
+      : (a.startedOn ?? "") > (b.startedOn ?? "")
+        ? 1
+        : a.courseId - b.courseId
   );
 
   return {
@@ -276,6 +290,8 @@ function buildEpisode(
     dayCount: ep.dayCount,
     maxTempF: ep.maxTempF,
     symptomLabels: ep.symptomLabels,
+    outcome: ep.outcome,
+    promotedConditionName: ep.promotedConditionName,
     linkedVisits,
     courses: nestedCourses,
     linkedVisitCount: linkedVisits.length,
@@ -417,7 +433,8 @@ export function perMemberEpisodeStats(
       profileId,
       episodeCount: eps.length,
       episodesThisYear: eps.filter(
-        (e) => e.firstDay != null && Number(e.firstDay.slice(0, 4)) === currentYear
+        (e) =>
+          e.firstDay != null && Number(e.firstDay.slice(0, 4)) === currentYear
       ).length,
       avgDurationDays: avg == null ? null : Math.round(avg),
       lastMonth: lastDay ? lastDay.slice(0, 7) : null,

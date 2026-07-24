@@ -70,11 +70,12 @@ export const EPISODES_HREF: AppRoute = "/medical/episodes";
 // The two-state content toggle on the episodes care trail (#1373): `illness` (default —
 // episodes + their nested linked visits + courses) and `illness+visits` (adds the
 // unlinked routine visits). Kept in lib/hrefs so the toggle links stay compile-checked.
-export const CARE_TRAIL_KINDS = ["illness", "illness+visits"] as const;
-export type CareTrailKindParam = (typeof CARE_TRAIL_KINDS)[number];
-
-export function episodesKindHref(kind: CareTrailKindParam): AppRoute {
-  return kind === "illness" ? "/medical/episodes" : `/medical/episodes?kind=${kind}`;
+// The URL param value for the second state is `visits` (NOT `illness+visits`): a literal
+// `+` in a query string decodes to a SPACE, so the readable value stays URL-safe.
+export function episodesKindHref(kind: "illness" | "illness+visits"): AppRoute {
+  return kind === "illness"
+    ? "/medical/episodes"
+    : "/medical/episodes?kind=visits";
 }
 
 // The mental-health instrument surface (#716) — PHQ-9/GAD-7 scores. Lives on the

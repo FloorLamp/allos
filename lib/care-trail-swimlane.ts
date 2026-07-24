@@ -63,10 +63,7 @@ export interface Swimlane {
 
 // A date's fractional position (0–100) across the window, or null when it falls outside
 // [start, end]. A minimum-width bar handles a same-day (start === end) window defensively.
-function datePct(
-  date: string | null,
-  win: SwimlaneWindow
-): number | null {
+function datePct(date: string | null, win: SwimlaneWindow): number | null {
   if (!date) return null;
   if (date < win.start || date > win.end) return null;
   if (win.spanDays <= 0) return 0;

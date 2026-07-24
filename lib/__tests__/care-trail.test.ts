@@ -30,6 +30,8 @@ const episode: CareTrailEpisodeInput = {
   dayCount: 7,
   maxTempF: 101.2,
   symptomLabels: ["cough", "congestion"],
+  outcome: null,
+  promotedConditionName: null,
   rangeStart: "2026-06-01",
   rangeEndInclusive: "2026-06-07",
   linkedEncounterIds: [200],
@@ -81,6 +83,9 @@ describe("normalizeCareTrailKind", () => {
     expect(normalizeCareTrailKind(undefined)).toBe("illness");
     expect(normalizeCareTrailKind("garbage")).toBe("illness");
     expect(normalizeCareTrailKind("illness")).toBe("illness");
+    // The URL param `visits` (+ decodes to space, so `illness+visits` isn't URL-safe)
+    // maps to the illness+visits state; the internal value still round-trips too.
+    expect(normalizeCareTrailKind("visits")).toBe("illness+visits");
     expect(normalizeCareTrailKind("illness+visits")).toBe("illness+visits");
   });
 });
@@ -123,11 +128,7 @@ describe("buildCareTrail", () => {
   });
 
   it("nests a course by classifyEpisodeMed membership with the chain match + overhang", () => {
-    const build = buildCareTrail(
-      [episode],
-      [linkedVisit],
-      [amoxCourse]
-    );
+    const build = buildCareTrail([episode], [linkedVisit], [amoxCourse]);
     const ep = build.episodes[0];
     expect(ep.courses).toHaveLength(1);
     const c = ep.courses[0];
@@ -167,11 +168,7 @@ describe("buildCareTrail", () => {
       rangeEndInclusive: "2026-06-08",
       linkedEncounterIds: [200],
     };
-    const build = buildCareTrail(
-      [episode, secondEpisode],
-      [linkedVisit],
-      []
-    );
+    const build = buildCareTrail([episode, secondEpisode], [linkedVisit], []);
     const byId = new Map(build.episodes.map((e) => [e.episodeId, e]));
     expect(byId.get(100)!.linkedVisits[0].dayNumber).toBe(2); // Jun 2 of a Jun-1 episode
     expect(byId.get(101)!.linkedVisits[0].dayNumber).toBe(1); // Jun 2 of a Jun-2 episode
@@ -214,11 +211,7 @@ describe("course membership == classifyEpisodeMed (one computation)", () => {
 
 describe("careTrailRows toggle", () => {
   it("illness = episodes only (linked visits stay nested); illness+visits adds unlinked", () => {
-    const build = buildCareTrail(
-      [episode],
-      [linkedVisit, unlinkedVisit],
-      []
-    );
+    const build = buildCareTrail([episode], [linkedVisit, unlinkedVisit], []);
     const illness = careTrailRows(build, "illness");
     expect(illness.map((r) => r.kind)).toEqual(["episode"]);
     // the linked visit never becomes a standalone row in either mode

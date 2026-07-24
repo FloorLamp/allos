@@ -24,6 +24,8 @@ function episode(
     dayCount: 7,
     maxTempF: 101,
     symptomLabels: [],
+    outcome: null,
+    promotedConditionName: null,
     rangeStart: "2026-06-01",
     rangeEndInclusive: "2026-06-07",
     linkedEncounterIds: [],

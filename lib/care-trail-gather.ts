@@ -138,6 +138,8 @@ export function gatherCareTrail(profileIds: number[]): CareTrailGather {
         dayCount: e.dayCount,
         maxTempF: e.maxTempF,
         symptomLabels: e.symptomLabels,
+        outcome: e.outcome,
+        promotedConditionName: e.promotedConditionName,
         rangeStart: e.firstDay,
         rangeEndInclusive,
         linkedEncounterIds: linkedEncounterIdsForEpisode(pid, e.id),
