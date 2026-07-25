@@ -12,7 +12,7 @@ import { db } from "@/lib/db";
 import { MAX_AVATAR_BYTES, MIME_TO_EXT, PHOTO_ROOT } from "@/lib/profile-photo";
 
 // Profile avatar upload/remove — one pair of actions serving two surfaces:
-// Settings → Profile (operates on the caller's ACTIVE profile) and the Family
+// Settings → Health profile (operates on the caller's ACTIVE profile) and the Family
 // admin page (an admin picks any profile via a hidden profileId field). The
 // scoping rule is explicit: a plain session may only target its own active
 // profile; only an admin may target a different profileId. A member-submitted

@@ -7,7 +7,7 @@ import { useSaveStatus } from "@/components/useSaveStatus";
 
 // The crisis-resources config editor (issue #996), used for BOTH the global
 // instance default (Settings → Server, admin) and the per-profile override
-// (Settings → Profile). One resource per line as "Label | contact" (or just
+// (Settings → Privacy). One resource per line as "Label | contact" (or just
 // "contact"); blank clears the list. Autosaves on blur (the Settings-card pattern),
 // submitting the raw text — the server action parses/normalizes it. The parent
 // passes the tier-appropriate action, so this component stays auth-blind.

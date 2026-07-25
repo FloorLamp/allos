@@ -169,7 +169,7 @@ requires Secure. The cookie stays `HttpOnly` + `SameSite=Lax`.
 ### Two-factor authentication (TOTP)
 
 Each login may optionally enable **TOTP two-factor authentication** (RFC 6238:
-30-second step, 6 digits, SHA-1) under **Settings → Preferences**. Enrollment
+30-second step, 6 digits, SHA-1) under **Settings → Account & security**. Enrollment
 generates a secret shown as an `otpauth://` URI + manual base32 key; the login
 must verify one code to activate, at which point **8 one-time recovery codes** are
 shown **once**. 2FA is strongly recommended for admins.

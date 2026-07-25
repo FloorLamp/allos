@@ -38,10 +38,10 @@ export default async function TrainingZonesSection() {
 
         {!model ? (
           <EmptyState
-            message="Set your age (or a max-HR override) in Settings → Profile to draw your heart-rate zones."
+            message="Set your age (or a max-HR override) in Settings → Training to draw your heart-rate zones."
             action={{
               href: "/settings/training",
-              label: "Go to Settings → Profile",
+              label: "Go to Settings → Training",
             }}
           />
         ) : (
@@ -153,7 +153,7 @@ export default async function TrainingZonesSection() {
                   href="/settings/training"
                   className="font-medium text-brand-700 hover:underline dark:text-brand-300"
                 >
-                  Settings → Profile
+                  Settings → Training
                 </Link>{" "}
                 if you know yours.
               </p>
