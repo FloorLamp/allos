@@ -104,6 +104,13 @@ export function intakeHref(kind: SupplementKind): AppRoute {
 // Query-rule helpers
 // --------------------------------------------------------------------------
 
+// The biomarkers LIST route: where `biomarkerViewHref` falls back when there is
+// no canonical name to chart, and (since #1447) where a PARAMLESS
+// /biomarkers/view redirects — that route can only render a degenerate empty
+// page, and this helper already owns "no name ⇒ the list". One constant so the
+// link rule and the redirect can never point at different places.
+export const BIOMARKERS_LIST_HREF: AppRoute = "/results/biomarkers";
+
 // Deep-link to a biomarker's chart on /biomarkers/view, or the list when there's
 // nothing to chart. The RULE (was duplicated, wrong in one place — #283 bug 5):
 // the view page resolves `?name=` as the CANONICAL name, so only a canonicalized
@@ -123,7 +130,7 @@ export function biomarkerViewHref(
   const name = canonical || rawName?.trim();
   return canonical && name
     ? `/biomarkers/view?name=${encodeURIComponent(name)}`
-    : "/results/biomarkers";
+    : BIOMARKERS_LIST_HREF;
 }
 
 // The biomarker ADD-FORM deep link: Results › Biomarkers with the add form

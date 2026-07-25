@@ -274,9 +274,9 @@ export default function CalendarFeedConfig({
             ))}
           </div>
           <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-            <strong>Minimal</strong> (recommended): each event is just
-            &ldquo;Medical appointment&rdquo; (plus location) — no provider or
-            reason leaves this app.
+            <strong>Minimal</strong> (recommended): each event is just “Medical
+            appointment” (plus location) — no provider or reason leaves this
+            app.
           </p>
           {curDetail === "full" && (
             <p className="mt-1 flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">

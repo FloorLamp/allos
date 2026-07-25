@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import type { ErrorEvent } from "@/lib/error-log-format";
+import { countLabel } from "@/lib/plural";
 import ScrollFade from "@/components/ScrollFade";
 
 function fmtTime(iso: string): string {
@@ -27,7 +28,7 @@ export default function ErrorLogTable({
   return (
     <div data-testid="error-log">
       <div className="mb-2 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-        <span className="ml-auto">{events.length} errors</span>
+        <span className="ml-auto">{countLabel(events.length, "error")}</span>
         {events.length > 0 &&
           (confirming ? (
             <span className="flex items-center gap-2">

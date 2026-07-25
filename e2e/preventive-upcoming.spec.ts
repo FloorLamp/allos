@@ -223,9 +223,11 @@ test.describe("preventive care in Upcoming (issues #82 + #86 + #85)", () => {
     const screening = main.getByTestId(SCREENING_KEY);
     await expect(screening).toBeVisible();
 
-    // Open the row's override menu (the shared OverflowMenu popover, portaled to
-    // <body> — #281) and choose "Not applicable" from the page-level menu.
-    await screening.getByLabel("Not applicable or declined").click();
+    // Open the row's ONE overflow menu (#1446 merged the preventive overrides into
+    // it, so there is no separate "Not applicable or declined" kebab) — the shared
+    // OverflowMenu popover, portaled to <body> (#281) — and choose "Not applicable"
+    // from the page-level menu.
+    await screening.getByLabel("More actions").click();
     await page
       .getByRole("menu")
       .getByRole("menuitem", { name: "Not applicable" })
@@ -246,9 +248,10 @@ test.describe("preventive care in Upcoming (issues #82 + #86 + #85)", () => {
     await expect(depression).toBeVisible();
     await expect(depression).toContainText("Depression screening");
 
-    // Declining it (the override affordance) hides it and it stays hidden. The
-    // menu panel is portaled to <body> (#281), so locate it page-level.
-    await depression.getByLabel("Not applicable or declined").click();
+    // Declining it (the override affordance, now inside the row's single overflow
+    // menu — #1446) hides it and it stays hidden. The menu panel is portaled to
+    // <body> (#281), so locate it page-level.
+    await depression.getByLabel("More actions").click();
     await page
       .getByRole("menu")
       .getByRole("menuitem", { name: "Declined" })

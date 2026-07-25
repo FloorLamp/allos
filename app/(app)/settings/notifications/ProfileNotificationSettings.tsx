@@ -193,8 +193,9 @@ export default function ProfileNotificationSettings({
         <div className="border-t border-black/5 pt-5 dark:border-white/5">
           <label className="label">Schedule</label>
           <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
-            Run <code>npm run notify</code> hourly (cron); each slot sends at
-            its hour (this profile’s timezone).
+            Reminders go out on the hour, in this profile’s timezone — pick the
+            slots you want. They start arriving once your server’s hourly
+            reminder schedule is set up.
           </p>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-2">
             {(["Morning", "Midday", "Evening", "Bedtime"] as SuppWindow[]).map(

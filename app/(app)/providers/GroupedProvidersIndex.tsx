@@ -10,6 +10,7 @@ import {
   IconArchive,
 } from "@tabler/icons-react";
 import type { DirectoryProvider, GroupedDirectory } from "@/lib/queries";
+import { providersEmptyMessage } from "@/lib/providers";
 
 // The grouped, activity-aware provider directory (issue #1055): organizations as
 // cards with their affiliated individuals nested, unaffiliated individuals in their
@@ -93,7 +94,7 @@ export default function GroupedProvidersIndex({
           ) : null}
         </div>
       ) : (
-        <FlatList providers={flatFiltered} />
+        <FlatList providers={flatFiltered} hasQuery={needle.length > 0} />
       )}
 
       {directory.archivedCount > 0 ? (
@@ -123,12 +124,20 @@ export default function GroupedProvidersIndex({
   );
 }
 
-function FlatList({ providers }: { providers: DirectoryProvider[] }) {
+function FlatList({
+  providers,
+  hasQuery,
+}: {
+  providers: DirectoryProvider[];
+  hasQuery: boolean;
+}) {
   if (providers.length === 0) {
     return (
-      <p className="rounded-xl border border-dashed border-black/10 p-10 text-center text-sm text-slate-500 dark:border-white/10 dark:text-slate-400">
-        No providers match. They’re added automatically when you import a health
-        record’s care team.
+      <p
+        data-testid="provider-empty"
+        className="rounded-xl border border-dashed border-black/10 p-10 text-center text-sm text-slate-500 dark:border-white/10 dark:text-slate-400"
+      >
+        {providersEmptyMessage(hasQuery)}
       </p>
     );
   }

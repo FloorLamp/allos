@@ -34,8 +34,8 @@ export default function CalendarFeedPreview({
           ) : (
             <>
               At <strong>minimal</strong> detail each event shows only a neutral
-              label (e.g. &ldquo;Medical appointment&rdquo;) — no names,
-              provider, or reason leave the app.
+              label (e.g. “Medical appointment”) — no names, provider, or reason
+              leave the app.
             </>
           )}
         </p>
