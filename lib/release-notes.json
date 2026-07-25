@@ -4,6 +4,27 @@
       "date": "2026-07-25",
       "entries": [
         {
+          "pr": 1476,
+          "title": "Quick-log never takes you away",
+          "body": "Every item on the mobile quick-log sheet — food, dose, weight, and now vitals — opens its form right where you are and returns you there after saving, instead of navigating you to another page mid-check. The dose option shows today's due doses with one-tap confirms that answer honestly (a dose someone else already marked, or a paused medication, says so instead of claiming \"logged\"). Confirmation dialogs now rise as thumb-reachable sheets on phones, and the installed app gains pull-to-refresh.",
+          "kind": "feature",
+          "issues": [1428, 1468, 1467]
+        },
+        {
+          "pr": 1477,
+          "title": "Vitals: today at a glance, and a real 1D view",
+          "body": "Trends → Vitals now leads with a Today strip — your latest readings with their times, linking to the day's timeline — and gains a 1D option that swaps the charts to a true intraday view: your minute-by-minute heart rate edge-to-edge on a phone (wear gaps shown as gaps, never bridged), with blood-pressure and oxygen readings placed at their actual clock times. The quick-add forms collapse to a \"+ Log vitals\" chip on mobile, taking the first chart from two screens down to inside the opening view.",
+          "kind": "feature",
+          "issues": [1466]
+        },
+        {
+          "pr": 1475,
+          "title": "Charts you can actually tell apart",
+          "body": "The chart palette was rebuilt against real accessibility math — the two nearly-identical greens are gone (one is now a clear blue), warm colors darkened for contrast, and every future palette edit is auto-checked in CI for colorblind separation and contrast in both themes. Charts lose the gray default-grid look (quieter axes, dots only where they help, legends on every multi-series chart), heatmap calendars share one blessed color ramp, mini trend tiles become true sparklines with their range as text, and chart motion is a single quick draw-in that fully respects reduced-motion.",
+          "kind": "feature",
+          "issues": [1445]
+        },
+        {
           "pr": 1471,
           "title": "The dashboard learns what time it is",
           "body": "A compact \"Now\" strip tops the dashboard with the one or two of your existing cards that matter this minute — last night's sleep in the morning after your typical wake time, the workout recap in the hour after a session, nutrition around your mealtimes, the evening check-in while it's still unlogged. It promotes cards you already show (never one you've hidden), stays empty when nothing is timely, and your own grid order below is untouched. The \"Needs attention\" hero can now be collapsed to a one-line count on your phone — it always stays present with its count, and a day carrying a safety item (a missed critical dose) refuses to collapse at all.",
