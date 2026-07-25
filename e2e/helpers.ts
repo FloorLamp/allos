@@ -216,6 +216,45 @@ export async function settledCheck(
   }).toPass({ timeout });
 }
 
+// Click a pure CLIENT TOGGLE exactly once, after React has hydrated it — the
+// button analog of settledFill/settledCheck.
+//
+// Decision-tree case 3 covers most client-only clicks: assert the effect with a
+// retrying `expect` and you're done. This helper is for the sub-case where the
+// click itself can be LOST: a tap dispatched before React attaches the button's
+// `onClick` (the #500/#830 hydration window, widened under `--workers>1`/CI load)
+// does nothing at all, and there is no POST to await and no URL to watch, so a
+// following `expect` just times out.
+//
+// openMobileDrawer solves that by RE-TAPPING until the drawer mounts, which is
+// only safe because its hamburger sets `open` TRUE and never toggles. A real
+// TOGGLE (the #1455 "Custom…" pill, the digest's "Show all N") flips state, so a
+// second tap UNDOES the first — a retry loop there is a coin flip. Instead: wait
+// for the hydration markers React attaches to the DOM node, then click ONCE.
+//
+// WORKS for a client-state button whose effect is a re-render (a disclosure, an
+// expander). For a click that fires a Server Action use settledClick; for one that
+// navigates use followLink.
+export async function hydratedClick(
+  page: Page,
+  button: Locator,
+  opts: { timeout?: number } = {}
+): Promise<void> {
+  const timeout = opts.timeout ?? 10_000;
+  await expect(button).toBeVisible();
+  await expect(async () => {
+    const hydrated = await button.evaluate((el) =>
+      Object.keys(el).some(
+        (k) => k.startsWith("__reactFiber$") || k.startsWith("__reactProps$")
+      )
+    );
+    // Not hydrated yet → toPass retries the PROBE only; the click below runs once,
+    // after the handler is attached, so the toggle can never be double-fired.
+    expect(hydrated, "button not hydrated yet").toBe(true);
+  }).toPass({ timeout }); // topass-ok: polls for React's hydration markers on this node — a state, not an interaction; the click stays outside the loop so a toggle is never fired twice
+  await button.click();
+}
+
 // Follow a Next.js <Link> reliably, retrying the click until the client router
 // actually commits the navigation.
 //

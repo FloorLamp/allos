@@ -3,6 +3,7 @@ import { today } from "@/lib/db";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import { getTrendViews } from "@/lib/settings";
 import {
+  isCustomRange,
   normalizeTimelineRange,
   timelineDateFromParam,
   type DateRange,
@@ -201,7 +202,7 @@ export default async function TrendsPage(props: {
         subtitle="Your analytics lens — body, nutrition, fitness, and insights under one date range."
       />
 
-      <div className="mb-6 space-y-2 sm:space-y-4">
+      <div className="mb-6">
         <DateRangeControl
           basePath="/trends"
           range={range}
@@ -215,13 +216,19 @@ export default async function TrendsPage(props: {
           }}
           buildHref={buildRangeHref}
           idPrefix="trends"
+          // The saved views ride the END of the chip row rather than a second
+          // full-width row of their own (#1455 C).
+          trailingChips={<SavedViewsBar views={savedViews} />}
+          // Only a CUSTOM window needs a summary chip: with a preset lit, the chip
+          // just repeats that pill's own label (the duplicate "All time" — #1455 D).
           rightSlot={
-            <span className="whitespace-nowrap rounded-full border border-black/10 bg-white/60 px-3 py-1 text-slate-500 dark:border-white/10 dark:bg-ink-900/60 dark:text-slate-400">
-              {rangeSummaryLabel(range, todayStr)}
-            </span>
+            isCustomRange(range, todayStr) ? (
+              <span className="whitespace-nowrap rounded-full border border-black/10 bg-white/60 px-3 py-1 text-slate-500 dark:border-white/10 dark:bg-ink-900/60 dark:text-slate-400">
+                {rangeSummaryLabel(range, todayStr)}
+              </span>
+            ) : undefined
           }
         />
-        <SavedViewsBar views={savedViews} />
       </div>
 
       <NavTabs paramKey="tab" tabs={tabStrip}>

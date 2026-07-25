@@ -3,10 +3,16 @@ import type { ComponentType, ReactNode } from "react";
 import DateField from "./DateField";
 import {
   isAllTimeRange,
+  isCustomRange,
   isQuickRangeActive,
   quickRanges,
   type DateRange,
 } from "@/lib/timeline-format";
+import {
+  CustomRangeDisclosure,
+  CustomRangePanel,
+  CustomRangeToggle,
+} from "./CustomRangeDisclosure";
 import type { AppRoute } from "@/lib/hrefs";
 
 // A link that takes {href, className, children}. Defaults to next/link's Link;
@@ -41,7 +47,13 @@ function rangePillClass(active: boolean): string {
 // from/to back to `basePath` (carrying `hiddenParams` — the Timeline's category,
 // the hub's active tab), plus 7D/30D/90D/All-time quick-range pills built through
 // `buildHref` so each surface preserves its own extra params. `rightSlot` holds
-// surface-specific extras (the Timeline's Through/Latest/Oldest affordances).
+// surface-specific extras (the Timeline's Through/Latest/Oldest affordances) and
+// `trailingChips` rides the END of the chip row (the Trends hub's saved views).
+//
+// Mobile (#1455): below `sm` the chip row is the PRIMARY control — it renders
+// first and the From/To card collapses behind its "Custom…" pill (open by default
+// when the active window is custom, so a shared URL still shows its dates). From
+// `sm` up the layout is unchanged: card first, chip row under it, no toggle.
 export default function DateRangeControl({
   basePath,
   range,
@@ -50,6 +62,7 @@ export default function DateRangeControl({
   buildHref,
   LinkComponent = DefaultLink,
   rightSlot,
+  trailingChips,
   idPrefix = "range",
 }: {
   basePath: string;
@@ -59,79 +72,99 @@ export default function DateRangeControl({
   buildHref: (range: DateRange) => AppRoute;
   LinkComponent?: LinkLike;
   rightSlot?: ReactNode;
+  trailingChips?: ReactNode;
   idPrefix?: string;
 }) {
   const qrs = quickRanges(todayStr);
+  // The one predicate behind both the default-open panel and the "Custom…" pill's
+  // lit state (and, at the call sites, the range-summary chip) — lib/timeline-format.
+  const customActive = isCustomRange(range, todayStr);
   return (
-    <div className="space-y-2 sm:space-y-4">
-      <form
-        action={basePath}
-        className="card grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2 p-2 sm:grid-cols-[1fr_1fr_auto_auto] sm:gap-3 sm:p-4"
-      >
-        {Object.entries(hiddenParams).map(([k, v]) =>
-          v ? <input key={k} type="hidden" name={k} value={v} /> : null
-        )}
-        <div>
-          <label className="label" htmlFor={`${idPrefix}-from`}>
-            From
-          </label>
-          <DateField
-            key={`from-${range.from ?? ""}`}
-            id={`${idPrefix}-from`}
-            name="from"
-            defaultValue={range.from ?? ""}
-          />
-        </div>
-        <div>
-          <label className="label" htmlFor={`${idPrefix}-to`}>
-            To
-          </label>
-          <DateField
-            key={`to-${range.to ?? ""}`}
-            id={`${idPrefix}-to`}
-            name="to"
-            defaultValue={range.to ?? ""}
-          />
-        </div>
-        <div className="flex items-end">
-          <button type="submit" className="btn h-10 px-3 sm:w-full">
-            Apply
-          </button>
-        </div>
-        <div className="col-span-3 flex items-end sm:col-span-1">
-          <Link
-            href={buildHref({})}
-            className="btn-ghost w-full py-1.5 text-center sm:py-2"
+    // `gap`, not `space-y`: the two rows swap visual order below `sm` via `order-*`,
+    // and space-y's `> * + *` margin follows DOM order, so it would land the gap on
+    // whichever row renders SECOND in the markup — i.e. above the visually-first
+    // row on a phone.
+    <div className="flex flex-col gap-2 sm:gap-4">
+      <CustomRangeDisclosure defaultOpen={customActive} idPrefix={idPrefix}>
+        <CustomRangePanel className="order-2 sm:order-1">
+          <form
+            action={basePath}
+            className="card grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2 p-2 sm:grid-cols-[1fr_1fr_auto_auto] sm:gap-3 sm:p-4"
           >
-            Clear dates
-          </Link>
-        </div>
-      </form>
+            {Object.entries(hiddenParams).map(([k, v]) =>
+              v ? <input key={k} type="hidden" name={k} value={v} /> : null
+            )}
+            <div>
+              <label className="label" htmlFor={`${idPrefix}-from`}>
+                From
+              </label>
+              <DateField
+                key={`from-${range.from ?? ""}`}
+                id={`${idPrefix}-from`}
+                name="from"
+                defaultValue={range.from ?? ""}
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor={`${idPrefix}-to`}>
+                To
+              </label>
+              <DateField
+                key={`to-${range.to ?? ""}`}
+                id={`${idPrefix}-to`}
+                name="to"
+                defaultValue={range.to ?? ""}
+              />
+            </div>
+            <div className="flex items-end">
+              <button type="submit" className="btn h-10 px-3 sm:w-full">
+                Apply
+              </button>
+            </div>
+            <div className="col-span-3 flex items-end sm:col-span-1">
+              <Link
+                href={buildHref({})}
+                className="btn-ghost w-full py-1.5 text-center sm:py-2"
+              >
+                Clear dates
+              </Link>
+            </div>
+          </form>
+        </CustomRangePanel>
 
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:justify-between sm:overflow-visible sm:pb-0">
-        <div className="flex shrink-0 gap-2 sm:flex-wrap">
-          {qrs.map((qr) => (
+        {/* The chip row. One horizontally-scrolling row on a phone: quick ranges,
+            the "Custom…" toggle, then whatever the surface hangs off the end
+            (the Trends hub's saved views — #1455 C, so they stop costing a second
+            full-width row). It wraps normally from `sm` up. */}
+        <div className="order-1 flex items-center gap-2 overflow-x-auto pb-1 sm:order-2 sm:flex-wrap sm:justify-between sm:overflow-visible sm:pb-0">
+          <div className="flex shrink-0 items-center gap-2 sm:flex-wrap">
+            {qrs.map((qr) => (
+              <LinkComponent
+                key={qr.label}
+                href={buildHref({ from: qr.from, to: qr.to })}
+                className={rangePillClass(isQuickRangeActive(range, qr))}
+              >
+                {qr.label}
+              </LinkComponent>
+            ))}
             <LinkComponent
-              key={qr.label}
-              href={buildHref({ from: qr.from, to: qr.to })}
-              className={rangePillClass(isQuickRangeActive(range, qr))}
+              href={buildHref({})}
+              className={rangePillClass(isAllTimeRange(range))}
             >
-              {qr.label}
+              All time
             </LinkComponent>
-          ))}
-          <LinkComponent
-            href={buildHref({})}
-            className={rangePillClass(isAllTimeRange(range))}
-          >
-            All time
-          </LinkComponent>
-        </div>
-        {rightSlot && (
-          <div className="ml-auto flex shrink-0 items-center gap-2 text-sm">
-            {rightSlot}
+            <CustomRangeToggle
+              className={`shrink-0 sm:hidden ${rangePillClass(customActive)}`}
+            />
+            {trailingChips}
           </div>
-        )}
-      </div>
+          {rightSlot && (
+            <div className="ml-auto flex shrink-0 items-center gap-2 text-sm">
+              {rightSlot}
+            </div>
+          )}
+        </div>
+      </CustomRangeDisclosure>
     </div>
   );
 }

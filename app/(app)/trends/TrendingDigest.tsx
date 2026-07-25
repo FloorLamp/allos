@@ -13,13 +13,22 @@ import { getFindingSuppressions } from "@/lib/queries";
 import { activeByKey, digestDedupeKey } from "@/lib/findings";
 import type { DateRange } from "@/lib/timeline-format";
 import { dismissDigest } from "./actions";
+import DigestOverflow from "./DigestOverflow";
 import { biomarkerViewHref, type AppRoute } from "@/lib/hrefs";
+
+// How many ranked movers render inline before the "show all N" disclosure (#1455).
+const LEAD_CHIPS = 3;
 
 // "What's trending" digest for the Trends Overview. Feeds
 // every candidate series (metrics + biomarkers, windowed to the shared range) to
 // the pure summarizeTrends, which flags the ones that actually moved (or crossed a
 // reference range) and ranks them. Renders the top few as compact chips. Nothing
 // renders when nothing is meaningfully moving.
+//
+// #1455 B: the card shows the TOP THREE inline and puts the rest behind a
+// "Show all N" disclosure. The list is already ranked, so the leading three are
+// the ones worth the phone screen; the full set stays one tap away, and the
+// charts below move up by the ~4 chip-rows this used to spend.
 export default async function TrendingDigest({ range }: { range: DateRange }) {
   const { login, profile } = await requireSession();
   const restricted = isTrainingRestricted(profile.id);
@@ -49,8 +58,61 @@ export default async function TrendingDigest({ range }: { range: DateRange }) {
     return "border-slate-200 bg-white/70 text-slate-700 dark:border-white/10 dark:bg-ink-900/70 dark:text-slate-200";
   };
 
+  const renderChip = (item: TrendItem) => {
+    const href = hrefFor(item);
+    const Arrow =
+      item.direction === "up" ? IconArrowUpRight : IconArrowDownRight;
+    const inner = (
+      <span
+        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium transition ${toneClass(
+          item
+        )}`}
+      >
+        <Arrow className="h-3.5 w-3.5 shrink-0" stroke={2} />
+        {item.text}
+      </span>
+    );
+    return (
+      <span key={item.key} className="inline-flex items-center gap-1">
+        {href ? (
+          <Link href={href} className="hover:opacity-80">
+            {inner}
+          </Link>
+        ) : (
+          inner
+        )}
+        {/* Dismiss this chip (findings bus, #39). */}
+        <form
+          action={async (fd) => {
+            "use server";
+            await dismissDigest(fd);
+          }}
+        >
+          <input
+            type="hidden"
+            name="dedupe_key"
+            value={digestDedupeKey(item)}
+          />
+          <button
+            type="submit"
+            data-testid="digest-dismiss"
+            aria-label={`Dismiss ${item.label} trend`}
+            title="Dismiss"
+            className="flex h-5 w-5 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-ink-750 dark:hover:text-slate-300"
+          >
+            <IconX className="h-3.5 w-3.5" stroke={2} />
+          </button>
+        </form>
+      </span>
+    );
+  };
+
+  // Lead with the top-ranked few; the rest ride the disclosure (#1455 B).
+  const lead = items.slice(0, LEAD_CHIPS);
+  const overflow = items.slice(LEAD_CHIPS);
+
   return (
-    <div className="card">
+    <div className="card" data-testid="trending-digest">
       <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
         What&rsquo;s trending{" "}
         <span className="font-normal text-slate-500 dark:text-slate-400">
@@ -58,54 +120,12 @@ export default async function TrendingDigest({ range }: { range: DateRange }) {
         </span>
       </h2>
       <div className="flex flex-wrap gap-2">
-        {items.map((item) => {
-          const href = hrefFor(item);
-          const Arrow =
-            item.direction === "up" ? IconArrowUpRight : IconArrowDownRight;
-          const inner = (
-            <span
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium transition ${toneClass(
-                item
-              )}`}
-            >
-              <Arrow className="h-3.5 w-3.5 shrink-0" stroke={2} />
-              {item.text}
-            </span>
-          );
-          return (
-            <span key={item.key} className="inline-flex items-center gap-1">
-              {href ? (
-                <Link href={href} className="hover:opacity-80">
-                  {inner}
-                </Link>
-              ) : (
-                inner
-              )}
-              {/* Dismiss this chip (findings bus, #39). */}
-              <form
-                action={async (fd) => {
-                  "use server";
-                  await dismissDigest(fd);
-                }}
-              >
-                <input
-                  type="hidden"
-                  name="dedupe_key"
-                  value={digestDedupeKey(item)}
-                />
-                <button
-                  type="submit"
-                  data-testid="digest-dismiss"
-                  aria-label={`Dismiss ${item.label} trend`}
-                  title="Dismiss"
-                  className="flex h-5 w-5 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-400 dark:hover:bg-ink-750 dark:hover:text-slate-300"
-                >
-                  <IconX className="h-3.5 w-3.5" stroke={2} />
-                </button>
-              </form>
-            </span>
-          );
-        })}
+        {lead.map(renderChip)}
+        {overflow.length > 0 && (
+          <DigestOverflow total={items.length}>
+            {overflow.map(renderChip)}
+          </DigestOverflow>
+        )}
       </div>
     </div>
   );

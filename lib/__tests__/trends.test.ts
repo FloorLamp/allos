@@ -6,6 +6,7 @@ import {
 } from "../trends";
 import {
   isAllTimeRange,
+  isCustomRange,
   isQuickRangeActive,
   quickRanges,
 } from "../timeline-format";
@@ -135,5 +136,38 @@ describe("quick-range vocabulary (shared with the Timeline)", () => {
     expect(isAllTimeRange({})).toBe(true);
     expect(isAllTimeRange({ from: today })).toBe(false);
     expect(isAllTimeRange({ to: today })).toBe(false);
+  });
+
+  // The ONE predicate behind both the mobile From/To panel's default-open state
+  // and the range-summary chip's visibility (#1455 A + D) — a window no chip in
+  // the row already names.
+  describe("isCustomRange", () => {
+    it("is false for every window a pill already names", () => {
+      expect(isCustomRange({}, today)).toBe(false); // All time
+      for (const qr of quickRanges(today)) {
+        expect(isCustomRange({ from: qr.from, to: qr.to }, today)).toBe(false);
+      }
+    });
+
+    it("is true for a hand-picked window", () => {
+      expect(
+        isCustomRange({ from: "2026-01-01", to: "2026-02-01" }, today)
+      ).toBe(true);
+    });
+
+    it("is true for a half-open window, which no pill can express", () => {
+      const [seven] = quickRanges(today);
+      expect(isCustomRange({ from: seven.from }, today)).toBe(true);
+      expect(isCustomRange({ to: today }, today)).toBe(true);
+    });
+
+    it("follows today, so yesterday's 7D window reads as custom", () => {
+      const [seven] = quickRanges(today);
+      // Same bounds, a day later: the pill now means a different window, so the
+      // stored one is custom and its dates must stay visible.
+      expect(
+        isCustomRange({ from: seven.from, to: seven.to }, "2026-07-09")
+      ).toBe(true);
+    });
   });
 });

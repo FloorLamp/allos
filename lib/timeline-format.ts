@@ -316,6 +316,20 @@ export function isAllTimeRange(range: DateRange): boolean {
   return !range.from && !range.to;
 }
 
+// Whether `range` is a CUSTOM window — one that no chip in the row already names:
+// not "All time" and not an exact quick-range match. Two surfaces ask this same
+// question and must never drift (#1455), so it lives here once:
+//   • DateRangeControl opens its collapsed mobile From/To panel by default when
+//     the active window is custom, so a shared ?from=/?to= URL still shows its
+//     dates instead of hiding them behind the "Custom…" pill.
+//   • The Trends hub + metric pages render the `rangeSummaryLabel` chip ONLY for a
+//     custom window — with a preset active the chip just repeats the lit pill's
+//     own label (the duplicate "All time" chip).
+export function isCustomRange(range: DateRange, todayStr: string): boolean {
+  if (isAllTimeRange(range)) return false;
+  return !quickRanges(todayStr).some((qr) => isQuickRangeActive(range, qr));
+}
+
 // ---------------------------------------------------------------------------
 // Pure event-shaping helpers (extracted from lib/timeline.ts so they can be unit
 // tested without a DB). timeline.ts imports these to build TimelineEvents.

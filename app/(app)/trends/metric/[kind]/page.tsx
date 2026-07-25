@@ -27,6 +27,7 @@ import {
 import { projectGoal, describeEta } from "@/lib/trend-projection";
 import { isGoalLive } from "@/lib/goals";
 import {
+  isCustomRange,
   normalizeTimelineRange,
   timelineDateFromParam,
   type DateRange,
@@ -299,10 +300,14 @@ export default async function BodyMetricDetailPage(props: {
         todayStr={todayStr}
         buildHref={rangeHref}
         idPrefix="metric"
+        // Summary chip only for a CUSTOM window — with a preset pill lit it just
+        // repeats that pill's label (#1455 D).
         rightSlot={
-          <span className="whitespace-nowrap rounded-full border border-black/10 bg-white/60 px-3 py-1 text-slate-500 dark:border-white/10 dark:bg-ink-900/60 dark:text-slate-400">
-            {rangeSummaryLabel(range, todayStr)}
-          </span>
+          isCustomRange(range, todayStr) ? (
+            <span className="whitespace-nowrap rounded-full border border-black/10 bg-white/60 px-3 py-1 text-slate-500 dark:border-white/10 dark:bg-ink-900/60 dark:text-slate-400">
+              {rangeSummaryLabel(range, todayStr)}
+            </span>
+          ) : undefined
         }
       />
 
