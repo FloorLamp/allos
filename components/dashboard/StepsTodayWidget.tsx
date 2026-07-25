@@ -51,7 +51,6 @@ export default function StepsTodayWidget({
                 server renders, so nothing downstream ever reads a partial. */}
             <CountUpNumber
               value={today}
-              format={(n) => n.toLocaleString("en-US")}
               className="text-2xl font-bold tabular-nums text-slate-800 dark:text-slate-100"
               testId="steps-today-count"
             />

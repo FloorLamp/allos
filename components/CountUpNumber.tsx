@@ -29,14 +29,14 @@ export const COUNT_UP_MS = 400;
  */
 export default function CountUpNumber({
   value,
-  format,
+  fallback = "—",
   className,
   testId,
 }: {
   /** The final value. Null renders `fallback` with no animation. */
   value: number | null;
-  /** Formatter for the displayed number (thousands separators, units, …). */
-  format: (n: number) => string;
+  /** Rendered when `value` is null. */
+  fallback?: string;
   className?: string;
   testId?: string;
 }) {
@@ -82,7 +82,12 @@ export default function CountUpNumber({
 
   return (
     <span className={className} data-testid={testId}>
-      {shown == null ? "—" : format(shown)}
+      {/* Thousands separators only, with the locale PINNED — the repo's
+          date-locale guard (#964/#1020) requires the literal, and it also keeps
+          the SSR and client renders byte-identical. Formatting lives here rather
+          than in a `format` prop because every caller is a Server Component, and
+          a function crossing that boundary is a hard render error. */}
+      {shown == null ? fallback : shown.toLocaleString("en-US")}
     </span>
   );
 }

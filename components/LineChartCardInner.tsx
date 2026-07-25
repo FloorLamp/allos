@@ -17,8 +17,11 @@ import {
   chartAnnotationLabel,
   chartAxisProps,
   chartDash,
+  chartFullMargin,
   chartGridProps,
   chartLineDot,
+  chartSparklineAxisProps,
+  chartSparklineMargin,
   chartMarkMotion,
   chartTooltipProps,
   useChartMotion,
@@ -55,6 +58,7 @@ export default function LineChartCard({
   decimals,
   yDomain,
   syncId,
+  sparkline = false,
 }: {
   data: { date: string; value: number | null }[];
   dataKey?: string;
@@ -82,6 +86,12 @@ export default function LineChartCard({
   labelFormatter?: (value: string) => string;
   // Chart height (Tailwind class); shrink for compact/secondary charts.
   heightClass?: string;
+  // Sparkline mode (#1445): drop the grid and BOTH axes (they still scale the
+  // series, they just stop painting themselves and stop reserving space) and pull
+  // the margins to near-zero, so a mini tile spends its pixels on the plot rather
+  // than on axis chrome that is unreadable at tile width. The caller supplies the
+  // numbers the axes would have carried as inline text — see TrendMiniCard.
+  sparkline?: boolean;
   // Event annotations, pre-filtered to the enabled kinds by
   // the parent. Drawn as vertical reference lines, snapped to the nearest charted
   // date (recharts positions a category-axis ReferenceLine only on an actual point).
@@ -207,7 +217,9 @@ export default function LineChartCard({
             dot={chartLineDot(c, {
               color,
               pointCount: data.length,
-              enabled: showDots,
+              // A sparkline is a shape, not a set of readings: per-point dots at
+              // tile width fuse into a thicker line. Hover still gets its dot.
+              enabled: showDots && !sparkline,
             })}
             activeDot={chartActiveDot(color)}
             {...chartMarkMotion(motion)}

@@ -1,6 +1,6 @@
 # Charts — palette contract, form selection, mark specs, motion
 
-Status: **partial** (#1445 Parts 1, 2, 3a, 3c, 4a–4e shipped: validated palette, scaffold chokepoint, CI palette validation, ramp exports, motion policy, guards. Part 3b — the slope/dumbbell, bullet-tile and dot-strip FORMS — is still unbuilt; the form table below marks them so.)
+Status: **partial** (#1445 Parts 1, 2 — including the owner-added sparkline variant — 3a, 3c and 4a–4e shipped: validated palette, scaffold chokepoint, CI palette validation, ramp exports, motion policy, guards. Part 3b — the slope/dumbbell, bullet-tile and dot-strip FORMS — is still unbuilt; the form table below marks them so.)
 
 Charts are the app's densest surface and its easiest one to get quietly wrong. This page holds the rules; the one-line pointer stays in AGENTS.md's conventions.
 
@@ -60,19 +60,20 @@ A ramp is validated as a ramp (`validateCellRamp`): one hue, monotone lightness,
 
 ## 2. Choosing a form
 
-| The data's job                                   | Form                             | Component                                                |
-| ------------------------------------------------ | -------------------------------- | -------------------------------------------------------- |
-| a value over time                                | time series                      | `LineChartCard`                                          |
-| two series compared over time                    | overlay on one time axis         | `CompareChart`                                           |
-| one analyte over time, against ranges            | banded time series               | `BiomarkerChart`                                         |
-| one metric, several reporting devices            | series-per-source                | `SourceCompareChart`                                     |
-| composition over time                            | stacked bars                     | `StackedBarCard`, `ZoneMinutesCard`                      |
-| a relationship between two variables             | scatter                          | `ScatterChartCard`                                       |
-| consistency / "did I show up"                    | calendar heatmap                 | `WorkoutHeatmap`, `ActiveDaysStrip`, `AdherenceCalendar` |
-| growth against reference percentiles             | percentile bands + trajectory    | `GrowthChart`                                            |
-| _panel before/after (not built — #1445 Part 3b)_ | _slope / dumbbell_               | —                                                        |
-| _actual vs target vs pace (not built)_           | _bullet tile_                    | —                                                        |
-| _"what's my normal range" (not built)_           | _dot strip with a median marker_ | —                                                        |
+| The data's job                                   | Form                                      | Component                                                |
+| ------------------------------------------------ | ----------------------------------------- | -------------------------------------------------------- |
+| a value over time                                | time series                               | `LineChartCard`                                          |
+| a value over time, in a grid tile                | **sparkline** (`LineChartCard sparkline`) | `TrendMiniCard`                                          |
+| two series compared over time                    | overlay on one time axis                  | `CompareChart`                                           |
+| one analyte over time, against ranges            | banded time series                        | `BiomarkerChart`                                         |
+| one metric, several reporting devices            | series-per-source                         | `SourceCompareChart`                                     |
+| composition over time                            | stacked bars                              | `StackedBarCard`, `ZoneMinutesCard`                      |
+| a relationship between two variables             | scatter                                   | `ScatterChartCard`                                       |
+| consistency / "did I show up"                    | calendar heatmap                          | `WorkoutHeatmap`, `ActiveDaysStrip`, `AdherenceCalendar` |
+| growth against reference percentiles             | percentile bands + trajectory             | `GrowthChart`                                            |
+| _panel before/after (not built — #1445 Part 3b)_ | _slope / dumbbell_                        | —                                                        |
+| _actual vs target vs pace (not built)_           | _bullet tile_                             | —                                                        |
+| _"what's my normal range" (not built)_           | _dot strip with a median marker_          | —                                                        |
 
 **No dual axis without a unit difference.** Two y-scales make line crossings an artifact of the scale choice rather than a fact about the data. `CompareChart` already enforces this (#400): normalized mode and same-unit pairs share ONE axis; only genuinely different units get a second one, and the tab copy says so. Do not widen it.
 
@@ -101,6 +102,19 @@ It exports **prop bags, not wrapper components** — recharts identifies childre
 | Legend           | every ≥ 2-series chart has one                                                                        | `ChartLegend`            |
 
 **Text wears text tokens, never the series color.** Including axis ticks on a dual-axis chart: identity belongs to the marks and the legend, and a tick painted in a series color is a number wearing a data color.
+
+### The sparkline variant
+
+**A mini tile is not a small chart — it is a different chart.** `TrendMiniCard` reused the full `LineChartCard` at `h-40`, so every Overview/Body tile carried a complete X+Y axis: 11px ticks and the margin reservations sized for a 256px-tall chart, squeezed into a tile ~150px wide on a 390px phone. The ticks collided and the plot — the only part carrying information — got what was left.
+
+The variant is a flag on the same card (`sparkline`), never a sixth hand-styled chart:
+
+- **Axes hidden, not removed.** They still SCALE the series; `hide` stops them painting _and_ stops them reserving space, which is the actual win at tile width.
+- **No grid**, margins near-zero.
+- **The numbers the axes supplied become inline text.** `TrendMiniCard` renders latest (in its header, with the change badge) plus low/high under the plot — legible at any width, which an 11px tick in a 150px box is not.
+- **Hover survives.** The tooltip is how a sparkline reports a single point.
+
+Hiding axes is the MINI-TILE decision, not a global one: a full-size chart keeps the axis a reader traces a value along. `e2e/trends-sparkline.mobile.spec.ts` pins both halves at 390px — no axis inside a tile, axes still present (and ticks still ≥ 10px) on a full-size chart.
 
 ---
 

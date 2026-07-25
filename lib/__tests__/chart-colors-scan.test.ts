@@ -147,7 +147,27 @@ const CLASS_RAMP = new RegExp(
   String.raw`\[\s*(?:${BG_CLASS}\s*,\s*){2,}${BG_CLASS}\s*,?\s*\]`,
   "s"
 );
-const HUE = /(?<![\w-])(?:dark:)?bg-([a-z]+)-\d{2,3}(?![\w-])/g;
+const HUE = /(?<![\w-])(?:dark:)?bg-([a-z]+)-(\d{2,3})(?![\w-])/g;
+
+// Neutral families. A cell ramp's EMPTY square is deliberately a neutral, and it
+// carries a different neutral per theme (`bg-slate-100 dark:bg-ink-800`), so a
+// naive "how many hue families?" count reads a perfectly ordinary one-hue ramp
+// as three-hue and lets it through. Excluding neutrals is what makes the rule
+// actually catch the shape it exists for.
+const NEUTRAL_HUES = new Set([
+  "slate",
+  "gray",
+  "zinc",
+  "neutral",
+  "stone",
+  "ink",
+  "white",
+  "black",
+]);
+
+// A ladder needs at least this many distinct steps of its one hue; below that
+// it is a pair of states, not a ramp.
+const MIN_RAMP_STEPS = 3;
 
 // Files allowed to declare a same-hue bg ladder, with the reason.
 const RAMP_ALLOWLIST = new Map<string, string>([
@@ -187,14 +207,25 @@ function walkAll(dir: string): string[] {
   return out;
 }
 
+/**
+ * Array literals of bg-classes that read as a SEQUENTIAL RAMP: several steps of
+ * ONE non-neutral hue. A categorical status array (Avatar's per-initial tints,
+ * a good/warn/bad set) draws from several hues and is a different job entirely.
+ */
 function sameHueLadders(text: string): string[] {
   const out: string[] = [];
   const matches = text.match(new RegExp(CLASS_RAMP.source, "gs")) ?? [];
   for (const block of matches) {
-    const hues = new Set([...block.matchAll(HUE)].map((m) => m[1]));
-    // A sequential ramp is ONE hue (plus, at most, the neutral empty cell it
-    // starts from). Two or more real hues is a categorical set, not a ramp.
-    if (hues.size <= 2) out.push(block.replace(/\s+/g, " ").slice(0, 120));
+    const pairs = [...block.matchAll(HUE)];
+    const hues = new Set(
+      pairs.map((m) => m[1]).filter((h) => !NEUTRAL_HUES.has(h))
+    );
+    const steps = new Set(
+      pairs.filter((m) => !NEUTRAL_HUES.has(m[1])).map((m) => m[2])
+    );
+    if (hues.size === 1 && steps.size >= MIN_RAMP_STEPS) {
+      out.push(block.replace(/\s+/g, " ").slice(0, 120));
+    }
   }
   return out;
 }

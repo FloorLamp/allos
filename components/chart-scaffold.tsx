@@ -102,6 +102,46 @@ export function chartAxisLabelProps(
   };
 }
 
+// ── sparkline variant (Part 2, owner-added) ─────────────────────────────────
+//
+// A mini tile is not a small chart — it is a DIFFERENT chart. `TrendMiniCard`
+// reused the full `LineChartCard` at `h-40`, so every Overview tile carried a
+// complete X+Y axis: 11px ticks and the margin reservations sized for a 256px-tall
+// chart, squeezed into a tile that is ~150px wide on a 390px phone. The ticks
+// collided, and the plot — the only part carrying information — got what was left.
+//
+// The fix is a VARIANT of the same card, not a sixth hand-styled chart: the axes
+// still scale the series, they just stop painting themselves (`hide` drops their
+// space reservation too), the grid goes, margins go to near-zero, and the numbers
+// the axes were there to supply (min / max / latest) are rendered as inline TEXT
+// beside the plot, where they are legible at any width. Hover survives — the
+// tooltip is how a sparkline reports a single point.
+
+/** Margins for a full-size chart: room for tick labels down the left and along
+ *  the bottom. */
+export const chartFullMargin = {
+  top: 10,
+  right: 16,
+  bottom: 0,
+  left: -8,
+} as const;
+
+/** Margins for a sparkline: nothing to reserve room for. The few px that remain
+ *  keep the 2px stroke and the hover dot from clipping at the tile's edges. */
+export const chartSparklineMargin = {
+  top: 4,
+  right: 4,
+  bottom: 2,
+  left: 4,
+} as const;
+
+/** Axis props for a sparkline. The axis still SCALES the series — it simply
+ *  doesn't paint itself, and `hide` also drops its space reservation, which is
+ *  the actual win at tile width. */
+export function chartSparklineAxisProps() {
+  return { hide: true } as const;
+}
+
 // ── tooltip ─────────────────────────────────────────────────────────────────
 
 /** The tooltip's own surface, for the handful of cards that render a CUSTOM
