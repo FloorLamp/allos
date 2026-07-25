@@ -11,8 +11,8 @@ import type { AppRoute } from "@/lib/hrefs";
 // latest value with a net-change badge over the visible window, and a small
 // sparkline. The data is pre-windowed and already in display units by the caller
 // (the hub converts kg/km at the boundary), so this component only formats and
-// draws it. An optional `footer` slot holds per-tile controls (the Phase-2 pin
-// toggle).
+// draws it. An optional `footer` slot holds per-tile controls (the ★ save toggle
+// and, on a saved tile, its reorder buttons — #1456).
 //
 // TRUE SPARKLINE (#1445). This called itself a sparkline while rendering the FULL
 // LineChartCard at h-40 — so every tile carried a complete X+Y axis, with 11px
