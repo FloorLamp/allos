@@ -7,7 +7,10 @@
 
 import type { UpcomingItem } from "./upcoming";
 import type { Finding } from "./findings";
-import { isHiddenUnderPolicy } from "./lifecycle";
+import {
+  isHiddenUnderPolicy,
+  type LifecycleSuppressionPolicy,
+} from "./lifecycle";
 
 // A suppression row as stored (the two nullable state columns). A row is either a
 // SNOOZE (snooze_until set, dismissed_at null) or a DISMISS (dismissed_at set,
@@ -50,13 +53,26 @@ export function isItemHiddenBySuppression(
   record: SuppressionRecord | undefined,
   today: string
 ): boolean {
-  // ONE lifecycle decision (issue #942): an explicit suppressionPolicy wins (#716 —
-  // "safety-ungated" for the NON-DISMISSIBLE crisis finding, the bus can never hide
-  // it); otherwise a care-persistent item is "snooze-only" (resists a dismiss, honors
-  // a live snooze), and everything else is "normal".
-  const policy =
-    item.suppressionPolicy ?? (item.carePersistent ? "snooze-only" : "normal");
-  return isHiddenUnderPolicy(policy, record, today);
+  return isHiddenUnderPolicy(itemSuppressionPolicy(item), record, today);
+}
+
+// An item's lifecycle suppression tier (issue #942). ONE derivation: an explicit
+// suppressionPolicy wins (#716 — "safety-ungated" for the NON-DISMISSIBLE crisis
+// finding, the bus can never hide it); otherwise a care-persistent item is
+// "snooze-only" (resists a dismiss, honors a live snooze), and everything else is
+// "normal".
+//
+// Exported because the suppression FILTER is no longer the only caller: the
+// dashboard hero's collapse carve-out (#1413 section B) asks the same question for
+// a different reason — "may this item be visually compacted?" — and a second
+// hand-rolled `?? (carePersistent ? …)` there would be exactly the drift this
+// dispatcher was extracted to prevent.
+export function itemSuppressionPolicy(
+  item: Pick<UpcomingItem, "carePersistent" | "suppressionPolicy">
+): LifecycleSuppressionPolicy {
+  return (
+    item.suppressionPolicy ?? (item.carePersistent ? "snooze-only" : "normal")
+  );
 }
 
 // Whether a suppression record hides its item right now (`today` = the profile-

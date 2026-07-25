@@ -984,3 +984,26 @@ export const INTRADAY_TICK_TIME = "07:15";
 export const E2E_LOGIN_SHELL = "e2e_shell";
 export const SHELL_PROFILE = "Mobile Shell (e2e)";
 export const SHELL_WEIGHT_KG = "77.7";
+
+// ── Dashboard "Now" strip + collapsible hero (issue #1413) ───────────────────
+// Two spec-owned fixtures for e2e/dashboard-now.mobile.spec.ts.
+//
+// The first carries a JUST-FINISHED strength session (so the Now strip's highest
+// signal fires deterministically — the strip is otherwise time-of-day dependent,
+// and the e2e clock pins local time to 13:mm) plus one appointment scheduled
+// TODAY, which gives the "Needs attention" hero a non-zero, stable count to
+// collapse. It needs its own LOGIN because the collapse preference is stored per
+// login (login_settings) and the spec toggles it — doing that on a shared login
+// would leak a collapsed hero into every other spec's dashboard.
+export const E2E_LOGIN_NOWSTRIP = "e2e_nowstrip";
+export const NOW_STRIP_PROFILE = "Now Strip (e2e)";
+export const NOW_STRIP_APPOINTMENT = "Now Strip checkup (e2e)";
+
+// The second proves the #449 safety carve-out: a severe PHQ-9 reading (with a
+// positive item 9) makes the crisis finding fire, and that item declares
+// `suppressionPolicy: "safety-ungated"` — so its hero must render EXPANDED with no
+// collapse control at all, no matter what the viewer's preference says. Separate
+// from the profile above precisely because a safety-locked hero can't be collapsed:
+// one profile cannot exercise both contracts.
+export const E2E_LOGIN_NOWSAFETY = "e2e_nowsafety";
+export const NOW_SAFETY_PROFILE = "Now Safety (e2e)";

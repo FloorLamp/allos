@@ -324,3 +324,28 @@ export function setIllnessHeroUi(
   };
   setProfileSetting(profileId, "illness_hero_ui", JSON.stringify(normalized));
 }
+
+// The dashboard "Needs attention" hero's collapse preference (issue #1413, section
+// B). Per-LOGIN, not per-profile: it is a viewing-density choice about the reader's
+// own screen (the same tier as their unit and date-format prefs), not a fact about
+// the person whose health is being displayed — a caregiver who collapses the hero on
+// their phone means it for every profile they switch between, and should not have to
+// re-collapse it per family member.
+//
+// Stored as a plain "1"/"0" string rather than JSON: it is one boolean with no
+// foreseeable second field, and the illness hero's JSON blob shape (setIllnessHeroUi)
+// exists only because that one carries a profile id alongside its flag.
+//
+// Note what this setting canNOT do (#449): it never hides the hero, never removes
+// the count, and never applies to a safety-locked hero — those are decided by
+// attentionHeroState (lib/attention.ts), which consults this preference LAST.
+export function getAttentionHeroCollapsed(loginId: number): boolean {
+  return getLoginSetting(loginId, "attention_hero_collapsed") === "1";
+}
+
+export function setAttentionHeroCollapsed(
+  loginId: number,
+  collapsed: boolean
+): void {
+  setLoginSetting(loginId, "attention_hero_collapsed", collapsed ? "1" : "0");
+}
