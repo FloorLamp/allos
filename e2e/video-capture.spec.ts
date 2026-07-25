@@ -119,11 +119,21 @@ test("upload → poster grid → open player → Range serve → location warnin
       .first(); // first-ok: the fixture profile's one seeded activity — order-agnostic
     await card.getByRole("button", { name: "Squat session (e2e)" }).click();
 
-    // Form check sits inside the collapsible More details section. The seeded
-    // activity has no notes/estimate/route, so the disclosure starts closed.
-    await page
-      .locator('[data-testid="activity-more-details"] button[aria-expanded]')
-      .click();
+    // Form check sits inside the collapsible More details section. Drive the
+    // disclosure to OPEN rather than blind-toggling it: it's a pure client toggle
+    // inside a freshly mounted editor, so a tap can land before that subtree
+    // hydrates (#830) and be swallowed, and a second blind click on an
+    // already-open section would close it again.
+    const moreDetails = page.locator(
+      '[data-testid="activity-more-details"] button[aria-expanded]'
+    );
+    await expect(moreDetails).toBeVisible();
+    await expect(async () => {
+      if ((await moreDetails.getAttribute("aria-expanded")) !== "true") {
+        await moreDetails.click();
+      }
+      await expect(moreDetails).toHaveAttribute("aria-expanded", "true");
+    }).toPass({ timeout: 20_000 }); // topass-ok: drives a client-only disclosure open past the pre-hydration swallow — no server POST to await, so settledClick doesn't apply
     const formCheck = page.getByTestId("activity-form-check");
     await expect(formCheck).toBeVisible({ timeout: 20_000 });
     const editorStrip = formCheck.getByTestId(`activity-video-strip-${aid}`);

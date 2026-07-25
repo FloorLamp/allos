@@ -155,13 +155,13 @@ test("list surfaces share ONE filter affordance — outline pills, no dropdown (
   ).toHaveCount(0);
 
   // Skin: a client-state list, so buttons rather than links — same pills either way.
+  // (Only the FILTER is pinned here: the per-row edit forms below legitimately keep
+  // their <select>s — a form field is not a filter affordance.)
   await page.goto("/records/specialty/skin");
   const skinFilter = page.getByTestId("skin-status-filter");
   await expect(skinFilter).toBeVisible();
   await expect(skinFilter.getByRole("button", { name: "All" })).toBeVisible();
-  await expect(
-    page.getByTestId("skin-lesion-list").locator("select")
-  ).toHaveCount(0);
+  await expect(skinFilter.locator("select")).toHaveCount(0);
 });
 
 // #1449 layout kin: the CDC schedule grid has more age columns than a phone has

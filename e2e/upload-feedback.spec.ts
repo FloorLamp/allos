@@ -47,7 +47,7 @@ test.describe("Medical document upload feedback", () => {
   test("confirms the upload and clears the file input", async ({ page }) => {
     await page.goto("/data?section=import");
 
-    // The "File Upload (incl. CSV)" tab is the default, so the input is present.
+    // The "File upload (incl. CSV)" tab is the default, so the input is present.
     const input = page.getByTestId("medical-upload-input");
     await input.setInputFiles({
       name: UPLOAD_NAME,
