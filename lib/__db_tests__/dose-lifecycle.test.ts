@@ -14,7 +14,10 @@
 //   • getSupplementDoses (the "current schedule" read every page/reminder
 //     consumer goes through) excludes retired doses.
 //   • The amount snapshot keeps history stable across a later dosage edit.
-//   • The offline confirm (confirmDoseTaken) mirrors the same rules.
+//   • The offline queue's replay rides those SAME cores (#1427) — there is no
+//     offline-only dose writer — and its typed refusals (retired dose, PAUSED
+//     item, an entry too old for the dose-log window) reach the user with a
+//     reason instead of being reported as synced.
 //
 // The db singleton is redirected at a per-file temp DB by setup.ts.
 
@@ -29,12 +32,17 @@ import {
   markDoseSkipped,
   escalationAckState,
 } from "@/lib/queries";
-import { shiftDateStr } from "@/lib/date";
+import { shiftDateStr, utcSqlString, zonedWallTimeToUtc } from "@/lib/date";
 import {
   tapAnswerText,
   tapSkipAnswerText,
 } from "@/lib/notifications/callback-data";
-import { confirmDoseTaken, skipDose } from "@/lib/offline/writes";
+import { getTimezone } from "@/lib/settings";
+import { applyIntent } from "@/lib/offline/writes";
+import {
+  STALE_QUEUED_DOSE_REASON,
+  type QueuedIntent,
+} from "@/lib/offline/queue";
 
 let seq = 0;
 
@@ -93,12 +101,44 @@ function onHand(itemId: number): number | null {
   ).q;
 }
 
-// Anchored on the app's real today: markDoseTaken/markDoseSkipped now bound the
+// Anchored on the app's real today: markDoseTaken/markDoseSkipped bound the
 // token's date to a small window around today (issue #614), so a fixed calendar
-// literal would drift out of that window as wall-clock time moves. (The offline
-// writers confirmDoseTaken/skipDose don't share the window, but sharing one
-// today-anchored constant keeps the fixture consistent.)
+// literal would drift out of that window as wall-clock time moves. Since #1427 the
+// offline replay goes through those same cores, so it shares the window too.
 const DATE = today(1);
+
+// One queued offline intent, as the replay route hands it to applyIntent. A fresh
+// idempotency key per call unless one is passed (replaying the SAME key is the
+// exactly-once path, which must answer "duplicate").
+function doseIntent(
+  flow: "dose" | "skip-dose",
+  doseId: number,
+  opts: { date?: string; clientTakenAt?: string; key?: string } = {}
+): QueuedIntent {
+  const date = opts.date ?? DATE;
+  return {
+    key: opts.key ?? `dose-intent-${++seq}-${Date.now()}`,
+    flow,
+    date,
+    capturedAt: new Date().toISOString(),
+    payload: {
+      doseId,
+      ...(opts.clientTakenAt ? { clientTakenAt: opts.clientTakenAt } : {}),
+    },
+  };
+}
+
+function givenAt(doseId: number, date: string): string | null {
+  return (
+    (
+      db
+        .prepare(
+          "SELECT given_at FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+        )
+        .get(doseId, date) as { given_at: string | null } | undefined
+    )?.given_at ?? null
+  );
+}
 
 describe("markDoseTaken outcomes", () => {
   it("logs with an amount snapshot, decrements supply, and dedups the repeat", () => {
@@ -421,69 +461,151 @@ describe("escalationAckState status-awareness (#280)", () => {
   });
 });
 
-describe("offline confirmDoseTaken parity", () => {
-  it("snapshots the amount and permanently rejects a retired dose", () => {
+describe("offline dose replay rides the shared write cores (#1427)", () => {
+  it("stamps the CAPTURED tap time, snapshots the amount, and decrements supply once", () => {
     const profileId = seedProfileRow();
-    const itemId = seedItem(profileId);
+    const itemId = seedItem(profileId, { quantityOnHand: 10 });
     const doseId = seedDose(itemId, "2 caps");
 
-    expect(confirmDoseTaken(profileId, doseId, DATE)).toEqual({
-      ok: true,
-      inserted: true,
-    });
-    expect(logRow(doseId, DATE)?.amount).toBe("2 caps");
+    // Local midnight of the log's own day: unambiguously inside DATE in the profile
+    // timezone and (except for the first instant of the day) hours before "now", so
+    // the stored given_at could not have come from datetime('now').
+    const tapped = zonedWallTimeToUtc(getTimezone(profileId), DATE, "00:00");
 
-    const retiredDose = seedDose(itemId, "1 cap", 1);
-    expect(confirmDoseTaken(profileId, retiredDose, DATE)).toEqual({
-      ok: false,
-      inserted: false,
-    });
-    expect(logRow(retiredDose, DATE)).toBeUndefined();
-  });
-});
-
-describe("offline skipDose parity (#232)", () => {
-  it("writes a skipped log, leaves supply untouched, and is idempotent", () => {
-    const profileId = seedProfileRow();
-    const itemId = seedItem(profileId, { quantityOnHand: 8 });
-    const doseId = seedDose(itemId, "500 mg");
-
-    expect(skipDose(profileId, doseId, DATE)).toEqual({
-      ok: true,
-      inserted: true,
-    });
-    expect(logRow(doseId, DATE)?.status).toBe("skipped");
-    expect(logRow(doseId, DATE)?.amount).toBeNull();
-    expect(onHand(itemId)).toBe(8); // no decrement
-
-    // Replaying the same skip is a no-op (inserted:false) — the natural-key guard.
-    expect(skipDose(profileId, doseId, DATE)).toEqual({
-      ok: true,
-      inserted: false,
-    });
+    expect(
+      applyIntent(
+        profileId,
+        doseIntent("dose", doseId, { clientTakenAt: tapped.toISOString() })
+      )
+    ).toEqual({ status: "done" });
+    expect(logRow(doseId, DATE)).toEqual({ amount: "2 caps", status: "taken" });
+    expect(givenAt(doseId, DATE)).toBe(utcSqlString(tapped));
+    expect(onHand(itemId)).toBe(9);
   });
 
-  it("never overwrites an already-taken dose and rejects a retired dose", () => {
+  it("ignores an unusable client timestamp instead of dropping the dose", () => {
     const profileId = seedProfileRow();
-    const itemId = seedItem(profileId, { quantityOnHand: 8 });
-    const doseId = seedDose(itemId, "500 mg");
+    const itemId = seedItem(profileId);
+    const doseId = seedDose(itemId, "1 cap");
 
-    // Taken first: a replayed skip must leave it taken (inserted:false, no supply
-    // change beyond the original decrement).
-    confirmDoseTaken(profileId, doseId, DATE);
-    expect(onHand(itemId)).toBe(7);
-    expect(skipDose(profileId, doseId, DATE)).toEqual({
-      ok: true,
-      inserted: false,
-    });
+    // A phone whose clock is a year fast: the confirm still lands (losing the minute
+    // beats losing the medication log), stamped by the server instead.
+    const skewed = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+    expect(
+      applyIntent(
+        profileId,
+        doseIntent("dose", doseId, { clientTakenAt: skewed.toISOString() })
+      )
+    ).toEqual({ status: "done" });
     expect(logRow(doseId, DATE)?.status).toBe("taken");
-    expect(onHand(itemId)).toBe(7);
+    expect(givenAt(doseId, DATE)).not.toBe(utcSqlString(skewed));
+    expect(givenAt(doseId, DATE)).toBeTruthy();
+  });
 
-    // A retired dose is a permanent rejection like a deleted one.
+  it("REFUSES a paused item with an honest reason (the parallel-path regression)", () => {
+    const profileId = seedProfileRow();
+    const itemId = seedItem(profileId, { active: 0, quantityOnHand: 6 });
+    const doseId = seedDose(itemId, "1 cap");
+
+    const result = applyIntent(profileId, doseIntent("dose", doseId));
+    expect(result.status).toBe("rejected");
+    expect(result.reason).toMatch(/paused/i);
+    // Nothing logged, no supply burned for an item the user deliberately paused.
+    expect(logRow(doseId, DATE)).toBeUndefined();
+    expect(onHand(itemId)).toBe(6);
+  });
+
+  it("refuses a retired dose and a dose owned by another profile", () => {
+    const profileId = seedProfileRow();
+    const itemId = seedItem(profileId);
     const retired = seedDose(itemId, "1 cap", 1);
-    expect(skipDose(profileId, retired, DATE)).toEqual({
-      ok: false,
-      inserted: false,
+    const foreign = seedDose(seedItem(seedProfileRow()), "1 cap");
+
+    for (const doseId of [retired, foreign]) {
+      const result = applyIntent(profileId, doseIntent("dose", doseId));
+      expect(result.status).toBe("rejected");
+      expect(result.reason).toMatch(/no longer on the schedule/i);
+      expect(logRow(doseId, DATE)).toBeUndefined();
+    }
+  });
+
+  it("refuses an entry that sat in the queue past the dose-log window", () => {
+    const profileId = seedProfileRow();
+    const doseId = seedDose(seedItem(profileId), "1 cap");
+    const longAgo = shiftDateStr(DATE, -30);
+
+    const result = applyIntent(
+      profileId,
+      doseIntent("dose", doseId, {
+        date: longAgo,
+      })
+    );
+    expect(result).toEqual({
+      status: "rejected",
+      reason: STALE_QUEUED_DOSE_REASON,
+    });
+    expect(logRow(doseId, longAgo)).toBeUndefined();
+  });
+
+  it("is idempotent: the same key duplicates, a fresh key on a taken dose is done", () => {
+    const profileId = seedProfileRow();
+    const itemId = seedItem(profileId, { quantityOnHand: 10 });
+    const doseId = seedDose(itemId, "1 cap");
+
+    const intent = doseIntent("dose", doseId);
+    expect(applyIntent(profileId, intent)).toEqual({ status: "done" });
+    // Same idempotency key (a racing flush) — short-circuits before any write.
+    expect(applyIntent(profileId, intent)).toEqual({ status: "duplicate" });
+    // A DIFFERENT key for the same already-confirmed dose+day is already-done, not a
+    // second log and not a rejection.
+    expect(applyIntent(profileId, doseIntent("dose", doseId))).toEqual({
+      status: "done",
+    });
+    expect(
+      (
+        db
+          .prepare(
+            "SELECT COUNT(*) AS n FROM intake_item_logs WHERE dose_id = ? AND date = ?"
+          )
+          .get(doseId, DATE) as { n: number }
+      ).n
+    ).toBe(1);
+    expect(onHand(itemId)).toBe(9); // decremented exactly once
+  });
+
+  it("never overwrites the OTHER resolution — and says so", () => {
+    const profileId = seedProfileRow();
+    const itemId = seedItem(profileId, { quantityOnHand: 5 });
+    const skippedDose = seedDose(itemId, "1 cap");
+    markDoseSkipped(profileId, skippedDose, itemId, DATE);
+
+    const confirm = applyIntent(profileId, doseIntent("dose", skippedDose));
+    expect(confirm.status).toBe("rejected");
+    expect(confirm.reason).toMatch(/already recorded as skipped/i);
+    expect(logRow(skippedDose, DATE)?.status).toBe("skipped");
+    expect(onHand(itemId)).toBe(5);
+
+    const takenDose = seedDose(itemId, "1 cap");
+    markDoseTaken(profileId, takenDose, itemId, DATE);
+    const skip = applyIntent(profileId, doseIntent("skip-dose", takenDose));
+    expect(skip.status).toBe("rejected");
+    expect(skip.reason).toMatch(/already recorded as taken/i);
+    expect(logRow(takenDose, DATE)?.status).toBe("taken");
+  });
+
+  it("applies a queued skip without touching supply", () => {
+    const profileId = seedProfileRow();
+    const itemId = seedItem(profileId, { quantityOnHand: 8 });
+    const doseId = seedDose(itemId, "500 mg");
+
+    expect(applyIntent(profileId, doseIntent("skip-dose", doseId))).toEqual({
+      status: "done",
+    });
+    expect(logRow(doseId, DATE)).toEqual({ amount: null, status: "skipped" });
+    expect(onHand(itemId)).toBe(8);
+    // A second queued skip on the same day is already-done, never a duplicate row.
+    expect(applyIntent(profileId, doseIntent("skip-dose", doseId))).toEqual({
+      status: "done",
     });
   });
 });

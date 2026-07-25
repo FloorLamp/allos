@@ -126,18 +126,22 @@ export async function POST(req: Request) {
     }
     try {
       const outcome = applyIntent(targetProfileId, raw);
-      if (outcome === "done") anyApplied = true;
+      if (outcome.status === "done") anyApplied = true;
       // A server-side rejection carries a coarse reason so the client can tell the
       // user WHY their offline entry couldn't be applied (issue #475); the full
-      // captured payload is preserved client-side in the dead-letter store.
+      // captured payload is preserved client-side in the dead-letter store. A write
+      // core that answered with a TYPED refusal supplies its own, specific reason
+      // (#1427: paused item / retired dose / too-old entry) — the generic line is the
+      // fallback for a flow that only reports pass/fail.
       results.push(
-        outcome === "rejected"
+        outcome.status === "rejected"
           ? {
               key: raw.key,
-              status: outcome,
-              reason: "The server couldn't validate this entry.",
+              status: outcome.status,
+              reason:
+                outcome.reason ?? "The server couldn't validate this entry.",
             }
-          : { key: raw.key, status: outcome }
+          : { key: raw.key, status: outcome.status }
       );
     } catch {
       // Transient server/DB failure — leave it queued for the next flush.

@@ -8,8 +8,10 @@ import {
   administrationLogged,
 } from "@/lib/administration-format";
 import {
+  isDoseDateAccepted,
   isGivenAtAccepted,
   isHistoricalDoseTimeAccepted,
+  resolveQueuedTakenAt,
   DOSE_LOG_DATE_WINDOW_DAYS,
 } from "@/lib/dose-log-window";
 import type { AdministrationOutcome } from "@/lib/types";
@@ -213,5 +215,66 @@ describe("isHistoricalDoseTimeAccepted", () => {
     expect(
       isHistoricalDoseTimeAccepted(tz, todayStr, new Date("invalid"), now)
     ).toBe(false);
+  });
+});
+
+describe("isDoseDateAccepted (the ONE dose-log date window, #1427)", () => {
+  it("accepts today and the edges of the window, refuses beyond it", () => {
+    expect(isDoseDateAccepted("2026-07-15", "2026-07-15")).toBe(true);
+    expect(isDoseDateAccepted("2026-07-15", "2026-07-13")).toBe(true);
+    expect(isDoseDateAccepted("2026-07-15", "2026-07-17")).toBe(true);
+    expect(isDoseDateAccepted("2026-07-15", "2026-07-12")).toBe(false);
+    expect(isDoseDateAccepted("2026-07-15", "2026-07-18")).toBe(false);
+    // Garbage never squeaks through as "0 days apart".
+    expect(isDoseDateAccepted("2026-07-15", "not-a-date")).toBe(false);
+  });
+
+  it("agrees with the window constant it is derived from", () => {
+    expect(DOSE_LOG_DATE_WINDOW_DAYS).toBe(2);
+  });
+});
+
+describe("resolveQueuedTakenAt (offline confirm timestamp, #1427)", () => {
+  const tz = "America/New_York";
+  // 2026-07-15 12:00 UTC = 08:00 in New York.
+  const now = new Date("2026-07-15T12:00:00Z");
+  const date = "2026-07-15";
+
+  it("keeps a captured tap time that falls on the log's own profile-local day", () => {
+    // 06:30 New York, hours before the replay — the whole point of the field.
+    const tapped = new Date("2026-07-15T10:30:00Z");
+    expect(resolveQueuedTakenAt(tapped, tz, date, now)).toBe(tapped);
+  });
+
+  it("keeps a stamp that is UTC-yesterday but profile-local TODAY", () => {
+    // 2026-07-15 02:00 UTC is still 2026-07-14 22:00 in New York, so for a log row
+    // dated the 14th the stamp is on-day even though its UTC date differs.
+    const tapped = new Date("2026-07-15T02:00:00Z");
+    expect(resolveQueuedTakenAt(tapped, tz, "2026-07-14", now)).toBe(tapped);
+    // ...and it is NOT accepted for a row dated the 15th.
+    expect(resolveQueuedTakenAt(tapped, tz, "2026-07-15", now)).toBeNull();
+  });
+
+  it("falls back (null) rather than dropping the confirm on an unusable stamp", () => {
+    // Missing entirely (an intent queued before the field shipped).
+    expect(resolveQueuedTakenAt(undefined, tz, date, now)).toBeNull();
+    expect(resolveQueuedTakenAt(null, tz, date, now)).toBeNull();
+    // Unparseable.
+    expect(resolveQueuedTakenAt(new Date("garbage"), tz, date, now)).toBeNull();
+    // A clock running an hour fast — beyond the future skew.
+    expect(
+      resolveQueuedTakenAt(new Date("2026-07-15T13:00:00Z"), tz, date, now)
+    ).toBeNull();
+    // A stamp on a different profile-local day than the row it would sit on.
+    expect(
+      resolveQueuedTakenAt(new Date("2026-07-13T16:00:00Z"), tz, date, now)
+    ).toBeNull();
+  });
+
+  it("tolerates a small clock skew inside the shared allowance", () => {
+    const slightlyAhead = new Date(now.getTime() + 60_000);
+    expect(resolveQueuedTakenAt(slightlyAhead, tz, date, now)).toBe(
+      slightlyAhead
+    );
   });
 });
