@@ -273,11 +273,19 @@ export function findDedupTarget(
 // immediately; the page polls until extraction finishes and imports its results.
 // The whole File is passed so the pre-buffer size gate (file.size, known from the
 // multipart headers) can reject an oversized upload BEFORE reading its body.
+//
+// Returns the id of the medical_documents row this upload landed on — EVERY path
+// lands one (a stored 'processing' doc, the pre-existing row a duplicate deduped
+// onto, or a 'failed'/'skipped' row carrying the reason), so a caller always has a
+// document to point the user at. The upload form ignores it (it toasts and sends
+// the user to Review); the PWA share-target route (#1423) redirects to it, which is
+// how a shared file reaches its stored document — and, when the share landed on the
+// wrong person, the detail page's "Wrong person?" reassign control.
 export async function ingestMedicalUpload(
   loginId: number,
   profileId: number,
   file: File
-): Promise<void> {
+): Promise<number> {
   const mime = file.type || "application/octet-stream";
   // Reject an oversized upload BEFORE buffering the whole file into memory —
   // file.size is known from the multipart headers, so we needn't read a huge body
@@ -290,7 +298,7 @@ export async function ingestMedicalUpload(
   // cap below re-checks the true length once the content is actually sniffed.
   const preCap = preBufferSizeCap(file.name, mime);
   if (file.size > preCap) {
-    insertFailedDoc(
+    const failedId = insertFailedDoc(
       profileId,
       file.name,
       mime,
@@ -298,14 +306,14 @@ export async function ingestMedicalUpload(
       `File too large (max ${Math.round(preCap / 1024 / 1024)}MB).`
     );
     revalidatePath("/data");
-    return;
+    return failedId;
   }
   const buffer = Buffer.from(await file.arrayBuffer());
   // A MyChart CCD/XDM or SMART Health Card is imported deterministically (no AI);
   // everything else goes to the model, so it must be an AI-supported type.
   const healthKind = detectHealthRecord(buffer);
   if (!healthKind && !isSupportedFile(file.name, mime)) {
-    insertFailedDoc(
+    const failedId = insertFailedDoc(
       profileId,
       file.name,
       mime,
@@ -313,7 +321,7 @@ export async function ingestMedicalUpload(
       "Unsupported file type."
     );
     revalidatePath("/data");
-    return;
+    return failedId;
   }
   // Enforce the per-path size cap now that the byte length AND the kind are known:
   // an AI-extracted file is bound by the Anthropic request limit (it's inlined as
@@ -321,7 +329,7 @@ export async function ingestMedicalUpload(
   // gate against a lying/absent file.size.
   const sizeCap = healthKind ? MAX_HEALTH_BYTES : MAX_AI_BYTES;
   if (buffer.length > sizeCap) {
-    insertFailedDoc(
+    const failedId = insertFailedDoc(
       profileId,
       file.name,
       mime,
@@ -329,7 +337,7 @@ export async function ingestMedicalUpload(
       `File too large (max ${Math.round(sizeCap / 1024 / 1024)}MB).`
     );
     revalidatePath("/data");
-    return;
+    return failedId;
   }
 
   // Verify the CONTENT against its declared type/extension (issue #27). The
@@ -346,9 +354,15 @@ export async function ingestMedicalUpload(
     isHealthRecord: !!healthKind,
   });
   if (!typed.ok) {
-    insertFailedDoc(profileId, file.name, mime, buffer.length, typed.reason);
+    const failedId = insertFailedDoc(
+      profileId,
+      file.name,
+      mime,
+      buffer.length,
+      typed.reason
+    );
     revalidatePath("/data");
-    return;
+    return failedId;
   }
   // The byte-derived MIME is what we persist and pass onward. CSV/plain text carry
   // no reliable magic, so this falls back to a benign attachment-only type
@@ -421,12 +435,12 @@ export async function ingestMedicalUpload(
           );
           revalidatePath("/data");
         }
-        return;
+        return existing.id;
       }
       // Claim lost: a concurrent upload already claimed it — fall through to the
       // duplicate alert below rather than starting a second extraction.
     }
-    insertDuplicateDoc(
+    const duplicateId = insertDuplicateDoc(
       profileId,
       file.name,
       mime,
@@ -436,7 +450,7 @@ export async function ingestMedicalUpload(
       existing.status
     );
     revalidatePath("/data");
-    return;
+    return duplicateId;
   }
 
   // 1. The placeholder row (status 'processing') was reserved in the transaction
@@ -488,7 +502,7 @@ export async function ingestMedicalUpload(
       "UPDATE medical_documents SET extraction_status = 'failed', extraction_error = ? WHERE id = ? AND profile_id = ?"
     ).run(`Could not save file: ${errMsg(err)}`, docId, profileId);
     revalidatePath("/data");
-    return;
+    return docId;
   }
 
   // 3. Import. A health record (CCD/XDM/SHC) is parsed deterministically (no AI):
@@ -499,7 +513,7 @@ export async function ingestMedicalUpload(
   //    carries this session's login/profile into the background extraction.
   if (healthKind) {
     runHealthImport(profileId, docId, buffer);
-    return;
+    return docId;
   }
   dispatchExtraction(
     loginId,
@@ -512,6 +526,7 @@ export async function ingestMedicalUpload(
 
   // The doc row (status 'processing') is now visible; the page polls from here.
   revalidatePath("/data");
+  return docId;
 }
 
 // Above this size, a deterministic health-record parse+persist is pushed off the
@@ -1499,6 +1514,8 @@ export async function previewReprocessById(
 // row is self-describing, and name the original file it duplicates. When that
 // original hasn't successfully imported (e.g. its extraction failed), point the
 // user at reprocessing it rather than re-uploading.
+// Returns the id of the row it lands, so ingestMedicalUpload can hand every
+// caller a document to point at (the share-target route redirects to it).
 function insertDuplicateDoc(
   profileId: number,
   filename: string,
@@ -1507,7 +1524,7 @@ function insertDuplicateDoc(
   contentHash: string,
   originalName: string,
   originalStatus: string
-) {
+): number {
   const target =
     filename === originalName
       ? "this file was already uploaded"
@@ -1517,10 +1534,13 @@ function insertDuplicateDoc(
       ? "Skipped."
       : "Reprocess that document instead of re-uploading.";
   const error = `Duplicate upload — ${target}. ${advice}`;
-  db.prepare(
-    `INSERT INTO medical_documents (filename, stored_path, mime_type, size_bytes, content_hash, extraction_status, extraction_error, profile_id)
+  const info = db
+    .prepare(
+      `INSERT INTO medical_documents (filename, stored_path, mime_type, size_bytes, content_hash, extraction_status, extraction_error, profile_id)
      VALUES (?,?,?,?,?, 'skipped', ?, ?)`
-  ).run(filename, "", mime, size, contentHash, error, profileId);
+    )
+    .run(filename, "", mime, size, contentHash, error, profileId);
+  return Number(info.lastInsertRowid);
 }
 
 function insertFailedDoc(
@@ -1529,9 +1549,12 @@ function insertFailedDoc(
   mime: string,
   size: number,
   error: string
-) {
-  db.prepare(
-    `INSERT INTO medical_documents (filename, stored_path, mime_type, size_bytes, extraction_status, extraction_error, profile_id)
+): number {
+  const info = db
+    .prepare(
+      `INSERT INTO medical_documents (filename, stored_path, mime_type, size_bytes, extraction_status, extraction_error, profile_id)
      VALUES (?,?,?,?, 'failed', ?, ?)`
-  ).run(filename, "", mime, size, error, profileId);
+    )
+    .run(filename, "", mime, size, error, profileId);
+  return Number(info.lastInsertRowid);
 }
