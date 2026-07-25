@@ -11,6 +11,7 @@ import CreateVisitFromRecord from "@/components/visit-links/CreateVisitFromRecor
 import { today } from "@/lib/db";
 import { cumulativeDose } from "@/lib/radiation-dose";
 import ImagingStudyForm from "@/app/(app)/imaging/ImagingStudyForm";
+import ListRailLayout from "@/components/ListRailLayout";
 import ImagingStudyList from "@/app/(app)/imaging/ImagingStudyList";
 import RadiationDoseCard from "@/app/(app)/imaging/RadiationDoseCard";
 import { addImagingStudy } from "@/app/(app)/imaging/actions";
@@ -53,30 +54,30 @@ export default function ImagingSection({ scope }: { scope: ProfileScope }) {
 
   return (
     <ProviderOptionsProvider providers={getPickerProviders()}>
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="min-w-0 space-y-4 lg:col-span-2">
-          <CreateVisitFromRecord
-            profileId={profileId}
-            offers={createVisitOffersList}
-          />
-          <RadiationDoseCard cum={dose} pediatric={pediatric} />
-          <ImagingStudyList
-            items={studies}
-            followUps={followUps}
-            multiView={
-              multi ? { actingProfileId: scope.actingProfileId } : undefined
-            }
-          />
-        </div>
-
-        <div className="min-w-0 space-y-4">
-          <ImagingStudyForm action={addImagingStudy} />
-          <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-            Allos stores the imaging report, not the images themselves (DICOM is
-            out of scope).
-          </p>
-        </div>
-      </div>
+      <ListRailLayout
+        rail={
+          <>
+            <ImagingStudyForm action={addImagingStudy} />
+            <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
+              Allos stores the imaging report, not the images themselves (DICOM
+              is out of scope).
+            </p>
+          </>
+        }
+      >
+        <CreateVisitFromRecord
+          profileId={profileId}
+          offers={createVisitOffersList}
+        />
+        <RadiationDoseCard cum={dose} pediatric={pediatric} />
+        <ImagingStudyList
+          items={studies}
+          followUps={followUps}
+          multiView={
+            multi ? { actingProfileId: scope.actingProfileId } : undefined
+          }
+        />
+      </ListRailLayout>
     </ProviderOptionsProvider>
   );
 }

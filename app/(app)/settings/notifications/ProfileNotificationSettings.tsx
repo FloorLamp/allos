@@ -61,9 +61,10 @@ export default function ProfileNotificationSettings({
 
   // The label for the wake-aware "Auto" option (#1117), naming the hour it resolves
   // to when there's enough sleep data.
-  const autoLabel = `Auto — from your wake time${
-    wakeHour == null ? "" : ` (~${String(wakeHour).padStart(2, "0")}:00)`
-  }`;
+  const autoLabel =
+    wakeHour == null
+      ? "Auto (wake time)"
+      : `Auto (~${String(wakeHour).padStart(2, "0")}:00)`;
 
   function buildFormData() {
     const fd = new FormData();

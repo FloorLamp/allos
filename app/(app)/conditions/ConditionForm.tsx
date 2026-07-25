@@ -151,7 +151,7 @@ export default function ConditionForm({
             className="input"
             value={codeSystem}
             onChange={(e) => setCodeSystem(e.target.value)}
-            placeholder="ICD-10-CM / SNOMED CT"
+            placeholder="ICD-10 / SNOMED"
           />
         </div>
       </div>
