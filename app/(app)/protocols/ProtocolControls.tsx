@@ -4,6 +4,7 @@ import { useState } from "react";
 import { IconPencil, IconTrash, IconPlayerStop } from "@tabler/icons-react";
 import SubmitButton from "@/components/SubmitButton";
 import NotesText from "@/components/NotesText";
+import { PageHeader } from "@/components/ui";
 import { formatLongDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import type { Protocol, FormResult, Equipment } from "@/lib/types";
@@ -57,26 +58,27 @@ export default function ProtocolControls({
 
   return (
     <div className="card space-y-3" data-testid="protocol-header">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">
-            {protocol.name}
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            {ongoing
-              ? `Started ${formatLongDate(protocol.start_date, formatPrefs)} · ongoing`
-              : `${formatLongDate(protocol.start_date, formatPrefs)} – ${formatLongDate(
-                  protocol.end_date!,
-                  formatPrefs
-                )}`}
-          </p>
-        </div>
-        {ongoing && (
-          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-            Ongoing
-          </span>
-        )}
-      </div>
+      {/* The shared PageHeader, not a hand-rolled <h1> (issue #1416, section D):
+      this IS the protocol detail page's heading, so it gets the same treatment —
+      including the compact mobile size — as every other page. */}
+      <PageHeader
+        title={protocol.name}
+        subtitle={
+          ongoing
+            ? `Started ${formatLongDate(protocol.start_date, formatPrefs)} · ongoing`
+            : `${formatLongDate(protocol.start_date, formatPrefs)} – ${formatLongDate(
+                protocol.end_date!,
+                formatPrefs
+              )}`
+        }
+        action={
+          ongoing ? (
+            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+              Ongoing
+            </span>
+          ) : undefined
+        }
+      />
       {protocol.situation && (
         <p className="text-sm text-slate-600 dark:text-slate-300">
           Situation: <span className="font-medium">{protocol.situation}</span>

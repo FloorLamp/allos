@@ -1,13 +1,34 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { IconMenu2, IconPlus, IconRepeat, IconBolt } from "@tabler/icons-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import {
+  IconBolt,
+  IconChevronUp,
+  IconMenu2,
+  IconPill,
+  IconPlus,
+  IconRepeat,
+  IconSalad,
+  IconScale,
+  IconSearch,
+} from "@tabler/icons-react";
 import Wordmark from "@/components/Wordmark";
 import SidebarContent from "@/components/SidebarContent";
+import QuickLogSheet from "@/components/QuickLogSheet";
+import { openGlobalSearch } from "@/components/CommandPalette";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
 import { useLockBodyScroll } from "@/components/useLockBodyScroll";
+import { usePresence } from "@/components/usePresence";
+import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
+import { motionMs } from "@/lib/motion";
+import {
+  primaryQuickLog,
+  showsActivityShortcuts,
+  type QuickLogIcon,
+} from "@/lib/quick-log";
 import type { SessionProfile } from "@/lib/auth";
 import type { AppVersion } from "@/lib/version";
 import { DEFAULT_NAV_RELEVANCE, type NavRelevance } from "@/lib/nav-relevance";
@@ -16,8 +37,44 @@ import { DEFAULT_NAV_RELEVANCE, type NavRelevance } from "@/lib/nav-relevance";
 // hidden below `md`; this surfaces the same navigation on phones by rendering the
 // shared <SidebarContent> (the single source of truth for the sidebar's contents)
 // inside the drawer, so the two viewports can't drift apart. Only the
-// collapsed top bar — hamburger, wordmark and a quick "log activity" shortcut — is
+// collapsed top bar — hamburger, wordmark, search and the quick-log actions — is
 // mobile-specific chrome and lives here.
+//
+// The bar is no longer sticky ITSELF: <ShellChrome> wraps it (together with the
+// multi-profile view banner) in the one sticky, auto-hiding element (issue
+// #1416). Everything about scroll behavior lives there; this file owns the bar's
+// contents and the drawer.
+//
+// The bar's actions (issue #1416, section B):
+//   * Search — one tap to the CommandPalette, which already deep-links
+//     everywhere. It used to be two (hamburger → drawer → palette).
+//   * A CONTEXTUAL primary "+": lib/quick-log.ts maps the current route to its
+//     obvious log (Nutrition → food, Medications → dose, Trends/Body → weight),
+//     falling back to "log activity" — the bar's historical behavior — on every
+//     route with no opinion.
+//   * A caret beside it opening the quick-log sheet, so the actions this route
+//     does NOT promote stay one tap away.
+//   * The activity-specific pair (live workout, repeat last) shows only where
+//     the primary action IS the activity editor; on Nutrition or Medications
+//     they are noise competing for a 390px bar.
+//
+// The drawer slides in and out (issue #1416, section F): usePresence keeps it
+// mounted for the length of its exit animation and then unmounts it for real, so
+// it animates both ways without leaving a second copy of the whole navigation in
+// the accessibility tree. Reduced motion collapses both durations to 0 — same
+// states, no travel.
+
+// The bar's primary-action glyph. "Log activity" keeps the plain **+** it has
+// always had (a barbell glyph next to a hamburger reads as a nav entry, not an
+// action); a contextual primary shows its domain icon so the bar says what it
+// will do before you tap it.
+const PRIMARY_ICONS: Record<QuickLogIcon, typeof IconPlus> = {
+  barbell: IconPlus,
+  salad: IconSalad,
+  pill: IconPill,
+  scale: IconScale,
+};
+
 export default function MobileNav({
   activityDates,
   version,
@@ -74,17 +131,29 @@ export default function MobileNav({
   whatsNewUnseen?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const { openCreate, openLive, openRepeatLast, hasLastActivity } =
     useActivityEditor();
+  const reduceMotion = usePrefersReducedMotion();
+  const drawer = usePresence(open, motionMs("drawer", reduceMotion));
 
-  // Close the drawer whenever navigation happens.
+  // The route's primary log. `?tab=` is the app's URL-driven tab convention, so
+  // "Trends → Body" is a tab, not a route (lib/quick-log.ts owns the rule).
+  const primary = primaryQuickLog(pathname, searchParams.get("tab"));
+  const PrimaryIcon = PRIMARY_ICONS[primary.icon];
+
+  // Close the drawer (and any open sheet) whenever navigation happens.
   useEffect(() => {
     setOpen(false);
+    setSheetOpen(false);
   }, [pathname]);
 
-  // While open: lock body scroll and allow Escape to close.
-  useLockBodyScroll(open);
+  // While mounted (including through the exit animation): lock body scroll, and
+  // while open allow Escape to close.
+  useLockBodyScroll(drawer.mounted);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -94,93 +163,163 @@ export default function MobileNav({
     return () => document.removeEventListener("keydown", onKey);
   }, [open]);
 
+  function runPrimary() {
+    if (primary.target.kind === "activity") openCreate();
+    else router.push(primary.target.href);
+  }
+
+  const entering = drawer.phase === "enter";
+  const backdropMotion = reduceMotion
+    ? ""
+    : entering
+      ? "motion-fade-in"
+      : "motion-fade-out";
+  const panelMotion = reduceMotion
+    ? ""
+    : entering
+      ? "motion-slide-left-in"
+      : "motion-slide-left-out";
+
   return (
     <>
       {/* pt + max() side padding keep the bar clear of the notch/status bar now
-      that the viewport paints edge-to-edge (viewportFit cover in app/layout.tsx). */}
-      <header className="sticky top-0 z-30 border-b border-black/10 bg-white/80 pt-[env(safe-area-inset-top)] backdrop-blur-xl md:hidden print:hidden dark:border-white/5 dark:bg-ink-950/80">
-        <div className="flex h-14 items-center gap-3 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]">
+      that the viewport paints edge-to-edge (viewportFit cover in app/layout.tsx).
+      Stickiness lives on the <ShellChrome> wrapper, not here. */}
+      <header className="border-b border-black/10 bg-white/80 pt-[env(safe-area-inset-top)] backdrop-blur-xl md:hidden print:hidden dark:border-white/5 dark:bg-ink-950/80">
+        <div className="flex h-14 items-center gap-2 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]">
           <button
             type="button"
             aria-label="Open menu"
             aria-expanded={open}
             onClick={() => setOpen(true)}
-            className="-ml-1 flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
+            className="tap-target press -ml-1 flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
           >
             <IconMenu2 className="h-6 w-6" stroke={1.75} />
           </button>
           <Link href="/" className="flex items-center gap-2">
             <Wordmark markClassName="h-5 w-9" />
           </Link>
-          {!restricted && (
-            <div className="ml-auto -mr-1 flex items-center">
-              {/* Start a live workout — the phone-at-the-gym entry to the rest
-                  timer + set check-off flow (issue #340). */}
-              <button
-                type="button"
-                aria-label="Start workout"
-                data-testid="start-workout-mobile"
-                onClick={() => openLive()}
-                className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
-              >
-                <IconBolt className="h-5 w-5" stroke={1.75} />
-              </button>
-              {/* Repeat last activity — the mobile twin of the desktop aside's
-                  "Repeat last", so it isn't desktop-only (issue #337). */}
-              {hasLastActivity && (
+          <div className="ml-auto -mr-1 flex items-center">
+            {/* Global search, one tap from every page (issue #1416). Opens the
+                same CommandPalette the drawer's search button and ⌘K do. */}
+            <button
+              type="button"
+              aria-label="Search"
+              data-testid="search-mobile"
+              onClick={() => openGlobalSearch()}
+              className="tap-target press flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
+            >
+              <IconSearch className="h-5 w-5" stroke={1.75} />
+            </button>
+            {!restricted && (
+              <>
+                {showsActivityShortcuts(primary) && (
+                  <>
+                    {/* Start a live workout — the phone-at-the-gym entry to the
+                        rest timer + set check-off flow (issue #340). */}
+                    <button
+                      type="button"
+                      aria-label="Start workout"
+                      data-testid="start-workout-mobile"
+                      onClick={() => openLive()}
+                      className="tap-target press flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
+                    >
+                      <IconBolt className="h-5 w-5" stroke={1.75} />
+                    </button>
+                    {/* Repeat last activity — the mobile twin of the desktop
+                        aside's "Repeat last", so it isn't desktop-only (#337). */}
+                    {hasLastActivity && (
+                      <button
+                        type="button"
+                        aria-label="Repeat last activity"
+                        data-testid="repeat-last-mobile"
+                        onClick={() => openRepeatLast()}
+                        className="tap-target press flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
+                      >
+                        <IconRepeat className="h-5 w-5" stroke={1.75} />
+                      </button>
+                    )}
+                  </>
+                )}
+                {/* The contextual primary. Its accessible name IS the action
+                    ("Log food" on Nutrition), so the bar never lies about what
+                    the + will do. */}
                 <button
                   type="button"
-                  aria-label="Repeat last activity"
-                  data-testid="repeat-last-mobile"
-                  onClick={() => openRepeatLast()}
-                  className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-ink-750"
+                  aria-label={primary.label}
+                  data-testid="quick-log-primary"
+                  data-quick-log-id={primary.id}
+                  onClick={runPrimary}
+                  className="tap-target press flex h-10 w-9 items-center justify-center rounded-lg text-brand-600 transition hover:bg-slate-100 dark:text-brand-400 dark:hover:bg-ink-750"
                 >
-                  <IconRepeat className="h-5 w-5" stroke={1.75} />
+                  <PrimaryIcon
+                    className="h-6 w-6"
+                    stroke={primary.icon === "barbell" ? 2 : 1.75}
+                  />
                 </button>
-              )}
-              <button
-                type="button"
-                aria-label="Log activity"
-                onClick={() => openCreate()}
-                className="flex h-10 w-10 items-center justify-center rounded-lg text-brand-600 transition hover:bg-slate-100 dark:text-brand-400 dark:hover:bg-ink-750"
-              >
-                <IconPlus className="h-6 w-6" stroke={2} />
-              </button>
-            </div>
-          )}
+                <button
+                  type="button"
+                  aria-label="More log options"
+                  aria-expanded={sheetOpen}
+                  data-testid="quick-log-more"
+                  onClick={() => setSheetOpen(true)}
+                  className="tap-target press -ml-1 flex h-10 w-6 items-center justify-center rounded-lg text-brand-600 transition hover:bg-slate-100 dark:text-brand-400 dark:hover:bg-ink-750"
+                >
+                  <IconChevronUp className="h-4 w-4" stroke={2} />
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </header>
 
-      {open && (
-        <div className="fixed inset-0 z-40 md:hidden">
-          <div
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-            onClick={() => setOpen(false)}
-            aria-hidden
-          />
-          <aside className="absolute inset-y-0 left-0 flex w-72 max-w-[85%] flex-col gap-4 overflow-y-auto border-r border-black/10 bg-white pt-[max(1rem,env(safe-area-inset-top))] pr-4 pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] dark:border-white/5 dark:bg-ink-950">
-            <SidebarContent
-              activityDates={activityDates}
-              version={version}
-              active={active}
-              username={username}
-              profiles={profiles}
-              viewIds={viewIds}
-              restricted={restricted}
-              isAdmin={isAdmin}
-              multiProfile={multiProfile}
-              foodLoggingRelevant={foodLoggingRelevant}
-              hasIntakeItems={hasIntakeItems}
-              relevance={relevance}
-              reviewCount={reviewCount}
-              readOnly={readOnly}
-              whatsNewUnseen={whatsNewUnseen}
-              onNavigate={() => setOpen(false)}
-              onClose={() => setOpen(false)}
+      {/* Portalled to <body> ON PURPOSE. The bar lives inside <ShellChrome>,
+      which TRANSFORMS itself to hide on scroll — and a transformed ancestor turns
+      `position: fixed` into "fixed relative to that ancestor", which would drag
+      the full-screen drawer along with the bar's slide. Rendering it at the body
+      keeps the overlay anchored to the viewport no matter what the chrome is
+      doing. (BottomSheet portals for the same reason.) */}
+      {drawer.mounted &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div className="fixed inset-0 z-40 md:hidden">
+            <div
+              className={`absolute inset-0 bg-black/40 backdrop-blur-sm ${backdropMotion}`}
+              onClick={() => setOpen(false)}
+              aria-hidden
             />
-          </aside>
-        </div>
-      )}
+            <aside
+              className={`absolute inset-y-0 left-0 flex w-72 max-w-[85%] flex-col gap-4 overflow-y-auto border-r border-black/10 bg-white pt-[max(1rem,env(safe-area-inset-top))] pr-4 pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] dark:border-white/5 dark:bg-ink-950 ${panelMotion}`}
+            >
+              <SidebarContent
+                activityDates={activityDates}
+                version={version}
+                active={active}
+                username={username}
+                profiles={profiles}
+                viewIds={viewIds}
+                restricted={restricted}
+                isAdmin={isAdmin}
+                multiProfile={multiProfile}
+                foodLoggingRelevant={foodLoggingRelevant}
+                hasIntakeItems={hasIntakeItems}
+                relevance={relevance}
+                reviewCount={reviewCount}
+                readOnly={readOnly}
+                whatsNewUnseen={whatsNewUnseen}
+                onNavigate={() => setOpen(false)}
+                onClose={() => setOpen(false)}
+              />
+            </aside>
+          </div>,
+          document.body
+        )}
+
+      <QuickLogSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        restricted={restricted}
+      />
     </>
   );
 }
