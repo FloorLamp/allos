@@ -1,6 +1,26 @@
 {
   "days": [
     {
+      "date": "2026-07-25",
+      "entries": [
+        {
+          "pr": 1452,
+          "title": "A phone-first shell",
+          "body": "On a phone the app now has its own chrome: the top bar slides away as you scroll and returns the moment you scroll up, taking the multi-profile \"Viewing N profiles\" banner with it so you always know whose data you're reading. The bar carries one-tap Search and a contextual + button that starts the current page's obvious log — food on Nutrition, a dose on Medications, weight on Body — with a quick-log sheet behind it for everything else. The drawer learns your most-visited pages as Frequent shortcuts (kept on your device only), spacing tightens below tablet width, and every animation honors your system's reduced-motion setting.",
+          "kind": "feature",
+          "issues": [1416]
+        },
+        {
+          "pr": 1460,
+          "title": "Offline dose logs are timed right and never lie",
+          "body": "A dose you confirm without signal is now logged at the moment you tapped it — not when your phone reconnected — so adherence history reflects when you actually took it. Replays also go through the exact same checks as a normal tap: a medication you paused, a dose the day already resolved, or an entry that sat queued too long is parked in the review panel with a plain-language reason instead of being reported as synced. This also fixes a real bug where a queued confirm could log a dose — and burn supply — for a paused medication.",
+          "kind": "fix",
+          "issues": [1427]
+        }
+      ],
+      "operatorNotes": []
+    },
+    {
       "date": "2026-07-24",
       "entries": [
         {

@@ -9,16 +9,16 @@ import { db, today, writeTx } from "../../db";
 import { now as clockNow } from "../../clock";
 import {
   shiftDateStr,
-  daysBetweenDateStr,
   dateStrInTz,
   utcSqlString,
   parseUtcSql,
 } from "../../date";
 import { getTimezone } from "../../settings";
 import {
-  DOSE_LOG_DATE_WINDOW_DAYS,
+  isDoseDateAccepted as isDoseDateInWindow,
   isGivenAtAccepted,
   isHistoricalDoseTimeAccepted,
+  resolveQueuedTakenAt,
 } from "../../dose-log-window";
 import { decrementSupply, incrementSupply } from "./refill";
 import { getMedicationFamilyStates } from "./prn-family";
@@ -36,8 +36,7 @@ import type {
 // accepted-window decision lives in lib/dose-log-window (pure, unit-tested); this
 // binds it to the profile's today.
 function isDoseDateAccepted(profileId: number, date: string): boolean {
-  const diff = daysBetweenDateStr(today(profileId), date);
-  return diff != null && Math.abs(diff) <= DOSE_LOG_DATE_WINDOW_DAYS;
+  return isDoseDateInWindow(today(profileId), date);
 }
 
 // Supplement ids with at least one dose actually TAKEN on `date` (supplement-
@@ -124,11 +123,20 @@ export function getSkippedDoseIds(
 // tap handler) can answer honestly: a tap on a button whose dose was since
 // deleted/retired by an edit, or whose item was paused, logs NOTHING and must
 // not be acknowledged as "Logged".
+//
+// `takenAt` (#1427) is an OPTIONAL captured intake instant, supplied only by the
+// offline write queue's replay: the tap happened when the user actually took the
+// dose, possibly hours before the connection came back, so the log is stamped with
+// that moment instead of the replay one. It is validated (never trusted) by the pure
+// resolveQueuedTakenAt and silently falls back to the server's own now when unusable
+// — a skewed phone clock must cost the precise minute, never the dose log. Every
+// other caller omits it and behaves byte-identically to before.
 export function markDoseTaken(
   profileId: number,
   doseId: number,
   supplementId: number | null,
-  date: string
+  date: string,
+  takenAt?: Date
 ): DoseTakenOutcome {
   // A far-off (forged) date can't land a misdated row (issue #614); a legitimate
   // late tap within the window still logs to the reminder's own day.
@@ -183,14 +191,30 @@ export function markDoseTaken(
     // Snapshot the dose amount at confirm time: history must keep showing what
     // was actually taken even after a later dosage edit rewrites the dose row.
     // Always write the dose's OWN item id — never the callback token's. given_at is
-    // set to now (the tap moment) for a scheduled confirm: the schedule dictates
-    // WHEN, so a precise intake time isn't captured here (the PRN path is what makes
-    // given_at user-suppliable). The exists-check above already guaranteed no row
-    // stands for (dose,date), so this insert can't duplicate.
+    // the tap moment for a scheduled confirm: the schedule dictates WHEN, so a
+    // precise intake time isn't captured here (the PRN path is what makes given_at
+    // user-suppliable) — EXCEPT for a replayed offline confirm, whose tap moment was
+    // captured on the client and validated above (#1427). An unusable/absent stamp
+    // COALESCEs to the server's own now, exactly as before. The exists-check above
+    // already guaranteed no row stands for (dose,date), so this insert can't
+    // duplicate.
+    const stamp = resolveQueuedTakenAt(
+      takenAt,
+      getTimezone(profileId),
+      date,
+      // Real time on purpose: a clock-skew comparison, not a date derivation.
+      new Date()
+    );
     db.prepare(
       `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, given_at)
-       VALUES (?,?,?,?, datetime('now'))`
-    ).run(doseId, owned.item_id, date, owned.amount);
+       VALUES (?,?,?,?, COALESCE(?, datetime('now')))`
+    ).run(
+      doseId,
+      owned.item_id,
+      date,
+      owned.amount,
+      stamp ? utcSqlString(stamp) : null
+    );
     // Only the taken insert above (reached once, under the write lock) decrements
     // on-hand supply, once.
     decrementSupply(profileId, owned.item_id);
