@@ -4,6 +4,34 @@
       "date": "2026-07-25",
       "entries": [
         {
+          "pr": 1494,
+          "title": "Share a lab PDF straight into your record",
+          "body": "Install the app and your phone's share sheet gains an Allos target: share a PDF or a photo of a document from any app and it lands in the medical-upload pipeline — same per-person storage, duplicate detection, and AI extraction as the upload form — then opens the stored document so you can watch extraction and reassign it if it belongs to another family member. The upload form also gains a take-a-photo option on phones.",
+          "kind": "feature",
+          "issues": [1423]
+        },
+        {
+          "pr": 1495,
+          "title": "Home-screen shortcuts and a badge that counts what needs you",
+          "body": "Long-press the installed app's icon for shortcuts straight into logging — food, a dose, weight, vitals, an activity, or search. The app icon also carries a badge with the same count as the dashboard's Needs-attention card, clearing when the day is handled (refreshes on open in this first version).",
+          "kind": "feature",
+          "issues": [1424]
+        },
+        {
+          "pr": 1481,
+          "title": "Overlays that move as one, and swipes that go somewhere",
+          "body": "The drawer, bottom sheets, and the workout dock now share one motion system — same timing, same drag handle, same scrim — and one drag gesture with the right outcome per surface: swiping a sheet down dismisses it, swiping the workout dock minimizes it (a live workout is never discardable by gesture). The drawer opens with an edge swipe, and the Timeline's day view pages between days with a horizontal swipe or its new arrows. All of it is instant under reduced-motion.",
+          "kind": "feature",
+          "issues": [1425, 1469]
+        },
+        {
+          "pr": 1483,
+          "title": "Redose guidance with just an interval, and a household dose round",
+          "body": "Setting only a minimum interval on an as-needed medication now shows the \"Next dose in ~Nh\" guidance — it previously required the optional daily maximum too. And caregivers can subscribe their Telegram reminder to a household round: one message covering the family members you select, each section with one-tap confirms that check your current access at the moment you tap and answer honestly if a dose was already handled.",
+          "kind": "fix",
+          "issues": [1458, 1459]
+        },
+        {
           "pr": 1480,
           "title": "One star to save it everywhere",
           "body": "Starring and pinning were two separate gestures for the same intent — a biomarker you cared about had to be starred for the Results status card and separately pinned to earn a Trends chart tile, and the two sets silently drifted apart. They're now one: starring a biomarker puts it on the Results card, gives it a Trends chart tile, and includes it in the profile summary, with a reorder control on Trends replacing the old pin toggle. Existing stars and pins merge automatically, keeping each save's original date and your tile order. One change to know: restoring a saved Trends view no longer alters which biomarkers are saved — views keep their date range and compare state only.",
