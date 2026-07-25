@@ -20,9 +20,9 @@ import {
   chartFullMargin,
   chartGridProps,
   chartLineDot,
+  chartMarkMotion,
   chartSparklineAxisProps,
   chartSparklineMargin,
-  chartMarkMotion,
   chartTooltipProps,
   useChartMotion,
 } from "./chart-scaffold";
@@ -146,15 +146,18 @@ export default function LineChartCard({
         <LineChart
           data={data}
           syncId={syncId}
-          margin={{ top: 10, right: 16, bottom: 0, left: -8 }}
+          margin={sparkline ? chartSparklineMargin : chartFullMargin}
         >
-          <CartesianGrid {...chartGridProps(c)} />
+          {!sparkline && <CartesianGrid {...chartGridProps(c)} />}
           <XAxis
             dataKey="date"
             tickFormatter={tickFmt}
-            {...chartAxisProps(c)}
+            {...(sparkline ? chartSparklineAxisProps() : chartAxisProps(c))}
           />
-          <YAxis {...chartAxisProps(c)} domain={yDomain ?? ["auto", "auto"]} />
+          <YAxis
+            {...(sparkline ? chartSparklineAxisProps() : chartAxisProps(c))}
+            domain={yDomain ?? ["auto", "auto"]}
+          />
           <Tooltip
             formatter={(v) => [
               `${roundChartValue(Number(v), decimals)}${unit}`,

@@ -15,15 +15,16 @@ import { test, expect } from "@playwright/test";
 // width is the whole point: at 1280px the old chrome fit, which is exactly why
 // the defect survived a desktop-only suite.
 //
-// Fixture: the seeded `body-tile-steps` tile, targeted by its own testid rather
-// than by position on the shared grid.
+// Fixtures: the seeded Body-tab `weight` tile and the `weight` metric detail
+// page — both targeted by exact locators (a per-metric testid; the detail page
+// renders exactly one chart) rather than by position on a shared grid.
 test.describe("Trends mini-tile sparkline (#1445)", () => {
   test("a mini tile draws a sparkline with no axis chrome, and states its range as text", async ({
     page,
   }) => {
     await page.goto("/trends?tab=body");
 
-    const tile = page.getByTestId("body-tile-steps");
+    const tile = page.getByTestId("body-tile-weight");
     await expect(tile).toBeVisible();
 
     // The chart renders (recharts is code-split, so this also proves the chunk
@@ -31,10 +32,14 @@ test.describe("Trends mini-tile sparkline (#1445)", () => {
     const svg = tile.locator("svg.recharts-surface");
     await expect(svg).toBeVisible();
 
-    // The point of the variant: no painted axes inside the tile. recharts emits a
-    // `.recharts-cartesian-axis` group per VISIBLE axis, and none for a hidden
-    // one, so this is a structural assertion rather than a pixel one.
-    await expect(tile.locator(".recharts-cartesian-axis")).toHaveCount(0);
+    // The point of the variant: no axis chrome painted inside the tile. Asserted
+    // on the TICK LABELS (and the grid), not on the `.recharts-cartesian-axis`
+    // group — recharts 3.x renders that group even for a hidden axis, so counting
+    // groups would pass while the labels were still on screen, which is the very
+    // defect this spec exists to catch.
+    await expect(
+      tile.locator(".recharts-cartesian-axis-tick-value")
+    ).toHaveCount(0);
     await expect(tile.locator(".recharts-cartesian-grid")).toHaveCount(0);
 
     // …and the numbers the Y axis used to imply are present as legible text.
@@ -48,11 +53,14 @@ test.describe("Trends mini-tile sparkline (#1445)", () => {
     // The counterpart guarantee: hiding axes is the MINI-tile decision, not a
     // global one. A full-size chart still carries the axis a reader traces a
     // value along, and #1445's recessive-axis pass has to hold up at 390px too.
-    await page.goto("/trends?tab=body&metric=steps");
+    await page.goto("/trends/metric/weight");
 
-    const chart = page.locator(".recharts-surface").first(); // first-ok: the metric detail page renders exactly one full-size chart
+    // The metric detail page renders exactly one chart, so no positional pick.
+    const chart = page.locator(".recharts-surface");
     await expect(chart).toBeVisible();
-    await expect(chart.locator(".recharts-cartesian-axis")).not.toHaveCount(0);
+    await expect(
+      chart.locator(".recharts-cartesian-axis-tick-value")
+    ).not.toHaveCount(0);
 
     // Ticks stay at or above the 10px legibility floor the scaffold sets.
     const tickSize = await chart

@@ -135,9 +135,13 @@ export const chartSparklineMargin = {
   left: 4,
 } as const;
 
-/** Axis props for a sparkline. The axis still SCALES the series — it simply
- *  doesn't paint itself, and `hide` also drops its space reservation, which is
- *  the actual win at tile width. */
+/**
+ * Axis props for a sparkline. The axis stays MOUNTED — it still scales the series
+ * and still honors an explicit `domain`, which is what keeps a biomarker tile's
+ * shared axis-domain policy (#407) working — but `hide` makes recharts' own
+ * `CartesianAxis` render nothing at all AND drop its space reservation, so the
+ * spine, tick marks and tick labels all go and the plot gets the whole tile.
+ */
 export function chartSparklineAxisProps() {
   return { hide: true } as const;
 }
