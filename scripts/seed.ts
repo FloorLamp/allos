@@ -10,6 +10,7 @@ import { reconcileFlags } from "../lib/queries";
 import { providerDedupKey } from "../lib/providers";
 import { orderIntakePair } from "../lib/intake-pairs";
 import { hashPasswordSync } from "../lib/password";
+import { seedStandardMetricSaves } from "../lib/standard-metric-seeds";
 import { createShareLink } from "../lib/share-links-db";
 import { isDemoMode, DEMO_USERNAME, DEMO_PASSWORD } from "../lib/demo";
 import {
@@ -2555,6 +2556,14 @@ saveItem.run("trend-metric", "weight", 0);
 saveItem.run("biomarker", "LDL Cholesterol", 1);
 for (const name of ["ApoB", "hs-CRP", "Lipoprotein(a)"])
   saveItem.run("biomarker", name, null);
+// bootstrapAuth already seeded "weight" as a #1487 standard-metric row when it
+// created profile 1, so the INSERT above was IGNORED and the fixture's curated
+// position never landed. Set it explicitly — this fixture's whole point is that a
+// user-curated metric LEADS the saved row (e2e/saved-star.mobile.spec.ts).
+db.prepare(
+  `UPDATE saved_items SET position = 0
+     WHERE profile_id = 1 AND kind = 'trend-metric' AND key = 'weight'`
+).run();
 
 // ── Passport share link (the public read-only /share/<token> fixture) ────────
 // One live (non-expired, non-revoked) link scoping a sensible subset of the
@@ -2658,6 +2667,13 @@ if (!existingChild) {
     db.prepare("INSERT INTO profiles (name) VALUES (?)").run(CHILD_NAME)
       .lastInsertRowid
   );
+  // The standard Overview metric seeds (#1487), exactly as the production
+  // create-profile paths write them — this profile is created with raw SQL rather
+  // than through createProfile, so it seeds itself. The set is the same for every
+  // profile: body fat and training volume are dropped when the TILES are built (an
+  // 18-month-old is below the growth-metrics body-fat age), not when they are saved.
+  seedStandardMetricSaves(db, childId);
+
   // ~18 months old: WHO reference (0–24 mo) applies, so height/weight/head-circ
   // all score against the WHO curves and head-circ entry is offered.
   const childBirthdate = shiftDateStr(today(childId), -548);
