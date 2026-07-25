@@ -63,9 +63,40 @@ to the shots for fast human review.
 
 ## 3. Review
 
-Read the screenshots in sequence — they are numbered in drive order. A blank
-frame means a failed render, not a passed step. When a journey logs `FAILED` or
-"check shots", look at that shot before concluding anything about the flow.
+Read the screenshots in sequence (`index.html` is a thumbnail contact sheet) —
+they are numbered in drive order. A blank frame means a failed render, not a
+passed step. When a journey logs `FAILED` or "check shots", look at that shot
+before concluding anything about the flow.
+
+### Reviewing a full census (100+ shots): fan out, don't read serially
+
+The proven workflow for an all-pages consistency audit:
+
+1. **Validate the capture set FIRST**: `md5sum *desktop*.png | awk '{print $1}'
+| sort -u | wc -l` — near-1 unique hashes means the pass ran unauthenticated
+   (it once produced 58 identical /login screenshots that read as a completed
+   census). The harness now aborts loudly on auth failure, but verify anyway;
+   duplicates should correspond only to known redirect routes.
+2. **Dispatch 3–4 parallel reviewer subagents**, each owning ~15–20 shots (split
+   desktop alphabetically; one agent takes a mobile sample). Give each: the
+   exact file list, the house conventions to judge against (one PageHeader h1 +
+   subtitle, sentence case, frosted cards, `section-label` field groups, one
+   date format per context, friendly empty states), and the three dimensions —
+   hierarchy / text / layout.
+3. **Tell reviewers which artifacts to EXCLUDE** or they'll report them as
+   findings: the dev-overlay "1 Issue" badge (dev-only chrome) and any
+   position:fixed bar smeared mid-image by fullPage capture (a fixed element
+   renders once at an arbitrary scroll position — its mid-page "occlusion" is a
+   screenshot artifact, though its presence may itself be a bug worth a
+   separate look).
+4. **Require refutability**: reviewers must name the route and the exact visible
+   defect ("two identical ⋯ buttons at x1170/x1225"), list routes that look
+   GOOD (proves coverage), and end with a top-5. Cross-check surprising claims
+   against the code before filing (a "dead route" may be an intentional
+   relevance redirect).
+5. **Pair censuses**: run once against a fresh DB (empty states) and once with
+   `UX_SEED=1` (populated tables/charts/lists) — they surface disjoint finding
+   sets.
 
 ## Extending
 
