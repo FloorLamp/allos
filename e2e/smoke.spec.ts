@@ -216,7 +216,10 @@ test("biological-age hero is absent for a child profile (#209)", async ({
 // #19: the global (Cmd-K) command palette now fans out over the clinical passport,
 // so an allergy substance is findable. Seed documents a Penicillin allergy; opening
 // the palette and typing "penicillin" must surface it under the Allergies group and
-// link to /allergies. Proves the new search domains wire end-to-end (query → server
+// link to the Allergies pane. Since #1449 that is the LEAF pane
+// (/records/problems/allergies), not the old stacked Problems route — the hit lands
+// ON the allergy list instead of above a stack. Proves the search domains wire
+// end-to-end (query → server
 // action → ranked group → rendered hit).
 test("command palette surfaces a seeded allergy for 'penicillin' (#19)", async ({
   page,
@@ -232,9 +235,9 @@ test("command palette surfaces a seeded allergy for 'penicillin' (#19)", async (
   const results = page.getByRole("listbox", { name: "Results" });
   await expect(results.getByText("Allergies", { exact: true })).toBeVisible();
   const hit = results.getByRole("option", { name: /Penicillin/i });
-  // Selecting it navigates to the Problems pane (Conditions + Allergies).
-  await followLink(page, hit.first(), /\/records\/problems$/); // first-ok: the command-palette Penicillin allergy result — order-agnostic
-  await expect(page).toHaveURL(/\/records\/problems$/);
+  // Selecting it navigates to Problems › Allergies, the pane that owns the record.
+  await followLink(page, hit.first(), /\/records\/problems\/allergies$/); // first-ok: the command-palette Penicillin allergy result — order-agnostic
+  await expect(page).toHaveURL(/\/records\/problems\/allergies$/);
 });
 
 // #38: a refill-tracked supplement (seed sets Magnesium Glycinate's on-hand

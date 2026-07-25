@@ -60,12 +60,14 @@ test.describe("Dental records — add → view → filter → track recheck → 
     await expect(row).toContainText(`#${TOOTH}`);
     await expect(row).toContainText("watch");
 
-    // Filtering by "Completed" hides it; back to "Watch" shows it again.
-    await list.getByLabel("Filter by status").selectOption("completed");
+    // Filtering by "Completed" hides it; back to "Watch" shows it again. The status
+    // filter is the family's shared FilterPills group since #1449, not a <select>.
+    const dentalFilter = list.getByTestId("dental-status-filter");
+    await dentalFilter.getByRole("button", { name: "Completed" }).click();
     await expect(list.getByRole("row").filter({ hasText: NAME })).toHaveCount(
       0
     );
-    await list.getByLabel("Filter by status").selectOption("watch");
+    await dentalFilter.getByRole("button", { name: "Watch" }).click();
     await expect(list.getByRole("row").filter({ hasText: NAME })).toBeVisible();
 
     // Track a recheck follow-up on it — the row's control turns into a tracked state.
