@@ -57,6 +57,62 @@ export function nextSortState(
   return { column, dir };
 }
 
+// --- compact sort control (card mode) ------------------------------------------
+
+// A sortable column as the compact control knows it: the same `column` id the
+// SortableHeader writes into `?sort=`, its human label, and the direction its
+// first click applies (date-like columns open newest-first).
+export interface SortChoice {
+  column: string;
+  label: string;
+  defaultDir?: SortDir;
+}
+
+// Serialize/parse the `column:dir` pair a single `<select>` carries. Below `sm` the
+// responsive tables hide `thead` (the row becomes a card), so header-click sorting
+// is unreachable and one select stands in for the whole header strip — it has to
+// encode BOTH axes in one value (issue #1426).
+export function sortChoiceValue(column: string, dir: SortDir): string {
+  return `${column}:${dir}`;
+}
+
+// Resolve a raw `column:dir` value against the known choices, falling back to the
+// given column/dir for anything unrecognized — the same whitelist discipline
+// parseSortColumn applies to the URL params, so a hand-edited value can't inject
+// an arbitrary sort key.
+export function parseSortChoiceValue(
+  raw: string,
+  choices: readonly SortChoice[],
+  fallback: { column: string; dir: SortDir }
+): { column: string; dir: SortDir } {
+  const [column, dir] = raw.split(":");
+  if (!choices.some((c) => c.column === column)) return fallback;
+  if (dir !== "asc" && dir !== "desc") return fallback;
+  return { column, dir };
+}
+
+// Expand the sortable columns into the select's option list: each column in both
+// directions, the column's own default direction FIRST so the common intent
+// (newest dates, A–Z names) is the nearer option. Directions are spelled out
+// rather than drawn as arrow glyphs so a screen reader announces the option
+// meaningfully.
+export function sortChoiceOptions(
+  choices: readonly SortChoice[]
+): { value: string; label: string }[] {
+  const out: { value: string; label: string }[] = [];
+  for (const c of choices) {
+    const first: SortDir = c.defaultDir ?? "asc";
+    const second: SortDir = first === "asc" ? "desc" : "asc";
+    for (const dir of [first, second]) {
+      out.push({
+        value: sortChoiceValue(c.column, dir),
+        label: `${c.label} (${dir === "asc" ? "ascending" : "descending"})`,
+      });
+    }
+  }
+  return out;
+}
+
 // --- comparator kit -----------------------------------------------------------
 
 // A sortable cell value: a string or number to order by, or null/undefined for

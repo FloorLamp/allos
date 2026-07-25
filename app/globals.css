@@ -204,6 +204,69 @@ body::before {
   .td {
     @apply px-2 py-2 text-sm text-slate-700 sm:px-3 dark:text-slate-300;
   }
+  /* ── Responsive tables (issue #1426) ────────────────────────────────────────
+     Below `sm`, a `.table-cards` table stops being a table and becomes a stack of
+     cards — over the SAME DOM. There is no second content tree and no
+     `hidden md:*` twin pair to drift (the responsive-surface rule in AGENTS.md):
+     every cell is authored once, in one `<td>`, and declares where it lands on the
+     card via `data-card` (components/ResponsiveTable.tsx → lib/card-row.ts).
+
+     Placement is a flex row with wrapping, so DOM order doesn't dictate card order:
+       order 1 title   — the row's identity, grows to fill the first line
+       order 2 actions — pinned to that line's right edge
+       order 3 value   — full-width, the headline number/state
+       order 4 meta    — the secondary attributes, flowing into one wrapped line
+       order 5 full    — a full-width body (an inline edit form) replacing the rest
+
+     A `<td>` with NO `data-card` is desktop-only detail and is hidden on the card;
+     that `:not([data-card])` rule outranks a Tailwind `hidden md:table-cell` on the
+     same cell (0,2,1 vs 0,1,0), which is exactly what lets a column that's hidden on
+     a NARROW table reappear as a card meta line — the phone finally gets the panel,
+     category and notes it used to lose. */
+  .table-cards {
+    @apply max-sm:block;
+  }
+  /* Headers are gone in card mode (each cell carries its own label instead), so a
+     sortable card list pairs this with components/TableSortSelect.tsx. */
+  .table-cards thead {
+    @apply max-sm:hidden;
+  }
+  .table-cards tbody {
+    @apply max-sm:block;
+  }
+  .table-cards tr {
+    @apply max-sm:mb-2 max-sm:flex max-sm:flex-wrap max-sm:items-baseline max-sm:gap-x-3 max-sm:gap-y-1 max-sm:rounded-xl max-sm:border max-sm:border-black/5 max-sm:bg-white/50 max-sm:p-3 max-sm:dark:border-white/10 max-sm:dark:bg-ink-800/40;
+  }
+  .table-cards tr:last-child {
+    @apply max-sm:mb-0;
+  }
+  .table-cards td {
+    @apply max-sm:block max-sm:px-0 max-sm:py-0;
+  }
+  .table-cards td:not([data-card]) {
+    @apply max-sm:hidden;
+  }
+  .table-cards td[data-card="title"] {
+    @apply max-sm:order-1 max-sm:min-w-0 max-sm:flex-1 max-sm:text-[0.9375rem] max-sm:font-medium max-sm:text-slate-800 max-sm:dark:text-slate-100;
+  }
+  .table-cards td[data-card="actions"] {
+    @apply max-sm:order-2 max-sm:ml-auto max-sm:shrink-0;
+  }
+  .table-cards td[data-card="value"] {
+    @apply max-sm:order-3 max-sm:w-full max-sm:basis-full max-sm:text-base;
+  }
+  .table-cards td[data-card="meta"] {
+    @apply max-sm:order-4 max-sm:text-xs max-sm:text-slate-500 max-sm:dark:text-slate-400;
+  }
+  .table-cards td[data-card="full"] {
+    @apply max-sm:order-5 max-sm:w-full max-sm:basis-full;
+  }
+  /* The column's own label, shown only in card mode (the `<th>` is hidden there). */
+  /* The passing muted pairing (#794): the label is set apart from its value by
+     case and size, never by dropping below the contrast floor. */
+  .card-cell-label {
+    @apply mr-1 text-[0.6875rem] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400;
+  }
   /* Icon-only tap targets share the .btn family's keyboard focus ring (issue
      #794 cluster 8c). The touch-only clickable-area extension lives in the
      pointer:coarse block below; this rule is the always-on focus affordance. */
