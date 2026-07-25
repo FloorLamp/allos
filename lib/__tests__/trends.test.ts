@@ -1,16 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
   filterSeriesByRange,
+  outOfWindowAgeLabel,
+  outOfWindowLatest,
   rangeSummaryLabel,
   summarizeSeries,
 } from "../trends";
 import {
+  ALL_TIME_RANGE_VALUE,
+  defaultTrendsRange,
   intradayQuickRange,
   isAllTimeRange,
   isCustomRange,
   isIntradayRange,
   isQuickRangeActive,
   quickRanges,
+  resolveTrendsRange,
 } from "../timeline-format";
 
 describe("filterSeriesByRange", () => {
@@ -214,5 +219,135 @@ describe("quick-range vocabulary (shared with the Timeline)", () => {
         false
       );
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #1485 G: Trends opens on 90D, and a sparse series shows its latest reading.
+// ---------------------------------------------------------------------------
+
+describe("defaultTrendsRange / resolveTrendsRange", () => {
+  const today = "2026-07-08";
+
+  // The whole point of the default is that it LIGHTS a pill: a window that
+  // didn't exactly match 90D would render every pill dark and print a "Custom…"
+  // summary chip on a plain /trends load.
+  it("is exactly the 90D quick range, so that pill renders active", () => {
+    const ninety = quickRanges(today).find((q) => q.label === "90D")!;
+    expect(defaultTrendsRange(today)).toEqual({
+      from: ninety.from,
+      to: ninety.to,
+    });
+    expect(isQuickRangeActive(defaultTrendsRange(today), ninety)).toBe(true);
+    // ...and therefore is not "custom" and not "all time".
+    expect(isCustomRange(defaultTrendsRange(today), today)).toBe(false);
+    expect(isAllTimeRange(defaultTrendsRange(today))).toBe(false);
+  });
+
+  it("follows the profile's today", () => {
+    expect(defaultTrendsRange(today).from).toBe("2026-04-10"); // 89 days back
+    expect(defaultTrendsRange("2026-01-01").from).toBe("2025-10-04");
+    expect(defaultTrendsRange("2026-01-01").to).toBe("2026-01-01");
+  });
+
+  it("applies the default ONLY when the URL names no window", () => {
+    expect(resolveTrendsRange({}, today)).toEqual(defaultTrendsRange(today));
+    expect(resolveTrendsRange({}, today, undefined)).toEqual(
+      defaultTrendsRange(today)
+    );
+  });
+
+  // The contract for every shared/bookmarked link and every saved view: a URL
+  // that says something is never reinterpreted.
+  it("never rewrites an explicit window", () => {
+    const custom = { from: "2026-01-01", to: "2026-02-01" };
+    expect(resolveTrendsRange(custom, today)).toEqual(custom);
+    // A half-open window keeps its open side open — not silently closed to 90D.
+    expect(resolveTrendsRange({ from: "2026-01-01" }, today)).toEqual({
+      from: "2026-01-01",
+    });
+    expect(resolveTrendsRange({ to: "2026-02-01" }, today)).toEqual({
+      to: "2026-02-01",
+    });
+  });
+
+  // Without this sentinel the "All time" pill would be a no-op: it clears the
+  // params, and a cleared URL is now the 90D default.
+  it("honors the explicit all-time sentinel over the default", () => {
+    expect(resolveTrendsRange({}, today, ALL_TIME_RANGE_VALUE)).toEqual({});
+    expect(isAllTimeRange(resolveTrendsRange({}, today, "all"))).toBe(true);
+    // It outranks stale bounds too, so the pill wins from any prior state.
+    expect(
+      resolveTrendsRange({ from: "2026-01-01" }, today, ALL_TIME_RANGE_VALUE)
+    ).toEqual({});
+  });
+
+  it("ignores an unrecognized range param and falls through to the default", () => {
+    expect(resolveTrendsRange({}, today, "bogus")).toEqual(
+      defaultTrendsRange(today)
+    );
+    expect(resolveTrendsRange({}, today, "")).toEqual(
+      defaultTrendsRange(today)
+    );
+  });
+});
+
+describe("outOfWindowLatest", () => {
+  const series = [
+    { date: "2024-03-01", value: 1 },
+    { date: "2025-06-01", value: 2 },
+    { date: "2026-02-01", value: 3 },
+  ];
+
+  it("returns the newest reading when the window is empty", () => {
+    expect(outOfWindowLatest(series, { from: "2026-05-01" })).toEqual({
+      date: "2026-02-01",
+      value: 3,
+    });
+  });
+
+  // The tile draws the real series in this case; a second "latest" line would
+  // duplicate the headline value and imply staleness that isn't there.
+  it("returns null when the window has any point of its own", () => {
+    expect(outOfWindowLatest(series, { from: "2026-01-01" })).toBeNull();
+    // Even a single in-window point counts.
+    expect(
+      outOfWindowLatest(series, { from: "2026-02-01", to: "2026-02-01" })
+    ).toBeNull();
+    // An all-time window contains everything a non-empty series has.
+    expect(outOfWindowLatest(series, {})).toBeNull();
+  });
+
+  // A never-measured saved biomarker keeps the #1456 placeholder tile (and its
+  // reachable ★) — there is no reading to fall back to.
+  it("returns null for an empty series", () => {
+    expect(outOfWindowLatest([], { from: "2026-05-01" })).toBeNull();
+    expect(outOfWindowLatest([], {})).toBeNull();
+  });
+
+  // A window ENTIRELY in the future of the series, and one entirely in its past,
+  // both fall back to the newest reading — the tile's job is "the latest value",
+  // never "the nearest value".
+  it("falls back to the newest reading regardless of which side the window sits on", () => {
+    expect(outOfWindowLatest(series, { to: "2024-01-01" })).toEqual({
+      date: "2026-02-01",
+      value: 3,
+    });
+  });
+});
+
+describe("outOfWindowAgeLabel", () => {
+  const today = "2026-07-08";
+
+  // The age is the honesty marker — it is what stops a five-month-old value from
+  // reading as today's, so it must be present and correct at every distance.
+  it("labels the reading's age compactly", () => {
+    expect(outOfWindowAgeLabel("2026-07-01", today)).toBe("1w ago");
+    expect(outOfWindowAgeLabel("2026-03-01", today)).toBe("4mo ago");
+    expect(outOfWindowAgeLabel("2023-07-08", today)).toBe("3y ago");
+  });
+
+  it("never says 'Today ago'", () => {
+    expect(outOfWindowAgeLabel(today, today)).toBe("today");
   });
 });

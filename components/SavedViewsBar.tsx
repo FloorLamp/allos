@@ -15,10 +15,22 @@ import type { FormResult } from "@/lib/types";
 // { range + tab + compare pair + pins } per profile: apply one to flip the whole
 // hub to e.g. "Lipids review" without rebuilding it. Applying redirects with the
 // hub's existing ?from/to/tab/cmpA/cmpB/cmpn params (and restores the pins
-// snapshot) via the applyTrendView server action; saving captures the CURRENT URL
-// params (read here from useSearchParams and injected as hidden inputs) plus the
-// server-side pins snapshot.
-export default function SavedViewsBar({ views }: { views: TrendView[] }) {
+// snapshot) via the applyTrendView server action; saving captures the CURRENT view
+// state as hidden inputs — the tab and compare pair from useSearchParams, and the
+// WINDOW from the server-resolved `range` prop (#1485 G: the URL alone can no
+// longer say which window is on screen, since a paramless URL means the 90D
+// default).
+export default function SavedViewsBar({
+  views,
+  range,
+}: {
+  views: TrendView[];
+  // The hub's RESOLVED window (#1485 G). Since the no-param URL now MEANS 90D,
+  // reading from/to off the URL would save an empty range for a default load and
+  // re-apply it as all time. The server passes what it actually rendered; an empty
+  // range here is a genuine all-time view (viewToQuery re-emits it as ?range=all).
+  range: { from?: string; to?: string };
+}) {
   const params = useSearchParams();
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState("");
@@ -47,8 +59,8 @@ export default function SavedViewsBar({ views }: { views: TrendView[] }) {
   // The live hub params, forwarded to saveTrendView as hidden inputs so the saved
   // snapshot matches exactly what's on screen.
   const current = {
-    from: params.get("from") ?? "",
-    to: params.get("to") ?? "",
+    from: range.from ?? "",
+    to: range.to ?? "",
     tab: params.get("tab") ?? "",
     cmpA: params.get("cmpA") ?? "",
     cmpB: params.get("cmpB") ?? "",
