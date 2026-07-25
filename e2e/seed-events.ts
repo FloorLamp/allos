@@ -20,6 +20,10 @@ import { writeRawPayload } from "../lib/integrations/raw-log";
 import { upsertConnection } from "../lib/integrations/connections";
 import { hashShareToken } from "../lib/share-token";
 import { seedDupReviewPair } from "./dup-review-fixture";
+import {
+  createFixtureProfile,
+  createFixtureProfileWithId,
+} from "./fixture-profile";
 import { EDIT_LOCK_SIGNATURE } from "./edit-lock-fixture";
 import {
   setDashboardLayout,
@@ -36,6 +40,9 @@ import {
   writeWizardEntryState,
 } from "./onboarding-reset";
 import {
+  E2E_LOGIN_TRENDS_CURATE,
+  TRENDS_CURATE_PROFILE,
+  TRENDS_CURATE_EMPTY_ANALYTE,
   E2E_LOGIN_CHILD,
   E2E_LOGIN_COMPARE,
   E2E_LOGIN_DUP,
@@ -766,10 +773,7 @@ const HOUSEHOLD_SUPP_NAME = "Household Vitamin D";
 if (
   !db.prepare("SELECT 1 FROM profiles WHERE id = ?").get(HOUSEHOLD_PROFILE_ID)
 ) {
-  db.prepare("INSERT INTO profiles (id, name) VALUES (?, ?)").run(
-    HOUSEHOLD_PROFILE_ID,
-    HOUSEHOLD_PROFILE_NAME
-  );
+  createFixtureProfileWithId(db, HOUSEHOLD_PROFILE_ID, HOUSEHOLD_PROFILE_NAME);
 }
 
 if (
@@ -869,10 +873,7 @@ let childId = (
     { id: number } | undefined
 )?.id;
 if (!childId) {
-  childId = Number(
-    db.prepare("INSERT INTO profiles (name) VALUES (?)").run(CHILD_NAME)
-      .lastInsertRowid
-  );
+  childId = createFixtureProfile(db, CHILD_NAME);
 }
 // A clearly-future date so the appointment always lands in the feed's forward window.
 // Anchored on the clock seam (#990) so it stays future relative to the app's frozen
@@ -2293,15 +2294,14 @@ function seedMemberLogin(
 }
 
 // Look up (or create) a fixture profile by name — idempotent for a reused server.
+// Creation goes through createFixtureProfile so the profile starts with the standard
+// metric saves a production-created profile gets (#1487) — see e2e/fixture-profile.ts.
 function fixtureProfileId(name: string): number {
   const existing = db
     .prepare("SELECT id FROM profiles WHERE name = ?")
     .get(name) as { id: number } | undefined;
   if (existing) return existing.id;
-  return Number(
-    db.prepare("INSERT INTO profiles (name) VALUES (?)").run(name)
-      .lastInsertRowid
-  );
+  return createFixtureProfile(db, name);
 }
 
 // Riley (child) is seeded by scripts/seed.ts; grant the child member to it.
@@ -6557,5 +6557,36 @@ console.log(
   );
   console.log(
     `e2e: seeded household-round fixture — ${E2E_LOGIN_HH_ROUND} own=${HH_ROUND_CAREGIVER_PROFILE} (${hhCaregiverId}), write=${HH_ROUND_WARD_PROFILE} (${hhWardId}), read=${HH_ROUND_SHADOW_PROFILE} (${hhShadowId}) (#1459)`
+  );
+}
+
+// ── Curated Trends Overview fixture (#1487 rendering half / #1485 A+B) ────────
+// Overview renders the SAVED set and nothing else now, so the spec that proves it
+// needs a profile whose saved set it can churn without touching a neighbour. This
+// one is created through fixtureProfileId → createFixtureProfile, so it carries the
+// same standard metric seeds a production-created profile does (weight, body fat,
+// resting HR, training volume) — the fixture IS the day-one state.
+//
+// On top of that: two weigh-ins carrying resting HR (so exactly TWO tiles draw a
+// sparkline and the two-column phone grid is measurable), no body-fat readings and
+// no activities (so those two tiles are the truly-empty case), and one starred
+// analyte with no readings anywhere (the never-measured case #1485 A compacts).
+// Idempotent: its own fixture rows are cleared first.
+{
+  const curateId = fixtureProfileId(TRENDS_CURATE_PROFILE);
+  const curateToday = today(curateId);
+  db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(curateId);
+  const insCurate = db.prepare(
+    `INSERT INTO body_metrics (profile_id, date, weight_kg, resting_hr, notes)
+     VALUES (?, ?, ?, ?, 'e2e:trends-curate')`
+  );
+  insCurate.run(curateId, shiftDateStr(curateToday, -9), 74.2, 57);
+  insCurate.run(curateId, shiftDateStr(curateToday, -2), 73.6, 55);
+  db.prepare(
+    `INSERT OR IGNORE INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', ?)`
+  ).run(curateId, TRENDS_CURATE_EMPTY_ANALYTE);
+  seedMemberLogin(E2E_LOGIN_TRENDS_CURATE, curateId, "write");
+  console.log(
+    `e2e: seeded curated-Overview fixture — profile ${curateId} (${TRENDS_CURATE_PROFILE}) (#1487/#1485)`
   );
 }

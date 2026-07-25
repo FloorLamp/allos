@@ -1058,3 +1058,20 @@ export const E2E_LOGIN_HH_ROUND = "e2e_hhround";
 export const HH_ROUND_CAREGIVER_PROFILE = "HH Round Caregiver (e2e)";
 export const HH_ROUND_WARD_PROFILE = "HH Round Ward (e2e)";
 export const HH_ROUND_SHADOW_PROFILE = "HH Round Shadow (e2e)";
+
+// ── Curated Trends Overview (issue #1487 rendering half / #1485 A+B) ─────────
+// A dedicated adult profile for the membership-driven Overview grid. It owns a
+// KNOWN tile mix so both halves of the grid are deterministic at phone width:
+//   populated → weight + resting HR (two weigh-ins, so two tiles draw a sparkline)
+//   empty     → body fat + training volume (never logged) and a starred analyte
+//               with no readings at all → the #1485 A compact one-line rows
+// Dedicated ON PURPOSE (#868): the spec UNSTARS a standard metric and stars it
+// back through the picker. Doing that on profile 1 would move a shared-seed tile
+// to the front of the saved order (a re-star is a fresh save) and change the grid
+// every other Trends spec reads. Write grant — the spec's writes are its own
+// profile's saved_items, and it restores them itself, so --repeat-each stays clean.
+export const E2E_LOGIN_TRENDS_CURATE = "e2e_trends_curate";
+export const TRENDS_CURATE_PROFILE = "Trends Curate (e2e)";
+// A canonical analyte this profile has NO readings for — the never-measured saved
+// tile. (Profile 1 seeds its own; this one must not depend on that.)
+export const TRENDS_CURATE_EMPTY_ANALYTE = "Ferritin";

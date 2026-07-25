@@ -12,6 +12,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { toggleSavedItem, moveSaved } from "@/app/(app)/saved/actions";
+import { seedStandardMetricSaves } from "@/lib/standard-metric-seeds";
 import { seedActor, createLogin, createProfile, actAs, fd } from "./harness";
 
 const revalidate = vi.mocked(revalidatePath);
@@ -66,6 +67,28 @@ describe("toggleSavedItem", () => {
     expect(saved(profile.id)).toEqual([
       { kind: "trend-metric", key: "weight" },
     ]);
+  });
+
+  it("removes a SEEDED standard metric and puts it back on a re-star (#1487)", async () => {
+    // Since #1487 a `trend-metric` save is MEMBERSHIP, not promotion: Trends Overview
+    // renders the saved set and nothing else, so this toggle is what adds and removes
+    // a standard tile. The round trip is the contract — a removal with no way back
+    // would strand the tile, which is why SaveTrendPicker offers metrics too.
+    const { profile } = seedActor();
+    seedStandardMetricSaves(db, profile.id); // what profile creation does
+
+    await toggleSavedItem(fd({ key: "metric:volume" }));
+    expect(saved(profile.id).map((r) => `${r.kind}:${r.key}`)).toEqual([
+      "trend-metric:weight",
+      "trend-metric:bodyfat",
+      "trend-metric:resting_hr",
+    ]);
+
+    await toggleSavedItem(fd({ key: "metric:volume" }));
+    // Back — as a fresh save, so it leads the grid like any other new star.
+    expect(saved(profile.id).map((r) => `${r.kind}:${r.key}`)[0]).toBe(
+      "trend-metric:volume"
+    );
   });
 
   it("keeps a biomarker and a metric of the same name apart", async () => {
