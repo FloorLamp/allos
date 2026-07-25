@@ -4,6 +4,20 @@
       "date": "2026-07-25",
       "entries": [
         {
+          "pr": 1523,
+          "title": "Your Trends Overview is now yours to curate",
+          "body": "The Overview tab shows exactly two things: what changed (the movers digest) and what you starred — nothing unconditional. The standard tiles (weight, body fat, resting heart rate, training volume) are still there on day one, but as ordinary saved tiles you can unstar or reorder like anything else; the domain tabs keep showing everything. Tiles also got denser on phones — two abreast, the latest value as the headline number, controls tucked into a corner menu — and a saved metric with no readings in the window compacts to a one-line row below the populated tiles instead of a full-height empty box. Unstar everything and the page tells you how to build it back rather than going blank.",
+          "kind": "feature",
+          "issues": [1487, 1485]
+        },
+        {
+          "pr": 1521,
+          "title": "Dates read one way everywhere",
+          "body": "A sweep over every visible date: the same style now means the same thing across pages (day-of-week where it helps, the year only when it isn't this year), timestamps stop mixing formats mid-page, and a handful of form papercuts went with it — labels no longer clip their descenders, and disabled fields actually look disabled instead of just refusing input.",
+          "kind": "fix",
+          "issues": [1448, 1450]
+        },
+        {
           "pr": 1507,
           "title": "Trends opens on the last 90 days",
           "body": "Trends now defaults to a 90-day window instead of all time, so every chart leads with recent change rather than a lifetime average — and \"All time\" is still one tap away (links and saved views that meant all-time keep meaning it). A saved biomarker with no readings in the window shows its latest reading with an honest age (\"55 ng/mL · 5 mo ago\") instead of an empty tile, so stale never reads as current.",
@@ -117,7 +131,8 @@
         }
       ],
       "operatorNotes": [
-        "Migration 113 applies automatically on first boot after pulling (folds starred biomarkers and trend pins into the new unified save store). No manual steps; downgrading past it afterward requires a backup restore, as with any migration."
+        "Migration 113 applies automatically on first boot after pulling (folds starred biomarkers and trend pins into the new unified save store). No manual steps; downgrading past it afterward requires a backup restore, as with any migration.",
+        "Migration 114 applies automatically on first boot after pulling (seeds each profile's standard Overview tiles as saved rows so they become removable; existing profiles see an identical Overview on day one). No manual steps; downgrading past it afterward requires a backup restore, as with any migration."
       ]
     },
     {
