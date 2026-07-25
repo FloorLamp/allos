@@ -149,7 +149,7 @@ export default function ReopenEpisodeReconcile({
               data-testid="episode-reopen-confirm"
               disabled={pending}
               onClick={() => submit([...selected])}
-              className="btn disabled:opacity-50"
+              className="btn"
             >
               {pending ? "Reopening…" : "Reopen episode"}
             </button>

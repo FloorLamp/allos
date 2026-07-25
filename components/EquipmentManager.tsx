@@ -407,7 +407,7 @@ function EquipmentForm({
           type="button"
           onClick={onSave}
           disabled={pending}
-          className="btn disabled:opacity-50"
+          className="btn"
         >
           {pending ? "Saving…" : "Save"}
         </button>

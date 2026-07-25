@@ -20,7 +20,7 @@ import {
 } from "@/lib/date";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { useWeekStart } from "@/components/WeekStartProvider";
-import { formatLongDate, daysRemainingLabel } from "@/lib/format-date";
+import { formatDateWithYear, daysRemainingLabel } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 
 // Styled, theme-consistent replacement for <input type="date">. The browser's
@@ -216,7 +216,7 @@ export default function DateField({
         data-testid={testId}
         id={id}
         type="text"
-        value={validISO(val) ? formatLongDate(val, formatPrefs) : val}
+        value={validISO(val) ? formatDateWithYear(val, formatPrefs) : val}
         required={required}
         autoFocus={autoFocus}
         placeholder={placeholder}
@@ -225,7 +225,16 @@ export default function DateField({
         autoComplete="off"
         onChange={(e) => setVal(e.target.value)}
         onFocus={() => setOpen(true)}
-        className={`input pr-10 ${inputClassName}`}
+        // Sized to hold its own longest rendered value (issue #1450 cluster A).
+        // The field used to render formatLongDate — "Friday, July 24" — and clip
+        // it to "Friday, July 2‹" at BOTH viewports, so the control could not
+        // display the value it contained. It now renders the vocabulary's
+        // year-bearing short form ("Jul 24, 2026", ~88px at text-sm, and dated,
+        // which a date being EDITED always wants), and reserves the width that
+        // form needs: 8.5rem − 0.75rem left padding − 2.25rem for the calendar
+        // button. `pr-9` (not pr-10) is the icon's real reach: a 1rem glyph
+        // inset 0.5rem.
+        className={`input min-w-[8.5rem] pr-9 ${inputClassName}`}
       />
       {/* The visible field can show a friendly date, so the ISO value is
           submitted via a hidden input for uncontrolled (name) usage. */}

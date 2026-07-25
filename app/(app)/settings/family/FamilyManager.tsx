@@ -673,7 +673,7 @@ function LoginRow({
                 ? "This login has no active sessions."
                 : "Sign this login out of every device without changing the password."
             }
-            className="btn-ghost disabled:cursor-not-allowed disabled:text-slate-400 dark:disabled:text-slate-500"
+            className="btn-ghost"
           >
             Sign out devices
           </button>
@@ -686,7 +686,7 @@ function LoginRow({
                 ? "The only admin login can't be deleted — create another admin first."
                 : undefined
             }
-            className="btn-ghost text-rose-600 disabled:cursor-not-allowed disabled:text-slate-400 dark:text-rose-400 dark:disabled:text-slate-500"
+            className="btn-ghost text-rose-600 dark:text-rose-400"
           >
             Delete
           </button>

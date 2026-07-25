@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 // Static guard for the date/time display-pref rollout (#964, finished by #1020) —
 // the profile-scoping / telegram-chokepoint source-scan pattern applied to date
 // rendering. It reads the repo's own production source as TEXT (no DB, no
-// browser, so it stays "pure" in the vitest sense) and enforces two rules:
+// browser, so it stays "pure" in the vitest sense) and enforces three rules:
 //
 //   (i)  No implicit-locale Date formatting. `.toLocaleDateString(` /
 //        `.toLocaleTimeString(` / `.toLocaleString(` render in the RUNTIME's
@@ -17,8 +17,8 @@ import { fileURLToPath } from "node:url";
 //        thousands-separator formatting is fine when the locale is pinned:
 //        `.toLocaleString("en-US")` is allowed anywhere. The admin ops pages
 //        (Active sessions, error/AI log tables, Settings → Server timestamps)
-//        are grandfathered via the per-file count freeze below — an
-//        acknowledged, admin-only status quo, explicitly out of #1020's scope.
+//        were grandfathered here by #1020 and were migrated by #1448, so the
+//        allowlist is now EMPTY.
 //
 //   (ii) No pref-less calls of the pref-taking date formatters. `formatLongDate`
 //        and `formatMonthDay` take prefs as their 2nd argument,
@@ -29,7 +29,13 @@ import { fileURLToPath } from "node:url";
 //        viewer to the fixed default shape — the exact ~95-site rot #1020
 //        cleaned up. Login-less channel modules are allowlisted by file below.
 //
-// Both allowlists are per-file COUNT freezes (the e2e-hygiene model): an entry
+//  (iii) No raw `<input type="date">`. A native date control renders its value
+//        in the BROWSER's format, which the app neither chooses nor can style —
+//        a fifth date shape sitting beside pref-aware fields on the same form
+//        (issue #1448). components/DateField.tsx is the styled, pref-aware
+//        replacement; two deliberate survivors are frozen below.
+//
+// All three allowlists are per-file COUNT freezes (the e2e-hygiene model): an entry
 // only ever shrinks — going below the frozen count fails with a message to lower
 // it here in the same PR, so the lists can't silently go stale; a NEW occurrence
 // (count above frozen, or a new file) fails the build.
