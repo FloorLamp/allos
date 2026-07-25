@@ -267,7 +267,7 @@ export default function ProtocolForm({
         <span className="label">
           Practice adherence <span className="text-slate-400">(optional)</span>
         </span>
-        <div className="mt-1 grid grid-cols-[1fr,auto,auto] items-end gap-2">
+        <div className="mt-1 grid grid-cols-1 items-end gap-2">
           <div>
             <label className="sr-only" htmlFor={`pr-practice-type-${uid}`}>
               Practice
@@ -348,7 +348,7 @@ export default function ProtocolForm({
           name="practice_custom"
           className="input mt-2"
           defaultValue={practiceCustomDefault}
-          placeholder="Custom wellness practice (e.g. Grounding walk)"
+          placeholder="Custom practice (e.g. Grounding walk)"
           aria-label="Custom wellness practice"
           data-testid="protocol-practice-custom"
         />

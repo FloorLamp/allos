@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import { formatTimestamp } from "@/lib/format-date";
 import { useRouter } from "next/navigation";
 import type { TelegramBotConfig, TelegramMode } from "@/lib/settings";
 import type { NotifyErrorMarker } from "@/lib/notifications/delivery-status";
@@ -28,6 +30,7 @@ export default function ServerTelegramSettings({
   lastError: NotifyErrorMarker | null;
 }) {
   const router = useRouter();
+  const formatPrefs = useFormatPrefs();
   const [botToken, setBotToken] = useState(config.telegramBotToken);
   const [mode, setMode] = useState<TelegramMode>(config.telegramMode);
   const { pending, savedAt, error, save: runSave } = useSaveStatus();
@@ -101,7 +104,7 @@ export default function ServerTelegramSettings({
           <div className="mt-0.5 break-words">{lastError.error}</div>
           {lastError.at && (
             <div className="mt-0.5 opacity-80">
-              {new Date(lastError.at).toLocaleString()}
+              {formatTimestamp(lastError.at, formatPrefs, { zone: "utc" })} UTC
             </div>
           )}
           <div className="mt-1 opacity-80">

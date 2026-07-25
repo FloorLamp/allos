@@ -98,7 +98,7 @@ export default function AllergyForm({
             name="severity"
             className="input"
             defaultValue={allergy?.severity ?? ""}
-            placeholder="Mild / Moderate / Severe"
+            placeholder="e.g. Moderate"
           />
         </div>
       </div>

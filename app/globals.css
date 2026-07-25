@@ -149,6 +149,12 @@ body::before {
   .input {
     @apply w-full rounded-lg border border-black/10 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-white/10 dark:bg-ink-950 dark:text-slate-100 dark:placeholder:text-slate-500;
   }
+  /* The field counterpart of the button family's disabled treatment (#1450 B).
+     `.input` previously declared nothing for `:disabled`, so a disabled field
+     was indistinguishable from an editable one except by trying to type in it. */
+  .input:disabled {
+    @apply cursor-not-allowed bg-slate-100 text-slate-600 dark:bg-ink-750 dark:text-slate-400;
+  }
   .number-no-spinner {
     appearance: textfield;
   }
@@ -205,13 +211,34 @@ body::before {
      dark offset is ink-950, matching the near-black page surface the buttons sit
      against. */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-brand-500 to-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:from-brand-600 hover:to-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:opacity-50 dark:focus-visible:ring-offset-ink-950;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-brand-500 to-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:from-brand-600 hover:to-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
   }
   .btn-ghost {
     @apply inline-flex items-center justify-center gap-2 rounded-lg border border-black/10 bg-white/70 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:border-white/10 dark:bg-ink-850 dark:text-slate-200 dark:hover:bg-ink-750 dark:focus-visible:ring-offset-ink-950;
   }
   .btn-danger {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:opacity-50 dark:focus-visible:ring-offset-ink-950;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
+  }
+  /* ONE disabled treatment for the whole button family (issue #1450 cluster B).
+     `disabled:opacity-50` used to fade the SATURATED fill instead of replacing
+     it: a disabled "Create login" rendered as washed-out green with white text
+     (~2.3:1, well under AA) which reads as half-loaded or broken rather than
+     "finish the form first" — while the admin Delete buttons hand-rolled a
+     separate grey, so one page family carried two disabled looks.
+     A muted SURFACE with readable text says "not yet" instead: slate-100 under
+     slate-600 is 6.9:1 and ink-750 under slate-400 is ~6.4:1, both clearing AA,
+     and neither can be mistaken for an active control. `bg-none` drops .btn's
+     gradient so the background-color actually shows; the rule is listed after
+     the base classes and after their :hover, so it wins on a hovered disabled
+     button too. Call sites should NOT re-declare `disabled:*` — that is exactly
+     how the second treatment grew. */
+  .btn:disabled,
+  .btn-ghost:disabled,
+  .btn-danger:disabled,
+  .btn[aria-disabled="true"],
+  .btn-ghost[aria-disabled="true"],
+  .btn-danger[aria-disabled="true"] {
+    @apply cursor-not-allowed border-black/5 bg-slate-100 bg-none text-slate-600 shadow-none hover:bg-slate-100 dark:border-white/5 dark:bg-ink-750 dark:text-slate-400 dark:hover:bg-ink-750;
   }
   /* Compact size modifier for the .btn family — tighter padding for dense
      contexts (table rows, card headers, inline controls). Defined AFTER the base

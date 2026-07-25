@@ -11,17 +11,23 @@ import type { PhotoResult } from "@/app/(app)/settings/photo-actions";
 // only supply the profile-specific actions and a refresh callback. The two
 // surfaces differ only in density, selected via `variant`.
 
-// Per-variant styling for the file input and the Remove button. "default" is the
-// roomy brand-styled control on the Profile settings card; "compact" is the
-// smaller, muted control that sits inside a Family admin row.
+// ONE file-input affordance, in two sizes (issue #1450 cluster C). Both variants
+// style the `file:` button as a real button; they differ only in scale. The
+// compact variant previously filled it grey (`file:bg-slate-200`), which on the
+// Family admin rows read as the raw native "Choose File | No file chosen" control
+// sitting beside Settings → Profile's proper button — two treatments for the same
+// action. Sharing the brand fill makes "pick a photo" look like the same thing
+// wherever it appears, and any future upload surface inherits it.
+//
+// min-w-0 max-w-full (#1063) applies to BOTH: a native file input has a wide
+// intrinsic size ("Choose File · <name>") that otherwise forces its card past a
+// phone viewport; capping it lets the control truncate instead. The compact
+// variant was missing min-w-0.
+const FILE_INPUT_BASE =
+  "block min-w-0 max-w-full text-slate-600 file:cursor-pointer file:rounded-md file:border-0 file:bg-brand-600 file:font-medium file:text-white hover:file:bg-brand-700 dark:text-slate-300";
 const INPUT_CLASS: Record<Variant, string> = {
-  default:
-    // min-w-0 max-w-full (#1063): a native file input has a wide intrinsic size
-    // ("Choose File · <name>") that otherwise forces the Settings → Profile card
-    // past a phone viewport; capping it lets the control truncate instead.
-    "block min-w-0 max-w-full text-sm text-slate-600 file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-brand-600 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white hover:file:bg-brand-700 dark:text-slate-300",
-  compact:
-    "block max-w-full text-xs text-slate-600 file:mr-2 file:cursor-pointer file:rounded-md file:border-0 file:bg-slate-200 file:px-2 file:py-1 file:text-xs file:font-medium file:text-slate-700 hover:file:bg-slate-300 dark:text-slate-300 dark:file:bg-ink-800 dark:file:text-slate-200",
+  default: `${FILE_INPUT_BASE} text-sm file:mr-3 file:px-3 file:py-1.5 file:text-sm`,
+  compact: `${FILE_INPUT_BASE} text-xs file:mr-2 file:px-2 file:py-1 file:text-xs`,
 };
 const REMOVE_CLASS: Record<Variant, string> = {
   default: "btn-ghost shrink-0",

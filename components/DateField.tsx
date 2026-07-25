@@ -20,7 +20,7 @@ import {
 } from "@/lib/date";
 import { useTimezone } from "@/components/TimezoneProvider";
 import { useWeekStart } from "@/components/WeekStartProvider";
-import { formatLongDate, daysRemainingLabel } from "@/lib/format-date";
+import { formatDateWithYear, daysRemainingLabel } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 
 // Styled, theme-consistent replacement for <input type="date">. The browser's
@@ -216,7 +216,7 @@ export default function DateField({
         data-testid={testId}
         id={id}
         type="text"
-        value={validISO(val) ? formatLongDate(val, formatPrefs) : val}
+        value={validISO(val) ? formatDateWithYear(val, formatPrefs) : val}
         required={required}
         autoFocus={autoFocus}
         placeholder={placeholder}
@@ -225,7 +225,18 @@ export default function DateField({
         autoComplete="off"
         onChange={(e) => setVal(e.target.value)}
         onFocus={() => setOpen(true)}
-        className={`input pr-10 ${inputClassName}`}
+        // The field renders the vocabulary's year-bearing short form ("Jul 24,
+        // 2026") rather than formatLongDate's "Friday, July 24" (issue #1450
+        // cluster A / #1448): ~20% narrower, and dated, which a date being EDITED
+        // always wants. `pr-9` (not pr-10) matches the calendar button's real
+        // reach — a 1rem glyph inset 0.5rem — returning 4px to the value.
+        //
+        // Deliberately NO min-width: date fields sit inside layouts with their own
+        // pinned geometry (the activity editor's Date/Duration/Start/End are one
+        // equal-width row, #188), so a floor here would break those instead. Where
+        // a date genuinely could not fit, the CONTAINER was too narrow and is
+        // widened at the container (components/ListRailLayout.tsx).
+        className={`input pr-9 ${inputClassName}`}
       />
       {/* The visible field can show a friendly date, so the ISO value is
           submitted via a hidden input for uncontrolled (name) usage. */}

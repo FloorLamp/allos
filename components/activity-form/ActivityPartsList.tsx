@@ -351,7 +351,7 @@ export default function ActivityPartsList({
               ? "Add another activity"
               : "Complete the current activity first"
           }
-          className="btn-ghost disabled:cursor-not-allowed disabled:opacity-50"
+          className="btn-ghost"
         >
           + Add activity
         </button>

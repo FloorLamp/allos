@@ -616,7 +616,7 @@ export default function StrengthSets({
               type="button"
               onClick={onSaveBodyweight}
               disabled={bwSaving || !(Number(bwInput) > 0)}
-              className="btn shrink-0 disabled:opacity-50"
+              className="btn shrink-0"
             >
               {bwSaving ? "Saving…" : "Save"}
             </button>
@@ -946,15 +946,15 @@ export default function StrengthSets({
           editor context visible, so the row returns to normal flow there. */}
       <div
         data-testid="set-column-headings"
-        className="sticky top-11 z-[9] -mx-1 mt-2 flex items-center gap-2 bg-white/95 px-1 py-1 section-label backdrop-blur md:static md:mx-0 md:bg-transparent md:px-0 md:backdrop-blur-none dark:bg-ink-900/95 dark:md:bg-transparent"
+        className="sticky top-11 z-[9] -mx-1 mt-2 flex flex-wrap items-center gap-2 bg-white/95 sm:flex-nowrap px-1 py-1 section-label backdrop-blur md:static md:mx-0 md:bg-transparent md:px-0 md:backdrop-blur-none dark:bg-ink-900/95 dark:md:bg-transparent"
       >
         <span className="w-12 shrink-0">Set</span>
         {!timed && !isBodyweight(p.name) ? (
-          <div className="flex min-w-0 flex-1 items-center gap-2 text-center">
+          <div className="order-last flex min-w-0 flex-1 basis-full items-center gap-2 text-center sm:order-none sm:basis-0">
             {p.perSide && <span className="w-4 shrink-0" aria-hidden />}
             <span
               data-testid="weight-column-heading"
-              className="min-w-20 flex-1 basis-0"
+              className="min-w-[7rem] flex-1 basis-0"
             >
               Weight ({units.weightUnit})
             </span>
@@ -964,26 +964,31 @@ export default function StrengthSets({
             </span>
             <span
               data-testid="reps-column-heading"
-              className="min-w-20 flex-1 basis-0"
+              className="min-w-[7rem] flex-1 basis-0"
             >
               Reps
             </span>
           </div>
         ) : (
-          <span className="flex-1 text-center">
+          <span className="order-last basis-full flex-1 text-center sm:order-none sm:basis-0">
             {timed ? "Hold time" : "Reps"}
           </span>
         )}
-        <span className="w-16 shrink-0 text-right">Options</span>
+        <span className="ml-auto w-16 shrink-0 text-right sm:ml-0">
+          Options
+        </span>
       </div>
       <div className="mt-2 space-y-2">
         {p.sets.map((s, si) => (
-          <div key={si} className="flex items-start gap-2">
+          <div
+            key={si}
+            className="flex flex-wrap items-start gap-2 sm:flex-nowrap"
+          >
             <span className="w-12 shrink-0 pt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
               Set {si + 1}
             </span>
             {p.perSide ? (
-              <div className="flex-1 space-y-1.5">
+              <div className="order-last basis-full flex-1 space-y-1.5 sm:order-none sm:basis-0">
                 {(["", "Right"] as const).map((_, sideIdx) => {
                   const isRight = sideIdx === 1;
                   const sideW = isRight ? s.weightRight : s.weight;
@@ -998,7 +1003,7 @@ export default function StrengthSets({
                       {!timed && !isBodyweight(p.name) ? (
                         <div
                           data-testid="weight-stepper"
-                          className={`flex min-w-20 flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
+                          className={`flex min-w-[7rem] flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
                             flags.weight
                               ? blockedField
                               : "border-black/10 dark:border-white/10"
@@ -1085,7 +1090,7 @@ export default function StrengthSets({
                       {!timed ? (
                         <div
                           data-testid="reps-stepper"
-                          className={`flex min-w-20 flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
+                          className={`flex min-w-[7rem] flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
                             flags.effort
                               ? blockedField
                               : "border-black/10 dark:border-white/10"
@@ -1135,13 +1140,13 @@ export default function StrengthSets({
                 })}
               </div>
             ) : (
-              <div className="flex min-w-0 flex-1 items-center gap-2">
+              <div className="order-last flex min-w-0 flex-1 basis-full items-center gap-2 sm:order-none sm:basis-0">
                 {!timed && !isBodyweight(p.name) ? (
                   <div
                     data-testid={
                       si === 0 ? "set1-weight-stepper" : "weight-stepper"
                     }
-                    className={`flex min-w-20 flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
+                    className={`flex min-w-[7rem] flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
                       sideFlags(s.weight, s.reps, s.duration).weight
                         ? blockedField
                         : "border-black/10 dark:border-white/10"
@@ -1233,7 +1238,7 @@ export default function StrengthSets({
                     data-testid={
                       si === 0 ? "set1-reps-stepper" : "reps-stepper"
                     }
-                    className={`flex min-w-20 flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
+                    className={`flex min-w-[7rem] flex-1 basis-0 overflow-hidden rounded-lg border bg-white focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500 dark:bg-ink-900 ${
                       sideFlags(s.weight, s.reps, s.duration).effort
                         ? blockedField
                         : "border-black/10 dark:border-white/10"
@@ -1274,7 +1279,7 @@ export default function StrengthSets({
                 )}
               </div>
             )}
-            <div className="flex w-16 shrink-0 flex-col items-end gap-1">
+            <div className="ml-auto flex w-16 shrink-0 flex-col items-end gap-1 sm:ml-0">
               {/* Optional per-set RPE selector (#743) — shown for rep-based sets
                 (a timed hold's effort is its duration). Blank by default; the
                 rating rides onto the set without replacing target reps. Stacked

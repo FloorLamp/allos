@@ -762,7 +762,7 @@ function EntryModal({
           <button
             type="submit"
             disabled={pending}
-            className="btn disabled:opacity-50"
+            className="btn"
             data-testid={`fitness-submit-${def.key}`}
           >
             {pending ? "Saving…" : "Save"}

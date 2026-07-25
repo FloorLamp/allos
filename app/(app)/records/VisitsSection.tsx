@@ -15,6 +15,7 @@ import { isAppointmentKind } from "@/lib/preventive-appointment";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import { EmptyState } from "@/components/ui";
 import AddVisitEntry from "@/app/(app)/encounters/AddVisitEntry";
+import ListRailLayout from "@/components/ListRailLayout";
 import AppointmentList from "@/app/(app)/encounters/AppointmentList";
 import EncounterList from "@/app/(app)/encounters/EncounterList";
 import { createAppointment } from "@/app/(app)/encounters/appointment-actions";
@@ -126,8 +127,28 @@ export default function VisitsSection({
               </span>
             )}
           </h3>
-          <div className="grid gap-6 lg:grid-cols-3">
-            <div className="min-w-0 space-y-6 lg:col-span-2">
+          <ListRailLayout
+            listSpacing="space-y-6"
+            rail={
+              <>
+                {/* The single "Add visit" entry (issue #566): one affordance that
+                branches on tense — a future/today date books an appointment, a past
+                date logs an encounter — so the user never has to know "which form?".
+                Kept inside the Upcoming section so every existing deep link (#85
+                Book CTA, #29 command palette, calendar feed) lands here on the
+                appointment branch, exactly as before. */}
+                <AddVisitEntry
+                  createAppointment={createAppointment}
+                  addEncounter={addEncounter}
+                  defaultDate={bookPrefill ? prefillDate : now}
+                  today={now}
+                  prefill={bookPrefill}
+                  focusNew={focusNew}
+                />
+              </>
+            }
+          >
+            <div className="min-w-0 space-y-6">
               {/* No inner "Scheduled" label (#1449): stacked directly under the
                   section's own "Upcoming", two uppercase section-labels read as one
                   duplicated pair naming the same list. The outer heading names it;
@@ -162,24 +183,7 @@ export default function VisitsSection({
                 </details>
               )}
             </div>
-
-            <div className="min-w-0 space-y-4">
-              {/* The single "Add visit" entry (issue #566): one affordance that
-                branches on tense — a future/today date books an appointment, a past
-                date logs an encounter — so the user never has to know "which form?".
-                Kept inside the Upcoming section so every existing deep link (#85
-                Book CTA, #29 command palette, calendar feed) lands here on the
-                appointment branch, exactly as before. */}
-              <AddVisitEntry
-                createAppointment={createAppointment}
-                addEncounter={addEncounter}
-                defaultDate={bookPrefill ? prefillDate : now}
-                today={now}
-                prefill={bookPrefill}
-                focusNew={focusNew}
-              />
-            </div>
-          </div>
+          </ListRailLayout>
         </section>
 
         {/* Past — the encounters / visit-history surface. Its add form is now the

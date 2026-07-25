@@ -217,7 +217,7 @@ export default function UploadForm({ demo = false }: { demo?: boolean }) {
           disabled={demo || selected.length === 0}
           pendingLabel="Uploading…"
           data-testid="medical-upload-submit"
-          className="btn disabled:cursor-not-allowed disabled:opacity-50"
+          className="btn"
         >
           Upload
         </SubmitButton>

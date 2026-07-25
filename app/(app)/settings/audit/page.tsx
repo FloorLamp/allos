@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
+import { getDisplayFormatPrefs } from "@/lib/settings";
+import { formatTimestamp } from "@/lib/format-date";
 import { PageHeader } from "@/components/ui";
 import SettingsTabs from "../SettingsTabs";
 import AdminSubNav from "../AdminSubNav";
@@ -43,7 +45,12 @@ export default async function AuditLogPage(props: {
   const searchParams = await props.searchParams;
   // The audit log spans every profile (who accessed/modified whose data), so it's
   // admin-only — a member is redirected out by requireAdmin().
-  const { profile } = await requireAdmin();
+  const { login, profile } = await requireAdmin();
+  // The admin ops tables (Audit / Errors / AI logs) render ONE timestamp shape
+  // through the shared formatter, read as UTC (issue #1448). This column used to
+  // print SQLite's raw `2026-07-24 22:14:15` verbatim while its sibling tables
+  // called toLocaleString() — three admin screens, two conventions.
+  const formatPrefs = getDisplayFormatPrefs(login.id);
 
   const filters: AuditFilters = {
     loginId: intOrNull(searchParams.login),
@@ -157,7 +164,7 @@ export default async function AuditLogPage(props: {
                     data-testid="audit-row"
                   >
                     <td className="td whitespace-nowrap text-slate-500 dark:text-slate-400">
-                      {e.ts}
+                      {formatTimestamp(e.ts, formatPrefs, { zone: "utc" })}
                     </td>
                     <td className="td">
                       {e.username ??
