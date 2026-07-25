@@ -765,15 +765,24 @@ async function workflowsJourney(browser) {
   if (tapSpan) tapSpan.inputs++; // the query = one input
   await page.waitForTimeout(1200);
   await shot(page, "workflow-search-results");
+  // Scope the option fallback to the palette dialog — an unscoped role=option
+  // matches the sidebar calendar's hidden native <select> options, which pass
+  // count() but can never be clicked (verified the hard way: the click retried
+  // for 45s against <option>Jan</option> and killed the whole run).
   const paletteResult = page
     .getByTestId("palette-result")
-    .or(page.getByRole("option"))
+    .or(page.getByRole("dialog").getByRole("option"))
     .first();
-  if (await paletteResult.count()) {
-    await tapClick(paletteResult);
-    await page.waitForTimeout(1200);
-    endTaps();
-    await shot(page, "workflow-search-opened");
+  if (await paletteResult.isVisible().catch(() => false)) {
+    try {
+      await tapClick(paletteResult);
+      await page.waitForTimeout(1200);
+      endTaps();
+      await shot(page, "workflow-search-opened");
+    } catch {
+      endTaps("result visible but not clickable — open-result tap unmeasured");
+      await page.keyboard.press("Escape");
+    }
   } else {
     endTaps("no clickable result found — open-result tap unmeasured");
     await page.keyboard.press("Escape");
