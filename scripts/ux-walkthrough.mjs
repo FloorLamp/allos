@@ -626,8 +626,6 @@ async function pagesJourney(browser) {
       `pages census: ${picked.length} of ${routes.length} static routes (UX_ROUTES=${only.join(",")})`
     );
   else log(`pages census: ${picked.length} static routes`);
-  routes.length = 0;
-  routes.push(...picked);
 
   const state = path.join(SHOTS, "admin-state.json");
   for (const [tag, viewport] of [
@@ -659,7 +657,7 @@ async function pagesJourney(browser) {
       await ctx.close();
       continue;
     }
-    for (const route of routes.sort()) {
+    for (const route of picked.sort()) {
       const slug = route === "/" ? "home" : route.slice(1).replace(/\//g, "-");
       try {
         await page.goto(`${BASE}${route}`);
