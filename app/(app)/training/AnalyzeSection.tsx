@@ -55,7 +55,9 @@ import {
   type AnalyzeView,
   type RangeId,
 } from "@/lib/analyze-view";
+import { cardMetaEntries } from "@/lib/card-row";
 import { EmptyState } from "@/components/ui";
+import { ResponsiveTable, Td } from "@/components/ResponsiveTable";
 import CardioDetailPanel from "@/components/CardioDetailPanel";
 import ExerciseDetailPanel from "@/components/ExerciseDetailPanel";
 import LineChartCard from "@/components/LineChartCard";
@@ -264,8 +266,18 @@ export default async function AnalyzeSection({
           {view.sessions.length === 0 ? (
             <EmptyState message="No sessions in this range. Widen the range or log one." />
           ) : (
+            /* Below `sm` these session rows stack as cards (#1426): the date is the
+               card title, the view's LEADING metric — the one the chart above plots,
+               so the column the user chose — is the headline value, and the rest
+               become a compact meta line. `cardMetaEntries` decides which of those
+               survive: a placeholder cell, or one that just repeats the date, buys
+               no screen on a phone (#531–#534). The wide-table scroller stays for
+               `sm` and up. */
             <div className="overflow-x-auto">
-              <table className="w-full whitespace-nowrap">
+              <ResponsiveTable
+                className="w-full sm:whitespace-nowrap"
+                data-testid="analyze-sessions"
+              >
                 <thead>
                   <tr className="border-b border-black/5 dark:border-white/10">
                     <th className="th">Date</th>
@@ -277,31 +289,48 @@ export default async function AnalyzeSection({
                   </tr>
                 </thead>
                 <tbody>
-                  {view.sessions.map((s, i) => (
-                    <tr
-                      key={`${s.activityId}-${i}`}
-                      className="border-b border-black/5 dark:border-white/10"
-                    >
-                      <td className="td">
-                        <Link
-                          href={`/training?tab=log#activity-${s.activityId}`}
-                          className="font-medium text-brand-700 hover:underline dark:text-brand-300"
-                        >
-                          {formatLongDate(s.date, formatPrefs)}
-                        </Link>
-                      </td>
-                      {s.cells.map((cell, i) => (
-                        <td
-                          key={i}
-                          className="td text-slate-600 dark:text-slate-300"
-                        >
-                          {cell}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
+                  {view.sessions.map((s, i) => {
+                    const dateText = formatLongDate(s.date, formatPrefs);
+                    // Which columns survive onto the card, by the shared rule —
+                    // computed once per row and matched back by INDEX (two metrics
+                    // may share a label; positions never collide). Column 0 is the
+                    // headline value, so it's exempt from the meta filtering, but it
+                    // still participates: a later column repeating it is dropped as a
+                    // duplicate rather than said twice.
+                    const keep = new Set(
+                      cardMetaEntries(view.columns, s.cells, {
+                        title: dateText,
+                      }).map((e) => e.index)
+                    );
+                    return (
+                      <tr
+                        key={`${s.activityId}-${i}`}
+                        className="border-b border-black/5 dark:border-white/10"
+                      >
+                        <Td slot="title">
+                          <Link
+                            href={`/training?tab=log#activity-${s.activityId}`}
+                            className="font-medium text-brand-700 hover:underline dark:text-brand-300"
+                          >
+                            {dateText}
+                          </Link>
+                        </Td>
+                        {s.cells.map((cell, ci) => (
+                          <Td
+                            key={ci}
+                            slot={ci === 0 ? "value" : "meta"}
+                            label={view.columns[ci]}
+                            empty={!keep.has(ci)}
+                            className="text-slate-600 dark:text-slate-300"
+                          >
+                            {cell}
+                          </Td>
+                        ))}
+                      </tr>
+                    );
+                  })}
                 </tbody>
-              </table>
+              </ResponsiveTable>
             </div>
           )}
         </div>

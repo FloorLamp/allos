@@ -216,6 +216,40 @@ export async function settledCheck(
   }).toPass({ timeout });
 }
 
+// Choose a `<select>` option so the change durably lands in React STATE — the
+// select analog of settledFill/settledCheck.
+//
+// Same root cause: a `selectOption()` dispatched before React hydrates a CONTROLLED
+// select sets the DOM value but fires no `onChange`, so state never moves and
+// hydration REVERTS it — and for a select whose handler NAVIGATES (the responsive
+// tables' card-mode sort control, #1426) the swallowed change leaves no trace at all:
+// no POST to await, no URL to watch, just a spec that times out on the destination.
+//
+// Wait for React's hydration markers on the node, then select; retrying is safe
+// because `selectOption` sets an ABSOLUTE value (unlike a toggle, a second
+// application is a no-op), so the whole thing sits inside the probe.
+export async function settledSelect(
+  page: Page,
+  select: Locator,
+  value: string,
+  opts: { timeout?: number } = {}
+): Promise<void> {
+  const timeout = opts.timeout ?? 10_000;
+  await expect(select).toBeVisible();
+  await expect(async () => {
+    const hydrated = await select.evaluate((el) =>
+      Object.keys(el).some(
+        (k) => k.startsWith("__reactFiber$") || k.startsWith("__reactProps$")
+      )
+    );
+    // Not hydrated yet → toPass retries (the selection would be reverted). Once
+    // React has attached, the change fires onChange and the value sticks.
+    expect(hydrated, "select not hydrated yet").toBe(true);
+    await select.selectOption(value);
+    await expect(select).toHaveValue(value, { timeout: 2_000 });
+  }).toPass({ timeout });
+}
+
 // Click a pure CLIENT TOGGLE exactly once, after React has hydrated it — the
 // button analog of settledFill/settledCheck.
 //
