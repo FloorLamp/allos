@@ -1,4 +1,4 @@
-import type { StarredBiomarker } from "@/lib/queries";
+import type { SavedBiomarker } from "@/lib/queries";
 import type { ReproductiveStatus, Sex } from "@/lib/types";
 import {
   rangeBadge,
@@ -51,7 +51,7 @@ export default function BiomarkerScale({
   age,
   status,
 }: {
-  b: StarredBiomarker;
+  b: SavedBiomarker;
   sex?: Sex | null;
   // The subject's age on the latest reading's date, so an age-banded biomarker
   // scales against the band that applied to the reading (not today's age).

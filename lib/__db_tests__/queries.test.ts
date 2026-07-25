@@ -26,7 +26,7 @@ import {
   getMetricDailyTotals,
   getMedicalRecords,
   getLatestMedicalRecordByCanonical,
-  getStarredBiomarkers,
+  getSavedBiomarkers,
   getMedicalDocuments,
   reconcileFlags,
   getImmunizations,
@@ -132,7 +132,7 @@ describe("medical / biomarker reads", () => {
       `${fx.tag}-labs.pdf`
     );
     expect(
-      getStarredBiomarkers(fx.profileId).map((s) => s.canonical_name)
+      getSavedBiomarkers(fx.profileId).map((s) => s.canonical_name)
     ).toContain("Glucose");
   });
 

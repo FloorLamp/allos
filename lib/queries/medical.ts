@@ -114,8 +114,10 @@ export function biomarkerFamilyKey(alias = ""): string {
   return familyKeyOfExpr(biomarkerNameKey(alias));
 }
 const BIOMARKER_FAMILY_KEY = biomarkerFamilyKey();
-// The same family identity computed over the star store's canonical_name column.
-const STAR_FAMILY_KEY = familyKeyOfExpr("canonical_name");
+// The same family identity computed over the SAVE store's key column (saved_items.key
+// where kind='biomarker' — the canonical analyte name, #1456), so a save keys on the
+// identical family identity the readings do.
+const SAVED_FAMILY_KEY = familyKeyOfExpr("key");
 
 // Build a "contains" LIKE pattern for free-text search, escaping the SQL wildcards
 // (%, _) and the escape char (\) so a user typing e.g. "50%" or "a_b" matches
@@ -750,58 +752,92 @@ export function findRecordsByContentIdentity(
     ) as MedicalRecord[];
 }
 
-// Drop any star whose biomarker FAMILY no longer has a backing record (its last
-// reading was deleted or its canonical name changed), so the pinned card can't
-// point at nothing. Family-keyed (#482): a star on "Vitamin D, 25-Hydroxy"
+// Drop any saved biomarker whose FAMILY no longer has a backing record (its last
+// reading was deleted or its canonical name changed), so the status card can't
+// point at nothing. Family-keyed (#482): a save on "Vitamin D, 25-Hydroxy"
 // survives as long as ANY family member (a D2/D3 breakdown) still has a reading,
 // matching the family-collapsed tile. Shared by every path that deletes records.
-export function cleanupOrphanStars(profileId: number): void {
+// Scoped to kind='biomarker' — a `trend-metric` save keys on a metric id, not a
+// biomarker name, and must never be swept by a records-driven de-orphan (#1456).
+export function cleanupOrphanSavedBiomarkers(profileId: number): void {
   db.prepare(
-    `DELETE FROM starred_biomarkers
+    `DELETE FROM saved_items
      WHERE profile_id = ?
-       AND ${STAR_FAMILY_KEY} NOT IN (
+       AND kind = 'biomarker'
+       AND ${SAVED_FAMILY_KEY} NOT IN (
          SELECT ${BIOMARKER_FAMILY_KEY} FROM medical_records
          WHERE profile_id = ? AND canonical_name IS NOT NULL
        )`
   ).run(profileId, profileId);
 }
 
-// True when THIS biomarker — or any sibling in its #482 family — is starred, so
+// True when THIS biomarker — or any sibling in its #482 family — is saved, so
 // the star toggle reflects the family-collapsed tile (starring "Vitamin D, Total"
-// lights the star on the "Vitamin D3" detail page too). Stars are few, so the
-// family compare is done in JS over the profile's star list.
-export function isBiomarkerStarred(
+// lights the star on the "Vitamin D3" detail page too). Saves are few, so the
+// family compare is done in JS over the profile's saved biomarker list.
+export function isBiomarkerSaved(
   profileId: number,
   canonical: string
 ): boolean {
   const fam = biomarkerFamily(canonical);
-  const stars = db
+  const saved = db
     .prepare(
-      "SELECT canonical_name FROM starred_biomarkers WHERE profile_id = ?"
+      "SELECT key FROM saved_items WHERE profile_id = ? AND kind = 'biomarker'"
     )
-    .all(profileId) as { canonical_name: string }[];
-  return stars.some((s) => biomarkerFamily(s.canonical_name) === fam);
+    .all(profileId) as { key: string }[];
+  return saved.some((s) => biomarkerFamily(s.key) === fam);
 }
 
-// Remove every star in a biomarker's #482 family (the unstar half of the toggle):
-// because a star on any member lights the whole family, un-starring must clear all
-// of them, not just the exact name — else isBiomarkerStarred would still report the
-// family starred and the toggle would appear stuck. Returns rows deleted.
-export function unstarBiomarkerFamily(
+// Save a biomarker for a profile (the star half of the toggle). Idempotent — the
+// store's NOCASE UNIQUE makes a re-save a no-op — and deliberately keyed on the NAME
+// the user starred, not its family key: the family is resolved on READ
+// (isBiomarkerSaved / getSavedBiomarkers), so the stored row stays a real analyte
+// name that a rename can re-key (#203) and a human can read in an export.
+export function saveBiomarker(profileId: number, canonical: string): void {
+  db.prepare(
+    `INSERT OR IGNORE INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', ?)`
+  ).run(profileId, canonical);
+}
+
+// Remove every saved biomarker in a #482 family (the unsave half of the toggle):
+// because a save on any member lights the whole family, un-saving must clear all
+// of them, not just the exact name — else isBiomarkerSaved would still report the
+// family saved and the toggle would appear stuck. Returns rows deleted.
+export function unsaveBiomarkerFamily(
   profileId: number,
   canonical: string
 ): number {
   const fam = biomarkerFamily(canonical);
   const info = db
     .prepare(
-      `DELETE FROM starred_biomarkers
-        WHERE profile_id = ? AND ${STAR_FAMILY_KEY} = ? COLLATE NOCASE`
+      `DELETE FROM saved_items
+        WHERE profile_id = ? AND kind = 'biomarker'
+          AND ${SAVED_FAMILY_KEY} = ? COLLATE NOCASE`
     )
     .run(profileId, fam);
   return info.changes;
 }
 
-export interface StarredBiomarker {
+// Toggle a biomarker's save, returning the resulting state — the write core behind
+// the ★ gesture (auth-blind, profileId-first; the Server Action in
+// app/(app)/saved/actions.ts is the auth boundary). Check-then-act as ONE atomic
+// transaction so two concurrent toggles can't both read the same state and race (two
+// inserts, or an insert lost to a delete). Unsave clears the whole #482 family.
+export function toggleBiomarkerSaved(
+  profileId: number,
+  canonical: string
+): boolean {
+  return writeTx(() => {
+    if (isBiomarkerSaved(profileId, canonical)) {
+      unsaveBiomarkerFamily(profileId, canonical);
+      return false;
+    }
+    saveBiomarker(profileId, canonical);
+    return true;
+  });
+}
+
+export interface SavedBiomarker {
   canonical_name: string;
   latest_value: string | null;
   latest_value_num: number | null;
@@ -823,16 +859,24 @@ export interface StarredBiomarker {
   canonical: CanonicalBiomarker | null;
 }
 
-// Starred biomarkers with their latest reading and the canonical reference
-// entry (ranges/direction). Used by the pinned card on / and /biomarkers.
-export function getStarredBiomarkers(profileId: number): StarredBiomarker[] {
+// Saved biomarkers with their latest reading and the canonical reference entry
+// (ranges/direction). The one read behind every biomarker-save surface: the Results →
+// Biomarkers status card, the Trends Overview chart tiles, and the profile passport
+// summary (#1456 — save membership IS summary inclusion; see lib/profile-summary-load).
+//
+// Ordered by the canonical saved order — positioned rows first, then unpositioned ones
+// newest-first — the SQL twin of orderSavedRefs() in lib/saved-items.ts (position is
+// set only by the Trends reorder affordance; a plain star leaves it NULL).
+export function getSavedBiomarkers(profileId: number): SavedBiomarker[] {
   const stars = (
     db
       .prepare(
-        "SELECT canonical_name FROM starred_biomarkers WHERE profile_id = ? ORDER BY created_at DESC"
+        `SELECT key FROM saved_items
+          WHERE profile_id = ? AND kind = 'biomarker'
+          ORDER BY (position IS NULL), position, created_at DESC`
       )
-      .all(profileId) as { canonical_name: string }[]
-  ).map((r) => r.canonical_name);
+      .all(profileId) as { key: string }[]
+  ).map((r) => r.key);
   if (stars.length === 0) return [];
 
   // The latest reading, chosen over the DE-DUPED id set so it agrees with the
@@ -840,10 +884,10 @@ export function getStarredBiomarkers(profileId: number): StarredBiomarker[] {
   // when a manual reading and its imported twin share content-identity, dedup's
   // representative rule (prefer the manual, unflagged row) wins here too, so the
   // tile's flag chip matches the representative the other surfaces show (#381).
-  // Matched by the #482 FAMILY identity, so a star on "Vitamin D, 25-Hydroxy"
+  // Matched by the #482 FAMILY identity, so a save on "Vitamin D, 25-Hydroxy"
   // surfaces the newest reading of ANY family member (a fresh D3 breakdown), the
   // same series the chart shows. Binds profile_id (for DEDUP_IDS_CTE), then
-  // profile_id + the star's family key.
+  // profile_id + the saved name's family key.
   const latestStmt = db.prepare(
     `WITH ${DEDUP_IDS_CTE}
      SELECT * FROM medical_records
@@ -851,9 +895,9 @@ export function getStarredBiomarkers(profileId: number): StarredBiomarker[] {
      ORDER BY date DESC, id DESC LIMIT 1`
   );
 
-  // Fetch the canonical reference entries for all starred names in one query
+  // Fetch the canonical reference entries for all saved names in one query
   // (the table's PK is COLLATE NOCASE, so IN matches case-insensitively),
-  // rather than a per-star lookup.
+  // rather than a per-save lookup.
   const cbRows = db
     .prepare(
       `SELECT * FROM canonical_biomarkers

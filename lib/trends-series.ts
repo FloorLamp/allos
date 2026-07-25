@@ -40,7 +40,7 @@ import {
 } from "./reference-range";
 import { convertToCanonical, sameUnit } from "./unit-conversions";
 import { ALL_ROWS, filterSeriesByRange } from "./trends";
-import { bioPinKey, metricPinKey } from "./trend-pins";
+import { bioSeriesKey, metricSeriesKey } from "./saved-items";
 import { bioColor } from "./trend-colors";
 import type { DateRange } from "./timeline-format";
 import { biomarkerViewHref, type AppRoute } from "./hrefs";
@@ -182,7 +182,7 @@ export function buildMetricSeries(
   return METRIC_DEFS.filter(
     (d) => !(d.restricted && restricted) && !(d.id === "bodyfat" && hideBodyFat)
   ).map((d) => ({
-    key: metricPinKey(d.id),
+    key: metricSeriesKey(d.id),
     label: d.label,
     unit: d.id === "weight" || d.id === "volume" ? weightUnitSuffix : d.unit,
     color: d.color,
@@ -255,7 +255,7 @@ export function buildBiomarkerSeries(
   if (windowed.length === 0) return null;
 
   return {
-    key: bioPinKey(canonical),
+    key: bioSeriesKey(canonical),
     label: canonical,
     unit: unit ? ` ${unit}` : "",
     color: bioColor(canonical),
@@ -274,7 +274,7 @@ export function buildBiomarkerSeries(
 // tile so it slots into the Pinned section and TrendMiniCard shows its empty state.
 export function placeholderBiomarkerTile(canonical: string): TrendSeries {
   return {
-    key: bioPinKey(canonical),
+    key: bioSeriesKey(canonical),
     label: canonical,
     unit: "",
     color: bioColor(canonical),
@@ -297,13 +297,13 @@ export function listCompareOptions(
   const metrics = METRIC_DEFS.filter(
     (d) => !(d.restricted && restricted) && !(d.id === "bodyfat" && hideBodyFat)
   ).map((d) => ({
-    key: metricPinKey(d.id),
+    key: metricSeriesKey(d.id),
     label: d.label,
     kind: "metric" as const,
   }));
   const biomarkers = getUsedCanonicalNamesWithDerived(profileId).map(
     (name) => ({
-      key: bioPinKey(name),
+      key: bioSeriesKey(name),
       label: name,
       kind: "biomarker" as const,
     })

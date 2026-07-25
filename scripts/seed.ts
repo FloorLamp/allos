@@ -2516,21 +2516,15 @@ for (const [startAgo, endAgo, flow, note] of seededCycles) {
   );
 }
 
-// ── Trends pins + saved views (Trends Ph2/Ph3) ───────────────────────────────
-upsertProfileSetting.run(
-  "trend_pins",
-  JSON.stringify([
-    "metric:weight",
-    "bio:LDL Cholesterol",
-    "bio:Vitamin D, 25-Hydroxy",
-  ])
-);
+// ── Saved views (Trends Ph3) ─────────────────────────────────────────────────
+// (The `trend_pins` KV this block used to seed was folded into `saved_items` by
+// migration 113 — see the saved-items seed below.)
 upsertProfileSetting.run(
   "trend_views",
   JSON.stringify([
     {
       name: "Lipids review",
-      params: { tab: "biomarkers", pins: ["bio:LDL Cholesterol", "bio:ApoB"] },
+      params: { tab: "biomarkers" },
     },
     {
       name: "Cut progress",
@@ -2538,23 +2532,29 @@ upsertProfileSetting.run(
         tab: "body",
         from: daysAgo(120),
         to: daysAgo(0),
-        pins: ["metric:weight", "metric:bodyfat"],
       },
     },
   ])
 );
 
-// ── Starred biomarkers (the pinned-tile side-store) ──────────────────────────
-// The star is name-keyed (starred_biomarkers.canonical_name COLLATE NOCASE); each
-// canonical_name here matches a seeded biomarker that HAS backing medical_records,
-// so the Biomarkers view renders the pinned tiles and the #203/#327 orphan-sweep
-// has real stars to (correctly) leave alone. Distinct from trend_pins above — a
-// separate feature — so seed exercises both.
-const starBiomarker = db.prepare(
-  `INSERT OR IGNORE INTO starred_biomarkers (profile_id, canonical_name) VALUES (1, ?)`
+// ── Saved items (the unified save store, #1456) ──────────────────────────────
+// ONE store behind the ★ star gesture (migration 113 folded the old
+// starred_biomarkers table and trend_pins KV into it). Seeding both kinds keeps every
+// save surface exercised:
+//   • kind='biomarker' — name-keyed (saved_items.key COLLATE NOCASE); each name here
+//     matches a seeded biomarker that HAS backing medical_records, so the Results
+//     status card renders real tiles, Trends Overview renders their chart tiles, the
+//     passport summary includes them, and the #203/#327 orphan sweep has real saves to
+//     (correctly) leave alone.
+//   • kind='trend-metric' — promotion/ordering only; every metric tile renders anyway.
+// `position` is seeded on the first two so the saved-first ordering is exercised.
+const saveItem = db.prepare(
+  `INSERT OR IGNORE INTO saved_items (profile_id, kind, key, position) VALUES (1, ?, ?, ?)`
 );
+saveItem.run("trend-metric", "weight", 0);
+saveItem.run("biomarker", "LDL Cholesterol", 1);
 for (const name of ["ApoB", "hs-CRP", "Lipoprotein(a)"])
-  starBiomarker.run(name);
+  saveItem.run("biomarker", name, null);
 
 // ── Passport share link (the public read-only /share/<token> fixture) ────────
 // One live (non-expired, non-revoked) link scoping a sensible subset of the

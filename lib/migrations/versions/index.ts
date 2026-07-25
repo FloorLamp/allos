@@ -111,6 +111,7 @@ import { migration as m109 } from "./109-health-connect-token-hash";
 import { migration as m110 } from "./110-integration-sync-rows";
 import { migration as m111 } from "./111-symptom-episode-photo-links";
 import { migration as m112 } from "./112-shared-supply-pools";
+import { migration as m113 } from "./113-saved-items";
 
 // The ordered, append-only list of schema migrations (issue #119). ORDER IS THE
 // CONTRACT: a migration's position (1-based) must equal its `id`, and the runner
@@ -231,4 +232,5 @@ export const MIGRATIONS: Migration[] = [
   m110,
   m111,
   m112,
+  m113,
 ];

@@ -1,7 +1,7 @@
 // DB INTEGRATION TIER — the pinned starred-biomarker tile must agree with the
 // detail page and the Biomarkers table about the same analyte (#381):
 //
-//   1. getStarredBiomarkers carries the LATEST RECORD's category (not the
+//   1. getSavedBiomarkers carries the LATEST RECORD's category (not the
 //      canonical entry's), so the tile can fire the never-stale genomics rule the
 //      detail page/table already honor.
 //   2. The "latest reading" is chosen over the DE-DUPED id set (manual preferred),
@@ -13,7 +13,7 @@
 // are SYNTHETIC (no PHI).
 
 import { describe, it, expect } from "vitest";
-import { getStarredBiomarkers } from "@/lib/queries";
+import { getSavedBiomarkers } from "@/lib/queries";
 import { db } from "@/lib/db";
 
 function newProfile(name: string): number {
@@ -25,7 +25,7 @@ function newProfile(name: string): number {
 
 function star(profileId: number, canonical: string): void {
   db.prepare(
-    "INSERT INTO starred_biomarkers (profile_id, canonical_name) VALUES (?, ?)"
+    "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', ?)"
   ).run(profileId, canonical);
 }
 
@@ -64,7 +64,7 @@ function insertRecord(profileId: number, r: RecordSpec): number {
   );
 }
 
-describe("getStarredBiomarkers agrees with the detail page/table (#381)", () => {
+describe("getSavedBiomarkers agrees with the detail page/table (#381)", () => {
   it("carries the latest RECORD's category (genomics never goes stale on the tile)", () => {
     const p = newProfile("genomics-star");
     star(p, "APOE Genotype");
@@ -79,7 +79,7 @@ describe("getStarredBiomarkers agrees with the detail page/table (#381)", () => 
       flag: null,
       documentId: null,
     });
-    const [s] = getStarredBiomarkers(p);
+    const [s] = getSavedBiomarkers(p);
     expect(s.latest_category).toBe("genomics");
   });
 
@@ -119,7 +119,7 @@ describe("getStarredBiomarkers agrees with the detail page/table (#381)", () => 
       flag: "high",
       documentId: docId,
     });
-    const [s] = getStarredBiomarkers(p);
+    const [s] = getSavedBiomarkers(p);
     expect(s.latest_flag).toBeNull();
     expect(s.latest_value).toBe("180");
   });
