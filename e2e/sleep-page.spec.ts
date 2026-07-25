@@ -10,6 +10,7 @@ import {
   SLEEP_EDIT_PROFILE,
 } from "./fixture-logins";
 import { settledClick } from "./helpers";
+import { createFixtureProfile } from "./fixture-profile";
 
 const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
 
@@ -49,10 +50,9 @@ function createSleepEditFixture(
             .prepare("SELECT password_hash FROM logins WHERE username = ?")
             .get(E2E_LOGIN_SLEEP_EDIT) as { password_hash: string }
         ).password_hash;
-        profileId = Number(
-          handle
-            .prepare("INSERT INTO profiles (name) VALUES (?)")
-            .run(`${SLEEP_EDIT_PROFILE} ${suffix}`).lastInsertRowid
+        profileId = createFixtureProfile(
+          handle,
+          `${SLEEP_EDIT_PROFILE} ${suffix}`
         );
         loginId = Number(
           handle

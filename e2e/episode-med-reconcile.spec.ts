@@ -11,6 +11,7 @@ import { followLink, loginAs } from "./nav";
 import { settledClick } from "./helpers";
 import { hashPasswordSync } from "../lib/password";
 import { E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import { createFixtureProfile } from "./fixture-profile";
 import {
   medicationRow,
   medicationList,
@@ -65,10 +66,7 @@ async function signInAsFreshMember(
   let profileId: number;
   try {
     db.pragma("busy_timeout = 5000");
-    profileId = Number(
-      db.prepare("INSERT INTO profiles (name) VALUES (?)").run(profileName)
-        .lastInsertRowid
-    );
+    profileId = createFixtureProfile(db, profileName);
     if (seed) seed(db, profileId);
     const loginId = Number(
       db

@@ -8,33 +8,47 @@ import {
   type TrendSeries,
 } from "@/lib/trends-series";
 import { today } from "@/lib/db";
-import { isSeriesKeySaved, partitionSaved } from "@/lib/saved-items";
+import {
+  isSeriesKeySaved,
+  metricSeriesKey,
+  partitionOverviewTiles,
+} from "@/lib/saved-items";
 import type { DateRange } from "@/lib/timeline-format";
+import { EmptyState } from "@/components/ui";
 import TrendMiniCard from "@/components/TrendMiniCard";
-import StarButton from "@/components/StarButton";
-import SavedReorder from "@/components/SavedReorder";
-import SaveBiomarkerPicker from "@/components/SaveBiomarkerPicker";
+import TrendTileMenu from "@/components/TrendTileMenu";
+import SaveTrendPicker from "@/components/SaveTrendPicker";
 import TrendingDigest from "./TrendingDigest";
 
-// The Trends hub's Overview: the "what's trending" digest, then an at-a-glance grid
-// of the profile's key trend mini-charts under the shared window.
+// The Trends hub's Overview: the "what's trending" digest, then the profile's OWN
+// grid of trend mini-charts under the shared window.
 //
-// #1456 — the unified save store. This page used to read `trend_pins`, a Trends-only
-// ORDERING store that was ALSO the only way a biomarker earned a chart tile here,
-// while the star store (`starred_biomarkers`) separately drove the Results status card
-// and the passport summary. Two gestures answered one question, and the two sets
-// diverged. Both are now ONE `saved_items` table behind the ★ star:
+// #1487 — WHAT IS OVERVIEW FOR. It answers: what you saved, and what changed. The
+// domain tabs (Body / Fitness / Biomarkers) show everything; Overview shows nothing
+// unconditionally. Until this landed the grid was three things — the movers digest,
+// the saved tiles (#1456), and a hardcoded SAMPLER: the four standard metric tiles
+// (weight, body fat, resting HR, training volume) rendered whether or not the user
+// cared, duplicating the domain tabs at tile zoom. That third part is what made
+// Overview and the tabs feel like the same page twice.
 //
-//   • Saved BIOMARKERS get a chart tile here — the same star that lights the Results
-//     status card and puts the analyte in the passport summary. No second gesture.
-//   • Saved METRICS are PROMOTED (ordered first); every metric tile renders either
-//     way, because for a standard metric a save is ordering, not visibility.
-//   • Ordering within the saved row is the SavedReorder affordance (`position`), which
-//     replaced PinToggle. Un-starring is the same ★ button that saved it.
+// The sampler is gone. Those four are now real `saved_items` rows — seeded at
+// profile creation and, for the installed base, by migration 114 (#1487's data half,
+// lib/standard-metric-seeds.ts) — so day-one appearance is IDENTICAL and the change
+// is that the tiles are now REMOVABLE. One star answers "what's on my Overview" for
+// every kind; SaveTrendPicker (metrics AND biomarkers) is the way back.
 //
-// #1455 B: the StarredBiomarkers status card USED to sit between the digest and the
-// grid; it's gone from here (unchanged atop Results → Biomarkers, its one remaining
-// card surface) — a starred biomarker's presence on Trends is its CHART tile.
+// #1456 remains the store: ONE ★ behind ONE table (`saved_items`). A saved biomarker
+// simultaneously earns the Results status card, a tile here, and passport inclusion.
+//
+// Two rules the grid must not break:
+//   • A saved ref with NO tile is SKIPPED, never rendered empty — the age gates are a
+//     render-time filter (buildMetricSeries drops training volume for a restricted
+//     profile, body fat below the growth-metrics age), and the seed set is the same
+//     for every profile. A gated metric is simply absent, exactly as before.
+//   • A saved item with a tile but NOTHING TO SHOW still renders, so its unstar
+//     control stays reachable at any window (#1456). #1485 A compacts those to a
+//     one-line row and sinks them below the populated tiles, which is where the
+//     ~600px of mid-grid whitespace went.
 export default async function OverviewSection({ range }: { range: DateRange }) {
   const { login, profile } = await requireSession();
   const restricted = isTrainingRestricted(profile.id);
@@ -42,53 +56,46 @@ export default async function OverviewSection({ range }: { range: DateRange }) {
   // reading (#1485 G) — profile timezone, never the server's local day.
   const todayStr = today(profile.id);
   // The profile's saved set, in canonical saved order (explicit positions first, then
-  // newest star first) — the ONE ordering both halves of the grid read.
+  // newest star first). This is now the MEMBERSHIP list, not just an ordering.
   const savedRefs = getSavedItems(profile.id).map((s) => ({
     kind: s.kind,
     key: s.key,
   }));
 
-  // Tiles = the standard metric series (always) + a tile for each SAVED biomarker
-  // (a biomarker earns a tile by being starred — here, on its detail page, or via the
-  // picker below). Then order saved-first.
-  const metricTiles = buildMetricSeries(
-    profile.id,
-    login.id,
-    range,
-    restricted
+  // One tile per saved ref, in saved order. Metrics resolve against the age-gated
+  // series set (a gated metric yields no tile and is skipped); a saved biomarker
+  // always resolves — buildSavedBiomarkerTile answers with a windowed series, the
+  // #1485 G sparse fallback (latest reading + age), or an empty placeholder.
+  const metricByKey = new Map(
+    buildMetricSeries(profile.id, login.id, range, restricted).map((t) => [
+      t.key,
+      t,
+    ])
   );
-  const savedBioTiles: TrendSeries[] = [];
+  const tiles: TrendSeries[] = [];
   for (const ref of savedRefs) {
-    if (ref.kind !== "biomarker") continue;
-    // Always render a tile for a saved biomarker — even with no readings in this
-    // window — so its ★ control is reachable regardless of the range (#1456).
-    // buildSavedBiomarkerTile resolves the three cases: a windowed series, the
-    // #1485 G sparse fallback (latest reading + age), or the empty placeholder for
-    // a never-measured analyte.
-    savedBioTiles.push(
-      buildSavedBiomarkerTile(profile.id, ref.key, range, todayStr)
-    );
+    if (ref.kind === "trend-metric") {
+      const tile = metricByKey.get(metricSeriesKey(ref.key));
+      if (tile) tiles.push(tile);
+    } else {
+      tiles.push(buildSavedBiomarkerTile(profile.id, ref.key, range, todayStr));
+    }
   }
-  const tiles = [...metricTiles, ...savedBioTiles];
-  const { saved: savedTiles, unsaved } = partitionSaved(
-    tiles,
-    (t) => t.key,
-    savedRefs
-  );
 
-  const hasAny = tiles.some((t) => t.points.length > 0);
+  // #1485 A: split for LAYOUT only. `index` stays the tile's slot in the SAVED
+  // order (what the reorder items move within), so sinking an empty tile changes
+  // where it draws, never what its position means.
+  const { populated, empty } = partitionOverviewTiles(tiles);
 
-  // Biomarkers offered by the picker: those in use that aren't already saved.
-  const bioOptions = listCompareOptions(
-    profile.id,
-    restricted
-  ).biomarkers.filter((o) => !isSeriesKeySaved(savedRefs, o.key));
+  // What the picker can still add: everything savable that isn't saved yet — metrics
+  // included, since unstarring one now removes its tile and the picker is the way
+  // back (see components/SaveTrendPicker.tsx). listCompareOptions applies the same
+  // age gates as the tile builder, so a restricted profile is never offered training
+  // volume.
+  const options = listCompareOptions(profile.id, restricted);
+  const unsaved = (o: { key: string }) => !isSeriesKeySaved(savedRefs, o.key);
 
-  // `index` is the tile's slot in the SAVED row (undefined for an unsaved tile), so
-  // the reorder ends are computed over the tiles ACTUALLY rendered rather than the raw
-  // saved set — a saved metric the age gate removed has no tile, and the first
-  // rendered tile is the one whose "move earlier" is disabled.
-  const renderTile = (t: TrendSeries, index?: number) => (
+  const renderTile = (t: TrendSeries, index: number, compact = false) => (
     <TrendMiniCard
       key={t.key}
       title={t.label}
@@ -102,23 +109,14 @@ export default async function OverviewSection({ range }: { range: DateRange }) {
       minPctChange={t.minPctChange}
       applyBiomarkerDomain={t.kind === "biomarker"}
       outsideWindow={t.outsideWindow ?? null}
-      footer={
-        <span className="flex flex-wrap items-center gap-2">
-          <StarButton
-            itemKey={t.key}
-            saved={index != null}
-            compact
-            label={t.label}
-          />
-          {index != null && (
-            <SavedReorder
-              itemKey={t.key}
-              isFirst={index === 0}
-              isLast={index === savedTiles.length - 1}
-              label={t.label}
-            />
-          )}
-        </span>
+      compact={compact}
+      menu={
+        <TrendTileMenu
+          itemKey={t.key}
+          label={t.label}
+          isFirst={index === 0}
+          isLast={index === tiles.length - 1}
+        />
       }
     />
   );
@@ -127,29 +125,31 @@ export default async function OverviewSection({ range }: { range: DateRange }) {
     <div className="space-y-6">
       <TrendingDigest range={range} />
 
-      {savedTiles.length > 0 && (
+      {tiles.length > 0 ? (
         <div className="space-y-3" data-testid="saved-tiles">
           <h2 className="flex items-center gap-2 section-label">★ Starred</h2>
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {savedTiles.map((t, i) => renderTile(t, i))}
-          </div>
+          {populated.length > 0 && (
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
+              {populated.map((t) => renderTile(t.tile, t.index))}
+            </div>
+          )}
+          {empty.length > 0 && (
+            <div className="space-y-2">
+              {empty.map((t) => renderTile(t.tile, t.index, true))}
+            </div>
+          )}
         </div>
-      )}
-
-      {hasAny ? (
-        unsaved.length > 0 && (
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {unsaved.map((t) => renderTile(t))}
-          </div>
-        )
       ) : (
-        <div className="card text-sm text-slate-500 dark:text-slate-400">
-          No body-metric or training data in this range. Star a biomarker below,
-          or widen the date range.
-        </div>
+        // Everything unstarred (or a brand-new profile whose only saved metrics are
+        // age-gated): the grid is genuinely empty, so it says so and offers the way
+        // back rather than rendering a blank page.
+        <EmptyState message="Star metrics and biomarkers to build your overview." />
       )}
 
-      <SaveBiomarkerPicker options={bioOptions} />
+      <SaveTrendPicker
+        metrics={options.metrics.filter(unsaved)}
+        biomarkers={options.biomarkers.filter(unsaved)}
+      />
     </div>
   );
 }

@@ -7,7 +7,7 @@ import {
   isSeriesKeySaved,
   orderSavedRefs,
   moveInOrder,
-  partitionSaved,
+  partitionOverviewTiles,
   type SavedRef,
 } from "../saved-items";
 
@@ -173,44 +173,58 @@ describe("moveInOrder", () => {
   });
 });
 
-describe("partitionSaved", () => {
-  const tile = (key: string) => ({ key });
-  const tiles = [
-    tile("metric:weight"),
-    tile("metric:bodyfat"),
-    tile("bio:ApoB"),
-  ];
-
-  it("renders saved tiles in SAVED order and leaves the rest in place", () => {
-    const { saved, unsaved } = partitionSaved(tiles, (t) => t.key, [
-      ref("biomarker", "ApoB"),
-      ref("trend-metric", "weight"),
-    ]);
-    expect(saved.map((t) => t.key)).toEqual(["bio:ApoB", "metric:weight"]);
-    expect(unsaved.map((t) => t.key)).toEqual(["metric:bodyfat"]);
+describe("partitionOverviewTiles", () => {
+  const tile = (key: string, points: number, outside = false) => ({
+    key,
+    points: Array.from({ length: points }, (_, i) => ({
+      date: `d${i}`,
+      value: i,
+    })),
+    outsideWindow: outside
+      ? { date: "d0", text: "5 mg/dL", age: "5 mo" }
+      : null,
   });
 
-  it("skips a saved ref with no matching tile", () => {
-    // A saved metric the age gate removed from the grid: no tile, no crash, and it
-    // must not shift the ordering of the tiles that do render.
-    const { saved, unsaved } = partitionSaved(tiles, (t) => t.key, [
-      ref("trend-metric", "training-volume"),
-      ref("trend-metric", "bodyfat"),
+  it("keeps populated tiles in order and sinks the empty ones below them", () => {
+    const { populated, empty } = partitionOverviewTiles([
+      tile("metric:weight", 3),
+      tile("bio:ApoB", 0),
+      tile("metric:bodyfat", 2),
     ]);
-    expect(saved.map((t) => t.key)).toEqual(["metric:bodyfat"]);
-    expect(unsaved.map((t) => t.key)).toEqual(["metric:weight", "bio:ApoB"]);
+    expect(populated.map((s) => s.tile.key)).toEqual([
+      "metric:weight",
+      "metric:bodyfat",
+    ]);
+    expect(empty.map((s) => s.tile.key)).toEqual(["bio:ApoB"]);
   });
 
-  it("matches case-insensitively (a save on 'apob' claims the 'bio:ApoB' tile)", () => {
-    const { saved } = partitionSaved(tiles, (t) => t.key, [
-      ref("biomarker", "apob"),
+  it("carries each tile's SAVED-order index across the split", () => {
+    // The split is layout only: the sunk tile still reports slot 1, so the reorder
+    // controls keep moving tiles within the persisted saved order rather than the
+    // rendered one.
+    const { populated, empty } = partitionOverviewTiles([
+      tile("metric:weight", 3),
+      tile("bio:ApoB", 0),
+      tile("metric:bodyfat", 2),
     ]);
-    expect(saved.map((t) => t.key)).toEqual(["bio:ApoB"]);
+    expect(populated.map((s) => s.index)).toEqual([0, 2]);
+    expect(empty.map((s) => s.index)).toEqual([1]);
   });
 
-  it("with nothing saved, everything stays unsaved in its original order", () => {
-    const { saved, unsaved } = partitionSaved(tiles, (t) => t.key, []);
-    expect(saved).toEqual([]);
-    expect(unsaved.map((t) => t.key)).toEqual(tiles.map((t) => t.key));
+  it("counts a sparse tile (out-of-window reading, no points) as populated", () => {
+    // #1485 G gave that tile a real number to show; compacting it would throw away
+    // the one value the user came for.
+    const { populated, empty } = partitionOverviewTiles([
+      tile("bio:Lp(a)", 0, true),
+    ]);
+    expect(populated.map((s) => s.tile.key)).toEqual(["bio:Lp(a)"]);
+    expect(empty).toEqual([]);
+  });
+
+  it("handles an all-empty and an all-populated set", () => {
+    expect(partitionOverviewTiles([]).populated).toEqual([]);
+    const allEmpty = partitionOverviewTiles([tile("a", 0), tile("b", 0)]);
+    expect(allEmpty.populated).toEqual([]);
+    expect(allEmpty.empty.map((s) => s.index)).toEqual([0, 1]);
   });
 });

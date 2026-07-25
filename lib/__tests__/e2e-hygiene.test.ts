@@ -139,6 +139,24 @@ const CREATE_LOGIN_ALLOW: Record<string, number> = {};
 const SET_GRANTS_ALLOW: Record<string, number> = {};
 const ADD_PROFILE_ALLOW: Record<string, number> = {};
 
+// ── (vii) The fixture-PROFILE constructor freeze (issue #1487) ───────────────
+// A fixture profile created with a bare `INSERT INTO profiles` starts with NO
+// `saved_items` rows — which was invisible while Trends Overview rendered the four
+// standard metric tiles unconditionally, and became a broken, unreachable-in-
+// production state the moment Overview went membership-driven (#1487): a raw-SQL
+// fixture profile renders an EMPTY grid, while every profile a real user can create
+// (createProfile / bootstrapAuth) is seeded with the standard metric saves. ~107
+// fixture profiles were in that state.
+//
+// So profile creation in e2e goes through the ONE blessed constructor
+// e2e/fixture-profile.ts (createFixtureProfile / createFixtureProfileWithId), which
+// calls the SAME lib/standard-metric-seeds.ts core the production paths call. The raw
+// insert is frozen at ZERO everywhere else, so a new fixture can't reintroduce the
+// divergence; the constructor module OWNS the marker and is skipped, not allowlisted.
+const FIXTURE_PROFILE_FILE = "fixture-profile.ts";
+const RAW_PROFILE_INSERT_RE = /INSERT\s+(?:OR\s+\w+\s+)?INTO\s+profiles\b/g;
+const RAW_PROFILE_INSERT_ALLOW: Record<string, number> = {};
+
 // Frozen offenders as of #868 (per-file counts). Migrate an entry to
 // e2e/helpers.ts and LOWER its number here in the same PR; a fully-migrated file
 // drops out entirely. New files must not appear.
@@ -432,6 +450,33 @@ describe("e2e suite hygiene guard (issue #868)", () => {
     }
 
     expect(violations, violations.join("\n")).toEqual([]);
+  });
+
+  it("no NEW raw INSERT INTO profiles in an e2e/*.ts (use createFixtureProfile)", () => {
+    checkPattern(
+      "raw fixture-profile insert",
+      RAW_PROFILE_INSERT_RE,
+      RAW_PROFILE_INSERT_ALLOW,
+      {
+        skipFiles: new Set([FIXTURE_PROFILE_FILE]),
+        hint:
+          `A raw INSERT INTO profiles skips the standard Overview metric seeds every ` +
+          `production-created profile gets (#1487), so the fixture renders an empty ` +
+          `Trends Overview no real profile can be in. Use createFixtureProfile from ` +
+          `e2e/fixture-profile.ts; see docs/internals/e2e-hygiene.md.`,
+      }
+    );
+  });
+
+  it("the blessed fixture-profile constructor exists and seeds the standard metric saves", () => {
+    const mod = fs.readFileSync(
+      path.join(E2E_DIR, FIXTURE_PROFILE_FILE),
+      "utf8"
+    );
+    expect(mod).toMatch(/export function createFixtureProfile\b/);
+    expect(mod).toMatch(/export function createFixtureProfileWithId\b/);
+    // It must delegate to the production seeding core, not re-implement it.
+    expect(mod).toMatch(/seedStandardMetricSaves\(/);
   });
 
   it("the blessed interaction module exists and exports settledClick + followLink", () => {

@@ -1,18 +1,22 @@
-// DB INTEGRATION TIER — issue #1487 (data half): the standard Overview metric tiles
-// become DEFAULT-SAVED `saved_items` rows.
+// DB INTEGRATION TIER — issue #1487: the standard Overview metric tiles become
+// DEFAULT-SAVED `saved_items` rows (the data half), and Overview then renders the
+// saved set and nothing else (the rendering half).
 //
-// The binding test here is the BYTE-IDENTICAL one. Seeding membership rows for tiles
-// that today render unconditionally is only safe if it changes nothing about WHICH
-// tiles Overview shows or in WHAT ORDER — that invariant is the whole reason the data
-// half ships ahead of the rendering half (wave 2b), which flips the grid to
-// membership-driven and would inherit any drift introduced here as a visible bug.
+// The binding test here is the BYTE-IDENTICAL one, and it now spans BOTH halves. The
+// promise of #1487 is that day-one appearance does not change: a profile that never
+// curated anything sees exactly the tiles, in exactly the order, it saw when the four
+// standard tiles were a hardcoded sampler. Seeding alone could satisfy that trivially;
+// the flip is where it could break. So the test holds a FROZEN COPY of the pre-#1487
+// composition (`legacyOverviewTileKeys` — the unconditional metric sampler plus saved
+// biomarkers, split saved-first by the retired `partitionSaved`) and asserts, for every
+// curation shape, that the sequence the LIVE membership-driven composition renders
+// after seeding equals the sequence the old sampler rendered before it.
 //
-// So the test replays OverviewSection's own composition — buildMetricSeries +
-// buildSavedBiomarkerTile over getSavedItems, split by partitionSaved — and asserts
-// the rendered tile SEQUENCE (saved row followed by the unsaved grid) is unchanged
-// across the seeding, for every fixture shape: never curated, stars with no explicit
-// positions, an explicitly ordered set, a profile that already saved a standard
-// metric, an age-restricted profile, and an infant (body fat hidden).
+// The shapes: never curated, stars with no explicit positions, an explicitly ordered
+// set, a profile that already saved a standard metric, a positioned/unpositioned mix,
+// an age-restricted profile (training volume gated), and an infant (body fat hidden).
+// The last two are the saved-ref-with-no-tile case: age gates stay a RENDER-time
+// filter, so a gated metric is skipped, never rendered empty.
 //
 // The second describe covers the migration itself at the 113 standard: it builds a
 // genuine pre-114 database, runs up(), and asserts per-profile isolation, dedupe
@@ -32,7 +36,11 @@ import {
   seedStandardMetricSaves,
 } from "@/lib/standard-metric-seeds";
 import { getSavedItems } from "@/lib/queries/saved";
-import { partitionSaved } from "@/lib/saved-items";
+import {
+  metricSeriesKey,
+  partitionOverviewTiles,
+  savedRefFromSeriesKey,
+} from "@/lib/saved-items";
 import {
   buildMetricSeries,
   buildSavedBiomarkerTile,
@@ -49,11 +57,43 @@ process.env.ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "db-test-admin-pw";
 const SEEDS_MIGRATION = 114;
 
 // ── The Overview composition under test ──────────────────────────────────────
-// A faithful replay of app/(app)/trends/OverviewSection.tsx: the standard metric
-// series plus a tile for each saved biomarker, partitioned saved-first. The RENDERED
-// sequence is the saved row followed by the unsaved grid, so that concatenation — not
-// either half alone — is what must not move.
+// A faithful replay of app/(app)/trends/OverviewSection.tsx as it stands NOW: one
+// tile per saved ref, in saved order, with a saved metric the age gate removed
+// simply skipped. This is the membership grid.
 function overviewTileKeys(
+  profileId: number,
+  loginId: number,
+  range: DateRange
+): string[] {
+  const restricted = isTrainingRestricted(profileId);
+  const todayStr = today(profileId);
+  const metricByKey = new Map(
+    buildMetricSeries(profileId, loginId, range, restricted).map((t) => [
+      t.key,
+      t,
+    ])
+  );
+  const tiles: TrendSeries[] = [];
+  for (const ref of getSavedItems(profileId)) {
+    if (ref.kind === "trend-metric") {
+      const tile = metricByKey.get(metricSeriesKey(ref.key));
+      if (tile) tiles.push(tile);
+    } else {
+      tiles.push(buildSavedBiomarkerTile(profileId, ref.key, range, todayStr));
+    }
+  }
+  return tiles.map((t) => t.key);
+}
+
+// ── The composition it replaced (FROZEN — do not "fix") ──────────────────────
+// app/(app)/trends/OverviewSection.tsx before #1487: every standard metric series
+// rendered unconditionally, saved biomarkers earned a tile, and the two were split
+// saved-first by lib/saved-items.ts's `partitionSaved` (retired with the sampler, so
+// its ordering logic is reproduced here rather than imported). The RENDERED sequence
+// was the saved row followed by the unsaved grid. This is the baseline the flip must
+// reproduce; it is a historical artifact and must not be updated to match new
+// behavior — that would delete the test's meaning.
+function legacyOverviewTileKeys(
   profileId: number,
   loginId: number,
   range: DateRange
@@ -64,13 +104,28 @@ function overviewTileKeys(
     kind: s.kind,
     key: s.key,
   }));
-  const metricTiles = buildMetricSeries(profileId, loginId, range, restricted);
-  const savedBioTiles: TrendSeries[] = savedRefs
-    .filter((r) => r.kind === "biomarker")
-    .map((r) => buildSavedBiomarkerTile(profileId, r.key, range, todayStr));
-  const tiles = [...metricTiles, ...savedBioTiles];
-  const { saved, unsaved } = partitionSaved(tiles, (t) => t.key, savedRefs);
-  return [...saved, ...unsaved].map((t) => t.key);
+  const tiles: TrendSeries[] = [
+    ...buildMetricSeries(profileId, loginId, range, restricted),
+    ...savedRefs
+      .filter((r) => r.kind === "biomarker")
+      .map((r) => buildSavedBiomarkerTile(profileId, r.key, range, todayStr)),
+  ];
+  const refId = (kind: string, key: string) => `${kind}|${key.toLowerCase()}`;
+  const byRef = new Map<string, TrendSeries>();
+  for (const t of tiles) {
+    const ref = savedRefFromSeriesKey(t.key);
+    if (ref) byRef.set(refId(ref.kind, ref.key), t);
+  }
+  const claimed = new Set<TrendSeries>();
+  const saved: TrendSeries[] = [];
+  for (const ref of savedRefs) {
+    const found = byRef.get(refId(ref.kind, ref.key));
+    if (found && !claimed.has(found)) {
+      claimed.add(found);
+      saved.push(found);
+    }
+  }
+  return [...saved, ...tiles.filter((t) => !claimed.has(t))].map((t) => t.key);
 }
 
 let seq = 0;
@@ -176,15 +231,21 @@ describe("#1487 standard metric seeds — the Overview tile sequence is unchange
   ];
 
   for (const [name, setup] of CASES) {
-    it(`is byte-identical before/after seeding — ${name}`, () => {
+    it(`renders what the pre-#1487 sampler rendered — ${name}`, () => {
       const p = newProfile("Seed Fixture");
       setup(p);
       try {
         for (const [label, range] of RANGES) {
-          const before = overviewTileKeys(p, 1, range);
+          // The old grid, on the profile as it was BEFORE seeding: the sampler's
+          // unconditional metric tiles plus this profile's own curation.
+          const before = legacyOverviewTileKeys(p, 1, range);
           // Seeding is idempotent, so running it inside the range loop is safe and
           // asserts the invariant against the SAME profile at both windows.
           seedStandardMetricSaves(db, p);
+          // The new grid: membership only. Same tiles, same order — which is the
+          // whole claim of #1487, and the reason the seeds are unpositioned and
+          // epoch-stamped (a positioned seed would sort ahead of the user's saves
+          // and this assertion would fail).
           const after = overviewTileKeys(p, 1, range);
           expect(after, `${name} @ ${label}`).toEqual(before);
         }
@@ -193,6 +254,72 @@ describe("#1487 standard metric seeds — the Overview tile sequence is unchange
       }
     });
   }
+
+  it("drops a standard tile when it is unstarred, and restores it when re-starred", () => {
+    // The capability the flip unlocks — and the one thing the old grid could not do.
+    // A metric tile is removable now; SaveTrendPicker is the way back, which is why
+    // it offers metrics as well as biomarkers.
+    const p = newProfile("Unstar Metric");
+    seedStandardMetricSaves(db, p);
+    expect(overviewTileKeys(p, 1, {})).toContain("metric:volume");
+
+    db.prepare(
+      `DELETE FROM saved_items WHERE profile_id = ? AND kind = 'trend-metric' AND key = 'volume'`
+    ).run(p);
+    const without = overviewTileKeys(p, 1, {});
+    expect(without).not.toContain("metric:volume");
+    // …and only that tile went: unstarring one metric is not a grid reset.
+    expect(without).toEqual([
+      "metric:weight",
+      "metric:bodyfat",
+      "metric:resting_hr",
+    ]);
+
+    star(p, "trend-metric", "volume");
+    // Re-starred, it comes back as a fresh save — at the FRONT, like any other star.
+    expect(overviewTileKeys(p, 1, {})[0]).toBe("metric:volume");
+  });
+
+  it("renders nothing at all once every save is removed", () => {
+    // The empty state's precondition (OverviewSection falls back to the EmptyState +
+    // picker). Under the sampler this state was unreachable.
+    const p = newProfile("Fully Unstarred");
+    seedStandardMetricSaves(db, p);
+    db.prepare(`DELETE FROM saved_items WHERE profile_id = ?`).run(p);
+    expect(overviewTileKeys(p, 1, {})).toEqual([]);
+  });
+
+  it("sinks a tile with nothing to show below the populated ones, keeping saved-order indexes", () => {
+    // #1485 A, over the real composition: a never-measured saved analyte compacts to
+    // a one-line row at the bottom, while its slot in the SAVED order (what the
+    // reorder controls move within) is unchanged.
+    const p = newProfile("Empty Sink");
+    star(p, "biomarker", "Ferritin"); // never measured on this profile
+    seedStandardMetricSaves(db, p);
+    db.prepare(
+      `INSERT INTO body_metrics (profile_id, date, weight_kg, source)
+         VALUES (?, ?, 70, 'manual')`
+    ).run(p, today(p));
+
+    const restricted = isTrainingRestricted(p);
+    const metricByKey = new Map(
+      buildMetricSeries(p, 1, {}, restricted).map((t) => [t.key, t])
+    );
+    const tiles: TrendSeries[] = [];
+    for (const ref of getSavedItems(p)) {
+      if (ref.kind === "trend-metric") {
+        const tile = metricByKey.get(metricSeriesKey(ref.key));
+        if (tile) tiles.push(tile);
+      } else {
+        tiles.push(buildSavedBiomarkerTile(p, ref.key, {}, today(p)));
+      }
+    }
+    const { populated, empty } = partitionOverviewTiles(tiles);
+    expect(populated.map((s) => s.tile.key)).toEqual(["metric:weight"]);
+    // Ferritin is saved first (a real star, ahead of the epoch seeds) but draws last.
+    expect(empty[0].tile.key).toBe("bio:Ferritin");
+    expect(empty[0].index).toBe(0);
+  });
 
   it("seeds every standard metric, in tile order, after existing curation", () => {
     const p = newProfile("Curation Ahead");
