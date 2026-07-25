@@ -11,6 +11,16 @@ import {
   YAxis,
 } from "recharts";
 import { useChartColors } from "./useChartColors";
+import {
+  chartAxisProps,
+  chartBarCursorProps,
+  chartGridProps,
+  chartLegendWrapperStyle,
+  chartMarkMotion,
+  chartStackSegmentProps,
+  chartTooltipProps,
+  useChartMotion,
+} from "./chart-scaffold";
 import { formatLongDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { roundChartValue } from "@/lib/chart-format";
@@ -45,6 +55,7 @@ export default function StackedBarCard({
 }) {
   const formatPrefs = useFormatPrefs();
   const c = useChartColors();
+  const motion = useChartMotion();
   // For ISO-date series, compact the axis to MM-DD and show a friendly long date
   // in the tooltip (matching LineChartCard). Callers passing pre-shortened MM-DD
   // dates are unaffected.
@@ -67,36 +78,23 @@ export default function StackedBarCard({
           data={data}
           margin={{ top: 10, right: 16, bottom: 0, left: -8 }}
         >
-          <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
+          <CartesianGrid {...chartGridProps(c)} />
           <XAxis
             dataKey="date"
             tickFormatter={tickFmt}
-            tick={{ fontSize: 11, fill: c.tick }}
-            stroke={c.axis}
+            {...chartAxisProps(c)}
           />
-          <YAxis
-            tick={{ fontSize: 11, fill: c.tick }}
-            stroke={c.axis}
-            unit={unit}
-          />
+          <YAxis {...chartAxisProps(c)} unit={unit} />
           <Tooltip
-            cursor={{ fill: c.grid, fillOpacity: 0.5 }}
+            cursor={chartBarCursorProps(c)}
             formatter={(v, name) => [
               `${roundChartValue(Number(v), decimals)}${unit}`,
               name,
             ]}
             labelFormatter={labelFmt ? (v) => labelFmt(String(v)) : undefined}
-            contentStyle={{
-              fontSize: 12,
-              borderRadius: 8,
-              background: c.tooltipBg,
-              border: `1px solid ${c.tooltipBorder}`,
-              color: c.tooltipText,
-            }}
-            labelStyle={{ color: c.tooltipText }}
-            itemStyle={{ color: c.tooltipText }}
+            {...chartTooltipProps(c, motion)}
           />
-          <Legend wrapperStyle={{ fontSize: 12 }} />
+          <Legend wrapperStyle={chartLegendWrapperStyle} />
           {series.map((s) => (
             <Bar
               key={s.key}
@@ -104,6 +102,8 @@ export default function StackedBarCard({
               name={s.label}
               stackId="stack"
               fill={s.color}
+              {...chartStackSegmentProps(c)}
+              {...chartMarkMotion(motion)}
             />
           ))}
         </BarChart>

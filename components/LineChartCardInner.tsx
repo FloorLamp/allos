@@ -12,6 +12,17 @@ import {
   YAxis,
 } from "recharts";
 import { useChartColors } from "./useChartColors";
+import {
+  chartActiveDot,
+  chartAnnotationLabel,
+  chartAxisProps,
+  chartDash,
+  chartGridProps,
+  chartLineDot,
+  chartMarkMotion,
+  chartTooltipProps,
+  useChartMotion,
+} from "./chart-scaffold";
 import { chartSeries } from "@/lib/chart-colors";
 import { formatLongDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
@@ -62,7 +73,9 @@ export default function LineChartCard({
   // Display precision for the tooltip value, so it reads the same rounded number
   // as the caller's headline/table (issue #403). Omitted → cap at 2 decimals.
   decimals?: number;
-  // Disable per-point dots for dense series (e.g. ~1440 intraday HR points).
+  // Hard override to disable per-point dots. Dots also turn themselves off above
+  // DENSE_SERIES_POINTS (issue #1445) — this stays for callers that know their
+  // series is dense regardless (e.g. ~1440 intraday HR points).
   showDots?: boolean;
   // Optional: compact the x-axis tick, and expand the tooltip's date label.
   tickFormatter?: (value: string) => string;
@@ -84,6 +97,7 @@ export default function LineChartCard({
   const formatPrefs = useFormatPrefs();
   const key = dataKey ?? "value";
   const c = useChartColors();
+  const motion = useChartMotion();
   // For ISO-date series, default to a compact MM-DD axis and a friendly long
   // date in the tooltip (matching the journal charts). Callers passing their own
   // formatters, or non-date x-values (e.g. HH:MM intraday), are unaffected.
@@ -124,33 +138,20 @@ export default function LineChartCard({
           syncId={syncId}
           margin={{ top: 10, right: 16, bottom: 0, left: -8 }}
         >
-          <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
+          <CartesianGrid {...chartGridProps(c)} />
           <XAxis
             dataKey="date"
             tickFormatter={tickFmt}
-            tick={{ fontSize: 11, fill: c.tick }}
-            stroke={c.axis}
+            {...chartAxisProps(c)}
           />
-          <YAxis
-            tick={{ fontSize: 11, fill: c.tick }}
-            stroke={c.axis}
-            domain={yDomain ?? ["auto", "auto"]}
-          />
+          <YAxis {...chartAxisProps(c)} domain={yDomain ?? ["auto", "auto"]} />
           <Tooltip
             formatter={(v) => [
               `${roundChartValue(Number(v), decimals)}${unit}`,
               label,
             ]}
             labelFormatter={labelFmt ? (v) => labelFmt(String(v)) : undefined}
-            contentStyle={{
-              fontSize: 12,
-              borderRadius: 8,
-              background: c.tooltipBg,
-              border: `1px solid ${c.tooltipBorder}`,
-              color: c.tooltipText,
-            }}
-            labelStyle={{ color: c.tooltipText }}
-            itemStyle={{ color: c.tooltipText }}
+            {...chartTooltipProps(c, motion)}
           />
           {snappedWindows.map((w, i) => {
             const color = ANNOTATION_KIND_META[w.kind].color;
@@ -163,29 +164,23 @@ export default function LineChartCard({
                 fillOpacity={0.08}
                 stroke={color}
                 strokeOpacity={0.3}
-                label={{
-                  value: w.label,
-                  position: "insideTopLeft",
-                  fontSize: 9,
-                  fill: color,
-                }}
+                label={chartAnnotationLabel(w.label, color, "insideTopLeft")}
               />
             );
           })}
           {referenceValue != null && (
             <ReferenceLine
               y={referenceValue.value}
-              stroke={referenceValue.color ?? chartSeries.emerald}
-              strokeDasharray="5 4"
+              stroke={referenceValue.color ?? chartSeries.sky}
+              strokeDasharray={chartDash.reference}
               strokeWidth={1.5}
               label={
                 referenceValue.label
-                  ? {
-                      value: referenceValue.label,
-                      position: "insideTopLeft",
-                      fontSize: 10,
-                      fill: referenceValue.color ?? chartSeries.emerald,
-                    }
+                  ? chartAnnotationLabel(
+                      referenceValue.label,
+                      referenceValue.color ?? chartSeries.sky,
+                      "insideTopLeft"
+                    )
                   : undefined
               }
             />
@@ -195,14 +190,13 @@ export default function LineChartCard({
               key={`ann-${a.kind}-${a.date}-${i}`}
               x={a.date}
               stroke={ANNOTATION_KIND_META[a.kind].color}
-              strokeDasharray="3 3"
+              strokeDasharray={chartDash.annotation}
               strokeOpacity={0.85}
-              label={{
-                value: a.label,
-                position: "top",
-                fontSize: 9,
-                fill: ANNOTATION_KIND_META[a.kind].color,
-              }}
+              label={chartAnnotationLabel(
+                a.label,
+                ANNOTATION_KIND_META[a.kind].color,
+                "top"
+              )}
             />
           ))}
           <Line
@@ -210,7 +204,13 @@ export default function LineChartCard({
             dataKey={key}
             stroke={color}
             strokeWidth={2}
-            dot={showDots ? { r: 3, fill: color, stroke: color } : false}
+            dot={chartLineDot(c, {
+              color,
+              pointCount: data.length,
+              enabled: showDots,
+            })}
+            activeDot={chartActiveDot(color)}
+            {...chartMarkMotion(motion)}
             connectNulls
           />
         </LineChart>

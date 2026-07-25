@@ -4,6 +4,7 @@ import {
   IconArrowDownRight,
   IconMinus,
 } from "@tabler/icons-react";
+import CountUpNumber from "@/components/CountUpNumber";
 import WidgetHeader from "@/components/dashboard/WidgetHeader";
 import type { StepsTodaySummary } from "@/lib/steps-today";
 
@@ -44,12 +45,16 @@ export default function StepsTodayWidget({
         />
         <div className="min-w-0">
           <div className="flex flex-wrap items-baseline gap-x-2">
-            <span
+            {/* The dashboard's one count-up (issue #1445, Part 3c): a step
+                count is a magnitude whose ticking-up is the point. 400ms, once,
+                skipped under prefers-reduced-motion; the final value is what the
+                server renders, so nothing downstream ever reads a partial. */}
+            <CountUpNumber
+              value={today}
+              format={(n) => n.toLocaleString("en-US")}
               className="text-2xl font-bold tabular-nums text-slate-800 dark:text-slate-100"
-              data-testid="steps-today-count"
-            >
-              {today != null ? today.toLocaleString("en-US") : "—"}
-            </span>
+              testId="steps-today-count"
+            />
             <span className="text-sm text-slate-500 dark:text-slate-400">
               {today != null ? "steps" : "No steps logged yet today"}
             </span>

@@ -12,6 +12,18 @@ import {
   YAxis,
 } from "recharts";
 import { useChartColors } from "./useChartColors";
+import {
+  chartAnnotationLabel,
+  chartAxisProps,
+  chartBarCursorProps,
+  chartDash,
+  chartGridProps,
+  chartLegendWrapperStyle,
+  chartMarkMotion,
+  chartStackSegmentProps,
+  chartTooltipProps,
+  useChartMotion,
+} from "./chart-scaffold";
 import { formatLongDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { ZONES, ZONE_COLORS } from "@/lib/training-zones";
@@ -42,6 +54,7 @@ export default function ZoneMinutesCardInner({
 }) {
   const formatPrefs = useFormatPrefs();
   const c = useChartColors();
+  const motion = useChartMotion();
   if (data.length === 0) {
     return (
       <div className="flex h-64 items-center justify-center text-sm text-slate-500 dark:text-slate-400">
@@ -63,33 +76,20 @@ export default function ZoneMinutesCardInner({
           data={data}
           margin={{ top: 10, right: 16, bottom: 0, left: -8 }}
         >
-          <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
+          <CartesianGrid {...chartGridProps(c)} />
           <XAxis
             dataKey="week"
             tickFormatter={tickFmt}
-            tick={{ fontSize: 11, fill: c.tick }}
-            stroke={c.axis}
+            {...chartAxisProps(c)}
           />
-          <YAxis
-            tick={{ fontSize: 11, fill: c.tick }}
-            stroke={c.axis}
-            unit=" min"
-          />
+          <YAxis {...chartAxisProps(c)} unit=" min" />
           <Tooltip
-            cursor={{ fill: c.grid, fillOpacity: 0.5 }}
+            cursor={chartBarCursorProps(c)}
             formatter={(v, name) => [`${v} min`, name]}
             labelFormatter={labelFmt ? (v) => labelFmt(String(v)) : undefined}
-            contentStyle={{
-              fontSize: 12,
-              borderRadius: 8,
-              background: c.tooltipBg,
-              border: `1px solid ${c.tooltipBorder}`,
-              color: c.tooltipText,
-            }}
-            labelStyle={{ color: c.tooltipText }}
-            itemStyle={{ color: c.tooltipText }}
+            {...chartTooltipProps(c, motion)}
           />
-          <Legend wrapperStyle={{ fontSize: 12 }} />
+          <Legend wrapperStyle={chartLegendWrapperStyle} />
           {ZONE_KEYS.map((key, i) => (
             <Bar
               key={key}
@@ -97,19 +97,21 @@ export default function ZoneMinutesCardInner({
               name={`${ZONES[i].name} · ${ZONES[i].label}`}
               stackId="zones"
               fill={ZONE_COLORS[i]}
+              {...chartStackSegmentProps(c)}
+              {...chartMarkMotion(motion)}
             />
           ))}
           {zone2Target != null && zone2Target > 0 && (
             <ReferenceLine
               y={zone2Target}
               stroke={ZONE_COLORS[1]}
-              strokeDasharray="4 3"
-              label={{
-                value: `Z2 target ${zone2Target}m`,
-                position: "insideTopRight",
-                fontSize: 11,
-                fill: ZONE_COLORS[1],
-              }}
+              strokeDasharray={chartDash.target}
+              label={chartAnnotationLabel(
+                `Z2 target ${zone2Target}m`,
+                ZONE_COLORS[1],
+                "insideTopRight",
+                { fontSize: 11 }
+              )}
             />
           )}
         </BarChart>

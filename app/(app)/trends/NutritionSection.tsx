@@ -124,7 +124,7 @@ export default async function NutritionSection({
               { key: "protein", label: "Protein", color: chartSeries.violet },
               { key: "carbs", label: "Carbs", color: chartSeries.amber },
               { key: "fat", label: "Fat", color: chartSeries.rose },
-              { key: "fiber", label: "Fiber", color: chartSeries.emerald },
+              { key: "fiber", label: "Fiber", color: chartSeries.sky },
             ]}
           />
         )}

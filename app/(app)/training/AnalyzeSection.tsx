@@ -445,7 +445,7 @@ function cardioView({
         : activeMetric === "speed"
           ? ` ${units.distanceUnit}/h`
           : " min",
-    color: activeMetric === "speed" ? chartSeries.brand : chartSeries.emerald,
+    color: activeMetric === "speed" ? chartSeries.brand : chartSeries.sky,
     latestActivityId: newest[0]?.activityId ?? stat.lastActivityId,
     chart: sessions.map((s) => ({
       date: s.date,

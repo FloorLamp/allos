@@ -113,7 +113,7 @@ export default function CardioDetailPanel({
             data={chart}
             label={showDistance ? "Distance" : "Duration"}
             unit={showDistance ? ` ${du}` : " min"}
-            color={chartSeries.emerald}
+            color={chartSeries.sky}
             heightClass="h-40"
           />
         </div>

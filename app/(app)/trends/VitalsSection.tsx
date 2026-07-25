@@ -182,7 +182,7 @@ export default async function VitalsSection({ range }: { range: DateRange }) {
                 data={spo2}
                 label="SpO₂"
                 unit="%"
-                color={chartSeries.emerald}
+                color={chartSeries.sky}
                 heightClass="h-48"
               />
             </div>
@@ -197,7 +197,7 @@ export default async function VitalsSection({ range }: { range: DateRange }) {
                 data={respiratory}
                 label="Respiratory rate"
                 unit=" /min"
-                color={chartSeries.slate}
+                color={chartSeries.violet}
                 heightClass="h-48"
               />
             </div>
