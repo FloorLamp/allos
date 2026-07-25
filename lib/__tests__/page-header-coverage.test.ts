@@ -21,8 +21,18 @@ import { fileURLToPath } from "node:url";
 // subtree (the /records and /results tab shells). That mirrors what a viewer
 // sees, which is the thing being pinned.
 
+// …and no page draws a SECOND heading at that same scale (issue #1449). The
+// natural extension of the rule above: if PageHeader is the page's heading, then
+// nothing below it may compete with it. Records › Care › Overview was the case
+// that forced this — five `text-2xl font-bold` headings on one scroll (the page
+// h1 plus Background / Family history / Care plan / Health goals), all identical
+// weight, so nothing told you which one named the page; Problems had the same
+// shape with Conditions/Allergies, and the Passport's "Emergency Card" section a
+// third instance. Section headings now sit a rung below (`text-lg font-semibold`),
+// giving one hierarchy: PageHeader h1 → section h2 → card h3.
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const APP_GROUP = path.join(REPO, "app", "(app)");
+const COMPONENTS = path.join(REPO, "components");
 
 // Pages with a deliberate reason to carry no app page heading. Each entry is a
 // JUSTIFIED exemption, not a backlog — a new page does not get to join this list
@@ -135,6 +145,63 @@ describe("every (app) page renders the shared PageHeader", () => {
 
   it("gives every exemption a written justification", () => {
     for (const [rel, why] of Object.entries(EXEMPT)) {
+      expect(why.length, `${rel} needs a real reason`).toBeGreaterThan(40);
+    }
+  });
+});
+
+// `text-2xl font-bold` is the page-title treatment PageHeader draws. On a NUMBER
+// (a stat tile, a dose count) it's just type; on a HEADING TAG it claims "I name
+// this page", which only the page's one h1 may do.
+const H1_SCALE = /<h[1-6][^>]*text-2xl font-bold/;
+
+// Heading tags that legitimately carry page scale because they ARE their surface's
+// page title. Same discipline as EXEMPT above: a written reason, not a backlog.
+const H1_SCALE_OK: Record<string, string> = {
+  "app/(app)/onboarding/page.tsx":
+    "The onboarding flow's own title. It runs as a standalone first-run surface with no PageHeader above it, so this h1 IS the page heading rather than a section competing with one.",
+  "components/ProfilePassport.tsx":
+    "The passport artifact's own title (the person's name). It is the page heading in the standalone /share and print renders, where no app chrome exists; on /profile it reads as the artifact's masthead, not a section heading.",
+};
+
+function walkTsx(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...walkTsx(full));
+    else if (entry.name.endsWith(".tsx")) out.push(full);
+  }
+  return out;
+}
+
+describe("only the page's own h1 uses the page-title heading scale (#1449)", () => {
+  const FILES = [...walkTsx(APP_GROUP), ...walkTsx(COMPONENTS)].sort();
+
+  it("finds the app's components (the scan itself is wired up)", () => {
+    expect(FILES.length).toBeGreaterThan(100);
+  });
+
+  it("has no section heading competing with the page title", () => {
+    const offenders = FILES.filter((f) =>
+      H1_SCALE.test(fs.readFileSync(f, "utf8"))
+    )
+      .map((f) => path.relative(REPO, f))
+      .filter((rel) => !(rel in H1_SCALE_OK));
+    expect(offenders).toEqual([]);
+  });
+
+  it("keeps the page-scale allowlist honest (every entry still exists and still qualifies)", () => {
+    for (const rel of Object.keys(H1_SCALE_OK)) {
+      const full = path.join(REPO, rel);
+      expect(fs.existsSync(full), `${rel} no longer exists`).toBe(true);
+      // If the file stopped using page scale, drop it from the list rather than
+      // leaving a stale exemption that would silently cover a future regression.
+      expect(H1_SCALE.test(fs.readFileSync(full, "utf8")), rel).toBe(true);
+    }
+  });
+
+  it("gives every page-scale allowance a written justification", () => {
+    for (const [rel, why] of Object.entries(H1_SCALE_OK)) {
       expect(why.length, `${rel} needs a real reason`).toBeGreaterThan(40);
     }
   });

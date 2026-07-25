@@ -64,7 +64,7 @@ test("emergency card: opt-in, render on the passport page, offline copy, and log
   // 1a. While the opt-in is OFF, the passport's emergency section shows the calm
   //     prompt AND the inline toggle — no "Enable in Medical → Background" bounce.
   await expect(
-    page.getByRole("heading", { name: "Health Passport" })
+    page.getByRole("heading", { name: "Health passport" })
   ).toBeVisible();
   const section = page.getByTestId("emergency-section");
   await expect(section).toContainText("Offline emergency card is off");
@@ -88,7 +88,7 @@ test("emergency card: opt-in, render on the passport page, offline copy, and log
   await expect(page).toHaveURL(/\/profile#emergency$/);
   await expect(page.getByTestId("emergency-card")).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Health Passport" })
+    page.getByRole("heading", { name: "Health passport" })
   ).toBeVisible();
   await expect(
     page.getByTestId("emergency-section").getByRole("button", { name: "Print" })

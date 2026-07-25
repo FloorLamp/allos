@@ -360,7 +360,7 @@ test.describe("Tier-1 record lists adopt multi-view (issue #1328)", () => {
 
     // Single view (acting = owner): owner's condition shows, no strip, no chips, and the
     // shared profile's condition is absent — the byte-identical regression bar.
-    await page.goto("/records/problems");
+    await page.goto("/records/problems/conditions");
     await expect(
       page.getByText(MULTI_OWNER_CONDITION, { exact: false })
     ).toBeVisible();
@@ -384,7 +384,7 @@ test.describe("Tier-1 record lists adopt multi-view (issue #1328)", () => {
       page.getByText(MULTI_SHARED_CONDITION, { exact: false })
     ).toBeVisible();
     // Scope the chip check to the shared condition's own row (Conditions + Allergies
-    // both render on /records/problems, so the shared chip appears on more than one row).
+    // both render on the Conditions pane, so the shared chip appears on more than one row).
     const sharedConditionRow = page
       .locator("tr")
       .filter({ hasText: MULTI_SHARED_CONDITION });
@@ -408,7 +408,7 @@ test.describe("Tier-1 record lists adopt multi-view (issue #1328)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
 
-    await page.goto("/records/problems");
+    await page.goto("/records/problems/allergies");
     // The stored "Recorded allergies" table (single view: owner only, no chip). Scope to
     // the table row — the substance also appears in the merged "Known allergies" card.
     await expect(

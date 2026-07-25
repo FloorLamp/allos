@@ -116,7 +116,7 @@ export default async function DataPage(
               tabs={[
                 {
                   id: "upload",
-                  label: "File Upload (incl. CSV)",
+                  label: "File upload (incl. CSV)",
                   content: (
                     <div>
                       <h2 className="font-semibold text-slate-800 dark:text-slate-100">
@@ -181,7 +181,7 @@ export default async function DataPage(
     { id: "import", label: "Import" },
     { id: "review", label: reviewCount > 0 ? `Review (${reviewCount})` : "Review" },
     { id: "coverage", label: "Coverage" },
-    { id: "manage", label: "Manage & Export" },
+    { id: "manage", label: "Manage & export" },
   ];
 
   return (

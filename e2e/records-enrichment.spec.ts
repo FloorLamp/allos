@@ -23,7 +23,7 @@ test.describe("records enrichment sweep (#1354/#1355)", () => {
     });
 
     // Allergies live on the Problems pane of /records.
-    await page.goto("/records/problems");
+    await page.goto("/records/problems/allergies");
 
     const contra = page.getByTestId("allergy-contraindications");
     await expect(contra).toBeVisible();

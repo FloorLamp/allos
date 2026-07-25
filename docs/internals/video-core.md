@@ -93,9 +93,31 @@ domain's actions:
 - `components/illness/SymptomVideoStrip.tsx` — on the episode page
   (`/medical/episodes/[id]`), cross-profile gated (`profileId` → the household
   member), the `SymptomPhotoStrip` twin.
-- `components/activity/ActivityVideoStrip.tsx` — on the Journal card
-  (`/training`), active-profile scoped, threaded through the journal feed
-  (`buildJournalFeedPage` → `JournalCardData.videos`).
+- `components/activity/ActivityVideoStrip.tsx` — the training tenant,
+  active-profile scoped. It renders in **two placements**, split by `showAdd`
+  (#1457):
+  - **Journal card** (`/training`, no `showAdd`) — a READ surface: playback,
+    caption edit, delete, privacy note, threaded through the journal feed
+    (`buildJournalFeedPage` → `JournalCardData.videos`). It renders **only when
+    clips exist**. Until #1457 it rendered for every writable activity regardless
+    of type or content, so a Strava easy run, a walk, and an imported swim each
+    carried a "Form check" heading, a "No clips…" line, and a button — permanent
+    vertical cost on every card (the #1416/#1455 density concern) for an
+    affordance that was loudest where it was least useful.
+  - **Activity editor** (`components/activity-form/ActivityFormCheck.tsx` inside
+    `ActivityMoreDetails`, `showAdd`) — the WRITE surface, where a clip is
+    attached. It always renders, empty state included. **Edit mode only**, and
+    that is a data constraint: `activity_videos` needs an `activityId`, which the
+    editor's create mode has none of until save, so during first-time logging the
+    block appears once the activity is saved and reopened. Deferred upload (hold
+    the file client-side until save) was weighed and rejected — a client-held-blob
+    lifecycle (navigation loss, size limits, retry semantics) for a marginal flow;
+    in-session capture, if ever wanted, rides the live editor's own id timing
+    (#924). There is **no activity-type gate** (owner call): a clip on a run is
+    unusual but legitimate, and a heuristic would be one more thing to maintain.
+    Unlike the card it is not handed clips by a server component — the editor is a
+    client component opened from several entry points, so it reads them through
+    `listActivityVideosAction` and re-reads after an upload/delete.
 
 ## Row-ops side-state (#199/#200/#201/#212)
 

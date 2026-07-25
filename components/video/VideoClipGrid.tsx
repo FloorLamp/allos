@@ -49,6 +49,7 @@ export default function VideoClipGrid({
   clips,
   serveBase,
   canWrite,
+  showAdd = true,
   testid = "video-clip-grid",
   emptyText = "No clips yet.",
   addLabel = "Add clip",
@@ -61,6 +62,12 @@ export default function VideoClipGrid({
   // `${serveBase}/${id}` (Range), the poster from `${serveBase}/${id}?poster=1`.
   serveBase: string;
   canWrite: boolean;
+  // Whether the ADD affordance (file picker + caption + button) renders. Split out
+  // of `canWrite` by #1457: the training tenant's Journal card now shows clips
+  // read/playback-style with per-clip edit + delete (so it still needs `canWrite`)
+  // while the "add" entry point lives in the activity editor. Defaults to today's
+  // behavior so the symptom/episode tenant is untouched.
+  showAdd?: boolean;
   testid?: string;
   emptyText?: string;
   addLabel?: string;
@@ -259,13 +266,10 @@ export default function VideoClipGrid({
                   )}
 
                   {editingId === c.id ? (
-                    <form
-                      className="mt-1.5 space-y-1.5"
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        saveCaption(c.id);
-                      }}
-                    >
+                    // A <div>, not a <form> (#1457): this grid now also renders
+                    // INSIDE the activity editor's own <form>, and a nested form is
+                    // invalid HTML. Enter still saves, via the key handler below.
+                    <div className="mt-1.5 space-y-1.5">
                       <label
                         className="sr-only"
                         htmlFor={`clip-caption-${c.id}`}
@@ -278,6 +282,12 @@ export default function VideoClipGrid({
                         className="input h-8 w-full px-2 text-xs"
                         value={captionDraft}
                         onChange={(e) => setCaptionDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            saveCaption(c.id);
+                          }
+                        }}
                         maxLength={500}
                         autoFocus
                       />
@@ -290,14 +300,15 @@ export default function VideoClipGrid({
                           Cancel
                         </button>
                         <button
-                          type="submit"
+                          type="button"
                           className="btn px-2 py-1 text-xs"
                           disabled={pending}
+                          onClick={() => saveCaption(c.id)}
                         >
                           {pending ? "Saving…" : "Save"}
                         </button>
                       </div>
-                    </form>
+                    </div>
                   ) : (
                     <NotesText
                       as="p"
@@ -312,7 +323,7 @@ export default function VideoClipGrid({
         </div>
       )}
 
-      {canWrite && (
+      {canWrite && showAdd && (
         <div className="mt-3 flex flex-wrap items-end gap-2">
           <input
             ref={fileRef}

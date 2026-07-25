@@ -310,7 +310,7 @@ test.describe("Sleep page (#1066)", () => {
     // card. It includes unpaired dates and pages the 60-day window 10 at a time.
     const sleepMoodLog = sleepMoodSection.getByTestId("sleep-mood-log");
     const logHeading = sleepMoodLog.getByRole("heading", {
-      name: "Sleep and Mood Log",
+      name: "Sleep and mood log",
     });
     const logHelper = sleepMoodLog.getByText(
       /^All available sleep, stage, and mood entries, with bedtime supplement context/
@@ -486,7 +486,7 @@ test.describe("Sleep page (#1066)", () => {
       await page.goto("/sleep");
       const emptyLog = page.getByRole("main").getByTestId("sleep-mood-log");
       await expect(
-        emptyLog.getByRole("heading", { name: "Sleep and Mood Log" })
+        emptyLog.getByRole("heading", { name: "Sleep and mood log" })
       ).toBeVisible();
       const emptyHistory = emptyLog.getByTestId("sleep-mood-history");
       await expect(emptyHistory).toBeVisible();
@@ -778,7 +778,7 @@ test.describe("Sleep segmented merged-night (#1191/#1283)", () => {
   });
 });
 
-test.describe("Sleep and Mood Log historical editing", () => {
+test.describe("Sleep and mood log historical editing", () => {
   test("edits historical mood + duration-only sleep while imported sleep stays read-only", async ({
     browser,
   }, testInfo) => {

@@ -317,7 +317,7 @@ export function conditionItem(row: {
     title: row.name,
     detail: detailLine(row.status, row.code),
     date: row.onset_date,
-    href: "/records/problems",
+    href: "/records/problems/conditions",
   };
 }
 
@@ -333,7 +333,7 @@ export function allergyItem(row: {
     title: row.substance,
     detail: detailLine(row.reaction, row.severity, row.status),
     date: null,
-    href: "/records/problems",
+    href: "/records/problems/allergies",
   };
 }
 

@@ -118,18 +118,21 @@ export default function VisitsSection({
 
         {/* Upcoming — the appointments surface. */}
         <section data-testid="visits-upcoming">
-          <h3 className="mb-3 section-label">Upcoming</h3>
+          <h3 className="mb-3 flex items-center gap-2 section-label">
+            Upcoming
+            {scheduled.length > 0 && (
+              <span className="text-slate-500 dark:text-slate-400">
+                ({upcomingCount} scheduled)
+              </span>
+            )}
+          </h3>
           <div className="grid gap-6 lg:grid-cols-3">
             <div className="min-w-0 space-y-6 lg:col-span-2">
+              {/* No inner "Scheduled" label (#1449): stacked directly under the
+                  section's own "Upcoming", two uppercase section-labels read as one
+                  duplicated pair naming the same list. The outer heading names it;
+                  the count that actually carried information moved up with it. */}
               <section>
-                <h4 className="mb-2 flex items-center gap-2 section-label">
-                  Scheduled
-                  {scheduled.length > 0 && (
-                    <span className="text-slate-500 dark:text-slate-400">
-                      ({upcomingCount} upcoming)
-                    </span>
-                  )}
-                </h4>
                 {scheduled.length === 0 ? (
                   <EmptyState message="No scheduled appointments. Add one to see it here and on Upcoming." />
                 ) : (
