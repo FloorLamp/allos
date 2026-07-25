@@ -35,6 +35,7 @@ export default function LineChartCard({
   color = chartSeries.brand,
   unit = "",
   showDots = true,
+  connectNulls = true,
   tickFormatter,
   labelFormatter,
   heightClass = "h-64",
@@ -64,6 +65,13 @@ export default function LineChartCard({
   decimals?: number;
   // Disable per-point dots for dense series (e.g. ~1440 intraday HR points).
   showDots?: boolean;
+  // Whether a null hole is bridged by the line. Default true (a daily series with
+  // an occasional missing day reads better joined). The Vitals tab's 1D charts
+  // (#1466) pass FALSE: their series is a full-day 5-minute slot grid where the
+  // nulls are real wear gaps / the space between two readings, and bridging them
+  // would draw a straight line that reads as a measured flat HR — the same reason
+  // lib/intraday.ts splits its band into segments at a gap.
+  connectNulls?: boolean;
   // Optional: compact the x-axis tick, and expand the tooltip's date label.
   tickFormatter?: (value: string) => string;
   labelFormatter?: (value: string) => string;
@@ -211,7 +219,7 @@ export default function LineChartCard({
             stroke={color}
             strokeWidth={2}
             dot={showDots ? { r: 3, fill: color, stroke: color } : false}
-            connectNulls
+            connectNulls={connectNulls}
           />
         </LineChart>
       </ResponsiveContainer>
