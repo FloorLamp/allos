@@ -113,9 +113,11 @@ test.describe("one tab, vitals first (#1486)", () => {
         .getByTestId("vitals-resting-hr")
     ).toHaveCount(0);
 
-    // The goal overlay came WITH it (the seed carries a resting-HR goal): the
-    // chart draws the target reference line.
-    await expect(restingHr.locator(".recharts-reference-line")).toHaveCount(1);
+    // The goal overlay came WITH it — Body's copy owned it, Vitals' did not, and
+    // the merge unions the two. The seed carries a "Resting HR under 52" goal, so
+    // the card draws its target line AND the projection caption that only a goal
+    // overlay produces.
+    await expect(restingHr).toContainText("52 bpm");
   });
 });
 

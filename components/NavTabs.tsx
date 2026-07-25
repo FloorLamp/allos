@@ -25,10 +25,17 @@ import { currentPathHref } from "@/lib/hrefs";
 export default function NavTabs({
   tabs,
   paramKey,
+  activeId,
   children,
 }: {
   tabs: { id: string; label: string }[];
   paramKey: string;
+  // The tab the SERVER resolved for this request. Needed whenever the param
+  // vocabulary is wider than the strip — a RETIRED tab name that maps onto a live
+  // tab (`?tab=vitals` → Body, #1486), or an age-gated tab that fell back — because
+  // the URL alone can't tell this component which strip entry is showing, and a
+  // strip with nothing selected is a worse answer than the right one.
+  activeId?: string;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -36,12 +43,14 @@ export default function NavTabs({
   const ids = tabs.map((t) => t.id);
 
   // Highlight from the URL so a click updates the strip immediately (before the
-  // server round-trip lands). An unknown/absent param falls back to the first
-  // tab — the same default the server uses — so the strip and the rendered panel
-  // always agree (a restricted profile's ?tab=fitness isn't in `ids`, so both
-  // fall back to the default tab).
+  // server round-trip lands). A param that names no strip entry falls back to the
+  // server's own resolution (`activeId`) and only then to the first tab, so the
+  // strip and the rendered panel always agree — including for a retired alias
+  // (`?tab=vitals` renders Body, so Body is the lit tab) and for a restricted
+  // profile's ?tab=fitness (both fall back to the default).
   const fromUrl = searchParams.get(paramKey);
-  const active = fromUrl && ids.includes(fromUrl) ? fromUrl : tabs[0]?.id;
+  const active =
+    fromUrl && ids.includes(fromUrl) ? fromUrl : (activeId ?? tabs[0]?.id);
 
   function hrefFor(id: string) {
     const params = new URLSearchParams(Array.from(searchParams.entries()));

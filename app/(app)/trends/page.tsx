@@ -252,7 +252,7 @@ export default async function TrendsPage(props: {
         />
       </div>
 
-      <NavTabs paramKey="tab" tabs={tabStrip}>
+      <NavTabs paramKey="tab" tabs={tabStrip} activeId={activeTab}>
         {activeSection}
       </NavTabs>
     </div>
