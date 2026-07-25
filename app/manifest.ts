@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { PWA_SHORTCUTS } from "@/lib/pwa-shortcuts";
 
 // Web app manifest — makes Allos installable to the home screen. Next serves
 // this at /manifest.webmanifest and auto-injects the <link rel="manifest"> into
@@ -35,5 +36,18 @@ export default function manifest(): MetadataRoute.Manifest {
       },
       { src: "/apple-icon", sizes: "180x180", type: "image/png" },
     ],
+    // Long-press the installed icon → the OS app-shortcut menu (issue #1424).
+    // The list, its labels, and its `?quick=` URLs all come from
+    // lib/pwa-shortcuts.ts, which derives the quick-log names from the SAME
+    // QUICK_LOG_ITEMS registry the in-app sheet renders — so a renamed action
+    // renames here too. Each entry reuses the app icon; the OS badges it with
+    // the app mark anyway, and no per-action art exists.
+    shortcuts: PWA_SHORTCUTS.map((s) => ({
+      name: s.name,
+      short_name: s.name,
+      description: s.description,
+      url: s.url,
+      icons: [{ src: "/icon.svg", sizes: "any", type: "image/svg+xml" }],
+    })),
   };
 }
