@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { settledClick } from "./helpers";
 
-// Wake-aware mornings (issue #1117): the "Auto — from your wake time" state on the
+// Wake-aware mornings (issue #1117): the wake-derived "Auto" state on the
 // Morning intake slot + the morning digest, and the sleep-summary opt-in, on
 // Settings → Notifications. Runs as admin acting as the seeded profile 1 (shared
 // storageState). As of #1072 the schedule is per-SUBJECT and always visible under
@@ -33,12 +33,12 @@ test.describe("wake-aware mornings (issue #1117)", () => {
     const save = card.getByRole("button", { name: "Save" });
 
     // The wake-aware option is offered on both the Morning slot and the digest.
-    await expect(
-      morning.getByRole("option", { name: /Auto — from your wake time/ })
-    ).toHaveCount(1);
-    await expect(
-      digest.getByRole("option", { name: /Auto — from your wake time/ })
-    ).toHaveCount(1);
+    await expect(morning.getByRole("option", { name: /^Auto \(/ })).toHaveCount(
+      1
+    );
+    await expect(digest.getByRole("option", { name: /^Auto \(/ })).toHaveCount(
+      1
+    );
 
     // Pick a specific Morning hour → it persists as a manual choice.
     await morning.selectOption("9");
