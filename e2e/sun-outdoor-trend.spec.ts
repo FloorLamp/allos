@@ -6,7 +6,8 @@ import {
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
 
-// Daylight-outdoor-minutes trend chart on Trends → Vitals (issue #1171). The chart is
+// Daylight-outdoor-minutes trend chart in the Trends → Body tab's VITALS section
+// (issue #1171; re-pointed by #1486, which merged the Vitals tab into Body). The chart is
 // a formatter over the SAME getDaylightOutdoorMinutes computation the DaylightChip and
 // the coaching average read (#221). The E2E_LOGIN_SUN fixture profile has a home
 // location + outdoor daytime walks on several recent days, so the "Sun / outdoor time"
@@ -24,8 +25,8 @@ test.describe("Sun / outdoor trend chart (#1171)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     try {
-      await member.goto("/trends?tab=vitals");
-      await expect(member.getByRole("tab", { name: "Vitals" })).toHaveAttribute(
+      await member.goto("/trends?tab=body&view=all");
+      await expect(member.getByRole("tab", { name: "Body" })).toHaveAttribute(
         "aria-selected",
         "true"
       );
@@ -50,8 +51,8 @@ test.describe("Sun / outdoor trend chart (#1171)", () => {
       password: E2E_MEMBER_PASSWORD,
     });
     try {
-      await member.goto("/trends?tab=vitals");
-      await expect(member.getByRole("tab", { name: "Vitals" })).toHaveAttribute(
+      await member.goto("/trends?tab=body&view=all");
+      await expect(member.getByRole("tab", { name: "Body" })).toHaveAttribute(
         "aria-selected",
         "true"
       );

@@ -56,7 +56,7 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
   {
     file: "app/(app)/quick-entry-actions.ts",
     fn: "loadQuickEntry",
-    why: "read-only (#1468): gathers the props for the quick-entry overlay's forms (unit prefs, the day's food servings + ordered catalog, today's due doses) — every WRITE still goes through the mounted form's own gated action (addBodyMetric / addVitals / logFoodServing / markTaken), so login-scoped requireSession() is the right gate",
+    why: "read-only (#1468): gathers the props for the quick-entry overlay's forms (unit prefs, the day's food servings + ordered catalog, today's due doses) — every WRITE still goes through the mounted form's own gated action (addMeasurements / logFoodServing / markTaken), so login-scoped requireSession() is the right gate",
   },
   {
     file: "app/(app)/search-actions.ts",

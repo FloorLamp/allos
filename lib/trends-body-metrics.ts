@@ -24,6 +24,15 @@ import type { BodyMetricKind } from "./types";
 // in-page order key, and the detail-page title source. Append-only (a bookmarked
 // detail link must never dangle).
 export const BODY_METRIC_SLUGS = [
+  // The vitals (#1486) — they joined the Body tab's tile grid when the Vitals tab
+  // merged in, so a vital is a tile in `view=tiles` and a full chart in `view=all`,
+  // exactly like every body metric. One view-mode semantic, no second grammar.
+  "systolic",
+  "diastolic",
+  "spo2",
+  "respiratory-rate",
+  "hrv",
+  "temperature",
   "weight",
   "body-fat",
   "resting-hr",
@@ -42,8 +51,10 @@ export const BODY_METRIC_SLUGS = [
 export type BodyMetricSlug = (typeof BODY_METRIC_SLUGS)[number];
 
 // Which quick-add form the detail page offers (null → an integration-synced metric
-// with no manual entry, e.g. steps/HR/BMI).
-export type BodyQuickAddForm = "body" | "growth" | null;
+// with no manual entry, e.g. steps/HR/BMI). Since #1486 there is exactly ONE manual
+// form — the combined "Log measurements" — so this is a boolean-shaped union kept as
+// a union only because a future second form would land here.
+export type BodyQuickAddForm = "measurements" | null;
 
 export interface BodyMetricMeta {
   slug: BodyMetricSlug;
@@ -73,6 +84,80 @@ export interface BodyMetricMeta {
 // The registry. Colors mirror the Body tab's existing chart colors so a metric keeps
 // its identity across the tile, the classic chart, and the detail page.
 export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
+  systolic: {
+    slug: "systolic",
+    label: "Systolic",
+    title: "Blood pressure (systolic)",
+    unit: " mmHg",
+    color: chartSeries.rose,
+    decimals: 0,
+    order: 0,
+    windowed: true,
+    goalMetric: null,
+    quickAdd: "measurements",
+  },
+  diastolic: {
+    slug: "diastolic",
+    label: "Diastolic",
+    title: "Blood pressure (diastolic)",
+    unit: " mmHg",
+    color: chartSeries.violet,
+    decimals: 0,
+    order: 1,
+    windowed: true,
+    goalMetric: null,
+    quickAdd: "measurements",
+  },
+  spo2: {
+    slug: "spo2",
+    label: "SpO\u2082",
+    title: "Oxygen saturation",
+    unit: "%",
+    color: chartSeries.sky,
+    decimals: 0,
+    order: 2,
+    windowed: true,
+    goalMetric: null,
+    quickAdd: "measurements",
+  },
+  "respiratory-rate": {
+    slug: "respiratory-rate",
+    label: "Resp. rate",
+    title: "Respiratory rate",
+    unit: " /min",
+    color: chartSeries.violet,
+    decimals: 0,
+    order: 3,
+    windowed: true,
+    goalMetric: null,
+    // No manual entry field — respiratory rate arrives from a device push or a
+    // document import, so its detail page offers no form (like steps/HR/BMI).
+    quickAdd: null,
+  },
+  hrv: {
+    slug: "hrv",
+    label: "HRV",
+    title: "Heart rate variability",
+    unit: " ms",
+    color: chartSeries.amber,
+    decimals: 0,
+    order: 5,
+    windowed: true,
+    goalMetric: null,
+    quickAdd: "measurements",
+  },
+  temperature: {
+    slug: "temperature",
+    label: "Temperature",
+    title: "Body temperature",
+    unit: " \u00b0F",
+    color: chartSeries.rose,
+    decimals: 1,
+    order: 6,
+    windowed: true,
+    goalMetric: null,
+    quickAdd: "measurements",
+  },
   weight: {
     slug: "weight",
     label: "Weight",
@@ -81,10 +166,10 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     weightUnit: true,
     color: chartSeries.brand,
     decimals: 1,
-    order: 0,
+    order: 7,
     windowed: true,
     goalMetric: "weight",
-    quickAdd: "body",
+    quickAdd: "measurements",
   },
   "body-fat": {
     slug: "body-fat",
@@ -93,10 +178,10 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: "%",
     color: chartSeries.violet,
     decimals: 1,
-    order: 1,
+    order: 8,
     windowed: true,
     goalMetric: "body_fat",
-    quickAdd: "body",
+    quickAdd: "measurements",
   },
   "resting-hr": {
     slug: "resting-hr",
@@ -105,10 +190,10 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " bpm",
     color: chartSeries.amber,
     decimals: 0,
-    order: 2,
+    order: 4,
     windowed: true,
     goalMetric: "resting_hr",
-    quickAdd: "body",
+    quickAdd: "measurements",
   },
   height: {
     slug: "height",
@@ -117,10 +202,10 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " cm",
     color: chartSeries.violet,
     decimals: 1,
-    order: 3,
+    order: 9,
     windowed: true,
     goalMetric: null,
-    quickAdd: "growth",
+    quickAdd: "measurements",
   },
   "head-circ": {
     slug: "head-circ",
@@ -129,10 +214,10 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " cm",
     color: chartSeries.sky,
     decimals: 1,
-    order: 4,
+    order: 10,
     windowed: true,
     goalMetric: null,
-    quickAdd: "growth",
+    quickAdd: "measurements",
   },
   steps: {
     slug: "steps",
@@ -141,7 +226,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: "",
     color: chartSeries.sky,
     decimals: 0,
-    order: 5,
+    order: 12,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -153,7 +238,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " bpm",
     color: chartSeries.rose,
     decimals: 0,
-    order: 6,
+    order: 13,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -165,7 +250,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: "",
     color: chartSeries.sky,
     decimals: 1,
-    order: 7,
+    order: 14,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -177,7 +262,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " kg",
     color: chartSeries.sky,
     decimals: 1,
-    order: 8,
+    order: 15,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -189,7 +274,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " kg",
     color: chartSeries.violet,
     decimals: 2,
-    order: 9,
+    order: 16,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -201,7 +286,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " kcal",
     color: chartSeries.rose,
     decimals: 0,
-    order: 10,
+    order: 17,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -213,7 +298,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " L",
     color: chartSeries.sky,
     decimals: 2,
-    order: 11,
+    order: 18,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -225,7 +310,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " kcal",
     color: chartSeries.amber,
     decimals: 0,
-    order: 12,
+    order: 19,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -237,7 +322,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: "",
     color: chartSeries.amber,
     decimals: 1,
-    order: 13,
+    order: 20,
     windowed: false,
     goalMetric: null,
     quickAdd: null,

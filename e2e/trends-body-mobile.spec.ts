@@ -5,8 +5,8 @@ import { E2E_MEMBER_PASSWORD, E2E_LOGIN_TRENDS_BODY } from "./fixture-logins";
 // Trends → Body mobile overhaul, Phase 1 of #1067. On mobile the tab used to force
 // scrolling past three quick-add forms and a fixed single-column chart stack before
 // the metric you wanted. Phase 1 (no route change):
-//   1. the three quick-adds collapse to a "+ Log …" chip row on mobile (desktop
-//      keeps the inline forms — ONE shared QuickAddPanel, opt-in mobile behavior),
+//   1. (retired by #1486 — the three quick-adds merged into one form; see
+//      e2e/trends-body-merge.mobile.spec.ts)
 //   2. sticky chart-jump chips (one overflow-x-auto row) scroll to a chart,
 //   3. per-chart `#id` anchors land ON the chart,
 //   4. present-only charts are ordered by relevance and their chips render from the
@@ -18,7 +18,6 @@ import { E2E_MEMBER_PASSWORD, E2E_LOGIN_TRENDS_BODY } from "./fixture-logins";
 // deterministic under --repeat-each. The spec only navigates + scrolls (no writes).
 
 const PHONE = { width: 360, height: 800 };
-const DESKTOP = { width: 1280, height: 900 };
 
 async function openBodyTab(
   page: Page,
@@ -38,43 +37,11 @@ async function openBodyTab(
 }
 
 test.describe("Trends → Body mobile (#1067 Phase 1)", () => {
-  test("quick-adds collapse to a chip row on mobile; desktop keeps the inline forms", async ({
-    browser,
-  }) => {
-    const page = await loginAs(browser, {
-      username: E2E_LOGIN_TRENDS_BODY,
-      password: E2E_MEMBER_PASSWORD,
-    });
-
-    // ── Mobile: chip row shown, inline forms collapsed ──────────────────────
-    await page.setViewportSize(PHONE);
-    await openBodyTab(page);
-
-    const chips = page.getByTestId("quick-add-chips");
-    await expect(chips).toBeVisible();
-    await expect(page.getByTestId("quick-add-chip-body")).toBeVisible();
-    await expect(page.getByTestId("quick-add-chip-vitals")).toBeVisible();
-    // Adult profile → no growth quick-add, so no growth chip.
-    await expect(page.getByTestId("quick-add-chip-growth")).toHaveCount(0);
-
-    // The forms themselves are collapsed (display:none) until a chip expands them.
-    await expect(page.getByTestId("vitals-quick-add")).not.toBeVisible();
-
-    // Tapping the Vitals chip expands its form inline (pure client toggle).
-    await page.getByTestId("quick-add-chip-vitals").click();
-    await expect(page.getByTestId("vitals-quick-add")).toBeVisible();
-
-    // ── Desktop: inline forms shown, chip row hidden (same component) ────────
-    await page.setViewportSize(DESKTOP);
-    await openBodyTab(page);
-    await expect(page.getByTestId("quick-add-chips")).not.toBeVisible();
-    await expect(page.getByTestId("vitals-quick-add")).toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: "Log body metrics" })
-    ).toBeVisible();
-
-    await page.context().close();
-  });
+  // The former "quick-adds collapse to a chip row" test retired with the chip row
+  // itself (#1486): the three quick-adds merged into ONE "Log measurements" form,
+  // hidden behind a desktop "+ Log" expander and absent from the phone entirely
+  // (the #1468 overlay is the mobile path). That behaviour is covered by
+  // e2e/trends-body-merge.mobile.spec.ts, which owns the merged tab.
 
   test("chart-jump chips render present metrics only and scroll to the chart", async ({
     browser,
@@ -140,29 +107,7 @@ test.describe("Trends → Body mobile (#1067 Phase 1)", () => {
     await page.context().close();
   });
 
-  test("the #1083 vitals focus deep-link still focuses the systolic field", async ({
-    browser,
-  }) => {
-    const page = await loginAs(browser, {
-      username: E2E_LOGIN_TRENDS_BODY,
-      password: E2E_MEMBER_PASSWORD,
-    });
-    await page.setViewportSize(PHONE);
-
-    // The canonical #1083 preventive deep-link lands on the Vitals tab's quick-add
-    // (VitalsSection, untouched by #1067) with systolic focused.
-    await page.goto("/trends?tab=vitals&focus=blood-pressure");
-    await expect(page.getByTestId("vitals-quick-add")).toBeVisible();
-    await expect(page.locator("#v-systolic")).toBeFocused();
-
-    // On the BODY tab (whose vitals quick-add is now collapsed on mobile), the same
-    // param must AUTO-EXPAND the vitals form so the focus still lands — the #1067
-    // collapse must not swallow the #1083 focus path.
-    await page.goto("/trends?tab=body&focus=blood-pressure");
-    const bodyVitals = page.getByTestId("vitals-quick-add");
-    await expect(bodyVitals).toBeVisible();
-    await expect(bodyVitals.locator("#v-systolic")).toBeFocused();
-
-    await page.context().close();
-  });
+  // The #1083 vitals focus deep-link moved with the form (#1486): on a phone it now
+  // opens the #1468 quick-entry overlay rather than expanding an inline collapse.
+  // Covered by e2e/trends-body-merge.mobile.spec.ts.
 });

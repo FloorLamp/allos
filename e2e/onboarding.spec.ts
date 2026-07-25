@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { loginAs, followLink } from "./nav";
+import { hydratedClick } from "./helpers";
 import {
   resetOnboardingFixture,
   withE2eDb,
@@ -265,9 +266,12 @@ test("a new profile reaches a useful dashboard through the metrics path", async 
     const returnBanner = page.getByTestId("onboarding-return-banner");
     await expect(returnBanner).toBeVisible();
 
+    // #1486: the body quick-add is the combined "Log measurements" form behind
+    // the desktop "+ Log" expander.
+    await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
     await page.getByLabel("Weight (kg)").fill("72.4");
-    await page.getByRole("button", { name: "Save entry" }).click();
-    await expect(page.getByText("Entry saved")).toBeVisible();
+    await page.getByRole("button", { name: "Save measurements" }).click();
+    await expect(page.getByText("Measurements saved")).toBeVisible();
 
     // Continue setup is a Next <Link> back into /onboarding → followLink rides
     // out the pre-hydration swallow (#889 sweep).

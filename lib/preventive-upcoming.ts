@@ -28,7 +28,7 @@ import {
 // self-recordable vital screening (blood pressure) deep-links to the Trends → Vitals
 // quick-add, focused on the analyte. A stable ROUTE + prefill (NOT a Trends-section
 // component internal), to stay clear of the parallel Trends overhaul (#1067).
-const VITALS_ENTRY_HREF: AppRoute = "/trends?tab=vitals&focus=blood-pressure";
+const VITALS_ENTRY_HREF: AppRoute = "/trends?tab=body&focus=blood-pressure";
 
 // The concrete deep link for a screening, from its explicit `satisfiedBy` concept
 // (#1083) — NOT the old `canonicalBiomarkers.length` guess (which pointed the
