@@ -469,6 +469,28 @@ on a phone, so below `md` the anchor is the hamburger instead of the sidebar's
 Data link. That is the shape to copy if another dual-viewport spec needs one: pick
 the anchor from `page.viewportSize()`, don't fork the spec.
 
+## Driving touch gestures (#1425 / #1469)
+
+Gesture specs live in the `mobile` project (`hasTouch`) and drive real Chromium
+touch input through `touchSwipe` in `e2e/helpers.ts` (CDP `Input.dispatchTouchEvent`
+— `page.touchscreen` only taps, and `page.mouse` produces pointer events the app's
+gestures deliberately ignore). Two traps cost a debugging session each and are now
+handled inside the helpers, so specs never have to think about them:
+
+- **Measure only a settled element.** `centerOf` polls `boundingBox()` until two
+  reads agree. Every overlay arrives on a 240ms slide; coordinates taken
+  mid-animation send the touch to a position the panel has already left, and the
+  gesture silently lands on some other element.
+- **A swipe cannot be retried.** Unlike a tap, re-firing a day-swipe skips a day,
+  so a gesture spec waits for hydration deterministically (`shell-chrome`'s
+  `data-ready="true"`) instead of looping a `toPass`.
+
+A swiped client navigation also commits only when the destination's RSC payload
+arrives, which on the Timeline can take several seconds cold — give those URL
+assertions a real timeout rather than the 5s default.
+
+Full reasoning: `docs/internals/overlays.md`.
+
 ## Follow-up (out of scope for the infra PR)
 
 Migrate the grandfathered offenders incrementally, one spec per PR (the #860

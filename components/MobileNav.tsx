@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -25,6 +25,12 @@ import { useQuickEntry } from "@/components/QuickEntryProvider";
 import { useLockBodyScroll } from "@/components/useLockBodyScroll";
 import { usePresence } from "@/components/usePresence";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
+import {
+  overlayMotionClass,
+  useDragGesture,
+  useOverlayDrag,
+  OVERLAY_SCRIM,
+} from "@/components/overlay";
 import { motionMs } from "@/lib/motion";
 import {
   primaryQuickLog,
@@ -143,6 +149,42 @@ export default function MobileNav({
   const { open: openQuickEntry } = useQuickEntry();
   const reduceMotion = usePrefersReducedMotion();
   const drawer = usePresence(open, motionMs("drawer", reduceMotion));
+  const drawerRef = useRef<HTMLElement>(null);
+
+  // Swipe-left on the open drawer closes it — the shared recognizer, the
+  // drawer's own outcome (#1425/#1469). The whole panel is the grab area rather
+  // than a handle: its only scrollable axis is vertical, so a leftward drag has
+  // no rival, and the axis lock abandons anything that turns out to be the
+  // vertical scroll the drawer's own content needs. Enabled only while open, so
+  // the exit animation can't be re-grabbed.
+  const { suppressMotion } = useOverlayDrag({
+    panelRef: drawerRef,
+    direction: "left",
+    onOutcome: () => setOpen(false),
+    enabled: open,
+  });
+
+  // Edge-swipe-right from the left screen edge OPENS it — the gesture the
+  // hamburger used to be the only route to. Only while closed; the hamburger
+  // remains the discoverable, pointer- and keyboard-reachable route.
+  //
+  // Unlike the close drag this one does not follow the finger: the drawer is not
+  // mounted when the gesture starts, and mounting the entire navigation tree
+  // mid-gesture to chase a thumb trades a guaranteed frame drop for a few
+  // millimetres of polish. It commits at the same threshold and then plays the
+  // ordinary enter animation.
+  useDragGesture({
+    direction: "right",
+    requireEdgeStart: true,
+    enabled: !open,
+    onCommit: () => {
+      // The drawer IS the phone's navigation — the portal below is `md:hidden`,
+      // so opening it on a wide touchscreen would lock the page's scroll behind
+      // an overlay nobody can see.
+      if (window.matchMedia("(min-width: 768px)").matches) return;
+      setOpen(true);
+    },
+  });
 
   // The route's primary log. `?tab=` is the app's URL-driven tab convention, so
   // "Trends → Body" is a tab, not a route (lib/quick-log.ts owns the rule).
@@ -178,17 +220,14 @@ export default function MobileNav({
     else router.push(primary.target.href);
   }
 
-  const entering = drawer.phase === "enter";
-  const backdropMotion = reduceMotion
+  const phase = drawer.phase === "enter" ? "enter" : "exit";
+  // A hand-dragged panel owns its transform for the rest of its life (see
+  // useOverlayDrag) — a keyframe class on top would outrank the inline transform
+  // and freeze the drag mid-swipe.
+  const backdropMotion = overlayMotionClass("scrim", phase, reduceMotion);
+  const panelMotion = suppressMotion
     ? ""
-    : entering
-      ? "motion-fade-in"
-      : "motion-fade-out";
-  const panelMotion = reduceMotion
-    ? ""
-    : entering
-      ? "motion-slide-left-in"
-      : "motion-slide-left-out";
+    : overlayMotionClass("left", phase, reduceMotion);
 
   return (
     <>
@@ -294,11 +333,14 @@ export default function MobileNav({
         createPortal(
           <div className="fixed inset-0 z-40 md:hidden">
             <div
-              className={`absolute inset-0 bg-black/40 backdrop-blur-sm ${backdropMotion}`}
+              className={`${OVERLAY_SCRIM} ${backdropMotion}`}
               onClick={() => setOpen(false)}
               aria-hidden
+              data-testid="mobile-drawer-backdrop"
             />
             <aside
+              ref={drawerRef}
+              data-testid="mobile-drawer"
               className={`absolute inset-y-0 left-0 flex w-72 max-w-[85%] flex-col gap-4 overflow-y-auto border-r border-black/10 bg-white pt-[max(1rem,env(safe-area-inset-top))] pr-4 pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] dark:border-white/5 dark:bg-ink-950 ${panelMotion}`}
             >
               <SidebarContent

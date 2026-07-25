@@ -40,11 +40,36 @@ input[type="checkbox"]:disabled {
   cursor: not-allowed;
 }
 
+html {
+  /* Keep a horizontal overscroll INSIDE the page (issues #1425 / #1469).
+
+     The app has two horizontal touch gestures — the edge-swipe that opens the
+     nav drawer and the Timeline's adjacent-day swipe — and by default a
+     horizontal drag that the page cannot scroll CHAINS to the browser's own
+     in-page history navigation: the swipe goes "back" instead, and the gesture
+     appears to do nothing except lose your place. (That is not a theory; it is
+     what the browser tests caught, landing on the previous history entry.)
+
+     `contain` stops the chaining without stopping any scrolling: an inner
+     horizontal scroller — a wide table, the Timeline's filter-chip strip, a
+     chart — still scrolls exactly as before. It is the x-axis twin of the
+     `overscroll-behavior-y: contain` that pull-to-refresh (#1467) already sets
+     while it is active.
+
+     Caveat worth knowing: this governs the BROWSER's overscroll gesture, not the
+     platform's. An iOS Safari TAB keeps its system edge-swipe-back (no CSS can
+     reach it), so there the drawer's edge gesture competes with it; installed to
+     the home screen — the posture this app is built for — there is no system
+     edge-swipe and the drawer gets the edge to itself. */
+  overscroll-behavior-x: contain;
+}
+
 body {
   @apply text-slate-800 antialiased dark:text-slate-200;
   /* Suppress the gray flash mobile browsers paint on tap; interactive elements
      already carry their own hover/active styles. */
   -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-x: contain;
   /* Vitals light page: airy off-white with a soft green glow up top + a faint
      vertical gradient, so the canvas isn't flat. */
   background:
@@ -422,7 +447,30 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
    the bottom of this block. Reduced motion still gets the full mount/unmount
    sequence (usePresence collapses its duration to 0); it simply arrives. */
 
-@keyframes motion-fade-in {
+/* ── The overlay motion family (issue #1469) ───────────────────────────────────
+   ONE duration + easing token pair for every overlay surface — the nav drawer,
+   BottomSheet (incl. its responsive dialog presentation), and the activity
+   dock's expanded editor. Their DISMISSAL contracts differ on purpose (#1428:
+   the sheet discards, the dock minimizes); their motion does not.
+
+   The numbers live in these three custom properties and nowhere else, so
+   retuning the app's overlay feel is one edit rather than a hunt through three
+   components. `--overlay-ms` is mirrored by lib/motion.ts's OVERLAY_MOTION_MS
+   (which is what usePresence uses to time the unmount) and the two are pinned
+   together by lib/__tests__/motion-tokens.test.ts.
+
+   Class names are produced ONLY by `overlayMotionClass()` in lib/motion.ts — a
+   component that writes `overlay-enter-bottom` itself fails the chokepoint scan
+   (lib/__tests__/overlay-motion-chokepoint.test.ts). */
+:root {
+  --overlay-ms: 240ms;
+  /* Decelerating on the way in: the panel arrives and settles. */
+  --overlay-ease-enter: cubic-bezier(0.32, 0.72, 0, 1);
+  /* Accelerating on the way out: a dismissed panel should leave briskly. */
+  --overlay-ease-exit: ease-in;
+}
+
+@keyframes overlay-fade-in {
   from {
     opacity: 0;
   }
@@ -430,7 +478,7 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
     opacity: 1;
   }
 }
-@keyframes motion-fade-out {
+@keyframes overlay-fade-out {
   from {
     opacity: 1;
   }
@@ -438,7 +486,7 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
     opacity: 0;
   }
 }
-@keyframes motion-slide-up-in {
+@keyframes overlay-slide-up-in {
   from {
     transform: translateY(100%);
   }
@@ -446,7 +494,7 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
     transform: translateY(0);
   }
 }
-@keyframes motion-slide-up-out {
+@keyframes overlay-slide-up-out {
   from {
     transform: translateY(0);
   }
@@ -454,7 +502,7 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
     transform: translateY(100%);
   }
 }
-@keyframes motion-slide-left-in {
+@keyframes overlay-slide-left-in {
   from {
     transform: translateX(-100%);
   }
@@ -462,7 +510,7 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
     transform: translateX(0);
   }
 }
-@keyframes motion-slide-left-out {
+@keyframes overlay-slide-left-out {
   from {
     transform: translateX(0);
   }
@@ -471,52 +519,68 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
   }
 }
 
-.motion-fade-in {
-  animation: motion-fade-in 220ms ease-out;
+/* The scrim: fades, never slides. */
+.overlay-enter-scrim {
+  animation: overlay-fade-in var(--overlay-ms) var(--overlay-ease-enter);
 }
-/* The *-out variants hold their final frame (`forwards`) so the element stays
+/* The *-exit variants hold their final frame (`forwards`) so the element stays
    faded/off-screen for the tail of the exit window instead of snapping back to
    its resting state one frame before it unmounts. */
-.motion-fade-out {
-  animation: motion-fade-out 220ms ease-in forwards;
-}
-.motion-slide-up-in {
-  animation: motion-slide-up-in 240ms cubic-bezier(0.32, 0.72, 0, 1);
-}
-.motion-slide-up-out {
-  animation: motion-slide-up-out 240ms ease-in forwards;
-}
-.motion-slide-left-in {
-  animation: motion-slide-left-in 220ms cubic-bezier(0.32, 0.72, 0, 1);
-}
-.motion-slide-left-out {
-  animation: motion-slide-left-out 220ms ease-in forwards;
+.overlay-exit-scrim {
+  animation: overlay-fade-out var(--overlay-ms) var(--overlay-ease-exit)
+    forwards;
 }
 
-/* The RESPONSIVE dialog's travel (issue #1428, section A) — the motion half of
-   BottomSheet's `presentation="dialog"`.
-
-   The same primitive presents two ways: a bottom sheet below `md`, a centered
-   modal from `md` up. Its motion has to follow, and a sheet's slide-up on a
-   centered card reads as the card falling off the bottom of the screen. So the
-   media query lives HERE rather than in the component: one class name is correct
-   at both widths, with no resize listener and no wrong first paint between
-   hydration and a JS width check. Durations/easings are the SAME values as the
-   `slide-up`/`fade` pairs above — this composes them, it does not invent a third
-   motion vocabulary (#1469 converges the tokens themselves). */
-.motion-dialog-in {
-  animation: motion-slide-up-in 240ms cubic-bezier(0.32, 0.72, 0, 1);
+/* Bottom-anchored panel: the sheet, and the dock's expanded editor. */
+.overlay-enter-bottom {
+  animation: overlay-slide-up-in var(--overlay-ms) var(--overlay-ease-enter);
 }
-.motion-dialog-out {
-  animation: motion-slide-up-out 240ms ease-in forwards;
+.overlay-exit-bottom {
+  animation: overlay-slide-up-out var(--overlay-ms) var(--overlay-ease-exit)
+    forwards;
+}
+
+/* Edge-anchored panel: the mobile nav drawer. */
+.overlay-enter-left {
+  animation: overlay-slide-left-in var(--overlay-ms) var(--overlay-ease-enter);
+}
+.overlay-exit-left {
+  animation: overlay-slide-left-out var(--overlay-ms) var(--overlay-ease-exit)
+    forwards;
+}
+
+/* BottomSheet's RESPONSIVE presentation (issue #1428, section A): a bottom sheet
+   below `md`, a centered modal from `md` up. A slide-up on a centered card reads
+   as the card falling off the bottom of the screen, so above `md` the same class
+   fades instead. The media query lives HERE rather than in the component: one
+   class name is correct at both widths, with no resize listener and no wrong
+   first paint between hydration and a JS width check. Same tokens either way. */
+.overlay-enter-dialog {
+  animation: overlay-slide-up-in var(--overlay-ms) var(--overlay-ease-enter);
+}
+.overlay-exit-dialog {
+  animation: overlay-slide-up-out var(--overlay-ms) var(--overlay-ease-exit)
+    forwards;
 }
 @media (min-width: 768px) {
-  .motion-dialog-in {
-    animation: motion-fade-in 220ms ease-out;
+  .overlay-enter-dialog {
+    animation: overlay-fade-in var(--overlay-ms) var(--overlay-ease-enter);
   }
-  .motion-dialog-out {
-    animation: motion-fade-out 220ms ease-in forwards;
+  .overlay-exit-dialog {
+    animation: overlay-fade-out var(--overlay-ms) var(--overlay-ease-exit)
+      forwards;
   }
+}
+
+/* The drag settle (issues #1425 / #1469). While a finger is on a panel the
+   recognizer writes `transform` inline frame by frame with no transition at all
+   (the panel IS the finger); on release the consumer adds this class for one
+   duration so the panel animates the rest of the way out — or back to rest —
+   instead of teleporting. The enter/exit keyframes above are suppressed for that
+   element while it is being dragged (the component drops the class), so there is
+   never a keyframe and an inline transform fighting over the same property. */
+.overlay-settle {
+  transition: transform var(--overlay-ms) var(--overlay-ease-exit);
 }
 
 /* The sticky top chrome (components/ShellChrome.tsx) — the phone top bar plus
@@ -539,15 +603,23 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .motion-fade-in,
-  .motion-fade-out,
-  .motion-slide-up-in,
-  .motion-slide-up-out,
-  .motion-slide-left-in,
-  .motion-slide-left-out,
-  .motion-dialog-in,
-  .motion-dialog-out {
+  /* Belt and braces: `overlayMotionClass()` already returns "" under the
+     preference, so these classes are not even applied — but a surface that
+     settles a drag (`.overlay-settle`) or one added later must snap too, and a
+     stylesheet that only works because its JS caller remembered to check is one
+     refactor away from animating a viewer who asked it not to. */
+  .overlay-enter-scrim,
+  .overlay-exit-scrim,
+  .overlay-enter-bottom,
+  .overlay-exit-bottom,
+  .overlay-enter-left,
+  .overlay-exit-left,
+  .overlay-enter-dialog,
+  .overlay-exit-dialog {
     animation: none;
+  }
+  .overlay-settle {
+    transition: none;
   }
   /* The chrome still hides and reveals — the preference asks for no TRAVEL, not
      for a permanently parked bar — it simply snaps. */
