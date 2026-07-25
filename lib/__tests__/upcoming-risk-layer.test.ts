@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 // engines into it (retest ✓, screening ✓, immunization ✗), so an
 // immunocompromised/healthcare-worker/pregnant profile's key vaccines never ranked
 // up. Close it MECHANICALLY so a fourth engine can't be silently left out: every
-// builder in lib/queries/upcoming/generators.ts that EMITS UpcomingItems must
+// builder in lib/queries/upcoming/*.ts that EMITS UpcomingItems must
 // either consult the risk/priority layer (a `*PriorityFor` / `retestModulationFor`
 // call in its body) OR be on a justified allowlist (dose/refill/appointment/goal/
 // training/… where risk-priority is N/A) — each with a one-line reason. A new
@@ -16,7 +16,12 @@ import { fileURLToPath } from "node:url";
 // own source as TEXT (no DB, no network — "pure" in the vitest sense).
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const GENERATORS = path.join(REPO, "lib/queries/upcoming/generators.ts");
+const GENERATORS_DIR = path.join(REPO, "lib/queries/upcoming");
+const GENERATOR_FILES = fs
+  .readdirSync(GENERATORS_DIR)
+  .filter((name) => name.endsWith(".ts"))
+  .sort()
+  .map((name) => path.join(GENERATORS_DIR, name));
 
 // Builders that MUST route through the risk/priority layer — each is expected to
 // reference a `*PriorityFor` or `retestModulationFor` call in its body.
@@ -122,7 +127,9 @@ function functionBody(src: string, name: string): string {
 }
 
 describe("every Upcoming due-signal builder consumes the risk/priority layer (#553)", () => {
-  const src = fs.readFileSync(GENERATORS, "utf8");
+  const src = GENERATOR_FILES.map((file) => fs.readFileSync(file, "utf8")).join(
+    "\n"
+  );
 
   // Every function declared with an explicit `: UpcomingItem[]` return type is a
   // builder (or an aggregator returning the flat list). A new one that isn't in

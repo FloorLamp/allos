@@ -36,10 +36,8 @@ import { withAiLogContext } from "@/lib/ai-log";
 import {
   checkAndIncrementAiUsage,
   extractionDailyLimit,
-  getAiUsageCount,
   refundAiUsage,
 } from "@/lib/ai-usage";
-import { computeReprocessCost, type ReprocessCost } from "@/lib/reprocess-cost";
 import { extractionSemaphore, QueueFullError } from "@/lib/ai-concurrency";
 import {
   getCanonicalVocabulary,
@@ -83,17 +81,22 @@ import {
 import { recordAudit } from "@/lib/audit";
 import { AUDIT_ACTIONS } from "@/lib/audit-actions";
 import { createLogger } from "@/lib/log";
+export {
+  findDedupTarget,
+  type DedupTarget,
+  UPLOAD_DIR,
+} from "@/lib/medical-pipeline/storage";
+import {
+  findDedupTarget,
+  insertDuplicateDoc,
+  insertFailedDoc,
+  persistUploadedFile,
+  type DedupTarget,
+} from "@/lib/medical-pipeline/storage";
+export { computeReprocessAllCost } from "@/lib/medical-pipeline/reprocess-cost";
 
 const log = createLogger("medical");
 
-// Exported so the reassign action (which moves stored files between per-profile
-// upload dirs) shares the same root the ingest path writes under.
-export const UPLOAD_DIR = path.join(
-  process.cwd(),
-  "data",
-  "uploads",
-  "medical"
-);
 // The upload size ceilings and the pre-buffer gate policy live in the pure
 // lib/upload-gate module (no DB import) so they stay unit-testable and importable
 // by the next.config lockstep guard. Re-exported here (issue #696) so existing
@@ -105,15 +108,6 @@ export { MAX_AI_BYTES, MAX_HEALTH_BYTES } from "@/lib/upload-gate";
 // hallucinated "Friday" or "2026-13-45" can't land in a YYYY-MM-DD column.
 // isRealIsoDate checks calendar validity too, not just the shape.
 const isIsoDate = isRealIsoDate;
-
-function safeName(name: string): string {
-  return (
-    name
-      .replace(/[^a-zA-Z0-9._-]+/g, "_")
-      .replace(/^_+|_+$/g, "")
-      .slice(0, 120) || "upload"
-  );
-}
 
 function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : "unknown error";
@@ -241,31 +235,6 @@ function dispatchExtraction(
 // stranded marker. The in-flight placeholder stays matchable so two simultaneous
 // identical uploads still dedup to one document (the reserve-row race the ingest
 // transaction guards). Kept as a named export so the DB tier can pin the decision.
-export interface DedupTarget {
-  id: number;
-  filename: string;
-  status: string;
-  stored_path: string | null;
-}
-export function findDedupTarget(
-  profileId: number,
-  contentHash: string
-): DedupTarget | undefined {
-  return db
-    .prepare(
-      `SELECT id, filename, extraction_status AS status, stored_path
-         FROM medical_documents
-        WHERE content_hash = ? AND profile_id = ?
-          AND (
-            (stored_path IS NOT NULL AND stored_path <> '')
-            OR extraction_status IN ('processing', 'pending')
-          )
-        ORDER BY (stored_path IS NULL OR stored_path = ''), id
-        LIMIT 1`
-    )
-    .get(contentHash, profileId) as DedupTarget | undefined;
-}
-
 // Ingest an uploaded medical document: validate + size-gate + content-sniff, store
 // it on disk under a per-profile subdirectory, dedup on content hash, then kick off
 // AI extraction (or a deterministic health-record import) in the background. Returns
@@ -475,20 +444,7 @@ export async function ingestMedicalUpload(
   // item 2).
   let storedRelPath = "";
   try {
-    const profileDir = path.join(UPLOAD_DIR, String(profileId));
-    fs.mkdirSync(profileDir, { recursive: true });
-    const stored = `${docId}-${safeName(file.name)}`;
-    fs.writeFileSync(path.join(profileDir, stored), buffer);
-    storedRelPath = path.join(
-      "data",
-      "uploads",
-      "medical",
-      String(profileId),
-      stored
-    );
-    db.prepare(
-      "UPDATE medical_documents SET stored_path = ? WHERE id = ? AND profile_id = ?"
-    ).run(storedRelPath, docId, profileId);
+    storedRelPath = persistUploadedFile(profileId, docId, file.name, buffer);
   } catch (err) {
     // Log loudly with context (a full/read-only disk — ENOSPC/EROFS — surfaces
     // here) so the operator sees the real cause, but hand the user a friendly
@@ -950,16 +906,6 @@ function revalidateAfterReprocess() {
 // a cost line and takes the skip-confirm fast path when no AI call is involved. The
 // SAME `stored_path`/`processing` filter reprocessAllForProfile uses so the preview
 // counts exactly the set that would run. Read-only — never touches the DB.
-export function computeReprocessAllCost(profileId: number): ReprocessCost {
-  const docs = db
-    .prepare(
-      "SELECT source, mime_type FROM medical_documents WHERE profile_id = ? AND stored_path IS NOT NULL AND stored_path != '' AND extraction_status != 'processing'"
-    )
-    .all(profileId) as { source: string | null; mime_type: string | null }[];
-  const used = getAiUsageCount(profileId, "extraction");
-  return computeReprocessCost(docs, used, extractionDailyLimit());
-}
-
 // Re-run AI extraction on every uploaded document and replace its imported
 // records with the fresh results. This OVERWRITES any manual edits made to a
 // document's records (manual standalone records are untouched). Runs the
@@ -1516,45 +1462,3 @@ export async function previewReprocessById(
 // user at reprocessing it rather than re-uploading.
 // Returns the id of the row it lands, so ingestMedicalUpload can hand every
 // caller a document to point at (the share-target route redirects to it).
-function insertDuplicateDoc(
-  profileId: number,
-  filename: string,
-  mime: string,
-  size: number,
-  contentHash: string,
-  originalName: string,
-  originalStatus: string
-): number {
-  const target =
-    filename === originalName
-      ? "this file was already uploaded"
-      : `identical contents to "${originalName}" (already uploaded)`;
-  const advice =
-    originalStatus === "done"
-      ? "Skipped."
-      : "Reprocess that document instead of re-uploading.";
-  const error = `Duplicate upload — ${target}. ${advice}`;
-  const info = db
-    .prepare(
-      `INSERT INTO medical_documents (filename, stored_path, mime_type, size_bytes, content_hash, extraction_status, extraction_error, profile_id)
-     VALUES (?,?,?,?,?, 'skipped', ?, ?)`
-    )
-    .run(filename, "", mime, size, contentHash, error, profileId);
-  return Number(info.lastInsertRowid);
-}
-
-function insertFailedDoc(
-  profileId: number,
-  filename: string,
-  mime: string,
-  size: number,
-  error: string
-): number {
-  const info = db
-    .prepare(
-      `INSERT INTO medical_documents (filename, stored_path, mime_type, size_bytes, extraction_status, extraction_error, profile_id)
-     VALUES (?,?,?,?, 'failed', ?, ?)`
-    )
-    .run(filename, "", mime, size, error, profileId);
-  return Number(info.lastInsertRowid);
-}
