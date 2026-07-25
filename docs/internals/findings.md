@@ -8,6 +8,31 @@ How far a rule-engine finding travels — page, dashboard hero, notification —
 
 **Findings reach is a two-tier policy — decide it on purpose (#449).** The #45 rule engines split into two reach tiers. The **care tier** (preventive findings, drug-interaction/dietary-limit items, and the illness-care duration/trajectory findings — #805) is _push_: it reaches Upcoming, the dashboard **Needs attention** hero, AND the Telegram nudge (one assessor). The **coaching tier** — the four observational builders (`buildTrainingObservationFindings`/`buildBodyHygieneFindings`/`buildGoalPacingFindings`/`buildAdherencePatternFindings`, aggregated by `collectCoachingFindings`) — is _calm/observational_: it reaches its own tab AND the hideable dashboard **Coaching observations** rollup, but **never a notification and never the non-hideable hero** (reach without noise). A new observational engine joins the coaching tier by adding its builder to `collectCoachingFindings` and its dedupeKey prefix to the registry; it does NOT get a push channel unless it's genuinely _care_. Every surface renders the SAME `Finding` (one computation) with the SAME dedupeKey, so a dismiss on any surface silences it on all of them through the shared bus.
 
+**The hero's contract is ALWAYS-PRESENT, not always-full (#1413).** The care tier's
+`non-hideable hero` guarantee was refined on exactly one axis: the hero may
+**collapse** to a compact pinned line, because on a phone the full card cost a
+screenful even on a day whose items you had already read. What collapse may never
+touch is the signal itself — the heading, the alert glyph, the **count**, and the
+highest-severity band all render in BOTH states, there is still no dismiss control,
+and the toggle is always two-way, so no interaction reaches a state with no
+attention affordance on the page. The preference is stored per **login**
+(`attention_hero_collapsed` in `login_settings`) because it is a viewing-density
+choice about the reader's own screen, not a fact about the person being displayed.
+
+The **safety carve-out outranks the preference entirely**: `attentionSafetyLocked`
+(`lib/attention.ts`) refuses to collapse a hero carrying an item whose lifecycle
+policy is `"safety-ungated"` (dose reminders, missed-dose escalation, the #716
+crisis finding), and such a hero renders with NO collapse control at all. The tier
+is read from the item's OWN declared policy through the shared
+`itemSuppressionPolicy` dispatcher (`lib/upcoming-suppress.ts`) — deliberately NOT
+a second "serious-looking domains" allowlist, so a future safety signal inherits
+the no-compaction guarantee by declaring its policy rather than by someone
+remembering to update a list here. This mirrors `isHiddenUnderPolicy`'s posture
+(#942): the safety branch is checked FIRST and unconditionally, before any stored
+preference is consulted, so neither can be weakened by editing what is stored.
+Pinned by `lib/__tests__/attention-hero-collapse.test.ts` and
+`e2e/dashboard-now.mobile.spec.ts`.
+
 ---
 
 ## The finding-producing builder registry (#860 Track A, extending #448)

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   IconAlertTriangle,
+  IconArrowRight,
   IconChevronDown,
   IconChevronUp,
 } from "@tabler/icons-react";
@@ -108,7 +109,10 @@ export default function AttentionHeroCard({
             stroke={1.75}
             aria-hidden="true"
           />
-          <span className="truncate">Needs attention</span>
+          {/* Never truncates: the card's IDENTITY is the last thing that should
+              shrink on a narrow phone — "Needs attent…" reads as a broken card,
+              not as a compact one. The band chip below is the flexible element. */}
+          <span className="shrink-0 whitespace-nowrap">Needs attention</span>
           {/* The count is rendered in BOTH states — this is the #449 invariant the
               collapse is allowed to exist at all because it preserves. */}
           <span
@@ -123,19 +127,23 @@ export default function AttentionHeroCard({
           {collapsed && topBand && (
             <span
               data-testid="attention-top-band"
-              className="shrink-0 truncate text-xs font-medium text-slate-500 dark:text-slate-400"
+              className="min-w-0 truncate text-xs font-medium text-slate-500 dark:text-slate-400"
             >
               {CARD_BAND_LABELS[topBand]}
             </span>
           )}
         </h2>
         <div className="flex shrink-0 items-center gap-1">
+          {/* The label gives way to its arrow on the narrowest screens so the
+              heading + count + band keep the room. The accessible name is on the
+              link either way, so nothing is lost to a screen reader. */}
           <Link
             href="/upcoming"
             aria-label="View all needs attention"
-            className="text-xs text-brand-600 hover:underline dark:text-brand-400"
+            className="inline-flex shrink-0 items-center gap-0.5 text-xs text-brand-600 hover:underline dark:text-brand-400"
           >
-            View all
+            <span className="hidden sm:inline">View all</span>
+            <IconArrowRight className="h-4 w-4" aria-hidden="true" />
           </Link>
           {/* Absent for a safety-locked hero — see the header note. */}
           {!locked && (

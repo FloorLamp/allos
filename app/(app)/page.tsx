@@ -1000,18 +1000,22 @@ export default async function Dashboard() {
   // What the strip is ALLOWED to promote: a grid widget the user still has visible
   // AND that has something to render, or the standalone recap card under the same
   // gate the page already uses for it. The clock never overrides a hide preference.
+  //
+  // `emptyIds` is excluded deliberately: a data-aware widget with no data yet is
+  // still "available" — it renders an ONBOARDING CTA rather than content — and
+  // promoting that would put a "connect a source" prompt at the top of the page
+  // every mealtime. That is precisely the filler card lib/now-strip.ts refuses.
   const gridPromotable = new Set(
-    gridWidgets.filter((w) => w.visible && w.available).map((w) => w.id)
+    gridWidgets
+      .filter((w) => w.visible && w.available && !emptyIds.has(w.id))
+      .map((w) => w.id)
   );
   const nowEligible = NOW_CARD_IDS.filter((id) =>
     id === "session-recap" ? showRecapCard : gridPromotable.has(id)
   );
-  // A fresh last-night summary — the SAME condition that decides whether the sleep
-  // widget shows content or its onboarding CTA, so the strip can never promote a
-  // card that turns out to be empty.
-  const nowFreshSleep =
-    nowEligible.includes("sleep-last-night") &&
-    !emptyIds.has("sleep-last-night");
+  // Eligibility already excludes the empty case above, so reaching this point
+  // means the sleep widget has a fresh last-night summary to show.
+  const nowFreshSleep = nowEligible.includes("sleep-last-night");
   const nowCardIds = rankNowCards({
     minutesOfDay: nowMinutes,
     // Only computed when sleep is actually in play — it is a 28-night regularity

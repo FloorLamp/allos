@@ -52,17 +52,45 @@ test("the phone dashboard drops the page header and leads with the Now strip (#1
       page.getByRole("heading", { name: "Dashboard", exact: true })
     ).toHaveCount(0);
 
-    // Section A: the strip renders, carrying the just-finished session's recap —
-    // the highest-ranked signal for this fixture.
+    // Section A: the strip renders BOTH of this fixture's firing signals — the
+    // just-finished session's recap and, because the e2e clock is pinned inside
+    // the profile's midday intake anchor, today's nutrition.
     const strip = page.getByTestId("now-strip");
     await expect(strip).toBeVisible();
     await expect(
       strip.getByTestId("now-strip-card-session-recap")
     ).toBeVisible();
+    await expect(
+      strip.getByTestId("now-strip-card-nutrition-today")
+    ).toBeVisible();
+
+    // Exactly two — NOW_STRIP_CAP. A third would push the user's own grid back
+    // below the fold, which is the problem the strip exists to solve.
+    await expect(strip).toHaveAttribute("data-count", "2");
+
+    // The perishable card leads: a recap window closes in 60 minutes, a mealtime
+    // window recurs three times a day.
+    const ids = await strip
+      .locator("[data-testid^='now-strip-card-']")
+      .evaluateAll((els) =>
+        els.map((el) => el.getAttribute("data-testid") ?? "")
+      );
+    expect(ids).toEqual([
+      "now-strip-card-session-recap",
+      "now-strip-card-nutrition-today",
+    ]);
 
     // The date survives on the strip's corner, since the header that used to carry
     // it is gone on a phone.
     await expect(strip.getByTestId("now-strip-date")).toBeVisible();
+
+    // The two-card band must stay a BAND: at 390px the page itself must never
+    // scroll sideways (the repo's responsive rule), which is the risk a 2-column
+    // strip on a phone actually carries.
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
   } finally {
     await page.context().close();
   }

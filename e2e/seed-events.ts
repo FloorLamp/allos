@@ -2706,6 +2706,26 @@ db.prepare(`DELETE FROM appointments WHERE profile_id = ?`).run(nowStripId);
     `INSERT INTO appointments (profile_id, scheduled_at, title, location, status)
      VALUES (?, ?, ?, 'Test Clinic (e2e)', 'scheduled')`
   ).run(nowStripId, `${today(nowStripId)} 16:00`, NOW_STRIP_APPOINTMENT);
+
+  // A bodyweight + a couple of protein-bearing servings today, so the
+  // `nutrition-today` widget has real content rather than its onboarding CTA.
+  // The e2e clock is pinned to 13:mm local (e2e/pinned-timezone.ts), which sits
+  // inside the default 13:00 Midday intake anchor — so this makes the SECOND
+  // strip card fire deterministically, exercising the two-card band (its
+  // 2-column layout and the NOW_STRIP_CAP) rather than only the single-card path.
+  const nowStripDay = today(nowStripId);
+  db.prepare(
+    `INSERT OR IGNORE INTO body_metrics (profile_id, date, weight_kg) VALUES (?, ?, 78)`
+  ).run(nowStripId, nowStripDay);
+  for (const [slug, servings] of [
+    ["poultry", 2],
+    ["eggs", 1],
+  ] as const) {
+    db.prepare(
+      `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
+         ON CONFLICT(profile_id, date, group_key) DO UPDATE SET servings = excluded.servings`
+    ).run(nowStripId, nowStripDay, slug, servings);
+  }
 }
 seedMemberLogin(E2E_LOGIN_NOWSTRIP, nowStripId);
 
