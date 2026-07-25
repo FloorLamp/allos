@@ -2,7 +2,7 @@
 // resets (deleteMedicalDocument, reassignDocument, reprocessAllDocuments) must
 // sweep orphaned biomarker RETEST/FLAG DISMISSALS, not just orphaned stars.
 //
-// Both name-keyed side-stores — starred_biomarkers (the pinned tile) and
+// Both name-keyed side-stores — saved_items (the ★ save, #1456) and
 // upcoming_dismissals (the `biomarker:`/`biomarker-flag:` snooze) — key on a
 // REUSABLE canonical name, so any operation that removes a biomarker's last
 // reading can orphan either one, and a later document reintroducing that name
@@ -115,7 +115,7 @@ function newDocument(
 
 function starOf(profileId: number, name: string): void {
   db.prepare(
-    "INSERT INTO starred_biomarkers (profile_id, canonical_name) VALUES (?, ?)"
+    "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', ?)"
   ).run(profileId, name);
 }
 
@@ -140,7 +140,7 @@ function hasStar(profileId: number, name: string): boolean {
   return Boolean(
     db
       .prepare(
-        "SELECT 1 FROM starred_biomarkers WHERE profile_id = ? AND canonical_name = ? COLLATE NOCASE"
+        "SELECT 1 FROM saved_items WHERE profile_id = ? AND kind = 'biomarker' AND key = ? COLLATE NOCASE"
       )
       .get(profileId, name)
   );

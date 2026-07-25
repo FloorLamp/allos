@@ -244,18 +244,6 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
       "UPDATE medical_records SET canonical_name = ? WHERE canonical_name = ? COLLATE NOCASE",
     why: "migration 103 one-shot canonical-name rename: a bare-abbreviation biomarker name (e.g. 'RDW') is a GLOBAL vocabulary identity, not per-profile data, so the acronym→'Full Name (ABBR)' rewrite applies to every profile's rows by value — profile_id is deliberately absent. Pure value substitution (same analyte keeps its identity); reads no row across profiles.",
   },
-  {
-    file: "lib/migrations/versions/103-canonical-name-abbreviation-consolidation.ts",
-    includes:
-      "UPDATE OR IGNORE starred_biomarkers SET canonical_name = ? WHERE canonical_name = ? COLLATE NOCASE",
-    why: "migration 103 (see above): the same global rename applied to the passport pins, again by vocabulary value across all profiles; OR IGNORE guards the (profile_id, canonical_name) PK against a pre-existing new-name pin.",
-  },
-  {
-    file: "lib/migrations/versions/103-canonical-name-abbreviation-consolidation.ts",
-    includes:
-      "DELETE FROM starred_biomarkers WHERE canonical_name = ? COLLATE NOCASE",
-    why: "migration 103 (see above): drops the now-redundant OLD-name pin left after an OR IGNORE collision — a global vocabulary cleanup by canonical name, not a per-profile read.",
-  },
   // ── Positional-rule (#1208 fix 1) additions ─────────────────────────────────
   // These NAME profile_id (so they passed the old "profile_id-anywhere" check) but
   // only outside a WHERE/ON predicate — a select-list column or a GROUP BY key — so
@@ -721,6 +709,29 @@ function tablesDeclaringProfileId(dbSrc: string): Set<string> {
   return out;
 }
 
+// Tables a later migration DROPS and never recreates — they are no longer part of the
+// schema, so they must not be expected in OWNED_TABLES even though their (frozen,
+// un-editable) CREATE block still sits in an earlier migration's source. The first
+// case is `starred_biomarkers`, folded into `saved_items` by migration 113 (#1456).
+//
+// A table-REBUILD (create scratch → copy → DROP original → RENAME scratch into place)
+// also emits a DROP, so a dropped name that is later RENAMEd back into existence is
+// NOT retired — that subtraction is what keeps the ~20 rebuild migrations from
+// silently emptying the derived set.
+function tablesDroppedForGood(dbSrc: string): Set<string> {
+  // Comment lines are skipped: migration 006's PROSE discusses "a DROP TABLE
+  // intake_items", and a table must never be retired by a sentence about it.
+  const code = dbSrc
+    .split("\n")
+    .filter((line) => !/^\s*(\/\/|\/\*|\*)/.test(line))
+    .join("\n");
+  const dropped = new Set<string>();
+  for (const m of code.matchAll(/DROP TABLE (?:IF EXISTS )?(\w+)/g))
+    dropped.add(m[1]);
+  for (const m of code.matchAll(/RENAME TO (\w+)/g)) dropped.delete(m[1]);
+  return dropped;
+}
+
 // profile_id-bearing tables that are intentionally NOT per-profile-OWNED data
 // subjects: the login×profile GRANT MATRIX and the per-profile SETTINGS TIER. They
 // carry a profile_id FK but hold no health data and are deleted EXPLICITLY by
@@ -746,8 +757,13 @@ describe("owned-table set: single source of truth (no drift)", () => {
     for (const t of NON_OWNED_PROFILE_ID_TABLES)
       expect(declared.has(t)).toBe(true);
 
+    const retired = tablesDroppedForGood(dbSrc);
+    // Sanity: the retirement rule must not be swallowing live tables (every rebuild
+    // migration also emits a DROP, and those names come back via RENAME TO).
+    expect([...retired].sort()).toEqual(["starred_biomarkers"]);
+
     const derivedOwned = [...declared]
-      .filter((t) => !NON_OWNED_PROFILE_ID_TABLES.has(t))
+      .filter((t) => !NON_OWNED_PROFILE_ID_TABLES.has(t) && !retired.has(t))
       .sort();
     // The schema-derived owned set MUST equal OWNED_TABLES. A new profile_id table
     // added to a migration but forgotten in OWNED_TABLES lands in `derivedOwned`

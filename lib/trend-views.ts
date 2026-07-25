@@ -1,15 +1,19 @@
-// Saved views for the Trends hub. A named snapshot of the
-// hub's state — the date range, active tab, compare pair, and the pinned-tile set
-// — so a user can flip between e.g. "Lipids review" and "Cut progress" without
-// rebuilding the view each time.
+// Saved views for the Trends hub. A named snapshot of the hub's URL state — the date
+// range, active tab, and compare pair — so a user can flip between e.g. "Lipids
+// review" and "Cut progress" without rebuilding the view each time.
 //
-// Stored per-profile as a JSON array in profile_settings (key "trend_views"), the
-// same precedent as trend_pins — NO owned table. Everything here is pure list math
-// (validate / normalize / add / rename / delete) plus the mapping to the URL params
-// the hub already reads (?from/to/tab/cmpA/cmpB/cmpn); unit-tested. The settings
-// layer only (de)serializes it.
-
-import { normalizePins } from "./trend-pins";
+// Stored per-profile as a JSON array in profile_settings (key "trend_views") — NO
+// owned table. Everything here is pure list math (validate / normalize / add / rename
+// / delete) plus the mapping to the URL params the hub already reads
+// (?from/to/tab/cmpA/cmpB/cmpn); unit-tested. The settings layer only (de)serializes it.
+//
+// #1456: a view used to also snapshot the profile's `trend_pins`. Those keys are now
+// SAVES in `saved_items` — membership that drives the Results status card and the
+// passport summary, not just this page's tile order — so a view must not carry or
+// restore them (applying a view would silently unsave biomarkers elsewhere). Views
+// stayed OUT of the fold on purpose: they save a CONFIGURATION, not an item. Legacy
+// stored views may still carry a `pins` field; normalizeViewParams drops it as an
+// unrecognized key, so nothing applies it.
 
 // The captured hub state. Every field is optional so a view can pin down as much
 // or as little as the user had set (an unset field just isn't restored).
@@ -20,8 +24,6 @@ export interface TrendViewParams {
   cmpA?: string;
   cmpB?: string;
   cmpn?: boolean;
-  // Snapshot of the pinned-tile keys at save time (restored on apply).
-  pins?: string[];
 }
 
 export interface TrendView {
@@ -41,7 +43,7 @@ const cleanStr = (v: unknown, max = MAX_PARAM_LEN): string | undefined => {
 };
 
 // Coerce an arbitrary object into a well-formed params bag, dropping anything
-// unrecognized or malformed. Pins are run through normalizePins (trim/dedupe).
+// unrecognized or malformed (a legacy `pins` array included — see the header).
 export function normalizeViewParams(raw: unknown): TrendViewParams {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<
     string,
@@ -59,12 +61,6 @@ export function normalizeViewParams(raw: unknown): TrendViewParams {
   if (cmpA) out.cmpA = cmpA;
   if (cmpB) out.cmpB = cmpB;
   if (r.cmpn === true || r.cmpn === "1") out.cmpn = true;
-  if (Array.isArray(r.pins)) {
-    const pins = normalizePins(
-      r.pins.filter((x): x is string => typeof x === "string")
-    );
-    if (pins.length) out.pins = pins;
-  }
   return out;
 }
 

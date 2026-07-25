@@ -94,7 +94,11 @@ export const OWNED_TABLES = [
   "insights",
   "narratives",
   "metric_samples",
-  "starred_biomarkers",
+  // The unified save store (#1456, migration 113): one row per saved item, kinded.
+  // It REPLACED `starred_biomarkers` (dropped by that migration), which is why the
+  // old name is gone from this list — the schema-derivation test subtracts tables a
+  // migration drops without recreating them.
+  "saved_items",
   "integration_connections",
   "integration_sync_events",
   "profile_share_links",

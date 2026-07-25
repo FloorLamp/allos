@@ -2067,10 +2067,10 @@ db.prepare(
    VALUES (?, '2023-05-01', 'genomics', ?, 'e3/e4', ?, 'manual')`
 ).run(PROFILE_ID, APOE_MARKER, APOE_MARKER);
 db.prepare(
-  `DELETE FROM starred_biomarkers WHERE profile_id = ? AND canonical_name = ?`
+  `DELETE FROM saved_items WHERE profile_id = ? AND kind = 'biomarker' AND key = ?`
 ).run(PROFILE_ID, APOE_MARKER);
 db.prepare(
-  `INSERT INTO starred_biomarkers (profile_id, canonical_name) VALUES (?, ?)`
+  `INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', ?)`
 ).run(PROFILE_ID, APOE_MARKER);
 
 // #516 — a positive durable-immunity antibody titer whose only reading is ~2 years

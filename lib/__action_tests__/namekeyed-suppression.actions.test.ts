@@ -1,6 +1,6 @@
 // SERVER-ACTION TIER — name-keyed suppression lifecycle (issue #203).
 //
-// upcoming_dismissals and starred_biomarkers are keyed by REUSABLE strings (a
+// upcoming_dismissals and saved_items (kind='biomarker') are keyed by REUSABLE strings (a
 // biomarker's canonical name, a vaccine code), so a row left behind when its
 // subject is deleted/renamed silently re-attaches to a later subject that reuses
 // the key. These tests drive the real write paths against the throwaway temp DB and
@@ -46,14 +46,14 @@ function starNames(profileId: number): string[] {
   return (
     db
       .prepare(
-        "SELECT canonical_name FROM starred_biomarkers WHERE profile_id = ? ORDER BY canonical_name"
+        "SELECT key AS canonical_name FROM saved_items WHERE profile_id = ? AND kind = 'biomarker' ORDER BY key"
       )
       .all(profileId) as { canonical_name: string }[]
   ).map((r) => r.canonical_name);
 }
 function star(profileId: number, canonical: string): void {
   db.prepare(
-    "INSERT OR IGNORE INTO starred_biomarkers (profile_id, canonical_name) VALUES (?, ?)"
+    "INSERT OR IGNORE INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', ?)"
   ).run(profileId, canonical);
 }
 function recordId(profileId: number, canonical: string): number {

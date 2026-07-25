@@ -13,7 +13,6 @@ import { isValidTimezone, resolveTimezone } from "../timezone";
 // Type-only import so lib/settings ↔ lib/dashboard-widgets stays a compile-time
 // edge (no runtime cycle: dashboard-widgets imports nothing back from settings).
 import type { DashboardLayout } from "../dashboard-widgets";
-import { parsePins, serializePins } from "../trend-pins";
 import { parseViews, serializeViews, type TrendView } from "../trend-views";
 import {
   getSetting,
@@ -208,22 +207,13 @@ export function setFreeDays(profileId: number, days: number[]): void {
   setProfileSetting(profileId, "free_days", normalizeFreeDays(days).join(","));
 }
 
-// Pin-to-Trends — the profile's pinned Trends-Overview
-// tiles (metric + biomarker keys), stored as a JSON array in profile_settings
-// (same key/value precedent as active_situations / dashboard_layout). The list
-// math (parse/toggle/order) lives in the pure lib/trend-pins; this tier only
-// (de)serializes it. Reads defensively — a malformed blob yields an empty list.
-export function getTrendPins(profileId: number): string[] {
-  return parsePins(getProfileSetting(profileId, "trend_pins"));
-}
-
-export function setTrendPins(profileId: number, pins: readonly string[]): void {
-  setProfileSetting(profileId, "trend_pins", serializePins(pins));
-}
+// The retired `trend_pins` accessors lived here until #1456 folded that KV into the
+// `saved_items` table (migration 113 deletes the settings rows); the save store's
+// reads/writes are lib/queries/saved.ts, not a settings tier.
 
 // Saved views — named snapshots of the Trends hub state
-// (range + tab + compare pair + pins), stored as a JSON array in profile_settings
-// (key "trend_views", same precedent as trend_pins). The list math (add/rename/
+// (range + tab + compare pair), stored as a JSON array in profile_settings
+// (key "trend_views"). The list math (add/rename/
 // delete/normalize) lives in the pure lib/trend-views; this tier only
 // (de)serializes it. Reads defensively — a malformed blob yields an empty list.
 export function getTrendViews(profileId: number): TrendView[] {

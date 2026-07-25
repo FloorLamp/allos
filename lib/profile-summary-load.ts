@@ -13,7 +13,7 @@ import {
 } from "./queries/metrics";
 import {
   getMedicalRecords,
-  getStarredBiomarkers,
+  getSavedBiomarkers,
   getImmunizations,
   getImmunityTiters,
   getImmunizationOverrides,
@@ -100,7 +100,15 @@ export function getProfileSummary(
     starred: false,
   }));
 
-  const starred: SummaryVital[] = getStarredBiomarkers(profileId).map((s) => ({
+  // THE SAVE→PASSPORT CONTRACT (#1456). A saved biomarker (the ★ star gesture, now
+  // one row in `saved_items` where kind='biomarker') is the user's answer to "this one
+  // matters to me" — and that answer is deliberately load-bearing HERE: every saved
+  // biomarker's latest reading is included in the passport summary's vitals, flagged or
+  // not. This was an undocumented side effect of the old starred_biomarkers store;
+  // unifying the store promoted it to a stated contract, pinned by
+  // lib/__db_tests__/saved-items.test.ts ("a saved biomarker enters the summary vitals").
+  // Changing what `saved` means to this function changes what a shared passport shows.
+  const starred: SummaryVital[] = getSavedBiomarkers(profileId).map((s) => ({
     name: s.canonical_name,
     value:
       s.latest_value ??

@@ -17,7 +17,7 @@ import {
 const view = (name: string, params = {}): TrendView => ({ name, params });
 
 describe("normalizeViewParams", () => {
-  it("keeps recognized params, trims strings, coerces cmpn, normalizes pins", () => {
+  it("keeps recognized params, trims strings, coerces cmpn, drops unknown keys", () => {
     expect(
       normalizeViewParams({
         from: " 2026-01-01 ",
@@ -26,7 +26,6 @@ describe("normalizeViewParams", () => {
         cmpA: "metric:weight",
         cmpB: "bio:LDL",
         cmpn: "1",
-        pins: ["metric:weight", "metric:weight", " bio:LDL "],
         bogus: "x",
       })
     ).toEqual({
@@ -36,14 +35,11 @@ describe("normalizeViewParams", () => {
       cmpA: "metric:weight",
       cmpB: "bio:LDL",
       cmpn: true,
-      pins: ["metric:weight", "bio:LDL"],
     });
   });
 
-  it("drops empty/blank values and an empty pin list", () => {
-    expect(normalizeViewParams({ from: "  ", pins: [], cmpn: false })).toEqual(
-      {}
-    );
+  it("drops empty/blank values", () => {
+    expect(normalizeViewParams({ from: "  ", cmpn: false })).toEqual({});
     expect(normalizeViewParams(null)).toEqual({});
     expect(normalizeViewParams("nope")).toEqual({});
   });
@@ -156,7 +152,7 @@ describe("findView", () => {
 
 describe("parseViews / serializeViews", () => {
   it("round-trips a normalized list", () => {
-    const list = [view("Cut", { tab: "body", pins: ["metric:weight"] })];
+    const list = [view("Cut", { tab: "body" })];
     expect(parseViews(serializeViews(list))).toEqual(list);
   });
   it("returns [] for null/empty/garbage", () => {
@@ -186,7 +182,16 @@ describe("viewToQuery", () => {
     expect(viewToQuery({ tab: "compare" })).toBe("tab=compare");
     expect(viewToQuery({})).toBe("");
   });
-  it("does not emit pins in the URL (restored separately)", () => {
-    expect(viewToQuery({ pins: ["metric:weight"] })).toBe("");
+  // #1456: a view no longer carries a pin snapshot at all (those keys are SAVES
+  // now — membership that also drives the Results status card and the passport
+  // summary, so a view apply must never rewrite them). A legacy stored view's
+  // `pins` field is dropped by normalizeViewParams and can't reach the URL.
+  it("drops a legacy pins field instead of restoring or emitting it", () => {
+    const params = normalizeViewParams({
+      tab: "body",
+      pins: ["metric:weight"],
+    });
+    expect(params).toEqual({ tab: "body" });
+    expect(viewToQuery(params)).toBe("tab=body");
   });
 });

@@ -13,8 +13,8 @@ import { shiftDateStr } from "@/lib/date";
 import {
   getMedicalRecords,
   getBiomarkerSeries,
-  getStarredBiomarkers,
-  isBiomarkerStarred,
+  getSavedBiomarkers,
+  isBiomarkerSaved,
   collectUpcoming,
   biomarkerFamilyKey,
 } from "@/lib/queries";
@@ -65,9 +65,7 @@ function clearRows() {
   db.prepare(
     "DELETE FROM medical_records WHERE profile_id = ? AND panel = 'Fam'"
   ).run(p.profileId);
-  db.prepare("DELETE FROM starred_biomarkers WHERE profile_id = ?").run(
-    p.profileId
-  );
+  db.prepare("DELETE FROM saved_items WHERE profile_id = ?").run(p.profileId);
 }
 
 function retestKeys(): string[] {
@@ -189,9 +187,9 @@ describe("vitamin-D fractions keep their OWN identity but share the retest clock
 
     // A star on one total spelling lights the star on the other total spelling.
     db.prepare(
-      "INSERT INTO starred_biomarkers (profile_id, canonical_name) VALUES (?, 'Vitamin D, 25-Hydroxy')"
+      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', 'Vitamin D, 25-Hydroxy')"
     ).run(p.profileId);
-    expect(isBiomarkerStarred(p.profileId, "Vitamin D")).toBe(true);
+    expect(isBiomarkerSaved(p.profileId, "Vitamin D")).toBe(true);
 
     // RETEST: a fresh total satisfies the family, so no retest nudge fires.
     expect(retestKeys()).not.toContain("biomarker:family:vitamin-d-25-hydroxy");
@@ -202,11 +200,11 @@ describe("vitamin-D fractions keep their OWN identity but share the retest clock
     addReading("Vitamin D, 25-Hydroxy", old, 30);
     // Star the total; then a NEWER generic-"Vitamin D" total sibling arrives.
     db.prepare(
-      "INSERT INTO starred_biomarkers (profile_id, canonical_name) VALUES (?, 'Vitamin D, 25-Hydroxy')"
+      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', 'Vitamin D, 25-Hydroxy')"
     ).run(p.profileId);
     addReading("Vitamin D", shiftDateStr(p.todayStr, -5), 41);
 
-    const star = getStarredBiomarkers(p.profileId).find(
+    const star = getSavedBiomarkers(p.profileId).find(
       (s) => s.canonical_name === "Vitamin D, 25-Hydroxy"
     );
     // The tile shows the family's latest reading — the newer total sibling.

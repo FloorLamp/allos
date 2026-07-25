@@ -110,5 +110,6 @@
   "109-health-connect-token-hash.ts": "88a06358f6daf0bbd5c52c16e15d30ca3d0de199b3aed7b74aec88b9d00f8079",
   "110-integration-sync-rows.ts": "b0805a7c959cf6291be300968a0de732a0102a99411024dc4b6c2c1561739814",
   "111-symptom-episode-photo-links.ts": "2c810cea690055e2c2cd15cafdd06ac179d9e21971172af192f1b228eb029422",
-  "112-shared-supply-pools.ts": "d460dc9ec4aa3b77c9b21828c8a03cd2e719607d31815da408260842d9a91344"
+  "112-shared-supply-pools.ts": "d460dc9ec4aa3b77c9b21828c8a03cd2e719607d31815da408260842d9a91344",
+  "113-saved-items.ts": "8d80fde6980afdbf2d3b9af443fdff7564dd572e33bf8d6973aab1015c06db54"
 }

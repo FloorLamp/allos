@@ -38,8 +38,8 @@ const FHIR_INPUT_TABLES = new Set<string>([
 const EXPORT_ALLOWLIST: { table: string; why: string }[] = [
   // Preference / UI state — not the user's health record.
   {
-    table: "starred_biomarkers",
-    why: "UI pin state (which biomarkers are starred)",
+    table: "saved_items",
+    why: "UI save state (which items the ★ star gesture marked — biomarkers, Trends tiles; #1456 folded starred_biomarkers + trend_pins here). Curation, not the user's health record; every saved biomarker's READINGS export via medical_records.",
   },
   {
     table: "upcoming_dismissals",

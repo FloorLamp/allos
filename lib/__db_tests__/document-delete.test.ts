@@ -517,7 +517,7 @@ describe("deleteMedicalDocument (full action path)", () => {
     // Star Glucose — its only record is in this document, so the delete's
     // starred-biomarker cleanup should drop the star too.
     db.prepare(
-      "INSERT INTO starred_biomarkers (profile_id, canonical_name) VALUES (?, 'Glucose')"
+      "INSERT INTO saved_items (profile_id, kind, key) VALUES (?, 'biomarker', 'Glucose')"
     ).run(profile.id);
 
     // Sanity: the extracted med + document + star all exist first.
@@ -556,7 +556,7 @@ describe("deleteMedicalDocument (full action path)", () => {
       (
         db
           .prepare(
-            "SELECT COUNT(*) n FROM starred_biomarkers WHERE profile_id = ? AND canonical_name = 'Glucose'"
+            "SELECT COUNT(*) n FROM saved_items WHERE profile_id = ? AND kind = 'biomarker' AND key = 'Glucose'"
           )
           .get(profile.id) as { n: number }
       ).n

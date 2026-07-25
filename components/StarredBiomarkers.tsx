@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getStarredBiomarkers } from "@/lib/queries";
+import { getSavedBiomarkers } from "@/lib/queries";
 import {
   rangeBadge,
   RANGE_BADGE_META,
@@ -28,8 +28,8 @@ import BiomarkerScale from "./BiomarkerScale";
 // the latest value, an optimal-status chip (when known), and a sparkline.
 // Renders nothing when no biomarkers are starred.
 //
-// Multi-view (#1331): the starred lens is PER PROFILE (starred_biomarkers is
-// name-keyed per profile), so a caregiver viewing several members sees one labeled
+// Multi-view (#1331): the starred lens is PER PROFILE (a save is one `saved_items`
+// row per profile, name-keyed), so a caregiver viewing several members sees one labeled
 // card per member — pass that member's `profileId` + `subjectLabel`. Every range /
 // flag / staleness judgment then resolves in THAT member's own demographic context
 // (its sex, birthdate/age, reproductive status), never the acting profile's. Default
@@ -44,7 +44,7 @@ export default async function StarredBiomarkers({
   subjectLabel?: string;
 }) {
   const pid = profileId ?? (await requireSession()).profile.id;
-  const starred = getStarredBiomarkers(pid);
+  const starred = getSavedBiomarkers(pid);
   if (starred.length === 0) return null;
   const sex = getUserSex(pid);
   // Reproductive status (female physiology only) overrides the age proxy for the

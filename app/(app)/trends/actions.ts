@@ -4,13 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireWriteAccess } from "@/lib/auth";
 import { isTrainingRestricted } from "@/lib/age-gate";
-import {
-  getTrendPins,
-  setTrendPins,
-  getTrendViews,
-  setTrendViews,
-} from "@/lib/settings";
-import { togglePin } from "@/lib/trend-pins";
+import { getTrendViews, setTrendViews } from "@/lib/settings";
 import {
   addView,
   deleteView,
@@ -110,26 +104,18 @@ export async function dismissBodyHygiene(
   return formOk();
 }
 
-// Pin / unpin a Trends-Overview tile for the active profile.
-// The pin key ("metric:weight" | "bio:LDL Cholesterol") toggles in the per-profile
-// `trend_pins` list; pinned tiles render first on the Overview. profileId is
-// resolved from the session — any login acting as the profile may pin (it's
-// per-profile data), so this is requireWriteAccess, not requireAdmin.
-export async function toggleTrendPin(formData: FormData): Promise<FormResult> {
-  const { profile } = await requireWriteAccess();
-  const key = String(formData.get("key") ?? "").trim();
-  if (!key) return formError("Couldn't find that tile.");
-  setTrendPins(profile.id, togglePin(getTrendPins(profile.id), key));
-  revalidatePath("/trends");
-  return formOk();
-}
-
 // Read the hub's current URL state off the submitted form into a params bag. The
 // client injects the live ?from/to/tab/cmpA/cmpB/cmpn values as hidden inputs, so
-// a saved view captures exactly what the user is looking at. The pins snapshot is
-// taken server-side from the profile's current trend_pins (not the form), so it
-// can't be forged.
-function paramsFromForm(formData: FormData, pins: string[]): TrendViewParams {
+// a saved view captures exactly what the user is looking at.
+//
+// #1456: a view no longer snapshots (or restores) a pin list. Pins were Trends-only
+// ORDERING state; under the unified save store the same keys are SAVES — membership
+// that also drives the Results status card and the passport summary — so restoring a
+// view's snapshot would silently UNSAVE biomarkers on surfaces the view has nothing
+// to do with. A view stays what its name says: a URL-state configuration. Legacy
+// stored views keep their `pins` field; it is simply ignored (normalizeViewParams
+// drops it), never applied.
+function paramsFromForm(formData: FormData): TrendViewParams {
   const s = (k: string): string | undefined => {
     const v = String(formData.get(k) ?? "").trim();
     return v || undefined;
@@ -141,7 +127,6 @@ function paramsFromForm(formData: FormData, pins: string[]): TrendViewParams {
     cmpA: s("cmpA"),
     cmpB: s("cmpB"),
     cmpn: String(formData.get("cmpn") ?? "") === "1",
-    pins,
   };
 }
 
@@ -152,7 +137,7 @@ export async function saveTrendView(formData: FormData): Promise<FormResult> {
   const { profile } = await requireWriteAccess();
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return formError("Name your view.");
-  const params = paramsFromForm(formData, getTrendPins(profile.id));
+  const params = paramsFromForm(formData);
   setTrendViews(
     profile.id,
     addView(getTrendViews(profile.id), { name, params })
@@ -171,19 +156,15 @@ export async function deleteTrendView(formData: FormData): Promise<FormResult> {
   return formOk();
 }
 
-// Apply a saved view: restore its pins snapshot (when it captured one) and redirect
-// to the hub with the view's range/tab/compare params — reusing the SAME URL
-// vocabulary the DateRangeControl / CompareControls already read. Unknown name is a
-// no-op back to /trends.
+// Apply a saved view: redirect to the hub with the view's range/tab/compare params —
+// reusing the SAME URL vocabulary the DateRangeControl / CompareControls already read.
+// It restores URL state ONLY (see paramsFromForm on why the retired pins snapshot is
+// not re-applied). Unknown name is a no-op back to /trends.
 export async function applyTrendView(formData: FormData) {
   const { profile } = await requireWriteAccess();
   const name = String(formData.get("name") ?? "").trim();
   const view = name ? findView(getTrendViews(profile.id), name) : null;
   if (!view) redirect("/trends");
-  if (view.params.pins) {
-    setTrendPins(profile.id, view.params.pins);
-    revalidatePath("/trends");
-  }
   const qs = viewToQuery(view.params);
   redirect(qs ? `/trends?${qs}` : "/trends");
 }
