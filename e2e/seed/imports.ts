@@ -1,0 +1,456 @@
+// e2e seed fixtures — imports domain. Composed (in order) by e2e/seed-events.ts,
+// which stays the entrypoint the Playwright webServer runs. Add a fixture for THIS
+// domain here (a new exported seed function, or inside an existing one) so two PRs
+// touching different domains stop colliding on one file — see the entrypoint header.
+
+import "../../scripts/load-env";
+
+import path from "node:path";
+import { db, today } from "../../lib/db";
+import { PROFILE_ID } from "./common";
+import { PARITY_MED_NAME } from "./intake";
+
+// ── Unified import-feed fixtures ──
+// The tabbed records-browser document's fixed id. Module-scope + exported because
+// ./medical hangs one allergy row off the SAME document (the #384 allergy twins).
+export const BROWSER_DOC_ID = 908;
+
+export function seedImportFeed(): void {
+  // ── Unified import-feed fixtures ──────────────────────────
+  // The Data → Review feed merges background syncs with uploaded documents and
+  // pasted/CSV jobs. Plant one of each so the feed proves it renders every stream,
+  // not just integration syncs. Synthetic filenames/content only — no real PHI.
+  // Clear prior e2e fixtures first so re-seeding stays idempotent.
+  db.prepare(
+    `DELETE FROM medical_documents WHERE profile_id = ? AND filename IN ('e2e-labs.pdf', 'e2e-broken.txt', 'e2e-mychart-export.xml')`
+  ).run(PROFILE_ID);
+  db.prepare(
+    `DELETE FROM import_jobs WHERE profile_id = ? AND summary = 'e2e: 4 readings'`
+  ).run(PROFILE_ID);
+
+  // A successfully-extracted document (7 items) — links to its /import/[id] detail.
+  db.prepare(
+    `INSERT INTO medical_documents
+     (profile_id, filename, stored_path, mime_type, size_bytes, doc_type,
+      extraction_status, extracted_count, uploaded_at)
+   VALUES (?, 'e2e-labs.pdf', '', 'application/pdf', 4096, 'Lab report',
+           'done', 7, '2026-07-08 12:00:00')`
+  ).run(PROFILE_ID);
+  // A rejected upload (issue #58 magic-byte / unsupported): inserted straight into a
+  // terminal 'failed' state, so the feed must still surface it.
+  db.prepare(
+    `INSERT INTO medical_documents
+     (profile_id, filename, stored_path, mime_type, size_bytes,
+      extraction_status, extraction_error, uploaded_at)
+   VALUES (?, 'e2e-broken.txt', '', 'text/plain', 12,
+           'failed', 'Unsupported file type.', '2026-07-08 11:30:00')`
+  ).run(PROFILE_ID);
+  // A pasted/CSV import job awaiting review.
+  db.prepare(
+    `INSERT INTO import_jobs
+     (profile_id, type, status, summary, created_at, updated_at)
+   VALUES (?, 'biomarkers', 'ready', 'e2e: 4 readings',
+           '2026-07-08 11:00:00', '2026-07-08 11:00:00')`
+  ).run(PROFILE_ID);
+
+  // A deterministic HEALTH-RECORD document (source='ccda') with a non-empty
+  // stored_path so it counts in the "Re-extract all documents" cost preview (issue
+  // #208) as a re-imported-instantly, no-AI document — alongside the seed's AI
+  // scan/PDF (labcorp-panel.pdf, source='upload'). Together they make the cost line
+  // show BOTH kinds. The stored_path is fake (the e2e only opens the confirm dialog
+  // and cancels — it never actually re-extracts), so no blob on disk is needed.
+  db.prepare(
+    `INSERT INTO medical_documents
+     (profile_id, filename, stored_path, mime_type, size_bytes, doc_type, source,
+      extraction_status, extracted_count, uploaded_at)
+   VALUES (?, 'e2e-mychart-export.xml', 'data/uploads/medical/1/e2e-nonexistent.xml',
+           'application/xml', 8192, 'MyChart export (CCD/XDM)', 'ccda',
+           'done', 5, '2026-07-08 10:30:00')`
+  ).run(PROFILE_ID);
+
+  console.log(
+    "e2e: seeded integration_sync_events (strava failing) + a cross-source duplicate activity pair + import-feed document/job fixtures"
+  );
+}
+
+// ── Import-detail drop-report fixture ──
+export function seedDropReport(): void {
+  // ── Import-detail drop-report fixture (issue #270) ────────────────────────────
+  // A 'done' document carrying a stored import_report with (a) a reason-group of
+  // HUNDREDS of identical drops (the real-world CCD noise that made the Dropped
+  // section unusable) that must collapse to one ×N row, (b) enough DISTINCT drops
+  // that the collapsed list still overflows the card's viewport bound (proving the
+  // scroll containment), and (c) an unmapped lab code driving the "Report unmapped
+  // code" prefill. Fixed id so the spec can navigate straight to /import/907.
+  // All content synthetic — fictional analyte names, no values/dates/PHI in drops.
+  const DROP_DOC_ID = 907;
+  db.prepare(`DELETE FROM medical_documents WHERE id = ?`).run(DROP_DOC_ID);
+  const dropReport = {
+    drops: [
+      // 220 identical null-flavored "Comment(s)" rows from Results → one ×220 row.
+      ...Array.from({ length: 220 }, () => ({
+        kind: "lab",
+        label: "Comment(s)",
+        reason: "null_flavor",
+        section: "Results",
+      })),
+      // 40 distinct value-less labs → 40 collapsed rows (the list must scroll).
+      ...Array.from({ length: 40 }, (_, i) => ({
+        kind: "lab",
+        label: `E2E Panel Item ${String(i + 1).padStart(2, "0")}`,
+        reason: "no_value",
+        section: "Results",
+      })),
+    ],
+    coverage: [
+      { key: "results", title: "Results", consumed: true, present: 272 },
+      // Recognized-but-ignored (#268): must render under "Recognized, not
+      // imported", NOT as a present-but-not-consumed gap.
+      {
+        key: "insurance",
+        title: "Insurance",
+        consumed: false,
+        present: 4,
+        ignored: true,
+      },
+      // A genuinely unrecognized section stays in "Present but not consumed".
+      {
+        key: "E2E Mystery Section",
+        title: "E2E Mystery Section",
+        consumed: false,
+        present: 2,
+      },
+    ],
+    imported: 12,
+    considered: 272,
+    unmappedLoincs: [
+      { loinc: "11111-1", name: "E2E Novel Marker", unit: "ng/mL", count: 3 },
+    ],
+    // Source-text reconciliation flags (AI PDF path): one of each verdict, so the
+    // "Source reconciliation" card renders with both badge variants. Synthetic
+    // analyte names; the value is a bare number with no unit/date context.
+    reconciliation: {
+      confirmed: 10,
+      total: 12,
+      flags: [
+        {
+          name: "E2E Mismatch Marker",
+          value: "999",
+          verdict: "value_mismatch",
+        },
+        { name: "E2E Phantom Marker", value: "1", verdict: "name_not_found" },
+      ],
+    },
+  };
+  db.prepare(
+    `INSERT INTO medical_documents
+     (id, profile_id, filename, stored_path, mime_type, size_bytes, doc_type,
+      source, extraction_status, extracted_count, import_report, uploaded_at)
+   VALUES (?, ?, 'e2e-drop-report.xml', '', 'application/xml', 2048,
+           'MyChart export (CCD/XDM)', 'ccda', 'done', 12, ?,
+           '2026-07-08 09:45:00')`
+  ).run(DROP_DOC_ID, PROFILE_ID, JSON.stringify(dropReport));
+
+  console.log(
+    `e2e: seeded import document ${DROP_DOC_ID} with a 260-drop report + an unmapped LOINC (#270)`
+  );
+}
+
+// ── Import-detail records browser + type-appropriate panels ──
+export function seedRecordsBrowser(): void {
+  // ── Import-detail tabbed records-browser fixture (issue #271) ─────────────────
+  // A 'done' document that produced rows across several kinds — labs + a projected
+  // medication (intake_items, the single medication entity an imported prescription
+  // becomes post-#1178 — never a medical_records 'prescription' row, #1232), a
+  // visit, a condition, an immunization, and a referenced provider — so the records
+  // browser has a multi-tab strip to render: default tab, ?tab= selection,
+  // category-correct row links (the medication → /medications regression), the
+  // read-only visit listing deep-linking to /encounters/[id], and the Providers
+  // chip (linking to /providers). Fixed id 908; all content synthetic (fictional
+  // analytes/clinic/patient — no real PHI).
+  const BROWSER_DOC_SOURCE = `document:${BROWSER_DOC_ID}`;
+  db.prepare(`DELETE FROM medical_records WHERE document_id = ?`).run(
+    BROWSER_DOC_ID
+  );
+  // FK is ON (lib/db.ts), so this cascades the med's doses/courses/logs.
+  db.prepare(
+    `DELETE FROM intake_items WHERE profile_id = ? AND document_id = ?`
+  ).run(PROFILE_ID, BROWSER_DOC_ID);
+  db.prepare(`DELETE FROM encounters WHERE document_id = ?`).run(
+    BROWSER_DOC_ID
+  );
+  db.prepare(`DELETE FROM conditions WHERE document_id = ?`).run(
+    BROWSER_DOC_ID
+  );
+  db.prepare(`DELETE FROM immunizations WHERE source = ?`).run(
+    BROWSER_DOC_SOURCE
+  );
+  db.prepare(`DELETE FROM medical_documents WHERE id = ?`).run(BROWSER_DOC_ID);
+  // A tiny, synthetic CCD-shaped raw so the Debug → Raw extraction panel exercises the
+  // shared RawDataViewer's XML tree mode (#1318): nested elements + attributes, all
+  // obviously-fictional (Test Patient, made-up codes) — no real PHI.
+  const BROWSER_DOC_RAW_XML = `<ClinicalDocument xmlns="urn:hl7-org:v3">
+  <recordTarget>
+    <patientRole>
+      <id extension="E2E-000" root="2.16.840.1.113883.19.5"/>
+      <patient>
+        <name><given>Test</given><family>Patient</family></name>
+        <birthTime value="19900101"/>
+      </patient>
+    </patientRole>
+  </recordTarget>
+  <component>
+    <structuredBody>
+      <component>
+        <section>
+          <title>Results</title>
+          <entry>
+            <observation classCode="OBS">
+              <code code="E2E-FER" displayName="Ferritin"/>
+              <value unit="ng/mL" value="95"/>
+            </observation>
+          </entry>
+        </section>
+      </component>
+    </structuredBody>
+  </component>
+</ClinicalDocument>`;
+  db.prepare(
+    `INSERT INTO medical_documents
+     (id, profile_id, filename, stored_path, mime_type, size_bytes, doc_type,
+      source, extraction_status, extracted_count, uploaded_at, raw_extraction)
+   VALUES (?, ?, 'e2e-records-browser.xml', '', 'application/xml', 4096,
+           'MyChart export (CCD/XDM)', 'ccda', 'done', 6, '2026-07-08 09:50:00', ?)`
+  ).run(BROWSER_DOC_ID, PROFILE_ID, BROWSER_DOC_RAW_XML);
+  // A provider referenced by one lab row → the Providers count chip shows 1.
+  db.prepare(
+    `DELETE FROM providers WHERE dedup_key = 'e2e-browser-clinic'`
+  ).run();
+  const browserProviderId = Number(
+    db
+      .prepare(
+        `INSERT INTO providers (name, type, dedup_key)
+       VALUES ('E2E Browser Clinic', 'organization', 'e2e-browser-clinic')`
+      )
+      .run().lastInsertRowid
+  );
+  // Give the scheduled medication fixture a structured provider as well as its
+  // legacy free-text prescriber. The med itself is seeded by ./intake
+  // (seedMedicationCards), which runs earlier — re-resolve it by its unique name.
+  const parityMedId = (
+    db
+      .prepare(`SELECT id FROM intake_items WHERE profile_id = ? AND name = ?`)
+      .get(PROFILE_ID, PARITY_MED_NAME) as { id: number }
+  ).id;
+  // The medication detail can then prove that a registry-backed provider navigates
+  // to the provider detail page.
+  db.prepare(
+    `UPDATE intake_items
+      SET provider_id = ?
+    WHERE id = ? AND profile_id = ? AND kind = 'medication'`
+  ).run(browserProviderId, parityMedId, PROFILE_ID);
+  const insBrowserRecord = db.prepare(
+    `INSERT INTO medical_records
+     (profile_id, date, category, name, value, value_num, unit, panel,
+      canonical_name, document_id, provider_id, source)
+   VALUES (?, '2026-06-20', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ccda')`
+  );
+  insBrowserRecord.run(
+    PROFILE_ID,
+    "lab",
+    "Ferritin",
+    "95",
+    95,
+    "ng/mL",
+    "E2E Iron Panel",
+    "Ferritin",
+    BROWSER_DOC_ID,
+    browserProviderId
+  );
+  insBrowserRecord.run(
+    PROFILE_ID,
+    "lab",
+    "E2E Novel Lab",
+    "1.2",
+    1.2,
+    "mg/L",
+    "E2E Iron Panel",
+    null,
+    BROWSER_DOC_ID,
+    null
+  );
+  // The document's projected MEDICATION (#1178/#1232): the current single-entity
+  // shape persistExtractedMedications writes for a CCD prescription — a
+  // kind='medication' intake_items row (source='extracted', document_id, the
+  // stable `medimport:` import_key), the strength carried on a dose row (an
+  // as-needed med, no fabricated reminder), and an initial open course. Loratadine
+  // pairs with the seeded "E2E Hay fever" condition and is off the curated
+  // interaction/allergy sets, so it adds no warnings to shared surfaces.
+  const browserMedId = Number(
+    db
+      .prepare(
+        `INSERT INTO intake_items
+         (name, notes, active, condition, priority, kind, as_needed,
+          document_id, source, provider_id, import_key, profile_id)
+       VALUES (?, NULL, 1, 'daily', 'high', 'medication', 1,
+               ?, 'extracted', NULL, ?, ?)`
+      )
+      .run(
+        "E2E Loratadine",
+        BROWSER_DOC_ID,
+        `medimport:${BROWSER_DOC_ID}|e2e loratadine`,
+        PROFILE_ID
+      ).lastInsertRowid
+  );
+  db.prepare(
+    `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+   VALUES (?, '10 mg', NULL, 'any', 0)`
+  ).run(browserMedId);
+  db.prepare(
+    `INSERT INTO medication_courses (item_id, started_on) VALUES (?, '2026-06-20')`
+  ).run(browserMedId);
+  db.prepare(
+    `INSERT INTO encounters
+     (profile_id, date, type, class_code, reason, document_id, source)
+   VALUES (?, '2026-06-20', 'E2E Browser Visit', 'AMB', 'E2E annual physical', ?, 'ccda')`
+  ).run(PROFILE_ID, BROWSER_DOC_ID);
+  db.prepare(
+    `INSERT INTO conditions (profile_id, name, status, document_id, source)
+   VALUES (?, 'E2E Hay fever', 'active', ?, 'ccda')`
+  ).run(PROFILE_ID, BROWSER_DOC_ID);
+  db.prepare(
+    `INSERT INTO immunizations (profile_id, date, vaccine, dose_label, source)
+   VALUES (?, '2026-06-20', 'E2E Tdap', 'booster', ?)`
+  ).run(PROFILE_ID, BROWSER_DOC_SOURCE);
+
+  console.log(
+    `e2e: seeded import document ${BROWSER_DOC_ID} with labs + medication + visit + condition + immunization for the records browser (#271)`
+  );
+
+  // ── Import-detail type-appropriate panels fixture (issue #1182) ──────────────
+  // A 'done' document that produced BOTH an analyte category (a lab, with a value/
+  // unit/reference band → the editable analyte grid) AND a non-analyte category (a
+  // vitals BP row → the read-only value/date table, no "Panel"/"Reference"
+  // columns), plus one referenced provider (an organization → the promoted
+  // Providers listing linking to /providers/[id], no longer a bare count chip).
+  // Dedicated id 909 so the #1182 presentation spec owns its own fixture and never
+  // perturbs 908's default-tab/count assertions. All content synthetic — no PHI.
+  const PANELS_DOC_ID = 909;
+  db.prepare(`DELETE FROM medical_records WHERE document_id = ?`).run(
+    PANELS_DOC_ID
+  );
+  db.prepare(`DELETE FROM medical_documents WHERE id = ?`).run(PANELS_DOC_ID);
+  db.prepare(
+    `INSERT INTO medical_documents
+     (id, profile_id, filename, stored_path, mime_type, size_bytes, doc_type,
+      source, extraction_status, extracted_count, uploaded_at)
+   VALUES (?, ?, 'e2e-produced-panels.xml', '', 'application/xml', 4096,
+           'MyChart export (CCD/XDM)', 'ccda', 'done', 2, '2026-07-09 09:50:00')`
+  ).run(PANELS_DOC_ID, PROFILE_ID);
+  db.prepare(`DELETE FROM providers WHERE dedup_key = 'e2e-panels-lab'`).run();
+  const panelsProviderId = Number(
+    db
+      .prepare(
+        `INSERT INTO providers (name, type, dedup_key)
+       VALUES ('E2E Panels Lab', 'organization', 'e2e-panels-lab')`
+      )
+      .run().lastInsertRowid
+  );
+  const insPanelsRecord = db.prepare(
+    `INSERT INTO medical_records
+     (profile_id, date, category, name, value, value_num, unit, panel,
+      reference_range, canonical_name, document_id, provider_id, source)
+   VALUES (?, '2026-06-21', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ccda')`
+  );
+  // Analyte category → keeps the editable analyte grid (Panel + Reference columns).
+  insPanelsRecord.run(
+    PROFILE_ID,
+    "lab",
+    "E2E Sodium",
+    "140",
+    140,
+    "mmol/L",
+    "E2E Basic Metabolic Panel",
+    "135–145",
+    "Sodium",
+    PANELS_DOC_ID,
+    panelsProviderId
+  );
+  // Vitals (non-analyte) → the read-only value/date table: no Panel, no Reference
+  // band. A BP pair recorded as one row (systolic/diastolic).
+  insPanelsRecord.run(
+    PROFILE_ID,
+    "vitals",
+    "E2E Blood Pressure",
+    "128/82",
+    null,
+    "mmHg",
+    null,
+    null,
+    null,
+    PANELS_DOC_ID,
+    null
+  );
+  console.log(
+    `e2e: seeded import document ${PANELS_DOC_ID} with a lab + a vitals row + a provider for the type-appropriate panels (#1182)`
+  );
+
+  // The old records-bridge fixture (#817/#852) seeded documentless medical_records
+  // category='prescription' rows here. Removed by #1232: migration 092 consolidated
+  // every such row into the single medication entity (intake_items) and NO current
+  // write path produces the shape anymore, so the fixture was re-creating a state
+  // the app itself can never reach (failure class 7 — a fixture feeding a dead
+  // legacy read path). The "From your records" bridge itself was then removed
+  // outright (UI/actions/generator) in #1270; only a stored `med-bridge:` dismissal
+  // survives, exercised by the suppressed-center orphan fixture below.
+
+  // An imported visit whose notes carry a real line break (issue #794 cluster 11a),
+  // so the encounter-detail notes test can pin that multi-line notes render with
+  // their breaks preserved (whitespace-pre-wrap) instead of flattening to one run-on
+  // line. Fixed id so the browser test deep-links deterministically; char(10) is the
+  // embedded newline. All content synthetic — no real PHI.
+  const MULTILINE_ENCOUNTER_ID = 9071;
+  db.prepare(`DELETE FROM encounters WHERE id = ?`).run(MULTILINE_ENCOUNTER_ID);
+  db.prepare(
+    `INSERT INTO encounters
+     (id, profile_id, date, type, class_code, reason, notes, source)
+   VALUES (?, ?, '2026-06-18', 'E2E Imported Visit', 'AMB', 'E2E follow-up',
+           'E2E imported note line one.' || char(10) || 'E2E imported note line two.',
+           'ccda')`
+  ).run(MULTILINE_ENCOUNTER_ID, PROFILE_ID);
+
+  // Two due-today doses on the primary profile whose bucket order is the REVERSE of
+  // their alphabetical order (issue #297): a MORNING dose named with a leading "Z"
+  // and a BEDTIME dose named with a leading "A". Before the fix the Upcoming Today
+  // band dropped time_of_day and sorted by title, so the bedtime "A…" came first;
+  // after it, the morning "Z…" leads because Morning outranks Before-sleep. Both are
+  // daily + active with no taken-log today, so they surface as due. Fully synthetic.
+  const DOSE_ORDER_MORNING = "Zeaxanthin Morning (e2e)";
+  const DOSE_ORDER_BEDTIME = "Ashwagandha Bedtime (e2e)";
+  for (const [name, timeOfDay, amount] of [
+    [DOSE_ORDER_MORNING, "morning", "1 cap"],
+    [DOSE_ORDER_BEDTIME, "bedtime", "300 mg"],
+  ] as const) {
+    if (
+      !db
+        .prepare("SELECT 1 FROM intake_items WHERE profile_id = ? AND name = ?")
+        .get(PROFILE_ID, name)
+    ) {
+      const supp = db
+        .prepare(
+          `INSERT INTO intake_items
+           (profile_id, name, condition, priority, active, source)
+         VALUES (?, ?, 'daily', 'high', 1, 'manual')`
+        )
+        .run(PROFILE_ID, name);
+      db.prepare(
+        `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, ?, ?, 'any', 0)`
+      ).run(Number(supp.lastInsertRowid), amount, timeOfDay);
+    }
+  }
+
+  console.log(
+    `e2e: seeded morning + bedtime due doses on profile ${PROFILE_ID} for the dose-order spec (#297)`
+  );
+}
