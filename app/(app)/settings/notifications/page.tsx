@@ -13,6 +13,7 @@ import {
   getNotifyReviewNeeded,
   isProfileMutedForLogin,
   getPublicUrl,
+  getProfileHouseholdRound,
 } from "@/lib/settings";
 import { inferWorkoutSchedule, typicalWakeTime } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
@@ -28,12 +29,14 @@ import {
   wouldMuteSilenceSafety,
 } from "@/lib/notifications/fan-out";
 import { isValidWebhookUrl } from "@/lib/notifications/home-assistant-core";
+import { householdRoundOfferableMembers } from "@/lib/notifications/household-round-access";
 import { PageHeader } from "@/components/ui";
 import SettingsTabs from "../SettingsTabs";
 import PushNotificationSettings from "./PushNotificationSettings";
 import LoginTelegramSettings from "./LoginTelegramSettings";
 import ProfileNotificationSettings from "./ProfileNotificationSettings";
 import ProfileMuteToggle from "./ProfileMuteToggle";
+import HouseholdRoundSettings from "./HouseholdRoundSettings";
 import HomeAssistantNotificationSettings from "./HomeAssistantNotificationSettings";
 import ServerTelegramSettings from "./ServerTelegramSettings";
 import NotificationMatrix from "./NotificationMatrix";
@@ -92,6 +95,7 @@ export default async function NotificationsSettingsPage() {
   const pushConfigured =
     isPushConfigured() && countPushSubscriptionsForLogin(login.id) > 0;
   const haConfigured = ha.enabled && isValidWebhookUrl(ha.webhookUrl);
+  const householdRound = getProfileHouseholdRound(profile.id);
 
   return (
     <div>
@@ -132,6 +136,15 @@ export default async function NotificationsSettingsPage() {
               const m = typicalWakeTime(profile.id);
               return m == null ? null : Math.min(23, Math.round(m / 60));
             })()}
+          />
+          <HouseholdRoundSettings
+            enabled={householdRound.enabled}
+            memberIds={householdRound.memberIds}
+            offerable={householdRoundOfferableMembers(profile.id).map((m) => ({
+              profileId: m.profileId,
+              name: m.name,
+            }))}
+            telegramConfigured={telegramConfigured}
           />
           <ProfileMuteToggle
             profileId={profile.id}
