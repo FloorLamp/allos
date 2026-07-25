@@ -335,7 +335,9 @@ export default async function VitalsSection({ range }: { range: DateRange }) {
                   data={toIntradaySlotSeries(intradaySpo2)}
                   label="SpO₂"
                   unit="%"
-                  color={chartSeries.emerald}
+                  // Same token as the daily SpO₂ chart below — one metric, one
+                  // color. (#1445 renamed this slot `emerald` → `sky`.)
+                  color={chartSeries.sky}
                   connectNulls={false}
                   heightClass={INTRADAY_POINT_HEIGHT}
                 />
@@ -392,7 +394,7 @@ export default async function VitalsSection({ range }: { range: DateRange }) {
                 data={spo2}
                 label="SpO₂"
                 unit="%"
-                color={chartSeries.emerald}
+                color={chartSeries.sky}
                 heightClass="h-48"
               />
             </div>
@@ -407,7 +409,7 @@ export default async function VitalsSection({ range }: { range: DateRange }) {
                 data={respiratory}
                 label="Respiratory rate"
                 unit=" /min"
-                color={chartSeries.slate}
+                color={chartSeries.violet}
                 heightClass="h-48"
               />
             </div>

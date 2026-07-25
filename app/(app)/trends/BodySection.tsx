@@ -252,7 +252,7 @@ export default async function BodySection({
       data: headCircChart,
       label: "Head circ.",
       unit: " cm",
-      color: chartSeries.emerald,
+      color: chartSeries.sky,
     },
     weight: {
       key: "weight",
@@ -469,7 +469,7 @@ export default async function BodySection({
           <LineChartCard
             data={stepsChart}
             label="Steps"
-            color={chartSeries.emerald}
+            color={chartSeries.sky}
           />
         </div>
       ),
@@ -604,11 +604,7 @@ export default async function BodySection({
           <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
             BMI
           </h2>
-          <LineChartCard
-            data={bmiChart}
-            label="BMI"
-            color={chartSeries.emerald}
-          />
+          <LineChartCard data={bmiChart} label="BMI" color={chartSeries.sky} />
         </div>
       ),
     },
@@ -626,7 +622,7 @@ export default async function BodySection({
           <LineChartCard
             data={leanMassChart}
             label="Lean mass"
-            color={chartSeries.emerald}
+            color={chartSeries.sky}
             unit=" kg"
           />
         </div>
@@ -646,7 +642,7 @@ export default async function BodySection({
           <LineChartCard
             data={boneMassChart}
             label="Bone mass"
-            color={chartSeries.slate}
+            color={chartSeries.violet}
             unit=" kg"
           />
         </div>
@@ -686,7 +682,7 @@ export default async function BodySection({
           <LineChartCard
             data={hydrationChart}
             label="Water"
-            color={chartSeries.emerald}
+            color={chartSeries.sky}
             unit=" L"
           />
         </div>

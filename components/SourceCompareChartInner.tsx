@@ -10,6 +10,16 @@ import {
   YAxis,
 } from "recharts";
 import { useChartColors } from "./useChartColors";
+import {
+  ChartLegend,
+  chartActiveDot,
+  chartAxisProps,
+  chartGridProps,
+  chartLineDot,
+  chartMarkMotion,
+  chartTooltipProps,
+  useChartMotion,
+} from "./chart-scaffold";
 import { formatLongDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import {
@@ -24,8 +34,8 @@ import {
 // Multi-series line chart grouped by SOURCE (issue #14): one line per provider
 // reporting the same metric, so overlapping devices can be compared instead of
 // silently collapsed. Colors are fixed per source (lib/metric-source-priority
-// SOURCE_COLORS) — identity follows the entity, and the parent card renders a
-// text-token legend, so identity is never color-alone. Mirrors LineChartCardInner
+// SOURCE_COLORS) — identity follows the entity, and the chart carries its own
+// text-token legend (issue #1445), so identity is never color-alone. Mirrors LineChartCardInner
 // (grid/axis theming, ISO-date axis/tooltip formatting).
 
 export interface CompareSeries {
@@ -46,6 +56,7 @@ export default function SourceCompareChartInner({
 }) {
   const formatPrefs = useFormatPrefs();
   const c = useChartColors();
+  const motion = useChartMotion();
   // Pivot the per-source series onto one date axis; a source without a reading
   // on a date contributes null (its line bridges the gap via connectNulls).
   const dates = [
@@ -81,13 +92,20 @@ export default function SourceCompareChartInner({
     );
   }
   return (
-    <div className={`${heightClass} w-full`}>
-      <ResponsiveContainer width="100%" height="100%">
+    <div className={`${heightClass} flex w-full flex-col`}>
+      <ChartLegend
+        items={series.map((s) => ({ label: s.label, color: s.color }))}
+      />
+      <ResponsiveContainer
+        width="100%"
+        height="100%"
+        className="min-h-0 flex-1"
+      >
         <LineChart
           data={rows}
           margin={{ top: 10, right: 16, bottom: 0, left: -8 }}
         >
-          <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
+          <CartesianGrid {...chartGridProps(c)} />
           <XAxis
             dataKey="t"
             type="number"
@@ -95,14 +113,9 @@ export default function SourceCompareChartInner({
             domain={xDomain ?? ["auto", "auto"]}
             ticks={xTicks.length ? xTicks : undefined}
             tickFormatter={(v: number) => formatTimeTick(v, withYear)}
-            tick={{ fontSize: 11, fill: c.tick }}
-            stroke={c.axis}
+            {...chartAxisProps(c)}
           />
-          <YAxis
-            tick={{ fontSize: 11, fill: c.tick }}
-            stroke={c.axis}
-            domain={["auto", "auto"]}
-          />
+          <YAxis {...chartAxisProps(c)} domain={["auto", "auto"]} />
           <Tooltip
             formatter={(v, name) => [
               `${v}${unit}`,
@@ -111,15 +124,7 @@ export default function SourceCompareChartInner({
             labelFormatter={(v) =>
               formatLongDate(epochToISO(Number(v)), formatPrefs)
             }
-            contentStyle={{
-              fontSize: 12,
-              borderRadius: 8,
-              background: c.tooltipBg,
-              border: `1px solid ${c.tooltipBorder}`,
-              color: c.tooltipText,
-            }}
-            labelStyle={{ color: c.tooltipText }}
-            itemStyle={{ color: c.tooltipText }}
+            {...chartTooltipProps(c, motion)}
           />
           {series.map((s) => (
             <Line
@@ -128,7 +133,9 @@ export default function SourceCompareChartInner({
               dataKey={s.key}
               stroke={s.color}
               strokeWidth={2}
-              dot={{ r: 2.5, fill: s.color, stroke: s.color }}
+              dot={chartLineDot(c, { color: s.color, pointCount: rows.length })}
+              activeDot={chartActiveDot(s.color)}
+              {...chartMarkMotion(motion)}
               connectNulls
             />
           ))}

@@ -52,3 +52,27 @@ test.describe("Compare tab axis policy", () => {
     await expect(chart).toHaveAttribute("data-axis-scale", "time");
   });
 });
+
+// Chart polish (issue #1445). A >= 2-series chart carries a legend, so identity
+// is never color-alone — which is what makes the brand-green/rose pair (ΔE 2.7
+// under deuteranopia) legal in the shared palette at all. Asserted here because
+// Compare is the app's canonical two-series surface; the legend renders outside
+// the recharts tree, so this needs no SVG probing.
+test.describe("Chart legend (#1445)", () => {
+  test("a two-series compare chart renders a legend naming both series", async ({
+    page,
+  }) => {
+    await page.goto(
+      "/trends?tab=compare&cmpA=metric:weight&cmpB=metric:resting_hr"
+    );
+    const chart = page.getByTestId("compare-chart");
+    await expect(chart).toBeVisible();
+
+    const legend = chart.getByTestId("chart-legend");
+    await expect(legend).toBeVisible();
+    await expect(legend.getByTestId("chart-legend-item")).toHaveCount(2);
+    // Labels are the series names in ink, not the raw metric keys.
+    await expect(legend).toContainText(/weight/i);
+    await expect(legend).toContainText(/resting/i);
+  });
+});

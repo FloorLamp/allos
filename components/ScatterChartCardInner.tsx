@@ -14,6 +14,15 @@ import { roundChartValue } from "@/lib/chart-format";
 import { formatLongDate } from "@/lib/format-date";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
 import { useChartColors } from "./useChartColors";
+import {
+  chartAxisLabelProps,
+  chartAxisProps,
+  chartGridProps,
+  chartMarkMotion,
+  chartTooltipCursorProps,
+  chartTooltipSurfaceStyle,
+  useChartMotion,
+} from "./chart-scaffold";
 
 export interface ScatterPoint {
   x: number;
@@ -50,6 +59,7 @@ export default function ScatterChartCard({
 }) {
   const formatPrefs = useFormatPrefs();
   const c = useChartColors();
+  const motion = useChartMotion();
 
   if (data.length === 0) {
     return (
@@ -68,50 +78,38 @@ export default function ScatterChartCard({
     >
       <ResponsiveContainer width="100%" height="100%">
         <ScatterChart margin={{ top: 10, right: 16, bottom: 24, left: 8 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
+          <CartesianGrid {...chartGridProps(c)} />
           <XAxis
             type="number"
             dataKey="x"
             name={xLabel}
             domain={xDomain ?? ["auto", "auto"]}
-            tick={{ fontSize: 11, fill: c.tick }}
-            stroke={c.axis}
-            label={{
-              value: xLabel,
+            {...chartAxisProps(c)}
+            label={chartAxisLabelProps(c, xLabel, {
               position: "insideBottom",
               offset: -12,
-              fontSize: 11,
-              fill: c.tick,
-            }}
+            })}
           />
           <YAxis
             type="number"
             dataKey="y"
             name={yLabel}
             domain={yDomain ?? ["auto", "auto"]}
-            tick={{ fontSize: 11, fill: c.tick }}
-            stroke={c.axis}
-            label={{
-              value: yLabel,
+            {...chartAxisProps(c)}
+            label={chartAxisLabelProps(c, yLabel, {
               angle: -90,
               position: "insideLeft",
-              fontSize: 11,
-              fill: c.tick,
-            }}
+            })}
           />
           <Tooltip
-            cursor={{ stroke: c.axis, strokeDasharray: "3 3" }}
+            cursor={chartTooltipCursorProps(c)}
             content={({ active, payload }) => {
               if (!active || !payload?.length) return null;
               const point = payload[0].payload as ScatterPoint;
               return (
                 <div
                   className="rounded-lg border p-2 text-xs shadow-sm"
-                  style={{
-                    background: c.tooltipBg,
-                    borderColor: c.tooltipBorder,
-                    color: c.tooltipText,
-                  }}
+                  style={chartTooltipSurfaceStyle(c)}
                 >
                   {point.date && (
                     <p className="mb-1 font-medium">
@@ -130,7 +128,7 @@ export default function ScatterChartCard({
               );
             }}
           />
-          <Scatter data={data} fill={color} />
+          <Scatter data={data} fill={color} {...chartMarkMotion(motion)} />
         </ScatterChart>
       </ResponsiveContainer>
     </div>

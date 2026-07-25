@@ -498,3 +498,25 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
     transform: none;
   }
 }
+
+/* Chart hover motion (#1445, Part 3c). The mount draw-in and the tooltip's own
+   fade are recharts props, decided in `components/chart-scaffold.tsx`; these two
+   rules cover what recharts styles in the DOM rather than through props — the
+   active dot growing under the cursor and the tooltip box sliding along the
+   series. 150ms, ease-out: fast enough to feel attached to the pointer, slow
+   enough not to snap. Suppressed wholesale under prefers-reduced-motion, which
+   also settles #794's open 8d checkbox for the chart layer. */
+.recharts-active-dot circle {
+  transition:
+    r 150ms ease-out,
+    opacity 150ms ease-out;
+}
+.recharts-tooltip-wrapper {
+  transition: transform 150ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .recharts-active-dot circle,
+  .recharts-tooltip-wrapper {
+    transition: none;
+  }
+}

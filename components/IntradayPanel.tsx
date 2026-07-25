@@ -7,7 +7,12 @@
 // library, no client JS. The tick/block links are plain `<a href="#…">` fragments
 // (and one route link), so tapping works before hydration.
 import ActivityIcon from "@/components/ActivityIcon";
-import { chartBand, chartSeries, chartSleepStage } from "@/lib/chart-colors";
+import {
+  chartBand,
+  chartNeutral,
+  chartSeries,
+  chartSleepStage,
+} from "@/lib/chart-colors";
 import { ZONE_COLORS } from "@/lib/training-zones";
 import { formatClockValue, type DisplayFormatPrefs } from "@/lib/format-date";
 import type { IntradayModel, IntradayTick, SleepStage } from "@/lib/intraday";
@@ -28,7 +33,7 @@ const AXIS_H = 18;
 // Tick color by the event's tone — the SAME tone the feed card renders, so a
 // flagged temperature reads red in both places.
 const TONE_COLOR: Record<NonNullable<IntradayTick["tone"]>, string> = {
-  default: chartSeries.slate,
+  default: chartNeutral,
   good: chartSeries.brand,
   warn: chartSeries.amber,
   bad: chartSeries.rose,
@@ -147,7 +152,7 @@ export default function IntradayPanel({
                   x={PAD_LEFT + 3}
                   y={yFor(hr.zone2.high) + 8}
                   fontSize={7}
-                  fill={chartSeries.slate}
+                  fill={chartNeutral}
                 >
                   Zone 2
                 </text>
@@ -181,10 +186,10 @@ export default function IntradayPanel({
                 />
               </g>
             ))}
-            <text x={1} y={hrTop + 7} fontSize={7} fill={chartSeries.slate}>
+            <text x={1} y={hrTop + 7} fontSize={7} fill={chartNeutral}>
               {hi} bpm
             </text>
-            <text x={1} y={hrTop + HR_H} fontSize={7} fill={chartSeries.slate}>
+            <text x={1} y={hrTop + HR_H} fontSize={7} fill={chartNeutral}>
               {lo}
             </text>
           </g>
@@ -218,7 +223,7 @@ export default function IntradayPanel({
           </g>
         ))}
         {model.sleep.length > 0 && (
-          <text x={1} y={sleepTop + 10} fontSize={7} fill={chartSeries.slate}>
+          <text x={1} y={sleepTop + 10} fontSize={7} fill={chartNeutral}>
             Sleep
           </text>
         )}
@@ -276,7 +281,7 @@ export default function IntradayPanel({
           );
         })}
         {model.workouts.length > 0 && (
-          <text x={1} y={workTop + 12} fontSize={7} fill={chartSeries.slate}>
+          <text x={1} y={workTop + 12} fontSize={7} fill={chartNeutral}>
             Train
           </text>
         )}
@@ -358,7 +363,7 @@ export default function IntradayPanel({
             y={axisY + 11}
             textAnchor={index === 0 ? "start" : index === 8 ? "end" : "middle"}
             fontSize={7.5}
-            fill={chartSeries.slate}
+            fill={chartNeutral}
           >
             {/* The 24:00 gridline is the SAME midnight as 00:00 — label it so. */}
             {clock(minute === MINUTES_IN_DAY ? 0 : minute)}
