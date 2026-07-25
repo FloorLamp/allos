@@ -42,6 +42,8 @@ import {
   E2E_LOGIN_EMPTY_TRAINING,
   E2E_LOGIN_SHELL,
   SHELL_PROFILE,
+  SHELL_DOSE_ITEM,
+  SHELL_DOSE_AMOUNT,
   E2E_LOGIN_VITALS_DAY,
   VITALS_DAY_PROFILE,
   VITALS_DAY_TEMP_TIME,
@@ -6355,15 +6357,33 @@ console.log(
   );
 }
 
-// Mobile shell fixture (#1416): an empty adult profile the shell spec logs ONE
-// body weight onto through the quick-log sheet. Boot only guarantees the isolated
-// write-granted login/profile exists; the spec asserts the row it wrote by VALUE,
-// never a count, so repeated runs need no reset.
+// Mobile shell / quick-log-overlay fixture (#1416, extended by #1468): an
+// otherwise-empty adult profile that quick-log-overlay.mobile.spec.ts logs a body
+// weight and a vitals reading onto THROUGH the overlay, plus ONE untaken
+// scheduled dose for the dose overlay to confirm. The spec asserts what it wrote
+// by VALUE, never a count, and clears the dose's own logs at test start, so
+// repeated runs (--repeat-each) need no further reset.
 {
   const shellId = fixtureProfileId(SHELL_PROFILE);
   seedMemberLogin(E2E_LOGIN_SHELL, shellId, "write");
+  if (
+    !db
+      .prepare("SELECT 1 FROM intake_items WHERE profile_id = ? AND name = ?")
+      .get(shellId, SHELL_DOSE_ITEM)
+  ) {
+    const item = db
+      .prepare(
+        `INSERT INTO intake_items (profile_id, name, condition, priority, active, source)
+         VALUES (?, ?, 'daily', 'high', 1, 'manual')`
+      )
+      .run(shellId, SHELL_DOSE_ITEM);
+    db.prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, ?, '08:00', 'any', 0)`
+    ).run(Number(item.lastInsertRowid), SHELL_DOSE_AMOUNT);
+  }
   console.log(
-    `e2e: seeded mobile-shell fixture — ${E2E_LOGIN_SHELL} granted ${SHELL_PROFILE} (${shellId}) (#1416)`
+    `e2e: seeded mobile-shell fixture — ${E2E_LOGIN_SHELL} granted ${SHELL_PROFILE} (${shellId}), one due dose (#1416/#1468)`
   );
 }
 

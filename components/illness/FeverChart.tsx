@@ -1,4 +1,4 @@
-import { chartSeries, chartBand } from "@/lib/chart-colors";
+import { chartBand, chartNeutral, chartSeries } from "@/lib/chart-colors";
 import type {
   EpisodeMedication,
   TemperaturePoint,
@@ -131,14 +131,14 @@ export default function FeverChart({
         x={PLOT_LEFT + 3}
         y={bandTop + 8}
         fontSize={6.5}
-        fill={chartSeries.slate}
+        fill={chartNeutral}
       >
         Normal range
       </text>
-      <text x={1} y={PLOT_TOP + 4} fontSize={7} fill={chartSeries.slate}>
+      <text x={1} y={PLOT_TOP + 4} fontSize={7} fill={chartNeutral}>
         {fmtTemp(hi - 0.5, temperatureUnit)}
       </text>
-      <text x={1} y={PLOT_BOTTOM} fontSize={7} fill={chartSeries.slate}>
+      <text x={1} y={PLOT_BOTTOM} fontSize={7} fill={chartNeutral}>
         {fmtTemp(lo + 0.5, temperatureUnit)}
       </text>
 
@@ -159,7 +159,7 @@ export default function FeverChart({
               y={DATE_Y}
               textAnchor="middle"
               fontSize={7}
-              fill={chartSeries.slate}
+              fill={chartNeutral}
             >
               {shortDate(date, formatPrefs)}
             </text>
@@ -199,7 +199,7 @@ export default function FeverChart({
             stroke={chartBand.reference}
             opacity={0.35}
           />
-          <text x={1} y={DOSE_Y + 3} fontSize={7} fill={chartSeries.slate}>
+          <text x={1} y={DOSE_Y + 3} fontSize={7} fill={chartNeutral}>
             Doses
           </text>
           {doses.map((dose, index) => {

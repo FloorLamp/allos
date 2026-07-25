@@ -7,6 +7,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   IconBolt,
   IconChevronUp,
+  IconHeartbeat,
   IconMenu2,
   IconPill,
   IconPlus,
@@ -20,6 +21,7 @@ import SidebarContent from "@/components/SidebarContent";
 import QuickLogSheet from "@/components/QuickLogSheet";
 import { openGlobalSearch } from "@/components/CommandPalette";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
+import { useQuickEntry } from "@/components/QuickEntryProvider";
 import { useLockBodyScroll } from "@/components/useLockBodyScroll";
 import { usePresence } from "@/components/usePresence";
 import { usePrefersReducedMotion } from "@/components/usePrefersReducedMotion";
@@ -73,6 +75,7 @@ const PRIMARY_ICONS: Record<QuickLogIcon, typeof IconPlus> = {
   salad: IconSalad,
   pill: IconPill,
   scale: IconScale,
+  heartbeat: IconHeartbeat,
 };
 
 export default function MobileNav({
@@ -137,6 +140,7 @@ export default function MobileNav({
   const router = useRouter();
   const { openCreate, openLive, openRepeatLast, hasLastActivity } =
     useActivityEditor();
+  const { open: openQuickEntry } = useQuickEntry();
   const reduceMotion = usePrefersReducedMotion();
   const drawer = usePresence(open, motionMs("drawer", reduceMotion));
 
@@ -163,8 +167,14 @@ export default function MobileNav({
     return () => document.removeEventListener("keydown", onKey);
   }, [open]);
 
+  // The bar's contextual **+**. It shares the registry with the sheet, so it
+  // inherits #1468's rule: the primary action opens IN PLACE too. Tapping "Log
+  // food" on the dashboard no longer teleports you to Nutrition — the same
+  // FoodLogBar arrives over the page you were reading.
   function runPrimary() {
     if (primary.target.kind === "activity") openCreate();
+    else if (primary.target.kind === "overlay")
+      openQuickEntry(primary.target.form);
     else router.push(primary.target.href);
   }
 

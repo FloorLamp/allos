@@ -1,3 +1,4 @@
+import { chartAdherenceState } from "@/lib/chart-colors";
 import type {
   AdherenceCalendarModel,
   AdherenceCalendarCell,
@@ -11,13 +12,16 @@ import type { AdherenceState } from "@/lib/supplement-adherence";
 
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
 
+// Cell colors come from the ONE blessed adherence palette (issue #1445), whose
+// steps are validated in CI: `taken`/`partial` are two steps of the same brand
+// ramp, `skipped` the neutral, `missed` the rose. Each cell also carries a title,
+// a `data-state`, and a legend row below, so state is never color-alone.
 const STATE_STYLE: Record<AdherenceState, string> = {
-  taken: "bg-emerald-500 text-white dark:bg-emerald-600",
-  partial:
-    "bg-emerald-200 text-emerald-900 dark:bg-emerald-800 dark:text-emerald-100",
-  skipped: "bg-slate-300 text-slate-700 dark:bg-ink-700 dark:text-slate-200",
-  missed: "bg-rose-400 text-white dark:bg-rose-600",
-  na: "bg-transparent text-slate-500 dark:text-slate-400",
+  taken: chartAdherenceState.taken.class,
+  partial: chartAdherenceState.partial.class,
+  skipped: chartAdherenceState.skipped.class,
+  missed: chartAdherenceState.missed.class,
+  na: chartAdherenceState.na.class,
 };
 
 const STATE_LABEL: Record<AdherenceState, string> = {

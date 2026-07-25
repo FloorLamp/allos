@@ -20,6 +20,7 @@ export default function BodyQuickAdd({
   weightUnit,
   defaultDate,
   showBodyFat = true,
+  onSaved,
 }: {
   weightUnit: WeightUnit;
   defaultDate: string;
@@ -27,6 +28,12 @@ export default function BodyQuickAdd({
   // charts/history — so "not tracked" is consistent instead of hidden-yet-enterable.
   // Defaults to shown (adult / unknown age).
   showBodyFat?: boolean;
+  // Fired after a successful save (issue #1468), so a MOUNTING CONTEXT can react
+  // — the quick-entry overlay closes itself, leaving the user on whatever page
+  // they logged from. Absent on the page mount, where the form simply stays put
+  // and resets; this is the only difference between the two mounts, which is why
+  // one component still serves both.
+  onSaved?: () => void;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -96,6 +103,7 @@ export default function BodyQuickAdd({
     toast("Entry saved");
     formRef.current?.reset();
     router.refresh();
+    onSaved?.();
   }
 
   return (

@@ -11,6 +11,17 @@ import {
   YAxis,
 } from "recharts";
 import { useChartColors } from "./useChartColors";
+import {
+  CHART_LABEL_FONT_SIZE,
+  chartActiveDot,
+  chartAnnotationLabel,
+  chartAxisLabelProps,
+  chartAxisProps,
+  chartDash,
+  chartGridProps,
+  chartTooltipProps,
+  useChartMotion,
+} from "./chart-scaffold";
 import { chartSeries } from "@/lib/chart-colors";
 
 // One reference percentile band curve, sampled across ages.
@@ -51,6 +62,7 @@ export default function GrowthChart({
   valueRound?: number;
 }) {
   const c = useChartColors();
+  const motion = useChartMotion();
 
   // Merge every band-sample age and every measurement age into one sorted axis,
   // then build a row per age with a column per band percentile plus the trajectory.
@@ -120,7 +132,7 @@ export default function GrowthChart({
           x={cx + 3}
           y={cy}
           dy={3}
-          fontSize={9}
+          fontSize={CHART_LABEL_FONT_SIZE}
           fill={c.tick}
           textAnchor="start"
         >
@@ -140,27 +152,19 @@ export default function GrowthChart({
             data={data}
             margin={{ top: 10, right: 26, bottom: 4, left: -8 }}
           >
-            <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
+            <CartesianGrid {...chartGridProps(c)} />
             <XAxis
               dataKey="ageMonths"
               type="number"
               domain={[minMonths, maxMonths]}
               tickFormatter={tickFmt}
-              tick={{ fontSize: 11, fill: c.tick }}
-              stroke={c.axis}
-              label={{
-                value: axisLabel,
+              {...chartAxisProps(c)}
+              label={chartAxisLabelProps(c, axisLabel, {
                 position: "insideBottom",
                 offset: -2,
-                fontSize: 10,
-                fill: c.tick,
-              }}
+              })}
             />
-            <YAxis
-              tick={{ fontSize: 11, fill: c.tick }}
-              stroke={c.axis}
-              domain={["auto", "auto"]}
-            />
+            <YAxis {...chartAxisProps(c)} domain={["auto", "auto"]} />
             <Tooltip
               formatter={(v, name) => {
                 if (name === "traj") return [`${v}${unit}`, "This profile"];
@@ -175,28 +179,15 @@ export default function GrowthChart({
                   ? `Age ${Math.round((mo / 12) * 10) / 10} y`
                   : `Age ${Math.round(mo)} mo`;
               }}
-              contentStyle={{
-                fontSize: 12,
-                borderRadius: 8,
-                background: c.tooltipBg,
-                border: `1px solid ${c.tooltipBorder}`,
-                color: c.tooltipText,
-              }}
-              labelStyle={{ color: c.tooltipText }}
-              itemStyle={{ color: c.tooltipText }}
+              {...chartTooltipProps(c, motion)}
             />
 
             {/* Current-age marker. */}
             <ReferenceLine
               x={currentAgeMonths}
               stroke={c.axis}
-              strokeDasharray="4 4"
-              label={{
-                value: "now",
-                position: "top",
-                fontSize: 9,
-                fill: c.tick,
-              }}
+              strokeDasharray={chartDash.now}
+              label={chartAnnotationLabel("now", c.tick, "top")}
             />
 
             {/* Reference percentile bands. */}
@@ -220,8 +211,13 @@ export default function GrowthChart({
               dataKey="traj"
               stroke={chartSeries.brand}
               strokeWidth={2.5}
-              dot={{ r: 3, fill: chartSeries.brand, stroke: chartSeries.brand }}
-              activeDot={{ r: 4 }}
+              dot={{
+                r: 3,
+                fill: c.surface,
+                stroke: chartSeries.brand,
+                strokeWidth: 1.5,
+              }}
+              activeDot={chartActiveDot(chartSeries.brand)}
               isAnimationActive={false}
               connectNulls
             />

@@ -123,3 +123,157 @@ describe("chart color palette boundary (issue #794)", () => {
     expect(/export const chartBand\b/.test(src)).toBe(true);
   });
 });
+
+// ── the hex scan's blind spot: Tailwind-CLASS ramps (issue #1445, Part 4d) ───
+//
+// The scan above sees hex literals. A calendar heatmap does not use hex — its
+// cells are Tailwind classes — so `WorkoutHeatmap`, `ActiveDaysStrip` and
+// `AdherenceCalendar` each carried their own hand-rolled `bg-emerald-200 …
+// dark:bg-emerald-900` ladder, three copies, entirely invisible to the guard
+// that exists to stop exactly that. They now consume the blessed ramp exports
+// (`chartActivityRamp` / `chartAdherenceState`), which ship the class ladder AND
+// its hexes so the palette test can validate the thing that actually renders.
+//
+// The rule is deliberately narrow, because a broad "3+ bg-* classes" heuristic
+// lights up ~85 files of ordinary chip/button/badge styling. What it matches is
+// the RAMP SHAPE specifically: an ARRAY of bg-classes drawn from ONE hue family,
+// i.e. a ladder indexed by level. Categorical status maps (keyed objects, mixed
+// hues) are a different job and are not touched.
+
+// A class string containing a `bg-<hue>-<step>` utility (a `dark:` twin counts).
+const BG_CLASS = String.raw`"[^"\n]*(?<![\w-])(?:dark:)?bg-[a-z]+-\d{2,3}(?![\w-])[^"\n]*"`;
+// Three or more of them in an array literal.
+const CLASS_RAMP = new RegExp(
+  String.raw`\[\s*(?:${BG_CLASS}\s*,\s*){2,}${BG_CLASS}\s*,?\s*\]`,
+  "s"
+);
+const HUE = /(?<![\w-])(?:dark:)?bg-([a-z]+)-(\d{2,3})(?![\w-])/g;
+
+// Neutral families. A cell ramp's EMPTY square is deliberately a neutral, and it
+// carries a different neutral per theme (`bg-slate-100 dark:bg-ink-800`), so a
+// naive "how many hue families?" count reads a perfectly ordinary one-hue ramp
+// as three-hue and lets it through. Excluding neutrals is what makes the rule
+// actually catch the shape it exists for.
+const NEUTRAL_HUES = new Set([
+  "slate",
+  "gray",
+  "zinc",
+  "neutral",
+  "stone",
+  "ink",
+  "white",
+  "black",
+]);
+
+// A ladder needs at least this many distinct steps of its one hue; below that
+// it is a pair of states, not a ramp.
+const MIN_RAMP_STEPS = 3;
+
+// Files allowed to declare a same-hue bg ladder, with the reason.
+const RAMP_ALLOWLIST = new Map<string, string>([
+  [
+    "lib/chart-colors.ts",
+    "the blessed ramp itself (chartActivityRamp) — this is where a cell ramp lives",
+  ],
+]);
+
+// The ramp rule scans lib/ too: the ramp is DECLARED there (a .ts module), and a
+// second one appearing beside it would evade a .tsx-only walk.
+function rampScanFiles(): { rel: string; text: string }[] {
+  const files: { rel: string; text: string }[] = [...tsxFiles()];
+  for (const d of ["lib"]) {
+    const abs = path.join(REPO, d);
+    if (!fs.existsSync(abs)) continue;
+    for (const full of walkAll(abs)) {
+      const rel = path.relative(REPO, full).split(path.sep).join("/");
+      if (rel.includes("__tests__")) continue;
+      files.push({ rel, text: fs.readFileSync(full, "utf8") });
+    }
+  }
+  return files;
+}
+
+function walkAll(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name === "node_modules" || entry.name === ".next") continue;
+      out.push(...walkAll(full));
+    } else if (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+/**
+ * Array literals of bg-classes that read as a SEQUENTIAL RAMP: several steps of
+ * ONE non-neutral hue. A categorical status array (Avatar's per-initial tints,
+ * a good/warn/bad set) draws from several hues and is a different job entirely.
+ */
+function sameHueLadders(text: string): string[] {
+  const out: string[] = [];
+  const matches = text.match(new RegExp(CLASS_RAMP.source, "gs")) ?? [];
+  for (const block of matches) {
+    const pairs = [...block.matchAll(HUE)];
+    const hues = new Set(
+      pairs.map((m) => m[1]).filter((h) => !NEUTRAL_HUES.has(h))
+    );
+    const steps = new Set(
+      pairs.filter((m) => !NEUTRAL_HUES.has(m[1])).map((m) => m[2])
+    );
+    if (hues.size === 1 && steps.size >= MIN_RAMP_STEPS) {
+      out.push(block.replace(/\s+/g, " ").slice(0, 120));
+    }
+  }
+  return out;
+}
+
+describe("Tailwind-class cell ramps (issue #1445, Part 4d)", () => {
+  it("no surface hand-rolls a same-hue bg ramp — consume the blessed ramp from @/lib/chart-colors", () => {
+    const offenders: string[] = [];
+    for (const { rel, text } of rampScanFiles()) {
+      if (RAMP_ALLOWLIST.has(rel)) continue;
+      for (const block of sameHueLadders(text)) {
+        offenders.push(`${rel}: ${block}`);
+      }
+    }
+    expect(
+      offenders,
+      `A light->dark ladder of Tailwind bg-classes is a SEQUENTIAL CELL RAMP — ` +
+        `the same kind of palette decision chartSeries makes, just expressed in ` +
+        `classes instead of hex, and therefore invisible to the hex scan above. ` +
+        `Import chartActivityRamp (or add a new named ramp beside it, with its ` +
+        `hexes, so lib/__tests__/chart-palette.test.ts can validate it):\n` +
+        offenders.join("\n")
+    ).toEqual([]);
+  });
+
+  it("the palette module still ships both halves of every ramp (classes AND hexes)", () => {
+    const src = fs.readFileSync(path.join(REPO, "lib/chart-colors.ts"), "utf8");
+    expect(/export const chartActivityRamp\b/.test(src)).toBe(true);
+    expect(/export const chartAdherenceState\b/.test(src)).toBe(true);
+    // The class ladder without its hexes would leave the validator checking a
+    // fiction; the hexes without the ladder would leave the DOM unvalidated.
+    expect(/stepClasses:/.test(src)).toBe(true);
+    expect(/light: \{ empty:/.test(src)).toBe(true);
+  });
+
+  it("every ramp-allowlist entry still declares a ladder (no stale entries)", () => {
+    const stale: string[] = [];
+    for (const rel of RAMP_ALLOWLIST.keys()) {
+      const abs = path.join(REPO, rel);
+      if (
+        !fs.existsSync(abs) ||
+        sameHueLadders(fs.readFileSync(abs, "utf8")).length === 0
+      ) {
+        stale.push(rel);
+      }
+    }
+    expect(
+      stale,
+      `These RAMP_ALLOWLIST entries no longer declare a bg-class ladder:\n${stale.join("\n")}`
+    ).toEqual([]);
+  });
+});

@@ -54,6 +54,11 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     why: "read-only (#1333): resolves one sync event's per-row provenance (getSyncRowProvenance) for the Connected-sources drill-in — profile-scoped read, writes nothing, so login-scoped requireSession() is the right gate",
   },
   {
+    file: "app/(app)/quick-entry-actions.ts",
+    fn: "loadQuickEntry",
+    why: "read-only (#1468): gathers the props for the quick-entry overlay's forms (unit prefs, the day's food servings + ordered catalog, today's due doses) — every WRITE still goes through the mounted form's own gated action (addBodyMetric / addVitals / logFoodServing / markTaken), so login-scoped requireSession() is the right gate",
+  },
+  {
     file: "app/(app)/search-actions.ts",
     fn: "runGlobalSearch",
     why: "read-only: cross-domain search of the active profile",

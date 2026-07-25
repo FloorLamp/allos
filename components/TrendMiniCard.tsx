@@ -11,8 +11,18 @@ import type { AppRoute } from "@/lib/hrefs";
 // latest value with a net-change badge over the visible window, and a small
 // sparkline. The data is pre-windowed and already in display units by the caller
 // (the hub converts kg/km at the boundary), so this component only formats and
-// draws it. Reuses LineChartCard for the sparkline. An optional `footer` slot
-// holds per-tile controls (the Phase-2 pin toggle).
+// draws it. An optional `footer` slot holds per-tile controls (the Phase-2 pin
+// toggle).
+//
+// TRUE SPARKLINE (#1445). This called itself a sparkline while rendering the FULL
+// LineChartCard at h-40 — so every tile carried a complete X+Y axis, with 11px
+// ticks and margins sized for a 256px-tall chart crammed into a ~150px-wide tile
+// on a 390px phone. The ticks collided with each other and the plot got whatever
+// was left. It now asks LineChartCard for its `sparkline` variant (no grid, no
+// axes, near-zero margins) and renders the numbers those axes were there to
+// supply — min / max / latest — as inline TEXT under the plot, which is legible
+// at any width. Same component, same data, same testids; the chart just stops
+// spending the tile on chrome.
 //
 // The change badge is driven by robustSeriesSummary — the SAME robust-endpoint
 // computation the "what's trending" digest above uses (#398) — so the tile's arrow
@@ -56,6 +66,10 @@ export default function TrendMiniCard({
 }) {
   const values = data.map((d) => d.value).filter((v): v is number => v != null);
   const latest = values.length > 0 ? values[values.length - 1] : null;
+  // The window's extremes, which the (now hidden) Y axis used to imply. Shown as
+  // text so the tile still answers "how big is this swing?" without an axis.
+  const lo = values.length > 0 ? Math.min(...values) : null;
+  const hi = values.length > 0 ? Math.max(...values) : null;
   const summary = robustSeriesSummary({ points: data, range, minPctChange });
   // The tile draws no reference bands, so band-inclusion is moot — only the
   // value-and-range-driven [lo, hi] matters. Skipped when there are no points.
@@ -106,19 +120,37 @@ export default function TrendMiniCard({
         )}
       </div>
       {data.length === 0 ? (
-        <div className="flex h-40 items-center justify-center text-sm text-slate-500 dark:text-slate-400">
+        <div className="flex h-32 items-center justify-center text-sm text-slate-500 dark:text-slate-400">
           No data in this range
         </div>
       ) : (
-        <LineChartCard
-          data={data}
-          label={label}
-          unit={unit}
-          color={color}
-          decimals={decimals}
-          heightClass="h-40"
-          yDomain={yDomain}
-        />
+        <>
+          <LineChartCard
+            data={data}
+            label={label}
+            unit={unit}
+            color={color}
+            decimals={decimals}
+            heightClass="h-32"
+            yDomain={yDomain}
+            sparkline
+          />
+          {lo != null && hi != null && (
+            <div
+              className="mt-1 flex items-baseline justify-between gap-2 text-xs tabular-nums text-slate-500 dark:text-slate-400"
+              data-testid="trend-mini-range"
+            >
+              <span>
+                Low {round(lo, decimals)}
+                {unit}
+              </span>
+              <span>
+                High {round(hi, decimals)}
+                {unit}
+              </span>
+            </div>
+          )}
+        </>
       )}
       {footer && <div className="mt-2 flex justify-end">{footer}</div>}
     </div>

@@ -85,7 +85,7 @@ export default function OuraScores({ scores }: { scores: OuraScores }) {
             testid="oura-readiness-score"
             label="Oura readiness"
             score={scores.readiness}
-            color={chartSeries.emerald}
+            color={chartSeries.sky}
           />
         )}
       </div>
