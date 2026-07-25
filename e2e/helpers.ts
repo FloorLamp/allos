@@ -216,6 +216,40 @@ export async function settledCheck(
   }).toPass({ timeout });
 }
 
+// Choose a `<select>` option so the change durably lands in React STATE — the
+// select analog of settledFill/settledCheck.
+//
+// Same root cause: a `selectOption()` dispatched before React hydrates a CONTROLLED
+// select sets the DOM value but fires no `onChange`, so state never moves and
+// hydration REVERTS it — and for a select whose handler NAVIGATES (the responsive
+// tables' card-mode sort control, #1426) the swallowed change leaves no trace at all:
+// no POST to await, no URL to watch, just a spec that times out on the destination.
+//
+// Wait for React's hydration markers on the node, then select; retrying is safe
+// because `selectOption` sets an ABSOLUTE value (unlike a toggle, a second
+// application is a no-op), so the whole thing sits inside the probe.
+export async function settledSelect(
+  page: Page,
+  select: Locator,
+  value: string,
+  opts: { timeout?: number } = {}
+): Promise<void> {
+  const timeout = opts.timeout ?? 10_000;
+  await expect(select).toBeVisible();
+  await expect(async () => {
+    const hydrated = await select.evaluate((el) =>
+      Object.keys(el).some(
+        (k) => k.startsWith("__reactFiber$") || k.startsWith("__reactProps$")
+      )
+    );
+    // Not hydrated yet → toPass retries (the selection would be reverted). Once
+    // React has attached, the change fires onChange and the value sticks.
+    expect(hydrated, "select not hydrated yet").toBe(true);
+    await select.selectOption(value);
+    await expect(select).toHaveValue(value, { timeout: 2_000 });
+  }).toPass({ timeout });
+}
+
 // Click a pure CLIENT TOGGLE exactly once, after React has hydrated it — the
 // button analog of settledFill/settledCheck.
 //
@@ -430,4 +464,82 @@ export async function openMobileDrawer(page: Page): Promise<Locator> {
 // every other click failure must reach the caller.
 function isDetachedElementError(err: Error): boolean {
   return /not attached|is detached|element was detached/i.test(err.message);
+}
+
+// ── Touch gestures (issues #1425 / #1469) ────────────────────────────────────
+//
+// Drive a real one-finger drag. Playwright's `page.touchscreen` only taps, and
+// `page.mouse` produces `pointerType: "mouse"` events which the shell/page
+// gestures deliberately ignore (a mouse drag across a page is a text selection,
+// not a navigation). So this goes through CDP `Input.dispatchTouchEvent`, the
+// same channel `touchscreen.tap` uses: Chromium runs it through its real input
+// pipeline, which is what produces the compatibility PointerEvents the
+// recognizer (components/overlay/useDragGesture.ts) listens for — including the
+// `pointercancel` the browser fires when it decides the gesture is a scroll.
+// Synthesising PointerEvents in `page.evaluate` would bypass exactly that
+// arbitration and prove nothing about the behaviour that matters.
+//
+// `stepDelayMs` is how a spec chooses between the two commit paths in
+// lib/gesture.ts: 0 (the default) is a fast flick, a delay makes the same
+// distance a slow drag that must clear `commitPx` on distance alone.
+export async function touchSwipe(
+  page: Page,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  opts: { steps?: number; stepDelayMs?: number } = {}
+): Promise<void> {
+  const steps = Math.max(2, opts.steps ?? 10);
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: from.x, y: from.y }],
+    });
+    for (let i = 1; i <= steps; i++) {
+      if (opts.stepDelayMs) await page.waitForTimeout(opts.stepDelayMs);
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [
+          {
+            x: from.x + ((to.x - from.x) * i) / steps,
+            y: from.y + ((to.y - from.y) * i) / steps,
+          },
+        ],
+      });
+    }
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+  } finally {
+    await cdp.detach();
+  }
+}
+
+// The centre of an element, in viewport coordinates — the natural place for a
+// finger to land on it — measured only once the element has STOPPED MOVING.
+//
+// The settling is the whole point. Every surface a gesture spec wants to grab
+// arrives on a 240ms slide, and a `boundingBox()` taken mid-animation is a
+// position the element has already left: the coordinates go to CDP, the touch
+// lands wherever the panel has since moved to, and the gesture is delivered to
+// some other element entirely (a heading, the backdrop) with no error — the test
+// just fails to do anything. Polling until two consecutive reads agree costs a
+// few frames and removes the whole class.
+export async function centerOf(
+  locator: Locator
+): Promise<{ x: number; y: number }> {
+  let previous: string | null = null;
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const box = await locator.boundingBox();
+    const key = box
+      ? `${Math.round(box.x)},${Math.round(box.y)},${Math.round(box.width)},${Math.round(box.height)}`
+      : null;
+    if (box && key === previous) {
+      return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    }
+    previous = key;
+    await locator.page().waitForTimeout(50);
+  }
+  throw new Error("element never settled into a stable position");
 }

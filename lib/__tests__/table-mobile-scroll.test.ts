@@ -14,6 +14,12 @@ import { fileURLToPath } from "node:url";
 //                          used where a tall table also wants a sticky header).
 //   - `<ScrollFade>`     — components/ScrollFade.tsx, itself an `overflow-x-auto`
 //                          container that additionally fades the scrollable edge.
+//   - `<ResponsiveTable>`— components/ResponsiveTable.tsx (issue #1426): the table
+//                          stops being a table below `sm` and stacks as cards over
+//                          the SAME DOM, so there is no horizontal overflow left to
+//                          scroll. A stronger answer than wrap-and-scroll, not a
+//                          weaker one — sideways-swiping a data table on a phone
+//                          hides the columns that matter even when it "works".
 // This reads the repo's own JSX as TEXT (no DB, no browser, so it stays "pure" in
 // the vitest sense) and fails the build if any component that renders a `<table>`
 // lacks a scroll container in the same file. The check is a per-file string
@@ -25,19 +31,21 @@ const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
 // Directories scanned for rendered UI source.
 const SCAN_DIRS = ["app", "components"];
 
-// Markers that put a `<table>` inside a horizontal-scroll container.
-const SCROLL_MARKERS = /overflow-x-auto|overflow-auto|<ScrollFade\b/;
+// Markers that give a `<table>` a working narrow-viewport strategy: a
+// horizontal-scroll container, or the card-stacking primitive that removes the
+// horizontal axis altogether.
+const SCROLL_MARKERS =
+  /overflow-x-auto|overflow-auto|<ScrollFade\b|<ResponsiveTable\b/;
 
-// Files allowed to render a `<table>` without a scroll wrapper because they use a
-// DIFFERENT, deliberate mobile strategy — responsive column-hiding — instead of
-// wrap-and-scroll:
-//  - components/BiomarkersTable.tsx hides the Panel/Notes/Category columns below
-//    `md` (`hidden md:table-cell`) so the remaining columns fit a phone without a
-//    horizontal scroll. (It also carries `overflow-auto` for VERTICAL scroll under
-//    a sticky header, so it passes the marker check today too; the allowlist keeps
-//    it green if that vertical wrapper ever changes, since column-hiding is its
-//    load-bearing horizontal strategy.)
-const ALLOWLIST = new Set<string>(["components/BiomarkersTable.tsx"]);
+// Files allowed to render a `<table>` without any of those markers because they use
+// a DIFFERENT, deliberate narrow-viewport strategy:
+//  - components/ResponsiveTable.tsx IS the card-stacking primitive — it emits the
+//    `<table className="table-cards">` the CSS re-lays as cards below `sm`, so it
+//    can't be asked to wrap itself in a scroller.
+// (components/BiomarkersTable.tsx used to live here as a column-hider — hiding
+// Panel/Notes/Category below `md`. It now renders through <ResponsiveTable> (#1426),
+// so those columns come BACK on a phone as card meta lines instead of being dropped.)
+const ALLOWLIST = new Set<string>(["components/ResponsiveTable.tsx"]);
 
 function isExcluded(rel: string): boolean {
   return (
@@ -87,14 +95,15 @@ describe("wide-table mobile scroll boundary (issue #794 cluster 6)", () => {
     }
     expect(
       offenders,
-      `These files render a <table> with no horizontal-scroll wrapper, so wide ` +
-        `columns clip silently on a phone. Wrap the table in ` +
+      `These files render a <table> with no narrow-viewport strategy, so wide ` +
+        `columns clip silently on a phone. Render it through <ResponsiveTable> ` +
+        `(it stacks as cards below sm — #1426), wrap it in ` +
         `<div className="overflow-x-auto"> (or <ScrollFade>), or — if it hides ` +
         `columns responsively instead — allowlist it here:\n${offenders.join("\n")}`
     ).toEqual([]);
   });
 
-  it("every allowlisted column-hider still exists and renders a table", () => {
+  it("every allowlisted file still exists and renders a table", () => {
     for (const rel of ALLOWLIST) {
       const abs = path.join(REPO, rel);
       expect(fs.existsSync(abs), `${rel} is allowlisted but missing`).toBe(

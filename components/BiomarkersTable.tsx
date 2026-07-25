@@ -5,6 +5,8 @@ import Link from "next/link";
 import type { MedicalRecord } from "@/lib/types";
 import { Tag, MedicalValue } from "./ui";
 import SortableHeader from "./SortableHeader";
+import TableSortSelect from "./TableSortSelect";
+import { ResponsiveTable, Td } from "./ResponsiveTable";
 import NotesText from "./NotesText";
 import RecordForm from "./RecordForm";
 import OverflowMenu, { MENU_ITEM, MENU_ITEM_DANGER } from "./OverflowMenu";
@@ -40,6 +42,16 @@ type TableRecord = MedicalRecord & {
 export interface BiomarkersMultiView {
   actingProfileId: number;
 }
+
+// The sortable columns, as the card-mode select knows them (#1426). One list, kept
+// beside the SortableHeaders it mirrors: same column ids, same default directions
+// (Date opens newest-first), so the two affordances can't disagree about what
+// "sorted by date" means.
+const SORT_CHOICES = [
+  { column: "name", label: "Name" },
+  { column: "panel", label: "Panel" },
+  { column: "date", label: "Date", defaultDir: "desc" as const },
+];
 
 // The active-filter context threaded through to build the panel/category filter
 // links (each preserves the current sort/range/etc., matching the server-built
@@ -224,17 +236,30 @@ function BiomarkerRow({
   const showChip =
     !!multiView && !!r.subject && subjectChipVisible({ multi: true, isActing });
   const writeProfileId = multiView ? r.profileId : undefined;
-  // The leading subject cell (multi-view only), rendered first in every row.
+  // The leading subject cell (multi-view only), rendered first in every row. On a
+  // card it's the first meta item — the chip IS its own label (#534), so no
+  // "Profile" prefix — and it drops out entirely on an acting-profile row.
   const subjectCell = multiView ? (
-    <td className="td align-top">
+    <Td slot="meta" empty={!showChip} className="align-top">
       {showChip && r.subject ? <SubjectChip subject={r.subject} /> : null}
-    </td>
+    </Td>
   ) : null;
+  // The name cell. In TABLE mode the group's name shows once, on the group's start
+  // row (the classic run-heading). A CARD is a standalone row, so a continuation
+  // card with no name would be unreadable — it repeats the name below `sm`. Same
+  // authored cell, one visibility rule; never a second, separately-written tree.
+  const titleCell = (
+    <Td slot="title">
+      <span className={isStart ? undefined : "sm:hidden"}>
+        {nameCell({ ...r, stale })}
+      </span>
+    </Td>
+  );
 
   if (editing) {
     return (
       <tr className="border-b border-black/5 bg-slate-50/60 dark:border-white/10 dark:bg-ink-900/60">
-        <td colSpan={multiView ? 9 : 8} className="px-3 py-3">
+        <Td slot="full" colSpan={multiView ? 9 : 8} className="py-3">
           <RecordForm
             mode="edit"
             record={r}
@@ -243,7 +268,7 @@ function BiomarkerRow({
             categories={BIOMARKER_CATEGORIES}
             writeProfileId={writeProfileId}
           />
-        </td>
+        </Td>
       </tr>
     );
   }
@@ -258,34 +283,60 @@ function BiomarkerRow({
         className={isEnd ? "border-b border-black/5 dark:border-white/10" : ""}
       >
         {subjectCell}
-        <td className="td">{isStart ? nameCell({ ...r, stale }) : null}</td>
-        <td className="td hidden md:table-cell">
+        {titleCell}
+        {/* Panel/Reference are structurally absent for a computed index — they hold
+            the table's column grid, and claim no card slot (`empty`), so the card
+            shows only what a derived row actually has. */}
+        <Td empty className="hidden md:table-cell">
           <span className="text-slate-300 dark:text-slate-600">—</span>
-        </td>
-        <td className="td">
+        </Td>
+        <Td slot="value">
           <MedicalValue value={r.value} unit={r.unit} flag={r.flag} />
-        </td>
-        <td className="td hidden text-slate-500 sm:table-cell dark:text-slate-400">
+        </Td>
+        <Td
+          empty
+          className="hidden text-slate-500 sm:table-cell dark:text-slate-400"
+        >
           —
-        </td>
-        <td className="td hidden text-slate-500 md:table-cell dark:text-slate-400">
+        </Td>
+        <Td
+          slot="meta"
+          label="Formula"
+          empty={!r.derived_formula}
+          className="hidden text-slate-500 md:table-cell dark:text-slate-400"
+        >
           {r.derived_formula ?? ""}
-        </td>
-        <td className="td hidden md:table-cell">
+        </Td>
+        <Td
+          slot="meta"
+          label="Category"
+          empty={!r.category}
+          className="hidden md:table-cell"
+        >
           <Tag value={r.category} />
-        </td>
-        <td className="td">{dateCell(r, now, !!r.is_latest)}</td>
-        <td className="td text-right text-xs text-slate-500 dark:text-slate-400">
+        </Td>
+        <Td slot="meta" label="Date">
+          {dateCell(r, now, !!r.is_latest)}
+        </Td>
+        <Td
+          slot="actions"
+          className="text-right text-xs text-slate-500 dark:text-slate-400"
+        >
           Computed
-        </td>
+        </Td>
       </tr>
     );
   }
   return (
     <tr className={isEnd ? "border-b border-black/5 dark:border-white/10" : ""}>
       {subjectCell}
-      <td className="td">{isStart ? nameCell({ ...r, stale }) : null}</td>
-      <td className="td hidden md:table-cell">
+      {titleCell}
+      <Td
+        slot="meta"
+        label="Panel"
+        empty={!r.panel}
+        className="hidden md:table-cell"
+      >
         {r.panel ? (
           <Link
             href={qs({
@@ -303,17 +354,32 @@ function BiomarkerRow({
         ) : (
           <span className="text-slate-300 dark:text-slate-600">—</span>
         )}
-      </td>
-      <td className="td">
+      </Td>
+      <Td slot="value">
         <MedicalValue value={r.value} unit={r.unit} flag={r.flag} />
-      </td>
-      <td className="td hidden text-slate-500 sm:table-cell dark:text-slate-400">
+      </Td>
+      <Td
+        slot="meta"
+        label="Reference"
+        empty={!r.reference_range}
+        className="hidden text-slate-500 sm:table-cell dark:text-slate-400"
+      >
         {r.reference_range ?? "—"}
-      </td>
-      <td className="td hidden text-slate-500 md:table-cell dark:text-slate-400">
+      </Td>
+      <Td
+        slot="meta"
+        label="Notes"
+        empty={!r.notes}
+        className="hidden text-slate-500 md:table-cell dark:text-slate-400"
+      >
         <NotesText notes={r.notes} />
-      </td>
-      <td className="td hidden md:table-cell">
+      </Td>
+      <Td
+        slot="meta"
+        label="Category"
+        empty={!r.category}
+        className="hidden md:table-cell"
+      >
         <Link
           href={qs({
             category: r.category,
@@ -329,9 +395,11 @@ function BiomarkerRow({
         >
           <Tag value={r.category} />
         </Link>
-      </td>
-      <td className="td">{dateCell(r, now, !!r.is_latest)}</td>
-      <td className="td">
+      </Td>
+      <Td slot="meta" label="Date">
+        {dateCell(r, now, !!r.is_latest)}
+      </Td>
+      <Td slot="actions">
         {/* Multi-view (#1331): a row whose SUBJECT is read-only-granted shows no
             edit/delete; single-view rows are always the acting profile. */}
         {canWrite ? (
@@ -387,7 +455,7 @@ function BiomarkerRow({
             </OverflowMenu>
           </div>
         ) : null}
-      </td>
+      </Td>
     </tr>
   );
 }
@@ -443,8 +511,22 @@ export default function BiomarkersTable({
     });
   return (
     <div className="card mb-6 overflow-hidden p-0">
-      <div className="max-h-[70vh] overflow-auto">
-        <table className="w-full">
+      {/* Card mode hides `thead`, so the header's sort links go with it — this
+          select is the same sorting, one control instead of a header strip
+          (#1426). It writes the SAME `?sort=`/`?dir=` params SortableHeader does,
+          so the server ordering below is untouched. */}
+      <div className="border-b border-black/5 px-3 py-2 sm:hidden dark:border-white/10">
+        <TableSortSelect
+          choices={SORT_CHOICES}
+          defaultSort="name"
+          label="Sort by"
+        />
+      </div>
+      {/* The height cap is a desktop affordance (a tall table under a sticky
+          header); on a phone the cards flow with the page instead of trapping a
+          second scroll region inside it. */}
+      <div className="overflow-auto sm:max-h-[70vh]">
+        <ResponsiveTable className="w-full" data-testid="biomarkers-table">
           <thead>
             <tr className="border-b border-black/5 dark:border-white/10">
               {multiView && (
@@ -519,7 +601,7 @@ export default function BiomarkersTable({
               }
             )}
           </tbody>
-        </table>
+        </ResponsiveTable>
       </div>
       {pagination && pagination.total > 0 && (
         <div

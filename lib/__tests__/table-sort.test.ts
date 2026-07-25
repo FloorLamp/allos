@@ -5,6 +5,9 @@ import {
   nextSortState,
   sortRows,
   groupContiguous,
+  sortChoiceValue,
+  parseSortChoiceValue,
+  sortChoiceOptions,
 } from "../table-sort";
 
 const COLUMNS = ["name", "date", "status"] as const;
@@ -174,5 +177,59 @@ describe("groupContiguous", () => {
 
   it("returns an empty array for no rows", () => {
     expect(groupContiguous([], (r: { k: string }) => r.k)).toEqual([]);
+  });
+});
+
+// The compact card-mode sort control (issue #1426). Below `sm` a responsive table
+// hides its header strip, so ONE select carries both sort axes; these pin the
+// value round-trip and the whitelist that keeps a hand-edited value from becoming
+// an arbitrary sort key.
+const CHOICES = [
+  { column: "name", label: "Name" },
+  { column: "date", label: "Date", defaultDir: "desc" as const },
+];
+
+describe("sortChoiceValue / parseSortChoiceValue", () => {
+  it("round-trips a column and direction through one value", () => {
+    const v = sortChoiceValue("date", "desc");
+    expect(v).toBe("date:desc");
+    expect(
+      parseSortChoiceValue(v, CHOICES, { column: "name", dir: "asc" })
+    ).toEqual({
+      column: "date",
+      dir: "desc",
+    });
+  });
+
+  it("falls back for an unknown column, a bad direction, or junk", () => {
+    const fallback = { column: "name", dir: "asc" as const };
+    expect(parseSortChoiceValue("panel:asc", CHOICES, fallback)).toEqual(
+      fallback
+    );
+    expect(parseSortChoiceValue("date:sideways", CHOICES, fallback)).toEqual(
+      fallback
+    );
+    expect(parseSortChoiceValue("", CHOICES, fallback)).toEqual(fallback);
+    expect(parseSortChoiceValue("date", CHOICES, fallback)).toEqual(fallback);
+  });
+});
+
+describe("sortChoiceOptions", () => {
+  it("offers both directions per column, the column's default first", () => {
+    expect(sortChoiceOptions(CHOICES)).toEqual([
+      { value: "name:asc", label: "Name (ascending)" },
+      { value: "name:desc", label: "Name (descending)" },
+      // Dates open newest-first, matching their SortableHeader's defaultDir.
+      { value: "date:desc", label: "Date (descending)" },
+      { value: "date:asc", label: "Date (ascending)" },
+    ]);
+  });
+
+  it("every option parses back to a known choice", () => {
+    const fallback = { column: "name", dir: "asc" as const };
+    for (const o of sortChoiceOptions(CHOICES)) {
+      const parsed = parseSortChoiceValue(o.value, CHOICES, fallback);
+      expect(sortChoiceValue(parsed.column, parsed.dir)).toBe(o.value);
+    }
   });
 });

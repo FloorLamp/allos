@@ -7,23 +7,34 @@ import { usePresence } from "./usePresence";
 import { useLockBodyScroll } from "./useLockBodyScroll";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 import { motionMs } from "@/lib/motion";
+import {
+  OverlayDragHandle,
+  overlayMotionClass,
+  useOverlayDrag,
+  OVERLAY_PANEL_BORDER,
+  OVERLAY_PANEL_ELEVATION,
+  OVERLAY_PANEL_RADIUS_BOTTOM,
+  OVERLAY_SAFE_BOTTOM,
+  OVERLAY_SCRIM,
+} from "./overlay";
 
 // The bottom sheet — the phone's modal surface (issue #1416, section E).
 //
 // A PRIMITIVE, not a one-off: it is ModalShell's thumb-reachable sibling, and it
-// is deliberately content-agnostic so the follow-ups can build on it rather than
-// beside it (#1428 generalizes the sheet to more surfaces; #1425 adds
-// drag-to-dismiss). The seams that exist for them:
+// is deliberately content-agnostic so the follow-ups build on it rather than
+// beside it (#1428 generalized the sheet to more surfaces; #1425 made it
+// draggable). What holds that together:
 //
 //   * ONE transformed element. The panel is the only thing that moves — its
 //     enter/exit animation is a `translateY` on `[data-sheet-panel]` and nothing
-//     wraps it in a second transform. A drag layer can therefore take the panel
-//     ref and write `style.transform` directly during the gesture, then hand it
-//     back to the class-driven animation on release, without fighting a parent.
-//   * `panelRef` is forwarded so that layer needs no fork of this file.
-//   * The drag handle is already rendered (`[data-testid="sheet-drag-handle"]`)
-//     as the affordance the gesture will attach to — it reads as draggable today
-//     and becomes draggable in #1425 with no visual change.
+//     wraps it in a second transform, so the drag can write `style.transform`
+//     straight onto it without fighting a parent.
+//   * `panelRef` is forwarded, so a consumer that needs the element (the
+//     quick-entry overlay) needs no fork of this file.
+//   * Motion, scrim, chrome and the drag itself are the SHARED overlay
+//     primitives (components/overlay, #1469) — the same ones the nav drawer and
+//     the activity dock consume, so the three surfaces cannot drift into three
+//     dialects of "slide up".
 //   * a11y (focus trap, Escape, `aria-modal`) is the SHARED useFocusTrap hook, so
 //     a new sheet consumer inherits it instead of re-deriving it.
 //
@@ -107,6 +118,7 @@ export default function BottomSheet({
   const { mounted, phase } = usePresence(open, motionMs("sheet", reduceMotion));
   const localPanelRef = useRef<HTMLDivElement>(null);
   const panelRef = externalPanelRef ?? localPanelRef;
+  const handleRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const descriptionId = useId();
 
@@ -115,29 +127,37 @@ export default function BottomSheet({
   // closing sheet can't swallow the next Escape or steal focus back.
   useFocusTrap({ panelRef, onClose, initialFocusRef, active: open });
 
+  // Drag-to-dismiss (#1425), on the shared recognizer (#1469). THE SHEET'S
+  // OUTCOME IS DISCARD — that is what the lifecycle contract above licenses, and
+  // it is the whole difference between this call site and the activity dock's,
+  // which passes `onMinimize` to the very same hook. Enabled only while open, so
+  // a sheet already playing its exit can't be re-grabbed.
+  const { suppressMotion } = useOverlayDrag({
+    panelRef,
+    grabRef: handleRef,
+    direction: "down",
+    onOutcome: onClose,
+    enabled: open,
+  });
+
   if (!mounted || typeof document === "undefined") return null;
 
   const entering = phase === "enter";
   const asDialog = presentation === "dialog";
-  const backdropMotion = reduceMotion
-    ? ""
-    : entering
-      ? "motion-fade-in"
-      : "motion-fade-out";
+  // A hand-dragged panel owns its own transform for the rest of its life (see
+  // useOverlayDrag) — emitting a keyframe class on top would outrank the inline
+  // transform and freeze the drag.
+  const motion = (anchor: "scrim" | "bottom" | "dialog") =>
+    suppressMotion
+      ? ""
+      : overlayMotionClass(anchor, entering ? "enter" : "exit", reduceMotion);
+  const backdropMotion = motion("scrim");
   // The panel's travel. A plain sheet always slides up; the responsive dialog
-  // uses the `.motion-dialog-*` pair, which IS the slide-up below `md` and
-  // becomes a fade from `md` up — the media query lives in the stylesheet so one
-  // class name covers both viewports (a JS width check would need a resize
-  // listener and would still be wrong between hydration and the first paint).
-  const panelMotion = reduceMotion
-    ? ""
-    : asDialog
-      ? entering
-        ? "motion-dialog-in"
-        : "motion-dialog-out"
-      : entering
-        ? "motion-slide-up-in"
-        : "motion-slide-up-out";
+  // uses the "dialog" anchor, which IS the slide-up below `md` and becomes a
+  // fade from `md` up — the media query lives in the stylesheet so one class
+  // name covers both viewports (a JS width check would need a resize listener
+  // and would still be wrong between hydration and the first paint).
+  const panelMotion = motion(asDialog ? "dialog" : "bottom");
 
   return createPortal(
     <div
@@ -149,7 +169,7 @@ export default function BottomSheet({
       data-presentation={presentation}
     >
       <div
-        className={`absolute inset-0 bg-slate-900/40 dark:bg-black/70 ${backdropMotion}`}
+        className={`${OVERLAY_SCRIM} ${backdropMotion}`}
         onClick={onClose}
         aria-hidden
         data-testid={`${testId}-backdrop`}
@@ -162,20 +182,18 @@ export default function BottomSheet({
         aria-labelledby={titleId}
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
-        className={`relative flex max-h-[85dvh] w-full flex-col overflow-y-auto rounded-t-2xl border-t border-black/10 bg-white px-4 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl outline-none sm:max-w-md sm:rounded-2xl sm:pb-4 dark:border-white/10 dark:bg-ink-900 ${
+        className={`relative flex max-h-[85dvh] w-full flex-col overflow-y-auto border-t bg-white px-4 pt-1 outline-none sm:max-w-md sm:pb-4 dark:bg-ink-900 ${OVERLAY_PANEL_RADIUS_BOTTOM} ${OVERLAY_PANEL_BORDER} ${OVERLAY_PANEL_ELEVATION} ${OVERLAY_SAFE_BOTTOM} ${
           asDialog ? "md:max-h-[80dvh] md:border md:px-6 md:pt-5 md:pb-5" : ""
         } ${panelMotion}`}
       >
-        {/* Drag-handle affordance (#1425 will make it functional). Decorative
-        today: it is what makes the surface read as a sheet you can flick away.
-        A centered dialog is not flickable, so the responsive presentation drops
-        the handle exactly where it stops being true (#1428). */}
-        <div
-          data-testid="sheet-drag-handle"
-          aria-hidden
-          className={`mx-auto mb-2 h-1.5 w-10 shrink-0 rounded-full bg-slate-300 dark:bg-ink-700 ${
-            asDialog ? "md:hidden" : ""
-          }`}
+        {/* The drag affordance, now functional (#1425): a downward drag from
+        here dismisses the sheet. A centered dialog is not flickable, so the
+        responsive presentation drops the handle from `md` up exactly where that
+        stops being true (#1428) — and the recognizer goes with it, since a
+        hidden element receives no pointer events. */}
+        <OverlayDragHandle
+          handleRef={handleRef}
+          className={`mb-0.5 ${asDialog ? "md:hidden" : ""}`}
         />
         <h2
           id={titleId}

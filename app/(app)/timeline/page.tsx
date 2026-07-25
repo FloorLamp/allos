@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { AppRoute } from "@/lib/hrefs";
+import { timelineDayHref, type AppRoute } from "@/lib/hrefs";
 import {
   IconActivity,
   IconAlertTriangle,
@@ -81,7 +81,9 @@ import {
 } from "@/lib/timeline-format";
 import { getIntradayDay } from "@/lib/queries/intraday";
 import IntradayPanel from "@/components/IntradayPanel";
-import { formatLongDate } from "@/lib/format-date";
+import { formatLongDate, formatMonthDay } from "@/lib/format-date";
+import { shiftDateStr } from "@/lib/date";
+import TimelineDayNav from "@/components/TimelineDayNav";
 import { EmptyState, MedicalValue, PageHeader } from "@/components/ui";
 import ActivityIcon from "@/components/ActivityIcon";
 import DateRangeControl from "@/components/DateRangeControl";
@@ -678,6 +680,28 @@ export default async function TimelinePage(props: {
           <IconUsers className="h-4 w-4 shrink-0" stroke={1.75} />
           Viewing {daySubjectName}’s day.
         </div>
+      )}
+
+      {/* Adjacent-day navigation (#1425). Single-day views only — it is the view
+          that HAS neighbours. Both destinations are built here, on the server,
+          with the same `timelineDayHref` every other day link uses (and carrying
+          the `subject` param when the day belongs to another member, so walking
+          days never silently changes whose day you are reading). The component
+          renders the arrows AND owns the horizontal swipe that follows them. */}
+      {singleDaySelected && range.from && (
+        <TimelineDayNav
+          prevHref={timelineDayHref(
+            shiftDateStr(range.from, -1),
+            viewingOtherSubject ? daySubjectId : undefined
+          )}
+          nextHref={timelineDayHref(
+            shiftDateStr(range.from, 1),
+            viewingOtherSubject ? daySubjectId : undefined
+          )}
+          prevLabel={formatMonthDay(shiftDateStr(range.from, -1), formatPrefs)}
+          nextLabel={formatMonthDay(shiftDateStr(range.from, 1), formatPrefs)}
+          targetSelector='[data-testid="app-content-container"]'
+        />
       )}
 
       {/* Retro symptom entry (#799): on a single selected day, offer the one-tap symptom
