@@ -1,5 +1,4 @@
 import { test, expect, type Page } from "@playwright/test";
-import { settledFill } from "./helpers";
 
 // Form hygiene at desktop width (issue #1450, clusters A and B).
 //
@@ -149,11 +148,16 @@ test("a date field displays its own value without clipping (#1450 A / #1448)", a
   const dateField = page.locator('input[id^="appt-date-"]').first(); // first-ok: the appointment form renders one date field; scoping by its id prefix, order-agnostic
   await expect(dateField).toBeVisible();
 
-  // A December date is the widest the short form gets.
-  await settledFill(page, dateField, "2026-12-24");
-
-  // It renders the year-bearing short form, not the year-less long one.
-  await expect(dateField).toHaveValue(/^Dec 24, 2026$/);
+  // A December date is the widest the short form gets. DateField submits the ISO
+  // value through a hidden input and re-renders the visible field as the formatted
+  // display text, so this cannot use settledFill (whose contract is that the
+  // filled string STAYS the DOM value). Retry the fill so a pre-hydration one that
+  // React reverts is re-applied, and settle on the formatted result.
+  await expect(async () => {
+    await dateField.fill("2026-12-24");
+    // The year-bearing short form, not the year-less long one it used to render.
+    await expect(dateField).toHaveValue("Dec 24, 2026", { timeout: 2_000 });
+  }).toPass({ timeout: 15_000 }); // topass-ok: the fill and its formatted re-render are one non-atomic step — a bare expect cannot re-apply a fill React reverted before hydration
   const clipped = await dateField.evaluate(
     (el) => el.scrollWidth > el.clientWidth + 1
   );

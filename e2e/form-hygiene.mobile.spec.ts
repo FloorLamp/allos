@@ -45,9 +45,11 @@ test("the live set row shows a 4-character load at 390px (#1450)", async ({
   page,
 }) => {
   await page.goto("/training");
+  // The phone shell labels the editor entry point "Log activity" (the desktop
+  // hub says "New activity").
   await page
     .getByRole("main")
-    .getByRole("button", { name: "New activity" })
+    .getByRole("button", { name: "Log activity" })
     .click();
 
   // A barbell lift, so the row renders its widest form: both steppers plus the

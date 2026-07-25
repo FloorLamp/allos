@@ -197,7 +197,7 @@ export default function ProfileNotificationSettings({
             Run <code>npm run notify</code> hourly (cron); each slot sends at
             its hour (this profile’s timezone).
           </p>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-2">
+          <div className="grid grid-cols-2 gap-3">
             {(["Morning", "Midday", "Evening", "Bedtime"] as SuppWindow[]).map(
               (w) => (
                 <div key={w}>
