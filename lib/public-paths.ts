@@ -32,6 +32,16 @@ export const PUBLIC_PATHS: ReadonlySet<string> = new Set([
   "/manifest.webmanifest",
   "/sw.js",
   "/offline",
+  // PWA share target (issue #1423). Session-free at the COARSE layer only: the OS
+  // share sheet sends a multipart POST, and middleware's anonymous branch answers
+  // with NextResponse.redirect — a method-PRESERVING 307, which would re-POST the
+  // shared file at /login (a page route that can't accept it). So the handler
+  // (app/share-target/route.ts) takes the decision instead: it calls
+  // getCurrentSession() itself — the authoritative check, exactly as this module's
+  // header describes — and answers an anonymous share with a 303 (see-other, so the
+  // browser follows with GET) to /login, storing NOTHING. Nothing is served here
+  // without a session; the allowlist only buys the handler the right status code.
+  "/share-target",
 ]);
 
 export function isPublicPath(pathname: string): boolean {

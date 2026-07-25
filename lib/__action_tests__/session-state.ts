@@ -22,6 +22,14 @@ export function clearActingSession(): void {
 // The mocked requireSession/requireAdmin/getCurrentSession delegate here. Throwing
 // (rather than redirecting, which needs next/navigation) makes "forgot to seed a
 // session" a loud, obvious test failure instead of a null-deref deep in an action.
+// The NON-throwing read, for the mocked getCurrentSession(): prod's
+// getCurrentSession returns null for an anonymous request, and a route handler's
+// "no session" branch (e.g. the #1423 share target's 303 to /login) can only be
+// tested if the mock can express that. Tests reach it via clearActingSession().
+export function peekActingSession(): CurrentSession | null {
+  return current;
+}
+
 export function getActingSession(): CurrentSession {
   if (!current) {
     throw new Error(
