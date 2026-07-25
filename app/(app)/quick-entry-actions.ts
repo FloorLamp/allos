@@ -2,10 +2,14 @@
 
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
-import { shiftDateStr } from "@/lib/date";
+import { ageInMonthsFromBirthdate, shiftDateStr } from "@/lib/date";
 import { getUnitPrefs } from "@/lib/settings";
-import { getUserAge } from "@/lib/settings/profile-attrs";
-import { showBodyFat } from "@/lib/growth-metrics";
+import { getUserAge, getUserBirthdate } from "@/lib/settings/profile-attrs";
+import {
+  showBodyFat,
+  showGrowthQuickAdd,
+  showHeadCircEntry,
+} from "@/lib/growth-metrics";
 import { isFoodLoggingRelevant } from "@/lib/life-stage";
 import {
   collectHouseholdRollup,
@@ -34,8 +38,8 @@ import type { QuickEntryForm } from "@/lib/quick-log";
 // here. A layout-time snapshot would be as stale as the page.
 //
 // READ-ONLY. It gathers props; every write still goes through the form's own
-// existing Server Action (addBodyMetric / addVitals / logFoodServing /
-// markTaken), which carries its own write gate. `requireSession()` is therefore
+// existing Server Action (addMeasurements / logFoodServing / markTaken), which
+// carries its own write gate. `requireSession()` is therefore
 // the right gate — the same posture as loadSyncRows / runGlobalSearch — and it
 // is allowlisted as such in lib/__tests__/actions-write-access.test.ts.
 
@@ -52,12 +56,16 @@ export interface QuickEntryDose {
 
 export type QuickEntryData =
   | {
-      form: "weight";
+      // ONE combined form since #1486 (weight + vitals + a minor's growth fields),
+      // so the overlay gathers ONE prop set instead of two.
+      form: "measurements";
       defaultDate: string;
       weightUnit: WeightUnit;
+      temperatureUnit: TemperatureUnit;
       showBodyFat: boolean;
+      showGrowth: boolean;
+      showHeadCirc: boolean;
     }
-  | { form: "vitals"; defaultDate: string; temperatureUnit: TemperatureUnit }
   | {
       form: "food";
       today: string;
@@ -80,23 +88,24 @@ export async function loadQuickEntry(
   const { login, profile } = await requireSession();
   const date = today(profile.id);
 
-  if (form === "weight") {
+  if (form === "measurements") {
+    const age = getUserAge(profile.id);
+    const birthdate = getUserBirthdate(profile.id);
+    const prefs = getUnitPrefs(login.id);
     return {
-      form: "weight",
+      form: "measurements",
       defaultDate: date,
-      weightUnit: getUnitPrefs(login.id).weightUnit,
+      weightUnit: prefs.weightUnit,
+      temperatureUnit: prefs.temperatureUnit,
       // #493: body fat isn't tracked for a growth-tracked profile, and the page
-      // mount hides the field — the overlay asks the SAME question so the two
-      // mounts of one component can't disagree about what's enterable.
-      showBodyFat: showBodyFat(getUserAge(profile.id)),
-    };
-  }
-
-  if (form === "vitals") {
-    return {
-      form: "vitals",
-      defaultDate: date,
-      temperatureUnit: getUnitPrefs(login.id).temperatureUnit,
+      // mount hides the field — the overlay asks the SAME questions (the same
+      // lib/growth-metrics gates) so the two mounts of one component can't
+      // disagree about what's enterable.
+      showBodyFat: showBodyFat(age),
+      showGrowth: showGrowthQuickAdd(age),
+      showHeadCirc: showHeadCircEntry(
+        birthdate ? ageInMonthsFromBirthdate(birthdate, date) : null
+      ),
     };
   }
 

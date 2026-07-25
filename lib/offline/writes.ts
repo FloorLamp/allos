@@ -16,6 +16,7 @@ import { isDoseDateAccepted } from "@/lib/dose-log-window";
 import { toKg } from "@/lib/units";
 import type { WeightUnit } from "@/lib/settings";
 import { normalizeVitalsInput, type VitalsRawInput } from "@/lib/vitals-input";
+import { normalizeGrowthInput, type GrowthInputRaw } from "@/lib/growth-input";
 import {
   addCanonicalNames,
   markDoseSkipped,
@@ -193,6 +194,40 @@ export function insertVitals(
     addCanonicalNames(medical.map((m) => m.canonical));
     reconcileFlags(profileId, ids);
   }
+  return true;
+}
+
+// ── growth (height / head circumference) ───────────────────────────────────────
+
+// Persist a manual height / head-circumference measurement. Moved here from the
+// retired `app/(app)/trends/growth-actions.ts` when the standalone growth form
+// folded into the combined "Log measurements" form (#1486): the growth fields are
+// now life-stage-gated rows of ONE form served by ONE action, so its write core
+// belongs beside the other two quick-log cores rather than in a per-form action
+// module. Auth-blind + profileId-first, like its neighbours.
+//
+// Height and head circumference have a single home in metric_samples (metrics
+// 'height_cm' / 'head_circumference_cm') — the SAME place the document-extraction
+// writers land them — so a manually entered value feeds the WHO/CDC growth charts
+// and the height/head-circ Body charts identically to an imported reading. A point
+// metric uses a fixed midnight start, so the natural key (profile_id, metric,
+// source='manual', origin=NULL, start_time) is stable across re-entries: logging
+// the same date again CORRECTS that day rather than stacking a second point.
+// Returns false on a rejected/empty input, true on a successful write.
+export function insertGrowth(
+  profileId: number,
+  date: string,
+  raw: GrowthInputRaw
+): boolean {
+  if (!isRealIsoDate(date)) return false;
+  const normalized = normalizeGrowthInput(raw);
+  if ("error" in normalized) return false;
+  if (normalized.samples.length === 0) return false;
+  writeTx(() => {
+    for (const s of normalized.samples) {
+      upsertManualSample(profileId, s.metric, date, s.value);
+    }
+  });
   return true;
 }
 

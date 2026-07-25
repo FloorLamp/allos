@@ -68,7 +68,7 @@ describe("preventiveHref — per-class deep link from satisfiedBy (#1083)", () =
 
   it("vital (blood pressure) → the vitals entry surface, NOT the biomarkers form (#1076)", () => {
     expect(preventiveHref("screening", "blood_pressure")).toBe(
-      "/trends?tab=vitals&focus=blood-pressure"
+      "/trends?tab=body&focus=blood-pressure"
     );
   });
 
@@ -253,7 +253,7 @@ describe("preventiveAssessmentToUpcomingItem", () => {
       ],
       [
         "blood_pressure",
-        "/trends?tab=vitals&focus=blood-pressure",
+        "/trends?tab=body&focus=blood-pressure",
         "Record a blood pressure reading",
       ],
       [

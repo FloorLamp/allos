@@ -107,7 +107,7 @@ export default function BottomSheet({
   zIndexClass?: string;
   // Keep the title as the sheet's ACCESSIBLE name but let the mounted content
   // own the visible heading. For a sheet hosting an existing form component (the
-  // #1468 quick-entry overlay mounts BodyQuickAdd / VitalsQuickAdd, each of which
+  // #1468 quick-entry overlay mounts MeasurementsQuickAdd, which
   // already renders its own "Log …" heading) showing both prints the same
   // sentence twice. The sheet still HAS a name — `aria-labelledby` points at the
   // visually-hidden heading — so screen readers announce it exactly as before;

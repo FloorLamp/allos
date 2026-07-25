@@ -22,34 +22,23 @@ import OverviewSection from "./OverviewSection";
 import CompareSection from "./CompareSection";
 import BodySection from "./BodySection";
 import { parseBodyView } from "./body-view";
-import VitalsSection from "./VitalsSection";
 import FitnessSection from "./FitnessSection";
 import InsightsSection from "./InsightsSection";
 import NutritionSection from "./NutritionSection";
 import type { AppRoute } from "@/lib/hrefs";
+import {
+  isTabRestricted,
+  parseTab,
+  trendsTabStrip,
+  type TrendsTab,
+} from "@/lib/trends-tabs";
 
 export const dynamic = "force-dynamic";
-
-const TABS = [
-  "overview",
-  "compare",
-  "vitals",
-  "body",
-  "nutrition",
-  "fitness",
-  "insights",
-] as const;
-type TrendsTab = (typeof TABS)[number];
 
 function firstParam(value: string | string[] | undefined): string | undefined {
   const first = Array.isArray(value) ? value[0] : value;
   const trimmed = first?.trim();
   return trimmed ? trimmed : undefined;
-}
-
-function parseTab(value: string | string[] | undefined): TrendsTab {
-  const first = Array.isArray(value) ? value[0] : value;
-  return TABS.includes(first as TrendsTab) ? (first as TrendsTab) : "overview";
 }
 
 // The Trends hub: the analytics lens — a sibling to the
@@ -92,11 +81,12 @@ export default async function TrendsPage(props: {
   // Fitness + Insights are spliced out below for restricted profiles; if one is
   // requested via ?tab=, fall back to the default so the URL doesn't advertise a
   // tab that isn't there (the tab strip already can't select it).
+  // parseTab also maps the RETIRED `?tab=vitals` onto body (#1486) — a vocabulary
+  // mapping in lib/trends-tabs.ts, so every old deep link lands on the merged tab.
   const requestedTab = parseTab(searchParams.tab);
-  const activeTab =
-    restricted && (requestedTab === "fitness" || requestedTab === "insights")
-      ? "overview"
-      : requestedTab;
+  const activeTab = isTabRestricted(requestedTab, restricted)
+    ? "overview"
+    : requestedTab;
   const cmpA = firstParam(searchParams.cmpA);
   const cmpB = firstParam(searchParams.cmpB);
   const cmpNormalized = firstParam(searchParams.cmpn) === "1";
@@ -108,13 +98,14 @@ export default async function TrendsPage(props: {
   // the URL (?ftab=), so — like the top-level tab — only the active nested
   // section is built server-side. FitnessSection validates/defaults this.
   const ftab = firstParam(searchParams.ftab);
-  // The Vitals tab's "1D" pill (#1466), injected through the shared control's
-  // extra-ranges slot. Scoped to that ONE tab on purpose: 1D is only meaningful
-  // where the surface swaps to genuinely intraday content (VitalsSection's HR
-  // minute series + time-positioned BP/SpO2 points). On every daily-grain tab a
-  // one-day window renders a single dot, so no other tab offers it.
+  // The "1D" pill (#1466), injected through the shared control's extra-ranges slot.
+  // It moved to Body with the vitals (#1486) and stays scoped to that ONE tab on
+  // purpose: 1D is only meaningful where the surface swaps to genuinely intraday
+  // content (the Body tab's vitals section — the HR minute series + time-positioned
+  // BP/SpO2 points). On every daily-grain tab a one-day window renders a single
+  // dot, so no other tab offers it.
   const extraRanges =
-    activeTab === "vitals" ? [intradayQuickRange(todayStr)] : [];
+    activeTab === "body" ? [intradayQuickRange(todayStr)] : [];
 
   // Build a /trends URL, preserving the active tab + window unless overridden.
   // Overview is the default tab, so it's dropped from the query string.
@@ -161,30 +152,18 @@ export default async function TrendsPage(props: {
       view: activeTab === "body" ? bodyView : undefined,
     });
 
-  // Tab-strip spec: labels only. Fitness + Insights are age-gated surfaces —
-  // omitted entirely for training-restricted profiles (matching the
-  // Journal/Training/Insights nav gate), so they're never in the strip or
-  // reachable via ?tab= for them (the activeTab fallback above enforces the
-  // latter).
-  const tabStrip: { id: TrendsTab; label: string }[] = [
-    { id: "overview", label: "Overview" },
-    { id: "compare", label: "Compare" },
-    { id: "vitals", label: "Vitals" },
-    { id: "body", label: "Body" },
-    { id: "nutrition", label: "Nutrition" },
-    ...(restricted
-      ? []
-      : ([
-          { id: "fitness", label: "Fitness" },
-          { id: "insights", label: "Insights" },
-        ] as const)),
-  ];
+  // Tab-strip spec: labels only, built by the pure registry (lib/trends-tabs.ts).
+  // SIX entries since #1486 — Vitals merged into Body. Fitness + Insights are
+  // age-gated surfaces, omitted entirely for training-restricted profiles (matching
+  // the Journal/Training/Insights nav gate), so they're never in the strip or
+  // reachable via ?tab= for them (the activeTab fallback above enforces the latter).
+  const tabStrip = trendsTabStrip(restricted);
 
   // #105: build ONLY the active section server-side. Passing every section as a
   // prop rendered (and ran the queries for) all six on every request — the
   // client `keepMounted` flag only gated DOM, not the RSC pass. Each tab switch
   // is already a URL navigation (NavTabs → router.replace), so this makes every
-  // Trends request compute one tab instead of six, at no extra round-trips.
+  // Trends request compute one tab instead of all of them, at no extra round-trips.
   const activeSection: React.ReactNode = (() => {
     switch (activeTab) {
       case "compare":
@@ -196,8 +175,6 @@ export default async function TrendsPage(props: {
             normalized={cmpNormalized}
           />
         );
-      case "vitals":
-        return <VitalsSection range={range} />;
       case "body":
         return (
           <BodySection

@@ -68,9 +68,18 @@ export interface VitalsPayload {
   tempUnit: string | null;
   sleepHours: string | null;
   hrv: string | null;
-  gripStrength: string | null;
-  chairStand: string | null;
-  balance: string | null;
+  // The optional "HH:MM" reading time a temperature carries for the fever curve
+  // (#800/#843) — captured so a replayed reading keeps its clock time.
+  temperatureTime?: string | null;
+  // The three #158 functional-fitness markers. OPTIONAL since #1486: they left the
+  // daily measurements form for the guided Fitness check (assessment cadence), so a
+  // NEW queued intent never carries them — but an intent queued before the upgrade
+  // still sits in IndexedDB, and the replay must keep accepting it. The server core
+  // (insertVitals) is unchanged and still stores them under the same canonical
+  // names, so an old queued entry replays exactly as it would have.
+  gripStrength?: string | null;
+  chairStand?: string | null;
+  balance?: string | null;
 }
 
 // Mood check-in (issue #992) — the captured raw fields of the daily wellbeing
