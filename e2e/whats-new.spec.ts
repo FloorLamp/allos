@@ -75,8 +75,11 @@ test.describe("in-app release notes (#1421)", () => {
       }
 
       // Operator notes render in their own callout, not mixed into the entry list.
+      // Scoped to the newest DAY's section: the callout renders once per day that
+      // carries notes, so a page-wide locator goes strict-mode ambiguous the moment
+      // two days have them (which batch 4 of 2026-07-25 made true).
       if (NEWEST_DAY.operatorNotes.length > 0) {
-        const callout = page.getByTestId("whats-new-operator-notes");
+        const callout = days.nth(0).getByTestId("whats-new-operator-notes");
         await expect(callout).toBeVisible();
         for (const note of NEWEST_DAY.operatorNotes) {
           await expect(callout).toContainText(note);
