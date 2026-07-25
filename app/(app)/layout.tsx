@@ -224,7 +224,7 @@ export default async function AppLayout({
               <ProfileSwitchWatcher activeProfileId={profile.id} />
               {/* The shared quick-entry overlay host (#1468). Inside
                   OfflineQueueProvider by necessity: the forms it mounts
-                  (BodyQuickAdd / VitalsQuickAdd) queue offline writes, and it
+                  (MeasurementsQuickAdd) queue offline writes, and it
                   renders them as its OWN children, so they must sit under that
                   provider. It gathers nothing until a sheet row is tapped. */}
               <QuickEntryProvider>

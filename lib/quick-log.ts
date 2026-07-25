@@ -43,7 +43,7 @@ export type QuickLogIcon = "barbell" | "salad" | "pill" | "scale" | "heartbeat";
 // registry is pure. `dose` is the today's-due-doses list whose confirm buttons
 // answer from the typed DoseTakenOutcome — the existing action, reached, never
 // re-implemented.
-export type QuickEntryForm = "food" | "weight" | "vitals" | "dose";
+export type QuickEntryForm = "food" | "measurements" | "dose";
 
 export type QuickLogTarget =
   // Open the shared activity editor in place (the DOCK — a live workout is a
@@ -104,24 +104,17 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     target: { kind: "overlay", form: "dose" },
   },
   {
-    id: "log-weight",
-    label: "Log weight",
-    hint: "Bodyweight, body fat, resting HR",
+    id: "log-measurements",
+    label: "Log measurements",
+    hint: "Weight, blood pressure, oxygen, sleep",
     icon: "scale",
-    // BodyQuickAdd — the same component the Trends → Body tab mounts.
-    target: { kind: "overlay", form: "weight" },
-  },
-  {
-    id: "log-vitals",
-    label: "Log vitals",
-    hint: "Blood pressure, glucose, oxygen, sleep",
-    icon: "heartbeat",
-    // Issue #1467: for a manual logger a BP/HR/SpO2 reading is among the most
-    // frequent daily writes, and its only entry points were mid-page on a
-    // secondary surface (Trends → Vitals / Body). The sheet is the right global
-    // home — exactly as it already is for weight. Same VitalsQuickAdd component,
-    // same addVitals action; only the mount changes.
-    target: { kind: "overlay", form: "vitals" },
+    // ONE row, not two (issue #1506). The sheet used to carry "Log weight" and
+    // "Log vitals" side by side because the app had two forms on two Trends tabs.
+    // #1486 merged those into a single "Log measurements" form, so a second row
+    // would just be a second door onto the same fields — the exact duplication the
+    // shared-content rule exists to prevent. Same MeasurementsQuickAdd component
+    // the Body tab's desktop expander mounts; only the mount changes.
+    target: { kind: "overlay", form: "measurements" },
   },
 ];
 
@@ -155,9 +148,10 @@ export function primaryQuickLog(
   if (under(pathname, "/nutrition")) return quickLogItem("log-food");
   if (under(pathname, MEDICATIONS_HREF)) return quickLogItem("log-dose");
   // Body metrics live behind /trends?tab=body — the tab, not the route, is the
-  // thing that makes "log weight" the obvious action.
+  // thing that makes "log measurements" the obvious action. (#1486 folded the
+  // former Vitals tab in here, so the one form covers both.)
   if (under(pathname, "/trends") && tab === "body") {
-    return quickLogItem("log-weight");
+    return quickLogItem("log-measurements");
   }
   return quickLogItem(LOG_ACTIVITY_ID);
 }

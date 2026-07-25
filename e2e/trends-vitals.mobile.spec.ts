@@ -9,18 +9,19 @@ import {
   VITALS_DAY_RESTING_HR,
 } from "./fixture-logins";
 
-// Trends → Vitals: the Today strip, the 1D (intraday) window, the full-bleed
-// mobile HR chart, and the #1067 quick-add collapse (issue #1466).
+// The Today strip, the 1D (intraday) window and the full-bleed mobile HR chart
+// (issue #1466) — RE-POINTED to the merged Body tab by #1486, which retired the
+// Vitals tab into Body's first section. Same layer, same fixtures, one tab.
 //
 // Runs in the `mobile` project (390×844) by its file name alone; the desktop
-// project testIgnores `*.mobile.spec.ts`. All four changes are only observable at
-// phone width, and three of them are layout-shaped — nothing below the browser
+// project testIgnores `*.mobile.spec.ts`. All three behaviours are only observable
+// at phone width, and two of them are layout-shaped — nothing below the browser
 // tier can see them.
 //
 // Fixtures (#868 hygiene). Two kinds, both read-only:
 //   • the shared seed, for the questions that are about the SURFACE (which tabs
-//     offer a 1D pill, whether the quick-add is a chip) — navigation and client
-//     toggles only, no writes, no exact count of a shared-seed row;
+//     offer a 1D pill) — navigation only, no writes, no exact count of a
+//     shared-seed row;
 //   • the dedicated E2E_LOGIN_VITALS_DAY profile seeded by e2e/seed-events.ts, for
 //     the questions that are about a DAY'S DATA (the intraday charts, the strip's
 //     values). Its vitals live nowhere else, so --repeat-each and a neighbour's
@@ -51,19 +52,29 @@ async function todayFromStrip(page: Page): Promise<string> {
   return match![1];
 }
 
-test.describe("the 1D pill is scoped to the Vitals tab (B)", () => {
-  test("Vitals offers it and the other tabs do not", async ({ page }) => {
+test.describe("the 1D pill is scoped to the Body tab (B)", () => {
+  test("Body offers it and the other tabs do not", async ({ page }) => {
     const pill = page.getByRole("link", { name: "1D", exact: true });
 
+    // The pill moved to Body with the vitals it exists for (#1486).
+    await page.goto("/trends?tab=body");
+    await expect(pill).toBeVisible();
+
+    // And the RETIRED ?tab=vitals still lands on that same tab, pill and all —
+    // a vocabulary mapping, not a redirect (#1486).
     await page.goto("/trends?tab=vitals");
+    await expect(page.getByRole("tab", { name: "Body" })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
     await expect(pill).toBeVisible();
 
     // On a daily-grain series a one-day window is a single dot — worse than
     // useless — so no other tab may advertise it. The shared pills stay shared.
     for (const tab of [
       "/trends",
-      "/trends?tab=body",
       "/trends?tab=nutrition",
+      "/trends?tab=compare",
     ]) {
       await page.goto(tab);
       // Exact, like the 1D locators above: the movers digest renders LINK chips
@@ -84,7 +95,7 @@ test.describe("the 1D pill is scoped to the Vitals tab (B)", () => {
     // 1D matches no SHARED quick range, so without the extra-ranges half of
     // isCustomRange it would read as a hand-picked window and re-introduce both
     // of the chrome regressions #1455 D removed.
-    await page.goto("/trends?tab=vitals");
+    await page.goto("/trends?tab=body");
     await followLink(
       page,
       page.getByRole("link", { name: "1D", exact: true }),
@@ -107,9 +118,11 @@ test.describe("1D swaps in the intraday charts (B + C)", () => {
     test.slow(); // local `next dev` compiles the Trends route on first hit
     const member = await vitalsDayPage(browser);
     try {
-      await member.goto("/trends?tab=vitals");
+      // view=all pins the classic chart stack on the phone too (#1067 Phase 2 made
+      // tiles the mobile default), which is where the vitals charts live.
+      await member.goto("/trends?tab=body&view=all");
       // The windowed daily view is what 1D replaces.
-      await expect(member.getByTestId("vitals-blood-pressure")).toBeVisible();
+      await expect(member.getByTestId("vitals-systolic")).toBeVisible();
 
       await followLink(
         member,
@@ -121,7 +134,7 @@ test.describe("1D swaps in the intraday charts (B + C)", () => {
       await expect(member.getByTestId("vitals-intraday-hr")).toBeVisible();
       await expect(member.getByTestId("vitals-intraday-bp")).toBeVisible();
       await expect(member.getByTestId("vitals-intraday-spo2")).toBeVisible();
-      await expect(member.getByTestId("vitals-blood-pressure")).toHaveCount(0);
+      await expect(member.getByTestId("vitals-systolic")).toHaveCount(0);
 
       // C — full-bleed: the plot box spans the whole viewport (not the gutter-inset
       // content column), and doing so widens nothing (no horizontal page scroll).
@@ -160,7 +173,9 @@ test.describe("the Today strip (A)", () => {
     test.slow();
     const member = await vitalsDayPage(browser);
     try {
-      await member.goto("/trends?tab=vitals");
+      // The strip is the merged tab's FIRST section — above the fold on a phone,
+      // before any chart or logging affordance (#1486).
+      await member.goto("/trends?tab=body");
 
       const strip = member.getByTestId("vitals-today-strip");
       await expect(strip).toBeVisible();
@@ -194,26 +209,5 @@ test.describe("the Today strip (A)", () => {
     } finally {
       await member.context().close();
     }
-  });
-});
-
-test.describe("the quick-add adopts the chip collapse (D)", () => {
-  test("collapsed to a chip on a phone", async ({ page }) => {
-    await page.goto("/trends?tab=vitals");
-
-    await expect(page.getByTestId("quick-add-chip-vitals")).toBeVisible();
-    await expect(page.getByTestId("quick-add-form-vitals")).toBeHidden();
-    // The form itself never left the DOM — only the wrapper's visibility differs,
-    // so there is no hand-mirrored second copy to drift.
-    await expect(page.getByTestId("vitals-quick-add")).toBeAttached();
-  });
-
-  test("its deep link still lands expanded and focused", async ({ page }) => {
-    // The preventive blood-pressure nudge deep-links here (#1083). A collapse that
-    // swallowed that link would be a regression, not a win.
-    await page.goto("/trends?tab=vitals&focus=blood-pressure");
-
-    await expect(page.getByTestId("quick-add-form-vitals")).toBeVisible();
-    await expect(page.locator("#v-systolic")).toBeFocused();
   });
 });

@@ -443,7 +443,7 @@ export function getSleepSessionsSince(
   return readSleepSessions(profileId, { since });
 }
 
-// Duration-only manual sleep entries written by VitalsQuickAdd. Their equal
+// Duration-only manual sleep entries written by the measurements quick-add. Their equal
 // start/end midnight timestamps are the stable natural key upsertManualSample
 // uses, so these (and only these) are safe for the Sleep log's inline editor to
 // update. Windowed/imported sessions remain read-only.
