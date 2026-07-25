@@ -102,7 +102,7 @@ export default function DateRangeControl({
         <CustomRangePanel className="order-2 sm:order-1">
           <form
             action={basePath}
-            className="card grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2 p-2 sm:grid-cols-[1fr_1fr_auto_auto] sm:gap-3 sm:p-4"
+            className="card grid grid-cols-2 gap-2 p-2 sm:grid-cols-[1fr_1fr_auto_auto] sm:gap-3 sm:p-4"
           >
             {Object.entries(hiddenParams).map(([k, v]) =>
               v ? <input key={k} type="hidden" name={k} value={v} /> : null
@@ -129,12 +129,12 @@ export default function DateRangeControl({
                 defaultValue={range.to ?? ""}
               />
             </div>
-            <div className="flex items-end">
-              <button type="submit" className="btn h-10 px-3 sm:w-full">
+            <div className="col-span-2 flex items-end sm:col-span-1">
+              <button type="submit" className="btn h-10 w-full px-3">
                 Apply
               </button>
             </div>
-            <div className="col-span-3 flex items-end sm:col-span-1">
+            <div className="col-span-2 flex items-end sm:col-span-1">
               <Link
                 href={buildHref({})}
                 className="btn-ghost w-full py-1.5 text-center sm:py-2"

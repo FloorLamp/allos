@@ -1,9 +1,8 @@
 import RxOtcBadge from "@/components/RxOtcBadge";
 import {
   DEFAULT_FORMAT_PREFS,
-  formatClock,
-  formatDateShape,
-  formatLongDate,
+  formatDateWithYear,
+  formatTimestamp,
   type DisplayFormatPrefs,
 } from "@/lib/format-date";
 import type { MedicationListRow } from "@/lib/medication-list";
@@ -32,20 +31,16 @@ export default function MedicationListView({
   // toLocaleString, which leaked the SERVER's locale/format (#1020).
   formatPrefs?: DisplayFormatPrefs;
 }) {
-  const generated = new Date(generatedAt);
-  const generatedLabel = Number.isNaN(generated.getTime())
+  // One vocabulary for both dates on this card (issue #1448). It previously
+  // hand-rolled the "Generated" stamp (short month + year + clock) while the
+  // STARTED column called formatLongDate — so one printed card carried two shapes,
+  // "Generated Jul 24, 2026, 22:14" beside "Friday, July 24", the latter undated
+  // the moment the paper outlives the calendar year. Both now come from the
+  // formatter's year-bearing entries, which is the rule for anything that leaves
+  // the app on paper.
+  const generatedLabel = Number.isNaN(new Date(generatedAt).getTime())
     ? null
-    : `${formatDateShape(
-        formatPrefs.dateFormat,
-        generated.getFullYear(),
-        generated.getMonth() + 1,
-        generated.getDate(),
-        { monthStyle: "short", year: true }
-      )}, ${formatClock(
-        formatPrefs.timeFormat,
-        generated.getHours(),
-        generated.getMinutes()
-      )}`;
+    : formatTimestamp(generatedAt, formatPrefs);
 
   return (
     <div
@@ -104,7 +99,7 @@ export default function MedicationListView({
                   <td className="py-2 pr-3">{r.prescriber ?? "—"}</td>
                   <td className="py-2">
                     {r.startedOn
-                      ? formatLongDate(r.startedOn, formatPrefs)
+                      ? formatDateWithYear(r.startedOn, formatPrefs)
                       : "—"}
                   </td>
                 </tr>

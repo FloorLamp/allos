@@ -21,6 +21,8 @@ import {
 import { getTierConfigView } from "@/lib/settings/ai-tiers";
 import { formatBytes } from "@/lib/format-bytes";
 import { requireAdmin } from "@/lib/auth";
+import { getDisplayFormatPrefs } from "@/lib/settings";
+import { formatTimestamp } from "@/lib/format-date";
 import { minTrainingAge } from "@/lib/age-gate";
 import { PageHeader } from "@/components/ui";
 import AppVersion from "@/components/AppVersion";
@@ -40,7 +42,12 @@ export const dynamic = "force-dynamic";
 
 export default async function ServerSettingsPage() {
   // Instance-wide settings are admin-only — requireAdmin() redirects a member.
-  const { profile } = await requireAdmin();
+  const { login, profile } = await requireAdmin();
+  // Instance status timestamps join the one admin-ops shape, read as UTC
+  // (issue #1448) — the same formatter the Audit / Errors / AI-log tables use.
+  const formatPrefs = getDisplayFormatPrefs(login.id);
+  const opsStamp = (at: string | number) =>
+    `${formatTimestamp(at, formatPrefs, { zone: "utc" })} UTC`;
 
   const publicUrl = getPublicUrl();
   const last = getLastBackup();
@@ -81,7 +88,7 @@ export default async function ServerSettingsPage() {
             ? {
                 name: last.name,
                 size: formatBytes(last.size),
-                when: new Date(last.mtimeMs).toLocaleString(),
+                when: opsStamp(last.mtimeMs),
                 failed: lastVerification?.integrity === "failed",
               }
             : null
@@ -89,9 +96,7 @@ export default async function ServerSettingsPage() {
         lastError={getLastBackupError() || null}
         integrity={{
           ok: liveIntegrity.ok,
-          at: liveIntegrity.at
-            ? new Date(liveIntegrity.at).toLocaleString()
-            : null,
+          at: liveIntegrity.at ? opsStamp(liveIntegrity.at) : null,
           detail: liveIntegrity.detail,
         }}
         offsite={{
@@ -102,7 +107,7 @@ export default async function ServerSettingsPage() {
             : null,
           lastAt: (() => {
             const at = getLastOffsiteBackupAt();
-            return at ? new Date(at).toLocaleString() : null;
+            return at ? opsStamp(at) : null;
           })(),
           lastError: getLastOffsiteError(),
         }}

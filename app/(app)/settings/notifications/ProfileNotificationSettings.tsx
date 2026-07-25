@@ -61,9 +61,10 @@ export default function ProfileNotificationSettings({
 
   // The label for the wake-aware "Auto" option (#1117), naming the hour it resolves
   // to when there's enough sleep data.
-  const autoLabel = `Auto — from your wake time${
-    wakeHour == null ? "" : ` (~${String(wakeHour).padStart(2, "0")}:00)`
-  }`;
+  const autoLabel =
+    wakeHour == null
+      ? "Auto (wake time)"
+      : `Auto (~${String(wakeHour).padStart(2, "0")}:00)`;
 
   function buildFormData() {
     const fd = new FormData();
@@ -197,7 +198,7 @@ export default function ProfileNotificationSettings({
             slots you want. They start arriving once your server’s hourly
             reminder schedule is set up.
           </p>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-2">
+          <div className="grid grid-cols-2 gap-3">
             {(["Morning", "Midday", "Evening", "Bedtime"] as SuppWindow[]).map(
               (w) => (
                 <div key={w}>

@@ -9,7 +9,7 @@ export default function GenerateButton() {
   const { pending } = useFormStatus();
   return (
     <button
-      className="btn whitespace-nowrap disabled:opacity-70"
+      className="btn whitespace-nowrap"
       disabled={pending}
       aria-busy={pending}
     >

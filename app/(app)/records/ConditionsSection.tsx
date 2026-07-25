@@ -6,6 +6,7 @@ import {
 import FilterPills, { type FilterPillOption } from "@/components/FilterPills";
 import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import ConditionForm from "@/app/(app)/conditions/ConditionForm";
+import ListRailLayout from "@/components/ListRailLayout";
 import ConditionList from "@/app/(app)/conditions/ConditionList";
 import { addCondition } from "@/app/(app)/conditions/actions";
 import type { ConditionStatus } from "@/lib/types";
@@ -73,31 +74,31 @@ export default function ConditionsSection({
   const active = cond ?? "all";
 
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
-      <div className="min-w-0 space-y-4 lg:col-span-2">
-        <FilterPills
-          options={FILTERS}
-          value={active}
-          label="Filter conditions by status"
-          testId="conditions-filter"
-        />
-        <ConditionList
-          items={rows}
-          treatedWith={treatedWith}
-          diagnosedAt={diagnosedAt}
-          multiView={
-            multi ? { actingProfileId: scope.actingProfileId } : undefined
-          }
-        />
-      </div>
-
-      <div className="min-w-0 space-y-4">
-        <ConditionForm action={addCondition} />
-        <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-          Imported problems come from uploaded health records (CCD Active
-          Problems section).
-        </p>
-      </div>
-    </div>
+    <ListRailLayout
+      rail={
+        <>
+          <ConditionForm action={addCondition} />
+          <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
+            Imported problems come from uploaded health records (CCD Active
+            Problems section).
+          </p>
+        </>
+      }
+    >
+      <FilterPills
+        options={FILTERS}
+        value={active}
+        label="Filter conditions by status"
+        testId="conditions-filter"
+      />
+      <ConditionList
+        items={rows}
+        treatedWith={treatedWith}
+        diagnosedAt={diagnosedAt}
+        multiView={
+          multi ? { actingProfileId: scope.actingProfileId } : undefined
+        }
+      />
+    </ListRailLayout>
   );
 }

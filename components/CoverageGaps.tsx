@@ -142,7 +142,7 @@ function CandidateRow({ candidate }: { candidate: CoverageGapCandidate }) {
         onClick={onTrack}
         disabled={pending}
         data-testid="track-gap"
-        className="btn-ghost inline-flex shrink-0 items-center gap-1 text-xs disabled:opacity-50"
+        className="btn-ghost inline-flex shrink-0 items-center gap-1 text-xs"
       >
         <IconPlus className="h-3.5 w-3.5" /> Track
       </button>
@@ -258,7 +258,7 @@ function TrackedRow({
               disabled={enriching}
               data-testid="enrich-gap"
               title={`Generate via ${aiLabel}`}
-              className="btn-ghost inline-flex items-center gap-1 text-xs disabled:opacity-50"
+              className="btn-ghost inline-flex items-center gap-1 text-xs"
             >
               <IconSparkles className="h-3.5 w-3.5" />
               {gap.aiDescription ? "Regenerate context" : "Generate context"}
