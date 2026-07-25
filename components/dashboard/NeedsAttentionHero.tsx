@@ -32,6 +32,7 @@ import {
   type CardBand,
 } from "@/lib/attention";
 import AttentionHeroCard from "@/components/dashboard/AttentionHeroCard";
+import AppBadge from "@/components/AppBadge";
 import {
   isItemSuppressibleFlag,
   upcomingDueText,
@@ -219,6 +220,10 @@ export default function NeedsAttentionHero({
         aria-label="Needs attention"
         className="card flex flex-wrap items-center justify-between gap-2 border-l-4 border-l-emerald-500 py-3 dark:border-l-emerald-400"
       >
+        {/* Clears the installed-PWA icon badge (#1424). Mounting it on THIS
+            branch too is the point: the card below isn't rendered at count 0, so
+            a badge set on a previous visit would otherwise never come off. */}
+        <AppBadge count={count} />
         <div
           data-testid="attention-all-clear"
           className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300"
@@ -249,64 +254,72 @@ export default function NeedsAttentionHero({
   // #449 always-visible count lives there. Everything below is the BODY: the item
   // rows, which keep their inline Server Action forms and stay server-rendered.
   return (
-    <AttentionHeroCard
-      count={count}
-      topBand={heroState.topBand}
-      locked={heroState.locked}
-      initialCollapsed={heroState.collapsed}
-      saveCollapsed={saveCollapsed}
-    >
-      <div className="space-y-4">
-        {groups.map((group) => (
-          <div key={group.band}>
-            <div className={`mb-1 section-label ${BAND_TONE[group.band]}`}>
-              {group.label}
-              <span className="ml-1 text-slate-500 dark:text-slate-400">
-                ({attentionCountLabel(group.items.length, group.overflow)})
-              </span>
-            </div>
-            <div className="space-y-0.5">
-              {group.items.map((item) => (
-                <Row
-                  key={item.key}
-                  item={item}
-                  now={today}
-                  tone={BAND_TONE[group.band]}
-                />
-              ))}
-              {/* Defensive global cap (issue #283): a pathological day (a giant
+    <>
+      {/* Same count the card's own badge shows, painted on the installed app
+          icon (#1424) — one number, two surfaces, no second query. A SIBLING of
+          the card, not a child: the card's body sits inside a <Collapse>, and a
+          badge that stopped updating whenever the user collapsed the hero would
+          be a silent, viewport-shaped bug. */}
+      <AppBadge count={count} />
+      <AttentionHeroCard
+        count={count}
+        topBand={heroState.topBand}
+        locked={heroState.locked}
+        initialCollapsed={heroState.collapsed}
+        saveCollapsed={saveCollapsed}
+      >
+        <div className="space-y-4">
+          {groups.map((group) => (
+            <div key={group.band}>
+              <div className={`mb-1 section-label ${BAND_TONE[group.band]}`}>
+                {group.label}
+                <span className="ml-1 text-slate-500 dark:text-slate-400">
+                  ({attentionCountLabel(group.items.length, group.overflow)})
+                </span>
+              </div>
+              <div className="space-y-0.5">
+                {group.items.map((item) => (
+                  <Row
+                    key={item.key}
+                    item={item}
+                    now={today}
+                    tone={BAND_TONE[group.band]}
+                  />
+                ))}
+                {/* Defensive global cap (issue #283): a pathological day (a giant
                 flagged import, an overdue backlog) collapses each band's remainder
                 to a link instead of blowing the layout. The copy names THIS band's items so it can't be
                 mistaken for the card-level remainder below (issue #538); when this
                 is the last band and a remainder follows, the link is merged into the
                 trailing line instead (planAttentionMoreLinks), so two never stack. */}
-              {moreLinks.perBand[group.band] && (
-                <Link
-                  href={moreLinks.perBand[group.band]!.href}
-                  data-testid={`attention-overflow-${group.band}`}
-                  className="block rounded-lg px-2 py-1.5 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
-                >
-                  {moreLinks.perBand[group.band]!.text}
-                </Link>
-              )}
+                {moreLinks.perBand[group.band] && (
+                  <Link
+                    href={moreLinks.perBand[group.band]!.href}
+                    data-testid={`attention-overflow-${group.band}`}
+                    className="block rounded-lg px-2 py-1.5 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+                  >
+                    {moreLinks.perBand[group.band]!.text}
+                  </Link>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
-        {/* The card is a strict subset of the Upcoming page; the far-future
+          ))}
+          {/* The card is a strict subset of the Upcoming page; the far-future
           scheduled work it hides is one click away, with an exact count so the two
           surfaces reconcile (issue #524). Names what it hides ("scheduled later") so
           it reads distinctly from a band cap-overflow link; when the last band also
           overflowed, this line absorbs it into one merged link (issue #538). */}
-        {moreLinks.trailing && (
-          <Link
-            href={moreLinks.trailing.href}
-            data-testid="attention-more-upcoming"
-            className="block text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
-          >
-            {moreLinks.trailing.text}
-          </Link>
-        )}
-      </div>
-    </AttentionHeroCard>
+          {moreLinks.trailing && (
+            <Link
+              href={moreLinks.trailing.href}
+              data-testid="attention-more-upcoming"
+              className="block text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+            >
+              {moreLinks.trailing.text}
+            </Link>
+          )}
+        </div>
+      </AttentionHeroCard>
+    </>
   );
 }

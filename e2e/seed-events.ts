@@ -40,6 +40,7 @@ import {
   E2E_LOGIN_COMPARE,
   E2E_LOGIN_DUP,
   E2E_LOGIN_EMPTY_TRAINING,
+  E2E_LOGIN_BADGE,
   E2E_LOGIN_SHELL,
   SHELL_PROFILE,
   SHELL_DOSE_ITEM,
@@ -157,6 +158,7 @@ import {
   E2E_MEMBER_PASSWORD,
   DUP_REVIEW_PROFILE,
   EMPTY_TRAINING_PROFILE,
+  APP_BADGE_PROFILE,
   SLEEP_EDIT_PROFILE,
   SLEEP_PHASE_PROFILE,
   SLEEP_SEGMENTED_PROFILE,
@@ -6493,6 +6495,25 @@ console.log(
   seedMemberLogin(E2E_LOGIN_VITALS_DAY, vdId, "write");
   console.log(
     `e2e: seeded vitals-day fixture — ${E2E_LOGIN_VITALS_DAY} granted ${VITALS_DAY_PROFILE} (${vdId}); vitals day ${vdToday} (#1466)`
+  );
+}
+
+// App-icon badge fixture (#1424). A bare ADULT profile: no activities, no records,
+// no doses — so its care-tier attention set is exactly the two age-derived
+// preventive findings (COVID-19, Influenza) that every adult profile carries.
+// app-badge.mobile.spec.ts asserts navigator.setAppBadge gets that count, dismisses
+// both through the hero's own menu, and asserts the badge is CLEARED once the hero
+// reads "All clear" — the one path that needs a dashboard to actually reach zero.
+// Write grant: dismissing is a write. The spec clears the dismissals itself at test
+// start, so re-runs and --repeat-each all begin from the same non-empty hero.
+{
+  const badgeId = fixtureProfileId(APP_BADGE_PROFILE);
+  db.prepare("DELETE FROM upcoming_dismissals WHERE profile_id = ?").run(
+    badgeId
+  );
+  seedMemberLogin(E2E_LOGIN_BADGE, badgeId, "write");
+  console.log(
+    `e2e: seeded app-badge fixture — ${E2E_LOGIN_BADGE} granted ${APP_BADGE_PROFILE} (${badgeId}) for the PWA badge set/clear spec (#1424)`
   );
 }
 
