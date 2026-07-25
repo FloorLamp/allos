@@ -5,6 +5,7 @@ import NotesField from "./NotesField";
 import EstimatedCalories from "./EstimatedCalories";
 import ImportedActivityDetails from "./ImportedActivityDetails";
 import RouteMap from "@/components/RouteMap";
+import ActivityFormCheck from "./ActivityFormCheck";
 
 // The activity form's collapsible "More details" disclosure (#1207 extraction):
 // notes, the manual calorie estimate, imported-metric read-outs, and the route map.
@@ -84,6 +85,11 @@ export default function ActivityMoreDetails({
             activity={editData}
             distanceUnit={distanceUnit}
           />
+
+          {/* Form check (#1457) — EDIT mode only: a clip needs a saved activity id,
+              which create mode has no way to supply. It owns its own clip fetch, so
+              this stays the pure prop-driven presentation it claims to be. */}
+          {editData && <ActivityFormCheck activityId={editData.id} />}
 
           {editData?.route_polyline && (
             <section
