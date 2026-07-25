@@ -167,7 +167,7 @@ export default async function FoodTab() {
               demote/substitute the suggestions summary notes is one tap from editable. */}
           <div className="mt-4 border-t border-black/5 pt-3 dark:border-white/5">
             <Link
-              href="/settings/profile#nutrition"
+              href="/settings/nutrition"
               data-testid="food-preferences-link"
               className="text-xs text-slate-500 transition hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
             >

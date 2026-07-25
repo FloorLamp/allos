@@ -427,7 +427,7 @@ describe("ctaHref precision — every gap deep-links the concrete form (#1146)",
     // Post-#1079 route discipline: the redirect-surviving legacy literals would
     // still typecheck, so pin the exact allowed bases here (the #1083 trap).
     const ALLOWED_BASES = [
-      "/settings/profile",
+      "/settings/health",
       "/results/biomarkers",
       "/records/care/overview",
       "/medications",

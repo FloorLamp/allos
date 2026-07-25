@@ -23,7 +23,7 @@ export const dynamic = "force-dynamic";
 //
 // Visiting marks the notes seen for the CALLING LOGIN (login_settings), which is
 // what clears the unread dot beside the version hash in the sidebar footer and on
-// Settings → Preferences. Notes are per-image content, not per-profile data, so
+// the Settings index footer. Notes are per-image content, not per-profile data, so
 // nothing here is profile-scoped.
 
 // Kind chips. Each kind gets its OWN color (never one family color, #533) so the

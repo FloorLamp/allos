@@ -5,7 +5,7 @@ import ImageCropper from "./ImageCropper";
 import type { PhotoResult } from "@/app/(app)/settings/photo-actions";
 
 // The pick → crop → upload (and remove) controls shared by both avatar surfaces:
-// Settings → Profile and the Family admin rows. It owns the whole client-side
+// Settings → Health profile and the People & access admin rows. It owns the whole client-side
 // lifecycle — file input, opening the cropper, uploading the cropped result,
 // resetting the input, and its own pending/error state — so the two call sites
 // only supply the profile-specific actions and a refresh callback. The two
@@ -15,7 +15,7 @@ import type { PhotoResult } from "@/app/(app)/settings/photo-actions";
 // style the `file:` button as a real button; they differ only in scale. The
 // compact variant previously filled it grey (`file:bg-slate-200`), which on the
 // Family admin rows read as the raw native "Choose File | No file chosen" control
-// sitting beside Settings → Profile's proper button — two treatments for the same
+// sitting beside Settings → Health profile's proper button — two treatments for the same
 // action. Sharing the brand fill makes "pick a photo" look like the same thing
 // wherever it appears, and any future upload surface inherits it.
 //

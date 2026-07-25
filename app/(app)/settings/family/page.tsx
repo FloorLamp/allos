@@ -1,8 +1,7 @@
 import { requireAdmin } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { canSendAuthEmail } from "@/lib/auth-email";
-import { PageHeader } from "@/components/ui";
-import SettingsTabs from "../SettingsTabs";
+import SettingsGroupLayout from "../SettingsGroupLayout";
 import FamilyManager from "./FamilyManager";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +30,7 @@ export interface ProfileDataSummary {
 
 export default async function FamilySettingsPage() {
   // Login/profile management is admin-only — requireAdmin() redirects a member.
-  const { profile } = await requireAdmin();
+  const { login, profile } = await requireAdmin();
 
   const profiles = db
     .prepare(
@@ -92,12 +91,7 @@ export default async function FamilySettingsPage() {
   }
 
   return (
-    <div>
-      <PageHeader
-        title="Settings"
-        subtitle="Family — manage the people you track (profiles) and the logins that can access them. Admins can see every profile; members only the ones you grant."
-      />
-      <SettingsTabs isAdmin />
+    <SettingsGroupLayout group="people" login={login} profile={profile}>
       <FamilyManager
         profiles={profiles}
         logins={logins}
@@ -107,6 +101,6 @@ export default async function FamilySettingsPage() {
         sessionCounts={sessionCounts}
         canInvite={canInvite}
       />
-    </div>
+    </SettingsGroupLayout>
   );
 }

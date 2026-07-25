@@ -282,11 +282,11 @@ describe("preventiveAssessmentToUpcomingItem", () => {
       mkAssessment({
         kind: "screening",
         key: "lung_cancer_ldct",
-        href: "/settings/profile",
+        href: "/settings/health",
       }),
       { today: TODAY }
     );
-    expect(item.href).toBe("/settings/profile");
+    expect(item.href).toBe("/settings/health");
     // An overridden href points elsewhere, so the default screening CTA is moot.
     expect(item.actionLabel).toBeUndefined();
   });

@@ -217,7 +217,7 @@ export async function verifyOffsiteDestination(): Promise<{
 // The operator's region-correct crisis line(s), shown on the passive crisis surface
 // and inline where a crisis trigger fires. No hardcoded 988; an empty list leaves
 // the neutral "contact local emergency services" fallback in place. A per-profile
-// override lives on Settings → Profile.
+// override lives on Settings → Privacy.
 export async function saveCrisisResources(formData: FormData) {
   await requireAdmin();
   setGlobalCrisisResources(

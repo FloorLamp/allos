@@ -51,7 +51,7 @@ test("the demo user can sign in, sees the banner, and uploads are disabled", asy
   // able to lock other visitors out. The active-sessions list stays readable
   // (asserted visible, which also proves the page rendered before the absence
   // assertions below mean anything).
-  await page.goto("/settings");
+  await page.goto("/settings/account");
   await expect(
     page.getByRole("heading", { name: "Active sessions" })
   ).toBeVisible();

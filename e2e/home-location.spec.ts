@@ -17,10 +17,21 @@ test("timeline day headers show sunrise/sunset daylight chips", async ({
   await expect(chip).toContainText(/\d{1,2}:\d{2}/);
 });
 
-test("Settings → Profile shows the coarse home location and can update it", async ({
+test("Settings → Health profile shows the coarse home location and can update it", async ({
   page,
 }) => {
-  await page.goto("/settings/profile");
+  await page.goto("/settings/health");
+  // Home location is a one-time setting, so it lives behind the group's stateless
+  // "Advanced" fold (#1462 §3) — a native <details>, opened by clicking its summary.
+  const openAdvanced = async () => {
+    const fold = page.getByTestId("health-advanced");
+    await expect(fold).toBeVisible();
+    if (!(await fold.evaluate((el) => (el as HTMLDetailsElement).open))) {
+      await fold.getByText("Advanced").click();
+    }
+    await expect(page.getByTestId("home-lat")).toBeVisible();
+  };
+  await openAdvanced();
 
   const lat = page.getByTestId("home-lat");
   const lng = page.getByTestId("home-lng");
@@ -43,8 +54,10 @@ test("Settings → Profile shows the coarse home location and can update it", as
   // in-flight server-action POST and silently loses the save (the ai-settings
   // race class, PR #586). SaveStatus renders aria-label="Saved" on success.
   await expect(page.getByLabel("Saved").first()).toBeVisible(); // first-ok: asserts a Saved autosave indicator appears — order-agnostic
-  // Reload and confirm the coarse value persisted.
+  // Reload and confirm the coarse value persisted (the fold is stateless, so it
+  // starts closed again).
   await page.reload();
+  await openAdvanced();
   await expect(page.getByTestId("home-lat")).toHaveValue("41.9");
   await expect(page.getByTestId("home-lng")).toHaveValue("-87.7");
 

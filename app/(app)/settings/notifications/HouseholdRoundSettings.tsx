@@ -76,7 +76,7 @@ export default function HouseholdRoundSettings({
   return (
     <div
       id="household-round"
-      className="card mt-6 max-w-lg space-y-3"
+      className="card space-y-3"
       data-testid="household-round-card"
     >
       <div className="flex items-center justify-between">

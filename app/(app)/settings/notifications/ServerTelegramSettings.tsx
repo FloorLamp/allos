@@ -16,7 +16,7 @@ import { useSaveStatus } from "@/components/useSaveStatus";
 
 // The GLOBAL Telegram bot credentials (token + inbound transport mode). One bot
 // serves every profile, so this is admin-only. Each profile's enable toggle,
-// chat id, and schedule live on Settings → Profile.
+// chat id, and schedule live on Settings → Notifications.
 export default function ServerTelegramSettings({
   config,
   publicUrl,
@@ -25,7 +25,7 @@ export default function ServerTelegramSettings({
   config: TelegramBotConfig;
   publicUrl: string;
   // The last notification-delivery failure (#131), or null when the most recent
-  // send succeeded. The per-profile "Send test" button on Settings → Profile is
+  // send succeeded. The "Send test" button on Settings → Notifications is
   // the remediation path — a successful test clears this marker.
   lastError: NotifyErrorMarker | null;
 }) {
@@ -78,7 +78,9 @@ export default function ServerTelegramSettings({
   }
 
   return (
-    <div className="card mt-6 max-w-lg space-y-5">
+    // Server-tier card: it lives on Settings → Server since #1462 (one bot serves
+    // every profile), NOT on the member-visible Notifications page.
+    <div className="card space-y-5" data-testid="server-telegram">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Telegram bot
@@ -89,7 +91,7 @@ export default function ServerTelegramSettings({
       <p className="text-xs text-slate-500 dark:text-slate-400">
         The shared bot that delivers every profile’s reminders. Create one with
         @BotFather for the token. Each profile sets its own chat id and schedule
-        on Settings → Profile.
+        on Settings → Notifications.
       </p>
 
       {lastError && (
@@ -108,9 +110,9 @@ export default function ServerTelegramSettings({
             </div>
           )}
           <div className="mt-1 opacity-80">
-            Fix the bot token above (or the chat id on Settings → Profile), then
-            use “Send test” on Settings → Profile — a successful send clears
-            this.
+            Fix the bot token above (or the chat id on Settings →
+            Notifications), then use “Send test” on Settings → Notifications — a
+            successful send clears this.
           </div>
         </div>
       )}

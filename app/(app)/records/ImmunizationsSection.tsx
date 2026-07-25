@@ -205,7 +205,7 @@ export default function ImmunizationsSection({
             No date of birth or age is set for this profile, so age-based
             recommendations (due / overdue / next dose) cannot be computed. You
             can still record and review doses below.{" "}
-            <Link href="/settings/profile" className="font-medium underline">
+            <Link href="/settings/health" className="font-medium underline">
               Set date of birth
             </Link>
             .
@@ -215,7 +215,7 @@ export default function ImmunizationsSection({
           <Notice tone="slate" className="mb-5">
             Recommendations use the stored age for this profile. Add a date of
             birth to place recorded doses on the schedule grid by age-at-dose.{" "}
-            <Link href="/settings/profile" className="font-medium underline">
+            <Link href="/settings/health" className="font-medium underline">
               Set date of birth
             </Link>
             .

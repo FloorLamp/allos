@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { SETTINGS_GROUPS, type SettingsGroupId } from "../settings-groups";
 import {
   isTrainingRestricted,
   restrictedActivityTypeClause,
@@ -567,6 +568,21 @@ function careGoalHits(profileId: number, like: string): SearchHit[] {
   }));
 }
 
+// Extra search words per settings group — the terms people type that a one-sentence
+// summary doesn't contain. Keyed by group id so a renamed group can't strand them.
+const SETTINGS_SEARCH_KEYWORDS: Partial<Record<SettingsGroupId, string>> = {
+  account: "password 2fa two-factor sessions sign out devices login security",
+  display: "units kilograms pounds miles kilometers date time format 24h",
+  health:
+    "sex birthdate timezone week start photo name age home location skin type",
+  training: "hr zones max heart rate zone 2 target",
+  nutrition: "dietary preferences food groups exclude vegetarian",
+  coaching: "recommendations cadence ai check-in scales anxiety mood",
+  notifications:
+    "notifications telegram web push home assistant reminders schedule channels quiet hours digest recap",
+  privacy: "mental health sharing crisis resources",
+};
+
 // Static navigation destinations, so the palette doubles as a jump-to-page bar.
 // `restricted` entries are hidden for age-restricted profiles (see age-gate.ts /
 // Nav's RESTRICTED_HREFS).
@@ -679,17 +695,16 @@ const PAGES: {
       "data import export manage upload download csv paste documents labs mychart integrations health connect strava garmin devices",
   },
   { title: "Settings", href: "/settings", keywords: "preferences" },
-  {
-    title: "Settings: Profile",
-    href: "/settings/profile",
-    keywords: "sex birthdate timezone training zones cadence",
-  },
-  {
-    title: "Settings: Notifications",
-    href: "/settings/notifications",
-    keywords:
-      "notifications telegram web push home assistant reminders schedule matrix channels",
-  },
+  // The per-group settings destinations come from the ONE settings registry (#1462)
+  // rather than a hand-kept second list, so a new group is searchable the day it
+  // ships. Admin-only groups stay out of the palette (a member must never be offered
+  // a door that redirects them); the extra keywords below cover the words people
+  // actually type, which the registry summaries alone don't.
+  ...SETTINGS_GROUPS.filter((g) => !g.adminOnly).map((g) => ({
+    title: `Settings: ${g.label}`,
+    href: g.route,
+    keywords: `${g.summary.toLowerCase()} ${SETTINGS_SEARCH_KEYWORDS[g.id] ?? ""}`,
+  })),
   {
     // Person-level medical context moved off Settings → Profile (#928): smoking
     // history, health risk factors, and the emergency card.
