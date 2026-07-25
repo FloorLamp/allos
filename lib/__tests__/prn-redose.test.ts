@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   redoseNoticeDecision,
   redoseWindowStatus,
+  effectiveMaxDailyCount,
   prnMaxSignalKey,
   PRN_MAX_PREFIX,
 } from "@/lib/prn-redose";
@@ -116,6 +117,69 @@ describe("redoseWindowStatus — marker-agnostic surfacing", () => {
     })!;
     expect(open.open).toBe(true);
     expect(open.atMax).toBe(true);
+  });
+});
+
+// #1458: the sick-kid config — "Minimum hours between doses = 6", "Maximum doses per
+// day" left blank. The window half is fully computable from the interval alone, so the
+// status must exist; only the ceiling half degrades.
+describe("redoseWindowStatus — interval-only config (#1458)", () => {
+  it("describes the window with no confirmed daily max, and is never atMax", () => {
+    const before = redoseWindowStatus({
+      minIntervalHours: 6,
+      maxDailyCount: null,
+      latestGivenAt: GIVEN,
+      countToday: 1,
+      now: hoursAfter(1),
+    })!;
+    expect(before).not.toBeNull();
+    expect(before.open).toBe(false);
+    expect(before.opensInHours).toBeCloseTo(5, 5);
+    expect(before.maxDailyCount).toBeNull();
+    expect(before.atMax).toBe(false);
+
+    const after = redoseWindowStatus({
+      minIntervalHours: 6,
+      maxDailyCount: null,
+      latestGivenAt: GIVEN,
+      countToday: 9,
+      now: hoursAfter(7),
+    })!;
+    expect(after.open).toBe(true);
+    // An unconfigured ceiling is never a reached one, however high the count runs.
+    expect(after.atMax).toBe(false);
+  });
+
+  it("still returns null when nothing has been logged", () => {
+    expect(
+      redoseWindowStatus({
+        minIntervalHours: 6,
+        maxDailyCount: null,
+        latestGivenAt: null,
+        countToday: 0,
+        now: GIVEN,
+      })
+    ).toBeNull();
+  });
+});
+
+describe("effectiveMaxDailyCount (#1027 widening, #1458 degradation)", () => {
+  it("takes the most conservative confirmed max", () => {
+    expect(effectiveMaxDailyCount(6, 4)).toBe(4);
+    expect(effectiveMaxDailyCount(4, 6)).toBe(4);
+  });
+
+  it("falls back to whichever side is confirmed", () => {
+    expect(effectiveMaxDailyCount(null, 4)).toBe(4);
+    expect(effectiveMaxDailyCount(4, null)).toBe(4);
+    expect(effectiveMaxDailyCount(4, undefined)).toBe(4);
+  });
+
+  it("is null when no member carries a confirmed max", () => {
+    expect(effectiveMaxDailyCount(null, null)).toBeNull();
+    expect(effectiveMaxDailyCount(undefined, undefined)).toBeNull();
+    // A stored 0 is not a confirmed ceiling.
+    expect(effectiveMaxDailyCount(0, null)).toBeNull();
   });
 });
 

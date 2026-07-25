@@ -82,6 +82,35 @@ describe("redoseCardLabel", () => {
     );
   });
 
+  // #1458 — the parent who filled in "6 hours" and left "maximum per day" blank.
+  it("keeps the window guidance with no confirmed daily max", () => {
+    const noMax = (over: Partial<RedoseStatus>) =>
+      redoseCardLabel(status({ maxDailyCount: null, ...over }));
+    expect(noMax({ open: false, opensInHours: 5, countToday: 1 })).toBe(
+      "Next dose in ~5h · 1 today"
+    );
+    expect(noMax({ open: true, countToday: 1 })).toBe(
+      "Redose OK — min interval passed · 1 today"
+    );
+  });
+
+  it("never says 'Max reached' when no maximum was confirmed", () => {
+    // atMax cannot be true without a max (redoseWindowStatus guarantees it), but the
+    // formatter must not invent the phrase from a high count either.
+    const label = redoseCardLabel(
+      status({ open: true, maxDailyCount: null, countToday: 12 })
+    );
+    expect(label).toBe("Redose OK — min interval passed · 12 today");
+    expect(label).not.toContain("Max reached");
+    expect(label).not.toContain("of");
+  });
+
+  it("keeps the cross-item tail with no confirmed max", () => {
+    expect(
+      redoseCardLabel(status({ open: true, maxDailyCount: null }), 2)
+    ).toBe("Redose OK — min interval passed · 1 today across 2 items");
+  });
+
   it("reserves CTA emphasis for an open window below the daily max", () => {
     expect(redoseActionIsPrimary(null)).toBe(true);
     expect(redoseActionIsPrimary(status({ open: false }))).toBe(false);

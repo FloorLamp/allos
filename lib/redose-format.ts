@@ -15,12 +15,16 @@ export function hoursLabel(hours: number): string {
   return `${rounded}h`;
 }
 
-// The "N of M today" count fragment shared by the notice and the card.
+// The "N of M today" count fragment shared by the notice and the card. A null max
+// (#1458 — the optional "maximum doses per day" left blank) drops the ceiling half
+// and reads "1 today"; the fragment never invents a max it wasn't given.
 export function countFragment(
   countToday: number,
-  maxDailyCount: number
+  maxDailyCount: number | null
 ): string {
-  return `${countToday} of ${maxDailyCount} today`;
+  return maxDailyCount == null
+    ? `${countToday} today`
+    : `${countToday} of ${maxDailyCount} today`;
 }
 
 // The one-shot redose NOTICE message (title + body) for the fire case. `lastClock` is
@@ -61,6 +65,9 @@ export function redoseNoticeMessage(input: {
 //   • at the confirmed max → "Max reached · 4 of 4 today"
 //   • window open          → "Redose OK — min interval passed · 2 of 4 today"
 //   • not yet              → "Next dose in ~2h · 1 of 4 today"
+// With NO confirmed daily max (#1458) the ceiling half simply drops — "Next dose in
+// ~5h · 1 today", "Redose OK — min interval passed · 1 today", and never "Max
+// reached", because an unconfigured maximum is not a reached one.
 // `familyMemberCount` (#1027) > 1 appends "across N items" so a counter fed by a
 // same-ingredient sibling's doses says so ("the cross-item counter line").
 export function redoseCardLabel(
