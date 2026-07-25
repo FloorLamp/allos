@@ -3,11 +3,8 @@
 import { useState, useTransition } from "react";
 import type { ErrorEvent } from "@/lib/error-log-format";
 import ScrollFade from "@/components/ScrollFade";
-
-function fmtTime(iso: string): string {
-  // Local time; the server's TZ on the server, the browser's on the client.
-  return new Date(iso).toLocaleString();
-}
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import { formatTimestamp } from "@/lib/format-date";
 
 // Read-only table of persisted server errors, newest first, with an admin-only
 // "Clear" button (issue #596). No live stream — errors are rare and low-volume,
@@ -21,6 +18,7 @@ export default function ErrorLogTable({
   profileNames: Record<number, string>;
   clearAction: () => Promise<void>;
 }) {
+  const formatPrefs = useFormatPrefs();
   const [pending, startTransition] = useTransition();
   const [confirming, setConfirming] = useState(false);
 
@@ -82,7 +80,7 @@ export default function ErrorLogTable({
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-black/5 dark:border-white/10">
-                  <th className="th">Time</th>
+                  <th className="th whitespace-nowrap">Time (UTC)</th>
                   <th className="th">Level</th>
                   <th className="th">Scope</th>
                   <th className="th">Profile</th>
@@ -99,7 +97,7 @@ export default function ErrorLogTable({
                       className="td whitespace-nowrap text-slate-500 dark:text-slate-400"
                       suppressHydrationWarning
                     >
-                      {fmtTime(e.time)}
+                      {formatTimestamp(e.time, formatPrefs, { zone: "utc" })}
                     </td>
                     <td className="td">
                       <span

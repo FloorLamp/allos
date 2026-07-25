@@ -3,13 +3,8 @@
 import SubmitButton from "@/components/SubmitButton";
 import type { SessionSummary } from "@/lib/auth";
 import { revokeSessionAction, signOutOtherSessions } from "./actions";
-
-// Format a SQLite UTC timestamp ("YYYY-MM-DD HH:MM:SS") in the viewer's locale.
-// Rendered client-side so it reflects the reader's own zone.
-function fmt(ts: string): string {
-  const d = new Date(ts.replace(" ", "T") + "Z");
-  return isNaN(d.getTime()) ? ts : d.toLocaleString();
-}
+import { useFormatPrefs } from "@/components/FormatPrefsProvider";
+import { formatTimestamp } from "@/lib/format-date";
 
 // Active-sessions view. Lists every live session for the
 // signed-in login with per-session revoke, plus a standalone "sign out
@@ -25,6 +20,10 @@ export default function ActiveSessions({
   sessions: SessionSummary[];
   canRevoke?: boolean;
 }) {
+  // One admin-ops timestamp shape, read as UTC (issue #1448) — the same
+  // formatter the Audit / Errors / AI-log tables use.
+  const formatPrefs = useFormatPrefs();
+  const fmt = (ts: string) => formatTimestamp(ts, formatPrefs, { zone: "utc" });
   const otherCount = sessions.filter((s) => !s.current).length;
 
   return (
@@ -57,7 +56,7 @@ export default function ActiveSessions({
                 )}
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Signed in {fmt(s.createdAt)} · Last seen {fmt(s.lastSeenAt)}
+                Signed in {fmt(s.createdAt)} · Last seen {fmt(s.lastSeenAt)} UTC
               </p>
             </div>
             {!s.current && canRevoke && (

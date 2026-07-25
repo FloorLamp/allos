@@ -80,24 +80,17 @@ function sourceFiles(): { rel: string; text: string }[] {
 
 // ---- Rule (i): implicit-locale toLocale* calls -----------------------------
 
-// Frozen admin-ops offenders as of #1020 (per-file `.toLocale*(` call counts,
-// after excluding the pinned-locale `.toLocaleString("en-US")` form). Migrating
-// one to the pref-aware formatters LOWERS its number here in the same PR; a
-// fully-migrated file drops out entirely. New files must not appear.
-const TOLOCALE_ALLOWLIST: Record<string, number> = {
-  // Admin-only session list ("Last seen" timestamps).
-  "app/(app)/settings/ActiveSessions.tsx": 1,
-  // Admin-only error log table timestamps.
-  "app/(app)/settings/errors/ErrorLogTable.tsx": 1,
-  // Admin-only AI log stream: one timestamp + two token-usage counters.
-  "app/(app)/settings/logs/LogsStream.tsx": 3,
-  // Admin-only AI usage rollup counter.
-  "app/(app)/settings/logs/UsageRollup.tsx": 1,
-  // Admin-only delivery-error timestamp on Settings → Notifications.
-  "app/(app)/settings/notifications/ServerTelegramSettings.tsx": 1,
-  // Admin-only Settings → Server status timestamps (backup/integrity).
-  "app/(app)/settings/server/page.tsx": 3,
-};
+// EMPTY, and that is the point (issue #1448). The admin-ops trio — Audit,
+// Errors, AI logs — plus Active sessions, the delivery-error stamp and the
+// Settings → Server status times were the last implicit-locale renders in the
+// app: Audit printed SQLite's raw `2026-07-24 22:14:15` while its siblings
+// called `toLocaleString()`, which resolves to the SERVER's zone when
+// server-rendered and the BROWSER's after hydration (LogsStream carried a
+// `suppressHydrationWarning` for exactly that mismatch). They now all render
+// `formatTimestamp(..., { zone: "utc" })` — one shape, deterministic, labelled
+// UTC in the column header. Keep this empty: a NEW entry means a surface went
+// back to ambient-locale formatting.
+const TOLOCALE_ALLOWLIST: Record<string, number> = {};
 
 // A `.toLocale…(` CALL (leading dot keeps prose mentions in comments out);
 // `.toLocaleString("en-US"` (pinned-locale numeric formatting) is allowed.
@@ -113,6 +106,8 @@ function countMatches(text: string, re: RegExp): number {
 const FORMATTER_MIN_ARGS: Record<string, number> = {
   formatLongDate: 2,
   formatMonthDay: 2,
+  formatDateWithYear: 2,
+  formatTimestamp: 2,
   formatRecordDate: 3,
   formatRecordDateTime: 3,
 };
@@ -163,6 +158,45 @@ function lineOf(text: string, index: number): number {
   return text.slice(0, index).split("\n").length;
 }
 
+// ---- Rule (iii): raw <input type="date"> ----------------------------------
+
+// A native date control renders its value in the BROWSER's format — "07/24/2026"
+// on a US Chrome, "24/07/2026" elsewhere — which is a fifth date shape the app
+// neither chooses nor can style, sitting beside pref-aware fields on the same
+// form (issue #1448 format #2). components/DateField.tsx is the styled,
+// pref-aware replacement (it renders through the same formatter vocabulary and
+// submits the ISO value via a hidden input, so a form's payload is unchanged).
+//
+// Frozen per-file counts, shrink-only like the lists above. The two survivors are
+// deliberate, not oversights:
+const NATIVE_DATE_ALLOWLIST: Record<string, number> = {
+  // Onboarding birthdate: DateField has no `disabled` prop, which this field
+  // needs while the step is submitting. Native year-scrolling also genuinely
+  // suits a birthdate (a 1-in-100-years reach) better than a month grid.
+  "app/(app)/onboarding/AgeInputs.tsx": 1,
+  // Training → endurance plan "Event date": converting it puts DateField's
+  // portaled calendar over the inline plan bar's submit row. Worth doing, but
+  // it needs its own layout pass rather than riding along here.
+  "app/(app)/training/EndurancePlanBar.tsx": 1,
+};
+
+// The `type="date"` attribute itself, rather than an `<input …>` span: a JSX tag
+// is multi-line and its attributes routinely contain `>` (an arrow function in
+// `onChange`), so any "from `<input` to the closing bracket" pattern silently
+// stops matching the moment the type attribute moves after a handler. Nothing but
+// an input carries this attribute, so the attribute alone is the reliable
+// signature. DateField renders `type="text"`, so it can never match its own ban.
+const NATIVE_DATE_RE = /\btype=["']date["']/g;
+
+// Comments must be stripped first: DateField's own header documents the control
+// it replaces ("replacement for <input type=\"date\">"), and prose must not count
+// as an offender. Same treatment notes-text.test.ts applies.
+function stripComments(text: string): string {
+  return text
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+}
+
 describe("date/time display-pref guard (#964/#1020)", () => {
   it("no implicit-locale toLocale* date/time calls outside the frozen admin-ops allowlist", () => {
     const problems: string[] = [];
@@ -192,6 +226,41 @@ describe("date/time display-pref guard (#964/#1020)", () => {
         problems.push(
           `${rel} is in TOLOCALE_ALLOWLIST but has no matches (or no longer ` +
             `exists) — remove its entry (the list only shrinks).`
+        );
+      }
+    }
+    expect(problems, problems.join("\n")).toEqual([]);
+  });
+
+  it('no raw <input type="date"> outside the frozen allowlist — date entry goes through <DateField />', () => {
+    const problems: string[] = [];
+    const seen = new Set<string>();
+    for (const { rel, text } of sourceFiles()) {
+      const count = countMatches(stripComments(text), NATIVE_DATE_RE);
+      if (count === 0) continue;
+      seen.add(rel);
+      const allowed = NATIVE_DATE_ALLOWLIST[rel] ?? 0;
+      if (count > allowed) {
+        problems.push(
+          `${rel}: ${count} raw \`<input type="date">\`, allowed ${allowed}. A ` +
+            `native date control renders its value in the BROWSER's format, ` +
+            `which the app can neither choose nor style. Use ` +
+            `components/DateField.tsx (same ISO form payload, pref-aware ` +
+            `display, styled calendar).`
+        );
+      } else if (count < allowed) {
+        problems.push(
+          `${rel}: ${count} raw \`<input type="date">\`, allowlist froze ` +
+            `${allowed}. Lower its entry in NATIVE_DATE_ALLOWLIST to ${count} ` +
+            `in this PR (the list only shrinks).`
+        );
+      }
+    }
+    for (const rel of Object.keys(NATIVE_DATE_ALLOWLIST)) {
+      if (!seen.has(rel)) {
+        problems.push(
+          `${rel} is in NATIVE_DATE_ALLOWLIST but has no raw date input (or no ` +
+            `longer exists) — remove its entry (the list only shrinks).`
         );
       }
     }
