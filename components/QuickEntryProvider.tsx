@@ -1,0 +1,232 @@
+"use client";
+
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import BottomSheet from "./BottomSheet";
+import QuickDoseList from "./quick-entry/QuickDoseList";
+import BodyQuickAdd from "@/app/(app)/trends/BodyQuickAdd";
+import VitalsQuickAdd from "@/app/(app)/trends/VitalsQuickAdd";
+import FoodLogBar from "@/app/(app)/nutrition/FoodLogBar";
+import {
+  loadQuickEntry,
+  type QuickEntryData,
+} from "@/app/(app)/quick-entry-actions";
+import type { QuickEntryForm } from "@/lib/quick-log";
+
+// The shared quick-entry overlay host (issue #1468).
+//
+// **Navigation is not a quick-log outcome.** The #1416 sheet shipped two-tier:
+// activity opened its editor in place, but food / dose / weight were
+// `router.push`es to their pages — so a sheet that promises "log from anywhere"
+// left you on Nutrition in the middle of a morning check. Every sheet item now
+// opens here instead, and after a save you are exactly where you started. That
+// is the feature.
+//
+// ── What this is NOT ─────────────────────────────────────────────────────────
+//
+// It is not a second write path, and not a second set of forms. It mounts the
+// EXISTING components — BodyQuickAdd, VitalsQuickAdd and FoodLogBar, the very
+// same instances the Trends and Nutrition pages render — and they keep calling
+// the very same Server Actions (addBodyMetric / addVitals / logFoodServing) with
+// their own validation, offline queueing and write gates. Dose is the one row
+// this file assembles (QuickDoseList), and it too only posts the existing
+// `markTaken`. One component serves the page mount AND the overlay mount; there
+// is deliberately no overlay COPY of any form to drift from its original (the
+// responsive shared-content rule, one level up).
+//
+// Deep-link `FOCUS_PARAM` behavior on the pages is untouched — the palette and
+// external links still land on the page and focus a field there. This is an
+// additional mounting context, not a replacement for the pages.
+//
+// ── Lifecycle ────────────────────────────────────────────────────────────────
+//
+// TRANSACTIONAL, which is what earns it the BottomSheet (the #1428 decision
+// rule): a half-typed weight entry is safe to discard, so scrim-tap / Escape /
+// (with #1425) flick-away all mean "never mind". The activity editor is the
+// counter-example and stays a DOCK — a live workout is a SESSION, "away" means
+// still running, and dismissal must mean minimize, never discard. That is why
+// `{kind:"activity"}` is still its own target rather than an overlay form.
+//
+// Explicit submit stays (#794): this is a MOUNT, not an autosave surface. Only
+// the Settings cards save on blur.
+//
+// ── Cost ─────────────────────────────────────────────────────────────────────
+//
+// Mounted on every page, it gathers NOTHING until opened: the forms' props come
+// from the `loadQuickEntry` read action on open (see quick-entry-actions.ts for
+// why lazy is both cheaper and FRESHER than a layout-time snapshot). The
+// eagerly-propped ActivityEditorProvider next door is the shape being avoided.
+
+interface QuickEntryApi {
+  open: (form: QuickEntryForm) => void;
+  close: () => void;
+}
+
+const Ctx = createContext<QuickEntryApi | null>(null);
+
+export function useQuickEntry(): QuickEntryApi {
+  const ctx = useContext(Ctx);
+  if (!ctx)
+    throw new Error("useQuickEntry must be used within a QuickEntryProvider");
+  return ctx;
+}
+
+// The sheet's accessible name per form, and whether the mounted form already
+// renders that heading itself (in which case the sheet's copy is screen-reader
+// only, so the panel doesn't print the same sentence twice).
+const SHEET: Record<QuickEntryForm, { title: string; ownsHeading: boolean }> = {
+  food: { title: "Log food", ownsHeading: true },
+  weight: { title: "Log weight", ownsHeading: true },
+  vitals: { title: "Log vitals", ownsHeading: true },
+  dose: { title: "Log dose", ownsHeading: false },
+};
+
+type LoadState =
+  | { status: "loading" }
+  | { status: "ready"; data: QuickEntryData }
+  | { status: "error" };
+
+export default function QuickEntryProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  // The form is RETAINED after close so the panel keeps its content through the
+  // sheet's exit animation instead of blanking on the way out.
+  const [form, setForm] = useState<QuickEntryForm | null>(null);
+  const [state, setState] = useState<LoadState>({ status: "loading" });
+  // Ignore a response that lost its race — tapping weight then dose before the
+  // first gather returns must not paint the weight form into the dose sheet.
+  const requestRef = useRef(0);
+
+  const close = useCallback(() => setOpen(false), []);
+
+  const openForm = useCallback((next: QuickEntryForm) => {
+    const token = ++requestRef.current;
+    setForm(next);
+    setState({ status: "loading" });
+    setOpen(true);
+    void loadQuickEntry(next).then(
+      (data) => {
+        if (requestRef.current === token) setState({ status: "ready", data });
+      },
+      () => {
+        if (requestRef.current === token) setState({ status: "error" });
+      }
+    );
+  }, []);
+
+  const api = useMemo<QuickEntryApi>(
+    () => ({ open: openForm, close }),
+    [openForm, close]
+  );
+
+  const sheet = form ? SHEET[form] : null;
+
+  return (
+    <Ctx.Provider value={api}>
+      {children}
+      {sheet && (
+        <BottomSheet
+          open={open}
+          onClose={close}
+          title={sheet.title}
+          testId="quick-entry-sheet"
+          // A sheet on the phone (where this opens from the quick-log sheet) and
+          // a centered card from `md` up, so the palette's future adoption of the
+          // same host doesn't need a second presentation.
+          presentation="dialog"
+          titleHidden={sheet.ownsHeading}
+        >
+          <div data-testid="quick-entry-body" data-form={form}>
+            <QuickEntryBody state={state} onDone={close} />
+          </div>
+        </BottomSheet>
+      )}
+    </Ctx.Provider>
+  );
+}
+
+function QuickEntryBody({
+  state,
+  onDone,
+}: {
+  state: LoadState;
+  onDone: () => void;
+}) {
+  if (state.status === "loading") {
+    return (
+      <p
+        data-testid="quick-entry-loading"
+        className="py-6 text-sm text-slate-500 dark:text-slate-400"
+      >
+        Loading…
+      </p>
+    );
+  }
+  if (state.status === "error") {
+    return (
+      <p
+        role="alert"
+        data-testid="quick-entry-error"
+        className="py-6 text-sm text-rose-600 dark:text-rose-400"
+      >
+        Couldn&apos;t open that form. Close this and try again.
+      </p>
+    );
+  }
+
+  const data = state.data;
+  switch (data.form) {
+    case "weight":
+      return (
+        <BodyQuickAdd
+          weightUnit={data.weightUnit}
+          defaultDate={data.defaultDate}
+          showBodyFat={data.showBodyFat}
+          onSaved={onDone}
+        />
+      );
+    case "vitals":
+      return (
+        <VitalsQuickAdd
+          defaultDate={data.defaultDate}
+          temperatureUnit={data.temperatureUnit}
+          onSaved={onDone}
+        />
+      );
+    case "food":
+      // No `onSaved`: the food bar is INCREMENTAL by design — each +/- tap is its
+      // own write, so there is no single "saved" moment to close on. The user
+      // logs however many servings they mean to and dismisses the sheet. (Its
+      // taps already refresh the page behind, so "stay put" still holds.)
+      return (
+        <FoodLogBar
+          today={data.today}
+          yesterday={data.yesterday}
+          initial={data.initial}
+          initialYesterday={data.initialYesterday}
+          groups={data.groups}
+          slot={data.slot}
+        />
+      );
+    case "dose":
+      return <QuickDoseList doses={data.doses} onDone={onDone} />;
+    case "unavailable":
+      return (
+        <p
+          data-testid="quick-entry-unavailable"
+          className="py-4 text-sm text-slate-500 dark:text-slate-400"
+        >
+          {data.message}
+        </p>
+      );
+  }
+}

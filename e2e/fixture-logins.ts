@@ -984,6 +984,11 @@ export const INTRADAY_TICK_TIME = "07:15";
 export const E2E_LOGIN_SHELL = "e2e_shell";
 export const SHELL_PROFILE = "Mobile Shell (e2e)";
 export const SHELL_WEIGHT_KG = "77.7";
+// One scheduled supplement dose on that profile, seeded untaken, so the
+// quick-log DOSE overlay has something real to confirm (#1468). Owned by
+// quick-log-overlay.mobile.spec.ts, which clears its logs at test start.
+export const SHELL_DOSE_ITEM = "Shell Overlay Vitamin (e2e)";
+export const SHELL_DOSE_AMOUNT = "1000 IU";
 
 // ── Dashboard "Now" strip + collapsible hero (issue #1413) ───────────────────
 // Two spec-owned fixtures for e2e/dashboard-now.mobile.spec.ts.

@@ -430,6 +430,32 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
   animation: motion-slide-left-out 220ms ease-in forwards;
 }
 
+/* The RESPONSIVE dialog's travel (issue #1428, section A) — the motion half of
+   BottomSheet's `presentation="dialog"`.
+
+   The same primitive presents two ways: a bottom sheet below `md`, a centered
+   modal from `md` up. Its motion has to follow, and a sheet's slide-up on a
+   centered card reads as the card falling off the bottom of the screen. So the
+   media query lives HERE rather than in the component: one class name is correct
+   at both widths, with no resize listener and no wrong first paint between
+   hydration and a JS width check. Durations/easings are the SAME values as the
+   `slide-up`/`fade` pairs above — this composes them, it does not invent a third
+   motion vocabulary (#1469 converges the tokens themselves). */
+.motion-dialog-in {
+  animation: motion-slide-up-in 240ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.motion-dialog-out {
+  animation: motion-slide-up-out 240ms ease-in forwards;
+}
+@media (min-width: 768px) {
+  .motion-dialog-in {
+    animation: motion-fade-in 220ms ease-out;
+  }
+  .motion-dialog-out {
+    animation: motion-fade-out 220ms ease-in forwards;
+  }
+}
+
 /* The sticky top chrome (components/ShellChrome.tsx) — the phone top bar plus
    the multi-profile view banner, hiding and revealing as ONE unit on scroll.
 
@@ -455,7 +481,9 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
   .motion-slide-up-in,
   .motion-slide-up-out,
   .motion-slide-left-in,
-  .motion-slide-left-out {
+  .motion-slide-left-out,
+  .motion-dialog-in,
+  .motion-dialog-out {
     animation: none;
   }
   /* The chrome still hides and reveals — the preference asks for no TRAVEL, not

@@ -5,18 +5,35 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useId,
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
-import { nextTrapFocusIndex } from "@/lib/focus-trap";
+import BottomSheet from "./BottomSheet";
 
 // App-wide confirmation dialog, replacing native window.confirm(). Mounted once
 // in the root layout; any client component calls `useConfirm()` to get an async
 // `confirm(options)` that resolves true (confirmed) or false (cancelled or
 // dismissed). It mirrors confirm()'s boolean contract, so a call site stays a
 // one-line `if (!(await confirm({...}))) return;`.
+//
+// ── Presentation (issue #1428, section A) ────────────────────────────────────
+//
+// A confirm is a DECISION, and on a phone the decision used to be parked near
+// the top of the screen (`mt-[10vh]`) — out of thumb reach, in the one place a
+// one-handed user cannot answer it. It now renders through the shared
+// BottomSheet primitive with `presentation="dialog"`: a thumb-reachable sheet
+// below `md`, the familiar centered card from `md` up. Content is authored ONCE
+// here and the primitive owns the viewport difference — no `hidden md:*` pair to
+// drift (the responsive-surfaces rule), and no second focus trap / Escape
+// handler / backdrop to keep in sync with the sheet's (this file used to carry
+// its own hand-rolled copy of all three; useFocusTrap is now the one
+// implementation, which is why lib/focus-trap.ts's nextTrapFocusIndex lost its
+// last consumer here).
+//
+// The transactional lifecycle the sheet demands is exactly a confirm's: dismiss
+// means "cancelled", and cancelling is safe. Destructive confirms keep their
+// EXPLICIT buttons — no swipe-to-confirm (#1428 / #1425's no-destructive-
+// gestures posture) — so the only gesture that reaches the sheet is dismissal.
 export interface ConfirmOptions {
   title: string;
   message?: React.ReactNode;
@@ -34,8 +51,21 @@ interface Pending {
   resolve: (ok: boolean) => void;
 }
 
+// The last request's options + a per-request nonce, RETAINED after the dialog
+// closes. Two reasons: the panel keeps its text through the sheet's exit
+// animation (a confirm that blanks to an empty card on its way out is worse than
+// no animation), and the nonce keys the panel so each new request REMOUNTS it —
+// which is what re-runs useFocusTrap's mount-time initial focus, so the second
+// confirm of a session still opens with its confirm button focused (Enter
+// confirms, the keyboard contract this dialog has always had).
+interface Retained {
+  options: ConfirmOptions;
+  nonce: number;
+}
+
 export function ConfirmProvider({ children }: { children: React.ReactNode }) {
   const [pending, setPending] = useState<Pending | null>(null);
+  const [retained, setRetained] = useState<Retained | null>(null);
 
   // Mirror `pending` into a ref so the unmount cleanup below can settle an
   // outstanding request without capturing a stale value.
@@ -49,6 +79,9 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
 
   const confirm = useCallback<ConfirmFn>((options) => {
     return new Promise<boolean>((resolve) => {
+      // Set synchronously alongside `pending` (React batches both), so the panel
+      // has its content on the very first render of the open state.
+      setRetained((prev) => ({ options, nonce: (prev?.nonce ?? 0) + 1 }));
       // If a confirm is already open, settle it (cancelled) before replacing it,
       // so its awaiter never hangs when a second request supersedes it.
       setPending((prev) => {
@@ -71,62 +104,28 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
   return (
     <ConfirmContext.Provider value={confirm}>
       {children}
-      {pending && <ConfirmModal options={pending.options} onSettle={settle} />}
+      {retained && (
+        <ConfirmModal
+          key={retained.nonce}
+          options={retained.options}
+          open={pending != null}
+          onSettle={settle}
+        />
+      )}
     </ConfirmContext.Provider>
   );
 }
 
 function ConfirmModal({
   options,
+  open,
   onSettle,
 }: {
   options: ConfirmOptions;
+  open: boolean;
   onSettle: (ok: boolean) => void;
 }) {
   const confirmRef = useRef<HTMLButtonElement>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const titleId = useId();
-
-  // Esc cancels; focus the confirm button on open so Enter confirms and the
-  // dialog is reachable by keyboard. The listener runs in the capture phase and
-  // stops propagation, so while the dialog is open Escape is consumed here and
-  // doesn't also reach a background handler (e.g. the activity editor's own
-  // Escape-to-close, which would otherwise re-open a confirm). Tab is trapped at
-  // the dialog edges so keyboard focus can't wander back to the (inert)
-  // background — a real modal focus trap.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        onSettle(false);
-        return;
-      }
-      if (e.key === "Tab") {
-        const root = dialogRef.current;
-        if (!root) return;
-        const focusables = Array.from(
-          root.querySelectorAll<HTMLElement>(
-            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-          )
-        ).filter((el) => !el.hasAttribute("disabled"));
-        const active = document.activeElement as HTMLElement | null;
-        // Pure wrap decision (#832) — component owns the DOM, lib owns the branches.
-        const target = nextTrapFocusIndex(
-          focusables.length,
-          active ? focusables.indexOf(active) : -1,
-          !!active && root.contains(active),
-          e.shiftKey
-        );
-        if (target !== null) {
-          e.preventDefault();
-          focusables[target].focus();
-        }
-      }
-    };
-    window.addEventListener("keydown", onKey, true);
-    confirmRef.current?.focus();
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [onSettle]);
 
   const {
     title,
@@ -136,50 +135,46 @@ function ConfirmModal({
     danger = false,
   } = options;
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[110] flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 sm:p-8 dark:bg-black/70"
-      onClick={() => onSettle(false)}
+  return (
+    <BottomSheet
+      open={open}
+      // Dismissal — backdrop tap, Escape, or (below `md`) flicking the sheet away
+      // once #1425 lands — is CANCEL, mirroring window.confirm()'s contract.
+      onClose={() => onSettle(false)}
+      title={title}
+      testId="confirm-dialog"
+      presentation="dialog"
+      // Above the toasts (`z-[100]`): a confirm is a question the viewer has to
+      // answer before anything else, so nothing may paint over it.
+      zIndexClass="z-[110]"
+      // Focus the confirm button on open so Enter confirms — the keyboard
+      // contract this dialog has always had.
+      initialFocusRef={confirmRef}
     >
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        className="mt-[10vh] w-full max-w-md rounded-xl bg-white p-4 shadow-xl sm:p-6 dark:bg-ink-900"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2
-          id={titleId}
-          className="text-lg font-bold text-slate-900 dark:text-slate-100"
-        >
-          {title}
-        </h2>
-        {message != null && (
-          <div className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-            {message}
-          </div>
-        )}
-        <div className="mt-5 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={() => onSettle(false)}
-            className="btn-ghost"
-          >
-            {cancelLabel}
-          </button>
-          <button
-            ref={confirmRef}
-            type="button"
-            onClick={() => onSettle(true)}
-            className={danger ? "btn-danger" : "btn"}
-          >
-            {confirmLabel}
-          </button>
+      {message != null && (
+        <div className="text-sm text-slate-500 dark:text-slate-400">
+          {message}
         </div>
+      )}
+      {/* Explicit buttons, always — a destructive confirm is never a gesture. */}
+      <div className="mt-5 flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => onSettle(false)}
+          className="btn-ghost"
+        >
+          {cancelLabel}
+        </button>
+        <button
+          ref={confirmRef}
+          type="button"
+          onClick={() => onSettle(true)}
+          className={danger ? "btn-danger" : "btn"}
+        >
+          {confirmLabel}
+        </button>
       </div>
-    </div>,
-    document.body
+    </BottomSheet>
   );
 }
 
