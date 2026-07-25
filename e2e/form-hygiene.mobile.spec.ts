@@ -59,9 +59,18 @@ test("the live set row shows a 4-character load at 390px (#1450)", async ({
   const weightInput = page.getByTestId("set1-weight");
   await expect(weightInput).toBeVisible();
 
+  // Set 1's weight carries a ghost SUGGESTION that the field applies on focus
+  // (StrengthSets' onApplySuggestion), so a bare fill races it: the fill lands,
+  // then the suggested load overwrites it ("82.7775"). Let the suggestion settle
+  // first, then retry the fill until the value we typed is the one that stuck.
+  await weightInput.focus();
+  await expect(weightInput).toHaveValue(/^\d/);
+
   // The whole point: a realistic 4-character load must be readable back.
-  await weightInput.fill("77.5");
-  await expect(weightInput).toHaveValue("77.5");
+  await expect(async () => {
+    await weightInput.fill("77.5");
+    await expect(weightInput).toHaveValue("77.5", { timeout: 2_000 });
+  }).toPass({ timeout: 15_000 }); // topass-ok: the focus-applied suggestion can overwrite a fill that lands first — one non-atomic step a bare expect cannot re-drive
   expect(
     await isClipped(page, "set1-weight"),
     "the weight input clips its own value at 390px — the #1450 regression"
