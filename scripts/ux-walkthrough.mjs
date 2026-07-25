@@ -606,7 +606,23 @@ async function pagesJourney(browser) {
     }
   };
   walk(appDir, "");
-  log(`pages census: ${routes.length} static routes`);
+  // UX_ROUTES: comma-separated route prefixes to census a SUBSET (e.g.
+  // "/trends,/upcoming" to audit one hub, or to keep a run tractable on a
+  // pathologically slow dev filesystem). Unset = every static route.
+  const only = (process.env.UX_ROUTES || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const picked = only.length
+    ? routes.filter((r) => only.some((p) => r === p || r.startsWith(p)))
+    : routes;
+  if (only.length)
+    log(
+      `pages census: ${picked.length} of ${routes.length} static routes (UX_ROUTES=${only.join(",")})`
+    );
+  else log(`pages census: ${picked.length} static routes`);
+  routes.length = 0;
+  routes.push(...picked);
 
   const state = path.join(SHOTS, "admin-state.json");
   for (const [tag, viewport] of [

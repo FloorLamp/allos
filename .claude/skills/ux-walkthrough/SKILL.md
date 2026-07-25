@@ -59,7 +59,10 @@ to the shots for fast human review.
   `UX_CHROMIUM` to a Chromium binary — in Claude Code's remote environment that
   is `/opt/pw-browsers/chromium`.
 - Knobs: `UX_BASE` (default `http://localhost:3111`), `UX_ADMIN_USER`/
-  `UX_ADMIN_PASS` (must match the dev-server env above).
+  `UX_ADMIN_PASS` (must match the dev-server env above), `UX_TIMEOUT_MS`
+  (per-page default timeout, for slow first-compiles), and `UX_ROUTES` — a
+  comma-separated route/prefix filter for `pages` (e.g. `UX_ROUTES=/trends`
+  audits one hub and its subroutes instead of the full census).
 
 ## 3. Review
 
