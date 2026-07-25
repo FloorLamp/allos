@@ -349,7 +349,7 @@ async function adminPage(browser, viewport = { width: 1280, height: 900 }) {
     storageState: fs.existsSync(state) ? state : undefined,
   });
   const page = await ctx.newPage();
-  page.setDefaultTimeout(45_000);
+  page.setDefaultTimeout(Number(process.env.UX_TIMEOUT_MS) || 45_000);
   await page.goto(`${BASE}/`);
   for (let i = 0; page.url().includes("login") && i < 3; i++) {
     await signIn(page, ADMIN_USER, ADMIN_PASS);
@@ -398,7 +398,7 @@ async function onboardingJourney(browser) {
   const page = await (
     await browser.newContext({ viewport: { width: 1280, height: 900 } })
   ).newPage();
-  page.setDefaultTimeout(45_000);
+  page.setDefaultTimeout(Number(process.env.UX_TIMEOUT_MS) || 45_000);
 
   await page.goto(`${BASE}/`);
   await page.waitForURL(/login/);
@@ -493,7 +493,7 @@ async function inviteJourney(browser) {
       : undefined,
   });
   const page = await adminCtx.newPage();
-  page.setDefaultTimeout(45_000);
+  page.setDefaultTimeout(Number(process.env.UX_TIMEOUT_MS) || 45_000);
   await page.goto(`${BASE}/settings/family`);
   if (page.url().includes("login")) {
     await signIn(page, ADMIN_USER, ADMIN_PASS);
@@ -571,7 +571,7 @@ async function inviteJourney(browser) {
     viewport: { width: 1280, height: 900 },
   });
   const inv = await invCtx.newPage();
-  inv.setDefaultTimeout(45_000);
+  inv.setDefaultTimeout(Number(process.env.UX_TIMEOUT_MS) || 45_000);
   await inv.goto(link.replace(/^https?:\/\/[^/]+/, BASE));
   await inv.waitForTimeout(1200);
   await shot(inv, "invitee-set-password");
@@ -618,7 +618,7 @@ async function pagesJourney(browser) {
       storageState: fs.existsSync(state) ? state : undefined,
     });
     const page = await ctx.newPage();
-    page.setDefaultTimeout(45_000);
+    page.setDefaultTimeout(Number(process.env.UX_TIMEOUT_MS) || 45_000);
     // No stored admin session → sign in once. VERIFY it took: a silently
     // failed login here once produced 58 byte-identical /login screenshots
     // that looked like a completed census — abort loudly instead.
@@ -667,7 +667,7 @@ async function measureReachCosts(browser) {
     storageState: fs.existsSync(state) ? state : undefined,
   });
   const page = await ctx.newPage();
-  page.setDefaultTimeout(20_000);
+  page.setDefaultTimeout(Number(process.env.UX_TIMEOUT_MS) || 20_000);
   await page.goto(`${BASE}/`);
   if (page.url().includes("login")) {
     await signIn(page, ADMIN_USER, ADMIN_PASS);
@@ -1141,7 +1141,7 @@ async function profilesJourney(browser) {
     viewport: { width: 1280, height: 900 },
   });
   const member = await memberCtx.newPage();
-  member.setDefaultTimeout(45_000);
+  member.setDefaultTimeout(Number(process.env.UX_TIMEOUT_MS) || 45_000);
   await signIn(member, INVITEE.username, INVITEE.password);
   await member.waitForTimeout(1500);
   await shot(member, "readonly-member-home");
