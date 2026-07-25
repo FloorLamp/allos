@@ -54,7 +54,7 @@
     "gen:condition-training-considerations": "tsx scripts/gen-condition-training-considerations.ts"
   },
   "lint-staged": {
-    "*.{js,jsx,ts,tsx,json,css,scss,md,yml,yaml}": "prettier --write --ignore-unknown"
+    "*.{js,mjs,cjs,jsx,ts,mts,cts,tsx,json,css,scss,md,yml,yaml}": "prettier --write --ignore-unknown"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",
