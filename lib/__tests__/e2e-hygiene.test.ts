@@ -153,9 +153,20 @@ const ADD_PROFILE_ALLOW: Record<string, number> = {};
 // calls the SAME lib/standard-metric-seeds.ts core the production paths call. The raw
 // insert is frozen at ZERO everywhere else, so a new fixture can't reintroduce the
 // divergence; the constructor module OWNS the marker and is skipped, not allowlisted.
+//
+// The DELETE side is frozen the same way, and it is not hypothetical: the moment the
+// constructor started seeding, two specs' hand-rolled cleanups (`DELETE FROM profiles`
+// after clearing their own rows) began failing on `saved_items.profile_id`'s foreign
+// key. Creation gained side-state and the destructors did not — the #1487 "row
+// operations carry their side-state" rule, applied to fixtures. So the pair lives in
+// one module: `destroyFixtureProfile` removes what the constructor wrote, and a raw
+// profile DELETE is banned everywhere else, which is what makes the NEXT addition to
+// the production seed core a one-file edit instead of a suite-wide FK hunt.
 const FIXTURE_PROFILE_FILE = "fixture-profile.ts";
 const RAW_PROFILE_INSERT_RE = /INSERT\s+(?:OR\s+\w+\s+)?INTO\s+profiles\b/g;
 const RAW_PROFILE_INSERT_ALLOW: Record<string, number> = {};
+const RAW_PROFILE_DELETE_RE = /DELETE\s+FROM\s+profiles\b/g;
+const RAW_PROFILE_DELETE_ALLOW: Record<string, number> = {};
 
 // Frozen offenders as of #868 (per-file counts). Migrate an entry to
 // e2e/helpers.ts and LOWER its number here in the same PR; a fully-migrated file
@@ -468,6 +479,22 @@ describe("e2e suite hygiene guard (issue #868)", () => {
     );
   });
 
+  it("no NEW raw DELETE FROM profiles in an e2e/*.ts (use destroyFixtureProfile)", () => {
+    checkPattern(
+      "raw fixture-profile delete",
+      RAW_PROFILE_DELETE_RE,
+      RAW_PROFILE_DELETE_ALLOW,
+      {
+        skipFiles: new Set([FIXTURE_PROFILE_FILE]),
+        hint:
+          `A raw DELETE FROM profiles leaves the rows the fixture CONSTRUCTOR seeded ` +
+          `(#1487 standard metric saves) and fails on their foreign key. Use ` +
+          `destroyFixtureProfile from e2e/fixture-profile.ts — the constructor's pair; ` +
+          `see docs/internals/e2e-hygiene.md.`,
+      }
+    );
+  });
+
   it("the blessed fixture-profile constructor exists and seeds the standard metric saves", () => {
     const mod = fs.readFileSync(
       path.join(E2E_DIR, FIXTURE_PROFILE_FILE),
@@ -475,6 +502,9 @@ describe("e2e suite hygiene guard (issue #868)", () => {
     );
     expect(mod).toMatch(/export function createFixtureProfile\b/);
     expect(mod).toMatch(/export function createFixtureProfileWithId\b/);
+    // The destructor is not optional: creation writes side-state, so a fixture that
+    // deletes its profile needs the pair (see the DELETE freeze above).
+    expect(mod).toMatch(/export function destroyFixtureProfile\b/);
     // It must delegate to the production seeding core, not re-implement it.
     expect(mod).toMatch(/seedStandardMetricSaves\(/);
   });

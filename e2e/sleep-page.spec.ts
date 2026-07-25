@@ -10,7 +10,7 @@ import {
   SLEEP_EDIT_PROFILE,
 } from "./fixture-logins";
 import { settledClick } from "./helpers";
-import { createFixtureProfile } from "./fixture-profile";
+import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 
 const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
 
@@ -139,9 +139,9 @@ function destroySleepEditFixture(fixture: SleepEditFixture): void {
         handle
           .prepare("DELETE FROM profile_settings WHERE profile_id = ?")
           .run(fixture.profileId);
-        handle
-          .prepare("DELETE FROM profiles WHERE id = ?")
-          .run(fixture.profileId);
+        // The profile row + whatever its CONSTRUCTOR seeded (the #1487 standard
+        // metric saves) — deleting the row directly trips saved_items' FK.
+        destroyFixtureProfile(handle, fixture.profileId);
       })
       .immediate();
   } finally {

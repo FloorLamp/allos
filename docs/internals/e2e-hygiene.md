@@ -316,11 +316,23 @@ same production seeding core. `fixtureProfileId(name)` in `seed-events.ts` route
 through it, so the ordinary "give me an isolated profile" path needs no thought; a
 spec that creates its own profile on a directly-opened handle imports it.
 
-Enforced by the hygiene guard's seventh check: `INSERT INTO profiles` is frozen at
-ZERO in every `e2e/*.ts` except the constructor module, which owns the marker. The
-general rule it encodes: **a fixture must be reachable by a real user gesture** — when
-a creation path grows a side effect, the fixture constructor grows it too, rather than
-each spec re-deriving day-one state by hand.
+**The destructor is half of it.** The moment the constructor started seeding, two
+specs' hand-rolled cleanups — clear my own rows, then `DELETE FROM profiles` — began
+failing on `saved_items.profile_id`'s foreign key. Creation gained side-state; the
+destructors did not. So the module ships the pair: `destroyFixtureProfile(db, id)`
+removes what the constructor wrote and then the profile row, while a spec's OWN
+fixture data stays the spec's business. When the production seed core grows a second
+table, it is added in ONE file instead of being chased through the suite as FK
+failures.
+
+Enforced by the hygiene guard's seventh check: `INSERT INTO profiles` **and**
+`DELETE FROM profiles` are both frozen at ZERO in every `e2e/*.ts` except the
+constructor module, which owns the markers (note the guard is a text scan — phrase a
+comment about the pattern without spelling the statement out, or it counts itself).
+The general rule it encodes: **a fixture must be reachable by a real user gesture, and
+disposable by its own destructor** — when a creation path grows a side effect, the
+fixture constructor/destructor pair grows with it, rather than each spec re-deriving
+day-one state (or its teardown) by hand.
 
 ## Fix (c) — the changed-spec CI lane at retries=0
 

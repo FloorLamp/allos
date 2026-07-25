@@ -3,7 +3,7 @@ import Database from "better-sqlite3";
 import path from "node:path";
 import { followLink } from "./helpers";
 import { medicationList, medicationRow } from "./med-card-helpers";
-import { createFixtureProfile } from "./fixture-profile";
+import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 
 // IA split (#746): supplements folded into the Nutrition → Supplements tab,
 // medications became a standalone Medical-group page, and /medicine permanently
@@ -89,7 +89,9 @@ function cleanupBaby(): void {
       ).run(id);
       db.prepare("DELETE FROM intake_items WHERE profile_id = ?").run(id);
       db.prepare("DELETE FROM profile_settings WHERE profile_id = ?").run(id);
-      db.prepare("DELETE FROM profiles WHERE id = ?").run(id);
+      // The profile row + whatever its CONSTRUCTOR seeded (the #1487 standard metric
+      // saves). Deleting the row directly trips saved_items' foreign key.
+      destroyFixtureProfile(db, id);
     }
   } finally {
     db.close();
@@ -133,7 +135,18 @@ async function switchProfile(page: Page, name: string) {
     .filter({ hasText: name })
     .getByRole("button")
     .click();
-  await expect(page.getByTestId("user-menu-trigger")).toContainText(name);
+  // The ASSERTION is the settle here, and it needs a real window. This switch is
+  // driven from "/" — the dashboard, the one page with steady background
+  // action-POST traffic — where settledClick can resolve on a bystander poll rather
+  // than the switch itself (docs/internals/e2e-hygiene.md), so the blessed form is a
+  // retrying read of the server-rendered marker. The default 5s was the flake: the
+  // switch POST lands, then the dashboard re-renders for the NEW profile, and under
+  // suite load that re-render is what runs long — the trigger simply still showed
+  // the previous profile when the clock ran out (most often on the switch BACK,
+  // which left the shared session on the fixture profile for whatever ran next).
+  await expect(page.getByTestId("user-menu-trigger")).toContainText(name, {
+    timeout: 20_000,
+  });
 }
 
 test.describe("infant supplements stay reachable (#746)", () => {

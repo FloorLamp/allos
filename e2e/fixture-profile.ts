@@ -22,6 +22,13 @@ import { seedStandardMetricSaves } from "../lib/standard-metric-seeds";
 // what a new profile starts with lands on the fixtures automatically. This is the
 // e2e analog of scripts/seed.ts seeding "Riley (child)" the same way.
 //
+// PAIRED WITH destroyFixtureProfile BELOW. A spec that deletes its own fixture
+// profile must go through the destructor — creation now writes side-state (the seed
+// rows), and `DELETE FROM profiles` alone hits their FK. Constructor and destructor
+// live in the SAME module on purpose, so the next thing profile creation gains is
+// removed in the same edit (the #1487 "row operations carry their side-state" rule,
+// applied to fixtures).
+//
 // Kept in a PLAIN module (no @playwright/test import) for the same reason
 // e2e/fixture-logins.ts is: the tsx seeder and the specs both import it.
 export function createFixtureProfile(
@@ -46,4 +53,37 @@ export function createFixtureProfileWithId(
   db.prepare("INSERT INTO profiles (id, name) VALUES (?, ?)").run(id, name);
   seedStandardMetricSaves(db, id);
   return id;
+}
+
+// Delete a fixture profile and everything the CONSTRUCTOR gave it. The mirror of
+// createFixtureProfile, and the reason it exists: seeding standard metric saves made
+// profile creation carry side-state, and a spec's hand-rolled cleanup that still ran
+// a bare `DELETE FROM profiles` failed on `saved_items.profile_id`'s foreign key —
+// creation gained a side effect, the destructors did not.
+//
+// SCOPE: constructor-created rows, the references a fixture profile accumulates just
+// by being USED, and the profile row itself. A spec's OWN fixture data (its intake
+// items, mood logs, metric samples, profile settings…) stays the spec's business and
+// is cleared before this call, exactly as before. When the production seeding core
+// grows a second table, it is added HERE — that is the whole point of the pairing.
+//
+// It mirrors what production's `deleteProfile` (Settings → Family) does, for the same
+// reasons:
+//   • `sessions.active_profile_id` is NULLed, not ignored. A spec that SWITCHED to its
+//     fixture profile leaves the shared session pointing at it, and that pointer is a
+//     foreign key — deleting the row under it fails. This half is a PRE-EXISTING flake
+//     the seeding change merely made constant: the cleanup only survived when the
+//     switch-back happened to land first (`main` fails the same way, less often).
+//   • grants go too, since a login may not point at a profile that no longer exists.
+// The order matters: every reference is cleared before the row it points at.
+export function destroyFixtureProfile(
+  db: Database.Database,
+  profileId: number
+): void {
+  db.prepare(
+    "UPDATE sessions SET active_profile_id = NULL WHERE active_profile_id = ?"
+  ).run(profileId);
+  db.prepare("DELETE FROM login_profiles WHERE profile_id = ?").run(profileId);
+  db.prepare("DELETE FROM saved_items WHERE profile_id = ?").run(profileId);
+  db.prepare("DELETE FROM profiles WHERE id = ?").run(profileId);
 }
