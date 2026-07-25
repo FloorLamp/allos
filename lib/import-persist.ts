@@ -1,28 +1,18 @@
 import type Database from "better-sqlite3";
 import { db, writeTx } from "./db";
 import { documentSource, undeferredBodyMetrics } from "./body-metric-extract";
-import {
-  adoptProfileFromExtraction,
-  adoptBloodTypeFromRecords,
-  adoptSmokingStatusFromImport,
-  type ProfileAdoption,
-} from "./settings";
+import { adoptSmokingStatusFromImport } from "./settings";
 import { smokingStatusToStructured } from "./social-history";
 import {
-  addCanonicalNames,
-  reconcileFlags,
   ensureMedicationCourse,
   createImportedMedicationCourses,
   addRenewalCourse,
   getMedMatchStates,
-  recordPreventiveDone,
   sweepImmunizationDismissals,
   reapplyVisitLinkDecisions,
   type CourseAttribution,
   type MedMatchState,
 } from "./queries";
-import { matchAppointmentForEncounter } from "./appointment-encounter-match";
-import { satisfiedRuleForCompletedKind } from "./preventive-appointment";
 import { parsePrescription, strengthFromName } from "./prescription-parse";
 import { medNameKey } from "./medication-record-match";
 import {
@@ -37,6 +27,20 @@ import type {
 } from "./health-import";
 import type { PersistInput, PersistRecord } from "./import-shape";
 import { evictPreviewsForDocument } from "./reprocess-preview-cache";
+export {
+  applyImportFollowups,
+  type ImportFollowupOptions,
+} from "./import-persist/followups";
+export {
+  makeConditionResolver,
+  makeEncounterResolver,
+} from "./import-persist/link-resolvers";
+import {
+  makeConditionResolver,
+  makeEncounterResolver,
+} from "./import-persist/link-resolvers";
+export { autoCompleteAppointmentsFromEncounters } from "./import-persist/appointments";
+import { autoCompleteAppointmentsFromEncounters } from "./import-persist/appointments";
 
 // The single persist core shared by every document import path — the AI
 // extractor (runExtraction in lib/medical-pipeline.ts) and the deterministic
@@ -425,82 +429,6 @@ export function countImportedDocumentRows(
     total += row.n;
   }
   return total;
-}
-
-// Close the appointment → encounter loop for a just-imported document (issue
-// #288): when this document landed encounters that correspond to still-scheduled
-// appointments the user booked ahead of the visit, mark those appointments
-// completed and link them — the "zero manual steps" half of the preventive loop.
-// Runs inside persistDocumentImport's transaction, AFTER the encounter INSERTs, so
-// it sees exactly the rows this import wrote.
-//
-// The match decision is the pure, conservative matchAppointmentForEncounter (a
-// null provider on either side never matches; two same-day candidates need a clear
-// nearest-time signal or it declines). Every read/write is profile-scoped. Each
-// encounter re-reads the still-scheduled, still-unlinked appointment set, so an
-// appointment consumed by an earlier encounter in the same batch can't be matched
-// twice. When the completed appointment's kind maps to a single preventive rule
-// (physical/dental/vision), the satisfaction is ALSO recorded (dated the visit) via
-// the SAME recordPreventiveDone stream the manual close-the-loop uses — so the rule
-// is satisfied end-to-end without a click, mirroring recordPreventiveFromAppointment.
-export function autoCompleteAppointmentsFromEncounters(
-  profileId: number,
-  docId: number
-): void {
-  const encounters = db
-    .prepare(
-      `SELECT id, date, provider_id AS providerId
-         FROM encounters
-        WHERE profile_id = ? AND document_id = ?`
-    )
-    .all(profileId, docId) as {
-    id: number;
-    date: string;
-    providerId: number | null;
-  }[];
-  if (encounters.length === 0) return;
-
-  const readScheduled = db.prepare(
-    `SELECT id, scheduled_at AS scheduledAt, provider_id AS providerId,
-            status, encounter_id AS encounterId, kind
-       FROM appointments
-      WHERE profile_id = ? AND status = 'scheduled' AND encounter_id IS NULL`
-  );
-  const completeAndLink = db.prepare(
-    `UPDATE appointments
-        SET status = 'completed', encounter_id = ?
-      WHERE id = ? AND profile_id = ? AND status = 'scheduled'
-        AND encounter_id IS NULL`
-  );
-
-  for (const enc of encounters) {
-    const candidates = readScheduled.all(profileId) as {
-      id: number;
-      scheduledAt: string;
-      providerId: number | null;
-      status: string;
-      encounterId: number | null;
-      kind: string | null;
-    }[];
-    const matchId = matchAppointmentForEncounter(
-      { date: enc.date, providerId: enc.providerId },
-      candidates
-    );
-    if (matchId == null) continue;
-    completeAndLink.run(enc.id, matchId, profileId);
-    // Close the preventive loop when the completed appointment's kind maps to a
-    // single rule — same satisfaction stream as the manual "Mark done" offer.
-    const matched = candidates.find((c) => c.id === matchId);
-    const ruleKey = satisfiedRuleForCompletedKind(matched?.kind ?? null);
-    if (ruleKey) {
-      recordPreventiveDone(
-        profileId,
-        ruleKey,
-        enc.date.slice(0, 10),
-        "appointment"
-      );
-    }
-  }
 }
 
 // Write one document's parsed contents, replacing any rows it previously
@@ -1354,54 +1282,6 @@ function insertImportRows(
 
 type Stmt = Database.Statement;
 
-// Tier-1 visit link (#1050): a memoized resolver from a RAW encounter external_id
-// (`ccda:encounter:<id>`, as the mappers emit it) to the local encounter row id. An
-// imported encounter is stored under the SCOPED external_id `<docSource>|<raw>`, so
-// the lookup re-scopes before querying — stable across reprocess of the same
-// document. Returns null when the reference dangles (never a wrong link).
-export function makeEncounterResolver(
-  profileId: number,
-  docSource: string | null
-): (raw: string | null | undefined) => number | null {
-  const cache = new Map<string, number | null>();
-  return (raw) => {
-    if (!raw || !docSource) return null;
-    if (cache.has(raw)) return cache.get(raw)!;
-    const row = db
-      .prepare(
-        `SELECT id FROM encounters WHERE profile_id = ? AND external_id = ?`
-      )
-      .get(profileId, `${docSource}|${raw}`) as { id: number } | undefined;
-    const id = row ? row.id : null;
-    cache.set(raw, id);
-    return id;
-  };
-}
-
-// Tier-1 indication link (#1052): a memoized resolver from a RAW condition external_id
-// (`ccda:condition:...`, as mapConditionResource emits it) to the local condition row
-// id. Imported conditions are stored under the SCOPED external_id `<docSource>|<raw>`
-// (the same scoping the encounter resolver uses), so the lookup re-scopes before
-// querying — stable across reprocess. Returns null when the reference dangles.
-export function makeConditionResolver(
-  profileId: number,
-  docSource: string | null
-): (raw: string | null | undefined) => number | null {
-  const cache = new Map<string, number | null>();
-  return (raw) => {
-    if (!raw || !docSource) return null;
-    if (cache.has(raw)) return cache.get(raw)!;
-    const row = db
-      .prepare(
-        `SELECT id FROM conditions WHERE profile_id = ? AND external_id = ?`
-      )
-      .get(profileId, `${docSource}|${raw}`) as { id: number } | undefined;
-    const id = row ? row.id : null;
-    cache.set(raw, id);
-    return id;
-  };
-}
-
 // Stamp encounter_id on each row of `rows` (a table whose stored external_id is the
 // scoped `<docSource>|<raw>`) whose `encounter_external_id` resolves to a local
 // encounter. Only sets a currently-null link (a manual re-link is never clobbered).
@@ -1673,33 +1553,4 @@ function persistExtractedMedications(
     }
   }
   return newItems;
-}
-
-// The best-effort follow-ups every import runs after its rows are committed:
-// backfill the profile's sex/birthdate (never overwriting a chosen value),
-// register canonical names, and reconcile out-of-range flags (all rows when a
-// new sex was learned, else just the imported ones). Kept separate from
-// persistDocumentImport so a caller can run it outside the "document is already
-// done" boundary — a throw here must never flip the document back to 'failed'.
-export function applyImportFollowups(
-  profileId: number,
-  opts: {
-    demographics: PersistInput["demographics"];
-    canonicalNames: string[];
-    insertedRecordIds: number[];
-    // The document's readings, so a blood type can be adopted off a lab row — it is
-    // not document metadata like sex/birthdate, so it can't ride `demographics`.
-    // Optional: a caller with nothing to offer just adopts no blood type.
-    records?: PersistInput["records"];
-  }
-): ProfileAdoption {
-  const adopted = adoptProfileFromExtraction(profileId, opts.demographics);
-  // Blood type rides the same adopt-if-unset seam as the demographics above, so both
-  // import paths behave identically.
-  adopted.bloodType = adoptBloodTypeFromRecords(profileId, opts.records);
-  if (adopted.bloodType) adopted.changed = true;
-  addCanonicalNames(opts.canonicalNames);
-  if (adopted.sexAdopted) reconcileFlags(profileId);
-  else reconcileFlags(profileId, opts.insertedRecordIds);
-  return adopted;
 }
