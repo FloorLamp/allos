@@ -1030,6 +1030,17 @@ export const NOW_STRIP_APPOINTMENT = "Now Strip checkup (e2e)";
 export const E2E_LOGIN_NOWSAFETY = "e2e_nowsafety";
 export const NOW_SAFETY_PROFILE = "Now Safety (e2e)";
 
+// A member granted a dedicated ADULT profile carrying NOTHING but the two
+// age-derived preventive findings every adult profile gets (COVID-19, Influenza),
+// used by app-badge.mobile.spec.ts (#1424). Dedicated ON PURPOSE: proving the
+// app-icon badge CLEARS requires driving a hero all the way to "All clear", and
+// the only way there is dismissing those two findings — a write that would
+// silently change the dashboard every other fixture profile renders. The spec
+// resets this profile's `upcoming_dismissals` at test start, so the set→clear
+// sequence is identical on every run and under --repeat-each.
+export const E2E_LOGIN_BADGE = "e2e_badge";
+export const APP_BADGE_PROFILE = "App Badge (e2e)";
+
 // ── Telegram household dose round (issue #1459) ──────────────────────────────
 // A spec-owned caregiver fixture for e2e/household-round.spec.ts. The login's
 // own_profile_id points at the CAREGIVER profile (created first, so it holds the
