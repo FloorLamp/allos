@@ -27,6 +27,10 @@ export interface SavedItemRow extends SavedRef {
 
 // Every saved item for a profile, in canonical saved order (positioned first, then
 // unpositioned newest-first). Optionally narrowed to one kind.
+//
+// The SQL hands rows over `id DESC` so orderSavedRefs — a STABLE sort — breaks a
+// created_at tie newest-first: two stars in the same second are otherwise ordered by
+// whatever order SQLite returns, which would make the grid shuffle unpredictably.
 export function getSavedItems(
   profileId: number,
   kind?: SavedKind
@@ -36,13 +40,15 @@ export function getSavedItems(
       ? (db
           .prepare(
             `SELECT id, kind, key, position, created_at FROM saved_items
-              WHERE profile_id = ? AND kind = ?`
+              WHERE profile_id = ? AND kind = ?
+              ORDER BY id DESC`
           )
           .all(profileId, kind) as SavedItemRow[])
       : (db
           .prepare(
             `SELECT id, kind, key, position, created_at FROM saved_items
-              WHERE profile_id = ?`
+              WHERE profile_id = ?
+              ORDER BY id DESC`
           )
           .all(profileId) as SavedItemRow[])
   ).map((r) => ({ ...r, kind: r.kind as SavedKind }));

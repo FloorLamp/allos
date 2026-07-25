@@ -719,10 +719,16 @@ function tablesDeclaringProfileId(dbSrc: string): Set<string> {
 // NOT retired — that subtraction is what keeps the ~20 rebuild migrations from
 // silently emptying the derived set.
 function tablesDroppedForGood(dbSrc: string): Set<string> {
+  // Comment lines are skipped: migration 006's PROSE discusses "a DROP TABLE
+  // intake_items", and a table must never be retired by a sentence about it.
+  const code = dbSrc
+    .split("\n")
+    .filter((line) => !/^\s*(\/\/|\/\*|\*)/.test(line))
+    .join("\n");
   const dropped = new Set<string>();
-  for (const m of dbSrc.matchAll(/DROP TABLE (?:IF EXISTS )?(\w+)/g))
+  for (const m of code.matchAll(/DROP TABLE (?:IF EXISTS )?(\w+)/g))
     dropped.add(m[1]);
-  for (const m of dbSrc.matchAll(/RENAME TO (\w+)/g)) dropped.delete(m[1]);
+  for (const m of code.matchAll(/RENAME TO (\w+)/g)) dropped.delete(m[1]);
   return dropped;
 }
 

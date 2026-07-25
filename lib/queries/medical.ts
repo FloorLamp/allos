@@ -873,7 +873,7 @@ export function getSavedBiomarkers(profileId: number): SavedBiomarker[] {
       .prepare(
         `SELECT key FROM saved_items
           WHERE profile_id = ? AND kind = 'biomarker'
-          ORDER BY (position IS NULL), position, created_at DESC`
+          ORDER BY (position IS NULL), position, created_at DESC, id DESC`
       )
       .all(profileId) as { key: string }[]
   ).map((r) => r.key);
