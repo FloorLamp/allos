@@ -232,10 +232,19 @@ describe("migration 113 — folding both stores into saved_items", () => {
     pins(db, p, ["metric:weight", "bio:ApoB"]);
 
     up113(db);
+
+    // Bring the fixture to the CURRENT head first: 113's fold ran above, and the
+    // later migrations that also write saved_items get their one legitimate pass —
+    // 114 (#1487) seeds the standard metric tiles as saved rows here. The replay
+    // assertion is about what a SECOND pass does, so the baseline has to be the
+    // settled head rather than 113's output.
+    for (const m of MIGRATIONS) m.up(db);
     const first = savedRows(db, p);
 
     // Replay of the WHOLE list: baseline recreates an empty starred_biomarkers, the
-    // later migrations re-run, and 113 folds nothing new before dropping it again.
+    // later migrations re-run, 113 folds nothing new before dropping it again, and
+    // 114's seeding is a fixed point (OR IGNORE against the UNIQUE, and a dense
+    // position rewrite that is already dense).
     for (const m of MIGRATIONS) m.up(db);
 
     expect(savedRows(db, p)).toEqual(first);

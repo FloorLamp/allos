@@ -13,6 +13,7 @@ import {
   type Role,
 } from "@/lib/auth";
 import { db, writeTx } from "@/lib/db";
+import { seedStandardMetricSaves } from "@/lib/standard-metric-seeds";
 import { hashPassword } from "@/lib/password";
 import { checkPasswordStrength } from "@/lib/password-strength";
 import {
@@ -159,6 +160,12 @@ export async function createProfile(formData: FormData): Promise<FamilyResult> {
       "onboarding_state",
       serializeOnboardingState(initialOnboardingState())
     );
+    // The standard Overview metric tiles as default-saved rows (issue #1487), so a
+    // new profile's Trends Overview looks the same as an existing one's once the
+    // grid is membership-driven. Create-time only — never re-run, or an unstarred
+    // metric would come back. Same set for every profile: the training/growth age
+    // gates stay a render-time filter (see lib/standard-metric-seeds.ts).
+    seedStandardMetricSaves(db, id);
     return id;
   });
   recordAudit({
