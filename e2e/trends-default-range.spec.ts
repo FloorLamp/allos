@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { settledClick, followLink } from "./helpers";
+import type { Locator } from "@playwright/test";
 
 // #1485 G — Trends opens on 90D, and a sparse series shows its latest reading.
 //
@@ -35,6 +36,15 @@ const SPARSE_LATEST = "1.3 ng/dL"; // its newest reading, in its own unit
 // the whole history and could never collide.
 const rangePill = (page: Page, label: string) =>
   page.getByRole("link", { name: label, exact: true });
+
+// A tile's unstar control (#1485 B): open its corner ⋯ menu, then take the item out
+// of the portaled panel. Returns the locator for settledClick to drive.
+async function unstarItem(page: Page, tile: Locator): Promise<Locator> {
+  await tile.getByTestId("overflow-menu-trigger").click();
+  const menu = page.getByTestId("trend-tile-menu");
+  await expect(menu).toBeVisible();
+  return menu.getByTestId("star-toggle");
+}
 
 // The seeded genomics marker (e2e/seed-events.ts): STARRED, dated 2023, and
 // qualitative — 'e3/e4' has no numeric value at all, so nothing can be plotted for
@@ -97,7 +107,7 @@ test("a sparse saved biomarker shows its latest reading and age, not 'No data'",
   page,
 }) => {
   await page.goto("/trends");
-  const picker = page.getByTestId("save-biomarker-picker");
+  const picker = page.getByTestId("save-trend-picker");
   await picker.getByRole("combobox").selectOption(`bio:${SPARSE_ANALYTE}`);
   await settledClick(page, picker.getByRole("button", { name: "Star" }));
 
@@ -131,8 +141,10 @@ test("a sparse saved biomarker shows its latest reading and age, not 'No data'",
   ).toHaveCount(0);
   await expect(allTimeTile.getByTestId("trend-mini-range")).toBeVisible();
 
-  // Cleanup is the assertion: un-starring restores the seed state.
-  await settledClick(page, allTimeTile.getByTestId("star-toggle"));
+  // Cleanup is the assertion: un-starring restores the seed state. The control
+  // lives in the tile's corner ⋯ menu since #1485 B, and the menu panel is portaled
+  // to <body>, so it is located on the page rather than inside the card.
+  await settledClick(page, await unstarItem(page, allTimeTile));
   await expect(
     page.getByTestId("trend-mini-card").filter({ hasText: SPARSE_ANALYTE })
   ).toHaveCount(0);
