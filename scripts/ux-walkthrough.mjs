@@ -370,7 +370,10 @@ async function signIn(page, username, password) {
   await page.fill('input[name="password"]', password);
   await page.click('button[type="submit"]');
   await page
-    .waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 30_000 })
+    // 90s, not 30: on a cold dev filesystem the login POST alone has been
+    // measured at 31.6s (route-compile overhead around a 117ms action) — the
+    // header's "first request can take minutes" patience applies HERE too.
+    .waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 90_000 })
     .catch(() => {});
   await page.waitForTimeout(1500);
 }
