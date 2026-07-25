@@ -1040,3 +1040,21 @@ export const NOW_SAFETY_PROFILE = "Now Safety (e2e)";
 // sequence is identical on every run and under --repeat-each.
 export const E2E_LOGIN_BADGE = "e2e_badge";
 export const APP_BADGE_PROFILE = "App Badge (e2e)";
+
+// ── Telegram household dose round (issue #1459) ──────────────────────────────
+// A spec-owned caregiver fixture for e2e/household-round.spec.ts. The login's
+// own_profile_id points at the CAREGIVER profile (created first, so it holds the
+// lowest id and is the acting profile on login — createSession picks
+// accessibleProfiles[0]), which is what makes the round offerable at all: the
+// checklist is "profiles the receiving profile's own login can WRITE".
+//
+// The two other profiles exercise the access rule in opposite directions in ONE
+// render: WARD is granted WRITE (offered) and SHADOW is granted READ-ONLY (never
+// offered — the round confirms doses, and a read grant may never write). Dedicated
+// on purpose: the spec persists a household_round subscription, and doing that on a
+// shared caregiver profile would add a cross-profile dose round to whatever other
+// specs assert about that profile's notifications.
+export const E2E_LOGIN_HH_ROUND = "e2e_hhround";
+export const HH_ROUND_CAREGIVER_PROFILE = "HH Round Caregiver (e2e)";
+export const HH_ROUND_WARD_PROFILE = "HH Round Ward (e2e)";
+export const HH_ROUND_SHADOW_PROFILE = "HH Round Shadow (e2e)";

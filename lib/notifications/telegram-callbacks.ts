@@ -49,6 +49,8 @@ import { preventiveRuleByKey } from "../preventive-catalog";
 import { preventiveSignalKey } from "../preventive-upcoming";
 import { refillSignalKey } from "../refill-nudge";
 import { escalationMarkerKey } from "./escalate";
+import { resolveHouseholdTapAccess } from "./household-round-access";
+import { householdMemberLabel } from "./household-round";
 import {
   type AllCallback,
   type EscalationCallback,
@@ -60,8 +62,12 @@ import {
   type PreventiveTapOutcome,
   type RefillCallback,
   type RefillTapOutcome,
+  type HouseholdDoseCallback,
   type TakeCallback,
   OUTDATED_MESSAGE_TEXT,
+  householdTapAnswerText,
+  householdTapRefusalText,
+  parseHouseholdDoseCallback,
   escalationAckAnswerText,
   escalationAckCloseText,
   escalationTakeCloseText,
@@ -189,6 +195,16 @@ export async function handleCallbackQuery(
   const escalation = parseEscalationCallback(cq.data);
   if (escalation) {
     await handleEscalationTap(cq, escalation);
+    return;
+  }
+
+  // Household dose round (#1459): a caregiver's cross-profile confirm. Parsed BEFORE
+  // the generic paths because its token names two profiles and resolves its own
+  // access edge (chat → receiving profile → member write grant), not the shared
+  // chat→profile resolution a single-subject tap uses.
+  const household = parseHouseholdDoseCallback(cq.data);
+  if (household) {
+    await handleHouseholdDoseTap(cq, household);
     return;
   }
 
@@ -1084,6 +1100,77 @@ async function handleDoseTap(
       replacementWithTitle(
         cq.message?.text,
         tapResolved(outcome) ? "All done 💊✅" : OUTDATED_MESSAGE_TEXT
+      )
+    );
+  } else {
+    await updateMessageKeyboard(chatId, messageId, remaining);
+  }
+}
+
+// A household-round confirm (#1459): a caregiver taps "✓ Ada · Vitamin D3" in their
+// OWN chat to log a dose for ANOTHER profile. The two-way principle's qualifying case
+// exactly — one idempotent, low-risk state change through an existing server function
+// (markDoseTaken) — so it earns a button rather than a deep link.
+//
+// The access edge is re-resolved HERE, at tap time, never trusted from send time: the
+// stored subscription is data, the live grants are the authority. A refusal answers
+// honestly and writes nothing; a permitted tap answers from markDoseTaken's typed
+// outcome, so a retired dose, a paused item or an already-taken dose each get their
+// own truthful toast instead of a reflexive ✓.
+async function handleHouseholdDoseTap(
+  cq: TelegramCallbackQuery,
+  tap: HouseholdDoseCallback
+): Promise<void> {
+  const chatId = cq.message?.chat?.id;
+  if (chatId == null) {
+    await answerCallbackQuery(cq.id);
+    return;
+  }
+  const access = resolveHouseholdTapAccess(String(chatId), tap);
+  if (access.kind !== "allowed") {
+    // Nothing was written. Say which of the three gates closed, and leave the
+    // keyboard alone — the button may become valid again (a re-granted member), and
+    // silently consuming it would strand the caregiver with no way to confirm.
+    await answerCallbackQuery(cq.id, householdTapRefusalText(access));
+    return;
+  }
+
+  // The write runs under the MEMBER's profile id — the same scope the in-app
+  // cross-profile confirm uses (requireProfileWriteAccess(targetProfile) →
+  // applyDoseStatus) — and markDoseTaken independently re-verifies the
+  // dose → item → profile chain, so a forged id cannot cross profiles here.
+  // `tap.date` is the MEMBER's own profile-local day, stamped at send time.
+  const outcome = markDoseTaken(
+    tap.memberProfileId,
+    tap.doseId,
+    tap.itemId,
+    tap.date
+  );
+  await answerCallbackQuery(
+    cq.id,
+    householdTapAnswerText(
+      householdMemberLabel(tap.receiverProfileId, tap.memberProfileId),
+      outcome
+    )
+  );
+
+  const rows = cq.message?.reply_markup?.inline_keyboard ?? [];
+  const messageId = cq.message?.message_id;
+  if (messageId == null || rows.length === 0) return;
+  // Consume ONLY the tapped button — a row here is one MEMBER, so dropping the row
+  // would take that member's other doses down with it. When the last one goes, close
+  // the message with text that matches the truth: "All done" only if this tap actually
+  // resolved its dose.
+  const remaining = removeButton(rows, cq.data as string);
+  if (remaining.length === 0) {
+    await closeMessage(
+      chatId,
+      messageId,
+      replacementWithTitle(
+        cq.message?.text,
+        tapResolved(outcome)
+          ? "Household round done 💊✅"
+          : OUTDATED_MESSAGE_TEXT
       )
     );
   } else {

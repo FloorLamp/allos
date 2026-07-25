@@ -109,18 +109,26 @@ export function redoseNoticeDecision(input: RedoseWindowInput): RedoseDecision {
 // notification marker, because a card should always show the current window state, not
 // go silent after the notice fired. Returns null when nothing has been logged yet
 // (no window to describe). The interval/max are the item's confirmed numbers.
+// The daily max is OPTIONAL on this path (#1458). "Maximum doses per day" is the
+// field a caregiver is least likely to know offhand, and the single number they want
+// at 2am — when is the next dose OK — is computable from the minimum interval alone.
+// So a null max means only that the ceiling half of the status is unknown: `atMax`
+// is false (an unknown ceiling is never a reached one) and the count fragment drops
+// its "of N". The window half (open / opens-in) needs only the interval and the last
+// administration. The one-shot NOTIFICATION path (redoseNoticeDecision above) keeps
+// requiring both — its gather gate only returns items with both confirmed.
 export interface RedoseStatus {
   open: boolean; // the minimum interval has elapsed since the last administration
-  atMax: boolean; // today's count has reached the confirmed daily max
+  atMax: boolean; // today's count has reached the confirmed daily max (false when unset)
   countToday: number;
-  maxDailyCount: number;
+  maxDailyCount: number | null; // null ⇒ no confirmed ceiling
   sinceHours: number; // hours since the last administration
   opensInHours: number; // hours until the window opens (0 when already open)
 }
 
 export function redoseWindowStatus(input: {
   minIntervalHours: number;
-  maxDailyCount: number;
+  maxDailyCount: number | null;
   latestGivenAt: Date | null;
   countToday: number;
   now: Date;
@@ -130,10 +138,23 @@ export function redoseWindowStatus(input: {
   const open = elapsed >= input.minIntervalHours;
   return {
     open,
-    atMax: input.countToday >= input.maxDailyCount,
+    atMax:
+      input.maxDailyCount != null && input.countToday >= input.maxDailyCount,
     countToday: input.countToday,
     maxDailyCount: input.maxDailyCount,
     sinceHours: elapsed,
     opensInHours: open ? 0 : input.minIntervalHours - elapsed,
   };
+}
+
+// The most conservative confirmed daily max among an item and its ingredient family
+// (#1027), or null when NO member carries one (#1458). One computation, because all
+// three redose surfacing gathers (the med card, the Today panel, the dashboard PRN
+// widget) have to widen and degrade identically — a hand-rolled `??` chain at one
+// site is how "min of the confirmed maxes" quietly became "the item's own max".
+export function effectiveMaxDailyCount(
+  ...maxes: (number | null | undefined)[]
+): number | null {
+  const confirmed = maxes.filter((m): m is number => m != null && m > 0);
+  return confirmed.length ? Math.min(...confirmed) : null;
 }

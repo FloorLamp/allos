@@ -8,7 +8,7 @@ import {
   administrationLastDoseLabel,
   formatGivenAtClockWithRelativeAge,
 } from "@/lib/administration-format";
-import { redoseWindowStatus } from "@/lib/prn-redose";
+import { effectiveMaxDailyCount, redoseWindowStatus } from "@/lib/prn-redose";
 import { now as clockNow } from "@/lib/clock";
 import { redoseActionIsPrimary, redoseCardLabel } from "@/lib/redose-format";
 import { parseUtcSql } from "@/lib/date";
@@ -89,7 +89,7 @@ export function QuickLogPrnContent({
   // elapsed-window "now" must come from the same source (a production no-op). A
   // client-mounted content receives the server's now via nowIso (see prop note).
   const now = nowIso ? new Date(nowIso) : clockNow();
-  // The redose status line (#798), when the med has confirmed interval/max and
+  // The redose status line (#798), when the med has a confirmed interval and
   // something's been logged. Same redoseCardLabel the medications card uses (one
   // computation, so the widget and card never disagree). Marker-agnostic — the card
   // always shows current window state regardless of the one-shot notification marker.
@@ -97,18 +97,16 @@ export function QuickLogPrnContent({
   // family (an OTC ibuprofen dose holds the Rx item's "Redose OK"), with the
   // "across N items" tail marking a cross-item counter.
   const redoseStatusFor = (m: PrnMedForQuickLog) => {
-    if (
-      m.minIntervalHours == null ||
-      m.maxDailyCount == null ||
-      !m.familyLastGivenAt
-    ) {
+    // The daily max is optional (#1458) — the interval alone answers "when is the
+    // next dose OK", so only it and an administration gate the line.
+    if (m.minIntervalHours == null || !m.familyLastGivenAt) {
       return null;
     }
     return redoseWindowStatus({
       minIntervalHours: m.minIntervalHours,
-      maxDailyCount: Math.min(
+      maxDailyCount: effectiveMaxDailyCount(
         m.maxDailyCount,
-        m.familyMaxDailyCount ?? m.maxDailyCount
+        m.familyMaxDailyCount
       ),
       latestGivenAt: parseUtcSql(m.familyLastGivenAt),
       countToday: m.familyCount,

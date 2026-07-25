@@ -42,7 +42,11 @@ import {
   setMentalHealthShareFull,
   setProfileCrisisResourcesOverride,
   setAnxietyScaleOptIn,
+  setProfileHouseholdRound,
 } from "@/lib/settings";
+import { householdRoundOfferableMembers } from "@/lib/notifications/household-round-access";
+import { buildHouseholdRound } from "@/lib/notifications/household-round";
+import { dispatch } from "@/lib/notifications";
 import { parseCrisisResourcesText } from "@/lib/crisis-resources";
 import { parseCadence } from "@/lib/recommendation-run";
 import { withFindingClosure, formatClosureToast } from "@/lib/finding-closure";
@@ -545,6 +549,71 @@ export async function sendTestHomeAssistant(): Promise<{
           "No Home Assistant webhook configured — enable it and paste your HA webhook URL first.",
       };
     return { ok: true, message: "Sent ✅ — check Home Assistant." };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// ---- Household dose round (issue #1459) ----
+//
+// The caregiver-subscribed cross-profile reminder: at this profile's schedule slots,
+// the doses due for the OTHER household members it names. Profile-scoped like the rest
+// of this module (requireWriteAccess on the RECEIVING profile — the person subscribing),
+// and the member list it stores is DATA, never a grant: the submitted ids are narrowed
+// here to what is currently offerable, and narrowed AGAIN at send and at button-tap
+// time against live grants. A caregiver therefore cannot widen their reach by editing
+// the form — a forged id is dropped on write and would be refused twice more anyway.
+export async function saveHouseholdRound(formData: FormData) {
+  const { profile } = await requireWriteAccess();
+  const enabled =
+    formData.get("household_round_enabled") === "on" ||
+    formData.get("household_round_enabled") === "1";
+  const submitted = formData
+    .getAll("household_round_members")
+    .map((v) => Number(v))
+    .filter((n) => Number.isInteger(n) && n > 0);
+  const offerable = new Set(
+    householdRoundOfferableMembers(profile.id).map((m) => m.profileId)
+  );
+  setProfileHouseholdRound(profile.id, {
+    enabled,
+    memberIds: submitted.filter((id) => offerable.has(id)),
+  });
+  revalidatePath("/settings/notifications");
+}
+
+// Send the round as it stands RIGHT NOW to the receiving profile's channels — the §5
+// send-test. Deliberately built over the SAME builder the tick uses (all four slots,
+// so a test outside a slot hour still shows something), so what a caregiver sees here
+// is what the tick would send, not a mock. An empty round reports why rather than
+// sending an empty message.
+export async function sendTestHouseholdRound(): Promise<{
+  ok: boolean;
+  message: string;
+}> {
+  const { profile } = await requireWriteAccess();
+  const round = buildHouseholdRound(profile.id, [
+    "Morning",
+    "Midday",
+    "Evening",
+    "Bedtime",
+  ]);
+  if (!round) {
+    return {
+      ok: false,
+      message:
+        "Nothing to send — no selected member has an unconfirmed scheduled dose right now. (An empty round never sends.)",
+    };
+  }
+  try {
+    const results = await dispatch(profile.id, round);
+    return results.some((r) => r.ok)
+      ? { ok: true, message: "Sent ✅ — check your Telegram." }
+      : {
+          ok: false,
+          message:
+            "No channel accepted it — check that Telegram is enabled for your login on this page.",
+        };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }
