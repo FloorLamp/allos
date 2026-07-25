@@ -576,7 +576,7 @@ test.describe("Sleep page (#1066)", () => {
       ).toBe(true);
 
       // Flip the login's clock to 12h on Settings → Preferences (autosave on change).
-      await page.goto("/settings");
+      await page.goto("/settings/display");
       await selectAndSave(page, "time-format-select", "12h");
       await expect(page.getByTestId("time-format-select")).toHaveValue("12h");
 
@@ -599,7 +599,7 @@ test.describe("Sleep page (#1066)", () => {
       ).toBe(true);
     } finally {
       // Restore the default so the shared admin login preference doesn't leak.
-      await page.goto("/settings");
+      await page.goto("/settings/display");
       await selectAndSave(page, "time-format-select", "24h");
       await expect(page.getByTestId("time-format-select")).toHaveValue("24h");
     }

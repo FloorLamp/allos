@@ -41,7 +41,7 @@ export default function TrainingZonesForm({
   return (
     <div
       ref={formRef}
-      className="card max-w-lg space-y-5"
+      className="card space-y-5"
       data-testid="training-zones-form"
     >
       <div className="flex items-center justify-between">

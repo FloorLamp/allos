@@ -98,7 +98,7 @@ test("2FA: enroll, then second-factor login with code and recovery code (#23)", 
   await m.waitForURL((u) => !u.pathname.startsWith("/login"), {
     timeout: 20_000,
   });
-  await m.goto("/settings");
+  await m.goto("/settings/account");
   await m.getByTestId("twofa-enable").click();
   const secret = (await m.getByTestId("twofa-secret").innerText()).trim();
   // Activation is the same stall hazard as the login verify (#961): a current-step

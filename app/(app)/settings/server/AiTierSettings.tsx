@@ -20,10 +20,7 @@ export default function AiTierSettings({
   light: TierConfigView;
 }) {
   return (
-    <div
-      className="card mt-6 max-w-lg space-y-6"
-      data-testid="ai-tier-settings"
-    >
+    <div className="card space-y-6" data-testid="ai-tier-settings">
       <div>
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           AI providers

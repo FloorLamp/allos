@@ -70,10 +70,7 @@ export default function DietaryPreferencesForm({
   }
 
   return (
-    <div
-      className="card max-w-lg space-y-4"
-      data-testid="dietary-preferences-form"
-    >
+    <div className="card space-y-4" data-testid="dietary-preferences-form">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Dietary preferences

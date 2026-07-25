@@ -41,7 +41,7 @@ test("Trends → Fitness renders the HR training-intensity section (#159)", asyn
 test("Settings → Profile persists the max-HR override and Zone 2 target (#159)", async ({
   page,
 }) => {
-  await page.goto("/settings/profile");
+  await page.goto("/settings/training");
   const main = page.getByRole("main");
 
   const form = main.getByTestId("training-zones-form");

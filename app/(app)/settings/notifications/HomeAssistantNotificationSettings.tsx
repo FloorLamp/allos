@@ -92,7 +92,7 @@ export default function HomeAssistantNotificationSettings({
   }
 
   return (
-    <div className="card mt-6 max-w-lg space-y-5" data-testid="ha-settings">
+    <div className="card space-y-5" data-testid="ha-settings">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Notifications (Home Assistant)

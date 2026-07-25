@@ -11,6 +11,20 @@ test.describe("Settings → Server: audit-log retention", () => {
   }) => {
     await page.goto("/settings/server");
 
+    // #1462 §3: one-time instance setup (the age gate, this retention window) sits
+    // behind the group's stateless "Advanced" fold, so the cards an admin revisits
+    // stay above it. A native <details>, and stateless BY DESIGN — so it starts
+    // closed again after every reload below.
+    const openAdvanced = async () => {
+      const advanced = page.getByTestId("server-advanced");
+      await expect(advanced).toBeVisible();
+      if (!(await advanced.evaluate((el) => (el as HTMLDetailsElement).open))) {
+        await advanced.getByText("Advanced").click();
+      }
+      await expect(page.getByTestId("audit-retention-months")).toBeVisible();
+    };
+    await openAdvanced();
+
     const card = page.getByTestId("audit-retention-settings");
     await expect(card).toBeVisible();
 
@@ -30,6 +44,7 @@ test.describe("Settings → Server: audit-log retention", () => {
 
     // Reload and confirm the new window persisted (global setting).
     await page.reload();
+    await openAdvanced();
     await expect(page.getByTestId("audit-retention-months")).toHaveValue("36");
 
     // Restore the default so this global setting doesn't leak into other specs.
@@ -37,6 +52,7 @@ test.describe("Settings → Server: audit-log retention", () => {
     await page.getByTestId("audit-retention-save").click();
     await expect(card.getByLabel("Saved")).toBeVisible();
     await page.reload();
+    await openAdvanced();
     await expect(page.getByTestId("audit-retention-months")).toHaveValue("24");
   });
 });

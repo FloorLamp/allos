@@ -63,7 +63,7 @@ describe("saveHomeAssistantPrefs", () => {
     );
     // Profile-scoped: a bystander profile is untouched.
     expect(getProfileHomeAssistant(bystander.id).enabled).toBe(false);
-    expect(revalidate).toHaveBeenCalledWith("/settings/profile");
+    expect(revalidate).toHaveBeenCalledWith("/settings/notifications");
   });
 
   it("rejects a malformed URL when enabling and persists nothing", async () => {

@@ -271,7 +271,7 @@ export async function saveTrainingZones(formData: FormData) {
     }
   }
 
-  revalidatePath("/settings/profile");
+  revalidatePath("/settings/training");
   revalidatePath("/trends");
 }
 
@@ -293,7 +293,7 @@ export async function saveFreeDays(formData: FormData) {
     .map((v) => Number(String(v)))
     .filter((n) => Number.isInteger(n));
   setFreeDays(profile.id, days);
-  revalidatePath("/settings/profile");
+  revalidatePath("/settings/health");
   revalidatePath("/trends");
   return { ok: true };
 }
@@ -302,7 +302,7 @@ export async function saveDietaryPreferences(formData: FormData) {
   const { profile } = await requireWriteAccess();
   const slugs = formData.getAll("excluded").map((v) => String(v));
   setExcludedFoodGroups(profile.id, slugs);
-  revalidatePath("/settings/profile");
+  revalidatePath("/settings/nutrition");
   revalidatePath("/nutrition");
   return { ok: true };
 }
@@ -410,7 +410,7 @@ export async function saveNotificationPrefs(formData: FormData) {
     wakingStartHour: wakingHour("waking_start_hour", WAKING_START_HOUR),
     wakingEndHour: wakingHour("waking_end_hour", WAKING_END_HOUR),
   });
-  revalidatePath("/settings/profile");
+  revalidatePath("/settings/notifications");
 }
 
 // The Telegram "send test" is login-scoped as of #1072 (sendTestNotification in
@@ -453,7 +453,7 @@ export async function saveHomeAssistantPrefs(
     secret,
     disabledKinds,
   });
-  revalidatePath("/settings/profile");
+  revalidatePath("/settings/notifications");
   return { ok: true };
 }
 
@@ -489,7 +489,7 @@ export async function saveRecommendationCadence(formData: FormData) {
   const { profile } = await requireAdmin();
   const cadence = parseCadence(String(formData.get("recommendation_cadence")));
   setRecommendationCadence(profile.id, cadence);
-  revalidatePath("/settings/profile");
+  revalidatePath("/settings/coaching");
   return { ok: true };
 }
 
@@ -502,7 +502,7 @@ export async function saveMentalHealthShareFull(formData: FormData) {
     formData.get("mental_health_share_full") === "1" ||
     formData.get("mental_health_share_full") === "on";
   setMentalHealthShareFull(profile.id, on);
-  revalidatePath("/settings/profile");
+  revalidatePath("/settings/privacy");
   revalidatePath("/");
 }
 
@@ -516,7 +516,7 @@ export async function saveAnxietyScaleOptIn(formData: FormData) {
     formData.get("anxiety_scale_enabled") === "1" ||
     formData.get("anxiety_scale_enabled") === "on";
   setAnxietyScaleOptIn(profile.id, on);
-  revalidatePath("/settings/profile");
+  revalidatePath("/settings/coaching");
   revalidatePath("/");
 }
 
@@ -528,7 +528,7 @@ export async function saveProfileCrisisResources(formData: FormData) {
     profile.id,
     parseCrisisResourcesText(String(formData.get("crisis_resources") ?? ""))
   );
-  revalidatePath("/settings/profile");
+  revalidatePath("/settings/privacy");
   revalidatePath("/crisis-resources");
 }
 

@@ -2,7 +2,7 @@ import Link from "next/link";
 
 // The ONE "What's new" affordance (issue #1421), rendered by both places the app
 // version already shows: the shared sidebar footer (so every viewport carries it —
-// the responsive-surfaces rule) and the Settings → Preferences footer. Keeping it a
+// the responsive-surfaces rule) and the Settings index footer. Keeping it a
 // single component means the link text, the route, and the unread dot can't drift
 // between the two.
 //

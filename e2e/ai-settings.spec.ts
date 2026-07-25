@@ -65,7 +65,7 @@ test.describe("Settings → Profile: recommendation cadence", () => {
   test("admin can pick a recommendation cadence for the active profile", async ({
     page,
   }) => {
-    await page.goto("/settings/profile");
+    await page.goto("/settings/coaching");
     const form = page.getByTestId("recommendation-cadence-form");
     await expect(form).toBeVisible();
     const select = page.getByTestId("recommendation-cadence");

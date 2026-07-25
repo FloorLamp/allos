@@ -144,7 +144,7 @@ function birthdateGap(i: DataQualityInputs): DataQualityGap | null {
     whyLine:
       "Unlocks biological age, fitness percentiles, eGFR, strength standing, " +
       "age-based screening reminders, and life-stage-aware presentation.",
-    ctaHref: "/settings/profile",
+    ctaHref: "/settings/health",
     leverage: 6,
   };
 }
@@ -157,7 +157,7 @@ function sexGap(i: DataQualityInputs): DataQualityGap | null {
     whyLine:
       "Unlocks sex-gated screenings, sex-specific reference ranges, and cycle " +
       "relevance.",
-    ctaHref: "/settings/profile",
+    ctaHref: "/settings/health",
     leverage: 3,
   };
 }
@@ -175,7 +175,7 @@ function reproductiveStatusGap(i: DataQualityInputs): DataQualityGap | null {
     whyLine:
       "Unlocks correct female-hormone reference ranges (Estradiol / FSH / LH) " +
       "instead of the age proxy.",
-    ctaHref: "/settings/profile",
+    ctaHref: "/settings/health",
     leverage: 1,
   };
 }
