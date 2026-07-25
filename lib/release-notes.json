@@ -4,6 +4,20 @@
       "date": "2026-07-25",
       "entries": [
         {
+          "pr": 1480,
+          "title": "One star to save it everywhere",
+          "body": "Starring and pinning were two separate gestures for the same intent — a biomarker you cared about had to be starred for the Results status card and separately pinned to earn a Trends chart tile, and the two sets silently drifted apart. They're now one: starring a biomarker puts it on the Results card, gives it a Trends chart tile, and includes it in the profile summary, with a reorder control on Trends replacing the old pin toggle. Existing stars and pins merge automatically, keeping each save's original date and your tile order. One change to know: restoring a saved Trends view no longer alters which biomarkers are saved — views keep their date range and compare state only.",
+          "kind": "feature",
+          "issues": [1456]
+        },
+        {
+          "pr": 1482,
+          "title": "Tables become cards on your phone",
+          "body": "Wide tables no longer ask for a sideways swipe on a phone: below tablet width the biomarkers table and the training Analyze table re-stack as readable cards — same data, labeled fields, nothing hidden. The biomarker panel, category, and notes columns that used to be dropped on small screens come back as labeled lines, and sorting stays available through a compact selector. More tables convert as they're next touched.",
+          "kind": "feature",
+          "issues": [1426]
+        },
+        {
           "pr": 1476,
           "title": "Quick-log never takes you away",
           "body": "Every item on the mobile quick-log sheet — food, dose, weight, and now vitals — opens its form right where you are and returns you there after saving, instead of navigating you to another page mid-check. The dose option shows today's due doses with one-tap confirms that answer honestly (a dose someone else already marked, or a paused medication, says so instead of claiming \"logged\"). Confirmation dialogs now rise as thumb-reachable sheets on phones, and the installed app gains pull-to-refresh.",
@@ -53,7 +67,9 @@
           "issues": [1427]
         }
       ],
-      "operatorNotes": []
+      "operatorNotes": [
+        "Migration 113 applies automatically on first boot after pulling (folds starred biomarkers and trend pins into the new unified save store). No manual steps; downgrading past it afterward requires a backup restore, as with any migration."
+      ]
     },
     {
       "date": "2026-07-24",
