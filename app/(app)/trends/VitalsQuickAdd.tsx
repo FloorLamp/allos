@@ -24,11 +24,18 @@ import { addVitals } from "./vitals-actions";
 export default function VitalsQuickAdd({
   defaultDate,
   temperatureUnit = "F",
+  onSaved,
 }: {
   defaultDate: string;
   // The viewer's login temperature-unit preference (#857) — seeds the temp entry unit.
   // Storage stays canonical °F. Defaults to °F.
   temperatureUnit?: TemperatureUnit;
+  // Fired after a successful save (issues #1467/#1468), so a MOUNTING CONTEXT can
+  // react — the quick-entry overlay closes itself, leaving the user on whatever
+  // page they logged from. Absent on the page mounts (Trends → Body / Vitals),
+  // where the form stays put and resets; that is the ONLY difference between the
+  // mounts, which is why one component still serves all of them.
+  onSaved?: () => void;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -105,6 +112,7 @@ export default function VitalsQuickAdd({
     formRef.current?.reset();
     tempUnitDetection.reset();
     router.refresh();
+    onSaved?.();
   }
 
   return (

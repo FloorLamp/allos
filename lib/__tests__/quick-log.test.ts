@@ -60,13 +60,16 @@ describe("quickLogMenu", () => {
       "log-food",
       "log-dose",
       "log-weight",
+      // Issue #1467: vitals is a manual logger's most frequent daily write and
+      // its only entry points were mid-page on a secondary surface.
+      "log-vitals",
     ]);
   });
 
   it("drops the training-only entries for an age-restricted profile", () => {
     const ids = quickLogMenu(true).map((i) => i.id);
     expect(ids).not.toContain(LOG_ACTIVITY_ID);
-    expect(ids).toEqual(["log-food", "log-dose", "log-weight"]);
+    expect(ids).toEqual(["log-food", "log-dose", "log-weight", "log-vitals"]);
   });
 });
 
@@ -80,23 +83,45 @@ describe("the registry itself", () => {
     }
   });
 
-  it("opens the activity editor in place and navigates for everything else", () => {
-    // The whole point of section E: no new write paths. Every non-activity entry
-    // is a link to a form that already exists.
+  it("opens every entry IN PLACE — navigation is not a quick-log outcome", () => {
+    // The #1468 rule. The sheet used to be two-tier: activity opened its editor
+    // in place while food/dose/weight were router.pushes, so a sheet promising
+    // "log from anywhere" left you on the Nutrition page. Every entry now opens
+    // an overlay (the activity editor keeps its own kind — it is the DOCK, a
+    // session lifecycle, deliberately not a discardable sheet).
     for (const item of QUICK_LOG_ITEMS) {
       if (item.id === LOG_ACTIVITY_ID) {
         expect(item.target.kind).toBe("activity");
       } else {
-        expect(item.target.kind).toBe("navigate");
+        expect(item.target.kind).toBe("overlay");
       }
     }
   });
 
-  it("reuses the palette's focus-param convention for the weight form", () => {
-    const weight = quickLogItem("log-weight");
-    expect(weight.target).toEqual({
-      kind: "navigate",
-      href: "/trends?tab=body&new=weight",
+  it("ships ZERO navigate targets in the sheet, at every profile gate", () => {
+    // `{kind:"navigate"}` stays in the union for the CommandPalette (the desktop
+    // keyboard flow may keep navigating in v1 — a separate decision), so the
+    // type alone can't hold this line. The registry has to.
+    for (const restricted of [false, true]) {
+      for (const item of quickLogMenu(restricted)) {
+        expect(item.target.kind).not.toBe("navigate");
+      }
+    }
+  });
+
+  it("names an existing quick-add form for each overlay entry", () => {
+    // No new write paths: each form key resolves to a component the app already
+    // mounts on a page (components/QuickEntryProvider.tsx owns the map).
+    const forms = QUICK_LOG_ITEMS.flatMap((i) =>
+      i.target.kind === "overlay" ? [i.target.form] : []
+    );
+    expect(forms).toEqual(["food", "dose", "weight", "vitals"]);
+  });
+
+  it("opens the weight form as an overlay, not the old focus-param deep link", () => {
+    expect(quickLogItem("log-weight").target).toEqual({
+      kind: "overlay",
+      form: "weight",
     });
   });
 

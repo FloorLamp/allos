@@ -2,6 +2,8 @@ import MobileNav from "@/components/MobileNav";
 import SidebarContent from "@/components/SidebarContent";
 import CommandPalette from "@/components/CommandPalette";
 import ActivityEditorProvider from "@/components/ActivityEditorProvider";
+import QuickEntryProvider from "@/components/QuickEntryProvider";
+import PullToRefresh from "@/components/PullToRefresh";
 import ExtractionToaster from "@/components/ExtractionToaster";
 import ImportJobsToaster from "@/components/ImportJobsToaster";
 import VersionWatcher from "@/components/VersionWatcher";
@@ -219,68 +221,32 @@ export default async function AppLayout({
           <ConfirmProvider>
             <OfflineQueueProvider activeProfileId={profile.id}>
               <ProfileSwitchWatcher activeProfileId={profile.id} />
-              <ActivityEditorProvider
-                units={units}
-                suggestions={suggestions}
-                history={exerciseHistory}
-                equipment={equipment}
-                recentActivityEquipment={recentActivityEquipment}
-                bodyweightKg={bodyweightKg}
-                lastActivity={lastActivity}
-                restricted={restricted}
-                deloadContext={deloadContext}
-                recoveringContext={recoveringContext}
-                plateauHints={plateauHints}
-                presence={presence}
-                liveEditData={liveEditData}
-                liveStartEpochMs={liveStartEpochMs}
-                subjectName={actingSubjectName}
-              >
-                <div className="flex min-h-screen">
-                  <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-4 overflow-y-auto border-r border-black/10 bg-white/70 p-4 backdrop-blur-xl md:flex print:hidden dark:border-white/5 dark:bg-ink-950/70">
-                    <SidebarContent
-                      activityDates={timelineDates}
-                      version={version}
-                      active={session.profile}
-                      username={login.username}
-                      profiles={profiles}
-                      viewIds={scope.viewIds}
-                      restricted={restricted}
-                      isAdmin={isAdmin}
-                      multiProfile={multiProfile}
-                      foodLoggingRelevant={foodLoggingRelevant}
-                      hasIntakeItems={hasIntakeItems}
-                      relevance={relevance}
-                      reviewCount={reviewCount}
-                      readOnly={readOnly}
-                      whatsNewUnseen={whatsNewUnseen}
-                    />
-                  </aside>
-                  {/* clip (not hidden) so it doesn't force overflow-y to auto, which
-            turns <main> into a scroll container and breaks position:sticky inside it.
-            min-w-0 lets this flex item shrink below its content's intrinsic width —
-            without it, wide tables/rows blow the whole page out horizontally. */}
-                  <main className="min-w-0 flex-1 overflow-x-clip">
-                    {/* The ONE sticky top chrome (issue #1416): the phone top
-                    bar and the multi-profile view banner ride together, hiding
-                    on scroll-down and returning on scroll-up, so "whose data am
-                    I looking at?" stays answerable mid-scroll instead of
-                    scrolling away with the content. On desktop the wrapper drops
-                    to `static` and the banner sits exactly where it always did.
-                    The banner is passed in (not rendered inside the container)
-                    so there is ONE strip in the DOM on every viewport — never a
-                    hidden md:* / md:hidden pair. */}
-                    <ShellChrome
-                      banner={
-                        showViewStrip ? (
-                          <ProfileViewStrip
-                            profiles={inViewProfiles}
-                            actingProfileId={scope.actingProfileId}
-                          />
-                        ) : null
-                      }
-                    >
-                      <MobileNav
+              {/* The shared quick-entry overlay host (#1468). Inside
+                  OfflineQueueProvider by necessity: the forms it mounts
+                  (BodyQuickAdd / VitalsQuickAdd) queue offline writes, and it
+                  renders them as its OWN children, so they must sit under that
+                  provider. It gathers nothing until a sheet row is tapped. */}
+              <QuickEntryProvider>
+                <ActivityEditorProvider
+                  units={units}
+                  suggestions={suggestions}
+                  history={exerciseHistory}
+                  equipment={equipment}
+                  recentActivityEquipment={recentActivityEquipment}
+                  bodyweightKg={bodyweightKg}
+                  lastActivity={lastActivity}
+                  restricted={restricted}
+                  deloadContext={deloadContext}
+                  recoveringContext={recoveringContext}
+                  plateauHints={plateauHints}
+                  presence={presence}
+                  liveEditData={liveEditData}
+                  liveStartEpochMs={liveStartEpochMs}
+                  subjectName={actingSubjectName}
+                >
+                  <div className="flex min-h-screen">
+                    <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-4 overflow-y-auto border-r border-black/10 bg-white/70 p-4 backdrop-blur-xl md:flex print:hidden dark:border-white/5 dark:bg-ink-950/70">
+                      <SidebarContent
                         activityDates={timelineDates}
                         version={version}
                         active={session.profile}
@@ -297,8 +263,50 @@ export default async function AppLayout({
                         readOnly={readOnly}
                         whatsNewUnseen={whatsNewUnseen}
                       />
-                    </ShellChrome>
-                    {/* max(padding, safe-area inset) keeps content clear of the
+                    </aside>
+                    {/* clip (not hidden) so it doesn't force overflow-y to auto, which
+            turns <main> into a scroll container and breaks position:sticky inside it.
+            min-w-0 lets this flex item shrink below its content's intrinsic width —
+            without it, wide tables/rows blow the whole page out horizontally. */}
+                    <main className="min-w-0 flex-1 overflow-x-clip">
+                      {/* The ONE sticky top chrome (issue #1416): the phone top
+                    bar and the multi-profile view banner ride together, hiding
+                    on scroll-down and returning on scroll-up, so "whose data am
+                    I looking at?" stays answerable mid-scroll instead of
+                    scrolling away with the content. On desktop the wrapper drops
+                    to `static` and the banner sits exactly where it always did.
+                    The banner is passed in (not rendered inside the container)
+                    so there is ONE strip in the DOM on every viewport — never a
+                    hidden md:* / md:hidden pair. */}
+                      <ShellChrome
+                        banner={
+                          showViewStrip ? (
+                            <ProfileViewStrip
+                              profiles={inViewProfiles}
+                              actingProfileId={scope.actingProfileId}
+                            />
+                          ) : null
+                        }
+                      >
+                        <MobileNav
+                          activityDates={timelineDates}
+                          version={version}
+                          active={session.profile}
+                          username={login.username}
+                          profiles={profiles}
+                          viewIds={scope.viewIds}
+                          restricted={restricted}
+                          isAdmin={isAdmin}
+                          multiProfile={multiProfile}
+                          foodLoggingRelevant={foodLoggingRelevant}
+                          hasIntakeItems={hasIntakeItems}
+                          relevance={relevance}
+                          reviewCount={reviewCount}
+                          readOnly={readOnly}
+                          whatsNewUnseen={whatsNewUnseen}
+                        />
+                      </ShellChrome>
+                      {/* max(padding, safe-area inset) keeps content clear of the
               notch in landscape and the home indicator at the bottom now
               that the viewport paints edge-to-edge (viewportFit cover).
               Density (issue #1416, section A): pt-4 / 1rem gutters below `md`,
@@ -306,25 +314,30 @@ export default async function AppLayout({
               dropped entirely when the view banner is showing — ShellChrome
               already spends it above the banner, and doubling it would push the
               page heading a third of the way down a phone screen. */}
-                    <div
-                      data-testid="app-content-container"
-                      className={`mx-auto pb-[max(2rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] md:pl-[max(1.25rem,env(safe-area-inset-left))] md:pr-[max(1.25rem,env(safe-area-inset-right))] 3xl:max-w-[110rem] ${
-                        showViewStrip ? "" : "pt-4 md:pt-8"
-                      }`}
-                    >
-                      <OnboardingReturnBanner show={showOnboardingReturn} />
-                      {children}
-                    </div>
-                  </main>
-                </div>
-                <CommandPalette
-                  profileName={session.profile.name}
-                  weightUnit={units.weightUnit}
-                />
-                <ExtractionToaster profileId={profile.id} />
-                <ImportJobsToaster profileId={profile.id} />
-                <VersionWatcher current={version.sha} />
-              </ActivityEditorProvider>
+                      <div
+                        data-testid="app-content-container"
+                        className={`mx-auto pb-[max(2rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] md:pl-[max(1.25rem,env(safe-area-inset-left))] md:pr-[max(1.25rem,env(safe-area-inset-right))] 3xl:max-w-[110rem] ${
+                          showViewStrip ? "" : "pt-4 md:pt-8"
+                        }`}
+                      >
+                        <OnboardingReturnBanner show={showOnboardingReturn} />
+                        {children}
+                      </div>
+                    </main>
+                  </div>
+                  <CommandPalette
+                    profileName={session.profile.name}
+                    weightUnit={units.weightUnit}
+                  />
+                  <ExtractionToaster profileId={profile.id} />
+                  <ImportJobsToaster profileId={profile.id} />
+                  <VersionWatcher current={version.sha} />
+                  {/* Standalone-PWA pull-to-refresh (#1428). Renders nothing and
+                      listens to nothing in a browser tab, where the browser's own
+                      refresh already exists. */}
+                  <PullToRefresh />
+                </ActivityEditorProvider>
+              </QuickEntryProvider>
             </OfflineQueueProvider>
           </ConfirmProvider>
         </FormatPrefsProvider>
