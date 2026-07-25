@@ -26,6 +26,10 @@ import {
   type IntakeSendSlot,
   type ReminderWindow,
 } from "../lib/notifications/supplements";
+import {
+  buildHouseholdRound,
+  householdRoundMarkerKey,
+} from "../lib/notifications/household-round";
 import { buildWorkoutTargetReminder } from "../lib/notifications/workouts";
 import { buildPracticeReminder } from "../lib/notifications/practices";
 import { buildFoodNudge } from "../lib/notifications/food";
@@ -338,6 +342,47 @@ async function tickProfile(profile: ProfileRow): Promise<boolean> {
       if (delivered) {
         for (const s of built.slots)
           setProfileSetting(profile.id, `notify_last_supp_${s}`, date);
+      }
+    }
+  }
+
+  // ── Household dose round (#1459) ──────────────────────────────────────────
+  // The caregiver-subscribed CROSS-PROFILE twin of the reminder above: at THIS
+  // profile's slots, the doses due for the OTHER household members they explicitly
+  // subscribed to, each with an inline confirm. It rides the same tick and the same
+  // schedule slots but keeps its OWN per-day markers, so a receiver whose personal
+  // reminder already fired this slot still gets the round (and vice versa).
+  //
+  // Each member's due set is computed in THAT member's own context — their timezone's
+  // today(), their situations, their dueness — never in the receiver's (#1095). The
+  // members' own reminders and their missed-dose escalation are completely untouched:
+  // this is additive, and escalation is deliberately NOT aggregated here (§4).
+  //
+  // The PreWorkout pseudo-slot is deliberately excluded: it is workout-relative to the
+  // RECEIVER, which says nothing about when another member's doses are due.
+  const householdSlotsDue: IntakeSendSlot[] = [];
+  for (const w of ["Morning", "Midday", "Evening", "Bedtime"] as const) {
+    const slotHour = sched.supplementHours[w];
+    if (
+      slotHour != null &&
+      slotDue(slotHour, hour) &&
+      getProfileSetting(profile.id, householdRoundMarkerKey(w)) !== date
+    )
+      householdSlotsDue.push(w);
+  }
+  if (householdSlotsDue.length > 0) {
+    // Returns null for an empty round (nothing due for any subscribed member) — a
+    // caregiver is never pinged just to be told there is nothing to do.
+    const round = buildHouseholdRound(profile.id, householdSlotsDue);
+    if (round) {
+      const { delivered, failed } = await send(
+        profile.id,
+        prefixMessage(round, prefix)
+      );
+      if (failed) anyFailed = true;
+      if (delivered) {
+        for (const s of householdSlotsDue)
+          setProfileSetting(profile.id, householdRoundMarkerKey(s), date);
       }
     }
   }

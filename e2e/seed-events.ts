@@ -44,6 +44,10 @@ import {
   SHELL_PROFILE,
   SHELL_DOSE_ITEM,
   SHELL_DOSE_AMOUNT,
+  E2E_LOGIN_HH_ROUND,
+  HH_ROUND_CAREGIVER_PROFILE,
+  HH_ROUND_WARD_PROFILE,
+  HH_ROUND_SHADOW_PROFILE,
   E2E_LOGIN_VITALS_DAY,
   VITALS_DAY_PROFILE,
   VITALS_DAY_TEMP_TIME,
@@ -6489,5 +6493,48 @@ console.log(
   seedMemberLogin(E2E_LOGIN_VITALS_DAY, vdId, "write");
   console.log(
     `e2e: seeded vitals-day fixture — ${E2E_LOGIN_VITALS_DAY} granted ${VITALS_DAY_PROFILE} (${vdId}); vitals day ${vdToday} (#1466)`
+  );
+}
+
+// ── Telegram household dose round fixture (issue #1459) ───────────────────────
+// A caregiver login whose OWN profile is the receiver, plus one WRITE-granted member
+// (offerable) and one READ-only member (never offerable). The caregiver profile is
+// created FIRST so it holds the lowest id and is the acting profile on login. The
+// ward carries a due-today dose so a real round has something to be about. Synthetic
+// only, idempotent for a reused server.
+{
+  const hhCaregiverId = fixtureProfileId(HH_ROUND_CAREGIVER_PROFILE);
+  const hhWardId = fixtureProfileId(HH_ROUND_WARD_PROFILE);
+  const hhShadowId = fixtureProfileId(HH_ROUND_SHADOW_PROFILE);
+
+  if (
+    !db
+      .prepare(
+        "SELECT 1 FROM intake_items WHERE profile_id = ? AND name = 'HH Round Vitamin D (e2e)'"
+      )
+      .get(hhWardId)
+  ) {
+    const item = db
+      .prepare(
+        `INSERT INTO intake_items (profile_id, name, active, kind, condition, priority, as_needed)
+         VALUES (?, 'HH Round Vitamin D (e2e)', 1, 'supplement', 'daily', 'high', 0)`
+      )
+      .run(hhWardId);
+    db.prepare(
+      `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)
+       VALUES (?, '2000 IU', '08:00', 'any', 0)`
+    ).run(Number(item.lastInsertRowid));
+  }
+
+  const hhLoginId = seedMemberLogin(E2E_LOGIN_HH_ROUND, hhCaregiverId, "write");
+  grantProfile(hhLoginId, hhWardId, "write");
+  grantProfile(hhLoginId, hhShadowId, "read");
+  // The own-profile association (#1013) — what makes this login a ROUND RECEIVER.
+  db.prepare("UPDATE logins SET own_profile_id = ? WHERE id = ?").run(
+    hhCaregiverId,
+    hhLoginId
+  );
+  console.log(
+    `e2e: seeded household-round fixture — ${E2E_LOGIN_HH_ROUND} own=${HH_ROUND_CAREGIVER_PROFILE} (${hhCaregiverId}), write=${HH_ROUND_WARD_PROFILE} (${hhWardId}), read=${HH_ROUND_SHADOW_PROFILE} (${hhShadowId}) (#1459)`
   );
 }

@@ -7,6 +7,10 @@ import {
   serializeDisabledKinds,
 } from "../notifications/home-assistant-core";
 import {
+  parseHouseholdRoundMembers,
+  serializeHouseholdRoundMembers,
+} from "../notifications/household-round-format";
+import {
   parseFoodNudgePointer,
   serializeFoodNudgePointer,
   type FoodNudgePointer,
@@ -112,6 +116,52 @@ export function setProfileMutedForLogin(
   muted: boolean
 ): void {
   setLoginSetting(loginId, muteKey(profileId), muted ? "1" : "0");
+}
+
+// ---- Household dose round subscription (issue #1459) ----
+// The caregiver-subscribed cross-profile dose reminder. The setting lives on the
+// RECEIVING profile (the caregiver's own profile, #1013) because that is the subject
+// the round is delivered for — the fan-out then reaches it through the ordinary
+// managing-login channels, no special routing. Two profile-scoped keys, no schema
+// change: an enable flag and the explicit member selection.
+//
+// The stored member list is DATA, NOT AN AUTH CHECK (the ProfileScope stance): it
+// records what the caregiver ticked. Every read re-validates each id against live
+// grants (lib/notifications/household-round-access.ts) at send time AND at button-tap
+// time, so a revoked grant drops the member without anyone editing this list.
+export interface HouseholdRoundSettings {
+  enabled: boolean;
+  memberIds: number[];
+}
+
+export function getProfileHouseholdRound(
+  profileId: number
+): HouseholdRoundSettings {
+  return {
+    enabled: getProfileSetting(profileId, "household_round_enabled") === "1",
+    memberIds: parseHouseholdRoundMembers(
+      getProfileSetting(profileId, "household_round_members")
+    ),
+  };
+}
+
+export function setProfileHouseholdRound(
+  profileId: number,
+  cfg: HouseholdRoundSettings
+): HouseholdRoundSettings {
+  writeTx(() => {
+    setProfileSetting(
+      profileId,
+      "household_round_enabled",
+      cfg.enabled ? "1" : "0"
+    );
+    setProfileSetting(
+      profileId,
+      "household_round_members",
+      serializeHouseholdRoundMembers(cfg.memberIds)
+    );
+  });
+  return getProfileHouseholdRound(profileId);
 }
 
 // ---- Post-migration "review your notification settings" flag (issue #1072) ----
@@ -293,17 +343,27 @@ export function setFoodNudgePointer(
 // (#1013) received that profile's notifications but had every inbound tap refused.
 // The per-(login, profile) mute (isProfileMutedForLogin — the same predicate the
 // fan-out consults) holds a muted profile out of a login's inbound scope too.
-export function getProfilesByTelegramChatId(chatId: string): number[] {
+// The logins whose Telegram channel IS this chat (a shared family chat can be
+// several). Extracted so the inbound paths that need the LOGINS — not the profiles —
+// share one query: the household round (#1459) must ask whether the tapping chat
+// belongs to the receiving profile's own login, a question the profile-set view
+// below has already flattened away.
+export function loginIdsForTelegramChat(chatId: string): number[] {
   const chat = chatId.trim();
   if (!chat) return [];
-  // The logins whose channel is this chat (a shared family chat can be several).
-  const loginIds = (
+  return (
     db
       .prepare(
         "SELECT login_id FROM login_settings WHERE key = 'telegram_chat_id' AND value = ?"
       )
       .all(chat) as { login_id: number }[]
   ).map((r) => r.login_id);
+}
+
+export function getProfilesByTelegramChatId(chatId: string): number[] {
+  const chat = chatId.trim();
+  if (!chat) return [];
+  const loginIds = loginIdsForTelegramChat(chat);
   const profileIds = new Set<number>();
   for (const loginId of loginIds) {
     for (const profileId of profilesManagedByLogin(loginId)) {

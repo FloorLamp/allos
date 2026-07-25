@@ -34,7 +34,7 @@ import {
   getMedicationFamilyStates,
   getEffectiveActiveSituations,
 } from "@/lib/queries";
-import { redoseWindowStatus } from "@/lib/prn-redose";
+import { effectiveMaxDailyCount, redoseWindowStatus } from "@/lib/prn-redose";
 import { now as clockNow } from "@/lib/clock";
 import { redoseActionIsPrimary, redoseCardLabel } from "@/lib/redose-format";
 import {
@@ -327,14 +327,15 @@ export function loadMedicationsData(
     const famCount = fam?.countToday ?? admins.length;
     let redoseLine: string | null = null;
     let redosePrimary = true;
-    if (s.min_interval_hours != null && s.max_daily_count != null && famLast) {
-      const effectiveMax =
-        fam?.minConfirmedMax != null
-          ? Math.min(s.max_daily_count, fam.minConfirmedMax)
-          : s.max_daily_count;
+    // The daily max is optional (#1458): the interval + an administration are all
+    // the "next dose in ~Nh" half needs, so the gate asks only for those.
+    if (s.min_interval_hours != null && famLast) {
       const redoseStatus = redoseWindowStatus({
         minIntervalHours: s.min_interval_hours,
-        maxDailyCount: effectiveMax,
+        maxDailyCount: effectiveMaxDailyCount(
+          s.max_daily_count,
+          fam?.minConfirmedMax
+        ),
         latestGivenAt: parseUtcSql(famLast),
         countToday: famCount,
         now: nowInstant,
@@ -499,14 +500,12 @@ export function loadMedicationsData(
     // Family-widened window math (#1027): the clock/count/max span the ingredient
     // family, so an OTC sibling's dose holds this row's "Redose OK" too.
     const redoseStatus =
-      m.minIntervalHours != null &&
-      m.maxDailyCount != null &&
-      m.familyLastGivenAt
+      m.minIntervalHours != null && m.familyLastGivenAt
         ? redoseWindowStatus({
             minIntervalHours: m.minIntervalHours,
-            maxDailyCount: Math.min(
+            maxDailyCount: effectiveMaxDailyCount(
               m.maxDailyCount,
-              m.familyMaxDailyCount ?? m.maxDailyCount
+              m.familyMaxDailyCount
             ),
             latestGivenAt: parseUtcSql(m.familyLastGivenAt),
             countToday: m.familyCount,

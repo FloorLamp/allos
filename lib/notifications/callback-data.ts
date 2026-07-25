@@ -897,3 +897,90 @@ export function parseTempReply(
         : "F";
   return { value, unit };
 }
+
+// ---- Household dose round (issue #1459) --------------------------------------
+// The caregiver-subscribed cross-profile dose reminder: one message in the RECEIVING
+// profile's chat listing OTHER household members' due doses, each with a confirm
+// button. The token therefore carries TWO profile ids:
+//
+//   hh:<receiverProfileId>:<memberProfileId>:<doseId>:<itemId>:<date>
+//
+//   • receiverProfileId — the subscribing profile whose chat the round was sent to.
+//     The handler cross-checks it against the chat the tap CAME from, so a token
+//     leaked into another chat can't be replayed there.
+//   • memberProfileId  — the profile the dose belongs to, and the WRITE SCOPE the
+//     confirm runs under (markDoseTaken's first argument).
+//
+// Ids only, never names (#233), and neither id is trusted alone: the handler
+// re-validates the receiver→member access edge against LIVE grants at tap time,
+// exactly as the send did. A revoked grant between send and tap must refuse.
+export interface HouseholdDoseCallback {
+  receiverProfileId: number;
+  memberProfileId: number;
+  doseId: number;
+  itemId: number;
+  date: string;
+}
+
+// The single source of truth for the token (the formatter mints it, the parser reads
+// it) so send and handle can never drift apart.
+export function householdDoseCallback(cb: HouseholdDoseCallback): string {
+  return `hh:${cb.receiverProfileId}:${cb.memberProfileId}:${cb.doseId}:${cb.itemId}:${cb.date}`;
+}
+
+// Parse a household-round confirm token. Anything malformed — wrong prefix, a
+// non-numeric id, a missing date, or a receiver that IS the member (the round is
+// cross-profile by construction) — returns null and the tap falls through to the
+// generic acknowledge.
+export function parseHouseholdDoseCallback(
+  data: unknown
+): HouseholdDoseCallback | null {
+  if (typeof data !== "string" || !data.startsWith("hh:")) return null;
+  const [, receiverStr, memberStr, doseStr, itemStr, date] = data.split(":");
+  const receiverProfileId = Number(receiverStr);
+  const memberProfileId = Number(memberStr);
+  const doseId = Number(doseStr);
+  const itemId = Number(itemStr);
+  if (!receiverProfileId || !memberProfileId || !doseId || !itemId || !date) {
+    return null;
+  }
+  if (receiverProfileId === memberProfileId) return null;
+  return { receiverProfileId, memberProfileId, doseId, itemId, date };
+}
+
+// The outcome of resolving a household-round tap's ACCESS, before any write. Kept a
+// typed union (never a boolean) so the handler answers each refusal honestly — the
+// same discipline markDoseTaken's outcome union enforces on the write itself.
+export type HouseholdTapAccess =
+  | { kind: "allowed"; loginId: number }
+  | { kind: "wrong-chat" } // the tap came from a chat that isn't the receiver's
+  | { kind: "unsubscribed" } // the round was turned off, or this member deselected
+  | { kind: "revoked" }; // no login of the receiver still has write access
+
+// The Telegram toast for a REFUSED household tap. A refusal must never read like a
+// confirm: each case names what actually happened, and none of them wrote anything.
+export function householdTapRefusalText(
+  access: Exclude<HouseholdTapAccess, { kind: "allowed" }>
+): string {
+  switch (access.kind) {
+    case "unsubscribed":
+      return "Not logged — this household round is no longer set up. Open the app.";
+    case "revoked":
+      return "Not logged — you no longer have access to log for this person.";
+    case "wrong-chat":
+    default:
+      return "Not logged — this reminder is out of date. Open the app.";
+  }
+}
+
+// The toast for a household confirm that DID reach the write, per markDoseTaken's
+// outcome. Prefixed with the member's name because one chat's round spans several
+// people and a bare "Logged ✅" doesn't say for whom (#531 label discipline applied
+// to the answer, not just the button).
+export function householdTapAnswerText(
+  memberName: string,
+  outcome: DoseTakenOutcome
+): string {
+  const base = tapAnswerText(outcome);
+  return tapLogged(outcome) ? `${memberName}: ${base}` : base;
+}
