@@ -6,6 +6,7 @@ import { saveProfileSettings } from "./actions";
 import { ageFromBirthdate, dateStrInTz, isRealIsoDate } from "@/lib/date";
 import DateField from "@/components/DateField";
 import SaveStatus from "@/components/SaveStatus";
+import SettingsAdvanced from "../SettingsAdvanced";
 import TimezoneSelect from "@/components/TimezoneSelect";
 import { useSaveStatus, useFlushOnHide } from "@/components/useSaveStatus";
 import { useToast } from "@/components/Toast";
@@ -132,7 +133,7 @@ export default function ProfileForm({
   }
 
   return (
-    <div ref={formRef} className="card max-w-lg space-y-5">
+    <div ref={formRef} className="card space-y-5">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Personal
@@ -325,141 +326,6 @@ export default function ProfileForm({
       </div>
 
       <div className="border-t border-black/5 pt-5 dark:border-white/10">
-        <div className="flex items-center justify-between">
-          <label className="label mb-0">Home location</label>
-          <button
-            type="button"
-            data-testid="home-location-detect"
-            onClick={() => {
-              setGeoError(null);
-              if (!navigator.geolocation) {
-                setGeoError("Geolocation isn’t available in this browser.");
-                return;
-              }
-              navigator.geolocation.getCurrentPosition(
-                (pos) => {
-                  // Round to a coarse ~11 km before it ever leaves the input; the
-                  // server rounds again, so no street-precise value is stored.
-                  const lat = (
-                    Math.round(pos.coords.latitude * 10) / 10
-                  ).toString();
-                  const lng = (
-                    Math.round(pos.coords.longitude * 10) / 10
-                  ).toString();
-                  setHomeLat(lat);
-                  setHomeLng(lng);
-                  save({
-                    sex,
-                    birthdate,
-                    age: ageFallback,
-                    timezone,
-                    weekStart,
-                    weekMode,
-                    homeLat: lat,
-                    homeLng: lng,
-                  });
-                },
-                () => setGeoError("Couldn’t get your location.")
-              );
-            }}
-            className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
-          >
-            Use my location
-          </button>
-        </div>
-        <div className="mt-1 flex gap-2">
-          <input
-            type="number"
-            inputMode="decimal"
-            step="0.1"
-            value={homeLat}
-            data-testid="home-lat"
-            placeholder="Latitude"
-            aria-label="Home latitude"
-            onChange={(e) => setHomeLat(e.target.value)}
-            onBlur={() =>
-              save({
-                sex,
-                birthdate,
-                age: ageFallback,
-                timezone,
-                weekStart,
-                weekMode,
-              })
-            }
-            className="input"
-          />
-          <input
-            type="number"
-            inputMode="decimal"
-            step="0.1"
-            value={homeLng}
-            data-testid="home-lng"
-            placeholder="Longitude"
-            aria-label="Home longitude"
-            onChange={(e) => setHomeLng(e.target.value)}
-            onBlur={() =>
-              save({
-                sex,
-                birthdate,
-                age: ageFallback,
-                timezone,
-                weekStart,
-                weekMode,
-              })
-            }
-            className="input"
-          />
-        </div>
-        {geoError ? (
-          <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">
-            {geoError}
-          </p>
-        ) : null}
-        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          Optional. Stored coarse (~11 km) and used only for sunrise/sunset and
-          daylight features — never sent anywhere. Clear both fields to remove
-          it.
-        </p>
-      </div>
-
-      <div className="border-t border-black/5 pt-5 dark:border-white/10">
-        <label className="label">Skin type (Fitzpatrick)</label>
-        <select
-          value={skinType}
-          data-testid="skin-type"
-          onChange={(e) => {
-            const v = e.target.value;
-            setSkinType(v);
-            save({
-              sex,
-              birthdate,
-              age: ageFallback,
-              timezone,
-              weekStart,
-              weekMode,
-              skinType: v,
-            });
-          }}
-          className="input"
-        >
-          <option value="">Not set</option>
-          <option value="1">I — always burns, never tans</option>
-          <option value="2">II — usually burns, tans minimally</option>
-          <option value="3">III — sometimes burns, tans uniformly</option>
-          <option value="4">IV — rarely burns, tans easily</option>
-          <option value="5">V — very rarely burns, tans darkly</option>
-          <option value="6">VI — never burns</option>
-        </select>
-        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          Optional. Sets the burn-risk (UV overexposure) threshold for the
-          sun-exposure model. Left unset, only the &ldquo;enough sun&rdquo; side
-          is shown — the overexposure heads-up stays silent rather than
-          guessing.
-        </p>
-      </div>
-
-      <div className="border-t border-black/5 pt-5 dark:border-white/10">
         <label className="label">Week starts on</label>
         <select
           value={weekStart}
@@ -516,6 +382,150 @@ export default function ProfileForm({
             : "Your weekly routine and week summary reset on your week-start day, so a fresh week begins with empty counters."}
         </p>
       </div>
+
+      {/* Advanced (#1462 §3): a home location you set once and a Fitzpatrick
+          skin type are one-time setup, not settings anyone revisits — they sat
+          at equal rank with the birthdate and helped make this page a scroll
+          wall. Same form, same single save; just folded away by default. */}
+      <SettingsAdvanced
+        testId="health-advanced"
+        hint="home location, skin type"
+      >
+        <div className="border-t border-black/5 pt-5 dark:border-white/10">
+          <div className="flex items-center justify-between">
+            <label className="label mb-0">Home location</label>
+            <button
+              type="button"
+              data-testid="home-location-detect"
+              onClick={() => {
+                setGeoError(null);
+                if (!navigator.geolocation) {
+                  setGeoError("Geolocation isn’t available in this browser.");
+                  return;
+                }
+                navigator.geolocation.getCurrentPosition(
+                  (pos) => {
+                    // Round to a coarse ~11 km before it ever leaves the input; the
+                    // server rounds again, so no street-precise value is stored.
+                    const lat = (
+                      Math.round(pos.coords.latitude * 10) / 10
+                    ).toString();
+                    const lng = (
+                      Math.round(pos.coords.longitude * 10) / 10
+                    ).toString();
+                    setHomeLat(lat);
+                    setHomeLng(lng);
+                    save({
+                      sex,
+                      birthdate,
+                      age: ageFallback,
+                      timezone,
+                      weekStart,
+                      weekMode,
+                      homeLat: lat,
+                      homeLng: lng,
+                    });
+                  },
+                  () => setGeoError("Couldn’t get your location.")
+                );
+              }}
+              className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+            >
+              Use my location
+            </button>
+          </div>
+          <div className="mt-1 flex gap-2">
+            <input
+              type="number"
+              inputMode="decimal"
+              step="0.1"
+              value={homeLat}
+              data-testid="home-lat"
+              placeholder="Latitude"
+              aria-label="Home latitude"
+              onChange={(e) => setHomeLat(e.target.value)}
+              onBlur={() =>
+                save({
+                  sex,
+                  birthdate,
+                  age: ageFallback,
+                  timezone,
+                  weekStart,
+                  weekMode,
+                })
+              }
+              className="input"
+            />
+            <input
+              type="number"
+              inputMode="decimal"
+              step="0.1"
+              value={homeLng}
+              data-testid="home-lng"
+              placeholder="Longitude"
+              aria-label="Home longitude"
+              onChange={(e) => setHomeLng(e.target.value)}
+              onBlur={() =>
+                save({
+                  sex,
+                  birthdate,
+                  age: ageFallback,
+                  timezone,
+                  weekStart,
+                  weekMode,
+                })
+              }
+              className="input"
+            />
+          </div>
+          {geoError ? (
+            <p className="mt-1 text-xs text-rose-600 dark:text-rose-400">
+              {geoError}
+            </p>
+          ) : null}
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Optional. Stored coarse (~11 km) and used only for sunrise/sunset
+            and daylight features — never sent anywhere. Clear both fields to
+            remove it.
+          </p>
+        </div>
+
+        <div className="border-t border-black/5 pt-5 dark:border-white/10">
+          <label className="label">Skin type (Fitzpatrick)</label>
+          <select
+            value={skinType}
+            data-testid="skin-type"
+            onChange={(e) => {
+              const v = e.target.value;
+              setSkinType(v);
+              save({
+                sex,
+                birthdate,
+                age: ageFallback,
+                timezone,
+                weekStart,
+                weekMode,
+                skinType: v,
+              });
+            }}
+            className="input"
+          >
+            <option value="">Not set</option>
+            <option value="1">I — always burns, never tans</option>
+            <option value="2">II — usually burns, tans minimally</option>
+            <option value="3">III — sometimes burns, tans uniformly</option>
+            <option value="4">IV — rarely burns, tans easily</option>
+            <option value="5">V — very rarely burns, tans darkly</option>
+            <option value="6">VI — never burns</option>
+          </select>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Optional. Sets the burn-risk (UV overexposure) threshold for the
+            sun-exposure model. Left unset, only the &ldquo;enough sun&rdquo;
+            side is shown — the overexposure heads-up stays silent rather than
+            guessing.
+          </p>
+        </div>
+      </SettingsAdvanced>
     </div>
   );
 }

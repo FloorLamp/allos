@@ -48,7 +48,7 @@ function revalidatePhotoSurfaces() {
   // The switcher avatar lives in the app-shell layout; the two settings screens
   // show their own previews.
   revalidatePath("/", "layout");
-  revalidatePath("/settings/profile");
+  revalidatePath("/settings/health");
   revalidatePath("/settings/family");
 }
 

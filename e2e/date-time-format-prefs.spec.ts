@@ -88,7 +88,7 @@ test("flipping the date/time prefs re-renders a record date and a journal timest
     // save transition — so a second change fired before that render commits would
     // post a stale first value. A human's two clicks settle between renders; the
     // reload gives the second change a committed starting state deterministically.
-    await page.goto("/settings");
+    await page.goto("/settings/display");
     await selectAndSave(page, "date-format-select", "iso");
     await page.reload();
     await expect(page.getByTestId("date-format-select")).toHaveValue("iso");
@@ -129,7 +129,7 @@ test("flipping the date/time prefs re-renders a record date and a journal timest
   } finally {
     // Restore the defaults so the shared admin login preference doesn't bleed into
     // other specs.
-    await page.goto("/settings");
+    await page.goto("/settings/display");
     await selectAndSave(page, "date-format-select", "mdy");
     await page.reload();
     await selectAndSave(page, "time-format-select", "24h");

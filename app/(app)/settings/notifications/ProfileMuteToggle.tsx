@@ -41,7 +41,7 @@ export default function ProfileMuteToggle({
   }
 
   return (
-    <div id="profile-mute" className="card mt-6 max-w-lg space-y-3">
+    <div id="profile-mute" className="card space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Mute {profileName} for me

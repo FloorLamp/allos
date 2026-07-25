@@ -578,7 +578,7 @@ function revalidateAfterHealthImport() {
   revalidatePath("/records");
   revalidatePath("/results");
   revalidatePath("/settings");
-  revalidatePath("/settings/profile");
+  revalidatePath("/settings/health");
   revalidatePath("/");
 }
 

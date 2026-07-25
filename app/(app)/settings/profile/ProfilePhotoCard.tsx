@@ -20,7 +20,7 @@ export default function ProfilePhotoCard({
   const router = useRouter();
 
   return (
-    <div className="card mb-6 max-w-lg space-y-4">
+    <div className="card space-y-4">
       <h2 className="font-semibold text-slate-800 dark:text-slate-100">
         Photo
       </h2>

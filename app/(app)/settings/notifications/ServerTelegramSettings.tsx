@@ -78,7 +78,9 @@ export default function ServerTelegramSettings({
   }
 
   return (
-    <div className="card mt-6 max-w-lg space-y-5">
+    // Server-tier card: it lives on Settings → Server since #1462 (one bot serves
+    // every profile), NOT on the member-visible Notifications page.
+    <div className="card space-y-5" data-testid="server-telegram">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Telegram bot

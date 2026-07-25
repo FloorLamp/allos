@@ -131,7 +131,7 @@ test.describe("Nutrition trio", () => {
         // that save (a local run caught the set coming back empty). Gate, then
         // reload — the same pattern the format-prefs spec documents; the reload
         // also clears the indicator's linger so each gate refers to its own save.
-        await page.goto("/settings/profile");
+        await page.goto("/settings/nutrition");
         const presetSelect = page.getByTestId("dietary-preset");
         await expect(presetSelect).toBeVisible({ timeout: WAIT });
         await presetSelect.selectOption("vegetarian");

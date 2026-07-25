@@ -527,7 +527,7 @@ function DemographicsNudge({
         <div>
           Add a birthdate to enable preventive visit &amp; screening reminders.{" "}
           <Link
-            href="/settings/profile"
+            href="/settings/health"
             className="font-medium underline hover:no-underline"
           >
             Set it in Profile settings
@@ -563,7 +563,7 @@ function DemographicsNudge({
                   <span className="font-medium">{name}</span>
                   {isActing && (
                     <Link
-                      href="/settings/profile"
+                      href="/settings/health"
                       className="underline hover:no-underline"
                     >
                       — set it in Profile settings

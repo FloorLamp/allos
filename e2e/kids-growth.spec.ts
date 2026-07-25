@@ -41,7 +41,7 @@ async function switchProfile(page: Page, name: string) {
 // so a test that flips it MUST restore "kg" so no sibling spec inherits the
 // switch. Auto-saves on change (SaveStatus check).
 async function setWeightUnit(page: Page, value: "kg" | "lb") {
-  await page.goto("/settings");
+  await page.goto("/settings/display");
   const select = page
     .getByRole("main")
     .locator("select")

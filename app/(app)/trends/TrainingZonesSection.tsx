@@ -40,7 +40,7 @@ export default async function TrainingZonesSection() {
           <EmptyState
             message="Set your age (or a max-HR override) in Settings → Profile to draw your heart-rate zones."
             action={{
-              href: "/settings/profile",
+              href: "/settings/training",
               label: "Go to Settings → Profile",
             }}
           />
@@ -150,7 +150,7 @@ export default async function TrainingZonesSection() {
                 {model.formula} A lab-tested lactate/ventilatory threshold beats
                 any formula — set a max-HR override in{" "}
                 <Link
-                  href="/settings/profile"
+                  href="/settings/training"
                   className="font-medium text-brand-700 hover:underline dark:text-brand-300"
                 >
                   Settings → Profile

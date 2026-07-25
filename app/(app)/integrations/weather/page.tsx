@@ -75,7 +75,7 @@ export default async function WeatherPage(props: {
                 This integration needs no account or API key — just your home
                 location, so it knows where to fetch the UV for. Set it on{" "}
                 <Link
-                  href="/settings/profile"
+                  href="/settings/health"
                   className="text-brand-700 underline dark:text-brand-400"
                 >
                   Settings → Profile
@@ -124,7 +124,7 @@ export default async function WeatherPage(props: {
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   Add your skin type on{" "}
                   <Link
-                    href="/settings/profile"
+                    href="/settings/health"
                     className="text-brand-700 underline dark:text-brand-400"
                   >
                     Settings → Profile
@@ -193,7 +193,7 @@ function SetupCard() {
         <li>
           Set your coarse home location on{" "}
           <Link
-            href="/settings/profile"
+            href="/settings/health"
             className="text-brand-700 underline dark:text-brand-400"
           >
             Settings → Profile

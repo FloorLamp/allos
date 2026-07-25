@@ -250,6 +250,62 @@ export async function settledSelect(
   }).toPass({ timeout });
 }
 
+// Change a control that AUTOSAVES, and return only once that write is DURABLE.
+//
+// The Settings convention (#794) is autosave-on-blur/change, and #1462 §6 folded the
+// last explicit-Save settings card (the notification mega-card) into it. That removes
+// the "click Save, then wait for Saved" idiom, and each obvious replacement is wrong
+// on its own:
+//
+//   • Waiting for the `Saved` check: it LINGERS three seconds, so after two quick
+//     edits it can still be showing from the FIRST save while the second is in flight
+//     — and a following `page.reload()` aborts that write (the PR #586 class: the
+//     value is LOST, not merely late). It is also absent entirely when the
+//     interaction was a NO-OP (a checkbox already at its target value fires no change
+//     event, so nothing saves and nothing confirms).
+//   • Waiting for one same-origin POST (settledClick's arm): settledSelect and
+//     settledCheck RETRY their interaction until React has hydrated, so one call can
+//     fire several saves — and the next call's wait then resolves on a leftover
+//     response while its own write is still open.
+//
+// What is actually reliable is the SPINNER's absence, scoped to the card: SaveStatus
+// renders `Saving` for exactly as long as useSaveStatus' transition is pending, and
+// that transition stays pending until the Server Action has RETURNED. So "no spinner
+// in this card" means "no write outstanding" — and it is correct for a no-op too.
+// The one hazard is looking before React has committed the pending render; two
+// animation frames is that commit boundary (a real event, not a sleep).
+async function awaitAutosaveSettled(scope: Locator): Promise<void> {
+  await scope.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      )
+  );
+  await expect(scope.getByLabel("Saving")).toHaveCount(0);
+}
+
+export async function settledSelectSave(
+  page: Page,
+  select: Locator,
+  value: string,
+  scope: Locator,
+  opts: { timeout?: number } = {}
+): Promise<void> {
+  await settledSelect(page, select, value, opts);
+  await awaitAutosaveSettled(scope);
+}
+
+export async function settledCheckSave(
+  page: Page,
+  box: Locator,
+  checked: boolean,
+  scope: Locator,
+  opts: { timeout?: number } = {}
+): Promise<void> {
+  await settledCheck(page, box, checked, opts);
+  await awaitAutosaveSettled(scope);
+}
+
 // Click a pure CLIENT TOGGLE exactly once, after React has hydrated it — the
 // button analog of settledFill/settledCheck.
 //

@@ -17,7 +17,7 @@ test("a °C login: the Settings select persists and the dashboard temp entry + f
   test.slow(); // settings → dashboard → two logs → /upcoming is a long path
   try {
     // Toggle the preference to Celsius on Settings → Preferences (autosave on change).
-    await page.goto("/settings");
+    await page.goto("/settings/display");
     const select = page.getByTestId("temperature-unit-select");
     await expect(select).toBeVisible();
     await select.selectOption("C");
@@ -61,7 +61,7 @@ test("a °C login: the Settings select persists and the dashboard temp entry + f
     await expect(redFlagItem).not.toContainText("104.5 °F");
   } finally {
     // Restore °F so the shared login preference doesn't bleed into other specs.
-    await page.goto("/settings");
+    await page.goto("/settings/display");
     await page.getByTestId("temperature-unit-select").selectOption("F");
     await expect(page.getByLabel("Saved")).toBeVisible();
     await expect(page.getByTestId("temperature-unit-select")).toHaveValue("F");

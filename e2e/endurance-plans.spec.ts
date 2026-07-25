@@ -99,7 +99,7 @@ test.describe("endurance event plans (#839)", () => {
     // This login owns its own dedicated prefs; restore km before the test ends
     // so --repeat-each starts from the same state.
     try {
-      await page.goto("/settings");
+      await page.goto("/settings/display");
       const distanceSelect = page.getByTestId("distance-unit-select");
       await distanceSelect.selectOption("mi");
       await expect(page.getByLabel("Saved")).toBeVisible();
@@ -111,7 +111,7 @@ test.describe("endurance event plans (#839)", () => {
       await expect(eventItem).toContainText("6.21 mi");
       await expect(eventItem).not.toContainText("10 km");
     } finally {
-      await page.goto("/settings");
+      await page.goto("/settings/display");
       await page.getByTestId("distance-unit-select").selectOption("km");
       await expect(page.getByLabel("Saved")).toBeVisible();
     }
