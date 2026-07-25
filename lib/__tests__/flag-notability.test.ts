@@ -37,12 +37,22 @@ const SCAN_DIRS = ["lib", "app", "components"];
 // here — the allowlist is for comparisons that genuinely aren't notability decisions.
 const ALLOWLIST: { path: string; reason: string }[] = [
   {
-    path: "lib/reference-range.ts",
+    path: "lib/reference-range/flags.ts",
     reason:
       "Defines the canonical notability helpers (isOutOfRange/isNonOptimal/flagTone/" +
       "flagLabel) plus specific-value flag logic (e.g. the immune-positive classifier " +
       "checking an in-range standard flag). This is the source of truth the rule " +
-      "routes everyone toward, not an ad-hoc consumer.",
+      "routes everyone toward, not an ad-hoc consumer. (Split out of the " +
+      "lib/reference-range.ts monolith by #1527; lib/reference-range.ts is now a " +
+      "pure barrel over these modules.)",
+  },
+  {
+    path: "lib/reference-range/qualitative.ts",
+    reason:
+      "Specific-value flag logic inside the same source-of-truth family: the " +
+      "qualitative classifier maps parsed qualitative results onto concrete flag " +
+      "values (normal/high/non-optimal-high) — value MAPPING, not a notability " +
+      "decision; notability still routes through flags.ts's canonical helpers.",
   },
   {
     path: "components/dashboard/RecentLabsWidget.tsx",
@@ -152,13 +162,22 @@ describe("flag notability boundary (issue #544/#551)", () => {
     ).toEqual([]);
   });
 
-  it("the canonical notability helpers exist in lib/reference-range.ts", () => {
-    const src = fs.readFileSync(
+  it("the canonical notability helpers exist in the reference-range module", () => {
+    // Definitions live in the split flags module (#1527)…
+    const flagsSrc = fs.readFileSync(
+      path.join(REPO, "lib/reference-range/flags.ts"),
+      "utf8"
+    );
+    expect(/export function isOutOfRange\b/.test(flagsSrc)).toBe(true);
+    expect(/export function isNonOptimal\b/.test(flagsSrc)).toBe(true);
+    // …and the public import path everyone routes through still re-exports them.
+    const barrelSrc = fs.readFileSync(
       path.join(REPO, "lib/reference-range.ts"),
       "utf8"
     );
-    expect(/export function isOutOfRange\b/.test(src)).toBe(true);
-    expect(/export function isNonOptimal\b/.test(src)).toBe(true);
+    expect(/export \* from "\.\/reference-range\/flags"/.test(barrelSrc)).toBe(
+      true
+    );
   });
 
   it("self-check: the scanner detects the antipattern it forbids", () => {

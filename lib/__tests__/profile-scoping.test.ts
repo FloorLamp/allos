@@ -76,12 +76,12 @@ const ALLOW_SQL: { file: string; includes: string; why: string }[] = [
     why: "deleteSharedSupply (#1374): unlinks each member row it just read from poolMembers — the statement itself IS profile-scoped (id AND profile_id); listed only because the surrounding function's membership read is the cross-profile one above",
   },
   {
-    file: "lib/queries/medical.ts",
+    file: "lib/queries/medical/flags.ts",
     includes: "UPDATE medical_records SET flag = ? WHERE id = ?",
     why: "reconcileFlags: the ids are produced by a profile-scoped SELECT in the same function",
   },
   {
-    file: "lib/queries/medical.ts",
+    file: "lib/queries/medical/flags.ts",
     includes: "UPDATE medical_records SET flag = NULL WHERE id = ?",
     why: "reconcileFlags: ids come from a profile-scoped SELECT",
   },
@@ -326,12 +326,12 @@ const ALLOW_EXEC: { file: string; includes: string; why: string }[] = [
 // profile-scoped and listed with a justification.
 const ALLOW_NON_LITERAL: { file: string; expr: string; why: string }[] = [
   {
-    file: "lib/queries/medical.ts",
+    file: "lib/queries/medical/flags.ts",
     expr: "sql",
     why: "reconcileFlags: `sql` starts from a base string that includes WHERE profile_id = ?",
   },
   {
-    file: "lib/queries/medical.ts",
+    file: "lib/queries/medical/flags.ts",
     expr: "qsql",
     why: "reconcileFlags qualitative pass (#549): `qsql` starts from a base string that includes WHERE profile_id = ?",
   },
