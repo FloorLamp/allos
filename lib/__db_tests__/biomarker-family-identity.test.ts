@@ -65,9 +65,7 @@ function clearRows() {
   db.prepare(
     "DELETE FROM medical_records WHERE profile_id = ? AND panel = 'Fam'"
   ).run(p.profileId);
-  db.prepare("DELETE FROM saved_items WHERE profile_id = ?").run(
-    p.profileId
-  );
+  db.prepare("DELETE FROM saved_items WHERE profile_id = ?").run(p.profileId);
 }
 
 function retestKeys(): string[] {
