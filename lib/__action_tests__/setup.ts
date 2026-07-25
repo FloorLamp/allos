@@ -33,9 +33,8 @@ vi.mock("next/cache", () => ({
 // imports it lazily (async) so it reads the live binding on every call — a test's
 // actAs() takes effect on the next requireSession().
 vi.mock("@/lib/auth", async () => {
-  const { getActingSession, peekActingSession } = await import(
-    "./session-state"
-  );
+  const { getActingSession, peekActingSession } =
+    await import("./session-state");
   const { db } = await import("@/lib/db");
   // Demo-mode guard (#181): the mock applies the SAME pure predicate the real
   // requireWriteAccess() uses, reading process.env.ALLOS_DEMO_MODE each call, so a

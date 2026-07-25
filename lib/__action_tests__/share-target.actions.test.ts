@@ -54,7 +54,10 @@ function shareRequest(files: File[]): Request {
   const form = new FormData();
   // Same field name the upload form posts under (app/manifest.ts declares it).
   for (const f of files) form.append("file", f);
-  return new Request("http://test/share-target", { method: "POST", body: form });
+  return new Request("http://test/share-target", {
+    method: "POST",
+    body: form,
+  });
 }
 
 interface DocRow {
@@ -214,7 +217,10 @@ describe("share-target route: the auth + input gates", () => {
     const res = await POST(shareRequest([]));
 
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ ok: false, error: "no file was shared" });
+    expect(await res.json()).toEqual({
+      ok: false,
+      error: "no file was shared",
+    });
     expect(docRows(profile.id)).toHaveLength(0);
   });
 });
