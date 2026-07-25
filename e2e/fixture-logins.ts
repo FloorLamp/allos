@@ -1058,14 +1058,3 @@ export const E2E_LOGIN_HH_ROUND = "e2e_hhround";
 export const HH_ROUND_CAREGIVER_PROFILE = "HH Round Caregiver (e2e)";
 export const HH_ROUND_WARD_PROFILE = "HH Round Ward (e2e)";
 export const HH_ROUND_SHADOW_PROFILE = "HH Round Shadow (e2e)";
-
-// A dedicated ADULT profile with a birthdate and NO clinical records — the exact
-// shape the all-pages census used to find the duplicated "⋯" on /upcoming
-// (#1446). An older adult with nothing on file leaves every age-triggered
-// preventive rule unsatisfied, so /upcoming fills with visit/screening rows —
-// the rows that carried BOTH a preventive-override menu and a snooze/dismiss
-// menu, i.e. two kebabs each. Owning the fixture keeps the row-composition
-// assertions off the shared seed, whose preventive rows other specs mutate
-// (mark-done / override) and whose row COUNT is therefore not stable.
-export const E2E_LOGIN_UPCOMING_ROWS = "e2e_upcoming_rows";
-export const UPCOMING_ROWS_PROFILE = "Upcoming Rows (e2e)";

@@ -40,7 +40,6 @@ import {
   E2E_LOGIN_COMPARE,
   E2E_LOGIN_DUP,
   E2E_LOGIN_EMPTY_TRAINING,
-  E2E_LOGIN_UPCOMING_ROWS,
   E2E_LOGIN_BADGE,
   E2E_LOGIN_SHELL,
   SHELL_PROFILE,
@@ -159,7 +158,6 @@ import {
   E2E_MEMBER_PASSWORD,
   DUP_REVIEW_PROFILE,
   EMPTY_TRAINING_PROFILE,
-  UPCOMING_ROWS_PROFILE,
   APP_BADGE_PROFILE,
   SLEEP_EDIT_PROFILE,
   SLEEP_PHASE_PROFILE,
@@ -2862,39 +2860,6 @@ db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(emptyTrainingId);
 seedMemberLogin(E2E_LOGIN_EMPTY_TRAINING, emptyTrainingId);
 console.log(
   `e2e: seeded activity-free first-run fixture profile ${emptyTrainingId} (${EMPTY_TRAINING_PROFILE}) for the Training Log empty state (#809)`
-);
-
-// An ADULT profile with a birthdate and no clinical records (#1446): every
-// age-triggered preventive rule is unsatisfied, so /upcoming fills with
-// visit/screening rows — the row shape that used to render two identical "⋯"
-// overflow triggers (a preventive-override menu AND a snooze/dismiss menu). The
-// upcoming-row-actions specs assert row composition against THIS profile rather
-// than the shared seed, whose preventive rows other specs mark done / override.
-// Kept record-free and idempotent so the row set can't drift on a reused server.
-const upcomingRowsId = fixtureProfileId(UPCOMING_ROWS_PROFILE);
-db.prepare(
-  `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'sex', 'female')
-     ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
-).run(upcomingRowsId);
-// A fixed 1958 birthdate: old enough that the age-gated screenings (colorectal,
-// lipids, bone density, …) are all in-window, and fixed so the row set is the
-// same every run rather than drifting with the wall clock.
-db.prepare(
-  `INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', '1958-04-12')
-     ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
-).run(upcomingRowsId);
-db.prepare(`DELETE FROM preventive_events WHERE profile_id = ?`).run(
-  upcomingRowsId
-);
-db.prepare(`DELETE FROM preventive_overrides WHERE profile_id = ?`).run(
-  upcomingRowsId
-);
-db.prepare(`DELETE FROM upcoming_dismissals WHERE profile_id = ?`).run(
-  upcomingRowsId
-);
-seedMemberLogin(E2E_LOGIN_UPCOMING_ROWS, upcomingRowsId);
-console.log(
-  `e2e: seeded record-free preventive fixture profile ${upcomingRowsId} (${UPCOMING_ROWS_PROFILE}) for the Upcoming row-composition specs (#1446)`
 );
 
 // Dedicated write surface for historical sleep/mood editing. The spec seeds and
