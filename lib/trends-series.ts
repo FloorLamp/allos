@@ -39,7 +39,12 @@ import {
   parseLooseValue,
 } from "./reference-range";
 import { convertToCanonical, sameUnit } from "./unit-conversions";
-import { ALL_ROWS, filterSeriesByRange } from "./trends";
+import {
+  ALL_ROWS,
+  filterSeriesByRange,
+  outOfWindowAgeLabel,
+  outOfWindowLatest,
+} from "./trends";
 import { bioSeriesKey, metricSeriesKey } from "./saved-items";
 import { bioColor } from "./trend-colors";
 import type { DateRange } from "./timeline-format";
@@ -66,6 +71,16 @@ export interface TrendSeries {
   // 2% is a real weight move but noise for training volume. Read by summarizeTrends
   // as DigestSeries.minPctChange; undefined falls back to the digest default.
   minPctChange?: number;
+  // The sparse-series fallback (#1485 G), set ONLY when `points` is empty and the
+  // series has history behind the window: the latest reading, pre-formatted in the
+  // series' own unit, with the age label that marks it as outside the window. Never
+  // a plottable point — a renderer must show it AS a stale value (text + age), never
+  // draw it on the line, or the tile claims a five-month-old number is current.
+  outsideWindow?: {
+    date: string;
+    text: string;
+    age: string;
+  } | null;
 }
 
 export interface TrendOption {
@@ -195,17 +210,26 @@ export function buildMetricSeries(
   }));
 }
 
-// Build one biomarker's series windowed to `range`, mirroring the biomarker detail
-// page's charting: chart in the canonical unit when the biomarker has one
+// One biomarker's FULL (un-windowed) plot: the numeric points in the unit the tile
+// and chart will label, plus the effective reference range. Mirrors the biomarker
+// detail page's charting: chart in the canonical unit when the biomarker has one
 // (converting every convertible reading and carrying the effective reference
 // range), else fall back to the latest reading's unit and its parsed lab range.
-// Censored readings ("<0.10") are plotted at their limit. Returns null when there
-// are no numeric readings to chart.
-export function buildBiomarkerSeries(
+// Censored readings ("<0.10") are plotted at their limit.
+//
+// Extracted from buildBiomarkerSeries (#1485 G) so the windowed chart and the
+// sparse-series fallback resolve unit + conversion through the SAME path — a
+// fallback that formatted the raw stored value would print a different unit than
+// the tile's own chart for exactly the analytes it exists to serve.
+function biomarkerPlot(
   profileId: number,
-  canonical: string,
-  range: DateRange
-): TrendSeries | null {
+  canonical: string
+): {
+  rows: ReturnType<typeof getBiomarkerSeriesWithDerived>;
+  points: { date: string; value: number }[];
+  unit: string | null;
+  rng: { low: number | null; high: number | null } | null;
+} | null {
   const series = getBiomarkerSeriesWithDerived(profileId, canonical);
   if (series.length === 0) return null;
   const cb = getCanonicalBiomarker(canonical);
@@ -251,19 +275,117 @@ export function buildBiomarkerSeries(
     if (parsed) rng = { low: parsed.low ?? null, high: parsed.high ?? null };
   }
 
-  const windowed = filterSeriesByRange(points, range);
+  return { rows: series, points, unit, rng };
+}
+
+// Build one biomarker's series windowed to `range`. Returns null when there are no
+// numeric readings to chart IN THAT WINDOW — the contract Compare and the digest
+// read (an empty overlay/chip is correct for both). The Overview tile takes the
+// sparse-aware path below instead.
+export function buildBiomarkerSeries(
+  profileId: number,
+  canonical: string,
+  range: DateRange
+): TrendSeries | null {
+  const plot = biomarkerPlot(profileId, canonical);
+  if (!plot) return null;
+
+  const windowed = filterSeriesByRange(plot.points, range);
   if (windowed.length === 0) return null;
 
   return {
     key: bioSeriesKey(canonical),
     label: canonical,
-    unit: unit ? ` ${unit}` : "",
+    unit: plot.unit ? ` ${plot.unit}` : "",
     color: bioColor(canonical),
     href: biomarkerViewHref(canonical),
     kind: "biomarker",
     decimals: 1,
     points: windowed,
-    range: rng,
+    range: plot.rng,
+  };
+}
+
+const BIO_TILE_DECIMALS = 1;
+
+// How an out-of-window reading prints on a tile. Numeric readings go through the
+// SAME unit the chart would have labelled; a reading with no numeric value at all
+// (a genotype like "e3/e4" — starred, and real in the seed) prints its stored text
+// with its own unit, because "the latest reading" is still the honest answer for a
+// qualitative analyte even though nothing can be plotted.
+function outOfWindowText(
+  point: { date: string; value: number } | null,
+  row: { date: string; value: string | null; unit: string | null } | undefined,
+  unit: string | null
+): { date: string; text: string } | null {
+  if (point && (!row || point.date >= row.date)) {
+    return {
+      date: point.date,
+      text: `${round(point.value, BIO_TILE_DECIMALS)}${unit ? ` ${unit}` : ""}`,
+    };
+  }
+  const raw = row?.value?.trim();
+  if (!row || !raw) return null;
+  return { date: row.date, text: `${raw}${row.unit ? ` ${row.unit}` : ""}` };
+}
+
+// The Overview tile for a SAVED biomarker (#1456: always rendered, so its ★ stays
+// reachable at any window). Never null — it resolves to one of three honest states:
+//
+//   • readings in the window → the real windowed series (identical to
+//     buildBiomarkerSeries);
+//   • no readings in the window but history behind it → an empty-points tile
+//     carrying `outsideWindow`, the latest reading + its age (#1485 G). With 90D as
+//     the default window this is the COMMON case for an annual lab, and the old
+//     "No data in this range" threw away the one number the user came for;
+//   • never measured (or nothing renderable) → the #1456 placeholder, unchanged.
+//
+// The out-of-window reading is deliberately NOT merged into `points`: it is carried
+// beside them so the renderer must mark it as outside the window rather than plot a
+// stale value on the line.
+export function buildSavedBiomarkerTile(
+  profileId: number,
+  canonical: string,
+  range: DateRange,
+  todayStr: string
+): TrendSeries {
+  const plot = biomarkerPlot(profileId, canonical);
+  if (!plot) return placeholderBiomarkerTile(canonical);
+
+  const windowed = filterSeriesByRange(plot.points, range);
+  const base: TrendSeries = {
+    key: bioSeriesKey(canonical),
+    label: canonical,
+    unit: plot.unit ? ` ${plot.unit}` : "",
+    color: bioColor(canonical),
+    href: biomarkerViewHref(canonical),
+    kind: "biomarker",
+    decimals: BIO_TILE_DECIMALS,
+    points: windowed,
+    range: plot.rng,
+  };
+  if (windowed.length > 0) return base;
+
+  // Nothing in the window: fall back to the newest reading behind it. Both the
+  // numeric series and the raw rows are consulted — `outOfWindowLatest` gates on
+  // the same "no points in this window" question for each, so a qualitative-only
+  // analyte still resolves.
+  const latestPoint = outOfWindowLatest(plot.points, range);
+  const latestRow = outOfWindowLatest(plot.rows, range);
+  const reading = outOfWindowText(
+    latestPoint,
+    latestRow ?? undefined,
+    plot.unit
+  );
+  if (!reading) return { ...base, points: [], unit: base.unit || "" };
+  return {
+    ...base,
+    points: [],
+    outsideWindow: {
+      date: reading.date,
+      text: reading.text,
+      age: outOfWindowAgeLabel(reading.date, todayStr),
+    },
   };
 }
 

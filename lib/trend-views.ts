@@ -1,3 +1,5 @@
+import { ALL_TIME_RANGE_PARAM, ALL_TIME_RANGE_VALUE } from "./timeline-format";
+
 // Saved views for the Trends hub. A named snapshot of the hub's URL state — the date
 // range, active tab, and compare pair — so a user can flip between e.g. "Lipids
 // review" and "Cut progress" without rebuilding the view each time.
@@ -184,6 +186,15 @@ export function viewToQuery(params: TrendViewParams): string {
   if (params.tab && params.tab !== "overview") sp.set("tab", params.tab);
   if (params.from) sp.set("from", params.from);
   if (params.to) sp.set("to", params.to);
+  // A view with no bounds is an ALL-TIME view — that is what "no from/to" meant
+  // when it was captured, and it must keep meaning that now that a paramless
+  // /trends URL resolves to the 90D default (#1485 G). Applying one therefore
+  // emits the explicit sentinel rather than an empty window. (This is why the bar
+  // captures the RESOLVED range: a view saved on a default load stores the 90D
+  // dates, so it doesn't land here.)
+  if (!params.from && !params.to) {
+    sp.set(ALL_TIME_RANGE_PARAM, ALL_TIME_RANGE_VALUE);
+  }
   if (params.cmpA) sp.set("cmpA", params.cmpA);
   if (params.cmpB) sp.set("cmpB", params.cmpB);
   if (params.cmpn) sp.set("cmpn", "1");

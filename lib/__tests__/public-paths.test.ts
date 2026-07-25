@@ -15,6 +15,18 @@ describe("middleware public-path allowlist", () => {
     expect(PUBLIC_PATHS.has("/set-password")).toBe(true);
   });
 
+  it("allows the PWA share target through the coarse gate (#1423)", () => {
+    // Session-free at the COARSE layer only: middleware's anonymous branch would
+    // answer the share sheet's multipart POST with a method-preserving 307 that
+    // re-POSTs the file at /login. The handler makes the call itself
+    // (getCurrentSession + a 303 to /login) — see app/share-target/route.ts.
+    expect(isPublicPath("/share-target")).toBe(true);
+    expect(PUBLIC_PATHS.has("/share-target")).toBe(true);
+    // …and it must not accidentally ride the /share/<token> passport prefix rule,
+    // which is a different (token-authenticated) surface.
+    expect(isPublicPath("/share-target/anything")).toBe(false);
+  });
+
   it("keeps the existing token-authed public surfaces public", () => {
     expect(isPublicPath("/api/health")).toBe(true);
     expect(isPublicPath("/share/abc123")).toBe(true);

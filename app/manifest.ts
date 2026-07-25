@@ -49,5 +49,23 @@ export default function manifest(): MetadataRoute.Manifest {
       url: s.url,
       icons: [{ src: "/icon.svg", sizes: "any", type: "image/svg+xml" }],
     })),
+    // Android share target (issue #1423): registers Allos in the phone's native
+    // share sheet for PDFs and images, so a lab PDF or a photographed document
+    // goes straight into the medical-document pipeline instead of "save the file,
+    // open the app, navigate to Data → Import, find it again". The OS POSTs a
+    // multipart body to /share-target, whose handler (app/share-target/route.ts)
+    // checks the session and hands the file to the SAME ingestMedicalUpload engine
+    // the upload form uses. The field name matches that form's input (`file`), so
+    // both entry points read `formData.getAll("file")`.
+    share_target: {
+      action: "/share-target",
+      method: "POST",
+      enctype: "multipart/form-data",
+      params: {
+        files: [
+          { name: "file", accept: ["application/pdf", ".pdf", "image/*"] },
+        ],
+      },
+    },
   };
 }

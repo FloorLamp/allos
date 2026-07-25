@@ -66,7 +66,14 @@ test.describe("the 1D pill is scoped to the Vitals tab (B)", () => {
       "/trends?tab=nutrition",
     ]) {
       await page.goto(tab);
-      await expect(page.getByRole("link", { name: "30D" })).toBeVisible();
+      // Exact, like the 1D locators above: the movers digest renders LINK chips
+      // labelled "… over 30d" (lib/trends-digest), and Playwright's default
+      // accessible-name matching is a case-insensitive SUBSTRING, so a bare
+      // { name: "30D" } can resolve to two elements on the run dates where a
+      // mover's series spans exactly the window.
+      await expect(
+        page.getByRole("link", { name: "30D", exact: true })
+      ).toBeVisible();
       await expect(pill).toHaveCount(0);
     }
   });

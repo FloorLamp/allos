@@ -42,6 +42,7 @@ export default function TrendMiniCard({
   minPctChange,
   footer,
   applyBiomarkerDomain = false,
+  outsideWindow = null,
   testid = "trend-mini-card",
 }: {
   title: string;
@@ -63,6 +64,12 @@ export default function TrendMiniCard({
   // chart (0-clamp for a non-negative analyte; a flat/near-flat series gets a small
   // window) instead of recharts' bare ["auto","auto"]. Metric tiles leave it off.
   applyBiomarkerDomain?: boolean;
+  // #1485 G: the latest reading BEHIND the window, for a series with no points in
+  // it. Optional and off by default, so the range-driven Overview tiles opt in
+  // while BodyMetricTiles (a fixed trailing slice, not range-driven) keeps the
+  // plain empty state. Rendered only when `data` is empty — it is a fallback FOR
+  // the empty state, never an annotation on a drawn series.
+  outsideWindow?: { text: string; age: string } | null;
 }) {
   const values = data.map((d) => d.value).filter((v): v is number => v != null);
   const latest = values.length > 0 ? values[values.length - 1] : null;
@@ -120,9 +127,29 @@ export default function TrendMiniCard({
         )}
       </div>
       {data.length === 0 ? (
-        <div className="flex h-32 items-center justify-center text-sm text-slate-500 dark:text-slate-400">
-          No data in this range
-        </div>
+        outsideWindow ? (
+          // Sparse-series fallback (#1485 G). The window is genuinely empty, so
+          // there is nothing to plot — but the series has history, and the latest
+          // reading is the number the tile exists to show. It renders as TEXT, in
+          // the muted body slot, ALWAYS with its age and an explicit "outside this
+          // range": the value is real, its currency is not, and the label is what
+          // keeps a five-month-old reading from being read as today's.
+          <div
+            className="flex h-32 flex-col items-center justify-center gap-1 text-center"
+            data-testid="trend-mini-outside-window"
+          >
+            <span className="text-lg font-semibold tabular-nums text-slate-600 dark:text-slate-300">
+              {outsideWindow.text}
+            </span>
+            <span className="text-xs text-slate-500 dark:text-slate-400">
+              {outsideWindow.age} · outside this range
+            </span>
+          </div>
+        ) : (
+          <div className="flex h-32 items-center justify-center text-sm text-slate-500 dark:text-slate-400">
+            No data in this range
+          </div>
+        )
       ) : (
         <>
           <LineChartCard

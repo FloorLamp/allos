@@ -25,6 +25,11 @@ import {
 // submit, and drops that land on the zone are forwarded into the real input (via a
 // DataTransfer) so the form submit carries them.
 //
+// Camera capture (issue #1423): a second, image-only input carrying
+// `capture="environment"` sits under the drop zone so a phone can photograph a
+// paper document straight into the same submit. It is deliberately separate from
+// the main picker — see the comment at that input.
+//
 // Immediate feedback (issue #102): the inline imports table that used to show a
 // processing spinner next to this form moved into Data → Review, so a bare
 // `<form action={serverAction}>` left the user staring at nothing after they
@@ -39,11 +44,18 @@ export default function UploadForm({ demo = false }: { demo?: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
   const router = useRouter();
 
+  // Both inputs post under the same `file` key, so the action's getAll("file")
+  // already carries whatever either one holds; the preview list and the submit
+  // gating just have to read both.
   function syncSelected() {
-    setSelected(Array.from(inputRef.current?.files ?? []));
+    setSelected([
+      ...Array.from(inputRef.current?.files ?? []),
+      ...Array.from(cameraRef.current?.files ?? []),
+    ]);
   }
 
   // A drop onto the zone: write the dropped files into the real input (so the form
@@ -137,12 +149,37 @@ export default function UploadForm({ demo = false }: { demo?: boolean }) {
           multiple
           data-testid="medical-upload-input"
           accept=".pdf,.xlsx,.csv,image/*,.zip,.xdm,.xml,.smart-health-card,application/zip,text/xml,application/xml,application/json,.json"
-          required
+          // Not `required`: the camera input below can be the only one holding a
+          // file, and a `required` empty picker would block that submit. The empty
+          // case is already gated by the submit button (disabled until something is
+          // selected) and answered server-side by the action's zero-file result.
           disabled={demo}
           onChange={syncSelected}
           className="block w-full cursor-pointer rounded-xl border-2 border-dashed border-black/10 bg-slate-50 p-8 text-sm text-slate-500 transition hover:border-brand-400 hover:bg-brand-50 file:mr-4 file:cursor-pointer file:rounded-md file:border-0 file:bg-brand-600 file:px-4 file:py-2 file:font-medium file:text-white hover:file:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-black/10 disabled:hover:bg-slate-50 dark:border-white/10 dark:bg-ink-900 dark:text-slate-400 dark:hover:bg-brand-950"
         />
       </div>
+      {/* Camera capture (issue #1423). `capture="environment"` deliberately rides
+          on this SEPARATE image-only input rather than on the main one above: a
+          `capture` attribute on an input that also accepts PDFs/zips/spreadsheets
+          makes mobile Chrome open the camera INSTEAD of the file picker, which
+          would take health-record exports off the phone entirely. Same `file`
+          field name, so a snapped page rides the one submit with everything else.
+          (The other one-tap phone path for a document is the share sheet —
+          app/share-target/route.ts.) */}
+      <label className="flex flex-wrap items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+        <span>Or photograph a paper document:</span>
+        <input
+          ref={cameraRef}
+          type="file"
+          name="file"
+          accept="image/*"
+          capture="environment"
+          data-testid="medical-upload-camera"
+          disabled={demo}
+          onChange={syncSelected}
+          className="max-w-full cursor-pointer text-sm text-slate-500 file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-slate-200 file:px-3 file:py-1.5 file:font-medium file:text-slate-700 hover:file:bg-slate-300 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-400 dark:file:bg-ink-800 dark:file:text-slate-200 dark:hover:file:bg-ink-700"
+        />
+      </label>
       {selected.length > 0 && (
         <ul
           data-testid="medical-upload-selected"
