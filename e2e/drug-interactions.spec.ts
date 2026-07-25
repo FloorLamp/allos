@@ -81,8 +81,9 @@ test("the interaction surfaces on Upcoming and stays hidden once dismissed", asy
 
   // The item's menu is the shared OverflowMenu popover (#281): its trigger is a
   // button, and the panel is portaled to <body> — so the Dismiss item is located
-  // from the page-level menu role, not inside the row. Open, then dismiss.
-  await finding.getByRole("button", { name: "Snooze or dismiss" }).click();
+  // from the page-level menu role, not inside the row. On /upcoming every row has
+  // exactly ONE kebab, labelled "More actions" (#1446). Open, then dismiss.
+  await finding.getByRole("button", { name: "More actions" }).click();
   await page
     .getByRole("menu")
     .getByRole("menuitem", { name: "Dismiss" })
