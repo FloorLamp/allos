@@ -225,16 +225,18 @@ export default function DateField({
         autoComplete="off"
         onChange={(e) => setVal(e.target.value)}
         onFocus={() => setOpen(true)}
-        // Sized to hold its own longest rendered value (issue #1450 cluster A).
-        // The field used to render formatLongDate — "Friday, July 24" — and clip
-        // it to "Friday, July 2‹" at BOTH viewports, so the control could not
-        // display the value it contained. It now renders the vocabulary's
-        // year-bearing short form ("Jul 24, 2026", ~88px at text-sm, and dated,
-        // which a date being EDITED always wants), and reserves the width that
-        // form needs: 8.5rem − 0.75rem left padding − 2.25rem for the calendar
-        // button. `pr-9` (not pr-10) is the icon's real reach: a 1rem glyph
-        // inset 0.5rem.
-        className={`input min-w-[8.5rem] pr-9 ${inputClassName}`}
+        // The field renders the vocabulary's year-bearing short form ("Jul 24,
+        // 2026") rather than formatLongDate's "Friday, July 24" (issue #1450
+        // cluster A / #1448): ~20% narrower, and dated, which a date being EDITED
+        // always wants. `pr-9` (not pr-10) matches the calendar button's real
+        // reach — a 1rem glyph inset 0.5rem — returning 4px to the value.
+        //
+        // Deliberately NO min-width: date fields sit inside layouts with their own
+        // pinned geometry (the activity editor's Date/Duration/Start/End are one
+        // equal-width row, #188), so a floor here would break those instead. Where
+        // a date genuinely could not fit, the CONTAINER was too narrow and is
+        // widened at the container (components/ListRailLayout.tsx).
+        className={`input pr-9 ${inputClassName}`}
       />
       {/* The visible field can show a friendly date, so the ISO value is
           submitted via a hidden input for uncontrolled (name) usage. */}
