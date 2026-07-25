@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useActivityEditor } from "@/components/ActivityEditorProvider";
 import { useQuickEntry } from "@/components/QuickEntryProvider";
 import { openGlobalSearch } from "@/components/CommandPalette";
-import { currentPathHref } from "@/lib/hrefs";
 import { QUICK_PARAM, shortcutAction } from "@/lib/pwa-shortcuts";
 
 // The landing half of the PWA manifest shortcuts (issue #1424, section A).
@@ -35,7 +34,6 @@ export default function QuickShortcutHandler({
   restricted?: boolean;
 }) {
   const params = useSearchParams();
-  const pathname = usePathname();
   const router = useRouter();
   const { openCreate } = useActivityEditor();
   const { open: openQuickEntry } = useQuickEntry();
@@ -51,14 +49,18 @@ export default function QuickShortcutHandler({
     if (handled.current === raw) return;
     handled.current = raw;
 
-    // Strip the param FIRST, and for an unrecognized value too — a URL that does
-    // nothing shouldn't keep advertising an action in the address bar.
-    const rest = new URLSearchParams(params.toString());
-    rest.delete(QUICK_PARAM);
-    const qs = rest.toString();
-    router.replace(currentPathHref(qs ? `${pathname}?${qs}` : pathname), {
-      scroll: false,
-    });
+    // Erase the consumed param FIRST, and for an unrecognized value too — a URL
+    // that does nothing shouldn't keep advertising an action in the address bar.
+    //
+    // `history.replaceState`, NOT `router.replace`: this is a URL correction, not
+    // a navigation. router.replace would kick off a soft navigation — an RSC
+    // round trip that re-renders the page we are simultaneously opening an
+    // overlay on top of, for no benefit. Next supports the native history methods
+    // for exactly this (they stay in sync with usePathname/useSearchParams), and
+    // the `handled` ref covers us either way.
+    const url = new URL(window.location.href);
+    url.searchParams.delete(QUICK_PARAM);
+    window.history.replaceState(null, "", `${url.pathname}${url.search}`);
 
     const action = shortcutAction(raw, restricted);
     if (!action) return;
@@ -74,7 +76,7 @@ export default function QuickShortcutHandler({
     // union stays exhaustive so a future one is a compile error here, not a
     // silently dead deep link.
     else router.push(target.href);
-  }, [raw, params, pathname, router, restricted, openCreate, openQuickEntry]);
+  }, [raw, router, restricted, openCreate, openQuickEntry]);
 
   return null;
 }
