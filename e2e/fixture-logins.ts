@@ -984,3 +984,20 @@ export const INTRADAY_TICK_TIME = "07:15";
 export const E2E_LOGIN_SHELL = "e2e_shell";
 export const SHELL_PROFILE = "Mobile Shell (e2e)";
 export const SHELL_WEIGHT_KG = "77.7";
+
+// #1466 — the Trends → Vitals tab's Today strip + 1D (intraday) view. A DEDICATED
+// member login + adult profile carrying a full VITALS day: per-minute HR across the
+// morning (the 1D heart-rate chart), two TIMED blood-pressure pairs and two timed
+// SpO2 readings ingest-shaped so each carries its reading instant (the time-positioned
+// point charts), one manual temperature whose clock time rides its note, and a
+// day-granular resting HR (the strip entry that has a value but no time). Dedicated
+// on purpose: the 1D charts key on hr_minutes, which profile 1 has only inside the
+// zone-ride window that training-zones.spec pins — a full morning of wear there would
+// move those totals. Synthetic, no PHI; the spec only reads.
+export const E2E_LOGIN_VITALS_DAY = "e2e_vitalsday";
+export const VITALS_DAY_PROFILE = "Vitals Day (e2e)";
+// The later of the day's two BP pairs — the one that must win the strip's "latest".
+export const VITALS_DAY_BP_LATER = "126/82";
+export const VITALS_DAY_BP_LATER_TIME = "09:40";
+export const VITALS_DAY_TEMP_TIME = "08:05";
+export const VITALS_DAY_RESTING_HR = "54";

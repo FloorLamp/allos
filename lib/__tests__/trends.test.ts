@@ -5,8 +5,10 @@ import {
   summarizeSeries,
 } from "../trends";
 import {
+  intradayQuickRange,
   isAllTimeRange,
   isCustomRange,
+  isIntradayRange,
   isQuickRangeActive,
   quickRanges,
 } from "../timeline-format";
@@ -168,6 +170,49 @@ describe("quick-range vocabulary (shared with the Timeline)", () => {
       expect(
         isCustomRange({ from: seven.from, to: seven.to }, "2026-07-09")
       ).toBe(true);
+    });
+
+    // #1466: a surface may inject extra pills (the Vitals tab's 1D). A window one
+    // of THOSE names is not custom either — otherwise lighting 1D would pop the
+    // "Custom…" panel open and print a summary chip repeating the lit pill.
+    it("counts a surface's extra pills as named windows", () => {
+      const oneDay = intradayQuickRange(today);
+      expect(isCustomRange({ from: today, to: today }, today)).toBe(true);
+      expect(isCustomRange({ from: today, to: today }, today, [oneDay])).toBe(
+        false
+      );
+      // The extras never widen what the SHARED pills name.
+      expect(
+        isCustomRange({ from: "2026-01-01", to: "2026-02-01" }, today, [oneDay])
+      ).toBe(true);
+    });
+  });
+
+  // The Vitals tab's 1D window (#1466) — deliberately NOT in the shared
+  // quickRanges set, because a one-day window is only meaningful on a surface
+  // that swaps to intraday content for it.
+  describe("intradayQuickRange / isIntradayRange", () => {
+    it("is today, inclusive, and is not one of the shared pills", () => {
+      expect(intradayQuickRange(today)).toEqual({
+        label: "1D",
+        from: today,
+        to: today,
+      });
+      expect(quickRanges(today).some((qr) => qr.label === "1D")).toBe(false);
+    });
+
+    it("recognizes only the exact single-day-today window", () => {
+      expect(isIntradayRange({ from: today, to: today }, today)).toBe(true);
+      expect(isIntradayRange({}, today)).toBe(false);
+      expect(isIntradayRange({ from: today }, today)).toBe(false);
+      // Yesterday's single day is not "today's intraday view".
+      expect(
+        isIntradayRange({ from: "2026-07-07", to: "2026-07-07" }, today)
+      ).toBe(false);
+      const [seven] = quickRanges(today);
+      expect(isIntradayRange({ from: seven.from, to: seven.to }, today)).toBe(
+        false
+      );
     });
   });
 });

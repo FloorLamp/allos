@@ -3,6 +3,7 @@ import { today } from "@/lib/db";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import { getTrendViews } from "@/lib/settings";
 import {
+  intradayQuickRange,
   isCustomRange,
   normalizeTimelineRange,
   timelineDateFromParam,
@@ -92,6 +93,13 @@ export default async function TrendsPage(props: {
   // the URL (?ftab=), so — like the top-level tab — only the active nested
   // section is built server-side. FitnessSection validates/defaults this.
   const ftab = firstParam(searchParams.ftab);
+  // The Vitals tab's "1D" pill (#1466), injected through the shared control's
+  // extra-ranges slot. Scoped to that ONE tab on purpose: 1D is only meaningful
+  // where the surface swaps to genuinely intraday content (VitalsSection's HR
+  // minute series + time-positioned BP/SpO2 points). On every daily-grain tab a
+  // one-day window renders a single dot, so no other tab offers it.
+  const extraRanges =
+    activeTab === "vitals" ? [intradayQuickRange(todayStr)] : [];
 
   // Build a /trends URL, preserving the active tab + window unless overridden.
   // Overview is the default tab, so it's dropped from the query string.
@@ -216,14 +224,18 @@ export default async function TrendsPage(props: {
           }}
           buildHref={buildRangeHref}
           idPrefix="trends"
+          extraRanges={extraRanges}
           // The saved views ride the END of the chip row rather than a second
           // full-width row of their own (#1455 C).
           trailingChips={<SavedViewsBar views={savedViews} />}
           // Only a CUSTOM window needs a summary chip: with a preset lit, the chip
           // just repeats that pill's own label (the duplicate "All time" — #1455 D).
           rightSlot={
-            isCustomRange(range, todayStr) ? (
-              <span className="whitespace-nowrap rounded-full border border-black/10 bg-white/60 px-3 py-1 text-slate-500 dark:border-white/10 dark:bg-ink-900/60 dark:text-slate-400">
+            isCustomRange(range, todayStr, extraRanges) ? (
+              <span
+                data-testid="range-summary-chip"
+                className="whitespace-nowrap rounded-full border border-black/10 bg-white/60 px-3 py-1 text-slate-500 dark:border-white/10 dark:bg-ink-900/60 dark:text-slate-400"
+              >
                 {rangeSummaryLabel(range, todayStr)}
               </span>
             ) : undefined

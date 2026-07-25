@@ -42,6 +42,10 @@ import {
   E2E_LOGIN_EMPTY_TRAINING,
   E2E_LOGIN_SHELL,
   SHELL_PROFILE,
+  E2E_LOGIN_VITALS_DAY,
+  VITALS_DAY_PROFILE,
+  VITALS_DAY_TEMP_TIME,
+  VITALS_DAY_RESTING_HR,
   E2E_LOGIN_SLEEP_EDIT,
   E2E_LOGIN_SLEEP_PHASE,
   E2E_LOGIN_SLEEP_SEGMENTED,
@@ -6250,5 +6254,110 @@ console.log(
   seedMemberLogin(E2E_LOGIN_SHELL, shellId, "write");
   console.log(
     `e2e: seeded mobile-shell fixture — ${E2E_LOGIN_SHELL} granted ${SHELL_PROFILE} (${shellId}) (#1416)`
+  );
+}
+
+// ── Trends → Vitals today/1D fixture (issue #1466) ───────────────────────────
+// The Vitals tab's TODAY layer: a Today strip (latest reading per vital, with its
+// clock time) and a 1D window that swaps the windowed daily charts for intraday
+// ones. A dedicated profile so the day is deterministic without perturbing profile
+// 1 (whose hr_minutes exist ONLY inside the zone-ride window training-zones.spec
+// pins, and whose vitals other specs count).
+//
+// The day carries every shape the surface distinguishes:
+//   • per-minute HR across the morning, then a wear gap — the full-bleed 1D chart;
+//   • two TIMED BP pairs + two timed SpO2 readings, written the way the Health
+//     Connect ingest writes them (the reading instant IS the external_id's tail),
+//     so they can be positioned on the clock axis;
+//   • one manual temperature whose clock time rides `notes` (the #800 convention);
+//   • a day-granular resting HR — a strip entry with a value but no time, and
+//     deliberately NOT an intraday chart.
+//
+// Timezone discipline (#1417): the profile inherits the run's pinned instance
+// timezone, so every absolute instant is built through zonedWallTimeToUtc.
+// hr_minutes.ts is profile-LOCAL by design (#94), so those are wall-clock strings.
+// Idempotent: this profile's fixture rows are cleared first.
+{
+  const vdId = fixtureProfileId(VITALS_DAY_PROFILE);
+  const vdTz = getTimezone(vdId);
+  const vdToday = today(vdId);
+  const vdIso = (hhmm: string) =>
+    zonedWallTimeToUtc(vdTz, vdToday, hhmm).toISOString();
+
+  db.prepare("DELETE FROM hr_minutes WHERE profile_id = ?").run(vdId);
+  db.prepare("DELETE FROM medical_records WHERE profile_id = ?").run(vdId);
+  db.prepare("DELETE FROM body_metrics WHERE profile_id = ?").run(vdId);
+
+  // Per-minute HR, 06:00 → 08:30 local, then nothing (the wear gap the 1D chart
+  // must render as a BREAK, not a straight line).
+  const insVdHr = db.prepare(
+    `INSERT INTO hr_minutes (profile_id, ts, bpm, bpm_min, bpm_max, n, source)
+     VALUES (?, ?, ?, ?, ?, 6, 'health-connect')`
+  );
+  for (let m = 6 * 60; m <= 8 * 60 + 30; m++) {
+    // Resting, a ramp into a moderate effort, then recovery — a shape a reader
+    // recognizes as a heart rate rather than a step function.
+    const into = Math.max(0, Math.min(60, m - 7 * 60));
+    const out = Math.max(0, Math.min(30, m - 8 * 60));
+    const bpm = 62 + into - Math.round(out * 1.4);
+    insVdHr.run(
+      vdId,
+      `${vdToday}T${String(Math.floor(m / 60)).padStart(2, "0")}:${String(
+        m % 60
+      ).padStart(2, "0")}`,
+      bpm,
+      bpm - 3,
+      bpm + 4
+    );
+  }
+
+  // Timed vitals, ingest-shaped. Distinct values per reading so the dedup partition
+  // (value + unit) keeps both — two points is what makes the intraday chart a chart.
+  const insVdVital = db.prepare(
+    `INSERT INTO medical_records
+       (profile_id, date, category, name, value, value_num, unit, canonical_name,
+        source, external_id)
+     VALUES (?, ?, 'vitals', ?, ?, ?, ?, ?, 'health-connect', ?)`
+  );
+  const timedVital = (
+    canonical: string,
+    unit: string,
+    value: number,
+    hhmm: string
+  ) =>
+    insVdVital.run(
+      vdId,
+      vdToday,
+      canonical,
+      String(value),
+      value,
+      unit,
+      canonical,
+      `health-connect:${canonical}:${vdIso(hhmm)}`
+    );
+  timedVital("Blood Pressure Systolic", "mmHg", 118, "07:10");
+  timedVital("Blood Pressure Diastolic", "mmHg", 76, "07:10");
+  timedVital("Blood Pressure Systolic", "mmHg", 126, "09:40");
+  timedVital("Blood Pressure Diastolic", "mmHg", 82, "09:40");
+  timedVital("Oxygen Saturation", "%", 97, "07:12");
+  timedVital("Oxygen Saturation", "%", 96, "09:42");
+
+  // A manual temperature — the OTHER way a reading carries a clock time.
+  db.prepare(
+    `INSERT INTO medical_records
+       (profile_id, date, category, name, value, value_num, unit, canonical_name,
+        source, notes)
+     VALUES (?, ?, 'vitals', 'Body Temperature', '98.6', 98.6, 'degF',
+             'Body Temperature', 'manual', ?)`
+  ).run(vdId, vdToday, VITALS_DAY_TEMP_TIME);
+
+  // A day-granular aggregate: value, no time, never an intraday chart.
+  db.prepare(
+    "INSERT INTO body_metrics (profile_id, date, resting_hr, source) VALUES (?, ?, ?, 'health-connect')"
+  ).run(vdId, vdToday, Number(VITALS_DAY_RESTING_HR));
+
+  seedMemberLogin(E2E_LOGIN_VITALS_DAY, vdId, "write");
+  console.log(
+    `e2e: seeded vitals-day fixture — ${E2E_LOGIN_VITALS_DAY} granted ${VITALS_DAY_PROFILE} (${vdId}); vitals day ${vdToday} (#1466)`
   );
 }
