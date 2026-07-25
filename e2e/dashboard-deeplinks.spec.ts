@@ -191,9 +191,11 @@ test.describe("data-quality CTAs deep-link the exact form (#1146)", () => {
   });
 });
 
-// Riley (child) is granted to the e2e_child member; the growth quick-add renders
-// only for a minor profile, so the focus deep link is asserted on that login.
-test("the growth quick-add honors ?focus=height (#1146 pediatric-height CTA)", async ({
+// Riley (child) is granted to the e2e_child member; the growth FIELDS render only
+// for a minor profile, so the focus deep link is asserted on that login. Since
+// #1486 they are life-stage-gated rows of the ONE combined measurements form, which
+// the deep link expands (desktop) with the height field focused.
+test("the measurements form honors ?focus=height (#1146 pediatric-height CTA)", async ({
   browser,
 }) => {
   const page = await loginAs(browser, {
@@ -202,7 +204,7 @@ test("the growth quick-add honors ?focus=height (#1146 pediatric-height CTA)", a
   });
   try {
     await page.goto("/trends?tab=body&focus=height");
-    const form = page.getByTestId("growth-quick-add");
+    const form = page.getByTestId("measurements-quick-add");
     await expect(form).toBeVisible();
     await expect(form.getByLabel("Height", { exact: true })).toBeFocused();
   } finally {

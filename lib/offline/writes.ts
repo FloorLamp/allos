@@ -1,6 +1,6 @@
-// Server-side write cores for the three offline-queueable quick-log flows (issue
-// #28). These are the SINGLE implementation of each write: both the online Server
-// Action (app/(app)/trends/body-actions.ts, vitals-actions.ts, medicine/actions.ts)
+// Server-side write cores for the offline-queueable quick-log flows (issue #28).
+// These are the SINGLE implementation of each write: both the online Server Action
+// (app/(app)/trends/measurement-actions.ts + body-actions.ts, medicine/actions.ts)
 // and the offline replay route (app/api/offline-replay) call them, so a replayed
 // write runs byte-for-byte the same validation + persistence the live form does —
 // there is no second, drift-prone copy of the rules. Callers own their own

@@ -250,7 +250,10 @@ test.describe("fewer taps to common actions (#1416 B/E)", () => {
 
     // The Body TAB is the rule, not the /trends route.
     await page.goto("/trends?tab=body");
-    await expect(primary).toHaveAttribute("data-quick-log-id", "log-weight");
+    await expect(primary).toHaveAttribute(
+      "data-quick-log-id",
+      "log-measurements"
+    );
   });
 
   test("the quick-log sheet opens, opens a real form IN PLACE, and closes", async ({
@@ -273,7 +276,8 @@ test.describe("fewer taps to common actions (#1416 B/E)", () => {
 
     // It is a real dialog with the drag-handle affordance (#1425's seam), and
     // it lists every common log — including the ones this route did not promote,
-    // and vitals, which joined the list in #1467.
+    // and vitals, which joined the list in #1467 and merged into "Log
+    // measurements" in #1486.
     await expect(sheet.getByRole("dialog")).toHaveAttribute(
       "aria-modal",
       "true"
@@ -283,8 +287,8 @@ test.describe("fewer taps to common actions (#1416 B/E)", () => {
       "log-activity",
       "log-food",
       "log-dose",
-      "log-weight",
-      "log-vitals",
+      // ONE measurements row since #1486/#1506 — weight + vitals are one form now.
+      "log-measurements",
     ]) {
       await expect(sheet.getByTestId(`quick-log-${id}`)).toBeVisible();
     }
@@ -292,11 +296,11 @@ test.describe("fewer taps to common actions (#1416 B/E)", () => {
     // Tapping a row closes the sheet and opens the EXISTING form right here —
     // no new write path, and no navigation (that is the #1468 rule).
     const before = page.url();
-    await sheet.getByTestId("quick-log-log-weight").click();
+    await sheet.getByTestId("quick-log-log-measurements").click();
     await expect(sheet).toHaveCount(0);
     const overlay = page.getByTestId("quick-entry-sheet");
     await expect(overlay).toBeVisible();
-    await expect(page.locator("#bm-weight")).toBeVisible();
+    await expect(page.locator("#m-weight")).toBeVisible();
     expect(page.url()).toBe(before);
 
     // And it is transactional: dismissing discards, which is safe here (the
