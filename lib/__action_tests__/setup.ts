@@ -33,7 +33,8 @@ vi.mock("next/cache", () => ({
 // imports it lazily (async) so it reads the live binding on every call — a test's
 // actAs() takes effect on the next requireSession().
 vi.mock("@/lib/auth", async () => {
-  const { getActingSession } = await import("./session-state");
+  const { getActingSession, peekActingSession } =
+    await import("./session-state");
   const { db } = await import("@/lib/db");
   // Demo-mode guard (#181): the mock applies the SAME pure predicate the real
   // requireWriteAccess() uses, reading process.env.ALLOS_DEMO_MODE each call, so a
@@ -126,7 +127,10 @@ vi.mock("@/lib/auth", async () => {
     // so they're inert spies — tests assert the DB writes, not the eviction.
     destroyOtherSessionsForCurrent: vi.fn(async () => {}),
     revokeSession: vi.fn(),
-    getCurrentSession: () => getActingSession(),
+    // The NON-throwing read (prod returns null for an anonymous request), so a
+    // route handler's "no session" branch is testable: a test calls
+    // clearActingSession() and asserts the handler's own refusal.
+    getCurrentSession: () => peekActingSession(),
     getAccessibleProfiles,
     // Faithful to prod accessibleProfilesForLogin: the session-FREE reader, resolving
     // an ARBITRARY login's role + grants from the temp DB (not the acting session's).
