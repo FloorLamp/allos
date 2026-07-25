@@ -316,6 +316,59 @@ export function isAllTimeRange(range: DateRange): boolean {
   return !range.from && !range.to;
 }
 
+// ---------------------------------------------------------------------------
+// Trends' default window (#1485 G). TRENDS ONLY — the Timeline keeps its
+// all-time default (a feed has different semantics: it reads backwards from
+// today and its "load more" is the window).
+// ---------------------------------------------------------------------------
+
+// The quick-range pill the Trends surfaces open on when the URL names no window.
+// All-time as the default made every slope read as a lifetime average and buried
+// recent change; 90D is the shortest window that still shows a lab trend.
+export const DEFAULT_TRENDS_RANGE_LABEL = "90D";
+
+// Because the default is a REAL window rather than the absence of one, "All time"
+// needs a way to say itself in a URL — an empty query string now means 90D, so
+// the pill that used to clear the params would otherwise be a no-op that lands
+// back on the default. `?range=all` is that sentinel: an EXPLICIT all-time window,
+// as deep-linkable as any ?from/?to pair. Trends-only; the Timeline never emits it.
+export const ALL_TIME_RANGE_PARAM = "range";
+export const ALL_TIME_RANGE_VALUE = "all";
+
+// The default window itself, resolved against the profile's today. Derived from
+// `quickRanges` BY LABEL (not by index) so it can never drift from the pill it
+// lights: a default load must render 90D active, which `isQuickRangeActive` only
+// says for an exact from/to match.
+export function defaultTrendsRange(todayStr: string): DateRange {
+  const ranges = quickRanges(todayStr);
+  const qr =
+    ranges.find((q) => q.label === DEFAULT_TRENDS_RANGE_LABEL) ??
+    ranges[ranges.length - 1];
+  return { from: qr.from, to: qr.to };
+}
+
+// Resolve a Trends surface's window from its already-parsed params. The whole
+// rule, in one place, for every Trends surface (the hub and the metric detail
+// pages) — three cases, in precedence order:
+//
+//   1. `?range=all` — an explicit all-time window. Params always win.
+//   2. Either bound set — an explicit window (a shared/bookmarked ?from/?to link,
+//      a saved view, a quick-range pill). Used verbatim; a partial window keeps
+//      its open side open, exactly as before.
+//   3. Neither — the no-param default, 90D.
+//
+// A URL that says something is therefore NEVER reinterpreted; only the URL that
+// says nothing gained a meaning.
+export function resolveTrendsRange(
+  parsed: DateRange,
+  todayStr: string,
+  rangeParam?: string
+): DateRange {
+  if (rangeParam === ALL_TIME_RANGE_VALUE) return {};
+  if (parsed.from || parsed.to) return parsed;
+  return defaultTrendsRange(todayStr);
+}
+
 // The single-day (today) window behind the Vitals tab's "1D" pill (#1466). It is
 // NOT part of the shared `quickRanges` set: on a daily-grain series a one-day
 // window is a single dot — worse than useless — so only a surface that swaps to

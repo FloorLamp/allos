@@ -27,8 +27,12 @@ import {
 import { projectGoal, describeEta } from "@/lib/trend-projection";
 import { isGoalLive } from "@/lib/goals";
 import {
+  ALL_TIME_RANGE_PARAM,
+  ALL_TIME_RANGE_VALUE,
+  isAllTimeRange,
   isCustomRange,
   normalizeTimelineRange,
+  resolveTrendsRange,
   timelineDateFromParam,
   type DateRange,
 } from "@/lib/timeline-format";
@@ -195,7 +199,12 @@ function goalOverlay(
 
 export default async function BodyMetricDetailPage(props: {
   params: Promise<{ kind: string }>;
-  searchParams: Promise<{ from?: string | string[]; to?: string | string[] }>;
+  searchParams: Promise<{
+    from?: string | string[];
+    to?: string | string[];
+    // The explicit all-time sentinel (#1485 G) — see resolveTrendsRange.
+    range?: string | string[];
+  }>;
 }) {
   const { kind } = await props.params;
   const searchParams = await props.searchParams;
@@ -218,7 +227,16 @@ export default async function BodyMetricDetailPage(props: {
 
   const from = timelineDateFromParam(searchParams.from);
   const to = timelineDateFromParam(searchParams.to);
-  const range = normalizeTimelineRange(from, to);
+  // Same window rule as the hub (#1485 G): 90D by default, an explicit ?from/?to
+  // verbatim, `?range=all` for all time. This page is reached BY the hub's tiles,
+  // so a different default here would silently rewind the window on every drill-in.
+  const range = resolveTrendsRange(
+    normalizeTimelineRange(from, to),
+    todayStr,
+    Array.isArray(searchParams.range)
+      ? searchParams.range[0]
+      : searchParams.range
+  );
 
   const fullSeries = fullSeriesFor(kind, profile.id, weightUnit);
   const windowed = filterSeriesByRange(fullSeries, range);
@@ -258,6 +276,9 @@ export default async function BodyMetricDetailPage(props: {
     const sp = new URLSearchParams();
     if (r.from) sp.set("from", r.from);
     if (r.to) sp.set("to", r.to);
+    // The control asks for `{}` for both "All time" and "Clear dates"; with a 90D
+    // default that URL is no longer all-time, so it needs the explicit sentinel.
+    if (isAllTimeRange(r)) sp.set(ALL_TIME_RANGE_PARAM, ALL_TIME_RANGE_VALUE);
     const qs = sp.toString();
     return (qs ? `${base}?${qs}` : base) as AppRoute;
   };

@@ -3,11 +3,11 @@ import { isTrainingRestricted } from "@/lib/age-gate";
 import { getSavedItems } from "@/lib/queries/saved";
 import {
   buildMetricSeries,
-  buildBiomarkerSeries,
-  placeholderBiomarkerTile,
+  buildSavedBiomarkerTile,
   listCompareOptions,
   type TrendSeries,
 } from "@/lib/trends-series";
+import { today } from "@/lib/db";
 import { isSeriesKeySaved, partitionSaved } from "@/lib/saved-items";
 import type { DateRange } from "@/lib/timeline-format";
 import TrendMiniCard from "@/components/TrendMiniCard";
@@ -38,6 +38,9 @@ import TrendingDigest from "./TrendingDigest";
 export default async function OverviewSection({ range }: { range: DateRange }) {
   const { login, profile } = await requireSession();
   const restricted = isTrainingRestricted(profile.id);
+  // The profile's today, for the age label on a sparse tile's out-of-window
+  // reading (#1485 G) — profile timezone, never the server's local day.
+  const todayStr = today(profile.id);
   // The profile's saved set, in canonical saved order (explicit positions first, then
   // newest star first) — the ONE ordering both halves of the grid read.
   const savedRefs = getSavedItems(profile.id).map((s) => ({
@@ -58,10 +61,13 @@ export default async function OverviewSection({ range }: { range: DateRange }) {
   for (const ref of savedRefs) {
     if (ref.kind !== "biomarker") continue;
     // Always render a tile for a saved biomarker — even with no readings in this
-    // window — so its ★ control is reachable regardless of the range. An empty
-    // placeholder tile shows TrendMiniCard's empty state.
-    const s = buildBiomarkerSeries(profile.id, ref.key, range);
-    savedBioTiles.push(s ?? placeholderBiomarkerTile(ref.key));
+    // window — so its ★ control is reachable regardless of the range (#1456).
+    // buildSavedBiomarkerTile resolves the three cases: a windowed series, the
+    // #1485 G sparse fallback (latest reading + age), or the empty placeholder for
+    // a never-measured analyte.
+    savedBioTiles.push(
+      buildSavedBiomarkerTile(profile.id, ref.key, range, todayStr)
+    );
   }
   const tiles = [...metricTiles, ...savedBioTiles];
   const { saved: savedTiles, unsaved } = partitionSaved(
@@ -95,6 +101,7 @@ export default async function OverviewSection({ range }: { range: DateRange }) {
       range={t.range}
       minPctChange={t.minPctChange}
       applyBiomarkerDomain={t.kind === "biomarker"}
+      outsideWindow={t.outsideWindow ?? null}
       footer={
         <span className="flex flex-wrap items-center gap-2">
           <StarButton

@@ -3,9 +3,13 @@ import { today } from "@/lib/db";
 import { isTrainingRestricted } from "@/lib/age-gate";
 import { getTrendViews } from "@/lib/settings";
 import {
+  ALL_TIME_RANGE_PARAM,
+  ALL_TIME_RANGE_VALUE,
   intradayQuickRange,
+  isAllTimeRange,
   isCustomRange,
   normalizeTimelineRange,
+  resolveTrendsRange,
   timelineDateFromParam,
   type DateRange,
 } from "@/lib/timeline-format";
@@ -59,6 +63,8 @@ export default async function TrendsPage(props: {
     ftab?: string | string[];
     from?: string | string[];
     to?: string | string[];
+    // The explicit all-time sentinel (#1485 G) — see resolveTrendsRange.
+    range?: string | string[];
     cmpA?: string | string[];
     cmpB?: string | string[];
     cmpn?: string | string[];
@@ -73,7 +79,16 @@ export default async function TrendsPage(props: {
 
   const from = timelineDateFromParam(searchParams.from);
   const to = timelineDateFromParam(searchParams.to);
-  const range = normalizeTimelineRange(from, to);
+  // #1485 G: no-param loads open on 90D, not all time. An explicit window still
+  // wins verbatim — a shared ?from/?to link, a saved view, a quick-range pill —
+  // and `?range=all` is the explicit all-time window (the pill has to be able to
+  // say itself now that "no params" means something else).
+  const range = resolveTrendsRange(
+    normalizeTimelineRange(from, to),
+    todayStr,
+    firstParam(searchParams.range)
+  );
+  const allTime = isAllTimeRange(range);
   // Fitness + Insights are spliced out below for restricted profiles; if one is
   // requested via ?tab=, fall back to the default so the URL doesn't advertise a
   // tab that isn't there (the tab strip already can't select it).
@@ -107,6 +122,10 @@ export default async function TrendsPage(props: {
     tab?: TrendsTab;
     from?: string;
     to?: string;
+    // The explicit all-time sentinel (#1485 G). Carried by every hub link so the
+    // window survives a tab/view switch: without it a paramless link would land
+    // back on the 90D default and "All time" would be a one-render state.
+    allTime?: boolean;
     cmpA?: string;
     cmpB?: string;
     cmpn?: boolean;
@@ -116,6 +135,9 @@ export default async function TrendsPage(props: {
     if (params.tab && params.tab !== "overview") sp.set("tab", params.tab);
     if (params.from) sp.set("from", params.from);
     if (params.to) sp.set("to", params.to);
+    if (params.allTime && !params.from && !params.to) {
+      sp.set(ALL_TIME_RANGE_PARAM, ALL_TIME_RANGE_VALUE);
+    }
     if (params.cmpA) sp.set("cmpA", params.cmpA);
     if (params.cmpB) sp.set("cmpB", params.cmpB);
     if (params.cmpn) sp.set("cmpn", "1");
@@ -124,11 +146,15 @@ export default async function TrendsPage(props: {
     return qs ? `/trends?${qs}` : "/trends";
   }
 
+  // DateRangeControl asks for `{}` for BOTH "All time" and "Clear dates", which is
+  // exactly the URL the 90D default now claims — so an empty range from the control
+  // is what mints the sentinel.
   const buildRangeHref = (r: DateRange) =>
     trendsHref({
       tab: activeTab,
       from: r.from,
       to: r.to,
+      allTime: isAllTimeRange(r),
       cmpA,
       cmpB,
       cmpn: cmpNormalized,
@@ -181,12 +207,14 @@ export default async function TrendsPage(props: {
               tab: "body",
               from: range.from,
               to: range.to,
+              allTime,
               view: "tiles",
             })}
             allHref={trendsHref({
               tab: "body",
               from: range.from,
               to: range.to,
+              allTime,
               view: "all",
             })}
           />
@@ -227,7 +255,11 @@ export default async function TrendsPage(props: {
           extraRanges={extraRanges}
           // The saved views ride the END of the chip row rather than a second
           // full-width row of their own (#1455 C).
-          trailingChips={<SavedViewsBar views={savedViews} />}
+          // The RESOLVED window goes to the saved-views bar, not the raw URL params
+          // (#1485 G): "Save current" on a default load must capture the 90D window
+          // the user is looking at, not the empty param bag that produced it —
+          // otherwise every view saved from a default load would re-apply as all time.
+          trailingChips={<SavedViewsBar views={savedViews} range={range} />}
           // Only a CUSTOM window needs a summary chip: with a preset lit, the chip
           // just repeats that pill's own label (the duplicate "All time" — #1455 D).
           rightSlot={
