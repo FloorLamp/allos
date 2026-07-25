@@ -19,6 +19,15 @@ import { setViewProfileAction } from "@/app/(app)/user-actions";
 // #1013's "acting ≠ own" not-self banner is a FUTURE second non-default trigger for
 // this same strip; until own-profile association lands, multi-view is the only
 // non-default state, so that is the only trigger wired here.
+// Whether the strip renders at all — the ONE predicate. The app shell reads it
+// to decide whether to hand the strip to <ShellChrome> (which owns the sticky
+// placement and the content container's top padding when it does), and the
+// component itself is still the authority on its own emptiness. Two places
+// asking "is the view non-default?" must never be able to disagree.
+export function viewStripVisible(profiles: SessionProfile[]): boolean {
+  return profiles.length > 1;
+}
+
 export default function ProfileViewStrip({
   profiles,
   actingProfileId,
@@ -27,17 +36,22 @@ export default function ProfileViewStrip({
   profiles: SessionProfile[];
   actingProfileId: number;
 }) {
-  if (profiles.length <= 1) return null;
+  if (!viewStripVisible(profiles)) return null;
   return (
+    // One line on a phone, wrapping from `sm` up (issue #1416, section C): the
+    // strip is now STICKY on mobile, so every extra line it wraps to is a line
+    // permanently taken off the page. The chips scroll horizontally instead.
+    // The vertical margin moved to the ShellChrome wrapper, which owns spacing
+    // in both placements.
     <div
       data-testid="profile-view-strip"
-      className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-brand-200 bg-brand-50/70 px-3 py-2 text-sm dark:border-brand-500/30 dark:bg-brand-500/10"
+      className="flex items-center gap-2 overflow-x-auto rounded-lg border border-brand-200 bg-brand-50/70 px-3 py-2 text-sm sm:flex-wrap sm:overflow-x-visible dark:border-brand-500/30 dark:bg-brand-500/10"
     >
-      <span className="flex items-center gap-1.5 font-medium text-brand-700 dark:text-brand-300">
+      <span className="flex shrink-0 items-center gap-1.5 font-medium text-brand-700 dark:text-brand-300">
         <IconUsers className="h-4 w-4 shrink-0" stroke={1.75} />
         Viewing {profiles.length} profiles
       </span>
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div className="flex shrink-0 items-center gap-1.5 sm:flex-wrap">
         {profiles.map((p) => {
           const isActing = p.id === actingProfileId;
           return (

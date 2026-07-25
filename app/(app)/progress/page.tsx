@@ -5,6 +5,7 @@ import { fmtWeight } from "@/lib/units";
 import { getProgressPhotos } from "@/lib/progress-photo-write";
 import type { GalleryPhoto } from "@/lib/photo/gallery-model";
 import PageContainer from "@/components/PageContainer";
+import { PageHeader } from "@/components/ui";
 import ProgressPhotosView from "./ProgressPhotosView";
 
 // Physique progress photos (#1119 phase 2): pose-tagged series over the shared
@@ -41,15 +42,13 @@ export default async function ProgressPhotosPage(props: {
 
   return (
     <PageContainer width="full" className="space-y-4">
-      <header>
-        <h1 className="text-xl font-semibold">Progress photos</h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Pose-tagged physique photos, framed consistently with the onion-skin
-          camera. Photos are resized and cleaned of camera metadata (location,
-          device) when stored, and never leave this app — no share link, export,
-          or emergency card includes them.
-        </p>
-      </header>
+      {/* The shared PageHeader, not a hand-rolled <h1> (issue #1416, section D):
+      one heading treatment across every page, including the compact mobile size,
+      so a density change lands here instead of needing a per-page sweep. */}
+      <PageHeader
+        title="Progress photos"
+        subtitle="Pose-tagged physique photos, framed consistently with the onion-skin camera. Photos are resized and cleaned of camera metadata (location, device) when stored, and never leave this app — no share link, export, or emergency card includes them."
+      />
       <ProgressPhotosView
         photos={photos}
         readOnly={readOnly}
