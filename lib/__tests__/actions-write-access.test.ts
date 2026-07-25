@@ -90,6 +90,11 @@ const ALLOW: { file: string; fn: string; why: string; gate?: string }[] = [
     why: "login-scoped: dismisses the caller's OWN one-time multi-view discoverability hint (a 'seen' flag in login_settings, #1327), not profile-owned data — same shape as saveUnitPrefs, so requireSession() is the right gate; no demo-gating needed (a harmless per-login UI flag)",
   },
   {
+    file: "app/(app)/actions.ts",
+    fn: "saveAttentionHeroCollapsed",
+    why: "login-scoped: stores the caller's OWN dashboard hero collapse preference (a display-density flag in login_settings, #1413), not profile-owned data — same shape as saveUnitPrefs/dismissMultiviewHintAction, so requireSession() is the right gate. Deliberately NOT requireWriteAccess: a read-only viewer of someone else's profile still gets to choose how tall the card is on their own screen. It cannot hide the hero or its count (#449) — the stored flag is one input to attentionHeroState, which ignores it entirely for a safety-locked hero",
+  },
+  {
     file: "app/(app)/whats-new/actions.ts",
     fn: "markWhatsNewSeenAction",
     why: "login-scoped: records that the caller's OWN login has opened the bundled release notes (a date marker in login_settings, #1421), not profile-owned data — same shape as saveUnitPrefs/dismissMultiviewHintAction, so requireSession() is the right gate; no demo-gating needed (a harmless per-login UI marker)",
