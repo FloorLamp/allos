@@ -219,7 +219,7 @@ function SetupCard() {
             href="/trends?tab=body"
             className="text-brand-700 underline dark:text-brand-400"
           >
-            Body Metrics
+            Body metrics
           </Link>{" "}
           charts.
         </li>

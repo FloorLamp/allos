@@ -62,7 +62,7 @@ export default function SmokingHistoryForm({
       // Anchor target for the data-quality smoking-status CTA (#1146):
       // /records/care/overview#smoking-history lands on THIS form, not the page top.
       id="smoking-history"
-      className="card max-w-lg scroll-mt-24 space-y-5"
+      className="card scroll-mt-24 space-y-5"
       data-testid="smoking-history"
     >
       <div className="flex items-center justify-between">

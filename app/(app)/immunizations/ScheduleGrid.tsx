@@ -251,7 +251,12 @@ export default function ScheduleGrid({
         setHoverCode(null);
       }}
     >
-      <table className="w-full border-collapse text-xs">
+      {/* `min-w` + the card's `overflow-x-auto` (#1449): a `w-full` table with this
+          many age columns SQUEEZED them to unreadable slivers on a phone and clipped
+          the right edge with no scroll affordance. It now overflows and scrolls
+          inside its own container — the wide-content rule — leaving the page body
+          itself free of horizontal scroll. */}
+      <table className="w-full min-w-[46rem] border-collapse text-xs">
         <thead>
           <tr>
             <th className="sticky left-0 z-10 bg-white px-3 py-2 text-left font-semibold text-slate-600 dark:bg-ink-900 dark:text-slate-300">

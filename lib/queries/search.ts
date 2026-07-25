@@ -308,7 +308,7 @@ function conditionHits(profileId: number, like: string): SearchHit[] {
     subtitle: r.onset_date
       ? `${r.status} · ${isoDate(r.onset_date)}`
       : r.status,
-    href: "/records/problems",
+    href: "/records/problems/conditions",
     date: isoDate(r.onset_date),
   }));
 }
@@ -348,7 +348,7 @@ function allergyHits(profileId: number, like: string): SearchHit[] {
     title: r.substance,
     subtitle:
       [r.reaction, r.severity].filter(Boolean).join(" · ").trim() || r.status,
-    href: "/records/problems",
+    href: "/records/problems/allergies",
     date: isoDate(r.onset_date),
   }));
 }

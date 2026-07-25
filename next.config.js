@@ -128,12 +128,12 @@ const nextConfig = {
       // ?sort/?dir/?status table state).
       {
         source: "/conditions",
-        destination: "/records/problems",
+        destination: "/records/problems/conditions",
         permanent: true,
       },
       {
         source: "/allergies",
-        destination: "/records/problems",
+        destination: "/records/problems/allergies",
         permanent: true,
       },
       {

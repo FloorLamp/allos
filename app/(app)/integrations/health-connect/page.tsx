@@ -135,7 +135,7 @@ export default async function HealthConnectPage() {
                     href="/trends?tab=body"
                     className="text-brand-700 underline dark:text-brand-400"
                   >
-                    Body Metrics
+                    Body metrics
                   </Link>
                   ; workouts under{" "}
                   <Link

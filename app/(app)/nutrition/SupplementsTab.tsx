@@ -908,7 +908,7 @@ export default async function SupplementsTab() {
         </details>
 
         {/* Add supplement — always expanded, like the other "Add entry" forms
-          (e.g. Body Metrics). Medications are added on the Medications page. */}
+          (e.g. Body metrics). Medications are added on the Medications page. */}
         <div className="card mt-6" data-testid="add-supplement-card">
           <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
             Add supplement

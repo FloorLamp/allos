@@ -23,8 +23,8 @@ export const dynamic = "force-dynamic";
 // where the Emergency Card settings moved (#1087). `#coverage` still bridges to
 // Data (#1086).
 const ANCHOR_MAP: Record<string, AppRoute> = {
-  conditions: "/records/problems",
-  allergies: "/records/problems",
+  conditions: "/records/problems/conditions",
+  allergies: "/records/problems/allergies",
   procedures: "/records/history/procedures",
   immunizations: "/records/history/immunizations",
   visits: "/records/history/visits",

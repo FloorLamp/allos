@@ -1,20 +1,30 @@
-import Link from "next/link";
 import {
   getConditions,
   getMedicationsByIndication,
   encountersForRecords,
 } from "@/lib/queries";
+import FilterPills, { type FilterPillOption } from "@/components/FilterPills";
 import { readForProfiles, stampSubjects, type ProfileScope } from "@/lib/scope";
 import ConditionForm from "@/app/(app)/conditions/ConditionForm";
 import ConditionList from "@/app/(app)/conditions/ConditionList";
 import { addCondition } from "@/app/(app)/conditions/actions";
 import type { ConditionStatus } from "@/lib/types";
-import type { AppRoute } from "@/lib/hrefs";
 
-const FILTERS = [
-  { key: "all", label: "All" },
-  { key: "active", label: "Active" },
-  { key: "resolved", label: "Resolved" },
+// The status filter, as the family's ONE filter affordance (#1449 cluster C):
+// outline pills, link-driven so each state is a real URL and the (server) section
+// needs no client JS. `all` drops the param rather than encoding it.
+const FILTERS: readonly FilterPillOption<string>[] = [
+  { value: "all", label: "All", href: "/records/problems/conditions" },
+  {
+    value: "active",
+    label: "Active",
+    href: "/records/problems/conditions?cond=active",
+  },
+  {
+    value: "resolved",
+    label: "Resolved",
+    href: "/records/problems/conditions?cond=resolved",
+  },
 ] as const;
 
 // Conditions / problem list (former /conditions index, #1042 phase 6): the
@@ -65,28 +75,12 @@ export default function ConditionsSection({
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       <div className="min-w-0 space-y-4 lg:col-span-2">
-        <div className="flex flex-wrap items-center gap-2">
-          {FILTERS.map((f) => {
-            const isActive = active === f.key;
-            const href: AppRoute =
-              f.key === "all"
-                ? "/records/problems"
-                : `/records/problems?cond=${f.key}`;
-            return (
-              <Link
-                key={f.key}
-                href={href}
-                className={`rounded-full px-3 py-1 text-sm font-medium transition ${
-                  isActive
-                    ? "bg-brand-500 text-white"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:hover:bg-ink-750"
-                }`}
-              >
-                {f.label}
-              </Link>
-            );
-          })}
-        </div>
+        <FilterPills
+          options={FILTERS}
+          value={active}
+          label="Filter conditions by status"
+          testId="conditions-filter"
+        />
         <ConditionList
           items={rows}
           treatedWith={treatedWith}

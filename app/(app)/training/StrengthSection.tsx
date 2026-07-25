@@ -91,7 +91,7 @@ export default async function StrengthSection() {
 
       {!bodyweightKg && exercises.length > 0 && (
         <Notice tone="amber" className="mb-6">
-          Add a body weight entry on the Body Metrics page to see strength
+          Add a body weight entry on the Body metrics page to see strength
           standards relative to your bodyweight.
         </Notice>
       )}

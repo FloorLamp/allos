@@ -125,11 +125,12 @@ export default function AllergiesSection({ scope }: { scope: ProfileScope }) {
         )}
 
         <div>
+          {/* No "(N)" here (#1449): a count belongs on a COLLAPSED surface, where
+              it says what's hidden (the Visits "Completed & cancelled" summary) —
+              above an always-visible list it just restates the rows below it, and
+              the heading-with-count shape appeared nowhere else in the family. */}
           <h3 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-            Recorded allergies{" "}
-            <span className="text-sm font-normal text-slate-400">
-              ({stored.length})
-            </span>
+            Recorded allergies
           </h3>
           <AllergyList
             items={stored}

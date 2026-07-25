@@ -6,6 +6,7 @@ import TrackDentalFollowUpControl from "./TrackDentalFollowUpControl";
 import { updateDentalProcedure, deleteDentalProcedure } from "./actions";
 import RecordTable, { type RecordColumn } from "@/components/RecordTable";
 import RecordProvenance from "@/components/RecordProvenance";
+import FilterPills from "@/components/FilterPills";
 import ProviderName from "@/components/ProviderName";
 import { formatRecordDate } from "@/lib/record-format";
 import { useFormatPrefs } from "@/components/FormatPrefsProvider";
@@ -140,20 +141,22 @@ export default function DentalProcedureList({
 
   return (
     <div data-testid="dental-procedure-list" className="space-y-3">
+      {/* The family's ONE filter affordance (#1449, cluster C). The tooth box is a
+          free-text search, not a filter CONTROL, so it keeps its input. */}
+      <FilterPills
+        options={[
+          { value: "", label: "All" },
+          ...DENTAL_STATUSES.map((s) => ({
+            value: s as string,
+            label: dentalStatusLabel(s),
+          })),
+        ]}
+        value={status}
+        onSelect={(next) => setStatus(next as DentalStatus | "")}
+        label="Filter procedures by status"
+        testId="dental-status-filter"
+      />
       <div className="flex flex-wrap gap-2">
-        <select
-          aria-label="Filter by status"
-          className="input w-auto"
-          value={status}
-          onChange={(e) => setStatus(e.target.value as DentalStatus | "")}
-        >
-          <option value="">All statuses</option>
-          {DENTAL_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {dentalStatusLabel(s)}
-            </option>
-          ))}
-        </select>
         <input
           aria-label="Filter by tooth"
           className="input w-auto flex-1"

@@ -439,7 +439,7 @@ export default function GoalForm({
           </div>
           <div className="sm:col-span-2">
             <p className="-mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Progress tracks automatically from your latest Body Metrics entry.
+              Progress tracks automatically from your latest Body metrics entry.
             </p>
           </div>
           <div className="sm:col-span-2">
