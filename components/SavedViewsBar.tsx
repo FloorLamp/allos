@@ -55,9 +55,14 @@ export default function SavedViewsBar({ views }: { views: TrendView[] }) {
     cmpn: params.get("cmpn") === "1" ? "1" : "",
   };
 
+  // #1455 C: these chips no longer own a row — they ride the END of
+  // DateRangeControl's chip row (passed in as its `trailingChips`), which is a
+  // single horizontally-scrolling row on a phone. Hence `shrink-0` throughout (a
+  // chip must keep its width and scroll, never compress) and wrapping only from
+  // `sm` up, where the row wraps instead of scrolling.
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="flex items-center gap-1 section-label">
+    <div className="flex shrink-0 items-center gap-2 sm:flex-wrap">
+      <span className="flex shrink-0 items-center gap-1 section-label">
         <IconBookmark className="h-3.5 w-3.5" stroke={2} />
         Views
       </span>
@@ -65,7 +70,7 @@ export default function SavedViewsBar({ views }: { views: TrendView[] }) {
       {views.map((v) => (
         <span
           key={v.name}
-          className="inline-flex items-center overflow-hidden rounded-full border border-black/10 bg-white/70 text-xs dark:border-white/10 dark:bg-ink-900/60"
+          className="inline-flex shrink-0 items-center overflow-hidden rounded-full border border-black/10 bg-white/70 text-xs dark:border-white/10 dark:bg-ink-900/60"
         >
           <form action={applyTrendView}>
             <input type="hidden" name="name" value={v.name} />
@@ -144,7 +149,7 @@ export default function SavedViewsBar({ views }: { views: TrendView[] }) {
         <button
           type="button"
           onClick={() => setSaving(true)}
-          className="inline-flex items-center gap-1 rounded-full border border-dashed border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-500 transition hover:border-brand-400 hover:text-brand-700 dark:border-white/15 dark:text-slate-400 dark:hover:text-brand-300"
+          className="inline-flex shrink-0 items-center gap-1 rounded-full border border-dashed border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-500 transition hover:border-brand-400 hover:text-brand-700 dark:border-white/15 dark:text-slate-400 dark:hover:text-brand-300"
         >
           <IconPlus className="h-3.5 w-3.5" stroke={2} />
           Save current
