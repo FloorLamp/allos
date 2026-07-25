@@ -1,6 +1,40 @@
 {
   "days": [
     {
+      "date": "2026-07-25",
+      "entries": [
+        {
+          "pr": 1471,
+          "title": "The dashboard learns what time it is",
+          "body": "A compact \"Now\" strip tops the dashboard with the one or two of your existing cards that matter this minute — last night's sleep in the morning after your typical wake time, the workout recap in the hour after a session, nutrition around your mealtimes, the evening check-in while it's still unlogged. It promotes cards you already show (never one you've hidden), stays empty when nothing is timely, and your own grid order below is untouched. The \"Needs attention\" hero can now be collapsed to a one-line count on your phone — it always stays present with its count, and a day carrying a safety item (a missed critical dose) refuses to collapse at all.",
+          "kind": "feature",
+          "issues": [1413]
+        },
+        {
+          "pr": 1470,
+          "title": "Trends opens on your charts",
+          "body": "On a phone, Trends used to spend almost two screens on date forms and browsing aids before the first chart. Now the quick-range chips lead (with saved views riding the same row), the From/To form tucks behind a Custom… chip — already open when you arrive on a shared link with custom dates — the movers card shows its top three with the rest one tap away, and the starred-biomarker status card lives on Results → Biomarkers, its one home. First chart on the seeded profile: from about two screens down to inside the opening view. The Timeline gets the same tidier date controls for free.",
+          "kind": "feature",
+          "issues": [1455]
+        },
+        {
+          "pr": 1452,
+          "title": "A phone-first shell",
+          "body": "On a phone the app now has its own chrome: the top bar slides away as you scroll and returns the moment you scroll up, taking the multi-profile \"Viewing N profiles\" banner with it so you always know whose data you're reading. The bar carries one-tap Search and a contextual + button that starts the current page's obvious log — food on Nutrition, a dose on Medications, weight on Body — with a quick-log sheet behind it for everything else. The drawer learns your most-visited pages as Frequent shortcuts (kept on your device only), spacing tightens below tablet width, and every animation honors your system's reduced-motion setting.",
+          "kind": "feature",
+          "issues": [1416]
+        },
+        {
+          "pr": 1460,
+          "title": "Offline dose logs are timed right and never lie",
+          "body": "A dose you confirm without signal is now logged at the moment you tapped it — not when your phone reconnected — so adherence history reflects when you actually took it. Replays also go through the exact same checks as a normal tap: a medication you paused, a dose the day already resolved, or an entry that sat queued too long is parked in the review panel with a plain-language reason instead of being reported as synced. This also fixes a real bug where a queued confirm could log a dose — and burn supply — for a paused medication.",
+          "kind": "fix",
+          "issues": [1427]
+        }
+      ],
+      "operatorNotes": []
+    },
+    {
       "date": "2026-07-24",
       "entries": [
         {

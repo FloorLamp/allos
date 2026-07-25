@@ -12,6 +12,7 @@ import {
   shouldQueueOffline,
   planFlushDisposition,
   describeIntent,
+  classifyDoseReplay,
   MAX_REPLAY_ATTEMPTS,
   type QueuedIntent,
   type ReplayResult,
@@ -303,5 +304,89 @@ describe("describeIntent (issue #475)", () => {
       1
     );
     expect(describeIntent(i)).toBe("Body metric · 2026-07-10");
+  });
+});
+
+describe("classifyDoseReplay (honoring the typed outcome, #1427)", () => {
+  it("reports a fresh write as done", () => {
+    expect(classifyDoseReplay("dose", "logged")).toEqual({ status: "done" });
+    expect(classifyDoseReplay("skip-dose", "skipped")).toEqual({
+      status: "done",
+    });
+  });
+
+  it("resolves the SAME resolution already standing as already-done, idempotently", () => {
+    // A replay that finds the dose already confirmed for the day is not a duplicate
+    // log and not a failure — it is the set-to intent having nothing left to do.
+    expect(classifyDoseReplay("dose", "already-taken")).toEqual({
+      status: "done",
+    });
+    expect(classifyDoseReplay("skip-dose", "already-skipped")).toEqual({
+      status: "done",
+    });
+  });
+
+  it("refuses when the OTHER resolution stands, and says which (#280)", () => {
+    const confirm = classifyDoseReplay("dose", "already-skipped");
+    expect(confirm.status).toBe("rejected");
+    expect(confirm.reason).toMatch(/already recorded as skipped/i);
+
+    const skip = classifyDoseReplay("skip-dose", "already-taken");
+    expect(skip.status).toBe("rejected");
+    expect(skip.reason).toMatch(/already recorded as taken/i);
+  });
+
+  it("surfaces the paused-item and stale-dose refusals with their real reason", () => {
+    const paused = classifyDoseReplay("dose", "inactive");
+    expect(paused.status).toBe("rejected");
+    expect(paused.reason).toMatch(/paused/i);
+    expect(classifyDoseReplay("skip-dose", "inactive").reason).toMatch(
+      /paused/i
+    );
+
+    for (const flow of ["dose", "skip-dose"] as const) {
+      const stale = classifyDoseReplay(flow, "stale-dose");
+      expect(stale.status).toBe("rejected");
+      expect(stale.reason).toMatch(/no longer on the schedule/i);
+    }
+  });
+
+  it("never reports a refusal as done — every non-write carries a reason", () => {
+    const outcomes = [
+      "logged",
+      "skipped",
+      "already-taken",
+      "already-skipped",
+      "stale-dose",
+      "inactive",
+    ] as const;
+    for (const flow of ["dose", "skip-dose"] as const) {
+      for (const outcome of outcomes) {
+        const r = classifyDoseReplay(flow, outcome);
+        if (r.status === "rejected") expect(r.reason).toBeTruthy();
+        else expect(r.reason).toBeUndefined();
+      }
+    }
+  });
+});
+
+describe("dose intent shape (#1427)", () => {
+  it("carries the captured tap time alongside the dose id", () => {
+    const tappedAt = "2026-07-15T10:30:00.000Z";
+    const intent = buildIntent(
+      "dose",
+      "2026-07-15",
+      { doseId: 42, clientTakenAt: tappedAt },
+      7
+    );
+    expect(intent.flow).toBe("dose");
+    expect(intent.payload).toEqual({ doseId: 42, clientTakenAt: tappedAt });
+    expect(intent.profileId).toBe(7);
+    expect(describeIntent(intent)).toBe("Dose logged · 2026-07-15");
+  });
+
+  it("stays valid without the timestamp (an intent queued before it shipped)", () => {
+    const legacy = buildIntent("dose", "2026-07-15", { doseId: 42 }, 7);
+    expect(legacy.payload).toEqual({ doseId: 42 });
   });
 });

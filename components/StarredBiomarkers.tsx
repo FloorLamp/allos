@@ -20,8 +20,11 @@ import { today } from "@/lib/db";
 import { requireSession } from "@/lib/auth";
 import BiomarkerScale from "./BiomarkerScale";
 
-// Pinned card of the user's starred biomarkers, shown at the top of /biomarkers
-// and on the dashboard. Each tile links to the biomarker detail page and shows
+// Pinned card of the user's starred biomarkers, shown at the top of Results →
+// Biomarkers — its one card surface. (The comment used to claim a dashboard render
+// too; nothing on the dashboard has ever imported this. The Trends Overview did
+// render it until #1455 dropped it there, where it collided with the trend_pins
+// chart grid.) Each tile links to the biomarker detail page and shows
 // the latest value, an optimal-status chip (when known), and a sparkline.
 // Renders nothing when no biomarkers are starred.
 //

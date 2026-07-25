@@ -114,8 +114,12 @@ body::before {
      border-alpha-language.test.ts and hover-fill-language.test.ts. */
   /* Frosted glass: translucent surface + backdrop blur lets the page glow
      diffuse through; soft shadow for elevation, hairline border for the edge. */
+  /* Padding is responsive (issue #1416, section A): a phone spends ~11% of a
+     390px line on a p-5 card's two gutters, and the app stacks cards. p-4 below
+     `sm`, the unchanged p-5 from `sm` up — ONE tokenized change here rather than
+     a per-page sweep, so every card on every surface tightens together. */
   .card {
-    @apply min-w-0 max-w-full rounded-xl border border-white/60 bg-white/55 p-5 shadow-lg shadow-slate-300/40 backdrop-blur-2xl backdrop-saturate-150 dark:border-white/10 dark:bg-ink-800/45 dark:shadow-black/30;
+    @apply min-w-0 max-w-full rounded-xl border border-white/60 bg-white/55 p-4 shadow-lg shadow-slate-300/40 backdrop-blur-2xl backdrop-saturate-150 sm:p-5 dark:border-white/10 dark:bg-ink-800/45 dark:shadow-black/30;
   }
   .input {
     @apply w-full rounded-lg border border-black/10 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-white/10 dark:bg-ink-950 dark:text-slate-100 dark:placeholder:text-slate-500;
@@ -205,6 +209,13 @@ body::before {
      pointer:coarse block below; this rule is the always-on focus affordance. */
   .tap-target {
     @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
+  }
+  /* Press feedback (issue #1416, section F). A touch target that dips slightly
+     while held answers "did that register?" on a phone, where there is no hover
+     state to answer it. Transform-only (no layout, no paint of anything else);
+     the reduced-motion override lives in the media block below. */
+  .press {
+    @apply transition-transform duration-100 active:scale-[0.97];
   }
 }
 
@@ -332,6 +343,131 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
 @media (prefers-reduced-motion: reduce) {
   .fitness-tile-land {
     animation: none;
+  }
+}
+
+/* ── Motion primitives (issue #1416, section F) ────────────────────────────────
+   The app's shared vocabulary for the two things it animates: a transform
+   (slide/scale) and an opacity fade. Durations mirror lib/motion.ts's MOTION_MS
+   — that module hands the SAME number to components/usePresence.ts so an exiting
+   element stays mounted for exactly as long as its animation paints. Keep the
+   two in sync (a longer CSS duration truncates the exit; a shorter one leaves a
+   frozen element on screen).
+
+   Every class below is transform/opacity only — never a property that triggers
+   layout — and every one is disabled wholesale under prefers-reduced-motion at
+   the bottom of this block. Reduced motion still gets the full mount/unmount
+   sequence (usePresence collapses its duration to 0); it simply arrives. */
+
+@keyframes motion-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes motion-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes motion-slide-up-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes motion-slide-up-out {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+@keyframes motion-slide-left-in {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes motion-slide-left-out {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+.motion-fade-in {
+  animation: motion-fade-in 220ms ease-out;
+}
+/* The *-out variants hold their final frame (`forwards`) so the element stays
+   faded/off-screen for the tail of the exit window instead of snapping back to
+   its resting state one frame before it unmounts. */
+.motion-fade-out {
+  animation: motion-fade-out 220ms ease-in forwards;
+}
+.motion-slide-up-in {
+  animation: motion-slide-up-in 240ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.motion-slide-up-out {
+  animation: motion-slide-up-out 240ms ease-in forwards;
+}
+.motion-slide-left-in {
+  animation: motion-slide-left-in 220ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.motion-slide-left-out {
+  animation: motion-slide-left-out 220ms ease-in forwards;
+}
+
+/* The sticky top chrome (components/ShellChrome.tsx) — the phone top bar plus
+   the multi-profile view banner, hiding and revealing as ONE unit on scroll.
+
+   The slide is `-100%` of the element's own height PLUS the notch inset back:
+   the safe-area strip under the status bar keeps its background painted while
+   the bar itself is gone, so a hidden bar never turns the notch into a window
+   onto scrolling content. `env(...)` resolves to 0 where there is no inset, so
+   this is a plain `-100%` on a laptop or a notch-less phone.
+
+   The transform is on this ONE element by design — issue #1425's drag gesture
+   drives the same property here rather than adding a second transformed
+   wrapper. */
+.shell-chrome {
+  transition: transform 180ms ease-out;
+}
+.shell-chrome[data-hidden="true"] {
+  transform: translateY(calc(-100% + env(safe-area-inset-top, 0px)));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .motion-fade-in,
+  .motion-fade-out,
+  .motion-slide-up-in,
+  .motion-slide-up-out,
+  .motion-slide-left-in,
+  .motion-slide-left-out {
+    animation: none;
+  }
+  /* The chrome still hides and reveals — the preference asks for no TRAVEL, not
+     for a permanently parked bar — it simply snaps. */
+  .shell-chrome {
+    transition: none;
+  }
+  .press {
+    transition: none;
+  }
+  .press:active {
+    transform: none;
   }
 }
 

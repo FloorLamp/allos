@@ -142,11 +142,20 @@ function SortableWidget({
 // user-hidden ids only and refreshes, Cancel restores the pre-edit state.
 export default function DashboardGrid({
   widgets,
+  promoted = [],
   saveAction,
 }: {
   widgets: GridWidget[];
+  // Widget ids the "Now" strip is rendering above the grid right now (issue #1413).
+  // Skipped in NORMAL mode only, so the card appears once on the page rather than
+  // twice. Deliberately NOT filtered out of `widgets`: Customize must keep showing
+  // every eligible widget, or a momentarily-promoted card would vanish from the
+  // editor and the user could neither reorder nor un-hide it — and, worse, Save
+  // would persist an order missing it. Promotion is transient; the layout is not.
+  promoted?: string[];
   saveAction: (order: string[], hidden: string[]) => Promise<void>;
 }) {
+  const promotedIds = useMemo(() => new Set(promoted), [promoted]);
   const byId = useMemo(() => new Map(widgets.map((w) => [w.id, w])), [widgets]);
 
   const [editing, setEditing] = useState(false);
@@ -222,7 +231,7 @@ export default function DashboardGrid({
 
   if (!editing) {
     const visible = order
-      .filter((id) => !hidden.has(id))
+      .filter((id) => !hidden.has(id) && !promotedIds.has(id))
       .map((id) => byId.get(id))
       .filter((w): w is GridWidget => !!w && w.available);
     return (

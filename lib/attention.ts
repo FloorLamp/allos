@@ -41,6 +41,7 @@ import {
   compareWithinBand,
 } from "./upcoming";
 import { biomarkerFlagDismissalKey } from "./dismissal-keys";
+import { itemSuppressionPolicy } from "./upcoming-suppress";
 import {
   biomarkerViewHref,
   dataSectionHref,
@@ -589,4 +590,98 @@ export function planAttentionMoreLinks(
   }
 
   return { perBand, trailing };
+}
+
+// ---------------------------------------------------------------------------
+// Hero collapse (issue #1413, section B) — the owner-confirmed refinement of the
+// #449 care tier from ALWAYS-FULL to ALWAYS-PRESENT.
+// ---------------------------------------------------------------------------
+//
+// The "Needs attention" hero is care-tier PUSH: pinned, non-hideable, no dismiss
+// control. On a phone the full card also costs the better part of a screen, even
+// on a day whose items you have already read — which is a real cost, but NOT a
+// reason to weaken the tier. So the contract changes on exactly one axis: the
+// VERTICAL COST becomes opt-in, while presence and the COUNT never do.
+//
+// What that buys, precisely:
+//   - Collapsed still renders the count and the highest-severity band, so
+//     "3 need attention, one of them past due" survives the compaction. A
+//     collapsed hero is a smaller signal, never an absent one.
+//   - There is still no dismiss. Collapse is a two-way toggle the user can
+//     always reverse from the same control; nothing here can reach a state with
+//     no attention affordance on the page.
+//   - The SAFETY CARVE-OUT below outranks the preference entirely.
+//
+// These are pure decisions so the #449 contract is pinned by unit tests rather
+// than by reviewer memory of what the component happens to render.
+
+// The bands a collapsed hero can advertise, most severe first — the same
+// vocabulary and order as the expanded card's sections, so the compact line can
+// never describe the card differently from the card.
+export function attentionTopBand(
+  items: UpcomingItem[],
+  today: string
+): CardBand | null {
+  const subset = attentionCardItems(items, today);
+  for (const band of CARD_BAND_ORDER) {
+    if (subset.some((i) => cardBandForItem(i, today) === band)) return band;
+  }
+  return null;
+}
+
+// Whether the hero carries a SAFETY-tier item and must therefore render expanded
+// no matter what the viewer's collapse preference says (#942's `isHiddenUnderPolicy`
+// posture applied to compaction rather than suppression).
+//
+// The tier is read from the item's OWN declared lifecycle policy via the shared
+// `itemSuppressionPolicy` dispatcher — NOT from a second list of "serious-looking"
+// domains maintained here. That matters: "safety-ungated" is already the property
+// that means "the dismissal bus may never hide this" (dose reminders, missed-dose
+// escalation, the #716 crisis finding), so a signal that opts into it inherits the
+// no-compaction guarantee automatically, and a future safety signal cannot be
+// added without also getting this behavior. A domain allowlist here would have to
+// be remembered and updated separately, which is precisely how a safety carve-out
+// silently stops covering something.
+export function attentionSafetyLocked(
+  items: UpcomingItem[],
+  today: string
+): boolean {
+  return attentionCardItems(items, today).some(
+    (i) => itemSuppressionPolicy(i) === "safety-ungated"
+  );
+}
+
+// The hero's resolved display state. `collapsed` is what the surface renders;
+// `locked` tells it to suppress the collapse CONTROL as well, so a safety-locked
+// hero offers no toggle that would do nothing (a dead control reads as a bug and
+// invites the user to keep pressing it).
+export interface AttentionHeroState {
+  collapsed: boolean;
+  locked: boolean;
+  count: number;
+  topBand: CardBand | null;
+}
+
+// Resolve the hero's state from the viewer's stored preference and the items.
+// The safety carve-out is checked FIRST and unconditionally — the preference is
+// not consulted for a safety-locked hero — mirroring how `isHiddenUnderPolicy`
+// puts its "safety-ungated" branch ahead of any stored record, so neither can be
+// weakened by editing what is stored.
+//
+// An EMPTY hero (the quiet "all clear") is also never collapsed: there is nothing
+// to compact, and a collapsed all-clear line would be a strictly worse rendering
+// of the same zero.
+export function attentionHeroState(
+  items: UpcomingItem[],
+  today: string,
+  preferCollapsed: boolean
+): AttentionHeroState {
+  const count = attentionCardItems(items, today).length;
+  const locked = attentionSafetyLocked(items, today);
+  return {
+    collapsed: !locked && count > 0 && preferCollapsed,
+    locked,
+    count,
+    topBand: attentionTopBand(items, today),
+  };
 }

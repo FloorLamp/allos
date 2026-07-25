@@ -87,7 +87,7 @@ test.describe("Check-in card recomposition (#1314/#1311/#1313)", () => {
     // Expand Rate → the detail edits, and the collapsed summary is a formatter over it.
     await card.getByTestId("checkin-section-rate-toggle").click();
     await expect(card.getByTestId("mood-detail")).toBeVisible();
-    await card.getByTestId("mood-energy-3").click();
+    await settledClick(page, card.getByTestId("mood-energy-3"));
     await expect(card.getByTestId("mood-status")).toContainText("energy 3");
   });
 
@@ -103,16 +103,24 @@ test.describe("Check-in card recomposition (#1314/#1311/#1313)", () => {
     await tapMood(page, card, 3);
     await card.getByTestId("checkin-section-context-toggle").click();
 
-    // The day-factor (today-only) half writes to the mood log's factors. The card is
-    // hydrated (tapMood already round-tripped a write), so a single click is safe;
-    // settle on the server-truth marker.
+    // The day-factor (today-only) half writes to the mood log's factors. The chip fires
+    // a Server Action whose RESULT the next assertion reads, so it goes through
+    // settledClick — helpers.ts decision-tree case 1 (a bare click here was the #1464
+    // flake's exposure).
     const work = card.getByTestId("checkin-day-factor-work");
     await expect(work).toBeVisible();
     await expect(work).toHaveAttribute("aria-pressed", "false");
-    await work.click();
+    await settledClick(page, work);
+    // The marker re-renders from the DASHBOARD's server props, so this waits on a full
+    // RSC refresh of the app's heaviest page — not just the write. The write itself is
+    // already done (settledClick awaited its POST; #1464 confirmed the row always lands,
+    // 9/9 on failing runs), so the only thing left to tolerate is that refresh. Budgeted
+    // like its sibling situation assertion below rather than the 5 s default, which a
+    // loaded runner overshoots — the #1464 flake.
     await expect(card.getByTestId("mood-server-logged")).toHaveAttribute(
       "data-factors",
-      "work"
+      "work",
+      { timeout: 15_000 }
     );
 
     // Persisted: reload, re-expand Context, the day chip is still pressed.
@@ -127,9 +135,9 @@ test.describe("Check-in card recomposition (#1314/#1311/#1313)", () => {
     // toggles active and survives a reload independently of the mood log.
     const travel = card.getByTestId("checkin-situation-Travel");
     await expect(travel).toHaveAttribute("aria-pressed", "false");
-    await travel.click();
+    await settledClick(page, travel);
     await expect(travel).toHaveAttribute("aria-pressed", "true", {
-      timeout: 10_000,
+      timeout: 15_000,
     });
     await page.reload();
     await card.getByTestId("checkin-section-context-toggle").click();
