@@ -928,6 +928,79 @@ const CCD_FIXTURE = `<?xml version="1.0"?>
         </manufacturedMaterial></manufacturedProduct></consumable>
       </substanceAdministration></entry>
     </section></component>
+    <component><section>
+      <code code="10160-0" codeSystem="2.16.840.1.113883.6.1"/>
+      <title>Medications</title>
+      <entry><substanceAdministration classCode="SBADM" moodCode="EVN">
+        <effectiveTime type="IVL_TS"><low value="20240101"/></effectiveTime>
+        <effectiveTime type="PIVL_TS" operator="A"><period value="24" unit="h"/></effectiveTime>
+        <doseQuantity value="10" unit="mg"/>
+        <consumable><manufacturedProduct><manufacturedMaterial>
+          <code code="83367" codeSystem="2.16.840.1.113883.6.88" displayName="Atorvastatin"/>
+          <name>Atorvastatin 10 mg tablet</name>
+        </manufacturedMaterial></manufacturedProduct></consumable>
+      </substanceAdministration></entry>
+    </section></component>
+    <component><section>
+      <code code="11450-4" codeSystem="2.16.840.1.113883.6.1"/>
+      <title>Active Problems</title>
+      <text><table><tbody><tr ID="p1name"><td>Asthma</td></tr></tbody></table></text>
+      <entry><act classCode="ACT" moodCode="EVN">
+        <templateId root="2.16.840.1.113883.10.20.22.4.3"/>
+        <statusCode code="active"/>
+        <entryRelationship typeCode="SUBJ"><observation classCode="OBS" moodCode="EVN">
+          <templateId root="2.16.840.1.113883.10.20.22.4.4"/>
+          <effectiveTime><low value="20190601"/></effectiveTime>
+          <value xsi:type="CD" code="195967001" codeSystem="2.16.840.1.113883.6.96" displayName="Asthma">
+            <translation code="J45.909" codeSystem="2.16.840.1.113883.6.90" displayName="Unspecified asthma"/>
+          </value>
+          <entryRelationship typeCode="REFR"><observation classCode="OBS" moodCode="EVN">
+            <templateId root="2.16.840.1.113883.10.20.22.4.6"/>
+            <value xsi:type="CD" code="55561003" displayName="Active"/>
+          </observation></entryRelationship>
+        </observation></entryRelationship>
+      </act></entry>
+    </section></component>
+    <component><section>
+      <code code="48765-2" codeSystem="2.16.840.1.113883.6.1"/>
+      <title>Allergies</title>
+      <text><content ID="a1">Penicillin</content></text>
+      <entry><act classCode="ACT" moodCode="EVN">
+        <templateId root="2.16.840.1.113883.10.20.22.4.30"/>
+        <statusCode code="active"/>
+        <entryRelationship typeCode="SUBJ"><observation classCode="OBS" moodCode="EVN">
+          <templateId root="2.16.840.1.113883.10.20.22.4.7"/>
+          <effectiveTime><low value="20180101"/></effectiveTime>
+          <value xsi:type="CD" code="416098002" codeSystem="2.16.840.1.113883.6.96" displayName="Drug allergy"/>
+          <participant typeCode="CSM"><participantRole classCode="MANU"><playingEntity classCode="MMAT">
+            <code code="7980" codeSystem="2.16.840.1.113883.6.88" displayName="Penicillin"/>
+          </playingEntity></participantRole></participant>
+          <entryRelationship typeCode="MFST"><observation classCode="OBS" moodCode="EVN">
+            <value xsi:type="CD" code="247472004" codeSystem="2.16.840.1.113883.6.96" displayName="Hives"/>
+          </observation></entryRelationship>
+          <entryRelationship typeCode="SUBJ"><observation classCode="OBS" moodCode="EVN">
+            <templateId root="2.16.840.1.113883.10.20.22.4.8"/>
+            <value xsi:type="CD" code="6736007" codeSystem="2.16.840.1.113883.6.96" displayName="Moderate"/>
+          </observation></entryRelationship>
+        </observation></entryRelationship>
+      </act></entry>
+    </section></component>
+    <component><section>
+      <code code="8716-3" codeSystem="2.16.840.1.113883.6.1"/>
+      <title>Vital Signs</title>
+      <entry><organizer classCode="CLUSTER" moodCode="EVN">
+        <component><observation classCode="OBS" moodCode="EVN">
+          <code code="8480-6" codeSystem="2.16.840.1.113883.6.1" displayName="Systolic blood pressure"/>
+          <effectiveTime value="20260601"/>
+          <value type="PQ" value="128" unit="mm[Hg]"/>
+        </observation></component>
+        <component><observation classCode="OBS" moodCode="EVN">
+          <code code="8462-4" codeSystem="2.16.840.1.113883.6.1" displayName="Diastolic blood pressure"/>
+          <effectiveTime value="20260601"/>
+          <value type="PQ" value="82" unit="mm[Hg]"/>
+        </observation></component>
+      </organizer></entry>
+    </section></component>
   </structuredBody></component>
 </ClinicalDocument>`;
 
@@ -966,9 +1039,26 @@ async function ccdJourney(browser) {
   );
   await shot(page, "ccd-results-after");
   if (landed) log("ccd: structured import landed (lab visible on Results)");
-  // Bonus probe, non-fatal: the immunization row (CVX 08) on History.
+  // The condition + allergy from the Problems/Allergies sections.
+  await visit(page, "/records/problems", 1500);
+  await checkVisible(
+    page,
+    () => page.getByText("Asthma"),
+    "ccd: imported condition NOT on Records → Problems",
+    6
+  );
+  await checkVisible(
+    page,
+    () => page.getByText("Penicillin"),
+    "ccd: imported allergy NOT on Records → Problems",
+    6
+  );
+  await shot(page, "ccd-problems-after");
+  // Bonus probes, non-fatal: immunization (CVX 08) + the imported medication.
   await visit(page, "/records/history/immunizations", 1500);
   await shot(page, "ccd-immunizations-after");
+  await visit(page, "/medications", 1500);
+  await shot(page, "ccd-medications-after");
   await ctx.close();
 }
 
