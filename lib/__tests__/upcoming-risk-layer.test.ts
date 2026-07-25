@@ -16,11 +16,12 @@ import { fileURLToPath } from "node:url";
 // own source as TEXT (no DB, no network — "pure" in the vitest sense).
 
 const REPO = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const GENERATOR_FILES = [
-  path.join(REPO, "lib/queries/upcoming/generators.ts"),
-  path.join(REPO, "lib/queries/upcoming/plans.ts"),
-  path.join(REPO, "lib/queries/upcoming/intake-safety.ts"),
-];
+const GENERATORS_DIR = path.join(REPO, "lib/queries/upcoming");
+const GENERATOR_FILES = fs
+  .readdirSync(GENERATORS_DIR)
+  .filter((name) => name.endsWith(".ts"))
+  .sort()
+  .map((name) => path.join(GENERATORS_DIR, name));
 
 // Builders that MUST route through the risk/priority layer — each is expected to
 // reference a `*PriorityFor` or `retestModulationFor` call in its body.
