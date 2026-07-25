@@ -367,26 +367,31 @@ async function signIn(page, username, password) {
   // A pre-hydration submit is silently swallowed, and on a cold filesystem
   // hydration can outlast any fixed sleep (a 2s guess lost repeatedly: the
   // click landed, NO POST ever fired, and the census aborted "unauthenticated").
-  // The e2e suite's settledClick answer, inlined: click, VERIFY the server-
-  // action POST actually fired, and re-click until it does.
+  // The e2e suite's settledClick answer, inlined — but verify the REQUEST,
+  // not the response: the login POST has been measured taking 45s–5min to
+  // answer on a cold filesystem, and a response-keyed re-click aborts the
+  // in-flight submission and restarts it forever. The request event fires
+  // the moment the click actually lands, so it's the honest "click took"
+  // signal at any server speed.
   await page.waitForTimeout(2000);
   await page.fill('input[name="username"]', username);
   await page.fill('input[name="password"]', password);
   for (let i = 0; i < 8; i++) {
-    const posted = page
-      .waitForResponse(
-        (r) => r.request().method() === "POST" && r.url().includes("/login"),
+    const fired = page
+      .waitForRequest(
+        (r) => r.method() === "POST" && r.url().includes("/login"),
         { timeout: 8_000 }
       )
       .catch(() => null);
     await page.click('button[type="submit"]').catch(() => {});
-    if (await posted) break;
+    if (await fired) break;
   }
   await page
-    // 90s, not 30: on a cold dev filesystem the login POST alone has been
-    // measured at 31.6s (route-compile overhead around a 117ms action) — the
-    // header's "first request can take minutes" patience applies HERE too.
-    .waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 90_000 })
+    // The POST + its redirect self-fetch can take minutes (the server compiles
+    // the target page inside the 303) — give the URL change page-load patience.
+    .waitForURL((u) => !u.pathname.startsWith("/login"), {
+      timeout: Math.max(90_000, Number(process.env.UX_TIMEOUT_MS) || 0),
+    })
     .catch(() => {});
   await page.waitForTimeout(1500);
 }
