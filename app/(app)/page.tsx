@@ -25,6 +25,7 @@ import {
   getHealthspanPillars,
   getLastNightSummary,
   getSleepRegularity,
+  typicalWakeTime,
   getPrnMedicationsForQuickLog,
   getActiveProtocolSummaries,
   getWorkoutPresence,
@@ -79,16 +80,19 @@ import {
   getLoginTelegram,
   getSituations,
   getActiveSituations,
+  getAttentionHeroCollapsed,
 } from "@/lib/settings";
 import { countPushSubscriptionsForLogin } from "@/lib/notifications/push";
 import { hasConnectedDataSource } from "@/lib/integrations/connections";
 import { dispWeight } from "@/lib/units";
-import { shiftDateStr } from "@/lib/date";
+import { shiftDateStr, hhmmToMinutes, zonedDateParts } from "@/lib/date";
 import { ALL_ROWS } from "@/lib/trends";
 import { formatLongDate, daysRemainingLabel } from "@/lib/format-date";
 import { recentLabHighlights } from "@/lib/recent-labs";
 import { getWeeklyRecap } from "@/lib/notifications/weekly-recap-data";
 import { resolveWidgetList } from "@/lib/dashboard-widgets";
+import { rankNowCards, NOW_CARD_IDS } from "@/lib/now-strip";
+import { getNotifySchedule } from "@/lib/settings/notifications";
 import { getIllnessHeroUi } from "@/lib/settings";
 import { onboardingNeedsSetup } from "@/lib/onboarding";
 import { getOnboardingDataPresence } from "@/lib/onboarding-data";
@@ -97,6 +101,7 @@ import DashboardGrid, {
   type GridWidget,
 } from "@/components/dashboard/DashboardGrid";
 import NeedsAttentionHero from "@/components/dashboard/NeedsAttentionHero";
+import NowStrip, { type NowStripCard } from "@/components/dashboard/NowStrip";
 import HouseholdStrip, {
   type HouseholdStripEntry,
 } from "@/components/dashboard/HouseholdStrip";
@@ -153,7 +158,11 @@ import { isTaskConfigured } from "@/lib/ai-resolve";
 import { hasActiveIllnessSituation } from "@/lib/settings/profile-attrs";
 import OnboardingResumeCard from "@/components/dashboard/OnboardingResumeCard";
 import OnboardingChecklist from "@/components/dashboard/OnboardingChecklist";
-import { saveDashboardLayout, saveIllnessHeroState } from "./actions";
+import {
+  saveAttentionHeroCollapsed,
+  saveDashboardLayout,
+  saveIllnessHeroState,
+} from "./actions";
 import {
   episodeHref,
   encounterHref,
@@ -972,12 +981,85 @@ export default async function Dashboard() {
         : renderWidget(def.id),
   }));
 
+  // ── The "Now" strip (issue #1413, section A) ────────────────────────────────
+  // A RANKER over signals other features already compute (#221) — nothing below
+  // reads a new health fact. Every window is minute-of-day in the PROFILE's
+  // timezone (#1186/#450), resolved once here rather than in the client.
+  const nowMinutes = hhmmToMinutes(
+    zonedDateParts(getTimezone(profile.id), clockNow()).hhmm
+  );
+  // The existing mealtime-shaped anchors: the profile's intake reminder slots.
+  // NOT the food log — `food_log_events.logged_at` is TAP time, documented as
+  // explicitly not eating time, so deriving a meal distribution from it would be
+  // the new engine this issue's scope guard forbids.
+  const nowSlots = getNotifySchedule(profile.id).supplementHours;
+  const nowMealAnchors = [nowSlots.Morning, nowSlots.Midday, nowSlots.Evening]
+    .filter((h): h is number => h != null)
+    .map((h) => h * 60);
+
+  // What the strip is ALLOWED to promote: a grid widget the user still has visible
+  // AND that has something to render, or the standalone recap card under the same
+  // gate the page already uses for it. The clock never overrides a hide preference.
+  //
+  // `emptyIds` is excluded deliberately: a data-aware widget with no data yet is
+  // still "available" — it renders an ONBOARDING CTA rather than content — and
+  // promoting that would put a "connect a source" prompt at the top of the page
+  // every mealtime. That is precisely the filler card lib/now-strip.ts refuses.
+  const gridPromotable = new Set(
+    gridWidgets
+      .filter((w) => w.visible && w.available && !emptyIds.has(w.id))
+      .map((w) => w.id)
+  );
+  const nowEligible = NOW_CARD_IDS.filter((id) =>
+    id === "session-recap" ? showRecapCard : gridPromotable.has(id)
+  );
+  // Eligibility already excludes the empty case above, so reaching this point
+  // means the sleep widget has a fresh last-night summary to show.
+  const nowFreshSleep = nowEligible.includes("sleep-last-night");
+  const nowCardIds = rankNowCards({
+    minutesOfDay: nowMinutes,
+    // Only computed when sleep is actually in play — it is a 28-night regularity
+    // pass, not worth running on an evening render that can't use it.
+    wakeMinutes: nowFreshSleep ? typicalWakeTime(profile.id) : null,
+    freshSleepSummary: nowFreshSleep,
+    workoutFinishedMinAgo: showRecapCard
+      ? (finishedPresence?.sinceMin ?? null)
+      : null,
+    mealAnchors: nowMealAnchors,
+    eveningAnchor: nowSlots.Evening != null ? nowSlots.Evening * 60 : null,
+    checkInDone: todayMood != null,
+    eligible: nowEligible,
+  });
+  const nowPromoted = new Set<string>(nowCardIds);
+  // Each strip card is a REFERENCE to the node the grid already built — the same
+  // component, the same data, never a second rendering. The grid keeps the widget
+  // in Customize (so its order/visibility preference survives) and only skips it in
+  // normal mode, via `promoted` below.
+  const nowStripCards: NowStripCard[] = nowCardIds
+    .map((id) => ({
+      id,
+      node:
+        id === "session-recap"
+          ? finishedRecap && (
+              <SessionRecapCard recap={finishedRecap} unit={units.weightUnit} />
+            )
+          : gridWidgets.find((w) => w.id === id)?.node,
+    }))
+    .filter((c): c is NowStripCard => c.node != null);
+
   return (
     <div>
-      <PageHeader
-        title="Dashboard"
-        subtitle={`Today is ${formatLongDate(on, formatPrefs)} — here's your health at a glance.`}
-      />
+      {/* Desktop only (issue #1413, section C): on a phone the nav already says
+          where you are, and "Dashboard — today is <date>" costs a chunk of a much
+          shorter screen before any content. The date survives below `md` on the Now
+          strip's corner. Not a mirrored pair — there is no second mobile branch to
+          drift from, just an element the phone doesn't get. */}
+      <div className="hidden md:block">
+        <PageHeader
+          title="Dashboard"
+          subtitle={`Today is ${formatLongDate(on, formatPrefs)} — here's your health at a glance.`}
+        />
+      </div>
       {/* Illness hero (#858): pinned before the customizable grid. It leads above
           Needs attention on smaller screens (the mobile 7am case); at XL the two
           equally weighted cards share the row so neither stretches across the wide
@@ -993,9 +1075,20 @@ export default async function Dashboard() {
           saveState={saveIllnessHeroState}
         />
         <div className="min-w-0">
-          <NeedsAttentionHero items={attention} today={on} />
+          <NeedsAttentionHero
+            items={attention}
+            today={on}
+            preferCollapsed={getAttentionHeroCollapsed(login.id)}
+            saveCollapsed={saveAttentionHeroCollapsed}
+          />
         </div>
       </div>
+      {/* The moment's most relevant card(s), above the user's own grid (#1413 A).
+          Renders nothing at all when no signal is firing. */}
+      <NowStrip
+        cards={nowStripCards}
+        dateLabel={formatLongDate(on, formatPrefs)}
+      />
       {recentlyResolved.length > 0 && (
         <RecentlyResolvedReopen items={recentlyResolved} />
       )}
@@ -1009,7 +1102,8 @@ export default async function Dashboard() {
           </Link>
         </div>
       )}
-      {showRecapCard && finishedRecap && (
+      {/* Skipped when the Now strip promoted it — one render, never two (#1413). */}
+      {showRecapCard && finishedRecap && !nowPromoted.has("session-recap") && (
         <SessionRecapCard recap={finishedRecap} unit={units.weightUnit} />
       )}
       {onboardingState && onboardingPresence && (
@@ -1028,6 +1122,7 @@ export default async function Dashboard() {
       <DashboardGrid
         key={profile.id}
         widgets={gridWidgets}
+        promoted={nowCardIds}
         saveAction={saveDashboardLayout}
       />
     </div>

@@ -1,5 +1,6 @@
 import { defineConfig } from "@playwright/test";
 import fs from "node:fs";
+import { resolveFreezeInstant } from "./lib/e2e-freeze-instant";
 
 // Browser end-to-end tier (issue: always browser-test UI features). Separate
 // from the pure unit suite (`npm test`, lib/** only) and the DB tier
@@ -63,9 +64,17 @@ const DEMO_DB_PATH =
 // suite's own duration (~25 min), which every window (≥45 min) tolerates, in EVERY hour.
 // Date-boundary determinism is preserved: `today()` derives from this same instant, so a
 // run only risks a real-midnight CROSS when it starts within its own duration of midnight
-// (a ~25-min window), where SQL-stamped rows roll a day ahead of the frozen date — the
-// narrow, bounded residual the fixed-noon design traded a genuine all-morning band for.
-const FROZEN_NOW = process.env.ALLOS_TEST_NOW ?? new Date().toISOString();
+// (a ~25-min window), where SQL-stamped rows roll a day ahead of the frozen date.
+//
+// That residual is no longer left to chance (issue #1464). `resolveFreezeInstant` nudges
+// the instant FORWARD across the boundary when the run would start inside the hazard
+// window, so the frozen date sits on the side the run actually spends its time on — see
+// lib/e2e-freeze-instant.ts for why forward (and not back) is the only direction that
+// narrows the gap. Outside that window the instant is the real start, unchanged. An
+// externally-supplied ALLOS_TEST_NOW is honored verbatim: it is the deliberate
+// boundary-stress hook, so it must never be second-guessed.
+const FROZEN_NOW =
+  process.env.ALLOS_TEST_NOW ?? resolveFreezeInstant(new Date()).toISOString();
 
 // The persisted AI activity log (lib/ai-log.ts) is `<cwd>/data/logs/ai.jsonl` —
 // NOT under e2e/.data and NOT affected by ALLOS_DB_PATH, so the DB reset above

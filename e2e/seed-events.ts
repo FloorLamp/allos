@@ -57,6 +57,11 @@ import {
   PREVENTIVE_PROFILE,
   E2E_LOGIN_CRISIS,
   CRISIS_PROFILE,
+  E2E_LOGIN_NOWSTRIP,
+  NOW_STRIP_PROFILE,
+  NOW_STRIP_APPOINTMENT,
+  E2E_LOGIN_NOWSAFETY,
+  NOW_SAFETY_PROFILE,
   CRISIS_OVERRIDE_LABEL,
   CRISIS_OVERRIDE_CONTACT,
   E2E_LOGIN_NUTRITION,
@@ -2653,6 +2658,111 @@ db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(recapId);
   ).run(finishedId, finishedId, finishedId);
 }
 seedMemberLogin(E2E_LOGIN_RECAP, recapId);
+
+// ── Dashboard "Now" strip + collapsible hero fixtures (issue #1413) ──────────
+// A profile whose dashboard deterministically shows BOTH halves of #1413: a
+// just-finished session (the Now strip's top-ranked card, same shape as the RECAP
+// fixture above) and one appointment scheduled TODAY, which gives the
+// "Needs attention" hero a stable non-zero count for the collapse test.
+//
+// Why a just-finished workout rather than relying on the clock: the e2e run pins
+// local time to 13:mm (e2e/pinned-timezone.ts), which sits inside the default 13:00
+// Midday meal anchor — so `nutrition-today` would fire only if this profile had
+// nutrition data, and the morning/evening signals never fire at all. The recap
+// signal is time-of-day independent (a 60-minute window off the frozen clock), so
+// it is the one the spec can assert without depending on the run's start hour.
+// Idempotent: clear activities + appointments first.
+const nowStripId = fixtureProfileId(NOW_STRIP_PROFILE);
+db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(nowStripId);
+db.prepare(`DELETE FROM appointments WHERE profile_id = ?`).run(nowStripId);
+{
+  const now = clockNow();
+  const startIso = new Date(now.getTime() - 50 * 60_000);
+  const endIso = new Date(now.getTime() - 6 * 60_000);
+  const finishedId = Number(
+    db
+      .prepare(
+        `INSERT INTO activities
+           (profile_id, date, type, title, duration_min, start_time, end_time, created_at, updated_at, source)
+         VALUES (?, ?, 'strength', 'Pull day', 44, ?, ?, ?, ?, NULL)`
+      )
+      .run(
+        nowStripId,
+        today(nowStripId),
+        // Wall clock in the profile's timezone, not a UTC slice — presence
+        // reconstructs the end instant via zonedWallTimeToUtc (the #924 note on
+        // the RECAP fixture above applies verbatim).
+        zonedDateParts(getTimezone(nowStripId), startIso).hhmm,
+        zonedDateParts(getTimezone(nowStripId), endIso).hhmm,
+        utcSqlString(startIso),
+        utcSqlString(endIso)
+      ).lastInsertRowid
+  );
+  // Working sets so the recap has something to say (the page gates the card on
+  // totalWorkingSets > 0).
+  db.prepare(
+    `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps, target_reps)
+       VALUES (?, 'Barbell Row', 1, 55, 8, 8),
+              (?, 'Barbell Row', 2, 55, 8, 8)`
+  ).run(finishedId, finishedId);
+  // One appointment TODAY → a due-today attention item, so the hero has a count.
+  db.prepare(
+    `INSERT INTO appointments (profile_id, scheduled_at, title, location, status)
+     VALUES (?, ?, ?, 'Test Clinic (e2e)', 'scheduled')`
+  ).run(nowStripId, `${today(nowStripId)} 16:00`, NOW_STRIP_APPOINTMENT);
+
+  // A bodyweight + a couple of protein-bearing servings today, so the
+  // `nutrition-today` widget has real content rather than its onboarding CTA.
+  // The e2e clock is pinned to 13:mm local (e2e/pinned-timezone.ts), which sits
+  // inside the default 13:00 Midday intake anchor — so this makes the SECOND
+  // strip card fire deterministically, exercising the two-card band (its
+  // 2-column layout and the NOW_STRIP_CAP) rather than only the single-card path.
+  const nowStripDay = today(nowStripId);
+  db.prepare(
+    `INSERT OR IGNORE INTO body_metrics (profile_id, date, weight_kg) VALUES (?, ?, 78)`
+  ).run(nowStripId, nowStripDay);
+  for (const [slug, servings] of [
+    ["poultry", 2],
+    ["eggs", 1],
+  ] as const) {
+    db.prepare(
+      `INSERT INTO food_log (profile_id, date, group_key, servings) VALUES (?, ?, ?, ?)
+         ON CONFLICT(profile_id, date, group_key) DO UPDATE SET servings = excluded.servings`
+    ).run(nowStripId, nowStripDay, slug, servings);
+  }
+}
+seedMemberLogin(E2E_LOGIN_NOWSTRIP, nowStripId);
+
+// The safety-locked counterpart: a SEVERE PHQ-9 reading with a positive item 9
+// (index 8, 0-based). Either alone escalates (crisisDecision = severe || selfHarm);
+// seeding both keeps the fixture robust to a band-threshold edit. That makes
+// mentalHealthCrisisItems emit a `suppressionPolicy: "safety-ungated"` attention
+// item, which attentionHeroState must refuse to collapse (#449/#942).
+// Synthetic score on a fictional profile — no PHI. Idempotent.
+const nowSafetyId = fixtureProfileId(NOW_SAFETY_PROFILE);
+db.prepare(
+  `DELETE FROM medical_records WHERE profile_id = ? AND category = 'instrument'`
+).run(nowSafetyId);
+{
+  const scoreId = Number(
+    db
+      .prepare(
+        `INSERT INTO medical_records
+           (date, category, name, value, value_num, unit, canonical_name, profile_id)
+         VALUES (?, 'instrument', 'PHQ-9', '22', 22, NULL, 'PHQ-9', ?)`
+      )
+      .run(today(nowSafetyId), nowSafetyId).lastInsertRowid
+  );
+  db.prepare(
+    `INSERT INTO instrument_responses (profile_id, medical_record_id, item_index, answer)
+     VALUES (?, ?, 8, 2)`
+  ).run(nowSafetyId, scoreId);
+}
+seedMemberLogin(E2E_LOGIN_NOWSAFETY, nowSafetyId);
+
+console.log(
+  `e2e: seeded #1413 Now-strip fixtures — profile ${nowStripId} (${NOW_STRIP_PROFILE}, finished session + due appointment) and profile ${nowSafetyId} (${NOW_SAFETY_PROFILE}, safety-locked hero)`
+);
 
 // Truly empty, isolated profiles for the goal-based onboarding paths (#719).
 // Explicit state opts them into onboarding; every other fixture profile without

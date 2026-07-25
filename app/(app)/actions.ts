@@ -1,8 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireWriteAccess } from "@/lib/auth";
-import { setDashboardLayout, setIllnessHeroUi } from "@/lib/settings";
+import { requireSession, requireWriteAccess } from "@/lib/auth";
+import {
+  setAttentionHeroCollapsed,
+  setDashboardLayout,
+  setIllnessHeroUi,
+} from "@/lib/settings";
 import { today } from "@/lib/db";
 import { shiftDateStr } from "@/lib/date";
 import { snoozeUntil } from "@/lib/upcoming";
@@ -38,6 +42,22 @@ export async function saveIllnessHeroState(
     collapsedActive: collapsedActive === true,
     openOtherId: typeof openOtherId === "number" ? openOtherId : null,
   });
+}
+
+// Persist the VIEWER's "Needs attention" hero collapse preference (issue #1413,
+// section B). Per-login, so it follows the reader across profile switches.
+//
+// Gated on requireSession, NOT requireWriteAccess: this writes only to the acting
+// LOGIN's own settings row, so a read-only viewer of someone else's profile is
+// still entitled to choose how tall the hero is on their own screen. No
+// revalidation — the client already reflects the toggle; this only makes it
+// survive a reload.
+//
+// This can never hide the hero or its count (#449): the stored flag is one input
+// to attentionHeroState, which ignores it entirely for a safety-locked hero.
+export async function saveAttentionHeroCollapsed(collapsed: boolean) {
+  const { login } = await requireSession();
+  setAttentionHeroCollapsed(login.id, collapsed === true);
 }
 
 // "Snooze" on the dashboard Coaching widget (findings bus, #39; renamed from "Not

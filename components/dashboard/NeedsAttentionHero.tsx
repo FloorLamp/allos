@@ -16,7 +16,6 @@ import {
   IconTemperature,
   IconClipboardPlus,
   IconCircleCheck,
-  IconArrowRight,
   type TablerIcon,
 } from "@tabler/icons-react";
 import SubmitButton from "@/components/SubmitButton";
@@ -27,10 +26,12 @@ import {
   groupAttentionForCard,
   attentionCardItems,
   attentionCountLabel,
+  attentionHeroState,
   moreInUpcomingCount,
   planAttentionMoreLinks,
   type CardBand,
 } from "@/lib/attention";
+import AttentionHeroCard from "@/components/dashboard/AttentionHeroCard";
 import {
   isItemSuppressibleFlag,
   upcomingDueText,
@@ -187,13 +188,23 @@ function Row({
 export default function NeedsAttentionHero({
   items,
   today,
+  preferCollapsed,
+  saveCollapsed,
 }: {
   items: UpcomingItem[];
   today: string;
+  // The VIEWER's stored collapse preference (issue #1413, per-login). Only ever a
+  // request: attentionHeroState ignores it for a safety-locked or empty hero.
+  preferCollapsed: boolean;
+  saveCollapsed: (collapsed: boolean) => Promise<void>;
 }) {
   const groups = groupAttentionForCard(items, today);
   // The badge / count is the CARD subset — the act-now slice, NOT the full model.
   const count = attentionCardItems(items, today).length;
+  // The resolved collapse decision (#1413 section B). Computed in lib/attention so
+  // the #449 contract — count always visible, safety items never compacted — is
+  // pinned by unit tests rather than by what this JSX happens to render.
+  const heroState = attentionHeroState(items, today, preferCollapsed);
   // The far-future scheduled work the card hides, waiting on the Upcoming page. A
   // strict subset guarantees this reconciles with the page's total.
   const more = moreInUpcomingCount(items, count);
@@ -233,38 +244,18 @@ export default function NeedsAttentionHero({
     );
   }
 
+  // The card chrome (section, heading, count badge, collapse toggle) is owned by the
+  // client shell — the collapse state drives the heading as well as the body, and the
+  // #449 always-visible count lives there. Everything below is the BODY: the item
+  // rows, which keep their inline Server Action forms and stay server-rendered.
   return (
-    <section
-      data-testid="needs-attention"
-      aria-label="Needs attention"
-      className="card border-l-4 border-l-brand-500 dark:border-l-brand-400"
+    <AttentionHeroCard
+      count={count}
+      topBand={heroState.topBand}
+      locked={heroState.locked}
+      initialCollapsed={heroState.collapsed}
+      saveCollapsed={saveCollapsed}
     >
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="flex items-center gap-2 font-semibold text-slate-800 dark:text-slate-100">
-          <IconAlertTriangle
-            className="h-5 w-5 text-brand-600 dark:text-brand-400"
-            stroke={1.75}
-            aria-hidden="true"
-          />
-          Needs attention
-          {count > 0 && (
-            <span
-              data-testid="attention-count"
-              className="rounded-full bg-brand-100 px-2 py-0.5 text-xs font-semibold text-brand-700 dark:bg-brand-500/20 dark:text-brand-300"
-            >
-              {count}
-            </span>
-          )}
-        </h2>
-        <Link
-          href="/upcoming"
-          aria-label="View all needs attention"
-          className="text-xs text-brand-600 hover:underline dark:text-brand-400"
-        >
-          View all <IconArrowRight className="inline h-4 w-4" />
-        </Link>
-      </div>
-
       <div className="space-y-4">
         {groups.map((group) => (
           <div key={group.band}>
@@ -316,6 +307,6 @@ export default function NeedsAttentionHero({
           </Link>
         )}
       </div>
-    </section>
+    </AttentionHeroCard>
   );
 }
