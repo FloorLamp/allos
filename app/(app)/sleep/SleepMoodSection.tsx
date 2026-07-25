@@ -206,7 +206,7 @@ export default function SleepMoodSection({
                       className="px-3 py-6 text-center text-slate-500 dark:text-slate-400"
                       data-testid="sleep-mood-history-empty"
                     >
-                      No sleep, stage, or mood entries in the past {windowDays}
+                      No sleep, stage, or mood entries in the past {windowDays}{" "}
                       days.
                     </td>
                   </tr>

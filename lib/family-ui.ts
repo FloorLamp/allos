@@ -6,6 +6,12 @@
 // lib/grants.ts and the deletion guards in lib/family-deletion.ts.
 
 import { grantSignature, type Access } from "@/lib/grants";
+import { plural } from "@/lib/plural";
+
+// `plural` used to be defined here. It's domain-free copy machinery, so it moved
+// to lib/plural.ts (#1447) — re-exported so this module's existing callers and
+// tests keep importing it from where they always have.
+export { plural };
 
 // The member logins (with their granted profile ids) that a profile deletion
 // would consult — computed from the grant matrix. Admins are excluded (they
@@ -17,11 +23,6 @@ export function memberGrantList(
   return logins
     .filter((a) => a.role === "member")
     .map((a) => ({ username: a.username, profileIds: grants[a.id] ?? [] }));
-}
-
-// Tiny count-aware word picker for the deletion summary line.
-export function plural(n: number, one: string, many: string): string {
-  return n === 1 ? one : many;
 }
 
 // The itemized "This erases …" clause for a profile-deletion confirmation, or a

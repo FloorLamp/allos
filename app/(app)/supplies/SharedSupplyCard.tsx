@@ -156,8 +156,7 @@ export default function SharedSupplyCard({
             data-testid="shared-supply-hidden-members"
           >
             +{pool.hiddenMemberCount} other household member
-            {pool.hiddenMemberCount === 1 ? "" : "s"} you don&rsquo;t have
-            access to
+            {pool.hiddenMemberCount === 1 ? "" : "s"} you don’t have access to
           </p>
         )}
       </div>

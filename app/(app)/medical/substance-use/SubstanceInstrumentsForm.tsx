@@ -163,7 +163,7 @@ export default function SubstanceInstrumentsForm({
           data-testid="substance-total-only-note"
         >
           The {def.title} is answered with a clinician or on paper; its question
-          text isn&rsquo;t reproduced here. Enter the total score (0–
+          text isn’t reproduced here. Enter the total score (0–
           {def.maxTotal}).
         </p>
       )}
