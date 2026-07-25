@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { settledClick, followLink } from "./helpers";
 
 // #1485 G — Trends opens on 90D, and a sparse series shows its latest reading.
@@ -25,6 +25,17 @@ import { settledClick, followLink } from "./helpers";
 const SPARSE_ANALYTE = "Free T4";
 const SPARSE_LATEST = "1.3 ng/dL"; // its newest reading, in its own unit
 
+// A range pill, located EXACTLY. Playwright matches an accessible name by
+// case-insensitive SUBSTRING by default, and the movers digest sits on this same
+// page rendering its chips as LINKS labelled "… over 90d" (lib/trends-digest) —
+// so a bare { name: "90D" } resolves to the pill AND to any chip whose series
+// spans exactly the window, a strict-mode violation that fires only on the run
+// dates where such a mover exists. Bounding the default window (#1485 G) is what
+// brought those "7d"/"30d"/"90d" fragments into reach: under all time the span was
+// the whole history and could never collide.
+const rangePill = (page: Page, label: string) =>
+  page.getByRole("link", { name: label, exact: true });
+
 // The seeded genomics marker (e2e/seed-events.ts): STARRED, dated 2023, and
 // qualitative — 'e3/e4' has no numeric value at all, so nothing can be plotted for
 // it under any window. Read-only here; the spec stars nothing to use it.
@@ -37,27 +48,21 @@ test("a no-param load opens on 90D, with All time one tap away", async ({
 
   // The lit pill is the answer to "what window am I looking at?", so the default
   // has to LIGHT one — a window matching no pill would read as custom.
-  await expect(page.getByRole("link", { name: "90D" })).toHaveAttribute(
+  await expect(rangePill(page, "90D")).toHaveAttribute("aria-current", "page");
+  await expect(rangePill(page, "All time")).not.toHaveAttribute(
     "aria-current",
     "page"
   );
-  await expect(
-    page.getByRole("link", { name: "All time" })
-  ).not.toHaveAttribute("aria-current", "page");
 
   // All time still reachable in one tap — and it must SURVIVE, which is the whole
   // reason it needs an explicit sentinel: it used to clear the params, and a
   // cleared URL is now the default.
-  await followLink(
-    page,
-    page.getByRole("link", { name: "All time" }),
-    /range=all/
-  );
-  await expect(page.getByRole("link", { name: "All time" })).toHaveAttribute(
+  await followLink(page, rangePill(page, "All time"), /range=all/);
+  await expect(rangePill(page, "All time")).toHaveAttribute(
     "aria-current",
     "page"
   );
-  await expect(page.getByRole("link", { name: "90D" })).not.toHaveAttribute(
+  await expect(rangePill(page, "90D")).not.toHaveAttribute(
     "aria-current",
     "page"
   );
@@ -66,7 +71,7 @@ test("a no-param load opens on 90D, with All time one tap away", async ({
   // dropped here would silently rewind the user to 90D.
   await followLink(page, page.getByRole("tab", { name: "Body" }), /tab=body/);
   await expect(page).toHaveURL(/range=all/);
-  await expect(page.getByRole("link", { name: "All time" })).toHaveAttribute(
+  await expect(rangePill(page, "All time")).toHaveAttribute(
     "aria-current",
     "page"
   );
@@ -81,7 +86,7 @@ test("an explicit window in the URL always wins over the default", async ({
   await expect(page.getByTestId("range-summary-chip")).toHaveText(
     "2026-01-01 → 2026-02-01"
   );
-  await expect(page.getByRole("link", { name: "90D" })).not.toHaveAttribute(
+  await expect(rangePill(page, "90D")).not.toHaveAttribute(
     "aria-current",
     "page"
   );

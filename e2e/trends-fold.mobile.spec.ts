@@ -27,7 +27,15 @@ test.describe("the custom From/To form collapses behind a Custom… pill (A)", (
     await page.goto("/trends");
 
     // The chip row is what a phone gets first.
-    await expect(page.getByRole("link", { name: "30D" })).toBeVisible();
+    // `exact` is load-bearing, not decoration: Playwright matches an accessible
+    // name by case-insensitive SUBSTRING by default, and the movers digest on this
+    // same page renders its chips as LINKS labelled "… over 30d" (lib/trends-digest).
+    // A bare { name: "30D" } therefore matches the pill AND any chip whose series
+    // spans exactly the window — a strict-mode violation that appears only on the
+    // run dates where such a mover exists.
+    await expect(
+      page.getByRole("link", { name: "30D", exact: true })
+    ).toBeVisible();
 
     const toggle = page.getByTestId("custom-range-toggle");
     await expect(toggle).toBeVisible();
@@ -143,7 +151,9 @@ test.describe("one chip row, one range chip (C + D)", () => {
   }) => {
     await page.goto("/trends");
 
-    await expect(page.getByRole("link", { name: "All time" })).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "All time", exact: true })
+    ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Save current" })
     ).toBeAttached();
