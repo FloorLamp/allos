@@ -4,6 +4,27 @@
       "date": "2026-07-25",
       "entries": [
         {
+          "pr": 1507,
+          "title": "Trends opens on the last 90 days",
+          "body": "Trends now defaults to a 90-day window instead of all time, so every chart leads with recent change rather than a lifetime average — and \"All time\" is still one tap away (links and saved views that meant all-time keep meaning it). A saved biomarker with no readings in the window shows its latest reading with an honest age (\"55 ng/mL · 5 mo ago\") instead of an empty tile, so stale never reads as current.",
+          "kind": "feature",
+          "issues": [1485]
+        },
+        {
+          "pr": 1514,
+          "title": "Upcoming rows get one menu, and copy reads right",
+          "body": "Preventive items on Upcoming showed two identical \"⋯\" menus (two independent menus composing on one row) — now one merged menu, with a fixed-width status column so the Overdue label stops jumping and a mobile action row that folds secondary actions into the menu instead of wrapping. A copy sweep also fixed a subtle rendering bug that ate the space after bold text on ten pages, singular/plural slips (\"1 errors\"), and developer jargon in help text.",
+          "kind": "fix",
+          "issues": [1446, 1447]
+        },
+        {
+          "pr": 1508,
+          "title": "Health-record pages read as one family",
+          "body": "The Problems tab joins the records pattern — Conditions and Allergies as proper sub-pages with the family's pill navigation, so an allergy link lands on the list itself. Filters unify into one outline-pill style across the record tabs, heading sizes settle into one hierarchy, and the journal's form-check section now appears only on activities that actually have clips, with adding one moved into the activity editor.",
+          "kind": "feature",
+          "issues": [1449, 1457]
+        },
+        {
           "pr": 1494,
           "title": "Share a lab PDF straight into your record",
           "body": "Install the app and your phone's share sheet gains an Allos target: share a PDF or a photo of a document from any app and it lands in the medical-upload pipeline — same per-person storage, duplicate detection, and AI extraction as the upload form — then opens the stored document so you can watch extraction and reassign it if it belongs to another family member. The upload form also gains a take-a-photo option on phones.",
