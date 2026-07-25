@@ -13,9 +13,19 @@ import { buildMp4Fixture } from "../lib/video/fixture";
 // path end to end on the training FORM-CHECK surface — the native file-input
 // upload → poster-first grid → open-to-play (the <video> loads only on open) →
 // the id-AND-profile-scoped serve route honoring an HTTP Range request (206) →
-// the location-metadata privacy warning → delete round trip. The symptom/episode
-// surface renders the SAME shared VideoClipGrid component, so this one browser
-// test exercises the identical upload/player/warning contract both surfaces use.
+// the location-metadata privacy warning → delete round trip.
+//
+// It also pins the #1457 PRESENCE RULES, which split the surface in two: the
+// Journal card shows the strip ONLY when clips exist (read/playback + per-clip
+// edit/delete, no add), and the activity EDITOR's More-details block is where a
+// clip gets attached (always rendered, empty state included, edit mode only —
+// an upload needs a saved activityId). So the walk is: no section → open editor →
+// add → the card's section appears → delete the last clip → it disappears again.
+//
+// The symptom/episode surface renders the SAME shared VideoClipGrid component, so
+// this one browser test exercises the identical upload/player/warning contract both
+// surfaces use. (Only the training tenant moved its add affordance — the symptom
+// strip keeps `showAdd`'s default, so its behavior is untouched.)
 //
 // Fixture discipline (#868): everything runs as the DEDICATED e2e_video member
 // acting on its own seeded profile (one seeded activity) in its own cookie
@@ -93,25 +103,60 @@ test("upload → poster grid → open player → Range serve → location warnin
     const aid = activityId();
     await page.goto("/training");
 
-    // The seeded activity's form-check strip renders (empty), with the add button.
-    const strip = page.getByTestId(`activity-video-strip-${aid}`);
-    await expect(strip).toBeVisible();
-    await expect(strip.getByTestId("video-clip-add")).toBeVisible();
+    // #1457: with no clips, the card carries NO form-check section at all — no
+    // heading, no empty text, no button. It used to render on every writable
+    // activity regardless of type or content.
+    await expect(page.getByTestId(`activity-video-strip-${aid}`)).toHaveCount(
+      0
+    );
 
-    // Upload a location-tagged synthetic clip via the strip's file input.
+    // The add affordance now lives in the activity editor. Open it from the card
+    // title (openEdit → EDIT mode, which is where an activityId exists).
+    const card = page
+      .getByRole("main")
+      .locator('[id^="activity-"]')
+      .filter({ hasText: "Squat session (e2e)" })
+      .first(); // first-ok: the fixture profile's one seeded activity — order-agnostic
+    await card.getByRole("button", { name: "Squat session (e2e)" }).click();
+
+    // Form check sits inside the collapsible More details section. The seeded
+    // activity has no notes/estimate/route, so the disclosure starts closed.
+    await page
+      .locator('[data-testid="activity-more-details"] button[aria-expanded]')
+      .click();
+    const formCheck = page.getByTestId("activity-form-check");
+    await expect(formCheck).toBeVisible({ timeout: 20_000 });
+    const editorStrip = formCheck.getByTestId(`activity-video-strip-${aid}`);
+    await expect(editorStrip.getByTestId("video-clip-add")).toBeVisible();
+
+    // Upload a location-tagged synthetic clip via the editor's file input.
     const clip = buildMp4Fixture({
       durationSec: 8,
       creationDate: "2026-05-01",
       location: true,
     });
-    await strip.getByTestId("video-clip-input").setInputFiles({
+    await editorStrip.getByTestId("video-clip-input").setInputFiles({
       name: "form-check.mp4",
       mimeType: "video/mp4",
       buffer: clip,
     });
 
-    // The clip lands in the grid (server-sniffed, stored) and its location-
-    // metadata privacy note renders.
+    // The clip lands in the editor's grid (server-sniffed, stored) and its
+    // location-metadata privacy note renders.
+    await expect(
+      editorStrip.locator('[data-testid^="video-clip-item-"]').first() // first-ok: the fixture profile owns exactly one clip after the isolated cleanup
+    ).toBeVisible({ timeout: 20_000 });
+    await expect(
+      editorStrip.locator('[data-testid^="video-clip-location-"]')
+    ).toBeVisible();
+
+    // …and now that a clip EXISTS, the card's strip appears — the presence rule's
+    // other half. A fresh load also drops the editor.
+    await page.goto("/training");
+    const strip = page.getByTestId(`activity-video-strip-${aid}`);
+    await expect(strip).toBeVisible();
+    // Read surface: playback and per-clip controls, but no add affordance here.
+    await expect(strip.getByTestId("video-clip-add")).toHaveCount(0);
     const clipTile = strip.locator('[data-testid^="video-clip-item-"]').first(); // first-ok: the fixture profile owns exactly one clip after the isolated cleanup
     await expect(clipTile).toBeVisible({ timeout: 20_000 });
     await expect(
@@ -150,11 +195,13 @@ test("upload → poster grid → open player → Range serve → location warnin
     expect(bogus.status()).toBe(404);
     expect(await bogus.json()).toEqual({ ok: false, error: "not found" });
 
-    // Delete → the grid empties again (no confirm dialog on the strip delete).
+    // Delete → the card's per-clip control still works (only ADD moved away), and
+    // with the last clip gone the whole section disappears again (#1457).
     await settledClick(page, strip.getByTestId(`video-clip-delete-${clipId}`));
-    await expect(
-      strip.locator('[data-testid^="video-clip-item-"]')
-    ).toHaveCount(0, { timeout: 20_000 });
+    await expect(page.getByTestId(`activity-video-strip-${aid}`)).toHaveCount(
+      0,
+      { timeout: 20_000 }
+    );
   } finally {
     await page.context().close();
   }

@@ -221,7 +221,10 @@ describe("row shapers", () => {
         onset_date: null,
         code: "I10",
       })
-    ).toMatchObject({ href: "/records/problems/conditions", detail: "active · I10" });
+    ).toMatchObject({
+      href: "/records/problems/conditions",
+      detail: "active · I10",
+    });
     expect(
       allergyItem({
         id: 1,
@@ -230,7 +233,10 @@ describe("row shapers", () => {
         severity: "moderate",
         status: "active",
       })
-    ).toMatchObject({ href: "/records/problems/allergies", title: "Penicillin" });
+    ).toMatchObject({
+      href: "/records/problems/allergies",
+      title: "Penicillin",
+    });
     expect(
       immunizationItem({
         id: 1,

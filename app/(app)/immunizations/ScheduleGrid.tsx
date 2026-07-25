@@ -245,6 +245,7 @@ export default function ScheduleGrid({
 
   return (
     <div
+      data-testid="cdc-schedule-grid"
       className="card overflow-x-auto p-0"
       onMouseLeave={() => {
         setTip(null);

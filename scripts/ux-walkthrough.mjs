@@ -1040,7 +1040,8 @@ async function ccdJourney(browser) {
   await shot(page, "ccd-results-after");
   if (landed) log("ccd: structured import landed (lab visible on Results)");
   // The condition + allergy from the Problems/Allergies sections.
-  await visit(page, "/records/problems", 1500);
+  await visit(page, "/records/problems/conditions", 1500);
+  await visit(page, "/records/problems/allergies", 1500);
   await checkVisible(
     page,
     () => page.getByText("Asthma"),
