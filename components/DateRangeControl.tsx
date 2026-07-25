@@ -7,6 +7,7 @@ import {
   isQuickRangeActive,
   quickRanges,
   type DateRange,
+  type QuickRange,
 } from "@/lib/timeline-format";
 import {
   CustomRangeDisclosure,
@@ -63,6 +64,7 @@ export default function DateRangeControl({
   LinkComponent = DefaultLink,
   rightSlot,
   trailingChips,
+  extraRanges = [],
   idPrefix = "range",
 }: {
   basePath: string;
@@ -73,12 +75,13 @@ export default function DateRangeControl({
   LinkComponent?: LinkLike;
   rightSlot?: ReactNode;
   trailingChips?: ReactNode;
+  extraRanges?: QuickRange[];
   idPrefix?: string;
 }) {
-  const qrs = quickRanges(todayStr);
+  const qrs = [...extraRanges, ...quickRanges(todayStr)];
   // The one predicate behind both the default-open panel and the "Custom…" pill's
   // lit state (and, at the call sites, the range-summary chip) — lib/timeline-format.
-  const customActive = isCustomRange(range, todayStr);
+  const customActive = isCustomRange(range, todayStr, extraRanges);
   return (
     // `gap`, not `space-y`: the two rows swap visual order below `sm` via `order-*`,
     // and space-y's `> * + *` margin follows DOM order, so it would land the gap on

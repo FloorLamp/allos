@@ -3,13 +3,15 @@
 import { useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 
-// Collapsible quick-add panel for the Trends → Body tab (#1067 Phase 1).
+// Collapsible quick-add panel for the Trends Body and Vitals tabs (#1067 Phase 1,
+// adopted by Vitals in #1466).
 //
 // The Body tab is a READING surface, but on mobile you had to scroll past three
 // full entry forms (Body / Vitals / Growth) before the first chart. This wraps
 // those forms so that on MOBILE they collapse to a one-row "+ Log …" chip strip
 // (tap a chip to expand its form inline), while DESKTOP keeps the inline forms
-// exactly as before.
+// exactly as before. The Vitals tab (#1466) mounts the same component with its
+// single "vitals" item — same pattern, no second collapse implementation.
 //
 // Responsive-surfaces rule (CLAUDE.md): each form is authored ONCE (the shared
 // content) and rendered a single time here — never hand-mirrored into a
@@ -41,7 +43,10 @@ export default function QuickAddPanel({ items }: { items: QuickAddItem[] }) {
     // Auto-expand the deep-linked form so its own scroll/focus effect runs against
     // a VISIBLE element on mobile (initialized synchronously, so the first paint
     // already shows it — no race with the child's mount effect).
-    if (focus === "blood-pressure") s.add("vitals");
+    // Both of VitalsQuickAdd's own deep-link focus targets (#1083 / #800) — a
+    // `focus=` the child acts on must expand the form it acts on, or the effect
+    // runs against a display:none element and the phone gets nothing.
+    if (focus === "blood-pressure" || focus === "sleep") s.add("vitals");
     if (created === "weight" || created === "vitals") s.add("body");
     return s;
   });
