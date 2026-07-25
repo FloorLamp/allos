@@ -6,9 +6,7 @@ import { loginAs } from "./nav";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_MULTI,
-  E2E_LOGIN_SHELL,
   MULTI_SHARED_PROFILE,
-  SHELL_WEIGHT_KG,
 } from "./fixture-logins";
 
 // The mobile shell pass (issue #1416) — the phone chrome itself, which the
@@ -255,60 +253,57 @@ test.describe("fewer taps to common actions (#1416 B/E)", () => {
     await expect(primary).toHaveAttribute("data-quick-log-id", "log-weight");
   });
 
-  test("the quick-log sheet opens, reaches a real form, and closes", async ({
-    browser,
+  test("the quick-log sheet opens, opens a real form IN PLACE, and closes", async ({
+    page,
   }) => {
-    // The ONE write: a dedicated login in its own context (#868).
-    const page = await loginAs(
-      browser,
-      { username: E2E_LOGIN_SHELL, password: E2E_MEMBER_PASSWORD },
-      PHONE_CONTEXT
-    );
-    try {
-      await page.goto("/");
-      const sheet = page.getByTestId("quick-log-sheet");
-      await expect(sheet).toHaveCount(0);
+    // Read-only now: the sheet no longer NAVIGATES anywhere (#1468), so proving
+    // it "reaches a real form" costs nothing but a mount. The end-to-end write
+    // through that overlay — and its durability — lives in
+    // quick-log-overlay.mobile.spec.ts, which owns the fixture that writes.
+    await page.goto("/");
+    const sheet = page.getByTestId("quick-log-sheet");
+    await expect(sheet).toHaveCount(0);
 
-      await expect(async () => {
-        if (!(await sheet.isVisible())) {
-          await page.getByTestId("quick-log-more").click();
-        }
-        await expect(sheet).toBeVisible({ timeout: 1000 });
-      }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-tap the caret past the pre-hydration swallow (#500) — a pure client toggle, visibility-guarded so a late tap can't re-close it
-
-      // It is a real dialog with the drag-handle affordance (#1425's seam), and
-      // it lists every common log — including the ones this route did not promote.
-      await expect(sheet.getByRole("dialog")).toHaveAttribute(
-        "aria-modal",
-        "true"
-      );
-      await expect(sheet.getByTestId("sheet-drag-handle")).toBeVisible();
-      for (const id of ["log-activity", "log-food", "log-dose", "log-weight"]) {
-        await expect(sheet.getByTestId(`quick-log-${id}`)).toBeVisible();
+    await expect(async () => {
+      if (!(await sheet.isVisible())) {
+        await page.getByTestId("quick-log-more").click();
       }
+      await expect(sheet).toBeVisible({ timeout: 1000 });
+    }).toPass({ timeout: 20_000, intervals: [300, 700, 1500] }); // topass-ok: re-tap the caret past the pre-hydration swallow (#500) — a pure client toggle, visibility-guarded so a late tap can't re-close it
 
-      // Tapping a row closes the sheet and lands on the EXISTING form — no new
-      // write path was invented for the sheet.
-      await sheet.getByTestId("quick-log-log-weight").click();
-      await expect(sheet).toHaveCount(0);
-      await expect(page).toHaveURL(/\/trends\?tab=body&new=weight/);
-
-      // …and that form still saves, end to end.
-      await page.locator("#bm-weight").fill(SHELL_WEIGHT_KG);
-      await settledClick(
-        page,
-        page.getByRole("button", { name: "Save entry" })
-      );
-      await expect(page.getByText("Entry saved")).toBeVisible();
-      // Assert the stored row by TEXT rather than visibility: the history table
-      // lives in a horizontally-scrolling container at phone width, so a cell can
-      // be laid out and still not be on screen.
-      await expect(page.getByTestId("body-history-table")).toContainText(
-        SHELL_WEIGHT_KG
-      );
-    } finally {
-      await page.context().close();
+    // It is a real dialog with the drag-handle affordance (#1425's seam), and
+    // it lists every common log — including the ones this route did not promote,
+    // and vitals, which joined the list in #1467.
+    await expect(sheet.getByRole("dialog")).toHaveAttribute(
+      "aria-modal",
+      "true"
+    );
+    await expect(sheet.getByTestId("sheet-drag-handle")).toBeVisible();
+    for (const id of [
+      "log-activity",
+      "log-food",
+      "log-dose",
+      "log-weight",
+      "log-vitals",
+    ]) {
+      await expect(sheet.getByTestId(`quick-log-${id}`)).toBeVisible();
     }
+
+    // Tapping a row closes the sheet and opens the EXISTING form right here —
+    // no new write path, and no navigation (that is the #1468 rule).
+    const before = page.url();
+    await sheet.getByTestId("quick-log-log-weight").click();
+    await expect(sheet).toHaveCount(0);
+    const overlay = page.getByTestId("quick-entry-sheet");
+    await expect(overlay).toBeVisible();
+    await expect(page.locator("#bm-weight")).toBeVisible();
+    expect(page.url()).toBe(before);
+
+    // And it is transactional: dismissing discards, which is safe here (the
+    // activity editor deliberately stays a dock instead, #1428).
+    await page.keyboard.press("Escape");
+    await expect(overlay).toHaveCount(0);
+    expect(page.url()).toBe(before);
   });
 
   test("Escape and the backdrop both dismiss the sheet", async ({ page }) => {

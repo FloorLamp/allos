@@ -13,26 +13,47 @@
 //   * `QUICK_LOG_ITEMS` — the caret-opened sheet's full menu, so the actions the
 //     current route DOESN'T promote are still one tap away.
 //
-// No new write paths: every entry either opens the shared activity editor
-// through the ActivityEditor context (the same `openCreate` the bar always
-// called) or navigates to an EXISTING form, reusing the `FOCUS_PARAM`
-// convention (lib/palette-actions.ts) where the destination already honors it.
-// The target union is deliberately the palette's own `PaletteActionTarget`
-// shape — the palette and the bar are two surfaces over the same idea, and a
-// third divergent "how do I open a create form" encoding is how surfaces drift.
+// No new write paths: every entry opens an EXISTING form — the shared activity
+// editor through the ActivityEditor context (the same `openCreate` the bar
+// always called), or one of the existing quick-add form components mounted in
+// the shared quick-entry overlay (components/QuickEntryProvider.tsx). The target
+// union is deliberately the palette's own `PaletteActionTarget` shape — the
+// palette and the bar are two surfaces over the same idea, and a third divergent
+// "how do I open a create form" encoding is how surfaces drift.
+//
+// **Navigation is not a quick-log outcome (issue #1468, owner direction).** The
+// sheet used to be two-tier: activity opened in place while food/dose/weight
+// were `{kind:"navigate"}` `router.push`es, so a sheet that promises "log from
+// anywhere" dumped you on the Nutrition page mid-morning-check. Every SHEET item
+// is now an overlay target — the whole point of a quick logger is returning you
+// to where you were. `{kind:"navigate"}` stays in the union because the
+// CommandPalette shares it and the desktop keyboard flow may keep navigating in
+// v1 (deliberately a separate decision); the sheet ships zero navigate items,
+// and `lib/__tests__/quick-log.test.ts` pins that.
 
 import type { AppRoute } from "./hrefs";
-import { MEDICATIONS_HREF, nutritionTabHref } from "./hrefs";
-import { FOCUS_PARAM } from "./palette-actions";
+import { MEDICATIONS_HREF } from "./hrefs";
 
 // Icon keys resolved to real Tabler icons in components/QuickLogSheet.tsx (the
 // registry stays pure/serializable, like PALETTE_ACTIONS).
-export type QuickLogIcon = "barbell" | "salad" | "pill" | "scale";
+export type QuickLogIcon = "barbell" | "salad" | "pill" | "scale" | "heartbeat";
+
+// Which existing form the shared quick-entry overlay mounts (issue #1468). The
+// overlay host owns the form→component map; this stays a serializable key so the
+// registry is pure. `dose` is the today's-due-doses list whose confirm buttons
+// answer from the typed DoseTakenOutcome — the existing action, reached, never
+// re-implemented.
+export type QuickEntryForm = "food" | "weight" | "vitals" | "dose";
 
 export type QuickLogTarget =
-  // Open the shared activity editor overlay in place (no navigation).
+  // Open the shared activity editor in place (the DOCK — a live workout is a
+  // SESSION lifecycle, not a transactional one, so it deliberately stays off the
+  // bottom sheet; see the #1428 decision rule).
   | { kind: "activity" }
-  // Navigate to the existing create surface.
+  // Open the existing form in the shared quick-entry overlay, in place.
+  | { kind: "overlay"; form: QuickEntryForm }
+  // Navigate to the existing create surface. Retained for the CommandPalette;
+  // NO sheet item uses it (#1468).
   | { kind: "navigate"; href: AppRoute };
 
 export interface QuickLogItem {
@@ -68,30 +89,39 @@ export const QUICK_LOG_ITEMS: QuickLogItem[] = [
     label: "Log food",
     hint: "Today's servings by food group",
     icon: "salad",
-    // The Food tab IS the quick-add form; no focus param exists there, and
-    // inventing one would be a new surface contract for no gain.
-    target: { kind: "navigate", href: nutritionTabHref("food") },
+    // The SAME FoodLogBar the Nutrition → Food tab renders, mounted in the
+    // overlay — one component, two mounting contexts.
+    target: { kind: "overlay", form: "food" },
   },
   {
     id: "log-dose",
     label: "Log dose",
     hint: "Confirm a scheduled or as-needed dose",
     icon: "pill",
-    // The Medications page's Today panel holds the dose-confirm buttons — the
-    // existing write path (markDoseTaken), reached, not re-implemented.
-    target: { kind: "navigate", href: MEDICATIONS_HREF },
+    // Today's due doses with the existing confirm control (markDoseTaken, whose
+    // typed DoseTakenOutcome the buttons answer from) — reached, never
+    // re-implemented.
+    target: { kind: "overlay", form: "dose" },
   },
   {
     id: "log-weight",
     label: "Log weight",
-    hint: "Bodyweight and vitals",
+    hint: "Bodyweight, body fat, resting HR",
     icon: "scale",
-    // The SAME href the palette's "Log weight" action uses — BodyQuickAdd reads
-    // `?new=weight` and focuses its weight field on arrival.
-    target: {
-      kind: "navigate",
-      href: `/trends?tab=body&${FOCUS_PARAM}=weight`,
-    },
+    // BodyQuickAdd — the same component the Trends → Body tab mounts.
+    target: { kind: "overlay", form: "weight" },
+  },
+  {
+    id: "log-vitals",
+    label: "Log vitals",
+    hint: "Blood pressure, glucose, oxygen, sleep",
+    icon: "heartbeat",
+    // Issue #1467: for a manual logger a BP/HR/SpO2 reading is among the most
+    // frequent daily writes, and its only entry points were mid-page on a
+    // secondary surface (Trends → Vitals / Body). The sheet is the right global
+    // home — exactly as it already is for weight. Same VitalsQuickAdd component,
+    // same addVitals action; only the mount changes.
+    target: { kind: "overlay", form: "vitals" },
   },
 ];
 

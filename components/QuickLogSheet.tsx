@@ -1,15 +1,16 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import {
   IconBarbell,
   IconChevronRight,
+  IconHeartbeat,
   IconPill,
   IconSalad,
   IconScale,
 } from "@tabler/icons-react";
 import BottomSheet from "./BottomSheet";
 import { useActivityEditor } from "./ActivityEditorProvider";
+import { useQuickEntry } from "./QuickEntryProvider";
 import {
   quickLogMenu,
   type QuickLogIcon,
@@ -20,17 +21,21 @@ import {
 // ONE contextual action, and the caret beside it opens this — every common log,
 // one tap from anywhere.
 //
-// It creates nothing itself. Each row either opens the shared activity editor
-// through the ActivityEditor context (the same call the bar has always made) or
-// navigates to the EXISTING create surface, so there is no second write path to
-// keep in sync — the registry in lib/quick-log.ts is the only thing that knows
-// which is which, and it is pure and unit-tested.
+// It creates nothing itself, and since #1468 it NAVIGATES nowhere either: every
+// row opens a form in place — the shared activity editor through the
+// ActivityEditor context (the same call the bar has always made), or an existing
+// quick-add form in the shared quick-entry overlay. So "log from anywhere" now
+// also means "and stay where you were", which is the entire point of a quick
+// logger. There is still no second write path to keep in sync — the registry in
+// lib/quick-log.ts is the only thing that knows which row opens which, and it is
+// pure and unit-tested (including that no sheet row is a `navigate` target).
 
 const ICONS: Record<QuickLogIcon, typeof IconBarbell> = {
   barbell: IconBarbell,
   salad: IconSalad,
   pill: IconPill,
   scale: IconScale,
+  heartbeat: IconHeartbeat,
 };
 
 export default function QuickLogSheet({
@@ -44,16 +49,20 @@ export default function QuickLogSheet({
   // dropped (lib/quick-log.ts owns that rule).
   restricted?: boolean;
 }) {
-  const router = useRouter();
   const { openCreate } = useActivityEditor();
+  const { open: openQuickEntry } = useQuickEntry();
   const items = quickLogMenu(restricted);
 
   function run(item: QuickLogItem) {
-    // Close first: the activity editor is its own overlay, and navigating with
-    // the sheet still mounted would leave a locked body scroll behind.
+    // Close first: whatever opens next is its own overlay, and stacking a second
+    // one under this sheet would leave a locked body scroll behind when the
+    // inner surface closes.
     onClose();
     if (item.target.kind === "activity") openCreate();
-    else router.push(item.target.href);
+    else if (item.target.kind === "overlay") openQuickEntry(item.target.form);
+    // No `navigate` branch: the registry guarantees no sheet row carries one
+    // (#1468), and the exhaustive union makes a future one a compile error here
+    // rather than a silent dead row.
   }
 
   return (
@@ -61,7 +70,7 @@ export default function QuickLogSheet({
       open={open}
       onClose={onClose}
       title="Quick log"
-      description="Jump straight to the form for what you're recording."
+      description="Log it right here — you'll stay on this page."
       testId="quick-log-sheet"
     >
       <ul className="flex flex-col gap-1 pb-1">
