@@ -11,6 +11,7 @@ import {
   PRESENCE_PROFILE,
 } from "./fixture-logins";
 import { workerDbPath } from "./worker-env";
+import { hydratedClick } from "./helpers";
 
 // Derived workout presence (issue #921), driven end-to-end:
 //   • the household presence chip (grants-scoped, active-only),
@@ -110,8 +111,14 @@ test("a live workout raises the dock, and discarding it removes the dock", async
   await expect(page.getByTestId("workout-dock")).toContainText(/\d+ min/);
 
   // Reopen from the dock, then discard the draft — presence goes idle, dock gone.
-  await page.getByTestId("workout-dock-open").click();
-  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  // hydratedClick on both: this follows a fresh goto, and a bare click swallowed
+  // pre-hydration leaves the editor closed — the Delete wait then burns the whole
+  // test timeout (CI shard-4 red on 53c76df; the #1556 class).
+  await hydratedClick(page, page.getByTestId("workout-dock-open"));
+  await hydratedClick(
+    page,
+    page.getByRole("button", { name: "Delete", exact: true })
+  );
   await page
     .getByRole("dialog")
     .getByRole("button", { name: "Delete", exact: true })
