@@ -50,6 +50,9 @@ function firstParam(value: string | string[] | undefined): string | undefined {
 export default async function TrendsPage(props: {
   searchParams: Promise<{
     tab?: string | string[];
+    // The RETIRED nested Fitness strip (#1492) — read only so an old deep link can
+    // still name the Fitness tab through parseTab; the value itself is ignored and
+    // never re-emitted into a hub link.
     ftab?: string | string[];
     from?: string | string[];
     to?: string | string[];
@@ -86,8 +89,10 @@ export default async function TrendsPage(props: {
   // parseTab also maps the RETIRED `?tab=vitals` onto body (#1486) and
   // `?tab=compare` onto insights (#1489) — vocabulary mappings in
   // lib/trends-tabs.ts, so every old deep link lands on the tab that absorbed it,
-  // compare params and all.
-  const requestedTab = parseTab(searchParams.tab);
+  // compare params and all. The retired NESTED `?ftab=` (#1492) maps the same way:
+  // it names Fitness when no live `?tab=` is present, and its value is then ignored
+  // (the tab is sections now, so there is nothing left for it to select).
+  const requestedTab = parseTab(searchParams.tab, searchParams.ftab);
   const activeTab = isTabRestricted(requestedTab, restricted)
     ? "overview"
     : requestedTab;
@@ -98,10 +103,6 @@ export default async function TrendsPage(props: {
   // stack). Only meaningful on the Body tab; carried through the range control + tab
   // navigation so a chosen layout survives a window change.
   const bodyView = parseBodyView(firstParam(searchParams.view));
-  // The Fitness section's nested strip (Strength/Cardio/Sport) is also driven by
-  // the URL (?ftab=), so — like the top-level tab — only the active nested
-  // section is built server-side. FitnessSection validates/defaults this.
-  const ftab = firstParam(searchParams.ftab);
   // The "1D" pill (#1466), injected through the shared control's extra-ranges slot.
   // It moved to Body with the vitals (#1486) and stays scoped to that ONE tab on
   // purpose: 1D is only meaningful where the surface swaps to genuinely intraday
@@ -195,7 +196,7 @@ export default async function TrendsPage(props: {
       case "nutrition":
         return <NutritionSection range={range} />;
       case "fitness":
-        return <FitnessSection ftab={ftab} />;
+        return <FitnessSection range={range} />;
       case "insights":
         // The hub's "derived views" tab: AI insights + situation analytics (both
         // age-gated INSIDE the section) plus the compare overlay, which is

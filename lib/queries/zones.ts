@@ -82,18 +82,27 @@ export interface TrainingZoneData {
   windowWeeks: number;
 }
 
-// Everything the Trends Fitness zone section needs, over the trailing `weeks`
-// weeks. hasHrData distinguishes "no zone model" (needs age/override) from "model
-// but no synced HR yet" so the surface can explain the right next step.
+// Everything the Trends Fitness zone section needs, over the `weeks` weeks ending
+// on `endDate` (default today). hasHrData distinguishes "no zone model" (needs
+// age/override) from "model but no synced HR yet" so the surface can explain the
+// right next step.
+//
+// `weeks`/`endDate` are how the section honors the Trends hub's shared range
+// (#1492) — the SAME computation with a window parameter, never a second windowed
+// zone engine. `currentWeekZone2` stays anchored to the profile's REAL current
+// week (it answers "this week", not "the last week of the window"); the surface
+// hides it when the window doesn't reach today.
 export function getTrainingZoneData(
   profileId: number,
-  weeks = 12
+  weeks = 12,
+  endDate?: string
 ): TrainingZoneData {
   const td = today(profileId);
-  const since = shiftDateStr(td, -(weeks * 7 - 1));
+  const end = endDate ?? td;
+  const since = shiftDateStr(end, -(weeks * 7 - 1));
   const zone2Target = getZone2WeeklyTargetMin(profileId);
   const model = getProfileZoneModel(profileId);
-  const buckets = hrBuckets(profileId, since);
+  const buckets = hrBuckets(profileId, since, end);
   const hasHrData = buckets.length > 0;
 
   const emptySplit: PolarizedSplit = {

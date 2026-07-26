@@ -145,14 +145,20 @@ export interface CardioWeeklyVolume {
 // Weekly cardio training time (minutes), stacked by activity, over the last
 // `weeks` weeks that have data. Duration is the universal metric — every cardio
 // effort has it (unlike distance), so HIIT/rowing-without-distance are included.
+//
+// `since`/`until` bound the underlying effort scan to a window (#1492): the same
+// computation, windowed — the Trends → Fitness lens passes the hub's shared range
+// and the week count that window is worth, /training passes neither.
 export function getCardioVolumeByWeek(
   profileId: number,
-  weeks = 12
+  weeks = 12,
+  since?: string,
+  until?: string
 ): CardioWeeklyVolume {
   const weekStart = getWeekStart(profileId);
   const byWeek = new Map<string, Map<string, number>>();
   const activityTotals = new Map<string, number>();
-  for (const e of effortEntries(profileId, "cardio")) {
+  for (const e of effortEntries(profileId, "cardio", since, until)) {
     const wk = startOfWeekStr(e.date, weekStart);
     let m = byWeek.get(wk);
     if (!m) byWeek.set(wk, (m = new Map()));
@@ -196,10 +202,15 @@ export interface IntensityBucket {
 }
 
 // Cardio time + session counts grouped by intensity, for the intensity-mix bar.
-export function getCardioIntensityMix(profileId: number): IntensityBucket[] {
+// `since`/`until` window the same computation (#1492).
+export function getCardioIntensityMix(
+  profileId: number,
+  since?: string,
+  until?: string
+): IntensityBucket[] {
   const order = ["easy", "moderate", "hard"];
   const buckets = new Map<string, { minutes: number; sessions: number }>();
-  for (const e of effortEntries(profileId, "cardio")) {
+  for (const e of effortEntries(profileId, "cardio", since, until)) {
     const key = (e.intensity ?? "").trim().toLowerCase();
     const norm = order.includes(key) ? key : "unspecified";
     const b = buckets.get(norm) ?? { minutes: 0, sessions: 0 };
@@ -238,13 +249,17 @@ export interface SportStat {
   recent: CardioSessionSummary[];
 }
 
+// `since`/`until` window the same computation (#1492) — the Trends → Fitness Sport
+// section reports the window's sessions, /training keeps the lifetime record.
 export function getSportByActivity(
   profileId: number,
   prefs: DisplayFormatPrefs = DEFAULT_FORMAT_PREFS,
-  recentLimit = 10
+  recentLimit = 10,
+  since?: string,
+  until?: string
 ): SportStat[] {
   const map = new Map<string, SportStat>();
-  for (const e of effortEntries(profileId, "sport")) {
+  for (const e of effortEntries(profileId, "sport", since, until)) {
     const key = e.name.toLowerCase();
     let cur = map.get(key);
     if (!cur) {

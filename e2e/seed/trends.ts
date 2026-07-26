@@ -18,6 +18,10 @@ import {
   E2E_LOGIN_TRENDS_COMPARE,
   TRENDS_COMPARE_PROFILE,
   TRENDS_COMPARE_VIEW,
+  E2E_LOGIN_TRENDS_FITNESS,
+  TRENDS_FITNESS_PROFILE,
+  TRENDS_FITNESS_LIFT,
+  TRENDS_FITNESS_OLD_LIFT,
 } from "../fixture-logins";
 import { ins, seedMemberLogin, fixtureProfileId } from "./common";
 
@@ -178,5 +182,117 @@ export function seedCompareFold(): void {
   seedMemberLogin(E2E_LOGIN_TRENDS_COMPARE, cmpId, "write");
   console.log(
     `e2e: seeded compare-fold fixture — profile ${cmpId} (${TRENDS_COMPARE_PROFILE}) (#1489)`
+  );
+}
+
+// ── Fitness becomes the windowed analytics lens ──
+export function seedFitnessLens(): void {
+  // ── Trends → Fitness windowed-lens fixture (#1492) ───────────────────────────
+  // A dedicated ADULT profile whose training data STRADDLES the 90-day default
+  // window, so the browser tier can watch a range change re-window every chart:
+  //
+  //   INSIDE (relative dates, 5–70 days ago → always within 90D)
+  //     • six Front Squat sessions on a rising load → the est-1RM trend + a mover
+  //     • four runs with per-component minutes → weekly cardio volume + intensity mix
+  //     • two tennis matches → the Sport section
+  //   OUTSIDE (DEEP PAST, 2026-01-* — never inside a relative window)
+  //     • two Pendlay Row sessions + one long ride + one long match, all of which
+  //       must be ABSENT at 90D and PRESENT at All time
+  //
+  // The inside dates are relative so the fixture never goes stale; the outside ones
+  // are fixed deep-past per the #1511 rule (relative OR deep-past, never fixed
+  // near-present). Read-only in its spec. Idempotent: its own rows are cleared and
+  // rewritten (child exercise_sets go first — they reach profile through the
+  // activity, so the parents can't be deleted under them).
+  const fitId = fixtureProfileId(TRENDS_FITNESS_PROFILE);
+  const fitToday = today(fitId);
+
+  db.prepare(
+    `DELETE FROM exercise_sets WHERE activity_id IN
+       (SELECT id FROM activities WHERE profile_id = ?)`
+  ).run(fitId);
+  db.prepare(`DELETE FROM activities WHERE profile_id = ?`).run(fitId);
+
+  const insActivity = db.prepare(
+    `INSERT INTO activities
+       (profile_id, date, type, title, duration_min, distance_km, intensity, components, source)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'manual')`
+  );
+  const insSet = db.prepare(
+    `INSERT INTO exercise_sets (activity_id, exercise, set_number, weight_kg, reps, warmup)
+     VALUES (?, ?, ?, ?, ?, 0)`
+  );
+
+  const lift = (date: string, exercise: string, weightKg: number): void => {
+    const id = Number(
+      insActivity.run(fitId, date, "strength", "Lift day", 50, null, null, null)
+        .lastInsertRowid
+    );
+    for (let set = 1; set <= 3; set++)
+      insSet.run(id, exercise, set, weightKg, 5);
+  };
+  const run = (date: string, minutes: number, intensity: string): void => {
+    insActivity.run(
+      fitId,
+      date,
+      "cardio",
+      "Run",
+      minutes,
+      8,
+      intensity,
+      JSON.stringify([
+        {
+          name: "Running",
+          type: "cardio",
+          duration_min: minutes,
+          distance_km: 8,
+        },
+      ])
+    );
+  };
+  const match = (date: string, minutes: number): void => {
+    insActivity.run(
+      fitId,
+      date,
+      "sport",
+      "Tennis match",
+      minutes,
+      null,
+      null,
+      JSON.stringify([{ name: "Tennis", type: "sport", duration_min: minutes }])
+    );
+  };
+
+  // Inside the 90-day window: a rising Front Squat, four runs, two matches.
+  for (const [ago, kg] of [
+    [70, 90],
+    [56, 95],
+    [42, 100],
+    [28, 105],
+    [14, 110],
+    [5, 115],
+  ] as const) {
+    lift(shiftDateStr(fitToday, -ago), TRENDS_FITNESS_LIFT, kg);
+  }
+  for (const [ago, minutes, intensity] of [
+    [60, 35, "easy"],
+    [40, 45, "easy"],
+    [20, 30, "moderate"],
+    [6, 40, "easy"],
+  ] as const) {
+    run(shiftDateStr(fitToday, -ago), minutes, intensity);
+  }
+  match(shiftDateStr(fitToday, -33), 60);
+  match(shiftDateStr(fitToday, -11), 75);
+
+  // Deep past — outside every relative window, visible only at All time.
+  lift("2026-01-06", TRENDS_FITNESS_OLD_LIFT, 70);
+  lift("2026-01-13", TRENDS_FITNESS_OLD_LIFT, 75);
+  run("2026-01-09", 120, "hard");
+  match("2026-01-16", 150);
+
+  seedMemberLogin(E2E_LOGIN_TRENDS_FITNESS, fitId, "read");
+  console.log(
+    `e2e: seeded Trends → Fitness windowed-lens fixture — profile ${fitId} (${TRENDS_FITNESS_PROFILE}) (#1492)`
   );
 }

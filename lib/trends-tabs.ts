@@ -1,4 +1,4 @@
-// The Trends hub's tab vocabulary (issue #1486, extended by #1489).
+// The Trends hub's tab vocabulary (issue #1486, extended by #1489 and #1492).
 //
 // Extracted out of app/(app)/trends/page.tsx so the tab set, the ?tab= parser and
 // the tab strip are a PURE, unit-tested decision instead of three inline literals
@@ -52,20 +52,49 @@ const TAB_ALIASES: Record<string, TrendsTab> = {
   compare: "insights",
 };
 
+// The RETIRED nested Fitness strip (#1492). Fitness used to carry a second
+// navigation level — `?ftab=strength|cardio|sport` — that re-mounted the /training
+// page's sections verbatim. It's gone: Fitness is now four windowed SECTIONS, so
+// there is no nested tab to select and no nested param to honor.
+//
+// Same vocabulary-mapping shape as TAB_ALIASES above, one level down: an old link
+// simply NAMES the Fitness tab by its nested value, and the value itself is then
+// IGNORED (there is nothing left for "cardio" to select — the Zones & cardio
+// section renders on the tab unconditionally). A `?tab=fitness&ftab=cardio` link
+// already carries its tab and needs nothing; the case this table exists for is a
+// link that lost (or never had) the outer `?tab=` — it still lands on Fitness
+// rather than silently on Overview.
+const RETIRED_FTABS: readonly string[] = ["strength", "cardio", "sport"];
+
 export const DEFAULT_TRENDS_TAB: TrendsTab = "overview";
 
 function isTrendsTab(v: string): v is TrendsTab {
   return (TRENDS_TABS as readonly string[]).includes(v);
 }
 
+function first(value: string | string[] | undefined): string | undefined {
+  const v = Array.isArray(value) ? value[0] : value;
+  const trimmed = v?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 // Resolve a raw `?tab=` value: a live tab name wins, a retired one maps through the
-// alias table, anything else falls back to the default.
-export function parseTab(value: string | string[] | undefined): TrendsTab {
-  const first = Array.isArray(value) ? value[0] : value;
-  const raw = first?.trim();
-  if (!raw) return DEFAULT_TRENDS_TAB;
-  if (isTrendsTab(raw)) return raw;
-  return TAB_ALIASES[raw] ?? DEFAULT_TRENDS_TAB;
+// alias table, anything else falls back to the default. `nested` is the legacy
+// `?ftab=` value (#1492) — consulted ONLY when `?tab=` names nothing live, so a
+// pre-#1492 deep link into a nested Fitness view still lands on Fitness.
+export function parseTab(
+  value: string | string[] | undefined,
+  nested?: string | string[] | undefined
+): TrendsTab {
+  const raw = first(value);
+  if (raw) {
+    if (isTrendsTab(raw)) return raw;
+    const alias = TAB_ALIASES[raw];
+    if (alias) return alias;
+  }
+  const ftab = first(nested);
+  if (ftab && RETIRED_FTABS.includes(ftab)) return "fitness";
+  return DEFAULT_TRENDS_TAB;
 }
 
 export interface TrendsTabEntry {

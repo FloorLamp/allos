@@ -86,6 +86,7 @@ import {
   seedBodyMobile,
   seedCuratedOverview,
   seedCompareFold,
+  seedFitnessLens,
 } from "./seed/trends";
 
 seedPrelude();
@@ -147,3 +148,4 @@ seedVitalsToday();
 seedTelegramDoseRound();
 seedCuratedOverview();
 seedCompareFold();
+seedFitnessLens();

@@ -11,10 +11,12 @@ import { followLink } from "./helpers";
 
 // Markers that are data-independent (always rendered by their section's chrome):
 //   Insights → the "Date to analyze" generate form
-//   Fitness  → the "Full Training →" link + nested Strength/Cardio/Sport strip
+//   Fitness  → its four windowed sections (#1492 replaced the nested
+//              Strength/Cardio/Sport strip and its "Full Training →" link with
+//              sections, so the marker is the section container's testid)
 // (Biomarkers left the Trends hub in #1164 — merged into Results.)
 const INSIGHTS_MARKER = "Date to analyze";
-const FITNESS_MARKER = "Full Training";
+const FITNESS_MARKER = "trends-fitness";
 
 test("direct navigation renders only the requested tab's section (#105)", async ({
   page,
@@ -26,7 +28,7 @@ test("direct navigation renders only the requested tab's section (#105)", async 
     "true"
   );
   await expect(page.getByText(INSIGHTS_MARKER)).toHaveCount(0);
-  await expect(page.getByText(FITNESS_MARKER)).toHaveCount(0);
+  await expect(page.getByTestId(FITNESS_MARKER)).toHaveCount(0);
   await expect(page.getByTestId("trajectory-findings")).toHaveCount(0);
 
   // The Overview tiles render (fed by the deduped one-source-per-day series and the
@@ -45,16 +47,21 @@ test("direct navigation renders only the requested tab's section (#105)", async 
     "true"
   );
   await expect(page.getByText(INSIGHTS_MARKER)).toBeVisible();
-  await expect(page.getByText(FITNESS_MARKER)).toHaveCount(0);
+  await expect(page.getByTestId(FITNESS_MARKER)).toHaveCount(0);
 
-  // Fitness: its link + nested strip render; the Insights form does not.
+  // Fitness: its four windowed sections render; the Insights form does not. There
+  // is NO nested tab strip any more (#1492) — the section navigation is in-page
+  // anchors, so no "Strength" tab exists to select.
   await page.goto("/trends?tab=fitness");
   await expect(page.getByRole("tab", { name: "Fitness" })).toHaveAttribute(
     "aria-selected",
     "true"
   );
-  await expect(page.getByText(FITNESS_MARKER)).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Strength" })).toBeVisible();
+  await expect(page.getByTestId(FITNESS_MARKER)).toBeVisible();
+  await expect(page.getByTestId("fitness-volume")).toBeVisible();
+  await expect(
+    page.getByRole("tab", { name: "Strength", exact: true })
+  ).toHaveCount(0);
   await expect(page.getByText(INSIGHTS_MARKER)).toHaveCount(0);
 });
 
@@ -105,7 +112,7 @@ test("clicking a tab switches which section is rendered (#105)", async ({
     /tab=insights/
   );
   await expect(page.getByText(INSIGHTS_MARKER)).toBeVisible();
-  await expect(page.getByText(FITNESS_MARKER)).toHaveCount(0);
+  await expect(page.getByTestId(FITNESS_MARKER)).toHaveCount(0);
 
   // Click Fitness → its content replaces the Insights form.
   await followLink(
@@ -113,38 +120,34 @@ test("clicking a tab switches which section is rendered (#105)", async ({
     page.getByRole("tab", { name: "Fitness" }),
     /tab=fitness/
   );
-  await expect(page.getByText(FITNESS_MARKER)).toBeVisible();
+  await expect(page.getByTestId(FITNESS_MARKER)).toBeVisible();
   await expect(page.getByText(INSIGHTS_MARKER)).toHaveCount(0);
 });
 
-test("the Fitness nested strip is URL-driven and deep-linkable (#105)", async ({
+test("a retired ?ftab= deep link lands on the Fitness tab, param ignored (#1492)", async ({
   page,
 }) => {
-  // Direct deep link into a nested Fitness tab selects it.
+  // The nested Fitness strip (Strength|Cardio|Sport) retired with #1492 — the tab
+  // is four windowed SECTIONS now. Its param is a retired VOCABULARY, not a
+  // redirect: an old deep link (the coaching engine shipped `?ftab=cardio` for
+  // months) names the Fitness tab and the value is then ignored, because the zone
+  // content it wanted is simply a section of the page it lands on.
   await page.goto("/trends?tab=fitness&ftab=cardio");
   await expect(page.getByRole("tab", { name: "Fitness" })).toHaveAttribute(
     "aria-selected",
     "true"
   );
-  await expect(page.getByRole("tab", { name: "Cardio" })).toHaveAttribute(
-    "aria-selected",
-    "true"
-  );
+  await expect(page.getByTestId("fitness-zones")).toBeVisible();
+  // No nested tab of that name exists to select.
+  await expect(
+    page.getByRole("tab", { name: "Cardio", exact: true })
+  ).toHaveCount(0);
+  // A mapping, not a redirect: the URL is left exactly as the old link wrote it.
+  await expect(page).toHaveURL(/ftab=cardio/);
 
-  // Clicking a nested tab navigates, preserving the outer tab. The nested strip is
-  // the same NavTabs component (real <a href>); a machine-speed click landing
-  // mid-hydration on the heavy Fitness section (charts + deeply-nested strip) can
-  // still have its router.push dropped (#830). followLink retries the tab click
-  // until the nested URL commits — the blessed replacement for the old networkidle
-  // readiness gate (#868). Re-clicking the same tab is idempotent (same href).
-  await followLink(
-    page,
-    page.getByRole("tab", { name: "Sport" }),
-    /ftab=sport/
-  );
+  // The sections navigate by plain in-page anchor, which does not renavigate the
+  // tab — the hub's own strip stays the only tab level.
+  await page.getByTestId("chart-jump-sport").click();
   await expect(page).toHaveURL(/tab=fitness/);
-  await expect(page.getByRole("tab", { name: "Sport" })).toHaveAttribute(
-    "aria-selected",
-    "true"
-  );
+  await expect(page.getByTestId("fitness-sport")).toBeVisible();
 });
