@@ -1,5 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 // Form hygiene at desktop width (issue #1450, clusters A and B).
 //
 // Three things the census found and this pins:

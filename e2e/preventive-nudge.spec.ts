@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { settledCheckSave } from "./helpers";
 
 // Per-profile preventive-care reminders toggle on Settings → Notifications (issue

@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { hydratedClick, settledClick } from "./helpers";
 
 // #158: VO2 Max (and the functional fitness markers) gain an age/sex PERCENTILE +

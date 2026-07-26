@@ -1,6 +1,7 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { settledClick } from "./helpers";
+import { workerDbPath } from "./worker-env";
 
 // Imaging-study CRUD on the #imaging section of /results (#702, #1042 phase 5): add a structured study through the real
 // form, see it in the list with its modality + contrast shown, filter by modality,
@@ -9,7 +10,7 @@ import { settledClick } from "./helpers";
 // Fixture discipline (shared seeded DB): a unique body-region marker scopes every
 // action and a raw-connection cleanup in beforeAll AND afterAll makes the spec
 // idempotent across CI retries — it only ever touches rows it created.
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 const REGION = "E2EREGION1";
 const DOSE_REGION = "E2EDOSEREGION1";
 const PET_REGION = "E2EPETREGION1";

@@ -1,5 +1,5 @@
-import { test, expect, type Locator } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
+import { type Locator } from "@playwright/test";
 // Pace-verdict colours (issue #780): goal bars and weekly-habit chips both format
 // over ONE shared tone→class map. Geometry shows "how far"; colour shows a PACE
 // verdict. The two invariants this pins, deterministically over the seed:

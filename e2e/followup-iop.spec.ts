@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
@@ -7,6 +7,7 @@ import {
   E2E_MEMBER_PASSWORD,
   FLAGGED_IOP_PROFILE,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // The finding follow-up loop — IOP glaucoma adapter (#698 §6 / Part of #700): a flagged
 // intraocular pressure → a tracked, LEGIBLE "Recheck IOP / glaucoma workup" on Upcoming
@@ -18,7 +19,7 @@ import {
 // flagged right-eye IOP; a raw-connection cleanup in beforeAll AND afterAll deletes the
 // spec's follow-up care_plan_items (BEFORE any medical_records FK parent) and the later
 // left-eye reading it adds, so the spec only touches rows it created and is repeat-safe.
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 const IOP_OD = "Intraocular Pressure, Right Eye";
 const IOP_OS = "Intraocular Pressure, Left Eye";
 const WAIT = 15_000;

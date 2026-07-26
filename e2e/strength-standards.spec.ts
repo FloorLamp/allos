@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // #152: an estimated 1RM gains a bodyweight-band strength-standard from ONE model
 // (lib/strength-standards.json) that now feeds every strength-level surface — the
 // exercise-detail coaching line + level badge, the Analyze "Benchmarks" card, and

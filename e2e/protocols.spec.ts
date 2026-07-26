@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // N-of-1 protocols + healthspan pillars (issue #161).
 //   1. Full create → compare flow: create a protocol with two body-metric outcomes
 //      and a past start date, land on its detail page, and see before/during

@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Issues #199/#200: merging must never destroy the discarded row's logged sets — they
 // are re-parented onto the keeper — and the conflict preview surfaces how many sets
 // are moving. The e2e seed (e2e/seed-events) plants two same-day MANUAL strength rows

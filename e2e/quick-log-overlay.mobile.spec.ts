@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import path from "node:path";
 import { settledClick } from "./helpers";
@@ -10,6 +11,7 @@ import {
   SHELL_WEIGHT_KG,
   SHELL_DOSE_ITEM,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // Every quick-log item opens an IN-PLACE overlay (issues #1468, #1467).
 //
@@ -38,9 +40,7 @@ const PHONE_CONTEXT = {
 } as const;
 
 function openDb(): Database.Database {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   db.pragma("busy_timeout = 5000");
   return db;

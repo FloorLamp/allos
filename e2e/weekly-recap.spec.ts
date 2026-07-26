@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Issue #32: the Weekly-recap dashboard card and a milestone Timeline entry.
 // The e2e seed (e2e/seed-events.ts) pins a dashboard layout that makes the
 // weekly-recap widget visible for profile 1 and plants a "50 workouts logged"

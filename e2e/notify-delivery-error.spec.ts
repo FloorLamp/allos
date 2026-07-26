@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Settings → Server surfaces the persisted notification-delivery failure marker
 // (#131) next to the global Telegram bot config. The bot is INSTANCE config (one bot
 // serves every profile), so #1462 moved that card — and this marker with it — off the

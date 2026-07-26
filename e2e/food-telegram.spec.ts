@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { settledCheck, settledCheckSave, settledFill } from "./helpers";
 
 // Settings → Notifications after the login-scoping move (issue #1072). Runs

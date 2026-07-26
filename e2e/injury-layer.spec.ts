@@ -1,7 +1,7 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { settledClick } from "./helpers";
+import { workerDbPath } from "./worker-env";
 
 // Issue #838 — the injury layer. Logging a user-declared injury makes the shared
 // recommendation model TRAIN AROUND the affected region and DISCLOSE why on the card
@@ -15,9 +15,7 @@ import { settledClick } from "./helpers";
 // purely from the active injury the test just logged, independent of seeded history).
 
 function wipeInjuries(): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");

@@ -1,5 +1,6 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
+import { workerDbPath } from "./worker-env";
 
 // Import-detail cohesion (#1340), finishing the #1071/#1332 verb consolidation:
 //  1. Per-control explainers ride the rendered buttons — deterministic docs get
@@ -16,7 +17,7 @@ import Database from "better-sqlite3";
 // rows via a raw connection and deletes them afterward, so it never leans on a
 // shared-seed row's incidental shape.
 
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 const PROFILE_ID = 1; // the seed's bootstrap admin profile (the active profile)
 
 // Distinct filenames so cleanup targets exactly this spec's rows.

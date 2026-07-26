@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { followLink, openMobileDrawer } from "./helpers";
 
 // The `mobile` project's own smoke (issue #1420) — and the reference spec for the

@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Immunization delete-confirm disambiguation (issue #534). seed-events plants two
 // yellow-fever doses on the SAME date for profile 1 with distinct dose labels. The
 // confirm dialog keyed on "vaccine + date" alone would read identically for both;

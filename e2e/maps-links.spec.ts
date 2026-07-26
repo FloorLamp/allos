@@ -1,5 +1,6 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
+import { workerDbPath } from "./worker-env";
 
 // "Open in Maps / Directions" deep links (issue #568). The seed plants an
 // organization provider "Northside Family Medicine" with a synthetic address
@@ -7,7 +8,7 @@ import Database from "better-sqlite3";
 // link pointing at the user's own maps provider (Google Maps universal URL) with
 // the address URL-encoded. No navigation is asserted — the whole point is that the
 // only outbound data is the address the user chose to click, so we assert the href.
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 
 function providerId(name: string): number {
   const db = new Database(DB_PATH, { readonly: true });

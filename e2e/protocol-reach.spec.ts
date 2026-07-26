@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { followLink, settledClick } from "./helpers";
 
 // Protocol reach (issue #660): chart annotations, the active-protocol dashboard

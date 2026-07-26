@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Free-text symptom intake (#877) — offline-first degradation. The e2e DB boots
 // WITHOUT an AI tier, so the AI intake field is absent and the manual tap path is the
 // whole story. The field is gated on a configured Light tier, so this asserts

@@ -1,6 +1,6 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import path from "node:path";
+import { workerDbPath } from "./worker-env";
 
 // Clears the seeded eGFR trajectory dismissal so the finding is present again — the
 // same row-delete the app's own restore path performs (restoreFinding → DELETE FROM
@@ -16,9 +16,7 @@ import path from "node:path";
 // spec's `biomarker-flag:ldl cholesterol` dismissal is untouched. Short-lived
 // connection, busy timeout so it never contends with the running server (WAL).
 function resetEgfrTrajectoryDismissal(): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");

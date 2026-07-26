@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { readZip } from "../lib/zip";
 import { followLink } from "./helpers";
 

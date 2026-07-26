@@ -1,6 +1,7 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { settledClick } from "./helpers";
+import { workerDbPath } from "./worker-env";
 
 // Combobox migration (#1176/#1177): the native <datalist> autocompletes are now the
 // shared Combobox. This drives the three behaviours the migration adds that the native
@@ -14,7 +15,7 @@ import { settledClick } from "./helpers";
 // marker and a raw-connection cleanup runs before AND after, so it only ever touches
 // rows it created and stays idempotent across CI retries. The provider registry is
 // GLOBAL, so the created providers are deleted by name here.
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 
 const TOOTH = "96"; // out of the seeded 1–32 range → collision-free
 const FINDING = "E2EComboFinding";

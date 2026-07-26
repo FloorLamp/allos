@@ -1,6 +1,7 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { settledClick } from "./helpers";
+import { workerDbPath } from "./worker-env";
 
 // PWA share target (issue #1423). The phone's share sheet POSTs a multipart body
 // to /share-target; this spec drives that POST against the REAL running app with
@@ -19,7 +20,7 @@ import { settledClick } from "./helpers";
 // Unique prefix so cleanup targets exactly this spec's rows and the shared e2e DB
 // stays clean for the neighbors (review-inbox / import-dedup assert feed counts).
 const PREFIX = "e2e-share-";
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 
 // A 1x1 PNG — what a camera capture actually hands the form.
 const PNG_1X1 = Buffer.from(

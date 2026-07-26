@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Issue #794 (cluster 6): wide tables must WRAP-AND-SCROLL on a phone, not clip.
 // The app's main content is `overflow-x-clip`, so a table wider than a narrow
 // viewport would silently lose its rightmost columns — the data unreachable, no

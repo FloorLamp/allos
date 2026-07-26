@@ -1,6 +1,7 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { followLink } from "./helpers";
+import { workerDbPath } from "./worker-env";
 
 // The appointment → encounter lifecycle on the merged Visits page (issue #288):
 // book → complete → "Log this visit" → the linked visit lands in Past → click
@@ -8,7 +9,7 @@ import { followLink } from "./helpers";
 // surface. Uses a unique title marker so the fixture is self-cleaning and
 // idempotent across CI retries (a raw connection, like encounters.spec, avoids
 // re-running migrate()/bootstrap on import).
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 const MARKER = "E2E lifecycle physical";
 
 function cleanup() {

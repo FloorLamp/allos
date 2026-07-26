@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Issue #297: on the Upcoming page's Today band, due doses used to sort
 // alphabetically because the adapter dropped time_of_day — morning and bedtime
 // doses interleaved A–Z. The seed (e2e/seed-events.ts) ships a MORNING dose named

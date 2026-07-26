@@ -1,6 +1,6 @@
-import { test, expect, type Browser, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Browser, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { settledClick, followLink } from "./helpers";
 import {
   E2E_MEMBER_PASSWORD,
@@ -10,6 +10,7 @@ import {
   HH_HISTORY_PARENT_PROFILE,
   HH_HISTORY_CHILD_PROFILE,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // The consolidated care-trail surface (#1373 Part 2): /medical/episodes BECAME the
 // view-set-driven household illness + visit trail (superseding the removed
@@ -29,9 +30,7 @@ import {
 // logins in fresh, cookie-less contexts.
 
 function dbHandle(): Database.Database {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   db.pragma("busy_timeout = 5000");
   return db;

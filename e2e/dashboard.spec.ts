@@ -1,8 +1,9 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { followLink } from "./nav";
+import { workerDbPath } from "./worker-env";
 
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 const AVAILABILITY_APPOINTMENT = "E2E dashboard availability visit";
 const TIMED_APPOINTMENT = "E2E timed clinic visit";
 

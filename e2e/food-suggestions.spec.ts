@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Deterministic biomarker→food suggestions (issue #577). The e2e fixture
 // (e2e/seed-events.ts) plants two currently-flagged-LOW diet-responsive readings on the
 // seeded profile — Omega-3 Total and Folate — plus a synthetic "fish" allergy; the

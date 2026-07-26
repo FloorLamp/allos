@@ -1,18 +1,20 @@
-import { test, expect, type Browser } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Browser } from "@playwright/test";
 import fs from "node:fs";
 import { settledClick, settledFill, followLink } from "./helpers";
 import { createLoginViaFamily } from "./family-helpers";
 import { loginAs } from "./nav";
+import { workerMailboxPath } from "./worker-env";
 
 // Outbound email — SMTP foundation + login-lifecycle flows (issue #985). One
 // self-contained journey (so it's robust under --repeat-each): it OWNS the global
 // SMTP/public-URL config, resetting it to unconfigured at the start of the run and
 // again at the end, and uses per-run-unique usernames/emails so nothing collides
-// across repeats or with other specs. Email is captured to e2e/.data/mailbox.jsonl
-// by the lib/email chokepoint (EMAIL_TEST_CAPTURE, set in playwright.config.ts) —
-// no SMTP server involved.
+// across repeats or with other specs. Email is captured to THIS WORKER's mailbox
+// by the lib/email chokepoint (EMAIL_TEST_CAPTURE, set per worker in
+// e2e/fixtures.ts) — no SMTP server involved.
 
-const MAILBOX = "e2e/.data/mailbox.jsonl";
+const MAILBOX = workerMailboxPath();
 const SUFFIX = Math.random().toString(36).slice(2, 8);
 const SET_PW = "New-Pass-9xqm!"; // passes checkPasswordStrength
 const TEMP_PW = "Temp-Pass-9xqm!";

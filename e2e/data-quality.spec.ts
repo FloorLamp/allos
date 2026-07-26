@@ -1,6 +1,5 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
 import {
@@ -11,6 +10,7 @@ import {
   DQ_CARE_CHILD_PROFILE,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // Structural data-quality gaps (issue #1045). One pure gap model, many formatters: a
 // dedicated dashboard widget (top-3 by leverage, no score — a count and a list), the
@@ -24,9 +24,7 @@ import {
 // (the resetCoachingObservationDismissals pattern from #206/#449). BLAST RADIUS: only
 // the `data-quality:` namespace on the gappy fixture profile.
 function resetDataQualityDismissals(profileName: string): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");

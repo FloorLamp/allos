@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { settledClick, settledCheck } from "./helpers";
@@ -8,6 +8,7 @@ import {
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
 import { seedNwayMergeFixture } from "./nway-merge-fixture";
+import { workerDbPath } from "./worker-env";
 
 // Issue #1081 — N-way activity duplicate merge on BOTH surfaces, on a DEDICATED member
 // profile (#868), re-seeded per test so a --repeat-each iteration always starts from
@@ -15,7 +16,7 @@ import { seedNwayMergeFixture } from "./nway-merge-fixture";
 // a 3-row cross-source cluster for Data → Review, and a 3-row same-day group for the
 // Journal multi-select merge.
 
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 
 // A date `days` before the frozen clock's real-start today (UTC is close enough — the
 // margin keeps the Journal group on the feed's first-page window regardless of a ≤1-day

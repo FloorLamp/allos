@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { followLink } from "./helpers";
 
 // #1051 med↔prescriber + #1052 med↔indication display. Read-only over the deterministic

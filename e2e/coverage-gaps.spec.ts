@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // #550 / #1086 — Coverage gaps surfaces an uncatalogued biomarker/med/condition as
 // a trackable gap and offers the two fill paths (private AI enrichment + a
 // de-identified maintainer request). It's a catalog / data-management workflow, so

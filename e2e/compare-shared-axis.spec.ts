@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Compare-tab axis policy (issue #400). The tab copy promises "Different units
 // get their own axis"; the code used to render a second, independently
 // auto-scaled Y axis for ANY non-normalized pair — so two same-unit series (LDL

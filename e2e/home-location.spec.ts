@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { settledFill } from "./helpers";
 
 // Per-profile home location + sunrise/sunset daylight chips (issue #570). The seed

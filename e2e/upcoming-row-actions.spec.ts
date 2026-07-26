@@ -1,5 +1,5 @@
-import { test, expect, type Locator, type Page } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
+import { type Locator, type Page } from "@playwright/test";
 // Upcoming row composition (issue #1446).
 //
 // The all-pages census found every overdue row on /upcoming rendering TWO

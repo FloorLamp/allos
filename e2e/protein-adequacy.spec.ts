@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Protein adequacy on /nutrition (issue #767). The seeded profile (scripts/seed.ts) has
 // ~2 weeks of food-group servings and a weight history but NO integration protein_g, so
 // the card renders over the ESTIMATED basis: a floor from logged foods vs a goal-scaled

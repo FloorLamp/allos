@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import { hydratedClick } from "./helpers";
 
 // #16: manual vitals entry — the measures that previously could ONLY arrive via the

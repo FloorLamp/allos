@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { settledClick, settledFill } from "./helpers";
 
 // The admin Server settings page surfaces the two AI provider tiers (issue #875):

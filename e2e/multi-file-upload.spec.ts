@@ -1,6 +1,7 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { settledClick } from "./helpers";
+import { workerDbPath } from "./worker-env";
 
 // Issue #1008: the medical-document upload accepts SEVERAL files per submit — a
 // native multi-select AND a drag-and-drop of multiple files. This spec drives the
@@ -14,7 +15,7 @@ import { settledClick } from "./helpers";
 // stays clean for the neighbors (review-inbox / import-dedup assert feed counts).
 // Synthetic CSV content only — no PHI.
 const PREFIX = "e2e-multi-";
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 
 // A tiny, UNIQUE csv per index — byte-identical uploads would content-hash dedup
 // into one row, hiding the per-file count under test.

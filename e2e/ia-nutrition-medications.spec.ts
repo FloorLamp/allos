@@ -1,9 +1,10 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { followLink } from "./helpers";
 import { medicationList, medicationRow } from "./med-card-helpers";
 import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
+import { workerDbPath } from "./worker-env";
 
 // IA split (#746): supplements folded into the Nutrition → Supplements tab,
 // medications became a standalone Medical-group page, and /medicine permanently
@@ -16,10 +17,7 @@ import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 //      shows the calm note.
 
 function dbPath(): string {
-  return (
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db")
-  );
+  return workerDbPath();
 }
 
 test("/medicine permanently redirects to the Supplements tab (#746)", async ({

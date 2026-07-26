@@ -1,7 +1,7 @@
-import { test, expect } from "@playwright/test";
-import path from "node:path";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { followLink } from "./nav";
+import { workerDbPath } from "./worker-env";
 
 // Preventive visits/screenings in Upcoming (issues #82 + #86). The seeded
 // profile 1 is a ~40-year-old with a birthdate (scripts/seed.ts), so the pure
@@ -89,9 +89,7 @@ const PROFILE_ID = 1;
 // returns the DB to its seeded state. Opened on its own short-lived connection
 // with a busy timeout so it never contends with the running server (WAL).
 function resetPreventiveFixture(): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");

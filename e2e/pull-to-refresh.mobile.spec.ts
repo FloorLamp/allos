@@ -1,5 +1,6 @@
-import { test, expect, type Page } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
+import { workerAuthPath } from "./worker-env";
 // Standalone-PWA pull-to-refresh (issue #1428, section B).
 //
 // Installed to the home screen there is no URL bar and so no refresh control: a
@@ -84,7 +85,7 @@ test("a pull at the top of a standalone page refreshes; a mid-page pull does not
     // gotcha) — a touch gesture spec at 1280×720 would be meaningless.
     viewport: { width: 390, height: 844 },
     hasTouch: true,
-    storageState: "e2e/.auth/state.json",
+    storageState: workerAuthPath(),
   });
   const page = await context.newPage();
   await emulateStandalone(page);

@@ -1,11 +1,11 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import path from "node:path";
 import {
   expandIntakeWarnings,
   pgxWarnings,
   pgxWarningRows,
 } from "./intake-warnings-helpers";
+import { workerDbPath } from "./worker-env";
 
 // Pharmacogenomics cross-check (issue #710): a stored PGx result (a genomic_variants
 // row, result_type='pharmacogenomic') affecting a medication in the active stack must
@@ -26,10 +26,7 @@ const ABACAVIR = "E2E PGX Abacavir"; // normalizes to contain the "abacavir" syn
 const MED_PREFIX = "E2E PGX";
 
 function dbPath(): string {
-  return (
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db")
-  );
+  return workerDbPath();
 }
 
 function cleanup(): void {

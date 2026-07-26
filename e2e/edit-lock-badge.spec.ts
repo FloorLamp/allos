@@ -1,8 +1,9 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { restoreEditLockRow } from "./edit-lock-fixture";
+import { workerDbPath } from "./worker-env";
 
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 
 // Edit-lock badge + "Resume sync updates" affordance (#659). seed-events plants a
 // hand-edited (edit-locked) Withings body-metric row on the default profile, so the

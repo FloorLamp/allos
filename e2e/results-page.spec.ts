@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { followLink } from "./helpers";
 
 // The Results surface (#1079): the Biomarkers / Imaging / Genomics result stores as

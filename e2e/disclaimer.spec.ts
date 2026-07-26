@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { followLink } from "./helpers";
 import { DISCLAIMER_SECTIONS } from "../lib/disclaimers";
 import { CRISIS_LEAD_LINE } from "../lib/crisis-resources";

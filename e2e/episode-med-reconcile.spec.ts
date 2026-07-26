@@ -1,12 +1,6 @@
-import {
-  test,
-  expect,
-  type Page,
-  type Locator,
-  type Browser,
-} from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page, type Locator, type Browser } from "@playwright/test";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { followLink, loginAs } from "./nav";
 import { settledClick } from "./helpers";
 import { hashPasswordSync } from "../lib/password";
@@ -18,6 +12,7 @@ import {
   pastMedications,
   prnTodayItem,
 } from "./med-card-helpers";
+import { workerDbPath } from "./worker-env";
 
 // Episode-end medication reconciliation + the dormant-PRN sweep (issue #880).
 //   1. The full arc: on a FRESH sick profile, quick-add ibuprofen during the illness, log
@@ -36,10 +31,7 @@ import {
 let seq = 0;
 
 function e2eDbPath(): string {
-  return (
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db")
-  );
+  return workerDbPath();
 }
 
 interface MemberProfile {

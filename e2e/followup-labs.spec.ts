@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
@@ -7,6 +7,7 @@ import {
   E2E_MEMBER_PASSWORD,
   FLAGGED_LAB_PROFILE,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // The finding follow-up loop — FLAGGED LABS adapter (#700): a flagged biomarker →
 // a tracked, LEGIBLE "Recheck …" follow-up on Upcoming → a resolution OFFER when a
@@ -17,7 +18,7 @@ import {
 // flagged A1c; a raw-connection cleanup in beforeAll AND afterAll deletes the spec's
 // follow-up care_plan_items (BEFORE any medical_records FK parent) and the later eAG
 // reading it adds, so the spec only ever touches rows it created and is repeat-safe.
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 const A1C = "Hemoglobin A1c";
 const EAG = "Estimated Average Glucose";
 const WAIT = 15_000;

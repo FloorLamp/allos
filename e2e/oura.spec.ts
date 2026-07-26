@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Dogfoods the Oura Ring integration config surface (issue #140). The connect flow
 // validates the pasted token with a live Oura whoami call on submit, which we can't
 // exercise offline in CI, so this spec asserts the RENDERED connect form + setup

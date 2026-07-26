@@ -1,6 +1,6 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import path from "node:path";
+import { workerDbPath } from "./worker-env";
 
 // Unit-mislabel cross-check on Data → Review (issue #761): a numeric lab reading
 // whose stored unit is a probable power-of-ten mislabel of the canonical unit
@@ -20,10 +20,7 @@ let applyId = 0;
 let dismissId = 0;
 
 function dbPath(): string {
-  return (
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db")
-  );
+  return workerDbPath();
 }
 
 function cleanup(): void {

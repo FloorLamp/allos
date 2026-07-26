@@ -1,5 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 // #734 — the static how-to guide (content layer + accessor from #733) surfaced in
 // the ONE per-exercise surface, `ExerciseDetailPanel`, as a "How to" section, plus
 // an ⓘ entry point in the strength set editor that opens the SAME shared guide

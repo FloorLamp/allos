@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // #544/#549 — a POSITIVE durable-immunity titer must present as a neutral "Immune"
 // status, never a red "Abnormal". The fixture (e2e/seed-events.ts) plants
 // "E2E Hepatitis B Surface Antibody" = Positive, stored flag "abnormal", which the

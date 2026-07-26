@@ -1,4 +1,5 @@
-import { test, expect, type Locator, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Locator, type Page } from "@playwright/test";
 import { settledClick } from "./helpers";
 
 // The unified save gesture (#1456) end-to-end: ONE star, membership everywhere.

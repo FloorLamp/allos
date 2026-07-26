@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { settledCheckSave, settledSelectSave } from "./helpers";
 
 // Wake-aware mornings (issue #1117): the wake-derived "Auto" state on the

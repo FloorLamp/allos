@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { unmappedCodeIssueUrl } from "../lib/import-report";
 
 // Import detail — Dropped grouping + scroll cap, and the "Report unmapped code"

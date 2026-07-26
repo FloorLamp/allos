@@ -1,6 +1,6 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { openMobileDrawer, settledClick } from "./helpers";
 import { loginAs } from "./nav";
 import {
@@ -8,6 +8,7 @@ import {
   E2E_LOGIN_MULTI,
   MULTI_SHARED_PROFILE,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // The mobile shell pass (issue #1416) — the phone chrome itself, which the
 // desktop projects structurally cannot see. Runs in the `mobile` Playwright
@@ -48,9 +49,7 @@ const PHONE_CONTEXT = {
 // busy timeout so it never contends with the running server on the WAL DB (the
 // multi-view spec's pattern).
 function fixtureProfileId(name: string): number {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");

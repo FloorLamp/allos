@@ -1,6 +1,6 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
 import {
@@ -9,6 +9,7 @@ import {
   E2E_MEMBER_PASSWORD,
   FORM_PLATEAU_PROFILE,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // Issue #923 — the strength editor's two clickable fill paths + inline plateau hint,
 // each driven against its OWN dedicated fixture (#868 hygiene):
@@ -39,9 +40,7 @@ async function pickActivity(page: Page, name: string) {
 // against the shared seeded DB (the resetPreventiveFixture pattern from #206). Scoped to
 // this fixture profile so it never touches profile 1's Skullcrusher plateau dismissals.
 function resetFormPlateauDismissals(): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");

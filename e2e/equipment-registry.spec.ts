@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { followLink, openCommandPalette } from "./nav";
 
 // Equipment registry (issue #343): equipment moved out of Settings into a

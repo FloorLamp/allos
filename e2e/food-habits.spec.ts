@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Food-habit targets (issue #580): the /nutrition Weekly habits card shows a food_group
 // frequency target with its #579-rollup progress, and a new habit can be tracked/removed.
 // The seed plants a "fatty fish 2×/week" habit. Idempotent — the tracked-then-removed

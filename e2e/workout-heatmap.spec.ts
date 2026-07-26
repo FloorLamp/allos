@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { followLink } from "./helpers";
 
 // Issue #186: the workout-density heatmap on Trends → Fitness. The seed lays down

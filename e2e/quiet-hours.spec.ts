@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { settledSelectSave } from "./helpers";
 
 // Quiet hours on Settings → Notifications (issue #450). #440 hardcoded the waking window

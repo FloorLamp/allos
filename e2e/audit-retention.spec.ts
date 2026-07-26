@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { settledFill } from "./helpers";
 
 // The admin Server settings page exposes the configurable audit-log retention

@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Web Push subscribe UI (issue #17). A REAL end-to-end push can't run headless:
 // it needs a live browser push service (FCM/Mozilla) plus a registered service
 // worker, neither of which exists in CI. So we stub the browser Push API surface

@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // The add-mode SupplementForm is a single long-lived instance (soft router.refresh
 // after each add keeps it mounted). Its post-add reset must clear EVERY field — not
 // just the ones in the reset list. Before the fix (issue #627) the `critical`

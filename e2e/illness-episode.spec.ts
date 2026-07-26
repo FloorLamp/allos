@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { loginAs, followLink } from "./nav";
 import { switchToProfile } from "./family-helpers";
 import { medicationDetail, medicationOverview } from "./med-card-helpers";

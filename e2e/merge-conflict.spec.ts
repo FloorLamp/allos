@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Issue #100: conflict-aware merge preview. The e2e seed (e2e/seed-events) plants two
 // same-day MANUAL cardio rows on 2026-07-06 that genuinely DISAGREE on duration
 // ("Conflict merge keeper" 42 min vs "Conflict merge dupe" 51 min) but agree on

@@ -1,12 +1,13 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { loginAs } from "./nav";
 import {
   E2E_MEMBER_PASSWORD,
   E2E_LOGIN_BADGE,
   APP_BADGE_PROFILE,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // The installed-PWA app-icon badge (issue #1424, section B).
 //
@@ -41,9 +42,7 @@ const PHONE_CONTEXT = {
 type BadgeCall = { op: "set"; count?: number } | { op: "clear" };
 
 function openDb(): Database.Database {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   db.pragma("busy_timeout = 5000");
   return db;

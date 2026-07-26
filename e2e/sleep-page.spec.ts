@@ -1,4 +1,5 @@
-import { test, expect, type Page, type TestInfo } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page, type TestInfo } from "@playwright/test";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import {
@@ -11,8 +12,9 @@ import {
 } from "./fixture-logins";
 import { settledClick } from "./helpers";
 import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
+import { workerDbPath } from "./worker-env";
 
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 
 interface SleepEditFixture {
   username: string;

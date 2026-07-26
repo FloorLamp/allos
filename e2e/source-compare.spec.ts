@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Multi-source metric comparison (issue #14). seed-events.ts plants five nights
 // of HRV from BOTH Health Connect and Oura, so Trends → Body must render the
 // "Compare sources" section with a per-source overlay card for HRV and a

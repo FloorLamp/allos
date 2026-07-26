@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { hydratedClick } from "./helpers";
 
 // Trends "charts above the fold" on a phone (#1455). The page used to spend ~1.9

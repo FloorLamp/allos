@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { expectNoClippedContent, followLink, settledSelect } from "./helpers";
 
 // Mobile-viewport spec (390×844, the `mobile` project — #1420) because the feature

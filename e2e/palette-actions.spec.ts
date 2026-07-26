@@ -1,7 +1,8 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { openCommandPalette } from "./nav";
 import { settledClick } from "./helpers";
+import { workerDbPath } from "./worker-env";
 
 // Per-hit command-palette actions (issue #662): a FOUND entity offers contextual
 // actions routed through the EXISTING gated Server Actions — med → Log dose /
@@ -12,7 +13,7 @@ import { settledClick } from "./helpers";
 // The completing-an-appointment case MUTATES, so it owns a uniquely-titled
 // appointment it creates and deletes (the visits-lifecycle #288 self-cleaning
 // pattern) — never a shared-seed row a neighbor exact-counts.
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 const APPT_MARKER = "E2E palette complete visit";
 
 function cleanup() {

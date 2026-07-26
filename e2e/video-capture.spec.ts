@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { settledClick } from "./helpers";
@@ -8,6 +8,7 @@ import {
   VIDEO_PROFILE,
 } from "./fixture-logins";
 import { buildMp4Fixture } from "../lib/video/fixture";
+import { workerDbPath } from "./worker-env";
 
 // Video capture over the shared video core (#1224 phase 1): the upload-first
 // path end to end on the training FORM-CHECK surface — the native file-input
@@ -39,7 +40,7 @@ import { buildMp4Fixture } from "../lib/video/fixture";
 // (correctly) absent and the grid falls back to its play glyph — exactly the
 // posterless path.
 
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 
 function withDb<T>(fn: (h: Database.Database) => T): T {
   const h = new Database(DB_PATH);

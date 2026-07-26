@@ -1,8 +1,9 @@
-import { test, expect, type Locator, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { followLink, openCommandPalette } from "./nav";
 import { openMedDetailViaLink, refillBadge } from "./med-card-helpers";
+import { workerDbPath } from "./worker-env";
 
 // Clear the coaching "Snooze" snooze so the #39 test starts UNSNOOZED on every
 // repeat (#868 fixture ownership). `snoozeCoaching` writes a persistent
@@ -12,9 +13,7 @@ import { openMedDetailViaLink, refillBadge } from "./med-card-helpers";
 // admin's active profile 1 and the coaching namespace. Short-lived connection +
 // busy timeout so it never contends with the running server on the WAL DB.
 function resetCoachingSnooze(): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");

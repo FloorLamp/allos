@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // WCAG 1.4.1 (issue #1220): the healthspan pillars and the recent-lab flags must
 // never convey their good/warn/bad judgment by COLOR ALONE. Every judging pillar
 // tone pairs its value color with a text badge (PILLAR_TONE_LABEL — one mapping

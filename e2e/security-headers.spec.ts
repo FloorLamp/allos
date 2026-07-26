@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Global security headers (issue #21). The non-CSP header set is configured in
 // next.config.js `headers()`; the Content-Security-Policy is emitted per-request
 // by middleware.ts (issue #595, step 3 — nonce'd script-src) and /share/* layers

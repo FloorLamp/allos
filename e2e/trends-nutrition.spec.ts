@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { followLink } from "./helpers";
 
 // Trends → Nutrition is the OVER-TIME nutrition view (issue #1166): the macros+fiber

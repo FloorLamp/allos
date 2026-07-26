@@ -1,8 +1,8 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { settledClick } from "./helpers";
 import { medicationsToday, prnTodayItem } from "./med-card-helpers";
+import { workerDbPath } from "./worker-env";
 
 // #1458 — the sick-kid path, end to end. A caregiver adds a PRN medication with a
 // minimum interval and leaves the OPTIONAL "Maximum doses per day" blank, logs a dose,
@@ -17,9 +17,7 @@ import { medicationsToday, prnTodayItem } from "./med-card-helpers";
 const ADDED_MED_PREFIX = "Fever Syrup e2e interval-only";
 
 function deleteAddedMeds(): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");

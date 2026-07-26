@@ -1,6 +1,7 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { followLink } from "./helpers";
+import { workerDbPath } from "./worker-env";
 
 // Provider registry pages + duplicate merge (issue #275). The seed plants two
 // near-duplicate rows for the same clinician — "Dr. Anita Patel" (NPI) and the
@@ -8,7 +9,7 @@ import { followLink } from "./helpers";
 // visit and a "Blood pressure check" procedure. We drive: index → detail → (admin)
 // merge the duplicate into the survivor → the moved records survive on the survivor
 // and the absorbed provider's page 404s.
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 
 function providerId(name: string): number {
   const db = new Database(DB_PATH, { readonly: true });

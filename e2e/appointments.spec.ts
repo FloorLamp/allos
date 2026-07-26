@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // The Upcoming section of the merged Visits page (issue #288 — appointments and
 // encounters share one /encounters surface now). Originally the standalone
 // /appointments list (#391, gap 7); retargeted here to the merged page. Asserts a

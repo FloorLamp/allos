@@ -1,9 +1,10 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { totp } from "../lib/totp";
 import { hashPasswordSync } from "../lib/password";
 import { E2E_MEMBER_PASSWORD } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // Optional TOTP 2FA (issue #23): enroll a login, then prove the login flow stops
 // at a second-factor step and completes with both a computed authenticator code
@@ -22,10 +23,7 @@ import { E2E_MEMBER_PASSWORD } from "./fixture-logins";
 let memberSeq = 0;
 
 function e2eDbPath(): string {
-  return (
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db")
-  );
+  return workerDbPath();
 }
 
 function seedMemberOnProfile1(): { username: string; password: string } {

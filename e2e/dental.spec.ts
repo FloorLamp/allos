@@ -1,5 +1,6 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
+import { workerDbPath } from "./worker-env";
 
 // Dental-record CRUD on the Dental section of /records (#705, folded #1042): add a tooth-anchored procedure through the
 // real form, see it in the list with its tooth + status shown, filter by status,
@@ -10,7 +11,7 @@ import Database from "better-sqlite3";
 // a raw-connection cleanup in beforeAll AND afterAll makes the spec idempotent across
 // CI retries — it only ever touches rows it created (dental_procedures + any care-plan
 // follow-up it seeds off them).
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 const TOOTH = "97"; // out of the 1–32 seeded range → collision-free marker
 const NAME = "E2EDentalWatch";
 

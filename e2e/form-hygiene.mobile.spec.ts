@@ -1,5 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 // Form hygiene at phone width (issue #1450 cluster A, the highest-stakes site).
 //
 // The strength set row (SET · WEIGHT stepper · × · REPS stepper · OPTIONS) is the

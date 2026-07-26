@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // The body-goal target must recompute when the metric switches (issue #631).
 // Before the fix it was an uncontrolled input pre-filled once from the goal's
 // stored value: editing a WEIGHT goal (e.g. 78 kg) and switching the metric to

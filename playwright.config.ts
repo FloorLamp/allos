@@ -24,85 +24,59 @@ function preinstalledChromium(): string | undefined {
   return fs.existsSync(exe) ? exe : undefined;
 }
 
-const PORT = Number(process.env.E2E_PORT ?? 3100);
-// Isolated throwaway DB (ALLOS_DB_PATH is the app's test override in lib/db.ts),
-// so e2e never touches a developer's data/allos.db.
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+// Per-worker server ports: worker N listens on PORT_BASE + N (see
+// e2e/worker-env.ts, the ONE place that maps a worker index to its port, DB and
+// working directory). E2E_PORT moves the whole range at once — a sandbox with a
+// narrow allowed port range sets it.
+const PORT_BASE = Number(process.env.E2E_PORT ?? 3100);
 const executablePath = preinstalledChromium();
 
-// Deterministic outbound-email capture for the email-auth spec (issue #985): the
-// lib/email chokepoint appends every send here as JSON (no SMTP server needed) when
-// EMAIL_TEST_CAPTURE is set. Wiped on each webServer reset (below), so a spec reads
-// only the mail its own run produced.
-const MAILBOX_PATH = "./e2e/.data/mailbox.jsonl";
-
-// A SECOND app instance booted with ALLOS_DEMO_MODE=1 (#181), on its own port +
-// isolated DB, so the demo-mode surfaces (banner, credentials card, disabled
-// upload) can be asserted against a real demo boot WITHOUT running the whole suite
-// in demo mode — the default-instance specs keep their normal, non-demo server.
-const DEMO_PORT = Number(process.env.E2E_DEMO_PORT ?? 3101);
-const DEMO_DB_PATH =
-  process.env.ALLOS_DEMO_DB_PATH ?? "./e2e/.data/e2e-demo.db";
-
-// Freeze the app clock for the whole run (issue #990). The seed scripts and both app
-// instances boot under this env (the webServer `env` block applies to the entire
-// `seed && start` shell command), so `lib/clock.ts`'s `now()` — and every date it
-// derives (today(), workout presence, ongoing ranges, relative-time labels) — reads
-// the SAME instant in the fixtures and in the app. A run can then never cross local
-// midnight out from under its "today"-seeded fixtures, and the early-morning
-// now-minus-hours window can't flip a relative-time assertion. Computed ONCE here, at
-// config load, so the whole run shares it. An externally-supplied ALLOS_TEST_NOW wins —
-// used to stress a boundary hour (e.g. 00:10 local) on demand without waiting for real
-// midnight.
+// Freeze the app clock for the whole run (issue #990). The template seed and every
+// worker server boot under this instant, so `lib/clock.ts`'s `now()` — and every
+// date it derives (today(), workout presence, ongoing ranges, relative-time
+// labels) — reads the SAME instant in the fixtures and in the app. A run can then
+// never cross local midnight out from under its "today"-seeded fixtures, and the
+// early-morning now-minus-hours window can't flip a relative-time assertion.
+// Computed ONCE here, at config load in the RUNNER process, then handed to the
+// workers on disk by e2e/global-setup.ts (workers are separate processes, so a
+// module-level `new Date()` would give each of them a different instant). An
+// externally-supplied ALLOS_TEST_NOW wins — used to stress a boundary hour (e.g.
+// 00:10 local) on demand without waiting for real midnight.
 //
-// The frozen instant is the run's REAL start (issue #1048), NOT a fixed mid-day. Fixing
-// it at 12:00 opened the "morning-UTC band": rows the suite writes at runtime keep real
-// wall-time (SQL `datetime('now')` defaults), so from ~00:00–11:00 local — when real
-// time lags a frozen noon by hours — every liveness/recency window (workout presence,
-// temp red-flag, "ongoing" ranges, redose labels) read a just-written row as stale and
-// ~10 specs failed deterministically. Freezing at real start keeps |real − frozen| ≤ the
-// suite's own duration (~25 min), which every window (≥45 min) tolerates, in EVERY hour.
-// Date-boundary determinism is preserved: `today()` derives from this same instant, so a
-// run only risks a real-midnight CROSS when it starts within its own duration of midnight
-// (a ~25-min window), where SQL-stamped rows roll a day ahead of the frozen date.
+// The frozen instant is the run's REAL start (issue #1048), NOT a fixed mid-day.
+// Fixing it at 12:00 opened the "morning-UTC band": rows the suite writes at
+// runtime keep real wall-time (SQL `datetime('now')` defaults), so from
+// ~00:00–11:00 local — when real time lags a frozen noon by hours — every
+// liveness/recency window (workout presence, temp red-flag, "ongoing" ranges,
+// redose labels) read a just-written row as stale and ~10 specs failed
+// deterministically. Freezing at real start keeps |real − frozen| ≤ the suite's own
+// duration, which every window (≥45 min) tolerates, in EVERY hour. Date-boundary
+// determinism is preserved: `today()` derives from this same instant, so a run only
+// risks a real-midnight CROSS when it starts within its own duration of midnight,
+// where SQL-stamped rows roll a day ahead of the frozen date.
 //
-// That residual is no longer left to chance (issue #1464). `resolveFreezeInstant` nudges
-// the instant FORWARD across the boundary when the run would start inside the hazard
-// window, so the frozen date sits on the side the run actually spends its time on — see
-// lib/e2e-freeze-instant.ts for why forward (and not back) is the only direction that
-// narrows the gap. Outside that window the instant is the real start, unchanged. An
-// externally-supplied ALLOS_TEST_NOW is honored verbatim: it is the deliberate
-// boundary-stress hook, so it must never be second-guessed.
+// That residual is no longer left to chance (issue #1464). `resolveFreezeInstant`
+// nudges the instant FORWARD across the boundary when the run would start inside
+// the hazard window, so the frozen date sits on the side the run actually spends
+// its time on — see lib/e2e-freeze-instant.ts for why forward (and not back) is the
+// only direction that narrows the gap. Outside that window the instant is the real
+// start, unchanged. An externally-supplied ALLOS_TEST_NOW is honored verbatim: it is
+// the deliberate boundary-stress hook, so it must never be second-guessed.
 const FROZEN_NOW =
   process.env.ALLOS_TEST_NOW ?? resolveFreezeInstant(new Date()).toISOString();
-
-// The persisted AI activity log (lib/ai-log.ts) is `<cwd>/data/logs/ai.jsonl` —
-// NOT under e2e/.data and NOT affected by ALLOS_DB_PATH, so the DB reset above
-// leaves it alone. AI-adjacent specs (ai-narrative/ai-settings) append offline AI
-// events even without an ANTHROPIC_API_KEY, and those persist across invocations
-// in the SAME workspace. That's harmless when playwright runs once per job, but
-// the #889 changed-specs/infra lanes make it run up to THREE times per job: the
-// LAST run's ai-logs-access (alphabetically before ai-narrative, so clean on the
-// first invocation) then sees a prior invocation's events and its "No AI usage
-// recorded" empty-state assertion fails deterministically. Both servers boot from
-// the same cwd and write the same file, so each webServer reset wipes it (before
-// its `next start`, so it always precedes readiness → no test can race the rm).
-// Wiping it here fixes local multi-run pollution too (previously hand-wiped).
-const AI_LOG_PATH = "./data/logs/ai.jsonl";
-
-// Local uses `next dev` (compiles on demand — no prior build needed); CI runs an
-// explicit `next build` step first, then `next start` for a production-like run.
-const startCmd = process.env.CI
-  ? `next start -p ${PORT}`
-  : `next dev -p ${PORT}`;
-const demoStartCmd = process.env.CI
-  ? `next start -p ${DEMO_PORT}`
-  : `next dev -p ${DEMO_PORT}`;
 
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
+  // Seed the per-worker TEMPLATE database (and make sure the production build the
+  // worker servers run is current) exactly once per run. There is deliberately NO
+  // `webServer` block any more: each worker boots its OWN server against its OWN
+  // copy of the template — see e2e/fixtures.ts (issue #1538).
+  globalSetup: "./e2e/global-setup.ts",
+  // The run's frozen instant, handed to global-setup (same process) which persists
+  // it for the worker processes.
+  metadata: { frozenNow: FROZEN_NOW },
   // Zero retries EVERYWHERE (#1159 closed the last flake, family-calendar). The
   // suite runs clean at --retries=0 end-to-end — the changed-spec lane, the
   // shared-infra fallback, and the sharded full matrix — so retries stay OFF: a
@@ -112,7 +86,20 @@ export default defineConfig({
   // --retries=1 to MEASURE pass-on-retry flakes; that dispatch is the only place a
   // "flaky" status can appear now.
   retries: 0,
-  workers: process.env.CI ? 1 : undefined,
+  // Parallel workers are HONEST now (#1538): each one has its own database and its
+  // own app server, so two workers can no longer see each other's writes. Locally
+  // that means the Playwright default (half the cores) instead of the old
+  // `--workers=1` pin; override with `--workers=N` or PW_WORKERS.
+  //
+  // CI stays at ONE worker per shard for now — the 4-way shard matrix already
+  // spends the runner's cores, and a GitHub runner (2 cores) has no headroom for
+  // several `next start` processes. The isolation makes raising it a measurement,
+  // not a redesign; see docs/internals/e2e-hygiene.md.
+  workers: process.env.PW_WORKERS
+    ? Number(process.env.PW_WORKERS)
+    : process.env.CI
+      ? 1
+      : undefined,
   // The "github" reporter emits one workflow annotation per failure, so a red CI
   // run names its failing tests in the check-run annotations (readable via API)
   // instead of only inside the job log. The "json" report feeds
@@ -132,28 +119,30 @@ export default defineConfig({
       ]
     : "list",
   use: {
-    baseURL: `http://localhost:${PORT}`,
+    // A placeholder only: the per-worker fixture OVERRIDES baseURL with this
+    // worker's own server (PORT_BASE + parallelIndex). Nothing should reach the
+    // base port unless the fixture failed to load.
+    baseURL: `http://localhost:${PORT_BASE}`,
     trace: "on-first-retry",
     ...(executablePath ? { launchOptions: { executablePath } } : {}),
   },
   projects: [
-    // A dependency project that logs in once and saves the session cookie, so
-    // the actual specs start authenticated (no per-test login round-trip).
-    { name: "setup", testMatch: /auth\.setup\.ts/ },
+    // There is no `setup` project any more: a session is a row in ONE database, so
+    // a single shared storageState cannot authenticate N per-worker databases. Each
+    // worker signs in against its own server and keeps its own storage state
+    // (e2e/fixtures.ts).
     {
       name: "chromium",
-      dependencies: ["setup"],
-      // Exclude the demo spec (it targets the separate demo server/baseURL below)
+      // Exclude the demo spec (it runs its worker's server in demo mode)
       // and the phone-viewport specs (they belong to the `mobile` project below —
       // this project's testMatch admits EVERYTHING, so without this a
       // `--project`-less invocation like the CI e2e-changed lane's
       // `npx playwright test <spec>` would also run a `*.mobile.spec.ts` at
       // 1280×900, where the mobile shell legitimately doesn't render).
-      testIgnore: [/auth\.setup\.ts/, /demo\.spec\.ts/, /\.mobile\.spec\.ts$/],
+      testIgnore: [/demo\.spec\.ts/, /\.mobile\.spec\.ts$/],
       use: {
         browserName: "chromium",
         viewport: { width: 1280, height: 900 },
-        storageState: "e2e/.auth/state.json",
       },
     },
     // Phone-viewport project (issue #1420). Same seeded-DB webServer and same
@@ -188,65 +177,26 @@ export default defineConfig({
     // unmarked `.first()`, retries: 0. See docs/internals/e2e-hygiene.md.
     {
       name: "mobile",
-      dependencies: ["setup"],
       testMatch: /\/(smoke|[^/]+\.mobile)\.spec\.ts$/,
       use: {
         browserName: "chromium",
         viewport: { width: 390, height: 844 },
         hasTouch: true,
-        storageState: "e2e/.auth/state.json",
       },
     },
-    // Demo-mode specs run against the demo webServer (ALLOS_DEMO_MODE=1) on its own
-    // baseURL, unauthenticated (they drive the demo login flow themselves).
+    // Demo-mode specs (#181). The worker fixture recognises this project by name
+    // and boots ITS server with ALLOS_DEMO_MODE=1 off a demo-seeded template,
+    // unauthenticated (the spec drives the demo login itself) — so demo mode needs
+    // no second long-lived server for the whole run, just the one worker that runs
+    // these tests. `fullyParallel: false` keeps that file's tests inside a single
+    // worker, in order, the way they ran when the suite was pinned to one worker.
     {
       name: "demo",
       testMatch: /demo\.spec\.ts/,
+      fullyParallel: false,
       use: {
         browserName: "chromium",
         viewport: { width: 1280, height: 900 },
-        baseURL: `http://localhost:${DEMO_PORT}`,
-      },
-    },
-  ],
-  // Reset + seed the isolated DB, then boot the app against it. seed.ts imports
-  // lib/db, which bootstraps the admin login from ADMIN_USERNAME/ADMIN_PASSWORD.
-  webServer: [
-    {
-      command: `rm -f "${DB_PATH}" "${DB_PATH}-shm" "${DB_PATH}-wal" "${AI_LOG_PATH}" "${MAILBOX_PATH}" && tsx scripts/seed.ts && tsx e2e/seed-events.ts && ${startCmd}`,
-      url: `http://localhost:${PORT}/login`,
-      reuseExistingServer: !process.env.CI,
-      timeout: 240_000,
-      env: {
-        ALLOS_DB_PATH: DB_PATH,
-        ADMIN_USERNAME: "admin",
-        ADMIN_PASSWORD: "e2e-admin-pass",
-        NODE_ENV: process.env.CI ? "production" : "development",
-        // Capture outbound email to a file (no SMTP server) for the email-auth spec.
-        EMAIL_TEST_CAPTURE: MAILBOX_PATH,
-        // Freeze the clock (seed + app share this instant) — issue #990.
-        ALLOS_TEST_NOW: FROZEN_NOW,
-      },
-    },
-    // Demo instance (#181): same seed + image, booted with ALLOS_DEMO_MODE=1 so the
-    // seed also creates the read-only demo login. Isolated DB + port.
-    {
-      command: `rm -f "${DEMO_DB_PATH}" "${DEMO_DB_PATH}-shm" "${DEMO_DB_PATH}-wal" "${AI_LOG_PATH}" && tsx scripts/seed.ts && ${demoStartCmd}`,
-      url: `http://localhost:${DEMO_PORT}/login`,
-      reuseExistingServer: !process.env.CI,
-      timeout: 240_000,
-      env: {
-        ALLOS_DB_PATH: DEMO_DB_PATH,
-        ALLOS_DEMO_MODE: "1",
-        ADMIN_USERNAME: "admin",
-        ADMIN_PASSWORD: "e2e-admin-pass",
-        NODE_ENV: process.env.CI ? "production" : "development",
-        // Freeze the clock (seed + app share this instant) — issue #990.
-        ALLOS_TEST_NOW: FROZEN_NOW,
-        // Next 16 dev takes a per-project single-instance lock, so the demo dev
-        // server needs its own distDir (see next.config.js). CI runs `next start`
-        // (no lock) off the one shared .next build, so this stays dev-only.
-        ...(process.env.CI ? {} : { NEXT_DIST_DIR: ".next-demo" }),
       },
     },
   ],

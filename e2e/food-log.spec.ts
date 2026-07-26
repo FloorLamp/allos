@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // Food-group serving log (issue #579): one-tap logging on /nutrition, the day-view
 // count, and the weekly rollup. Idempotent — logs a serving, asserts it appears in both
 // the day count and the weekly rollup, then undoes it so the fixture is left as found.

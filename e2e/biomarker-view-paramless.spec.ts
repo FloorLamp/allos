@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/test";
-
+import { test, expect } from "./fixtures";
 // #1447 — /biomarkers/view with no `?name=` was the weakest empty state in the
 // all-pages census: a generic "Biomarker" h1, no subtitle, a bare no-CTA "No
 // biomarker selected." line, and an otherwise blank canvas.

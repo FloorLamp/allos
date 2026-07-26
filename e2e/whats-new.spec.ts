@@ -1,9 +1,10 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { loginAs } from "./nav";
 import { followLink } from "./helpers";
 import { E2E_LOGIN_WHATSNEW, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 import { loadReleaseNotes, pullRequestUrl } from "../lib/release-notes";
+import { workerDbPath } from "./worker-env";
 
 // Issue #1421 — the bundled "What's new" page and its per-login unread dot.
 //
@@ -16,7 +17,7 @@ import { loadReleaseNotes, pullRequestUrl } from "../lib/release-notes";
 // otherwise inherit the one the previous iteration wrote, and driving it on the
 // shared admin session would flip the dot for every other spec.
 
-const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
+const DB_PATH = workerDbPath();
 
 const NOTES = loadReleaseNotes();
 const NEWEST_DAY = NOTES.days[0];

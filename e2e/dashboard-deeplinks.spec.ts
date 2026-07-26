@@ -1,6 +1,5 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import path from "node:path";
 import { loginAs } from "./nav";
 import { followLink } from "./helpers";
 import {
@@ -13,6 +12,7 @@ import {
   REST_CARD_PROFILE,
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
+import { workerDbPath } from "./worker-env";
 
 // Issues #1146 + #1219 — every dashboard signal carries its affordance, and every
 // data-quality CTA deep-links the exact form that fixes the gap (the #1083
@@ -31,9 +31,7 @@ import {
 // resetDataQualityDismissals pattern from #1045). BLAST RADIUS: only the
 // `data-quality:` namespace on the named fixture profile.
 function resetDataQualityDismissals(profileName: string): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");
@@ -55,9 +53,7 @@ function resetDataQualityDismissals(profileName: string): void {
 // rec and its secondary is present (the coaching-rest-card.spec reset, scoped the
 // same way). BLAST RADIUS: only `coaching:%` dismissals on that fixture profile.
 function resetCoachingSnoozes(profileName: string): void {
-  const dbPath =
-    process.env.ALLOS_DB_PATH ??
-    path.join(process.cwd(), "e2e", ".data", "e2e.db");
+  const dbPath = workerDbPath();
   const db = new Database(dbPath);
   try {
     db.pragma("busy_timeout = 5000");

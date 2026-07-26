@@ -1,0 +1,269 @@
+import { test as base, expect } from "@playwright/test";
+import { spawn, type ChildProcess } from "node:child_process";
+import fs from "node:fs";
+import net from "node:net";
+import path from "node:path";
+import {
+  ADMIN_PASSWORD,
+  ADMIN_USERNAME,
+  RUN_CONTEXT_PATH,
+  TEMPLATE_DEMO_DIR,
+  TEMPLATE_DIR,
+  workerAuthPath,
+  workerBaseURL,
+  workerDbPath,
+  workerDir,
+  workerMailboxPath,
+  workerPort,
+} from "./worker-env";
+
+// DB-per-worker isolation (issue #1538). EVERY spec imports `test`/`expect` from
+// here instead of "@playwright/test" — that import is what gives the spec its
+// worker's own server + own database.
+//
+// WHY server-per-worker. The app opens ONE better-sqlite3 handle at boot from
+// ALLOS_DB_PATH and keeps it for the process lifetime (lib/db.ts), so one server
+// is exactly one database — a per-request DB switch would mean rewriting the
+// product's connection singleton. DB-per-worker therefore means server-per-worker.
+// The cost is one `next start` per worker (~200 ms boot, ~190 MB RSS) against ONE
+// shared production build; the payoff is that `--workers=N` stops fabricating
+// failures, because no two workers can see each other's writes.
+//
+// WHAT EACH WORKER GETS (all under e2e/.data/worker-<parallelIndex>/):
+//   • app.db      — a COPY of the template seeded once by e2e/global-setup.ts
+//   • data/**     — the server runs with this dir as its CWD, so uploads, the AI
+//                   log, the error log and integration payloads are per-worker too
+//   • auth.json   — its own logged-in admin session (a session row lives in ITS
+//                   database, so the old single shared e2e/.auth/state.json could
+//                   not possibly work here)
+//   • server.log  — that worker's server output, kept after the run for postmortem
+//
+// The `baseURL` and `storageState` overrides below are what make this transparent:
+// the built-in `page`/`context` fixtures — and any manual `browser.newContext()`,
+// which inherits the test's resolved options — target THIS worker's server, already
+// signed in. Specs keep using relative `page.goto("/nutrition")` as before.
+//
+// Specs that talk to SQLite directly use `workerDbPath()` from ./worker-env; they
+// must never read process.env.ALLOS_DB_PATH (that is the app server's environment,
+// not the spec process's). See docs/internals/e2e-hygiene.md.
+
+export type WorkerApp = {
+  /** Playwright's parallelIndex for this worker — the key everything is named by. */
+  index: number;
+  /** This worker's app server origin, e.g. http://localhost:3100. */
+  baseURL: string;
+  port: number;
+  /** This worker's SQLite file (same value as workerDbPath()). */
+  dbPath: string;
+  /** This worker's private directory — also the server's CWD. */
+  dir: string;
+  /** True for the demo project's worker (ALLOS_DEMO_MODE=1, no auto-login). */
+  demo: boolean;
+};
+
+type WorkerFixtures = {
+  workerApp: WorkerApp;
+};
+
+const BOOT_TIMEOUT_MS = 120_000;
+
+function readFrozenNow(): string {
+  try {
+    const raw = JSON.parse(fs.readFileSync(RUN_CONTEXT_PATH, "utf8")) as {
+      frozenNow?: string;
+    };
+    if (raw.frozenNow) return raw.frozenNow;
+  } catch {
+    // fall through
+  }
+  // A spec invoked without global-setup (never in practice) still gets a
+  // consistent clock — the app just isn't pinned to the template's instant.
+  return process.env.ALLOS_TEST_NOW ?? new Date().toISOString();
+}
+
+async function waitForServer(
+  url: string,
+  server: ChildProcess,
+  logPath: string
+): Promise<void> {
+  const deadline = Date.now() + BOOT_TIMEOUT_MS;
+  let lastErr: unknown;
+  while (Date.now() < deadline) {
+    if (server.exitCode !== null) {
+      throw new Error(
+        `worker server exited (${server.exitCode}) before it was ready\n` +
+          tailLog(logPath)
+      );
+    }
+    try {
+      const res = await fetch(url, { redirect: "manual" });
+      if (res.status > 0) return;
+    } catch (err) {
+      lastErr = err;
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  throw new Error(
+    `worker server at ${url} was not ready within ${BOOT_TIMEOUT_MS}ms ` +
+      `(${String(lastErr)})\n${tailLog(logPath)}`
+  );
+}
+
+function tailLog(logPath: string, lines = 40): string {
+  try {
+    return fs
+      .readFileSync(logPath, "utf8")
+      .split("\n")
+      .slice(-lines)
+      .join("\n");
+  } catch {
+    return "(no server log)";
+  }
+}
+
+function portIsFree(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const probe = net.createServer();
+    probe.once("error", () => resolve(false));
+    probe.once("listening", () => probe.close(() => resolve(true)));
+    probe.listen(port, "127.0.0.1");
+  });
+}
+
+async function stopServer(server: ChildProcess): Promise<void> {
+  if (server.exitCode !== null || server.signalCode !== null) return;
+  await new Promise<void>((resolve) => {
+    const hardKill = setTimeout(() => server.kill("SIGKILL"), 5_000);
+    server.once("exit", () => {
+      clearTimeout(hardKill);
+      resolve();
+    });
+    server.kill("SIGTERM");
+  });
+}
+
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export const test = base.extend<{}, WorkerFixtures>({
+  workerApp: [
+    async ({ browser }, use, workerInfo) => {
+      const idx = workerInfo.parallelIndex;
+      const demo = workerInfo.project.name === "demo";
+      const dir = workerDir(idx);
+      const dbPath = workerDbPath(idx);
+      const port = workerPort(idx);
+      const baseURL = workerBaseURL(idx);
+      const logPath = path.join(dir, "server.log");
+      const started = Date.now();
+
+      // 1) This worker's world: a fresh COPY of the seeded template (DB + the
+      //    cwd-relative data/ artifacts the seed wrote alongside it).
+      fs.rmSync(dir, { recursive: true, force: true });
+      fs.cpSync(demo ? TEMPLATE_DEMO_DIR : TEMPLATE_DIR, dir, {
+        recursive: true,
+      });
+      fs.mkdirSync(path.join(dir, "data", "logs"), { recursive: true });
+      fs.mkdirSync(path.join(dir, "data", "uploads"), { recursive: true });
+
+      if (!(await portIsFree(port))) {
+        throw new Error(
+          `port ${port} (worker ${idx}) is already in use — a server from a ` +
+            `previous run may still be alive. Move the range with E2E_PORT.`
+        );
+      }
+
+      // 2) This worker's server: `next start` off the ONE shared production build,
+      //    but with the worker dir as CWD so every cwd-relative artifact the app
+      //    writes (data/uploads, data/logs/ai.jsonl, data/logs/errors.jsonl) is
+      //    private to this worker.
+      const logFd = fs.openSync(logPath, "a");
+      const server = spawn(
+        path.join(process.cwd(), "node_modules", ".bin", "next"),
+        ["start", process.cwd(), "-p", String(port)],
+        {
+          cwd: dir,
+          env: {
+            ...process.env,
+            ALLOS_DB_PATH: dbPath,
+            ADMIN_USERNAME,
+            ADMIN_PASSWORD,
+            NODE_ENV: "production",
+            // Frozen app clock (#990/#1464): the seed that produced the template
+            // and this server must read the same instant.
+            ALLOS_TEST_NOW: readFrozenNow(),
+            // Outbound email capture for the email-auth spec — per worker.
+            EMAIL_TEST_CAPTURE: workerMailboxPath(idx),
+            ...(demo ? { ALLOS_DEMO_MODE: "1" } : {}),
+          },
+          stdio: ["ignore", logFd, logFd],
+        }
+      );
+      fs.closeSync(logFd);
+      const bootStart = Date.now();
+      try {
+        await waitForServer(`${baseURL}/login`, server, logPath);
+      } catch (err) {
+        await stopServer(server);
+        throw err;
+      }
+      const bootMs = Date.now() - bootStart;
+
+      // 3) This worker's session. A session is a row in THIS database, so the
+      //    worker signs in against its own server and saves its own storageState
+      //    (the replacement for the old single auth.setup.ts project).
+      let authMs = 0;
+      if (!demo) {
+        const authStart = Date.now();
+        const ctx = await browser.newContext({ baseURL });
+        try {
+          const page = await ctx.newPage();
+          await page.goto("/login");
+          await page.fill('input[name="username"]', ADMIN_USERNAME);
+          await page.fill('input[name="password"]', ADMIN_PASSWORD);
+          await page.click('button[type="submit"]');
+          await page.waitForURL((u) => !u.pathname.startsWith("/login"), {
+            timeout: 30_000,
+          });
+          await ctx.storageState({ path: workerAuthPath(idx) });
+        } finally {
+          await ctx.close();
+        }
+        authMs = Date.now() - authStart;
+      }
+
+      // Belt and braces for any code path that still consults the env var: inside
+      // a worker PROCESS this write is private to that worker.
+      process.env.ALLOS_DB_PATH = dbPath;
+
+      console.log(
+        `[e2e] worker ${idx}${demo ? " (demo)" : ""}: ${baseURL} db=${path.relative(process.cwd(), dbPath)} ` +
+          `boot=${bootMs}ms auth=${authMs}ms total=${Date.now() - started}ms`
+      );
+
+      await use({ index: idx, baseURL, port, dbPath, dir, demo });
+
+      // Teardown: stop the server. The worker dir (DB + server.log) is left on
+      // disk for postmortem; global-setup wipes e2e/.data at the start of a run.
+      await stopServer(server);
+    },
+    { scope: "worker", auto: true },
+  ],
+
+  // Point the built-in page/context — and any manual browser.newContext(), which
+  // inherits these options — at THIS worker's server. (`use` is Playwright's
+  // fixture-setup callback, not a React hook; the lint rule only sees the name.)
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  baseURL: async ({ workerApp }, use) => {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    await use(workerApp.baseURL);
+  },
+
+  // Start authenticated against THIS worker's database. The demo project drives
+  // its own login, so it stays anonymous.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  storageState: async ({ workerApp }, use) => {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    await use(workerApp.demo ? undefined : workerAuthPath(workerApp.index));
+  },
+});
+
+export { expect };

@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
+import { type Page } from "@playwright/test";
 import { openCommandPalette } from "./nav";
 
 // Issue #340: live workout mode — the in-gym presentation of the SAME activity
