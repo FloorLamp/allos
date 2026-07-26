@@ -1,8 +1,7 @@
+import Link from "next/link";
 import {
   getActivityDates,
   getCardioByActivity,
-  getCardioIntensityMix,
-  getCardioVolumeByWeek,
   getDayLoadInputs,
   getFrequencyTargetProgress,
   getIllnessCoachingContext,
@@ -14,12 +13,10 @@ import {
   getRestingHrSignal,
   getSleepSignal,
   getStrengthByExercise,
-  getVolumeByDate,
   getWorkoutPresence,
 } from "@/lib/queries";
 import { requireSession } from "@/lib/auth";
 import { today } from "@/lib/db";
-import { chartSeries } from "@/lib/chart-colors";
 import { formatRelativeDate } from "@/lib/format-date";
 import { formatMinutes } from "@/lib/duration";
 import { frequencyScopeLabel } from "@/lib/goals";
@@ -62,11 +59,9 @@ import TodaysSessionCard from "./TodaysSessionCard";
 import InjuryBar from "./InjuryBar";
 import EndurancePlanBar, { type EndurancePlanView } from "./EndurancePlanBar";
 import MuscleAnatomy from "@/components/MuscleAnatomy";
-import { dispWeight, fmtDistance, fmtKmh, fmtWeight } from "@/lib/units";
-import LineChartCard from "@/components/LineChartCard";
+import { fmtDistance, fmtKmh, fmtWeight } from "@/lib/units";
 import LogActivityButton from "@/components/LogActivityButton";
 import PrCard from "@/components/PrCard";
-import StackedBarCard from "@/components/StackedBarCard";
 import { WeeklyTargets } from "@/components/WeeklyTargets";
 import TrainingFindings from "./TrainingFindings";
 
@@ -76,12 +71,10 @@ const KIND_LABEL: Record<CardioPR["kind"], string> = {
   duration: "longest time",
 };
 
-const INTENSITY_COLOR: Record<string, string> = {
-  Easy: "bg-emerald-500",
-  Moderate: "bg-amber-500",
-  Hard: "bg-rose-500",
-  Unspecified: "bg-slate-400",
-};
+// Recent PRs render top-3 + "show all → Analyze" (#1496): the 14-row lists this page
+// used to stack are the analytics lens's job now (Trends → Fitness "PRs this window",
+// #1492) and the per-item history lives on Analyze.
+const PR_CAP = 3;
 
 // Set credit is fractional (secondary muscles count 0.5), so render whole
 // numbers plainly and half-credit with one decimal.
@@ -95,6 +88,16 @@ function prValue(p: CardioPR, du: "km" | "mi"): string {
   return formatMinutes(p.durationMin);
 }
 
+// Training → Overview: the DOING surface (#1496, the other half of #1492's rule —
+// analyze on Trends, do here). Order is deliberate and static, doing-first:
+//   1. Today's session (the daily payload leads)
+//   2. This week (stats + weekly routine state)
+//   3. Training watch — the coaching findings as ONE capped rollup card
+//   4. Muscle coverage + mobility
+//   5. Injuries / event plans (the descriptive copy renders only when they're live)
+//   6. Recent PRs — top 3 + "show all → Analyze"
+// The chart block LEFT: strength/cardio volume + intensity mix live windowed on
+// Trends → Fitness (#1492), with no mini duplicates here.
 export default async function OverviewSection() {
   const { login, profile } = await requireSession();
   const units = getUnitPrefs(login.id);
@@ -106,10 +109,6 @@ export default async function OverviewSection() {
   const targets = getFrequencyTargetProgress(profile.id);
   const strength = getStrengthByExercise(profile.id);
   const strengthPrs = recentPRs(strength, todayStr, 30);
-  const volume = getVolumeByDate(profile.id).map((v) => ({
-    date: v.date,
-    value: dispWeight(v.volume, wu, 0),
-  }));
 
   const cardio = getCardioByActivity(
     profile.id,
@@ -117,9 +116,6 @@ export default async function OverviewSection() {
     getDisplayFormatPrefs(login.id)
   );
   const cardioPrs = recentCardioPRs(cardio, todayStr, 30);
-  const weekly = getCardioVolumeByWeek(profile.id);
-  const mix = getCardioIntensityMix(profile.id);
-  const mixTotal = mix.reduce((s, b) => s + b.minutes, 0);
 
   // (date, exercise) rows over the recent window — one scan reused for the
   // recovery-aware recommendation below AND the weekly muscle-coverage list.
@@ -304,124 +300,117 @@ export default async function OverviewSection() {
 
   return (
     <section className="space-y-6">
-      {/* Observational training-balance findings (issue #45, domain 4) — distinct
-          from the next-workout recommendation below. */}
-      <TrainingFindings />
+      {/* 1. TODAY'S SESSION — the doing surface leads with the daily payload
+          (#1496/#1490). Either the resolved routine session (#740) or the generic
+          next-workout card, plus the injury/condition context riding alongside it;
+          exactly one of the two cards renders, so they never duplicate. */}
+      <div className="space-y-6" data-testid="training-today">
+        {showSessionCard && sessionCard && (
+          <TodaysSessionCard
+            label={sessionCard.label}
+            focus={sessionCard.focus}
+            slots={sessionCard.slots}
+            prefill={sessionCard.prefill}
+            deloadWeek={sessionCard.deloadWeek}
+          />
+        )}
 
-      {/* User-declared injury constraints (#838): log/edit/resolve, and the engine trains
-          around active regions (disclosed on the recommendation below). */}
-      <InjuryBar
-        injuries={injuries}
-        suggestActivateSituation={!hasInjurySituation}
-      />
-
-      {/* Endurance event plans (#839): a race goal → a safe weekly volume trajectory
-          (ramp/long-session/recovery/taper). The plan-aware cardio arm rides the
-          recommendation below; the long session surfaces as a calm coaching finding. */}
-      <EndurancePlanBar plans={endurancePlans} distanceUnit={du} />
-
-      {showSessionCard && sessionCard && (
-        <TodaysSessionCard
-          label={sessionCard.label}
-          focus={sessionCard.focus}
-          slots={sessionCard.slots}
-          prefill={sessionCard.prefill}
-          deloadWeek={sessionCard.deloadWeek}
-        />
-      )}
-
-      {/* Injury exclusion disclosure (#838) + condition considerations (#666) — the calm
-          context riding ALONGSIDE the (unchanged) recommendation. NEVER silent: the excluded
-          regions are named so the user sees WHY a region is set aside. */}
-      {(nw.excludedRegions.length > 0 ||
-        nw.temperedRegions.length > 0 ||
-        nw.considerations.length > 0 ||
-        nw.substitutionSuggested) && (
-        <div
-          className="card border-l-4 border-l-amber-400 bg-amber-50/40 dark:bg-amber-500/5"
-          data-testid="training-context-notes"
-        >
-          {nw.substitutionSuggested && (
-            <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
-              Today&apos;s routine day works only injured regions — consider a
-              substitution day rather than pushing through.
-            </p>
-          )}
-          {nw.excludedRegions.length > 0 && (
-            <p
-              className="text-sm text-slate-700 dark:text-slate-200"
-              data-testid="injury-exclusion-note"
-            >
-              Avoiding{" "}
-              {nw.excludedRegions.map((d) => excludedRegionLabel(d)).join(", ")}
-              .
-            </p>
-          )}
-          {nw.temperedRegions.length > 0 && (
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-              Easing back on {nw.temperedRegions.join(", ")} — lighter targets
-              while you recover.
-            </p>
-          )}
-          {nw.considerations.map((c) => (
-            <p
-              key={c.key}
-              className="mt-1 text-sm text-slate-600 dark:text-slate-300"
-              data-testid="condition-consideration-note"
-            >
-              {c.note}
-            </p>
-          ))}
-        </div>
-      )}
-
-      {!showSessionCard && (
-        <div className="card">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h3 className="font-semibold text-slate-800 dark:text-slate-100">
-                Next workout
-              </h3>
-              <p
-                className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100"
-                data-testid="next-workout-title"
-              >
-                {nextWorkout.title}
+        {/* Injury exclusion disclosure (#838) + condition considerations (#666) — the calm
+            context riding ALONGSIDE the (unchanged) recommendation. NEVER silent: the excluded
+            regions are named so the user sees WHY a region is set aside. */}
+        {(nw.excludedRegions.length > 0 ||
+          nw.temperedRegions.length > 0 ||
+          nw.considerations.length > 0 ||
+          nw.substitutionSuggested) && (
+          <div
+            className="card border-l-4 border-l-amber-400 bg-amber-50/40 dark:bg-amber-500/5"
+            data-testid="training-context-notes"
+          >
+            {nw.substitutionSuggested && (
+              <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                Today&apos;s routine day works only injured regions — consider a
+                substitution day rather than pushing through.
               </p>
-              <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
-                {nextWorkout.target && (
+            )}
+            {nw.excludedRegions.length > 0 && (
+              <p
+                className="text-sm text-slate-700 dark:text-slate-200"
+                data-testid="injury-exclusion-note"
+              >
+                Avoiding{" "}
+                {nw.excludedRegions
+                  .map((d) => excludedRegionLabel(d))
+                  .join(", ")}
+                .
+              </p>
+            )}
+            {nw.temperedRegions.length > 0 && (
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                Easing back on {nw.temperedRegions.join(", ")} — lighter targets
+                while you recover.
+              </p>
+            )}
+            {nw.considerations.map((c) => (
+              <p
+                key={c.key}
+                className="mt-1 text-sm text-slate-600 dark:text-slate-300"
+                data-testid="condition-consideration-note"
+              >
+                {c.note}
+              </p>
+            ))}
+          </div>
+        )}
+
+        {!showSessionCard && (
+          <div className="card">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h3 className="font-semibold text-slate-800 dark:text-slate-100">
+                  Next workout
+                </h3>
+                <p
+                  className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100"
+                  data-testid="next-workout-title"
+                >
+                  {nextWorkout.title}
+                </p>
+                <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+                  {nextWorkout.target && (
+                    <div>
+                      <dt className="section-label">Target</dt>
+                      <dd className="mt-0.5 font-semibold text-slate-700 dark:text-slate-200">
+                        {nextWorkout.target}
+                      </dd>
+                    </div>
+                  )}
                   <div>
-                    <dt className="section-label">Target</dt>
-                    <dd className="mt-0.5 font-semibold text-slate-700 dark:text-slate-200">
-                      {nextWorkout.target}
+                    <dt className="section-label">Reason</dt>
+                    <dd className="mt-0.5 text-slate-500 dark:text-slate-400">
+                      {nextWorkout.detail}
                     </dd>
                   </div>
-                )}
-                <div>
-                  <dt className="section-label">Reason</dt>
-                  <dd className="mt-0.5 text-slate-500 dark:text-slate-400">
-                    {nextWorkout.detail}
-                  </dd>
-                </div>
-              </dl>
-            </div>
-            {nextActionable && (
-              <div className="flex flex-wrap gap-2">
-                {nextWorkout.actionHref && (
-                  <a href={nextWorkout.actionHref} className="btn-ghost">
-                    View details
-                  </a>
-                )}
-                <LogActivityButton className="btn">
-                  Log activity
-                </LogActivityButton>
+                </dl>
               </div>
-            )}
+              {nextActionable && (
+                <div className="flex flex-wrap gap-2">
+                  {nextWorkout.actionHref && (
+                    <a href={nextWorkout.actionHref} className="btn-ghost">
+                      View details
+                    </a>
+                  )}
+                  <LogActivityButton className="btn">
+                    Log activity
+                  </LogActivityButton>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      {/* 2. THIS WEEK — the week's tally next to the routine's state. */}
+      <div className="grid gap-6 lg:grid-cols-3" data-testid="training-week">
         <div className="card">
           <h3 className="font-semibold text-slate-800 dark:text-slate-100">
             This week
@@ -479,7 +468,13 @@ export default async function OverviewSection() {
         </div>
       </div>
 
-      <div className="card" data-testid="muscle-coverage">
+      {/* 3. TRAINING WATCH — the observational training-balance findings (issue #45,
+          domain 4) as ONE capped rollup card (#1496), distinct from the
+          recommendation above. Same findings, same dedupeKeys, same bus. */}
+      <TrainingFindings />
+
+      {/* 4. MUSCLE COVERAGE + MOBILITY. The `id` is the rollup's anchor target. */}
+      <div className="card" id="muscle-coverage" data-testid="muscle-coverage">
         <h3 className="font-semibold text-slate-800 dark:text-slate-100">
           Muscle coverage
         </h3>
@@ -561,16 +556,26 @@ export default async function OverviewSection() {
           a SEPARATE view next to muscle coverage (never merged — #482). */}
       <MobilitySection profileId={profile.id} today={todayStr} />
 
-      <div className="space-y-6 opacity-85">
-        <div>
-          <h3 className="section-label">Trends and records</h3>
-        </div>
+      {/* 5. INJURIES / EVENT PLANS — conditional cards (#1496): they carry their
+          full descriptive block only when something is live. With none logged each
+          collapses to its one-line "＋ log" affordance, which STAYS (it is the only
+          door to logging the first injury/plan) rather than vanishing entirely. */}
+      <InjuryBar
+        injuries={injuries}
+        suggestActivateSituation={!hasInjurySituation}
+      />
 
+      <EndurancePlanBar plans={endurancePlans} distanceUnit={du} />
+
+      {/* 6. RECENT PRs — top 3 each, with "show all" handing off to Analyze
+          (per-item history) — the 14-row lists are gone (#1496). */}
+      {(strengthPrs.length > 0 || cardioPrs.length > 0) && (
         <div className="grid gap-6 lg:grid-cols-2">
           {strengthPrs.length > 0 && (
             <PrCard
               title="Recent strength PRs"
-              items={strengthPrs.map((p) => ({
+              testId="overview-strength-prs"
+              items={strengthPrs.slice(0, PR_CAP).map((p) => ({
                 name: p.exercise,
                 value:
                   p.kind === "1rm"
@@ -580,86 +585,44 @@ export default async function OverviewSection() {
                     : `${fmtWeight(p.weightKg, wu)} top`,
                 meta: formatRelativeDate(p.date, todayStr),
               }))}
+              action={
+                strengthPrs.length > PR_CAP ? (
+                  <Link
+                    href="/training?tab=analyze"
+                    data-testid="overview-strength-prs-all"
+                    className="shrink-0 text-xs font-medium text-brand-700 hover:underline dark:text-brand-400"
+                  >
+                    Show all {strengthPrs.length} →
+                  </Link>
+                ) : undefined
+              }
             />
           )}
 
           {cardioPrs.length > 0 && (
             <PrCard
               title="Recent cardio PRs"
-              items={cardioPrs.map((p) => ({
+              testId="overview-cardio-prs"
+              items={cardioPrs.slice(0, PR_CAP).map((p) => ({
                 name: p.activity,
                 value: prValue(p, du),
                 meta: `${KIND_LABEL[p.kind]} - ${formatRelativeDate(p.date, todayStr)}`,
               }))}
+              action={
+                cardioPrs.length > PR_CAP ? (
+                  <Link
+                    href="/training?tab=analyze"
+                    data-testid="overview-cardio-prs-all"
+                    className="shrink-0 text-xs font-medium text-brand-700 hover:underline dark:text-brand-400"
+                  >
+                    Show all {cardioPrs.length} →
+                  </Link>
+                ) : undefined
+              }
             />
           )}
         </div>
-
-        <div className="grid gap-6 lg:grid-cols-2">
-          <div className="card">
-            <h3 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-              Strength volume
-            </h3>
-            {volume.length === 0 ? (
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                No strength sessions logged yet.
-              </p>
-            ) : (
-              <LineChartCard
-                data={volume}
-                label="Volume"
-                unit={` ${wu}`}
-                color={chartSeries.brand}
-              />
-            )}
-          </div>
-
-          {weekly.data.length > 0 && (
-            <div className="card">
-              <h3 className="mb-1 font-semibold text-slate-800 dark:text-slate-100">
-                Cardio volume
-              </h3>
-              <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
-                Minutes per week, by activity
-              </p>
-              <StackedBarCard
-                data={weekly.data}
-                series={weekly.series}
-                unit=" min"
-                labelPrefix="Week of "
-              />
-            </div>
-          )}
-        </div>
-
-        {mixTotal > 0 && (
-          <div className="card">
-            <h3 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-              Cardio intensity mix
-            </h3>
-            <div className="flex h-3 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-ink-800">
-              {mix.map((b) => (
-                <div
-                  key={b.intensity}
-                  className={INTENSITY_COLOR[b.intensity] ?? "bg-slate-400"}
-                  style={{ width: `${(b.minutes / mixTotal) * 100}%` }}
-                  title={`${b.intensity}: ${formatMinutes(b.minutes)}`}
-                />
-              ))}
-            </div>
-            <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-              {mix.map((b) => (
-                <li key={b.intensity} className="flex items-center gap-1.5">
-                  <span
-                    className={`h-2.5 w-2.5 rounded-full ${INTENSITY_COLOR[b.intensity] ?? "bg-slate-400"}`}
-                  />
-                  {b.intensity} - {formatMinutes(b.minutes)} - {b.sessions}x
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
+      )}
     </section>
   );
 }
