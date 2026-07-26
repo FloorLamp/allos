@@ -1212,12 +1212,12 @@ trailer<</Size 4/Root 1 0 R>>
   );
   await visit(page, "/data", 1500);
   await page
-    .getByRole("tab", { name: /File Upload/ })
-    .or(page.getByRole("link", { name: /File Upload/ }))
-    .or(page.getByRole("button", { name: /File Upload/ }))
+    .getByRole("tab", { name: /File upload/i })
+    .or(page.getByRole("link", { name: /File upload/i }))
+    .or(page.getByRole("button", { name: /File upload/i }))
     .first()
     .click()
-    .catch(() => log("upload: File Upload tab not found — trying inline form"));
+    .catch(() => log("upload: File upload tab not found — trying inline form"));
   await page.waitForTimeout(1000);
   const input = page.getByTestId("medical-upload-input");
   if (!(await input.count())) {
@@ -1228,7 +1228,7 @@ trailer<</Size 4/Root 1 0 R>>
   await input.setInputFiles(pdfPath);
   await page.waitForTimeout(500);
   await shot(page, "upload-file-chosen");
-  // testid, not name — the "File Upload (incl. CSV)" tab also matches "Upload".
+  // testid, not name — the "File upload (incl. CSV)" tab also matches "Upload".
   await page.getByTestId("medical-upload-submit").click();
   await checkVisible(
     page,
@@ -1360,12 +1360,12 @@ async function ccdJourney(browser) {
   fs.writeFileSync(ccdPath, CCD_FIXTURE);
   await visit(page, "/data", 1500);
   await page
-    .getByRole("tab", { name: /File Upload/ })
-    .or(page.getByRole("link", { name: /File Upload/ }))
-    .or(page.getByRole("button", { name: /File Upload/ }))
+    .getByRole("tab", { name: /File upload/i })
+    .or(page.getByRole("link", { name: /File upload/i }))
+    .or(page.getByRole("button", { name: /File upload/i }))
     .first()
     .click()
-    .catch(() => log("ccd: File Upload tab not found — trying inline form"));
+    .catch(() => log("ccd: File upload tab not found — trying inline form"));
   await page.waitForTimeout(1000);
   const input = page.getByTestId("medical-upload-input");
   if (!(await input.count())) {
@@ -1390,7 +1390,8 @@ async function ccdJourney(browser) {
   await shot(page, "ccd-results-after");
   if (landed) log("ccd: structured import landed (lab visible on Results)");
   // The condition + allergy from the Problems/Allergies sections.
-  await visit(page, "/records/problems", 1500);
+  await visit(page, "/records/problems/conditions", 1500);
+  await visit(page, "/records/problems/allergies", 1500);
   await checkVisible(
     page,
     () => page.getByText("Asthma"),

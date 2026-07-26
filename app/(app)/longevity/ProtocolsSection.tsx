@@ -10,6 +10,7 @@ import { getEquipment } from "@/lib/equipment";
 import { recoveryGearOptions } from "@/lib/protocol-gear";
 import ProtocolForm from "@/app/(app)/protocols/ProtocolForm";
 import ProtocolList from "@/app/(app)/protocols/ProtocolList";
+import ListRailLayout from "@/components/ListRailLayout";
 import { createProtocol } from "@/app/(app)/protocols/actions";
 import {
   PROTOCOL_TEMPLATES,
@@ -59,66 +60,67 @@ export default async function ProtocolsSection({
         </p>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="min-w-0 space-y-4 lg:col-span-2">
-          <ProtocolList
-            items={protocols}
-            formatPrefs={getDisplayFormatPrefs(login.id)}
-          />
-        </div>
-        <div className="min-w-0 space-y-4">
-          <div className="card space-y-2" data-testid="protocol-templates">
-            <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-              Start from a template
-            </h2>
-            <div className="flex flex-wrap gap-2">
-              {PROTOCOL_TEMPLATES.map((t) => (
-                <Link
-                  key={t.id}
-                  href={`/longevity?template=${t.id}#protocols`}
-                  data-testid={`protocol-template-${t.id}`}
-                  className={`badge transition ${
-                    template?.id === t.id
-                      ? "bg-brand-600 text-white"
-                      : "bg-brand-50 text-brand-700 hover:ring-1 hover:ring-current dark:bg-brand-500/15 dark:text-brand-300"
-                  }`}
-                  title={t.blurb}
-                >
-                  {t.label}
-                </Link>
-              ))}
+      <ListRailLayout
+        rail={
+          <>
+            <div className="card space-y-2" data-testid="protocol-templates">
+              <h2 className="font-semibold text-slate-800 dark:text-slate-100">
+                Start from a template
+              </h2>
+              <div className="flex flex-wrap gap-2">
+                {PROTOCOL_TEMPLATES.map((t) => (
+                  <Link
+                    key={t.id}
+                    href={`/longevity?template=${t.id}#protocols`}
+                    data-testid={`protocol-template-${t.id}`}
+                    className={`badge transition ${
+                      template?.id === t.id
+                        ? "bg-brand-600 text-white"
+                        : "bg-brand-50 text-brand-700 hover:ring-1 hover:ring-current dark:bg-brand-500/15 dark:text-brand-300"
+                    }`}
+                    title={t.blurb}
+                  >
+                    {t.label}
+                  </Link>
+                ))}
+                {template ? (
+                  <Link
+                    href="/longevity#protocols"
+                    className="badge bg-slate-100 text-slate-600 hover:ring-1 hover:ring-current dark:bg-ink-800 dark:text-slate-300"
+                  >
+                    Clear
+                  </Link>
+                ) : null}
+              </div>
               {template ? (
-                <Link
-                  href="/longevity#protocols"
-                  className="badge bg-slate-100 text-slate-600 hover:ring-1 hover:ring-current dark:bg-ink-800 dark:text-slate-300"
-                >
-                  Clear
-                </Link>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {template.blurb} The form below is prefilled — review and
+                  edit, then save.
+                </p>
               ) : null}
             </div>
-            {template ? (
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {template.blurb} The form below is prefilled — review and edit,
-                then save.
-              </p>
-            ) : null}
-          </div>
-          <ProtocolForm
-            // Remount the form when the template changes so its uncontrolled
-            // defaults re-seed.
-            key={template?.id ?? "blank"}
-            action={createProtocol}
-            options={options}
-            equipment={equipment}
-            intakeItems={intakeItems}
-            template={template}
-          />
-          <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
-            Comparisons are descriptive (mean/median shift with n per window),
-            not statistical inference.
-          </p>
-        </div>
-      </div>
+            <ProtocolForm
+              // Remount the form when the template changes so its uncontrolled
+              // defaults re-seed.
+              key={template?.id ?? "blank"}
+              action={createProtocol}
+              options={options}
+              equipment={equipment}
+              intakeItems={intakeItems}
+              template={template}
+            />
+            <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
+              Comparisons are descriptive (mean/median shift with n per window),
+              not statistical inference.
+            </p>
+          </>
+        }
+      >
+        <ProtocolList
+          items={protocols}
+          formatPrefs={getDisplayFormatPrefs(login.id)}
+        />
+      </ListRailLayout>
     </section>
   );
 }

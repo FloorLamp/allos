@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { hydratedClick } from "./helpers";
 
 // Kids growth trends. For a CHILD profile the Trends → Body tab prioritizes
 // height (WHO/CDC growth percentiles + a height/head-circ chart), offers a manual
@@ -41,7 +42,7 @@ async function switchProfile(page: Page, name: string) {
 // so a test that flips it MUST restore "kg" so no sibling spec inherits the
 // switch. Auto-saves on change (SaveStatus check).
 async function setWeightUnit(page: Page, value: "kg" | "lb") {
-  await page.goto("/settings");
+  await page.goto("/settings/display");
   const select = page
     .getByRole("main")
     .locator("select")
@@ -68,10 +69,13 @@ test.describe.serial("kids growth trends", () => {
     page,
   }) => {
     await switchProfile(page, "Riley (child)");
-    await page.goto("/trends?tab=body");
+    await page.goto("/trends?tab=body&view=all");
 
-    // The child-only growth quick-add, with height + head-circumference fields.
-    const form = page.getByTestId("growth-quick-add");
+    // The growth fields are life-stage-gated ROWS of the ONE combined measurements
+    // form since #1486 (the standalone growth quick-add retired) — reached through
+    // the desktop "+ Log" expander.
+    await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
+    const form = page.getByTestId("measurements-quick-add");
     await expect(form).toBeVisible();
     const heightInput = form.getByLabel("Height", { exact: true });
     await expect(heightInput).toBeVisible();
@@ -97,8 +101,8 @@ test.describe.serial("kids growth trends", () => {
 
     // Adding a height persists without error and the form clears.
     await heightInput.fill("82.5");
-    await form.getByRole("button", { name: "Save growth" }).click();
-    await expect(page.getByText("Growth measurement saved")).toBeVisible();
+    await form.getByRole("button", { name: "Save measurements" }).click();
+    await expect(page.getByText("Measurements saved")).toBeVisible();
     await expect(heightInput).toHaveValue("");
 
     // The height still charts after the write (growth card remains populated).
@@ -111,15 +115,19 @@ test.describe.serial("kids growth trends", () => {
     page,
   }) => {
     await switchProfile(page, "admin");
-    await page.goto("/trends?tab=body");
+    await page.goto("/trends?tab=body&view=all");
+    await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
+    const form = page.getByTestId("measurements-quick-add");
+    await expect(form).toBeVisible();
 
-    // No child growth quick-add for an adult.
-    await expect(page.getByTestId("growth-quick-add")).toHaveCount(0);
+    // No growth fields for an adult — the one form is life-stage-gated (#1486).
+    expect(await form.getAttribute("data-life-stage")).toBe("adult");
+    await expect(form.getByLabel("Height", { exact: true })).toHaveCount(0);
 
     // Body fat % is still charted AND enterable for an adult (#493); height/head-circ
     // are not surfaced as tiles.
     await expect(page.getByRole("heading", { name: "Body fat" })).toBeVisible();
-    await expect(page.getByLabel("Body fat (%)")).toBeVisible();
+    await expect(form.getByLabel("Body fat (%)")).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "Head circumference" })
     ).toHaveCount(0);
@@ -136,10 +144,10 @@ test.describe.serial("kids growth trends", () => {
     await switchProfile(page, "Riley (child)");
     await setWeightUnit(page, "lb");
     try {
-      await page.goto("/trends?tab=body");
+      await page.goto("/trends?tab=body&view=all");
 
       // Filter by the card's own <h2> — a bare hasText substring also matches
-      // the growth-quick-add form card above it (strict-mode double-match).
+      // the neighbouring chart cards (strict-mode double-match).
       const card = page
         .getByRole("main")
         .locator(".card")

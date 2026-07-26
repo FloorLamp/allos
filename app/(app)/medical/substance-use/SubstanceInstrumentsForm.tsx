@@ -9,6 +9,7 @@ import {
   type SubstanceInstrument,
 } from "@/lib/substance-use";
 import { recordSubstanceInstrumentAction } from "./actions";
+import DateField from "@/components/DateField";
 
 // The substance-instrument capture form (#998) — the #716 guided-battery pattern:
 // in-app AUDIT-C and DAST-10 tap-throughs (DAST-10 since #1085) that compute the
@@ -163,20 +164,21 @@ export default function SubstanceInstrumentsForm({
           data-testid="substance-total-only-note"
         >
           The {def.title} is answered with a clinician or on paper; its question
-          text isn&rsquo;t reproduced here. Enter the total score (0–
+          text isn’t reproduced here. Enter the total score (0–
           {def.maxTotal}).
         </p>
       )}
 
-      <label className="block text-sm">
+      <label className="block text-sm" htmlFor="substance-instrument-date">
         <span className="text-slate-500 dark:text-slate-400">Date</span>
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="mt-1 block rounded-lg border border-black/10 px-2 py-1 dark:border-white/10 dark:bg-slate-900"
-          data-testid="substance-instrument-date"
-        />
+        <div className="mt-1 max-w-xs">
+          <DateField
+            id="substance-instrument-date"
+            value={date}
+            onChange={setDate}
+            data-testid="substance-instrument-date"
+          />
+        </div>
       </label>
 
       <form onSubmit={submit} className="space-y-4">

@@ -8,7 +8,7 @@ import ScrollFade from "@/components/ScrollFade";
 // the log; prices drift). Server-rendered from the parsed AI log; static, no stream.
 
 function fmt(n: number): string {
-  return n.toLocaleString();
+  return n.toLocaleString("en-US");
 }
 
 function statCells(s: UsageStat) {

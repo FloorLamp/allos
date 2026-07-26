@@ -4,6 +4,7 @@ import CommandPalette from "@/components/CommandPalette";
 import ActivityEditorProvider from "@/components/ActivityEditorProvider";
 import QuickEntryProvider from "@/components/QuickEntryProvider";
 import PullToRefresh from "@/components/PullToRefresh";
+import QuickShortcutHandler from "@/components/QuickShortcutHandler";
 import ExtractionToaster from "@/components/ExtractionToaster";
 import ImportJobsToaster from "@/components/ImportJobsToaster";
 import VersionWatcher from "@/components/VersionWatcher";
@@ -223,7 +224,7 @@ export default async function AppLayout({
               <ProfileSwitchWatcher activeProfileId={profile.id} />
               {/* The shared quick-entry overlay host (#1468). Inside
                   OfflineQueueProvider by necessity: the forms it mounts
-                  (BodyQuickAdd / VitalsQuickAdd) queue offline writes, and it
+                  (MeasurementsQuickAdd) queue offline writes, and it
                   renders them as its OWN children, so they must sit under that
                   provider. It gathers nothing until a sheet row is tapped. */}
               <QuickEntryProvider>
@@ -329,6 +330,12 @@ export default async function AppLayout({
                     profileName={session.profile.name}
                     weightUnit={units.weightUnit}
                   />
+                  {/* PWA home-screen shortcuts land here (#1424): reads
+                      `?quick=` and opens the SAME activity editor / quick-entry
+                      overlay / palette the sheet does. Beside CommandPalette so
+                      it sits inside both contexts it dispatches into, and
+                      viewport-agnostic — the shortcut URL is an ordinary link. */}
+                  <QuickShortcutHandler restricted={restricted} />
                   <ExtractionToaster profileId={profile.id} />
                   <ImportJobsToaster profileId={profile.id} />
                   <VersionWatcher current={version.sha} />

@@ -1,11 +1,11 @@
 import { test, expect } from "@playwright/test";
 import Database from "better-sqlite3";
-import { seedDupReviewPair } from "./dup-review-fixture";
+import { seedDupReviewPair, DUP_DATE } from "./dup-review-fixture";
 
 const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
 
 // Dogfoods the Data → Review duplicate/conflict resolver (issue #10, Phase 2). The
-// e2e seed (e2e/seed-events.ts) plants a cross-source ACTIVITY pair on 2026-07-07:
+// e2e seed (e2e/seed-events.ts) plants a cross-source ACTIVITY pair on DUP_DATE:
 // a manual "Morning run" and a Strava "Afternoon Run" with overlapping clock times,
 // which detection flags as a HIGH-confidence duplicate. We assert it surfaces, then
 // MERGE it and assert (a) the pair is gone, (b) it stays gone after a reload (the
@@ -47,9 +47,16 @@ test.describe("Data → Review duplicate resolver", () => {
     expect(badgeBefore).toBeGreaterThanOrEqual(3); // ≥ the 2 constant failing integrations + this spec's pair
 
     // The detected pair renders under "Possible duplicates" with both rows and a
-    // High-confidence chip.
-    await expect(review.getByText("Possible duplicates (1)")).toBeVisible();
-    const pair = review.getByTestId("dup-activity-pair");
+    // High-confidence chip. Scoped to THIS spec's pair (filter on its title): the
+    // section total is a SHARED-WORLD aggregate (#868) — the sample seed's rolling
+    // relative dates can legitimately form another cross-source pair on any given
+    // real day (2026-07-26: a sample "Morning run" rolled onto the fixed-date
+    // "HC provenance run"), so an exact "(1)" or a bare-testid count is a daily
+    // roulette, same class as the badge note above.
+    await expect(review.getByText(/Possible duplicates \(\d+\)/)).toBeVisible();
+    const pair = review
+      .getByTestId("dup-activity-pair")
+      .filter({ hasText: "Afternoon Run" });
     await expect(pair).toHaveCount(1);
     await expect(pair.getByText("High confidence")).toBeVisible();
     await expect(pair.getByText("Morning run")).toBeVisible();
@@ -59,21 +66,24 @@ test.describe("Data → Review duplicate resolver", () => {
     // row, folds any missing fields in, and records a durable 'merged' decision.
     await pair.getByTestId("dup-merge-primary").click();
 
-    // The pair is resolved — the duplicates section disappears.
-    await expect(review.getByTestId("dup-activity-pair")).toHaveCount(0);
-    await expect(review.getByText("Possible duplicates")).toHaveCount(0);
+    // The pair is resolved — THIS pair leaves the inbox (the section itself may
+    // survive if the shared world carries another legitimate pair that day).
+    await expect(pair).toHaveCount(0);
 
     // Durability: reloading re-runs detection against the live rows. The Strava row
     // still exists, but the decision (keyed on the stable pair signature) keeps the
     // pair suppressed — it must NOT resurface.
     await page.reload();
     await expect(
-      page.getByTestId("review-inbox").getByTestId("dup-activity-pair")
+      page
+        .getByTestId("review-inbox")
+        .getByTestId("dup-activity-pair")
+        .filter({ hasText: "Afternoon Run" })
     ).toHaveCount(0);
 
     // Only the kept (Afternoon Run) activity survives on that day; the merged-away
     // manual "Morning run" row is actually deleted, not just hidden.
-    await page.goto("/timeline?from=2026-07-07&to=2026-07-07");
+    await page.goto(`/timeline?from=${DUP_DATE}&to=${DUP_DATE}`);
     // Scope to the FEED row: the single-day view now also renders the intraday
     // panel (#1068), whose SVG carries a hidden <title>Afternoon Run</title> for
     // the workout block — a page-wide text locator's FIRST match resolves to that

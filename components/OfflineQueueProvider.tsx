@@ -319,8 +319,7 @@ export default function OfflineQueueProvider({
           <div className="flex items-start justify-between gap-2">
             <p className="font-semibold">
               {rejected.length} offline{" "}
-              {rejected.length === 1 ? "entry" : "entries"} couldn&rsquo;t be
-              applied
+              {rejected.length === 1 ? "entry" : "entries"} couldn’t be applied
             </p>
             <button
               type="button"

@@ -10,8 +10,14 @@ test.describe("Settings → Audit log", () => {
   test("admin sees the Audit tab and a login event row", async ({ page }) => {
     await page.goto("/settings/audit");
 
-    // The admin-only tab is present in the settings tab strip.
-    await expect(page.getByRole("link", { name: "Audit" })).toBeVisible();
+    // The admin-only sub-page entry is present. Scoped to the strip: since #1462 the
+    // group nav also carries a "Logs & audit" link, whose accessible name contains
+    // "Audit" too.
+    await expect(
+      page
+        .getByTestId("settings-subpage-nav")
+        .getByRole("link", { name: "Audit" })
+    ).toBeVisible();
 
     // The table renders; filter to the login domain and find the login.success
     // row written when auth.setup signed in as admin.

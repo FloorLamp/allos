@@ -23,18 +23,28 @@ type LinkLike = ComponentType<{
   href: AppRoute;
   className: string;
   children: ReactNode;
+  "aria-current"?: "page";
 }>;
 
 // next/link's Link has a broader (Url) href type than LinkLike; wrap it so the
 // default satisfies the prop type without a cast.
-const DefaultLink: LinkLike = ({ href, className, children }) => (
-  <Link href={href} className={className}>
+const DefaultLink: LinkLike = ({
+  href,
+  className,
+  children,
+  "aria-current": ariaCurrent,
+}) => (
+  <Link href={href} className={className} aria-current={ariaCurrent}>
     {children}
   </Link>
 );
 
 // Shared pill styling for the quick-range chips — identical on the Timeline and
-// the Trends hub so the one control looks the same on both.
+// the Trends hub so the one control looks the same on both. The active pill also
+// carries `aria-current="page"` (see LinkComponent call sites): the lit state was
+// previously conveyed by colour ALONE, which neither AT nor a test can read — and
+// with Trends' 90D default (#1485 G) "which window am I in?" is answered by the
+// pill, so it needs a non-visual answer.
 function rangePillClass(active: boolean): string {
   return `rounded-full px-3 py-1 text-sm font-medium transition ${
     active
@@ -92,7 +102,7 @@ export default function DateRangeControl({
         <CustomRangePanel className="order-2 sm:order-1">
           <form
             action={basePath}
-            className="card grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2 p-2 sm:grid-cols-[1fr_1fr_auto_auto] sm:gap-3 sm:p-4"
+            className="card grid grid-cols-2 gap-2 p-2 sm:grid-cols-[1fr_1fr_auto_auto] sm:gap-3 sm:p-4"
           >
             {Object.entries(hiddenParams).map(([k, v]) =>
               v ? <input key={k} type="hidden" name={k} value={v} /> : null
@@ -119,12 +129,12 @@ export default function DateRangeControl({
                 defaultValue={range.to ?? ""}
               />
             </div>
-            <div className="flex items-end">
-              <button type="submit" className="btn h-10 px-3 sm:w-full">
+            <div className="col-span-2 flex items-end sm:col-span-1">
+              <button type="submit" className="btn h-10 w-full px-3">
                 Apply
               </button>
             </div>
-            <div className="col-span-3 flex items-end sm:col-span-1">
+            <div className="col-span-2 flex items-end sm:col-span-1">
               <Link
                 href={buildHref({})}
                 className="btn-ghost w-full py-1.5 text-center sm:py-2"
@@ -146,6 +156,9 @@ export default function DateRangeControl({
                 key={qr.label}
                 href={buildHref({ from: qr.from, to: qr.to })}
                 className={rangePillClass(isQuickRangeActive(range, qr))}
+                aria-current={
+                  isQuickRangeActive(range, qr) ? "page" : undefined
+                }
               >
                 {qr.label}
               </LinkComponent>
@@ -153,6 +166,7 @@ export default function DateRangeControl({
             <LinkComponent
               href={buildHref({})}
               className={rangePillClass(isAllTimeRange(range))}
+              aria-current={isAllTimeRange(range) ? "page" : undefined}
             >
               All time
             </LinkComponent>

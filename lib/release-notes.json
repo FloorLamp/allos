@@ -4,6 +4,83 @@
       "date": "2026-07-25",
       "entries": [
         {
+          "pr": 1530,
+          "title": "One Body tab, one place to log your numbers",
+          "body": "Trends loses its Vitals/Body split: one Body tab now leads with today's readings and the 1D intraday view, then your vitals charts (blood pressure, oxygen, resting heart rate — charted exactly once, goal line intact — HRV, and the fever view), then weight and body fat, with the tab strip down to six entries and old Vitals links landing in the right place. Logging is one combined \"Log measurements\" form — weight, body fat, blood pressure, glucose, oxygen, temperature, sleep, HRV, and growth fields for kids — behind a + Log button on desktop and the quick-log sheet's single Measurements item on your phone. The three fitness-check tests (grip, chair stand, balance) moved to the guided flow on Training, where timed tests belong — same records, same percentiles.",
+          "kind": "feature",
+          "issues": [1486]
+        },
+        {
+          "pr": 1529,
+          "title": "Settings, reorganized around what things are about",
+          "body": "Settings is no longer three navigation systems around two very long pages: it's now an index of eleven topic groups — Account & security, Display & units, Health profile, Training, Nutrition, Coaching & AI, Notifications, Privacy, plus the admin People & access, Server, and Logs & audit — each a short page that states who it applies to (your login, this profile, or the server). The Notifications page drops from three screens to three sections with exactly one row per message kind (enable, timing, and channels together — the old duplicate toggle-card and routing matrix are gone, with no change to what's configurable). The active-sessions list finally reads as devices (\"Chrome · Linux\") instead of 22 identical truncated browser strings, collapsed to the recent few. One heads-up: old settings URLs from before the reorganization aren't redirected — use the index once and you're re-oriented.",
+          "kind": "feature",
+          "issues": [1462, 1451]
+        },
+        {
+          "pr": 1523,
+          "title": "Your Trends Overview is now yours to curate",
+          "body": "The Overview tab shows exactly two things: what changed (the movers digest) and what you starred — nothing unconditional. The standard tiles (weight, body fat, resting heart rate, training volume) are still there on day one, but as ordinary saved tiles you can unstar or reorder like anything else; the domain tabs keep showing everything. Tiles also got denser on phones — two abreast, the latest value as the headline number, controls tucked into a corner menu — and a saved metric with no readings in the window compacts to a one-line row below the populated tiles instead of a full-height empty box. Unstar everything and the page tells you how to build it back rather than going blank.",
+          "kind": "feature",
+          "issues": [1487, 1485]
+        },
+        {
+          "pr": 1521,
+          "title": "Dates read one way everywhere",
+          "body": "A sweep over every visible date: the same style now means the same thing across pages (day-of-week where it helps, the year only when it isn't this year), timestamps stop mixing formats mid-page, and a handful of form papercuts went with it — labels no longer clip their descenders, and disabled fields actually look disabled instead of just refusing input.",
+          "kind": "fix",
+          "issues": [1448, 1450]
+        },
+        {
+          "pr": 1507,
+          "title": "Trends opens on the last 90 days",
+          "body": "Trends now defaults to a 90-day window instead of all time, so every chart leads with recent change rather than a lifetime average — and \"All time\" is still one tap away (links and saved views that meant all-time keep meaning it). A saved biomarker with no readings in the window shows its latest reading with an honest age (\"55 ng/mL · 5 mo ago\") instead of an empty tile, so stale never reads as current.",
+          "kind": "feature",
+          "issues": [1485]
+        },
+        {
+          "pr": 1514,
+          "title": "Upcoming rows get one menu, and copy reads right",
+          "body": "Preventive items on Upcoming showed two identical \"⋯\" menus (two independent menus composing on one row) — now one merged menu, with a fixed-width status column so the Overdue label stops jumping and a mobile action row that folds secondary actions into the menu instead of wrapping. A copy sweep also fixed a subtle rendering bug that ate the space after bold text on ten pages, singular/plural slips (\"1 errors\"), and developer jargon in help text.",
+          "kind": "fix",
+          "issues": [1446, 1447]
+        },
+        {
+          "pr": 1508,
+          "title": "Health-record pages read as one family",
+          "body": "The Problems tab joins the records pattern — Conditions and Allergies as proper sub-pages with the family's pill navigation, so an allergy link lands on the list itself. Filters unify into one outline-pill style across the record tabs, heading sizes settle into one hierarchy, and the journal's form-check section now appears only on activities that actually have clips, with adding one moved into the activity editor.",
+          "kind": "feature",
+          "issues": [1449, 1457]
+        },
+        {
+          "pr": 1494,
+          "title": "Share a lab PDF straight into your record",
+          "body": "Install the app and your phone's share sheet gains an Allos target: share a PDF or a photo of a document from any app and it lands in the medical-upload pipeline — same per-person storage, duplicate detection, and AI extraction as the upload form — then opens the stored document so you can watch extraction and reassign it if it belongs to another family member. The upload form also gains a take-a-photo option on phones.",
+          "kind": "feature",
+          "issues": [1423]
+        },
+        {
+          "pr": 1495,
+          "title": "Home-screen shortcuts and a badge that counts what needs you",
+          "body": "Long-press the installed app's icon for shortcuts straight into logging — food, a dose, weight, vitals, an activity, or search. The app icon also carries a badge with the same count as the dashboard's Needs-attention card, clearing when the day is handled (refreshes on open in this first version).",
+          "kind": "feature",
+          "issues": [1424]
+        },
+        {
+          "pr": 1481,
+          "title": "Overlays that move as one, and swipes that go somewhere",
+          "body": "The drawer, bottom sheets, and the workout dock now share one motion system — same timing, same drag handle, same scrim — and one drag gesture with the right outcome per surface: swiping a sheet down dismisses it, swiping the workout dock minimizes it (a live workout is never discardable by gesture). The drawer opens with an edge swipe, and the Timeline's day view pages between days with a horizontal swipe or its new arrows. All of it is instant under reduced-motion.",
+          "kind": "feature",
+          "issues": [1425, 1469]
+        },
+        {
+          "pr": 1483,
+          "title": "Redose guidance with just an interval, and a household dose round",
+          "body": "Setting only a minimum interval on an as-needed medication now shows the \"Next dose in ~Nh\" guidance — it previously required the optional daily maximum too. And caregivers can subscribe their Telegram reminder to a household round: one message covering the family members you select, each section with one-tap confirms that check your current access at the moment you tap and answer honestly if a dose was already handled.",
+          "kind": "fix",
+          "issues": [1458, 1459]
+        },
+        {
           "pr": 1480,
           "title": "One star to save it everywhere",
           "body": "Starring and pinning were two separate gestures for the same intent — a biomarker you cared about had to be starred for the Results status card and separately pinned to earn a Trends chart tile, and the two sets silently drifted apart. They're now one: starring a biomarker puts it on the Results card, gives it a Trends chart tile, and includes it in the profile summary, with a reorder control on Trends replacing the old pin toggle. Existing stars and pins merge automatically, keeping each save's original date and your tile order. One change to know: restoring a saved Trends view no longer alters which biomarkers are saved — views keep their date range and compare state only.",
@@ -68,7 +145,8 @@
         }
       ],
       "operatorNotes": [
-        "Migration 113 applies automatically on first boot after pulling (folds starred biomarkers and trend pins into the new unified save store). No manual steps; downgrading past it afterward requires a backup restore, as with any migration."
+        "Migration 113 applies automatically on first boot after pulling (folds starred biomarkers and trend pins into the new unified save store). No manual steps; downgrading past it afterward requires a backup restore, as with any migration.",
+        "Migration 114 applies automatically on first boot after pulling (seeds each profile's standard Overview tiles as saved rows so they become removable; existing profiles see an identical Overview on day one). No manual steps; downgrading past it afterward requires a backup restore, as with any migration."
       ]
     },
     {

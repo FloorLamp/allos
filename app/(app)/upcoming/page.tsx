@@ -18,7 +18,6 @@ import {
   IconArrowBackUp,
   IconBellOff,
   IconInfoCircle,
-  IconCalendarPlus,
   IconCalendarCheck,
   IconClipboardPlus,
   IconArrowRight,
@@ -60,8 +59,7 @@ import {
 import { PageHeader, EmptyState } from "@/components/ui";
 import Avatar from "@/components/Avatar";
 import SubmitButton from "@/components/SubmitButton";
-import SnoozeDismissMenu from "@/components/SnoozeDismissMenu";
-import PreventiveOverrideMenu from "./PreventiveOverrideMenu";
+import UpcomingRowMenu, { RowActionChips, type RowAction } from "./RowActions";
 import FollowUpResolveControls from "@/components/FollowUpResolveControls";
 import ExplainFinding from "@/components/ExplainFinding";
 import {
@@ -71,6 +69,7 @@ import {
   restoreItem,
   markPreventiveDone,
   markCarePlanDone,
+  overridePreventive,
   resolveFollowUp,
   dismissMultiviewHintAction,
 } from "./actions";
@@ -528,7 +527,7 @@ function DemographicsNudge({
         <div>
           Add a birthdate to enable preventive visit &amp; screening reminders.{" "}
           <Link
-            href="/settings/profile"
+            href="/settings/health"
             className="font-medium underline hover:no-underline"
           >
             Set it in Profile settings
@@ -564,7 +563,7 @@ function DemographicsNudge({
                   <span className="font-medium">{name}</span>
                   {isActing && (
                     <Link
-                      href="/settings/profile"
+                      href="/settings/health"
                       className="underline hover:no-underline"
                     >
                       — set it in Profile settings
@@ -606,39 +605,6 @@ function SubjectChip({ subject }: { subject: SubjectInfo }) {
         </span>
       )}
     </span>
-  );
-}
-
-// Inline controls for a due preventive visit/screening row (issue #82): a fast
-// "Mark done" (records a satisfaction dated today, like a dose "mark taken") plus
-// an override menu to mark the rule Declined or Not applicable — either hides it.
-// The override menu is the shared OverflowMenu-based popover (issue #281).
-function PreventiveControls({
-  ruleKey,
-  profileId,
-}: {
-  ruleKey: string;
-  profileId: number;
-}) {
-  return (
-    <div className="flex shrink-0 items-center gap-1">
-      <form
-        action={async (fd) => {
-          "use server";
-          await markPreventiveDone(fd);
-        }}
-      >
-        <input type="hidden" name="rule_key" value={ruleKey} />
-        <input type="hidden" name="profile_id" value={profileId} />
-        <SubmitButton
-          pendingLabel="…"
-          className="rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
-        >
-          Mark done
-        </SubmitButton>
-      </form>
-      <PreventiveOverrideMenu ruleKey={ruleKey} />
-    </div>
   );
 }
 
@@ -788,6 +754,149 @@ function Row({
   // presentation that renders chips (interleaved; by-person names the subject in its
   // member header instead).
   const showChip = chipRow && subjectChipVisible({ multi, isActing });
+  const dueText = upcomingDueText(item, now);
+
+  // The row's SECONDARY actions, built ONCE (issue #1446). RowActionChips renders
+  // them inline at `sm`+; below `sm` the very same descriptors render as items in
+  // the row's single overflow menu, so the phone layout can't wrap four or five
+  // chips into an orphaned trailing line. One list, two presenters — never two
+  // hand-mirrored authorings (the responsive-surfaces rule).
+  const actions: RowAction[] = [];
+  if (actionVisible && item.doseId != null) {
+    actions.push({
+      id: "mark-taken",
+      kind: "submit",
+      label: "Mark taken",
+      toast: "Marked taken",
+      fields: { dose_id: item.doseId, profile_id: item.profileId },
+      action: async (fd) => {
+        "use server";
+        await markTaken(fd);
+      },
+    });
+  }
+  if (item.bookHref) {
+    actions.push({
+      id: "book",
+      kind: "link",
+      label: "Book",
+      href: item.bookHref,
+      icon: "book",
+    });
+  }
+  if (actionVisible && item.preventiveRuleKey != null) {
+    actions.push({
+      id: "preventive-done",
+      kind: "submit",
+      label: "Mark done",
+      toast: "Marked done",
+      fields: { rule_key: item.preventiveRuleKey, profile_id: item.profileId },
+      action: async (fd) => {
+        "use server";
+        await markPreventiveDone(fd);
+      },
+    });
+  }
+  if (actionVisible && item.carePlanItemId != null) {
+    actions.push({
+      id: "careplan-done",
+      kind: "submit",
+      label: "Mark done",
+      toast: "Marked done",
+      fields: {
+        care_plan_item_id: item.carePlanItemId,
+        profile_id: item.profileId,
+      },
+      action: async (fd) => {
+        "use server";
+        await markCarePlanDone(fd);
+      },
+    });
+  }
+  // Condition suggestion (issue #685): an inline confirm that adds the suggested
+  // problem-list condition. confirmConditionSuggestion targets the ACTING profile, so
+  // the item declares writeTarget "acting" and the shared affordance gate
+  // (actionVisible) offers this ONLY on the acting profile's own row — never a
+  // wrong-target write on another member's row (#1096 / #1327 fix 5).
+  if (actionVisible && item.conditionSuggestion != null) {
+    actions.push({
+      id: "add-condition",
+      kind: "submit",
+      label: "Add to conditions",
+      icon: "clipboard-plus",
+      toast: "Added to conditions",
+      fields:
+        item.conditionSuggestion.code != null
+          ? {
+              name: item.conditionSuggestion.name,
+              code: item.conditionSuggestion.code,
+            }
+          : { name: item.conditionSuggestion.name },
+      action: async (fd) => {
+        "use server";
+        await confirmConditionSuggestion(fd);
+      },
+    });
+  }
+
+  // Per-item snooze/dismiss — the dismissal writes to the ITEM's own profile
+  // (profile_id threaded), never the acting one (#1096). This is item-scoped
+  // suppression (correct cross-profile even on a non-acting row), so it gates on the
+  // subject's write access — NOT the acting-targeted actionVisible — so you may snooze
+  // another member's finding. Omitted on a read-only-granted row.
+  const suppression =
+    subjectCanWrite && isItemSuppressibleFlag(item)
+      ? {
+          signalKey: item.key,
+          profileId: item.profileId,
+          snoozeOnly: item.carePersistent === true,
+          snoozeAction: async (fd: FormData) => {
+            "use server";
+            await snoozeItem(fd);
+          },
+          dismissAction: async (fd: FormData) => {
+            "use server";
+            await dismissItem(fd);
+          },
+        }
+      : null;
+
+  const preventiveRuleKey =
+    actionVisible && item.preventiveRuleKey != null
+      ? item.preventiveRuleKey
+      : undefined;
+  // The concrete next action for a preventive screening (#1083): a deep-link CTA
+  // naming exactly what to do — "Complete the AUDIT-C", "Record your LDL Cholesterol
+  // result". Only screening items carry an actionLabel; a visit's action is the "Book"
+  // affordance. It stays INLINE at every width (it is the row's primary call to
+  // action) and is glued to the overflow trigger below, so the trigger can never wrap
+  // onto a line by itself (#1446).
+  const cta =
+    item.actionLabel != null && item.preventiveRuleKey != null ? (
+      <Link
+        href={item.href}
+        data-testid={`upcoming-cta-${item.key}`}
+        className="flex min-w-0 items-center gap-1 truncate rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
+      >
+        <IconArrowRight className="h-3.5 w-3.5 shrink-0" stroke={1.75} />
+        <span className="truncate">{item.actionLabel}</span>
+      </Link>
+    ) : null;
+
+  const hasFollowUp = actionVisible && item.followUpResolve != null;
+  const hasExplain = item.reasons != null && item.reasons.length > 0;
+  // The row has a kebab exactly when something lives behind it at DESKTOP width
+  // too (overrides / snooze). That's also the only case where the secondary chips
+  // may fold away below `sm` — otherwise they'd have nowhere to fold to.
+  const hasMenu = preventiveRuleKey != null || suppression != null;
+  const hasTrailing =
+    item.scheduled === true ||
+    hasFollowUp ||
+    hasExplain ||
+    cta != null ||
+    hasMenu ||
+    actions.length > 0;
+
   return (
     <div
       data-testid={`upcoming-item-${item.key}`}
@@ -796,8 +905,8 @@ function Row({
       // row past the viewport (where the shell's overflow-x-clip hides them).
       className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg px-2 py-2 transition hover:bg-slate-50 dark:hover:bg-ink-850"
     >
-      {/* Row head: icon + title (+ subject chip). `basis-full` on phones makes the head
-          OWN the first line, so the trailing due-text/actions WRAP beneath it (#1063)
+      {/* Row head: icon + status + title (+ subject chip). `basis-full` on phones makes
+          the head OWN the first line, so the trailing actions WRAP beneath it (#1063)
           instead of shrinking the flex-1 title to an ellipsis ("Cardiology follow-up" →
           "C…" at 390px — issue #1327 fix 1). On sm+ the head is flex-1 and, inside it,
           the chip sits in a fixed-width aligned slot beside the title (a stable column
@@ -809,6 +918,18 @@ function Row({
           stroke={1.75}
         />
         <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+          {/* Status ("Overdue" / "3 days left" / "Scheduled") as a LEADING, fixed-width
+              column (#1446). It used to sit after the title and right-align against the
+              variable-width action pills, so its x-position jumped by hundreds of pixels
+              from row to row and the band's most scannable fact was unscannable. Leading
+              + `sm:w-28` pins it to one x for every row in the card. */}
+          <div
+            data-testid="upcoming-status"
+            title={dueText}
+            className={`shrink-0 truncate text-xs font-medium sm:w-28 ${tone}`}
+          >
+            {dueText}
+          </div>
           <div className="min-w-0 sm:flex-1">
             <Link
               href={item.href}
@@ -829,163 +950,65 @@ function Row({
           )}
         </div>
       </div>
-      <div className={`shrink-0 whitespace-nowrap text-xs font-medium ${tone}`}>
-        {upcomingDueText(item, now)}
-      </div>
-      {actionVisible && item.doseId != null && (
-        <form
-          action={async (fd) => {
-            "use server";
-            await markTaken(fd);
-          }}
-          className="shrink-0"
+
+      {/* The trailing control line. Below `sm` it takes a line of its own
+          (`basis-full`) and is right-aligned, so the row is two clean bands rather
+          than a free-wrapping chip soup (#1446). */}
+      {hasTrailing && (
+        <div
+          data-testid="upcoming-row-actions"
+          className="flex basis-full items-center justify-end gap-1 sm:basis-auto sm:justify-start"
         >
-          <input type="hidden" name="dose_id" value={item.doseId} />
-          <input type="hidden" name="profile_id" value={item.profileId} />
-          <SubmitButton
-            pendingLabel="…"
-            className="rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
-          >
-            Mark taken
-          </SubmitButton>
-        </form>
-      )}
-      {item.scheduled && (
-        <span
-          data-testid="scheduled-badge"
-          className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-emerald-200 px-2 py-1 text-xs font-medium text-emerald-700 dark:border-emerald-900 dark:text-emerald-400"
-        >
-          <IconCalendarCheck className="h-3.5 w-3.5" stroke={1.75} />
-          Scheduled
-        </span>
-      )}
-      {/* The concrete next action for a preventive screening (#1083): a deep-link
-          CTA naming exactly what to do — "Complete the AUDIT-C", "Record your LDL
-          Cholesterol result", "Log or schedule a colonoscopy" — pointing at the
-          prefilled form (item.href). Only screening items carry an actionLabel; a
-          visit's action is the "Book" affordance below. */}
-      {item.actionLabel && item.preventiveRuleKey != null && (
-        <Link
-          href={item.href}
-          data-testid={`upcoming-cta-${item.key}`}
-          className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
-        >
-          <IconArrowRight className="h-3.5 w-3.5" stroke={1.75} />
-          {item.actionLabel}
-        </Link>
-      )}
-      {item.bookHref && (
-        <Link
-          href={item.bookHref}
-          className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
-        >
-          <IconCalendarPlus className="h-3.5 w-3.5" stroke={1.75} />
-          Book
-        </Link>
-      )}
-      {actionVisible && item.preventiveRuleKey != null && (
-        <PreventiveControls
-          ruleKey={item.preventiveRuleKey}
-          profileId={item.profileId}
-        />
-      )}
-      {actionVisible && item.carePlanItemId != null && (
-        <form
-          action={async (fd) => {
-            "use server";
-            await markCarePlanDone(fd);
-          }}
-          className="shrink-0"
-        >
-          <input
-            type="hidden"
-            name="care_plan_item_id"
-            value={item.carePlanItemId}
-          />
-          <input type="hidden" name="profile_id" value={item.profileId} />
-          <SubmitButton
-            pendingLabel="…"
-            className="rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
-          >
-            Mark done
-          </SubmitButton>
-        </form>
-      )}
-      {/* Condition suggestion (issue #685): an inline confirm that adds the suggested
-      problem-list condition. confirmConditionSuggestion targets the ACTING profile, so
-      the item declares writeTarget "acting" and the shared affordance gate
-      (actionVisible) shows this ONLY on the acting profile's own row — never a
-      wrong-target write on another member's row (#1096 / #1327 fix 5). */}
-      {actionVisible && item.conditionSuggestion != null && (
-        <form
-          action={async (fd) => {
-            "use server";
-            await confirmConditionSuggestion(fd);
-          }}
-          className="shrink-0"
-        >
-          <input
-            type="hidden"
-            name="name"
-            value={item.conditionSuggestion.name}
-          />
-          {item.conditionSuggestion.code != null && (
-            <input
-              type="hidden"
-              name="code"
-              value={item.conditionSuggestion.code}
+          {item.scheduled && (
+            <span
+              data-testid="scheduled-badge"
+              className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-emerald-200 px-2 py-1 text-xs font-medium text-emerald-700 dark:border-emerald-900 dark:text-emerald-400"
+            >
+              <IconCalendarCheck className="h-3.5 w-3.5" stroke={1.75} />
+              Scheduled
+            </span>
+          )}
+          {/* Finding follow-up resolution offer (issue #700): a matching later record
+              landed, so offer the outcome (resolved / stable / changed) confirm-first.
+              Kept inline at every width — a care-tier resolution must not become a
+              thing you have to go looking for in a menu (#449). */}
+          {hasFollowUp && item.followUpResolve != null && (
+            <FollowUpResolveControls
+              action={async (fd) => {
+                "use server";
+                await resolveFollowUp(fd);
+              }}
+              carePlanItemId={item.followUpResolve.carePlanItemId}
+              resolvingRecordId={item.followUpResolve.resolvingRecordId}
+              profileId={item.profileId}
             />
           )}
-          <SubmitButton
-            pendingLabel="…"
-            className="flex items-center gap-1 rounded-lg border border-black/10 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-60 dark:border-white/10 dark:text-slate-300 dark:hover:bg-ink-750"
-          >
-            <IconClipboardPlus className="h-3.5 w-3.5" stroke={1.75} />
-            Add to conditions
-          </SubmitButton>
-        </form>
-      )}
-      {/* Finding follow-up resolution offer (issue #700): a matching later record
-      landed, so offer the outcome (resolved / stable / changed) confirm-first. */}
-      {actionVisible && item.followUpResolve != null && (
-        <FollowUpResolveControls
-          action={async (fd) => {
-            "use server";
-            await resolveFollowUp(fd);
-          }}
-          carePlanItemId={item.followUpResolve.carePlanItemId}
-          resolvingRecordId={item.followUpResolve.resolvingRecordId}
-          profileId={item.profileId}
-        />
-      )}
-      {/* "Why is this flagged?" (issue #878, Phase 1): narrate the item's OWN carried
-      reasons. Read-only, so it's shown regardless of write access. */}
-      {item.reasons != null && item.reasons.length > 0 && (
-        <ExplainFinding
-          title={item.title}
-          detail={item.detail}
-          reasons={item.reasons}
-        />
-      )}
-      {/* Per-item snooze/dismiss popover — the dismissal writes to the ITEM's own
-      profile (profile_id threaded), never the acting one (#1096). This is item-scoped
-      suppression (correct cross-profile even on a non-acting row), so it gates on the
-      subject's write access — NOT the acting-targeted actionVisible — so you may snooze
-      another member's finding. Hidden on a read-only-granted row. */}
-      {subjectCanWrite && isItemSuppressibleFlag(item) && (
-        <SnoozeDismissMenu
-          signalKey={item.key}
-          profileId={item.profileId}
-          snoozeOnly={item.carePersistent === true}
-          snoozeAction={async (fd) => {
-            "use server";
-            await snoozeItem(fd);
-          }}
-          dismissAction={async (fd) => {
-            "use server";
-            await dismissItem(fd);
-          }}
-        />
+          {/* "Why is this flagged?" (issue #878, Phase 1): narrate the item's OWN
+              carried reasons. Read-only, so it's shown regardless of write access. */}
+          {hasExplain && item.reasons != null && (
+            <ExplainFinding
+              title={item.title}
+              detail={item.detail}
+              reasons={item.reasons}
+            />
+          )}
+          <RowActionChips actions={actions} fold={hasMenu} />
+          {/* The primary CTA and the row's ONE overflow trigger, glued into a single
+              nowrap group so a wrap can never strand the "⋯" alone on its own line
+              (#1446). */}
+          <div className="flex min-w-0 shrink-0 items-center gap-1">
+            {cta}
+            <UpcomingRowMenu
+              folded={hasMenu ? actions : []}
+              preventiveRuleKey={preventiveRuleKey}
+              overrideAction={async (fd) => {
+                "use server";
+                await overridePreventive(fd);
+              }}
+              suppression={suppression}
+            />
+          </div>
+        </div>
       )}
     </div>
   );

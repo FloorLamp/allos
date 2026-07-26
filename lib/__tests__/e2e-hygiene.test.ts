@@ -70,7 +70,8 @@ import { fileURLToPath } from "node:url";
 // A SIXTH check (the fixture-LOGIN budget, issue #1392) — not a count-freeze but a
 // per-fixture rule:
 //
-//   (vi) Every `E2E_LOGIN_*` constant seeded by e2e/fixture-logins.ts must be
+//   (vi) Every `E2E_LOGIN_*` constant seeded by the fixture-login modules (the
+//        e2e/logins/* set that e2e/fixture-logins.ts composes, #1511) must be
 //        referenced by a spec AND used in a sign-in position, else carry a written
 //        justification. The seeded login population is MONOTONIC — each one is a
 //        permanent Settings → Family row — and that ratchet is what grew the family
@@ -139,6 +140,35 @@ const CREATE_LOGIN_ALLOW: Record<string, number> = {};
 const SET_GRANTS_ALLOW: Record<string, number> = {};
 const ADD_PROFILE_ALLOW: Record<string, number> = {};
 
+// ── (vii) The fixture-PROFILE constructor freeze (issue #1487) ───────────────
+// A fixture profile created with a bare `INSERT INTO profiles` starts with NO
+// `saved_items` rows — which was invisible while Trends Overview rendered the four
+// standard metric tiles unconditionally, and became a broken, unreachable-in-
+// production state the moment Overview went membership-driven (#1487): a raw-SQL
+// fixture profile renders an EMPTY grid, while every profile a real user can create
+// (createProfile / bootstrapAuth) is seeded with the standard metric saves. ~107
+// fixture profiles were in that state.
+//
+// So profile creation in e2e goes through the ONE blessed constructor
+// e2e/fixture-profile.ts (createFixtureProfile / createFixtureProfileWithId), which
+// calls the SAME lib/standard-metric-seeds.ts core the production paths call. The raw
+// insert is frozen at ZERO everywhere else, so a new fixture can't reintroduce the
+// divergence; the constructor module OWNS the marker and is skipped, not allowlisted.
+//
+// The DELETE side is frozen the same way, and it is not hypothetical: the moment the
+// constructor started seeding, two specs' hand-rolled cleanups (`DELETE FROM profiles`
+// after clearing their own rows) began failing on `saved_items.profile_id`'s foreign
+// key. Creation gained side-state and the destructors did not — the #1487 "row
+// operations carry their side-state" rule, applied to fixtures. So the pair lives in
+// one module: `destroyFixtureProfile` removes what the constructor wrote, and a raw
+// profile DELETE is banned everywhere else, which is what makes the NEXT addition to
+// the production seed core a one-file edit instead of a suite-wide FK hunt.
+const FIXTURE_PROFILE_FILE = "fixture-profile.ts";
+const RAW_PROFILE_INSERT_RE = /INSERT\s+(?:OR\s+\w+\s+)?INTO\s+profiles\b/g;
+const RAW_PROFILE_INSERT_ALLOW: Record<string, number> = {};
+const RAW_PROFILE_DELETE_RE = /DELETE\s+FROM\s+profiles\b/g;
+const RAW_PROFILE_DELETE_ALLOW: Record<string, number> = {};
+
 // Frozen offenders as of #868 (per-file counts). Migrate an entry to
 // e2e/helpers.ts and LOWER its number here in the same PR; a fully-migrated file
 // drops out entirely. New files must not appear.
@@ -205,7 +235,14 @@ const TOPASS_ALLOW: Record<string, number> = {};
 // wrapper may need an allowlist line — that's the point: adding a login stays a
 // deliberate, justified act rather than a reflex.
 const LOGIN_CONST_RE = /export const (E2E_LOGIN_[A-Z0-9_]+) = "([^"]+)"/g;
+// The budget is measured over the COMPOSED population, not one file: #1511 split the
+// constants into per-domain modules under e2e/logins/ that e2e/fixture-logins.ts
+// re-exports. Every one of them declares logins, so all of them are the source of
+// truth (and none of them counts as a "spec that references" a login).
 const FIXTURE_LOGINS_FILE = "fixture-logins.ts";
+const FIXTURE_LOGINS_DIR = "logins/";
+const isFixtureLoginsModule = (name: string) =>
+  name === FIXTURE_LOGINS_FILE || name.startsWith(FIXTURE_LOGINS_DIR);
 // A constant used within this many characters after a sign-in opener counts as
 // "signed in as" (covers the multi-line `loginAs(browser, { username: X, … })` form).
 const SIGNIN_WINDOW_RE = /(?:loginAs\(|creds\(|username:)[\s\S]{0,200}/g;
@@ -218,14 +255,29 @@ const LOGIN_NO_SIGNIN_ALLOW: Record<string, string> = {
     "access-control subject: family-grants drives its grant row / own-profile select AS THE ADMIN (#1412)",
 };
 
+// RECURSIVE since #1511 split the two append-magnet modules into per-domain files
+// (e2e/seed/*.ts, e2e/logins/*.ts): a guard that stopped at the top level would
+// silently stop scanning the moved content. `name` is the path RELATIVE to e2e/
+// (posix), so a top-level file keeps its bare basename — every allowlist / skip-set
+// key above is unchanged — and a nested one reads as "seed/medical.ts".
 function specFiles(): { name: string; text: string }[] {
-  return fs
-    .readdirSync(E2E_DIR)
-    .filter((f) => f.endsWith(".ts") && !SCAN_EXCLUDE.has(f))
-    .map((name) => ({
-      name,
-      text: fs.readFileSync(path.join(E2E_DIR, name), "utf8"),
-    }));
+  const out: { name: string; text: string }[] = [];
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      // Skip the runtime dot-dirs (.data / .auth / test-results) — generated, not source.
+      if (entry.name.startsWith(".")) continue;
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith(".ts")) {
+        const name = path.relative(E2E_DIR, full).split(path.sep).join("/");
+        if (!SCAN_EXCLUDE.has(name)) {
+          out.push({ name, text: fs.readFileSync(full, "utf8") });
+        }
+      }
+    }
+  };
+  walk(E2E_DIR);
+  return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function countMatches(text: string, re: RegExp): number {
@@ -379,16 +431,16 @@ describe("e2e suite hygiene guard (issue #868)", () => {
   });
 
   it("every seeded fixture login is signed in as by a spec (the #1392 fixture-login budget)", () => {
-    const src = fs.readFileSync(
-      path.join(E2E_DIR, FIXTURE_LOGINS_FILE),
-      "utf8"
-    );
+    const src = specFiles()
+      .filter((f) => isFixtureLoginsModule(f.name))
+      .map((f) => f.text)
+      .join("\n");
     const constants = [...src.matchAll(LOGIN_CONST_RE)].map((m) => m[1]);
     // The constants file is the population's source of truth; an empty read means
     // the regex (or the file) moved, which must fail loudly rather than pass vacuously.
     expect(constants.length).toBeGreaterThan(0);
 
-    const files = specFiles().filter((f) => f.name !== FIXTURE_LOGINS_FILE);
+    const files = specFiles().filter((f) => !isFixtureLoginsModule(f.name));
     const violations: string[] = [];
 
     for (const name of constants) {
@@ -409,7 +461,7 @@ describe("e2e suite hygiene guard (issue #868)", () => {
       if (why) continue;
       violations.push(
         referencedBy.length === 0
-          ? `${name}: seeded in e2e/fixture-logins.ts but NO e2e spec references it — ` +
+          ? `${name}: seeded in e2e/logins/ but NO e2e spec references it — ` +
               `delete the login (and its seedMemberLogin call); a dead login is a permanent ` +
               `Settings → Family row (#1392).`
           : `${name}: referenced by ${referencedBy
@@ -427,11 +479,57 @@ describe("e2e suite hygiene guard (issue #868)", () => {
       if (!constants.includes(name))
         violations.push(
           `${name}: allowlisted in LOGIN_NO_SIGNIN_ALLOW but no longer exists in ` +
-            `e2e/fixture-logins.ts — remove its entry.`
+            `e2e/logins/ — remove its entry.`
         );
     }
 
     expect(violations, violations.join("\n")).toEqual([]);
+  });
+
+  it("no NEW raw INSERT INTO profiles in an e2e/*.ts (use createFixtureProfile)", () => {
+    checkPattern(
+      "raw fixture-profile insert",
+      RAW_PROFILE_INSERT_RE,
+      RAW_PROFILE_INSERT_ALLOW,
+      {
+        skipFiles: new Set([FIXTURE_PROFILE_FILE]),
+        hint:
+          `A raw INSERT INTO profiles skips the standard Overview metric seeds every ` +
+          `production-created profile gets (#1487), so the fixture renders an empty ` +
+          `Trends Overview no real profile can be in. Use createFixtureProfile from ` +
+          `e2e/fixture-profile.ts; see docs/internals/e2e-hygiene.md.`,
+      }
+    );
+  });
+
+  it("no NEW raw DELETE FROM profiles in an e2e/*.ts (use destroyFixtureProfile)", () => {
+    checkPattern(
+      "raw fixture-profile delete",
+      RAW_PROFILE_DELETE_RE,
+      RAW_PROFILE_DELETE_ALLOW,
+      {
+        skipFiles: new Set([FIXTURE_PROFILE_FILE]),
+        hint:
+          `A raw DELETE FROM profiles leaves the rows the fixture CONSTRUCTOR seeded ` +
+          `(#1487 standard metric saves) and fails on their foreign key. Use ` +
+          `destroyFixtureProfile from e2e/fixture-profile.ts — the constructor's pair; ` +
+          `see docs/internals/e2e-hygiene.md.`,
+      }
+    );
+  });
+
+  it("the blessed fixture-profile constructor exists and seeds the standard metric saves", () => {
+    const mod = fs.readFileSync(
+      path.join(E2E_DIR, FIXTURE_PROFILE_FILE),
+      "utf8"
+    );
+    expect(mod).toMatch(/export function createFixtureProfile\b/);
+    expect(mod).toMatch(/export function createFixtureProfileWithId\b/);
+    // The destructor is not optional: creation writes side-state, so a fixture that
+    // deletes its profile needs the pair (see the DELETE freeze above).
+    expect(mod).toMatch(/export function destroyFixtureProfile\b/);
+    // It must delegate to the production seeding core, not re-implement it.
+    expect(mod).toMatch(/seedStandardMetricSaves\(/);
   });
 
   it("the blessed interaction module exists and exports settledClick + followLink", () => {

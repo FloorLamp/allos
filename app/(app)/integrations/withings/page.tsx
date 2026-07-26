@@ -268,11 +268,11 @@ function SetupCard({ callbackUrl }: { callbackUrl: string }) {
             href="/trends?tab=body"
             className="text-brand-700 underline dark:text-brand-400"
           >
-            Body Metrics
+            Body metrics
           </Link>{" "}
           charts; blood pressure, SpO₂, and temperature land as{" "}
           <Link
-            href="/trends?tab=vitals"
+            href="/trends?tab=body"
             className="text-brand-700 underline dark:text-brand-400"
           >
             vitals

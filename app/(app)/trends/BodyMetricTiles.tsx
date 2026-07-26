@@ -50,11 +50,12 @@ export default function BodyMetricTiles({
       id: "sleep",
       label: "Sleep",
       present: sleep.present,
-      // Order 4 slots Sleep just ahead of the synced daily metrics (steps, HR, …)
-      // and after body composition, matching the chart stack's reading order; recency
-      // still floats a freshly-updated metric to the top.
+      // Order 11 slots Sleep just ahead of the synced daily metrics (steps, HR, …)
+      // and after the vitals + body composition + growth block, matching the chart
+      // stack's reading order (#1486 renumbered the registry when the vitals joined
+      // the grid); recency still floats a freshly-updated metric to the top.
       latestDate: sleep.latestDate,
-      order: 4,
+      order: 11,
     });
   }
   const ordered = orderBodyMetricTiles(descriptors);

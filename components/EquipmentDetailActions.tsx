@@ -58,7 +58,7 @@ export default function EquipmentDetailActions({
         onClick={toggleRetired}
         disabled={pending}
         data-testid="equipment-detail-retire"
-        className="btn-ghost inline-flex items-center gap-1.5 disabled:opacity-50"
+        className="btn-ghost inline-flex items-center gap-1.5"
       >
         {retired ? (
           <>
@@ -75,7 +75,7 @@ export default function EquipmentDetailActions({
         onClick={remove}
         disabled={pending}
         data-testid="equipment-detail-delete"
-        className="btn-ghost inline-flex items-center gap-1.5 text-rose-600 hover:bg-rose-50 disabled:opacity-50 dark:text-rose-400 dark:hover:bg-rose-950"
+        className="btn-ghost inline-flex items-center gap-1.5 text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950"
       >
         <IconTrash className="h-4 w-4" /> Delete
       </button>

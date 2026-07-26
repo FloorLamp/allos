@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/auth";
 import { isMinor } from "@/lib/life-stage";
-import { getUserAge } from "@/lib/settings";
+import { getUserAge, getDisplayFormatPrefs } from "@/lib/settings";
 import { isSubstanceInstrument } from "@/lib/substance-use";
 import SubstanceUseSection from "../../SubstanceUseSection";
 import { SectionSubtitle } from "../../SectionHeader";
@@ -21,7 +21,7 @@ export const dynamic = "force-dynamic";
 export default async function RecordsSubstanceUsePage(props: {
   searchParams: Promise<{ screen?: string | string[] }>;
 }) {
-  const { profile } = await requireSession();
+  const { login, profile } = await requireSession();
   if (isMinor(getUserAge(profile.id))) redirect("/records/specialty/skin");
   // Deep-link preselect (#1083): a preventive drug/alcohol-screening row/nudge lands
   // here with `?screen=<INSTRUMENT>`. Validate against the known instruments; an
@@ -40,6 +40,7 @@ export default async function RecordsSubstanceUsePage(props: {
       </SectionSubtitle>
       <SubstanceUseSection
         profileId={profile.id}
+        formatPrefs={getDisplayFormatPrefs(login.id)}
         initialInstrument={initialInstrument}
       />
     </div>

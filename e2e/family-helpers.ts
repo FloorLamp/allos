@@ -1,6 +1,11 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import type { Access } from "../lib/grants";
-import { settledCheck, settledClick, settledFill } from "./helpers";
+import {
+  hydratedClick,
+  settledCheck,
+  settledClick,
+  settledFill,
+} from "./helpers";
 
 // Shared drivers for the Settings → Family screen (issue #868, phase-2 create-member
 // hardening). Family create/grant buttons are NOT native form submits — each is an
@@ -194,13 +199,27 @@ export async function createProfileViaFamily(
   }).toPass({ timeout: 45_000 }); // topass-ok: onClick+refresh create, verify-first re-goto (#830)
 
   await switchToProfile(page, name);
-  await page.goto("/");
-  if (page.url().includes("/onboarding")) {
-    await page
-      .getByRole("button", { name: "Set up later, take me to my dashboard" })
-      .click();
-    await expect(page).toHaveURL(/\/$|\/\?/);
-  }
+  // Defer goal-based onboarding so the fresh profile lands on the dashboard. Two
+  // things here are races, and a bare click + single URL assertion caught neither:
+  //   • the deferral button is a CLIENT button, so a tap dispatched before React
+  //     attaches its onClick is silently swallowed (#500/#830) — hydratedClick waits
+  //     for the hydration markers, then clicks exactly once (it's not idempotent to
+  //     re-click, so a retry loop around the click alone would be wrong);
+  //   • the onboarding GATE can bounce "/" straight back to /onboarding if the
+  //     deferral write hasn't committed yet, so the whole goto→defer→assert cycle is
+  //     what retries, not just the assertion.
+  await expect(async () => {
+    await page.goto("/");
+    if (page.url().includes("/onboarding")) {
+      await hydratedClick(
+        page,
+        page.getByRole("button", {
+          name: "Set up later, take me to my dashboard",
+        })
+      );
+    }
+    await expect(page).toHaveURL(/\/$|\/\?/, { timeout: 5_000 });
+  }).toPass({ timeout: 45_000 }); // topass-ok: goto → defer → land is a multi-step cycle whose failure mode is a REDIRECT back to the start, which no single expect can express
   return name;
 }
 

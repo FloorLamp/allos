@@ -30,10 +30,7 @@ export default function AuditRetentionSettings({ months }: { months: number }) {
   }
 
   return (
-    <div
-      data-testid="audit-retention-settings"
-      className="card mt-6 max-w-lg space-y-4"
-    >
+    <div data-testid="audit-retention-settings" className="card space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold text-slate-800 dark:text-slate-100">
           Audit-log retention

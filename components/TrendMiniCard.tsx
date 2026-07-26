@@ -7,12 +7,12 @@ import { robustSeriesSummary } from "@/lib/trends-digest";
 import { biomarkerAxisDomain } from "@/lib/reference-range";
 import type { AppRoute } from "@/lib/hrefs";
 
-// A compact trend tile for the Trends hub's Overview grid: a linked title, the
-// latest value with a net-change badge over the visible window, and a small
-// sparkline. The data is pre-windowed and already in display units by the caller
-// (the hub converts kg/km at the boundary), so this component only formats and
-// draws it. An optional `footer` slot holds per-tile controls (the ★ save toggle
-// and, on a saved tile, its reorder buttons — #1456).
+// A compact trend tile for the Trends hub's Overview grid: the latest value with a
+// net-change badge over the visible window, its linked name, and a small sparkline.
+// The data is pre-windowed and already in display units by the caller (the hub
+// converts kg/km at the boundary), so this component only formats and draws it. An
+// optional `menu` slot holds the tile's own controls (the ★ save toggle and, on a
+// saved tile, its reorder items — #1456), rendered in the CORNER.
 //
 // TRUE SPARKLINE (#1445). This called itself a sparkline while rendering the FULL
 // LineChartCard at h-40 — so every tile carried a complete X+Y axis, with 11px
@@ -23,6 +23,29 @@ import type { AppRoute } from "@/lib/hrefs";
 // supply — min / max / latest — as inline TEXT under the plot, which is legible
 // at any width. Same component, same data, same testids; the chart just stops
 // spending the tile on chrome.
+//
+// VALUE-LED HIERARCHY + CORNER CONTROLS (#1485 B). Two more bands of the tile were
+// spent on things that aren't the answer:
+//
+//   • The title and the value carried EQUAL weight (both `font-semibold`, the title
+//     first), so a grid of tiles read as a list of names. The stat-tile hierarchy is
+//     now the usual one — the latest value is the largest text (`tabular-nums`), the
+//     name is the small secondary label above it, and the change badge stays small
+//     beside the value. Pairs with the two-column phone grid: dominant numbers scan
+//     at a glance where a column of names does not.
+//   • The controls sat in a ~90px FOOTER ROW under the chart, per tile. They moved
+//     into the corner ⋯ overflow menu (the #1488/#1491 standard), which is the same
+//     40px hit box every other row action uses and costs the tile no vertical band.
+//     The sparkline shortened with them (h-32 → h-20): with the value promoted to a
+//     headline, the plot's job is the SHAPE of the move, not its magnitude.
+//
+// COMPACT VARIANT (#1485 A): a tile with nothing to show at all — a saved analyte
+// that has never been measured — renders as a ONE-LINE row instead of a ~300px
+// card of whitespace. It is still a `TrendMiniCard` (same testid, same menu), so
+// the #1456 guarantee that a saved item's unstar control stays reachable holds;
+// this is compaction, not omission. The caller decides (it also sinks those rows
+// below the populated tiles) — the sparse fallback below is NOT compacted, because
+// it carries a real number.
 //
 // The change badge is driven by robustSeriesSummary — the SAME robust-endpoint
 // computation the "what's trending" digest above uses (#398) — so the tile's arrow
@@ -40,8 +63,10 @@ export default function TrendMiniCard({
   decimals = 1,
   range = null,
   minPctChange,
-  footer,
+  menu,
+  compact = false,
   applyBiomarkerDomain = false,
+  outsideWindow = null,
   testid = "trend-mini-card",
 }: {
   title: string;
@@ -53,7 +78,12 @@ export default function TrendMiniCard({
   decimals?: number;
   range?: { low: number | null; high: number | null } | null;
   minPctChange?: number;
-  footer?: ReactNode;
+  // The tile's corner ⋯ menu (star / reorder). Omitted by tile grids that carry no
+  // per-tile controls (the Body tab's).
+  menu?: ReactNode;
+  // Render as a one-line row rather than a card (#1485 A). Only meaningful for a
+  // tile with no points AND no out-of-window reading.
+  compact?: boolean;
   // Overridable card test hook (defaults to the generic "trend-mini-card"); the
   // Body tile grid passes a per-metric id (`body-tile-steps`) so a spec can open a
   // specific tile's detail page.
@@ -63,6 +93,12 @@ export default function TrendMiniCard({
   // chart (0-clamp for a non-negative analyte; a flat/near-flat series gets a small
   // window) instead of recharts' bare ["auto","auto"]. Metric tiles leave it off.
   applyBiomarkerDomain?: boolean;
+  // #1485 G: the latest reading BEHIND the window, for a series with no points in
+  // it. Optional and off by default, so the range-driven Overview tiles opt in
+  // while BodyMetricTiles (a fixed trailing slice, not range-driven) keeps the
+  // plain empty state. Rendered only when `data` is empty — it is a fallback FOR
+  // the empty state, never an annotation on a drawn series.
+  outsideWindow?: { text: string; age: string } | null;
 }) {
   const values = data.map((d) => d.value).filter((v): v is number => v != null);
   const latest = values.length > 0 ? values[values.length - 1] : null;
@@ -84,54 +120,98 @@ export default function TrendMiniCard({
         })()
       : undefined;
   const deltaSign = summary && summary.absChange > 0 ? "+" : "";
+
+  const titleLink = (
+    <Link
+      href={href}
+      className="truncate text-sm font-medium text-slate-500 transition hover:text-brand-700 hover:underline dark:text-slate-400 dark:hover:text-brand-300"
+    >
+      {title}
+    </Link>
+  );
+
+  // The one-line variant: name · "no data in this range" · the same corner menu.
+  if (compact) {
+    return (
+      <div
+        className="card flex items-center justify-between gap-2 py-1.5 sm:py-1.5"
+        data-testid={testid}
+      >
+        <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+          {titleLink}
+          <span className="truncate text-xs text-slate-500 dark:text-slate-400">
+            No data in this range
+          </span>
+        </span>
+        {menu}
+      </div>
+    );
+  }
+
   return (
     <div className="card" data-testid={testid}>
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <Link
-          href={href}
-          className="font-semibold text-slate-800 transition hover:text-brand-700 hover:underline dark:text-slate-100 dark:hover:text-brand-300"
-        >
-          {title}
-        </Link>
-        {latest != null && (
-          <span className="flex items-center gap-1 whitespace-nowrap text-sm">
-            <span className="font-semibold text-slate-900 dark:text-slate-100">
-              {round(latest, decimals)}
-              {unit}
-            </span>
-            {summary && summary.material && (
-              <span
-                className={`flex items-center gap-0.5 text-xs ${
-                  summary.direction === "up"
-                    ? "text-emerald-600 dark:text-emerald-400"
-                    : "text-rose-600 dark:text-rose-400"
-                }`}
-              >
-                {summary.direction === "up" ? (
-                  <IconArrowUpRight className="h-3.5 w-3.5" stroke={2} />
-                ) : (
-                  <IconArrowDownRight className="h-3.5 w-3.5" stroke={2} />
-                )}
-                {deltaSign}
-                {round(summary.absChange, decimals)}
+      <div className="flex items-start justify-between gap-1">
+        <div className="flex min-w-0 flex-col">
+          {titleLink}
+          {latest != null ? (
+            <span className="flex flex-wrap items-baseline gap-1.5">
+              <span className="text-2xl font-semibold leading-tight tabular-nums text-slate-900 dark:text-slate-100">
+                {round(latest, decimals)}
+                {unit}
               </span>
-            )}
-          </span>
-        )}
-      </div>
-      {data.length === 0 ? (
-        <div className="flex h-32 items-center justify-center text-sm text-slate-500 dark:text-slate-400">
-          No data in this range
+              {summary && summary.material && (
+                <span
+                  className={`flex items-center gap-0.5 whitespace-nowrap text-xs ${
+                    summary.direction === "up"
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : "text-rose-600 dark:text-rose-400"
+                  }`}
+                >
+                  {summary.direction === "up" ? (
+                    <IconArrowUpRight className="h-3.5 w-3.5" stroke={2} />
+                  ) : (
+                    <IconArrowDownRight className="h-3.5 w-3.5" stroke={2} />
+                  )}
+                  {deltaSign}
+                  {round(summary.absChange, decimals)}
+                </span>
+              )}
+            </span>
+          ) : outsideWindow ? (
+            // Sparse-series fallback (#1485 G). The window is genuinely empty, so
+            // there is nothing to plot — but the series has history, and the latest
+            // reading is the number the tile exists to show. It takes the headline
+            // slot in the muted tone, ALWAYS with its age and an explicit "outside
+            // this range": the value is real, its currency is not, and the label is
+            // what keeps a five-month-old reading from being read as today's.
+            <span
+              className="flex min-w-0 flex-col"
+              data-testid="trend-mini-outside-window"
+            >
+              <span className="text-2xl font-semibold leading-tight tabular-nums text-slate-600 dark:text-slate-300">
+                {outsideWindow.text}
+              </span>
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                {outsideWindow.age} · outside this range
+              </span>
+            </span>
+          ) : (
+            <span className="text-sm text-slate-500 dark:text-slate-400">
+              No data in this range
+            </span>
+          )}
         </div>
-      ) : (
-        <>
+        {menu}
+      </div>
+      {data.length > 0 && (
+        <div className="mt-2">
           <LineChartCard
             data={data}
             label={label}
             unit={unit}
             color={color}
             decimals={decimals}
-            heightClass="h-32"
+            heightClass="h-20"
             yDomain={yDomain}
             sparkline
           />
@@ -150,9 +230,8 @@ export default function TrendMiniCard({
               </span>
             </div>
           )}
-        </>
+        </div>
       )}
-      {footer && <div className="mt-2 flex justify-end">{footer}</div>}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import SkinLesionForm from "./SkinLesionForm";
 import TrackSkinFollowUpControl from "./TrackSkinFollowUpControl";
 import LesionPhotoStrip from "./LesionPhotoStrip";
 import NotesText from "@/components/NotesText";
+import FilterPills from "@/components/FilterPills";
 import RecordProvenance from "@/components/RecordProvenance";
 import ProviderName from "@/components/ProviderName";
 import { useConfirmedAction } from "@/components/useConfirmedAction";
@@ -192,21 +193,21 @@ export default function SkinLesionList({
 
   return (
     <div data-testid="skin-lesion-list" className="space-y-3">
-      <div className="flex flex-wrap gap-2">
-        <select
-          aria-label="Filter by status"
-          className="input w-auto"
-          value={status}
-          onChange={(e) => setStatus(e.target.value as SkinLesionStatus | "")}
-        >
-          <option value="">All statuses</option>
-          {SKIN_LESION_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {skinLesionStatusLabel(s)}
-            </option>
-          ))}
-        </select>
-      </div>
+      {/* The family's ONE filter affordance (#1449, cluster C) — this was an
+          "All statuses" <select>, one of four controls for the same job. */}
+      <FilterPills
+        options={[
+          { value: "", label: "All" },
+          ...SKIN_LESION_STATUSES.map((s) => ({
+            value: s as string,
+            label: skinLesionStatusLabel(s),
+          })),
+        ]}
+        value={status}
+        onSelect={(next) => setStatus(next as SkinLesionStatus | "")}
+        label="Filter lesions by status"
+        testId="skin-status-filter"
+      />
 
       {groups.length === 0 ? (
         <p className="card text-sm text-slate-500 dark:text-slate-400">

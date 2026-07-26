@@ -131,21 +131,21 @@ test("a weight logged from the dashboard sheet stays put, toasts, and persists",
     await page.goto("/");
     const dashboardUrl = page.url();
 
-    const overlay = await openQuickEntry(page, "log-weight");
-    // The overlay mounts the EXISTING BodyQuickAdd — same element ids the Trends
-    // page's mount carries, because it is the same component, not a copy.
-    const weight = overlay.locator("#bm-weight");
+    const overlay = await openQuickEntry(page, "log-measurements");
+    // The overlay mounts the EXISTING MeasurementsQuickAdd — same element ids the
+    // Trends page's mount carries, because it is the same component, not a copy.
+    const weight = overlay.locator("#m-weight");
     await expect(weight).toBeVisible();
     await weight.fill(SHELL_WEIGHT_KG);
 
     await settledClick(
       page,
-      overlay.getByRole("button", { name: "Save entry" })
+      overlay.getByRole("button", { name: "Save measurements" })
     );
 
     // After save: overlay closed, toast shown, STAY PUT. All three matter — the
     // last one is the issue.
-    await expect(page.getByText("Entry saved")).toBeVisible();
+    await expect(page.getByText("Measurements saved")).toBeVisible();
     await expect(page.getByTestId("quick-entry-sheet")).toHaveCount(0);
     expect(page.url()).toBe(dashboardUrl);
 
@@ -155,7 +155,7 @@ test("a weight logged from the dashboard sheet stays put, toasts, and persists",
     await page.reload();
     expect(page.url()).toBe(dashboardUrl);
 
-    await page.goto("/trends?tab=body");
+    await page.goto("/trends?tab=body&view=all");
     await expect(page.getByTestId("body-history-table")).toContainText(
       SHELL_WEIGHT_KG
     );
@@ -250,24 +250,27 @@ test("the food and vitals overlays mount the same forms their pages carry", asyn
     await page.keyboard.press("Escape");
     await expect(food).toHaveCount(0);
 
-    // Vitals — the item #1467 added, opening the SAME VitalsQuickAdd the Trends
-    // surfaces mount (no second vitals form was written for the sheet).
-    const vitals = await openQuickEntry(page, "log-vitals");
+    // Measurements — the ONE row (#1486/#1506) that replaced the former weight +
+    // vitals pair, opening the SAME MeasurementsQuickAdd the Trends surfaces mount
+    // (no second form was written for the sheet).
+    const vitals = await openQuickEntry(page, "log-measurements");
     const vitalsBody = page.getByTestId("quick-entry-body");
-    await expect(vitalsBody).toHaveAttribute("data-form", "vitals");
-    await expect(vitalsBody.getByTestId("vitals-quick-add")).toBeVisible();
+    await expect(vitalsBody).toHaveAttribute("data-form", "measurements");
+    await expect(
+      vitalsBody.getByTestId("measurements-quick-add")
+    ).toBeVisible();
 
     // And a reading submitted from here lands: the toast fires only after
-    // addVitals returned, so the write reached the same server action the page
-    // mount uses. (That action's persistence is already pinned by the action tier
-    // and manual-vitals.spec.ts — unchanged by #1467, which only adds a mount.)
-    await vitals.locator("#v-systolic").fill("118");
-    await vitals.locator("#v-diastolic").fill("76");
+    // addMeasurements returned, so the write reached the same server action the
+    // page mount uses. (That action's persistence is already pinned by the action
+    // tier and manual-vitals.spec.ts — a mount, not a new write path.)
+    await vitals.locator("#m-systolic").fill("118");
+    await vitals.locator("#m-diastolic").fill("76");
     await settledClick(
       page,
-      vitals.getByRole("button", { name: "Save vitals" })
+      vitals.getByRole("button", { name: "Save measurements" })
     );
-    await expect(page.getByText("Vitals saved")).toBeVisible();
+    await expect(page.getByText("Measurements saved")).toBeVisible();
     await expect(page.getByTestId("quick-entry-sheet")).toHaveCount(0);
     await expect(page).toHaveURL(/\/$/);
   } finally {

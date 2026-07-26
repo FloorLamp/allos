@@ -439,7 +439,7 @@ export default function PlateBuilderModal({
                   type="button"
                   onClick={createBar}
                   disabled={saving}
-                  className="btn disabled:opacity-50"
+                  className="btn"
                 >
                   {saving ? "Saving…" : "Create bar"}
                 </button>
@@ -546,7 +546,7 @@ export default function PlateBuilderModal({
             type="button"
             onClick={handleUse}
             disabled={saving || (creating ? !newBarValid : total <= 0)}
-            className="btn disabled:opacity-50"
+            className="btn"
           >
             Use this
           </button>

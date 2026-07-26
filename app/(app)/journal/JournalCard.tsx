@@ -589,6 +589,10 @@ export default function JournalCard({
         </div>
       )}
 
+      {/* Read surface (#1457): no `showAdd`, so this renders ONLY when clips
+          exist — the "Add form clip" entry point lives in the activity editor's
+          More-details block now. `canWrite` still gates per-clip caption edit and
+          delete, which stay on the card. */}
       <ActivityVideoStrip
         activityId={activity.id}
         videos={videos.map((v) => ({

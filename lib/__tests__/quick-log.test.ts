@@ -29,8 +29,8 @@ describe("primaryQuickLog", () => {
     expect(primaryQuickLog("/medications/print").id).toBe("log-dose");
   });
 
-  it("promotes weight on Trends' BODY tab only — the tab is the rule, not the route", () => {
-    expect(primaryQuickLog("/trends", "body").id).toBe("log-weight");
+  it("promotes measurements on Trends' BODY tab only — the tab is the rule, not the route", () => {
+    expect(primaryQuickLog("/trends", "body").id).toBe("log-measurements");
     expect(primaryQuickLog("/trends", "fitness").id).toBe(LOG_ACTIVITY_ID);
     expect(primaryQuickLog("/trends").id).toBe(LOG_ACTIVITY_ID);
   });
@@ -59,17 +59,17 @@ describe("quickLogMenu", () => {
       "log-activity",
       "log-food",
       "log-dose",
-      "log-weight",
-      // Issue #1467: vitals is a manual logger's most frequent daily write and
-      // its only entry points were mid-page on a secondary surface.
-      "log-vitals",
+      // ONE measurements row (#1486/#1506): weight and vitals were two sheet rows
+      // because they were two forms on two Trends tabs. They are one form now, so
+      // a second row would just be a second door onto the same fields.
+      "log-measurements",
     ]);
   });
 
   it("drops the training-only entries for an age-restricted profile", () => {
     const ids = quickLogMenu(true).map((i) => i.id);
     expect(ids).not.toContain(LOG_ACTIVITY_ID);
-    expect(ids).toEqual(["log-food", "log-dose", "log-weight", "log-vitals"]);
+    expect(ids).toEqual(["log-food", "log-dose", "log-measurements"]);
   });
 });
 
@@ -115,13 +115,13 @@ describe("the registry itself", () => {
     const forms = QUICK_LOG_ITEMS.flatMap((i) =>
       i.target.kind === "overlay" ? [i.target.form] : []
     );
-    expect(forms).toEqual(["food", "dose", "weight", "vitals"]);
+    expect(forms).toEqual(["food", "dose", "measurements"]);
   });
 
-  it("opens the weight form as an overlay, not the old focus-param deep link", () => {
-    expect(quickLogItem("log-weight").target).toEqual({
+  it("opens the measurements form as an overlay, not the old focus-param deep link", () => {
+    expect(quickLogItem("log-measurements").target).toEqual({
       kind: "overlay",
-      form: "weight",
+      form: "measurements",
     });
   });
 

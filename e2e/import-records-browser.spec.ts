@@ -108,7 +108,7 @@ test.describe("Import detail: tabbed records browser", () => {
     );
     await expect(
       conditions.getByTestId("produced-item").getByRole("link")
-    ).toHaveAttribute("href", "/records/problems");
+    ).toHaveAttribute("href", "/records/problems/conditions");
 
     await page.goto("/import/908?tab=immunizations");
     const imms = page.getByTestId("produced-listing");

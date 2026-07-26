@@ -205,7 +205,7 @@ export default function ImmunizationsSection({
             No date of birth or age is set for this profile, so age-based
             recommendations (due / overdue / next dose) cannot be computed. You
             can still record and review doses below.{" "}
-            <Link href="/settings/profile" className="font-medium underline">
+            <Link href="/settings/health" className="font-medium underline">
               Set date of birth
             </Link>
             .
@@ -215,7 +215,7 @@ export default function ImmunizationsSection({
           <Notice tone="slate" className="mb-5">
             Recommendations use the stored age for this profile. Add a date of
             birth to place recorded doses on the schedule grid by age-at-dose.{" "}
-            <Link href="/settings/profile" className="font-medium underline">
+            <Link href="/settings/health" className="font-medium underline">
               Set date of birth
             </Link>
             .
@@ -224,7 +224,10 @@ export default function ImmunizationsSection({
 
         {/* Master table: one row per tracked vaccine, sortable + status-filterable,
       each row drilling into the per-vaccine detail view. */}
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        {/* Heading then filter on its OWN row (#1449): the seven status pills need
+            the full width to scroll in one line, which a `justify-between` flex row
+            beside the heading would deny them on a phone. */}
+        <div className="mb-4 space-y-3">
           <h2 className="font-semibold text-slate-800 dark:text-slate-100">
             Vaccines
           </h2>

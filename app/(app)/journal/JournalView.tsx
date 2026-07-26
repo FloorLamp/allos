@@ -958,7 +958,7 @@ export default function JournalView({
               ) : (
                 <div className="card">
                   <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Tap an exercise, cardio, or sport activity to see its
+                    Select an exercise, cardio, or sport activity to see its
                     details.
                   </p>
                 </div>

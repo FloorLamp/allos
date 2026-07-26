@@ -171,7 +171,7 @@ test.describe("Check-in card recomposition (#1314/#1311/#1313)", () => {
     // + revalidate + router.refresh), so it's a form-owned signal immune to the
     // settings page's other POSTs and to any read-after-write timing. THEN reload and
     // confirm the persisted opt-in.
-    await page.goto("/settings/profile");
+    await page.goto("/settings/coaching");
     const optIn = page.getByTestId("anxiety-scale-enabled");
     await settledCheck(page, optIn, true);
     await expect(

@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { IconArrowLeft } from "@tabler/icons-react";
+import { BIOMARKERS_LIST_HREF } from "@/lib/hrefs";
 import {
   documentLabel,
   getBiomarkerSeriesWithDerived,
@@ -109,26 +111,27 @@ export default async function BiomarkerDetailPage(props: {
   const { login, profile } = await requireSession();
   const temperatureUnit = getUnitPrefs(login.id).temperatureUnit;
   const canonical = searchParams.name?.trim();
-  const series = canonical
-    ? getBiomarkerSeriesWithDerived(profile.id, canonical)
-    : [];
+  // A paramless /biomarkers/view is a degenerate page (#1447): a bare "Biomarker"
+  // h1 over "No biomarker selected." and nothing else. It isn't a state anything
+  // links to — `biomarkerViewHref` already returns the LIST route when it has no
+  // canonical name — so a hand-typed URL or a stale bookmark lands where that
+  // helper would have sent it, rather than on an empty canvas.
+  if (!canonical) redirect(BIOMARKERS_LIST_HREF);
+  const series = getBiomarkerSeriesWithDerived(profile.id, canonical);
 
-  if (!canonical || series.length === 0) {
+  if (series.length === 0) {
     return (
       <div>
         <Link
-          href="/results/biomarkers"
+          href={BIOMARKERS_LIST_HREF}
           className="mb-4 inline-flex items-center gap-1 text-sm text-brand-700 hover:underline dark:text-brand-400"
         >
           <IconArrowLeft className="h-4 w-4" /> Back to biomarkers
         </Link>
-        <PageHeader title={canonical || "Biomarker"} />
+        <PageHeader title={canonical} />
         <EmptyState
-          message={
-            canonical
-              ? `No readings found for “${canonical}”.`
-              : "No biomarker selected."
-          }
+          message={`No readings found for “${canonical}”.`}
+          action={{ href: BIOMARKERS_LIST_HREF, label: "Browse biomarkers" }}
         />
       </div>
     );

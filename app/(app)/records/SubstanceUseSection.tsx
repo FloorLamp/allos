@@ -19,6 +19,7 @@ import {
   getSubstanceWeeklyTrend,
 } from "@/lib/queries";
 import { getSmokingHistory } from "@/lib/settings";
+import { formatMonthDay, type DisplayFormatPrefs } from "@/lib/format-date";
 import { resolveSmoking, smokingStatusLabel } from "@/lib/smoking";
 import SubstanceInstrumentsForm from "@/app/(app)/medical/substance-use/SubstanceInstrumentsForm";
 import ConsumptionSection from "@/app/(app)/medical/substance-use/ConsumptionSection";
@@ -45,9 +46,14 @@ import ConsumptionSection from "@/app/(app)/medical/substance-use/ConsumptionSec
 // put (route-independent); this is a re-mount, not a rewrite.
 export default function SubstanceUseSection({
   profileId,
+  formatPrefs,
   initialInstrument,
 }: {
   profileId: number;
+  // The viewer login's date shape (#964), resolved at the page boundary — the
+  // weekly-trend labels render through the shared formatter rather than slicing
+  // the ISO string (issue #1448).
+  formatPrefs: DisplayFormatPrefs;
   // Deep-link preselect (#1083) forwarded to the instrument form.
   initialInstrument?: SubstanceInstrument;
 }) {
@@ -188,7 +194,7 @@ export default function SubstanceUseSection({
               {trend.map((w) => (
                 <div key={w.start} className="flex items-center gap-2 text-xs">
                   <span className="w-20 shrink-0 text-slate-500 dark:text-slate-400">
-                    {w.start.slice(5)}
+                    {formatMonthDay(w.start, formatPrefs)}
                     {w.isCurrent ? " (now)" : ""}
                   </span>
                   <div className="h-2 flex-1 rounded bg-black/5 dark:bg-white/5">

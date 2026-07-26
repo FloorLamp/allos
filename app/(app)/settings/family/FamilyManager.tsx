@@ -591,7 +591,7 @@ function LoginRow({
         <>
           This removes the login and signs out its active sessions. The profiles
           it could access are <strong>not</strong> deleted. If this is your own
-          login, you&apos;ll be signed out.
+          login, you’ll be signed out.
         </>
       ),
       confirmLabel: "Delete login",
@@ -673,7 +673,7 @@ function LoginRow({
                 ? "This login has no active sessions."
                 : "Sign this login out of every device without changing the password."
             }
-            className="btn-ghost disabled:cursor-not-allowed disabled:text-slate-400 dark:disabled:text-slate-500"
+            className="btn-ghost"
           >
             Sign out devices
           </button>
@@ -686,7 +686,7 @@ function LoginRow({
                 ? "The only admin login can't be deleted — create another admin first."
                 : undefined
             }
-            className="btn-ghost text-rose-600 disabled:cursor-not-allowed disabled:text-slate-400 dark:text-rose-400 dark:disabled:text-slate-500"
+            className="btn-ghost text-rose-600 dark:text-rose-400"
           >
             Delete
           </button>
@@ -761,9 +761,9 @@ function GrantsCard({
           Access
         </h2>
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          Which profiles each member login can open, and at what level. A
-          <strong> read-only</strong> grant can view everything but can&apos;t
-          add, edit, upload, or delete. Admins have full access to every profile
+          Which profiles each member login can open, and at what level. A{" "}
+          <strong>read-only</strong> grant can view everything but can’t add,
+          edit, upload, or delete. Admins have full access to every profile
           automatically.
         </p>
       </div>

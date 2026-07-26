@@ -131,3 +131,14 @@ export function dedupeProviders(inputs: ProviderInput[]): ProviderInput[] {
   }
   return out;
 }
+
+// The providers directory's empty-state line (#1447). The list rendered the
+// filter-flavoured "No providers match." even with an untouched, empty search
+// box — telling a first-time user their search failed when they hadn't searched.
+// The true state depends on whether a query is active, so the message is chosen
+// from that one fact rather than from the (identical) empty result.
+export function providersEmptyMessage(hasQuery: boolean): string {
+  return hasQuery
+    ? "No providers match your search."
+    : "No providers yet. They’re added automatically when you import a health record’s care team.";
+}

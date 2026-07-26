@@ -6,7 +6,15 @@ import type Database from "better-sqlite3";
 // shared seeder so BOTH the initial seed (e2e/seed-events.ts) and import-dedup.spec.ts
 // use the SAME fixture: the spec MERGES (consumes) the pair, so it re-seeds in a
 // beforeEach to stay repeat-safe (#868). Synthetic data only.
-export const DUP_DATE = "2026-07-07";
+//
+// DEEP-PAST date, deliberately: the sample seed (scripts/seed.ts) writes ~3 weeks of
+// RELATIVE-date rows rolling back from the real "today", so any fixed date near the
+// present eventually collides — on 2026-07-26 a sample cardio "Walk" rolled onto the
+// old 2026-07-07 value, turned the (date, type) bucket into 3 rows, and the pair
+// stopped rendering as a pair (both open PRs went shard-red). "Today" only moves
+// forward, so a date far in the past is PERMANENTLY out of the rolling window's
+// reach; duplicate detection has no recency filter, so the pair still surfaces.
+export const DUP_DATE = "2026-01-02";
 
 // Reset the dup-review fixture to its UNMERGED state on `profileId`: clear the pair's
 // activities + any recorded pair decision, then re-insert the manual + Strava rows.

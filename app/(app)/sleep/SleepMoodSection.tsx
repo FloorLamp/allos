@@ -132,7 +132,7 @@ export default function SleepMoodSection({
       <section data-testid="sleep-mood-log">
         <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-            Sleep and Mood Log
+            Sleep and mood log
           </h2>
           <span className="text-xs text-slate-500 dark:text-slate-400">
             Past {windowDays} days
@@ -206,7 +206,7 @@ export default function SleepMoodSection({
                       className="px-3 py-6 text-center text-slate-500 dark:text-slate-400"
                       data-testid="sleep-mood-history-empty"
                     >
-                      No sleep, stage, or mood entries in the past {windowDays}
+                      No sleep, stage, or mood entries in the past {windowDays}{" "}
                       days.
                     </td>
                   </tr>

@@ -10,6 +10,7 @@ import {
   type Instrument,
 } from "@/lib/mental-health";
 import { recordInstrumentAction } from "./actions";
+import DateField from "@/components/DateField";
 
 // The mental-health instrument surface (#716) — a public-domain PHQ-9/GAD-7 tap-through
 // that computes the score in-app (the guided-battery pattern, #834), plus an outside
@@ -148,15 +149,16 @@ export default function InstrumentsView({
         </label>
       </div>
 
-      <label className="block text-sm">
+      <label className="block text-sm" htmlFor="instrument-date">
         <span className="text-slate-500 dark:text-slate-400">Date</span>
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="mt-1 block rounded-lg border border-black/10 px-2 py-1 dark:border-white/10 dark:bg-slate-900"
-          data-testid="instrument-date"
-        />
+        <div className="mt-1 max-w-xs">
+          <DateField
+            id="instrument-date"
+            value={date}
+            onChange={setDate}
+            data-testid="instrument-date"
+          />
+        </div>
       </label>
 
       <form onSubmit={submit} className="space-y-4">

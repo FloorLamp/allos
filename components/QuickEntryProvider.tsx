@@ -10,8 +10,7 @@ import {
 } from "react";
 import BottomSheet from "./BottomSheet";
 import QuickDoseList from "./quick-entry/QuickDoseList";
-import BodyQuickAdd from "@/app/(app)/trends/BodyQuickAdd";
-import VitalsQuickAdd from "@/app/(app)/trends/VitalsQuickAdd";
+import MeasurementsQuickAdd from "@/app/(app)/trends/MeasurementsQuickAdd";
 import FoodLogBar from "@/app/(app)/nutrition/FoodLogBar";
 import {
   loadQuickEntry,
@@ -31,10 +30,10 @@ import type { QuickEntryForm } from "@/lib/quick-log";
 // ── What this is NOT ─────────────────────────────────────────────────────────
 //
 // It is not a second write path, and not a second set of forms. It mounts the
-// EXISTING components — BodyQuickAdd, VitalsQuickAdd and FoodLogBar, the very
-// same instances the Trends and Nutrition pages render — and they keep calling
-// the very same Server Actions (addBodyMetric / addVitals / logFoodServing) with
-// their own validation, offline queueing and write gates. Dose is the one row
+// EXISTING components — MeasurementsQuickAdd and FoodLogBar, the very same
+// instances the Trends and Nutrition pages render — and they keep calling the very
+// same Server Actions (addMeasurements / logFoodServing) with their own
+// validation, offline queueing and write gates. Dose is the one row
 // this file assembles (QuickDoseList), and it too only posts the existing
 // `markTaken`. One component serves the page mount AND the overlay mount; there
 // is deliberately no overlay COPY of any form to drift from its original (the
@@ -82,8 +81,8 @@ export function useQuickEntry(): QuickEntryApi {
 // only, so the panel doesn't print the same sentence twice).
 const SHEET: Record<QuickEntryForm, { title: string; ownsHeading: boolean }> = {
   food: { title: "Log food", ownsHeading: true },
-  weight: { title: "Log weight", ownsHeading: true },
-  vitals: { title: "Log vitals", ownsHeading: true },
+  // #1486/#1506: weight and vitals merged into ONE form (and one sheet row).
+  measurements: { title: "Log measurements", ownsHeading: true },
   dose: { title: "Log dose", ownsHeading: false },
 };
 
@@ -185,20 +184,15 @@ function QuickEntryBody({
 
   const data = state.data;
   switch (data.form) {
-    case "weight":
+    case "measurements":
       return (
-        <BodyQuickAdd
+        <MeasurementsQuickAdd
           weightUnit={data.weightUnit}
           defaultDate={data.defaultDate}
-          showBodyFat={data.showBodyFat}
-          onSaved={onDone}
-        />
-      );
-    case "vitals":
-      return (
-        <VitalsQuickAdd
-          defaultDate={data.defaultDate}
           temperatureUnit={data.temperatureUnit}
+          showBodyFat={data.showBodyFat}
+          showGrowth={data.showGrowth}
+          showHeadCirc={data.showHeadCirc}
           onSaved={onDone}
         />
       );

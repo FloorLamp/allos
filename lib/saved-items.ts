@@ -15,9 +15,13 @@
 //     Results → Biomarkers status card, earns a chart tile on Trends Overview, AND is
 //     included in the profile passport summary. Membership, not position, drives all
 //     three (the passport contract: lib/profile-summary-load.ts).
-//   • `trend-metric` — key is a standard body/training metric id ("weight"). Every
-//     metric tile renders whether saved or not, so for metrics a save is PROMOTION
-//     (ordered first), never visibility.
+//   • `trend-metric` — key is a standard body/training metric id ("weight"). A save is
+//     MEMBERSHIP here too, since #1487: Trends Overview renders the saved set and
+//     nothing else, so unstarring a standard metric removes its tile (the metric stays
+//     on its domain tab, and SaveTrendPicker offers it back). The four standard tiles
+//     are default-saved SEEDS (lib/standard-metric-seeds.ts) rather than a hardcoded
+//     sampler, which is what made the two kinds mean the same thing. Before that, a
+//     metric save was PROMOTION only — every metric tile rendered either way.
 
 export const SAVED_KINDS = ["biomarker", "trend-metric"] as const;
 export type SavedKind = (typeof SAVED_KINDS)[number];
@@ -138,33 +142,42 @@ export function moveInOrder<T>(
   return out;
 }
 
-// Partition keyed items into saved (in SAVED order — the order orderSavedRefs gave)
-// and unsaved (in their original order). An item whose key isn't saved stays put; a
-// saved ref with no matching item is skipped (e.g. a saved biomarker with no readings
-// in the window still renders a placeholder tile, but a saved metric the age gate
-// removed has no tile at all). This is what renders saved tiles first.
-export function partitionSaved<T>(
-  items: readonly T[],
-  seriesKeyOf: (item: T) => string,
-  saved: readonly SavedRef[]
-): { saved: T[]; unsaved: T[] } {
-  const byRef = new Map<string, T>();
-  const refId = (ref: SavedRef) => `${ref.kind}|${ref.key.toLowerCase()}`;
-  for (const item of items) {
-    const ref = savedRefFromSeriesKey(seriesKeyOf(item));
-    if (ref) byRef.set(refId(ref), item);
-  }
-  const claimed = new Set<T>();
-  const savedItems: T[] = [];
-  for (const ref of saved) {
-    const found = byRef.get(refId(ref));
-    if (found && !claimed.has(found)) {
-      claimed.add(found);
-      savedItems.push(found);
-    }
-  }
-  return {
-    saved: savedItems,
-    unsaved: items.filter((item) => !claimed.has(item)),
-  };
+// One tile's place in the SAVED order, carried alongside the tile so a layout split
+// can't be mistaken for a reordering.
+export interface OverviewTileSlot<T> {
+  tile: T;
+  // The tile's slot in the saved list it came from — what the reorder controls move
+  // within. It survives the split below, so an empty tile that DRAWS last still
+  // reports its true position (and the first/last ends stay honest).
+  index: number;
+}
+
+// Split the Overview tiles into the ones with something to show and the ones with
+// nothing (#1485 A). A saved item with no readings in the window still renders — its
+// unstar control has to stay reachable at any window (#1456) — but a full-height
+// "No data in this range" card sitting BETWEEN populated tiles was ~600px of mid-grid
+// whitespace on a phone. Those sink below the grid and render as one-line rows.
+//
+// The sparse fallback (#1485 G: no points in the window, but a latest reading behind
+// it) counts as POPULATED — it carries a real number, which is the whole reason that
+// fallback exists. Only the truly-empty tile (a never-measured saved analyte)
+// compacts.
+//
+// This is a LAYOUT split, in original order within each half; it changes no ordering
+// semantics, which is why each tile keeps its saved-order index.
+export function partitionOverviewTiles<
+  T extends { points: readonly unknown[]; outsideWindow?: unknown },
+>(
+  tiles: readonly T[]
+): {
+  populated: OverviewTileSlot<T>[];
+  empty: OverviewTileSlot<T>[];
+} {
+  const populated: OverviewTileSlot<T>[] = [];
+  const empty: OverviewTileSlot<T>[] = [];
+  tiles.forEach((tile, index) => {
+    const hasContent = tile.points.length > 0 || tile.outsideWindow != null;
+    (hasContent ? populated : empty).push({ tile, index });
+  });
+  return { populated, empty };
 }

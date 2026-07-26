@@ -106,13 +106,15 @@ test.describe("Skin lesions — add → view → track recheck → photo → fil
       card.getByRole("img", { name: /Lesion photo from/ })
     ).toBeVisible({ timeout: 15000 });
 
-    // Filter by "Removed" hides it; back to "All statuses" shows it again.
+    // Filter by "Removed" hides it; back to "All" shows it again. The status filter
+    // is the family's shared FilterPills group since #1449, not a <select>.
     const list = page.getByTestId("skin-lesion-list");
-    await list.getByLabel("Filter by status").selectOption("removed");
+    const skinFilter = list.getByTestId("skin-status-filter");
+    await skinFilter.getByRole("button", { name: "Removed" }).click();
     await expect(
       list.getByTestId("lesion-card").filter({ hasText: LABEL })
     ).toHaveCount(0);
-    await list.getByLabel("Filter by status").selectOption("");
+    await skinFilter.getByRole("button", { name: "All" }).click();
     await expect(
       list.getByTestId("lesion-card").filter({ hasText: LABEL })
     ).toBeVisible();

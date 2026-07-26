@@ -178,9 +178,21 @@ describe("viewToQuery", () => {
       "from=2026-01-01&to=2026-02-01&cmpA=metric%3Aweight&cmpB=bio%3ALDL&cmpn=1"
     );
   });
-  it("keeps a non-default tab and omits unset params", () => {
-    expect(viewToQuery({ tab: "compare" })).toBe("tab=compare");
-    expect(viewToQuery({})).toBe("");
+  // #1485 G: a view with no bounds is an ALL-TIME view — that is what "no
+  // from/to" meant when it was captured — and a paramless /trends URL now
+  // resolves to the 90D default. So applying one emits the explicit sentinel;
+  // without it, every all-time saved view would silently become a 90D view.
+  it("emits the explicit all-time sentinel for a view with no window", () => {
+    expect(viewToQuery({ tab: "compare" })).toBe("tab=compare&range=all");
+    expect(viewToQuery({})).toBe("range=all");
+  });
+
+  it("omits the sentinel whenever the view names any window", () => {
+    expect(viewToQuery({ from: "2026-01-01" })).toBe("from=2026-01-01");
+    expect(viewToQuery({ to: "2026-02-01" })).toBe("to=2026-02-01");
+    expect(viewToQuery({ from: "2026-01-01", to: "2026-02-01" })).toBe(
+      "from=2026-01-01&to=2026-02-01"
+    );
   });
   // #1456: a view no longer carries a pin snapshot at all (those keys are SAVES
   // now — membership that also drives the Results status card and the passport
@@ -192,6 +204,7 @@ describe("viewToQuery", () => {
       pins: ["metric:weight"],
     });
     expect(params).toEqual({ tab: "body" });
-    expect(viewToQuery(params)).toBe("tab=body");
+    // (`range=all` rides along because this view names no window — see above.)
+    expect(viewToQuery(params)).toBe("tab=body&range=all");
   });
 });

@@ -7,7 +7,7 @@ import { E2E_LOGIN_NAV_MALE, E2E_MEMBER_PASSWORD } from "./fixture-logins";
 // The Health record surface (#1079): the 14 medical sections as two-level tabs —
 // group tab → section sub-tab → one pane — superseding the #1042 stacked-section
 // page. Grouping (FINALIZED): History (Visits · Procedures · Immunizations),
-// Problems (one stacked pane: Conditions + Allergies), Care (Overview stacked:
+// Problems (Conditions · Allergies — un-stacked into two panes by #1449), Care (Overview stacked:
 // Background + Family history + Care plan + Health goals · Providers solo),
 // Specialty (Vision · Dental · Skin · Mental health · Substance use; Vision/Dental
 // data-gated, Substance use life-stage-gated to adults — #1174/#1175). The
@@ -87,16 +87,107 @@ test("two-level tabs navigate group → sub-tab across the panes (#1079)", async
   await expect(page.getByTestId("records-providers")).toBeVisible();
   await expect(page.getByTestId("records-background")).toHaveCount(0);
 
-  // Problems is a single stacked pane (no secondary strip): Conditions + Allergies.
+  // Problems is a normal two-pane group since #1449 — it was the family's one
+  // stacked outlier, and the pill sub-tabs are what let its sections stop naming
+  // themselves with page-scale in-page headings.
   await followLink(
     page,
     groups.getByRole("link", { name: "Problems" }),
-    /\/records\/problems$/
+    /\/records\/problems\/conditions$/
   );
+  const problemSubs = page.getByTestId("records-sub-tabs");
+  await expect(
+    problemSubs.getByRole("link", { name: "Conditions" })
+  ).toBeVisible();
+  await expect(
+    problemSubs.getByRole("link", { name: "Allergies" })
+  ).toBeVisible();
+  // One pane at a time: Conditions renders alone, Allergies is a sub-tab away.
   await expect(page.getByTestId("records-conditions")).toBeVisible();
+  await expect(page.getByTestId("records-allergies")).toHaveCount(0);
+
+  await followLink(
+    page,
+    problemSubs.getByRole("link", { name: "Allergies" }),
+    /\/records\/problems\/allergies$/
+  );
   await expect(page.getByTestId("records-allergies")).toBeVisible();
-  // A single-pane group shows no secondary strip.
-  await expect(page.getByTestId("records-sub-tabs")).toHaveCount(0);
+  await expect(page.getByTestId("records-conditions")).toHaveCount(0);
+
+  // The bare group route forwards to its first pane, like History and Care.
+  await page.goto("/records/problems");
+  await expect(page).toHaveURL(/\/records\/problems\/conditions$/);
+});
+
+// #1449 cluster C: the family had grown FOUR controls for "narrow this list" —
+// filled pills on Problems, a "Show" + <select> on Immunizations, an "All statuses"
+// <select> on Skin and Dental. One affordance now, the outline pill group, and each
+// state is a real URL where the filter rides a query param.
+test("list surfaces share ONE filter affordance — outline pills, no dropdown (#1449)", async ({
+  page,
+}) => {
+  await page.goto("/records/problems/conditions");
+  const condFilter = page.getByTestId("conditions-filter");
+  await expect(condFilter).toBeVisible();
+  for (const label of ["All", "Active", "Resolved"]) {
+    await expect(condFilter.getByRole("link", { name: label })).toBeVisible();
+  }
+  // Filtering is a navigation, and the chosen pill marks itself current.
+  await followLink(
+    page,
+    condFilter.getByRole("link", { name: "Active" }),
+    /\/records\/problems\/conditions\?cond=active$/
+  );
+  await expect(
+    page.getByTestId("conditions-filter").getByRole("link", { name: "Active" })
+  ).toHaveAttribute("aria-current", "true");
+
+  // Immunizations: the same pill group, and no <select> left behind.
+  await page.goto("/records/history/immunizations");
+  const vaxFilter = page.getByTestId("immunization-status-filter");
+  await expect(vaxFilter).toBeVisible();
+  await expect(vaxFilter.getByRole("link", { name: "All" })).toBeVisible();
+  await expect(
+    vaxFilter.getByRole("link", { name: "Needs attention" })
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("records-immunizations").locator("select")
+  ).toHaveCount(0);
+
+  // Skin: a client-state list, so buttons rather than links — same pills either way.
+  // (Only the FILTER is pinned here: the per-row edit forms below legitimately keep
+  // their <select>s — a form field is not a filter affordance.)
+  await page.goto("/records/specialty/skin");
+  const skinFilter = page.getByTestId("skin-status-filter");
+  await expect(skinFilter).toBeVisible();
+  await expect(skinFilter.getByRole("button", { name: "All" })).toBeVisible();
+  await expect(skinFilter.locator("select")).toHaveCount(0);
+});
+
+// #1449 layout kin: the CDC schedule grid has more age columns than a phone has
+// pixels. It used to squeeze them to slivers and clip the right edge silently; it
+// must now scroll INSIDE its own container, leaving the page body itself free of
+// horizontal scroll (the wide-content rule).
+test("the CDC schedule grid scrolls in-container on a phone (#1449)", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/records/history/immunizations");
+  const grid = page.getByTestId("cdc-schedule-grid");
+  await expect(grid).toBeVisible();
+
+  const overflow = await grid.evaluate((el) => ({
+    scrollable: el.scrollWidth > el.clientWidth,
+    overflowX: getComputedStyle(el).overflowX,
+  }));
+  expect(overflow.scrollable).toBe(true);
+  expect(overflow.overflowX).toBe("auto");
+
+  // …and the page itself does not scroll sideways.
+  const bodyOverflows = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth + 1
+  );
+  expect(bodyOverflows).toBe(false);
 });
 
 test("the five specialty sub-tabs render for the seeded profile, with their forms + crisis line (#1079)", async ({
@@ -211,8 +302,8 @@ test("the removed index routes 308-redirect to their owning panes (#1079)", asyn
   // Request-level assertion — no per-route Chromium navigation. Each old route points
   // at the pane that now owns its section.
   const redirects = [
-    { from: "/conditions", to: "/records/problems" },
-    { from: "/allergies", to: "/records/problems" },
+    { from: "/conditions", to: "/records/problems/conditions" },
+    { from: "/allergies", to: "/records/problems/allergies" },
     { from: "/procedures", to: "/records/history/procedures" },
     { from: "/immunizations", to: "/records/history/immunizations" },
     { from: "/family-history", to: "/records/care/overview" },

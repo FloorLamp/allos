@@ -3,9 +3,16 @@ import type { AppRoute } from "@/lib/hrefs";
 // The Health-record two-level nav model (#1079): group tab → section sub-tab →
 // one pane. Grouping organizes NAVIGATION only. The load-bearing rule: a pane
 // renders ONE section, EXCEPT a curated set of LIGHT sections may share a stacked
-// pane (Problems = Conditions + Allergies; Care › Overview = Background + Family
-// history + Care plan + Health goals); heavy sections (the Immunizations chart, the
-// long Visits list, the Providers directory) are NEVER stacked.
+// pane (Care › Overview = Background + Family history + Care plan + Health goals);
+// heavy sections (the Immunizations chart, the long Visits list, the Providers
+// directory) are NEVER stacked.
+//
+// Problems used to be the other stacked pane (Conditions + Allergies) and was the
+// family's one outlier for it (#1449): with no secondary strip, its two sections
+// had to name themselves with h1-scale in-page headings that competed with the
+// page title. It is now a normal two-pane group like History/Specialty — the pill
+// sub-tab names the pane, so the pane needs no heading of its own, and a deep link
+// lands on the SECTION a caller meant rather than a stack it has to scroll.
 //
 // This module is the ONE source of truth for the group/pane structure, shared by
 // the client `RecordsTabs` strip and the server layout / bare-route redirects, so
@@ -24,7 +31,8 @@ export type RecordsGroup = {
   basePath: string;
   // Where the group tab points — its first (visible) pane.
   href: AppRoute;
-  // The secondary strip. Empty for a single-pane group (Problems) → no sub-tabs.
+  // The secondary strip. Every group now has >1 pane, so every group shows one;
+  // `RecordsTabs` still renders nothing for a 0/1-pane group should one appear.
   panes: RecordsPane[];
 };
 
@@ -51,6 +59,15 @@ const HISTORY_PANES: RecordsPane[] = [
     label: "Immunizations",
     href: "/records/history/immunizations",
   },
+];
+
+const PROBLEMS_PANES: RecordsPane[] = [
+  {
+    id: "conditions",
+    label: "Conditions",
+    href: "/records/problems/conditions",
+  },
+  { id: "allergies", label: "Allergies", href: "/records/problems/allergies" },
 ];
 
 const CARE_PANES: RecordsPane[] = [
@@ -117,8 +134,8 @@ export function recordsGroups(relevance: RecordsRelevance): RecordsGroup[] {
       id: "problems",
       label: "Problems",
       basePath: "/records/problems",
-      href: "/records/problems",
-      panes: [],
+      href: PROBLEMS_PANES[0].href,
+      panes: PROBLEMS_PANES,
     },
     {
       id: "care",

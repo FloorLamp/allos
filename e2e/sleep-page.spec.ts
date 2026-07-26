@@ -10,6 +10,7 @@ import {
   SLEEP_EDIT_PROFILE,
 } from "./fixture-logins";
 import { settledClick } from "./helpers";
+import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
 
 const DB_PATH = process.env.ALLOS_DB_PATH ?? "./e2e/.data/e2e.db";
 
@@ -49,10 +50,9 @@ function createSleepEditFixture(
             .prepare("SELECT password_hash FROM logins WHERE username = ?")
             .get(E2E_LOGIN_SLEEP_EDIT) as { password_hash: string }
         ).password_hash;
-        profileId = Number(
-          handle
-            .prepare("INSERT INTO profiles (name) VALUES (?)")
-            .run(`${SLEEP_EDIT_PROFILE} ${suffix}`).lastInsertRowid
+        profileId = createFixtureProfile(
+          handle,
+          `${SLEEP_EDIT_PROFILE} ${suffix}`
         );
         loginId = Number(
           handle
@@ -139,9 +139,9 @@ function destroySleepEditFixture(fixture: SleepEditFixture): void {
         handle
           .prepare("DELETE FROM profile_settings WHERE profile_id = ?")
           .run(fixture.profileId);
-        handle
-          .prepare("DELETE FROM profiles WHERE id = ?")
-          .run(fixture.profileId);
+        // The profile row + whatever its CONSTRUCTOR seeded (the #1487 standard
+        // metric saves) — deleting the row directly trips saved_items' FK.
+        destroyFixtureProfile(handle, fixture.profileId);
       })
       .immediate();
   } finally {
@@ -310,7 +310,7 @@ test.describe("Sleep page (#1066)", () => {
     // card. It includes unpaired dates and pages the 60-day window 10 at a time.
     const sleepMoodLog = sleepMoodSection.getByTestId("sleep-mood-log");
     const logHeading = sleepMoodLog.getByRole("heading", {
-      name: "Sleep and Mood Log",
+      name: "Sleep and mood log",
     });
     const logHelper = sleepMoodLog.getByText(
       /^All available sleep, stage, and mood entries, with bedtime supplement context/
@@ -486,7 +486,7 @@ test.describe("Sleep page (#1066)", () => {
       await page.goto("/sleep");
       const emptyLog = page.getByRole("main").getByTestId("sleep-mood-log");
       await expect(
-        emptyLog.getByRole("heading", { name: "Sleep and Mood Log" })
+        emptyLog.getByRole("heading", { name: "Sleep and mood log" })
       ).toBeVisible();
       const emptyHistory = emptyLog.getByTestId("sleep-mood-history");
       await expect(emptyHistory).toBeVisible();
@@ -576,7 +576,7 @@ test.describe("Sleep page (#1066)", () => {
       ).toBe(true);
 
       // Flip the login's clock to 12h on Settings → Preferences (autosave on change).
-      await page.goto("/settings");
+      await page.goto("/settings/display");
       await selectAndSave(page, "time-format-select", "12h");
       await expect(page.getByTestId("time-format-select")).toHaveValue("12h");
 
@@ -599,7 +599,7 @@ test.describe("Sleep page (#1066)", () => {
       ).toBe(true);
     } finally {
       // Restore the default so the shared admin login preference doesn't leak.
-      await page.goto("/settings");
+      await page.goto("/settings/display");
       await selectAndSave(page, "time-format-select", "24h");
       await expect(page.getByTestId("time-format-select")).toHaveValue("24h");
     }
@@ -778,7 +778,7 @@ test.describe("Sleep segmented merged-night (#1191/#1283)", () => {
   });
 });
 
-test.describe("Sleep and Mood Log historical editing", () => {
+test.describe("Sleep and mood log historical editing", () => {
   test("edits historical mood + duration-only sleep while imported sleep stays read-only", async ({
     browser,
   }, testInfo) => {

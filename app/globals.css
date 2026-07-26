@@ -1,3 +1,23 @@
+/* Global stylesheet.
+ *
+ * LAYOUT (issue #1511 — this file used to be an append magnet, so every PR that
+ * touched CSS conflicted on the same trailing lines):
+ *
+ *   1. FOUNDATION — the @tailwind directives, the :root design tokens, base
+ *      element rules, and the @layer components block. Its ORDER IS LOAD-BEARING
+ *      (later rules of equal specificity win, and the utilities are emitted at
+ *      the @tailwind utilities line above everything below it). Do not reorder it.
+ *   2. FEATURE SECTIONS — each introduced by a "SECTION:" comment, each
+ *      self-contained (its own keyframes, media queries, and its own
+ *      prefers-reduced-motion override) and targeting selectors no other section
+ *      touches. These are ordered ALPHABETICALLY by section name.
+ *
+ * ADDING CSS: put the rule INSIDE the feature section that owns it; if it is a new
+ * feature, add a new SECTION in its ALPHABETICAL position among the sections below
+ * — never at the end of the file. A section that must beat the foundation (the
+ * print block re-declaring :root) still belongs after it, which every feature
+ * section already is. */
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -149,6 +169,12 @@ body::before {
   .input {
     @apply w-full rounded-lg border border-black/10 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-white/10 dark:bg-ink-950 dark:text-slate-100 dark:placeholder:text-slate-500;
   }
+  /* The field counterpart of the button family's disabled treatment (#1450 B).
+     `.input` previously declared nothing for `:disabled`, so a disabled field
+     was indistinguishable from an editable one except by trying to type in it. */
+  .input:disabled {
+    @apply cursor-not-allowed bg-slate-100 text-slate-600 dark:bg-ink-750 dark:text-slate-400;
+  }
   .number-no-spinner {
     appearance: textfield;
   }
@@ -205,13 +231,34 @@ body::before {
      dark offset is ink-950, matching the near-black page surface the buttons sit
      against. */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-brand-500 to-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:from-brand-600 hover:to-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:opacity-50 dark:focus-visible:ring-offset-ink-950;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-brand-500 to-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:from-brand-600 hover:to-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
   }
   .btn-ghost {
     @apply inline-flex items-center justify-center gap-2 rounded-lg border border-black/10 bg-white/70 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:border-white/10 dark:bg-ink-850 dark:text-slate-200 dark:hover:bg-ink-750 dark:focus-visible:ring-offset-ink-950;
   }
   .btn-danger {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:opacity-50 dark:focus-visible:ring-offset-ink-950;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-ink-950;
+  }
+  /* ONE disabled treatment for the whole button family (issue #1450 cluster B).
+     `disabled:opacity-50` used to fade the SATURATED fill instead of replacing
+     it: a disabled "Create login" rendered as washed-out green with white text
+     (~2.3:1, well under AA) which reads as half-loaded or broken rather than
+     "finish the form first" — while the admin Delete buttons hand-rolled a
+     separate grey, so one page family carried two disabled looks.
+     A muted SURFACE with readable text says "not yet" instead: slate-100 under
+     slate-600 is 6.9:1 and ink-750 under slate-400 is ~6.4:1, both clearing AA,
+     and neither can be mistaken for an active control. `bg-none` drops .btn's
+     gradient so the background-color actually shows; the rule is listed after
+     the base classes and after their :hover, so it wins on a hovered disabled
+     button too. Call sites should NOT re-declare `disabled:*` — that is exactly
+     how the second treatment grew. */
+  .btn:disabled,
+  .btn-ghost:disabled,
+  .btn-danger:disabled,
+  .btn[aria-disabled="true"],
+  .btn-ghost[aria-disabled="true"],
+  .btn-danger[aria-disabled="true"] {
+    @apply cursor-not-allowed border-black/5 bg-slate-100 bg-none text-slate-600 shadow-none hover:bg-slate-100 dark:border-white/5 dark:bg-ink-750 dark:text-slate-400 dark:hover:bg-ink-750;
   }
   /* Compact size modifier for the .btn family — tighter padding for dense
      contexts (table rows, card headers, inline controls). Defined AFTER the base
@@ -307,107 +354,30 @@ body::before {
   }
 }
 
-/* Native <input type="time"> (ActivityForm start/end) keeps browser-drawn chrome
-   even inside .input: the picker-indicator paints a hover background box, and the
-   focused hh/mm segment gets an OS highlight — both look wrong against the dark
-   theme. color-scheme already tints the glyphs; these rules just tame the stray
-   backgrounds so the control reads consistently in both themes. */
-input[type="time"]::-webkit-calendar-picker-indicator {
-  cursor: pointer;
-  border-radius: 0.25rem;
-  opacity: 0.55;
-  transition: opacity 0.15s;
+/* ── SECTION: Chart hover motion ── */
+/* Chart hover motion (#1445, Part 3c). The mount draw-in and the tooltip's own
+   fade are recharts props, decided in `components/chart-scaffold.tsx`; these two
+   rules cover what recharts styles in the DOM rather than through props — the
+   active dot growing under the cursor and the tooltip box sliding along the
+   series. 150ms, ease-out: fast enough to feel attached to the pointer, slow
+   enough not to snap. Suppressed wholesale under prefers-reduced-motion, which
+   also settles #794's open 8d checkbox for the chart layer. */
+.recharts-active-dot circle {
+  transition:
+    r 150ms ease-out,
+    opacity 150ms ease-out;
 }
-input[type="time"]::-webkit-calendar-picker-indicator:hover {
-  opacity: 1;
-  background: transparent;
+.recharts-tooltip-wrapper {
+  transition: transform 150ms ease-out;
 }
-input[type="time"]::-webkit-datetime-edit-hour-field:focus,
-input[type="time"]::-webkit-datetime-edit-minute-field:focus,
-input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
-  background-color: rgba(34, 197, 94, 0.18);
-  color: inherit;
-  border-radius: 0.25rem;
-  outline: none;
-}
-
-/* Icon-only action buttons render compact (e.g. h-8 w-8 = 32px) for desktop
-   density, which is below the ~44px touch-target guideline. On coarse-pointer
-   (touch) devices only, extend the clickable area with an invisible pseudo
-   element so the tap target reaches 44px without changing the visual size or
-   affecting mouse layouts. */
-@media (pointer: coarse) {
-  .tap-target {
-    position: relative;
-  }
-  .tap-target::after {
-    content: "";
-    position: absolute;
-    inset: -6px;
+@media (prefers-reduced-motion: reduce) {
+  .recharts-active-dot circle,
+  .recharts-tooltip-wrapper {
+    transition: none;
   }
 }
 
-/* iOS Safari auto-zooms the page when a focused form control's font-size is
-   under 16px, in any orientation. Enforce the floor on touch devices only —
-   desktop keeps its compact text — keyed on the device (pointer) rather than
-   viewport width so landscape phones are covered. !important lets this beat
-   compact utility classes (text-xs/text-sm) on individual controls. */
-@media (pointer: coarse) {
-  input,
-  select,
-  textarea {
-    font-size: max(16px, 1em) !important;
-  }
-}
-
-/* Print: produce a clean one/two-page "medical passport" (issue #105). Chrome
-   (nav, buttons) opts out with Tailwind's `print:hidden`; here we set page
-   margins, flatten the frosted-glass surfaces to plain bordered cards, and force
-   backgrounds/flag colors to actually render (browsers drop them by default).
-
-   Dark-mode printing (issue #794 cluster 7c): the theme is class-based (`.dark`
-   on <html>), and `darkMode` is scoped to `@media not print` in tailwind.config,
-   so under print media EVERY `dark:` utility stops matching and the light
-   utilities render instead — dark text on the forced-white page rather than
-   near-white `dark:text-slate-100`. The `.dark` class stays on <html>; only the
-   utilities are neutralized. The hand-written `:root.dark` rules below cover the
-   non-Tailwind bits: the dark body background is already beaten by the white
-   `html, body` rule here, and `color-scheme` is forced to light so form controls,
-   scrollbars, and any UA-drawn chrome render in the light palette too. */
-@media print {
-  @page {
-    margin: 14mm;
-  }
-  :root,
-  :root.dark {
-    color-scheme: light;
-  }
-  html,
-  body {
-    background: #fff !important;
-  }
-  * {
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-  .card {
-    background: #fff !important;
-    box-shadow: none !important;
-    backdrop-filter: none !important;
-  }
-
-  /* Scoped printing (#1042 phase 3). The Passport page stacks two print
-     artifacts — the passport summary and the emergency card. A print button
-     stamps `data-print-scope` on <html> (components/print-scope.ts) and the
-     region NOT named by the scope is dropped from the printout, so each
-     artifact still prints alone exactly as its pre-merge page did. An unscoped
-     print (browser Ctrl+P) hides nothing and prints the whole page. */
-  html[data-print-scope="passport"] [data-print-region="emergency"],
-  html[data-print-scope="emergency"] [data-print-region="passport"] {
-    display: none !important;
-  }
-}
-
+/* ── SECTION: Fitness-check tile landing sweep ── */
 /* Fitness-check tile landing sweep (#1307). Applied by FitnessCheckView to the
    just-saved tile as its new value lands on the grid — a brief scale/settle that
    draws the eye to the tile that keeps the memory. The class is applied in JS only
@@ -434,6 +404,7 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
   }
 }
 
+/* ── SECTION: Motion primitives + the overlay motion family ── */
 /* ── Motion primitives (issue #1416, section F) ────────────────────────────────
    The app's shared vocabulary for the two things it animates: a transform
    (slide/scale) and an opacity fade. Durations mirror lib/motion.ts's MOTION_MS
@@ -634,24 +605,107 @@ input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
   }
 }
 
-/* Chart hover motion (#1445, Part 3c). The mount draw-in and the tooltip's own
-   fade are recharts props, decided in `components/chart-scaffold.tsx`; these two
-   rules cover what recharts styles in the DOM rather than through props — the
-   active dot growing under the cursor and the tooltip box sliding along the
-   series. 150ms, ease-out: fast enough to feel attached to the pointer, slow
-   enough not to snap. Suppressed wholesale under prefers-reduced-motion, which
-   also settles #794's open 8d checkbox for the chart layer. */
-.recharts-active-dot circle {
-  transition:
-    r 150ms ease-out,
-    opacity 150ms ease-out;
+/* ── SECTION: Print: the medical passport ── */
+/* Print: produce a clean one/two-page "medical passport" (issue #105). Chrome
+   (nav, buttons) opts out with Tailwind's `print:hidden`; here we set page
+   margins, flatten the frosted-glass surfaces to plain bordered cards, and force
+   backgrounds/flag colors to actually render (browsers drop them by default).
+
+   Dark-mode printing (issue #794 cluster 7c): the theme is class-based (`.dark`
+   on <html>), and `darkMode` is scoped to `@media not print` in tailwind.config,
+   so under print media EVERY `dark:` utility stops matching and the light
+   utilities render instead — dark text on the forced-white page rather than
+   near-white `dark:text-slate-100`. The `.dark` class stays on <html>; only the
+   utilities are neutralized. The hand-written `:root.dark` rules below cover the
+   non-Tailwind bits: the dark body background is already beaten by the white
+   `html, body` rule here, and `color-scheme` is forced to light so form controls,
+   scrollbars, and any UA-drawn chrome render in the light palette too. */
+@media print {
+  @page {
+    margin: 14mm;
+  }
+  :root,
+  :root.dark {
+    color-scheme: light;
+  }
+  html,
+  body {
+    background: #fff !important;
+  }
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .card {
+    background: #fff !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+  }
+
+  /* Scoped printing (#1042 phase 3). The Passport page stacks two print
+     artifacts — the passport summary and the emergency card. A print button
+     stamps `data-print-scope` on <html> (components/print-scope.ts) and the
+     region NOT named by the scope is dropped from the printout, so each
+     artifact still prints alone exactly as its pre-merge page did. An unscoped
+     print (browser Ctrl+P) hides nothing and prints the whole page. */
+  html[data-print-scope="passport"] [data-print-region="emergency"],
+  html[data-print-scope="emergency"] [data-print-region="passport"] {
+    display: none !important;
+  }
 }
-.recharts-tooltip-wrapper {
-  transition: transform 150ms ease-out;
+
+/* ── SECTION: Time input chrome ── */
+/* Native <input type="time"> (ActivityForm start/end) keeps browser-drawn chrome
+   even inside .input: the picker-indicator paints a hover background box, and the
+   focused hh/mm segment gets an OS highlight — both look wrong against the dark
+   theme. color-scheme already tints the glyphs; these rules just tame the stray
+   backgrounds so the control reads consistently in both themes. */
+input[type="time"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  border-radius: 0.25rem;
+  opacity: 0.55;
+  transition: opacity 0.15s;
 }
-@media (prefers-reduced-motion: reduce) {
-  .recharts-active-dot circle,
-  .recharts-tooltip-wrapper {
-    transition: none;
+input[type="time"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+  background: transparent;
+}
+input[type="time"]::-webkit-datetime-edit-hour-field:focus,
+input[type="time"]::-webkit-datetime-edit-minute-field:focus,
+input[type="time"]::-webkit-datetime-edit-ampm-field:focus {
+  background-color: rgba(34, 197, 94, 0.18);
+  color: inherit;
+  border-radius: 0.25rem;
+  outline: none;
+}
+
+/* ── SECTION: Touch tap targets ── */
+/* Icon-only action buttons render compact (e.g. h-8 w-8 = 32px) for desktop
+   density, which is below the ~44px touch-target guideline. On coarse-pointer
+   (touch) devices only, extend the clickable area with an invisible pseudo
+   element so the tap target reaches 44px without changing the visual size or
+   affecting mouse layouts. */
+@media (pointer: coarse) {
+  .tap-target {
+    position: relative;
+  }
+  .tap-target::after {
+    content: "";
+    position: absolute;
+    inset: -6px;
+  }
+}
+
+/* ── SECTION: Touch zoom floor (iOS) ── */
+/* iOS Safari auto-zooms the page when a focused form control's font-size is
+   under 16px, in any orientation. Enforce the floor on touch devices only —
+   desktop keeps its compact text — keyed on the device (pointer) rather than
+   viewport width so landscape phones are covered. !important lets this beat
+   compact utility classes (text-xs/text-sm) on individual controls. */
+@media (pointer: coarse) {
+  input,
+  select,
+  textarea {
+    font-size: max(16px, 1em) !important;
   }
 }

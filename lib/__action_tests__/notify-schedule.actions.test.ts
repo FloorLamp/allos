@@ -48,7 +48,7 @@ describe("saveNotificationPrefs — wake-aware fields (#1117)", () => {
       "auto"
     );
     expect(getNotifySchedule(profile.id).morningAuto).toBe(true);
-    expect(revalidate).toHaveBeenCalledWith("/settings/profile");
+    expect(revalidate).toHaveBeenCalledWith("/settings/notifications");
   });
 
   it("persists a manual Morning hour as a number (auto off)", async () => {

@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { hydratedClick } from "./helpers";
 
 // #28: PWA offline write queue. A body-metric quick-add submitted while the browser
 // is OFFLINE must be queued in IndexedDB (not lost), show a "queued" state + pending
@@ -17,9 +18,10 @@ test("a body metric logged offline queues, then syncs exactly once on reconnect 
   const marker = `offline-e2e-${Date.now()}`;
 
   await page.goto("/trends?tab=body");
-  const form = page
-    .locator("form")
-    .filter({ has: page.getByRole("heading", { name: "Log body metrics" }) });
+  // #1486: the body quick-add is now the combined "Log measurements" form behind
+  // the desktop "+ Log" expander — open it before going offline.
+  await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
+  const form = page.getByTestId("measurements-quick-add");
   await expect(form).toBeVisible();
 
   // Go offline BEFORE submitting — the moment logging actually happens at a gym
@@ -28,7 +30,7 @@ test("a body metric logged offline queues, then syncs exactly once on reconnect 
 
   await form.getByLabel("Weight (kg)").fill("81.4");
   await form.getByLabel("Notes").fill(marker);
-  await form.getByRole("button", { name: "Save entry" }).click();
+  await form.getByRole("button", { name: "Save measurements" }).click();
 
   // It's queued, not failed: the "saved offline" toast + the pending badge.
   await expect(
@@ -73,15 +75,16 @@ test("a rejected offline entry is surfaced for review, not silently dropped (#47
   const marker = `offline-reject-${Date.now()}`;
 
   await page.goto("/trends?tab=body");
-  const form = page
-    .locator("form")
-    .filter({ has: page.getByRole("heading", { name: "Log body metrics" }) });
+  // #1486: the body quick-add is now the combined "Log measurements" form behind
+  // the desktop "+ Log" expander — open it before going offline.
+  await hydratedClick(page, page.getByTestId("log-measurements-toggle"));
+  const form = page.getByTestId("measurements-quick-add");
   await expect(form).toBeVisible();
 
   await context.setOffline(true);
   await form.getByLabel("Weight (kg)").fill("77.3");
   await form.getByLabel("Notes").fill(marker);
-  await form.getByRole("button", { name: "Save entry" }).click();
+  await form.getByRole("button", { name: "Save measurements" }).click();
 
   const badge = page.getByTestId("offline-queue-badge");
   await expect(badge).toHaveText(/1 queued offline/);

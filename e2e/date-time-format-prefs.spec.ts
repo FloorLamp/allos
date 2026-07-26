@@ -55,7 +55,7 @@ test("flipping the date/time prefs re-renders a record date and a journal timest
 }) => {
   try {
     // Baseline: the status-quo defaults (mdy long-date; 24h clock).
-    await page.goto("/records/problems");
+    await page.goto("/records/problems/conditions");
     await expect(page.getByText("Mar 1, 2019").first()).toBeVisible(); // first-ok: asserts a date renders in the mdy long-date format — order-agnostic presence
 
     await page.goto("/training");
@@ -88,7 +88,7 @@ test("flipping the date/time prefs re-renders a record date and a journal timest
     // save transition — so a second change fired before that render commits would
     // post a stale first value. A human's two clicks settle between renders; the
     // reload gives the second change a committed starting state deterministically.
-    await page.goto("/settings");
+    await page.goto("/settings/display");
     await selectAndSave(page, "date-format-select", "iso");
     await page.reload();
     await expect(page.getByTestId("date-format-select")).toHaveValue("iso");
@@ -100,7 +100,7 @@ test("flipping the date/time prefs re-renders a record date and a journal timest
     await expect(page.getByTestId("time-format-select")).toHaveValue("12h");
 
     // The record date now renders ISO on /conditions.
-    await page.goto("/records/problems");
+    await page.goto("/records/problems/conditions");
     await expect(page.getByText("2019-03-01").first()).toBeVisible(); // first-ok: asserts a date renders in ISO format — order-agnostic presence
 
     // The journal timestamp now renders a 12-hour clock on Training → Log.
@@ -129,7 +129,7 @@ test("flipping the date/time prefs re-renders a record date and a journal timest
   } finally {
     // Restore the defaults so the shared admin login preference doesn't bleed into
     // other specs.
-    await page.goto("/settings");
+    await page.goto("/settings/display");
     await selectAndSave(page, "date-format-select", "mdy");
     await page.reload();
     await selectAndSave(page, "time-format-select", "24h");

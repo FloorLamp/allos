@@ -8,15 +8,22 @@ import {
   getUserBirthdate,
   type WeightUnit,
 } from "@/lib/settings";
+import { round as roundTo } from "@/lib/units";
 import { ageInMonthsFromBirthdate } from "@/lib/date";
-import { showHeadCircEntry, showBodyFat } from "@/lib/growth-metrics";
 import {
+  showHeadCircEntry,
+  showBodyFat,
+  showGrowthQuickAdd,
+} from "@/lib/growth-metrics";
+import {
+  getBiomarkerSeries,
   getBodyMetricDailySeries,
   getMetricDailyTotals,
   getHrDailySummary,
   getMoodLogs,
   getGoals,
 } from "@/lib/queries";
+import { HRV_METRIC } from "@/lib/vitals-input";
 import { bmiSeriesDatePaired } from "@/lib/growth-series";
 import { dispWeight, round } from "@/lib/units";
 import { ALL_ROWS, filterSeriesByRange } from "@/lib/trends";
@@ -27,8 +34,12 @@ import {
 import { projectGoal, describeEta } from "@/lib/trend-projection";
 import { isGoalLive } from "@/lib/goals";
 import {
+  ALL_TIME_RANGE_PARAM,
+  ALL_TIME_RANGE_VALUE,
+  isAllTimeRange,
   isCustomRange,
   normalizeTimelineRange,
+  resolveTrendsRange,
   timelineDateFromParam,
   type DateRange,
 } from "@/lib/timeline-format";
@@ -49,8 +60,7 @@ import DateRangeControl from "@/components/DateRangeControl";
 import BodyTrendCharts, {
   type BodyChartSpec,
 } from "@/components/BodyTrendCharts";
-import BodyQuickAdd from "../../BodyQuickAdd";
-import GrowthQuickAdd from "../../GrowthQuickAdd";
+import MeasurementsQuickAdd from "../../MeasurementsQuickAdd";
 
 export const dynamic = "force-dynamic";
 
@@ -65,6 +75,21 @@ export const dynamic = "force-dynamic";
 // layer), then windowed here; the metadata (label/unit/color/goal/quick-add) comes
 // from the ONE registry (BODY_METRIC_META) so this page and the tile can't disagree.
 
+// One canonical-name vitals series ({date,value}), rounded to the metric's decimals
+// — the shape the chart + tile take. Shared by the five vitals slugs (#1486).
+function biomarkerPoints(
+  canonical: string,
+  profileId: number,
+  decimals: number
+): { date: string; value: number }[] {
+  return getBiomarkerSeries(profileId, canonical)
+    .filter((r) => r.value_num != null)
+    .map((r) => ({
+      date: r.date,
+      value: roundTo(r.value_num as number, decimals),
+    }));
+}
+
 // The metric's FULL display-unit series (oldest→newest), read unbounded so an older
 // window isn't silently truncated (#399). Weight follows the login's weight unit.
 function fullSeriesFor(
@@ -73,6 +98,25 @@ function fullSeriesFor(
   weightUnit: WeightUnit
 ): { date: string; value: number }[] {
   switch (slug) {
+    // ── vitals (#1486) ────────────────────────────────────────────────────────
+    // Read through the SAME canonical-name series query the merged Body tab's
+    // vitals section draws, so a tile, its detail page, and the tab's full chart
+    // are three formatters over one read.
+    case "systolic":
+      return biomarkerPoints("Blood Pressure Systolic", profileId, 0);
+    case "diastolic":
+      return biomarkerPoints("Blood Pressure Diastolic", profileId, 0);
+    case "spo2":
+      return biomarkerPoints("Oxygen Saturation", profileId, 0);
+    case "respiratory-rate":
+      return biomarkerPoints("Respiratory Rate", profileId, 0);
+    case "temperature":
+      return biomarkerPoints("Body Temperature", profileId, 1);
+    case "hrv":
+      return getMetricDailyTotals(profileId, HRV_METRIC, ALL_ROWS).map((r) => ({
+        date: r.date,
+        value: Math.round(r.value),
+      }));
     case "weight":
       return getBodyMetricDailySeries(profileId, "weight", ALL_ROWS).map(
         (p) => ({ date: p.date, value: dispWeight(p.value, weightUnit) })
@@ -195,7 +239,12 @@ function goalOverlay(
 
 export default async function BodyMetricDetailPage(props: {
   params: Promise<{ kind: string }>;
-  searchParams: Promise<{ from?: string | string[]; to?: string | string[] }>;
+  searchParams: Promise<{
+    from?: string | string[];
+    to?: string | string[];
+    // The explicit all-time sentinel (#1485 G) — see resolveTrendsRange.
+    range?: string | string[];
+  }>;
 }) {
   const { kind } = await props.params;
   const searchParams = await props.searchParams;
@@ -218,7 +267,16 @@ export default async function BodyMetricDetailPage(props: {
 
   const from = timelineDateFromParam(searchParams.from);
   const to = timelineDateFromParam(searchParams.to);
-  const range = normalizeTimelineRange(from, to);
+  // Same window rule as the hub (#1485 G): 90D by default, an explicit ?from/?to
+  // verbatim, `?range=all` for all time. This page is reached BY the hub's tiles,
+  // so a different default here would silently rewind the window on every drill-in.
+  const range = resolveTrendsRange(
+    normalizeTimelineRange(from, to),
+    todayStr,
+    Array.isArray(searchParams.range)
+      ? searchParams.range[0]
+      : searchParams.range
+  );
 
   const fullSeries = fullSeriesFor(kind, profile.id, weightUnit);
   const windowed = filterSeriesByRange(fullSeries, range);
@@ -258,6 +316,9 @@ export default async function BodyMetricDetailPage(props: {
     const sp = new URLSearchParams();
     if (r.from) sp.set("from", r.from);
     if (r.to) sp.set("to", r.to);
+    // The control asks for `{}` for both "All time" and "Clear dates"; with a 90D
+    // default that URL is no longer all-time, so it needs the explicit sentinel.
+    if (isAllTimeRange(r)) sp.set(ALL_TIME_RANGE_PARAM, ALL_TIME_RANGE_VALUE);
     const qs = sp.toString();
     return (qs ? `${base}?${qs}` : base) as AppRoute;
   };
@@ -267,16 +328,18 @@ export default async function BodyMetricDetailPage(props: {
   const ageMonths = birthdate
     ? ageInMonthsFromBirthdate(birthdate, todayStr)
     : null;
+  const age = getUserAge(profile.id);
   const quickAdd =
-    meta.quickAdd === "body" ? (
-      <BodyQuickAdd
+    meta.quickAdd === "measurements" ? (
+      // The ONE combined form (#1486) — the same component the Body tab's desktop
+      // expander and the quick-entry overlay mount. Its life-stage gates come from
+      // the same lib/growth-metrics predicates everywhere.
+      <MeasurementsQuickAdd
         weightUnit={weightUnit}
         defaultDate={todayStr}
-        showBodyFat={showBodyFat(getUserAge(profile.id))}
-      />
-    ) : meta.quickAdd === "growth" ? (
-      <GrowthQuickAdd
-        defaultDate={todayStr}
+        temperatureUnit={getUnitPrefs(login.id).temperatureUnit}
+        showBodyFat={showBodyFat(age)}
+        showGrowth={showGrowthQuickAdd(age)}
         showHeadCirc={showHeadCircEntry(ageMonths)}
       />
     ) : null;

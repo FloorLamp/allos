@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { settledSelectSave } from "./helpers";
 
 // Quiet hours on Settings → Notifications (issue #450). #440 hardcoded the waking window
 // (8→21) that gates non-urgent EPISODE nudges (refill, preventive, milestone); this
@@ -20,19 +21,27 @@ test.describe("quiet hours (issue #450)", () => {
     await expect(quiet).toBeVisible();
     // The safety carve-out is stated in the UI.
     await expect(quiet).toContainText(
-      "Urgent medication reminders are never held"
+      /urgent medication reminders are never held/i
     );
 
-    // Scope Save + its "Saved" chip to the notifications card (the page has other
-    // forms with their own Save buttons).
-    const notifCard = page.locator(".card", { has: quiet });
-    const saveNotif = notifCard.getByRole("button", { name: "Save" });
+    // Quiet hours live on the Schedule card, which AUTOSAVES on change (#1462 §6
+    // folded the old mega-card's explicit Save into the Settings convention), so each
+    // edit is settled against that card before the reload below.
+    const schedule = page.getByTestId("notify-schedule");
 
     // Shift to a night-shift overnight window (20:00 → 08:00).
-    await page.getByTestId("waking-start-hour").selectOption("20");
-    await page.getByTestId("waking-end-hour").selectOption("8");
-    await saveNotif.click();
-    await expect(notifCard.getByLabel("Saved")).toBeVisible();
+    await settledSelectSave(
+      page,
+      page.getByTestId("waking-start-hour"),
+      "20",
+      schedule
+    );
+    await settledSelectSave(
+      page,
+      page.getByTestId("waking-end-hour"),
+      "8",
+      schedule
+    );
 
     // Reload — the bounds round-trip from profile_settings.
     await page.reload();
@@ -40,17 +49,18 @@ test.describe("quiet hours (issue #450)", () => {
     await expect(page.getByTestId("waking-end-hour")).toHaveValue("8");
 
     // Reset to the 8→21 default, leaving the shared fixture as we found it.
-    await page.getByTestId("waking-start-hour").selectOption("8");
-    await page.getByTestId("waking-end-hour").selectOption("21");
-    await page
-      .locator(".card", { has: page.getByTestId("quiet-hours") })
-      .getByRole("button", { name: "Save" })
-      .click();
-    await expect(
-      page
-        .locator(".card", { has: page.getByTestId("quiet-hours") })
-        .getByLabel("Saved")
-    ).toBeVisible();
+    await settledSelectSave(
+      page,
+      page.getByTestId("waking-start-hour"),
+      "8",
+      schedule
+    );
+    await settledSelectSave(
+      page,
+      page.getByTestId("waking-end-hour"),
+      "21",
+      schedule
+    );
     await page.reload();
     await expect(page.getByTestId("waking-start-hour")).toHaveValue("8");
     await expect(page.getByTestId("waking-end-hour")).toHaveValue("21");
