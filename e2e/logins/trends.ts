@@ -69,3 +69,18 @@ export const TRENDS_FITNESS_PROFILE = "Trends Fitness (e2e)";
 export const TRENDS_FITNESS_LIFT = "Front Squat";
 // A lift trained ONLY in the deep past — absent at 90D, present at All time.
 export const TRENDS_FITNESS_OLD_LIFT = "Pendlay Row";
+
+// ── Chart tap-through + the metric detail readings table (issue #1488) ───────
+// A dedicated adult profile for the readings table's row CRUD. Dedicated ON PURPOSE
+// (#868): the spec EDITS and DELETES readings, and doing that on a shared-seed
+// profile would move numbers every other Trends spec asserts on. It owns exactly two
+// HRV samples (a manual one it edits, an imported one it leaves alone) and two
+// weigh-ins, so the row it acts on is addressed by value, never by position.
+// Write grant — every write is its own profile's, and the spec restores what it
+// changes, so --repeat-each stays clean.
+export const E2E_LOGIN_TRENDS_READINGS = "e2e_trends_readings";
+export const TRENDS_READINGS_PROFILE = "Trends Readings (e2e)";
+// The manual HRV value the spec corrects, and what it corrects it to. Named here so
+// the seeder and the spec can't drift.
+export const TRENDS_READINGS_HRV_MANUAL = 41;
+export const TRENDS_READINGS_HRV_SYNCED = 67;
