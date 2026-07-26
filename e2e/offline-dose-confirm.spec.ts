@@ -29,13 +29,14 @@ const AUTH_STATE = workerAuthPath();
 // Create a supplement with a single daily Morning dose and return its row locator.
 async function createMorningSupplement(page: Page, name: string) {
   await page.goto("/nutrition?tab=supplements");
-  const addCard = page
-    .locator("div.card")
-    .filter({ hasText: "Add supplement" });
+  // The add-mode SupplementForm lives behind the "Add supplement" modal now.
+  await page.getByTestId("supplement-add-toggle").click();
+  const addCard = page.getByRole("dialog", { name: "Add supplement" });
   await addCard.getByLabel("Name").fill(name);
   await addCard.getByLabel("Amount").first().fill("10 mg"); // first-ok: the add-supplement form's own first dose-row field (deterministic within one form render, not a seeded list)
   await addCard.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the add-supplement form's own first dose-row field (deterministic within one form render, not a seeded list)
   await addCard.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(addCard).toHaveCount(0);
 
   const row = morningRow(page, name);
   await expect(row).toHaveCount(1);
