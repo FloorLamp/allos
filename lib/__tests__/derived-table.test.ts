@@ -65,8 +65,19 @@ describe("filterDerivedForTable", () => {
     expect(filterDerivedForTable(rows, { category: "vitals" })).toHaveLength(0);
   });
 
-  it("excludes all derived rows when a panel filter is active (they carry none)", () => {
-    expect(filterDerivedForTable(rows, { panel: "LabCorp" })).toHaveLength(0);
+  // #1502 re-point: the panel is now RESOLVED from the canonical name, not read
+  // off the (always null) stored column, so a derived index honors the clinical
+  // facet like a stored row instead of being dropped from every panel view.
+  it("keeps only the derived rows whose RESOLVED panel matches the facet (#1502)", () => {
+    expect(filterDerivedForTable(rows, { panel: "lipids" })).toHaveLength(1);
+    expect(filterDerivedForTable(rows, { panel: "lipids" })[0].name).toBe(
+      "Non-HDL Cholesterol"
+    );
+    expect(
+      filterDerivedForTable(rows, { panel: "kidney" }).map((r) => r.name)
+    ).toEqual(["eGFR"]);
+    // A panel neither derived index belongs to keeps nothing.
+    expect(filterDerivedForTable(rows, { panel: "thyroid" })).toHaveLength(0);
   });
 
   it("range=oor keeps only clinical-flagged rows", () => {

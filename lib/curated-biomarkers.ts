@@ -12,6 +12,7 @@
 // committed JSON before it is trusted.
 
 import { canonicalAliases, normalizeCanonicalKey } from "./canonical-name";
+import { panelForCanonicalName } from "./biomarker-panels";
 
 import { AGE_BANDS, CURATED_LABS } from "./curated/reference-data";
 
@@ -99,6 +100,17 @@ export interface Biomarker {
   // eGFR + PSA today). NULL/absent = no velocity rule for the analyte. NOT a flag
   // input (absent from FLAG_RELEVANT_FIELDS), so it never re-derives a flag.
   velocity_per_year?: number | null;
+  // The normalized clinical PANEL slug (issue #1502) — which panel/order this
+  // analyte belongs to (`lipids`, `cbc`, `thyroid`, …), from the curated
+  // BIOMARKER_PANELS assignment in lib/biomarker-panels.ts. Written into the
+  // committed JSON by curateBiomarkers below so the dataset is self-describing
+  // and human-reviewable beside its ranges. NOT a flag input (absent from
+  // FLAG_RELEVANT_FIELDS in lib/canonical-flags-version.ts), so adding or
+  // changing it never re-derives a stored record's out-of-range flag. The
+  // RESOLVER every consumer calls is panelForCanonicalName(), which reads the
+  // TypeScript assignment directly — this field is its projection onto the
+  // dataset, not a second source of truth.
+  panel?: string | null;
   note: string | null;
 }
 
@@ -361,5 +373,14 @@ export function curateBiomarkers(biomarkers: Biomarker[]): Biomarker[] {
     const row = byName.get(name.toLowerCase());
     if (row) row.category = category;
   }
+  // #1502: project the curated panel assignment onto every row, so the committed
+  // dataset carries its clinical panel beside its ranges and a human reviewing the
+  // JSON can see the grouping. The RESOLVER (panelForCanonicalName) reads the
+  // TypeScript assignment, never this field — so there is still one source of
+  // truth, and a row that somehow has no assignment gets the reserved `other`
+  // rather than an absent field (the 0-unmapped test fails first in that case).
+  // `panel` is NOT in FLAG_RELEVANT_FIELDS, so writing it leaves the canonical
+  // flags signature — and therefore every stored record's flag — untouched.
+  for (const row of out) row.panel = panelForCanonicalName(row.name);
   return out;
 }

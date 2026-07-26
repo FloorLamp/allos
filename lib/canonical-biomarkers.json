@@ -14,7 +14,8 @@
       "conversions": {
         "mmol/L": 38.67
       },
-      "retest_days": 365
+      "retest_days": 365,
+      "panel": "lipids"
     },
     {
       "name": "LDL Cholesterol",
@@ -29,7 +30,8 @@
       "conversions": {
         "mmol/L": 38.67
       },
-      "retest_days": 365
+      "retest_days": 365,
+      "panel": "lipids"
     },
     {
       "name": "HDL Cholesterol",
@@ -44,7 +46,8 @@
       "conversions": {
         "mmol/L": 38.67
       },
-      "retest_days": 365
+      "retest_days": 365,
+      "panel": "lipids"
     },
     {
       "name": "Triglycerides",
@@ -59,7 +62,8 @@
       "conversions": {
         "mmol/L": 88.57
       },
-      "retest_days": 365
+      "retest_days": 365,
+      "panel": "lipids"
     },
     {
       "name": "VLDL Cholesterol",
@@ -73,7 +77,8 @@
       "note": null,
       "conversions": {
         "mmol/L": 38.67
-      }
+      },
+      "panel": "lipids"
     },
     {
       "name": "Non-HDL Cholesterol",
@@ -88,7 +93,8 @@
       "conversions": {
         "mmol/L": 38.67
       },
-      "retest_days": 365
+      "retest_days": 365,
+      "panel": "lipids"
     },
     {
       "name": "Apolipoprotein B (ApoB)",
@@ -100,7 +106,8 @@
       "optimal_high": 60,
       "direction": "lower_better",
       "note": "Particle count; strong cardiovascular risk marker",
-      "retest_days": 365
+      "retest_days": 365,
+      "panel": "lipids"
     },
     {
       "name": "Lipoprotein(a)",
@@ -112,7 +119,8 @@
       "optimal_high": 30,
       "direction": "lower_better",
       "note": "Largely genetic; measure once",
-      "retest_days": 1825
+      "retest_days": 1825,
+      "panel": "lipids"
     },
     {
       "name": "Cholesterol/HDL Ratio",
@@ -123,7 +131,8 @@
       "optimal_low": null,
       "optimal_high": 3.5,
       "direction": "lower_better",
-      "note": null
+      "note": null,
+      "panel": "lipids"
     },
     {
       "name": "Glucose",
@@ -138,7 +147,8 @@
       "conversions": {
         "mmol/L": 18.02
       },
-      "retest_days": 180
+      "retest_days": 180,
+      "panel": "glycemic"
     },
     {
       "name": "Hemoglobin A1c",
@@ -150,7 +160,8 @@
       "optimal_high": 5.3,
       "direction": "lower_better",
       "note": "~3-month average glucose",
-      "retest_days": 90
+      "retest_days": 90,
+      "panel": "glycemic"
     },
     {
       "name": "Insulin",
@@ -165,7 +176,8 @@
       "conversions": {
         "pmol/L": 0.1439
       },
-      "retest_days": 180
+      "retest_days": 180,
+      "panel": "glycemic"
     },
     {
       "name": "HOMA-IR",
@@ -177,7 +189,8 @@
       "optimal_high": 1,
       "direction": "lower_better",
       "note": "Insulin resistance index",
-      "retest_days": 180
+      "retest_days": 180,
+      "panel": "glycemic"
     },
     {
       "name": "C-Peptide",
@@ -192,7 +205,8 @@
       "conversions": {
         "nmol/L": 3.02
       },
-      "retest_days": 180
+      "retest_days": 180,
+      "panel": "glycemic"
     },
     {
       "name": "High-Sensitivity C-Reactive Protein (hs-CRP)",
@@ -207,7 +221,8 @@
       "conversions": {
         "mg/dL": 10
       },
-      "retest_days": 180
+      "retest_days": 180,
+      "panel": "inflammation"
     },
     {
       "name": "Homocysteine",
@@ -222,7 +237,8 @@
       "conversions": {
         "mg/L": 7.4
       },
-      "retest_days": 365
+      "retest_days": 365,
+      "panel": "inflammation"
     },
     {
       "name": "Uric Acid",
@@ -241,7 +257,8 @@
       "conversions": {
         "umol/L": 0.0168
       },
-      "retest_days": 365
+      "retest_days": 365,
+      "panel": "kidney"
     },
     {
       "name": "Gamma-Glutamyl Transferase (GGT)",
@@ -255,7 +272,8 @@
       "note": "Liver/oxidative-stress marker",
       "conversions": {
         "IU/L": 1
-      }
+      },
+      "panel": "liver"
     },
     {
       "name": "Alanine Aminotransferase (ALT)",
@@ -277,7 +295,8 @@
       ],
       "conversions": {
         "IU/L": 1
-      }
+      },
+      "panel": "liver"
     },
     {
       "name": "Aspartate Aminotransferase (AST)",
@@ -311,7 +330,8 @@
       ],
       "conversions": {
         "IU/L": 1
-      }
+      },
+      "panel": "liver"
     },
     {
       "name": "Alkaline Phosphatase",
@@ -372,7 +392,8 @@
       ],
       "conversions": {
         "IU/L": 1
-      }
+      },
+      "panel": "liver"
     },
     {
       "name": "Total Bilirubin",
@@ -395,7 +416,8 @@
           "ref_high": 12,
           "note": "Neonatal physiologic jaundice peaks in the first week then falls; a whole-year band is coarse (it can UNDER-flag a genuinely high bilirubin later in infancy) — interpret against age in days for a neonate. Conjugated/direct bilirubin is NOT raised here (direct hyperbilirubinemia is always pathologic)."
         }
-      ]
+      ],
+      "panel": "liver"
     },
     {
       "name": "Albumin",
@@ -414,7 +436,8 @@
           "ref_low": 2.8,
           "ref_high": 4.4
         }
-      ]
+      ],
+      "panel": "liver"
     },
     {
       "name": "Total Protein",
@@ -445,7 +468,8 @@
           "ref_low": 6,
           "ref_high": 8
         }
-      ]
+      ],
+      "panel": "liver"
     },
     {
       "name": "Sodium",
@@ -459,7 +483,8 @@
       "note": null,
       "conversions": {
         "mEq/L": 1
-      }
+      },
+      "panel": "electrolytes"
     },
     {
       "name": "Potassium",
@@ -481,7 +506,8 @@
           "ref_low": 3.7,
           "ref_high": 6
         }
-      ]
+      ],
+      "panel": "electrolytes"
     },
     {
       "name": "Chloride",
@@ -495,7 +521,8 @@
       "note": null,
       "conversions": {
         "mEq/L": 1
-      }
+      },
+      "panel": "electrolytes"
     },
     {
       "name": "Carbon Dioxide",
@@ -509,7 +536,8 @@
       "note": "Bicarbonate/total CO2; mEq/L and mmol/L are equivalent for this monovalent anion",
       "conversions": {
         "mEq/L": 1
-      }
+      },
+      "panel": "electrolytes"
     },
     {
       "name": "Calcium",
@@ -537,7 +565,8 @@
           "ref_low": 8.8,
           "ref_high": 10.8
         }
-      ]
+      ],
+      "panel": "electrolytes"
     },
     {
       "name": "Magnesium",
@@ -552,7 +581,8 @@
       "conversions": {
         "mmol/L": 2.43,
         "mEq/L": 1.215
-      }
+      },
+      "panel": "electrolytes"
     },
     {
       "name": "Phosphorus",
@@ -592,7 +622,8 @@
           "ref_low": 2.9,
           "ref_high": 5.4
         }
-      ]
+      ],
+      "panel": "electrolytes"
     },
     {
       "name": "Blood Urea Nitrogen (BUN)",
@@ -620,7 +651,8 @@
           "ref_low": 5,
           "ref_high": 18
         }
-      ]
+      ],
+      "panel": "kidney"
     },
     {
       "name": "Creatinine",
@@ -678,7 +710,8 @@
           "ref_low_female": 0.5,
           "ref_high_female": 1
         }
-      ]
+      ],
+      "panel": "kidney"
     },
     {
       "name": "eGFR",
@@ -691,7 +724,8 @@
       "direction": "higher_better",
       "note": "Kidney filtration",
       "retest_days": 365,
-      "velocity_per_year": 5
+      "velocity_per_year": 5,
+      "panel": "kidney"
     },
     {
       "name": "Cystatin C",
@@ -702,7 +736,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Muscle-independent kidney marker"
+      "note": "Muscle-independent kidney marker",
+      "panel": "kidney"
     },
     {
       "name": "Hemoglobin",
@@ -762,7 +797,8 @@
           "ref_low_female": 12,
           "ref_high_female": 16
         }
-      ]
+      ],
+      "panel": "cbc"
     },
     {
       "name": "Hematocrit",
@@ -818,7 +854,8 @@
           "ref_low_female": 36,
           "ref_high_female": 46
         }
-      ]
+      ],
+      "panel": "cbc"
     },
     {
       "name": "White Blood Cell Count",
@@ -855,7 +892,8 @@
           "ref_low": 4.5,
           "ref_high": 11.5
         }
-      ]
+      ],
+      "panel": "cbc"
     },
     {
       "name": "Red Blood Cell Count",
@@ -895,7 +933,8 @@
           "ref_low": 4,
           "ref_high": 5.2
         }
-      ]
+      ],
+      "panel": "cbc"
     },
     {
       "name": "Platelet Count",
@@ -920,7 +959,8 @@
           "ref_low": 150,
           "ref_high": 450
         }
-      ]
+      ],
+      "panel": "cbc"
     },
     {
       "name": "Mean Corpuscular Volume (MCV)",
@@ -958,7 +998,8 @@
           "ref_low": 78,
           "ref_high": 98
         }
-      ]
+      ],
+      "panel": "cbc"
     },
     {
       "name": "Red Cell Distribution Width (RDW)",
@@ -969,7 +1010,8 @@
       "optimal_low": null,
       "optimal_high": 13,
       "direction": "lower_better",
-      "note": "Higher values associated with mortality risk"
+      "note": "Higher values associated with mortality risk",
+      "panel": "cbc"
     },
     {
       "name": "Neutrophils",
@@ -1006,7 +1048,8 @@
           "ref_low": 38,
           "ref_high": 72
         }
-      ]
+      ],
+      "panel": "cbc"
     },
     {
       "name": "Lymphocytes",
@@ -1043,7 +1086,8 @@
           "ref_low": 25,
           "ref_high": 50
         }
-      ]
+      ],
+      "panel": "cbc"
     },
     {
       "name": "Ferritin",
@@ -1082,7 +1126,8 @@
           "ref_high": 120
         }
       ],
-      "retest_days": 365
+      "retest_days": 365,
+      "panel": "iron"
     },
     {
       "name": "Iron",
@@ -1096,7 +1141,8 @@
       "note": null,
       "conversions": {
         "umol/L": 5.587
-      }
+      },
+      "panel": "iron"
     },
     {
       "name": "Total Iron-Binding Capacity (TIBC)",
@@ -1110,7 +1156,8 @@
       "note": null,
       "conversions": {
         "umol/L": 5.587
-      }
+      },
+      "panel": "iron"
     },
     {
       "name": "Transferrin Saturation",
@@ -1121,7 +1168,8 @@
       "optimal_low": 25,
       "optimal_high": 35,
       "direction": "in_range",
-      "note": null
+      "note": null,
+      "panel": "iron"
     },
     {
       "name": "Thyroid-Stimulating Hormone (TSH)",
@@ -1162,7 +1210,8 @@
           "ref_high": 4.9
         }
       ],
-      "retest_days": 180
+      "retest_days": 180,
+      "panel": "thyroid"
     },
     {
       "name": "Free T4",
@@ -1177,7 +1226,8 @@
       "conversions": {
         "pmol/L": 0.0777
       },
-      "retest_days": 180
+      "retest_days": 180,
+      "panel": "thyroid"
     },
     {
       "name": "Free T3",
@@ -1192,7 +1242,8 @@
       "conversions": {
         "pmol/L": 0.651
       },
-      "retest_days": 180
+      "retest_days": 180,
+      "panel": "thyroid"
     },
     {
       "name": "Vitamin D, 25-Hydroxy",
@@ -1216,7 +1267,8 @@
           "ref_high": 100,
           "note": "Pediatric sufficiency threshold (AAP / Pediatric Endocrine Society) is ≥20 ng/mL, below the adult 30 ng/mL floor."
         }
-      ]
+      ],
+      "panel": "vitamins"
     },
     {
       "name": "Vitamin B12",
@@ -1231,7 +1283,8 @@
       "conversions": {
         "pmol/L": 1.355
       },
-      "retest_days": 365
+      "retest_days": 365,
+      "panel": "vitamins"
     },
     {
       "name": "Folate",
@@ -1245,7 +1298,8 @@
       "note": null,
       "conversions": {
         "nmol/L": 0.4416
-      }
+      },
+      "panel": "vitamins"
     },
     {
       "name": "Testosterone, Total",
@@ -1268,7 +1322,8 @@
       "conversions": {
         "nmol/L": 28.84
       },
-      "retest_days": 365
+      "retest_days": 365,
+      "panel": "hormones"
     },
     {
       "name": "Testosterone, Free",
@@ -1291,7 +1346,8 @@
       "conversions": {
         "pmol/L": 0.288
       },
-      "retest_days": 365
+      "retest_days": 365,
+      "panel": "hormones"
     },
     {
       "name": "DHEA-Sulfate",
@@ -1313,7 +1369,8 @@
       "note": "Declines with age",
       "conversions": {
         "umol/L": 36.85
-      }
+      },
+      "panel": "hormones"
     },
     {
       "name": "Cortisol",
@@ -1327,7 +1384,8 @@
       "note": "Morning draw; strong diurnal variation",
       "conversions": {
         "nmol/L": 0.03625
-      }
+      },
+      "panel": "hormones"
     },
     {
       "name": "Insulin-Like Growth Factor 1 (IGF-1)",
@@ -1341,7 +1399,8 @@
       "note": "Age-dependent",
       "conversions": {
         "nmol/L": 7.649
-      }
+      },
+      "panel": "hormones"
     },
     {
       "name": "Prostate-Specific Antigen (PSA)",
@@ -1357,7 +1416,8 @@
         "ug/L": 1
       },
       "retest_days": 365,
-      "velocity_per_year": 0.75
+      "velocity_per_year": 0.75,
+      "panel": "tumor-markers"
     },
     {
       "name": "Blood Pressure Systolic",
@@ -1368,7 +1428,8 @@
       "optimal_low": null,
       "optimal_high": 115,
       "direction": "lower_better",
-      "note": null
+      "note": null,
+      "panel": "vital-signs"
     },
     {
       "name": "Blood Pressure Diastolic",
@@ -1379,7 +1440,8 @@
       "optimal_low": null,
       "optimal_high": 75,
       "direction": "lower_better",
-      "note": null
+      "note": null,
+      "panel": "vital-signs"
     },
     {
       "name": "Oxygen Saturation",
@@ -1390,7 +1452,8 @@
       "optimal_low": 95,
       "optimal_high": 100,
       "direction": "higher_better",
-      "note": "SpO2"
+      "note": "SpO2",
+      "panel": "vital-signs"
     },
     {
       "name": "Respiratory Rate",
@@ -1401,7 +1464,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": null
+      "note": null,
+      "panel": "vital-signs"
     },
     {
       "name": "Resting Heart Rate",
@@ -1444,7 +1508,8 @@
           "ref_low": 55,
           "ref_high": 100
         }
-      ]
+      ],
+      "panel": "vital-signs"
     },
     {
       "name": "Body Temperature",
@@ -1455,7 +1520,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": null
+      "note": null,
+      "panel": "vital-signs"
     },
     {
       "name": "Body Fat Percentage",
@@ -1466,7 +1532,8 @@
       "optimal_low": 10,
       "optimal_high": 20,
       "direction": "in_range",
-      "note": "Male-oriented optimal; differs by sex"
+      "note": "Male-oriented optimal; differs by sex",
+      "panel": "body-composition"
     },
     {
       "name": "Bone Mineral Density T-Score",
@@ -1477,7 +1544,8 @@
       "optimal_low": 0,
       "optimal_high": null,
       "direction": "higher_better",
-      "note": "T-score >= -1 is normal; < -2.5 is osteoporosis"
+      "note": "T-score >= -1 is normal; < -2.5 is osteoporosis",
+      "panel": "body-composition"
     },
     {
       "name": "Visceral Adipose Tissue",
@@ -1488,7 +1556,8 @@
       "optimal_low": null,
       "optimal_high": 1,
       "direction": "lower_better",
-      "note": "DEXA VAT mass; units vary by scanner"
+      "note": "DEXA VAT mass; units vary by scanner",
+      "panel": "body-composition"
     },
     {
       "name": "Appendicular Lean Mass Index",
@@ -1499,7 +1568,8 @@
       "optimal_low": 8,
       "optimal_high": null,
       "direction": "higher_better",
-      "note": "Sarcopenia marker; differs by sex"
+      "note": "Sarcopenia marker; differs by sex",
+      "panel": "body-composition"
     },
     {
       "name": "VO2 Max",
@@ -1510,7 +1580,8 @@
       "optimal_low": 45,
       "optimal_high": null,
       "direction": "higher_better",
-      "note": "Cardiorespiratory fitness; strongly age/sex dependent"
+      "note": "Cardiorespiratory fitness; strongly age/sex dependent",
+      "panel": "fitness"
     },
     {
       "name": "Alternaria Alternata (M6) IgE",
@@ -1521,7 +1592,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)",
+      "panel": "allergy"
     },
     {
       "name": "Aspergillus Fumigatus (M3) IgE",
@@ -1532,7 +1604,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)",
+      "panel": "allergy"
     },
     {
       "name": "Bermuda Grass (G2) IgE",
@@ -1543,7 +1616,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)",
+      "panel": "allergy"
     },
     {
       "name": "Birch (T3) IgE",
@@ -1554,7 +1628,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)",
+      "panel": "allergy"
     },
     {
       "name": "Cat Dander (E1) IgE",
@@ -1565,7 +1640,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)",
+      "panel": "allergy"
     },
     {
       "name": "Cladosporium Herbarum (M2) IgE",
@@ -1576,7 +1652,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)",
+      "panel": "allergy"
     },
     {
       "name": "Cockroach (I6) IgE",
@@ -1587,7 +1664,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)",
+      "panel": "allergy"
     },
     {
       "name": "Common Ragweed (Short) (W1) IgE",
@@ -1598,7 +1676,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)",
+      "panel": "allergy"
     },
     {
       "name": "Cottonwood (T14) IgE",
@@ -1609,7 +1688,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)",
+      "panel": "allergy"
     },
     {
       "name": "Dermatophagoides Farinae (D2) IgE",
@@ -1620,7 +1700,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)",
+      "panel": "allergy"
     },
     {
       "name": "Dermatophagoides Pteronyssinus (D1) IgE",
@@ -1631,7 +1712,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)",
+      "panel": "allergy"
     },
     {
       "name": "Dog Dander (E5) IgE",
@@ -1642,7 +1724,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)",
+      "panel": "allergy"
     },
     {
       "name": "Elm (T8) IgE",
@@ -1653,7 +1736,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)",
+      "panel": "allergy"
     },
     {
       "name": "Maple (Box Elder) (T1) IgE",
@@ -1664,7 +1748,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)",
+      "panel": "allergy"
     },
     {
       "name": "Mountain Cedar (T6) IgE",
@@ -1675,7 +1760,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)",
+      "panel": "allergy"
     },
     {
       "name": "Mouse Urine Proteins (E72) IgE",
@@ -1686,7 +1772,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)",
+      "panel": "allergy"
     },
     {
       "name": "Mugwort (W6) IgE",
@@ -1697,7 +1784,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)",
+      "panel": "allergy"
     },
     {
       "name": "Oak (T7) IgE",
@@ -1708,7 +1796,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)",
+      "panel": "allergy"
     },
     {
       "name": "Penicillium Notatum (M1) IgE",
@@ -1719,7 +1808,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)",
+      "panel": "allergy"
     },
     {
       "name": "Rough Pigweed (W14) IgE",
@@ -1730,7 +1820,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)",
+      "panel": "allergy"
     },
     {
       "name": "Sheep Sorrel (W18) IgE",
@@ -1741,7 +1832,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)",
+      "panel": "allergy"
     },
     {
       "name": "Sycamore (T11) IgE",
@@ -1752,7 +1844,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)",
+      "panel": "allergy"
     },
     {
       "name": "Timothy Grass (G6) IgE",
@@ -1763,7 +1856,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)",
+      "panel": "allergy"
     },
     {
       "name": "Walnut Tree (T10) IgE",
@@ -1774,7 +1868,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)",
+      "panel": "allergy"
     },
     {
       "name": "White Ash (T15) IgE",
@@ -1785,7 +1880,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)",
+      "panel": "allergy"
     },
     {
       "name": "White Mulberry (T70) IgE",
@@ -1796,7 +1892,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)"
+      "note": "Allergen-specific IgE; <0.10 kU/L = class 0 (not sensitized)",
+      "panel": "allergy"
     },
     {
       "name": "PFAS - Branched PFOA Isomers",
@@ -1807,7 +1904,8 @@
       "optimal_low": null,
       "optimal_high": 0.05,
       "direction": "lower_better",
-      "note": "Persistent 'forever chemical'; ideally undetectable"
+      "note": "Persistent 'forever chemical'; ideally undetectable",
+      "panel": "pfas"
     },
     {
       "name": "PFAS - Branched PFOS Isomers",
@@ -1818,7 +1916,8 @@
       "optimal_low": null,
       "optimal_high": 0.05,
       "direction": "lower_better",
-      "note": "Persistent 'forever chemical'; ideally undetectable"
+      "note": "Persistent 'forever chemical'; ideally undetectable",
+      "panel": "pfas"
     },
     {
       "name": "PFAS - Linear PFOA Isomers",
@@ -1829,7 +1928,8 @@
       "optimal_low": null,
       "optimal_high": 0.05,
       "direction": "lower_better",
-      "note": "Persistent 'forever chemical'; ideally undetectable"
+      "note": "Persistent 'forever chemical'; ideally undetectable",
+      "panel": "pfas"
     },
     {
       "name": "PFAS - Linear PFOS Isomers",
@@ -1840,7 +1940,8 @@
       "optimal_low": null,
       "optimal_high": 0.05,
       "direction": "lower_better",
-      "note": "Persistent 'forever chemical'; ideally undetectable"
+      "note": "Persistent 'forever chemical'; ideally undetectable",
+      "panel": "pfas"
     },
     {
       "name": "PFAS - MeFOSAA",
@@ -1851,7 +1952,8 @@
       "optimal_low": null,
       "optimal_high": 0.05,
       "direction": "lower_better",
-      "note": "Persistent 'forever chemical'; ideally undetectable"
+      "note": "Persistent 'forever chemical'; ideally undetectable",
+      "panel": "pfas"
     },
     {
       "name": "PFAS - PFDA",
@@ -1862,7 +1964,8 @@
       "optimal_low": null,
       "optimal_high": 0.05,
       "direction": "lower_better",
-      "note": "Persistent 'forever chemical'; ideally undetectable"
+      "note": "Persistent 'forever chemical'; ideally undetectable",
+      "panel": "pfas"
     },
     {
       "name": "PFAS - PFHxS",
@@ -1873,7 +1976,8 @@
       "optimal_low": null,
       "optimal_high": 0.05,
       "direction": "lower_better",
-      "note": "Persistent 'forever chemical'; ideally undetectable"
+      "note": "Persistent 'forever chemical'; ideally undetectable",
+      "panel": "pfas"
     },
     {
       "name": "PFAS - PFNA",
@@ -1884,7 +1988,8 @@
       "optimal_low": null,
       "optimal_high": 0.05,
       "direction": "lower_better",
-      "note": "Persistent 'forever chemical'; ideally undetectable"
+      "note": "Persistent 'forever chemical'; ideally undetectable",
+      "panel": "pfas"
     },
     {
       "name": "PFAS - PFUnDA",
@@ -1895,7 +2000,8 @@
       "optimal_low": null,
       "optimal_high": 0.05,
       "direction": "lower_better",
-      "note": "Persistent 'forever chemical'; ideally undetectable"
+      "note": "Persistent 'forever chemical'; ideally undetectable",
+      "panel": "pfas"
     },
     {
       "name": "PFAS - NASEM Recommended Summation",
@@ -1906,7 +2012,8 @@
       "optimal_low": null,
       "optimal_high": 2,
       "direction": "lower_better",
-      "note": "Sum of NASEM-listed PFAS; >20 ng/mL prompts clinical follow-up"
+      "note": "Sum of NASEM-listed PFAS; >20 ng/mL prompts clinical follow-up",
+      "panel": "pfas"
     },
     {
       "name": "Aluminum",
@@ -1917,7 +2024,8 @@
       "optimal_low": null,
       "optimal_high": 10,
       "direction": "lower_better",
-      "note": "Toxic metal; ideally undetectable"
+      "note": "Toxic metal; ideally undetectable",
+      "panel": "heavy-metals"
     },
     {
       "name": "Arsenic",
@@ -1928,7 +2036,8 @@
       "optimal_low": null,
       "optimal_high": 10,
       "direction": "lower_better",
-      "note": "Toxic metal; ideally undetectable"
+      "note": "Toxic metal; ideally undetectable",
+      "panel": "heavy-metals"
     },
     {
       "name": "Lead",
@@ -1939,7 +2048,8 @@
       "optimal_low": null,
       "optimal_high": 1,
       "direction": "lower_better",
-      "note": "Toxic metal; no safe level, ideally undetectable"
+      "note": "Toxic metal; no safe level, ideally undetectable",
+      "panel": "heavy-metals"
     },
     {
       "name": "Mercury",
@@ -1950,7 +2060,8 @@
       "optimal_low": null,
       "optimal_high": 5,
       "direction": "lower_better",
-      "note": "Toxic metal; ideally undetectable"
+      "note": "Toxic metal; ideally undetectable",
+      "panel": "heavy-metals"
     },
     {
       "name": "Chromium",
@@ -1961,7 +2072,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Trace metal flagged on excess"
+      "note": "Trace metal flagged on excess",
+      "panel": "minerals"
     },
     {
       "name": "Molybdenum",
@@ -1972,7 +2084,8 @@
       "optimal_low": 0.44,
       "optimal_high": 1.78,
       "direction": "in_range",
-      "note": "Essential trace mineral"
+      "note": "Essential trace mineral",
+      "panel": "minerals"
     },
     {
       "name": "Copper",
@@ -1986,7 +2099,8 @@
       "note": null,
       "conversions": {
         "umol/L": 6.355
-      }
+      },
+      "panel": "minerals"
     },
     {
       "name": "Selenium",
@@ -1997,7 +2111,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": null
+      "note": null,
+      "panel": "minerals"
     },
     {
       "name": "Zinc",
@@ -2011,7 +2126,8 @@
       "note": null,
       "conversions": {
         "umol/L": 6.538
-      }
+      },
+      "panel": "minerals"
     },
     {
       "name": "Iodine",
@@ -2022,7 +2138,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": null
+      "note": null,
+      "panel": "minerals"
     },
     {
       "name": "Amylase",
@@ -2036,7 +2153,8 @@
       "note": "Pancreatic/salivary",
       "conversions": {
         "IU/L": 1
-      }
+      },
+      "panel": "tissue-enzymes"
     },
     {
       "name": "Lipase",
@@ -2050,7 +2168,8 @@
       "note": "Pancreatic",
       "conversions": {
         "IU/L": 1
-      }
+      },
+      "panel": "tissue-enzymes"
     },
     {
       "name": "Globulin",
@@ -2061,7 +2180,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": null
+      "note": null,
+      "panel": "liver"
     },
     {
       "name": "Albumin/Globulin Ratio",
@@ -2072,7 +2192,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": null
+      "note": null,
+      "panel": "liver"
     },
     {
       "name": "Basophils",
@@ -2083,7 +2204,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": null
+      "note": null,
+      "panel": "cbc"
     },
     {
       "name": "Eosinophils",
@@ -2094,7 +2216,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": null
+      "note": null,
+      "panel": "cbc"
     },
     {
       "name": "Monocytes",
@@ -2105,7 +2228,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": null
+      "note": null,
+      "panel": "cbc"
     },
     {
       "name": "Mean Corpuscular Hemoglobin (MCH)",
@@ -2116,7 +2240,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Mean corpuscular hemoglobin"
+      "note": "Mean corpuscular hemoglobin",
+      "panel": "cbc"
     },
     {
       "name": "Mean Corpuscular Hemoglobin Concentration (MCHC)",
@@ -2127,7 +2252,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Mean corpuscular hemoglobin concentration"
+      "note": "Mean corpuscular hemoglobin concentration",
+      "panel": "cbc"
     },
     {
       "name": "Mean Platelet Volume (MPV)",
@@ -2138,7 +2264,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Mean platelet volume"
+      "note": "Mean platelet volume",
+      "panel": "cbc"
     },
     {
       "name": "Magnesium, RBC",
@@ -2153,7 +2280,8 @@
       "conversions": {
         "mmol/L": 2.43,
         "mEq/L": 1.215
-      }
+      },
+      "panel": "minerals"
     },
     {
       "name": "Folate, RBC",
@@ -2167,7 +2295,8 @@
       "note": "RBC folate (longer-term status) — distinct from serum Folate",
       "conversions": {
         "nmol/L": 0.4416
-      }
+      },
+      "panel": "vitamins"
     },
     {
       "name": "Methylmalonic Acid (MMA)",
@@ -2178,7 +2307,8 @@
       "optimal_low": null,
       "optimal_high": 250,
       "direction": "lower_better",
-      "note": "Elevated MMA suggests functional B12 deficiency"
+      "note": "Elevated MMA suggests functional B12 deficiency",
+      "panel": "vitamins"
     },
     {
       "name": "Sex Hormone Binding Globulin (SHBG)",
@@ -2189,7 +2319,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": null
+      "note": null,
+      "panel": "hormones"
     },
     {
       "name": "Prolactin",
@@ -2200,7 +2331,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Sex-dependent"
+      "note": "Sex-dependent",
+      "panel": "hormones"
     },
     {
       "name": "Thyroglobulin Antibodies (TgAb)",
@@ -2211,7 +2343,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Thyroid autoantibody"
+      "note": "Thyroid autoantibody",
+      "panel": "thyroid"
     },
     {
       "name": "Thyroid Peroxidase Antibodies (TPOAb)",
@@ -2222,7 +2355,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Thyroid autoantibody"
+      "note": "Thyroid autoantibody",
+      "panel": "thyroid"
     },
     {
       "name": "Rheumatoid Factor (RF)",
@@ -2233,7 +2367,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Autoantibody"
+      "note": "Autoantibody",
+      "panel": "immunoglobulins"
     },
     {
       "name": "Immunoglobulin E (Total)",
@@ -2244,7 +2379,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Total IgE"
+      "note": "Total IgE",
+      "panel": "allergy"
     },
     {
       "name": "Vitamin A (Retinol)",
@@ -2258,7 +2394,8 @@
       "note": null,
       "conversions": {
         "umol/L": 28.645
-      }
+      },
+      "panel": "vitamins"
     },
     {
       "name": "Vitamin E (Alpha-Tocopherol)",
@@ -2272,7 +2409,8 @@
       "note": null,
       "conversions": {
         "umol/L": 0.4307
-      }
+      },
+      "panel": "vitamins"
     },
     {
       "name": "Vitamin E (Beta/Gamma-Tocopherol)",
@@ -2283,7 +2421,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": null
+      "note": null,
+      "panel": "vitamins"
     },
     {
       "name": "Coenzyme Q10",
@@ -2294,7 +2433,8 @@
       "optimal_low": 2,
       "optimal_high": null,
       "direction": "higher_better",
-      "note": null
+      "note": null,
+      "panel": "vitamins"
     },
     {
       "name": "Omega-3 Total (OmegaCheck)",
@@ -2305,7 +2445,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "higher_better",
-      "note": "Omega-3 index"
+      "note": "Omega-3 index",
+      "panel": "omega-fatty-acids"
     },
     {
       "name": "Omega-3 DHA",
@@ -2316,7 +2457,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "higher_better",
-      "note": null
+      "note": null,
+      "panel": "omega-fatty-acids"
     },
     {
       "name": "Omega-3 DPA",
@@ -2327,7 +2469,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "higher_better",
-      "note": null
+      "note": null,
+      "panel": "omega-fatty-acids"
     },
     {
       "name": "Omega-3 EPA",
@@ -2338,7 +2481,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "higher_better",
-      "note": null
+      "note": null,
+      "panel": "omega-fatty-acids"
     },
     {
       "name": "Omega-6 Arachidonic Acid",
@@ -2349,7 +2493,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": null
+      "note": null,
+      "panel": "omega-fatty-acids"
     },
     {
       "name": "Omega-6 Linoleic Acid",
@@ -2360,7 +2505,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": null
+      "note": null,
+      "panel": "omega-fatty-acids"
     },
     {
       "name": "Omega-6/Omega-3 Ratio",
@@ -2371,7 +2517,8 @@
       "optimal_low": 2,
       "optimal_high": 4,
       "direction": "lower_better",
-      "note": null
+      "note": null,
+      "panel": "omega-fatty-acids"
     },
     {
       "name": "Arachidonic Acid/EPA Ratio",
@@ -2382,7 +2529,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Lower ratio = less inflammatory balance"
+      "note": "Lower ratio = less inflammatory balance",
+      "panel": "omega-fatty-acids"
     },
     {
       "name": "LDL Particle Number",
@@ -2393,7 +2541,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "LDL-P; atherogenic particle count"
+      "note": "LDL-P; atherogenic particle count",
+      "panel": "lipoprotein-particles"
     },
     {
       "name": "LDL Small",
@@ -2404,7 +2553,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Small dense LDL"
+      "note": "Small dense LDL",
+      "panel": "lipoprotein-particles"
     },
     {
       "name": "LDL Medium",
@@ -2415,7 +2565,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": null
+      "note": null,
+      "panel": "lipoprotein-particles"
     },
     {
       "name": "LDL Peak Size",
@@ -2426,7 +2577,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "higher_better",
-      "note": "Larger LDL is less atherogenic"
+      "note": "Larger LDL is less atherogenic",
+      "panel": "lipoprotein-particles"
     },
     {
       "name": "LDL Pattern",
@@ -2437,7 +2589,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Pattern A (large, buoyant) favorable; Pattern B atherogenic"
+      "note": "Pattern A (large, buoyant) favorable; Pattern B atherogenic",
+      "panel": "lipoprotein-particles"
     },
     {
       "name": "HDL Large",
@@ -2448,7 +2601,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "higher_better",
-      "note": "Large HDL particles"
+      "note": "Large HDL particles",
+      "panel": "lipoprotein-particles"
     },
     {
       "name": "Prostate Specific Antigen (PSA), Free %",
@@ -2459,7 +2613,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "higher_better",
-      "note": "Higher free fraction lowers cancer suspicion"
+      "note": "Higher free fraction lowers cancer suspicion",
+      "panel": "tumor-markers"
     },
     {
       "name": "Urine pH",
@@ -2470,7 +2625,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": null
+      "note": null,
+      "panel": "urinalysis"
     },
     {
       "name": "Urine Specific Gravity",
@@ -2481,7 +2637,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": null
+      "note": null,
+      "panel": "urinalysis"
     },
     {
       "name": "Red Blood Cells, Urine",
@@ -2492,7 +2649,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": null
+      "note": null,
+      "panel": "urinalysis"
     },
     {
       "name": "White Blood Cells, Urine",
@@ -2503,7 +2661,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": null
+      "note": null,
+      "panel": "urinalysis"
     },
     {
       "name": "Squamous Epithelial Cells, Urine",
@@ -2514,7 +2673,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": null
+      "note": null,
+      "panel": "urinalysis"
     },
     {
       "name": "Biological Age",
@@ -2525,7 +2685,8 @@
       "optimal_low": null,
       "optimal_high": 35.7,
       "direction": "lower_better",
-      "note": "Estimated biological age; lower than chronological is favorable"
+      "note": "Estimated biological age; lower than chronological is favorable",
+      "panel": "biological-age"
     },
     {
       "name": "PhenoAge",
@@ -2536,7 +2697,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Levine Phenotypic Age (2018), in years — a derived biological-age estimate from 9 analytes (albumin, creatinine, glucose, hs-CRP, lymphocyte %, MCV, RDW, ALP, WBC) plus chronological age. Interpreted relative to chronological age (lower = biologically younger); a population estimate with several years of error, not day-level precision."
+      "note": "Levine Phenotypic Age (2018), in years — a derived biological-age estimate from 9 analytes (albumin, creatinine, glucose, hs-CRP, lymphocyte %, MCV, RDW, ALP, WBC) plus chronological age. Interpreted relative to chronological age (lower = biologically younger); a population estimate with several years of error, not day-level precision.",
+      "panel": "biological-age"
     },
     {
       "name": "Triglyceride/HDL Ratio",
@@ -2548,7 +2710,8 @@
       "optimal_high": 2,
       "direction": "lower_better",
       "note": "Derived from the lipid panel (Triglycerides ÷ HDL, both mg/dL). Surrogate for insulin resistance / small-dense LDL; <2 favorable, ≥3.5 suggests insulin resistance. mg/dL-based — a mmol/L ratio differs.",
-      "retest_days": 365
+      "retest_days": 365,
+      "panel": "lipids"
     },
     {
       "name": "Neutrophils, Absolute",
@@ -2585,7 +2748,8 @@
           "ref_low": 1500,
           "ref_high": 8000
         }
-      ]
+      ],
+      "panel": "cbc"
     },
     {
       "name": "Lymphocytes, Absolute",
@@ -2622,7 +2786,8 @@
           "ref_low": 1200,
           "ref_high": 5200
         }
-      ]
+      ],
+      "panel": "cbc"
     },
     {
       "name": "Monocytes, Relative",
@@ -2633,7 +2798,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Monocytes as a fraction of leukocytes (relative count). Companion to the absolute 'Monocytes' (cells/uL) entry."
+      "note": "Monocytes as a fraction of leukocytes (relative count). Companion to the absolute 'Monocytes' (cells/uL) entry.",
+      "panel": "cbc"
     },
     {
       "name": "Eosinophils, Relative",
@@ -2644,7 +2810,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Eosinophils as a fraction of leukocytes (relative count). Companion to the absolute 'Eosinophils' (cells/uL) entry."
+      "note": "Eosinophils as a fraction of leukocytes (relative count). Companion to the absolute 'Eosinophils' (cells/uL) entry.",
+      "panel": "cbc"
     },
     {
       "name": "Basophils, Relative",
@@ -2655,7 +2822,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Basophils as a fraction of leukocytes (relative count). Companion to the absolute 'Basophils' (cells/uL) entry."
+      "note": "Basophils as a fraction of leukocytes (relative count). Companion to the absolute 'Basophils' (cells/uL) entry.",
+      "panel": "cbc"
     },
     {
       "name": "Nucleated Red Blood Cells",
@@ -2675,7 +2843,8 @@
           "ref_high": 10,
           "note": "Term newborns normally show up to ~5–10 NRBC/100 WBC at birth, clearing within the first week; a whole-year band is coarse (it can UNDER-flag a genuinely raised NRBC later in infancy)."
         }
-      ]
+      ],
+      "panel": "cbc"
     },
     {
       "name": "Nucleated Red Blood Cells, Absolute",
@@ -2695,7 +2864,8 @@
           "ref_high": 1.5,
           "note": "Newborn absolute NRBC is elevated at birth and clears within the first week; a whole-year band is coarse."
         }
-      ]
+      ],
+      "panel": "cbc"
     },
     {
       "name": "Immature Granulocytes",
@@ -2714,7 +2884,8 @@
           "ref_low": null,
           "ref_high": 2
         }
-      ]
+      ],
+      "panel": "cbc"
     },
     {
       "name": "Immature Granulocytes, Absolute",
@@ -2733,7 +2904,8 @@
           "ref_low": null,
           "ref_high": 0.3
         }
-      ]
+      ],
+      "panel": "cbc"
     },
     {
       "name": "Hemoglobin A",
@@ -2744,7 +2916,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Hemoglobin A (α2β2), the dominant adult hemoglobin, as a fraction of total hemoglobin on electrophoresis. The clinically meaningful abnormality is a REDUCED HbA (a structural/variant hemoglobinopathy displacing it), so only a lower bound is set. Physiologically LOW in infancy (fetal-hemoglobin switch)."
+      "note": "Hemoglobin A (α2β2), the dominant adult hemoglobin, as a fraction of total hemoglobin on electrophoresis. The clinically meaningful abnormality is a REDUCED HbA (a structural/variant hemoglobinopathy displacing it), so only a lower bound is set. Physiologically LOW in infancy (fetal-hemoglobin switch).",
+      "panel": "hemoglobin-variants"
     },
     {
       "name": "Hemoglobin A2",
@@ -2755,7 +2928,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Hemoglobin A2 (α2δ2) fraction on electrophoresis. An ELEVATED HbA2 (>~3.3%) is the classic marker of beta-thalassemia trait; a low HbA2 can accompany iron deficiency or alpha/delta-thalassemia. Adult range ~2.0–3.3%."
+      "note": "Hemoglobin A2 (α2δ2) fraction on electrophoresis. An ELEVATED HbA2 (>~3.3%) is the classic marker of beta-thalassemia trait; a low HbA2 can accompany iron deficiency or alpha/delta-thalassemia. Adult range ~2.0–3.3%.",
+      "panel": "hemoglobin-variants"
     },
     {
       "name": "Hemoglobin F",
@@ -2766,7 +2940,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Fetal hemoglobin (α2γ2) fraction on electrophoresis. Predominant at birth and normally falls to <~2% in adults; an elevated adult HbF occurs in hereditary persistence of fetal hemoglobin and some thalassemias/hemoglobinopathies. Physiologically HIGH in infancy (fetal-hemoglobin switch)."
+      "note": "Fetal hemoglobin (α2γ2) fraction on electrophoresis. Predominant at birth and normally falls to <~2% in adults; an elevated adult HbF occurs in hereditary persistence of fetal hemoglobin and some thalassemias/hemoglobinopathies. Physiologically HIGH in infancy (fetal-hemoglobin switch).",
+      "panel": "hemoglobin-variants"
     },
     {
       "name": "Total T4",
@@ -2777,7 +2952,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Total thyroxine. Elevated by high thyroxine-binding globulin (pregnancy, estrogen); Free T4 is more specific."
+      "note": "Total thyroxine. Elevated by high thyroxine-binding globulin (pregnancy, estrogen); Free T4 is more specific.",
+      "panel": "thyroid"
     },
     {
       "name": "Total T3",
@@ -2788,7 +2964,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Total triiodothyronine."
+      "note": "Total triiodothyronine.",
+      "panel": "thyroid"
     },
     {
       "name": "Direct Bilirubin",
@@ -2799,7 +2976,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Conjugated bilirubin."
+      "note": "Conjugated bilirubin.",
+      "panel": "liver"
     },
     {
       "name": "Lactate Dehydrogenase (LDH)",
@@ -2810,7 +2988,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Assay-dependent; hemolyzed specimens read falsely high."
+      "note": "Assay-dependent; hemolyzed specimens read falsely high.",
+      "panel": "tissue-enzymes"
     },
     {
       "name": "Creatine Kinase (CK)",
@@ -2825,7 +3004,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Higher in males; transiently elevated by exercise/muscle injury and higher with greater muscle mass and in some ancestries."
+      "note": "Higher in males; transiently elevated by exercise/muscle injury and higher with greater muscle mass and in some ancestries.",
+      "panel": "tissue-enzymes"
     },
     {
       "name": "Erythrocyte Sedimentation Rate (ESR)",
@@ -2840,7 +3020,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Upper limit rises with age (roughly age/2 for men, (age+10)/2 for women), so this deliberately broad adult cutoff under-flags young adults rather than over-flag older ones."
+      "note": "Upper limit rises with age (roughly age/2 for men, (age+10)/2 for women), so this deliberately broad adult cutoff under-flags young adults rather than over-flag older ones.",
+      "panel": "inflammation"
     },
     {
       "name": "Anion Gap",
@@ -2851,7 +3032,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Varies widely by analyzer (direct-ISE methods run lower) and whether K+ is included in the calculation; range is intentionally broad."
+      "note": "Varies widely by analyzer (direct-ISE methods run lower) and whether K+ is included in the calculation; range is intentionally broad.",
+      "panel": "electrolytes"
     },
     {
       "name": "Reticulocytes",
@@ -2862,7 +3044,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Reticulocytes as a fraction of erythrocytes."
+      "note": "Reticulocytes as a fraction of erythrocytes.",
+      "panel": "cbc"
     },
     {
       "name": "Reticulocytes, Absolute",
@@ -2873,7 +3056,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Absolute reticulocyte count (~25–75 ×10^3/uL; equivalently 25–75 ×10^9/L). Assay-dependent."
+      "note": "Absolute reticulocyte count (~25–75 ×10^3/uL; equivalently 25–75 ×10^9/L). Assay-dependent.",
+      "panel": "cbc"
     },
     {
       "name": "Estradiol",
@@ -2915,7 +3099,8 @@
       },
       "conversions": {
         "pmol/L": 0.2724
-      }
+      },
+      "panel": "hormones"
     },
     {
       "name": "Follicle Stimulating Hormone (FSH)",
@@ -2967,7 +3152,8 @@
           "ref_high": 7.7,
           "note": "Luteal-phase FSH up to ~7.7 mIU/mL (Mayo)."
         }
-      }
+      },
+      "panel": "hormones"
     },
     {
       "name": "Luteinizing Hormone (LH)",
@@ -3006,7 +3192,8 @@
           "ref_high": 11.4,
           "note": "Luteal-phase LH up to ~11.4 mIU/mL (Mayo/endocrine)."
         }
-      }
+      },
+      "panel": "hormones"
     },
     {
       "name": "Progesterone",
@@ -3048,7 +3235,8 @@
       },
       "conversions": {
         "nmol/L": 0.3145
-      }
+      },
+      "panel": "hormones"
     },
     {
       "name": "Grip Strength",
@@ -3059,7 +3247,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "higher_better",
-      "note": "Maximum handgrip (dynamometer), in kg. A whole-body strength proxy and independent mortality predictor; interpreted by age/sex percentile (Dodds et al. 2014), not a fixed cutoff."
+      "note": "Maximum handgrip (dynamometer), in kg. A whole-body strength proxy and independent mortality predictor; interpreted by age/sex percentile (Dodds et al. 2014), not a fixed cutoff.",
+      "panel": "fitness"
     },
     {
       "name": "30-Second Chair Stand",
@@ -3070,7 +3259,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "higher_better",
-      "note": "Sit-to-stand repetitions in 30 seconds — a lower-body strength / frailty measure for older adults. Interpreted by age/sex percentile (Rikli & Jones Senior Fitness Test), not a fixed cutoff."
+      "note": "Sit-to-stand repetitions in 30 seconds — a lower-body strength / frailty measure for older adults. Interpreted by age/sex percentile (Rikli & Jones Senior Fitness Test), not a fixed cutoff.",
+      "panel": "fitness"
     },
     {
       "name": "Single-Leg Balance",
@@ -3081,7 +3271,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "higher_better",
-      "note": "Unipedal stance time, eyes open (seconds; typically capped at 45 s). A postural-control / fall-risk measure; interpreted by age/sex percentile (Springer et al. 2007), not a fixed cutoff."
+      "note": "Unipedal stance time, eyes open (seconds; typically capped at 45 s). A postural-control / fall-risk measure; interpreted by age/sex percentile (Springer et al. 2007), not a fixed cutoff.",
+      "panel": "fitness"
     },
     {
       "name": "ABO Blood Group",
@@ -3092,7 +3283,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "ABO group (A, B, AB, or O). An immutable identity attribute — never flagged, never retested."
+      "note": "ABO group (A, B, AB, or O). An immutable identity attribute — never flagged, never retested.",
+      "panel": "blood-type"
     },
     {
       "name": "Rh Type",
@@ -3103,7 +3295,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Rh(D) factor (positive or negative). An immutable identity attribute — never flagged, never retested."
+      "note": "Rh(D) factor (positive or negative). An immutable identity attribute — never flagged, never retested.",
+      "panel": "blood-type"
     },
     {
       "name": "Blood Type",
@@ -3114,7 +3307,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Combined ABO group + Rh factor as one result (e.g. \"O Positive\"), the form many EHRs report. An immutable identity attribute — never flagged, never retested."
+      "note": "Combined ABO group + Rh factor as one result (e.g. \"O Positive\"), the form many EHRs report. An immutable identity attribute — never flagged, never retested.",
+      "panel": "blood-type"
     },
     {
       "name": "Protein, Urine",
@@ -3125,7 +3319,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Urine dipstick protein — a screen for kidney involvement. Qualitative (Negative/Trace/1+…); Negative is normal. Distinct from serum Total Protein."
+      "note": "Urine dipstick protein — a screen for kidney involvement. Qualitative (Negative/Trace/1+…); Negative is normal. Distinct from serum Total Protein.",
+      "panel": "urinalysis"
     },
     {
       "name": "Glucose, Urine",
@@ -3136,7 +3331,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Urine dipstick glucose — normally absent; present when blood glucose exceeds the renal threshold. Qualitative (Negative is normal). Distinct from serum Glucose."
+      "note": "Urine dipstick glucose — normally absent; present when blood glucose exceeds the renal threshold. Qualitative (Negative is normal). Distinct from serum Glucose.",
+      "panel": "urinalysis"
     },
     {
       "name": "Ketones, Urine",
@@ -3147,7 +3343,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Urine dipstick ketones — a marker of fat metabolism, raised in fasting, low-carbohydrate states, or uncontrolled diabetes. Qualitative (Negative is normal)."
+      "note": "Urine dipstick ketones — a marker of fat metabolism, raised in fasting, low-carbohydrate states, or uncontrolled diabetes. Qualitative (Negative is normal).",
+      "panel": "urinalysis"
     },
     {
       "name": "Bilirubin, Urine",
@@ -3158,7 +3355,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Urine dipstick bilirubin — normally absent; its presence points to liver or bile-duct disease. Qualitative (Negative is normal). Distinct from serum Total/Direct Bilirubin."
+      "note": "Urine dipstick bilirubin — normally absent; its presence points to liver or bile-duct disease. Qualitative (Negative is normal). Distinct from serum Total/Direct Bilirubin.",
+      "panel": "urinalysis"
     },
     {
       "name": "Blood, Urine",
@@ -3169,7 +3367,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Urine dipstick (occult) blood — detects hemoglobin/myoglobin. Qualitative (Negative is normal). A microscopic red-cell count is the separate 'Red Blood Cells, Urine' entry."
+      "note": "Urine dipstick (occult) blood — detects hemoglobin/myoglobin. Qualitative (Negative is normal). A microscopic red-cell count is the separate 'Red Blood Cells, Urine' entry.",
+      "panel": "urinalysis"
     },
     {
       "name": "Nitrite, Urine",
@@ -3180,7 +3379,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Urine dipstick nitrite — a positive suggests bacteria that convert nitrate to nitrite (a urinary-tract infection clue). Qualitative (Negative is normal)."
+      "note": "Urine dipstick nitrite — a positive suggests bacteria that convert nitrate to nitrite (a urinary-tract infection clue). Qualitative (Negative is normal).",
+      "panel": "urinalysis"
     },
     {
       "name": "Leukocyte Esterase, Urine",
@@ -3191,7 +3391,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Urine dipstick leukocyte esterase — an enzyme from white blood cells, a marker of urinary-tract inflammation/infection. Qualitative (Negative is normal)."
+      "note": "Urine dipstick leukocyte esterase — an enzyme from white blood cells, a marker of urinary-tract inflammation/infection. Qualitative (Negative is normal).",
+      "panel": "urinalysis"
     },
     {
       "name": "Urobilinogen, Urine",
@@ -3202,7 +3403,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Urine urobilinogen — a small amount (up to ~1 mg/dL) is normal; raised levels can reflect liver disease or hemolysis, and absence can reflect bile-duct obstruction."
+      "note": "Urine urobilinogen — a small amount (up to ~1 mg/dL) is normal; raised levels can reflect liver disease or hemolysis, and absence can reflect bile-duct obstruction.",
+      "panel": "urinalysis"
     },
     {
       "name": "Immunoglobulin G",
@@ -3213,7 +3415,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Total serum IgG — the most abundant antibody class, reflecting long-term/adaptive immunity. Low levels can signal immunodeficiency; high levels chronic infection or inflammation."
+      "note": "Total serum IgG — the most abundant antibody class, reflecting long-term/adaptive immunity. Low levels can signal immunodeficiency; high levels chronic infection or inflammation.",
+      "panel": "immunoglobulins"
     },
     {
       "name": "Immunoglobulin A",
@@ -3224,7 +3427,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Serum IgA — the antibody class guarding mucosal surfaces (gut, airways). Selective IgA deficiency is the most common primary immunodeficiency."
+      "note": "Serum IgA — the antibody class guarding mucosal surfaces (gut, airways). Selective IgA deficiency is the most common primary immunodeficiency.",
+      "panel": "immunoglobulins"
     },
     {
       "name": "Immunoglobulin M",
@@ -3235,7 +3439,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Serum IgM — the first antibody class produced in a new infection, so a rise can indicate a recent or acute exposure."
+      "note": "Serum IgM — the first antibody class produced in a new infection, so a rise can indicate a recent or acute exposure.",
+      "panel": "immunoglobulins"
     },
     {
       "name": "Immunoglobulin G Subclass 1",
@@ -3246,7 +3451,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "IgG1 — the largest IgG subclass, directed mainly at protein antigens. Measured in the workup of a suspected antibody deficiency."
+      "note": "IgG1 — the largest IgG subclass, directed mainly at protein antigens. Measured in the workup of a suspected antibody deficiency.",
+      "panel": "immunoglobulins"
     },
     {
       "name": "Immunoglobulin G Subclass 2",
@@ -3257,7 +3463,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "IgG2 — the IgG subclass directed mainly at polysaccharide antigens (e.g. encapsulated bacteria). A selective deficiency can raise susceptibility to such infections."
+      "note": "IgG2 — the IgG subclass directed mainly at polysaccharide antigens (e.g. encapsulated bacteria). A selective deficiency can raise susceptibility to such infections.",
+      "panel": "immunoglobulins"
     },
     {
       "name": "Immunoglobulin G Subclass 3",
@@ -3268,7 +3475,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "IgG3 — an IgG subclass active against protein and viral antigens, with the shortest half-life of the four."
+      "note": "IgG3 — an IgG subclass active against protein and viral antigens, with the shortest half-life of the four.",
+      "panel": "immunoglobulins"
     },
     {
       "name": "Immunoglobulin G Subclass 4",
@@ -3279,7 +3487,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "IgG4 — the least abundant IgG subclass; markedly elevated levels are associated with IgG4-related disease."
+      "note": "IgG4 — the least abundant IgG subclass; markedly elevated levels are associated with IgG4-related disease.",
+      "panel": "immunoglobulins"
     },
     {
       "name": "Leptin",
@@ -3290,7 +3499,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Leptin is a hormone made by fat tissue that signals energy stores to the brain; levels track body-fat mass and are strongly sex- and BMI-dependent, so no single reference band applies."
+      "note": "Leptin is a hormone made by fat tissue that signals energy stores to the brain; levels track body-fat mass and are strongly sex- and BMI-dependent, so no single reference band applies.",
+      "panel": "glycemic"
     },
     {
       "name": "Albumin, Urine",
@@ -3301,7 +3511,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Urine albumin screens for early kidney damage. It is interpreted as the albumin-to-creatinine ratio (normal <30 mg/g), not a fixed concentration, so no band is set here. Distinct from serum Albumin."
+      "note": "Urine albumin screens for early kidney damage. It is interpreted as the albumin-to-creatinine ratio (normal <30 mg/g), not a fixed concentration, so no band is set here. Distinct from serum Albumin.",
+      "panel": "urinalysis"
     },
     {
       "name": "Creatinine, Urine",
@@ -3312,7 +3523,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Urine creatinine reflects urine concentration and is used mainly to normalize other urine analytes (as a ratio); its own level varies with hydration, so no reference band applies. Distinct from serum Creatinine."
+      "note": "Urine creatinine reflects urine concentration and is used mainly to normalize other urine analytes (as a ratio); its own level varies with hydration, so no reference band applies. Distinct from serum Creatinine.",
+      "panel": "urinalysis"
     },
     {
       "name": "Alpha-Fetoprotein (AFP)",
@@ -3323,7 +3535,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "AFP is a protein used as a tumor marker (notably for liver and germ-cell cancers) and, in pregnancy, a screening marker. In non-pregnant adults it is normally low."
+      "note": "AFP is a protein used as a tumor marker (notably for liver and germ-cell cancers) and, in pregnancy, a screening marker. In non-pregnant adults it is normally low.",
+      "panel": "tumor-markers"
     },
     {
       "name": "Carcinoembryonic Antigen (CEA)",
@@ -3334,7 +3547,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "CEA is a tumor marker used mainly to monitor colorectal and some other cancers. Levels can also be mildly raised by smoking and some benign conditions. The reference cutoff is higher in smokers."
+      "note": "CEA is a tumor marker used mainly to monitor colorectal and some other cancers. Levels can also be mildly raised by smoking and some benign conditions. The reference cutoff is higher in smokers.",
+      "panel": "tumor-markers"
     },
     {
       "name": "Hepatitis B Surface Antigen (HBsAg)",
@@ -3345,7 +3559,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "HBsAg is a marker of active hepatitis B infection. It is reported qualitatively; a negative (non-reactive) result is normal, and a positive result indicates current infection."
+      "note": "HBsAg is a marker of active hepatitis B infection. It is reported qualitatively; a negative (non-reactive) result is normal, and a positive result indicates current infection.",
+      "panel": "infectious-disease"
     },
     {
       "name": "Hepatitis B Surface Antibody (HBsAb)",
@@ -3356,7 +3571,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "higher_better",
-      "note": "HBsAb (anti-HBs) reflects immunity to hepatitis B from vaccination or past infection; a level at or above 10 mIU/mL is generally considered protective."
+      "note": "HBsAb (anti-HBs) reflects immunity to hepatitis B from vaccination or past infection; a level at or above 10 mIU/mL is generally considered protective.",
+      "panel": "infectious-disease"
     },
     {
       "name": "Hepatitis C Antibody (Anti-HCV)",
@@ -3367,7 +3583,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Anti-HCV screens for exposure to hepatitis C. It is reported qualitatively; a non-reactive result is normal, and a reactive result prompts confirmatory HCV RNA testing."
+      "note": "Anti-HCV screens for exposure to hepatitis C. It is reported qualitatively; a non-reactive result is normal, and a reactive result prompts confirmatory HCV RNA testing.",
+      "panel": "infectious-disease"
     },
     {
       "name": "BUN/Creatinine Ratio",
@@ -3378,7 +3595,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "The ratio of blood urea nitrogen to creatinine helps distinguish causes of kidney impairment and hydration status; it is a calculated value with no units."
+      "note": "The ratio of blood urea nitrogen to creatinine helps distinguish causes of kidney impairment and hydration status; it is a calculated value with no units.",
+      "panel": "kidney"
     },
     {
       "name": "LDL/HDL Ratio",
@@ -3389,7 +3607,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "The ratio of LDL to HDL cholesterol is a summary marker of cardiovascular risk; lower is better. It is a calculated value with no units."
+      "note": "The ratio of LDL to HDL cholesterol is a summary marker of cardiovascular risk; lower is better. It is a calculated value with no units.",
+      "panel": "lipids"
     },
     {
       "name": "Intraocular Pressure",
@@ -3400,7 +3619,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Fluid pressure inside the eye (tonometry), eye unspecified. Normal ~10–21 mmHg; above 21 is ocular hypertension, a glaucoma risk factor (not a diagnosis). AAO / Glaucoma Research Foundation."
+      "note": "Fluid pressure inside the eye (tonometry), eye unspecified. Normal ~10–21 mmHg; above 21 is ocular hypertension, a glaucoma risk factor (not a diagnosis). AAO / Glaucoma Research Foundation.",
+      "panel": "vision"
     },
     {
       "name": "Intraocular Pressure, Right Eye",
@@ -3411,7 +3631,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Intraocular pressure of the right eye (OD), by tonometry. Normal ~10–21 mmHg; above 21 is ocular hypertension. Kept as a separate series from the left eye. AAO / Glaucoma Research Foundation."
+      "note": "Intraocular pressure of the right eye (OD), by tonometry. Normal ~10–21 mmHg; above 21 is ocular hypertension. Kept as a separate series from the left eye. AAO / Glaucoma Research Foundation.",
+      "panel": "vision"
     },
     {
       "name": "Intraocular Pressure, Left Eye",
@@ -3422,7 +3643,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Intraocular pressure of the left eye (OS), by tonometry. Normal ~10–21 mmHg; above 21 is ocular hypertension. Kept as a separate series from the right eye. AAO / Glaucoma Research Foundation."
+      "note": "Intraocular pressure of the left eye (OS), by tonometry. Normal ~10–21 mmHg; above 21 is ocular hypertension. Kept as a separate series from the right eye. AAO / Glaucoma Research Foundation.",
+      "panel": "vision"
     },
     {
       "name": "Visual Acuity",
@@ -3433,7 +3655,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Clearness of vision, eye unspecified, as a Snellen fraction (e.g. 20/20; 6/6 metric). Qualitative — no numeric reference band, so it is trended as a dated timeline, never flagged."
+      "note": "Clearness of vision, eye unspecified, as a Snellen fraction (e.g. 20/20; 6/6 metric). Qualitative — no numeric reference band, so it is trended as a dated timeline, never flagged.",
+      "panel": "vision"
     },
     {
       "name": "Visual Acuity, Right Eye",
@@ -3444,7 +3667,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Visual acuity of the right eye (OD) as a Snellen fraction (e.g. 20/20). Qualitative — no numeric reference band; trended as a dated timeline, never flagged. Kept as a separate series from the left eye."
+      "note": "Visual acuity of the right eye (OD) as a Snellen fraction (e.g. 20/20). Qualitative — no numeric reference band; trended as a dated timeline, never flagged. Kept as a separate series from the left eye.",
+      "panel": "vision"
     },
     {
       "name": "Visual Acuity, Left Eye",
@@ -3455,7 +3679,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Visual acuity of the left eye (OS) as a Snellen fraction (e.g. 20/20). Qualitative — no numeric reference band; trended as a dated timeline, never flagged. Kept as a separate series from the right eye."
+      "note": "Visual acuity of the left eye (OS) as a Snellen fraction (e.g. 20/20). Qualitative — no numeric reference band; trended as a dated timeline, never flagged. Kept as a separate series from the right eye.",
+      "panel": "vision"
     },
     {
       "name": "Periodontal Probing Depth",
@@ -3466,7 +3691,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Sulcus/pocket depth on periodontal probing, in millimetres (the deepest or a representative site). A healthy sulcus is ~1–3 mm; 4 mm and deeper indicates periodontal pocketing worth monitoring. American Academy of Periodontology."
+      "note": "Sulcus/pocket depth on periodontal probing, in millimetres (the deepest or a representative site). A healthy sulcus is ~1–3 mm; 4 mm and deeper indicates periodontal pocketing worth monitoring. American Academy of Periodontology.",
+      "panel": "dental"
     },
     {
       "name": "Bleeding on Probing",
@@ -3477,7 +3703,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Proportion of periodontal sites that bleed on gentle probing, as a full-mouth percentage. A full-mouth score under ~10% is consistent with periodontal stability; higher suggests active gingival inflammation. American Academy of Periodontology."
+      "note": "Proportion of periodontal sites that bleed on gentle probing, as a full-mouth percentage. A full-mouth score under ~10% is consistent with periodontal stability; higher suggests active gingival inflammation. American Academy of Periodontology.",
+      "panel": "dental"
     },
     {
       "name": "Clinical Attachment Loss",
@@ -3488,7 +3715,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Distance from the cemento-enamel junction to the base of the periodontal pocket, in millimetres — the cumulative attachment lost. 1–2 mm is mild, 3–4 mm moderate, ≥5 mm severe (2017 AAP/EFP staging). Tracks periodontitis progression over time."
+      "note": "Distance from the cemento-enamel junction to the base of the periodontal pocket, in millimetres — the cumulative attachment lost. 1–2 mm is mild, 3–4 mm moderate, ≥5 mm severe (2017 AAP/EFP staging). Tracks periodontitis progression over time.",
+      "panel": "dental"
     },
     {
       "name": "Hearing Threshold, Right Ear 250 Hz",
@@ -3499,7 +3727,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Pure-tone air-conduction hearing threshold for the RIGHT ear at 250 Hz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO."
+      "note": "Pure-tone air-conduction hearing threshold for the RIGHT ear at 250 Hz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO.",
+      "panel": "hearing"
     },
     {
       "name": "Hearing Threshold, Right Ear 500 Hz",
@@ -3510,7 +3739,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Pure-tone air-conduction hearing threshold for the RIGHT ear at 500 Hz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO."
+      "note": "Pure-tone air-conduction hearing threshold for the RIGHT ear at 500 Hz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO.",
+      "panel": "hearing"
     },
     {
       "name": "Hearing Threshold, Right Ear 1 kHz",
@@ -3521,7 +3751,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Pure-tone air-conduction hearing threshold for the RIGHT ear at 1 kHz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO."
+      "note": "Pure-tone air-conduction hearing threshold for the RIGHT ear at 1 kHz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO.",
+      "panel": "hearing"
     },
     {
       "name": "Hearing Threshold, Right Ear 2 kHz",
@@ -3532,7 +3763,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Pure-tone air-conduction hearing threshold for the RIGHT ear at 2 kHz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO."
+      "note": "Pure-tone air-conduction hearing threshold for the RIGHT ear at 2 kHz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO.",
+      "panel": "hearing"
     },
     {
       "name": "Hearing Threshold, Right Ear 4 kHz",
@@ -3543,7 +3775,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Pure-tone air-conduction hearing threshold for the RIGHT ear at 4 kHz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it — 4 kHz is the classic noise-notch frequency. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO."
+      "note": "Pure-tone air-conduction hearing threshold for the RIGHT ear at 4 kHz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it — 4 kHz is the classic noise-notch frequency. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO.",
+      "panel": "hearing"
     },
     {
       "name": "Hearing Threshold, Right Ear 8 kHz",
@@ -3554,7 +3787,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Pure-tone air-conduction hearing threshold for the RIGHT ear at 8 kHz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO."
+      "note": "Pure-tone air-conduction hearing threshold for the RIGHT ear at 8 kHz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO.",
+      "panel": "hearing"
     },
     {
       "name": "Hearing Threshold, Left Ear 250 Hz",
@@ -3565,7 +3799,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Pure-tone air-conduction hearing threshold for the LEFT ear at 250 Hz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO."
+      "note": "Pure-tone air-conduction hearing threshold for the LEFT ear at 250 Hz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO.",
+      "panel": "hearing"
     },
     {
       "name": "Hearing Threshold, Left Ear 500 Hz",
@@ -3576,7 +3811,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Pure-tone air-conduction hearing threshold for the LEFT ear at 500 Hz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO."
+      "note": "Pure-tone air-conduction hearing threshold for the LEFT ear at 500 Hz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO.",
+      "panel": "hearing"
     },
     {
       "name": "Hearing Threshold, Left Ear 1 kHz",
@@ -3587,7 +3823,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Pure-tone air-conduction hearing threshold for the LEFT ear at 1 kHz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO."
+      "note": "Pure-tone air-conduction hearing threshold for the LEFT ear at 1 kHz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO.",
+      "panel": "hearing"
     },
     {
       "name": "Hearing Threshold, Left Ear 2 kHz",
@@ -3598,7 +3835,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Pure-tone air-conduction hearing threshold for the LEFT ear at 2 kHz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO."
+      "note": "Pure-tone air-conduction hearing threshold for the LEFT ear at 2 kHz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO.",
+      "panel": "hearing"
     },
     {
       "name": "Hearing Threshold, Left Ear 4 kHz",
@@ -3609,7 +3847,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Pure-tone air-conduction hearing threshold for the LEFT ear at 4 kHz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it — 4 kHz is the classic noise-notch frequency. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO."
+      "note": "Pure-tone air-conduction hearing threshold for the LEFT ear at 4 kHz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it — 4 kHz is the classic noise-notch frequency. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO.",
+      "panel": "hearing"
     },
     {
       "name": "Hearing Threshold, Left Ear 8 kHz",
@@ -3620,7 +3859,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Pure-tone air-conduction hearing threshold for the LEFT ear at 8 kHz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO."
+      "note": "Pure-tone air-conduction hearing threshold for the LEFT ear at 8 kHz, in decibels hearing level (dB HL). Normal hearing is ≤25 dB HL (WHO); a higher number means the ear needs a louder tone to hear it. Its own per-ear, per-frequency audiogram series. American Speech-Language-Hearing Association / WHO.",
+      "panel": "hearing"
     },
     {
       "name": "PHQ-9",
@@ -3631,7 +3871,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Patient Health Questionnaire-9 total score (0–27), a validated screening instrument for depression severity. Severity bands: 0–4 minimal, 5–9 mild, 10–14 moderate, 15–19 moderately severe, 20–27 severe. Screening only, NOT a diagnosis. Item 9 asks about thoughts of self-harm. Public domain (Spitzer, Williams, Kroenke / Pfizer)."
+      "note": "Patient Health Questionnaire-9 total score (0–27), a validated screening instrument for depression severity. Severity bands: 0–4 minimal, 5–9 mild, 10–14 moderate, 15–19 moderately severe, 20–27 severe. Screening only, NOT a diagnosis. Item 9 asks about thoughts of self-harm. Public domain (Spitzer, Williams, Kroenke / Pfizer).",
+      "panel": "mental-health"
     },
     {
       "name": "GAD-7",
@@ -3642,7 +3883,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Generalized Anxiety Disorder-7 total score (0–21), a validated screening instrument for anxiety severity. Severity bands: 0–4 minimal, 5–9 mild, 10–14 moderate, 15–21 severe. Screening only, NOT a diagnosis. Public domain (Spitzer, Kroenke, Williams, Löwe)."
+      "note": "Generalized Anxiety Disorder-7 total score (0–21), a validated screening instrument for anxiety severity. Severity bands: 0–4 minimal, 5–9 mild, 10–14 moderate, 15–21 severe. Screening only, NOT a diagnosis. Public domain (Spitzer, Kroenke, Williams, Löwe).",
+      "panel": "mental-health"
     },
     {
       "name": "AUDIT-C",
@@ -3653,7 +3895,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "AUDIT-C total score (0–12), the 3-item alcohol-use screen (consumption items of the WHO AUDIT). Bands (UK PHE/NHS scoring): 0–4 lower risk, 5–7 increasing risk, 8–10 higher risk, 11–12 possible dependence; a score of 3+ (women) or 4+ (men) is commonly treated as a positive screen. Screening only, NOT a diagnosis. Public domain (Bush et al. 1998, VA)."
+      "note": "AUDIT-C total score (0–12), the 3-item alcohol-use screen (consumption items of the WHO AUDIT). Bands (UK PHE/NHS scoring): 0–4 lower risk, 5–7 increasing risk, 8–10 higher risk, 11–12 possible dependence; a score of 3+ (women) or 4+ (men) is commonly treated as a positive screen. Screening only, NOT a diagnosis. Public domain (Bush et al. 1998, VA).",
+      "panel": "mental-health"
     },
     {
       "name": "AUDIT",
@@ -3664,7 +3907,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "AUDIT total score (0–40), the WHO 10-item Alcohol Use Disorders Identification Test. Risk zones (WHO manual): 0–7 lower risk, 8–15 increasing risk, 16–19 higher risk, 20–40 possible dependence. Screening only, NOT a diagnosis. Recorded as an outside-administered total (item text not reproduced in-app)."
+      "note": "AUDIT total score (0–40), the WHO 10-item Alcohol Use Disorders Identification Test. Risk zones (WHO manual): 0–7 lower risk, 8–15 increasing risk, 16–19 higher risk, 20–40 possible dependence. Screening only, NOT a diagnosis. Recorded as an outside-administered total (item text not reproduced in-app).",
+      "panel": "mental-health"
     },
     {
       "name": "DAST-10",
@@ -3675,7 +3919,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "Drug Abuse Screening Test (DAST-10) total score (0–10) for non-alcohol drug use in the past 12 months. Bands (Skinner): 0 none reported, 1–2 low, 3–5 moderate, 6–8 substantial, 9–10 severe. Screening only, NOT a diagnosis. Recorded as an outside-administered total (item text not reproduced in-app; © H. A. Skinner / CAMH)."
+      "note": "Drug Abuse Screening Test (DAST-10) total score (0–10) for non-alcohol drug use in the past 12 months. Bands (Skinner): 0 none reported, 1–2 low, 3–5 moderate, 6–8 substantial, 9–10 severe. Screening only, NOT a diagnosis. Recorded as an outside-administered total (item text not reproduced in-app; © H. A. Skinner / CAMH).",
+      "panel": "mental-health"
     },
     {
       "name": "Vitamin D2, 25-Hydroxy",
@@ -3690,7 +3935,8 @@
         "nmol/L": 0.4006
       },
       "note": "25-hydroxyvitamin D2 (ergocalciferol) fraction — its OWN trendable series, distinct from the total. No sufficiency band: a low D2 is normal for anyone not taking ergocalciferol, so vitamin-D status is assessed on the TOTAL 25-OH, never this fraction alone.",
-      "retest_days": 180
+      "retest_days": 180,
+      "panel": "vitamins"
     },
     {
       "name": "Vitamin D3, 25-Hydroxy",
@@ -3705,7 +3951,8 @@
         "nmol/L": 0.4006
       },
       "note": "25-hydroxyvitamin D3 (cholecalciferol) fraction — its OWN trendable series, distinct from the total. No sufficiency band: vitamin-D status is assessed on the TOTAL 25-OH, never this fraction alone.",
-      "retest_days": 180
+      "retest_days": 180,
+      "panel": "vitamins"
     },
     {
       "name": "Vitamin D, 1,25-Dihydroxy",
@@ -3719,7 +3966,8 @@
       "conversions": {
         "pmol/L": 0.417
       },
-      "note": "1,25-dihydroxyvitamin D (calcitriol) — the ACTIVE hormone, distinct from the 25-OH storage form. Adult ~18–72 pg/mL. Used in hypercalcemia / sarcoidosis / CKD workups, NOT for routine vitamin-D status (which is the 25-OH total)."
+      "note": "1,25-dihydroxyvitamin D (calcitriol) — the ACTIVE hormone, distinct from the 25-OH storage form. Adult ~18–72 pg/mL. Used in hypercalcemia / sarcoidosis / CKD workups, NOT for routine vitamin-D status (which is the 25-OH total).",
+      "panel": "vitamins"
     },
     {
       "name": "C-Reactive Protein",
@@ -3733,7 +3981,8 @@
       "conversions": {
         "mg/dL": 10
       },
-      "note": "Standard-sensitivity CRP (acute inflammation/infection), mg/L — a DIFFERENT assay than hs-CRP (the CV-risk high-sensitivity test). ~<3 low, >10 suggests acute inflammation."
+      "note": "Standard-sensitivity CRP (acute inflammation/infection), mg/L — a DIFFERENT assay than hs-CRP (the CV-risk high-sensitivity test). ~<3 low, >10 suggests acute inflammation.",
+      "panel": "inflammation"
     },
     {
       "name": "Glucose, Fasting",
@@ -3748,7 +3997,8 @@
         "mmol/L": 18.02
       },
       "note": "Fasting plasma glucose. ADA thresholds: 70–99 normal, 100–125 prediabetes, ≥126 diabetes (confirmed). Distinct from a random Glucose and from the A1c/eAG family.",
-      "retest_days": 180
+      "retest_days": 180,
+      "panel": "glycemic"
     },
     {
       "name": "RPR",
@@ -3759,7 +4009,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Rapid plasma reagin — syphilis screen. Qualitative (Reactive/Non-Reactive); a reactive result is followed by a confirmatory treponemal test. No numeric band."
+      "note": "Rapid plasma reagin — syphilis screen. Qualitative (Reactive/Non-Reactive); a reactive result is followed by a confirmatory treponemal test. No numeric band.",
+      "panel": "infectious-disease"
     },
     {
       "name": "Hemoglobin Electrophoresis",
@@ -3770,7 +4021,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Hemoglobinopathy screen (sickle-cell / thalassemia trait). Reported as an interpretation (e.g. Normal / abnormal variant pattern), not a measured quantity. No numeric band."
+      "note": "Hemoglobinopathy screen (sickle-cell / thalassemia trait). Reported as an interpretation (e.g. Normal / abnormal variant pattern), not a measured quantity. No numeric band.",
+      "panel": "hemoglobin-variants"
     },
     {
       "name": "HIV Antigen/Antibody",
@@ -3781,7 +4033,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "HIV 4th-generation Ag/Ab combination screen. Qualitative (Reactive/Non-Reactive); a reactive result is confirmed by a supplemental assay. No numeric band."
+      "note": "HIV 4th-generation Ag/Ab combination screen. Qualitative (Reactive/Non-Reactive); a reactive result is confirmed by a supplemental assay. No numeric band.",
+      "panel": "infectious-disease"
     },
     {
       "name": "SARS-CoV-2 NAAT",
@@ -3792,7 +4045,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "SARS-CoV-2 (COVID-19) nucleic-acid amplification (PCR). Qualitative (Detected/Not Detected). No numeric band."
+      "note": "SARS-CoV-2 (COVID-19) nucleic-acid amplification (PCR). Qualitative (Detected/Not Detected). No numeric band.",
+      "panel": "infectious-disease"
     },
     {
       "name": "SARS-CoV-2 Antigen",
@@ -3803,7 +4057,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "SARS-CoV-2 (COVID-19) rapid antigen test. Qualitative (Positive/Negative). No numeric band."
+      "note": "SARS-CoV-2 (COVID-19) rapid antigen test. Qualitative (Positive/Negative). No numeric band.",
+      "panel": "infectious-disease"
     },
     {
       "name": "Influenza A NAAT",
@@ -3814,7 +4069,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Influenza A virus nucleic-acid amplification (PCR). Qualitative (Detected/Not Detected). No numeric band."
+      "note": "Influenza A virus nucleic-acid amplification (PCR). Qualitative (Detected/Not Detected). No numeric band.",
+      "panel": "infectious-disease"
     },
     {
       "name": "Influenza B NAAT",
@@ -3825,7 +4081,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Influenza B virus nucleic-acid amplification (PCR). Qualitative (Detected/Not Detected). No numeric band."
+      "note": "Influenza B virus nucleic-acid amplification (PCR). Qualitative (Detected/Not Detected). No numeric band.",
+      "panel": "infectious-disease"
     },
     {
       "name": "Influenza A Antigen",
@@ -3836,7 +4093,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Influenza A rapid antigen test. Qualitative (Positive/Negative). No numeric band."
+      "note": "Influenza A rapid antigen test. Qualitative (Positive/Negative). No numeric band.",
+      "panel": "infectious-disease"
     },
     {
       "name": "Influenza B Antigen",
@@ -3847,7 +4105,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Influenza B rapid antigen test. Qualitative (Positive/Negative). No numeric band."
+      "note": "Influenza B rapid antigen test. Qualitative (Positive/Negative). No numeric band.",
+      "panel": "infectious-disease"
     },
     {
       "name": "RSV NAAT",
@@ -3858,7 +4117,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Respiratory syncytial virus nucleic-acid amplification (PCR). Qualitative (Detected/Not Detected). No numeric band."
+      "note": "Respiratory syncytial virus nucleic-acid amplification (PCR). Qualitative (Detected/Not Detected). No numeric band.",
+      "panel": "infectious-disease"
     },
     {
       "name": "Streptococcus A NAAT",
@@ -3869,7 +4129,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Group A Streptococcus (pharyngitis) nucleic-acid amplification. Qualitative (Detected/Not Detected). No numeric band."
+      "note": "Group A Streptococcus (pharyngitis) nucleic-acid amplification. Qualitative (Detected/Not Detected). No numeric band.",
+      "panel": "infectious-disease"
     },
     {
       "name": "Group B Streptococcus",
@@ -3880,7 +4141,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Group B Streptococcus (GBS) screen — routine in pregnancy. Qualitative (Detected/Not Detected). No numeric band."
+      "note": "Group B Streptococcus (GBS) screen — routine in pregnancy. Qualitative (Detected/Not Detected). No numeric band.",
+      "panel": "infectious-disease"
     },
     {
       "name": "Chlamydia trachomatis NAAT",
@@ -3891,7 +4153,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Chlamydia trachomatis nucleic-acid amplification. Qualitative (Detected/Not Detected). No numeric band."
+      "note": "Chlamydia trachomatis nucleic-acid amplification. Qualitative (Detected/Not Detected). No numeric band.",
+      "panel": "infectious-disease"
     },
     {
       "name": "Neisseria gonorrhoeae NAAT",
@@ -3902,7 +4165,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Neisseria gonorrhoeae nucleic-acid amplification. Qualitative (Detected/Not Detected). No numeric band."
+      "note": "Neisseria gonorrhoeae nucleic-acid amplification. Qualitative (Detected/Not Detected). No numeric band.",
+      "panel": "infectious-disease"
     },
     {
       "name": "HPV, High-Risk",
@@ -3913,7 +4177,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "High-risk human papillomavirus (pooled hrHPV) — cervical cancer screen. Qualitative (Positive/Negative). No numeric band."
+      "note": "High-risk human papillomavirus (pooled hrHPV) — cervical cancer screen. Qualitative (Positive/Negative). No numeric band.",
+      "panel": "infectious-disease"
     },
     {
       "name": "HPV Genotype 16",
@@ -3924,7 +4189,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "HPV genotype 16 (a high-risk type). Qualitative (Positive/Negative). Kept distinct from the pooled hrHPV result and from genotype 18/45. No numeric band."
+      "note": "HPV genotype 16 (a high-risk type). Qualitative (Positive/Negative). Kept distinct from the pooled hrHPV result and from genotype 18/45. No numeric band.",
+      "panel": "infectious-disease"
     },
     {
       "name": "HPV Genotype 18/45",
@@ -3935,7 +4201,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "HPV genotype 18/45 (high-risk types). Qualitative (Positive/Negative). Kept distinct from the pooled hrHPV result and from genotype 16. No numeric band."
+      "note": "HPV genotype 18/45 (high-risk types). Qualitative (Positive/Negative). Kept distinct from the pooled hrHPV result and from genotype 16. No numeric band.",
+      "panel": "infectious-disease"
     },
     {
       "name": "Culture Organism",
@@ -3946,7 +4213,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "The organism identified by a microbiology culture (the value is the organism name, e.g. \"Methicillin-Susceptible Staphylococcus aureus\"). Qualitative identity, not a measurement — no numeric band."
+      "note": "The organism identified by a microbiology culture (the value is the organism name, e.g. \"Methicillin-Susceptible Staphylococcus aureus\"). Qualitative identity, not a measurement — no numeric band.",
+      "panel": "infectious-disease"
     },
     {
       "name": "Rubella Antibody IgG",
@@ -3957,7 +4225,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Rubella IgG — immunity marker. Reported qualitatively (Immune/Non-Immune) or as an assay-specific titer; immune is favorable. No universal numeric band (assay-specific)."
+      "note": "Rubella IgG — immunity marker. Reported qualitatively (Immune/Non-Immune) or as an assay-specific titer; immune is favorable. No universal numeric band (assay-specific).",
+      "panel": "immunity-titers"
     },
     {
       "name": "Measles Antibody IgG",
@@ -3968,7 +4237,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Measles (rubeola) IgG — immunity marker. Reported qualitatively (Immune/Non-Immune) or as an assay-specific titer; immune is favorable. No universal numeric band (assay-specific)."
+      "note": "Measles (rubeola) IgG — immunity marker. Reported qualitatively (Immune/Non-Immune) or as an assay-specific titer; immune is favorable. No universal numeric band (assay-specific).",
+      "panel": "immunity-titers"
     },
     {
       "name": "Mumps Antibody IgG",
@@ -3979,7 +4249,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Mumps IgG — immunity marker. Reported qualitatively (Immune/Non-Immune) or as an assay-specific titer; immune is favorable. No universal numeric band (assay-specific)."
+      "note": "Mumps IgG — immunity marker. Reported qualitatively (Immune/Non-Immune) or as an assay-specific titer; immune is favorable. No universal numeric band (assay-specific).",
+      "panel": "immunity-titers"
     },
     {
       "name": "Varicella Zoster Antibody IgG",
@@ -3990,7 +4261,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Varicella-zoster (chickenpox) IgG — immunity marker. Reported qualitatively (Immune/Non-Immune) or as an assay-specific titer; immune is favorable. No universal numeric band (assay-specific)."
+      "note": "Varicella-zoster (chickenpox) IgG — immunity marker. Reported qualitatively (Immune/Non-Immune) or as an assay-specific titer; immune is favorable. No universal numeric band (assay-specific).",
+      "panel": "immunity-titers"
     },
     {
       "name": "Trisomy 21 Screen",
@@ -4001,7 +4273,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Prenatal cell-free-DNA screen for trisomy 21 (Down syndrome). A low-/high-risk screen, not a diagnosis — a high-risk result is confirmed by diagnostic testing. No numeric band."
+      "note": "Prenatal cell-free-DNA screen for trisomy 21 (Down syndrome). A low-/high-risk screen, not a diagnosis — a high-risk result is confirmed by diagnostic testing. No numeric band.",
+      "panel": "prenatal-screening"
     },
     {
       "name": "Trisomy 18 Screen",
@@ -4012,7 +4285,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Prenatal cell-free-DNA screen for trisomy 18 (Edwards syndrome). A low-/high-risk screen, not a diagnosis. No numeric band."
+      "note": "Prenatal cell-free-DNA screen for trisomy 18 (Edwards syndrome). A low-/high-risk screen, not a diagnosis. No numeric band.",
+      "panel": "prenatal-screening"
     },
     {
       "name": "Trisomy 13 Screen",
@@ -4023,7 +4297,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Prenatal cell-free-DNA screen for trisomy 13 (Patau syndrome). A low-/high-risk screen, not a diagnosis. No numeric band."
+      "note": "Prenatal cell-free-DNA screen for trisomy 13 (Patau syndrome). A low-/high-risk screen, not a diagnosis. No numeric band.",
+      "panel": "prenatal-screening"
     },
     {
       "name": "Fetal Fraction",
@@ -4034,7 +4309,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "in_range",
-      "note": "Fraction of cell-free DNA in a NIPT draw that is fetal (a run-quality metric, typically ≥4% for a valid result). A QC value, NOT a health signal — never flagged."
+      "note": "Fraction of cell-free DNA in a NIPT draw that is fetal (a run-quality metric, typically ≥4% for a valid result). A QC value, NOT a health signal — never flagged.",
+      "panel": "prenatal-screening"
     },
     {
       "name": "Glucose, Gestational Screen (50 g)",
@@ -4045,7 +4321,8 @@
       "optimal_low": null,
       "optimal_high": null,
       "direction": "lower_better",
-      "note": "1-hour 50 g glucose challenge (GCT) — gestational-diabetes screen. A value ≥ the lab's cutoff (here 135 mg/dL) prompts the diagnostic 3-hour OGTT. Distinct from fasting/random Glucose."
+      "note": "1-hour 50 g glucose challenge (GCT) — gestational-diabetes screen. A value ≥ the lab's cutoff (here 135 mg/dL) prompts the diagnostic 3-hour OGTT. Distinct from fasting/random Glucose.",
+      "panel": "glycemic"
     }
   ]
 }

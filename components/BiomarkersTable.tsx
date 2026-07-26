@@ -23,7 +23,8 @@ import { BIOMARKER_CATEGORIES } from "@/lib/medical-categories";
 import { biomarkerViewHref, importHref, type AppRoute } from "@/lib/hrefs";
 import SubjectChip from "./SubjectChip";
 import { subjectChipVisible, itemAffordanceVisible } from "@/lib/multi-view";
-import { multiViewGroupKey } from "@/lib/derived-table";
+import { multiViewGroupKey, tablePanelId } from "@/lib/derived-table";
+import { OTHER_PANEL, panelLabel, type PanelId } from "@/lib/biomarker-panels";
 import type { SubjectInfo } from "@/lib/scope";
 
 // A table row in multi-view carries its owning profile + stamped subject identity
@@ -58,7 +59,7 @@ const SORT_CHOICES = [
 // hrefs the table used before it became interactive).
 interface FilterCtx {
   category?: string;
-  panel?: string;
+  panel?: PanelId;
   range?: string;
   q?: string;
   sort: "name" | "panel" | "date";
@@ -189,6 +190,61 @@ function dateCell(
         {relative}
       </span>
     </div>
+  );
+}
+
+// The Panel cell (#1502). It shows the NORMALIZED clinical panel resolved from the
+// row's canonical name — "Lipids", "Complete blood count" — and links the facet by
+// stable SLUG, replacing the old cell that printed and filtered by the stored
+// free-text heading (in practice the lab VENDOR: "Quest Diagnostics", "LabCorp").
+//
+// The stored `panel` column is untouched PROVENANCE and still surfaces two ways:
+// as the cell's tooltip on a resolved row ("Reported under …"), and as the visible
+// text for a row the taxonomy can't place — an un-canonicalized analyte the
+// extractor coined, where the document's own heading is the best label we have.
+// That fallback row is deliberately NOT a filter link: "everything drawn at
+// LabCorp" is the useless facet this issue removed, and `?panel=other` (reachable
+// from the filter chip) is the meaningful "unclassified" view.
+function PanelCell({
+  record,
+  href,
+}: {
+  record: TableRecord;
+  href: (id: PanelId) => AppRoute;
+}) {
+  const id = tablePanelId(record);
+  const reported = record.panel?.trim() || null;
+  if (id !== OTHER_PANEL) {
+    return (
+      <Td slot="meta" label="Panel" className="hidden md:table-cell">
+        <Link
+          href={href(id)}
+          title={reported ? `Reported under “${reported}”` : undefined}
+          className="text-xs text-slate-500 hover:text-brand-700 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
+        >
+          {panelLabel(id)}
+        </Link>
+      </Td>
+    );
+  }
+  return (
+    <Td
+      slot="meta"
+      label="Panel"
+      empty={!reported}
+      className="hidden md:table-cell"
+    >
+      {reported ? (
+        <span
+          className="text-xs text-slate-500 dark:text-slate-400"
+          title="Not mapped to a clinical panel — showing the heading it was reported under"
+        >
+          {reported}
+        </span>
+      ) : (
+        <span className="text-slate-300 dark:text-slate-600">—</span>
+      )}
+    </Td>
   );
 }
 
@@ -331,30 +387,19 @@ function BiomarkerRow({
     <tr className={isEnd ? "border-b border-black/5 dark:border-white/10" : ""}>
       {subjectCell}
       {titleCell}
-      <Td
-        slot="meta"
-        label="Panel"
-        empty={!r.panel}
-        className="hidden md:table-cell"
-      >
-        {r.panel ? (
-          <Link
-            href={qs({
-              category,
-              panel: r.panel,
-              range,
-              sort,
-              dir,
-              current: current ? "1" : undefined,
-            })}
-            className="text-xs text-slate-500 hover:text-brand-700 hover:underline dark:text-slate-400 dark:hover:text-brand-400"
-          >
-            {r.panel}
-          </Link>
-        ) : (
-          <span className="text-slate-300 dark:text-slate-600">—</span>
-        )}
-      </Td>
+      <PanelCell
+        record={r}
+        href={(id) =>
+          qs({
+            category,
+            panel: id,
+            range,
+            sort,
+            dir,
+            current: current ? "1" : undefined,
+          })
+        }
+      />
       <Td slot="value">
         <MedicalValue value={r.value} unit={r.unit} flag={r.flag} />
       </Td>
