@@ -53,6 +53,12 @@ import type { AppRoute } from "@/lib/hrefs";
 // its own `h-*` — all land on the same footprint without a prop threaded through
 // three components.
 
+// For the rare call site that puts a WRAPPER between the plot slot and the chart (the
+// full-bleed intraday panel): `.chart-card-plot > *` only reaches the direct child, so
+// the chart itself needs to be told to fill it. Pass this as `heightClass` — never a
+// fixed `h-*`, which is exactly the per-call-site height vocabulary the card removed.
+export const CHART_PLOT_FILL = "h-full";
+
 export default function ChartCard({
   title,
   headingLevel = "h2",

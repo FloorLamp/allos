@@ -75,7 +75,7 @@ import { metricDetailHref, timelineDayHref, type AppRoute } from "@/lib/hrefs";
 import type { BodyMetricKind, Goal, MedicalRecord } from "@/lib/types";
 import { EmptyState } from "@/components/ui";
 import LineChartCard from "@/components/LineChartCard";
-import ChartCard from "@/components/ChartCard";
+import ChartCard, { CHART_PLOT_FILL } from "@/components/ChartCard";
 import NotesText from "@/components/NotesText";
 import ScrollFade from "@/components/ScrollFade";
 import BodyTrendCharts, {
@@ -566,7 +566,10 @@ export default async function BodySection({
             {/* The plot spans the viewport on a phone — charts are the one content
                 class that earns full-bleed; forms and text stay at the shell's
                 normal width. */}
-            <div data-testid="vitals-intraday-hr-plot" className="w-full">
+            <div
+              data-testid="vitals-intraday-hr-plot"
+              className="h-full w-full"
+            >
               <LineChartCard
                 data={intradayHr}
                 label="Heart rate"
@@ -574,6 +577,7 @@ export default async function BodySection({
                 color={chartSeries.rose}
                 showDots={false}
                 connectNulls={false}
+                heightClass={CHART_PLOT_FILL}
               />
             </div>
           </ChartCard>
