@@ -85,7 +85,9 @@ export const OVERLAY_DRAG_HANDLE_BAR =
 // this stops being constants and starts being the slot manager #1520 rejected.
 export const BOTTOM_EDGE_OFFSET_VAR = "--bottom-edge-offset";
 // Written out (not composed from the constant above) because Tailwind's scanner
-// reads literals — a computed `bottom-[calc(var(${VAR})...)]` is never generated.
+// reads LITERALS — a class string interpolating the var name above would never be
+// generated. (Do not spell such an interpolation out even in a comment here: the
+// scanner reads comments too, and would emit it as a broken rule.)
 export const BOTTOM_EDGE_NOTICE_BOTTOM =
   "bottom-[calc(var(--bottom-edge-offset,0px)+max(1rem,env(safe-area-inset-bottom)))]";
 export const BOTTOM_EDGE_GUTTER_RIGHT =
