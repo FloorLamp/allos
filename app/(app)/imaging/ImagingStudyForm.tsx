@@ -58,18 +58,16 @@ export default function ImagingStudyForm({
   }
 
   const uid = study?.id ?? "new";
+  // Add mode renders INSIDE the "+ Add imaging study" panel (#1499 section C), which
+  // is the card and owns the heading; edit mode swaps into a list row and brings its
+  // own frame.
   return (
     <form
       ref={formRef}
       action={handle}
-      className="card space-y-3"
+      className={editing ? "card space-y-3" : "space-y-3"}
       data-testid="imaging-study-form"
     >
-      {!editing && (
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          Add imaging study
-        </h2>
-      )}
       {editing && <input type="hidden" name="id" value={study!.id} />}
       {profileId != null && (
         <input type="hidden" name="profile_id" value={profileId} />

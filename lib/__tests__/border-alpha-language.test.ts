@@ -36,10 +36,9 @@ const ALLOWLIST = new Map<string, string>([
     "app/(app)/trends/TrendingDigest.tsx",
     "neutral trend-chip tone — sibling to the rose/emerald tinted tones in the same tone map",
   ],
-  [
-    "app/(app)/results/TrajectoryFindings.tsx",
-    "'info' finding tone — sibling to the amber 'warning' tone in the same ternary (moved from Trends → Biomarkers to Results, #1164)",
-  ],
+  // (The Results → Biomarkers trajectory watch used to carry its own copy of the
+  // finding-tone ternary; #1499 folded it into the shared FindingRow below, so it no
+  // longer names a border colour of its own.)
   [
     "components/FindingRow.tsx",
     "'info' finding tone — sibling to the amber 'warning' tone in the same ternary (the row extracted out of FindingsList, #1496)",

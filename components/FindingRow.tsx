@@ -16,12 +16,20 @@ export default function FindingRow({
   dismissAction,
   itemTestid,
   dismissTestid,
+  dismissKey,
 }: {
   finding: Finding;
   // The surface's dismiss server action (guards its own dedupeKey namespace).
   dismissAction: (formData: FormData) => void | Promise<void>;
   itemTestid: string;
   dismissTestid: string;
+  // The key POSTED to the bus, when it is deliberately BROADER than this row's own
+  // identity. The Results-hub trajectory watch is the case: since #564 a trajectory
+  // finding's dismiss records the ANALYTE-level acknowledgment it carries as
+  // `supersedes` ("biomarker-flag:<family>"), so dismissing the velocity rule also
+  // silences the analyte's dashboard flag. Defaults to the finding's own dedupeKey,
+  // which is what every other surface posts.
+  dismissKey?: string;
 }) {
   return (
     <li
@@ -55,7 +63,11 @@ export default function FindingRow({
       </div>
       {/* Dismiss through the shared findings-bus suppression store (#39/#45). */}
       <form action={dismissAction}>
-        <input type="hidden" name="dedupe_key" value={f.dedupeKey} />
+        <input
+          type="hidden"
+          name="dedupe_key"
+          value={dismissKey ?? f.dedupeKey}
+        />
         <button
           type="submit"
           data-testid={dismissTestid}

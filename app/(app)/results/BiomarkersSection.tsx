@@ -20,6 +20,7 @@ import BioAgeHero from "@/components/BioAgeHero";
 import TrajectoryFindings from "./TrajectoryFindings";
 import BiomarkersTable from "@/components/BiomarkersTable";
 import RecordForm from "@/components/RecordForm";
+import AddEntryPanel from "@/components/AddEntryPanel";
 import { ProviderOptionsProvider } from "@/components/ProviderOptionsContext";
 import { CanonicalNamesProvider } from "@/components/CanonicalNamesContext";
 import { addRecord } from "@/app/(app)/medical/actions";
@@ -44,6 +45,18 @@ export interface BiomarkersSearchParams {
   // Prefill the add form's name from the command palette's "Add result" hit
   // action (#662). Reached as /results?new=1&name=<canonical>#biomarkers.
   name?: string;
+  // The intent half of that deep link. Since #1499 section C the add form lives
+  // behind "+ Add result", so an "I came here to add a reading" link has to say so:
+  // `?new=1` (or a prefilled `?name=`) auto-expands the panel.
+  new?: string;
+}
+
+// Does this visit want the entry panel OPEN on arrival? Only a deliberate
+// add-a-reading deep link — the command palette's "Add result" hit and the
+// medication-monitoring "log this lab" action both carry `new=1&name=<analyte>`.
+// An ordinary read of the hub gets the collapsed affordance.
+function entryPanelOpen(searchParams: BiomarkersSearchParams): boolean {
+  return searchParams.new === "1" || !!searchParams.name?.trim();
 }
 
 // Parse the shared browser filters/sort off the searchParams once — identical for
@@ -69,10 +82,18 @@ function parseFilters(searchParams: BiomarkersSearchParams) {
         ? ("nonoptimal" as const)
         : undefined;
   const q = searchParams.q?.trim() || undefined;
+  // Default sort is PANEL (#1499 section A). It used to be `name`, which was right
+  // for a flat alphabetical reference list — but the browser is a panel INDEX now,
+  // and only a panel-ordered read makes the two agree: the groups always render in
+  // clinical order, so under a name sort one bounded page (#114) held an alphabetical
+  // slice scattered across a dozen panels and each header counted the sliver of its
+  // panel that happened to land on that page. Ordering by panel keeps a panel's
+  // readings contiguous, so a page holds whole groups and a header's count is the
+  // group. `?sort=name` / `?sort=date` still work and reorder WITHIN each group.
   const sort = parseSortColumn(
     searchParams.sort,
     ["name", "panel", "date"] as const,
-    "name"
+    "panel"
   );
   const dir = parseSortDir(searchParams.dir);
   const current = searchParams.current === "1";
@@ -153,6 +174,12 @@ function SingleBiomarkersView({
     <ProviderOptionsProvider providers={getPickerProviders()}>
       <CanonicalNamesProvider names={canonicalOptions}>
         <div>
+          {/* Order (#1499 section D): the CURATED GLANCE first — the pinned analytes
+          you chose, then what is moving, then the aging index — and the panel-group
+          index below it. Starred leads because it is the only part the reader
+          authored; the trajectory rollup follows as one capped card. */}
+          <StarredBiomarkers />
+
           {/* Forward-looking trajectory rules (#41), the ONE thing #1164 moved from the
           deleted Trends → Biomarkers tab: a "what's changing" area that warns BEFORE a
           single-value flag catches a range crossing. A full-history standing read, so
@@ -163,8 +190,6 @@ function SingleBiomarkersView({
           headline "how am I aging" result, pinned above the analyte table. Adult-
           gated; renders nothing for child profiles. The derived table row remains. */}
           <BioAgeHero />
-
-          <StarredBiomarkers />
 
           <MedicalFilters
             category={active}
@@ -204,10 +229,19 @@ function SingleBiomarkersView({
             />
           )}
 
-          <div className="card mb-6" id="add-result">
-            <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-              Add medical record
-            </h2>
+          {/* Entry behind "+ Add result" (#1499 section C — the #1497 rare-cadence
+          rule). Lab readings arrive a few times a year, mostly by import; a standing
+          form charged every read of the hub for it. `#add-result` stays on the
+          wrapper so the palette / medication-monitoring deep links still land here,
+          and they auto-expand it. */}
+          <AddEntryPanel
+            id="add-result"
+            testId="add-result-panel"
+            panelId="add-result-panel-body"
+            label="Add medical record"
+            addLabel="Add result"
+            defaultOpen={entryPanelOpen(searchParams)}
+          >
             <RecordForm
               mode="add"
               action={addRecord}
@@ -216,7 +250,7 @@ function SingleBiomarkersView({
               defaultCategory={active ?? "lab"}
               defaultName={searchParams.name?.trim() || undefined}
             />
-          </div>
+          </AddEntryPanel>
         </div>
       </CanonicalNamesProvider>
     </ProviderOptionsProvider>
@@ -287,12 +321,9 @@ function MultiBiomarkersView({
     <ProviderOptionsProvider providers={getPickerProviders()}>
       <CanonicalNamesProvider names={canonicalOptions}>
         <div>
-          {/* Personal "you" surfaces stay acting-only in multi-view. */}
-          <TrajectoryFindings />
-          <BioAgeHero />
-
           {/* Starred lens is per profile — one labeled card per member (each renders
-          nothing when that member has no stars). */}
+          nothing when that member has no stars). Ordered ahead of the trajectory
+          rollup and the bio-age hero, matching single view (#1499 section D). */}
           {scope.profiles
             .filter((p) => ids.includes(p.id))
             .map((p) => (
@@ -302,6 +333,10 @@ function MultiBiomarkersView({
                 subjectLabel={p.name}
               />
             ))}
+
+          {/* Personal "you" surfaces stay acting-only in multi-view. */}
+          <TrajectoryFindings />
+          <BioAgeHero />
 
           <MedicalFilters
             category={active}
@@ -342,10 +377,15 @@ function MultiBiomarkersView({
             />
           )}
 
-          <div className="card mb-6" id="add-result">
-            <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-              Add medical record
-            </h2>
+          {/* Entry behind "+ Add result" (#1499 section C), acting-scoped as before. */}
+          <AddEntryPanel
+            id="add-result"
+            testId="add-result-panel"
+            panelId="add-result-panel-body"
+            label="Add medical record"
+            addLabel="Add result"
+            defaultOpen={entryPanelOpen(searchParams)}
+          >
             <RecordForm
               mode="add"
               action={addRecord}
@@ -354,7 +394,7 @@ function MultiBiomarkersView({
               defaultCategory={active ?? "lab"}
               defaultName={searchParams.name?.trim() || undefined}
             />
-          </div>
+          </AddEntryPanel>
         </div>
       </CanonicalNamesProvider>
     </ProviderOptionsProvider>

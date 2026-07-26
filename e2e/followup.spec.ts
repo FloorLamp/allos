@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { settledClick } from "./helpers";
+import { hydratedClick, settledClick } from "./helpers";
 import { workerDbPath } from "./worker-env";
 
 // The finding follow-up loop (#700): an incidental imaging finding → a tracked,
@@ -41,6 +41,8 @@ async function addStudy(
   opts: { date: string; impression: string }
 ) {
   await page.goto("/results/imaging");
+  // Entry lives behind "+ Add imaging study" since #1499 section C.
+  await hydratedClick(page, page.getByTestId("add-imaging-panel-toggle"));
   const form = page.getByTestId("imaging-study-form");
   await expect(form).toBeVisible();
   await form.getByLabel("Modality").selectOption("ct");
