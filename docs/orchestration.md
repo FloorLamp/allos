@@ -13,7 +13,7 @@ root-causes, and the release-notes pipeline below).
 
 The standing directive (restartable anytime via `/loop`):
 
-> orchestrate all development; prioritize bugs over features; delegate to opus
+> orchestrate all development; prioritize P0/P1 bugs over features; delegate to opus
 > agents; prefer gh rest over mcp; open prs as ready; max 2 agents working on
 > e2e; only you run e2e tests; issues that aren't e2e can parallelize more;
 > review all prs
@@ -23,7 +23,11 @@ What that means in practice:
 - **You never write feature code.** You cluster, dispatch, review, diagnose e2e,
   merge, and clean up. The only code you write directly is e2e spec fixes —
   because you own the only local e2e environment.
-- **Bugs before features, always.** A new audit dump preempts feature work.
+- **P0/P1 bugs before features.** (Owner-revised 2026-07-26; was "all bugs
+  first".) A P0/P1 bug preempts feature work the moment it appears. P2/P3 bugs
+  are ordinary queue members — cluster them with adjacent work and schedule them
+  against features on value, not reflexively ahead. An audit dump preempts only
+  for its P0/P1 items.
 - **Every PR gets a real review** before merge: full diff read (or focused reads
   - test-surface verification for >1,500-line refactors), posted as a COMMENT
     review via REST (APPROVE is rejected for this session type).
@@ -118,7 +122,8 @@ learned by losing work to it:
 
 ## The pipeline (per unit of work)
 
-1. **Triage.** Sweep open issues. Bugs first. Read the bodies **and all issue
+1. **Triage.** Sweep open issues. P0/P1 bugs first; lower-priority bugs rank
+   with features. Read the bodies **and all issue
    comments** — clarifications, scope changes, and owner decisions get buried in
    comment threads, and a fix that honors the body but misses a comment is wrong.
    This repo's audit issues are excellent (root cause + file:line + prescribed
