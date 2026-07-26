@@ -18,6 +18,7 @@ import { emptyCounts, foldCounts, type UpsertCounts } from "./sync-log";
 import {
   upsertActivities,
   upsertBodyMetrics,
+  upsertHrMinutes,
   upsertMetricSamples,
   upsertVitals,
 } from "./normalize";
@@ -26,6 +27,16 @@ import {
   FITBIT_TAKEOUT_ID,
   classifyTakeoutEntry,
   emptyTakeoutParsed,
+  finalizeDailySums,
+  finalizeHrBuckets,
+  foldDailySums,
+  foldHrBuckets,
+  intradaySumMetric,
+  isIntradaySumFamily,
+  parseHeartRateCsv,
+  parseIntradaySumCsv,
+  type HrBucketAcc,
+  type IntradaySumFamily,
   parseBodyFatCsv,
   parseDailyRestingHrCsv,
   parseDailyVitalCsv,
@@ -59,6 +70,7 @@ export interface TakeoutImportResult {
   counts: UpsertCounts;
   parsed: {
     bodyMetrics: number;
+    hrMinutes: number;
     samples: number;
     activities: number;
     vitals: number;
@@ -101,8 +113,10 @@ export function readIndexedEntry(fd: number, e: ZipIndexEntry): Buffer {
 // Route one entry's text to its family's parser. Kept exhaustive over TakeoutFamily
 // so adding a family to the classifier without a parser is a compile error rather
 // than silently-dropped data.
+type SimpleFamily = Exclude<TakeoutFamily, "heart_rate" | IntradaySumFamily>;
+
 function parseFamily(
-  family: TakeoutFamily,
+  family: SimpleFamily,
   text: string,
   tz: string
 ): TakeoutParsed {
@@ -135,6 +149,7 @@ function parseFamily(
 
 function mergeInto(acc: TakeoutParsed, add: TakeoutParsed): void {
   acc.bodyMetrics.push(...add.bodyMetrics);
+  acc.hrMinutes.push(...add.hrMinutes);
   acc.samples.push(...add.samples);
   acc.activities.push(...add.activities);
   acc.vitals.push(...add.vitals);
@@ -154,6 +169,12 @@ export function parseTakeoutArchive(
     const size = fs.fstatSync(fd).size;
     const index = readZipIndex(fd, size);
     const acc = emptyTakeoutParsed();
+    // The intraday families are FOLDED rather than concatenated: heart rate is
+    // ~1.6 M rows that must never exist as 1.6 M objects, and a day (or a minute at
+    // a day boundary) can appear in more than one file, so subtotals have to sum
+    // instead of overwrite.
+    const hrAcc = new Map<string, HrBucketAcc>();
+    const sumAcc = new Map<IntradaySumFamily, Map<string, number>>();
     let read = 0;
     let skipped = 0;
     for (const entry of index) {
@@ -167,7 +188,21 @@ export function parseTakeoutArchive(
         // The buffer is scoped to this iteration and released before the next, so
         // peak memory is one entry, not the archive.
         const text = readIndexedEntry(fd, entry).toString("utf8");
-        mergeInto(acc, parseFamily(family, text, tz));
+        if (family === "heart_rate") {
+          const r = parseHeartRateCsv(text, tz);
+          foldHrBuckets(hrAcc, r.buckets);
+          acc.skipped += r.skipped;
+          acc.roundTripSkipped += r.roundTrip;
+        } else if (isIntradaySumFamily(family)) {
+          const r = parseIntradaySumCsv(text, tz, family);
+          let m = sumAcc.get(family);
+          if (!m) sumAcc.set(family, (m = new Map()));
+          foldDailySums(m, r.perDay);
+          acc.skipped += r.skipped;
+          acc.roundTripSkipped += r.roundTrip;
+        } else {
+          mergeInto(acc, parseFamily(family, text, tz));
+        }
       } catch (err) {
         // One unreadable member must not abort an otherwise good import — the
         // archive is large and user-supplied. Count it and carry on.
@@ -176,6 +211,9 @@ export function parseTakeoutArchive(
         log.error("takeout entry unreadable", { entry: entry.name, err });
       }
     }
+    acc.hrMinutes.push(...finalizeHrBuckets(hrAcc));
+    for (const [family, perDay] of sumAcc)
+      acc.samples.push(...finalizeDailySums(perDay, intradaySumMetric(family)));
     return { parsed: acc, entriesRead: read, entriesSkipped: skipped };
   } finally {
     fs.closeSync(fd);
@@ -199,6 +237,11 @@ export function importTakeoutArchive(
     counts = foldCounts([
       counts,
       writeTx(() => upsertBodyMetrics(profileId, slice, FITBIT_TAKEOUT_ID)),
+    ]);
+  for (const slice of chunk(parsed.hrMinutes, chunkSize))
+    counts = foldCounts([
+      counts,
+      writeTx(() => upsertHrMinutes(profileId, slice, FITBIT_TAKEOUT_ID)),
     ]);
   for (const slice of chunk(parsed.samples, chunkSize))
     counts = foldCounts([
@@ -229,6 +272,7 @@ export function importTakeoutArchive(
     ok: true,
     received:
       parsed.bodyMetrics.length +
+      parsed.hrMinutes.length +
       parsed.samples.length +
       parsed.activities.length +
       parsed.vitals.length,
@@ -249,6 +293,7 @@ export function importTakeoutArchive(
     counts,
     parsed: {
       bodyMetrics: parsed.bodyMetrics.length,
+      hrMinutes: parsed.hrMinutes.length,
       samples: parsed.samples.length,
       activities: parsed.activities.length,
       vitals: parsed.vitals.length,

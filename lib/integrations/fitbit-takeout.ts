@@ -1,8 +1,9 @@
-import { zonedDateParts } from "@/lib/date";
+import { zonedDateParts, zonedMinuteStr } from "@/lib/date";
 import { boundedOrNull, inTimeWindow } from "@/lib/ingest-bounds";
 import type {
   NormActivity,
   NormBodyMetric,
+  NormHrMinute,
   NormMetricSample,
   NormVital,
 } from "./normalize";
@@ -50,13 +51,36 @@ export const TAKEOUT_HEALTH_ROOT = "Takeout/Google Health/";
 // The JSON twins are therefore SKIPPED, not parsed-and-deduped: cheaper, and it
 // keeps one encoding to reason about. Families that exist ONLY as JSON (sleep,
 // exercise) are still read from there — see JSON_ONLY_FAMILIES.
-const CSV_PREFERRED_FAMILIES = new Set([
-  "steps",
-  "distance",
-  "calories",
-  "heart_rate",
-  "resting_heart_rate",
+// ---- what the INTRADAY streams may and may not be summed into ----
+//
+// The minute-level CSVs omit rows rather than writing zeros, so whether a daily
+// total can be derived from them depends entirely on whether an omitted minute
+// MEANS zero. Measured against the JSON twin, which does carry all 1440 minutes:
+//
+//   steps     CSV 7,005 over 220 rows   JSON 7,005 over 753   → identical
+//   distance  CSV 4,677.7 m over 220    JSON 467,770 cm/753   → identical (×100)
+//   calories  CSV 1,268 over 956 rows   JSON 2,811 over 1440  → NOT identical
+//
+// Steps and distance agree exactly: a minute with no row is a minute with no
+// movement, so the sparse stream sums to the true total. Total calories do NOT,
+// and cannot — basal burn never stops, so the 484 missing minutes are real energy.
+// Summing that CSV would store ~45% of a day's calories as if it were the whole
+// day, the same failure as the 15-minute Health Connect gap (#1065) but silent.
+//
+// So `calories` is deliberately NOT ingested. Health Connect already delivers an
+// authoritative daily total, and a competing under-counted one is worse than none.
+// `active_energy_burned` IS taken: active energy is zero by definition when
+// sedentary, so its omitted minutes really are zeros (its row count matches the
+// JSON's non-zero-minute count exactly).
+const INTRADAY_NOT_SUMMABLE = new Set(["calories"]);
+
+// Families with no model home at all, listed so the reason is recorded rather than
+// rediscovered: heart-rate zone minutes and Fitbit's SEDENTARY/LIGHTLY/… activity
+// bands are vendor classifications with no metric to land in.
+const NO_HOME_FAMILIES = new Set([
   "time_in_heart_rate_zones",
+  "activity_level",
+  "resting_heart_rate",
 ]);
 
 // Directory segments whose contents are never health data. Matched as a path
@@ -111,7 +135,11 @@ export type TakeoutFamily =
   | "sleep_score"
   | "daily_readiness"
   | "sleep"
-  | "exercise";
+  | "exercise"
+  | "heart_rate"
+  | "intraday_steps"
+  | "intraday_distance"
+  | "active_energy";
 
 // Families that live ONLY as JSON under `Global Export Data/` — the CSV preference
 // above cannot apply because there is no CSV twin.
@@ -146,7 +174,12 @@ export function classifyTakeoutEntry(path: string): TakeoutFamily | null {
   if (dir === "Physical Activity_GoogleData") {
     const stem = file.replace(/[-_]?\d{4}[-_]\d{2}[-_]\d{2}.*$/, "");
     const base = stem.replace(/\.csv$/, "").replace(/[-_]$/, "");
-    if (CSV_PREFERRED_FAMILIES.has(base)) return null; // intraday, not this pass
+    if (INTRADAY_NOT_SUMMABLE.has(base) || NO_HOME_FAMILIES.has(base))
+      return null;
+    if (base === "heart_rate") return "heart_rate";
+    if (base === "steps") return "intraday_steps";
+    if (base === "distance") return "intraday_distance";
+    if (base === "active_energy_burned") return "active_energy";
     if (base === "weight") return "weight";
     if (base === "body_fat") return "body_fat";
     if (base === "height") return "height";
@@ -242,6 +275,20 @@ export function localDate(iso: string | undefined, tz: string): string | null {
   return zonedDateParts(tz, d).date;
 }
 
+// The profile-local MINUTE key an instant buckets into — the hr_minutes natural key,
+// identical in shape to what the Health Connect parser writes, so a Takeout minute
+// and a synced minute for the same time collide on the key instead of duplicating.
+//
+// Unlike localDate this accepts ONLY an absolute instant: every intraday CSV stamps
+// one, and a minute bucket derived from an offset-less wall time would silently
+// depend on the server's timezone.
+export function localMinute(iso: string, tz: string): string | null {
+  if (!HAS_OFFSET.test(iso.trim())) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime()) || !inTimeWindow(d.getTime())) return null;
+  return zonedMinuteStr(tz, d);
+}
+
 // The `data source` column, when the family carries one. Absent for the families
 // that don't (Computed Temperature, Sleep Score).
 function dataSource(row: Record<string, string>): string | null {
@@ -253,6 +300,7 @@ function dataSource(row: Record<string, string>): string | null {
 
 export interface TakeoutParsed {
   bodyMetrics: NormBodyMetric[];
+  hrMinutes: NormHrMinute[];
   samples: NormMetricSample[];
   activities: NormActivity[];
   vitals: NormVital[];
@@ -270,6 +318,7 @@ export interface TakeoutParsed {
 export function emptyTakeoutParsed(): TakeoutParsed {
   return {
     bodyMetrics: [],
+    hrMinutes: [],
     samples: [],
     activities: [],
     vitals: [],
@@ -428,6 +477,194 @@ export function parseDailyVitalCsv(
       canonical: spec.canonical,
       value_num: Math.round(value * 10) / 10,
       unit: spec.unit,
+    });
+  }
+  return out;
+}
+
+// ---- intraday: heart rate ----
+//
+// The archive's largest stream by far: ~1.6 M rows across 47 files, sampled every
+// few SECONDS. It is bucketed to the minute HERE, inside the per-file parse, rather
+// than accumulated and bucketed later — the whole point is that no caller ever holds
+// 1.6 M objects. One file (a day) yields at most 1440 buckets.
+//
+// Buckets are returned as raw accumulators (sum/n/min/max) rather than finished
+// averages so the walker can FOLD two files that both touch a minute — which happens
+// at a day boundary — without averaging an average.
+
+export interface HrBucketAcc {
+  ts: string; // profile-local minute key, the hr_minutes natural key
+  sum: number;
+  n: number;
+  min: number;
+  max: number;
+}
+
+export function parseHeartRateCsv(
+  text: string,
+  tz: string
+): { buckets: HrBucketAcc[]; skipped: number; roundTrip: number } {
+  const out = new Map<string, HrBucketAcc>();
+  let skipped = 0;
+  let roundTrip = 0;
+  const parsed = parseTakeoutCsv(text);
+  if (!parsed) return { buckets: [], skipped, roundTrip };
+  for (const row of parsed.rows) {
+    if (isHealthConnectRoundTrip(dataSource(row))) {
+      roundTrip++;
+      continue;
+    }
+    const iso = row.timestamp;
+    const bpm = boundedOrNull(
+      "heart_rate_bpm",
+      csvNum(row["beats per minute"])
+    );
+    const ts = iso ? localMinute(iso, tz) : null;
+    if (!ts || bpm == null) {
+      skipped++;
+      continue;
+    }
+    const b = out.get(ts);
+    if (!b) out.set(ts, { ts, sum: bpm, n: 1, min: bpm, max: bpm });
+    else {
+      b.sum += bpm;
+      b.n++;
+      if (bpm < b.min) b.min = bpm;
+      if (bpm > b.max) b.max = bpm;
+    }
+  }
+  return { buckets: [...out.values()], skipped, roundTrip };
+}
+
+// Fold a file's buckets into a running accumulator. Separate from the parse so a
+// minute split across two files sums rather than overwrites.
+export function foldHrBuckets(
+  acc: Map<string, HrBucketAcc>,
+  add: HrBucketAcc[]
+): void {
+  for (const b of add) {
+    const cur = acc.get(b.ts);
+    if (!cur) acc.set(b.ts, { ...b });
+    else {
+      cur.sum += b.sum;
+      cur.n += b.n;
+      if (b.min < cur.min) cur.min = b.min;
+      if (b.max > cur.max) cur.max = b.max;
+    }
+  }
+}
+
+export function finalizeHrBuckets(
+  acc: Map<string, HrBucketAcc>
+): NormHrMinute[] {
+  return [...acc.values()].map((b) => ({
+    ts: b.ts,
+    bpm: b.sum / b.n,
+    bpm_min: b.min,
+    bpm_max: b.max,
+    n: b.n,
+  }));
+}
+
+// ---- intraday: the summable daily streams ----
+//
+// steps / distance / active energy, summed per profile-local day. Safe ONLY because
+// an omitted minute in these three genuinely means zero — see INTRADAY_NOT_SUMMABLE
+// above for the measurement that establishes it, and for why total calories are not
+// here.
+export type IntradaySumFamily =
+  "intraday_steps" | "intraday_distance" | "active_energy";
+
+const INTRADAY_SPEC: Record<
+  IntradaySumFamily,
+  { metric: string; column: string; scale: number }
+> = {
+  // The CSV's `distance` column is METRES (cross-checked against the JSON twin's
+  // centimetres: 467,770 cm == 4,677.7 m for one day), and the canonical unit is km.
+  intraday_distance: {
+    metric: "distance_km",
+    column: "distance",
+    scale: 0.001,
+  },
+  intraday_steps: { metric: "steps", column: "steps", scale: 1 },
+  active_energy: { metric: "active_kcal", column: "Kilocalories", scale: 1 },
+};
+
+// The metric an intraday-sum family lands in. Exported so the walker can finalize
+// its accumulator without re-deriving the mapping.
+export function intradaySumMetric(family: IntradaySumFamily): string {
+  return INTRADAY_SPEC[family].metric;
+}
+
+export function isIntradaySumFamily(
+  family: TakeoutFamily
+): family is IntradaySumFamily {
+  return (
+    family === "intraday_steps" ||
+    family === "intraday_distance" ||
+    family === "active_energy"
+  );
+}
+
+export function parseIntradaySumCsv(
+  text: string,
+  tz: string,
+  family: IntradaySumFamily
+): { perDay: Map<string, number>; skipped: number; roundTrip: number } {
+  const spec = INTRADAY_SPEC[family];
+  const perDay = new Map<string, number>();
+  let skipped = 0;
+  let roundTrip = 0;
+  const parsed = parseTakeoutCsv(text);
+  if (!parsed) return { perDay, skipped, roundTrip };
+  for (const row of parsed.rows) {
+    // Dropping these is what keeps the sum honest twice over: they are already held
+    // under the health-connect provider, AND the phone counts the same steps the
+    // watch does, so summing both would inflate the day (~9 k phone rows against
+    // ~11.5 k watch rows on a real archive).
+    if (isHealthConnectRoundTrip(dataSource(row))) {
+      roundTrip++;
+      continue;
+    }
+    const date = localDate(row.timestamp, tz);
+    const raw = csvNum(row[spec.column]);
+    if (!date || raw == null) {
+      skipped++;
+      continue;
+    }
+    perDay.set(date, (perDay.get(date) ?? 0) + raw * spec.scale);
+  }
+  return { perDay, skipped, roundTrip };
+}
+
+// Fold one file's per-day subtotals into a running accumulator, then finalize to
+// samples. Folding is required, not cosmetic: a family can span several files and a
+// day can appear in more than one of them.
+export function foldDailySums(
+  acc: Map<string, number>,
+  add: Map<string, number>
+): void {
+  for (const [date, v] of add) acc.set(date, (acc.get(date) ?? 0) + v);
+}
+
+// A day's total becomes ONE sample spanning that local day. The natural key
+// (metric, source, start_time) is therefore one row per metric per day, so a
+// re-import of the same archive updates in place rather than accumulating.
+export function finalizeDailySums(
+  acc: Map<string, number>,
+  metric: string
+): NormMetricSample[] {
+  const out: NormMetricSample[] = [];
+  for (const [date, total] of acc) {
+    const value = boundedOrNull(metric, total);
+    if (value == null) continue;
+    out.push({
+      metric,
+      date,
+      start_time: `${date}T00:00:00.000Z`,
+      end_time: `${date}T23:59:59.999Z`,
+      value,
     });
   }
   return out;

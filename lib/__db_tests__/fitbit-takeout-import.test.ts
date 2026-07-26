@@ -126,6 +126,45 @@ const FILES: [string, string | Buffer][] = [
       },
     ]),
   ],
+  // Intraday: per-second HR, and the two summable minute streams. The steps file
+  // interleaves the watch with the PHONE via Health Connect — the row that must be
+  // held back, or the day doubles.
+  [
+    `${ROOT}/Physical Activity_GoogleData/heart_rate-2026-06-10.csv`,
+    [
+      "timestamp,beats per minute,data source",
+      "2026-06-10T16:37:52Z,133.0,Radiance",
+      "2026-06-10T16:37:54Z,137.0,Radiance",
+      "2026-06-10T16:38:02Z,120.0,Radiance",
+    ].join("\n"),
+  ],
+  [
+    `${ROOT}/Physical Activity_GoogleData/steps_2026-06-01.csv`,
+    [
+      "timestamp,steps,data source",
+      "2026-06-10T16:39:00Z,34,Radiance",
+      "2026-06-10T16:40:00Z,66,Radiance",
+      "2026-06-10T16:39:18.008Z,500,Phone Health Connect",
+    ].join("\n"),
+  ],
+  [
+    `${ROOT}/Physical Activity_GoogleData/distance_2026-06-01.csv`,
+    [
+      "timestamp,distance,data source",
+      "2026-06-10T16:39:00Z,1500.0,Radiance",
+      "2026-06-10T16:40:00Z,500.0,Radiance",
+    ].join("\n"),
+  ],
+  // Total calories: present, and deliberately NOT ingested (the CSV omits resting
+  // minutes, so summing it would store a fraction of the day as the whole day).
+  [
+    `${ROOT}/Physical Activity_GoogleData/calories_2026-06-01.csv`,
+    [
+      "timestamp,calories,data source",
+      "2026-06-10T16:27:00Z,1.07,Fitbit App",
+      "2026-06-10T16:28:00Z,1.07,Fitbit App",
+    ].join("\n"),
+  ],
   // Present-but-empty, exactly as a real export ships them.
   [`${ROOT}/Biometrics/Glucose 1.csv`, "no data"],
   [`${ROOT}/Stress Score/Stress Score.csv`, "DATE,UPDATED_AT,STRESS_SCORE"],
@@ -163,14 +202,15 @@ describe("Fitbit Takeout import", () => {
   it("reads only the classified entries and writes every family", () => {
     const r = importTakeoutArchive(profileId, archive);
 
-    // 9 data files are classified; the two 2 MB bulk members, the empty
-    // placeholders, the readme and the foreign product are skipped UNREAD.
-    expect(r.entriesRead).toBe(9);
-    expect(r.entriesSkipped).toBe(FILES.length - 9);
+    // 12 data files are classified (9 daily + HR + steps + distance); calories,
+    // the two 2 MB bulk members, the empty placeholders, the readme and the foreign
+    // product are all skipped UNREAD.
+    expect(r.entriesRead).toBe(12);
+    expect(r.entriesSkipped).toBe(FILES.length - 12);
 
-    // The Health-Connect round-trip weight row is held back, and counted apart from
-    // malformed rows so the sync event can say so.
-    expect(r.roundTripSkipped).toBe(1);
+    // Held back: the round-trip weight row AND the phone's steps row. Counted apart
+    // from malformed rows so the sync event can say so.
+    expect(r.roundTripSkipped).toBe(2);
     expect(r.skipped).toBe(0);
     expect(r.counts.inserted).toBeGreaterThan(0);
 
@@ -251,6 +291,43 @@ describe("Fitbit Takeout import", () => {
       { canonical_name: "Oxygen Saturation", value_num: 94.8 },
       { canonical_name: "Respiratory Rate", value_num: 13.8 },
     ]);
+  });
+
+  it("buckets per-second heart rate to the minute", () => {
+    const hr = db
+      .prepare(
+        `SELECT ts, bpm, bpm_min, bpm_max, n FROM hr_minutes
+          WHERE profile_id = ? ORDER BY ts`
+      )
+      .all(profileId) as {
+      ts: string;
+      bpm: number;
+      bpm_min: number;
+      bpm_max: number;
+      n: number;
+    }[];
+    // 16:37Z is 12:37 in New York; two samples in that minute, one in the next.
+    expect(hr).toEqual([
+      { ts: "2026-06-10T12:37", bpm: 135, bpm_min: 133, bpm_max: 137, n: 2 },
+      { ts: "2026-06-10T12:38", bpm: 120, bpm_min: 120, bpm_max: 120, n: 1 },
+    ]);
+  });
+
+  it("sums the intraday streams per day, WITHOUT the phone's duplicate steps", () => {
+    const sample = (metric: string) =>
+      db
+        .prepare(
+          `SELECT date, value FROM metric_samples
+            WHERE profile_id = ? AND metric = ?`
+        )
+        .all(profileId, metric) as { date: string; value: number }[];
+    // 34 + 66 from the watch. The phone's 500 would have made it 600.
+    expect(sample("steps")).toEqual([{ date: "2026-06-10", value: 100 }]);
+    // 1500 m + 500 m -> 2 km.
+    expect(sample("distance_km")).toEqual([{ date: "2026-06-10", value: 2 }]);
+    // Total calories are present in the archive but must never be summed into a
+    // daily total from the sparse minute stream.
+    expect(sample("total_kcal")).toEqual([]);
   });
 
   it("re-importing the same archive changes nothing", () => {

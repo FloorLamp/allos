@@ -124,14 +124,20 @@ export const INTEGRATIONS: IntegrationDef[] = [
       "readings — often years of them — are invisible to the phone exporter. Sleep, " +
       "workouts, resting heart rate, SpO2 and respiratory rate come along too, plus " +
       "Fitbit's own sleep and readiness scores, which are stored and shown as " +
-      "Fitbit's numbers and never feed anything the app computes. Rows Fitbit itself " +
-      "received from Health Connect are left to that connection rather than imported " +
-      "twice. A one-off import, not a live connection — re-import a fresher export " +
-      "whenever you like; repeats are safe.",
+      "Fitbit's numbers and never feed anything the app computes. Minute-level heart " +
+      "rate, steps and distance come in too. Rows Fitbit itself received from Health " +
+      "Connect are left to that connection rather than imported twice — that includes " +
+      "the steps your phone counted alongside your watch, which would otherwise " +
+      "double the day. A one-off import, not a live connection — re-import a fresher " +
+      "export whenever you like; repeats are safe.",
     dataTypes: [
       "Weight",
       "Body fat",
       "Resting HR",
+      "Heart rate",
+      "Steps",
+      "Distance",
+      "Active calories",
       "Sleep",
       "Workouts",
       "SpO2",

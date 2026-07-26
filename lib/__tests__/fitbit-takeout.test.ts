@@ -10,6 +10,14 @@ import {
   parseDailyRestingHrCsv,
   parseDailyVitalCsv,
   parseVendorScoreCsv,
+  parseHeartRateCsv,
+  parseIntradaySumCsv,
+  foldHrBuckets,
+  foldDailySums,
+  finalizeHrBuckets,
+  finalizeDailySums,
+  intradaySumMetric,
+  type HrBucketAcc,
   FITBIT_SLEEP_SCORE_METRIC,
   FITBIT_READINESS_SCORE_METRIC,
   NEVER_READ,
@@ -340,5 +348,174 @@ describe("vendor daily scores (extends #1069)", () => {
     );
     expect(out.samples).toEqual([]);
     expect(out.skipped).toBe(1);
+  });
+});
+
+describe("intraday: heart rate", () => {
+  // ~1.6M rows across 47 files in a real archive, sampled every few seconds. Bucketed
+  // inside the per-file parse so nothing ever holds them all.
+  const HR = [
+    "timestamp,beats per minute,data source",
+    "2026-06-10T16:37:52Z,133.0,Radiance",
+    "2026-06-10T16:37:54Z,137.0,Radiance",
+    "2026-06-10T16:38:02Z,120.0,Radiance",
+  ].join("\n");
+
+  it("buckets per profile-local minute with sum/n/min/max", () => {
+    const { buckets, skipped, roundTrip } = parseHeartRateCsv(HR, TZ);
+    expect(skipped).toBe(0);
+    expect(roundTrip).toBe(0);
+    // 16:37Z is 12:37 in New York.
+    expect(buckets).toEqual([
+      { ts: "2026-06-10T12:37", sum: 270, n: 2, min: 133, max: 137 },
+      { ts: "2026-06-10T12:38", sum: 120, n: 1, min: 120, max: 120 },
+    ]);
+  });
+
+  it("folds a minute split across two files instead of overwriting it", () => {
+    // A day-boundary minute appears in both days' files; averaging an average or
+    // taking the last write would both be wrong.
+    const acc = new Map<string, HrBucketAcc>();
+    foldHrBuckets(acc, [
+      { ts: "2026-06-10T23:59", sum: 120, n: 2, min: 58, max: 62 },
+    ]);
+    foldHrBuckets(acc, [
+      { ts: "2026-06-10T23:59", sum: 200, n: 4, min: 45, max: 55 },
+    ]);
+    expect(finalizeHrBuckets(acc)).toEqual([
+      { ts: "2026-06-10T23:59", bpm: 320 / 6, bpm_min: 45, bpm_max: 62, n: 6 },
+    ]);
+  });
+
+  it("drops an implausible bpm and counts it, keeping the rest of the minute", () => {
+    const { buckets, skipped } = parseHeartRateCsv(
+      [
+        "timestamp,beats per minute,data source",
+        "2026-06-10T16:37:52Z,900,Radiance",
+        "2026-06-10T16:37:54Z,70,Radiance",
+      ].join("\n"),
+      TZ
+    );
+    expect(skipped).toBe(1);
+    expect(buckets).toEqual([
+      { ts: "2026-06-10T12:37", sum: 70, n: 1, min: 70, max: 70 },
+    ]);
+  });
+});
+
+describe("intraday: the summable daily streams", () => {
+  it("sums steps per LOCAL day and drops the phone's round-trip rows", () => {
+    // The phone counts the same steps the watch does. Those rows are already held
+    // under health-connect, so keeping them would double the day AND duplicate the
+    // provider — a real archive carries ~9k of them against ~11.5k watch rows.
+    const { perDay, roundTrip, skipped } = parseIntradaySumCsv(
+      [
+        "timestamp,steps,data source",
+        "2026-07-20T16:39:00Z,34,Radiance",
+        "2026-07-20T16:40:00Z,66,Radiance",
+        "2026-07-20T16:39:18.008Z,30,Phone Health Connect",
+      ].join("\n"),
+      TZ,
+      "intraday_steps"
+    );
+    expect(roundTrip).toBe(1);
+    expect(skipped).toBe(0);
+    expect([...perDay]).toEqual([["2026-07-20", 100]]);
+  });
+
+  it("converts the distance column from metres to canonical km", () => {
+    const { perDay } = parseIntradaySumCsv(
+      [
+        "timestamp,distance,data source",
+        "2026-07-20T16:39:00Z,1500.0,Radiance",
+        "2026-07-20T16:40:00Z,500.0,Radiance",
+      ].join("\n"),
+      TZ,
+      "intraday_distance"
+    );
+    expect([...perDay]).toEqual([["2026-07-20", 2]]);
+  });
+
+  it("attributes a row to the PROFILE's day, not the UTC day", () => {
+    // 2026-07-21T02:00Z is still the evening of 07-20 in New York. Bucketing on the
+    // UTC date prefix would move it to the next day.
+    const { perDay } = parseIntradaySumCsv(
+      ["timestamp,steps,data source", "2026-07-21T02:00:00Z,500,Radiance"].join(
+        "\n"
+      ),
+      TZ,
+      "intraday_steps"
+    );
+    expect([...perDay]).toEqual([["2026-07-20", 500]]);
+  });
+
+  it("folds a day that spans two files, then finalizes one sample per day", () => {
+    const acc = new Map<string, number>();
+    foldDailySums(acc, new Map([["2026-07-20", 4000]]));
+    foldDailySums(
+      acc,
+      new Map([
+        ["2026-07-20", 3005],
+        ["2026-07-21", 900],
+      ])
+    );
+    const out = finalizeDailySums(acc, "steps");
+    expect(out).toEqual([
+      {
+        metric: "steps",
+        date: "2026-07-20",
+        start_time: "2026-07-20T00:00:00.000Z",
+        end_time: "2026-07-20T23:59:59.999Z",
+        value: 7005,
+      },
+      {
+        metric: "steps",
+        date: "2026-07-21",
+        start_time: "2026-07-21T00:00:00.000Z",
+        end_time: "2026-07-21T23:59:59.999Z",
+        value: 900,
+      },
+    ]);
+  });
+
+  it("maps each summable family to its canonical metric", () => {
+    expect(intradaySumMetric("intraday_steps")).toBe("steps");
+    expect(intradaySumMetric("intraday_distance")).toBe("distance_km");
+    expect(intradaySumMetric("active_energy")).toBe("active_kcal");
+  });
+});
+
+describe("intraday classification", () => {
+  it("routes the intraday CSVs to their families", () => {
+    const c = (f: string) =>
+      classifyTakeoutEntry(`${P}/Physical Activity_GoogleData/${f}`);
+    expect(c("heart_rate-2026-06-10.csv")).toBe("heart_rate");
+    expect(c("steps_2026-06-01.csv")).toBe("intraday_steps");
+    expect(c("distance_2026-05-01.csv")).toBe("intraday_distance");
+    expect(c("active_energy_burned_2026-06-01.csv")).toBe("active_energy");
+  });
+
+  it("REFUSES total calories — the CSV omits resting minutes", () => {
+    // Measured: CSV 1,268 kcal over 956 rows against the JSON twin's 2,811 over
+    // 1,440. Basal burn never stops, so summing the sparse stream would store ~45%
+    // of a day as the whole day. Health Connect already supplies the real total.
+    expect(
+      classifyTakeoutEntry(
+        `${P}/Physical Activity_GoogleData/calories_2026-06-01.csv`
+      )
+    ).toBeNull();
+  });
+
+  it("skips the vendor-classification families with no metric home", () => {
+    for (const f of [
+      "activity_level_2026-06-01.csv",
+      "time_in_heart_rate_zones-2026-06-10.csv",
+      "resting_heart_rate-2026-06-09.csv",
+    ]) {
+      expect(
+        classifyTakeoutEntry(`${P}/Physical Activity_GoogleData/${f}`),
+        f
+      ).toBeNull();
+    }
   });
 });
