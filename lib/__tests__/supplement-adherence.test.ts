@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   adherenceSummary,
   aggregateDoseDay,
+  doseExistsSince,
   doseStrip,
+  doseWindowSince,
   indexTakenByDose,
   supplementAdherenceStrip,
   STRIP_DAYS,
@@ -243,6 +245,11 @@ describe("supplementAdherenceStrip", () => {
     } as Supplement;
   }
 
+  // Doses with no stored created_at: no known lifetime bound, so the whole window
+  // is in scope. The lifetime clamp gets its own describe block below.
+  const doses = (...ids: number[]) => ids.map((id) => ({ id }));
+  const TZ = "UTC";
+
   it("exposes STRIP_DAYS = 14", () => {
     expect(STRIP_DAYS).toBe(14);
   });
@@ -257,11 +264,12 @@ describe("supplementAdherenceStrip", () => {
     ]);
     const strip = supplementAdherenceStrip(
       supp(),
-      [1, 2],
+      doses(1, 2),
       dates,
       new Set(),
       () => new Set(),
-      takenByDose
+      takenByDose,
+      TZ
     );
     expect(strip).toEqual([
       { date: "d0", state: "taken" },
@@ -273,11 +281,12 @@ describe("supplementAdherenceStrip", () => {
   it("marks a date na when the supplement is not due (rest-day on a workout day)", () => {
     const strip = supplementAdherenceStrip(
       supp({ condition: "rest_day" as SupplementCondition }),
-      [1],
+      doses(1),
       ["d0", "d1"],
       new Set(["d0"]), // d0 was a workout day → rest_day supp not due
       () => new Set(),
-      indexTakenByDose([{ dose_id: 1, date: "d1", status: "taken" }])
+      indexTakenByDose([{ dose_id: 1, date: "d1", status: "taken" }]),
+      TZ
     );
     expect(strip).toEqual([
       { date: "d0", state: "na" },
@@ -288,11 +297,12 @@ describe("supplementAdherenceStrip", () => {
   it("marks a deliberately-skipped day skipped, not missed (#232)", () => {
     const strip = supplementAdherenceStrip(
       supp(),
-      [1],
+      doses(1),
       ["d0"],
       new Set(),
       () => new Set(),
-      indexTakenByDose([{ dose_id: 1, date: "d0", status: "skipped" }])
+      indexTakenByDose([{ dose_id: 1, date: "d0", status: "skipped" }]),
+      TZ
     );
     expect(strip).toEqual([{ date: "d0", state: "skipped" }]);
   });
@@ -306,21 +316,23 @@ describe("supplementAdherenceStrip", () => {
     // An always-active resolver makes every date due.
     const active = supplementAdherenceStrip(
       s,
-      [1],
+      doses(1),
       dates,
       new Set(),
       () => new Set(["travel"]),
-      indexTakenByDose([{ dose_id: 1, date: "d0", status: "taken" }])
+      indexTakenByDose([{ dose_id: 1, date: "d0", status: "taken" }]),
+      TZ
     );
     expect(active.map((d) => d.state)).toEqual(["taken", "missed"]);
 
     const inactive = supplementAdherenceStrip(
       s,
-      [1],
+      doses(1),
       dates,
       new Set(),
       () => new Set(),
-      indexTakenByDose([])
+      indexTakenByDose([]),
+      TZ
     );
     expect(inactive.map((d) => d.state)).toEqual(["na", "na"]);
   });
@@ -337,11 +349,12 @@ describe("supplementAdherenceStrip", () => {
       date >= "d2" ? new Set(["travel"]) : new Set<string>();
     const strip = supplementAdherenceStrip(
       s,
-      [1],
+      doses(1),
       dates,
       new Set(),
       situationsOn,
-      indexTakenByDose([])
+      indexTakenByDose([]),
+      TZ
     );
     expect(strip.map((d) => d.state)).toEqual(["na", "na", "missed"]);
   });
@@ -350,7 +363,7 @@ describe("supplementAdherenceStrip", () => {
     const dates = ["d0", "d1", "d2"];
     const strip = supplementAdherenceStrip(
       supp(),
-      [1],
+      doses(1),
       dates,
       new Set(),
       () => new Set(),
@@ -358,10 +371,262 @@ describe("supplementAdherenceStrip", () => {
         { dose_id: 1, date: "d0", status: "taken" },
         { dose_id: 1, date: "d1", status: "taken" },
         // d2 = today, not logged → pending
-      ])
+      ]),
+      TZ
     );
     const r = adherenceSummary(strip);
     expect(r.streak).toBe(2);
     expect(r.pct).toBe(100);
+  });
+});
+
+// The cold-start boundary (#1442). A quick-added medication read "0% adherence"
+// seconds after it was created: the fixed 14-day lookback scored thirteen days on
+// which the item did not exist as outright misses. The distinction the whole fix
+// turns on is "no applicable dose-slot has elapsed yet" (no history — pct null)
+// versus "slots elapsed and none were taken" (an honest 0%), and BOTH halves are
+// pinned here, because a clamp that swallows the genuine zero is just as wrong.
+describe("dose-lifetime clamp / the no-history boundary (#1442)", () => {
+  const TZ = "UTC";
+  const DATES = ["2026-07-20", "2026-07-21", "2026-07-22", "2026-07-23"];
+  // The window's last day is "today" — adherenceSummary treats a trailing miss on it
+  // as still-pending, so a slot must have elapsed on an EARLIER day to count.
+  const TODAY = DATES[DATES.length - 1];
+
+  function med(createdAt: string): Supplement {
+    return {
+      id: 1,
+      name: "Ibuprofen (test)",
+      condition: "daily" as SupplementCondition,
+      situation: null,
+      as_needed: 0,
+      created_at: createdAt,
+    } as Supplement;
+  }
+
+  const build = (
+    supp: Supplement,
+    doses: { id: number; created_at?: string | null }[],
+    logs: { dose_id: number; date: string; status?: "taken" | "skipped" }[] = []
+  ) =>
+    supplementAdherenceStrip(
+      supp,
+      doses,
+      DATES,
+      new Set(),
+      () => new Set(),
+      indexTakenByDose(logs),
+      TZ
+    );
+
+  describe("doseExistsSince", () => {
+    it("takes the later of the item's and the dose's creation day", () => {
+      expect(
+        doseExistsSince("2026-07-20 08:00:00", "2026-07-22 09:30:00", TZ)
+      ).toBe("2026-07-22");
+      // A dose can't predate its item; the item's day wins if it is later.
+      expect(
+        doseExistsSince("2026-07-22 08:00:00", "2026-07-20 09:30:00", TZ)
+      ).toBe("2026-07-22");
+    });
+
+    it("falls back to whichever timestamp is stored, else null (no bound)", () => {
+      expect(doseExistsSince("2026-07-22 08:00:00", null, TZ)).toBe(
+        "2026-07-22"
+      );
+      expect(doseExistsSince(null, "2026-07-22 08:00:00", TZ)).toBe(
+        "2026-07-22"
+      );
+      expect(doseExistsSince(null, null, TZ)).toBeNull();
+    });
+
+    it("resolves the UTC timestamp onto the PROFILE's calendar day", () => {
+      // 23:00 UTC is already the next morning in Tokyo and still the same
+      // afternoon in Los Angeles. Slicing the raw UTC string would put a Tokyo
+      // user's brand-new item on "yesterday" and hand the strip a phantom miss.
+      const at = "2026-07-22 23:00:00";
+      expect(doseExistsSince(at, at, "Asia/Tokyo")).toBe("2026-07-23");
+      expect(doseExistsSince(at, at, "America/Los_Angeles")).toBe("2026-07-22");
+      expect(doseExistsSince(at, at, "UTC")).toBe("2026-07-22");
+    });
+  });
+
+  it("no elapsed slot yet: a med added moments ago reports no history, not 0%", () => {
+    const createdToday = `${TODAY} 09:15:00`;
+    const s = build(med(createdToday), [{ id: 1, created_at: createdToday }]);
+    // Every prior day is outside the item's lifetime; today is still pending.
+    expect(s.map((d) => d.state)).toEqual(["na", "na", "na", "missed"]);
+    const r = adherenceSummary(s);
+    expect(r.applicableDays).toBe(0);
+    expect(r.pct).toBeNull(); // the card hides the line rather than printing 0%
+    expect(r.streak).toBe(0);
+  });
+
+  it("one elapsed slot, unconfirmed: a real 0% survives the clamp", () => {
+    // Added yesterday and not taken — a settled, genuinely missed day.
+    const created = `${DATES[2]} 08:00:00`;
+    const s = build(med(created), [{ id: 1, created_at: created }]);
+    expect(s.map((d) => d.state)).toEqual(["na", "na", "missed", "missed"]);
+    const r = adherenceSummary(s);
+    expect(r.applicableDays).toBe(1);
+    expect(r.pct).toBe(0);
+  });
+
+  it("keeps a full honest 0% for a week of elapsed, untaken slots", () => {
+    const s = build(med("2026-01-04 08:00:00"), [
+      { id: 1, created_at: "2026-01-04 08:00:00" },
+    ]);
+    expect(s.map((d) => d.state)).toEqual([
+      "missed",
+      "missed",
+      "missed",
+      "missed",
+    ]);
+    expect(adherenceSummary(s).pct).toBe(0);
+  });
+
+  it("an item with no live dose row has nothing to miss (na, not 0%)", () => {
+    // The only dose was retired, so the current schedule is empty. Previously
+    // aggregateDoseDay's max(total, 1) floor scored every due day as missed.
+    const s = build(med("2026-01-04 08:00:00"), []);
+    expect(s.map((d) => d.state)).toEqual(["na", "na", "na", "na"]);
+    expect(adherenceSummary(s).pct).toBeNull();
+  });
+
+  it("scores each day against only the doses that existed on it", () => {
+    // A second dose added on d2: d0/d1 are a one-dose day (fully taken → taken),
+    // and only d2 onward is judged against both.
+    const created = "2026-01-04 08:00:00";
+    const s = build(
+      med(created),
+      [
+        { id: 1, created_at: created },
+        { id: 2, created_at: `${DATES[2]} 07:00:00` },
+      ],
+      [
+        { dose_id: 1, date: DATES[0], status: "taken" },
+        { dose_id: 1, date: DATES[1], status: "taken" },
+        { dose_id: 1, date: DATES[2], status: "taken" },
+      ]
+    );
+    expect(s.map((d) => d.state)).toEqual([
+      "taken",
+      "taken",
+      "partial", // dose 2 now exists and wasn't taken
+      "missed",
+    ]);
+  });
+
+  it("a schedule re-time does NOT erase the days the dose was really taken", () => {
+    // doseExistsSince deliberately ignores updated_at (unlike doseAdherenceSince,
+    // whose pattern window restarts at a re-time) — a history percentage must keep
+    // showing follow-through logged while the dose sat in its old slot.
+    const created = "2026-01-04 08:00:00";
+    const s = build(
+      med(created),
+      // updated_at is not part of the existence bound; passing only created_at is
+      // the whole point — the strip never sees a re-time.
+      [{ id: 1, created_at: created }],
+      DATES.map((date) => ({ dose_id: 1, date, status: "taken" as const }))
+    );
+    expect(s.every((d) => d.state === "taken")).toBe(true);
+    expect(adherenceSummary(s).pct).toBe(100);
+  });
+
+  it("keeps a deliberate skip visible on a brand-new item (never a phantom miss)", () => {
+    const created = `${DATES[2]} 08:00:00`;
+    const s = build(
+      med(created),
+      [{ id: 1, created_at: created }],
+      [{ dose_id: 1, date: DATES[2], status: "skipped" }]
+    );
+    expect(s.map((d) => d.state)).toEqual(["na", "na", "skipped", "missed"]);
+    const r = adherenceSummary(s);
+    expect(r.pct).toBeNull(); // a skip is a decision, not a due day
+    expect(r.skippedDays).toBe(1);
+  });
+
+  describe("doseWindowSince: logged history widens the bound", () => {
+    const dates = (...ds: string[]) => ({
+      taken: new Set(ds),
+      skipped: new Set<string>(),
+    });
+
+    it("extends back to the earliest log when it predates created_at", () => {
+      // A med reconciled off an imported document: the row was WRITTEN today but
+      // carries weeks of real adherence. A log is proof the dose existed that day,
+      // so the history the user actually has must not be clamped away.
+      expect(
+        doseWindowSince(
+          "2026-07-22 09:00:00",
+          "2026-07-22 09:00:00",
+          dates("2026-07-10", "2026-07-14"),
+          TZ
+        )
+      ).toBe("2026-07-10");
+    });
+
+    it("counts a deliberate skip as existence evidence too", () => {
+      expect(
+        doseWindowSince(
+          "2026-07-22 09:00:00",
+          null,
+          { taken: new Set<string>(), skipped: new Set(["2026-07-11"]) },
+          TZ
+        )
+      ).toBe("2026-07-11");
+    });
+
+    it("never moves the bound FORWARD past the creation day", () => {
+      expect(
+        doseWindowSince("2026-07-10 09:00:00", null, dates("2026-07-20"), TZ)
+      ).toBe("2026-07-10");
+    });
+
+    it("leaves the cold start alone: no logs, no widening", () => {
+      expect(doseWindowSince("2026-07-22 09:00:00", null, undefined, TZ)).toBe(
+        "2026-07-22"
+      );
+      expect(doseWindowSince(null, null, dates("2026-07-01"), TZ)).toBeNull();
+    });
+
+    it("keeps a backfilled history visible on the strip", () => {
+      // Created today, but every prior day in the window is logged taken — the
+      // percentage must read 100%, not "no history".
+      const created = `${TODAY} 09:00:00`;
+      const s = build(
+        med(created),
+        [{ id: 1, created_at: created }],
+        DATES.slice(0, 3).map((date) => ({
+          dose_id: 1,
+          date,
+          status: "taken" as const,
+        }))
+      );
+      expect(s.map((d) => d.state)).toEqual([
+        "taken",
+        "taken",
+        "taken",
+        "missed",
+      ]);
+      expect(adherenceSummary(s).pct).toBe(100);
+    });
+  });
+
+  it("leaves an unbounded (timestamp-less) item scoring the whole window", () => {
+    // Backward compatibility: no stored lifetime → no clamp, the pre-#1442 shape.
+    const s = build(
+      {
+        ...med("2026-01-04 08:00:00"),
+        created_at: null,
+      } as unknown as Supplement,
+      [{ id: 1 }]
+    );
+    expect(s.map((d) => d.state)).toEqual([
+      "missed",
+      "missed",
+      "missed",
+      "missed",
+    ]);
   });
 });

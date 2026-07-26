@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   computeWorkoutPresence,
   householdPresenceChip,
+  isCompletedSessionRow,
   ACTIVE_MAX_QUIET_MIN,
   FINISHED_WINDOW_MIN,
   STALE_MIN,
@@ -242,6 +243,110 @@ describe("computeWorkoutPresence", () => {
       }),
     ]);
     expect(p.state).not.toBe("active");
+  });
+
+  // #1441: a completed MANUAL log — "+ Log activity → Walking → Duration 30 →
+  // Done" — defaults start_time to now and leaves end_time NULL, which the active
+  // classifier used to read as a live draft (the dock ticked up on every page load
+  // and the 45-min "Still working out?" nag fired). A positive duration_min is a
+  // finish (isCompletedSessionRow), so the row belongs to the FINISHED classifier.
+  it("reads a completed manual log (start + duration, no end_time) as finished, not active", () => {
+    const p = presence([
+      row({
+        type: "cardio",
+        title: "Walking",
+        start_time: "09:15",
+        end_time: null,
+        duration_min: 30,
+        created_at: sql("09:45"),
+        updated_at: sql("09:45"), // just saved — maximally "live"-looking
+      }),
+    ]);
+    expect(p.state).toBe("finished");
+    expect(p.activityId).toBe(1);
+    // End instant = 09:15 + 30 min = 09:45, i.e. 15 min before NOW (10:00).
+    expect(p.sinceMin).toBe(15);
+    expect(p.stale).toBe(false);
+  });
+
+  it("never flags a completed manual log stale, however long it sits", () => {
+    // Logged 50 min ago (past STALE_MIN) — the old classifier would have raised
+    // the amber "Still working out?" nag on a session that was already done.
+    const p = presence([
+      row({
+        start_time: "09:00",
+        end_time: null,
+        duration_min: 10,
+        created_at: sql("09:10"),
+        updated_at: sql("09:10"),
+      }),
+    ]);
+    expect(p.state).not.toBe("active");
+    expect(p.stale).toBe(false);
+  });
+
+  it("keeps the true live-draft shape (start, no end, no duration) active", () => {
+    const p = presence([
+      row({
+        start_time: "09:00",
+        duration_min: null,
+        updated_at: sql("09:55"),
+      }),
+    ]);
+    expect(p.state).toBe("active");
+    expect(p.sinceMin).toBe(60);
+  });
+
+  it("treats a zero/blank duration as still-live, not a finish", () => {
+    // duration_min 0 is "nothing logged yet", not a 0-minute session — the same
+    // `> 0` boundary isCompletedSessionRow draws.
+    const p = presence([
+      row({ start_time: "09:00", duration_min: 0, updated_at: sql("09:55") }),
+    ]);
+    expect(p.state).toBe("active");
+  });
+
+  it("prefers a still-live draft over a completed same-day manual log", () => {
+    const p = presence([
+      row({
+        id: 2,
+        start_time: "09:15",
+        duration_min: 30,
+        updated_at: sql("09:45"),
+      }),
+      row({ id: 3, start_time: "09:50", updated_at: sql("09:58") }),
+    ]);
+    expect(p.state).toBe("active");
+    expect(p.activityId).toBe(3);
+  });
+});
+
+describe("isCompletedSessionRow", () => {
+  // The #1441 pin: the active classifier and the delayed-dispatch fire-time guard
+  // read the SAME predicate, so "finished" can never grow a second definition.
+  const cases: [string, Partial<PresenceActivityRow>, boolean][] = [
+    ["end_time present", { start_time: "09:00", end_time: "09:30" }, true],
+    [
+      "start + positive duration",
+      { start_time: "09:00", duration_min: 30 },
+      true,
+    ],
+    ["no start_time at all (retroactive log)", { duration_min: 45 }, true],
+    ["start only (live draft)", { start_time: "09:00" }, false],
+    ["start + zero duration", { start_time: "09:00", duration_min: 0 }, false],
+  ];
+  for (const [label, over, expected] of cases) {
+    it(`${label} → ${expected ? "completed" : "live"}`, () => {
+      expect(isCompletedSessionRow(row(over))).toBe(expected);
+    });
+  }
+
+  it("agrees with computeWorkoutPresence: a completed row is never active", () => {
+    for (const [, over, expected] of cases) {
+      if (!expected) continue;
+      const p = presence([row({ ...over, updated_at: sql("09:59") })]);
+      expect(p.state).not.toBe("active");
+    }
   });
 });
 
