@@ -2,7 +2,10 @@
 
 import { useState, type ReactNode } from "react";
 import LineChartCard from "./LineChartCard";
+import ChartCard from "./ChartCard";
 import AnnotationToggleBar from "./AnnotationToggleBar";
+import { roundChartValue } from "@/lib/chart-format";
+import type { AppRoute } from "@/lib/hrefs";
 import {
   annotationKindsPresent,
   filterAnnotationsByKind,
@@ -16,10 +19,12 @@ import {
 export interface BodyChartSpec {
   key: string;
   title: string;
-  // Drop the card's own <h2> (#1541 fix 3). The heading earns its keep on the Body
-  // tab, where several charts stack and each needs naming; on a SINGLE-chart detail
-  // page whose <h1> is the same string it is pure echo — the #1533 double-render
-  // shape, ~700px apart on a phone. A `headerAction` still renders its own row.
+  // Take the card's title (and its latest-value headline) out of the PAINTED header
+  // (#1541 fix 3). Both earn their keep on the Body tab, where several cards stack
+  // and each needs naming; on a SINGLE-chart detail page whose <h1> is the same
+  // string and whose subtitle is the same latest value they are pure echo — the
+  // #1533 double-render shape, ~700px apart on a phone. The title stays in the
+  // document outline (sr-only), so the card is still named for a screen reader.
   hideTitle?: boolean;
   data: { date: string; value: number | null }[];
   label: string;
@@ -47,6 +52,11 @@ export interface BodyChartSpec {
   // registry, never re-decided per surface.
   yDomain?: [number | "auto", number | "auto"];
   groupYTicks?: boolean;
+  // The chart's tap-through destination (#1488) — REQUIRED, `null` only with a
+  // same-line `detail-none:` justification at the call site. Every registered body
+  // metric has one via `metricDetailHref(slug)`; the metric detail page's OWN chart
+  // passes null (it is already the detail).
+  detailHref: AppRoute | null;
   // Reference LINE colour/label already ride `referenceValue`.
 }
 
@@ -65,6 +75,19 @@ export interface BodyChartSection {
   after?: ReactNode;
   // Rendered when the section has no charts and no `after` content.
   empty?: ReactNode;
+}
+
+// The card's latest-value headline (#1485 B) — part of the header TAP TARGET since
+// #1488, so the thing you tap to open the detail page is also the thing that answers
+// "what is it now?". Read off the SAME pre-windowed, already-rounded series the plot
+// draws (no second computation, #221); null when the window is empty, so the card
+// falls back to its title alone rather than printing a "—" that means nothing.
+function latestHeadline(chart: BodyChartSpec): string | null {
+  for (let i = chart.data.length - 1; i >= 0; i--) {
+    const v = chart.data[i].value;
+    if (v != null) return `${roundChartValue(v)}${chart.unit}`;
+  }
+  return null;
 }
 
 // The Body section's chart grid. Client-side so a single
@@ -100,29 +123,28 @@ export default function BodyTrendCharts({
   const grid = (list: BodyChartSpec[]) => (
     <div className="grid gap-6 lg:grid-cols-2">
       {list.map((chart) => (
-        <div
+        <ChartCard
           key={chart.key}
-          id={chart.anchorId}
-          data-testid={chart.testid}
-          className={chart.anchorId ? "card scroll-mt-28" : "card"}
+          title={chart.title}
+          hideTitle={chart.hideTitle}
+          // The detail page's own chart (#1541 fix 3): its <h1> is this title and
+          // its subtitle is this headline, ~700px apart on a phone — the #1533
+          // double-render shape. Suppressed together, since the card's header row
+          // is not even a tap target there (detailHref is null).
+          headline={chart.hideTitle ? null : latestHeadline(chart)}
+          note={chart.note}
+          anchorId={chart.anchorId}
+          testid={chart.testid}
+          headerAction={chart.headerAction}
+          detailHref={chart.detailHref}
+          footer={
+            chart.projectionNote ? (
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                {chart.projectionNote}
+              </p>
+            ) : null
+          }
         >
-          {(!chart.hideTitle || chart.headerAction) && (
-            <div className="mb-3 flex items-center justify-between gap-2">
-              {chart.hideTitle ? (
-                <span />
-              ) : (
-                <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-                  {chart.title}
-                </h2>
-              )}
-              {chart.headerAction}
-            </div>
-          )}
-          {chart.note && (
-            <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
-              {chart.note}
-            </p>
-          )}
           <LineChartCard
             data={chart.data}
             label={chart.label}
@@ -134,12 +156,7 @@ export default function BodyTrendCharts({
             yDomain={chart.yDomain}
             groupYTicks={chart.groupYTicks}
           />
-          {chart.projectionNote && (
-            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              {chart.projectionNote}
-            </p>
-          )}
-        </div>
+        </ChartCard>
       ))}
     </div>
   );

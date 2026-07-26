@@ -62,7 +62,9 @@ export default function RawPayloadViewer({ id }: { id: number }) {
           Couldn’t load raw payload ({text}).
         </p>
       )}
-      {state === "loaded" && <RawDataViewer text={text} />}
+      {state === "loaded" && (
+        <RawDataViewer text={text} downloadName={`sync-payload-${id}`} />
+      )}
     </details>
   );
 }

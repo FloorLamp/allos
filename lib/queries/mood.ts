@@ -90,3 +90,25 @@ export function hasPriorAnxietyLog(profileId: number): boolean {
       .get(profileId) != null
   );
 }
+
+// The mood readings a metric detail page's table lists (issue #1488), newest first.
+// A plain profile-scoped read of the same rows the trend draws — kept HERE, in the
+// mood store's read layer, so the mood_logs table stays store-private (#992): the
+// detail page and its row-CRUD talk to this module rather than naming the table.
+export function getMoodReadings(
+  profileId: number,
+  limit: number
+): { id: number; date: string; valence: number; notes: string | null }[] {
+  return db
+    .prepare(
+      `SELECT id, date, valence, notes
+         FROM mood_logs WHERE profile_id = ?
+        ORDER BY date DESC, id DESC LIMIT ?`
+    )
+    .all(profileId, limit) as {
+    id: number;
+    date: string;
+    valence: number;
+    notes: string | null;
+  }[];
+}

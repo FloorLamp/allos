@@ -16,7 +16,7 @@
 
 import { chartSeries } from "./chart-colors";
 import { shiftDateStr } from "./date";
-import { bodyMetricHref, type AppRoute } from "./hrefs";
+import { metricDetailHref, type AppRoute } from "./hrefs";
 import { orderBodyCharts, type BodyChartDescriptor } from "./trends-body-order";
 import type { BodyMetricKind } from "./types";
 
@@ -33,11 +33,18 @@ export const BODY_METRIC_SLUGS = [
   "respiratory-rate",
   "hrv",
   "temperature",
+  "skin-temp",
   "weight",
   "body-fat",
   "resting-hr",
   "height",
   "head-circ",
+  // Sun / outdoor daylight minutes (#1171) — a derived DAILY series (it aggregates
+  // outdoor activity against the solar day at the home location, so it has no
+  // per-row store of its own). It became a registered kind in #1488 so the Body
+  // tab's sun card taps through like every other chart instead of being the one
+  // dead end left on the tab.
+  "sun",
   "steps",
   "hr",
   "bmi",
@@ -150,6 +157,24 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     goalMetric: null,
     quickAdd: "measurements",
   },
+  // A SIGNED nightly deviation from the tracker's own rolling baseline, not an
+  // absolute temperature — which is why it carries 1 decimal (the whole readable
+  // range is roughly ±2 °C, where 0dp would flatten it to a constant 0) and why it
+  // is NOT the `temperature` slug: wrist skin temperature is a distinct measurement
+  // site from core body temperature, kept apart by the #482 exclusion discipline.
+  // Import-only (the baseline is the device's and never exposed), so no quick-add.
+  "skin-temp": {
+    slug: "skin-temp",
+    label: "Skin temp",
+    title: "Skin temperature variation",
+    unit: " °C",
+    color: chartSeries.violet,
+    decimals: 1,
+    order: 6,
+    windowed: true,
+    goalMetric: null,
+    quickAdd: null,
+  },
   temperature: {
     slug: "temperature",
     label: "Temperature",
@@ -157,7 +182,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " \u00b0F",
     color: chartSeries.rose,
     decimals: 1,
-    order: 6,
+    order: 7,
     windowed: true,
     goalMetric: null,
     quickAdd: "measurements",
@@ -170,7 +195,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     weightUnit: true,
     color: chartSeries.brand,
     decimals: 1,
-    order: 7,
+    order: 8,
     windowed: true,
     goalMetric: "weight",
     quickAdd: "measurements",
@@ -182,7 +207,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: "%",
     color: chartSeries.violet,
     decimals: 1,
-    order: 8,
+    order: 9,
     windowed: true,
     goalMetric: "body_fat",
     quickAdd: "measurements",
@@ -206,7 +231,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " cm",
     color: chartSeries.violet,
     decimals: 1,
-    order: 9,
+    order: 10,
     windowed: true,
     goalMetric: null,
     quickAdd: "measurements",
@@ -218,10 +243,26 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " cm",
     color: chartSeries.sky,
     decimals: 1,
-    order: 10,
+    order: 11,
     windowed: true,
     goalMetric: null,
     quickAdd: "measurements",
+  },
+  sun: {
+    slug: "sun",
+    label: "Sun",
+    title: "Sun / outdoor time",
+    unit: " min",
+    color: chartSeries.amber,
+    decimals: 0,
+    order: 12,
+    windowed: true,
+    goalMetric: null,
+    quickAdd: null,
+    // Daily minutes outdoors: a COUNT, so "how far from zero" is the whole signal
+    // (#1541). Deliberately NOT set on skin-temp, whose series is a SIGNED
+    // deviation from the device's baseline — a zero floor would clip half of it.
+    countMetric: true,
   },
   steps: {
     slug: "steps",
@@ -230,7 +271,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: "",
     color: chartSeries.sky,
     decimals: 0,
-    order: 12,
+    order: 13,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -243,7 +284,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " bpm",
     color: chartSeries.rose,
     decimals: 0,
-    order: 13,
+    order: 14,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -255,7 +296,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: "",
     color: chartSeries.sky,
     decimals: 1,
-    order: 14,
+    order: 15,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -267,7 +308,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " kg",
     color: chartSeries.sky,
     decimals: 1,
-    order: 15,
+    order: 16,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -279,7 +320,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " kg",
     color: chartSeries.violet,
     decimals: 2,
-    order: 16,
+    order: 17,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -291,7 +332,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " kcal",
     color: chartSeries.rose,
     decimals: 0,
-    order: 17,
+    order: 18,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -303,7 +344,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " L",
     color: chartSeries.sky,
     decimals: 2,
-    order: 18,
+    order: 19,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -316,7 +357,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: " kcal",
     color: chartSeries.amber,
     decimals: 0,
-    order: 19,
+    order: 20,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -329,7 +370,7 @@ export const BODY_METRIC_META: Record<BodyMetricSlug, BodyMetricMeta> = {
     unit: "",
     color: chartSeries.amber,
     decimals: 1,
-    order: 20,
+    order: 21,
     windowed: false,
     goalMetric: null,
     quickAdd: null,
@@ -389,7 +430,7 @@ export function buildBodyMetricTile(
   return {
     slug: meta.slug,
     label: meta.label,
-    href: bodyMetricHref(meta.slug),
+    href: metricDetailHref(meta.slug),
     unit: resolveBodyMetricUnit(meta, weightUnit),
     color: meta.color,
     decimals: meta.decimals,

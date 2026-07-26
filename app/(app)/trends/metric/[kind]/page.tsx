@@ -9,7 +9,7 @@ import {
   type WeightUnit,
 } from "@/lib/settings";
 import { round as roundTo } from "@/lib/units";
-import { ageInMonthsFromBirthdate } from "@/lib/date";
+import { ageInMonthsFromBirthdate, lastNDates } from "@/lib/date";
 import {
   showHeadCircEntry,
   showBodyFat,
@@ -18,12 +18,13 @@ import {
 import {
   getBiomarkerSeries,
   getBodyMetricDailySeries,
+  getDaylightOutdoorMinutesSeries,
   getMetricDailyTotals,
   getHrDailySummary,
   getMoodLogs,
   getGoals,
 } from "@/lib/queries";
-import { HRV_METRIC } from "@/lib/vitals-input";
+import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
 import { bmiSeriesDatePaired } from "@/lib/growth-series";
 import { dispWeight, round } from "@/lib/units";
 import { ALL_ROWS, filterSeriesByRange } from "@/lib/trends";
@@ -55,6 +56,11 @@ import {
   type PeriodStat,
 } from "@/lib/trends-body-metrics";
 import type { AppRoute } from "@/lib/hrefs";
+import {
+  METRIC_READING_STORE,
+  METRIC_READINGS_LIMIT,
+  getMetricReadings,
+} from "@/lib/metric-readings";
 import type { BodyMetricKind, Goal } from "@/lib/types";
 import { PageHeader, EmptyState } from "@/components/ui";
 import PageContainer from "@/components/PageContainer";
@@ -62,9 +68,17 @@ import DateRangeControl from "@/components/DateRangeControl";
 import BodyTrendCharts, {
   type BodyChartSpec,
 } from "@/components/BodyTrendCharts";
+import MetricReadingsTable, {
+  type MetricReadingRow,
+} from "@/components/MetricReadingsTable";
 import MeasurementsQuickAdd from "../../MeasurementsQuickAdd";
 
 export const dynamic = "force-dynamic";
+
+// The widest span the sun/outdoor series is gathered over — its query answers a list
+// of DATES (there is no row store to read back), so the page picks the horizon and
+// the range control windows within it. A year matches the Body tab's own cap.
+const SUN_SERIES_DAYS = 366;
 
 // A body-metric detail page (#1067 Phase 2) — the per-metric surface reached from a
 // Trends → Body sparkline tile, mirroring the biomarker series view (/biomarkers/view)
@@ -97,7 +111,8 @@ function biomarkerPoints(
 function fullSeriesFor(
   slug: BodyMetricSlug,
   profileId: number,
-  weightUnit: WeightUnit
+  weightUnit: WeightUnit,
+  todayStr: string
 ): { date: string; value: number }[] {
   switch (slug) {
     // ── vitals (#1486) ────────────────────────────────────────────────────────
@@ -118,6 +133,18 @@ function fullSeriesFor(
       return getMetricDailyTotals(profileId, HRV_METRIC, ALL_ROWS).map((r) => ({
         date: r.date,
         value: Math.round(r.value),
+      }));
+    // Keeps 1 decimal, unlike its whole-unit neighbours: the readable range of a
+    // signed baseline deviation is roughly ±2 °C, so whole units would flatten the
+    // series to a constant 0. getMetricDailyTotals AVERAGES it per day, never sums.
+    case "skin-temp":
+      return getMetricDailyTotals(
+        profileId,
+        SKIN_TEMP_DELTA_METRIC,
+        ALL_ROWS
+      ).map((r) => ({
+        date: r.date,
+        value: roundTo(r.value, BODY_METRIC_META["skin-temp"].decimals),
       }));
     case "weight":
       return getBodyMetricDailySeries(profileId, "weight", ALL_ROWS).map(
@@ -141,6 +168,16 @@ function fullSeriesFor(
         "head_circumference_cm",
         ALL_ROWS
       ).map((r) => ({ date: r.date, value: round(r.value, 1) }));
+    case "sun":
+      // Sun/outdoor minutes is the one DATE-DRIVEN series here: the query answers a
+      // list of days rather than reading rows back, so the page asks for the widest
+      // span it charts (a year) and the range control windows it like every other
+      // metric. Same getDaylightOutdoorMinutes computation the Body tab's card and
+      // the DaylightChip read — a formatter, not a second engine (#221).
+      return getDaylightOutdoorMinutesSeries(
+        profileId,
+        lastNDates(todayStr, SUN_SERIES_DAYS)
+      );
     case "steps":
       return getMetricDailyTotals(profileId, "steps", ALL_ROWS).map((r) => ({
         date: r.date,
@@ -192,6 +229,43 @@ function fullSeriesFor(
         value: m.valence,
       }));
   }
+}
+
+// Why a DERIVED metric shows no readings table: there is no row to edit. Said out
+// loud on the page, because an empty table would read as "your data is missing"
+// rather than "this number is computed from other numbers you CAN fix".
+const DERIVED_READING_REASON: Partial<Record<BodyMetricSlug, string>> = {
+  bmi: "BMI is computed from your weight and height — correct a reading on either of those to change it.",
+  hr: "Daily average heart rate is computed from your recorded per-minute heart rate, so there is no single reading to edit here.",
+  sun: "Outdoor daylight is computed from your logged outdoor sessions and the solar day at your home location — edit the session to change it.",
+};
+
+// The detail page's readings table rows: the metric's own store rows, formatted in
+// the page's display unit. The ONE unit boundary is the same one the series crosses
+// (weight in the login's preference); every other metric is stored in the unit it is
+// charted in, so its value passes through rounded to the metric's decimals.
+function readingRowsFor(
+  slug: BodyMetricSlug,
+  profileId: number,
+  decimals: number,
+  weightUnit: WeightUnit
+): MetricReadingRow[] {
+  return getMetricReadings(profileId, slug).map((r) => {
+    const shown =
+      slug === "weight"
+        ? dispWeight(r.value, weightUnit)
+        : round(r.value, decimals);
+    return {
+      id: r.id,
+      date: r.date,
+      display: String(shown),
+      editValue: shown,
+      source: r.source,
+      flag: r.flag,
+      edited: r.edited,
+      notes: r.notes,
+    };
+  });
 }
 
 // The goal overlay (target line + projection caption) for a metric that can carry a
@@ -280,9 +354,10 @@ export default async function BodyMetricDetailPage(props: {
       : searchParams.range
   );
 
-  const fullSeries = fullSeriesFor(kind, profile.id, weightUnit);
+  const fullSeries = fullSeriesFor(kind, profile.id, weightUnit, todayStr);
   const windowed = filterSeriesByRange(fullSeries, range);
   const stats = bodyMetricPeriodStats(fullSeries, todayStr, meta.decimals);
+  const readings = readingRowsFor(kind, profile.id, meta.decimals, weightUnit);
 
   // Goal overlay + event annotations, both windowed to the shared range — the same
   // machinery the Body tab draws (buildTrendAnnotations / buildProtocolTrendWindows).
@@ -301,6 +376,7 @@ export default async function BodyMetricDetailPage(props: {
 
   const chartSpec: BodyChartSpec = {
     key: meta.slug,
+    detailHref: null, // detail-none: this page IS the detail — a card here would link to itself
     title: meta.title,
     // The page's <h1> already says it — a card heading here is pure echo (#1541).
     hideTitle: true,
@@ -405,6 +481,21 @@ export default async function BodyMetricDetailPage(props: {
       </div>
 
       {quickAdd}
+
+      {/* The readings themselves, one tap from the chart they shape (#1488 /
+          #1397): each row's ⋯ menu edits or deletes it, and the chart above
+          redraws. */}
+      <MetricReadingsTable
+        kind={kind}
+        rows={readings}
+        unit={unit}
+        readOnlyReason={
+          METRIC_READING_STORE[kind]
+            ? null
+            : (DERIVED_READING_REASON[kind] ?? null)
+        }
+        truncated={readings.length >= METRIC_READINGS_LIMIT}
+      />
     </PageContainer>
   );
 }

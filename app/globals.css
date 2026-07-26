@@ -352,6 +352,17 @@ body::before {
   .press {
     @apply transition-transform duration-100 active:scale-[0.97];
   }
+  /* The plot box inside `components/ChartCard.tsx` (issue #1488). The CARD owns the
+     plot height — square below `sm`, `plotHeightClass` (default h-64) above — and
+     this rule is what makes that ownership real: whatever the caller renders into
+     the slot (the chart, its lazy-loading placeholder, its offline/error fallback,
+     an EmptyState) fills the box instead of carrying its own `h-32`/`h-40`/`h-64`.
+     A class selector plus an element selector outranks the utility's single class,
+     so it wins over the chart's own height without `!important` — and a call site
+     therefore cannot silently reintroduce a per-chart height vocabulary. */
+  .chart-card-plot > * {
+    height: 100%;
+  }
 }
 
 /* ── SECTION: Chart hover motion ── */

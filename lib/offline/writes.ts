@@ -279,6 +279,40 @@ export function upsertMoodLog(
   return true;
 }
 
+// Correct or remove ONE past check-in, from the mood detail page's readings table
+// (issue #1488, absorbing #1397). Before this, `upsertMoodLog` was the only mood
+// write there was: today's mood was correctable by re-tapping, but a mis-tapped
+// "1 — awful" on a PAST day sat in the trend permanently, and the only editor was a
+// dialog reachable solely for days that already had a sleep record.
+//
+// Both live HERE, beside the upsert, because mood is store-private (#992): the ONE
+// write core owns every mutation of the table, so no engine elsewhere names it.
+// Profile-scoped by the WHERE clause; return false when nothing matched (a wrong id,
+// or another profile's row).
+export function updateMoodValence(
+  profileId: number,
+  id: number,
+  valence: number
+): boolean {
+  // The same 1-5 scale the pure normalizeMoodInput guard enforces on insert; a
+  // correction may not smuggle in an off-scale value the check-in couldn't produce.
+  if (!Number.isInteger(valence) || valence < 1 || valence > 5) return false;
+  const info = db
+    .prepare(
+      `UPDATE mood_logs SET valence = ?, updated_at = datetime('now')
+        WHERE id = ? AND profile_id = ?`
+    )
+    .run(valence, id, profileId);
+  return info.changes > 0;
+}
+
+export function deleteMoodLog(profileId: number, id: number): boolean {
+  const info = db
+    .prepare(`DELETE FROM mood_logs WHERE id = ? AND profile_id = ?`)
+    .run(id, profileId);
+  return info.changes > 0;
+}
+
 // ── idempotency ledger ──────────────────────────────────────────────────────────
 
 // Has this idempotency key already been applied for this profile? Consulted before

@@ -183,6 +183,18 @@ test.describe("Import detail: tabbed records browser", () => {
     // Copy grabs the full raw text and flashes the transient confirmation.
     await viewer.getByTestId("raw-copy").click();
     await expect(viewer.getByTestId("raw-copied")).toBeVisible();
+
+    // Download is FORMAT-AWARE: this document's raw is a CCD, so the button offers
+    // XML and the saved file carries a .xml extension — a hardcoded "Download JSON"
+    // would hand over a .json file containing XML, mislabeling it on disk. The
+    // companion JSON case is asserted in review-inbox.spec.ts.
+    const downloadBtn = viewer.getByTestId("raw-download");
+    await expect(downloadBtn).toHaveText(/Download XML/);
+    const [saved] = await Promise.all([
+      page.waitForEvent("download"),
+      downloadBtn.click(),
+    ]);
+    expect(saved.suggestedFilename()).toBe("extraction-908.xml");
   });
 
   // The destructive verb (#1071 item 5) keeps a confirm, and the confirm names

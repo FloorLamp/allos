@@ -139,8 +139,8 @@ const ALLOW: Record<string, { count: number; why: string }> = {
     why: "push_subscriptions created_at/last_used_at — audit stamps.",
   },
   "lib/offline/writes.ts": {
-    count: 2,
-    why: "mood_logs.updated_at audit stamp + the replayed_keys retention DELETE.",
+    count: 3,
+    why: "the mood store's two updated_at audit stamps (the check-in upsert + the #1488 past-day valence correction) + the replayed_keys retention DELETE. An audit stamp records when the write happened; nothing compares its calendar DAY to a today()-derived value.",
   },
   "lib/queries/attention.ts": {
     count: 1,

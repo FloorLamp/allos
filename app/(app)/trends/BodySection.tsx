@@ -42,7 +42,7 @@ import {
   getMoodLogs,
 } from "@/lib/queries";
 import { dispWeight, fmtWeight, round } from "@/lib/units";
-import { HRV_METRIC } from "@/lib/vitals-input";
+import { HRV_METRIC, SKIN_TEMP_DELTA_METRIC } from "@/lib/vitals-input";
 import {
   buildGrowthProfile,
   bmiSeriesDatePaired,
@@ -72,10 +72,11 @@ import { projectGoal, describeEta } from "@/lib/trend-projection";
 import { formatLongDate, formatClockMinutes } from "@/lib/format-date";
 import { isGoalLive } from "@/lib/goals";
 import { isIntradayRange, type DateRange } from "@/lib/timeline-format";
-import { timelineDayHref, type AppRoute } from "@/lib/hrefs";
+import { metricDetailHref, timelineDayHref, type AppRoute } from "@/lib/hrefs";
 import type { BodyMetricKind, Goal, MedicalRecord } from "@/lib/types";
 import { EmptyState } from "@/components/ui";
 import LineChartCard from "@/components/LineChartCard";
+import ChartCard, { CHART_PLOT_FILL } from "@/components/ChartCard";
 import NotesText from "@/components/NotesText";
 import ScrollFade from "@/components/ScrollFade";
 import BodyTrendCharts, {
@@ -155,9 +156,12 @@ const FEVER_F = 100.4;
 // trajectory), regardless of the shared window.
 const TEMP_RECENT = 30;
 // The intraday charts are the tab's densest content and the only place a phone gets
-// a full-viewport plot, so they run taller than the standard windowed h-48 cards.
-const INTRADAY_HEIGHT = "h-72 sm:h-80";
-const INTRADAY_POINT_HEIGHT = "h-56";
+// a full-viewport plot, so they run taller than the standard windowed cards from `sm`
+// up. Below `sm` every chart card is the #1488 square, so these carry only the
+// DESKTOP height — written as whole literal class strings (never `sm:${x}`), which is
+// the only form Tailwind's source scanner can see.
+const INTRADAY_PLOT_HEIGHT = "sm:h-80";
+const INTRADAY_POINT_PLOT_HEIGHT = "sm:h-56";
 // Full-bleed on a phone: cancel the shell's 1rem gutter, drop the card's horizontal
 // padding, rounding and side borders, and neutralize `.card`'s own `max-w-full` —
 // which would otherwise clamp the widened box back to the container width and merely
@@ -240,6 +244,18 @@ export default async function BodySection({
       value: Math.round(d.value),
     })
   );
+  // Skin temperature variation keeps 1 decimal, unlike its whole-unit neighbours:
+  // it is a signed deviation whose whole readable range is roughly ±2 °C, so
+  // rounding to whole units would flatten the series to a constant 0.
+  // getMetricDailyTotals AVERAGES this metric per day (AVERAGED_METRICS), never sums.
+  const skinTempAll = getMetricDailyTotals(
+    profile.id,
+    SKIN_TEMP_DELTA_METRIC,
+    3650
+  ).map((d) => ({
+    date: d.date,
+    value: Math.round(d.value * 10) / 10,
+  }));
 
   const systolicAll = vitalPoints(systolicRows);
   const diastolicAll = vitalPoints(diastolicRows);
@@ -252,6 +268,7 @@ export default async function BodySection({
   const spo2Chart = filterSeriesByRange(spo2All, range);
   const respiratoryChart = filterSeriesByRange(respiratoryAll, range);
   const hrvChart = filterSeriesByRange(hrvAll, range);
+  const skinTempChart = filterSeriesByRange(skinTempAll, range);
 
   // Temperature: acute — the most recent readings only, newest kept, oldest first.
   const temperatureRecent = temperatureAll
@@ -430,6 +447,7 @@ export default async function BodySection({
     vitalsCharts.push({
       key: "systolic",
       testid: "vitals-systolic",
+      detailHref: metricDetailHref("systolic"),
       title: "Blood pressure (systolic)",
       data: systolicChart,
       label: "Systolic",
@@ -441,6 +459,7 @@ export default async function BodySection({
     vitalsCharts.push({
       key: "diastolic",
       testid: "vitals-diastolic",
+      detailHref: metricDetailHref("diastolic"),
       title: "Blood pressure (diastolic)",
       data: diastolicChart,
       label: "Diastolic",
@@ -452,6 +471,7 @@ export default async function BodySection({
     vitalsCharts.push({
       key: "spo2",
       testid: "vitals-spo2",
+      detailHref: metricDetailHref("spo2"),
       title: "Oxygen saturation",
       data: spo2Chart,
       label: "SpO₂",
@@ -463,6 +483,7 @@ export default async function BodySection({
     vitalsCharts.push({
       key: "respiratory-rate",
       testid: "vitals-respiratory-rate",
+      detailHref: metricDetailHref("respiratory-rate"),
       title: "Respiratory rate",
       data: respiratoryChart,
       label: "Respiratory rate",
@@ -476,6 +497,7 @@ export default async function BodySection({
     vitalsCharts.push({
       key: "resting_hr",
       testid: "vitals-resting-hr",
+      detailHref: metricDetailHref("resting-hr"),
       title: "Resting heart rate",
       data: restingHrChart,
       label: "Resting HR",
@@ -488,6 +510,7 @@ export default async function BodySection({
     vitalsCharts.push({
       key: "hrv",
       testid: "vitals-hrv",
+      detailHref: metricDetailHref("hrv"),
       title: "Heart rate variability",
       data: hrvChart,
       label: "HRV",
@@ -495,10 +518,24 @@ export default async function BodySection({
       color: chartSeries.amber,
     });
   }
+  if (skinTempChart.length > 0) {
+    vitalsCharts.push({
+      key: "skin_temp",
+      testid: "vitals-skin-temp",
+      detailHref: metricDetailHref("skin-temp"),
+      title: BODY_METRIC_META["skin-temp"].title,
+      data: skinTempChart,
+      label: BODY_METRIC_META["skin-temp"].label,
+      unit: BODY_METRIC_META["skin-temp"].unit,
+      color: BODY_METRIC_META["skin-temp"].color,
+      note: "Nightly deviation from your tracker's own baseline, not an absolute temperature — so only the change matters, and it is comparable to your other nights rather than to a reference range. A sustained rise often shows up alongside a drop in HRV.",
+    });
+  }
   if (sun.length > 0) {
     vitalsCharts.push({
       key: "sun",
       testid: "vitals-sun-outdoor",
+      detailHref: metricDetailHref("sun"),
       title: "Sun / outdoor time",
       data: sun,
       label: "Outdoor daylight",
@@ -514,6 +551,7 @@ export default async function BodySection({
     vitalsCharts.push({
       key: "temperature",
       testid: "vitals-temperature",
+      detailHref: metricDetailHref("temperature"),
       title: "Body temperature",
       data: temperatureRecent,
       label: "Temperature",
@@ -537,22 +575,28 @@ export default async function BodySection({
       <EmptyState message="Nothing intraday recorded today yet. Timed readings and worn heart-rate data show up here; pick a longer window for the daily trends." />
     ) : (
       <div className="space-y-6">
+        {/* The intraday cards tap through to the DAILY detail page for the same
+            metric (#1488): today's clock view is the zoom, the metric page is the
+            full depth (its own range control, annotations, and readings table). */}
         {intradayHr.length > 0 && (
-          <section className={FULL_BLEED_CARD} data-testid="vitals-intraday-hr">
-            <div className="mb-3 px-4 sm:px-0">
-              <h3 className="font-semibold text-slate-800 dark:text-slate-100">
-                Heart rate today
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Per-minute heart rate across the clock, from the same day series
-                the timeline&rsquo;s day view draws. A break in the line is a
-                gap in wear, not a flat heart rate.
-              </p>
-            </div>
+          <ChartCard
+            title="Heart rate today"
+            headingLevel="h3"
+            detailHref={metricDetailHref("hr")}
+            detailTitle="heart rate"
+            surfaceClass={FULL_BLEED_CARD}
+            headerClassName="px-4 sm:px-0"
+            testid="vitals-intraday-hr"
+            description="Per-minute heart rate across the clock, from the same day series the timeline's day view draws. A break in the line is a gap in wear, not a flat heart rate."
+            plotHeightClass={INTRADAY_PLOT_HEIGHT}
+          >
             {/* The plot spans the viewport on a phone — charts are the one content
                 class that earns full-bleed; forms and text stay at the shell's
                 normal width. */}
-            <div data-testid="vitals-intraday-hr-plot" className="w-full">
+            <div
+              data-testid="vitals-intraday-hr-plot"
+              className="h-full w-full"
+            >
               <LineChartCard
                 data={intradayHr}
                 label="Heart rate"
@@ -560,52 +604,66 @@ export default async function BodySection({
                 color={chartSeries.rose}
                 showDots={false}
                 connectNulls={false}
-                heightClass={INTRADAY_HEIGHT}
+                heightClass={CHART_PLOT_FILL}
               />
             </div>
-          </section>
+          </ChartCard>
         )}
 
         {hasIntradayBp && (
-          <div className="card" data-testid="vitals-intraday-bp">
-            <h3 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-              Blood pressure today
-            </h3>
-            <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-6 sm:grid-cols-2">
+            <ChartCard
+              title="Systolic today"
+              headingLevel="h3"
+              detailHref={metricDetailHref("systolic")}
+              detailTitle="systolic blood pressure"
+              testid="vitals-intraday-bp"
+              plotHeightClass={INTRADAY_POINT_PLOT_HEIGHT}
+            >
               <LineChartCard
                 data={toIntradaySlotSeries(intradaySystolic)}
                 label="Systolic"
                 unit=" mmHg"
                 color={chartSeries.rose}
                 connectNulls={false}
-                heightClass={INTRADAY_POINT_HEIGHT}
               />
+            </ChartCard>
+            <ChartCard
+              title="Diastolic today"
+              headingLevel="h3"
+              detailHref={metricDetailHref("diastolic")}
+              detailTitle="diastolic blood pressure"
+              testid="vitals-intraday-bp-diastolic"
+              plotHeightClass={INTRADAY_POINT_PLOT_HEIGHT}
+            >
               <LineChartCard
                 data={toIntradaySlotSeries(intradayDiastolic)}
                 label="Diastolic"
                 unit=" mmHg"
                 color={chartSeries.violet}
                 connectNulls={false}
-                heightClass={INTRADAY_POINT_HEIGHT}
               />
-            </div>
+            </ChartCard>
           </div>
         )}
 
         {intradaySpo2.length > 0 && (
-          <div className="card" data-testid="vitals-intraday-spo2">
-            <h3 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-              Oxygen saturation today
-            </h3>
+          <ChartCard
+            title="Oxygen saturation today"
+            headingLevel="h3"
+            detailHref={metricDetailHref("spo2")}
+            detailTitle="oxygen saturation"
+            testid="vitals-intraday-spo2"
+            plotHeightClass={INTRADAY_POINT_PLOT_HEIGHT}
+          >
             <LineChartCard
               data={toIntradaySlotSeries(intradaySpo2)}
               label="SpO₂"
               unit="%"
               color={chartSeries.sky}
               connectNulls={false}
-              heightClass={INTRADAY_POINT_HEIGHT}
             />
-          </div>
+          </ChartCard>
         )}
 
         <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -629,6 +687,7 @@ export default async function BodySection({
     height: {
       key: "height",
       testid: "body-chart-height",
+      detailHref: metricDetailHref("height"),
       title: "Height",
       data: heightChart,
       label: "Height",
@@ -638,6 +697,7 @@ export default async function BodySection({
     head_circumference: {
       key: "head_circumference",
       testid: "body-chart-head-circ",
+      detailHref: metricDetailHref("head-circ"),
       title: "Head circumference",
       data: headCircChart,
       label: "Head circ.",
@@ -647,6 +707,7 @@ export default async function BodySection({
     weight: {
       key: "weight",
       testid: "body-chart-weight",
+      detailHref: metricDetailHref("weight"),
       title: "Weight",
       data: weightChart,
       label: "Weight",
@@ -657,6 +718,7 @@ export default async function BodySection({
     bodyfat: {
       key: "bodyfat",
       testid: "body-chart-bodyfat",
+      detailHref: metricDetailHref("body-fat"),
       title: "Body fat",
       data: bodyFatChart,
       label: "Body fat",
@@ -668,6 +730,7 @@ export default async function BodySection({
     // vitals section is resting HR's one home now.
     resting_hr: {
       key: "resting_hr",
+      detailHref: metricDetailHref("resting-hr"),
       title: "Resting heart rate",
       data: restingHrChart,
       label: "Resting HR",
@@ -821,7 +884,6 @@ export default async function BodySection({
   // cards from the SAME visible list, so a chip can never point at an absent chart.
   const lastDateOf = (arr: { date: string }[]): string | null =>
     arr.length > 0 ? arr[arr.length - 1].date : null;
-  const anchorClass = "card scroll-mt-28";
 
   const syncedEntries: (ChartChip & {
     present: boolean;
@@ -836,10 +898,13 @@ export default async function BodySection({
       latestDate: lastDateOf(stepsChart),
       order: 0,
       node: (
-        <div id="steps" className={anchorClass} key="steps">
-          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-            Steps per day
-          </h2>
+        <ChartCard
+          key="steps"
+          anchorId="steps"
+          title="Steps per day"
+          detailHref={metricDetailHref("steps")}
+          detailTitle="steps"
+        >
           {/* Count metric: zero-floored axis + grouped ticks, from the ONE
               registry the detail page reads (#1541). */}
           <LineChartCard
@@ -848,7 +913,7 @@ export default async function BodySection({
             color={chartSeries.sky}
             {...bodyChartScale(BODY_METRIC_META.steps)}
           />
-        </div>
+        </ChartCard>
       ),
     },
     {
@@ -931,17 +996,20 @@ export default async function BodySection({
       latestDate: lastDateOf(hrChart),
       order: 2,
       node: (
-        <div id="hr" className={anchorClass} key="hr">
-          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-            Heart rate (daily avg)
-          </h2>
+        <ChartCard
+          key="hr"
+          anchorId="hr"
+          title="Heart rate (daily avg)"
+          detailHref={metricDetailHref("hr")}
+          detailTitle="heart rate"
+        >
           <LineChartCard
             data={hrChart}
             label="Avg HR"
             color={chartSeries.rose}
             unit=" bpm"
           />
-        </div>
+        </ChartCard>
       ),
     },
     {
@@ -951,15 +1019,16 @@ export default async function BodySection({
       latestDate: latestHrDay,
       order: 3,
       node: (
-        <div
-          id="hr-day"
-          className={`${anchorClass} lg:col-span-2`}
+        <ChartCard
           key="hr-day"
+          anchorId="hr-day"
+          className="lg:col-span-2"
+          title={`Heart rate over the day${latestHrDay ? ` — ${latestHrDay}` : ""}`}
+          // The title carries a DATE, which reads badly in "Open … detail"; the
+          // accessible name names the metric instead.
+          detailTitle="heart rate"
+          detailHref={metricDetailHref("hr")}
         >
-          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-            Heart rate over the day
-            {latestHrDay ? ` — ${latestHrDay}` : ""}
-          </h2>
           <LineChartCard
             data={hrIntraday}
             label="HR"
@@ -967,7 +1036,7 @@ export default async function BodySection({
             unit=" bpm"
             showDots={false}
           />
-        </div>
+        </ChartCard>
       ),
     },
     {
@@ -977,12 +1046,14 @@ export default async function BodySection({
       latestDate: lastDateOf(bmiChart),
       order: 4,
       node: (
-        <div id="bmi" className={anchorClass} key="bmi">
-          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-            BMI
-          </h2>
+        <ChartCard
+          key="bmi"
+          anchorId="bmi"
+          title="BMI"
+          detailHref={metricDetailHref("bmi")}
+        >
           <LineChartCard data={bmiChart} label="BMI" color={chartSeries.sky} />
-        </div>
+        </ChartCard>
       ),
     },
     {
@@ -992,17 +1063,19 @@ export default async function BodySection({
       latestDate: lastDateOf(leanMassChart),
       order: 5,
       node: (
-        <div id="lean-mass" className={anchorClass} key="lean-mass">
-          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-            Lean body mass
-          </h2>
+        <ChartCard
+          key="lean-mass"
+          anchorId="lean-mass"
+          title="Lean body mass"
+          detailHref={metricDetailHref("lean-mass")}
+        >
           <LineChartCard
             data={leanMassChart}
             label="Lean mass"
             color={chartSeries.sky}
             unit=" kg"
           />
-        </div>
+        </ChartCard>
       ),
     },
     {
@@ -1012,17 +1085,19 @@ export default async function BodySection({
       latestDate: lastDateOf(boneMassChart),
       order: 6,
       node: (
-        <div id="bone-mass" className={anchorClass} key="bone-mass">
-          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-            Bone mass
-          </h2>
+        <ChartCard
+          key="bone-mass"
+          anchorId="bone-mass"
+          title="Bone mass"
+          detailHref={metricDetailHref("bone-mass")}
+        >
           <LineChartCard
             data={boneMassChart}
             label="Bone mass"
             color={chartSeries.violet}
             unit=" kg"
           />
-        </div>
+        </ChartCard>
       ),
     },
     {
@@ -1032,17 +1107,19 @@ export default async function BodySection({
       latestDate: lastDateOf(bmrChart),
       order: 7,
       node: (
-        <div id="bmr" className={anchorClass} key="bmr">
-          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-            Basal metabolic rate
-          </h2>
+        <ChartCard
+          key="bmr"
+          anchorId="bmr"
+          title="Basal metabolic rate"
+          detailHref={metricDetailHref("bmr")}
+        >
           <LineChartCard
             data={bmrChart}
             label="BMR"
             color={chartSeries.rose}
             unit=" kcal"
           />
-        </div>
+        </ChartCard>
       ),
     },
     {
@@ -1052,10 +1129,12 @@ export default async function BodySection({
       latestDate: lastDateOf(hydrationChart),
       order: 8,
       node: (
-        <div id="hydration" className={anchorClass} key="hydration">
-          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-            Hydration
-          </h2>
+        <ChartCard
+          key="hydration"
+          anchorId="hydration"
+          title="Hydration"
+          detailHref={metricDetailHref("hydration")}
+        >
           <LineChartCard
             data={hydrationChart}
             label="Water"
@@ -1063,7 +1142,7 @@ export default async function BodySection({
             unit=" L"
             {...bodyChartScale(BODY_METRIC_META.hydration)}
           />
-        </div>
+        </ChartCard>
       ),
     },
     {
@@ -1073,10 +1152,12 @@ export default async function BodySection({
       latestDate: lastDateOf(caloriesChart),
       order: 9,
       node: (
-        <div id="calories" className={anchorClass} key="calories">
-          <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-            Calories (intake)
-          </h2>
+        <ChartCard
+          key="calories"
+          anchorId="calories"
+          title="Calories (intake)"
+          detailHref={metricDetailHref("calories")}
+        >
           <LineChartCard
             data={caloriesChart}
             label="Calories"
@@ -1084,7 +1165,7 @@ export default async function BodySection({
             unit=" kcal"
             {...bodyChartScale(BODY_METRIC_META.calories)}
           />
-        </div>
+        </ChartCard>
       ),
     },
   ];
@@ -1139,11 +1220,13 @@ export default async function BodySection({
     ["respiratory-rate", respiratoryAll],
     ["resting-hr", restingHrAll],
     ["hrv", hrvAll],
+    ["skin-temp", skinTempAll],
     ["temperature", temperatureAll],
     ["weight", weightAll],
     ["body-fat", bodyFatAll],
     ["height", heightAll],
     ["head-circ", headCircAll],
+    ["sun", sun],
     ["steps", stepsChart],
     ["hr", hrChart],
     ["bmi", bmiChart],
@@ -1270,25 +1353,25 @@ export default async function BodySection({
             bands, no flags, no retest hooks — mood is not a lab, so a low day is a
             data point, never an "abnormal". Hidden until a check-in exists. */}
         {hasMood && (
-          <div id="mood" className="card scroll-mt-28" data-testid="mood-trend">
-            <div className="mb-3 flex items-baseline justify-between gap-2">
-              <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-                Mood
-              </h2>
-              <span className="text-xs text-slate-500 dark:text-slate-400">
-                1–5 daily check-ins · most recent ~6 months
-              </span>
-            </div>
+          <ChartCard
+            anchorId="mood"
+            testid="mood-trend"
+            title="Mood"
+            description="1–5 daily check-ins · most recent ~6 months"
+            detailHref={metricDetailHref("mood")}
+            footer={
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                A subjective self-rating from your daily check-ins —
+                informational only, never range-checked.
+              </p>
+            }
+          >
             <LineChartCard
               data={moodChart}
               label="Mood"
               color={chartSeries.amber}
             />
-            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              A subjective self-rating from your daily check-ins — informational
-              only, never range-checked.
-            </p>
-          </div>
+          </ChartCard>
         )}
 
         {hasSynced && (

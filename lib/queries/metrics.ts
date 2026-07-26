@@ -306,22 +306,30 @@ export function getSleepStageDailyTotals(
     (r) => r.origin,
     (r) => r.deep + r.rem + r.light + r.awake
   );
-  return pickRowsOneSourcePerDay(
-    oneOrigin,
-    preferenceFor(profileId, "sleep_min"),
-    (r) => r.date,
-    (r) => r.source,
-    (r) => r.deep + r.rem + r.light + r.awake
-  )
-    .map(({ date, deep, rem, light, awake }) => ({
-      date,
-      deep,
-      rem,
-      light,
-      awake,
-    }))
-    .sort((a, b) => (a.date < b.date ? -1 : 1))
-    .slice(-limitDays);
+  return (
+    pickRowsOneSourcePerDay(
+      oneOrigin,
+      preferenceFor(profileId, "sleep_min"),
+      (r) => r.date,
+      (r) => r.source,
+      (r) => r.deep + r.rem + r.light + r.awake
+    )
+      // Round ONCE, here, on the summed day total. Health Connect stores one row per
+      // sleep stage at sub-minute precision (a night is dozens of rows, many of them
+      // 30-second micro-arousals), so whole minutes have to be taken after the SUM —
+      // rounding per stage at ingest made the breakdown out-sum its own session total
+      // by ~14 min a night (the Fitbit-exporter payload audit). Oura/Withings report whole minutes per stage
+      // already and are unaffected by rounding a value that is already integral.
+      .map(({ date, deep, rem, light, awake }) => ({
+        date,
+        deep: Math.round(deep),
+        rem: Math.round(rem),
+        light: Math.round(light),
+        awake: Math.round(awake),
+      }))
+      .sort((a, b) => (a.date < b.date ? -1 : 1))
+      .slice(-limitDays)
+  );
 }
 
 // Raw per-night sleep sessions (metric 'sleep_min') as absolute time windows,

@@ -18,6 +18,10 @@ import {
   E2E_LOGIN_TRENDS_COMPARE,
   TRENDS_COMPARE_PROFILE,
   TRENDS_COMPARE_VIEW,
+  E2E_LOGIN_TRENDS_READINGS,
+  TRENDS_READINGS_PROFILE,
+  TRENDS_READINGS_HRV_MANUAL,
+  TRENDS_READINGS_HRV_SYNCED,
   E2E_LOGIN_TRENDS_FITNESS,
   TRENDS_FITNESS_PROFILE,
   TRENDS_FITNESS_LIFT,
@@ -294,5 +298,55 @@ export function seedFitnessLens(): void {
   seedMemberLogin(E2E_LOGIN_TRENDS_FITNESS, fitId, "read");
   console.log(
     `e2e: seeded Trends → Fitness windowed-lens fixture — profile ${fitId} (${TRENDS_FITNESS_PROFILE}) (#1492)`
+  );
+}
+
+// ── Chart tap-through: the metric detail page's readings table (issue #1488) ──
+export function seedTrendsReadings(): void {
+  // A dedicated WRITE profile whose readings the spec edits and deletes: two HRV
+  // samples (one manual, one imported from Health Connect) plus two weigh-ins. The
+  // two HRV values are DISTINCT and named in fixture-logins, so the spec can address
+  // one row by its value rather than by position on a shared surface. Relative
+  // dates → never stale; UTC instants (the e2e default timezone) → host-TZ
+  // independent. Idempotent: this profile's fixture rows are hard-cleared first.
+  const rdId = fixtureProfileId(TRENDS_READINGS_PROFILE);
+  const rdToday = today(rdId);
+  db.prepare(
+    `DELETE FROM metric_samples WHERE profile_id = ? AND metric = 'hrv_ms'`
+  ).run(rdId);
+  db.prepare(`DELETE FROM body_metrics WHERE profile_id = ?`).run(rdId);
+
+  const insHrv = db.prepare(
+    `INSERT INTO metric_samples (profile_id, source, metric, date, start_time, end_time, value)
+     VALUES (?, ?, 'hrv_ms', ?, ?, ?, ?)`
+  );
+  const manualDay = shiftDateStr(rdToday, -1);
+  insHrv.run(
+    rdId,
+    "manual",
+    manualDay,
+    `${manualDay}T07:00:00Z`,
+    `${manualDay}T07:01:00Z`,
+    TRENDS_READINGS_HRV_MANUAL
+  );
+  insHrv.run(
+    rdId,
+    "health-connect",
+    rdToday,
+    `${rdToday}T07:00:00Z`,
+    `${rdToday}T07:01:00Z`,
+    TRENDS_READINGS_HRV_SYNCED
+  );
+
+  const insRdBm = db.prepare(
+    `INSERT INTO body_metrics (profile_id, date, weight_kg, notes)
+     VALUES (?, ?, ?, 'e2e:trends-readings')`
+  );
+  insRdBm.run(rdId, shiftDateStr(rdToday, -5), 80.5);
+  insRdBm.run(rdId, shiftDateStr(rdToday, -1), 80.1);
+
+  seedMemberLogin(E2E_LOGIN_TRENDS_READINGS, rdId, "write");
+  console.log(
+    `e2e: seeded Trends readings-table fixture — profile ${rdId} (${TRENDS_READINGS_PROFILE}) (#1488)`
   );
 }

@@ -16,6 +16,7 @@ describe("metric bucket membership", () => {
       "bmr_kcal",
       "height_cm",
       "head_circumference_cm",
+      "skin_temp_delta_c",
     ];
     for (const m of averaged) {
       expect(AVERAGED_METRICS.has(m)).toBe(true);
@@ -34,6 +35,9 @@ describe("metric bucket membership", () => {
         "hrv_ms",
         "lean_mass_kg",
         "muscle_mass_kg",
+        // Signed delta from the device's own baseline — summing two +0.3 °C nights
+        // into +0.6 °C would report a deviation neither night had.
+        "skin_temp_delta_c",
       ].sort()
     );
   });
