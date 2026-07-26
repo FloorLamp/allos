@@ -336,13 +336,13 @@ it later from the issue number is guesswork.
   environmental (date rollover, runner) — diagnose THERE, and treat the
   bookkeeping PR as the control group proving it. Actions rerun APIs 403 for
   session tokens; the retrigger is an empty commit (never a history rewrite).
-    The full-suite gate is reserved for MIGRATION PRs and BIG UI merges (a nav
-    consolidation, a multi-page feature) — and since 2026-07-21 it is a dispatch
-    of `e2e-full.yml` against the branch (fresh runners, retries=0), not a local
-    run; PR CI's sharded `e2e` matrix already gives every push a full-suite pass
-    at retries=0 on top of that (dropped from retries=1 in #1160). **Rebase waiver:** when a
-    rebase's delta is text-only (README/docs conflict resolution), CI's full e2e
-  * changed-specs lane on the exact rebased tip, plus the pre-rebase local full
+  The full-suite gate is reserved for MIGRATION PRs and BIG UI merges (a nav
+  consolidation, a multi-page feature) — and since 2026-07-21 it is a dispatch
+  of `e2e-full.yml` against the branch (fresh runners, retries=0), not a local
+  run; PR CI's sharded `e2e` matrix already gives every push a full-suite pass
+  at retries=0 on top of that (dropped from retries=1 in #1160). **Rebase waiver:** when a
+  rebase's delta is text-only (README/docs conflict resolution), CI's full e2e
+  - changed-specs lane on the exact rebased tip, plus the pre-rebase local full
     suite, is sufficient — don't burn a second local full run.
     **Branch-cut waiver:** a branch cut before a spec-fix merged to main will
     re-fail that spec in the local full suite (the fix isn't on the branch; the
