@@ -84,3 +84,26 @@ export const TRENDS_READINGS_PROFILE = "Trends Readings (e2e)";
 // the seeder and the spec can't drift.
 export const TRENDS_READINGS_HRV_MANUAL = 41;
 export const TRENDS_READINGS_HRV_SYNCED = 67;
+
+// ── Ranked default chart-card order (issue #1490) ────────────────────────────
+// THREE dedicated profiles, one per scenario the ranker must answer, because the
+// whole claim is about what a NEVER-ARRANGED profile's Body tab leads with — an
+// assertion that a neighbour's write (or a shared-seed goal/condition) would flip.
+//
+//   • PEDS   — a ~6-year-old with heights + weigh-ins: the growth-percentile card
+//              leads the stack (the retired planBodyCharts fork, now the life-stage
+//              signal).
+//   • GOAL   — an adult with a LIVE weight goal plus blood-pressure readings: the
+//              Composition run and its weight card lead, ahead of Vitals.
+//   • PLAIN  — an adult with the SAME data shape as GOAL but no goal, no condition
+//              and no growth: the identity case, whose tab must match the static
+//              layout exactly. This is the regression guard — it is what fails if a
+//              signal ever starts firing for a profile the app knows nothing about.
+//
+// All three are read-only (their specs navigate only), so --repeat-each stays clean.
+export const E2E_LOGIN_TRENDS_RANK_PEDS = "e2e_trends_rank_peds";
+export const TRENDS_RANK_PEDS_PROFILE = "Trends Rank Peds (e2e)";
+export const E2E_LOGIN_TRENDS_RANK_GOAL = "e2e_trends_rank_goal";
+export const TRENDS_RANK_GOAL_PROFILE = "Trends Rank Goal (e2e)";
+export const E2E_LOGIN_TRENDS_RANK_PLAIN = "e2e_trends_rank_plain";
+export const TRENDS_RANK_PLAIN_PROFILE = "Trends Rank Plain (e2e)";

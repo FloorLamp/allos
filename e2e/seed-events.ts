@@ -89,6 +89,7 @@ import {
   seedTrendsReadings,
   seedCompareFold,
   seedFitnessLens,
+  seedRankedCardOrder,
 } from "./seed/trends";
 
 seedPrelude();
@@ -152,4 +153,5 @@ seedCuratedOverview();
 seedTrendsReadings();
 seedCompareFold();
 seedFitnessLens();
+seedRankedCardOrder();
 seedTrainingRollup();

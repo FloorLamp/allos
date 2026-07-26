@@ -15,7 +15,7 @@
 //
 //  2. CHEAP. It runs on every Body-tab render, so presence is measured with
 //     aggregate counts (one grouped statement across `metric_samples`, one over
-//     `body_metrics`, one over `mood_logs`) and with reads the tab ALREADY makes —
+//     `body_metrics`) and with reads the tab ALREADY makes —
 //     `getBiomarkerSeries` is `cache()`d per request, so the five vitals presences
 //     are free inside the page that also charts them. Nothing here re-derives a
 //     series.
@@ -40,6 +40,7 @@ import { getConditions } from "./clinical";
 import { getGoals } from "./training";
 import { getBiomarkerSeries } from "./medical";
 import { getLatestHrDay } from "./metrics";
+import { getMoodLogs } from "./mood";
 
 // Card → `metric_samples.metric`. One grouped query answers all of them.
 const METRIC_SAMPLE_CARDS: Readonly<Partial<Record<BodyCardId, string>>> = {
@@ -162,13 +163,16 @@ export function buildTrendsSubjectContext(
   presence["body-fat"] = presenceLevel(body.n_fat, body.last_fat, todayStr);
   presence["resting-hr"] = presenceLevel(body.n_rhr, body.last_rhr, todayStr);
 
-  // Mood check-ins.
-  const mood = db
-    .prepare(
-      `SELECT COUNT(*) AS n, MAX(date) AS last FROM mood_logs WHERE profile_id = ?`
-    )
-    .get(profileId) as { n: number; last: string | null };
-  presence.mood = presenceLevel(mood.n, mood.last, todayStr);
+  // Mood check-ins — read through the mood store's OWN reader (#992: the table is
+  // store-private, so nothing outside lib/queries/mood.ts may name it; the guard in
+  // lib/__tests__/mood-guardrails.test.ts fails CI on a direct query). One row per
+  // day, so reading the series to count it is cheap.
+  const moodLogs = getMoodLogs(profileId);
+  presence.mood = presenceLevel(
+    moodLogs.length,
+    moodLogs.length > 0 ? moodLogs[moodLogs.length - 1].date : null,
+    todayStr
+  );
 
   // Vitals charted from lab-shaped records.
   for (const [card, canonical] of Object.entries(BIOMARKER_CARDS)) {
