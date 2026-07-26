@@ -972,6 +972,9 @@ export default async function SupplementsTab() {
           pgxWarnings={pgxWarnings}
           coverage={safetyCoverage}
         />
+        {interactionWarnings.length === 0 && pgxWarnings.length === 0 ? (
+          <IntakeSafetyScope coverage={safetyCoverage} className="mt-6" />
+        ) : null}
 
         {supplementItems.length === 0 ? (
           <div
@@ -1059,10 +1062,6 @@ export default async function SupplementsTab() {
             </aside>
           </div>
         )}
-
-        {interactionWarnings.length === 0 && pgxWarnings.length === 0 ? (
-          <IntakeSafetyScope coverage={safetyCoverage} className="mt-6" />
-        ) : null}
       </div>
     </SituationOptionsProvider>
   );

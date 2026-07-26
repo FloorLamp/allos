@@ -39,7 +39,9 @@ test("the one-tap bar order follows every selected meal slot (#950)", async ({
 
     const firstRow = page
       .getByTestId("food-log-bar")
-      .locator('[data-testid^="food-group-"]')
+      .locator(
+        '[data-testid^="food-group-"]:not([data-testid="food-group-icon"])'
+      )
       .first(); // first-ok: the TOP-ranked food-group row IS the assertion (deterministic seeded ranking for this spec's own profile)
     await expect(firstRow).toHaveAttribute(
       "data-testid",
