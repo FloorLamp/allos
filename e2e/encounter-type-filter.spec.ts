@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { workerDbPath } from "./worker-env";
+import { workerDbPath, frozenNow } from "./worker-env";
 
 // Canonical encounter types (#1233): the Visits list renders the raw ActEncounterCode
 // class through a friendly label ("AMB" → "Ambulatory") and offers a canonical-kind
@@ -33,7 +33,7 @@ test.describe("Visits — canonical encounter class label + kind filter (#1233)"
     cleanup();
     const handle = new Database(DB_PATH);
     try {
-      const date = new Date().toISOString().slice(0, 10);
+      const date = frozenNow().toISOString().slice(0, 10);
       const ins = handle.prepare(
         `INSERT INTO encounters (profile_id, date, type, class_code, reason, source, external_id)
          VALUES (1, ?, ?, ?, ?, 'manual', ?)`

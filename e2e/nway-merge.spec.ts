@@ -8,7 +8,7 @@ import {
   E2E_MEMBER_PASSWORD,
 } from "./fixture-logins";
 import { seedNwayMergeFixture } from "./nway-merge-fixture";
-import { workerDbPath } from "./worker-env";
+import { workerDbPath, frozenNow } from "./worker-env";
 
 // Issue #1081 — N-way activity duplicate merge on BOTH surfaces, on a DEDICATED member
 // profile (#868), re-seeded per test so a --repeat-each iteration always starts from
@@ -22,7 +22,7 @@ const DB_PATH = workerDbPath();
 // margin keeps the Journal group on the feed's first-page window regardless of a ≤1-day
 // timezone skew).
 function isoBack(days: number): string {
-  const d = new Date();
+  const d = frozenNow();
   d.setUTCDate(d.getUTCDate() - days);
   return d.toISOString().slice(0, 10);
 }

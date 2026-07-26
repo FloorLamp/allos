@@ -25,7 +25,7 @@ import {
   cleanupOrphanSavedBiomarkers,
   migrateRenamedBiomarker,
   getSavedItems,
-  moveSavedItem,
+  setSavedOrder,
   toggleItemSaved,
 } from "@/lib/queries";
 import { getProfileSummary } from "@/lib/profile-summary-load";
@@ -195,9 +195,10 @@ describe("saved order", () => {
     // Nothing positioned yet — a plain star leaves position NULL.
     expect(getSavedItems(p).every((r) => r.position == null)).toBe(true);
 
-    // One reorder normalizes EVERY row to a dense position.
+    // One reorder normalizes EVERY row to a dense position (#1485 C: the drag and
+    // the ⋯ menu's arrow fallback both land here, naming a destination).
     const first = getSavedItems(p);
-    moveSavedItem(p, { kind: first[2].kind, key: first[2].key }, "up");
+    setSavedOrder(p, [first[0], first[2], first[1]]);
     const after = getSavedItems(p);
     expect(after.map((r) => r.position)).toEqual([0, 1, 2]);
     expect(after.map((r) => r.key)).toEqual([
@@ -207,16 +208,35 @@ describe("saved order", () => {
     ]);
   });
 
-  it("a move at either end is a no-op", () => {
-    const p = newProfile("Saved Order Ends");
+  it("keeps a row the caller did not name, behind the ones it did", () => {
+    // The stale-client case: a star landed on another device since the grid
+    // rendered. Omitting it must reorder, never unsave.
+    const p = newProfile("Saved Order Partial");
     saveBiomarker(p, "ApoB");
     saveBiomarker(p, "Ferritin");
+    toggleItemSaved(p, "trend-metric", "weight");
+    const before = getSavedItems(p);
+
+    setSavedOrder(p, [{ kind: "trend-metric", key: "weight" }]);
+
+    const after = getSavedItems(p);
+    expect(after.map((r) => r.key)).toEqual([
+      "weight",
+      ...before.filter((r) => r.key !== "weight").map((r) => r.key),
+    ]);
+    expect(after.map((r) => r.position)).toEqual([0, 1, 2]);
+  });
+
+  it("ignores a ref the profile has not saved", () => {
+    const p = newProfile("Saved Order Unknown");
+    saveBiomarker(p, "ApoB");
     const before = getSavedItems(p).map((r) => r.key);
 
-    moveSavedItem(p, { kind: "biomarker", key: before[0] }, "up");
-    expect(getSavedItems(p).map((r) => r.key)).toEqual(before);
+    setSavedOrder(p, [
+      { kind: "biomarker", key: "Ferritin" },
+      { kind: "biomarker", key: "ApoB" },
+    ]);
 
-    moveSavedItem(p, { kind: "biomarker", key: before[1] }, "down");
     expect(getSavedItems(p).map((r) => r.key)).toEqual(before);
   });
 

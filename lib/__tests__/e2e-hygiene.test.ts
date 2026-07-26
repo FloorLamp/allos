@@ -179,10 +179,52 @@ const ADD_PROFILE_ALLOW: Record<string, number> = {};
 //     environment, not the spec process's — reading it from a spec is how a
 //     direct-DB spec would read the wrong worker's database (or none at all).
 //     Frozen at ZERO outside the harness modules that legitimately set it.
+// ── (ix) The wall-clock freeze (the #1538 drift follow-up) ──────────────────
+// The app's clock is FROZEN for the whole run (ALLOS_TEST_NOW, #990): the seeded
+// template, every worker's app server and — since the per-worker harness patched
+// `browser.newContext` — every browser context answer the same `now()`. A spec
+// process does NOT: `new Date()` / `Date.now()` there is the REAL clock, and the
+// gap between real and frozen is however long the run has been going. That used to
+// be a few minutes; a `--repeat-each=3` lane over a large spec set now runs ~90,
+// which is long enough for a row a spec timestamps from the wall clock to land in
+// the app's FUTURE and drop out of every recency window (the #1441 finished-session
+// recap failed exactly this way, deterministically, 29 minutes in).
+//
+// So a spec's "now" is `frozenNow()` (e2e/worker-env.ts), never the wall clock.
+// Existing reads are frozen at today's per-file count — the remainder are
+// UNIQUE-NAME suffixes (`E2E Sauna ${Date.now()}`) and a TOTP probe that genuinely
+// needs real time, neither of which is a stored timestamp — and a NEW one fails
+// unless it carries a same-line `clock-ok: <why>` marker.
+const WALL_CLOCK_RE = /\bDate\.now\(\)|\bnew Date\(\)/g;
+const WALL_CLOCK_OK_MARKER = "clock-ok";
+const WALL_CLOCK_ALLOW: Record<string, number> = {
+  "episode-med-reconcile.spec.ts": 2,
+  "equipment-manager.spec.ts": 1,
+  "family-helpers.ts": 3,
+  "food-habits.spec.ts": 1,
+  "medication-cold-start-adherence.spec.ts": 1,
+  "offline-dose-confirm.spec.ts": 2,
+  "offline-queue.spec.ts": 2,
+  "prn-redose-interval-only.spec.ts": 1,
+  "prn-redose.spec.ts": 1,
+  "protocol-practice.spec.ts": 3,
+  "protocol-reach.spec.ts": 1,
+  "protocols.spec.ts": 1,
+  "rpe-logging.spec.ts": 1,
+  "seed/findings.ts": 1,
+  "seed/household.ts": 1,
+  "seed/metrics.ts": 1,
+  "seed/prelude.ts": 2,
+  "training-restriction.spec.ts": 1,
+  "two-factor.spec.ts": 2,
+  "undo-delete.spec.ts": 1,
+};
+
 const WORKER_HARNESS_FILES = new Set([
   "fixtures.ts",
   "worker-env.ts",
   "global-setup.ts",
+  "global-teardown.ts",
 ]);
 const PW_TEST_IMPORT_RE =
   /import\s*\{[^}]*\btest\b[^}]*\}\s*from\s*["']@playwright\/test["']/g;
@@ -588,6 +630,20 @@ describe("e2e suite hygiene guard (issue #868)", () => {
           `workerDbPath() from ./worker-env; see docs/internals/e2e-hygiene.md.`,
       }
     );
+  });
+
+  it("no NEW wall-clock read in an e2e/*.ts (derive timestamps from frozenNow())", () => {
+    checkPattern("wall-clock read", WALL_CLOCK_RE, WALL_CLOCK_ALLOW, {
+      skipFiles: WORKER_HARNESS_FILES,
+      excludeLineMarker: WALL_CLOCK_OK_MARKER,
+      hint:
+        `A spec's "now" is the harness's frozen now, never the wall clock: the app ` +
+        `serves a frozen \`now()\` and a long lane drifts ~90 minutes from real time, ` +
+        `so a wall-clock timestamp lands in the app's future (#1538). Use ` +
+        `frozenNow() from ./worker-env, or add a same-line \`clock-ok: <why>\` ` +
+        `comment for a use that is NOT a stored timestamp (a unique-name suffix, a ` +
+        `TOTP probe); see docs/internals/e2e-hygiene.md.`,
+    });
   });
 
   it("the per-worker harness exposes its addressing helpers", () => {

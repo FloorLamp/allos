@@ -1,22 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition, type ReactNode } from "react";
-import {
-  DndContext,
-  PointerSensor,
-  KeyboardSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  arrayMove,
-  rectSortingStrategy,
-  sortableKeyboardCoordinates,
-  useSortable,
-} from "@dnd-kit/sortable";
+import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
   IconAdjustmentsHorizontal,
@@ -28,6 +13,7 @@ import {
 } from "@tabler/icons-react";
 import type { WidgetSpan } from "@/lib/dashboard-widgets";
 import SaveStatus from "@/components/SaveStatus";
+import SortableOrder from "@/components/SortableOrder";
 
 export interface GridWidget {
   id: string;
@@ -172,13 +158,6 @@ export default function DashboardGrid({
   const [savedAt, setSavedAt] = useState(0);
   const [error, setError] = useState(false);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
   function enterEdit() {
     setSnapshot({ order: [...order], hidden: [...hidden] });
     setEditing(true);
@@ -201,17 +180,6 @@ export default function DashboardGrid({
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
-    });
-  }
-
-  function onDragEnd(e: DragEndEvent) {
-    const { active, over } = e;
-    if (!over || active.id === over.id) return;
-    setOrder((prev) => {
-      const oldIndex = prev.indexOf(String(active.id));
-      const newIndex = prev.indexOf(String(over.id));
-      if (oldIndex < 0 || newIndex < 0) return prev;
-      return arrayMove(prev, oldIndex, newIndex);
     });
   }
 
@@ -266,28 +234,26 @@ export default function DashboardGrid({
       <div className="mb-4 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-700 dark:border-brand-800 dark:bg-brand-950/40 dark:text-brand-300">
         Drag the handle to reorder. Use the eye to show or hide a widget.
       </div>
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={onDragEnd}
-      >
-        <SortableContext items={order} strategy={rectSortingStrategy}>
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-6">
-            {order.map((id) => {
-              const w = byId.get(id);
-              if (!w) return null;
-              return (
-                <SortableWidget
-                  key={id}
-                  widget={w}
-                  hidden={hidden.has(id)}
-                  onToggle={toggle}
-                />
-              );
-            })}
-          </div>
-        </SortableContext>
-      </DndContext>
+      {/* The SHARED drag mechanism (#1485 C) — the same DndContext/SortableContext
+          and list math the Trends Overview tiles lift with, differing only in the
+          lift mode: this surface has a dedicated grip handle, so it keeps the
+          immediate pointer lift + keyboard activator. */}
+      <SortableOrder ids={order} onReorder={setOrder} lift="handle">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-6">
+          {order.map((id) => {
+            const w = byId.get(id);
+            if (!w) return null;
+            return (
+              <SortableWidget
+                key={id}
+                widget={w}
+                hidden={hidden.has(id)}
+                onToggle={toggle}
+              />
+            );
+          })}
+        </div>
+      </SortableOrder>
 
       {/* Sticky Save / Cancel bar. */}
       <div className="sticky bottom-4 z-30 mt-6 flex items-center justify-end gap-3 rounded-xl border border-black/10 bg-white/95 px-4 py-3 shadow-lg backdrop-blur dark:border-white/10 dark:bg-ink-900/95">

@@ -22,6 +22,76 @@ import { currentPathHref } from "@/lib/hrefs";
 // not-yet-hydrated tree (#830; #730 was the test-only mask). Post-hydration Link
 // does the soft nav; `replace` + `scroll={false}` preserve the prior behavior
 // (no history stacking, no scroll jump).
+// The strip on its own, without the panel (issue #1485 F). Trends' phone chrome
+// collapses the strip and the range pills together into one context bar, which
+// means the strip has to render inside that bar while the panel stays in the page
+// — so the strip is a component rather than an inlined block, and NavTabs itself
+// is now its one-plus-panel composition. Same markup, same testids, ONE
+// implementation: a surface that wants the classic pairing keeps using NavTabs.
+export function NavTabsStrip({
+  tabs,
+  paramKey,
+  activeId,
+  className,
+}: {
+  tabs: { id: string; label: string }[];
+  paramKey: string;
+  activeId?: string;
+  // Lets a host adjust only the strip's own spacing (the context bar drops the
+  // bottom margin, which belongs to the bar). Never its type or chip styling.
+  className?: string;
+}) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const ids = tabs.map((t) => t.id);
+
+  const fromUrl = searchParams.get(paramKey);
+  const active =
+    fromUrl && ids.includes(fromUrl) ? fromUrl : (activeId ?? tabs[0]?.id);
+
+  function hrefFor(id: string) {
+    const params = new URLSearchParams(Array.from(searchParams.entries()));
+    params.set(paramKey, id);
+    return currentPathHref(`${pathname}?${params.toString()}`);
+  }
+
+  return (
+    <div
+      role="tablist"
+      className={`flex gap-0.5 overflow-x-auto border-b border-black/10 dark:border-white/10 sm:gap-1 ${
+        className ?? "mb-4"
+      }`}
+    >
+      {tabs.map((t) => {
+        const isActive = active === t.id;
+        return (
+          <Link
+            key={t.id}
+            href={hrefFor(t.id)}
+            replace
+            scroll={false}
+            role="tab"
+            aria-selected={isActive}
+            // Phone-tight chips (#1489): at px-4 a five-chip strip measures
+            // ~442px against a 358px content column, so the row scrolls and the
+            // trailing tab sits off the edge — the failure the five-tab reorder
+            // exists to remove. Below `sm` the chips give up padding (never type
+            // size — the label is the thing being read); from `sm` up it is the
+            // original chip.
+            className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-1.5 py-2 text-sm font-medium transition sm:px-4 ${
+              isActive
+                ? "border-brand-500 text-brand-700 dark:text-brand-400"
+                : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+            }`}
+          >
+            {t.label}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function NavTabs({
   tabs,
   paramKey,
@@ -38,59 +108,15 @@ export default function NavTabs({
   activeId?: string;
   children: React.ReactNode;
 }) {
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const ids = tabs.map((t) => t.id);
-
-  // Highlight from the URL so a click updates the strip immediately (before the
-  // server round-trip lands). A param that names no strip entry falls back to the
-  // server's own resolution (`activeId`) and only then to the first tab, so the
-  // strip and the rendered panel always agree — including for a retired alias
-  // (`?tab=vitals` renders Body, so Body is the lit tab) and for a restricted
-  // profile's ?tab=fitness (both fall back to the default).
-  const fromUrl = searchParams.get(paramKey);
-  const active =
-    fromUrl && ids.includes(fromUrl) ? fromUrl : (activeId ?? tabs[0]?.id);
-
-  function hrefFor(id: string) {
-    const params = new URLSearchParams(Array.from(searchParams.entries()));
-    params.set(paramKey, id);
-    return currentPathHref(`${pathname}?${params.toString()}`);
-  }
-
   return (
     <div>
-      <div
-        role="tablist"
-        className="mb-4 flex gap-0.5 overflow-x-auto border-b border-black/10 dark:border-white/10 sm:gap-1"
-      >
-        {tabs.map((t) => {
-          const isActive = active === t.id;
-          return (
-            <Link
-              key={t.id}
-              href={hrefFor(t.id)}
-              replace
-              scroll={false}
-              role="tab"
-              aria-selected={isActive}
-              // Phone-tight chips (#1489): at px-4 a five-chip strip measures
-              // ~442px against a 358px content column, so the row scrolls and the
-              // trailing tab sits off the edge — the failure the five-tab reorder
-              // exists to remove. Below `sm` the chips give up padding (never type
-              // size — the label is the thing being read); from `sm` up it is the
-              // original chip.
-              className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-1.5 py-2 text-sm font-medium transition sm:px-4 ${
-                isActive
-                  ? "border-brand-500 text-brand-700 dark:text-brand-400"
-                  : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-              }`}
-            >
-              {t.label}
-            </Link>
-          );
-        })}
-      </div>
+      {/* Highlight from the URL so a click updates the strip immediately (before
+          the server round-trip lands) — see NavTabsStrip. A param that names no
+          strip entry falls back to the server's own resolution (`activeId`) and
+          only then to the first tab, so the strip and the rendered panel always
+          agree, including for a retired alias (`?tab=vitals` renders Body) and a
+          restricted profile's ?tab=fitness. */}
+      <NavTabsStrip tabs={tabs} paramKey={paramKey} activeId={activeId} />
       <div role="tabpanel">{children}</div>
     </div>
   );

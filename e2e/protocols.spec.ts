@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { frozenNow } from "./worker-env";
 // N-of-1 protocols + healthspan pillars (issue #161).
 //   1. Full create → compare flow: create a protocol with two body-metric outcomes
 //      and a past start date, land on its detail page, and see before/during
@@ -18,7 +19,7 @@ test.describe("protocols create → compare (issue #161)", () => {
     const uniqueName = `E2E Creatine ${Date.now()}`;
     // A relative past start so the baseline/intervention windows both have seeded
     // weekly body-metric readings (never a hardcoded date that ages out).
-    const start = new Date(Date.now() - 42 * 86_400_000)
+    const start = new Date(frozenNow().getTime() - 42 * 86_400_000)
       .toISOString()
       .slice(0, 10);
 

@@ -624,6 +624,33 @@ workers means four `next start` processes AND four browsers on four cores, so th
 curve turns over at two. On a bigger machine the useful worker count is higher; the
 Playwright default (half the cores) is the right starting point either way.
 
+**One clock, everywhere — a spec's "now" is the frozen now (#1538 follow-up).**
+`ALLOS_TEST_NOW` freezes the SERVER's `now()` for the whole run, but a browser
+cannot read an env var, and neither can a spec process. That gap is the length of
+the run, and it stopped being negligible: a `--repeat-each=3` lane over a large
+spec set runs ~90 minutes, where the old assumption "real time ≈ frozen time"
+breaks outright. It failed first as a deterministic red 29 minutes into a lane —
+`workout-presence`'s finished-session test back-dates the activity form's
+CLIENT-prefilled start by 40 minutes and gives it a 30-minute duration, a
+10-minute margin, so once real time had run 10+ minutes past the frozen instant the
+session it wrote ended in the SERVER's future and the #924 recap card never
+rendered. Two halves close it:
+
+- **The browser** runs on the frozen clock: `e2e/fixtures.ts` patches
+  `browser.newContext` so every context — the built-in `page`/`context` fixtures
+  and every hand-built one (`loginAs`, anonymous, phone-viewport) — gets
+  `clock.setSystemTime(frozenNow)`. The clock still TICKS from there
+  (`setSystemTime`, not `setFixedTime`), so timers, animations and polling are
+  untouched and elapsed time within a test stays real.
+- **The spec** derives timestamps from `frozenNow()` (`e2e/worker-env.ts`), never
+  `new Date()` / `Date.now()`. The hygiene guard freezes today's wall-clock reads
+  per file; a new one needs `frozenNow()` or a same-line `clock-ok: <why>` marker,
+  which is for uses that are NOT stored timestamps — a unique-name suffix, a TOTP
+  probe that genuinely needs real time.
+
+Verified as a before/after: with the run's frozen instant set 60 minutes in the
+past, the #1441 test fails 3/3 without the context clock and passes 3/3 with it.
+
 **What isolation does NOT buy you.** A worker's database is copied once per worker,
 not once per test, so specs sharing a worker still share a world in sequence — and
 which specs share a worker depends on the scheduler. Fixture ownership (#868) is

@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
+import { expandTrendsContext } from "./trends-chrome";
 import { followLink } from "./helpers";
 import {
   E2E_MEMBER_PASSWORD,
@@ -38,6 +39,9 @@ const rangePill = (page: Page, label: string) =>
 
 async function openFitness(page: Page): Promise<void> {
   await page.goto("/trends?tab=fitness");
+  // The tab strip AND the range pills collapse into the #1485 F context bar at
+  // phone width; every assertion below reads one or the other, so open it once.
+  await expandTrendsContext(page);
   await expect(page.getByRole("tab", { name: "Fitness" })).toHaveAttribute(
     "aria-selected",
     "true"
@@ -164,6 +168,8 @@ test.describe("Trends → Fitness, the windowed lens (#1492)", () => {
     // ── Switch to All time: the deep-past block appears everywhere. ───────────
     await followLink(page, rangePill(page, "All time"), /range=all/);
     await expect(page.getByTestId("trends-fitness")).toBeVisible();
+    // The navigation re-renders the page with the bar collapsed again.
+    await expandTrendsContext(page);
 
     // Strength: the old lift is now in the window, so it reaches the movers list.
     await expect(page.getByTestId("fitness-strength")).toContainText(
@@ -182,6 +188,7 @@ test.describe("Trends → Fitness, the windowed lens (#1492)", () => {
 
     // ── And back to 90D: the window closes again (not a one-way widening). ────
     await followLink(page, rangePill(page, "90D"), /from=/);
+    await expandTrendsContext(page);
     await expect(page.getByTestId("fitness-strength")).not.toContainText(
       TRENDS_FITNESS_OLD_LIFT
     );
@@ -199,6 +206,7 @@ test.describe("Trends → Fitness, the windowed lens (#1492)", () => {
     // ignored — no redirect, no 404, and the zone content it wanted is simply a
     // section of the page it lands on.
     await page.goto("/trends?tab=fitness&ftab=cardio");
+    await expandTrendsContext(page);
     await expect(page.getByRole("tab", { name: "Fitness" })).toHaveAttribute(
       "aria-selected",
       "true"
@@ -210,6 +218,7 @@ test.describe("Trends → Fitness, the windowed lens (#1492)", () => {
 
     // A nested value with NO outer tab still names Fitness.
     await page.goto("/trends?ftab=sport");
+    await expandTrendsContext(page);
     await expect(page.getByRole("tab", { name: "Fitness" })).toHaveAttribute(
       "aria-selected",
       "true"

@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import { loginAs } from "./nav";
+import { expandTrendsContext } from "./trends-chrome";
 import { followLink } from "./helpers";
 import { E2E_MEMBER_PASSWORD, E2E_LOGIN_TRENDS_BODY } from "./fixture-logins";
 
@@ -28,6 +29,8 @@ test.describe("Trends → Body metric pages (#1067 Phase 2)", () => {
     });
     await page.setViewportSize(PHONE);
     await page.goto("/trends?tab=body");
+    // The tab strip collapses into the #1485 F context bar at phone width.
+    await expandTrendsContext(page);
     await expect(page.getByRole("tab", { name: "Body" })).toHaveAttribute(
       "aria-selected",
       "true"

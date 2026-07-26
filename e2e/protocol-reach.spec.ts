@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import { followLink, settledClick } from "./helpers";
+import { frozenNow } from "./worker-env";
 
 // Protocol reach (issue #660): chart annotations, the active-protocol dashboard
 // widget, and the direct intake-item link. The default specs run authenticated as
@@ -55,7 +56,7 @@ test.describe("protocol chart annotations (#660 ask 1)", () => {
     test.slow();
     const uniqueName = `E2E LDL protocol ${Date.now()}`;
     // A past start so the window overlaps the seeded LDL readings.
-    const start = new Date(Date.now() - 60 * 86_400_000)
+    const start = new Date(frozenNow().getTime() - 60 * 86_400_000)
       .toISOString()
       .slice(0, 10);
 

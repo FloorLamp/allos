@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
 import { settledClick } from "./helpers";
-import { workerDbPath } from "./worker-env";
+import { workerDbPath, frozenNow } from "./worker-env";
 
 // Imaging-study CRUD on the #imaging section of /results (#702, #1042 phase 5): add a structured study through the real
 // form, see it in the list with its modality + contrast shown, filter by modality,
@@ -29,7 +29,7 @@ function cleanup() {
 // A recent ISO date safely inside the trailing-3-year dose window (the app clock is
 // frozen to the run's real "today").
 function recentDate(): string {
-  const d = new Date();
+  const d = frozenNow();
   d.setDate(d.getDate() - 30);
   return d.toISOString().slice(0, 10);
 }

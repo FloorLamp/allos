@@ -11,7 +11,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { toggleSavedItem, moveSaved } from "@/app/(app)/saved/actions";
+import { toggleSavedItem, reorderSaved } from "@/app/(app)/saved/actions";
 import { seedStandardMetricSaves } from "@/lib/standard-metric-seeds";
 import { seedActor, createLogin, createProfile, actAs, fd } from "./harness";
 
@@ -132,57 +132,91 @@ describe("toggleSavedItem", () => {
   });
 });
 
-describe("moveSaved", () => {
-  it("reorders within the saved list and revalidates /trends", async () => {
+// The drag-reorder write (#1485 C). Same store and the same dense-position
+// normalization moveSaved uses — the difference is that a drag names a
+// DESTINATION, so the whole list arrives at once.
+describe("reorderSaved", () => {
+  const order = (keys: string[]) => fd({ keys: JSON.stringify(keys) });
+
+  it("sets the saved order outright and revalidates /trends", async () => {
     const { profile } = seedActor();
     await toggleSavedItem(fd({ key: "bio:ApoB" }));
     await toggleSavedItem(fd({ key: "metric:weight" }));
-    const before = saved(profile.id).map((r) => r.key);
+    await toggleSavedItem(fd({ key: "bio:Ferritin" }));
     revalidate.mockClear();
 
-    const res = await moveSaved(fd({ key: "bio:ApoB", dir: "up" }));
+    const res = await reorderSaved(
+      order(["metric:weight", "bio:Ferritin", "bio:ApoB"])
+    );
 
     expect(res.ok).toBe(true);
-    expect(saved(profile.id).map((r) => r.key)).toEqual([before[1], before[0]]);
+    expect(saved(profile.id).map((r) => r.key)).toEqual([
+      "weight",
+      "Ferritin",
+      "ApoB",
+    ]);
     expect(revalidate.mock.calls.map((c) => c[0])).toContain("/trends");
   });
 
-  it("never changes WHAT is saved — only the order", async () => {
+  it("never changes WHAT is saved — a row the client didn't name survives", async () => {
+    // The stale-client case: another device starred something since this grid
+    // rendered. Omitting it must not delete it.
     const { profile } = seedActor();
     await toggleSavedItem(fd({ key: "bio:ApoB" }));
     await toggleSavedItem(fd({ key: "metric:weight" }));
 
-    await moveSaved(fd({ key: "metric:weight", dir: "down" }));
-    await moveSaved(fd({ key: "metric:weight", dir: "down" })); // at the end: no-op
+    await reorderSaved(order(["metric:weight"]));
 
     expect(new Set(saved(profile.id).map((r) => `${r.kind}:${r.key}`))).toEqual(
       new Set(["biomarker:ApoB", "trend-metric:weight"])
     );
+    // The named row leads; the unnamed one keeps its place behind it.
+    expect(saved(profile.id)[0].key).toBe("weight");
   });
 
-  it("refuses an unparseable key and no-ops for an unsaved item", async () => {
+  it("serves the ⋯ menu's arrow fallback too — ONE write, one list", async () => {
+    // The convergence #1485 C is about: the arrows no longer step through the
+    // stored order in a write of their own. The grid computes the stepped list
+    // (moveInOrder, pure) and submits it HERE, exactly as a drag does.
+    const { profile } = seedActor();
+    await toggleSavedItem(fd({ key: "bio:ApoB" }));
+    await toggleSavedItem(fd({ key: "metric:weight" }));
+    await toggleSavedItem(fd({ key: "bio:Ferritin" }));
+
+    await reorderSaved(order(["bio:ApoB", "bio:Ferritin", "metric:weight"]));
+    // "Move earlier" on the last tile, as the grid sends it.
+    await reorderSaved(order(["bio:ApoB", "metric:weight", "bio:Ferritin"]));
+
+    expect(saved(profile.id).map((r) => r.key)).toEqual([
+      "ApoB",
+      "weight",
+      "Ferritin",
+    ]);
+  });
+
+  it("refuses unreadable input and drops keys that name nothing savable", async () => {
     const { profile } = seedActor();
     await toggleSavedItem(fd({ key: "bio:ApoB" }));
 
-    expect((await moveSaved(fd({ key: "nonsense", dir: "up" }))).ok).toBe(
+    expect((await reorderSaved(fd({ keys: "not json" }))).ok).toBe(false);
+    expect((await reorderSaved(fd({ keys: JSON.stringify({}) }))).ok).toBe(
       false
     );
-    // Parseable but not saved — a valid request that simply matches nothing.
-    expect((await moveSaved(fd({ key: "bio:Ferritin", dir: "up" }))).ok).toBe(
-      true
+    // Every entry unparseable → nothing to order, so it reports rather than
+    // silently writing a positions sweep off an empty list.
+    expect((await reorderSaved(order(["nonsense", "also:nonsense"]))).ok).toBe(
+      false
     );
     expect(saved(profile.id)).toEqual([{ kind: "biomarker", key: "ApoB" }]);
   });
 
   it("refuses a read-only actor (the auth gate)", async () => {
     const login = createLogin({ role: "member" });
-    const profile = createProfile("Read Only Move", login.id);
+    const profile = createProfile("Read Only Drag", login.id);
     actAs(login, profile, "write");
     await toggleSavedItem(fd({ key: "bio:ApoB" }));
     actAs(login, profile, "read");
 
-    await expect(
-      moveSaved(fd({ key: "bio:ApoB", dir: "up" }))
-    ).rejects.toThrow();
+    await expect(reorderSaved(order(["bio:ApoB"]))).rejects.toThrow();
   });
 });

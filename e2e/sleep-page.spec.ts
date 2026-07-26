@@ -12,7 +12,7 @@ import {
 } from "./fixture-logins";
 import { settledClick } from "./helpers";
 import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
-import { workerDbPath } from "./worker-env";
+import { workerDbPath, frozenNow } from "./worker-env";
 
 const DB_PATH = workerDbPath();
 
@@ -35,10 +35,10 @@ function createSleepEditFixture(
   const handle = new Database(DB_PATH);
   handle.pragma("busy_timeout = 5000");
   try {
-    const manualDate = new Date(Date.now() - 3 * 86_400_000)
+    const manualDate = new Date(frozenNow().getTime() - 3 * 86_400_000)
       .toISOString()
       .slice(0, 10);
-    const importedDate = new Date(Date.now() - 4 * 86_400_000)
+    const importedDate = new Date(frozenNow().getTime() - 4 * 86_400_000)
       .toISOString()
       .slice(0, 10);
     const suffix = `${purpose}-${process.pid}-${testInfo.repeatEachIndex}`;

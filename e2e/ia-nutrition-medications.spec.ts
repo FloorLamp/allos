@@ -4,7 +4,7 @@ import Database from "better-sqlite3";
 import { followLink } from "./helpers";
 import { medicationList, medicationRow } from "./med-card-helpers";
 import { createFixtureProfile, destroyFixtureProfile } from "./fixture-profile";
-import { workerDbPath } from "./worker-env";
+import { workerDbPath, frozenNow } from "./worker-env";
 
 // IA split (#746): supplements folded into the Nutrition → Supplements tab,
 // medications became a standalone Medical-group page, and /medicine permanently
@@ -102,7 +102,7 @@ function seedBaby(): void {
     db.pragma("busy_timeout = 5000");
     const pid = createFixtureProfile(db, BABY);
     // ~6 months old → getUserAge() = 0 → life-stage "infant" → Food logging off.
-    const bd = new Date();
+    const bd = frozenNow();
     bd.setMonth(bd.getMonth() - 6);
     db.prepare(
       "INSERT INTO profile_settings (profile_id, key, value) VALUES (?, 'birthdate', ?)"

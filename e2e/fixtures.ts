@@ -1,4 +1,9 @@
-import { test as base, expect } from "@playwright/test";
+import {
+  test as base,
+  expect,
+  type Browser,
+  type BrowserContext,
+} from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
@@ -6,6 +11,7 @@ import path from "node:path";
 import {
   ADMIN_PASSWORD,
   ADMIN_USERNAME,
+  frozenNow,
   RUN_CONTEXT_PATH,
   slotPidPath,
   TEMPLATE_DEMO_DIR,
@@ -206,6 +212,42 @@ async function stopServer(server: ChildProcess): Promise<void> {
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export const test = base.extend<{}, WorkerFixtures>({
+  // THE BROWSER RUNS ON THE APP'S FROZEN CLOCK (#1538 follow-up).
+  //
+  // `ALLOS_TEST_NOW` freezes the SERVER's `now()` for the whole run, but a browser
+  // cannot see an env var: client code (`new Date()` — the activity form's "now"
+  // prefill, relative-time widgets) kept reading real time, so the two clocks
+  // drifted apart by however long the run had been going. A spec that back-dates
+  // from a client-prefilled time by 40 minutes and gives it a 30-minute duration
+  // has a 10-minute margin — fine when a shard ran 8 minutes, deterministically
+  // broken 29 minutes into a 90-minute repeat-each lane, where the session it
+  // writes lands in the SERVER's future and drops out of the finished-session
+  // window (#1441). Setting each context's system time to the same frozen instant
+  // closes the gap: both sides now answer the same "now", and the clock still
+  // TICKS from there (setSystemTime, not setFixedTime — timers, animations and
+  // polling behave normally, and elapsed time within one test stays real).
+  //
+  // Patching `browser.newContext` rather than overriding the `context` fixture is
+  // deliberate: half the suite builds its own contexts (loginAs, cookie-less
+  // anonymous contexts, phone-viewport contexts), and the built-in
+  // `context`/`page` fixtures go through this same method — so one patch covers
+  // every context a spec can get.
+  browser: async ({ browser }, use) => {
+    const at = frozenNow();
+    const original = browser.newContext.bind(browser);
+    const patched = async (
+      ...args: Parameters<Browser["newContext"]>
+    ): Promise<BrowserContext> => {
+      const context = await original(...args);
+      await context.clock.setSystemTime(at);
+      return context;
+    };
+    (browser as { newContext: Browser["newContext"] }).newContext = patched;
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    await use(browser);
+    (browser as { newContext: Browser["newContext"] }).newContext = original;
+  },
+
   workerApp: [
     async ({ browser }, use, workerInfo) => {
       // The DIRECTORY is keyed on the worker PROCESS (workerIndex, unique for the

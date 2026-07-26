@@ -1,10 +1,5 @@
 import { db, writeTx } from "../db";
-import {
-  orderSavedRefs,
-  moveInOrder,
-  type SavedKind,
-  type SavedRef,
-} from "../saved-items";
+import { orderSavedRefs, type SavedKind, type SavedRef } from "../saved-items";
 
 // The unified save store's SQL layer (issue #1456) over `saved_items` (migration
 // 113) — the ONE table behind the ★ star gesture, folding the retired
@@ -118,29 +113,54 @@ export function toggleItemSaved(
   });
 }
 
-// Move one saved item up/down within the profile's saved order — the reorder
-// affordance that replaced the retired pin toggle on Trends Overview.
+// Set the profile's saved order OUTRIGHT, from a complete list of refs — the write
+// behind drag-reorder (#1485 C), where the gesture names a destination rather than
+// a direction.
 //
+// It replaced the retired `moveSavedItem` (one-slot up/down over the stored order):
+// with the grid holding the list client-side, the drag AND the ⋯ menu's arrow
+// fallback both name a destination, so ONE write serves both and they cannot drift.
 // Ordering is ONE list across kinds (the Overview grid interleaves saved biomarker
-// and metric tiles), and the rewrite normalizes EVERY row to a dense 0..n-1 position,
-// so a set that was half-unpositioned (a fresh star) becomes fully ordered on the
-// first move instead of drifting. No-ops at the ends and for an unknown ref.
-export function moveSavedItem(
+// and metric tiles), and the rewrite normalizes EVERY row to a dense 0..n-1
+// position, so a set that was half-unpositioned (a fresh star) becomes fully ordered
+// on the first reorder instead of drifting.
+//
+// Refs the profile doesn't actually have saved are ignored, and any saved row the
+// caller didn't name keeps its relative order AFTER the named ones — a client
+// working from a stale render can reorder what it can see without dropping a row
+// that was starred on another device since.
+export function setSavedOrder(
   profileId: number,
-  ref: SavedRef,
-  direction: "up" | "down"
+  refs: readonly SavedRef[]
 ): void {
   writeTx(() => {
     const rows = getSavedItems(profileId);
-    const index = rows.findIndex(
-      (r) =>
-        r.kind === ref.kind && r.key.toLowerCase() === ref.key.toLowerCase()
-    );
-    if (index < 0) return;
-    const reordered = moveInOrder(rows, index, direction);
-    const setPosition = db.prepare(
-      `UPDATE saved_items SET position = ? WHERE id = ? AND profile_id = ?`
-    );
-    reordered.forEach((row, i) => setPosition.run(i, row.id, profileId));
+    const seen = new Set<number>();
+    const ordered: SavedItemRow[] = [];
+    for (const ref of refs) {
+      const row = rows.find(
+        (r) =>
+          !seen.has(r.id) &&
+          r.kind === ref.kind &&
+          r.key.toLowerCase() === ref.key.toLowerCase()
+      );
+      if (!row) continue;
+      seen.add(row.id);
+      ordered.push(row);
+    }
+    for (const row of rows) if (!seen.has(row.id)) ordered.push(row);
+    writeSavedPositions(profileId, ordered);
   });
+}
+
+// Stamp a dense 0..n-1 `position` onto an already-ordered row list. Callers are
+// inside a write transaction already.
+function writeSavedPositions(
+  profileId: number,
+  ordered: readonly SavedItemRow[]
+): void {
+  const setPosition = db.prepare(
+    `UPDATE saved_items SET position = ? WHERE id = ? AND profile_id = ?`
+  );
+  ordered.forEach((row, i) => setPosition.run(i, row.id, profileId));
 }

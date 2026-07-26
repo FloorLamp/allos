@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 
 // DB-per-worker addressing (issue #1538) — the ONE place that answers "which DB,
@@ -55,6 +56,50 @@ export const DB_BASENAME = "app.db";
 
 /** Where global-setup.ts hands the run-wide frozen clock to the workers. */
 export const RUN_CONTEXT_PATH = path.join(E2E_DATA_DIR, "run-context.json");
+
+/**
+ * THE run's frozen instant — the one `now()` the seeded template, every worker's
+ * app server and (via e2e/fixtures.ts) every browser context share.
+ *
+ * A SPEC'S "NOW" IS THIS, NEVER THE WALL CLOCK. The gap between the frozen instant
+ * and real time is the elapsed length of the run, which used to be a few minutes
+ * and is now up to ~90 minutes on a repeat-each lane — long enough that a row
+ * written from real time lands in the app's FUTURE and drops out of every recency
+ * window (the #1441 finished-session recap was the first to fail this way,
+ * deterministically, 29 minutes into a lane). So a spec that computes a timestamp
+ * derives it from here.
+ *
+ * Cached: the file is written once, before any worker starts.
+ */
+let frozenNowCache: Date | undefined;
+export function frozenNow(): Date {
+  if (frozenNowCache) return new Date(frozenNowCache);
+  let iso = process.env.ALLOS_TEST_NOW;
+  try {
+    const raw = JSON.parse(fs.readFileSync(RUN_CONTEXT_PATH, "utf8")) as {
+      frozenNow?: string;
+    };
+    if (raw.frozenNow) iso = raw.frozenNow;
+  } catch {
+    // Not written yet (the main process before global-setup) — fall back below.
+  }
+  frozenNowCache = iso ? new Date(iso) : new Date();
+  return new Date(frozenNowCache);
+}
+
+/**
+ * The frozen instant as `HH:MM` in `zone` — the value the app's own client-side
+ * "now" shortcuts prefill a time field with, computed from the FROZEN clock so a
+ * spec can back-date from it without reading the browser's wall clock.
+ */
+export function frozenLocalHHMM(zone: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: zone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(frozenNow());
+}
 
 /**
  * Base port for the per-worker servers; worker N listens on BASE + N. Overridable

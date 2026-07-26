@@ -1,6 +1,7 @@
 import { test, expect } from "./fixtures";
 import { type Page } from "@playwright/test";
 import { loginAs } from "./nav";
+import { expandTrendsContext } from "./trends-chrome";
 import { E2E_MEMBER_PASSWORD, E2E_LOGIN_TRENDS_BODY } from "./fixture-logins";
 
 // Trends → Body mobile overhaul, Phase 1 of #1067. On mobile the tab used to force
@@ -31,6 +32,9 @@ async function openBodyTab(
     ? `/trends?tab=body&view=${opts.view}`
     : "/trends?tab=body";
   await page.goto(q);
+  // The tab strip collapses into the #1485 F context bar below `sm`, and this
+  // helper drives a phone viewport — open the bar before reading the lit tab.
+  await expandTrendsContext(page);
   await expect(page.getByRole("tab", { name: "Body" })).toHaveAttribute(
     "aria-selected",
     "true"
@@ -95,9 +99,11 @@ test.describe("Trends → Body mobile (#1067 Phase 1)", () => {
     // per-chart anchors live in the classic chart stack (view=all) since #1067
     // Phase 2 made tiles the mobile default.
     await page.goto("/trends?tab=body&view=all#hr");
-    await expect(page.getByRole("tab", { name: "Body" })).toHaveAttribute(
-      "aria-selected",
-      "true"
+    // The tab strip is collapsed behind the #1485 F context bar at this width, and
+    // EXPANDING it here would move the page under the anchor — so the landing is
+    // confirmed by the bar's own label, which names the tab without touching layout.
+    await expect(page.getByTestId("trends-context-label")).toContainText(
+      "Body"
     );
     await expect(page.locator("#hr")).toBeInViewport();
 

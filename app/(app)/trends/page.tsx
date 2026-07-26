@@ -14,8 +14,10 @@ import {
   type DateRange,
 } from "@/lib/timeline-format";
 import { rangeSummaryLabel } from "@/lib/trends";
+import { activeRangeLabel, trendsContextLabel } from "@/lib/trends-context";
 import { PageHeader } from "@/components/ui";
-import NavTabs from "@/components/NavTabs";
+import { NavTabsStrip } from "@/components/NavTabs";
+import TrendsContextBar from "@/components/TrendsContextBar";
 import DateRangeControl from "@/components/DateRangeControl";
 import SavedViewsBar from "@/components/SavedViewsBar";
 import OverviewSection from "./OverviewSection";
@@ -165,6 +167,15 @@ export default async function TrendsPage(props: {
   // for them (the activeTab fallback above enforces the latter).
   const tabStrip = trendsTabStrip(restricted);
 
+  // The phone chrome's one-line context label (#1485 F): "<tab> · <window>". Built
+  // on the server from the SAME predicates the pills light themselves with, so the
+  // collapsed label can never disagree with the control it hides — and rendered
+  // before hydration, so a chart is never on screen with its window unnamed.
+  const contextLabel = trendsContextLabel(
+    tabStrip.find((t) => t.id === activeTab)?.label ?? "Trends",
+    activeRangeLabel(range, todayStr, extraRanges)
+  );
+
   // #105: build ONLY the active section server-side. Passing every section as a
   // prop rendered (and ran the queries for) all of them on every request — the
   // client `keepMounted` flag only gated DOM, not the RSC pass. Each tab switch
@@ -217,51 +228,72 @@ export default async function TrendsPage(props: {
 
   return (
     <div>
+      {/* Heading + subtitle are given up below `sm` (#1485 F, the #1413 dashboard
+          precedent): the context bar right under it already names the tab AND the
+          window, and the two-line subtitle is read-once orientation copy that cost
+          ~85px of every phone visit. The h1 survives as `sr-only`, so the page is
+          still named for AT and the shared-PageHeader guard stays honest. */}
       <PageHeader
         title="Trends"
         subtitle="Your analytics lens — body, nutrition, fitness, and insights under one date range."
+        compactBelowSm
       />
 
-      <div className="mb-6">
-        <DateRangeControl
-          basePath="/trends"
-          range={range}
-          todayStr={todayStr}
-          hiddenParams={{
-            tab: activeTab === "overview" ? undefined : activeTab,
-            cmpA,
-            cmpB,
-            cmpn: cmpNormalized ? "1" : undefined,
-            view: activeTab === "body" ? bodyView : undefined,
-          }}
-          buildHref={buildRangeHref}
-          idPrefix="trends"
-          extraRanges={extraRanges}
-          // The saved views ride the END of the chip row rather than a second
-          // full-width row of their own (#1455 C).
-          // The RESOLVED window goes to the saved-views bar, not the raw URL params
-          // (#1485 G): "Save current" on a default load must capture the 90D window
-          // the user is looking at, not the empty param bag that produced it —
-          // otherwise every view saved from a default load would re-apply as all time.
-          trailingChips={<SavedViewsBar views={savedViews} range={range} />}
-          // Only a CUSTOM window needs a summary chip: with a preset lit, the chip
-          // just repeats that pill's own label (the duplicate "All time" — #1455 D).
-          rightSlot={
-            isCustomRange(range, todayStr, extraRanges) ? (
-              <span
-                data-testid="range-summary-chip"
-                className="whitespace-nowrap rounded-full border border-black/10 bg-white/60 px-3 py-1 text-slate-500 dark:border-white/10 dark:bg-ink-900/60 dark:text-slate-400"
-              >
-                {rangeSummaryLabel(range, todayStr)}
-              </span>
-            ) : undefined
-          }
-        />
-      </div>
+      {/* The whole pre-chart band — range pills, saved views, tab strip — behind
+          ONE collapsed line on a phone, expanded in place from `sm` up (#1485 F). */}
+      <TrendsContextBar
+        label={contextLabel}
+        controls={
+          <>
+            <DateRangeControl
+              basePath="/trends"
+              range={range}
+              todayStr={todayStr}
+              hiddenParams={{
+                tab: activeTab === "overview" ? undefined : activeTab,
+                cmpA,
+                cmpB,
+                cmpn: cmpNormalized ? "1" : undefined,
+                view: activeTab === "body" ? bodyView : undefined,
+              }}
+              buildHref={buildRangeHref}
+              idPrefix="trends"
+              extraRanges={extraRanges}
+              // The saved views ride the END of the chip row rather than a second
+              // full-width row of their own (#1455 C).
+              // The RESOLVED window goes to the saved-views bar, not the raw URL params
+              // (#1485 G): "Save current" on a default load must capture the 90D window
+              // the user is looking at, not the empty param bag that produced it —
+              // otherwise every view saved from a default load would re-apply as all time.
+              trailingChips={<SavedViewsBar views={savedViews} range={range} />}
+              // Only a CUSTOM window needs a summary chip: with a preset lit, the chip
+              // just repeats that pill's own label (the duplicate "All time" — #1455 D).
+              rightSlot={
+                isCustomRange(range, todayStr, extraRanges) ? (
+                  <span
+                    data-testid="range-summary-chip"
+                    className="whitespace-nowrap rounded-full border border-black/10 bg-white/60 px-3 py-1 text-slate-500 dark:border-white/10 dark:bg-ink-900/60 dark:text-slate-400"
+                  >
+                    {rangeSummaryLabel(range, todayStr)}
+                  </span>
+                ) : undefined
+              }
+            />
+            {/* The strip lives INSIDE the bar; its panel stays in the page below
+                (components/NavTabs.tsx exports the two halves so this is the same
+                one strip implementation, not a second copy). Its own bottom margin
+                is dropped — the spacing under the whole band belongs to the bar. */}
+            <NavTabsStrip
+              tabs={tabStrip}
+              paramKey="tab"
+              activeId={activeTab}
+              className="mt-2 sm:mt-4"
+            />
+          </>
+        }
+      />
 
-      <NavTabs paramKey="tab" tabs={tabStrip} activeId={activeTab}>
-        {activeSection}
-      </NavTabs>
+      <div role="tabpanel">{activeSection}</div>
     </div>
   );
 }

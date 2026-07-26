@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { useShellChrome } from "./useShellChrome";
 
 // The app shell's sticky top chrome (issue #1416, sections B + C).
@@ -33,8 +34,29 @@ export default function ShellChrome({
   banner?: React.ReactNode;
 }) {
   const { hidden, ready } = useShellChrome();
+  const ref = useRef<HTMLDivElement>(null);
+  // Publish the chrome's own height as `--shell-chrome-h` on <html>, so a page can
+  // park a SECOND sticky strip directly beneath it and ride the same hide/reveal
+  // (the Trends context bar — issue #1485 F — is the first). The height is not a
+  // constant: the bar is one row, but the multi-profile view banner rides inside
+  // this same element when a view-set is active, and both can wrap. Measured rather
+  // than assumed, with the CSS declaring a sane pre-hydration default.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const publish = () =>
+      document.documentElement.style.setProperty(
+        "--shell-chrome-h",
+        `${el.offsetHeight}px`
+      );
+    publish();
+    const ro = new ResizeObserver(publish);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   return (
     <div
+      ref={ref}
       data-testid="shell-chrome"
       data-hidden={hidden ? "true" : "false"}
       // The scroll listener only exists after hydration, so before it the chrome

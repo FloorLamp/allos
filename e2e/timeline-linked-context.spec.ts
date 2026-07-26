@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import Database from "better-sqlite3";
-import { workerDbPath } from "./worker-env";
+import { workerDbPath, frozenNow } from "./worker-env";
 
 // Timeline linked context (issue #662): an IMPORTED visit deep-links the other
 // records its source document produced — the care-plan items / procedures /
@@ -14,7 +14,7 @@ const DOC_FILE = "e2e-lineage-ccd.xml";
 const VISIT_TYPE = "E2E Lineage Visit";
 
 function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
+  return frozenNow().toISOString().slice(0, 10);
 }
 
 function cleanup() {
