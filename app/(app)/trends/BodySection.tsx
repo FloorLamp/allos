@@ -52,6 +52,7 @@ import { ALL_ROWS, filterSeriesByRange } from "@/lib/trends";
 import { orderBodyCharts } from "@/lib/trends-body-order";
 import {
   BODY_METRIC_META,
+  bodyChartScale,
   buildBodyMetricTile,
   type BodyMetricSlug,
   type BodyMetricTile,
@@ -839,10 +840,13 @@ export default async function BodySection({
           <h2 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
             Steps per day
           </h2>
+          {/* Count metric: zero-floored axis + grouped ticks, from the ONE
+              registry the detail page reads (#1541). */}
           <LineChartCard
             data={stepsChart}
             label="Steps"
             color={chartSeries.sky}
+            {...bodyChartScale(BODY_METRIC_META.steps)}
           />
         </div>
       ),
@@ -1057,6 +1061,7 @@ export default async function BodySection({
             label="Water"
             color={chartSeries.sky}
             unit=" L"
+            {...bodyChartScale(BODY_METRIC_META.hydration)}
           />
         </div>
       ),
@@ -1077,6 +1082,7 @@ export default async function BodySection({
             label="Calories"
             color={chartSeries.amber}
             unit=" kcal"
+            {...bodyChartScale(BODY_METRIC_META.calories)}
           />
         </div>
       ),

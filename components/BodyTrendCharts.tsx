@@ -16,6 +16,11 @@ import {
 export interface BodyChartSpec {
   key: string;
   title: string;
+  // Drop the card's own <h2> (#1541 fix 3). The heading earns its keep on the Body
+  // tab, where several charts stack and each needs naming; on a SINGLE-chart detail
+  // page whose <h1> is the same string it is pure echo — the #1533 double-render
+  // shape, ~700px apart on a phone. A `headerAction` still renders its own row.
+  hideTitle?: boolean;
   data: { date: string; value: number | null }[];
   label: string;
   unit: string;
@@ -37,6 +42,11 @@ export interface BodyChartSpec {
   // across to the illness/fever surface). Server-rendered and passed in, so this
   // component stays the toggle-state owner and nothing else.
   headerAction?: ReactNode;
+  // Axis treatment for a COUNT metric (#1541) — a zero-floored domain and grouped
+  // ticks. Composed by lib/trends-body-metrics' bodyChartScale() from the ONE
+  // registry, never re-decided per surface.
+  yDomain?: [number | "auto", number | "auto"];
+  groupYTicks?: boolean;
   // Reference LINE colour/label already ride `referenceValue`.
 }
 
@@ -96,12 +106,18 @@ export default function BodyTrendCharts({
           data-testid={chart.testid}
           className={chart.anchorId ? "card scroll-mt-28" : "card"}
         >
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-              {chart.title}
-            </h2>
-            {chart.headerAction}
-          </div>
+          {(!chart.hideTitle || chart.headerAction) && (
+            <div className="mb-3 flex items-center justify-between gap-2">
+              {chart.hideTitle ? (
+                <span />
+              ) : (
+                <h2 className="font-semibold text-slate-800 dark:text-slate-100">
+                  {chart.title}
+                </h2>
+              )}
+              {chart.headerAction}
+            </div>
+          )}
           {chart.note && (
             <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
               {chart.note}
@@ -115,6 +131,8 @@ export default function BodyTrendCharts({
             annotations={shown}
             windows={shownWindows}
             referenceValue={chart.referenceValue ?? null}
+            yDomain={chart.yDomain}
+            groupYTicks={chart.groupYTicks}
           />
           {chart.projectionNote && (
             <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
