@@ -534,11 +534,22 @@ test.describe("Sleep page (#1066)", () => {
     await expect(async () => {
       await page.mouse.move(5, 5); // leave the chart so the next hover re-enters
       await stageBar.hover();
+      // A 1px nudge AFTER the hover: recharts activates its tooltip on a fresh
+      // mousemove over the chart surface, and a hover that lands where the pointer
+      // already sat emits none — the CI-load failure mode where the wrapper stays
+      // hidden (empty innerText) for the whole budget (#1556 family).
+      const barBox = await stageBar.boundingBox();
+      if (barBox) {
+        await page.mouse.move(
+          barBox.x + barBox.width / 2 + 1,
+          barBox.y + barBox.height / 2 + 1
+        );
+      }
       const txt = (await stageTip.innerText()).trim();
       expect(txt).toContain("h");
       // No raw unit conversion: nowhere a number with 2+ decimals (e.g. 1.5333333).
       expect(txt).not.toMatch(/\d\.\d{2,}/);
-    }).toPass({ timeout: 15_000 }); // topass-ok: recharts opens the tooltip only after a hover mousemove — re-hover per attempt, no single awaitable render event
+    }).toPass({ timeout: 30_000 }); // topass-ok: recharts opens the tooltip only after a hover mousemove — re-hover per attempt, no single awaitable render event; 30s is a declared budget for a loaded CI shard (measured empty-tooltip overruns at 15s), not a retry
 
     // SRI trend line: decimals=0 so the tooltip is an INTEGER — like the headline
     // (which is Math.round(sri)), never the raw "87 vs 87.34" mismatch #403 named.
@@ -549,11 +560,21 @@ test.describe("Sleep page (#1066)", () => {
     await expect(async () => {
       await page.mouse.move(5, 5);
       await sriDot.hover();
+      // Same fresh-mousemove nudge as the stage bar above — this loop is where the
+      // CI failures actually landed (empty wrapper for the full budget, twice on
+      // 2026-07-26), and the dot is the smaller hover target.
+      const dotBox = await sriDot.boundingBox();
+      if (dotBox) {
+        await page.mouse.move(
+          dotBox.x + dotBox.width / 2 + 1,
+          dotBox.y + dotBox.height / 2 + 1
+        );
+      }
       const txt = (await sriTip.innerText()).trim();
       expect(txt).toContain("SRI");
       // Integer only — never a fractional SRI in the tooltip.
       expect(txt).not.toMatch(/\d\.\d/);
-    }).toPass({ timeout: 15_000 }); // topass-ok: recharts opens the tooltip only after a hover mousemove — re-hover per attempt, no single awaitable render event
+    }).toPass({ timeout: 30_000 }); // topass-ok: recharts opens the tooltip only after a hover mousemove — re-hover per attempt, no single awaitable render event; 30s is a declared budget for a loaded CI shard (measured empty-tooltip overruns at 15s), not a retry
   });
 
   test("clock times follow the login's 12h/24h pref on the hero + consistency strip (#1163)", async ({
