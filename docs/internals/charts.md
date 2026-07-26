@@ -1,6 +1,6 @@
 # Charts — palette contract, form selection, mark specs, motion
 
-Status: **partial** (#1445 Parts 1, 2 — including the owner-added sparkline variant — 3a, 3c and 4a–4e shipped: validated palette, scaffold chokepoint, CI palette validation, ramp exports, motion policy, guards. Part 3b — the slope/dumbbell, bullet-tile and dot-strip FORMS — is still unbuilt; the form table below marks them so.)
+Status: **partial** (#1488's chart card + tap-through guard shipped; #1445 Parts 1, 2 — including the owner-added sparkline variant — 3a, 3c and 4a–4e shipped: validated palette, scaffold chokepoint, CI palette validation, ramp exports, motion policy, guards. Part 3b — the slope/dumbbell, bullet-tile and dot-strip FORMS — is still unbuilt; the form table below marks them so.)
 
 Charts are the app's densest surface and its easiest one to get quietly wrong. This page holds the rules; the one-line pointer stays in AGENTS.md's conventions.
 
@@ -146,6 +146,29 @@ Minimal and meaningful; a medical-data surface is not a place for decoration.
 
 ---
 
+## 5b. The card, and where a chart goes when you tap it
+
+A full-size chart on Trends is not a picture — it is the way in. Every one renders
+through `components/ChartCard.tsx` (issue #1488), which owns four things at once:
+
+- **The tap contract.** The header row — the title plus the latest-value headline —
+  is a link to the chart's detail page, with a small expand icon top-right carrying an
+  accessible name. The PLOT is never inside that link: on touch, tapping the plot is
+  how a point is read, and that gesture must stay tooltip inspection. Anything that
+  wraps a plot in an anchor has broken the chart.
+- **`detailHref`, required.** `null` is allowed only with a same-line
+  `detail-none: <why>` comment. The destination for a registered body metric is
+  `metricDetailHref(slug)` → `/trends/metric/<slug>`; an aggregate/composite chart
+  (training volume, macros, zone minutes) points at the existing full-depth surface
+  its bars are summed from, named at the call site.
+- **The plot height.** The card owns it — square below `sm`, `plotHeightClass`
+  (default `sm:h-64`) above — through the `.chart-card-plot > *` rule in
+  `app/globals.css`. A call site does not pass `heightClass`; that is what keeps every
+  state of a card (populated, empty, loading, error, offline fallback) on one
+  footprint, so a stack does not reflow because one series is empty.
+- **Desktop is unchanged.** The square is a mobile-only rule; from `sm` up the card is
+  exactly the proportions it had before, pinned by a browser test.
+
 ## 6. The guards, and what each one catches
 
 | Test                                        | Catches                                                                                                                                                               |
@@ -154,6 +177,7 @@ Minimal and meaningful; a medical-data surface is not a place for decoration.
 | `lib/__tests__/chart-colors-scan.test.ts`   | a raw hex in `app/`/`components/`; a hand-rolled same-hue `bg-*` ladder                                                                                               |
 | `lib/__tests__/chart-scaffold-scan.test.ts` | a raw `strokeDasharray="…"`; a hand-built tooltip `contentStyle={{`; a `recharts` import outside the blessed cards; a card that imports recharts but not the scaffold |
 | `lib/__tests__/micro-text-size.test.ts`     | `text-[9px]` **and** numeric `fontSize: 9`                                                                                                                            |
+| `lib/__tests__/chart-detail-href.test.ts`   | a Trends chart drawn outside `ChartCard` (a dead end); a `detailHref={null}` with no `detail-none:` justification; a registry kind the detail page can't resolve      |
 
 Hand-drawn fixed-viewBox SVG panels (`IntradayPanel`, `FeverChart`, `MuscleAnatomy`) are exempt from the px-denominated rules, with justification in each allowlist: their lengths are viewBox user units scaled by the container, so a px floor cannot be applied to them. They are still bound by the palette.
 
