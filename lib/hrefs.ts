@@ -215,6 +215,7 @@ const INTEGRATION_DETAIL_ROUTES: Partial<Record<IntegrationId, AppRoute>> = {
   withings: "/integrations/withings",
   weather: "/integrations/weather",
   "calendar-feed": "/integrations/calendar-feed",
+  "fitbit-takeout": "/integrations/fitbit-takeout",
 };
 
 export function integrationDetailHref(id: IntegrationId): AppRoute | null {

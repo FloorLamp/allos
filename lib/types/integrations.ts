@@ -12,8 +12,12 @@
 // redirect/callback (Strava); 'token' = pull with a pasted personal access token, no
 // OAuth app/redirect/callback (Oura); 'feed' = outbound subscription (calendar);
 // 'public' = keyless pull needing NO account/credential — just a prerequisite already
-// on the profile (the home location), e.g. Open-Meteo weather/UV (#1172).
-export type IntegrationKind = "push" | "oauth" | "token" | "feed" | "public";
+// on the profile (the home location), e.g. Open-Meteo weather/UV (#1172); 'archive' =
+// the user hands us an export FILE they downloaded from the vendor — no account, no
+// credential, no schedule, and nothing to reconnect (Fitbit via Google Takeout). It is
+// the only kind with no ongoing connection: an import is an event, not a link.
+export type IntegrationKind =
+  "push" | "oauth" | "token" | "feed" | "public" | "archive";
 
 // 'available' integrations can be configured now; 'planned' render as a preview.
 export type IntegrationStatus = "available" | "planned";
@@ -25,7 +29,8 @@ export type IntegrationId =
   | "withings"
   | "garmin"
   | "weather"
-  | "calendar-feed";
+  | "calendar-feed"
+  | "fitbit-takeout";
 
 // A row in the integrations registry — the Integrations page renders from these.
 export interface IntegrationDef {

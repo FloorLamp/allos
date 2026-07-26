@@ -433,6 +433,209 @@ export function parseDailyVitalCsv(
   return out;
 }
 
+// ---- sleep ----
+//
+// One Fitbit sleep log → a nightly `sleep_min` total plus the four-bucket stage
+// breakdown, matching what the Health Connect and Oura parsers write so a Takeout
+// night and a synced night share one series.
+//
+// The wake day comes from `dateOfSleep`, which Fitbit already states as a BARE
+// calendar day — the same attribution every other sleep source uses (the local date
+// the session ENDS), stated rather than derived, so no zone conversion is involved.
+//
+// Stage minutes come from `levels.summary`, the vendor's own per-stage aggregate in
+// WHOLE minutes — one row per stage per night, exactly the shape Oura and Withings
+// deliver. The per-stage `levels.data` array is deliberately NOT summed instead: it
+// would produce dozens of rows per night for no extra fidelity (the summary is
+// already whole minutes) and re-open the per-stage rounding problem that #1562 had
+// to fix on the Health Connect path.
+//
+// `type: "classic"` logs (an older tracker with no stage detection) carry only
+// asleep/restless/awake and no stage summary; their total is still taken.
+const FITBIT_STAGE_METRIC: Record<string, string> = {
+  deep: "sleep_deep_min",
+  rem: "sleep_rem_min",
+  light: "sleep_light_min",
+  wake: "sleep_awake_min",
+};
+
+export function parseSleepJson(text: string): TakeoutParsed {
+  const out = emptyTakeoutParsed();
+  let logs: unknown;
+  try {
+    logs = JSON.parse(text);
+  } catch {
+    out.warnings.push("sleep file is not valid JSON");
+    return out;
+  }
+  if (!Array.isArray(logs)) return out;
+  for (const raw of logs) {
+    if (!raw || typeof raw !== "object") {
+      out.skipped++;
+      continue;
+    }
+    const log = raw as Record<string, unknown>;
+    const date =
+      typeof log.dateOfSleep === "string" && BARE_DAY.test(log.dateOfSleep)
+        ? log.dateOfSleep
+        : null;
+    const start = typeof log.startTime === "string" ? log.startTime : undefined;
+    const end = typeof log.endTime === "string" ? log.endTime : undefined;
+    const ms = typeof log.duration === "number" ? log.duration : null;
+    const total =
+      ms != null ? boundedOrNull("sleep_min", Math.round(ms / 60000)) : null;
+    if (!date || !start || !end || total == null || total <= 0) {
+      out.skipped++;
+      continue;
+    }
+    out.samples.push({
+      metric: "sleep_min",
+      date,
+      start_time: start,
+      end_time: end,
+      value: total,
+    });
+    const levels = log.levels as Record<string, unknown> | undefined;
+    const summary = levels?.summary as
+      Record<string, { minutes?: unknown }> | undefined;
+    if (!summary) continue;
+    for (const [key, metric] of Object.entries(FITBIT_STAGE_METRIC)) {
+      const mins = summary[key]?.minutes;
+      const value =
+        typeof mins === "number" ? boundedOrNull(metric, mins) : null;
+      if (value == null || value <= 0) continue;
+      out.samples.push({
+        metric,
+        date,
+        start_time: `${start}#${key}`,
+        end_time: end,
+        value,
+      });
+    }
+  }
+  return out;
+}
+
+// ---- exercise ----
+//
+// One Fitbit exercise log → an activity. Unlike the Health Connect path there is no
+// numeric enum to decode: Takeout writes the human name ("Outdoor Bike", "Swim",
+// "Walk", "Spinning"), so the shared cardio-vs-sport keyword classification applies
+// directly.
+//
+// Distance carries its own UNIT and it is not metric — a real archive stamps
+// `"distance": 0.170877, "distanceUnit": "Mile"`. Storing that number as km would
+// under-report a swim by 60%, so the unit is honoured and an unrecognized one drops
+// the distance (never the session, matching the HC parser's field-level sanitizing).
+const CARDIO_HINTS = [
+  "run",
+  "walk",
+  "hik",
+  "cycl",
+  "bik",
+  "swim",
+  "row",
+  "elliptic",
+  "stair",
+  "treadmill",
+  "jog",
+  "ski",
+  "skat",
+  "cardio",
+  "spin",
+];
+
+const MILES_TO_KM = 1.609344;
+
+export function fitbitDistanceKm(
+  value: number | null,
+  unit: string | null
+): number | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  const u = (unit ?? "").trim().toLowerCase();
+  if (u === "kilometer" || u === "kilometers" || u === "km") return value;
+  if (u === "mile" || u === "miles" || u === "mi") return value * MILES_TO_KM;
+  if (u === "meter" || u === "meters" || u === "m") return value / 1000;
+  return null;
+}
+
+// `MM/DD/YY HH:MM:SS` — US-ordered local wall time, the only form the JSON families
+// use. Returns the calendar date and the "HH:MM" clock, both verbatim: this is the
+// device's local time already, and re-interpreting it through a zone would move it.
+export function parseUsLocalStamp(
+  s: string | undefined
+): { date: string; hhmm: string } | null {
+  if (!s) return null;
+  const m = s
+    .trim()
+    .match(/^(\d{2})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (!m) return null;
+  const [, mm, dd, yy, hh, mi] = m;
+  return { date: `20${yy}-${mm}-${dd}`, hhmm: `${hh}:${mi}` };
+}
+
+export function parseExerciseJson(text: string): TakeoutParsed {
+  const out = emptyTakeoutParsed();
+  let logs: unknown;
+  try {
+    logs = JSON.parse(text);
+  } catch {
+    out.warnings.push("exercise file is not valid JSON");
+    return out;
+  }
+  if (!Array.isArray(logs)) return out;
+  for (const raw of logs) {
+    if (!raw || typeof raw !== "object") {
+      out.skipped++;
+      continue;
+    }
+    const log = raw as Record<string, unknown>;
+    const stamp = parseUsLocalStamp(
+      typeof log.startTime === "string" ? log.startTime : undefined
+    );
+    const logId = log.logId;
+    if (!stamp || (typeof logId !== "number" && typeof logId !== "string")) {
+      out.skipped++;
+      continue;
+    }
+    const name =
+      typeof log.activityName === "string" && log.activityName.trim()
+        ? log.activityName.trim()
+        : "Workout";
+    const norm = name.toLowerCase();
+    const ms =
+      typeof log.activeDuration === "number"
+        ? log.activeDuration
+        : typeof log.duration === "number"
+          ? log.duration
+          : null;
+    out.activities.push({
+      external_id: `${FITBIT_TAKEOUT_ID}:${logId}`,
+      date: stamp.date,
+      type: CARDIO_HINTS.some((h) => norm.includes(h)) ? "cardio" : "sport",
+      title: name,
+      duration_min:
+        ms != null
+          ? boundedOrNull("duration_min", Math.round(ms / 60000))
+          : null,
+      distance_km: boundedOrNull(
+        "distance_km",
+        fitbitDistanceKm(
+          typeof log.distance === "number" ? log.distance : null,
+          typeof log.distanceUnit === "string" ? log.distanceUnit : null
+        )
+      ),
+      start_time: stamp.hhmm,
+      end_time: null,
+      avg_hr:
+        typeof log.averageHeartRate === "number"
+          ? boundedOrNull("heart_rate_bpm", log.averageHeartRate)
+          : null,
+    });
+  }
+  return out;
+}
+
 // Fitbit's 0–100 daily scores → vendor-prefixed metric_samples. Sleep Score's
 // component columns (`composition_score`, `duration_score`) are blank or `-1`
 // sentinels throughout a real archive, so only the overall score is taken — which
