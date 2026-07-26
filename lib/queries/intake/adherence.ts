@@ -6,7 +6,7 @@
 // mark-taken/skipped log writers (the notification-webhook counterparts), the
 // escalation-authorization helpers, and the adherence-strip range read.
 import { db, today, writeTx } from "../../db";
-import { now as clockNow } from "../../clock";
+import { now as clockNow, sqlNow } from "../../clock";
 import {
   shiftDateStr,
   dateStrInTz,
@@ -195,9 +195,12 @@ export function markDoseTaken(
     // precise intake time isn't captured here (the PRN path is what makes given_at
     // user-suppliable) — EXCEPT for a replayed offline confirm, whose tap moment was
     // captured on the client and validated above (#1427). An unusable/absent stamp
-    // COALESCEs to the server's own now, exactly as before. The exists-check above
-    // already guaranteed no row stands for (dose,date), so this insert can't
-    // duplicate.
+    // COALESCEs to the server's own now, exactly as before — but from the CLOCK SEAM
+    // (sqlNow, #1534), not SQL's `datetime('now')`: `date` above came from `today()`,
+    // so a real-clock fallback would write a self-contradicting row (a given_at whose
+    // profile-local date isn't the row's own date) on any run that crosses midnight.
+    // The exists-check above already guaranteed no row stands for (dose,date), so
+    // this insert can't duplicate.
     const stamp = resolveQueuedTakenAt(
       takenAt,
       getTimezone(profileId),
@@ -207,13 +210,14 @@ export function markDoseTaken(
     );
     db.prepare(
       `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, given_at)
-       VALUES (?,?,?,?, COALESCE(?, datetime('now')))`
+       VALUES (?,?,?,?, COALESCE(?, ?))`
     ).run(
       doseId,
       owned.item_id,
       date,
       owned.amount,
-      stamp ? utcSqlString(stamp) : null
+      stamp ? utcSqlString(stamp) : null,
+      sqlNow()
     );
     // Only the taken insert above (reached once, under the write lock) decrements
     // on-hand supply, once.

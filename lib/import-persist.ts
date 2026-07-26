@@ -1,4 +1,5 @@
 import { db, writeTx } from "./db";
+import { sqlNow } from "./clock";
 import { documentSource, undeferredBodyMetrics } from "./body-metric-extract";
 import { adoptSmokingStatusFromImport } from "./settings";
 import { smokingStatusToStructured } from "./social-history";
@@ -856,12 +857,17 @@ function insertImportRows(
   // matching drug renews (course) or, for the #1027 concurrent-different-strength
   // case, spawns a separate item. Matched on the cleaned/grouping name (RxCUI-first
   // when both carry a code, #482/#1026).
+  // created_at is bound from the CLOCK SEAM (sqlNow, #1534) rather than left to the
+  // column's `datetime('now')` default: an intake item's created_at is read as a
+  // calendar DAY — `date(created_at)` seeds a medication course's started_on and
+  // decides episode membership (getEpisodeMedReconciliation) — against
+  // `today()`-derived windows, which SQL's real clock cannot follow across midnight.
   const insMed = db.prepare(
     `INSERT INTO intake_items
        (name, notes, active, condition, priority, kind,
         prescriber, pharmacy, rx_number, as_needed,
-        document_id, source, provider_id, import_key, profile_id)
-     VALUES (?,?,1,'daily','high','medication',?,?,?,?,?,'extracted',?,?,?)`
+        document_id, source, provider_id, import_key, profile_id, created_at)
+     VALUES (?,?,1,'daily','high','medication',?,?,?,?,?,'extracted',?,?,?,?)`
   );
   const insMedDose = db.prepare(
     `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort)

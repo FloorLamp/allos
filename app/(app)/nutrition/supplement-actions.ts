@@ -3,6 +3,7 @@ import { requireWriteAccess, requireProfileWriteAccess } from "@/lib/auth";
 
 import { revalidatePath } from "next/cache";
 import { db, today, writeTx } from "@/lib/db";
+import { sqlNow } from "@/lib/clock";
 import { isRealIsoDate } from "@/lib/date";
 import { captureDelete } from "@/lib/undo-delete-db";
 import {
@@ -254,11 +255,13 @@ function parseDoses(formData: FormData): DoseInput[] {
 
 // Stamp created_at so the adherence-pattern window starts at the dose's real birth,
 // not the parent item's (#430). SQLite forbids datetime('now') as an ADD COLUMN
-// default, so the write path sets it explicitly.
+// default, so the write path sets it explicitly — from the CLOCK SEAM (sqlNow,
+// #1534), because doseAdherenceSince truncates this stamp to a calendar DAY
+// (`.slice(0, 10)`) and compares it against a `today()`-derived window.
 const insertDoseStmt = () =>
   db.prepare(
     `INSERT INTO intake_item_doses (item_id, amount, time_of_day, food_timing, sort, created_at)
-     VALUES (?,?,?,?,?, datetime('now'))`
+     VALUES (?,?,?,?,?,?)`
   );
 
 // Insert a fresh set of doses for a supplement (used on add + accept). Must run
@@ -273,7 +276,7 @@ function insertDoses(
 ) {
   const ins = insertDoseStmt();
   doses.forEach((d, i) =>
-    ins.run(suppId, d.amount, d.time_of_day, d.food_timing, i)
+    ins.run(suppId, d.amount, d.time_of_day, d.food_timing, i, sqlNow())
   );
 }
 
@@ -385,6 +388,11 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
     const pauseSituationId = f.pauseSituation
       ? resolveSituationId(profile.id, f.pauseSituation)
       : null;
+    // created_at is bound from the CLOCK SEAM (sqlNow, #1534) rather than left to the
+    // column's `datetime('now')` default: an intake item's created_at is read as a
+    // calendar DAY — `date(created_at)` seeds a medication course's started_on and
+    // decides episode membership (getEpisodeMedReconciliation), and
+    // doseAdherenceSince truncates it — all against `today()`-derived windows.
     const info = db
       .prepare(
         `INSERT INTO intake_items
@@ -394,8 +402,9 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
             quantity_on_hand, qty_per_dose,
             kind, prescriber, pharmacy, rx_number, rx, as_needed,
             min_interval_hours, max_daily_count, redose_notice,
-            rxcui, rxcui_ingredients, provider_id, indication_condition_id, source, profile_id)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?)`
+            rxcui, rxcui_ingredients, provider_id, indication_condition_id, source, profile_id,
+            created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'manual',?,?)`
       )
       .run(
         name,
@@ -426,7 +435,8 @@ export async function addSupplement(formData: FormData): Promise<FormResult> {
         f.rxcuiIngredients,
         providerId,
         indicationConditionId,
-        profile.id
+        profile.id,
+        sqlNow()
       );
     const suppId = Number(info.lastInsertRowid);
     insertDoses(suppId, doses);
@@ -644,11 +654,13 @@ export async function updateSupplement(
     // (evening → morning) restarts the adherence-pattern window so the engine
     // stops re-accusing the OLD slot, but a pure amount/food edit leaves the
     // dose's lifetime — and its miss history — where it was. `IS NOT` compares
-    // NULL-safely.
+    // NULL-safely. The new stamp comes from the CLOCK SEAM (sqlNow, #1534) —
+    // doseAdherenceSince truncates it to a calendar DAY and compares it against a
+    // `today()`-derived window, so a real-clock stamp drifts a day across midnight.
     const upd = db.prepare(
       `UPDATE intake_item_doses
           SET amount = ?, time_of_day = ?, food_timing = ?, sort = ?,
-              updated_at = CASE WHEN time_of_day IS NOT ? THEN datetime('now')
+              updated_at = CASE WHEN time_of_day IS NOT ? THEN ?
                                 ELSE updated_at END
         WHERE id = ? AND item_id = ? AND retired = 0`
     );
@@ -661,12 +673,20 @@ export async function updateSupplement(
           d.food_timing,
           i,
           d.time_of_day,
+          sqlNow(),
           d.id,
           id
         );
         keptIds.push(d.id);
       } else {
-        const info = ins.run(id, d.amount, d.time_of_day, d.food_timing, i);
+        const info = ins.run(
+          id,
+          d.amount,
+          d.time_of_day,
+          d.food_timing,
+          i,
+          sqlNow()
+        );
         keptIds.push(Number(info.lastInsertRowid));
       }
     });
@@ -798,17 +818,21 @@ function applyDoseStatus(
 
     if (!existing) {
       // A taken check-off stamps given_at = now (the tap moment ≈ intake time), so
-      // the med card's "last …" line has a time; a skip records no intake.
+      // the med card's "last …" line has a time; a skip records no intake. The stamp
+      // is the CLOCK SEAM's (sqlNow, #1534), not SQL's real clock: `date` above came
+      // from `today()`, and a row whose given_at lands on a different calendar day
+      // than its own `date` column is self-contradicting (the #1460 window's premise).
       db.prepare(
         `INSERT INTO intake_item_logs (dose_id, item_id, date, amount, status, given_at)
-         VALUES (?,?,?,?,?, CASE WHEN ? = 'taken' THEN datetime('now') ELSE NULL END)`
+         VALUES (?,?,?,?,?, CASE WHEN ? = 'taken' THEN ? ELSE NULL END)`
       ).run(
         doseId,
         dose.item_id,
         date,
         target === "taken" ? dose.amount : null,
         target,
-        target
+        target,
+        sqlNow()
       );
       if (target === "taken") decrementSupply(profileId, dose.item_id);
       return;
@@ -1107,11 +1131,17 @@ export async function acceptSuggestion(
       s.condition === "situational" && s.situation
         ? resolveSituationId(profile.id, s.situation)
         : null;
+    // created_at is bound from the CLOCK SEAM (sqlNow, #1534) rather than left to the
+    // column's `datetime('now')` default: an intake item's created_at is read as a
+    // calendar DAY — `date(created_at)` seeds a medication course's started_on and
+    // decides episode membership (getEpisodeMedReconciliation), and
+    // doseAdherenceSince truncates it — all against `today()`-derived windows.
     const info = db
       .prepare(
         `INSERT INTO intake_items
-           (name, notes, condition, priority, brand, product, situation, situation_id, stack, source, profile_id)
-         VALUES (?,?,?,?,?,?,?,?,?,'manual',?)`
+           (name, notes, condition, priority, brand, product, situation, situation_id, stack, source, profile_id,
+            created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,'manual',?,?)`
       )
       .run(
         s.name,
@@ -1123,7 +1153,8 @@ export async function acceptSuggestion(
         s.situation,
         situationId,
         null,
-        profile.id
+        profile.id,
+        sqlNow()
       );
     const suppId = Number(info.lastInsertRowid);
     insertDoses(

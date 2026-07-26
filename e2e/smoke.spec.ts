@@ -1,6 +1,7 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import path from "node:path";
+import { settledClick } from "./helpers";
 import { followLink, openCommandPalette } from "./nav";
 import { openMedDetailViaLink, refillBadge } from "./med-card-helpers";
 
@@ -101,7 +102,11 @@ test("dashboard coaching 'Snooze' snoozes the top recommendation (#39)", async (
     ?.trim();
   expect(original).toBeTruthy();
 
-  await card.getByTestId("coaching-snooze").click();
+  // settledClick, not a bare .click() (#1513): Snooze submits a Server Action, and a
+  // tap that lands before the form hydrates is swallowed — the POST never happens and
+  // the assertion below then reads a state that never changed. Measured 3-of-4 locally
+  // under isolation; the #1400/#1464 class, caught latent rather than in CI.
+  await settledClick(page, card.getByTestId("coaching-snooze"));
   // The snoozed recommendation is no longer shown as the widget's suggestion.
   await expect(card.getByText(original!, { exact: true })).toHaveCount(0);
 });
@@ -198,7 +203,13 @@ test("biological-age hero is absent for a child profile (#209)", async ({
     // Switch to profile 2 ("Riley (child)") via its household chip, then confirm the
     // switch by the user-menu naming the new profile.
     await page.goto("/");
-    await page.getByRole("main").getByTestId("household-chip-2").click();
+    // Same class as the Snooze above (#1513): the chip is a Server-Action form submit
+    // whose RESULT this asserts, so wait for the action's POST rather than assuming a
+    // pre-hydration tap landed.
+    await settledClick(
+      page,
+      page.getByRole("main").getByTestId("household-chip-2")
+    );
     await expect(page.getByTestId("user-menu-trigger")).toContainText(
       "Riley (child)"
     );
