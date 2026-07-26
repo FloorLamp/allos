@@ -64,6 +64,10 @@ const RECHARTS_MODULES = new Map<string, string>([
   ],
   ["components/StackedBarCardInner.tsx", "form: composition over time"],
   [
+    "components/BarSparklineInner.tsx",
+    "form: a per-day quantity as a sparkline (#1485 D) — the bar twin of LineChartCard's sparkline variant, for a series whose rest days are real zeros",
+  ],
+  [
     "components/ZoneMinutesCardInner.tsx",
     "form: weekly HR-zone composition + target line",
   ],

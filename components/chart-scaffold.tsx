@@ -146,6 +146,34 @@ export function chartSparklineAxisProps() {
   return { hide: true } as const;
 }
 
+/**
+ * The BAR variant of the sparkline (issue #1485 D) — the mark, not a new chart.
+ *
+ * A line sparkline asserts continuity between its points. For a per-day QUANTITY
+ * that is genuinely zero on the days nothing happened (training volume), that is
+ * a false claim and it renders as a sawtooth that reads as noise at tile width.
+ * Bars say the true thing: each day is its own column and the gaps are the rest
+ * days. Which SERIES get it is `lib/trend-sparkline.ts`; this is what they get.
+ *
+ * `maxBarSize` keeps a short window (a handful of days over a ~150px tile) from
+ * drawing slabs instead of bars, and the small top radius keeps the columns
+ * reading as marks rather than as a filled area.
+ */
+export function chartSparklineBarProps(color: string) {
+  return {
+    fill: color,
+    radius: [1, 1, 0, 0] as [number, number, number, number],
+    maxBarSize: 14,
+  } as const;
+}
+
+/** The hover highlight for a bar sparkline. The full-size bar cursor
+ *  (`chartBarCursorProps`) paints a band the height of the plot, which on a 80px
+ *  tile swamps the marks; a sparkline gets the same token at a lighter weight. */
+export function chartSparklineBarCursorProps(c: ChartColors) {
+  return { fill: c.grid, fillOpacity: 0.35 } as const;
+}
+
 // ── tooltip ─────────────────────────────────────────────────────────────────
 
 /** The tooltip's own surface, for the handful of cards that render a CUSTOM

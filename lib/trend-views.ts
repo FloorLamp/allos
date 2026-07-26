@@ -19,6 +19,15 @@ import { ALL_TIME_RANGE_PARAM, ALL_TIME_RANGE_VALUE } from "./timeline-format";
 
 // The captured hub state. Every field is optional so a view can pin down as much
 // or as little as the user had set (an unset field just isn't restored).
+//
+// #1493 C: `view` joined the bag. "Save current" that drops part of the current
+// state is a bug by its own name — the Body tab's tiles/all layout (#1067 Phase 2)
+// is URL state the user chose, so a view saved on Body/tiles must reopen on
+// Body/tiles. It is ADDITIVE: a stored view from before this field simply has no
+// `view` (normalizeViewParams leaves it unset), and an unset field is not restored,
+// so every pre-#1493 view keeps resolving exactly as it did. The 1D selection
+// (#1466) needs no field of its own — it IS a from/to window (from = to = the
+// chosen day), so it round-trips through the bounds already captured.
 export interface TrendViewParams {
   from?: string;
   to?: string;
@@ -26,6 +35,22 @@ export interface TrendViewParams {
   cmpA?: string;
   cmpB?: string;
   cmpn?: boolean;
+  view?: TrendBodyView;
+}
+
+// The Body tab's layout modes, as the URL spells them. Kept as a closed set here
+// (rather than a free string) so a corrupt or stale stored value is DROPPED at
+// parse time instead of being re-emitted into a `?view=` the page would ignore.
+export type TrendBodyView = "tiles" | "all";
+const BODY_VIEWS: readonly string[] = ["tiles", "all"];
+
+// The ONE gate on a layout value entering a view — used by both the stored-blob
+// normalizer and the save form's parser, so a value that survives one path can
+// never fail the other.
+export function parseTrendBodyView(v: unknown): TrendBodyView | undefined {
+  return typeof v === "string" && BODY_VIEWS.includes(v)
+    ? (v as TrendBodyView)
+    : undefined;
 }
 
 export interface TrendView {
@@ -63,6 +88,8 @@ export function normalizeViewParams(raw: unknown): TrendViewParams {
   if (cmpA) out.cmpA = cmpA;
   if (cmpB) out.cmpB = cmpB;
   if (r.cmpn === true || r.cmpn === "1") out.cmpn = true;
+  const view = parseTrendBodyView(cleanStr(r.view));
+  if (view) out.view = view;
   return out;
 }
 
@@ -198,5 +225,9 @@ export function viewToQuery(params: TrendViewParams): string {
   if (params.cmpA) sp.set("cmpA", params.cmpA);
   if (params.cmpB) sp.set("cmpB", params.cmpB);
   if (params.cmpn) sp.set("cmpn", "1");
+  // #1493 C. Emitted verbatim; the hub ignores it off the Body tab (and an old
+  // view that never captured one simply omits it, landing on the responsive
+  // default exactly as it did before).
+  if (params.view) sp.set("view", params.view);
   return sp.toString();
 }

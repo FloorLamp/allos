@@ -1,12 +1,11 @@
 "use client";
 
-import { useState } from "react";
 import BiomarkerChart, { type BiomarkerBands } from "./BiomarkerChart";
 import AnnotationToggleBar from "./AnnotationToggleBar";
+import { useAnnotationToggles } from "./TrendAnnotationToggles";
 import {
   annotationKindsPresent,
   filterAnnotationsByKind,
-  type AnnotationKind,
   type TrendAnnotation,
   type TrendWindow,
 } from "@/lib/trend-annotations";
@@ -30,22 +29,21 @@ export default function BiomarkerTrendChart({
   windows: TrendWindow[];
 }) {
   const presentKinds = annotationKindsPresent(annotations, windows);
-  const [enabled, setEnabled] = useState<Record<AnnotationKind, boolean>>({
-    medication: true,
-    appointment: true,
-    situation: true,
-    protocol: true,
-  });
+  // The biomarker detail page has no context bar, so this resolves to LOCAL state
+  // and the bar renders here — unchanged behavior. The hook is used anyway (rather
+  // than a private useState) so there is ONE toggle-state implementation across the
+  // three chart hosts: a surface that later gains a context bar hoists for free.
+  const { enabled, onToggle, hoisted } = useAnnotationToggles(presentKinds);
   const shown = filterAnnotationsByKind(annotations, enabled);
   const shownWindows = enabled.protocol ? windows : [];
 
   return (
     <div className="space-y-3">
-      {presentKinds.length > 0 && (
+      {!hoisted && presentKinds.length > 0 && (
         <AnnotationToggleBar
           kinds={presentKinds}
           enabled={enabled}
-          onToggle={(kind) => setEnabled((e) => ({ ...e, [kind]: !e[kind] }))}
+          onToggle={onToggle}
         />
       )}
       <BiomarkerChart

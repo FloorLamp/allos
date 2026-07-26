@@ -90,7 +90,20 @@ export default function CompareControls({
           {renderOptions()}
         </select>
       </div>
-      <label className="flex items-center gap-2 pb-2 text-sm text-slate-600 dark:text-slate-300">
+      {/* #1493 B. The pickers themselves survived the 390px audit — they are native
+          `<select>`s, so on a phone they already open the OS's own full-height
+          picker (the affordance #1428 asks for, and one a hand-built sheet would
+          only reimplement less accessibly) — and they stack full-width with their
+          labels intact. This toggle did not: the label box was ~28px tall (a 16px
+          box plus its text), well under the ~44px touch-target floor the rest of the
+          app holds itself to, and it is the one control here you tap rather than
+          pick from. `min-h-11` gives it the floor on every viewport without moving
+          anything: the row already wraps under the selects on a phone, and on
+          desktop the card's `items-end` keeps it on the baseline it always had. */}
+      <label
+        data-testid="compare-normalize"
+        className="flex min-h-11 items-center gap-2 pb-2 text-sm text-slate-600 dark:text-slate-300"
+      >
         <input
           type="checkbox"
           checked={normalized}

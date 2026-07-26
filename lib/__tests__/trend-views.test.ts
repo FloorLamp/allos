@@ -13,6 +13,7 @@ import {
   MAX_VIEWS,
   type TrendView,
 } from "../trend-views";
+import { parseTab } from "../trends-tabs";
 
 const view = (name: string, params = {}): TrendView => ({ name, params });
 
@@ -206,5 +207,88 @@ describe("viewToQuery", () => {
     expect(params).toEqual({ tab: "body" });
     // (`range=all` rides along because this view names no window — see above.)
     expect(viewToQuery(params)).toBe("tab=body&range=all");
+  });
+});
+
+// ── #1493 C: saved-view COMPLETENESS ────────────────────────────────────────
+//
+// "Save current" that drops part of the current state is a bug by its own name.
+// Two things were missing from the captured bag, and one that only LOOKED missing:
+//
+//   • the Body tab's tiles/all layout (#1067 Phase 2) — genuinely absent, now `view`;
+//   • the "1D" selection (#1466) — NOT a missing field: 1D is a from/to window
+//     (from = to = the chosen day), so it already round-trips through the bounds;
+//   • and every PRE-#1486/#1489 stored view has to keep resolving through the tab
+//     aliases (vitals → body, compare → insights), which is lib/trends-tabs' job —
+//     pinned end-to-end here because the two halves only meet at the URL.
+describe("saved-view state completeness (#1493 C)", () => {
+  it("captures the Body layout and re-emits it", () => {
+    const params = normalizeViewParams({ tab: "body", view: "tiles" });
+    expect(params).toEqual({ tab: "body", view: "tiles" });
+    expect(viewToQuery(params)).toBe("tab=body&range=all&view=tiles");
+    expect(viewToQuery({ tab: "body", view: "all" })).toBe(
+      "tab=body&range=all&view=all"
+    );
+  });
+
+  it("round-trips a Body / tiles / 1D view through storage unchanged", () => {
+    // The 1D pill is a one-day window, so this is the WHOLE of that state.
+    const saved = view("Yesterday's vitals", {
+      tab: "body",
+      view: "tiles",
+      from: "2026-01-14",
+      to: "2026-01-14",
+    });
+    const reopened = parseViews(serializeViews([saved]))[0];
+    expect(reopened).toEqual(saved);
+    expect(viewToQuery(reopened.params)).toBe(
+      "tab=body&from=2026-01-14&to=2026-01-14&view=tiles"
+    );
+  });
+
+  it("drops an unrecognized or malformed layout value rather than emitting it", () => {
+    expect(normalizeViewParams({ tab: "body", view: "grid" })).toEqual({
+      tab: "body",
+    });
+    expect(normalizeViewParams({ tab: "body", view: 7 })).toEqual({
+      tab: "body",
+    });
+    expect(normalizeViewParams({ tab: "body", view: "" })).toEqual({
+      tab: "body",
+    });
+  });
+
+  // Defensive parse, the whole point: a view stored before `view` existed has no
+  // such field and must resolve EXACTLY as it did.
+  it("leaves a pre-#1493 stored view untouched", () => {
+    const legacy =
+      '[{"name":"Lipids","params":{"tab":"insights","cmpn":true}}]';
+    const parsed = parseViews(legacy);
+    expect(parsed).toEqual([
+      { name: "Lipids", params: { tab: "insights", cmpn: true } },
+    ]);
+    expect(viewToQuery(parsed[0].params)).toBe("tab=insights&range=all&cmpn=1");
+  });
+});
+
+describe("old-vocabulary saved views resolve through the tab aliases (#1493 C)", () => {
+  // A view stored before #1486/#1489 names a tab that no longer exists. It is a
+  // VOCABULARY mapping, not a redirect layer: the view emits the name it stored and
+  // the hub's parser lands it on the tab that absorbed it, compare params and all.
+  it("maps a stored vitals view onto Body and a compare view onto Insights", () => {
+    const vitals = normalizeViewParams({ tab: "vitals", from: "2026-01-01" });
+    expect(viewToQuery(vitals)).toBe("tab=vitals&from=2026-01-01");
+    expect(parseTab("vitals")).toBe("body");
+
+    const compare = normalizeViewParams({
+      tab: "compare",
+      cmpA: "metric:weight",
+      cmpB: "bio:LDL Cholesterol",
+      cmpn: true,
+    });
+    expect(viewToQuery(compare)).toBe(
+      "tab=compare&range=all&cmpA=metric%3Aweight&cmpB=bio%3ALDL+Cholesterol&cmpn=1"
+    );
+    expect(parseTab("compare")).toBe("insights");
   });
 });

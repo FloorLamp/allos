@@ -14,6 +14,7 @@ import {
   addView,
   deleteView,
   findView,
+  parseTrendBodyView,
   viewToQuery,
   type TrendViewParams,
 } from "@/lib/trend-views";
@@ -170,6 +171,9 @@ function paramsFromForm(formData: FormData): TrendViewParams {
     cmpA: s("cmpA"),
     cmpB: s("cmpB"),
     cmpn: String(formData.get("cmpn") ?? "") === "1",
+    // #1493 C. Through the SAME gate the stored-blob normalizer uses, so a stale or
+    // hand-posted layout value can't survive one path and fail the other.
+    view: parseTrendBodyView(s("view")),
   };
 }
 
