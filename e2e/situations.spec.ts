@@ -1,70 +1,20 @@
 import { test, expect } from "./fixtures";
-// Situations are id-keyed rows (#560), not free-text string-keyed state. This drives
-// the real situations bar on Nutrition → Supplements: the seed activates "Illness" (surfacing the
-// situational Zinc supplement), so toggling the id-keyed situation off/on moves Zinc
-// between "due" and "Not scheduled today" and the active state survives a reload.
-// A casing-variant toggle resolves to the SAME vocabulary row (the exact fragility
-// the promotion removes) rather than creating a duplicate chip.
 
-test("situations bar toggles the id-keyed situation and gates its supplement", async ({
+// Situation state still gates the schedule, but its controls live on the dashboard
+// check-in/context surfaces rather than inside Nutrition → Supplements.
+test("an active situation gates its supplement without rendering situation controls", async ({
   page,
 }) => {
   await page.goto("/nutrition?tab=supplements");
 
-  const bar = page.getByTestId("situations-bar");
-  const illness = bar.getByRole("button", { name: "Illness", exact: true });
-  await expect(illness).toBeVisible();
-  // Seeded active.
-  await expect(illness).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("situations-bar")).toHaveCount(0);
 
-  // Zinc (situational, "Illness") is due while Illness is active.
+  // The seed keeps Illness active, so its situational Zinc dose remains due even
+  // though this page no longer owns the situation vocabulary controls.
   const zincDue = page
     .locator("section")
     .filter({ hasText: "Evening" })
     .locator("div.card")
     .filter({ hasText: "Zinc" });
   await expect(zincDue).toHaveCount(1);
-
-  // Toggle Illness OFF → Zinc drops out of the due buckets into "Not scheduled
-  // today" — a COLLAPSED <details> (app/(app)/nutrition/SupplementsTab.tsx), so expand it via
-  // its summary before asserting the row (contents aren't visible while closed).
-  await illness.click();
-  const changedBar = page.getByTestId("situations-bar");
-  await changedBar.getByTestId("situation-options-toggle").click();
-  await expect(
-    changedBar.getByRole("button", { name: "Illness", exact: true })
-  ).toHaveAttribute("aria-pressed", "false");
-  const notScheduled = page
-    .locator("details")
-    .filter({ hasText: /Not scheduled today/ });
-  await expect(notScheduled).toBeVisible();
-  await notScheduled.locator("summary").click();
-  await expect(notScheduled.getByText("Zinc").first()).toBeVisible(); // first-ok: asserts Zinc appears in the scoped not-scheduled section — order-agnostic presence
-
-  // Active state persists across a reload (it's a real row, not request state).
-  await page.reload();
-  const reloadedBar = page.getByTestId("situations-bar");
-  await reloadedBar.getByTestId("situation-options-toggle").click();
-  await expect(
-    reloadedBar.getByRole("button", { name: "Illness", exact: true })
-  ).toHaveAttribute("aria-pressed", "false");
-
-  // Toggle back ON to restore the seeded state.
-  await reloadedBar
-    .getByRole("button", { name: "Illness", exact: true })
-    .click();
-  await expect(
-    page.getByTestId("situations-bar").getByRole("button", {
-      name: "Illness",
-      exact: true,
-    })
-  ).toHaveAttribute("aria-pressed", "true");
-
-  // The vocabulary is NOCASE-deduped: there is exactly one "Illness" chip, not a
-  // separate lowercase one.
-  await expect(
-    page
-      .getByTestId("situations-bar")
-      .getByRole("button", { name: /^illness$/i })
-  ).toHaveCount(1);
 });

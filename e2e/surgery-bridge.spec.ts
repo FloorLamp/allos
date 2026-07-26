@@ -3,8 +3,8 @@ import { settledClick } from "./helpers";
 
 // Pre-surgery / Post-op suggest-only bridge (#1299): the producer for the #1296 pause.
 // This spec OWNS its fixtures (create-and-clean): it schedules a surgical visit for
-// today, then asserts the Nutrition → Supplements situations bar surfaces the
-// suggestion chip ("activate Pre-surgery"), confirming activates the Pre-surgery
+// today, then asserts Nutrition → Supplements surfaces the suggest-only bridge
+// ("activate Pre-surgery"), confirming activates the Pre-surgery
 // situation. An afterEach cancels every visit it scheduled and deactivates
 // Pre-surgery — on the failure path too — so the shared-seed profile is left
 // unchanged (robust across --repeat-each and across a mid-test red).
@@ -38,18 +38,19 @@ async function cancelOurVisits(page: import("@playwright/test").Page) {
   }
 }
 
-// Deactivate Pre-surgery if this spec left it on. The situations bar renders the
-// built-in chip only once it is active OR suggested, so a plain count check drives
-// the toggle. Runs from afterEach, so a mid-test FAILURE can never hand the shared
+// Deactivate Pre-surgery if this spec left it on through the dashboard context
+// surface that owns situation controls. Runs from afterEach, so a mid-test FAILURE
+// can never hand the shared
 // seed profile an active Pre-surgery — which would suppress the very suggestion this
 // spec (and its next run in the same shard) asserts (`surgeryBridgeSuggestion`
 // returns null in the "pre" branch while Pre-surgery is active), i.e. turn one red
 // into a cascading one.
 async function clearPresurgery(page: import("@playwright/test").Page) {
-  await page.goto("/nutrition?tab=supplements");
-  const toggle = page
-    .getByTestId("situations-bar")
-    .getByRole("button", { name: "Pre-surgery", exact: true });
+  await page.goto("/");
+  const checkin = page.getByTestId("how-are-you-card");
+  if ((await checkin.count()) === 0) return;
+  await checkin.getByTestId("checkin-section-context-toggle").click();
+  const toggle = checkin.getByTestId("checkin-situation-Pre-surgery");
   if ((await toggle.count()) === 0) return;
   if ((await toggle.getAttribute("aria-pressed")) !== "true") return;
   await settledClick(page, toggle);
@@ -107,10 +108,12 @@ test("a scheduled surgical visit suggests activating Pre-surgery", async ({
     page,
     chip.getByRole("button", { name: "Activate Pre-surgery" })
   );
+  await expect(chip).toHaveCount(0);
+  await page.goto("/");
+  const checkin = page.getByTestId("how-are-you-card");
+  await checkin.getByTestId("checkin-section-context-toggle").click();
   await expect(
-    page
-      .getByTestId("situations-bar")
-      .getByRole("button", { name: "Pre-surgery", exact: true })
+    checkin.getByTestId("checkin-situation-Pre-surgery")
   ).toHaveAttribute("aria-pressed", "true");
 
   // Cleanup (deactivate Pre-surgery, cancel the visit) is the afterEach above — it

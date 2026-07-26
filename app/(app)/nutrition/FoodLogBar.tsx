@@ -16,6 +16,7 @@ import FoodGroupIcon, {
 } from "@/components/FoodGroupIcon";
 import ModalShell from "@/components/ModalShell";
 import SegmentedControl from "@/components/SegmentedControl";
+import CompactDateMenu from "@/components/CompactDateMenu";
 import { useToast } from "@/components/Toast";
 import DietaryPreferencesForm from "@/app/(app)/settings/profile/DietaryPreferencesForm";
 import { logFoodServing, undoFoodServing } from "./actions";
@@ -45,7 +46,7 @@ const TIER_BADGE_CLASS: Record<FoodGroupTier, string> = {
   neutral: "bg-slate-100 text-slate-500 dark:bg-ink-800 dark:text-slate-300",
   limit: "bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300",
 };
-const QUICK_GROUP_COUNT = 8;
+const QUICK_GROUP_COUNT = 6;
 const QUICK_TIER_SEQUENCE: FoodGroupTier[] = [
   "encourage",
   "encourage",
@@ -70,7 +71,8 @@ export default function FoodLogBar({
   groupsBySlot,
   excludedGroups,
   slot,
-  afterQuick,
+  nutrientSummaryByDate = [],
+  proteinQuickAdd,
 }: {
   // The acting profile's today (YYYY-MM-DD) and bounded recent meal history.
   today: string;
@@ -85,10 +87,13 @@ export default function FoodLogBar({
   // computation that ranked `groups`, so the chip and the order agree. Shown as a
   // small label so the slot-aware ordering is legible ("why is fish first right now").
   slot: FoodSlot;
-  // Mobile-only compact feedback inserted after Quick log but before the collapsed
-  // remainder of the catalog. Kept as a server-rendered slot so this client island
-  // continues to own only logging state.
-  afterQuick?: ReactNode;
+  // Mobile-only compact feedback for each bounded date, placed between the meal
+  // context and its add controls. Kept as server-rendered slots so this client island
+  // continues to own only logging state while an older date gets its own nutrients.
+  nutrientSummaryByDate?: { date: string; content: ReactNode }[];
+  // Gram-based protein logging styled as a peer to the serving rows. It remains
+  // day-scoped, so it is only rendered while Today is selected.
+  proteinQuickAdd?: ReactNode;
 }) {
   const {
     activeDate,
@@ -110,6 +115,9 @@ export default function FoodLogBar({
   const toast = useToast();
 
   const activeDay = days.find((day) => day.date === activeDate) ?? days[0];
+  const nutrientSummary = nutrientSummaryByDate.find(
+    (item) => item.date === activeDate
+  )?.content;
   // Memoized so its reference is stable while the active day's tally is unchanged —
   // the dayTotal useMemo below keys on it.
   const counts = useMemo(
@@ -315,7 +323,7 @@ export default function FoodLogBar({
               onClick={() => toggleDetail(g.slug)}
               aria-expanded={isExpanded}
               aria-label={`${isExpanded ? "Hide" : "Show"} serving detail for ${g.name}`}
-              className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+              className="flex min-w-0 flex-1 items-center gap-1.5 text-left md:hidden"
             >
               <span className="min-w-0 flex-1">
                 <span className="flex min-w-0 items-center gap-2">
@@ -347,6 +355,24 @@ export default function FoodLogBar({
                 stroke={2}
               />
             </button>
+            <div
+              data-testid={`detail-static-${g.slug}`}
+              className="hidden min-w-0 flex-1 md:block"
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="font-medium text-slate-800 dark:text-slate-100">
+                  {g.name}
+                </span>
+                <span
+                  className={`shrink-0 rounded-full px-1.5 py-0.5 text-xs font-semibold leading-none ${TIER_BADGE_CLASS[g.tier]}`}
+                >
+                  {TIER_LABEL[g.tier]}
+                </span>
+              </span>
+              <span className="block text-xs text-slate-500 dark:text-slate-400">
+                {g.serving}
+              </span>
+            </div>
             <button
               type="button"
               data-testid={`undo-${g.slug}`}
@@ -382,10 +408,6 @@ export default function FoodLogBar({
       })}
     </ul>
   );
-  const activeDayPhrase =
-    activeDay.label === "Today" || activeDay.label === "Yesterday"
-      ? activeDay.label.toLowerCase()
-      : activeDay.label;
   const dayTestId = (day: FoodLogDay) =>
     day.date === today
       ? "food-day-today"
@@ -408,46 +430,55 @@ export default function FoodLogBar({
     <div>
       <div
         data-testid="food-log-context"
-        className="sticky top-14 z-10 -mx-2 mb-3 bg-white/95 px-2 py-2 backdrop-blur md:top-0 lg:static lg:mx-0 lg:bg-transparent lg:p-0 dark:bg-ink-900/95 dark:lg:bg-transparent"
+        className="-mx-2 mb-3 bg-white/95 px-2 py-2 md:sticky md:top-0 md:z-10 md:backdrop-blur lg:static lg:mx-0 lg:bg-transparent lg:p-0 dark:bg-ink-900/95 dark:lg:bg-transparent"
       >
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-              Log {activeDayPhrase}
-            </h2>
-            <span
-              data-testid="food-slot-chip"
-              data-slot={activeSlot}
-              className="text-sm font-medium text-slate-500 dark:text-slate-400"
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h2
+              data-testid="food-context-heading"
+              aria-label={`${activeDay.label} ${activeSlot} Food Log`}
+              className="flex flex-wrap items-center gap-2 font-semibold text-slate-800 dark:text-slate-100"
             >
-              {activeSlot}
-            </span>
+              <CompactDateMenu
+                days={days}
+                value={activeDate}
+                onChange={setActiveDate}
+                label="Choose day to log"
+                testIdPrefix="food"
+              />
+              <span className="hidden sm:inline">{activeDay.label}</span>
+              <span
+                data-testid="food-context-label"
+                className="text-sm font-medium text-slate-500 dark:text-slate-400"
+              >
+                <span
+                  data-testid="food-slot-chip"
+                  data-slot={activeSlot}
+                  className="text-slate-500 dark:text-slate-400"
+                >
+                  {activeSlot}
+                </span>
+              </span>
+            </h2>
           </div>
-          <span
-            data-testid="food-day-total"
-            className="shrink-0 text-sm font-medium tabular-nums text-slate-500 dark:text-slate-400"
-          >
-            {dayTotal} {dayTotal === 1 ? "serving" : "servings"}{" "}
-            {activeDayPhrase}
-          </span>
-        </div>
-        <div className="mt-2 sm:hidden">
-          <label className="sr-only" htmlFor="food-day-select">
-            Day to log
-          </label>
-          <select
-            id="food-day-select"
-            data-testid="food-day-combobox"
-            value={activeDate}
-            onChange={(event) => setActiveDate(event.target.value)}
-            className="input py-1.5 text-sm"
-          >
-            {days.map((day) => (
-              <option key={day.date} value={day.date}>
-                {day.label}
-              </option>
-            ))}
-          </select>
+          <div className="flex shrink-0 items-center gap-2">
+            <span
+              data-testid="food-day-total"
+              className="text-sm font-medium tabular-nums text-slate-500 dark:text-slate-400"
+            >
+              {dayTotal} {dayTotal === 1 ? "serving" : "servings"}
+            </span>
+            <button
+              type="button"
+              data-testid="food-preferences-open-mobile"
+              aria-label="Dietary preferences"
+              title="Dietary preferences"
+              onClick={() => setPreferencesOpen(true)}
+              className="btn-ghost tap-target h-10 w-10 shrink-0 p-0 sm:hidden"
+            >
+              <IconAdjustmentsHorizontal className="h-4 w-4" />
+            </button>
+          </div>
         </div>
         <div className="mt-2 hidden min-w-0 overflow-x-auto pb-0.5 sm:block">
           <SegmentedControl
@@ -466,14 +497,14 @@ export default function FoodLogBar({
         </div>
       </div>
       <div data-testid="food-log-bar" className="space-y-5">
-        <section data-testid="food-meal-summary" className="space-y-2">
-          <div className="flex items-center justify-between gap-3">
+        <section data-testid="food-meal-summary" className="sm:space-y-2">
+          <div className="hidden items-center justify-between gap-3 sm:flex">
             <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
               Meals
             </h3>
             <button
               type="button"
-              data-testid="food-preferences-open"
+              data-testid="food-preferences-open-desktop"
               onClick={() => setPreferencesOpen(true)}
               className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
             >
@@ -485,7 +516,7 @@ export default function FoodLogBar({
             data-testid="food-meal-slots"
             role="group"
             aria-label="Meals for the selected day; choose where to log"
-            className="grid gap-2 sm:grid-cols-3"
+            className="grid min-w-0 grid-cols-3 gap-2"
           >
             {FOOD_SLOTS.map((meal) => {
               const total = totalForSlot(meal);
@@ -498,7 +529,7 @@ export default function FoodLogBar({
                   data-testid={`food-slot-${meal.toLowerCase()}`}
                   aria-pressed={activeSlot === meal}
                   onClick={() => setActiveSlot(meal)}
-                  className={`flex h-full min-w-0 flex-col items-stretch justify-start rounded-lg border p-2.5 text-left transition ${
+                  className={`flex min-h-12 min-w-0 flex-col items-stretch justify-center rounded-lg border p-2 text-left transition sm:h-full sm:justify-start sm:p-2.5 ${
                     activeSlot === meal
                       ? "border-brand-400 bg-white ring-1 ring-brand-200 dark:border-brand-600 dark:bg-ink-700 dark:ring-brand-900"
                       : "border-black/10 bg-white/60 hover:bg-white dark:border-white/10 dark:bg-ink-900/60 dark:hover:bg-ink-800"
@@ -513,7 +544,7 @@ export default function FoodLogBar({
                     </span>
                   </span>
                   {groupsInMeal.length > 0 ? (
-                    <span className="mt-2 flex flex-wrap gap-1">
+                    <span className="mt-2 hidden flex-wrap gap-1 sm:flex">
                       {groupsInMeal.map((group) => (
                         <span
                           key={group.slug}
@@ -527,7 +558,7 @@ export default function FoodLogBar({
                       ))}
                     </span>
                   ) : (
-                    <span className="mt-2 block text-xs text-slate-500 dark:text-slate-400">
+                    <span className="mt-2 hidden text-xs text-slate-500 sm:block dark:text-slate-400">
                       Nothing logged
                     </span>
                   )}
@@ -548,9 +579,12 @@ export default function FoodLogBar({
         </section>
         <section data-testid="food-quick-log">
           <h3 className="mb-2 section-label">Add to {activeSlot}</h3>
-          {rows(quickGroups)}
+          <div className="space-y-1.5">
+            {activeDate === today && proteinQuickAdd}
+            {rows(quickGroups)}
+          </div>
         </section>
-        {activeDate === today && afterQuick}
+        {nutrientSummary}
         {moreGroups.length > 0 && (
           <details data-testid="food-more-groups" className="group">
             <summary
@@ -597,7 +631,7 @@ export default function FoodLogBar({
               type="button"
               data-testid="food-preferences-done"
               onClick={() => setPreferencesOpen(false)}
-              className="btn-secondary"
+              className="btn"
             >
               Done
             </button>

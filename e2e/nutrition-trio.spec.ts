@@ -55,8 +55,8 @@ test.describe("Nutrition trio", () => {
       await expect(page.getByTestId("protein-gauge-weekly")).toBeVisible();
       await expect(page.getByTestId("protein-gauge-band")).toBeVisible();
 
-      // Today is IN PROGRESS — the today bar carries the floor "at least" phrasing.
-      await expect(gauge).toContainText(/at least/i);
+      // Today is IN PROGRESS — the compact label still marks the value as a floor.
+      await expect(gauge).toContainText(/Today\s*≥\s*\d+g/i);
 
       const before = Number(await todayBar.getAttribute("data-grams"));
       expect(before).toBeGreaterThan(0);
@@ -100,12 +100,15 @@ test.describe("Nutrition trio", () => {
       const fiber = page.getByTestId("fiber-adequacy");
       await expect(fiber).toBeVisible({ timeout: WAIT });
       // A non-tracked basis is a floor; the target names the DRI adequate intake.
-      await expect(fiber.getByTestId("fiber-intake")).toContainText(/floor/i);
-      await expect(fiber.getByTestId("fiber-target")).toContainText(
+      const fiberDetails = page.getByTestId("fiber-estimate-details");
+      await expect(fiberDetails.getByTestId("fiber-intake")).toContainText(
+        /floor/i
+      );
+      await expect(fiberDetails.getByTestId("fiber-target")).toContainText(
         /adequate intake/i
       );
       // The capsule fiber supplement contributes 0 g and is noted honestly.
-      await expect(fiber).toContainText(/grams unknown/i);
+      await expect(fiberDetails).toContainText(/grams unknown/i);
     } finally {
       await page.close();
     }
@@ -157,9 +160,9 @@ test.describe("Nutrition trio", () => {
         await expect(presetSelect).toHaveValue("vegetarian", { timeout: WAIT });
         await expect(page.getByLabel("Saved")).toBeVisible({ timeout: WAIT });
 
-        // The minimized sidebar badge expands to show the muted preference note
-        // (#980 item 4) — the demote/substitute is explicable on-surface without making
-        // the collapsed state tall.
+        // The anchored sidebar row opens a modal with the muted preference note
+        // (#980 item 4) — the demote/substitute is explicable without reflowing the
+        // nutrition layout.
         await page.goto("/nutrition?tab=food");
         await page.getByTestId("nutrition-suggestions-summary").click();
         const prefNote = page.getByTestId("suggestions-preference-note");
@@ -168,12 +171,16 @@ test.describe("Nutrition trio", () => {
         await expect(prefNote).toHaveCSS("font-style", "normal");
 
         // The flagged low-omega-3 suggestion now leads with a plant source (nuts/seeds),
-        // not fish — substitution, never blocked. The suggestions block is a native
-        // The disclosure is a pure client toggle — no Server Action.
-        const suggestions = page.getByTestId("nutrition-suggestions");
+        // not fish — substitution, never blocked. Opening the modal is a pure
+        // client toggle — no Server Action.
+        const suggestions = page.getByTestId("nutrition-suggestions-panel");
         await expect(suggestions).toContainText(/walnut|flax|chia|algae/i, {
           timeout: WAIT,
         });
+        await page
+          .getByRole("dialog", { name: "Lab suggestions" })
+          .getByRole("button", { name: "Close" })
+          .click();
 
         // An excluded group (fatty fish) is still reachable in the log bar — demoted,
         // never removed. Its row + log control are present and clickable.

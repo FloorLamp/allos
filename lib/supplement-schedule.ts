@@ -21,6 +21,14 @@ export const TIME_BUCKETS: TimeBucket[] = [
   "Anytime",
 ];
 
+export const TIME_BUCKET_LABELS: Record<TimeBucket, string> = {
+  Morning: "Morning",
+  Midday: "Midday",
+  Evening: "Evening",
+  "Before sleep": "Bedtime",
+  Anytime: "Anytime",
+};
+
 // Normalize a free-text time_of_day into one of the buckets. Existing free-text
 // values ("with dinner", "post-workout", "am") map at render time, so no data
 // migration is needed.

@@ -114,11 +114,106 @@ test.describe("touch targets clear the 40px minimum (#644)", () => {
       // the right of the take circle, with the widened gap between them.
       expect(sBox!.x).toBeGreaterThanOrEqual(tBox!.x + tBox!.width);
     }
+
+    // Only the identity line yields to the action buttons. Supporting text starts
+    // below that top row and spans beneath the buttons instead of carrying their
+    // empty right gutter down the whole card.
+    const patternRow = page
+      .getByTestId("supplement-row")
+      .filter({ hasText: "Evening Vitamin C (e2e)" });
+    const details = patternRow.getByTestId("supplement-row-details");
+    const doseBrand = patternRow.getByTestId("supplement-dose-brand");
+    const actions = patternRow.getByRole("button", {
+      name: "Supplement actions",
+    });
+    await expect(doseBrand).toContainText("500 mg");
+    await expect(details.getByTestId("adherence-summary")).toBeVisible();
+    const [detailsBox, actionsBox] = await Promise.all([
+      details.boundingBox(),
+      actions.boundingBox(),
+    ]);
+    expect(detailsBox).not.toBeNull();
+    expect(actionsBox).not.toBeNull();
+    expect(detailsBox!.y).toBeGreaterThanOrEqual(
+      actionsBox!.y + actionsBox!.height
+    );
+    expect(detailsBox!.x + detailsBox!.width).toBeGreaterThanOrEqual(
+      actionsBox!.x + actionsBox!.width
+    );
   });
 });
 
 test.describe("nutrition food-log controls stay in the viewport on mobile", () => {
   test.use({ viewport: PHONE });
+
+  test("Food and Supplement controls scroll with their tab context", async ({
+    page,
+  }) => {
+    for (const surface of [
+      { href: "/nutrition", testId: "food-log-context" },
+      {
+        href: "/nutrition?tab=supplements",
+        testId: "supplement-schedule-context",
+      },
+    ]) {
+      await page.goto(surface.href);
+      const controls = page.getByTestId(surface.testId);
+      await expect(controls).toBeVisible();
+      await expect
+        .poll(() =>
+          controls.evaluate((element) => getComputedStyle(element).position)
+        )
+        .toBe("static");
+    }
+
+    const supplementDate = page.getByTestId("supplement-day-menu-trigger");
+    await expect(
+      page
+        .getByTestId("supplement-context-heading")
+        .getByTestId("supplement-day-menu-trigger")
+    ).toBeVisible();
+    await expect(supplementDate).toHaveCSS("border-top-width", "0px");
+    await expect(page.getByTestId("supplement-day-toggle")).toBeHidden();
+    await supplementDate.click();
+    const supplementDateMenu = page.getByTestId("supplement-day-menu");
+    await expect(supplementDateMenu).toBeVisible();
+    await expect(supplementDateMenu.getByRole("menuitemradio")).toHaveCount(7);
+    await expect(
+      supplementDateMenu.getByRole("menuitemradio", { name: "Today" })
+    ).toHaveAttribute("aria-checked", "true");
+    await supplementDateMenu
+      .getByRole("menuitemradio", { name: "Today" })
+      .click();
+    await expect(page.getByTestId("supplements-status-mobile")).toHaveText(
+      /^(?:\d+\/\d+ taken|0 scheduled)$/
+    );
+    const addSupplement = page.getByTestId("supplement-add-toggle");
+    await expect(addSupplement.locator("svg")).toBeVisible();
+    await expect(addSupplement.getByText("Add supplement")).toBeHidden();
+    const addSupplementBox = await addSupplement.boundingBox();
+    expect(addSupplementBox).not.toBeNull();
+    expect(addSupplementBox!.width).toBeGreaterThanOrEqual(40);
+    expect(addSupplementBox!.height).toBeGreaterThanOrEqual(40);
+
+    const slots = page.getByTestId("supplement-slot-selector");
+    const [all, morning, midday, evening] = await Promise.all([
+      slots.getByTestId("supplement-slot-all").boundingBox(),
+      slots.getByTestId("supplement-slot-morning").boundingBox(),
+      slots.getByTestId("supplement-slot-midday").boundingBox(),
+      slots.getByTestId("supplement-slot-evening").boundingBox(),
+    ]);
+    expect(all).not.toBeNull();
+    expect(morning).not.toBeNull();
+    expect(midday).not.toBeNull();
+    expect(evening).not.toBeNull();
+    expect(all!.x).toBeLessThan(morning!.x);
+    expect(morning!.x).toBeLessThan(midday!.x);
+    expect(midday!.x).toBeLessThan(evening!.x);
+    expect(all!.y).toBeCloseTo(morning!.y, 0);
+    expect(morning!.y).toBeCloseTo(midday!.y, 0);
+    expect(midday!.y).toBeCloseTo(evening!.y, 0);
+    expect(evening!.height).toBeGreaterThanOrEqual(48);
+  });
 
   // The /nutrition two-column grid (lg:grid-cols-[1fr_320px]) collapses to a
   // single column below lg. A CSS grid item defaults to min-width:auto
@@ -164,14 +259,16 @@ test.describe("long unbreakable names wrap instead of clipping (#646)", () => {
   }) => {
     await page.goto("/nutrition?tab=supplements");
 
-    const addCard = page
-      .locator("div.card")
-      .filter({ hasText: "Add supplement" });
-    await addCard.getByTestId("supplement-add-toggle").click();
-    await addCard.getByLabel("Name").fill(NAME);
-    await addCard.getByLabel("Amount").first().fill("1 tab"); // first-ok: the first dose's Amount field in the add form this spec fills
-    await addCard.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the first dose's Time-of-day field in the add form this spec fills
-    await addCard.getByRole("button", { name: "Add", exact: true }).click();
+    await page.getByTestId("supplement-add-toggle").click();
+    const addDialog = page.getByRole("dialog", { name: "Add supplement" });
+    await addDialog.getByLabel("Name").fill(NAME);
+    await addDialog.getByLabel("Amount").first().fill("1 tab"); // first-ok: the first dose's Amount field in the scoped add modal
+    await addDialog.getByLabel("Time of day").first().selectOption("Morning"); // first-ok: the first dose's Time-of-day field in the scoped add modal
+    // Submit by keyboard as well as exercising the modal's focusable controls. The
+    // dev-only Next overlay portal can cover the bottom edge of a 390px viewport;
+    // production has no overlay, and Enter is the real accessible submit path.
+    await addDialog.getByRole("button", { name: "Add", exact: true }).focus();
+    await page.keyboard.press("Enter");
 
     const name = page
       .getByTestId("medicine-name")

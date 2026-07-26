@@ -11,12 +11,13 @@ import {
   buildFiberAdequacyFindings,
   collectCoachingFindings,
 } from "@/lib/rule-findings";
-import { getFiberAdequacy } from "@/lib/queries";
+import { getFiberAdequacy, getFiberOnDate } from "@/lib/queries";
 import {
   dedupeKeyHasKnownPrefix,
   tierForDedupeKey,
 } from "@/lib/rule-finding-prefixes";
 import { FIBER_ADEQUACY_PREFIX, fiberAdequacySignalKey } from "@/lib/fiber";
+import { shiftDateStr } from "@/lib/date";
 
 function newProfile(name: string): number {
   return Number(
@@ -87,6 +88,22 @@ function seedTrackedFiber(profileId: number, date: string, grams: number) {
 }
 
 describe("buildFiberAdequacyFindings (#976)", () => {
+  it("reads only the selected historical day's food and confirmed fiber doses", () => {
+    const p = newProfile("fiber-on-date");
+    setSex(p, "male");
+    const anchor = today(p);
+    const yesterday = shiftDateStr(anchor, -1);
+    logFood(p, yesterday, "legumes", 1); // 8 g
+    seedDose(p, "Psyllium yesterday", "5 g", yesterday, "taken");
+    logFood(p, anchor, "whole_grains", 3); // must not enter yesterday
+    seedDose(p, "Psyllium today", "7 g", anchor, "taken");
+
+    const day = getFiberOnDate(p, yesterday);
+    expect(day?.intake.basis).toBe("combined");
+    expect(Math.round(day!.intake.grams)).toBe(13);
+    expect(day?.status).toBe("below");
+  });
+
   it("sums the food floor + confirmed dose grams, ignores skipped, flags unknown units, surfaces a calm below finding", () => {
     const p = newProfile("fiber-below");
     setSex(p, "male"); // adult male DRI target = 38 g/day

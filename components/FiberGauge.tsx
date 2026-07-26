@@ -13,7 +13,13 @@ function g(n: number): string {
   return String(Math.round(n));
 }
 
-export default function FiberGauge({ adequacy }: { adequacy: FiberAdequacy }) {
+export default function FiberGauge({
+  adequacy,
+  periodLabel = "Avg",
+}: {
+  adequacy: FiberAdequacy;
+  periodLabel?: string;
+}) {
   const { intake, target } = adequacy;
 
   // Scale 0 → ~1.2× the soft ceiling, widened so a big weekly value never overflows.
@@ -28,6 +34,7 @@ export default function FiberGauge({ adequacy }: { adequacy: FiberAdequacy }) {
 
   const isFloor = fiberBasisIsFloor(intake.basis);
   const weekValueLabel = `${isFloor ? "at least " : ""}${g(intake.grams)} g`;
+  const compactWeekValue = `${isFloor ? "≥" : ""}${g(intake.grams)}g`;
 
   return (
     <div data-testid="fiber-gauge" className="mt-1">
@@ -35,7 +42,9 @@ export default function FiberGauge({ adequacy }: { adequacy: FiberAdequacy }) {
       <div
         className="relative h-8 w-full overflow-hidden rounded-md bg-slate-100 dark:bg-ink-800"
         role="img"
-        aria-label={`Fiber this week ${weekValueLabel} a day, goal at least ${g(target.grams)} grams a day`}
+        aria-label={`Fiber ${
+          periodLabel === "Avg" ? "this week" : periodLabel.toLowerCase()
+        } ${weekValueLabel}${periodLabel === "Avg" ? " a day" : ""}, goal at least ${g(target.grams)} grams a day`}
       >
         {/* Goal band — the DRI adequate-intake zone up to the soft ceiling. */}
         <div
@@ -53,21 +62,20 @@ export default function FiberGauge({ adequacy }: { adequacy: FiberAdequacy }) {
         />
       </div>
 
-      {/* Legend (#945 colloquial-first): the two values named, matching the protein
-          gauge's swatch treatment. */}
-      <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+      {/* Compact legend: the full phrasing remains in the gauge's aria-label. */}
+      <dl className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
         <div className="flex items-center gap-1.5">
           <span className="inline-block h-2.5 w-2.5 rounded-sm bg-sky-500/70" />
-          <dt>This week</dt>
+          <dt>{periodLabel}</dt>
           <dd className="font-medium tabular-nums text-slate-700 dark:text-slate-200">
-            · {weekValueLabel}/day
+            {compactWeekValue}
           </dd>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="inline-block h-2.5 w-2.5 rounded-sm bg-emerald-200/80 dark:bg-emerald-800/60" />
           <dt>Goal</dt>
           <dd className="font-medium tabular-nums text-slate-700 dark:text-slate-200">
-            · ~{g(target.grams)} g/day
+            ~{g(target.grams)}g
           </dd>
         </div>
       </dl>

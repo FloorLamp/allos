@@ -9,8 +9,10 @@ import {
   getFoodGroupLogOrder,
   currentFoodSlot,
   getProteinAdequacy,
+  getProteinOnDate,
   getProteinToday,
   getFiberAdequacy,
+  getFiberOnDate,
   getProteinLoggedGrams,
   getProteinQuickAddPreset,
 } from "@/lib/queries";
@@ -22,6 +24,18 @@ import {
 import { preferenceSuggestionNote } from "@/lib/dietary-preferences";
 import { isFoodLoggingRelevant } from "@/lib/life-stage";
 import { FOOD_SLOTS, type FoodSlot } from "@/lib/food-slot";
+import {
+  assessProteinAdequacy,
+  proteinIntakeSummary,
+  proteinTargetSummary,
+  type ProteinAdequacy,
+} from "@/lib/protein";
+import {
+  fiberBasisIsFloor,
+  fiberIntakeSummary,
+  fiberTargetSummary,
+} from "@/lib/fiber";
+import type { FiberAdequacy } from "@/lib/fiber";
 import { EmptyState } from "@/components/ui";
 import FoodLogBar, { type FoodLogDay } from "./FoodLogBar";
 import ProteinQuickAdd from "./ProteinQuickAdd";
@@ -40,6 +54,100 @@ import FoodSuggestionsLayout from "./FoodSuggestionsLayout";
 // One-tap serving logging for today + a weekly rollup, plus the deterministic
 // biomarker→food suggestions (#577) shown here as "food before pills." Habit tier,
 // informational — never a calorie counter.
+
+const FIBER_STATUS_LABEL: Record<FiberAdequacy["status"], string> = {
+  below: "Below",
+  within: "In range",
+  above: "Above",
+};
+
+const FIBER_STATUS_CLASS: Record<FiberAdequacy["status"], string> = {
+  below: "text-amber-700 dark:text-amber-300",
+  within: "text-emerald-700 dark:text-emerald-300",
+  above: "text-slate-600 dark:text-slate-300",
+};
+
+function WeeklyFiberSummary({ adequacy }: { adequacy: FiberAdequacy }) {
+  const { intake, target, status } = adequacy;
+  const intakeValue = `${Math.round(intake.grams)}g${
+    fiberBasisIsFloor(intake.basis) ? "+" : ""
+  }`;
+
+  return (
+    <div
+      data-testid="nutrition-weekly-fiber"
+      aria-label="Weekly fiber average for logged days"
+      className="border-t border-black/5 pt-5 dark:border-white/5"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="section-label">Weekly fiber target</h3>
+        <span
+          data-testid="nutrition-weekly-fiber-status"
+          className={`text-xs font-medium ${FIBER_STATUS_CLASS[status]}`}
+        >
+          {FIBER_STATUS_LABEL[status]}
+        </span>
+      </div>
+      <div className="mt-1 flex items-baseline justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
+        <span>Avg logged day</span>
+        <span className="inline-flex items-baseline gap-1 text-right tabular-nums">
+          <span
+            data-testid="nutrition-weekly-fiber-value"
+            className="font-semibold text-slate-700 dark:text-slate-200"
+          >
+            {intakeValue}
+          </span>
+          <span>/ {Math.round(target.grams)}g+ goal</span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function NutrientEstimateDetails({
+  protein,
+  fiber,
+}: {
+  protein: ProteinAdequacy | null;
+  fiber: FiberAdequacy | null;
+}) {
+  return (
+    <>
+      {protein && (
+        <div data-testid="protein-estimate-details">
+          <p>
+            <span className="font-medium">Protein intake: </span>
+            <span data-testid="protein-intake">
+              {proteinIntakeSummary(protein.intake)}
+            </span>
+          </p>
+          <p className="mt-1">
+            <span className="font-medium">Protein target: </span>
+            <span data-testid="protein-target">
+              {proteinTargetSummary(protein.target)}
+            </span>
+          </p>
+        </div>
+      )}
+      {fiber && (
+        <div data-testid="fiber-estimate-details">
+          <p>
+            <span className="font-medium">Fiber intake: </span>
+            <span data-testid="fiber-intake">
+              {fiberIntakeSummary(fiber.intake)}
+            </span>
+          </p>
+          <p className="mt-1">
+            <span className="font-medium">Fiber target: </span>
+            <span data-testid="fiber-target">
+              {fiberTargetSummary(fiber.target)}
+            </span>
+          </p>
+        </div>
+      )}
+    </>
+  );
+}
 
 export default async function FoodTab() {
   const { login, profile } = await requireSession();
@@ -90,8 +198,12 @@ export default async function FoodTab() {
   // there's no bodyweight target or no protein data at all.
   const proteinToday = getProteinToday(profile.id);
   // Fiber adequacy (#976): the DRI-scaled fiber verdict, the protein pipeline mirrored
-  // with a supplemented basis. Null when there's no intake signal or no DRI target.
+  // with a supplemented basis. This is the current week's average LOGGED day, retained
+  // for the explicitly weekly section and the coaching finding.
   const fiberAdequacy = getFiberAdequacy(profile.id);
+  // The selected Today context needs an actual calendar-day value, not the weekly
+  // coaching average. Previous picker days already use this same date-scoped gather.
+  const fiberToday = getFiberOnDate(profile.id, date);
   // Direct protein-grams quick-add (#824): today's manual total + the last-used amount
   // (the repeated scoop size) to pre-fill the box. Protein powder's only home.
   const proteinLoggedGrams = getProteinLoggedGrams(profile.id, date);
@@ -112,6 +224,84 @@ export default async function FoodTab() {
   const excludedGroups = getExcludedFoodGroups(profile.id);
   const preferenceNote = preferenceSuggestionNote(excludedGroups);
 
+  // The recent-day picker is a historical editor, so its feedback must follow the
+  // selected date too. Protein retains its today+weekly comparison model; fiber uses a
+  // true single-day estimate for EVERY selected date, including Today.
+  const nutrientDays = mealDays.map((day) => {
+    const isToday = day.date === date;
+    const protein = isToday
+      ? proteinToday
+      : getProteinOnDate(profile.id, day.date);
+    const proteinAssessment = isToday
+      ? proteinAdequacy
+      : protein?.todayIntake
+        ? assessProteinAdequacy(protein.todayIntake, protein.target)
+        : null;
+    const fiber = isToday ? fiberToday : getFiberOnDate(profile.id, day.date);
+    const sentencePeriod =
+      day.label === "Today"
+        ? "today"
+        : day.label === "Yesterday"
+          ? "yesterday"
+          : `on ${day.label}`;
+
+    return {
+      ...day,
+      protein,
+      proteinAssessment,
+      fiber,
+      sentencePeriod,
+    };
+  });
+  const mobileNutrients = nutrientDays
+    .filter((day) => day.protein || day.proteinAssessment || day.fiber)
+    .map((day) => ({
+      date: day.date,
+      content: (
+        <NutritionSnapshot
+          key={day.date}
+          proteinToday={day.protein}
+          proteinAdequacy={day.proteinAssessment}
+          fiberAdequacy={day.fiber}
+          proteinPeriod={day.sentencePeriod}
+          fiberPeriod={day.sentencePeriod}
+        />
+      ),
+    }));
+  const selectedDayNutrients = nutrientDays
+    .filter(
+      (day) =>
+        day.date !== date && (day.protein || day.proteinAssessment || day.fiber)
+    )
+    .map((day) => ({
+      date: day.date,
+      content: (
+        <NutrientsCard
+          key={day.date}
+          embedded
+          title="Nutrients"
+          headingLevel={3}
+          details={
+            <NutrientEstimateDetails
+              protein={day.proteinAssessment}
+              fiber={day.fiber}
+            />
+          }
+        >
+          {(day.protein || day.proteinAssessment) && (
+            <ProteinAdequacyCard
+              today={day.protein}
+              adequacy={day.proteinAssessment}
+              periodLabel={day.label}
+            />
+          )}
+          {day.fiber && (
+            <FiberAdequacyCard adequacy={day.fiber} periodLabel={day.label} />
+          )}
+        </NutrientsCard>
+      ),
+    }));
+
   return (
     <div>
       {/* min-w-0 on both grid cells: a grid item defaults to min-width:auto
@@ -128,8 +318,9 @@ export default async function FoodTab() {
           // Act: the one-tap log bar. On mobile this grid cell leads (bar → Today →
           // This week); on desktop it's the left column beside the sidebar.
           <div
+            key="food-logger"
             data-testid="food-log-shell"
-            className="min-w-0 lg:rounded-xl lg:border lg:border-white/60 lg:bg-white/55 lg:p-5 lg:shadow-lg lg:shadow-slate-300/40 lg:backdrop-blur-2xl lg:backdrop-saturate-150 dark:lg:border-white/10 dark:lg:bg-ink-800/45 dark:lg:shadow-black/30"
+            className="min-w-0"
           >
             <FoodLogBar
               today={date}
@@ -137,18 +328,21 @@ export default async function FoodTab() {
               groupsBySlot={groupsBySlot}
               excludedGroups={excludedGroups}
               slot={slot}
-              afterQuick={
-                <NutritionSnapshot
-                  proteinToday={proteinToday}
-                  proteinAdequacy={proteinAdequacy}
-                  fiberAdequacy={fiberAdequacy}
+              nutrientSummaryByDate={mobileNutrients}
+              proteinQuickAdd={
+                <ProteinQuickAdd
+                  key="protein-quickadd"
+                  today={date}
+                  initialGrams={proteinLoggedGrams}
+                  lastPreset={proteinPreset}
                 />
               }
             />
           </div>
         }
+        selectedDayNutrients={selectedDayNutrients}
         suggestionContent={
-          <>
+          <div key="food-suggestions">
             {preferenceNote && (
               <p
                 data-testid="suggestions-preference-note"
@@ -164,34 +358,37 @@ export default async function FoodTab() {
                 await trackFoodHabit(fd);
               }}
             />
-          </>
+          </div>
         }
         todaySidebar={
           // Today's feedback — the nutrients card, pairing with the log bar's #950
           // slot chip. The client layout swaps this out for a selected-day meal
           // summary while backfilling an older date.
-          (proteinToday || proteinAdequacy || fiberAdequacy) && (
+          (proteinToday || proteinAdequacy || fiberToday) && (
             <section
+              key="nutrition-today"
               data-testid="nutrition-today-section"
-              className="space-y-3"
             >
-              <h2 className="section-label">Today</h2>
-              <NutrientsCard>
+              <NutrientsCard
+                embedded
+                details={
+                  <NutrientEstimateDetails
+                    protein={proteinAdequacy}
+                    fiber={fiberToday}
+                  />
+                }
+              >
                 {(proteinToday || proteinAdequacy) && (
                   <ProteinAdequacyCard
                     today={proteinToday}
                     adequacy={proteinAdequacy}
-                    quickAdd={
-                      <ProteinQuickAdd
-                        today={date}
-                        initialGrams={proteinLoggedGrams}
-                        lastPreset={proteinPreset}
-                      />
-                    }
                   />
                 )}
-                {fiberAdequacy && (
-                  <FiberAdequacyCard adequacy={fiberAdequacy} />
+                {fiberToday && (
+                  <FiberAdequacyCard
+                    adequacy={fiberToday}
+                    periodLabel="Today"
+                  />
                 )}
               </NutrientsCard>
             </section>
@@ -200,15 +397,23 @@ export default async function FoodTab() {
         weeklySidebar={
           // Weekly reflection remains visible for every selected date because it is
           // explicitly labeled as a weekly context rather than a daily one.
-          <section data-testid="nutrition-week-section" className="space-y-3">
-            <h2 className="section-label">This week</h2>
-            <div className="card">
-              <h3 className="mb-3 font-semibold text-slate-800 dark:text-slate-100">
-                Servings
-              </h3>
+          <section
+            key="nutrition-week"
+            data-testid="nutrition-week-section"
+            className="space-y-5"
+          >
+            <div>
+              <h2 className="mb-3 section-label">This week</h2>
               <FoodWeeklyRollup rollup={rollup} />
             </div>
-            <WeeklyHabits profileId={profile.id} formatPrefs={formatPrefs} />
+            {fiberAdequacy && <WeeklyFiberSummary adequacy={fiberAdequacy} />}
+            <div className="border-t border-black/5 pt-5 dark:border-white/5">
+              <WeeklyHabits
+                profileId={profile.id}
+                formatPrefs={formatPrefs}
+                embedded
+              />
+            </div>
           </section>
         }
       />

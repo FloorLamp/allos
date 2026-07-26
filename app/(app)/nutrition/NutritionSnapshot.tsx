@@ -2,9 +2,9 @@ import type { FiberAdequacy } from "@/lib/fiber";
 import type { ProteinAdequacy, ProteinToday } from "@/lib/protein";
 
 const STATUS_LABEL: Record<string, string> = {
-  below: "Below range",
+  below: "Below",
   within: "In range",
-  above: "Above range",
+  above: "Above",
 };
 
 const STATUS_CLASS: Record<string, string> = {
@@ -25,10 +25,14 @@ export default function NutritionSnapshot({
   proteinToday,
   proteinAdequacy,
   fiberAdequacy,
+  proteinPeriod = "today",
+  fiberPeriod = "today",
 }: {
   proteinToday: ProteinToday | null;
   proteinAdequacy: ProteinAdequacy | null;
   fiberAdequacy: FiberAdequacy | null;
+  proteinPeriod?: string;
+  fiberPeriod?: string;
 }) {
   if (!proteinToday && !proteinAdequacy && !fiberAdequacy) return null;
 
@@ -39,56 +43,62 @@ export default function NutritionSnapshot({
     (proteinToday?.todayIntake?.basis ?? proteinAdequacy?.intake.basis) !==
     "tracked";
   const fiberStatus = fiberAdequacy?.status;
+  const fiberIsFloor = fiberAdequacy?.intake.basis !== "tracked";
+  const hasProtein = proteinGrams != null;
+  const paired = hasProtein && !!fiberAdequacy;
 
   return (
     <section
       data-testid="nutrition-mobile-snapshot"
-      className="rounded-lg border border-black/5 bg-brand-50/60 p-3 lg:hidden dark:border-white/5 dark:bg-brand-950/30"
+      className="border-y border-black/5 py-2 lg:hidden dark:border-white/5"
       aria-label="Nutrition at a glance"
     >
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-          At a glance
-        </h3>
-        <span className="text-xs text-slate-500 dark:text-slate-400">
-          Details below
-        </span>
-      </div>
-      <dl className="space-y-2 text-sm">
-        {proteinGrams != null && (
-          <div className="flex items-center justify-between gap-3">
-            <dt className="font-medium text-slate-700 dark:text-slate-200">
-              Protein
-            </dt>
-            <dd className="flex items-center gap-2 text-right">
-              <span className="tabular-nums text-slate-600 dark:text-slate-300">
-                {proteinIsFloor ? "at least " : ""}
-                {rounded(proteinGrams)} g today
-              </span>
+      <dl
+        className={`grid text-sm ${
+          paired
+            ? "grid-cols-2 divide-x divide-black/5 dark:divide-white/5"
+            : "grid-cols-1"
+        }`}
+      >
+        {hasProtein && (
+          <div className={`min-w-0 ${paired ? "pr-3" : ""}`}>
+            <dt className="flex items-center justify-between gap-2 font-medium text-slate-700 dark:text-slate-200">
+              <span>Protein</span>
               {proteinStatus && (
                 <span
-                  className={`font-medium ${STATUS_CLASS[proteinStatus] ?? STATUS_CLASS.above}`}
+                  data-testid="nutrition-snapshot-protein-status"
+                  className={`text-xs font-medium ${STATUS_CLASS[proteinStatus] ?? STATUS_CLASS.above}`}
                 >
                   {STATUS_LABEL[proteinStatus] ?? proteinStatus}
                 </span>
               )}
+            </dt>
+            <dd
+              data-testid="nutrition-snapshot-protein-value"
+              className="mt-0.5 text-xs tabular-nums text-slate-600 dark:text-slate-300"
+            >
+              {rounded(proteinGrams)}g{proteinIsFloor ? "+" : ""}{" "}
+              {proteinPeriod}
             </dd>
           </div>
         )}
         {fiberAdequacy && (
-          <div className="flex items-center justify-between gap-3">
-            <dt className="font-medium text-slate-700 dark:text-slate-200">
-              Fiber
-            </dt>
-            <dd className="flex items-center gap-2 text-right">
-              <span className="tabular-nums text-slate-600 dark:text-slate-300">
-                ~{rounded(fiberAdequacy.intake.grams)} g/day this week
-              </span>
+          <div className={`min-w-0 ${paired ? "pl-3" : ""}`}>
+            <dt className="flex items-center justify-between gap-2 font-medium text-slate-700 dark:text-slate-200">
+              <span>Fiber</span>
               <span
-                className={`font-medium ${STATUS_CLASS[fiberStatus ?? ""] ?? STATUS_CLASS.above}`}
+                data-testid="nutrition-snapshot-fiber-status"
+                className={`text-xs font-medium ${STATUS_CLASS[fiberStatus ?? ""] ?? STATUS_CLASS.above}`}
               >
                 {STATUS_LABEL[fiberStatus ?? ""] ?? fiberStatus}
               </span>
+            </dt>
+            <dd
+              data-testid="nutrition-snapshot-fiber-value"
+              className="mt-0.5 text-xs tabular-nums text-slate-600 dark:text-slate-300"
+            >
+              {rounded(fiberAdequacy.intake.grams)}g{fiberIsFloor ? "+" : ""}{" "}
+              {fiberPeriod}
             </dd>
           </div>
         )}

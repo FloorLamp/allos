@@ -96,7 +96,7 @@ test("dietary preferences can be edited in a modal without leaving the food log"
   await page.goto("/nutrition");
   await expect(page.getByTestId("food-log-bar")).toBeVisible();
 
-  const open = page.getByTestId("food-preferences-open");
+  const open = page.getByTestId("food-preferences-open-desktop");
   await expect(open).toBeVisible();
   await expect(open).not.toHaveAttribute("href");
   await open.click();
@@ -108,7 +108,9 @@ test("dietary preferences can be edited in a modal without leaving the food log"
   await expect(form).not.toHaveClass(/\bcard\b/);
   await expect(dialog.getByTestId("dietary-preset")).toBeVisible();
 
-  await dialog.getByTestId("food-preferences-done").click();
+  const done = dialog.getByTestId("food-preferences-done");
+  await expect(done).toHaveClass(/\bbtn\b/);
+  await done.click();
   await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(/\/nutrition/);
 });
@@ -127,7 +129,9 @@ test("the today/yesterday toggle backfills yesterday, not today (#748 item 1)", 
 
   // Switch the log target to yesterday.
   await page.getByTestId("food-day-yesterday").click();
-  await expect(page.getByTestId("food-day-total")).toContainText("yesterday");
+  await expect(page.getByTestId("food-context-heading")).toHaveAccessibleName(
+    /Yesterday (Morning|Midday|Evening) Food Log/
+  );
   const yCount = page.getByTestId(`count-${slug}`);
   const yBefore = Number((await yCount.textContent())?.trim() || "0");
 
@@ -137,7 +141,9 @@ test("the today/yesterday toggle backfills yesterday, not today (#748 item 1)", 
 
   // Toggling back to today shows today's count UNCHANGED: the write hit yesterday.
   await page.getByTestId("food-day-today").click();
-  await expect(page.getByTestId("food-day-total")).toContainText("today");
+  await expect(page.getByTestId("food-context-heading")).toHaveAccessibleName(
+    /Today (Morning|Midday|Evening) Food Log/
+  );
   await expect(todayCount).toHaveText(String(todayBefore));
 
   // Restore the fixture — undo the yesterday serving.
@@ -195,13 +201,7 @@ test("a recent day can be viewed and backfilled in a specific meal", async ({
   const olderDay = page.locator('[data-days-ago="2"]');
   await olderDay.click();
   await expect(olderDay).toHaveAttribute("aria-pressed", "true");
-  const selectedDay = page.getByTestId("nutrition-selected-day-section");
-  await expect(selectedDay).toBeVisible();
   await expect(page.getByTestId("nutrition-today-section")).toBeHidden();
-  const selectedEvening = selectedDay.getByTestId("selected-day-slot-evening");
-  const selectedEveningBefore = Number(
-    (await selectedEvening.locator("dd").textContent())?.trim() || "0"
-  );
   await page.getByTestId("food-slot-evening").click();
   await expect(page.getByTestId("food-slot-chip")).toHaveText("Evening");
 
@@ -210,9 +210,6 @@ test("a recent day can be viewed and backfilled in a specific meal", async ({
   await settledClick(page, page.getByTestId(`log-${slug}`));
   await expect(olderCount).toHaveText(String(olderBefore + 1));
   await expect(olderCount).toHaveClass(/text-slate-700/);
-  await expect(selectedEvening.locator("dd")).toHaveText(
-    String(selectedEveningBefore + 1)
-  );
   const eveningItem = page.getByTestId(`food-meal-item-evening-${slug}`);
   await expect(eveningItem).toBeVisible();
 
@@ -236,12 +233,9 @@ test("a recent day can be viewed and backfilled in a specific meal", async ({
   await page.getByTestId("food-slot-evening").click();
   await settledClick(page, page.getByTestId(`undo-${slug}`));
   await expect(olderCount).toHaveText(String(olderBefore));
-  await expect(selectedEvening.locator("dd")).toHaveText(
-    String(selectedEveningBefore)
-  );
 });
 
-test("the labs food-suggestions sidebar badge is collapsed by default and expands on click (#591)", async ({
+test("the labs food-suggestions sidebar row opens its content without leaving the rail (#591)", async ({
   page,
 }) => {
   await page.goto("/nutrition");
@@ -261,8 +255,15 @@ test("the labs food-suggestions sidebar badge is collapsed by default and expand
   const suggestion = page.getByTestId("food-suggestion-omega-3");
   await expect(suggestion).toBeHidden();
 
-  // Expand → the suggestion becomes visible.
+  // Open → the suggestion becomes visible in a modal while the trigger remains
+  // anchored in the sidebar.
   await summary.click();
+  await expect(
+    page.getByRole("dialog", { name: "Lab suggestions" })
+  ).toBeVisible();
+  await expect(
+    page.getByTestId("nutrition-sidebar").getByTestId("nutrition-suggestions")
+  ).toBeVisible();
   await expect(suggestion).toBeVisible();
 });
 
@@ -358,6 +359,22 @@ test.describe("tapping a category expands its serving detail on mobile", () => {
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
   });
+});
+
+test("food serving details are always visible and not expandable above mobile", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1024, height: 800 });
+  await page.goto("/nutrition");
+  await revealFoodGroup(page, "leafy_greens");
+
+  await expect(page.getByTestId("detail-leafy_greens")).toBeHidden();
+  const detail = page.getByTestId("detail-static-leafy_greens");
+  await expect(detail).toBeVisible();
+  await expect(detail).toContainText(
+    "A cup of raw (or ½ cup cooked) spinach, kale, chard, romaine"
+  );
+  await expect(detail).not.toHaveAttribute("aria-expanded", /.*/);
 });
 
 test("the Trends → Nutrition tab is the over-time view, not the duplicate rollup (#1166)", async ({

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { IconFlame } from "@tabler/icons-react";
 import {
   adherenceSummary,
+  adherenceSummaryVisibility,
   type AdherenceDot,
 } from "@/lib/supplement-adherence";
 import {
@@ -126,15 +127,23 @@ export function SharedSupplyChip({
 // (#747 parity). adherenceSummary is the shared computation; this is a pure
 // formatter. Renders nothing when there's nothing to report (no due day counted
 // and no deliberate skip).
-export function AdherenceSummaryLine({ strip }: { strip: AdherenceDot[] }) {
+export function AdherenceSummaryLine({
+  strip,
+  noteworthyOnly = false,
+}: {
+  strip: AdherenceDot[];
+  noteworthyOnly?: boolean;
+}) {
   const adherence = adherenceSummary(strip);
-  if (!(adherence.pct !== null || adherence.skippedDays > 0)) return null;
+  const visibility = adherenceSummaryVisibility(adherence, noteworthyOnly);
+  if (!visibility.show) return null;
   return (
     <div
+      data-testid="adherence-summary"
       className="mt-1.5 flex items-center gap-1.5 text-xs"
       title="Adherence over the last 14 days"
     >
-      {adherence.streak >= 2 && (
+      {visibility.showStreak && (
         <>
           <span className="flex items-center gap-1 font-medium text-slate-600 dark:text-slate-300">
             <IconFlame
@@ -143,15 +152,17 @@ export function AdherenceSummaryLine({ strip }: { strip: AdherenceDot[] }) {
             />
             {adherence.streak}-day streak
           </span>
-          <span
-            aria-hidden="true"
-            className="text-slate-300 dark:text-slate-600"
-          >
-            ·
-          </span>
+          {(visibility.showDetail || visibility.showSkipped) && (
+            <span
+              aria-hidden="true"
+              className="text-slate-300 dark:text-slate-600"
+            >
+              ·
+            </span>
+          )}
         </>
       )}
-      {adherence.pct !== null && (
+      {visibility.showDetail && adherence.pct !== null && (
         <span className="text-slate-500 dark:text-slate-400">
           {Number.isInteger(adherence.takenDays + adherence.partialDays * 0.5)
             ? adherence.takenDays + adherence.partialDays * 0.5
@@ -159,9 +170,9 @@ export function AdherenceSummaryLine({ strip }: { strip: AdherenceDot[] }) {
           /{adherence.applicableDays} due days followed · {adherence.pct}%
         </span>
       )}
-      {adherence.skippedDays > 0 && (
+      {visibility.showSkipped && (
         <>
-          {adherence.pct !== null && (
+          {visibility.showDetail && (
             <span
               aria-hidden="true"
               className="text-slate-300 dark:text-slate-600"
